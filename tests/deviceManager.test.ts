@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createDeviceManager, type SourceSample } from '../src/renderer/src/input/deviceManager';
 
-const s = (key: string, o: Partial<SourceSample> = {}): SourceSample => ({ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, ...o });
+const s = (key: string, o: Partial<SourceSample> = {}): SourceSample => ({ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o });
 
 describe('DeviceManager', () => {
   it('joins on an interact press in the lobby, in order', () => {
@@ -50,11 +50,22 @@ describe('DeviceManager', () => {
   });
   it('uses counted presses from a device that reports them, without faking held state', () => {
     const dm = createDeviceManager(1);
-    dm.update([s('kb:0', { presses: { interact: 1, confirm: 0, cancel: 0 } })], true);   // tap between polls joins
-    let r = dm.update([s('kb:0', { interact: true, presses: { interact: 2, confirm: 0, cancel: 0 } })], false);
+    dm.update([s('kb:0', { presses: { interact: 1, confirm: 0, cancel: 0, any: 1 } })], true);   // tap between polls joins
+    let r = dm.update([s('kb:0', { interact: true, presses: { interact: 2, confirm: 0, cancel: 0, any: 1 } })], false);
     expect(r.frames[0]!.interactPresses).toBe(2);   // release-and-repress between polls is not lost
     expect(r.frames[0]!.interactHeld).toBe(true);
-    r = dm.update([s('kb:0', { presses: { interact: 1, confirm: 0, cancel: 0 } })], false);
+    r = dm.update([s('kb:0', { presses: { interact: 1, confirm: 0, cancel: 0, any: 1 } })], false);
     expect(r.frames[0]!.interactPresses).toBe(1); expect(r.frames[0]!.interactHeld).toBe(false);   // a tap: pressed, not held
+  });
+  it('an any-button press reclaims a reconnect slot but does not join an empty lobby slot', () => {
+    const dm = createDeviceManager(2);
+    dm.update([s('a', { interact: true })], true);
+    dm.update([s('a'), s('b', { interact: true })], true);
+    dm.update([s('b')], false);   // 'a' vanished: slot 0 is reconnect
+    let r = dm.update([s('b'), s('c', { any: true })], false);
+    expect(r.slots[0]).toEqual({ status: 'active', key: 'c' });
+    const dm2 = createDeviceManager(2);
+    r = dm2.update([s('x', { any: true })], true);
+    expect(r.joinedCount).toBe(0);
   });
 });

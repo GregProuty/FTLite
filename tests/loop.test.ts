@@ -4,6 +4,7 @@ import { DT } from '../src/renderer/src/sim/tuning';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { step } from '../src/renderer/src/sim/step';
 import { makeState, intents } from './helpers/sim';
+import { createIntentFeed, NEUTRAL_FRAME, type InputFrame } from '../src/renderer/src/app/intents';
 
 describe('stepAccumulator', () => {
   it('yields one tick per DT and keeps the remainder', () => {
@@ -26,6 +27,36 @@ describe('stepAccumulator', () => {
         for (let k = 0; k < r.ticks && t < script.length; k++) step(s, script[t++]!);
       }
       expect(hashState(s)).toBe(hashState(direct));
+    }
+  });
+  it('feed delivers every press exactly once regardless of frame batching', () => {
+    const FRAMES = 200;
+    const seq: InputFrame[] = Array.from({ length: FRAMES }, (_, i) => ({
+      ...NEUTRAL_FRAME,
+      interactPresses: i % 5 === 0 ? 1 : 0,
+      confirmPresses: i % 7 === 3 ? 1 + (i % 2) : 0,
+      cancelPresses: i % 11 === 4 ? 1 : 0
+    }));
+    const sent = { interact: 0, confirm: 0, cancel: 0 };
+    for (const f of seq) { sent.interact += f.interactPresses; sent.confirm += f.confirmPresses; sent.cancel += f.cancelPresses; }
+    for (const frameDt of [DT, DT * 2, DT * 3.3, DT * 4.9]) {
+      const feed = createIntentFeed(1);
+      const got = { interact: 0, confirm: 0, cancel: 0 };
+      let acc = 0;
+      const drain = (): void => {
+        const i = feed.tick()[0]!;
+        if (i.interactPressed) got.interact++;
+        if (i.confirmPressed) got.confirm++;
+        if (i.cancelPressed) got.cancel++;
+      };
+      for (const f of seq) {
+        feed.beginFrame([f]);
+        const r = stepAccumulator(acc, frameDt); acc = r.accumulator;
+        for (let k = 0; k < r.ticks; k++) drain();
+      }
+      // Flush presses still queued when the schedule ends (a queue of N takes N ticks).
+      for (let k = 0; k < 20; k++) drain();
+      expect(got).toEqual(sent);
     }
   });
 });

@@ -45,6 +45,7 @@ const shipSchema = z.object({
     if (e.kind === 'door' && at(tx, ty) !== '+') return fail(`edge ${i}: door tile must be '+'`);
     const n = neighbours(tx, ty);
     if (!n.includes(e.a) || !n.includes(e.b)) return fail(`edge ${i}: tile does not touch both rooms ${e.a} and ${e.b}`);
+    if (n.some((c) => c !== '#' && c !== '+' && c !== ' ' && c !== e.a && c !== e.b)) return fail(`edge ${i}: tile touches rooms other than ${e.a} and ${e.b}`);
     adjacency.get(e.a)!.add(e.b); adjacency.get(e.b)!.add(e.a);
   }
   for (let y = 0; y < s.height; y++) for (let x = 0; x < s.width; x++) {

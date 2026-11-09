@@ -29,4 +29,19 @@ describe('intent feed', () => {
     const t = feed.tick();
     expect(t).toHaveLength(2); expect(t[1]!.moveY).toBe(0);
   });
+  it('delivers N queued presses on N consecutive ticks', () => {
+    const feed = createIntentFeed(1);
+    feed.beginFrame([{ ...NEUTRAL_FRAME, confirmPresses: 2 }]);
+    expect(feed.tick()[0]!.confirmPressed).toBe(true);
+    expect(feed.tick()[0]!.confirmPressed).toBe(true);
+    expect(feed.tick()[0]!.confirmPressed).toBe(false);
+  });
+  it('a press from a zero-tick frame plus a press in the next frame give two consecutive pressed ticks', () => {
+    const feed = createIntentFeed(1);
+    feed.beginFrame([{ ...NEUTRAL_FRAME, interactPresses: 1 }]);   // no tick this frame
+    feed.beginFrame([{ ...NEUTRAL_FRAME, interactPresses: 1 }]);
+    expect(feed.tick()[0]!.interactPressed).toBe(true);
+    expect(feed.tick()[0]!.interactPressed).toBe(true);
+    expect(feed.tick()[0]!.interactPressed).toBe(false);
+  });
 });

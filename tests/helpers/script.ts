@@ -1,3 +1,7 @@
+import starter from '../../src/renderer/src/sim/ship/starter.json';
+import { parseShip } from '../../src/renderer/src/sim/ship/schema';
+import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
+import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import type { Replay, CompactIntent } from '../../src/renderer/src/sim/replay';
 
 /** Deterministic exercise pattern: each player walks a square and holds Interact every other 5 s window. */
@@ -14,5 +18,5 @@ export function scriptedReplay(seed: number, playerCount: number, ticks: number)
     }
     intents.push(row);
   }
-  return { version: 1, seed, playerCount, layoutId: 'starter', intents };
+  return { version: 1, seed, playerCount, layoutId: 'starter', simVersion: SIM_VERSION, layoutHash: deriveLayout(parseShip(starter)).layoutHash, intents };
 }

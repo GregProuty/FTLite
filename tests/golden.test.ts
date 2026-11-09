@@ -20,4 +20,10 @@ describe('replay', () => {
     expect(firstDiff, `first divergence at tick ${(firstDiff + 1) * 60}`).toBe(-1);
     expect(result.finalHash).toBe(golden.finalHash);
   });
+  it('rejects a replay from another sim version or layout hash', () => {
+    const base = scriptedReplay(1, 1, 5);
+    expect(() => runReplay(LAYOUT, { ...base, simVersion: 999 })).toThrow(/sim version/);
+    expect(() => runReplay(LAYOUT, { ...base, layoutHash: 'deadbeef' })).toThrow(/layout hash/);
+    expect(() => runReplay(LAYOUT, base)).not.toThrow();
+  });
 });

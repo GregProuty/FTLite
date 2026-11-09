@@ -4,7 +4,9 @@ import { NEUTRAL_FRAME, type InputFrame } from '../app/intents';
 export interface SourceSample {
   key: string; moveX: number; moveY: number;
   interact: boolean; confirm: boolean; cancel: boolean;
-  presses?: { interact: number; confirm: number; cancel: number };
+  /** True while ANY button or cluster key is down (used to reclaim a reconnect slot). */
+  any: boolean;
+  presses?: { interact: number; confirm: number; cancel: number; any: number };
 }
 export type SlotStatus = 'empty' | 'active' | 'reconnect';
 export interface SlotInfo { status: SlotStatus; key: string | null }
@@ -16,13 +18,14 @@ export function createDeviceManager(maxPlayers = MAX_PLAYERS) {
   const reset = (): void => { slots = Array.from({ length: maxPlayers }, () => ({ status: 'empty', key: null })); prev = new Map(); };
   reset();
 
-  const edges = (cur: SourceSample): { interact: number; confirm: number; cancel: number } => {
+  const edges = (cur: SourceSample): { interact: number; confirm: number; cancel: number; any: number } => {
     if (cur.presses) return cur.presses;   // the device counted its own edges (keyboard)
     const p = prev.get(cur.key);
     return {
       interact: cur.interact && !(p?.interact ?? false) ? 1 : 0,
       confirm: cur.confirm && !(p?.confirm ?? false) ? 1 : 0,
-      cancel: cur.cancel && !(p?.cancel ?? false) ? 1 : 0
+      cancel: cur.cancel && !(p?.cancel ?? false) ? 1 : 0,
+      any: cur.any && !(p?.any ?? false) ? 1 : 0
     };
   };
 
@@ -37,7 +40,7 @@ export function createDeviceManager(maxPlayers = MAX_PLAYERS) {
       for (const smp of samples) {
         if (assigned.has(smp.key)) continue;
         const e = edges(smp);
-        if (!(e.interact || e.confirm || e.cancel)) continue;
+        if (!(e.interact || e.confirm || e.cancel || e.any)) continue;
         let target = slots.findIndex((x) => x.status === 'reconnect');
         if (target < 0 && allowJoin && e.interact) target = slots.findIndex((x) => x.status === 'empty');
         if (target < 0) continue;

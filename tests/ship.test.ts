@@ -27,6 +27,10 @@ describe('ship schema', () => {
     const s = clone(); s.edges[0]!.tile = [12, 4];
     expect(() => parseShip(s)).toThrow(/edge/);
   });
+  it('rejects a door tile that also touches a third room', () => {
+    const s = clone(); s.rows[4] = s.rows[4]!.slice(0, 3) + 'B' + s.rows[4]!.slice(4);
+    expect(() => parseShip(s)).toThrow(/edge/);
+  });
   it('rejects a disconnected room graph', () => {
     const s = clone(); s.edges = s.edges.filter((e) => e.a !== 'H');
     s.rows[4] = '##+####+####+####+#######';

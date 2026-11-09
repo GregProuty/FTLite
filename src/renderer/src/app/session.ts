@@ -20,6 +20,8 @@ export interface SessionDeps {
   hud: { update(m: HudModel): void } | null;
   now(): number;
   saveCrash(payload: unknown): void;
+  /** Whether a Confirm press may resume a paused session (false while the window is hidden or unfocused). */
+  canResume?: () => boolean;
 }
 
 export function createSession(deps: SessionDeps) {
@@ -58,7 +60,7 @@ export function createSession(deps: SessionDeps) {
       lastNow = now;
       const { frames, slots: s, joinedCount } = dm.update(deps.sampleDevices(), phase === 'lobby');
       slots = s;
-      if (phase === 'paused' && anyPress(frames, 'confirmPresses')) doResume();
+      if (phase === 'paused' && anyPress(frames, 'confirmPresses') && (deps.canResume ?? (() => true))()) doResume();
       if (phase === 'lobby') {
         if (joinedCount > 0 && anyPress(frames, 'confirmPresses')) start();
       } else if (phase === 'running' && state && feed) {

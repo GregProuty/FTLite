@@ -17,6 +17,7 @@ async function start(): Promise<void> {
     sampleDevices: () => [...keyboard.sample(), ...sampleGamepads()],
     renderer, hud,
     now: () => performance.now(),
+    canResume: () => !document.hidden && document.hasFocus(),
     saveCrash: (payload) => { try { localStorage.setItem('ftlite-crash', JSON.stringify(payload)); } catch { /* storage unavailable */ } }
   });
   const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);

@@ -7,15 +7,15 @@ import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay
 import { hashState } from '../src/renderer/src/sim/hash';
 import { step } from '../src/renderer/src/sim/step';
 
-function harness() {
+function harness(canResume?: () => boolean) {
   let samples: SourceSample[] = [];
   let t = 0;
   const crashes: unknown[] = [];
   const session = createSession({
     layout: LAYOUT, sampleDevices: () => samples, renderer: null, hud: null,
-    now: () => t, saveCrash: (p) => { crashes.push(p); }
+    now: () => t, canResume, saveCrash: (p) => { crashes.push(p); }
   });
-  const press = (key: string, o: Partial<SourceSample>) => { samples = [{ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, ...o }]; };
+  const press = (key: string, o: Partial<SourceSample>) => { samples = [{ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o }]; };
   const frames = (n: number, ms = 1000 / 60) => { for (let i = 0; i < n; i++) { t += ms; session.frame(); } };
   return { session, press, frames, crashes, release: () => press('a', {}) };
 }
@@ -84,8 +84,8 @@ describe('session', () => {
       now: () => (t += 20),   // time must advance by at least one tick (16.7ms, with margin for float error) or the fault never fires
       saveCrash: () => {}
     });
-    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: true, confirm: false, cancel: false }]; session.frame();
-    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: true, cancel: false }]; session.frame();
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: true, confirm: false, cancel: false, any: true }]; session.frame();
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: true, cancel: false, any: true }]; session.frame();
     (session.state as unknown as { rooms: null }).rooms = null;
     faulted = true;
     samples = [];
@@ -123,5 +123,17 @@ describe('session', () => {
     // The last recorded entry belongs to the tick that faulted; the ones before it lead to the pre-fault state.
     for (const c of p.intentsSinceBaseline.slice(0, -1)) step(replayed, c.map(decodeIntent));
     expect(hashState(replayed)).toBe(live);
+  });
+  it('a Confirm press while paused does not resume when canResume() is false', () => {
+    let can = false;
+    const h = harness(() => can);
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
+    h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(10);
+    h.session.pause(); h.frames(5);
+    h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
+    expect(h.session.phase).toBe('paused');
+    can = true;
+    h.press('a', { confirm: true }); h.frames(1); h.release();
+    expect(h.session.phase).toBe('running');
   });
 });
