@@ -207,7 +207,8 @@ dist
 `src/shared/resolution.ts`:
 ```ts
 // Single source of truth for the fixed internal render resolution (16:9) and tile size,
-// shared by the main process (window minimum content size) and the renderer (letterbox).
+// shared by the main process (minimum content size) and the renderer (letterbox).
+// Note: shared/ is scanned by tests/boundary.test.ts; do not mention DOM globals even in comments.
 export const INTERNAL_W = 960;
 export const INTERNAL_H = 540;
 export const TILE_PX = 32;
@@ -346,7 +347,7 @@ describe('mulberry32', () => {
   });
   it('matches a known first value for seed 0', () => {
     // Reference value computed once from the mulberry32 algorithm; locks the implementation.
-    expect(nextU32(createRng(0))).toBe(1831565813);
+    expect(nextU32(createRng(0))).toBe(1144304738);
   });
   it('nextFloat is in [0,1) and nextInt in [0,n)', () => {
     const r = createRng(7);
@@ -408,7 +409,7 @@ export function chance(r: RngState, p: number): boolean {
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run tests/rng.test.ts`
-Expected: 6 passed. If the "known first value" test fails, print `nextU32(createRng(0))` once, replace `1831565813` with the printed value (the algorithm above is the reference; the literal only locks it), and re-run.
+Expected: 6 passed. (1144304738 is the standard mulberry32 output for seed 0; if it differs, the implementation above was mistyped.)
 
 - [ ] **Step 5: Commit**
 
@@ -678,6 +679,12 @@ describe('ship schema', () => {
     s.rows[4] = '##+####+####+####+#######';
     expect(() => parseShip(s)).toThrow(/connected/);
   });
+  it('rejects duplicate stations and duplicate edge tiles', () => {
+    const s = clone(); s.stations.push({ ...s.stations[0]! });
+    expect(() => parseShip(s)).toThrow(/duplicate station/);
+    const t = clone(); t.edges.push({ ...t.edges[0]! });
+    expect(() => parseShip(t)).toThrow(/two edges/);
+  });
   it('rejects a breach site that is not a wall adjacent to its room', () => {
     const s = clone(); s.breachSites[0]!.tile = [2, 2];
     expect(() => parseShip(s)).toThrow(/breach/);
@@ -705,12 +712,14 @@ describe('derived tables', () => {
     expect(d.siteTile[5]).toBe(5 * 25 + 0);
     expect(d.layoutHash).toMatch(/^[0-9a-f]{8}$/);
   });
-  it('layout hash changes when rooms are reordered', () => {
+  it('layout hash changes when rooms are reordered; id hash changes with the id', () => {
     const a = deriveLayout(parseShip(starter));
     const s = JSON.parse(JSON.stringify(starter)) as typeof starter;
     s.rooms.reverse();
     const b = deriveLayout(parseShip(s));
     expect(b.layoutHash).not.toBe(a.layoutHash);
+    const t = clone(); t.id = 'other';
+    expect(deriveLayout(parseShip(t)).idHash).not.toBe(a.idHash);
   });
 });
 ```
@@ -784,6 +793,10 @@ const shipSchema = z.object({
   for (let y = 0; y < s.height; y++) if (s.rows[y]!.length !== s.width) return fail(`rows[${y}]: expected width ${s.width}`);
   const roomIds = new Set(s.rooms.map((r) => r.id));
   if (roomIds.size !== s.rooms.length) return fail('rooms: duplicate room id');
+  if (new Set(s.stations.map((st) => st.id)).size !== s.stations.length) return fail('stations: duplicate station id');
+  if (new Set(s.stations.map((st) => `${st.tile[0]},${st.tile[1]}`)).size !== s.stations.length) return fail('stations: two stations on one tile');
+  if (new Set(s.edges.map((e) => `${e.tile[0]},${e.tile[1]}`)).size !== s.edges.length) return fail('edge: two edges on one tile');
+  if (new Set(s.breachSites.map((b) => `${b.tile[0]},${b.tile[1]}`)).size !== s.breachSites.length) return fail('breach site: two sites on one tile');
   const at = (tx: number, ty: number): string => (tx < 0 || ty < 0 || tx >= s.width || ty >= s.height) ? '#' : s.rows[ty]!.charAt(tx);
   const drawn = new Set<string>();
   for (let y = 0; y < s.height; y++) for (let x = 0; x < s.width; x++) {
@@ -858,7 +871,8 @@ export interface Derived {
   edgeA: Int16Array; edgeB: Int16Array; edgeWidth: Float64Array; edgeIsDoor: Uint8Array; edgeTile: Int32Array;
   siteRoom: Int16Array; siteWidth: Float64Array; siteTile: Int32Array;
   kEff: number;
-  layoutHash: string;
+  layoutHash: string;   // content hash: rows, room order, edges, sites, stations, spawns
+  idHash: string;       // hash of layout.id
 }
 
 export function deriveLayout(layout: ShipLayout): Derived {
@@ -898,19 +912,23 @@ export function deriveLayout(layout: ShipLayout): Derived {
   for (let i = 0; i < S; i++) codes.push(siteRoom[i]!, siteTile[i]!, siteWidth[i]!);
   for (const st of layout.stations) codes.push(roomIndex.get(st.room)!, st.tile[1] * width + st.tile[0]);
   for (const sp of layout.spawns) codes.push(sp[1] * width + sp[0]);
+  const idCodes: number[] = []; for (let i = 0; i < layout.id.length; i++) idCodes.push(layout.id.charCodeAt(i));
   return {
     width, height, roomIndex, roomOfTile, wallTile, doorTileToEdge, volume, roomTiles,
     edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile,
     kEff: O2_K,
-    layoutHash: hashF64(Float64Array.from(codes))
+    layoutHash: hashF64(Float64Array.from(codes)),
+    idHash: hashF64(Float64Array.from(idCodes))
   };
 }
 ```
 
+Format note (spec §5 says `defaultOpen` and `"space"` edges): this plan drops both. Every door starts Closed (it opens on approach), and the only edges to space are breaches, which use `breachSites`. Record this in `docs/spikes.md` under "Ship format decisions" when the file is created in Task 1.
+
 - [ ] **Step 7: Run to verify they pass**
 
 Run: `npx vitest run tests/ship.test.ts`
-Expected: 9 passed.
+Expected: 11 passed.
 
 - [ ] **Step 8: Commit**
 
@@ -1156,12 +1174,14 @@ function spawnCrew(state: SimState, pid: number): number {
 import type { SimState } from './state';
 import { STREAM_NAMES } from './state';
 import { Position, Health, Life, Stable } from './components';
+import { SIM_VERSION } from './tuning';
 
 export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'spawner', 'crew'];
-const HEADER_FIELDS = 8, COUNTER_FIELDS = 5, SPAWNER_FIELDS = 1, CREW_FIELDS = 8;
+const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, SPAWNER_FIELDS = 1, CREW_FIELDS = 8;
 
-/** The layout hash as a number so the ship identity is part of the canonical state (spec §4). */
+/** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec §4). */
 export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
+export function layoutIdNumber(s: SimState): number { return parseInt(s.derived.idHash, 16); }
 
 function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * 3 + s.doors.state.length * 3
@@ -1173,7 +1193,7 @@ export function flatten(s: SimState): Float64Array {
   const out = new Float64Array(size(s));
   let i = 0;
   const put = (v: number): void => { out[i++] = v === 0 ? 0 : v; };
-  put(layoutHashNumber(s)); put(s.tick); put(s.nextStableId); put(s.playerCount); put(s.hull); put(s.ended); put(s.endReason); put(s.crew.length);
+  put(SIM_VERSION); put(layoutIdNumber(s)); put(layoutHashNumber(s)); put(s.tick); put(s.nextStableId); put(s.playerCount); put(s.hull); put(s.ended); put(s.endReason); put(s.crew.length);
   for (const n of STREAM_NAMES) put(s.rng[n].s);
   for (const v of s.rooms.o2) put(v); for (const v of s.rooms.fire) put(v); for (const v of s.rooms.fireRepair) put(v);
   for (const v of s.doors.state) put(v); for (const v of s.doors.closeTimer) put(v); for (const v of s.doors.sealRequested) put(v);
@@ -1192,8 +1212,9 @@ export function flatten(s: SimState): Float64Array {
 export function unflatten(s: SimState, v: Float64Array): void {
   let i = 0;
   const get = (): number => v[i++]!;
-  const lh = get();
-  if (lh !== layoutHashNumber(s)) throw new Error('snapshot layout hash does not match the loaded layout');
+  const ver = get(), idh = get(), lh = get();
+  if (ver !== SIM_VERSION) throw new Error(`snapshot sim version ${ver} does not match ${SIM_VERSION}`);
+  if (idh !== layoutIdNumber(s) || lh !== layoutHashNumber(s)) throw new Error('snapshot layout does not match the loaded layout');
   s.tick = get(); s.nextStableId = get(); s.playerCount = get(); s.hull = get(); s.ended = get(); s.endReason = get();
   const crewCount = get();
   if (crewCount !== s.crew.length) throw new Error(`snapshot crew count ${crewCount} does not match state ${s.crew.length}`);
@@ -1551,7 +1572,7 @@ describe('doors', () => {
   it('a downed crew member in the zone does not hold it open', () => {
     const s = makeState(2);                // a second, conscious player keeps the run alive
     teleport(s, 1, 20.5, 5.5);             // far away in the corridor, outside every door zone
-    teleport(s, 0, 2.5, 8.2);
+    teleport(s, 0, 2.5, 8.4);              // inside the 1-tile zone (0.9 from the door centre) but not overlapping the door tile (needs < 0.8)
     run(s, 1);
     expect(s.doors.state[G_DOOR]).toBe(DoorState.Open);
     Life.state[s.crew[0]!] = LifeState.Downed; Life.bleed[s.crew[0]!] = 30;
@@ -1680,7 +1701,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `src/renderer/src/sim/hazards/oxygen.ts`
-- Modify: `src/renderer/src/sim/tuning.ts`, `src/renderer/src/sim/ship/derived.ts`, `src/renderer/src/sim/step.ts`
+- Modify: `src/renderer/src/sim/tuning.ts`, `src/renderer/src/sim/ship/derived.ts`, `src/renderer/src/sim/step.ts`, `src/renderer/src/sim/state.ts` (adds the `injectionScratch` buffer, see Step 4)
 - Test: `tests/oxygen.test.ts`
 
 **Interfaces:**
@@ -1960,9 +1981,16 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```ts
 import { describe, it, expect } from 'vitest';
 import { activateBreach, repairBreach, activeBreachCount, freeSites } from '../src/renderer/src/sim/hazards/breach';
-import { roomBreached, totalO2 } from '../src/renderer/src/sim/hazards/oxygen';
+import { roomBreached, totalO2, oxygenStep } from '../src/renderer/src/sim/hazards/oxygen';
 import { DoorState } from '../src/renderer/src/sim/grid';
-import { makeState, run, room, seconds } from './helpers/sim';
+import { makeState, room } from './helpers/sim';
+
+// Pure physics tests: step the oxygen model directly with no injection, so the later injector stub
+// and spawner (Task 13) cannot mask venting.
+function ventFor(s: ReturnType<typeof makeState>, secondsOfHazard: number): void {
+  const zero = new Float64Array(s.rooms.o2.length);
+  for (let i = 0; i < secondsOfHazard * 12; i++) oxygenStep(s, zero);
+}
 
 describe('breaches', () => {
   it('activating a site vents its room and marks it breached', () => {
@@ -1974,30 +2002,30 @@ describe('breaches', () => {
     expect(activeBreachCount(s)).toBe(1);
     expect(freeSites(s)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     const before = totalO2(s);
-    run(s, seconds(30));
+    ventFor(s, 30);
     expect(s.rooms.o2[A]).toBeLessThan(s.derived.volume[A]! * 0.5);
     expect(s.o2Counters.vented).toBeGreaterThan(0);
-    expect(Math.abs(before - totalO2(s) - s.o2Counters.vented - s.o2Counters.breathed - s.o2Counters.residual)).toBeLessThan(1e-6);
+    expect(Math.abs(before - totalO2(s) - s.o2Counters.vented - s.o2Counters.residual)).toBeLessThan(1e-6);
   });
   it('a sealed door loses less oxygen to a breached neighbour than a closed one', () => {
     const closed = makeState(0), sealed = makeState(0);
     const I = room(closed, 'I');
     activateBreach(closed, 0); activateBreach(sealed, 0);
     sealed.doors.state[0] = DoorState.Sealed;
-    run(closed, seconds(60)); run(sealed, seconds(60));
+    ventFor(closed, 60); ventFor(sealed, 60);
     expect(sealed.rooms.o2[I]).toBeGreaterThan(closed.rooms.o2[I]!);
   });
   it('repair closes the breach and the room can refill', () => {
     const s = makeState(0);
     const A = room(s, 'A');
     activateBreach(s, 0);
-    run(s, seconds(60));
+    ventFor(s, 60);
     repairBreach(s, 0);
     expect(roomBreached(s, A)).toBe(false);
     expect(s.breaches.repair[0]).toBe(0);
     const low = s.rooms.o2[A]!;
     s.doors.state[0] = DoorState.Open;
-    run(s, seconds(30));
+    ventFor(s, 30);
     expect(s.rooms.o2[A]).toBeGreaterThan(low);
   });
 });
@@ -2084,7 +2112,7 @@ describe('fire', () => {
     expect(s.rooms.fire[A]).toBe(FIRE_START);
     for (let i = 0; i < 2000; i++) fireStep(s);
     expect(s.rooms.fire[A]).toBe(FIRE_CAP);
-    expect(burningRoomCount(s)).toBe(1);
+    expect(burningRoomCount(s)).toBeGreaterThanOrEqual(1);   // spread through the closed door is possible and seeded, so do not assert exactly 1
   });
   it('shrinks below the shrink threshold and holds between the two thresholds', () => {
     const s = makeState(0);
@@ -2096,7 +2124,7 @@ describe('fire', () => {
     s.rooms.o2[A] = s.derived.volume[A]! * FIRE_SHRINK_FRAC * 0.5;
     for (let i = 0; i < 2000; i++) fireStep(s);
     expect(s.rooms.fire[A]).toBe(0);
-    expect(burningRoomCount(s)).toBe(0);
+    expect(s.rooms.fireRepair[A]).toBe(0);
   });
   it('spreads through open doors far more often than sealed ones', () => {
     let openSpread = 0, sealedSpread = 0;
@@ -2399,7 +2427,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   ```
 - Produces (tuning.ts): `REACH = 1.5` (tiles, crew centre to nearest point of the target tile), `REPAIR_TIME_FIRE = 6` (s for one repairer), `REPAIR_TIME_BREACH = 8`, `REVIVE_TIME = 4`.
 
-Rules (spec §5 Walking mode, Arbitration): Interact held progresses the target; the fire target is the crew member's own room if burning, else any burning room with a tile in reach; several repairers add progress; one reviver per downed crew (the current reviver keeps it while still holding and in reach, otherwise the lowest `PlayerId` candidate); losers of revive arbitration do nothing that tick. Revive progress decays at the same rate when nobody is reviving. Downed crew cannot act.
+Rules (spec §5 Walking mode, Arbitration): Interact held progresses the target; the fire target is the crew member's **own room** when it is burning (a fire fills its room, so "any tile of its room" means standing inside it; reaching through a wall from the corridor is not allowed, or the gate would be passed from outside the fire); several repairers add progress; one reviver per downed crew (the current reviver keeps it while still holding and in reach, otherwise the lowest `PlayerId` candidate); losers of revive arbitration do nothing that tick. Revive progress decays at the same rate when nobody is reviving. Downed crew cannot act.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2571,19 +2599,12 @@ export function interactTarget(state: SimState, pid: number): Target {
     if (dist <= REACH && dist < bestDist) { best = { kind: TargetKind.Revive, index: other }; bestDist = dist; }
   }
   if (best.kind !== TargetKind.None) return best;
-  // Fire: own room, else nearest burning room with a tile in reach.
+  // Fire: only the crew member's own room (a fire is repaired from inside it, never through a wall).
   const own = roomAt(state, x, y);
   if (own >= 0 && state.rooms.fire[own]! > 0) return { kind: TargetKind.Fire, index: own };
+  // Breach: nearest active site tile in reach.
   bestDist = Infinity;
   const d = state.derived;
-  for (let r = 0; r < state.rooms.fire.length; r++) {
-    if (state.rooms.fire[r]! <= 0) continue;
-    for (const t of d.roomTiles[r]!) {
-      const dist = distToTile(state, x, y, t);
-      if (dist <= REACH && dist < bestDist) { best = { kind: TargetKind.Fire, index: r }; bestDist = dist; }
-    }
-  }
-  // Breach: nearest active site tile in reach (only beats a fire if strictly nearer).
   for (let s = 0; s < d.siteTile.length; s++) {
     if (!state.breaches.active[s]) continue;
     const dist = distToTile(state, x, y, d.siteTile[s]!);
@@ -2689,11 +2710,11 @@ RNG assignment (spec §4 rule 2): `director` for timing jitter and hazard type; 
 `tests/stub.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
-import { activeHazardCount } from '../src/renderer/src/sim/hazards/stub';
-import { burningRoomCount } from '../src/renderer/src/sim/hazards/fire';
+import { activeHazardCount, stubSpawner } from '../src/renderer/src/sim/hazards/stub';
+import { burningRoomCount, igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activeBreachCount } from '../src/renderer/src/sim/hazards/breach';
 import { totalO2 } from '../src/renderer/src/sim/hazards/oxygen';
-import { SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_CAP } from '../src/renderer/src/sim/tuning';
+import { SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_CAP, SPAWN_JITTER } from '../src/renderer/src/sim/tuning';
 import { makeState, run, seconds } from './helpers/sim';
 
 describe('stub injector and spawner', () => {
@@ -2704,15 +2725,23 @@ describe('stub injector and spawner', () => {
     expect(totalO2(s)).toBeGreaterThan(0.99 * Array.from(s.derived.volume).reduce((a, b) => a + b, 0));
     expect(s.o2Counters.injected).toBeGreaterThan(0);
   });
-  it('spawns the first hazard after SPAWN_FIRST and respects the cap', () => {
+  it('spawns the first hazard after SPAWN_FIRST', () => {
     const s = makeState(2);
     run(s, seconds(SPAWN_FIRST) - 1);
     expect(activeHazardCount(s)).toBe(0);
     run(s, 2);
     expect(activeHazardCount(s)).toBe(1);
-    run(s, seconds(SPAWN_INTERVAL * 10));
-    expect(activeHazardCount(s)).toBeLessThanOrEqual(SPAWN_CAP);
     expect(burningRoomCount(s) + activeBreachCount(s)).toBe(activeHazardCount(s));
+  });
+  it('the spawner skips a spawn while the cap is full (fire spread is not capped)', () => {
+    const s = makeState(0);
+    for (let r = 0; r < SPAWN_CAP; r++) igniteRoom(s, r);
+    s.spawner.nextSpawnTick = s.tick;
+    stubSpawner(s);
+    expect(activeHazardCount(s)).toBe(SPAWN_CAP);
+    expect(s.spawner.nextSpawnTick).toBeGreaterThan(s.tick);   // the timer still advances
+    expect(s.spawner.nextSpawnTick).toBeGreaterThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * 60 * (1 - SPAWN_JITTER)));
+    expect(s.spawner.nextSpawnTick).toBeLessThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * 60 * (1 + SPAWN_JITTER)));
   });
   it('spawn sequence is deterministic per seed and differs between seeds', () => {
     const a = makeState(2, 7), b = makeState(2, 7), c = makeState(2, 8);
@@ -3100,8 +3129,19 @@ describe('bitecs 0.4.0 behaviour (spike)', () => {
     console.log(`bitecs recycled id: ${again === ids[1]}`);
     expect(query(world, [C]).length).toBe(2);
   });
+  it('measures snapshot size and hash time for the record (spec §11 spike criterion)', () => {
+    const s = makeState(4, 1);
+    const bytes = flatten(s).byteLength;
+    const t0 = performance.now();
+    for (let i = 0; i < 1000; i++) hashState(s);
+    const perHashMs = (performance.now() - t0) / 1000;
+    console.log(`snapshot ${bytes} bytes, hashState ${perHashMs.toFixed(4)} ms`);
+    expect(bytes).toBeLessThan(4096);
+    expect(perHashMs).toBeLessThan(1);   // well under a 16 ms frame
+  });
 });
 ```
+Add `import { makeState } from './helpers/sim'; import { flatten } from '../src/renderer/src/sim/flatten'; import { hashState } from '../src/renderer/src/sim/hash';` at the top. (Tests may use `performance.now`; only `sim/` and `shared/` are banned from it.)
 
 Run: `npx vitest run tests/spike-bitecs.test.ts` and write `docs/spikes.md` (append to the licence section from Task 1):
 ```markdown
@@ -3110,6 +3150,11 @@ Run: `npx vitest run tests/spike-bitecs.test.ts` and write `docs/spikes.md` (app
 - `createEntityIndex()` without versioning; `withVersioning()` was found unreliable under churn in the previous project.
 - Removed ids are recycled: <immediately | later> (from the spike test console output).
 - Decision: crew are the only entities in increments 0-1 and are never removed. `StableId` (sim-owned, monotonic) is the only id the renderer or snapshots use. Snapshots use our own `flatten()`; `bitecs/serialization` was not adopted because it has no header versioning (spec §4 rule 6).
+- Measured (from the spike test's console output): snapshot size <N> bytes for 4 players on the starter ship; `hashState` <N> ms per call.
+
+## Ship format decisions (Task 4)
+
+- The spec's `defaultOpen` and `"space"` edges are not in the format: every door starts Closed and opens on approach, and the only edges to space are active breaches on `breachSites`.
 - Debris (increment 2a) will be the first churned entities; re-run this spike then.
 
 ## bitECS query ordering (Task 15)
@@ -3302,7 +3347,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces (deviceManager.ts):
   ```ts
-  interface SourceSample { key: string; moveX: number; moveY: number; interact: boolean; confirm: boolean; cancel: boolean }
+  interface SourceSample {
+    key: string; moveX: number; moveY: number;
+    interact: boolean; confirm: boolean; cancel: boolean;                 // currently held (truthful, never faked)
+    presses?: { interact: number; confirm: number; cancel: number };      // press edges since the last sample, when the device can count them
+  }
   type SlotStatus = 'empty' | 'active' | 'reconnect';
   interface SlotInfo { status: SlotStatus; key: string | null }
   createDeviceManager(maxPlayers = MAX_PLAYERS): {
@@ -3310,7 +3359,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
     reset(): void;
   }
   ```
-  Rules (spec §6): a rising edge of `interact` on an unassigned device joins the lowest `reconnect` slot if any, else (only when `allowJoin`) the lowest `empty` slot. A slot whose device key is absent from `samples` becomes `reconnect` and its frame is neutral. Presses are counted as rising edges since the previous sample of that key; a key that disappears forgets its edge history.
+  Rules (spec §6): a press of `interact` on an unassigned device joins the lowest `reconnect` slot if any, else (only when `allowJoin`) the lowest `empty` slot. A slot whose device key is absent from `samples` becomes `reconnect` and its frame is neutral. Presses come from `sample.presses` when the device counts its own edges (keyboard: `keydown` events since the last poll, so a tap or a release-and-repress between polls is never lost); otherwise they are derived as rising edges against the previous sample of that key (gamepads). A key that disappears forgets its edge history.
 - Produces (sources.ts, browser only, not unit-tested): `radialDeadzone(x, y, dz): { x, y }`, `createKeyboardSources(target: Window): { sample(): SourceSample[]; destroy(): void }` (two clusters, keys `kb:0` and `kb:1`, cleared on `blur`), `sampleGamepads(): SourceSample[]` (keys `gp:<index>`), `DEADZONE = 0.2`.
 
 Default bindings: cluster 0 = WASD, `KeyE` interact, `KeyF` confirm, `KeyQ` cancel; cluster 1 = arrows, `Enter` interact, `ShiftRight` confirm, `Backspace` cancel. Gamepad: left stick or d-pad (12-15) move, button 0 interact, button 2 confirm, button 1 cancel.
@@ -3369,6 +3418,15 @@ describe('DeviceManager', () => {
     expect(r.slots[0]!.status).toBe('active');
     expect(r.frames[0]!.interactPresses).toBe(1);
   });
+  it('uses counted presses from a device that reports them, without faking held state', () => {
+    const dm = createDeviceManager(1);
+    dm.update([s('kb:0', { presses: { interact: 1, confirm: 0, cancel: 0 } })], true);   // tap between polls joins
+    let r = dm.update([s('kb:0', { interact: true, presses: { interact: 2, confirm: 0, cancel: 0 } })], false);
+    expect(r.frames[0]!.interactPresses).toBe(2);   // release-and-repress between polls is not lost
+    expect(r.frames[0]!.interactHeld).toBe(true);
+    r = dm.update([s('kb:0', { presses: { interact: 1, confirm: 0, cancel: 0 } })], false);
+    expect(r.frames[0]!.interactPresses).toBe(1); expect(r.frames[0]!.interactHeld).toBe(false);   // a tap: pressed, not held
+  });
 });
 ```
 
@@ -3384,7 +3442,11 @@ Expected: FAIL, module not found.
 import { MAX_PLAYERS } from '../../../shared/intent';
 import { NEUTRAL_FRAME, type InputFrame } from '../app/intents';
 
-export interface SourceSample { key: string; moveX: number; moveY: number; interact: boolean; confirm: boolean; cancel: boolean }
+export interface SourceSample {
+  key: string; moveX: number; moveY: number;
+  interact: boolean; confirm: boolean; cancel: boolean;
+  presses?: { interact: number; confirm: number; cancel: number };
+}
 export type SlotStatus = 'empty' | 'active' | 'reconnect';
 export interface SlotInfo { status: SlotStatus; key: string | null }
 
@@ -3396,6 +3458,7 @@ export function createDeviceManager(maxPlayers = MAX_PLAYERS) {
   reset();
 
   const edges = (cur: SourceSample): { interact: number; confirm: number; cancel: number } => {
+    if (cur.presses) return cur.presses;   // the device counted its own edges (keyboard)
     const p = prev.get(cur.key);
     return {
       interact: cur.interact && !(p?.interact ?? false) ? 1 : 0,
@@ -3455,20 +3518,28 @@ const CLUSTERS = [
 /** Two keyboard clusters as virtual devices. Held keys are cleared on blur so nothing sticks after alt-tab (spec §8). */
 export function createKeyboardSources(target: Window) {
   const held = new Set<string>();
-  const tapped = new Set<string>();   // keys pressed since the last sample, so a press+release between polls still reads as down once
-  const down = (e: KeyboardEvent): void => { if (!e.repeat) tapped.add(e.code); held.add(e.code); if (e.code.startsWith('Arrow') || e.code === 'Backspace') e.preventDefault(); };
+  const presses = new Map<string, number>();   // keydown events (not auto-repeat) per code since the last sample
+  const down = (e: KeyboardEvent): void => {
+    if (!e.repeat) presses.set(e.code, (presses.get(e.code) ?? 0) + 1);
+    held.add(e.code);
+    if (e.code.startsWith('Arrow') || e.code === 'Backspace') e.preventDefault();
+  };
   const up = (e: KeyboardEvent): void => { held.delete(e.code); };
-  const blur = (): void => { held.clear(); tapped.clear(); };
+  const blur = (): void => { held.clear(); presses.clear(); };
   target.addEventListener('keydown', down); target.addEventListener('keyup', up); target.addEventListener('blur', blur);
   return {
     sample(): SourceSample[] {
-      const isDown = (code: string): boolean => held.has(code) || tapped.has(code);
-      const out = CLUSTERS.map((c) => {
+      const count = (code: string): number => presses.get(code) ?? 0;
+      const out: SourceSample[] = CLUSTERS.map((c) => {
         const x = (held.has(c.right) ? 1 : 0) - (held.has(c.left) ? 1 : 0), y = (held.has(c.down) ? 1 : 0) - (held.has(c.up) ? 1 : 0);
         const len = Math.sqrt(x * x + y * y) || 1;
-        return { key: c.key, moveX: x / len, moveY: y / len, interact: isDown(c.interact), confirm: isDown(c.confirm), cancel: isDown(c.cancel) };
+        return {
+          key: c.key, moveX: x / len, moveY: y / len,
+          interact: held.has(c.interact), confirm: held.has(c.confirm), cancel: held.has(c.cancel),
+          presses: { interact: count(c.interact), confirm: count(c.confirm), cancel: count(c.cancel) }
+        };
       });
-      tapped.clear();
+      presses.clear();
       return out;
     },
     destroy(): void { target.removeEventListener('keydown', down); target.removeEventListener('keyup', up); target.removeEventListener('blur', blur); }
@@ -3492,7 +3563,7 @@ export function sampleGamepads(): SourceSample[] {
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `npx vitest run tests/deviceManager.test.ts && npm run typecheck`
-Expected: 5 passed; typecheck exits 0.
+Expected: 6 passed; typecheck exits 0.
 
 - [ ] **Step 5: Commit**
 
@@ -3513,7 +3584,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Produces (letterbox.ts): `computeLetterbox(winW, winH, internalW, internalH): { scale: number; offsetX: number; offsetY: number }` (integer scale ≥ 1, centred).
-- Produces (cache.ts): `syncCache<T>(cache: Map<number, T>, liveIds: readonly number[], create: (id: number) => T, destroy: (item: T) => void): void` (creates missing, destroys stale; keyed by `StableId`).
+- Produces (cache.ts): `syncCache<T>(cache: Map<number, T>, liveIds: readonly number[], create: (id: number) => T, destroy: (item: T, id: number) => void): void` (creates missing, destroys stale; keyed by `StableId`; `destroy` receives the id so callers can drop their own per-id data).
 - Produces (renderer.ts): `createRenderer(): Promise<Renderer>` where
   ```ts
   interface Renderer {
@@ -3574,9 +3645,9 @@ export function computeLetterbox(winW: number, winH: number, internalW: number, 
 `src/renderer/src/render/cache.ts`:
 ```ts
 /** Keep a display-object cache in step with the live StableIds (spec §7): never keyed by raw entity id. */
-export function syncCache<T>(cache: Map<number, T>, liveIds: readonly number[], create: (id: number) => T, destroy: (item: T) => void): void {
+export function syncCache<T>(cache: Map<number, T>, liveIds: readonly number[], create: (id: number) => T, destroy: (item: T, id: number) => void): void {
   const live = new Set(liveIds);
-  for (const [id, item] of cache) if (!live.has(id)) { destroy(item); cache.delete(id); }
+  for (const [id, item] of cache) if (!live.has(id)) { destroy(item, id); cache.delete(id); }
   for (const id of liveIds) if (!cache.has(id)) cache.set(id, create(id));
 }
 ```
@@ -3662,7 +3733,7 @@ export async function createRenderer(): Promise<Renderer> {
         breachLayer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill(0xff3030);
       }
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
-      syncCache(crewGfx, liveIds, () => { const g = new Graphics(); crewLayer.addChild(g); return g; }, (g) => { g.destroy(); prev.delete(0); });
+      syncCache(crewGfx, liveIds, () => { const g = new Graphics(); crewLayer.addChild(g); return g; }, (g, id) => { g.destroy(); prev.delete(id); });
       for (const eid of state.crew) {
         const id = Stable.id[eid]!, g = crewGfx.get(id)!, p = prev.get(id) ?? { x: Position.x[eid]!, y: Position.y[eid]! };
         const x = p.x + (Position.x[eid]! - p.x) * alpha, y = p.y + (Position.y[eid]! - p.y) * alpha;
@@ -3826,6 +3897,22 @@ describe('session', () => {
     h.frames(2);
     expect(h.session.phase).toBe('error');
     expect(h.crashes).toHaveLength(1);
+  });
+  it('after a fault, frames keep running without touching the corrupt state', () => {
+    let hudModels = 0;
+    let samples: SourceSample[] = [];
+    const session = createSession({
+      layout: LAYOUT, sampleDevices: () => samples, renderer: { recordPrev() {}, draw() { throw new Error('draw must not run in error phase'); } },
+      hud: { update(m) { hudModels++; if (m.phase === 'error') expect(m.players.every((p) => p.prompt === '')).toBe(true); } },
+      now: () => 0, saveCrash: () => {}
+    });
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: true, confirm: false, cancel: false }]; session.frame();
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: true, cancel: false }]; session.frame();
+    (session.state as unknown as { rooms: null }).rooms = null;
+    samples = []; 
+    expect(() => { for (let i = 0; i < 3; i++) session.frame(); }).not.toThrow();
+    expect(session.phase).toBe('error');
+    expect(hudModels).toBeGreaterThan(0);
   });
 });
 ```
@@ -3993,8 +4080,9 @@ export function createSession(deps: SessionDeps) {
         if (anyPress(frames, 'cancelPresses')) { seed += 1; phase = 'lobby'; message = 'New seed. Confirm to start'; }
         else if (anyPress(frames, 'confirmPresses')) { phase = 'lobby'; message = 'Same seed. Confirm to start'; }
       }
-      if (state && deps.renderer) deps.renderer.draw(state, phase === 'running' ? accumulator / DT : 1);
-      deps.hud?.update(buildHudModel(state, slots, phase, message));
+      // In the error phase the state may be corrupt: never read it again (the draw and HUD are outside the try).
+      if (state && deps.renderer && phase !== 'error') deps.renderer.draw(state, phase === 'running' ? accumulator / DT : 1);
+      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message));
     }
   };
 }
@@ -4195,7 +4283,7 @@ describe('increment 1 gate: two bots survive five minutes', () => {
 - [ ] **Step 2: Run the gate**
 
 Run: `npx vitest run tests/gate-survival.test.ts`
-Expected: 3 passed. The defaults were chosen so that a bot pays roughly `FIRE_DAMAGE × REPAIR_TIME_FIRE / 2` health per fire (two bots share) and breached rooms vent slowly enough (`PASSAGE_BREACH = 0.1`) that a bot arrives before the suffocation threshold. There is no healing in increment 1, so attrition is the expected failure mode.
+Expected: 3 passed. Also add, inside the loop, a check that every fire-repair tick happens with the repairer inside the burning room (`roomAt(crew) === room` for each crew whose `interactTarget` is a Fire); it must be true by construction after Task 12, and it guards the gate against being passed from the corridor. The defaults were chosen so that a bot pays roughly `FIRE_DAMAGE × REPAIR_TIME_FIRE / 2` health per fire (two bots share) and breached rooms vent slowly enough (`PASSAGE_BREACH = 0.1`) that a bot arrives before the suffocation threshold. There is no healing in increment 1, so attrition is the expected failure mode.
 
 If a seed fails, this is a tuning loop, not a code bug, unless the failure message shows the run ending within the first 30 s (then debug the bot with `console.log(botIntent(s, 0))` at the failing tick). Procedure: (1) add a temporary log in the test of each crew member's health every 30 s and the hazard that was active, to see which hazard type drains health; (2) if fires drain it, lower `FIRE_DAMAGE` by 1 (floor 2) or `REPAIR_TIME_FIRE` by 1 (floor 4); if breaches drain it, lower `PASSAGE_BREACH` to 0.05 or `O2_DAMAGE` by 1 (floor 3); if hazards simply pile up, raise `SPAWN_INTERVAL` by 5 (ceiling 45); (3) re-run all three seeds after each change; (4) when green, run `npm run bless` (tuning changed the golden) and `npm test`. Record the final values and the reason for each change in `docs/gates.md`. Do not change `SPAWN_CAP` below 2 (the game must still produce overlapping tasks), and do not add healing (Medbay is increment 2a).
 

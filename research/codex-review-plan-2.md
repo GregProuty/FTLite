@@ -1,0 +1,17 @@
+Five defects remain. Prior findings **#3, #8 and #9 are incompletely fixed**; the other eight fixes are present. The revised survival gate passes seeds 1–3 for 300 seconds with both crew conscious.
+
+1. **P1 — The Downed-door test still fails. Task 7, Steps 1 and 3.** The casualty at `(2.5, 8.2)` overlaps the door’s AABB: centre distance `0.7 < 0.5 + CREW_HALF`. `crewOnTile()` includes Downed crew, so `doorSystem()` keeps the door **Open**, contradicting the expected **Closed**. Moving the conscious teammate away only fixes termination. Move the casualty outside the tile overlap while keeping it inside the opening zone. [Plan:1538](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-09-foundation-inc0-1-move-and-survive.md:1538)
+
+2. **P1 — Task 13 breaks two breach tests. Task 9, Step 1; Task 13, Step 3.** With the final integrated systems:
+   - The 30-second conservation assertion omits injected oxygen and fire consumption. Executed discrepancy: **3.612420413**, versus tolerance `1e-6`.
+   - The sealed-versus-closed comparison produces corridor oxygen **46 in both states**, because the injector replenishes both completely.
+
+   Disable the injector/spawner in these isolated physics tests, or call the hazard systems directly with explicit injection. [Plan:1967](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-09-foundation-inc0-1-move-and-survive.md:1967)
+
+3. **P2 — The keyboard tap fix still loses edges and falsifies held state. Task 17, Step 3.** `held || tapped` reports a completed press/release as `interactHeld: true`, contrary to spec §6. Also, after a sampled press, release and repress between polls produces another `true` sample; DeviceManager sees no rising edge and drops the second press. Both cases reproduced. Carry press counts separately from current held booleans through `SourceSample` and DeviceManager. [Plan:3451](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-09-foundation-inc0-1-move-and-survive.md:3451)
+
+4. **P2 — Canonical hashes still omit layout ID and config/sim version. Task 4, Step 6; Task 5, Step 5.** Adding the content hash fixes room-reordering identity, but `flatten()` includes neither `layout.id` nor a version. Changing only the ship ID gives identical hashes—executed result **`03275366` for both**—although snapshots treat those layouts as incompatible. Spec §4 explicitly includes layout ID plus content hash and config version. [Plan:1176](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-09-foundation-inc0-1-move-and-survive.md:1176)
+
+5. **P2 — Ship validation accepts duplicate identities and duplicate physical edges. Task 4, Step 5.** Only room IDs are checked for uniqueness. Duplicating a station entry or door-edge entry passes validation. A duplicated door contributes oxygen conductance twice, while `doorTileToEdge` points only to the last entry, allowing movement and gas flow to use different door states. Reject duplicate station IDs and repeated edge tiles; spec §5 requires unique IDs and validated boundaries. [Plan:788](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-09-foundation-inc0-1-move-and-survive.md:788)
+
+Verification used in-memory TypeScript extraction with the prescribed task integration and actual bitECS 0.4.0. A lightweight assertion harness passed 78 tests and reproduced the three failures above. Full TypeScript/Vitest checks and fast-check properties were not run; schema refinement checks used a Zod stand-in. No files changed.
