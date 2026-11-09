@@ -228,7 +228,7 @@ The **concurrency cap** counts every unresolved hazard (each fire, breach, failu
 ## 7. Rendering
 
 - PixiJS v8: async init (`await app.init()`), nearest-neighbour scaling, integer scaling with letterboxing at the fixed internal resolution. Culling is manual in v8 and probably unnecessary for one small ship.
-- Ship tiles: one `CompositeTilemap` (`@pixi/tilemap`; v8 compatibility to be confirmed in a spike) inside a world render group, rebuilt only on tile change. HUD in a separate render group.
+- Ship tiles: a container of plain sprites (one per tile, Pixi batches them) inside a world render group, built once per layout; door sprites update from state. HUD in a separate render group. *(Amended 2026-11-10: the `@pixi/tilemap` spike was not run; the parent plan shipped a Graphics layer and the art pass replaces it with sprite batching, which is the fallback this section always allowed. Revisit `@pixi/tilemap` only if tile count ever makes batching a measured cost.)*
 - Per-room overlays (oxygen, fire) are tinted sprites driven by sim values.
 - The renderer interpolates between ticks (`alpha = accumulator / dt`) and keeps previous positions for that. Its caches are keyed by `StableId`, never by raw entity id, and entries are dropped when the `StableId` is no longer live (test: remove and reuse an entity slot between rendered frames).
 

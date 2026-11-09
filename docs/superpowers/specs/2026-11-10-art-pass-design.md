@@ -18,23 +18,29 @@ Replace the placeholder visuals of Increments 0-1 (flat-colour tiles, circles fo
 - **Per-player identity is a tint** on one crew body exported with a light-grey outfit (Pixi `tint` multiplies colours, so the base must be light).
 - **The owner downloads the packs** into `assets/raw/` and performs the §12 per-asset verification; the implementer wires them.
 - **Art scale:** 16 px native, drawn at 2x (`TILE_PX = 32`), nearest-neighbour scaling everywhere.
+- **Tile rendering** is a container of plain sprites, not `@pixi/tilemap`; the parent spec §7 is amended to say so.
+- **Geometry of the anchor packs** (resolved here, not left to inspection): Puny Characters frames are 32×32 with a roughly 16 px figure; the crew sprite is anchored at (0.5, 0.75) and placed at the crew member's sim position, so the feet sit at the bottom of the 0.6-tile collision box. Cozy Space front walls are 16×32; a wall sprite is anchored at its bottom-left on the wall tile and extends one tile upward over the tile above (void or another wall, never a floor in the starter ship); wall sprites are added in row order so lower walls draw over upper ones; the crew layer draws above all tiles (no y-sorting against walls in this pass; the resulting overlap when a crew member stands directly under a front wall is accepted).
 
 ## 3. Asset layout and manifest
 
 ```
-assets/
-  raw/                       # third-party packs exactly as downloaded (git-tracked)
-    cozy-space-interiors/    # OGA upload, CC-BY 4.0
-    puny-characters/         # CC0
-    reactorcore-fire-smoke/  # CC0
-    kenney-pixel-ui/         # CC0
-    kenney-input-prompts/    # CC0
-    m5x7/                    # CC0 (TTF)
-  art/                       # owner's Aseprite exports (original)
-    crew/  tiles/  fx/  icons/
-  manifest.json
-  licenses.ts                # the allow-list (see below)
+public/                       # Vite public dir: copied verbatim into out/renderer/ at build
+  assets/
+    raw/                      # third-party packs exactly as downloaded (git-tracked)
+      cozy-space-interiors/   # OGA upload, CC-BY 4.0
+      puny-characters/        # CC0
+      reactorcore-fire-smoke/ # CC0
+      kenney-pixel-ui/        # CC0
+      kenney-input-prompts/   # CC0
+      m5x7/                   # CC0 (TTF)
+    art/                      # owner's Aseprite exports and derived edits
+      crew/  tiles/  fx/  icons/
+    manifest.json
+  THIRD_PARTY_NOTICES.txt     # generated (§6); shipped inside the app
+src/renderer/src/render/licenses.ts   # the allow-list (see below)
 ```
+
+**Delivery into the built app.** `electron.vite.config.ts` sets `renderer.publicDir` to the repo-root `public/`, so Vite copies `public/assets/**` and the notices file into `out/renderer/`, which `electron-builder.yml` already packages (`out/**/*`). The loader fetches `./assets/manifest.json` relative to `index.html`, which works both under the dev server and from `file://` in the packaged app. `electron-builder.yml` additionally lists `THIRD_PARTY_NOTICES.txt` under `extraResources` so it also sits next to the executable for anyone who never opens the game. The gate (§8) includes `npm run build` and a check that `out/renderer/assets/manifest.json` and `out/renderer/THIRD_PARTY_NOTICES.txt` exist.
 
 `manifest.json` is an array; one entry per shipped file:
 
@@ -50,36 +56,45 @@ assets/
   "retrieved": "2026-11-10",
   "modifications": "none",
   "credit": "\"Cozy Space Interiors\" by Spaceyyy (https://aquumgifts.itch.io/cozy-space-complete), CC-BY 4.0",
-  "sheet": { "frameW": 16, "frameH": 16, "animations": { "doorOpen": [0, 1, 2, 3] } }
+  "required": true,
+  "sheet": {
+    "frameW": 16, "frameH": 32,
+    "frames": { "door.closed": 0, "door.sealed": 4 },
+    "animations": { "door.open": { "frames": [0, 1, 2, 3], "fps": 12, "loop": false } }
+  }
 }
 ```
 
-- `sheet` is optional (fonts, single images). Frame indices are row-major over the grid. `animations` names are the only names the renderer uses, so a pack can be swapped by editing the manifest.
-- In-house files use `"license": "original"`, `author` = the owner, `source` = `"assets/art"`, no `archived`.
-- `assets/licenses.ts` exports the allow-list as SPDX-style ids: `CC0-1.0`, `CC-BY-3.0`, `CC-BY-4.0`, `OGA-BY-3.0`, `OFL-1.1`, `original`; `CC-BY-SA-4.0` is allowed only when `modifications` is `"none"`. Anything else fails the assets test. This mirrors §12 and is the single place the rule lives in code.
+- `sheet` is optional (fonts, single images: those bind one name via `"name": "ui.panel"`). Frame indices are row-major over the grid. `frames` binds **static names** to frame indices; `animations` binds names to `{frames, fps, loop}`. A 9-slice UI image adds `"nineSlice": { "left": 4, "top": 4, "right": 4, "bottom": 4 }` in source pixels.
+- **Name contract.** `src/renderer/src/render/assetNames.ts` lists every name the renderer uses, grouped: tiles (`floor.0..3`, `wall.plain`, `wall.vent`, `wall.pipes`, `wall.screen`, `door.closed`, `door.sealed`, `door.open`), hazards (`breach.h`, `breach.v`, `floor.damaged.0..1`, `fire.loop`, `vent.puff`), crew (`crew.idle.<dir>`, `crew.walk.<dir>` for the 8 directions `n ne e se s sw w nw`, `crew.down`), ui (`ui.panel`, `ui.bar.bg`, `ui.bar.fill`, `prompt.kb.E`, `prompt.kb.F`, `prompt.kb.Q`, `prompt.kb.Enter`, `prompt.kb.ShiftRight`, `prompt.kb.Backspace`, `prompt.pad.A`, `prompt.pad.X`, `prompt.pad.B`), font (`font.m5x7`). Each name is marked required or optional in that file. The assets test asserts every required name is bound exactly once across the manifest, no name is bound twice, and every bound name is in the list (so a typo cannot silently become dead art). Swapping a pack is then a manifest edit plus the test.
+- **`required`** (default true): a required file that is missing or unloadable stops startup (§7); an optional file is a planned in-house piece whose absence selects the placeholder. The in-house entries of §5 are present in the manifest from Task 1 with `required: false`, so their bindings exist before the files do.
+- **Provenance of derived files.** A file in `assets/art/` that is an edit of a third-party asset keeps that asset's `title`, `author`, `source`, `license` and `credit`, with `modifications` describing the edit and `editedBy` naming the owner (for example `crew/body_base.png`: Puny Characters, Shade, CC0-1.0, "outfit recoloured to light grey for runtime tinting"). Only pieces drawn from scratch use `"license": "original"`, `author` = the owner, `source` = `"assets/art"`, no `archived`.
+- `src/renderer/src/render/licenses.ts` exports the allow-list as SPDX-style ids: `CC0-1.0`, `CC-BY-3.0`, `CC-BY-4.0`, `OGA-BY-3.0`, `OFL-1.1`, `original`; `CC-BY-SA-4.0` is allowed only when `modifications` is `"none"`. Anything else fails the assets test. This mirrors §12 and is the single place the rule lives in code.
 - A zod schema (`src/renderer/src/render/manifest.ts`) validates the manifest; the same schema is used by the test, the loader and the credits script.
 
 ## 4. Renderer changes
 
-All in `src/renderer/src/render/`; nothing in `sim/`, `app/` or `input/` changes except the lobby's Cancel binding for the credits screen (in `app/session.ts`).
+All in `src/renderer/src/render/` plus three contained changes in `app/session.ts`: the lobby credits sub-state (§4 Credits), a `deviceKind` per player derived from `SlotInfo.key`, and a `renderer.reset()` call in `start()`. Nothing in `sim/` or `input/` changes.
 
-- **`assets.ts`:** `loadAssets(manifestUrl): Promise<GameAssets>`. Loads the manifest, validates it, loads every referenced PNG with Pixi `Assets.load` and `scaleMode: 'nearest'`, slices sheets by the frame grid into `Texture[]`, installs the m5x7 `BitmapFont` at 16 px with nearest scaling. Exposes `texture(name)` and `animation(name)`. Pure helpers, tested under node: `sliceGrid(imageW, imageH, frameW, frameH): Rect[]` and `facingFromDelta(dx, dy, previous): Facing8`.
-- **Tile layer:** a `Container` of `Sprite`s built once from the layout. Floor variant per room and wall variant (plain / vent / pipes / screen) are chosen deterministically from the room index and tile index, so the ship looks identical every run. Door tiles are `AnimatedSprite`s driven by door state: play `doorOpen` on Closed→Open, play it reversed on Open→Closed, show the `doorSealed` frame while Sealed. The tile layer is rebuilt only when the layout changes (never in Increment 1); door sprites update per frame from state.
-- **Hazards:** a breach shows the in-house wall-damage decal over the site tile (horizontal or vertical variant by wall orientation) plus the venting puff animation while active; a burning room shows fire `AnimatedSprite`s on a deterministic subset of its tiles, the count growing with intensity (`ceil(fire / FIRE_CAP × tiles)`), each with a frame offset from the tile index so they do not pulse in unison; a damaged-floor overlay appears on tiles that have burned or been breached and stays for the run (render-only memory keyed by tile index, not sim state). Low oxygen keeps the existing tint overlay, using the pack palette's red, threshold `frac < 0.98` so a full ship draws nothing.
-- **Crew:** one `AnimatedSprite` per crew member from the Puny Characters body: 8 facings from `facingFromDelta` over interpolated position deltas (last non-zero delta kept while idle), `walk` while moving, `idle` while still, `down` (last death frame) while Downed, greyscale tint while Dead. Per-player colour via `sprite.tint` from the existing `CREW_COLORS`. The sprite cache stays keyed by `StableId` through `syncCache`.
-- **HUD (`hud.ts`):** Kenney Pixel UI 9-slice panels (`NineSliceSprite`) behind the ship block, the threat list and each player block; m5x7 `BitmapText` for all text; health and progress bars as sprite bars; an input-prompt glyph next to each prompt chosen from the player's device key (`kb:*` → key cap for E/Enter, `gp:*` → pad button) using Kenney 1-Bit Input Prompts; the `buildHudModel` contract gains a `deviceKind: 'kb0' | 'kb1' | 'pad'` per player, derived in `session.ts` from `SlotInfo.key`.
-- **Credits screen:** in the lobby, Cancel opens a scrolling credits panel listing `credits.generated.ts`; Cancel again closes it. Game-over and running phases are unchanged.
-- **Placeholders:** `assets.ts` returns a `missing: string[]` list of planned in-house files not present; the renderer falls back to today's Graphics for those features (breach square, fire rectangle, crew circle, no venting puff, no damaged floor, no glyphs). The HUD shows nothing about missing art; the assets test reports it (see §6).
+- **`assets.ts`:** `loadAssets(manifestUrl): Promise<GameAssets>`. Loads the manifest, validates it, loads every referenced PNG with Pixi `Assets.load` and `scaleMode: 'nearest'`, slices sheets by the frame grid into `Texture[]`, installs the m5x7 `BitmapFont` at 16 px with nearest scaling. Exposes `texture(name)`, `animation(name)` (returning `{textures, fps, loop}`), `nineSlice(name)` and `missing: string[]` (optional names whose file is absent or failed). Pure helpers, tested under node: `sliceGrid(imageW, imageH, frameW, frameH): Rect[]`, `facingFromDelta(dx, dy, previous): Facing8`, `pickVariant(seedIndex, count): number`.
+- **Tile layer:** a `Container` of `Sprite`s built once from the layout. Floor variant per room and wall variant (plain / vent / pipes / screen) come from `pickVariant` over the room index and tile index, so the ship looks identical every run. The tile layer is rebuilt only when the layout changes (never in Increment 1).
+- **Doors** are reconciled, not event-driven, because several ticks can pass per rendered frame and a Sealed→Closed or Open→Sealed change may skip states. Pure `doorFrame(current: number, target: DoorTarget, dtSeconds, fps): number` moves the frame index one step per `1/fps` towards the target: target frame is the last `door.open` frame for Open, frame 0 for Closed, and the `door.sealed` static frame shown immediately for Sealed (sealing is instant, no animation). Initial frame on load comes from the current door state. Tested as pure logic for every state pair including skipped states.
+- **Hazards:** a breach shows the wall-damage decal over the site tile (`breach.h` for a site on a top or bottom wall, `breach.v` for a side wall, decided from which neighbour is the room's floor tile) plus `vent.puff` while active, positioned on the site tile and oriented away from that floor tile (the vent direction is the vector from the floor tile to the site tile). The **damaged floor** overlay goes on floor tiles, never wall tiles: for a breach, the 4-neighbour floor tiles of the site that belong to the breached room; for a fire, every tile that displayed a flame. The overlay persists for the run in render-only memory keyed by tile index. A burning room shows `fire.loop` sprites on a deterministic subset of its tiles, the count `ceil(fire / FIRE_CAP × tiles)`, chosen by `pickVariant` order so the subset grows stably, each with a frame offset from the tile index so they do not pulse in unison. Low oxygen keeps the existing tint overlay, using the pack palette's red, threshold `frac < 0.98` so a full ship draws nothing.
+- **Crew:** one `AnimatedSprite` per crew member: 8 facings from `facingFromDelta` over interpolated position deltas (last non-zero delta kept while idle), `crew.walk.<dir>` while moving, `crew.idle.<dir>` while still, `crew.down` while Downed, greyscale tint while Dead. Per-player colour via `sprite.tint` from the existing `CREW_COLORS`. The sprite cache stays keyed by `StableId` through `syncCache`.
+- **Run reset.** The renderer keeps per-run memory (damaged-floor set, facing history, previous positions, door frame indices). `renderer.reset()` clears all of it; `session.start()` calls it before the first draw of a new run, so a restart never shows the last run's scorch marks or facings. Memory lives in a pure `RenderMemory` object with its own unit test (two runs through one object).
+- **HUD (`hud.ts`):** Kenney Pixel UI 9-slice panels (`NineSliceSprite`, borders from the manifest) behind the ship block, the threat list and each player block; m5x7 `BitmapText` for all text; health and progress bars as sprite bars. `HudPlayer.prompt` is split into `interactPrompt` and `confirmPrompt` (each a string, empty when none), and `buildHudModel` gains `deviceKind: 'kb0' | 'kb1' | 'pad' | null` per player (`kb:0` → `kb0`, `kb:1` → `kb1`, `gp:*` → `pad`, `null` key or empty/reconnect slot → `null`). Each non-empty prompt is drawn with its glyph: Interact → `prompt.kb.E` / `prompt.kb.Enter` / `prompt.pad.A`; Confirm → `prompt.kb.F` / `prompt.kb.ShiftRight` / `prompt.pad.A`'s sibling `prompt.pad.X`; no glyph when `deviceKind` is `null`. Cancel is shown only on the lobby and game-over banners (`prompt.kb.Q` / `prompt.kb.Backspace` / `prompt.pad.B`).
+- **Credits screen** is a lobby sub-state `creditsOpen` in `session.ts`: Cancel from any *active* (joined) slot opens it (before anyone has joined there is no routed input, so a player joins first; the lobby banner says so); while open, Confirm and Cancel both close it and Confirm does **not** start the run; up/down on any active player's stick scrolls (one line per 150 ms while held); a frame with both Confirm and Cancel pressed closes it (Cancel wins, nothing else happens). `buildHudModel` gains `credits: string[] | null` and `creditsScroll: number`. Session tests: open, scroll, close by Cancel, close by Confirm without starting, simultaneous Confirm+Cancel.
+- **Placeholders:** for every optional name in `missing`, the renderer falls back to today's Graphics for that feature (breach square, fire rectangle, crew circle, no venting puff, no damaged floor, no glyphs). The HUD shows nothing about missing art; the assets test reports it (§6).
 
 ## 5. In-house art brief
 
-All at 16 px native, Cozy Space Interiors palette, PNG sheets in `assets/art/`, frames left-to-right in one row unless stated. Each lands as its own manifest entry with `"license": "original"`.
+All at 16 px native (crew at the pack's 32×32 frame), Cozy Space Interiors palette, PNG sheets in `public/assets/art/`, frames left-to-right in one row unless stated. Each is a manifest entry from Task 1 with `required: false`; pieces drawn from scratch are `"license": "original"`, the crew export keeps Puny Characters' provenance (§3).
 
 | File | Frames | Notes |
 |---|---|---|
 | `tiles/breach.png` | 2 (horizontal wall, vertical wall) | Wall-damage decal drawn over the wall tile: black void behind, torn metal edge |
 | `tiles/floor_damaged.png` | 2 variants | Scorch and debris; overlays a floor tile that has burned or been breached |
-| `crew/body_base.png` | Puny Characters layout: 8 facings × (idle, walk 4 frames), plus `down` (1 frame) | Export from the pack with the outfit recoloured to light grey (about `#c8c8c8`) so `tint` works; skin and hair unchanged |
+| `crew/body_base.png` | Puny Characters layout (32×32 frames): 8 facings × (idle, walk 4 frames), plus `down` (1 frame) | Derived from Shade's Puny Characters (CC0), outfit recoloured to light grey (about `#c8c8c8`) so `tint` works; skin and hair unchanged; manifest keeps Shade as author with the recolour as `modifications` |
 | `crew/sit.png` | 1 frame | Reserved for 2a consoles; optional in this pass |
 | `fx/vent.png` | 6 frames | Oxygen puff, white/blue, directed from the breach into space |
 | `fx/arc.png` | 4 frames | Electric arc for 2a power failures; optional in this pass |
@@ -88,24 +103,25 @@ All at 16 px native, Cozy Space Interiors palette, PNG sheets in `assets/art/`, 
 ## 6. Credits, CI and testing
 
 - **`scripts/gen-credits.ts`** reads the manifest and writes two committed outputs: `THIRD_PARTY_NOTICES.txt` (grouped by licence; verbatim credit lines; licence URLs; the full OFL text if an OFL font is ever added; CC-BY entries list title, author, source, licence, modifications as CC-BY 4.0 requires) and `src/renderer/src/render/credits.generated.ts` (a `string[]` for the credits screen). `npm run credits` runs it. A test regenerates into memory and fails if the committed outputs are stale.
-- **`tests/assets.test.ts`:** the manifest validates against the schema; every file under `assets/raw` and `assets/art` is manifested and every manifested file exists; every licence is on the allow-list and CC-BY-SA entries have `modifications: "none"`; every `sheet` grid divides the PNG's dimensions exactly (dimensions read from the PNG IHDR chunk with a 20-line parser, no new dependency); every animation index is in range; every CC-BY entry has a non-empty `credit` and an `archived` URL; the planned in-house files in §5 that are missing are listed in the test output as a warning, not a failure (optional ones excluded).
-- **Render helpers** (`sliceGrid`, `facingFromDelta`, the fire-tile subset selection, placeholder fallback selection) are pure and unit-tested. Pixi itself is not run under node.
-- **Manual gate:** `npm run dev` shows the Cozy Space ship with animated doors and tinted Puny crew; doors open on approach and show the sealed frame when sealed; a fire shows animated flames whose count grows; a breach shows the decal (or the placeholder square if the decal is not drawn yet); the HUD uses the bitmap font and panels; the credits screen opens from the lobby; `docs/gates.md` Increment 1 items still pass. Record the result in `docs/gates.md` under a new "Art pass" section.
+- **`tests/assets.test.ts`:** the manifest validates against the schema; every file under `public/assets/raw` and `public/assets/art` is manifested (an unmanifested file fails); every `required` manifested file exists; an optional file may be absent and is then listed in the test output as a warning; every licence is on the allow-list and CC-BY-SA entries have `modifications: "none"`; every `sheet` grid divides the PNG's dimensions exactly (dimensions read from the PNG IHDR chunk with a 20-line parser, no new dependency); every frame and animation index is in range; every required name in `assetNames.ts` is bound exactly once, no name is bound twice, every bound name is listed; every CC-BY entry has a non-empty `credit` and an `archived` URL; derived `art/` files name a third-party author only together with that asset's licence and a non-empty `modifications`.
+- **Render helpers** (`sliceGrid`, `facingFromDelta`, `pickVariant`, `doorFrame`, the fire-tile subset selection, damaged-floor tile mapping for a breach site, `RenderMemory.reset`, placeholder fallback selection) are pure and unit-tested. Session tests cover the credits sub-state. Pixi itself is not run under node.
+- **Build check:** `npm run build` then assert `out/renderer/assets/manifest.json` and `out/renderer/THIRD_PARTY_NOTICES.txt` exist (a vitest test that runs only when `out/` is present, plus a line in the gate checklist).
+- **Manual gate:** `npm run dev` shows the Cozy Space ship with animated doors and tinted Puny crew; doors open on approach and show the sealed frame when sealed, including after a seal/unseal while another door is mid-animation; a fire shows animated flames whose count grows; a breach shows the decal (or the placeholder square if the decal is not drawn yet) and the vent puff points outward; a restart shows no scorch marks from the previous run; the HUD uses the bitmap font and panels with the right glyph per device; the credits screen opens from the lobby and Confirm closes it without starting; the packaged build (`npm run dist`, installed) shows the same art; `docs/gates.md` Increment 1 items still pass. Record the result in `docs/gates.md` under a new "Art pass" section.
 
 ## 7. Error handling
 
 - A manifest that fails validation stops startup with the zod message on the DOM (same path as an invalid ship, §9 of the parent spec).
-- A manifested PNG that fails to load (missing or corrupt) is treated as missing art: the feature falls back to its placeholder and the file is listed in `missing`; a console warning names it. Third-party packs are required (startup error if absent), in-house files are optional.
+- A `required` file that is missing or fails to load stops startup with a message listing the files (third-party packs are required). An optional file that is missing or fails to load is placeholder art: the name goes into `missing`, a console warning names the file, and the feature uses its Graphics fallback. An unmanifested file is a test failure, not a runtime condition.
 - A font that fails to load falls back to the current monospace `Text` style.
 
 ## 8. Build order (gated increments)
 
-1. **Manifest and credits:** `licenses.ts`, zod schema, `tests/assets.test.ts`, `scripts/gen-credits.ts`, the two anchor packs plus effects, UI and font packs manifested (owner downloads and verifies; implementer wires). *Gate:* assets test green with the real files; `THIRD_PARTY_NOTICES.txt` generated.
-2. **Loader and tile layer:** `assets.ts`, floors, walls, animated doors replacing the Graphics tiles. *Gate:* ship renders from sprites; doors animate.
-3. **Crew sprites:** facing, idle/walk/down, tinting, grey when Dead. *Gate:* four tinted crew walk and fall.
-4. **Effects:** fire, breach decal, venting, damaged floor, low-oxygen tint threshold. *Gate:* hazards readable at a glance in a playtest.
-5. **HUD and credits:** panels, bitmap font, prompts with device glyphs, credits screen. *Gate:* the manual gate in §6.
+1. **Manifest, names and credits:** `public/` dir and `publicDir` config, `licenses.ts`, `assetNames.ts`, zod schema, `tests/assets.test.ts`, `scripts/gen-credits.ts`, `extraResources` in `electron-builder.yml`, every pack and every planned in-house entry manifested (owner downloads and verifies; implementer wires). *Gate:* assets test green with the real files; `THIRD_PARTY_NOTICES.txt` generated; `npm run build` ships the assets.
+2. **Loader, tile layer and doors:** `assets.ts`, `RenderMemory`, floors, walls, reconciled door animation replacing the Graphics tiles. *Gate:* ship renders from sprites; doors animate correctly through every state pair.
+3. **Crew sprites:** facing, idle/walk/down, tinting, grey when Dead, run reset. *Gate:* four tinted crew walk and fall; a restart clears facings.
+4. **Effects:** fire, breach decal, venting, damaged floor, low-oxygen tint threshold. *Gate:* hazards readable at a glance in a playtest; damaged floors reset on restart.
+5. **HUD and credits:** panels, bitmap font, split prompts with device glyphs, credits sub-state. *Gate:* the manual gate in §6.
 
 ## 9. Known unknowns
 
-Outline-style compatibility between Cozy Space Interiors, Puny Characters, Reactorcore and Kenney packs is unverified until seen together at 2x; the exact frame layout of each sheet is confirmed only after download; Puny Characters' death animation length and whether its last frame reads as "downed" rather than "dead" need a look; the OGA upload of Cozy Space Interiors may lag the itch edition (fewer wall variants). Any of these may change the frame tables in the manifest, not the design.
+Outline-style compatibility between Cozy Space Interiors, Puny Characters, Reactorcore and Kenney packs is unverified until seen together at 2x; the exact frame layout of each sheet is confirmed only after download; Puny Characters' death animation length and whether its last frame reads as "downed" rather than "dead" need a look; the OGA upload of Cozy Space Interiors may lag the itch edition (fewer wall variants, in which case `wall.vent/pipes/screen` bind to the same frame as `wall.plain` until drawn). These change frame tables and bindings in the manifest. The geometry decisions in §2 (anchors, wall overlap, no y-sorting) are design decisions made here; if the packs' actual canvases differ from the research, revisit §2 before Task 2.
