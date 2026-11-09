@@ -302,7 +302,10 @@ Each spike has a pass criterion and a fallback. Pin exact library versions first
 ## 12. Licence and sourcing rules
 
 - Do **not** copy code from GPL projects (XFTL, its co-op fork Tachyon, FTL-Hyperspace) or from Barotrauma (source-available under an EULA). They are reference reading only. We reimplement ideas with our own formulas and constants. Reverse-engineered FTL numbers are tuning reference at most, not data to import.
-- Use original art and audio only.
+- **Art and audio: original by default, open-licence third-party assets as a documented exception** (amended 2026-11-09 after `research/Open art assets for FTLite.md`):
+  - Allowed licences: CC0, CC-BY 3.0/4.0, OGA-BY, SIL OFL 1.1 (fonts). CC-BY-SA assets only if shipped **unmodified** (share-alike reaches adaptations; we recolour most art, so BY-SA is effectively unusable). Never: GPL-only art (Electron's asar packaging fails the mere-aggregation test), NC or ND terms, "personal use" or "no redistribution" house licences, itch pages with no licence stated, packs tagged Generative AI. On dual-licensed assets, take the CC option.
+  - Per-asset verification before import: licence read on the primary page (not a summary), uploader is the author or clearly has rights, attribution notice and page comments checked, download (not preview) licence confirmed, page archived.
+  - Provenance: every third-party file is listed in an assets manifest (author, title, source URL, licence + URL, retrieval date, modifications, verbatim credit line). CI fails on an unmanifested or disallowed file. The in-game credits screen and `THIRD_PARTY_NOTICES.txt` are generated from the manifest. CC licences do not cover trademarks: the Firefly/Serenity rule below still applies to third-party art.
 - Firefly/Serenity and its tabletop RPG are inspiration for tone and design ideas only. Do not use their names, characters, ship names, logos, dialogue or other protected material, and do not copy the RPG's text or rules verbatim.
 - Verify the licence of any reference code (e.g. Space Station 14 is believed MIT but unverified) and of each library before shipping.
 
