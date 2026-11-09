@@ -4,7 +4,7 @@ import { createRng, nextU32, type RngState } from '../../../shared/rng';
 import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner } from './components';
-import { HULL_MAX, HEALTH_MAX } from './tuning';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ } from './tuning';
 
 export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState }
 export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic'] as const;
@@ -54,7 +54,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     doors: { state: new Uint8Array(E), closeTimer: new Float64Array(E), sealRequested: new Uint8Array(E) },
     breaches: { active: new Uint8Array(S), repair: new Float64Array(S) },
     o2Counters: { injected: 0, breathed: 0, burned: 0, vented: 0, residual: 0 },
-    spawner: { nextSpawnTick: 0 },
+    spawner: { nextSpawnTick: SPAWN_FIRST * TICK_HZ },
     injectionScratch: new Float64Array(R)
   };
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));

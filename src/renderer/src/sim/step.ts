@@ -8,6 +8,7 @@ import { doorSystem } from './doors';
 import { oxygenStep } from './hazards/oxygen';
 import { fireStep } from './hazards/fire';
 import { crewSystem } from './crew';
+import { stubInjection, stubSpawner } from './hazards/stub';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
@@ -25,11 +26,12 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   // (3) stations                                    -> increment 2a
   // (4) hazards on the hazard tick                  -> Tasks 8, 9, 10
   if (hazardTick) {
+    stubInjection(state);
     oxygenStep(state, state.injectionScratch);
     fireStep(state);
   }
   // (5) debris                                      -> increment 2a
-  // (6) director (stub spawner)                     -> Task 13
+  stubSpawner(state);
   // (7) crew lifecycle, run end
   crewSystem(state);
   state.tick++;
