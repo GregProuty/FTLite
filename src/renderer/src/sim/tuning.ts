@@ -7,3 +7,6 @@ export const O2_K = 6;                         // oxygen diffusion rate (per sec
 export const SIM_VERSION = 1;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
+export const CREW_SPEED = 4;      // tiles per second
+export const CREW_HALF = 0.3;     // AABB half-extent in tiles (must stay < 0.5, see ship schema reachability)
+export const MOVE_EPS = 1e-6;
