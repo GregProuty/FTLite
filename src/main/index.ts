@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { join } from 'node:path';
 import { INTERNAL_W, INTERNAL_H } from '../shared/resolution';
 
@@ -17,6 +17,7 @@ function createWindow(): void {
       devTools: !packaged
     }
   });
+  powerMonitor.on('suspend', () => win.webContents.send('app:suspend'));
   Menu.setApplicationMenu(null);
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown' && input.key === 'F11') {

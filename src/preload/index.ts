@@ -1,2 +1,5 @@
-// Nothing is exposed to the renderer yet. The sim loop runs in the renderer process (spec §8).
-export {};
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('ftlite', {
+  onSuspend(cb: () => void): void { ipcRenderer.on('app:suspend', () => cb()); }
+});

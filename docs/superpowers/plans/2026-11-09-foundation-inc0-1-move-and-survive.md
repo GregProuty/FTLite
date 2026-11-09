@@ -3899,17 +3899,20 @@ describe('session', () => {
     expect(h.crashes).toHaveLength(1);
   });
   it('after a fault, frames keep running without touching the corrupt state', () => {
-    let hudModels = 0;
+    let hudModels = 0, faulted = false, t = 0;
     let samples: SourceSample[] = [];
     const session = createSession({
-      layout: LAYOUT, sampleDevices: () => samples, renderer: { recordPrev() {}, draw() { throw new Error('draw must not run in error phase'); } },
+      layout: LAYOUT, sampleDevices: () => samples,
+      renderer: { recordPrev() {}, draw() { if (faulted) throw new Error('draw must not run in error phase'); } },
       hud: { update(m) { hudModels++; if (m.phase === 'error') expect(m.players.every((p) => p.prompt === '')).toBe(true); } },
-      now: () => 0, saveCrash: () => {}
+      now: () => (t += 1000 / 60),   // time must advance or no tick runs and the fault never fires
+      saveCrash: () => {}
     });
     samples = [{ key: 'a', moveX: 0, moveY: 0, interact: true, confirm: false, cancel: false }]; session.frame();
     samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: true, cancel: false }]; session.frame();
     (session.state as unknown as { rooms: null }).rooms = null;
-    samples = []; 
+    faulted = true;
+    samples = [];
     expect(() => { for (let i = 0; i < 3; i++) session.frame(); }).not.toThrow();
     expect(session.phase).toBe('error');
     expect(hudModels).toBeGreaterThan(0);
