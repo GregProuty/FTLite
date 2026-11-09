@@ -20,6 +20,17 @@ The full vision is too large for one spec, so it is split into sub-projects, eac
 4. Run structure: sector map, jumps, events, shops, progression, permadeath.
 5. Networked multiplayer.
 
+### Design inspirations
+
+Besides FTL, the tone and character design draw on ***Firefly* / *Serenity*** (the TV show and film) and its **tabletop RPG** (Cortex-based; the ship is treated almost as a character, and crew are defined by traits with both strengths and flaws). *This section is from general knowledge and has not been researched; verify specifics before relying on them.* How it applies:
+
+- **Tone:** a scrappy, underfunded, patched-together ship and a mismatched crew, not a military fleet. Hazards feel like "the ship is falling apart around us" rather than "enemy fire". This informs art, writing and hazard flavour.
+- **Characters defined by traits with a cost:** each crew member gets an Asset and a Complication (see §5, Crew), in the spirit of the RPG's trait system. *In scope for the Foundation.*
+- **The ship as a character:** quirks, history and recurring faults specific to the ship. *Deferred to sub-project 4 (run structure).*
+- **Shared "luck" resource (the RPG's Plot Points):** a limited pool the crew can spend to turn a bad outcome around. *Candidate for a later sub-project, not in the Foundation.*
+
+Inspiration only: no Firefly/Serenity names, characters, ship names, logos, text or setting details are used (see §12).
+
 ## 2. Foundation goal
 
 A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All seven stations work at a basic level and repair is fully playable. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or all crew are dead. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
@@ -85,7 +96,7 @@ Hazards are simulated on the **room graph**, not tile by tile. Tile-based gas so
   - Navigation, Engineering, Weapons and Science are **station skills**, trained by operating the matching station. The Life Support and Doors consoles train and use **Engineering**; the Medbay trains and uses **Science**. No new skills are added.
   - **Repair** is trained by repairing hazards (fires, breaches, power failures) anywhere on the ship. It sets repair speed.
   - **Combat** is personal fighting skill (melee/sidearm damage and defence). It is defined on the character sheet now but has no source of XP or effect in the Foundation, because there are no enemies until boarders (sub-project 3).
-- A **starting trait** gives each character a different strength.
+- Each character has one **Asset** (a strength, e.g. faster repairs, a skill head start) and one **Complication** (a drawback, e.g. slower movement, takes extra damage from fire), so crew differ in character and not only in numbers. Concrete trait lists are tuning data.
 - Characters take damage from fire and low oxygen. At 0 Health they go **down**; a teammate can **revive** them by channelling Interact. Design stance *(judgement, little sourced evidence)*: short downed time, with hold-to-revive speeding the recovery.
 
 ### Skill model (hybrid)
@@ -191,6 +202,7 @@ Small spikes early, to remove the largest unknowns:
 
 - Do **not** copy code from GPL projects (XFTL, its co-op fork Tachyon, FTL-Hyperspace) or from Barotrauma (source-available under an EULA). They are reference reading only. We reimplement ideas with our own formulas and constants. Reverse-engineered FTL numbers are tuning reference at most, not data to import.
 - Use original art and audio only.
+- Firefly/Serenity and its tabletop RPG are inspiration for tone and design ideas only. Do not use their names, characters, ship names, logos, dialogue or other protected material, and do not copy the RPG's text or rules verbatim.
 - Verify the licence of any reference code (e.g. Space Station 14 is believed MIT but unverified) and of each library before shipping.
 
 ## 13. Known unknowns
@@ -202,4 +214,5 @@ From the research gaps: many FTL numbers could not be verified (the wiki was ina
 - Enemy ship and weapon targeting model (sub-project 2).
 - Boarding and crew combat balance (sub-project 3).
 - Perk/talent layer, run progression, and a possible automatic drone for solo play (sub-project 4).
+- Ship quirks and history ("the ship as a character") and a shared luck-style resource, from the Firefly/Serenity RPG inspiration. Research the source material first.
 - Transport, snapshot cadence and compression, host/client model (sub-project 5).
