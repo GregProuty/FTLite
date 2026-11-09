@@ -151,7 +151,7 @@ export default defineConfig({
     "outDir": "./.tsout/node", "emitDeclarationOnly": true,
     "types": ["node"]
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "electron.vite.config.ts", "scripts/**/*"]
+  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "electron.vite.config.ts"]
 }
 ```
 
@@ -165,7 +165,7 @@ export default defineConfig({
     "outDir": "./.tsout/web", "emitDeclarationOnly": true,
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/shared/**/*", "tests/**/*"]
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/shared/**/*", "tests/**/*", "scripts/**/*"]
 }
 ```
 
@@ -705,6 +705,13 @@ describe('derived tables', () => {
     expect(d.siteTile[5]).toBe(5 * 25 + 0);
     expect(d.layoutHash).toMatch(/^[0-9a-f]{8}$/);
   });
+  it('layout hash changes when rooms are reordered', () => {
+    const a = deriveLayout(parseShip(starter));
+    const s = JSON.parse(JSON.stringify(starter)) as typeof starter;
+    s.rooms.reverse();
+    const b = deriveLayout(parseShip(s));
+    expect(b.layoutHash).not.toBe(a.layoutHash);
+  });
 });
 ```
 
@@ -882,10 +889,15 @@ export function deriveLayout(layout: ShipLayout): Derived {
   const S = layout.breachSites.length;
   const siteRoom = new Int16Array(S), siteWidth = new Float64Array(S), siteTile = new Int32Array(S);
   layout.breachSites.forEach((b, i) => { siteRoom[i] = roomIndex.get(b.room)!; siteWidth[i] = b.width; siteTile[i] = b.tile[1] * width + b.tile[0]; });
-  const codes: number[] = [width, height];
+  // Layout identity covers everything the derived tables depend on: row text, room order, edge endpoints,
+  // site rooms, stations and spawns. Reordering rooms must change the hash (snapshots index rooms by position).
+  const codes: number[] = [width, height, layout.rooms.length, E, S, layout.stations.length, layout.spawns.length];
   for (const row of layout.rows) for (let i = 0; i < row.length; i++) codes.push(row.charCodeAt(i));
-  for (const e of layout.edges) codes.push(e.tile[0], e.tile[1], e.width, e.kind === 'door' ? 1 : 0);
-  for (const b of layout.breachSites) codes.push(b.tile[0], b.tile[1], b.width);
+  for (const r of layout.rooms) codes.push(r.id.charCodeAt(0));
+  for (let i = 0; i < E; i++) codes.push(edgeA[i]!, edgeB[i]!, edgeTile[i]!, edgeWidth[i]!, edgeIsDoor[i]!);
+  for (let i = 0; i < S; i++) codes.push(siteRoom[i]!, siteTile[i]!, siteWidth[i]!);
+  for (const st of layout.stations) codes.push(roomIndex.get(st.room)!, st.tile[1] * width + st.tile[0]);
+  for (const sp of layout.spawns) codes.push(sp[1] * width + sp[0]);
   return {
     width, height, roomIndex, roomOfTile, wallTile, doorTileToEdge, volume, roomTiles,
     edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile,
@@ -985,6 +997,13 @@ describe('SimState', () => {
     expect(a.rng.hazards.s).not.toBe(b.rng.hazards.s);
     expect(a.rng.hazards.s).not.toBe(a.rng.director.s);
     expect(hashState(a)).not.toBe(hashState(b));
+  });
+  it('two live states are independent (component storage is not shared between worlds)', () => {
+    const a = createSimState(layout, 2, 1), b = createSimState(layout, 2, 1);
+    const ax = Position.x[a.crew[0]!]!;
+    step(b, [{ ...NEUTRAL_INTENT, moveX: 1 }, NEUTRAL_INTENT]);
+    expect(Position.x[a.crew[0]!]).toBe(ax);
+    expect(a.crew[0]).not.toBe(b.crew[0]);
   });
   it('flatten/unflatten round-trips', () => {
     const a = createSimState(layout, 4, 5);
@@ -1095,10 +1114,15 @@ export function deriveStreams(seed: number): RngStreams {
   return out;
 }
 
+// One entity index shared by every world this process creates. Components are module-level SoA arrays
+// indexed by entity id, so two live states (tests compare runs; snapshot load creates a second state) must
+// never share an id. A shared index hands out disjoint ids across worlds. Non-versioned: bitECS 0.4.0's
+// withVersioning() misbehaves under recycling (docs/spikes.md).
+const SHARED_ENTITY_INDEX = createEntityIndex();
+
 export function createSimState(layout: ShipLayout, playerCount: number, seed: number): SimState {
   const derived = deriveLayout(layout);
-  // Non-versioned entity index: bitECS 0.4.0's withVersioning() misbehaves under recycling (docs/spikes.md).
-  const world = createWorld(createEntityIndex());
+  const world = createWorld(SHARED_ENTITY_INDEX);
   const R = derived.volume.length, E = layout.edges.length, S = layout.breachSites.length;
   const state: SimState = {
     tick: 0, rng: deriveStreams(seed), nextStableId: 1, layout, derived, playerCount, world, crew: [],
@@ -1134,7 +1158,10 @@ import { STREAM_NAMES } from './state';
 import { Position, Health, Life, Stable } from './components';
 
 export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'spawner', 'crew'];
-const HEADER_FIELDS = 7, COUNTER_FIELDS = 5, SPAWNER_FIELDS = 1, CREW_FIELDS = 8;
+const HEADER_FIELDS = 8, COUNTER_FIELDS = 5, SPAWNER_FIELDS = 1, CREW_FIELDS = 8;
+
+/** The layout hash as a number so the ship identity is part of the canonical state (spec §4). */
+export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
 
 function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * 3 + s.doors.state.length * 3
@@ -1146,7 +1173,7 @@ export function flatten(s: SimState): Float64Array {
   const out = new Float64Array(size(s));
   let i = 0;
   const put = (v: number): void => { out[i++] = v === 0 ? 0 : v; };
-  put(s.tick); put(s.nextStableId); put(s.playerCount); put(s.hull); put(s.ended); put(s.endReason); put(s.crew.length);
+  put(layoutHashNumber(s)); put(s.tick); put(s.nextStableId); put(s.playerCount); put(s.hull); put(s.ended); put(s.endReason); put(s.crew.length);
   for (const n of STREAM_NAMES) put(s.rng[n].s);
   for (const v of s.rooms.o2) put(v); for (const v of s.rooms.fire) put(v); for (const v of s.rooms.fireRepair) put(v);
   for (const v of s.doors.state) put(v); for (const v of s.doors.closeTimer) put(v); for (const v of s.doors.sealRequested) put(v);
@@ -1165,6 +1192,8 @@ export function flatten(s: SimState): Float64Array {
 export function unflatten(s: SimState, v: Float64Array): void {
   let i = 0;
   const get = (): number => v[i++]!;
+  const lh = get();
+  if (lh !== layoutHashNumber(s)) throw new Error('snapshot layout hash does not match the loaded layout');
   s.tick = get(); s.nextStableId = get(); s.playerCount = get(); s.hull = get(); s.ended = get(); s.endReason = get();
   const crewCount = get();
   if (crewCount !== s.crew.length) throw new Error(`snapshot crew count ${crewCount} does not match state ${s.crew.length}`);
@@ -1520,11 +1549,12 @@ describe('doors', () => {
     expect(Position.y[s.crew[0]!]).toBeLessThan(7);
   });
   it('a downed crew member in the zone does not hold it open', () => {
-    const s = makeState(1);
+    const s = makeState(2);                // a second, conscious player keeps the run alive
+    teleport(s, 1, 20.5, 5.5);             // far away in the corridor, outside every door zone
     teleport(s, 0, 2.5, 8.2);
     run(s, 1);
     expect(s.doors.state[G_DOOR]).toBe(DoorState.Open);
-    Life.state[s.crew[0]!] = LifeState.Downed;
+    Life.state[s.crew[0]!] = LifeState.Downed; Life.bleed[s.crew[0]!] = 30;
     run(s, seconds(DOOR_CLOSE_DELAY) + 2);
     expect(s.doors.state[G_DOOR]).toBe(DoorState.Closed);
   });
@@ -1655,7 +1685,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Produces (oxygen.ts): `passageFor(state, edge): number`, `roomBreached(state, room): boolean`, `oxygenStep(state, injection: Float64Array): void` (one hazard step of `HAZARD_DT`; `injection[r]` is the requested units for room r, clamped inside), `totalO2(state): number`.
-- Produces (tuning.ts): `PASSAGE_OPEN = 1`, `PASSAGE_CLOSED = 0.05`, `PASSAGE_SEALED = 0.01`, `PASSAGE_BREACH = 1`, `BREATH_RATE = 0.01` (units/s per living crew), `FIRE_O2_RATE = 0.02` (units/s per fire intensity), `O2_SNAP_EPS = 1e-9`.
+- Produces (tuning.ts): `PASSAGE_OPEN = 1`, `PASSAGE_CLOSED = 0.05`, `PASSAGE_SEALED = 0.01`, `PASSAGE_BREACH = 0.1` (a breach is a hole, not an open door: a 12-tile room then has a half-life of about 14 s), `BREATH_RATE = 0.01` (units/s per living crew), `FIRE_O2_RATE = 0.02` (units/s per fire intensity), `O2_SNAP_EPS = 1e-9`.
 - Modifies (derived.ts): `kEff = min(O2_K, 0.5 · min_r(volume_r / maxConductance_r) / HAZARD_DT)` where `maxConductance_r = Σ incident edge widths · PASSAGE_OPEN + Σ site widths · PASSAGE_BREACH`.
 - Modifies (step.ts): on the hazard tick, `(4)` calls `oxygenStep(state, zeroInjection)` for now (Task 13 supplies the stub injection).
 
@@ -1735,6 +1765,7 @@ describe('oxygen', () => {
   it('tiny residues snap to zero and are tracked', () => {
     const s = makeState(0);
     const A = room(s, 'A');
+    s.rooms.o2.fill(0);                    // nothing can leak back in through the doors
     s.rooms.o2[A] = O2_SNAP_EPS / 2;
     oxygenStep(s, new Float64Array(s.rooms.o2.length));
     expect(s.rooms.o2[A]).toBe(0);
@@ -1776,7 +1807,7 @@ Append to `src/renderer/src/sim/tuning.ts`:
 export const PASSAGE_OPEN = 1;
 export const PASSAGE_CLOSED = 0.05;
 export const PASSAGE_SEALED = 0.01;       // lowered further by Doors skill in increment 3
-export const PASSAGE_BREACH = 1;
+export const PASSAGE_BREACH = 0.1;        // a breach is a hole, not an open door (12-tile room half-life ~14 s)
 export const BREATH_RATE = 0.01;          // oxygen units per second per living crew member
 export const FIRE_O2_RATE = 0.02;         // oxygen units per second per unit of fire intensity
 export const O2_SNAP_EPS = 1e-9;
@@ -2186,7 +2217,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Produces (crew.ts): `crewSystem(state): void` (step 7: damage, state transitions, run end), `reviveCrew(state, eid): void` (Downed → Conscious at `HEALTH_MAX · REVIVE_HEALTH_FRAC`), `consciousCount(state): number`, `EndReason = { None: 0, Hull: 1, Crew: 2 }`.
-- Produces (tuning.ts): `FIRE_DAMAGE = 8` (health/s in a burning room), `O2_DAMAGE = 10` (health/s below the suffocation fraction), `SUFFOCATE_FRAC = 0.1`, `BLEEDOUT_TIME = 30` (s), `BLEED_HAZARD_MULT = 2`, `REVIVE_HEALTH_FRAC = 0.3`.
+- Produces (tuning.ts): `FIRE_DAMAGE = 4` (health/s in a burning room), `O2_DAMAGE = 6` (health/s below the suffocation fraction), `SUFFOCATE_FRAC = 0.1`, `BLEEDOUT_TIME = 30` (s), `BLEED_HAZARD_MULT = 2`, `REVIVE_HEALTH_FRAC = 0.3`. There is no healing in increment 1 (Medbay arrives in 2a), so damage rates are deliberately low.
+- Run-end rule: `consciousCount === 0` ends the run only when `playerCount > 0`, so zero-player states used by hazard tests keep stepping.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2197,7 +2229,7 @@ import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { reviveCrew, consciousCount, EndReason } from '../src/renderer/src/sim/crew';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { HEALTH_MAX, FIRE_DAMAGE, BLEEDOUT_TIME, REVIVE_HEALTH_FRAC } from '../src/renderer/src/sim/tuning';
-import { makeState, run, room, seconds } from './helpers/sim';
+import { makeState, run, room, seconds, teleport } from './helpers/sim';
 
 describe('crew lifecycle', () => {
   it('takes fire damage in a burning room', () => {
@@ -2216,7 +2248,7 @@ describe('crew lifecycle', () => {
   it('goes Downed at 0 health, bleeds out, then Dead; solo run ends on Downed', () => {
     const s = makeState(1);
     const eid = s.crew[0]!;
-    Health.cur[eid] = 1;
+    Health.cur[eid] = 0.05;                 // two ticks of FIRE_DAMAGE/60 finish it
     igniteRoom(s, room(s, 'G'));
     run(s, 2);
     expect(Life.state[eid]).toBe(LifeState.Downed);
@@ -2226,15 +2258,16 @@ describe('crew lifecycle', () => {
   it('bleeds out faster in fire and becomes Dead; two-player run continues', () => {
     const s = makeState(2);
     const eid = s.crew[0]!;
+    teleport(s, 1, 20.5, 5.5);                              // teammate safe in the corridor
     Life.state[eid] = LifeState.Downed; Life.bleed[eid] = BLEEDOUT_TIME;
     s.doors.state.fill(2);
     run(s, seconds(BLEEDOUT_TIME / 2 + 1));
     expect(Life.state[eid]).toBe(LifeState.Downed);        // normal rate: half gone
     const t = makeState(2);
     const e2 = t.crew[0]!;
+    teleport(t, 1, 20.5, 5.5);
     Life.state[e2] = LifeState.Downed; Life.bleed[e2] = BLEEDOUT_TIME;
     igniteRoom(t, room(t, 'G'));
-    t.rooms.o2[room(t, 'G')] = t.derived.volume[room(t, 'G')]!; // keep fire alive
     run(t, seconds(BLEEDOUT_TIME / 2 + 1));
     expect(Life.state[e2]).toBe(LifeState.Dead);           // doubled rate in fire
     expect(t.ended).toBe(0);
@@ -2272,8 +2305,8 @@ Expected: FAIL, module not found.
 
 Append to `src/renderer/src/sim/tuning.ts`:
 ```ts
-export const FIRE_DAMAGE = 8;           // health per second while in a burning room
-export const O2_DAMAGE = 10;            // health per second below SUFFOCATE_FRAC
+export const FIRE_DAMAGE = 4;           // health per second while in a burning room (no healing exists in increment 1)
+export const O2_DAMAGE = 6;             // health per second below SUFFOCATE_FRAC
 export const SUFFOCATE_FRAC = 0.1;
 export const BLEEDOUT_TIME = 30;        // seconds Downed before Dead
 export const BLEED_HAZARD_MULT = 2;     // bleed-out speed in fire or low oxygen
@@ -2323,7 +2356,7 @@ export function crewSystem(state: SimState): void {
     }
   }
   if (state.hull <= 0) { state.hull = 0; state.ended = 1; state.endReason = EndReason.Hull; }
-  else if (consciousCount(state) === 0) { state.ended = 1; state.endReason = EndReason.Crew; }
+  else if (state.playerCount > 0 && consciousCount(state) === 0) { state.ended = 1; state.endReason = EndReason.Crew; }
 }
 ```
 
@@ -2364,7 +2397,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   inReachOfTile(state, eid, tileIdx): boolean
   interactSystem(state, intents): void      // step 1: arbitration, repair/revive progress, Confirm actions
   ```
-- Produces (tuning.ts): `REACH = 1.5` (tiles, crew centre to nearest point of the target tile), `REPAIR_TIME_FIRE = 8` (s for one repairer), `REPAIR_TIME_BREACH = 12`, `REVIVE_TIME = 4`.
+- Produces (tuning.ts): `REACH = 1.5` (tiles, crew centre to nearest point of the target tile), `REPAIR_TIME_FIRE = 6` (s for one repairer), `REPAIR_TIME_BREACH = 8`, `REVIVE_TIME = 4`.
 
 Rules (spec §5 Walking mode, Arbitration): Interact held progresses the target; the fire target is the crew member's own room if burning, else any burning room with a tile in reach; several repairers add progress; one reviver per downed crew (the current reviver keeps it while still holding and in reach, otherwise the lowest `PlayerId` candidate); losers of revive arbitration do nothing that tick. Revive progress decays at the same rate when nobody is reviving. Downed crew cannot act.
 
@@ -2404,6 +2437,7 @@ describe('targets', () => {
   });
   it('confirm target is the nearest door in reach', () => {
     const s = makeState(1);
+    teleport(s, 0, 5.5, 9.5);              // the spawn tile itself is exactly REACH from the G door
     expect(confirmTarget(s, 0).kind).toBe(ConfirmKind.None);
     teleport(s, 0, 2.5, 8.5);
     expect(confirmTarget(s, 0)).toEqual({ kind: ConfirmKind.Door, index: 5 });
@@ -2450,7 +2484,9 @@ describe('interactSystem', () => {
   });
   it('only the lowest PlayerId revives when two players try at once', () => {
     const s = makeState(3);
-    const downed = s.crew[2]!;
+    const downed = s.crew[2]!;              // spawns at (4.5, 9.5)
+    teleport(s, 0, 3.5, 10.5);             // both P1 and P2 within REACH of the casualty
+    teleport(s, 1, 3.5, 9.5);
     Life.state[downed] = LifeState.Downed; Life.bleed[downed] = 30;
     run(s, 10, () => intents({ interactHeld: true }, { interactHeld: true }));
     expect(Life.reviverPid[downed]).toBe(0);
@@ -2485,8 +2521,8 @@ Expected: FAIL, module not found.
 Append to `src/renderer/src/sim/tuning.ts`:
 ```ts
 export const REACH = 1.5;               // tiles from crew centre to the nearest point of the target tile
-export const REPAIR_TIME_FIRE = 8;      // seconds for one repairer
-export const REPAIR_TIME_BREACH = 12;
+export const REPAIR_TIME_FIRE = 6;      // seconds for one repairer
+export const REPAIR_TIME_BREACH = 8;
 export const REVIVE_TIME = 4;
 ```
 
@@ -2643,7 +2679,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Produces (stub.ts): `stubInjection(state): void` (fills `state.injectionScratch` with `STUB_INJECT_FRAC · volume · HAZARD_DT` per room), `stubSpawner(state): void` (step 6), `activeHazardCount(state): number` (burning rooms + active breaches).
-- Produces (tuning.ts): `STUB_INJECT_FRAC = 0.03` (fraction of volume per second), `SPAWN_FIRST = 15` (s), `SPAWN_INTERVAL = 25` (s), `SPAWN_JITTER = 0.2`, `SPAWN_CAP = 3`, `SPAWN_FIRE_WEIGHT = 0.6`.
+- Produces (tuning.ts): `STUB_INJECT_FRAC = 0.03` (fraction of volume per second), `SPAWN_FIRST = 15` (s), `SPAWN_INTERVAL = 30` (s), `SPAWN_JITTER = 0.2`, `SPAWN_CAP = 3`, `SPAWN_FIRE_WEIGHT = 0.6`.
 - Modifies (state.ts): `spawner.nextSpawnTick` starts at `SPAWN_FIRST · TICK_HZ`.
 
 RNG assignment (spec §4 rule 2): `director` for timing jitter and hazard type; `hazards` for the target room or site.
@@ -2701,7 +2737,7 @@ Append to `src/renderer/src/sim/tuning.ts`:
 ```ts
 export const STUB_INJECT_FRAC = 0.03;   // increment 1 only: always-on injector, fraction of room volume per second
 export const SPAWN_FIRST = 15;          // seconds until the first stub hazard
-export const SPAWN_INTERVAL = 25;       // seconds between stub hazards
+export const SPAWN_INTERVAL = 30;       // seconds between stub hazards
 export const SPAWN_JITTER = 0.2;        // ±fraction of the interval
 export const SPAWN_CAP = 3;             // max simultaneous fires + breaches
 export const SPAWN_FIRE_WEIGHT = 0.6;   // probability a spawn is a fire rather than a breach
@@ -3419,17 +3455,21 @@ const CLUSTERS = [
 /** Two keyboard clusters as virtual devices. Held keys are cleared on blur so nothing sticks after alt-tab (spec §8). */
 export function createKeyboardSources(target: Window) {
   const held = new Set<string>();
-  const down = (e: KeyboardEvent): void => { held.add(e.code); if (e.code.startsWith('Arrow') || e.code === 'Backspace') e.preventDefault(); };
+  const tapped = new Set<string>();   // keys pressed since the last sample, so a press+release between polls still reads as down once
+  const down = (e: KeyboardEvent): void => { if (!e.repeat) tapped.add(e.code); held.add(e.code); if (e.code.startsWith('Arrow') || e.code === 'Backspace') e.preventDefault(); };
   const up = (e: KeyboardEvent): void => { held.delete(e.code); };
-  const blur = (): void => { held.clear(); };
+  const blur = (): void => { held.clear(); tapped.clear(); };
   target.addEventListener('keydown', down); target.addEventListener('keyup', up); target.addEventListener('blur', blur);
   return {
     sample(): SourceSample[] {
-      return CLUSTERS.map((c) => {
+      const isDown = (code: string): boolean => held.has(code) || tapped.has(code);
+      const out = CLUSTERS.map((c) => {
         const x = (held.has(c.right) ? 1 : 0) - (held.has(c.left) ? 1 : 0), y = (held.has(c.down) ? 1 : 0) - (held.has(c.up) ? 1 : 0);
         const len = Math.sqrt(x * x + y * y) || 1;
-        return { key: c.key, moveX: x / len, moveY: y / len, interact: held.has(c.interact), confirm: held.has(c.confirm), cancel: held.has(c.cancel) };
+        return { key: c.key, moveX: x / len, moveY: y / len, interact: isDown(c.interact), confirm: isDown(c.confirm), cancel: isDown(c.cancel) };
       });
+      tapped.clear();
+      return out;
     },
     destroy(): void { target.removeEventListener('keydown', down); target.removeEventListener('keyup', up); target.removeEventListener('blur', blur); }
   };
@@ -3479,7 +3519,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   interface Renderer {
     app: Application; world: Container; hud: Container;
     resize(winW: number, winH: number): void;
-    recordPrev(state: SimState): void;              // call before each sim tick batch
+    recordPrev(state: SimState): void;              // call before every sim tick (interpolation spans one tick)
     draw(state: SimState, alpha: number): void;     // interpolates crew between prev and current
   }
   ```
@@ -3715,7 +3755,7 @@ describe('buildHudModel', () => {
     Life.state[s.crew[1]!] = LifeState.Downed; Life.bleed[s.crew[1]!] = 12.4;
     const m2 = buildHudModel(s, slots(2), 'running', '');
     expect(m2.players[0]!.prompt).toBe('Revive P2 | Seal door');
-    expect(m2.players[1]!.prompt).toBe('DOWNED 12s');
+    expect(m2.players[1]!.prompt).toBe('DOWNED 13s');   // Math.ceil: never shows 0s while still alive
   });
   it('lobby model without state shows slot status', () => {
     const m = buildHudModel(null, [{ status: 'active', key: 'a' }, { status: 'empty', key: null }], 'lobby', 'Press Interact to join');
@@ -3930,9 +3970,9 @@ export function createSession(deps: SessionDeps) {
       } else if (phase === 'running' && state && feed) {
         feed.beginFrame(frames);
         const r = stepAccumulator(accumulator, delta); accumulator = r.accumulator;
-        if (r.ticks > 0) deps.renderer?.recordPrev(state);
         try {
           for (let i = 0; i < r.ticks; i++) {
+            deps.renderer?.recordPrev(state);   // before every tick, so interpolation spans only the last tick
             const intents = feed.tick();
             history.push(intents.map(encodeIntent)); if (history.length > CRASH_HISTORY) history.shift();
             step(state, intents);
@@ -4155,7 +4195,9 @@ describe('increment 1 gate: two bots survive five minutes', () => {
 - [ ] **Step 2: Run the gate**
 
 Run: `npx vitest run tests/gate-survival.test.ts`
-Expected: 3 passed. If a seed fails, read the failure message (when it ended and why) and tune in this order, re-running after each change and re-blessing goldens (`npm run bless`) when a tuning value changes behaviour: (1) raise `SPAWN_INTERVAL` to 30; (2) lower `REPAIR_TIME_FIRE` to 6; (3) lower `FIRE_GROW_RATE` to 0.3. Record the final values and what changed in `docs/gates.md`. Do not change `SPAWN_CAP` below 2 (the game must still produce overlapping tasks).
+Expected: 3 passed. The defaults were chosen so that a bot pays roughly `FIRE_DAMAGE × REPAIR_TIME_FIRE / 2` health per fire (two bots share) and breached rooms vent slowly enough (`PASSAGE_BREACH = 0.1`) that a bot arrives before the suffocation threshold. There is no healing in increment 1, so attrition is the expected failure mode.
+
+If a seed fails, this is a tuning loop, not a code bug, unless the failure message shows the run ending within the first 30 s (then debug the bot with `console.log(botIntent(s, 0))` at the failing tick). Procedure: (1) add a temporary log in the test of each crew member's health every 30 s and the hazard that was active, to see which hazard type drains health; (2) if fires drain it, lower `FIRE_DAMAGE` by 1 (floor 2) or `REPAIR_TIME_FIRE` by 1 (floor 4); if breaches drain it, lower `PASSAGE_BREACH` to 0.05 or `O2_DAMAGE` by 1 (floor 3); if hazards simply pile up, raise `SPAWN_INTERVAL` by 5 (ceiling 45); (3) re-run all three seeds after each change; (4) when green, run `npm run bless` (tuning changed the golden) and `npm test`. Record the final values and the reason for each change in `docs/gates.md`. Do not change `SPAWN_CAP` below 2 (the game must still produce overlapping tasks), and do not add healing (Medbay is increment 2a).
 
 - [ ] **Step 3: Gamepad spike checklist and manual playtest record**
 
