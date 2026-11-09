@@ -5,6 +5,7 @@ import { HAZARD_EVERY } from './tuning';
 import { movementSystem } from './movement';
 import { doorSystem } from './doors';
 import { oxygenStep } from './hazards/oxygen';
+import { fireStep } from './hazards/fire';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
@@ -22,6 +23,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   // (4) hazards on the hazard tick                  -> Tasks 8, 9, 10
   if (hazardTick) {
     oxygenStep(state, state.injectionScratch);
+    fireStep(state);
   }
   // (5) debris                                      -> increment 2a
   // (6) director (stub spawner)                     -> Task 13
