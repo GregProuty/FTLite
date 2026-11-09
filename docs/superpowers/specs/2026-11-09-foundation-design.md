@@ -31,6 +31,13 @@ Besides FTL, the tone and character design draw on ***Firefly* / *Serenity*** (t
 
 Inspiration only: no Firefly/Serenity names, characters, ship names, logos, text or setting details are used (see §12).
 
+***Artemis Spaceship Bridge Simulator*** (researched; see `research/Artemis officer station mechanics.md`) contributes two mechanics, both adapted to a walk-between-consoles crew and to discrete levels instead of sliders:
+
+- **Engineering as a heat-versus-power dial:** boosting a station above its normal maximum costs heat, and a small shared coolant pool decides how much boost is sustainable (see Power model).
+- **Beams and torpedoes with a Science-to-Weapons handoff:** beams are unlimited and need the right frequency, torpedoes are limited and homing, and Science scans reveal the frequency (see Weapons and the debris lifecycle).
+
+Everything else in Artemis (shouting across separate screens, a Captain with no controls, Comms, Helm sliders) is deliberately left out.
+
 ## 2. Foundation goal
 
 A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All seven stations work at a basic level and repair is fully playable. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or no crew member is Conscious. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
@@ -66,7 +73,7 @@ Approach: **authoritative simulation driven by per-player input intents.** Resea
 
 ### Authoritative state (what snapshots and hashes cover)
 
-The complete authoritative state is: the tick counter; every RNG stream state; the `StableId` allocator counter and the set of live entities; all component values for live entities; per-room hazard state and hazard-step accumulators; power allocations; the director (stress, phase, phase timer, recent-hazard history, concurrency counters); timers and pending/incoming threats; per-crew lifecycle state and progress (revive, repair); and the ship layout identity (id plus content hash) and config version. The canonical order for snapshots and hashes is live entities sorted by `StableId`, with unused array slots skipped (so stale data in recycled slots cannot affect the hash). Derived data (room adjacency tables, `solid()` lookup, spatial indexes) is **rebuilt from the layout on load and is never snapshotted**; the layout hash in the header guarantees both sides rebuilt from the same data.
+The complete authoritative state is: the tick counter; every RNG stream state; the `StableId` allocator counter and the set of live entities; all component values for live entities; per-room hazard state and hazard-step accumulators; power allocations, per-station heat and coolant assignment; weapon state (beam charge and selected frequency, torpedo stock and load progress); scan progress and each debris object's frequency and revealed flag; the director (stress, phase, phase timer, recent-hazard history, concurrency counters); timers and pending/incoming threats; per-crew lifecycle state and progress (revive, repair); and the ship layout identity (id plus content hash) and config version. The canonical order for snapshots and hashes is live entities sorted by `StableId`, with unused array slots skipped (so stale data in recycled slots cannot affect the hash). Derived data (room adjacency tables, `solid()` lookup, spatial indexes) is **rebuilt from the layout on load and is never snapshotted**; the layout hash in the header guarantees both sides rebuilt from the same data.
 
 ### Path to online play (sub-project 5, not built now)
 
@@ -124,9 +131,9 @@ A console in a room. A character sits at a console to operate it; output scales 
 **Control mode (seated at a console).** The character is locked at the console. The stick moves a cursor or selection and **Confirm** acts; **Cancel** (or Interact) stands up. A seated operator is forced to stand if downed or if the console goes offline. A seated operator cannot repair or revive, which is the intended "more tasks than hands" tension. Per station:
 
 - **Navigation:** no selection; being seated sustains the evasion bonus.
-- **Weapons:** the stick cycles targets among incoming threats in range; Confirm fires when charged.
-- **Engineering:** the stick selects a station and left/right shifts power to or from it.
-- **Science:** no selection; being seated gives the warnings.
+- **Weapons:** up/down cycles targets among warned debris objects; left/right cycles a four-slot weapon selector (Beam tuned to frequency 1, 2 or 3, or Torpedo); Confirm fires the selected weapon when it is ready.
+- **Engineering:** up/down selects a station and left/right shifts power to or from it (past the station's maximum is overdrive); Confirm assigns one coolant unit from the shared pool to the selected station, or, if the pool is empty, returns all of that station's coolant units to the pool.
+- **Science:** up/down cycles warned debris objects; Confirm starts a scan of the selected one. Being seated also gives the warnings.
 - **Life Support:** no selection; being seated boosts injection.
 - **Medbay:** no selection; being seated raises the heal rate.
 - **Doors:** the stick selects a door; Confirm toggles sealed.
@@ -136,9 +143,9 @@ A console in a room. A character sits at a console to operate it; output scales 
 | Station | Foundation behaviour |
 |---|---|
 | Navigation | While seated, gives each incoming debris object an evasion chance on impact, scaling with skill. Productive when it makes an evasion roll against an incoming object. |
-| Weapons | Charges while seated (charge time falls with skill) and fires at a warned debris object to destroy it before impact (hit chance rises with skill). Productive when a shot is fired at a live object. |
-| Engineering | While seated, shifts power bars between stations (see Power model); skill adds bonus bars while seated. Productive while the allocation is actually being changed or bonus bars are covering a shortfall. |
-| Science | While seated, detects incoming debris early: a warning lead time that grows with skill. Unmanned, an object is only revealed in the last few seconds before impact. Productive while at least one threat is pending or incoming. |
+| Weapons | Two weapon types on one console. **Beam:** unlimited, instant, recharges while seated (charge time falls with Weapons power level and skill); hits a warned debris object with a high chance if its frequency matches the debris's frequency, a low chance if not. **Torpedo:** one tube; loads while seated (load time falls with power level and skill), needs stock, homing, so a high hit chance whatever the frequency; stock starts at a few (tuning) and regenerates slowly while Weapons is powered (a Foundation stand-in for resupply). A loaded torpedo and a charged beam stay ready when the operator stands up; charging and loading only progress while seated. A hit destroys the object; a miss leaves it in flight. Productive when a shot is fired at a live object. |
+| Engineering | While seated, shifts power bars between stations and assigns coolant units (see Power model); skill adds bonus bars and raises cooling per unit. Productive while the allocation or coolant is actually being changed, bonus bars are covering a shortfall, or an overdriven station is being kept cool. |
+| Science | While seated, detects incoming debris early: a warning lead time that grows with skill. Unmanned, an object is only revealed in the last few seconds before impact. A **scan** of a selected warned object reveals its frequency (scan time falls with power level and skill; one scan at a time). Productive while a scan is running or at least one threat is pending or incoming. |
 | Life Support (Oxygen) | Injects oxygen into rooms (proportional to volume, none into breached rooms or rooms below the injection cutoff, so a vented room must be sealed and repaired before it refills). Output scales with power and operator Engineering skill. Offline = no injection, so rooms drain via the hazard model. |
 | Medbay | Crew standing in the Medbay heal over time. An operator (Science skill) raises the heal rate. It does not affect revival; reviving is done by teammates anywhere (see Crew lifecycle). |
 | Doors | Remote control: the operator can seal or unseal any door from the console. Skill (Engineering) improves how well sealed doors hold, lowering their sealed passage factor for gas and fire spread. Offline = no remote control; doors still work locally. |
@@ -154,6 +161,15 @@ FTL-style power bars:
 - If available capacity falls below total allocation (the Engineering operator stands up, or the reactor is damaged), stations **shed power in a fixed priority order**, highest-priority-to-keep last: Engineering and Life Support are shed last; Doors, Medbay, Science and Weapons are shed first; Navigation sits in between (exact order is tuning data). Shedding removes bars from the lowest-priority station until the total fits, and restored capacity does not automatically restore shed bars (Engineering reallocates them).
 - A **power failure** hazard sets one station to level 0 (offline) until repaired; its bars return to the pool and can be reallocated. If Engineering itself is offline, allocations stay as they were and cannot be changed until it is repaired, so there is always a recovery path (repair it).
 
+**Overdrive, heat and coolant** (adapted from Artemis's Engineering; all numbers are tuning):
+
+- A station may be pushed **one level above its maximum** (overdrive) at the cost of that extra bar. Its effect scales with the higher level (faster charge, load or scan; stronger evasion; more oxygen injected). Engineering itself cannot be overdriven.
+- Each station has an integer **heat** value. Heat runs on the hazard tick (12 Hz): while overdriven it rises by a fixed rate and falls by a per-unit cooling amount for each **coolant unit** assigned to the station; while not overdriven it falls at a base rate to a floor of 0. Cooling per unit rises with Engineering skill.
+- The **coolant pool** is a small fixed number of units (e.g. 4) shared by every station. Units are never used up and can be moved at any time. With enough units, a chosen overdrive is sustainable indefinitely (e.g. two units hold one station); with too few, heat climbs.
+- At maximum heat the station suffers a **power failure** (the existing hazard, so the repair loop is unchanged), its heat resets, and there is a chance of a fire in its room. This is the Foundation's stand-in for Artemis's burned-out node, and no new hazard type is added.
+- The intended play is spiking: overdrive Weapons just before a shot window, Science while scanning, then drop back. Heat and coolant are part of authoritative state.
+- Discrete bars, not sliders, are used because Artemis players needed saved presets to cope with slider control in real time (see the research report).
+
 ### Hazards and the director
 
 Hazard types:
@@ -162,8 +178,8 @@ Hazard types:
 - **Power failure:** sets a station to level 0 (offline) until repaired; see the Power model.
 - **Debris strike** (the external threat, with a full lifecycle so three stations have a job):
   1. **Spawn:** the director creates a debris object with an impact time and a target room, drawn from the hazards RNG stream. It starts hidden.
-  2. **Warning:** a seated Science operator detects it a skill-scaled lead time before impact (e.g. about 20 s at low skill, longer with skill, tuning); unmanned Science reveals it only in the last few seconds.
-  3. **Interception window:** while it is warned and not yet impacted, a seated, charged Weapons operator can target it (stick cycles targets, Confirm fires). A hit destroys it; a miss leaves it in flight.
+  2. **Warning:** a seated Science operator detects it a skill-scaled lead time before impact (e.g. about 20 s at low skill, longer with skill, tuning); unmanned Science reveals it only in the last few seconds. Each object also has a **frequency** (1 to 3, drawn from the hazards RNG stream at spawn) that is hidden until Science scans it.
+  3. **Interception window:** while it is warned and not yet impacted, a seated Weapons operator can target it (stick cycles targets) and fire a ready beam or torpedo (Confirm). A beam tuned to the revealed frequency is the reliable shot; an unscanned object can be guessed at (about one in three of being right) or hit with a torpedo. A hit destroys it; a miss leaves it in flight.
   4. **Evasion:** at impact, a seated Navigation operator gives an evasion roll; success means the object misses.
   5. **Impact:** an unstopped, unevaded object damages the hull (tuning) and the target room, with a chance of a breach or a fire there.
   Each station's effect is deterministic given the seeded streams, and none of this requires enemy ships.
@@ -188,6 +204,7 @@ Two separate mechanisms, so they cannot fight each other:
 
 The **concurrency cap** counts every unresolved hazard (each fire, breach, failure and in-flight debris object); a spawn is skipped, not queued, when the cap is reached. Because a full cap implies active hazards and therefore stress, the stall timer guarantees Build Up still advances. Phase, phase timer, stress, spawn budget and recent-hazard history are part of authoritative state.
 - Hazard selection is weighted and seeded, with recently used types down-weighted.
+- **Route crises to every console.** Artemis playtests found Engineering and Science idle for most of a mission, so selection also up-weights hazard types whose responding station has gone longest without a productive operator (power failures for Engineering, debris for Science, Weapons and Navigation, breaches for Doors and Life Support, injuries for Medbay). Seconds since each station was last productive is part of authoritative state. Difficulty rises through more *overlapping* crises and shorter timers, not stronger hazards.
 - The director has its own seeded RNG stream, separate from cosmetic randomness.
 - **Player-count scaling:** scale hazard *concurrency* with player count, not hazard strength; solo play gets a lower concurrency cap and a slower director. The exact formula is a tuning value.
 
@@ -235,6 +252,7 @@ Per frame:
 
 - Unit tests per system: fire spread, oxygen, XP curves, station output, revive, collision.
 - **Mass-balance property test** for the oxygen model: the change in total oxygen equals production minus consumption minus vented minus the tracked discarded residual, to epsilon; no value goes negative or exceeds room volume. Includes a branching-graph case (one full room, several empty neighbours) and simultaneous venting.
+- **Overdrive and weapons properties:** coolant units assigned never exceed the pool and are conserved by every Engineering input; heat stays within 0 and its maximum; power drawn never exceeds capacity after shedding; torpedo stock never goes negative and a shot only consumes stock when fired; beam hit chance is higher on a frequency match than a mismatch for every skill level.
 - **Golden replays:** record `{version, seed, config, per-tick intents}`, replay headless, compare the final hash plus hashes every 60 ticks to localize divergence; a "bless" script updates goldens deliberately.
 - **fast-check properties:** same seed and intents give the same hash; save at tick N, load, continue equals an uninterrupted run; intents split across different render-frame sizes give identical results; fuzzed intents never produce NaN or out-of-range values; snapshot round-trip is identity.
 - **Boundary tests:** `sim/` imports nothing from `render/`, `input/` or `app/`; a lint rule bans `Math.random`, `Date` and `performance.now` there.
@@ -257,7 +275,7 @@ The Foundation is built in **gated increments**; each is playable and testable o
 
 0. **Headless harness:** pure `step`, `InputFrame`/`Intent` per `PlayerId`, `hashState`, a golden replay.
 1. **Move and survive:** ship loading and validation, movement and collision, the room-graph oxygen/fire/breach model with the mass-balance test, doors, repair, and the crew lifecycle (downed/revive).
-2. **Power, stations and threats:** the power model, all seven consoles with control mode, and the debris threat loop (warning, intercept, evade, impact).
+2. **Power, stations and threats:** the power model (including overdrive, heat and coolant), all seven consoles with control mode, beams and torpedoes with frequency scanning, and the debris threat loop (warning, scan, intercept, evade, impact). If this proves too large, split it: power, consoles and the basic loop first, then overdrive/heat/coolant and the frequency/torpedo layer as their own gated step.
 3. **Skills and traits:** XP and levels for the six skills, and the four pre-made characters with their Asset and Complication.
 4. **Director:** the stress and pacing machine and escalation, replacing a simple timer spawner used in increments 1-3.
 
@@ -280,7 +298,7 @@ Each spike has a pass criterion and a fallback. Pin exact library versions first
 
 ## 13. Known unknowns
 
-From the research gaps: many FTL numbers could not be verified (the wiki was inaccessible); the FTL layout file format and event schema were not read from primary sources; vitest/ECS testing practice was not researched, so §10 rests on the architecture rather than prior art; power-network modelling advice is first-principles only; no prior art found for station range or multi-operator rules or idle-player postmortems. Treat all tuning numbers as hypotheses until playtested.
+From the research gaps: many FTL numbers could not be verified (the wiki was inaccessible); the FTL layout file format and event schema were not read from primary sources; vitest/ECS testing practice was not researched, so §10 rests on the architecture rather than prior art; power-network modelling advice is first-principles only; no prior art found for station range or multi-operator rules or idle-player postmortems. The Artemis research used the 1.x manual (v1.70) and found no primary source for heat rates, repair speeds or weapon cooldowns, so overdrive, heat, coolant, beam and torpedo numbers are first-principles tuning, and the Artemis solo-play question is unresolved. Treat all tuning numbers as hypotheses until playtested.
 
 ## 14. Open items for later sub-projects
 
