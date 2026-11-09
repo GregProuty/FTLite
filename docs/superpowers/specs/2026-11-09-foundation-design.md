@@ -58,15 +58,19 @@ Approach: **authoritative simulation driven by per-player input intents.** Resea
 1. All gameplay changes go through intents; the renderer never calls into game logic.
 2. **Seeded RNG with named streams** (hazards, director, combat, loot, cosmetic), each stream's state held in the sim state. No `Math.random`, `Date` or `performance.now` in `sim/`; enforced by a lint rule and a boundary test.
 3. Avoid transcendental `Math` functions (`sin`, `cos`, `atan2`, `pow`) in `sim/` — results vary across JS engines. If one is needed, use a pinned implementation in `shared/`.
-4. Wherever iteration order affects RNG draws or damage, iterate entities in sorted order *(inference: bitECS 0.4 query ordering is unverified)*.
-5. Players are identified by `PlayerId`, never by gamepad index. Anything crossing a future wire uses stable ids, not raw bitECS entity ids (ids are recycled immediately by default).
+4. Wherever iteration order affects RNG draws or damage, iterate entities sorted by `StableId` *(bitECS 0.4 query ordering is unverified, and raw entity ids can be remapped on restore)*.
+5. Players are identified by `PlayerId`, never by gamepad index. Every entity carries a **`StableId`** (a monotonic counter allocated by the sim and part of snapshotted state). The renderer's caches (sprites, previous positions) and anything crossing a future wire are keyed by `StableId`, never by raw bitECS entity id, because ids are recycled immediately by default and a liveness check cannot tell a recycled id from the original entity.
 6. Sim state is serializable. Every snapshot begins with a header `{formatVersion, simVersion, tick, rngStates}` plus a component manifest, because bitECS serialization has no versioning of its own.
-7. `hashState(state)` hashes the **raw typed-array bytes** (not through bitECS's epsilon diff path), cheap enough to run every tick in tests and every N ticks otherwise.
+7. `hashState(state)` hashes the **canonical authoritative state** (below) as raw bytes, not through bitECS's epsilon diff path. Cost and snapshot size are measured in a spike (§11) before being called cheap.
 8. Static ship layout is immutable and shipped as data; dynamic state lives in flat typed arrays so snapshots are cheap.
+
+### Authoritative state (what snapshots and hashes cover)
+
+The complete authoritative state is: the tick counter; every RNG stream state; the `StableId` allocator counter and the set of live entities; all component values for live entities; per-room hazard state and hazard-step accumulators; power allocations; the director (stress, phase, phase timer, recent-hazard history, concurrency counters); timers and pending/incoming threats; per-crew lifecycle state and progress (revive, repair); and the ship layout identity (id plus content hash) and config version. The canonical order for snapshots and hashes is live entities sorted by `StableId`, with unused array slots skipped (so stale data in recycled slots cannot affect the hash). Derived data (room adjacency tables, `solid()` lookup, spatial indexes) is **rebuilt from the layout on load and is never snapshotted**; the layout hash in the header guarantees both sides rebuilt from the same data.
 
 ### Path to online play (sub-project 5, not built now)
 
-Host-authoritative: clients send intents tagged with a target tick; the host steps the sim and broadcasts snapshots (order of 5 Hz, optionally delta-compressed against an acknowledged baseline) plus a hash for desync detection; clients interpolate. A thin `Transport` interface keeps the choice of WebSocket, WebRTC or Steam sockets open. This avoids bit-exact lockstep, which research found fragile in JavaScript. Rollback, prediction, interest management and NAT traversal are deferred until playtests demand them. Input latency tolerance of 100-200 ms is an *inference* about this game's slow pace, to be validated.
+Host-authoritative: clients send intents tagged with a target tick; the host steps the sim and broadcasts snapshots (order of 5 Hz, optionally delta-compressed against an acknowledged baseline) plus a hash of the host's state at that tick for integrity checking of the snapshot (clients cannot compare an interpolated view against the host's full-sim hash; desync detection applies to replay/restore and same-tick snapshot checks); clients interpolate. A thin `Transport` interface keeps the choice of WebSocket, WebRTC or Steam sockets open. This avoids bit-exact lockstep, which research found fragile in JavaScript. Rollback, prediction, interest management and NAT traversal are deferred until playtests demand them. Input latency tolerance of 100-200 ms is an *inference* about this game's slow pace, to be validated.
 
 ## 5. Game model
 
@@ -74,18 +78,20 @@ Host-authoritative: clients send intents tagged with a target tick; the host ste
 
 One fixed ship on a tile grid (rooms, walls, doors), loaded from a **single versioned JSON file per ship** (not Tiled at runtime; Tiled may be used for authoring and converted at build time). Starter ship, about 9 rooms: Bridge (Navigation, Doors), Weapons Bay, Engine Room (Engineering), Science Lab, Life Support (Oxygen), Medbay, Crew Quarters, Reactor, Corridor hub.
 
-Format: `version`, `width`/`height`, `tiles[]`, `rooms[]` (id, volume, system, station slots), `edges[]` (room a, room b or `"space"`, kind, tile, width, defaultOpen), `stations[]`. Validated at load with zod `superRefine` checks: every room id referenced exists, each edge lies on the boundary of exactly its two rooms, the room graph is connected, ids are unique, and array lengths equal width × height. (FTL's own tooling tolerates unreferenced room ids and produces stray rooms; we reject them.)
+Format: `version`, `width`/`height`, `tiles[]`, `rooms[]` (id, volume, system, station slots), `edges[]` (room a, room b or `"space"`, kind, tile, width, defaultOpen), `stations[]`. Validated at load with zod `superRefine` checks: every room id referenced exists, each edge lies on the boundary of exactly its two rooms, the room graph is connected, ids are unique, array lengths equal width × height, and **crew-sized reachability** holds (a breadth-first search over passable tiles, using the crew collision size, reaches every station tile and every door tile from every crew spawn). A concrete starter-ship fixture file is part of the Foundation deliverable, and tile encoding and door orientation are defined by its schema. (FTL's own tooling tolerates unreferenced room ids and produces stray rooms; we reject them.)
 
-Ship-wide state: **hull integrity**; **power pool** produced by the Reactor and drawn by stations (Engineering reallocates); per-room **oxygen**, **fire intensity**, **breach** flag; **doors** with a continuous openness value (0 to 1) that open on approach and can be sealed.
+Ship-wide state: **hull integrity**; **power pool** produced by the Reactor and drawn by stations (Engineering reallocates); per-room **oxygen**, **fire intensity**, **breach** flag; **doors**, each in one of three states: **Open** (crew standing at it), **Closed** (resting state, auto-opens as crew approach) or **Sealed** (locked shut by a crew member at the door or remotely from the Doors console; blocks crew passage until unsealed).
 
 ### Hazard simulation: rooms as graph nodes
 
 Hazards are simulated on the **room graph**, not tile by tile. Tile-based gas solvers (as in Space Station 14) are overkill for 8-30 rooms; hull/gap graphs (as in Barotrauma) fit. Formulation *(the research's synthesis, not a copied algorithm)*:
 
-- Per room: oxygen mass and volume. Per edge: conductance = door openness × width. Space is a fixed-zero node; a breach is an edge to space.
-- Each hazard step computes all flows from a **start-of-step snapshot** and applies them symmetrically: `flow = k · conductance · (O2_a/V_a − O2_b/V_b) · dt`, clamped so `k · conductance · dt · (1/V_a + 1/V_b) ≤ 1` (no overshoot or ping-pong). Values below a small minimum snap to zero.
-- Hazards tick at 10-15 Hz using an accumulator that carries over time, separate from the 60 Hz movement tick.
-- **Fire:** grows when room oxygen is above a threshold and shrinks below it (with hysteresis against the suffocation threshold, to avoid flicker), consumes oxygen, is capped per room, and on a periodic roll each open edge touched by fire may ignite the neighbouring room. Spread rolls use the seeded hazards stream (never an unsynced RNG). Closed doors slow spread.
+- Per room: oxygen mass and volume. Per edge: **passage factor** by door state, with `conductance = width × passage`. Open = 1; Closed = a small leak factor; Sealed = a smaller leak factor that **improves with the Doors operator's Engineering skill** (so there is always something for skill to reduce, and a sealed door is never perfectly airtight unless tuned so). A **breach** is an edge from a room to space (space is a fixed-zero node); a room with a breach edge is **breached**. A room is **vented** when its oxygen has fallen below the injection cutoff.
+- Each hazard step computes all flows from a **start-of-step snapshot** and applies them symmetrically: `flow = k · conductance · (O2_a/V_a − O2_b/V_b) · dt`.
+- **Stability and non-negativity** (a per-edge clamp is not enough on a branching graph: several edges can each pass their own bound and together overdraw a room): (1) choose `k · dt` so that for every room `k · dt · (Σ incident conductance) / V ≤ 1/2`; (2) after computing flows, any room whose total outflow exceeds its current mass has **all its outflows scaled down proportionally**, applied to both endpoints so conservation holds. A branching-graph test (one full room, several empty neighbours) is mandatory.
+- **Oxygen sources and sinks** (so Life Support matters and conservation is testable): sources are Life Support injection; sinks are crew breathing (a small per-crew rate), fire consumption, and venting through breach edges. Small values snap to zero and the discarded residual is accumulated in a tracked counter.
+- Hazards tick every 5th sim tick (12 Hz), driven purely by simulation ticks and not by wall-clock time.
+- **Fire:** grows when room oxygen is above a threshold and shrinks below it (with hysteresis against the suffocation threshold, to avoid flicker), consumes oxygen, is capped per room, and on a periodic roll each edge touched by fire may ignite the neighbouring room with probability proportional to the edge's passage factor (so Closed and Sealed doors slow spread, Open doors do not). Spread rolls use the seeded hazards stream (never an unsynced RNG).
 - Starting values (e.g. 10% oxygen threshold, 15% spread chance per 5 s, 16-fire cap) are tuning data, to be re-derived and playtested. They come from reading other games, not from tests of FTLite.
 
 ### Crew
@@ -104,7 +110,7 @@ Hazards are simulated on the **room graph**, not tile by tile. Tile-based gas so
 From FTL (levelled by use) and Barotrauma (continuous effect). Skills **grow when the character successfully operates the matching station or repairs a hazard**, and the **level continuously scales station speed/output or repair speed**. Proposed shapes *(inference; constants are original and live in one tuning file)*:
 
 - **Output:** `lerp(slow, fast, (level + 100) / 200)` for levels 0-100, so an unskilled operator still runs at about half of maximum — friendly to new and solo players.
-- **XP gain:** diminishing with level, e.g. `min(base / max(level, floor)^1.5, cap)` per second of successful operation, with the floor preventing absurd low-level gains. Tune so a 20-minute session moves a player a few levels.
+- **Levels and XP:** skills are **integer levels 0-100** with an XP total per skill. A committed, precomputed **threshold table** maps XP to level (diminishing returns come from growing thresholds), so no `pow`/transcendental maths runs in the sim. XP accrues at a constant rate per second of **productive operation**. Tune so a 20-minute session moves a player a few levels. "Productive" is defined per station (powered, operator in range holding Interact, and the station is actually doing useful work); those definitions are fixed together with the threat loop.
 - Perks and talent-style layers are deferred to sub-project 4.
 
 ### Stations
@@ -117,9 +123,9 @@ A console in a room. A character in range holds Interact to operate it; output s
 | Weapons | Charges and fires at drifting debris/asteroid targets. |
 | Engineering | Reallocates power between stations; skill scales how much usable power the Reactor delivers. |
 | Science | Sensor warnings of upcoming hazards. |
-| Life Support (Oxygen) | Injects oxygen into rooms (proportional to volume, none into breached or vented rooms). Output scales with power and operator Engineering skill. Offline = no injection, so rooms drain via the hazard model. |
+| Life Support (Oxygen) | Injects oxygen into rooms (proportional to volume, none into breached rooms or rooms below the injection cutoff, so a vented room must be sealed and repaired before it refills). Output scales with power and operator Engineering skill. Offline = no injection, so rooms drain via the hazard model. |
 | Medbay | Crew standing in the Medbay heal over time. An operator (Science skill) raises the heal rate and speeds revival of downed crew placed there. |
-| Doors | Remote control: the operator can seal or unseal any door from the console. Skill (Engineering) improves how well sealed doors hold, lowering their conductance for gas and fire spread. Offline = no remote control; doors still work locally. |
+| Doors | Remote control: the operator can seal or unseal any door from the console. Skill (Engineering) improves how well sealed doors hold, lowering their sealed passage factor for gas and fire spread. Offline = no remote control; doors still work locally. |
 
 **Active stations** (Navigation, Weapons, Science, Engineering's power reallocation) do nothing without an operator. **Passive stations** (Life Support, Medbay, Doors) run at a baseline when powered, and an operator adds a skill-scaled bonus, as with FTL's manning bonuses. All stations draw from the power pool and go offline on power failure.
 
@@ -150,33 +156,35 @@ Repair: walk to the hazard and hold Interact; speed scales with Repair skill, an
 - Press-to-join assigns a device to a free `PlayerId` slot. Keyboard clusters count as virtual devices (e.g. WASD+E and arrows+Enter).
 - On disconnect the player's `InputFrame` becomes neutral and the slot shows "reconnect"; any press on a free device may reclaim it (identical pads can share ids, so identity cannot be relied on).
 - Radial deadzone, starting around 0.15-0.25 (conventional, tunable).
-- The sim only ever sees one `InputFrame` per `PlayerId` per tick, which also makes headless tests and replays trivial.
+- **`InputFrame` vs `Intent`:** an `InputFrame` is the device-level snapshot for one `PlayerId` from one poll (held values: move vector, interact held; plus **action edges**, i.e. button presses and releases since the last poll). An `Intent` is the per-tick input the sim consumes, derived by `app/` from the frames. Held values are copied into every tick of a catch-up batch; **each action edge is delivered on exactly one tick** (the first tick of the batch it arrived in), so edges neither repeat during catch-up nor vanish between ticks. Recorded replays store `Intent`s per tick.
 
 ## 7. Rendering
 
 - PixiJS v8: async init (`await app.init()`), nearest-neighbour scaling, integer scaling with letterboxing at the fixed internal resolution. Culling is manual in v8 and probably unnecessary for one small ship.
 - Ship tiles: one `CompositeTilemap` (`@pixi/tilemap`; v8 compatibility to be confirmed in a spike) inside a world render group, rebuilt only on tile change. HUD in a separate render group.
 - Per-room overlays (oxygen, fire) are tinted sprites driven by sim values.
-- The renderer interpolates between ticks (`alpha = accumulator / dt`) and keeps previous positions for that. It must not hold entity ids across ticks without a liveness check.
+- The renderer interpolates between ticks (`alpha = accumulator / dt`) and keeps previous positions for that. Its caches are keyed by `StableId`, never by raw entity id, and entries are dropped when the `StableId` is no longer live (test: remove and reuse an entity slot between rendered frames).
 
 ## 8. Data flow
 
 Per frame:
 
 1. `input/` polls devices once and produces one `InputFrame` per `PlayerId`.
-2. `app/` runs a fixed-timestep accumulator at 60 Hz, frame time capped (the previous project used a 5-tick clamp), calling `sim.step(intents)` each tick.
+2. `app/` runs a fixed-timestep accumulator at 60 Hz, calling `sim.step(intents)` per tick. Frame time is clamped (the previous project used a 5-tick clamp) and **excess backlog is discarded, not retained**: on a slow frame the game runs in slow motion rather than catching up. Hazard timing is derived only from sim ticks, so slow-motion is consistent.
 3. `render/` reads sim state once per frame and draws with interpolation.
+
+**Process model (Electron):** the authoritative loop runs in the **renderer process** of a single window; the main process only owns the window, app lifecycle and IPC. **Focus loss, minimize and system suspend auto-pause the sim** (Chromium throttles background timers by default; pausing avoids both throttling artifacts and unfair deaths on a shared couch screen). Score uses **sim time**, so paused and slow-motion time never counts. Keyboard input state is cleared on blur to avoid stuck keys. The packaged app is tested for this behaviour.
 
 ## 9. Error handling
 
 - Disconnected controller: see §6; the sim keeps running.
 - Invalid ship JSON: zod validation at load with a clear error; no partial load.
-- The sim never throws during play; invalid intents are clamped or ignored.
+- Invalid intents are clamped or ignored, so malformed input cannot corrupt state. The sim is not asserted to be throw-free; an unexpected fault is caught at the loop boundary, the run pauses with an error screen, and the replay/snapshot for the failing tick is saved for debugging.
 
 ## 10. Testing (vitest, TDD)
 
 - Unit tests per system: fire spread, oxygen, XP curves, station output, revive, collision.
-- **Conservation property test** for the oxygen model: total oxygen plus vented total is constant to epsilon; no value goes negative or exceeds room volume.
+- **Mass-balance property test** for the oxygen model: the change in total oxygen equals production minus consumption minus vented minus the tracked discarded residual, to epsilon; no value goes negative or exceeds room volume. Includes a branching-graph case (one full room, several empty neighbours) and simultaneous venting.
 - **Golden replays:** record `{version, seed, config, per-tick intents}`, replay headless, compare the final hash plus hashes every 60 ticks to localize divergence; a "bless" script updates goldens deliberately.
 - **fast-check properties:** same seed and intents give the same hash; save at tick N, load, continue equals an uninterrupted run; intents split across different render-frame sizes give identical results; fuzzed intents never produce NaN or out-of-range values; snapshot round-trip is identity.
 - **Boundary tests:** `sim/` imports nothing from `render/`, `input/` or `app/`; a lint rule bans `Math.random`, `Date` and `performance.now` there.
@@ -193,10 +201,13 @@ Suggested order, matching where research found the strongest prior art:
 
 Small spikes early, to remove the largest unknowns:
 
-- bitECS 0.4: confirm snapshot serialization (including non-numeric stores) and query ordering behaviour before relying on them.
-- `@pixi/tilemap` against PixiJS v8.
-- Real gamepads in a built Electron app (hot-plug, reconnect, mapping differences).
-- Licence check of every library listed in §3.
+Each spike has a pass criterion and a fallback. Pin exact library versions first.
+
+- **bitECS 0.4 snapshots.** Pass: snapshot-restore-continue equals an uninterrupted run (hash equality) for a world with removed and recycled entities, and any non-numeric data we need; snapshot size and hash time are measured and recorded. Fallback: our own flat serializer over our own component stores.
+- **bitECS query ordering.** Pass: documented or tested stable ordering; otherwise we already sort by `StableId` and the spike only records this.
+- **`@pixi/tilemap` 5.x with PixiJS v8** (the README maps v5 to v8). Pass: the starter ship renders and rebuilds correctly at integer scale. Fallback: plain sprite batching or a hand-rolled tile mesh.
+- **Real gamepads in a built Electron app.** Pass: hot-plug, reconnect and 4-pad join work on a test matrix (Xbox-style, PlayStation-style and at least one other pad, plus two keyboard clusters). Fallback: restrict supported devices and document them.
+- **Licence check** of every library listed in §3. Pass: all compatible with distribution; otherwise replace the library.
 
 ## 12. Licence and sourcing rules
 
