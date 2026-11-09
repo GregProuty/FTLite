@@ -6,6 +6,7 @@ import { movementSystem } from './movement';
 import { doorSystem } from './doors';
 import { oxygenStep } from './hazards/oxygen';
 import { fireStep } from './hazards/fire';
+import { crewSystem } from './crew';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
@@ -27,6 +28,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   }
   // (5) debris                                      -> increment 2a
   // (6) director (stub spawner)                     -> Task 13
-  // (7) crew lifecycle, run end                     -> Task 11
+  // (7) crew lifecycle, run end
+  crewSystem(state);
   state.tick++;
 }
