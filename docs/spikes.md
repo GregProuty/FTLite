@@ -39,3 +39,7 @@ See docs/gates.md, increment 1, for the test matrix and results.
 ## @pixi/tilemap with PixiJS v8
 
 Not spiked in increments 0-1: the ship is one Graphics rebuilt only when a door changes, which is cheap for one small ship (spec §7 fallback). Revisit if tile rendering becomes a cost.
+
+## Doorway rule (post-review fix)
+
+`roomAt` returns -1 on a door tile, which made a doorway a safe spot (no damage, no breathing). Decision: a crew member standing on a door tile takes the conditions of the WORSE adjacent room, via `conditionRoomAt` in `sim/grid.ts` (score `(fire > 0 ? 2 : 0) + (1 - o2/volume)`, 4-neighbour floor tiles in ascending tile index, first highest wins). It is used for environmental damage, bleed-out speed and breathing. `interactTarget` is unchanged: a fire is still repaired only from inside the room.

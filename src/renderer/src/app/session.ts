@@ -1,7 +1,7 @@
 import type { ShipLayout } from '../sim/ship/schema';
 import { createSimState, type SimState } from '../sim/state';
 import { step } from '../sim/step';
-import { saveSnapshot } from '../sim/snapshot';
+import { saveSnapshot, type Snapshot } from '../sim/snapshot';
 import { encodeIntent, type CompactIntent } from '../sim/replay';
 import { TICK_HZ, DT } from '../sim/tuning';
 import { createDeviceManager, type SourceSample, type SlotInfo } from '../input/deviceManager';
@@ -31,13 +31,14 @@ export function createSession(deps: SessionDeps) {
   let feed: ReturnType<typeof createIntentFeed> | null = null;
   let slots: SlotInfo[] = [];
   let accumulator = 0, lastNow: number | null = null;
-  const history: CompactIntent[][] = [];
+  let baseline: Snapshot | null = null;
+  let intentsSinceBaseline: CompactIntent[][] = [];
 
   function start(): void {
     const playerCount = slots.filter((s) => s.status !== 'empty').length;
     state = createSimState(deps.layout, playerCount, seed);
     feed = createIntentFeed(playerCount);
-    accumulator = 0; history.length = 0;
+    accumulator = 0; baseline = null; intentsSinceBaseline = [];
     phase = 'running'; message = '';
   }
 
@@ -45,16 +46,19 @@ export function createSession(deps: SessionDeps) {
     return frames.some((f) => f[key] > 0);
   }
 
+  function doResume(): void { if (phase === 'paused') { phase = 'running'; message = ''; lastNow = null; } }
+
   return {
     get phase() { return phase; }, get state() { return state; }, get seed() { return seed; },
     pause() { if (phase === 'running') { phase = 'paused'; message = 'PAUSED'; accumulator = 0; } },
-    resume() { if (phase === 'paused') { phase = 'running'; message = ''; lastNow = null; } },
+    resume() { doResume(); },
     frame() {
       const now = deps.now();
       const delta = lastNow === null ? 0 : Math.min(0.25, (now - lastNow) / 1000);
       lastNow = now;
       const { frames, slots: s, joinedCount } = dm.update(deps.sampleDevices(), phase === 'lobby');
       slots = s;
+      if (phase === 'paused' && anyPress(frames, 'confirmPresses')) doResume();
       if (phase === 'lobby') {
         if (joinedCount > 0 && anyPress(frames, 'confirmPresses')) start();
       } else if (phase === 'running' && state && feed) {
@@ -64,7 +68,8 @@ export function createSession(deps: SessionDeps) {
           for (let i = 0; i < r.ticks; i++) {
             deps.renderer?.recordPrev(state);   // before every tick, so interpolation spans only the last tick
             const intents = feed.tick();
-            history.push(intents.map(encodeIntent)); if (history.length > CRASH_HISTORY) history.shift();
+            if (state.tick % CRASH_HISTORY === 0) { baseline = saveSnapshot(state); intentsSinceBaseline = []; }
+            intentsSinceBaseline.push(intents.map(encodeIntent));
             step(state, intents);
             if (state.ended) {
               phase = 'gameover';
@@ -75,9 +80,9 @@ export function createSession(deps: SessionDeps) {
         } catch (err) {
           phase = 'error';
           message = `Sim fault: ${(err as Error).message}. Crash data saved.`;
-          let snapshot: unknown = null;
-          try { snapshot = saveSnapshot(state); } catch { snapshot = null; }
-          deps.saveCrash({ tick: state.tick, seed, error: String(err), snapshot, recentIntents: history.slice() });
+          let snapshotAfterFault: unknown = null;
+          try { snapshotAfterFault = saveSnapshot(state); } catch { snapshotAfterFault = null; }
+          deps.saveCrash({ tick: state.tick, seed, error: String(err), baseline, intentsSinceBaseline, snapshotAfterFault });
         }
       } else if (phase === 'gameover') {
         if (anyPress(frames, 'cancelPresses')) { seed += 1; phase = 'lobby'; message = 'New seed. Confirm to start'; }

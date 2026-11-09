@@ -2,8 +2,42 @@ import { describe, it, expect } from 'vitest';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { reviveCrew, consciousCount, EndReason } from '../src/renderer/src/sim/crew';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
-import { HEALTH_MAX, FIRE_DAMAGE, BLEEDOUT_TIME, REVIVE_HEALTH_FRAC } from '../src/renderer/src/sim/tuning';
+import { oxygenStep } from '../src/renderer/src/sim/hazards/oxygen';
+import { O2_DAMAGE, BREATH_RATE, HAZARD_DT, HEALTH_MAX, FIRE_DAMAGE, BLEEDOUT_TIME, REVIVE_HEALTH_FRAC } from '../src/renderer/src/sim/tuning';
 import { makeState, run, room, seconds, teleport } from './helpers/sim';
+
+describe('doorway rule', () => {
+  it('a crew member on the G door tile takes fire damage from G', () => {
+    const s = makeState(1);
+    teleport(s, 0, 2.5, 7.5);
+    igniteRoom(s, room(s, 'G'));
+    run(s, seconds(1));
+    expect(Health.cur[s.crew[0]!]).toBeCloseTo(HEALTH_MAX - FIRE_DAMAGE, 0);
+  });
+  it('on the door tile with G at zero oxygen and I full, takes O2 damage', () => {
+    const s = makeState(1);
+    teleport(s, 0, 2.5, 7.5);
+    s.rooms.o2[room(s, 'G')] = 0;
+    s.doors.state.fill(2);
+    run(s, seconds(1));
+    expect(Health.cur[s.crew[0]!]).toBeCloseTo(HEALTH_MAX - O2_DAMAGE, 0);
+  });
+  it('breathes from the worse adjacent room', () => {
+    const mk = (dead: boolean) => {
+      const s = makeState(1);
+      teleport(s, 0, 2.5, 7.5);
+      const G = room(s, 'G'), I = room(s, 'I');
+      s.rooms.o2[G] = s.derived.volume[G]! / 2;
+      s.rooms.o2[I] = s.derived.volume[I]!;
+      if (dead) Life.state[s.crew[0]!] = LifeState.Dead;
+      oxygenStep(s, new Float64Array(s.rooms.o2.length));
+      return s;
+    };
+    const alive = mk(false), dead = mk(true), G = room(alive, 'G'), I = room(alive, 'I');
+    expect(dead.rooms.o2[G]! - alive.rooms.o2[G]!).toBeCloseTo(BREATH_RATE * HAZARD_DT, 9);
+    expect(alive.rooms.o2[I]).toBe(dead.rooms.o2[I]);
+  });
+});
 
 describe('crew lifecycle', () => {
   it('takes fire damage in a burning room', () => {

@@ -18,6 +18,7 @@ function createWindow(): void {
     }
   });
   powerMonitor.on('suspend', () => win.webContents.send('app:suspend'));
+  powerMonitor.on('resume', () => win.webContents.send('app:resume'));
   Menu.setApplicationMenu(null);
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown' && input.key === 'F11') {

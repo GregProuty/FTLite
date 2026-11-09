@@ -71,14 +71,17 @@ export function confirmTarget(state: SimState, pid: number): ConfirmTarget {
 /** Step 1 (before movement): Confirm actions, revive arbitration, repair and revive progress. */
 export function interactSystem(state: SimState, intents: readonly Intent[]): void {
   const targets: Target[] = [];
+  const doorEdges = new Set<number>();
   for (let pid = 0; pid < state.playerCount; pid++) {
     const it = intentFor(intents, pid);
     if (it.confirmPressed) {
       const c = confirmTarget(state, pid);
-      if (c.kind === ConfirmKind.Door) toggleSeal(state, c.index);
+      if (c.kind === ConfirmKind.Door) doorEdges.add(c.index);
     }
     targets.push(it.interactHeld ? interactTarget(state, pid) : NONE);
   }
+  // One toggle per door per tick, in ascending edge order, so simultaneous Confirms do not cancel out.
+  for (const e of [...doorEdges].sort((a, b) => a - b)) toggleSeal(state, e);
   // Revive arbitration: keep the current reviver if still trying, else the lowest pid trying.
   for (let other = 0; other < state.playerCount; other++) {
     const o = state.crew[other]!;

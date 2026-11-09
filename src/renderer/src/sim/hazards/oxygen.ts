@@ -1,6 +1,6 @@
 import type { SimState } from '../state';
 import { Life, LifeState, Position } from '../components';
-import { DoorState, roomAt } from '../grid';
+import { DoorState, conditionRoomAt } from '../grid';
 import { HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
 
 export function passageFor(state: SimState, edge: number): number {
@@ -51,7 +51,7 @@ export function oxygenStep(state: SimState, injection: Float64Array): void {
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!;
     if (Life.state[eid] === LifeState.Dead) continue;
-    const r = roomAt(state, Position.x[eid]!, Position.y[eid]!);
+    const r = conditionRoomAt(state, Position.x[eid]!, Position.y[eid]!);
     if (r >= 0) breath[r]! += BREATH_RATE * dt;
   }
   for (let r = 0; r < R; r++) { burn[r] = FIRE_O2_RATE * state.rooms.fire[r]! * dt; demand[r]! += breath[r]! + burn[r]!; }

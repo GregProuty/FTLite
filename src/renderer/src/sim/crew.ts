@@ -1,6 +1,6 @@
 import type { SimState } from './state';
 import { Position, Health, Life, LifeState } from './components';
-import { roomAt } from './grid';
+import { conditionRoomAt } from './grid';
 import { DT, FIRE_DAMAGE, O2_DAMAGE, SUFFOCATE_FRAC, BLEEDOUT_TIME, BLEED_HAZARD_MULT, HEALTH_MAX, REVIVE_HEALTH_FRAC } from './tuning';
 
 export const EndReason = { None: 0, Hull: 1, Crew: 2 } as const;
@@ -23,7 +23,7 @@ export function crewSystem(state: SimState): void {
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!;
     if (Life.state[eid] === LifeState.Dead) continue;
-    const r = roomAt(state, Position.x[eid]!, Position.y[eid]!);
+    const r = conditionRoomAt(state, Position.x[eid]!, Position.y[eid]!);
     const inFire = r >= 0 && state.rooms.fire[r]! > 0;
     const lowO2 = r >= 0 && state.rooms.o2[r]! / state.derived.volume[r]! < SUFFOCATE_FRAC;
     if (Life.state[eid] === LifeState.Conscious) {

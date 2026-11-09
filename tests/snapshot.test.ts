@@ -6,7 +6,16 @@ import { flatten } from '../src/renderer/src/sim/flatten';
 import { step } from '../src/renderer/src/sim/step';
 import { Position } from '../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
+import { botIntent } from './helpers/bot';
 import { LAYOUT, makeState, intents, run } from './helpers/sim';
+
+/** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
+function advanced(seed: number, players = 2) {
+  const s = makeState(players, seed);
+  s.spawner.nextSpawnTick = 0;
+  for (let i = 0; i < 1500; i++) step(s, Array.from({ length: players }, (_, pid) => botIntent(s, pid)));
+  return s;
+}
 
 const arbIntent = fc.record<Intent>({
   moveX: fc.double({ min: -2, max: 2, noNaN: false }), moveY: fc.double({ min: -2, max: 2, noNaN: false }),
@@ -30,7 +39,7 @@ describe('snapshot', () => {
   });
   it('property: same seed and intents give the same hash', () => {
     fc.assert(fc.property(fc.integer(), arbScript(2), (seed, script) => {
-      const a = makeState(2, seed), b = makeState(2, seed);
+      const a = advanced(seed), b = advanced(seed);
       for (const tick of script) { step(a, tick); step(b, tick); }
       expect(hashState(a)).toBe(hashState(b));
     }), { numRuns: 50 });
@@ -38,9 +47,9 @@ describe('snapshot', () => {
   it('property: save at tick N, load, continue equals an uninterrupted run', () => {
     fc.assert(fc.property(fc.integer(), arbScript(2), fc.nat(), (seed, script, nRaw) => {
       const n = nRaw % script.length;
-      const whole = makeState(2, seed);
+      const whole = advanced(seed);
       for (const tick of script) step(whole, tick);
-      const first = makeState(2, seed);
+      const first = advanced(seed);
       for (let i = 0; i < n; i++) step(first, script[i]!);
       const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
       for (let i = n; i < script.length; i++) step(resumed, script[i]!);
@@ -49,7 +58,7 @@ describe('snapshot', () => {
   });
   it('property: fuzzed intents never produce NaN or out-of-range values', () => {
     fc.assert(fc.property(fc.integer(), arbScript(4), (seed, script) => {
-      const s = makeState(4, seed);
+      const s = advanced(seed, 4);
       for (const tick of script) step(s, tick);
       for (const v of flatten(s)) expect(Number.isFinite(v)).toBe(true);
       for (let r = 0; r < s.rooms.o2.length; r++) { expect(s.rooms.o2[r]).toBeGreaterThanOrEqual(0); expect(s.rooms.o2[r]).toBeLessThanOrEqual(s.derived.volume[r]! + 1e-9); }

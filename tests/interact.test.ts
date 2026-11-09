@@ -38,6 +38,12 @@ describe('targets', () => {
 });
 
 describe('interactSystem', () => {
+  it('two players pressing Confirm on the same door on the same tick leave it Sealed', () => {
+    const s = makeState(2);
+    teleport(s, 0, 2.5, 8.5); teleport(s, 1, 2.5, 8.5);
+    run(s, 1, () => intents({ confirmPressed: true }, { confirmPressed: true }));
+    expect(s.doors.state[5]).toBe(DoorState.Sealed);
+  });
   it('holding Interact in a burning room extinguishes it after REPAIR_TIME_FIRE', () => {
     const s = makeState(1);
     const G = room(s, 'G');
