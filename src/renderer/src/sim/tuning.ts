@@ -32,3 +32,7 @@ export const SUFFOCATE_FRAC = 0.1;
 export const BLEEDOUT_TIME = 30;        // seconds Downed before Dead
 export const BLEED_HAZARD_MULT = 2;     // bleed-out speed in fire or low oxygen
 export const REVIVE_HEALTH_FRAC = 0.3;
+export const REACH = 1.5;               // tiles from crew centre to the nearest point of the target tile
+export const REPAIR_TIME_FIRE = 6;      // seconds for one repairer
+export const REPAIR_TIME_BREACH = 8;
+export const REVIVE_TIME = 4;
