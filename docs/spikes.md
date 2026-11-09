@@ -31,3 +31,11 @@ All licences are MIT or MPL-2.0; acceptable.
 ## bitECS query ordering (Task 15)
 
 - Not relied on: every system iterates `state.crew` by PlayerId or arrays by index (spec §4 rule 4).
+
+## Real gamepads in a built Electron app (Task 20)
+
+See docs/gates.md, increment 1, for the test matrix and results.
+
+## @pixi/tilemap with PixiJS v8
+
+Not spiked in increments 0-1: the ship is one Graphics rebuilt only when a door changes, which is cheap for one small ship (spec §7 fallback). Revisit if tile rendering becomes a cost.
