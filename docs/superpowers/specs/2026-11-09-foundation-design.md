@@ -10,7 +10,7 @@
 FTLite is a multiplayer, roguelike, science-fiction spaceship game inspired by *FTL: Faster Than Light*. Differences from FTL:
 
 - **Multiplayer.** 1-4 players on one shared screen (couch co-op) first. Networked play later.
-- **Each player is one crew member** with RPG stats. They walk room to room on a top-down ship map and operate stations (navigation, engineering, weapons, science, communications).
+- **Each player is one crew member** with RPG stats. They walk room to room on a top-down ship map and operate stations (navigation, engineering, weapons, science) and repair damage. Crew also have a personal combat skill, used once boarders arrive.
 
 The full vision is too large for one spec, so it is split into sub-projects, each with its own spec, plan and build:
 
@@ -22,7 +22,7 @@ The full vision is too large for one spec, so it is split into sub-projects, eac
 
 ## 2. Foundation goal
 
-A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All five stations work at a basic level. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or all crew are dead. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
+A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All four stations work at a basic level and repair is fully playable. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or all crew are dead. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
 
 **Out of scope:** enemy ships, boarders, sector map and events, meta-progression, audio, real networking, AI crew (including a solo-play drone), multiple ships, procedural ship generation, rollback or client prediction.
 
@@ -61,7 +61,7 @@ Host-authoritative: clients send intents tagged with a target tick; the host ste
 
 ### Ship and data format
 
-One fixed ship on a tile grid (rooms, walls, doors), loaded from a **single versioned JSON file per ship** (not Tiled at runtime; Tiled may be used for authoring and converted at build time). Starter ship, about 8 rooms: Bridge (Navigation), Weapons Bay, Engine Room (Engineering), Science Lab, Comms Room, Reactor, Corridor hub, Medbay/storage.
+One fixed ship on a tile grid (rooms, walls, doors), loaded from a **single versioned JSON file per ship** (not Tiled at runtime; Tiled may be used for authoring and converted at build time). Starter ship, about 8 rooms: Bridge (Navigation), Weapons Bay, Engine Room (Engineering), Science Lab, Crew Quarters, Reactor, Corridor hub, Medbay/storage.
 
 Format: `version`, `width`/`height`, `tiles[]`, `rooms[]` (id, volume, system, station slots), `edges[]` (room a, room b or `"space"`, kind, tile, width, defaultOpen), `stations[]`. Validated at load with zod `superRefine` checks: every room id referenced exists, each edge lies on the boundary of exactly its two rooms, the room graph is connected, ids are unique, and array lengths equal width × height. (FTL's own tooling tolerates unreferenced room ids and produces stray rooms; we reject them.)
 
@@ -81,13 +81,16 @@ Hazards are simulated on the **room graph**, not tile by tile. Tile-based gas so
 
 - Each `PlayerId` controls one character with **free analog movement**, colliding with walls and closed doors on the tile map. Movement is resolved **per axis against solid tiles** (Celeste/TowerFall style), which gives wall sliding and deterministic results; analog input is normalized and clamped so diagonals are not faster. Doors are tiles whose solidity is a function of door state via a single `solid(tx, ty)` query. *(Per-axis details come from recalled sources; verify with tests.)*
 - **Base stats:** Health, Speed.
-- **Skills:** Navigation, Engineering, Weapons, Science, Communications. Each is a level with XP.
+- **Skills:** Navigation, Engineering, Weapons, Science, Combat, Repair. Each is a level with XP.
+  - Navigation, Engineering, Weapons and Science are **station skills**, trained by operating the matching station.
+  - **Repair** is trained by repairing hazards (fires, breaches, power failures) anywhere on the ship. It sets repair speed.
+  - **Combat** is personal fighting skill (melee/sidearm damage and defence). It is defined on the character sheet now but has no source of XP or effect in the Foundation, because there are no enemies until boarders (sub-project 3).
 - A **starting trait** gives each character a different strength.
 - Characters take damage from fire and low oxygen. At 0 Health they go **down**; a teammate can **revive** them by channelling Interact. Design stance *(judgement, little sourced evidence)*: short downed time, with hold-to-revive speeding the recovery.
 
 ### Skill model (hybrid)
 
-From FTL (levelled by use) and Barotrauma (continuous effect). Skills **grow when the character successfully operates the matching station or repair**, and the **level continuously scales station speed/output**. Proposed shapes *(inference; constants are original and live in one tuning file)*:
+From FTL (levelled by use) and Barotrauma (continuous effect). Skills **grow when the character successfully operates the matching station or repairs a hazard**, and the **level continuously scales station speed/output or repair speed**. Proposed shapes *(inference; constants are original and live in one tuning file)*:
 
 - **Output:** `lerp(slow, fast, (level + 100) / 200)` for levels 0-100, so an unskilled operator still runs at about half of maximum — friendly to new and solo players.
 - **XP gain:** diminishing with level, e.g. `min(base / max(level, floor)^1.5, cap)` per second of successful operation, with the floor preventing absurd low-level gains. Tune so a 20-minute session moves a player a few levels.
@@ -101,9 +104,8 @@ A console in a room. A character in range holds Interact to operate it; output s
 |---|---|
 | Navigation | Reduces incoming hull damage (evasion). |
 | Weapons | Charges and fires at drifting debris/asteroid targets. |
-| Engineering | Speeds repairs; reallocates power. |
+| Engineering | Reallocates power between stations; skill scales how much usable power the Reactor delivers. |
 | Science | Sensor warnings of upcoming hazards. |
-| Communications | Placeholder pulse reducing hazard frequency. |
 
 A station with no operator is idle; stations draw from the power pool and go offline on power failure.
 
@@ -115,7 +117,7 @@ Hazard types:
 - **Power failure:** knocks a station offline until repaired.
 - **Debris strike:** hits a random room; may cause a breach or fire.
 
-Repair: walk to the hazard and hold Interact; speed scales with Engineering skill.
+Repair: walk to the hazard and hold Interact; speed scales with Repair skill, and Repair XP accrues while repairing. Repair is not tied to a station, so any crew member can do it, and specialists are faster.
 
 **Director** *(composition of two documented approaches; the specific tuning is inference)*. Design principle: the director adjusts **pacing, not difficulty**, and the core tension is **more simultaneous tasks than hands**.
 
