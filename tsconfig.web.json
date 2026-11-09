@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "module": "ESNext", "moduleResolution": "bundler",
+    "strict": true, "composite": true, "skipLibCheck": true, "resolveJsonModule": true,
+    "noUncheckedIndexedAccess": true,
+    "outDir": "./.tsout/web", "emitDeclarationOnly": true,
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/shared/**/*", "tests/**/*", "scripts/**/*"]
+}

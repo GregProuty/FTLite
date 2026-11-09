@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "module": "ESNext", "moduleResolution": "bundler",
+    "strict": true, "composite": true, "skipLibCheck": true, "noUncheckedIndexedAccess": true,
+    "outDir": "./.tsout/node", "emitDeclarationOnly": true,
+    "types": ["node"]
+  },
+  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "electron.vite.config.ts"]
+}

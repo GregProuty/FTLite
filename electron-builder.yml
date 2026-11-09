@@ -1,0 +1,11 @@
+appId: com.ftlite.foundation
+productName: FTLite
+directories:
+  output: dist
+files:
+  - out/**/*
+win:
+  target: nsis
+nsis:
+  oneClick: true
+  artifactName: ftlite-setup-${version}.exe
