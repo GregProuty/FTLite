@@ -5,3 +5,5 @@ export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
 export const SIM_VERSION = 1;
+export const HULL_MAX = 100;
+export const HEALTH_MAX = 100;
