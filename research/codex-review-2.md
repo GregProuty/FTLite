@@ -1,0 +1,19 @@
+1. **High — Engineering recovery can deadlock.** **§5, Power model / Stations:** failure returns Engineering’s bars to the pool; level 0 prevents occupation; only its seated operator can allocate power. Repair never specifies restoring a powered level. Define repair’s allocation result and a recovery path when Engineering has zero bars.
+
+2. **High — Relax can become permanent.** **§5, Hazards and the director:** Relax requires low stress to exit, but unresolved hazards can keep the smoothed stress target above that threshold indefinitely. Reduced downward smoothing does not guarantee decay below an active-hazard floor. Peak Fade’s timeout merely moves the stall into Relax.
+
+3. **High — Same-tick resolution order is missing.** **§4, Networking-readiness; §5, Stations / Power model / debris lifecycle:** StableId ordering does not settle whether a shot precedes impact, cooling precedes overheating, or Engineering’s departure triggers shedding before another player fires. These choices change survival, resource consumption and RNG draws. Specify system phases and simultaneous-action precedence.
+
+4. **Medium — Coolant cannot always be moved as promised.** **§5, Stations / Power model:** Confirm only returns assigned coolant when the pool is empty. With spare units, selecting a station necessarily adds coolant before any can be reclaimed. “Can be moved at any time” also conflicts with Engineering-only control and forced ejection when offline. Define explicit removal and access rules.
+
+5. **Medium — Cooling depends on an undefined operator.** **§5, Power model:** allocations and coolant persist after Engineering is vacated, but cooling scales with Engineering skill. Does cooling use baseline skill, the previous operator’s skill, or no bonus? Operator swaps and skill increases need defined effects; integer heat also needs a rounding rule for skill-scaled cooling.
+
+6. **Medium — Scan and warning lifecycles are incomplete.** **§5, Stations / debris lifecycle:** no rule covers leaving Science, losing power, changing targets, or destroying the scanned object mid-scan. Early warnings may persist or disappear when Science is vacated; offline Science’s late-warning behaviour is also unspecified. Define cancellation, progress retention and visibility separately.
+
+7. **Medium — Torpedo accounting lacks a complete transition model.** **§5, Stations—Weapons; §10, Overdrive and weapons properties:** stock is consumed only on firing, but nothing says whether a loaded torpedo counts toward stock or what happens on power failure. Regeneration has no stock ceiling. Define inventory versus loaded ammunition, capacity, and whether firing resolves immediately or creates a travelling projectile.
+
+8. **Medium — Idle-station routing targets the wrong work.** **§5, Hazards and the director—Route crises to every console:** power failures require **Repair**, not operating Engineering; breached rooms explicitly receive no Life Support injection; “injuries” are not a selectable hazard type. These weights can repeatedly generate crises without making the intended console productive.
+
+9. **Medium — Routing cannot measure productivity consistently.** **§5, Skill model / Stations / director:** Navigation is productive only on discrete evasion rolls, despite XP accruing per second; Life Support, Medbay and Doors lack explicit productive predicates. Engineering can count repeated allocation changes. These definitions now control hazard selection as well as XP, so ambiguity directly changes pacing.
+
+10. **Medium — Required feedback omits the new decisions.** **§7, Minimum HUD and session flow:** no display is required for heat, coolant, beam readiness/frequency, torpedo stock/load, scan progress or revealed debris frequency. In particular, the Science-to-Weapons handoff has no specified visible output. Add these to the minimum interface contract.
