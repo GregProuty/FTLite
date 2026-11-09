@@ -3905,7 +3905,7 @@ describe('session', () => {
       layout: LAYOUT, sampleDevices: () => samples,
       renderer: { recordPrev() {}, draw() { if (faulted) throw new Error('draw must not run in error phase'); } },
       hud: { update(m) { hudModels++; if (m.phase === 'error') expect(m.players.every((p) => p.prompt === '')).toBe(true); } },
-      now: () => (t += 1000 / 60),   // time must advance or no tick runs and the fault never fires
+      now: () => (t += 20),   // time must advance by more than one DT (float error on 1000/60 leaves a frame short) or no tick runs and the fault never fires
       saveCrash: () => {}
     });
     samples = [{ key: 'a', moveX: 0, moveY: 0, interact: true, confirm: false, cancel: false }]; session.frame();
