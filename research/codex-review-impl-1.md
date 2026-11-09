@@ -1,0 +1,13 @@
+1. **P2 — Confirm bypasses automatic pause.** [session.ts:61](C:/Users/djuar/FTLite/src/renderer/src/app/session.ts:61) resumes any paused session without checking focus, visibility or suspend status. A gamepad Confirm can therefore restart the sim while the window remains blurred/minimized. Confirmed: pause → Confirm → subsequent frame advanced the tick and left phase `running`.
+
+2. **P2 — Queued action presses are lost.** [intents.ts:18](C:/Users/djuar/FTLite/src/renderer/src/app/intents.ts:18) reduces press counts to booleans and clears them after one tick. Two Confirm presses before consumption produce `true, false`, losing the second door toggle. Preserve queued counts to meet §6’s exactly-once delivery requirement.
+
+3. **P2 — Replays silently accept incompatible inputs.** [replay.ts:19](C:/Users/djuar/FTLite/src/renderer/src/sim/replay.ts:19) checks only the layout ID; it ignores `version`, and the replay format contains neither config nor layout-content identity. Confirmed acceptance of both `version: 999` and a ship with changed edge width under the same ID. Such recordings silently replay different gameplay instead of rejecting incompatibility.
+
+4. **P2 — Door validation permits a third adjoining room.** [schema.ts:47](C:/Users/djuar/FTLite/src/renderer/src/sim/ship/schema.ts:47) checks that both declared rooms appear among neighbours, rather than requiring exactly those two rooms (§5). Changing starter row 4, column 3 to `B` passes validation, leaving the A–I door touching B too. Movement then permits a connection absent from that door’s oxygen/fire graph.
+
+5. **P2 — “Any press” cannot reclaim a disconnected gamepad slot.** [sources.ts:56](C:/Users/djuar/FTLite/src/renderer/src/input/sources.ts:56) reports only buttons 0, 2 and 1 as action presses; DeviceManager uses only those to reclaim. Confirmed that reconnecting and pressing Start leaves the slot in `reconnect`. D-pad and shoulder presses likewise fail §6’s reclaim rule.
+
+6. **P3 — The frame-batching test bypasses the behaviour it claims to verify.** [loop.test.ts:26](C:/Users/djuar/FTLite/tests/loop.test.ts:26) feeds the same precomputed tick intents directly into `step`, bypassing InputFrame conversion and edge queuing. Confirmed its hash assertion still passes with the accumulator replaced by a constant one-tick stub. It cannot detect batching-dependent input loss such as finding 2.
+
+`npm run typecheck` passed. `npm test` and `npm run build` could not start because esbuild spawning was blocked with `EPERM`. Read-only Node checks independently confirmed the reproductions above and five-minute bot survival on seeds 1–3. No files changed.
