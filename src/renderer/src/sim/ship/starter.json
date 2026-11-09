@@ -1,0 +1,62 @@
+{
+  "id": "starter",
+  "version": 1,
+  "width": 25,
+  "height": 12,
+  "rows": [
+    "#########################",
+    "#AAAA#BBBB#DDDD#FFFF#HHH#",
+    "#AAAA#BBBB#DDDD#FFFF#HHH#",
+    "#AAAA#BBBB#DDDD#FFFF#HHH#",
+    "##+####+####+####+####+##",
+    "#IIIIIIIIIIIIIIIIIIIIIII#",
+    "#IIIIIIIIIIIIIIIIIIIIIII#",
+    "##+######+######+########",
+    "#GGGGGG#EEEEEE#CCCCCCCCC#",
+    "#GGGGGG#EEEEEE#CCCCCCCCC#",
+    "#GGGGGG#EEEEEE#CCCCCCCCC#",
+    "#########################"
+  ],
+  "rooms": [
+    { "id": "A", "name": "Bridge", "system": "navigation" },
+    { "id": "B", "name": "Weapons Bay", "system": "weapons" },
+    { "id": "D", "name": "Science Lab", "system": "science" },
+    { "id": "F", "name": "Medbay", "system": "medbay" },
+    { "id": "H", "name": "Reactor", "system": "reactor" },
+    { "id": "I", "name": "Corridor", "system": null },
+    { "id": "G", "name": "Crew Quarters", "system": null },
+    { "id": "E", "name": "Life Support", "system": "lifeSupport" },
+    { "id": "C", "name": "Engine Room", "system": "engineering" }
+  ],
+  "edges": [
+    { "a": "A", "b": "I", "kind": "door", "tile": [2, 4], "width": 1 },
+    { "a": "B", "b": "I", "kind": "door", "tile": [7, 4], "width": 1 },
+    { "a": "D", "b": "I", "kind": "door", "tile": [12, 4], "width": 1 },
+    { "a": "F", "b": "I", "kind": "door", "tile": [17, 4], "width": 1 },
+    { "a": "H", "b": "I", "kind": "door", "tile": [22, 4], "width": 1 },
+    { "a": "G", "b": "I", "kind": "door", "tile": [2, 7], "width": 1 },
+    { "a": "E", "b": "I", "kind": "door", "tile": [9, 7], "width": 1 },
+    { "a": "C", "b": "I", "kind": "door", "tile": [16, 7], "width": 1 }
+  ],
+  "breachSites": [
+    { "room": "A", "tile": [2, 0], "width": 1 },
+    { "room": "B", "tile": [7, 0], "width": 1 },
+    { "room": "D", "tile": [12, 0], "width": 1 },
+    { "room": "F", "tile": [17, 0], "width": 1 },
+    { "room": "H", "tile": [22, 0], "width": 1 },
+    { "room": "I", "tile": [0, 5], "width": 1 },
+    { "room": "G", "tile": [2, 11], "width": 1 },
+    { "room": "E", "tile": [10, 11], "width": 1 },
+    { "room": "C", "tile": [18, 11], "width": 1 }
+  ],
+  "stations": [
+    { "id": "navigation", "room": "A", "tile": [2, 2] },
+    { "id": "doors", "room": "A", "tile": [3, 1] },
+    { "id": "weapons", "room": "B", "tile": [7, 2] },
+    { "id": "science", "room": "D", "tile": [12, 2] },
+    { "id": "medbay", "room": "F", "tile": [17, 2] },
+    { "id": "lifeSupport", "room": "E", "tile": [10, 9] },
+    { "id": "engineering", "room": "C", "tile": [18, 9] }
+  ],
+  "spawns": [[2, 9], [3, 9], [4, 9], [5, 9]]
+}
