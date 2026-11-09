@@ -1,6 +1,6 @@
 import type { ShipLayout } from './schema';
 import { hashF64 } from '../../../../shared/hash';
-import { O2_K } from '../tuning';
+import { O2_K, HAZARD_DT, PASSAGE_OPEN, PASSAGE_BREACH } from '../tuning';
 
 export interface Derived {
   width: number; height: number;
@@ -55,10 +55,16 @@ export function deriveLayout(layout: ShipLayout): Derived {
   for (const st of layout.stations) codes.push(roomIndex.get(st.room)!, st.tile[1] * width + st.tile[0]);
   for (const sp of layout.spawns) codes.push(sp[1] * width + sp[0]);
   const idCodes: number[] = []; for (let i = 0; i < layout.id.length; i++) idCodes.push(layout.id.charCodeAt(i));
+  // Stability bound (spec §5): k·dt·Σ incident conductance / V ≤ 1/2 for every room, at maximum passage.
+  const maxCond = new Float64Array(layout.rooms.length);
+  for (let e = 0; e < E; e++) { maxCond[edgeA[e]!]! += edgeWidth[e]! * PASSAGE_OPEN; maxCond[edgeB[e]!]! += edgeWidth[e]! * PASSAGE_OPEN; }
+  for (let s = 0; s < S; s++) maxCond[siteRoom[s]!]! += siteWidth[s]! * PASSAGE_BREACH;
+  let kEff = O2_K;
+  for (let r = 0; r < maxCond.length; r++) if (maxCond[r]! > 0) kEff = Math.min(kEff, 0.5 * volume[r]! / maxCond[r]! / HAZARD_DT);
   return {
     width, height, roomIndex, roomOfTile, wallTile, doorTileToEdge, volume, roomTiles,
     edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile,
-    kEff: O2_K,
+    kEff,
     layoutHash: hashF64(Float64Array.from(codes)),
     idHash: hashF64(Float64Array.from(idCodes))
   };

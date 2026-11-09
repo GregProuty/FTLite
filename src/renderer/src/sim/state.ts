@@ -26,6 +26,8 @@ export interface SimState {
   breaches: { active: Uint8Array; repair: Float64Array };
   o2Counters: { injected: number; breathed: number; burned: number; vented: number; residual: number };
   spawner: { nextSpawnTick: number };
+  /** Derived scratch (not snapshotted): per-room oxygen injection requested for the next hazard step. */
+  injectionScratch: Float64Array;
 }
 
 export function deriveStreams(seed: number): RngStreams {
@@ -52,7 +54,8 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     doors: { state: new Uint8Array(E), closeTimer: new Float64Array(E), sealRequested: new Uint8Array(E) },
     breaches: { active: new Uint8Array(S), repair: new Float64Array(S) },
     o2Counters: { injected: 0, breathed: 0, burned: 0, vented: 0, residual: 0 },
-    spawner: { nextSpawnTick: 0 }
+    spawner: { nextSpawnTick: 0 },
+    injectionScratch: new Float64Array(R)
   };
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));
   return state;
