@@ -10,7 +10,7 @@
 FTLite is a multiplayer, roguelike, science-fiction spaceship game inspired by *FTL: Faster Than Light*. Differences from FTL:
 
 - **Multiplayer.** 1-4 players on one shared screen (couch co-op) first. Networked play later.
-- **Each player is one crew member** with RPG stats. They walk room to room on a top-down ship map and operate stations (navigation, engineering, weapons, science) and repair damage. Crew also have a personal combat skill, used once boarders arrive.
+- **Each player is one crew member** with RPG stats. They walk room to room on a top-down ship map and operate stations (navigation, engineering, weapons, science, life support, medbay, doors) and repair damage. Crew also have a personal combat skill, used once boarders arrive.
 
 The full vision is too large for one spec, so it is split into sub-projects, each with its own spec, plan and build:
 
@@ -22,7 +22,7 @@ The full vision is too large for one spec, so it is split into sub-projects, eac
 
 ## 2. Foundation goal
 
-A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All four stations work at a basic level and repair is fully playable. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or all crew are dead. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
+A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All seven stations work at a basic level and repair is fully playable. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or all crew are dead. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
 
 **Out of scope:** enemy ships, boarders, sector map and events, meta-progression, audio, real networking, AI crew (including a solo-play drone), multiple ships, procedural ship generation, rollback or client prediction.
 
@@ -61,7 +61,7 @@ Host-authoritative: clients send intents tagged with a target tick; the host ste
 
 ### Ship and data format
 
-One fixed ship on a tile grid (rooms, walls, doors), loaded from a **single versioned JSON file per ship** (not Tiled at runtime; Tiled may be used for authoring and converted at build time). Starter ship, about 8 rooms: Bridge (Navigation), Weapons Bay, Engine Room (Engineering), Science Lab, Crew Quarters, Reactor, Corridor hub, Medbay/storage.
+One fixed ship on a tile grid (rooms, walls, doors), loaded from a **single versioned JSON file per ship** (not Tiled at runtime; Tiled may be used for authoring and converted at build time). Starter ship, about 9 rooms: Bridge (Navigation, Doors), Weapons Bay, Engine Room (Engineering), Science Lab, Life Support (Oxygen), Medbay, Crew Quarters, Reactor, Corridor hub.
 
 Format: `version`, `width`/`height`, `tiles[]`, `rooms[]` (id, volume, system, station slots), `edges[]` (room a, room b or `"space"`, kind, tile, width, defaultOpen), `stations[]`. Validated at load with zod `superRefine` checks: every room id referenced exists, each edge lies on the boundary of exactly its two rooms, the room graph is connected, ids are unique, and array lengths equal width × height. (FTL's own tooling tolerates unreferenced room ids and produces stray rooms; we reject them.)
 
@@ -82,7 +82,7 @@ Hazards are simulated on the **room graph**, not tile by tile. Tile-based gas so
 - Each `PlayerId` controls one character with **free analog movement**, colliding with walls and closed doors on the tile map. Movement is resolved **per axis against solid tiles** (Celeste/TowerFall style), which gives wall sliding and deterministic results; analog input is normalized and clamped so diagonals are not faster. Doors are tiles whose solidity is a function of door state via a single `solid(tx, ty)` query. *(Per-axis details come from recalled sources; verify with tests.)*
 - **Base stats:** Health, Speed.
 - **Skills:** Navigation, Engineering, Weapons, Science, Combat, Repair. Each is a level with XP.
-  - Navigation, Engineering, Weapons and Science are **station skills**, trained by operating the matching station.
+  - Navigation, Engineering, Weapons and Science are **station skills**, trained by operating the matching station. The Life Support and Doors consoles train and use **Engineering**; the Medbay trains and uses **Science**. No new skills are added.
   - **Repair** is trained by repairing hazards (fires, breaches, power failures) anywhere on the ship. It sets repair speed.
   - **Combat** is personal fighting skill (melee/sidearm damage and defence). It is defined on the character sheet now but has no source of XP or effect in the Foundation, because there are no enemies until boarders (sub-project 3).
 - A **starting trait** gives each character a different strength.
@@ -106,8 +106,11 @@ A console in a room. A character in range holds Interact to operate it; output s
 | Weapons | Charges and fires at drifting debris/asteroid targets. |
 | Engineering | Reallocates power between stations; skill scales how much usable power the Reactor delivers. |
 | Science | Sensor warnings of upcoming hazards. |
+| Life Support (Oxygen) | Injects oxygen into rooms (proportional to volume, none into breached or vented rooms). Output scales with power and operator Engineering skill. Offline = no injection, so rooms drain via the hazard model. |
+| Medbay | Crew standing in the Medbay heal over time. An operator (Science skill) raises the heal rate and speeds revival of downed crew placed there. |
+| Doors | Remote control: the operator can seal or unseal any door from the console. Skill (Engineering) improves how well sealed doors hold, lowering their conductance for gas and fire spread. Offline = no remote control; doors still work locally. |
 
-A station with no operator is idle; stations draw from the power pool and go offline on power failure.
+**Active stations** (Navigation, Weapons, Science, Engineering's power reallocation) do nothing without an operator. **Passive stations** (Life Support, Medbay, Doors) run at a baseline when powered, and an operator adds a skill-scaled bonus, as with FTL's manning bonuses. All stations draw from the power pool and go offline on power failure.
 
 ### Hazards and the director
 
