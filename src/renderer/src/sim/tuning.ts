@@ -10,3 +10,5 @@ export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
 export const CREW_HALF = 0.3;     // AABB half-extent in tiles (must stay < 0.5, see ship schema reachability)
 export const MOVE_EPS = 1e-6;
+export const DOOR_ZONE = 1.0;          // Chebyshev distance (tiles) from a door tile's centre that holds it open
+export const DOOR_CLOSE_DELAY = 1.0;   // seconds after the zone is clear

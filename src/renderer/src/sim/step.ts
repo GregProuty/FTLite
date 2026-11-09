@@ -3,6 +3,7 @@ import { NEUTRAL_INTENT, clampIntent } from '../../../shared/intent';
 import type { SimState } from './state';
 import { HAZARD_EVERY } from './tuning';
 import { movementSystem } from './movement';
+import { doorSystem } from './doors';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
@@ -14,6 +15,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   const hazardTick = state.tick % HAZARD_EVERY === 0;
   // (1) input, arbitration, movement, doors
   movementSystem(state, intents);
+  doorSystem(state);
   // (2) power                                       -> increment 2a
   // (3) stations                                    -> increment 2a
   // (4) hazards on the hazard tick                  -> Tasks 8, 9, 10
