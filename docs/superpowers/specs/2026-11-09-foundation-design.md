@@ -33,7 +33,7 @@ Inspiration only: no Firefly/Serenity names, characters, ship names, logos, text
 
 ## 2. Foundation goal
 
-A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All seven stations work at a basic level and repair is fully playable. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or all crew are dead. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
+A **survival sandbox on one fixed ship**. 1-4 players each control one crew member. All seven stations work at a basic level and repair is fully playable. Hazards spawn on a seeded, escalating director. The score is survival time. The run ends when hull integrity reaches 0 or no crew member is Conscious. There is no win state. The demo answers "is this fun with friends" and validates the crew/station/skill loop.
 
 **Out of scope:** enemy ships, boarders, sector map and events, meta-progression, audio, real networking, AI crew (including a solo-play drone), multiple ships, procedural ship generation, rollback or client prediction.
 
@@ -102,8 +102,8 @@ Hazards are simulated on the **room graph**, not tile by tile. Tile-based gas so
   - Navigation, Engineering, Weapons and Science are **station skills**, trained by operating the matching station. The Life Support and Doors consoles train and use **Engineering**; the Medbay trains and uses **Science**. No new skills are added.
   - **Repair** is trained by repairing hazards (fires, breaches, power failures) anywhere on the ship. It sets repair speed.
   - **Combat** is personal fighting skill (melee/sidearm damage and defence). It is defined on the character sheet now but has no source of XP or effect in the Foundation, because there are no enemies until boarders (sub-project 3).
-- Each character has one **Asset** (a strength, e.g. faster repairs, a skill head start) and one **Complication** (a drawback, e.g. slower movement, takes extra damage from fire), so crew differ in character and not only in numbers. Concrete trait lists are tuning data.
-- Characters take damage from fire and low oxygen. At 0 Health they go **down**; a teammate can **revive** them by channelling Interact. Design stance *(judgement, little sourced evidence)*: short downed time, with hold-to-revive speeding the recovery.
+- Each character has one **Asset** (a strength, e.g. faster repairs, a skill head start) and one **Complication** (a drawback, e.g. slower movement, takes extra damage from fire), so crew differ in character and not only in numbers. The Foundation ships **four fixed, pre-made characters** (one per player slot), each with one Asset and one Complication and a different skill head start; there is no character creation. The exact four are defined in the tuning data during increment 3.
+- **Crew lifecycle:** each crew member is **Conscious**, **Downed** or **Dead**. Characters take damage from fire and low oxygen. At 0 Health they become **Downed**: they cannot move or act, and a **bleed-out timer** (starting value about 30 s, tuning) runs down, faster while the crew member is in fire or a low-oxygen room. A teammate **revives** them by standing adjacent and holding Interact for a revive duration (about 4 s, tuning); the revive is interrupted if the reviver moves away, is downed, or releases Interact, and progress then decays. A revived crew member returns Conscious at partial Health (about 30%, tuning). If the timer expires they become **Dead** for the rest of the run. There is no carrying of downed crew in the Foundation. The run ends when the hull reaches 0 or **no crew member is Conscious** (so a solo player going down ends the run immediately).
 
 ### Skill model (hybrid)
 
@@ -115,35 +115,78 @@ From FTL (levelled by use) and Barotrauma (continuous effect). Skills **grow whe
 
 ### Stations
 
-A console in a room. A character in range holds Interact to operate it; output scales with their skill; they gain XP while operating. One operator per station in the Foundation. (No prior art was found for range or multi-operator rules; these are design decisions to playtest.)
+A console in a room. A character sits at a console to operate it; output scales with their skill; they gain XP while productively operating. One operator per station in the Foundation. (No prior art was found for range or multi-operator rules; these are design decisions to playtest.)
+
+**Action vocabulary.** The `Intent` for each player per tick is: `move` (x, y), `interactHeld`, and the edge actions `interactPressed`, `confirmPressed`, `cancelPressed`.
+
+**Walking mode.** The stick moves the character. Interact acts on the single highest-priority target within reach: **revive a downed crew member > repair a hazard > sit at a console**. Holding Interact progresses a revive or repair; pressing it at a console sits down.
+
+**Control mode (seated at a console).** The character is locked at the console. The stick moves a cursor or selection and **Confirm** acts; **Cancel** (or Interact) stands up. A seated operator is forced to stand if downed or if the console goes offline. A seated operator cannot repair or revive, which is the intended "more tasks than hands" tension. Per station:
+
+- **Navigation:** no selection; being seated sustains the evasion bonus.
+- **Weapons:** the stick cycles targets among incoming threats in range; Confirm fires when charged.
+- **Engineering:** the stick selects a station and left/right shifts power to or from it.
+- **Science:** no selection; being seated gives the warnings.
+- **Life Support:** no selection; being seated boosts injection.
+- **Medbay:** no selection; being seated raises the heal rate.
+- **Doors:** the stick selects a door; Confirm toggles sealed.
+
+**Arbitration** is deterministic and decided per tick: only one operator per console (first to sit wins; a simultaneous tie goes to the lowest `PlayerId`); only one reviver per downed crew member (same rule); several crew may repair the same hazard at once and their repair progress adds; the highest-priority target in reach wins for each player, with ties broken by `StableId`.
 
 | Station | Foundation behaviour |
 |---|---|
-| Navigation | Reduces incoming hull damage (evasion). |
-| Weapons | Charges and fires at drifting debris/asteroid targets. |
-| Engineering | Reallocates power between stations; skill scales how much usable power the Reactor delivers. |
-| Science | Sensor warnings of upcoming hazards. |
+| Navigation | While seated, gives each incoming debris object an evasion chance on impact, scaling with skill. Productive when it makes an evasion roll against an incoming object. |
+| Weapons | Charges while seated (charge time falls with skill) and fires at a warned debris object to destroy it before impact (hit chance rises with skill). Productive when a shot is fired at a live object. |
+| Engineering | While seated, shifts power bars between stations (see Power model); skill adds bonus bars while seated. Productive while the allocation is actually being changed or bonus bars are covering a shortfall. |
+| Science | While seated, detects incoming debris early: a warning lead time that grows with skill. Unmanned, an object is only revealed in the last few seconds before impact. Productive while at least one threat is pending or incoming. |
 | Life Support (Oxygen) | Injects oxygen into rooms (proportional to volume, none into breached rooms or rooms below the injection cutoff, so a vented room must be sealed and repaired before it refills). Output scales with power and operator Engineering skill. Offline = no injection, so rooms drain via the hazard model. |
-| Medbay | Crew standing in the Medbay heal over time. An operator (Science skill) raises the heal rate and speeds revival of downed crew placed there. |
+| Medbay | Crew standing in the Medbay heal over time. An operator (Science skill) raises the heal rate. It does not affect revival; reviving is done by teammates anywhere (see Crew lifecycle). |
 | Doors | Remote control: the operator can seal or unseal any door from the console. Skill (Engineering) improves how well sealed doors hold, lowering their sealed passage factor for gas and fire spread. Offline = no remote control; doors still work locally. |
 
 **Active stations** (Navigation, Weapons, Science, Engineering's power reallocation) do nothing without an operator. **Passive stations** (Life Support, Medbay, Doors) run at a baseline when powered, and an operator adds a skill-scaled bonus, as with FTL's manning bonuses. All stations draw from the power pool and go offline on power failure.
+
+### Power model
+
+FTL-style power bars:
+
+- The **Reactor** provides a fixed capacity of power bars (tuning, e.g. about 10). Each station has a **max level** and draws bars equal to its current allocated level; a station's effect scales with its level (level 0 = offline). The starter allocation is part of the ship data.
+- A seated **Engineering** operator shifts bars between stations (see controls), and their skill adds a small number of **bonus bars while they remain seated** (a few at most, tuning). Allocations **persist when nobody is seated**.
+- If available capacity falls below total allocation (the Engineering operator stands up, or the reactor is damaged), stations **shed power in a fixed priority order**, highest-priority-to-keep last: Engineering and Life Support are shed last; Doors, Medbay, Science and Weapons are shed first; Navigation sits in between (exact order is tuning data). Shedding removes bars from the lowest-priority station until the total fits, and restored capacity does not automatically restore shed bars (Engineering reallocates them).
+- A **power failure** hazard sets one station to level 0 (offline) until repaired; its bars return to the pool and can be reallocated. If Engineering itself is offline, allocations stay as they were and cannot be changed until it is repaired, so there is always a recovery path (repair it).
 
 ### Hazards and the director
 
 Hazard types:
 
 - **Fire** and **hull breach** (as in the room-graph model above; sealing doors contains them).
-- **Power failure:** knocks a station offline until repaired.
-- **Debris strike:** hits a random room; may cause a breach or fire.
+- **Power failure:** sets a station to level 0 (offline) until repaired; see the Power model.
+- **Debris strike** (the external threat, with a full lifecycle so three stations have a job):
+  1. **Spawn:** the director creates a debris object with an impact time and a target room, drawn from the hazards RNG stream. It starts hidden.
+  2. **Warning:** a seated Science operator detects it a skill-scaled lead time before impact (e.g. about 20 s at low skill, longer with skill, tuning); unmanned Science reveals it only in the last few seconds.
+  3. **Interception window:** while it is warned and not yet impacted, a seated, charged Weapons operator can target it (stick cycles targets, Confirm fires). A hit destroys it; a miss leaves it in flight.
+  4. **Evasion:** at impact, a seated Navigation operator gives an evasion roll; success means the object misses.
+  5. **Impact:** an unstopped, unevaded object damages the hull (tuning) and the target room, with a chance of a breach or a fire there.
+  Each station's effect is deterministic given the seeded streams, and none of this requires enemy ships.
 
 Repair: walk to the hazard and hold Interact; speed scales with Repair skill, and Repair XP accrues while repairing. Repair is not tied to a station, so any crew member can do it, and specialists are faster.
 
 **Director** *(composition of two documented approaches; the specific tuning is inference)*. Design principle: the director adjusts **pacing, not difficulty**, and the core tension is **more simultaneous tasks than hands**.
 
-- One `stress` float derived from hazard state (open breaches, fire, unattended failures, crew down), recomputed every few seconds, with **asymmetric smoothing**: rises quickly, falls slowly, and does not fall while a hazard is unattended.
-- A four-phase state machine over stress: **Build Up → Sustain Peak (short) → Peak Fade → Relax (long) → Build Up**.
-- New hazards may start only when stress is at or below a **threshold that starts low and rises over time**, so spawns always eventually resume and the sandbox escalates.
+Two separate mechanisms, so they cannot fight each other:
+
+- **Elapsed-time escalation (difficulty):** the weights of harder hazards, the target spawn rate and the concurrency cap grow with sim time. This is what makes the sandbox escalate.
+- **Stress-based pacing (rhythm):** a four-phase machine over a `stress` float decides *when* spawns are permitted.
+
+`stress` (0 to 1) is recomputed every 5 s from active hazards (open breaches, fires, power failures, incoming debris) and downed crew, with **asymmetric smoothing**: it rises quickly and falls slowly. A hazard is **unattended** when no crew member is within reach of it or repairing it. Stress falls at a *reduced* rate (never zero) while an unattended hazard exists, so recovery phases can still occur.
+
+| Phase | Spawns allowed | Enters when | Exits when |
+|---|---|---|---|
+| Build Up | Yes, subject to the concurrency cap | start, or Relax ends | stress reaches the peak level, **or** the cycle's spawn budget is used, **or** a stall timer (e.g. 60 s with no spawn, tuning) expires |
+| Sustain Peak | No | Build Up exits | fixed duration (e.g. 10 s, tuning) |
+| Peak Fade | No | Sustain Peak ends | stress falls to the relax level, or a timeout (e.g. 30 s) |
+| Relax | No | Peak Fade exits | fixed duration (e.g. 30 s) **and** stress at or below the relax level |
+
+The **concurrency cap** counts every unresolved hazard (each fire, breach, failure and in-flight debris object); a spawn is skipped, not queued, when the cap is reached. Because a full cap implies active hazards and therefore stress, the stall timer guarantees Build Up still advances. Phase, phase timer, stress, spawn budget and recent-hazard history are part of authoritative state.
 - Hazard selection is weighted and seeded, with recently used types down-weighted.
 - The director has its own seeded RNG stream, separate from cosmetic randomness.
 - **Player-count scaling:** scale hazard *concurrency* with player count, not hazard strength; solo play gets a lower concurrency cap and a slower director. The exact formula is a tuning value.
@@ -164,6 +207,13 @@ Repair: walk to the hazard and hold Interact; speed scales with Repair skill, an
 - Ship tiles: one `CompositeTilemap` (`@pixi/tilemap`; v8 compatibility to be confirmed in a spike) inside a world render group, rebuilt only on tile change. HUD in a separate render group.
 - Per-room overlays (oxygen, fire) are tinted sprites driven by sim values.
 - The renderer interpolates between ticks (`alpha = accumulator / dt`) and keeps previous positions for that. Its caches are keyed by `StableId`, never by raw entity id, and entries are dropped when the `StableId` is no longer live (test: remove and reuse an entity slot between rendered frames).
+
+### Minimum HUD and session flow
+
+- **Per player:** a prompt for the current Interact target (revive, repair or console), Health, the six skill levels, and, when Downed, the bleed-out timer. While reviving or repairing, a progress bar.
+- **Ship:** hull integrity, power bars per station (and total capacity), a per-room oxygen and fire overlay, a list of incoming and active threats with ETAs, and run time (sim time, used as the score).
+- **Station state:** each console shows its occupant, level (offline/online) and productive state.
+- **Session flow:** press-to-join lobby, start, run, a game-over screen showing survival time and per-crew skill gains, and restart with the same or a new seed.
 
 ## 8. Data flow
 
@@ -190,14 +240,26 @@ Per frame:
 - **Boundary tests:** `sim/` imports nothing from `render/`, `input/` or `app/`; a lint rule bans `Math.random`, `Date` and `performance.now` there.
 - Per-task commits.
 
+### Acceptance (the "is this fun with friends" question made testable)
+
+Automated tests prove the sim is correct and deterministic; they cannot prove it is fun. Playtest acceptance, run at 1, 2 and 4 players with the default seed set:
+
+- **Solo viability:** a competent solo player can survive at least several minutes (target set after the first playtest) by choosing which station to man, even though most stations go idle.
+- **Four-player clarity:** every player can say at any time what the most useful thing for them to do is (task clarity), and no player is idle for long stretches (travel burden is acceptable, not dominant).
+- **Useful station choices:** playtesters report making real tradeoffs (e.g. seat at Weapons vs go repair), and skill differences are noticeable by the end of a 20-minute run.
+- **Observable questions** recorded per session: time to first death, which stations were never manned, longest idle period per player, and how each run ended.
+
 ## 11. Build order and early spikes
 
 Suggested order, matching where research found the strongest prior art:
 
-1. **Headless harness first:** pure `step`, `InputFrame` per `PlayerId`, `hashState`, a golden replay.
-2. **Room-graph oxygen/fire model** with the conservation test.
-3. Movement and collision, then stations and skills.
-4. **Director** last, once hazards exist to pace.
+The Foundation is built in **gated increments**; each is playable and testable on its own, and a later increment does not start until the earlier one's acceptance checks pass.
+
+0. **Headless harness:** pure `step`, `InputFrame`/`Intent` per `PlayerId`, `hashState`, a golden replay.
+1. **Move and survive:** ship loading and validation, movement and collision, the room-graph oxygen/fire/breach model with the mass-balance test, doors, repair, and the crew lifecycle (downed/revive).
+2. **Power, stations and threats:** the power model, all seven consoles with control mode, and the debris threat loop (warning, intercept, evade, impact).
+3. **Skills and traits:** XP and levels for the six skills, and the four pre-made characters with their Asset and Complication.
+4. **Director:** the stress and pacing machine and escalation, replacing a simple timer spawner used in increments 1-3.
 
 Small spikes early, to remove the largest unknowns:
 
