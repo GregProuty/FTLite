@@ -122,9 +122,11 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
   for (let pid = 0; pid < state.playerCount; pid++) {
     const t = targets[pid]!;
     if (t.kind === TargetKind.Fire) {
+      if (!(state.rooms.fire[t.index]! > 0)) continue;                             // an earlier holder this tick already put it out
       state.rooms.fireRepair[t.index]! += DT / REPAIR_TIME_FIRE;
       if (state.rooms.fireRepair[t.index]! >= 1) extinguishRoom(state, t.index);
     } else if (t.kind === TargetKind.Breach) {
+      if (!state.breaches.active[t.index]) continue;                                // an earlier holder this tick already repaired it
       state.breaches.repair[t.index]! += DT / REPAIR_TIME_BREACH;
       if (state.breaches.repair[t.index]! >= 1) repairBreach(state, t.index);
     } else if (t.kind === TargetKind.Power) {

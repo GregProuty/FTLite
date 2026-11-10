@@ -77,6 +77,22 @@ describe('interactSystem', () => {
     run(s, seconds(REPAIR_TIME_BREACH) + 5, () => intents({ interactHeld: true }));
     expect(s.breaches.active[6]).toBe(0);
   });
+  it('two repairers finishing the same fire in one tick leave no residual progress', () => {
+    const s = makeState(2);
+    const G = room(s, 'G');
+    igniteRoom(s, G);
+    s.rooms.fireRepair[G] = 0.999;
+    run(s, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
+    expect(s.rooms.fire[G]).toBe(0); expect(s.rooms.fireRepair[G]).toBe(0);
+  });
+  it('two repairers finishing the same breach in one tick leave no residual progress', () => {
+    const s = makeState(2);
+    activateBreach(s, 6);
+    teleport(s, 0, 2.5, 10.5); teleport(s, 1, 2.5, 10.5);
+    s.breaches.repair[6] = 0.999;
+    run(s, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
+    expect(s.breaches.active[6]).toBe(0); expect(s.breaches.repair[6]).toBe(0);
+  });
   it('revives a downed teammate after REVIVE_TIME, interrupted progress decays', () => {
     const s = makeState(2);
     const downed = s.crew[1]!;
