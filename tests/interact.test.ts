@@ -6,6 +6,7 @@ import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REVIVE_TIME, HEALTH_MAX, REVIVE_HEALTH_FRAC } from '../src/renderer/src/sim/tuning';
 import { makeState, intents, run, teleport, room, seconds } from './helpers/sim';
+import { failStation } from '../src/renderer/src/sim/power';
 
 describe('targets', () => {
   it('fire in own room is a target anywhere in the room; none when nothing is near', () => {
@@ -34,6 +35,15 @@ describe('targets', () => {
     expect(confirmTarget(s, 0).kind).toBe(ConfirmKind.None);
     teleport(s, 0, 2.5, 8.5);
     expect(confirmTarget(s, 0)).toEqual({ kind: ConfirmKind.Door, index: 5 });
+  });
+  it('revive outranks fire, fire outranks breach, breach outranks power', () => {
+    const s = makeState(2);
+    const eng = s.derived.stationOfKind[3]!;
+    failStation(s, eng);
+    teleport(s, 0, 18.5, 9.5);
+    expect(interactTarget(s, 0)).toEqual({ kind: TargetKind.Power, index: eng });
+    igniteRoom(s, room(s, 'C'));
+    expect(interactTarget(s, 0).kind).toBe(TargetKind.Fire);
   });
 });
 

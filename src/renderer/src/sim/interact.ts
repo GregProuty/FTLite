@@ -1,20 +1,22 @@
 import type { Intent } from '../../../shared/intent';
 import type { SimState } from './state';
-import { Position, Life, LifeState } from './components';
+import { Position, Life, LifeState, Seated } from './components';
 import { roomAt } from './grid';
-import { toggleSeal } from './doors';
 import { extinguishRoom } from './hazards/fire';
 import { repairBreach } from './hazards/breach';
 import { reviveCrew } from './crew';
 import { intentFor } from './step';
-import { DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REVIVE_TIME } from './tuning';
+import { stationOnline, sitDown } from './stations';
+import { repairStation } from './power';
+import { DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME } from './tuning';
 
-export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3 } as const;
+export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3, Power: 4 } as const;
 export interface Target { kind: number; index: number }
-export const ConfirmKind = { None: 0, Door: 1 } as const;
+export const ConfirmKind = { None: 0, Door: 1, Console: 2 } as const;
 export interface ConfirmTarget { kind: number; index: number }
 
 const NONE: Target = { kind: TargetKind.None, index: -1 };
+const NONE_CONFIRM: ConfirmTarget = { kind: ConfirmKind.None, index: -1 };
 
 /** Distance from a point to the nearest point of a tile's unit square. */
 function distToTile(state: SimState, x: number, y: number, tileIdx: number): number {
@@ -29,7 +31,7 @@ export function inReachOfTile(state: SimState, eid: number, tileIdx: number): bo
 
 export function interactTarget(state: SimState, pid: number): Target {
   const eid = state.crew[pid]!;
-  if (Life.state[eid] !== LifeState.Conscious) return NONE;
+  if (Life.state[eid] !== LifeState.Conscious || Seated.station[eid]! >= 0) return NONE;
   const x = Position.x[eid]!, y = Position.y[eid]!;
   // Revive: nearest Downed teammate within REACH (centre to centre), ties by lower pid.
   let best: Target = NONE, bestDist = Infinity;
@@ -52,36 +54,54 @@ export function interactTarget(state: SimState, pid: number): Target {
     const dist = distToTile(state, x, y, d.siteTile[s]!);
     if (dist <= REACH && dist < bestDist) { best = { kind: TargetKind.Breach, index: s }; bestDist = dist; }
   }
+  if (best.kind !== TargetKind.None) return best;
+  // Power failure: nearest failed station tile in reach; equal distances go to the lower tile index.
+  bestDist = Infinity; let bestTile = Infinity;
+  for (let i = 0; i < d.stationTile.length; i++) {
+    if (!state.stations.failed[i]) continue;
+    const tile = d.stationTile[i]!, dist = distToTile(state, x, y, tile);
+    if (dist <= REACH && (dist < bestDist || (dist === bestDist && tile < bestTile))) { best = { kind: TargetKind.Power, index: i }; bestDist = dist; bestTile = tile; }
+  }
   return best;
 }
 
+/** Nearest door tile or same-room console tile within REACH; ties by lower tile index. None while seated or not Conscious. */
 export function confirmTarget(state: SimState, pid: number): ConfirmTarget {
   const eid = state.crew[pid]!;
-  if (Life.state[eid] !== LifeState.Conscious) return { kind: ConfirmKind.None, index: -1 };
-  const d = state.derived;
-  let best = -1, bestDist = Infinity;
-  for (let e = 0; e < d.edgeIsDoor.length; e++) {
-    if (!d.edgeIsDoor[e]) continue;
-    const dist = distToTile(state, Position.x[eid]!, Position.y[eid]!, d.edgeTile[e]!);
-    if (dist <= REACH && dist < bestDist) { best = e; bestDist = dist; }
-  }
-  return best < 0 ? { kind: ConfirmKind.None, index: -1 } : { kind: ConfirmKind.Door, index: best };
+  if (Life.state[eid] !== LifeState.Conscious || Seated.station[eid]! >= 0) return NONE_CONFIRM;
+  const d = state.derived, x = Position.x[eid]!, y = Position.y[eid]!;
+  let best = NONE_CONFIRM, bestDist = Infinity, bestTile = Infinity;
+  const consider = (kind: number, index: number, tile: number): void => {
+    const dist = distToTile(state, x, y, tile);
+    if (dist > REACH) return;
+    if (dist < bestDist || (dist === bestDist && tile < bestTile)) { best = { kind, index }; bestDist = dist; bestTile = tile; }
+  };
+  for (let e = 0; e < d.edgeIsDoor.length; e++) if (d.edgeIsDoor[e]) consider(ConfirmKind.Door, e, d.edgeTile[e]!);
+  const own = roomAt(state, x, y);   // -1 on a door tile: a console is never reachable across a wall or from a doorway
+  for (let i = 0; i < d.stationTile.length; i++) if (own >= 0 && d.stationRoom[i] === own) consider(ConfirmKind.Console, i, d.stationTile[i]!);
+  return best;
 }
 
 /** Step 1 (before movement): Confirm actions, revive arbitration, repair and revive progress. */
 export function interactSystem(state: SimState, intents: readonly Intent[]): void {
   const targets: Target[] = [];
-  const doorEdges = new Set<number>();
+  const sitRequests = new Map<number, number[]>();
   for (let pid = 0; pid < state.playerCount; pid++) {
     const it = intentFor(intents, pid);
     if (it.confirmPressed) {
       const c = confirmTarget(state, pid);
-      if (c.kind === ConfirmKind.Door) doorEdges.add(c.index);
+      if (c.kind === ConfirmKind.Door) state.scratch.doorToggles.add(c.index);       // applied once per door at the end of consoleSystem
+      else if (c.kind === ConfirmKind.Console) sitRequests.set(c.index, [...(sitRequests.get(c.index) ?? []), pid]);
     }
     targets.push(it.interactHeld ? interactTarget(state, pid) : NONE);
   }
-  // One toggle per door per tick, in ascending edge order, so simultaneous Confirms do not cancel out.
-  for (const e of [...doorEdges].sort((a, b) => a - b)) toggleSeal(state, e);
+  // Seating: online and unoccupied; the lowest pid wins a tie; the seating Confirm is consumed (spec section 4).
+  for (const i of [...sitRequests.keys()].sort((a, b) => a - b)) {
+    if (!stationOnline(state, i) || state.stations.occupant[i]! >= 0) continue;
+    const pid = Math.min(...sitRequests.get(i)!);
+    sitDown(state, pid, i); state.scratch.satThisTick[pid] = 1;
+    targets[pid] = NONE;                                                            // a player who sits this tick repairs or revives nothing this tick
+  }
   // Revive arbitration: keep the current reviver if still trying, else the lowest pid trying.
   for (let other = 0; other < state.playerCount; other++) {
     const o = state.crew[other]!;
@@ -107,6 +127,9 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
     } else if (t.kind === TargetKind.Breach) {
       state.breaches.repair[t.index]! += DT / REPAIR_TIME_BREACH;
       if (state.breaches.repair[t.index]! >= 1) repairBreach(state, t.index);
+    } else if (t.kind === TargetKind.Power) {
+      state.stations.repair[t.index]! += DT / REPAIR_TIME_POWER;
+      if (state.stations.repair[t.index]! >= 1) repairStation(state, t.index);
     }
   }
 }

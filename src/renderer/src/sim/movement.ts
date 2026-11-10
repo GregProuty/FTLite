@@ -1,6 +1,6 @@
 import type { Intent } from '../../../shared/intent';
 import type { SimState } from './state';
-import { Position, Life, LifeState } from './components';
+import { Position, Life, LifeState, Seated } from './components';
 import { solidAt } from './grid';
 import { intentFor } from './step';
 import { CREW_SPEED, CREW_HALF, DT, MOVE_EPS } from './tuning';
@@ -34,6 +34,7 @@ export function movementSystem(state: SimState, intents: readonly Intent[]): voi
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!;
     if (Life.state[eid] !== LifeState.Conscious) continue;
+    if (Seated.station[eid]! >= 0) continue;
     const it = intentFor(intents, pid);
     if (it.moveX === 0 && it.moveY === 0) continue;
     const p = moveAABB(solid, Position.x[eid]!, Position.y[eid]!, it.moveX * CREW_SPEED * DT, it.moveY * CREW_SPEED * DT, CREW_HALF);

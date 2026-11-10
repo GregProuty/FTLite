@@ -3,6 +3,7 @@ import { NEUTRAL_INTENT, clampIntent } from '../../../shared/intent';
 import type { SimState } from './state';
 import { HAZARD_EVERY } from './tuning';
 import { interactSystem } from './interact';
+import { consoleSystem } from './console';
 import { movementSystem } from './movement';
 import { doorSystem } from './doors';
 import { oxygenStep } from './hazards/oxygen';
@@ -18,8 +19,10 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
 export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const hazardTick = state.tick % HAZARD_EVERY === 0;
+  state.scratch.doorToggles.clear(); state.scratch.satThisTick.fill(0);
   // (1) input, arbitration, movement, doors
   interactSystem(state, intents);
+  consoleSystem(state, intents);                      // (2) control mode
   movementSystem(state, intents);
   doorSystem(state);
   // (2) power                                       -> increment 2a
