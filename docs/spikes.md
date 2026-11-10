@@ -43,3 +43,7 @@ Not spiked in increments 0-1: the ship is one Graphics rebuilt only when a door 
 ## Doorway rule (post-review fix)
 
 `roomAt` returns -1 on a door tile, which made a doorway a safe spot (no damage, no breathing). Decision: a crew member standing on a door tile takes the conditions of the WORSE adjacent room, via `conditionRoomAt` in `sim/grid.ts` (score `(fire > 0 ? 2 : 0) + (1 - o2/volume)`, 4-neighbour floor tiles in ascending tile index, first highest wins). It is used for environmental damage, bleed-out speed and breathing. `interactTarget` is unchanged: a fire is still repaired only from inside the room.
+
+## Stations as arrays, not entities (increment 2a-i)
+
+Seven fixed consoles live as typed arrays in `SimState.stations`; crew remain the only entities, so the bitECS recycling spike still holds. Stick edges are derived in the sim (`console.ts`), so replays reproduce console use.

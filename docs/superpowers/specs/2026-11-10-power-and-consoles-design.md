@@ -17,7 +17,7 @@ New and changed modules:
 | Module | Responsibility |
 |---|---|
 | `sim/stations.ts` (new) | `StationKind` enum, station lookups from `Derived`, `stationOutput()`, `stationOnline()`, sit/stand helpers, forced stand. |
-| `sim/power.ts` (new) | Power step: pool accounting, Engineering bar moves, power failure apply and repair. |
+| `sim/power.ts` (new) | Pool accounting, Engineering bar moves, power failure apply and repair helpers (no step of its own). |
 | `sim/console.ts` (new) | `consoleSystem`: Confirm-to-sit arbitration, stick-edge derivation, per-station seated dispatch. |
 | `sim/hazards/lifeSupport.ts` (new) | Injection per hazard tick from Life Support level and occupancy (replaces `stub.ts` injection). |
 | `sim/hazards/spawner.ts` (renamed from `stub.ts`) | Timer spawner with three hazard types. |
@@ -36,7 +36,7 @@ Step order inside `step()` (foundation §4 rule 4a, filling the reserved slots):
 2. `consoleSystem` (players seated before this tick: stick edges, Confirm, Interact/Cancel to stand; then applies the tick's door-toggle set once)
 3. `movementSystem` (skips seated crew)
 4. `doorSystem`
-5. `powerStep` (applies repairs that completed this tick)
+5. (repairs that complete are applied inside `interactSystem`, like fire and breach repairs; there is no separate power step. Amended by the plan.)
 6. hazard tick (12 Hz): `lifeSupportInjection` → `oxygenStep` → `fireStep`
 7. `spawner`
 8. `medbayStep`
@@ -137,7 +137,7 @@ SPAWN_WEIGHTS = { fire: 2, breach: 1, power: 1 }
 - **Input/app:** unchanged. `Intent` keeps its six fields.
 - **HUD model** (`hudModel.ts`, pure): `HudPlayer` gains `seated: StationKind | null` and `console: EngineeringPanel | DoorsPanel | null`, where `EngineeringPanel = { rows: { kind, level, max, failed }[]; cursor: number; pool: number }` and `DoorsPanel = { doorIndex: number; rooms: [string, string] } | { doorIndex: -1 }` (rendered as `No doors`). The ship block gains `power: { capacity: number; used: number }` and `stations: { kind; level; max; online; occupant: number | null }[]`. Prompts: Confirm at a console reads `Sit: <station>`; seated players show `Stand` on the Cancel glyph; the Interact prompt gains `Repair power` with `icon.power`, and the player's progress bar shows power-repair progress exactly as it shows fire and breach repair. The threat list gains one `HudThreat` per failed station: `{ icon: 'icon.power', text: 'Power: <station>' }`, after fires and breaches.
 - **Pixi HUD:** a seated player's row expands into a panel under it (same nine-slice): Engineering draws one row per station with `max` bar cells (`ui.bar.fill` for allocated, `ui.bar.bg` for empty, `WARN` tint when failed) and a `>` cursor glyph; Doors draws `Door <A>-<B>`. A ship-wide strip at the top right lists each station's bars and `OFF` when offline. Reuses Task 11 helpers; no new art names are required (`icon.power` is already in the name contract).
-- **Ship view:** seated crew use `crew.sit` when present, else the idle frame facing the console; the Doors cursor's door tile gets a tinted outline rectangle in `effects.above`; a failed station's tile shows the `fx.arc` animation when present, else a yellow 16 px square, through `featureReady`.
+- **Ship view:** seated crew use `crew.sit` when present, else the idle frame facing down (the crew is snapped onto the console tile, so there is no direction toward it); the Doors cursor's door tile gets a tinted outline rectangle in `effects.above`; a failed station's tile shows the `fx.arc` animation when present, else a yellow 16 px square, through `featureReady`.
 
 ## 11. Testing
 
@@ -153,7 +153,7 @@ All under node, no pixi. New files: `tests/console.test.ts`, `tests/power.test.t
 - **Ship validation:** each new rule has a failing fixture, including a fractional allocation and an unknown station id; a fixture with no doors loads and the Doors console sits with cursor `-1`.
 - **Interact:** a console within `REACH` but in a different room (fixture: console one tile past a wall) is not a Confirm candidate and Confirm does not sit or move the player.
 - **HUD model:** the new player and ship fields, the power threat entry, the `Repair power` prompt with its progress, and the `No doors` panel; Pixi code stays untested as before.
-- **Golden replay:** re-recorded once (`npm run bless`) in its own commit, because replacing the stub injector changes oxygen history. This is the one deliberate exception to the no-rebless rule and is noted in `.superpowers/sdd/progress.md`.
+- **Golden replay:** re-recorded (`npm run bless`) in each task whose change alters layout identity, sim version or simulation results (plan Tasks 1 and 2 did; Tasks 3 and 4 left it unchanged), each with the cause in the commit message and in `.superpowers/sdd/progress.md`. This is the deliberate exception to the no-rebless rule.
 
 ## 12. Gate
 

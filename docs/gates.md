@@ -30,3 +30,10 @@
 - [ ] Increment 1 manual items above still pass. (pending)
 - 2026-11-10: the controller verified by `--enable-logging` runs that the dev build and the packaged `win-unpacked` build over `file://` load all 16 required files with exactly the 7 optional-missing warnings, and that renaming `wall.png` triggers the fatal path.
 - Optional in-house art not yet present at the time of this gate (placeholders in use): `art/tiles/breach.png`, `art/tiles/floor_damaged.png`, `art/crew/body_base.png`, `art/crew/sit.png`, `art/fx/vent.png`, `art/fx/arc.png`, `art/icons/hazards.png`.
+
+## Increment 2a-i: power and consoles
+- [x] `npm test` passes: console (sit/stand, Engineering, Doors, inert stations, power repair, determinism with console use), power, stick edges, Life Support, Medbay, spawner, snapshot round trip of seating/power/stick, ship validation (unknown id, missing kind, fractional/over-max allocation, Engineering floor, budget), HUD model (power strip, panels, power threat, No doors).
+- [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with Life Support unmanned at level 2 and power failures in the mix (2026-11-10: min health 51.8 / 81.2 / 75.1; 3 / 3 / 2 power failures spawned).
+- [ ] Manual, two players (`npm run dev`): each of the seven consoles can be sat at (Confirm in its room) and left (Cancel or Interact); a bar is moved in Engineering and the strip reflects it; a power failure appears, is repaired by holding Interact at the console, and Engineering comes back at level 1 (others at 0, reallocated); a door is sealed from the Doors console and the blue outline matches the sealed door; a hurt crew member heals in the Medbay. Date and notes: pending human playtest.
+- [ ] Manual, solo: five minutes survived against the spawner with Life Support manned at level 2. Date and notes: pending.
+- [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
