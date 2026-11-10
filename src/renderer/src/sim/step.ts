@@ -21,7 +21,7 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
 export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const hazardTick = state.tick % HAZARD_EVERY === 0;
-  state.scratch.doorToggles.clear(); state.scratch.satThisTick.fill(0);
+  state.scratch.doorToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0);
   // (1) input, arbitration
   interactSystem(state, intents);
   // (2) control mode: seated input and the tick's door toggles

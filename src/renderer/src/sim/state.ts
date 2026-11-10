@@ -32,7 +32,7 @@ export interface SimState {
   power: { capacity: number };
   stick: { heldDir: Int8Array; repeat: Int16Array };   // per player: 0 none, 1 up, 2 down, 3 left, 4 right; ticks until the next repeat edge
   /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */
-  scratch: { doorToggles: Set<number>; satThisTick: Uint8Array };
+  scratch: { doorToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array };
 }
 
 export function deriveStreams(seed: number): RngStreams {
@@ -65,7 +65,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     stations: { level: Uint8Array.from(layout.stations.map((st) => st.allocation)), failed: new Uint8Array(N), repair: new Float64Array(N), occupant: new Int8Array(N).fill(-1), cursor: new Int16Array(N) },
     power: { capacity: REACTOR_CAPACITY },
     stick: { heldDir: new Int8Array(playerCount), repeat: new Int16Array(playerCount) },
-    scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount) }
+    scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount) }
   };
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));
   return state;

@@ -34,7 +34,7 @@ export function movementSystem(state: SimState, intents: readonly Intent[]): voi
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!;
     if (Life.state[eid] !== LifeState.Conscious) continue;
-    if (Seated.station[eid]! >= 0) continue;
+    if (Seated.station[eid]! >= 0 || state.scratch.stoodThisTick[pid]) continue;
     const it = intentFor(intents, pid);
     if (it.moveX === 0 && it.moveY === 0) continue;
     const p = moveAABB(solid, Position.x[eid]!, Position.y[eid]!, it.moveX * CREW_SPEED * DT, it.moveY * CREW_SPEED * DT, CREW_HALF);

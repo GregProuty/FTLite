@@ -47,7 +47,7 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     const eid = state.crew[pid]!, i = Seated.station[eid]!;
     if (i < 0 || state.scratch.satThisTick[pid]) continue;              // players who sat this tick act from the next tick
     const it = intentFor(intents, pid);
-    if (it.cancelPressed || it.interactPressed) { standUp(state, pid); continue; }
+    if (it.cancelPressed || it.interactPressed) { standUp(state, pid); state.scratch.stoodThisTick[pid] = 1; continue; }   // standing consumes the tick's stick input
     const dir = stickEdge(state, pid, it.moveX, it.moveY);
     const kind = state.derived.stationKind[i]!;
     if (kind === StationKind.Engineering) engineeringInput(state, i, dir);
