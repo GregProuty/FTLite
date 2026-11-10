@@ -4,6 +4,9 @@ directories:
   output: dist
 files:
   - out/**/*
+extraResources:
+  - from: public/THIRD_PARTY_NOTICES.txt
+    to: THIRD_PARTY_NOTICES.txt
 win:
   target: nsis
 nsis:

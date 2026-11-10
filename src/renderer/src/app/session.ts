@@ -7,7 +7,7 @@ import { TICK_HZ, DT } from '../sim/tuning';
 import { createDeviceManager, type SourceSample, type SlotInfo } from '../input/deviceManager';
 import { createIntentFeed } from './intents';
 import { stepAccumulator } from './loop';
-import { buildHudModel, type HudModel } from '../render/hud';
+import { buildHudModel, type HudModel } from '../render/hudModel';
 import { EndReason } from '../sim/crew';
 
 export const DEFAULT_SEED = 2026;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildHudModel } from '../src/renderer/src/render/hud';
+import { buildHudModel } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
