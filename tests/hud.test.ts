@@ -9,8 +9,8 @@ import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation } from '../src/renderer/src/sim/power';
-import type { EngineeringPanel } from '../src/renderer/src/render/hudModel';
-import { makeState, room, run, teleport } from './helpers/sim';
+import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
+import { makeState, room, run, teleport, placeDebris, seconds } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
 
@@ -111,5 +111,40 @@ describe('buildHudModel', () => {
     const t = createSimState(parseShip(noDoors), 1, 1);
     sitDown(t, 0, t.derived.stationOfKind[StationKind.Doors]!);
     expect(buildHudModel(t, slots(1), 'running', '').players[0]!.console).toEqual({ doorIndex: -1 });
+  });
+  it('lists warned debris as threats in StableId order with the ETA, hides unwarned ones, and exposes tick, charge and impact ticks', () => {
+    const s = makeState(1), A = room(s, 'A'), B = room(s, 'B');
+    s.spawner.nextSpawnTick = 1e9;
+    placeDebris(s, A, seconds(10) + 1, 1, 30); placeDebris(s, B, seconds(3), 1, 10); placeDebris(s, A, seconds(20), 0, 20);
+    s.weapons.charge = 1; s.rooms.impactTick[B] = 5;
+    const m = buildHudModel(s, slots(1), 'running', '');
+    expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Debris: Weapons Bay 3s' }, { icon: 'icon.sensors', text: 'Debris: Bridge 11s' }]);
+    expect(m.tick).toBe(0); expect(m.weapons).toEqual({ charge: 1, ready: true }); expect(m.impactTick[B]).toBe(5); expect(m.impactTick[A]).toBe(-1);
+  });
+  it('shows the Weapons panel with charge, targets by StableId and the cursor index', () => {
+    const s = makeState(1), A = room(s, 'A'), B = room(s, 'B');
+    const wpn = s.derived.stationOfKind[StationKind.Weapons]!;
+    placeDebris(s, A, seconds(10), 1, 30); placeDebris(s, B, seconds(5), 1, 10);
+    sitDown(s, 0, wpn); s.weapons.charge = 0.25;
+    const p = buildHudModel(s, slots(1), 'running', '').players[0]!;
+    expect(p.seated).toBe(StationKind.Weapons);
+    const panel = p.console as WeaponsPanel;
+    expect(panel.kind).toBe('weapons'); expect(panel.charge).toBe(0.25);
+    expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5 }, { stableId: 30, room: 'Bridge', eta: 10 }]);
+    expect(panel.cursor).toBe(0);                                                  // sitDown selected id 10 (slot 1), which is targets[0]
+    s.stations.cursor[wpn] = 0;                                                    // slot 0 is id 30: targets[1]
+    expect((buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel).cursor).toBe(1);
+    s.debris.warned.fill(0); s.stations.cursor[wpn] = -1;
+    const empty = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
+    expect(empty.targets).toEqual([]); expect(empty.cursor).toBe(-1);
+  });
+  it('shows the Science and Navigation panels', () => {
+    const s = makeState(2), A = room(s, 'A');
+    sitDown(s, 0, s.derived.stationOfKind[StationKind.Science]!); sitDown(s, 1, s.derived.stationOfKind[StationKind.Navigation]!);
+    placeDebris(s, A, seconds(10), 1);
+    const m = buildHudModel(s, slots(2), 'running', '');
+    const sciPanel = m.players[0]!.console as SciencePanel, navPanel = m.players[1]!.console as NavigationPanel;
+    expect(sciPanel.kind).toBe('science'); expect(sciPanel.leadSeconds).toBeCloseTo(18); expect(sciPanel.warnedCount).toBe(1);
+    expect(navPanel.kind).toBe('navigation'); expect(navPanel.evadeChance).toBeCloseTo(0.35);
   });
 });
