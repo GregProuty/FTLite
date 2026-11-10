@@ -38,7 +38,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       set(o) {
         mark.visible = o.cursor; name.text = o.name; name.tint = o.tint;
         cells.forEach((sp, c) => { sp.visible = c < o.max; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; });
-        status.text = o.status;
+        status.text = o.status; status.tint = o.status === 'OFF' || o.status === 'FAIL' ? WARN : DIM;   // occupant tags are informational, not warnings
       }
     };
   };
