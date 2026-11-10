@@ -869,6 +869,7 @@ export function chargeBeam(state: SimState): void {
 /** Fire at the cursor's object if the beam is charged and the target is warned and live. One rng.combat draw; charge resets either way. */
 export function fireBeam(state: SimState): boolean {
   const wpn = state.derived.stationOfKind[StationKind.Weapons]!, db = state.debris;
+  if (wpn < 0 || !stationOnline(state, wpn) || state.stations.occupant[wpn]! < 0) return false;   // defensive: a seated operator is always online today, but never fire from a dead console
   const c = state.stations.cursor[wpn]!;
   if (state.weapons.charge < 1 || c < 0 || !db.active[c] || !db.warned[c]) return false;
   const hit = beamHits(nextFloat(state.rng.combat), stationOutput(state, wpn));
