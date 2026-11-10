@@ -80,7 +80,7 @@ describe('session', () => {
     const session = createSession({
       layout: LAYOUT, sampleDevices: () => samples,
       renderer: { reset() {}, recordPrev() {}, draw() { if (faulted) throw new Error('draw must not run in error phase'); } },
-      hud: { update(m) { hudModels++; if (m.phase === 'error') expect(m.players.every((p) => p.prompt === '')).toBe(true); } },
+      hud: { update(m) { hudModels++; if (m.phase === 'error') expect(m.players.every((p) => p.interactPrompt === '' && p.confirmPrompt === '')).toBe(true); } },
       now: () => (t += 20),   // time must advance by at least one tick (16.7ms, with margin for float error) or the fault never fires
       saveCrash: () => {}
     });

@@ -13,14 +13,14 @@ export function createHud(parent: Container, _assets: GameAssets) {
   return {
     update(m: HudModel): void {
       top.text = `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s`;
-      threats.text = m.threats.join('\n');
+      threats.text = m.threats.map((t) => t.text).join('\n');
       banner.text = m.message;
       m.players.forEach((p, i) => {
         const t = players[i]!;
         if (p.status === 'empty') { t.text = `P${i + 1}: press Interact to join`; return; }
         if (p.status === 'reconnect') { t.text = `P${i + 1}: RECONNECT`; return; }
         const bar = p.progress > 0 ? ` [${'#'.repeat(Math.round(p.progress * 10)).padEnd(10, '.')}]` : '';
-        t.text = `P${i + 1} HP ${Math.ceil(p.health)}\n${p.prompt}${bar}`;
+        t.text = `P${i + 1} HP ${Math.ceil(p.health)}\n${[p.lifeText, p.interactPrompt, p.confirmPrompt].filter(Boolean).join(' | ')}${bar}`;
       });
     }
   };
