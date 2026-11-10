@@ -4,7 +4,8 @@ import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { flatten } from '../src/renderer/src/sim/flatten';
 import { step } from '../src/renderer/src/sim/step';
-import { Position } from '../src/renderer/src/sim/components';
+import { Position, Seated } from '../src/renderer/src/sim/components';
+import { sitDown } from '../src/renderer/src/sim/stations';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { LAYOUT, makeState, intents, run } from './helpers/sim';
@@ -72,5 +73,14 @@ describe('snapshot', () => {
     const s = makeState(4);
     step(s, [NEUTRAL_INTENT]);
     expect(s.tick).toBe(1);
+  });
+  it('round-trips seating, power and stick state', () => {
+    const s = makeState(2, 5);
+    const eng = s.derived.stationOfKind[3]!;
+    sitDown(s, 0, eng); s.stations.cursor[eng] = 5; s.stations.failed[1] = 1; s.stations.repair[1] = 0.25; s.stations.level[2] = 0; s.stick.heldDir[0] = 2; s.stick.repeat[0] = 3;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(hashState(t)).toBe(hashState(s));
+    expect(Seated.station[t.crew[0]!]).toBe(eng); expect(t.stations.occupant[eng]).toBe(0); expect(t.stations.cursor[eng]).toBe(5);
+    expect(t.stations.failed[1]).toBe(1); expect(t.stations.repair[1]).toBe(0.25); expect(t.stick.heldDir[0]).toBe(2); expect(t.stick.repeat[0]).toBe(3);
   });
 });

@@ -3,8 +3,8 @@ import type { World } from 'bitecs';
 import { createRng, nextU32, type RngState } from '../../../shared/rng';
 import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
-import { Position, Health, Life, LifeState, Stable, Owner } from './components';
-import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ } from './tuning';
+import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY } from './tuning';
 
 export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState }
 export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic'] as const;
@@ -28,6 +28,11 @@ export interface SimState {
   spawner: { nextSpawnTick: number };
   /** Derived scratch (not snapshotted): per-room oxygen injection requested for the next hazard step. */
   injectionScratch: Float64Array;
+  stations: { level: Uint8Array; failed: Uint8Array; repair: Float64Array; occupant: Int8Array; cursor: Int16Array };
+  power: { capacity: number };
+  stick: { heldDir: Int8Array; repeat: Int16Array };   // per player: 0 none, 1 up, 2 down, 3 left, 4 right; ticks until the next repeat edge
+  /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */
+  scratch: { doorToggles: Set<number>; satThisTick: Uint8Array };
 }
 
 export function deriveStreams(seed: number): RngStreams {
@@ -47,6 +52,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
   const derived = deriveLayout(layout);
   const world = createWorld(SHARED_ENTITY_INDEX);
   const R = derived.volume.length, E = layout.edges.length, S = layout.breachSites.length;
+  const N = layout.stations.length;
   const state: SimState = {
     tick: 0, rng: deriveStreams(seed), nextStableId: 1, layout, derived, playerCount, world, crew: [],
     hull: HULL_MAX, ended: 0, endReason: 0,
@@ -55,7 +61,11 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     breaches: { active: new Uint8Array(S), repair: new Float64Array(S) },
     o2Counters: { injected: 0, breathed: 0, burned: 0, vented: 0, residual: 0 },
     spawner: { nextSpawnTick: SPAWN_FIRST * TICK_HZ },
-    injectionScratch: new Float64Array(R)
+    injectionScratch: new Float64Array(R),
+    stations: { level: Uint8Array.from(layout.stations.map((st) => st.allocation)), failed: new Uint8Array(N), repair: new Float64Array(N), occupant: new Int8Array(N).fill(-1), cursor: new Int16Array(N) },
+    power: { capacity: REACTOR_CAPACITY },
+    stick: { heldDir: new Int8Array(playerCount), repeat: new Int16Array(playerCount) },
+    scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount) }
   };
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));
   return state;
@@ -69,5 +79,6 @@ function spawnCrew(state: SimState, pid: number): number {
   addComponent(state.world, eid, Life); Life.state[eid] = LifeState.Conscious; Life.bleed[eid] = 0; Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1;
   addComponent(state.world, eid, Stable); Stable.id[eid] = state.nextStableId++;
   addComponent(state.world, eid, Owner); Owner.pid[eid] = pid;
+  addComponent(state.world, eid, Seated); Seated.station[eid] = -1;
   return eid;
 }

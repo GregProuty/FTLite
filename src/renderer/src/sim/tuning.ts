@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 1;
+export const SIM_VERSION = 2;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
@@ -46,3 +46,8 @@ export const SPAWN_FIRE_WEIGHT = 0.6;   // probability a spawn is a fire rather 
 // Power (increment 2a-i)
 export const REACTOR_CAPACITY = 10;                 // bars, including Engineering's reserved one
 export const STATION_MAX = [2, 3, 2, 1, 3, 2, 1] as const;   // by StationKind: Nav, Wpn, Sci, Eng, LS, Med, Doors (sum 14 > capacity: choices are forced)
+
+export const OUTPUT_SLOW = 0.5, OUTPUT_FAST = 1.0;   // station output multiplier at skill 0..10 via lerp((skill + 10) / 20)
+export const REPAIR_TIME_POWER = 6;                 // seconds for one repairer
+export const STICK_EDGE_THRESHOLD = 0.5;
+export const STICK_REPEAT_TICKS = 8;                // ~130 ms

@@ -10,3 +10,4 @@ export const Life = {
 };
 export const Stable = { id: [] as number[] };
 export const Owner = { pid: [] as number[] };
+export const Seated = { station: [] as number[] };   // station index while seated, else -1
