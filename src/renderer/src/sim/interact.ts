@@ -128,6 +128,7 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
       state.breaches.repair[t.index]! += DT / REPAIR_TIME_BREACH;
       if (state.breaches.repair[t.index]! >= 1) repairBreach(state, t.index);
     } else if (t.kind === TargetKind.Power) {
+      if (!state.stations.failed[t.index]) continue;                                // an earlier holder this tick already completed it
       state.stations.repair[t.index]! += DT / REPAIR_TIME_POWER;
       if (state.stations.repair[t.index]! >= 1) repairStation(state, t.index);
     }
