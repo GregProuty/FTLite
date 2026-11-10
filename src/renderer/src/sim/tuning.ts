@@ -51,7 +51,7 @@ export const STICK_EDGE_THRESHOLD = 0.5;
 export const STICK_REPEAT_TICKS = 8;                // ~130 ms
 
 // Life Support and Medbay (increment 2a-i)
-export const INJECT_FRAC = 0.06;          // per second of room volume at full output (starter allocation, unmanned: 2/3 × 0.75 × 0.06 = 0.03, the old stub rate)
+export const INJECT_FRAC = 0.06;          // per second of room volume at full output (starter allocation, unmanned: 2/3 x 0.75 x 0.06 = 0.03, the old stub rate)
 export const LS_SEATED_BONUS = 0.5;
 export const MEDBAY_HEAL = 4;             // health per second at full output
 export const MEDBAY_SEATED_BONUS = 0.5;
