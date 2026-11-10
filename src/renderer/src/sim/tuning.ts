@@ -26,7 +26,7 @@ export const FIRE_SHRINK_RATE = 1.0;   // intensity per second
 export const FIRE_CAP = 16;
 export const FIRE_START = 1;
 export const FIRE_SPREAD_P = 0.0027;   // per hazard tick per burning edge at passage 1 (~15% per 5 s)
-export const FIRE_DAMAGE = 3;           // health per second while in a burning room (no healing exists in increment 1)
+export const FIRE_DAMAGE = 3;           // health per second while in a burning room (the Medbay heals, increment 2a-i)
 export const O2_DAMAGE = 6;             // health per second below SUFFOCATE_FRAC
 export const SUFFOCATE_FRAC = 0.1;
 export const BLEEDOUT_TIME = 30;        // seconds Downed before Dead
@@ -36,12 +36,10 @@ export const REACH = 1.5;               // tiles from crew centre to the nearest
 export const REPAIR_TIME_FIRE = 6;      // seconds for one repairer
 export const REPAIR_TIME_BREACH = 8;
 export const REVIVE_TIME = 4;
-export const STUB_INJECT_FRAC = 0.03;   // increment 1 only: always-on injector, fraction of room volume per second
 export const SPAWN_FIRST = 15;          // seconds until the first stub hazard
 export const SPAWN_INTERVAL = 30;       // seconds between stub hazards
 export const SPAWN_JITTER = 0.2;        // Â±fraction of the interval
-export const SPAWN_CAP = 3;             // max simultaneous fires + breaches
-export const SPAWN_FIRE_WEIGHT = 0.6;   // probability a spawn is a fire rather than a breach
+export const SPAWN_CAP = 3;             // max simultaneous fires + breaches + failed stations
 
 // Power (increment 2a-i)
 export const REACTOR_CAPACITY = 10;                 // bars, including Engineering's reserved one
@@ -51,3 +49,10 @@ export const OUTPUT_SLOW = 0.5, OUTPUT_FAST = 1.0;   // station output multiplie
 export const REPAIR_TIME_POWER = 6;                 // seconds for one repairer
 export const STICK_EDGE_THRESHOLD = 0.5;
 export const STICK_REPEAT_TICKS = 8;                // ~130 ms
+
+// Life Support and Medbay (increment 2a-i)
+export const INJECT_FRAC = 0.06;          // per second of room volume at full output (starter allocation, unmanned: 2/3 × 0.75 × 0.06 = 0.03, the old stub rate)
+export const LS_SEATED_BONUS = 0.5;
+export const MEDBAY_HEAL = 4;             // health per second at full output
+export const MEDBAY_SEATED_BONUS = 0.5;
+export const SPAWN_WEIGHTS = { fire: 2, breach: 1, power: 1 } as const;

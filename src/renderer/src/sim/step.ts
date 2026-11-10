@@ -9,7 +9,9 @@ import { doorSystem } from './doors';
 import { oxygenStep } from './hazards/oxygen';
 import { fireStep } from './hazards/fire';
 import { crewSystem } from './crew';
-import { stubInjection, stubSpawner } from './hazards/stub';
+import { lifeSupportInjection } from './hazards/lifeSupport';
+import { spawner } from './hazards/spawner';
+import { medbayStep } from './medbay';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
@@ -20,21 +22,23 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const hazardTick = state.tick % HAZARD_EVERY === 0;
   state.scratch.doorToggles.clear(); state.scratch.satThisTick.fill(0);
-  // (1) input, arbitration, movement, doors
+  // (1) input, arbitration
   interactSystem(state, intents);
-  consoleSystem(state, intents);                      // (2) control mode
+  // (2) control mode: seated input and the tick's door toggles
+  consoleSystem(state, intents);
+  // (3) movement, doors
   movementSystem(state, intents);
   doorSystem(state);
-  // (2) power                                       -> increment 2a
-  // (3) stations                                    -> increment 2a
-  // (4) hazards on the hazard tick                  -> Tasks 8, 9, 10
+  // (4) hazards on the hazard tick
   if (hazardTick) {
-    stubInjection(state);
+    lifeSupportInjection(state);
     oxygenStep(state, state.injectionScratch);
     fireStep(state);
   }
-  // (5) debris                                      -> increment 2a
-  stubSpawner(state);
+  // (5) debris                                      -> increment 2a-ii
+  spawner(state);
+  // (6) stations with per-tick effects
+  medbayStep(state);
   // (7) crew lifecycle, run end
   crewSystem(state);
   state.tick++;

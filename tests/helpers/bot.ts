@@ -52,6 +52,7 @@ function goalTiles(state: SimState, pid: number): Set<number> {
     const t = d.siteTile[s]!, tx = t % d.width, ty = (t - tx) / d.width;
     for (const [nx, ny] of [[tx + 1, ty], [tx - 1, ty], [tx, ty + 1], [tx, ty - 1]] as const) if (passable(state, nx, ny)) goals.add(ny * d.width + nx);
   }
+  for (let i = 0; i < d.stationTile.length; i++) if (state.stations.failed[i]) goals.add(d.stationTile[i]!);   // stand on the console tile: in reach
   return goals;
 }
 
