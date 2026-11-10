@@ -20,7 +20,7 @@ ${err instanceof Error ? err.message : String(err)}`;
 }
 
 async function start(): Promise<void> {
-  const layout = parseShip(starter);          // throws with a clear message on invalid ship data (spec Â§9)
+  const layout = parseShip(starter);          // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   const hud = createHud(renderer.hud, assets);

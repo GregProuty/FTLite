@@ -21,11 +21,12 @@ function bottomAnchored(tex: Texture, tx: number, ty: number): Sprite {
   const s = new Sprite(tex); s.scale.set(SCALE); s.anchor.set(0, 1); s.position.set(tx * TILE_PX, (ty + 1) * TILE_PX); return s;
 }
 
-/** Floors, walls and doors as plain sprites. Built once per layout (never rebuilt in Increment 1); doors are reconciled every frame. */
+/** The lower 16 px of a 16×32 door frame, for doors with a floor tile above them. */
 function lowerHalf(t: Texture): Texture {
   return new Texture({ source: t.source, frame: new Rectangle(t.frame.x, t.frame.y + t.frame.height / 2, t.frame.width, t.frame.height / 2) });
 }
 
+/** Floors, walls and doors as plain sprites. Built once per layout (never rebuilt in Increment 1); doors are reconciled every frame. */
 export function createTileLayer(assets: GameAssets, memory: RenderMemory): TileLayer {
   const container = new Container();
   const floors = new Container(), walls = new Container(), doors = new Container();
