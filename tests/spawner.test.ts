@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { activeHazardCount, spawner } from '../src/renderer/src/sim/hazards/spawner';
+import { activeHazardCount, spawner, pickSpawnType } from '../src/renderer/src/sim/hazards/spawner';
 import { burningRoomCount, igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activeBreachCount } from '../src/renderer/src/sim/hazards/breach';
 import { failedStationCount, sitDown } from '../src/renderer/src/sim/stations';
 import { Seated } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_CAP, SPAWN_JITTER } from '../src/renderer/src/sim/tuning';
+import { createRng, nextFloat } from '../src/shared/rng';
+import { createSimState } from '../src/renderer/src/sim/state';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import starter from '../src/renderer/src/sim/ship/starter.json';
 import { makeState, run, seconds } from './helpers/sim';
 
 describe('timer spawner', () => {
@@ -60,5 +64,34 @@ describe('timer spawner', () => {
     for (let n = 0; n < 60 && failedStationCount(s) < SPAWN_CAP; n++) { s.spawner.nextSpawnTick = s.tick; s.rooms.fire.fill(0); s.breaches.active.fill(0); spawner(s); }
     expect(failedStationCount(s)).toBe(SPAWN_CAP);
     expect(s.stations.repair[0]).toBe(0.5);                                      // the already failed station was not failed again (that would reset repair)
+  });
+  it('the 2:1:1 roll maps each weight interval to its type', () => {
+    for (const r of [0, 0.5, 1.999]) expect(pickSpawnType(r)).toBe('fire');
+    for (const r of [2, 2.5, 2.999]) expect(pickSpawnType(r)).toBe('breach');
+    for (const r of [3, 3.5, 3.999]) expect(pickSpawnType(r)).toBe('power');
+  });
+  it('explicit director states select fire, breach and power through the spawner', () => {
+    // Director states chosen so that the second draw (the roll) lands in each interval: 1.30, 2.50 and 3.09 of 4.
+    const spawn = (directorState: number) => {
+      const s = makeState(0); s.rng.director.s = directorState;
+      s.spawner.nextSpawnTick = s.tick; spawner(s); return s;
+    };
+    const f = spawn(2), b = spawn(8), p = spawn(5);
+    expect([burningRoomCount(f), activeBreachCount(f), failedStationCount(f)]).toEqual([1, 0, 0]);
+    expect([burningRoomCount(b), activeBreachCount(b), failedStationCount(b)]).toEqual([0, 1, 0]);
+    expect([burningRoomCount(p), activeBreachCount(p), failedStationCount(p)]).toEqual([0, 0, 1]);
+  });
+  it('a selected type with no valid target skips spawning but still advances the director stream and the timer', () => {
+    const noSites = JSON.parse(JSON.stringify(starter)) as typeof starter;
+    noSites.breachSites = [];
+    const s = createSimState(parseShip(noSites), 0, 1);
+    s.rng.director.s = 8;                                                      // rolls a breach (2.50 of 4)
+    const expected = createRng(8); nextFloat(expected); nextFloat(expected);    // jitter draw, then roll draw
+    const hazardsBefore = s.rng.hazards.s;
+    s.spawner.nextSpawnTick = s.tick; spawner(s);
+    expect(activeHazardCount(s)).toBe(0);
+    expect(s.rng.director.s).toBe(expected.s); expect(s.rng.director.s).not.toBe(8);
+    expect(s.rng.hazards.s).toBe(hazardsBefore);                               // no target to pick, so no target draw
+    expect(s.spawner.nextSpawnTick).toBeGreaterThan(s.tick);
   });
 });

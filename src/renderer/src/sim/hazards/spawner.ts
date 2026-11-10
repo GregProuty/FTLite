@@ -10,6 +10,12 @@ export function activeHazardCount(state: SimState): number {
   return burningRoomCount(state) + activeBreachCount(state) + failedStationCount(state);
 }
 
+/** Maps a roll in [0, total weight) onto a hazard type by the SPAWN_WEIGHTS intervals (fire first, then breach, then power). */
+export function pickSpawnType(roll: number): 'fire' | 'breach' | 'power' {
+  if (roll < SPAWN_WEIGHTS.fire) return 'fire';
+  return roll < SPAWN_WEIGHTS.fire + SPAWN_WEIGHTS.breach ? 'breach' : 'power';
+}
+
 /** Stand-in for the director until increment 4: a jittered timer spawning a fire, a breach or a power failure up to SPAWN_CAP (spec §7). */
 export function spawner(state: SimState): void {
   if (state.tick < state.spawner.nextSpawnTick) return;
@@ -18,11 +24,12 @@ export function spawner(state: SimState): void {
   if (activeHazardCount(state) >= SPAWN_CAP) return;
   const total = SPAWN_WEIGHTS.fire + SPAWN_WEIGHTS.breach + SPAWN_WEIGHTS.power;
   const roll = nextFloat(state.rng.director) * total;
-  if (roll < SPAWN_WEIGHTS.fire) {
+  const type = pickSpawnType(roll);
+  if (type === 'fire') {
     const candidates: number[] = [];
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r] === 0) candidates.push(r);
     if (candidates.length) igniteRoom(state, candidates[nextInt(state.rng.hazards, candidates.length)]!);
-  } else if (roll < SPAWN_WEIGHTS.fire + SPAWN_WEIGHTS.breach) {
+  } else if (type === 'breach') {
     const sites = freeSites(state);
     if (sites.length) activateBreach(state, sites[nextInt(state.rng.hazards, sites.length)]!);
   } else {
