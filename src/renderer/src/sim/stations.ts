@@ -3,6 +3,7 @@ import { Position, Seated } from './components';
 import { StationKind } from './stationKinds';
 import { STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST } from './tuning';
 import { skillLevel } from './skills';
+import { warnedTargets } from './debrisTargets';
 
 export function stationOnline(state: SimState, i: number): boolean {
   return state.stations.failed[i] === 0 && state.stations.level[i]! > 0;
@@ -29,7 +30,10 @@ export function sitDown(state: SimState, pid: number, i: number): void {
   Position.x[eid] = tx + 0.5; Position.y[eid] = (t - tx) / d.width + 0.5;
   state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0;
   const kind = d.stationKind[i]!;
-  state.stations.cursor[i] = kind === StationKind.Engineering ? StationKind.Engineering : kind === StationKind.Doors ? (d.doorEdges.length ? 0 : -1) : 0;
+  state.stations.cursor[i] = kind === StationKind.Engineering ? StationKind.Engineering
+    : kind === StationKind.Doors ? (d.doorEdges.length ? 0 : -1)
+    : kind === StationKind.Weapons ? (warnedTargets(state)[0] ?? -1)
+    : 0;
 }
 
 /** Stand a player up (voluntary or forced). No-op when not seated. */

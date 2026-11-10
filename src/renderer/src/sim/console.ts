@@ -8,7 +8,10 @@ import { shiftBar } from './power';
 import { toggleSeal } from './doors';
 import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 
-export const Dir = { None: 0, Up: 1, Down: 2, Left: 3, Right: 4 } as const;
+import { Dir } from './dir';
+import { chargeBeam, weaponsInput } from './weapons';
+
+export { Dir };
 
 /** Directional edge derived from the stick (spec section 4): one edge on crossing or change, then one every STICK_REPEAT_TICKS while held. Ties go horizontal. */
 export function stickEdge(state: SimState, pid: number, moveX: number, moveY: number): number {
@@ -43,6 +46,7 @@ function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): 
 
 /** Step 2: seated players' input, then the tick's door toggles (local and remote) once per door, ascending (spec sections 4, 6). */
 export function consoleSystem(state: SimState, intents: readonly Intent[]): void {
+  chargeBeam(state);
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!, i = Seated.station[eid]!;
     if (i < 0 || state.scratch.satThisTick[pid]) continue;              // players who sat this tick act from the next tick
@@ -52,7 +56,8 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     const kind = state.derived.stationKind[i]!;
     if (kind === StationKind.Engineering) engineeringInput(state, i, dir);
     else if (kind === StationKind.Doors) doorsInput(state, i, dir, it.confirmPressed);
-    // Navigation, Weapons, Science, Life Support, Medbay: no seated controls in this increment.
+    else if (kind === StationKind.Weapons) weaponsInput(state, i, dir, it.confirmPressed);
+    // Navigation, Science, Life Support, Medbay: no seated controls.
   }
   for (const e of [...state.scratch.doorToggles].sort((a, b) => a - b)) toggleSeal(state, e);
 }

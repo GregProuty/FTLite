@@ -10,7 +10,8 @@ import { REPAIR_TIME_POWER, STICK_REPEAT_TICKS } from '../src/renderer/src/sim/t
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
-import { makeState, intents, run, teleport, seconds } from './helpers/sim';
+import { createRng, nextFloat } from '../src/shared/rng';
+import { makeState, intents, run, teleport, seconds, placeDebris } from './helpers/sim';
 
 const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.stationOfKind[kind]!;
 const at = (s: ReturnType<typeof makeState>, pid: number, i: number) => { const t = s.derived.stationTile[i]!, w = s.derived.width; teleport(s, pid, (t % w) + 0.5, Math.floor(t / w) + 0.5); };
@@ -140,29 +141,50 @@ describe('Doors console', () => {
   });
 });
 
-describe('inert and passive consoles', () => {
-  for (const kind of [StationKind.Navigation, StationKind.Weapons, StationKind.Science]) {
-    it(`sitting, pushing the stick and Confirm at kind ${kind} change nothing but seating`, () => {
-      const s = makeState(2), ctrl = makeState(2), i = idx(s, kind);
-      at(s, 0, i); at(ctrl, 0, i);
-      run(s, 1, () => intents(confirm));
-      expect(Seated.station[s.crew[0]!]).toBe(i);
-      run(s, 30, () => intents({ moveY: 1 }));
-      run(s, 1, () => intents(confirm));
-      run(s, 1, () => intents({ cancelPressed: true }));
-      run(ctrl, 33);
-      expect(Array.from(s.stations.level)).toEqual(Array.from(ctrl.stations.level));
-      expect(Array.from(s.stations.failed)).toEqual(Array.from(ctrl.stations.failed));
-      expect(Array.from(s.doors.state)).toEqual(Array.from(ctrl.doors.state));
-      expect(Array.from(s.rooms.o2)).toEqual(Array.from(ctrl.rooms.o2));
-      expect(s.o2Counters).toEqual(ctrl.o2Counters);
-      expect(Position.x[s.crew[1]!]).toBe(Position.x[ctrl.crew[1]!]); expect(Position.y[s.crew[1]!]).toBe(Position.y[ctrl.crew[1]!]);
-      expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[i]).toBe(-1);
-      expect(s.stick.heldDir[0]).toBe(0); expect(s.stick.repeat[0]).toBe(0);
-      const t = s.derived.stationTile[i]!, w = s.derived.width;
-      expect(Position.x[s.crew[0]!]).toBe((t % w) + 0.5); expect(Position.y[s.crew[0]!]).toBe(Math.floor(t / w) + 0.5);
-    });
-  }
+describe('scripted-intent gate: Science, Weapons, Navigation', () => {
+  it('Science: a 16 s object is unwarned unmanned, warned at the end of the seating tick, and stays warned after Cancel', () => {
+    const s = makeState(1), i = idx(s, StationKind.Science), A = s.derived.roomIndex.get('A')!;
+    s.spawner.nextSpawnTick = 1e9;
+    at(s, 0, i);
+    placeDebris(s, A, seconds(16));
+    run(s, 1);
+    expect(s.debris.warned[0]).toBe(0);                                            // unmanned lead is 4 s
+    run(s, 1, () => intents(confirm));
+    expect(Seated.station[s.crew[0]!]).toBe(i); expect(s.debris.warned[0]).toBe(1);   // sitting precedes detection in the tick
+    run(s, 1, () => intents({ cancelPressed: true }));
+    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.debris.warned[0]).toBe(1);
+  });
+  it('Weapons: sit, charge to full, Confirm fires one shot (destroyed or missed, charge 0, one combat draw), Cancel stands', () => {
+    const s = makeState(1), i = idx(s, StationKind.Weapons), A = s.derived.roomIndex.get('A')!;
+    s.spawner.nextSpawnTick = 1e9;
+    at(s, 0, i); placeDebris(s, A, 1e6, 1);
+    run(s, 1, () => intents(confirm));
+    expect(Seated.station[s.crew[0]!]).toBe(i); expect(s.stations.cursor[i]).toBe(0);
+    let n = 0; while (s.weapons.charge < 1 && n++ < seconds(12) + 2) run(s, 1);
+    expect(s.weapons.charge).toBe(1);
+    const c0 = s.rng.combat.s;
+    run(s, 1, () => intents(confirm));
+    expect(s.weapons.charge).toBe(0); expect(s.rng.combat.s).not.toBe(c0);
+    const destroyed = s.debris.active[0] === 0;
+    expect(destroyed ? s.stations.cursor[i] : s.debris.warned[0]).toBe(destroyed ? -1 : 1);
+    run(s, 1, () => intents({ cancelPressed: true }));
+    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[i]).toBe(-1);
+  });
+  it('Navigation: seated, an impact draws exactly one combat roll; a low roll evades with hull unchanged', () => {
+    const s = makeState(1), i = idx(s, StationKind.Navigation), A = s.derived.roomIndex.get('A')!;
+    s.spawner.nextSpawnTick = 1e9;
+    at(s, 0, i);
+    run(s, 1, () => intents(confirm));
+    expect(Seated.station[s.crew[0]!]).toBe(i);
+    s.rng.combat.s = 7;                                                            // first draw 0.012 < 0.35
+    const expected = createRng(7); nextFloat(expected);
+    placeDebris(s, A, 1);
+    run(s, 2);
+    expect(s.rng.combat.s).toBe(expected.s);
+    expect(s.debris.active[0]).toBe(0); expect(s.hull).toBe(100); expect(s.rooms.impactTick[A]).toBe(-1);
+    run(s, 1, () => intents({ cancelPressed: true }));
+    expect(Seated.station[s.crew[0]!]).toBe(-1);
+  });
   for (const kind of [StationKind.LifeSupport, StationKind.Medbay]) {
     it(`Confirm sits at kind ${kind} and Cancel stands; the stick does nothing while seated`, () => {
       const s = makeState(1), i = idx(s, kind), t = s.derived.stationTile[i]!, w = s.derived.width;
