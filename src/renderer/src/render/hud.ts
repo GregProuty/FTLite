@@ -69,7 +69,8 @@ export function createHud(parent: Container, assets: GameAssets) {
     consoleRoot.addChild(panel(0, 0, 234, 8 * LINE + 12));
     const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
     const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
-    return { name, hp, oxygen, line2, line3, progress, consoleRoot, consoleRows, consoleFooter };
+    const consoleBar = bar(100); consoleBar.root.position.set(120, 6 + 7 * LINE + 4); consoleBar.root.visible = false; consoleRoot.addChild(consoleBar.root);
+    return { name, hp, oxygen, line2, line3, progress, consoleRoot, consoleRows, consoleFooter, consoleBar };
   });
 
   const overlay = new Container(); overlay.visible = false;
@@ -109,11 +110,25 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.line3, [{ glyph: p.confirmPrompt ? glyphName('confirm', p.deviceKind) : null, icon: p.confirmIcon, text: p.confirmPrompt }]);
     }
     ui.consoleRoot.visible = p.console !== null;
+    ui.consoleBar.root.visible = false;
     if (p.console && 'rows' in p.console) {
       const c = p.console;
       c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }));
       ui.consoleRows.forEach((r) => { r.root.visible = true; });
       fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}`, tint: DIM }]);
+    } else if (p.console && 'kind' in p.console && p.console.kind === 'weapons') {
+      const c = p.console;
+      ui.consoleRows.forEach((r, k) => {
+        const t = c.targets[k];
+        r.root.visible = !!t;
+        if (t) r.set({ name: `${t.room} ${t.eta}s`, level: 0, max: 0, status: '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM });
+      });
+      fillRow(ui.consoleFooter, [{ text: c.charge >= 1 ? 'Beam READY' : `Beam ${Math.floor(c.charge * 100)}%`, tint: c.charge >= 1 ? TEXT : DIM }]);
+      ui.consoleBar.root.visible = true; ui.consoleBar.set(c.charge);
+    } else if (p.console && 'kind' in p.console) {
+      ui.consoleRows.forEach((r) => { r.root.visible = false; });
+      const text = p.console.kind === 'science' ? `Lead ${Math.round(p.console.leadSeconds)}s   Warned ${p.console.warnedCount}` : `Evade ${Math.round(p.console.evadeChance * 100)}%`;
+      fillRow(ui.consoleFooter, [{ text, tint: TEXT }]);
     } else if (p.console) {
       ui.consoleRows.forEach((r) => { r.root.visible = false; });
       fillRow(ui.consoleFooter, [{ text: 'rooms' in p.console ? `Door ${p.console.rooms[0]} - ${p.console.rooms[1]}` : 'No doors', tint: TEXT }]);

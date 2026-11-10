@@ -9,7 +9,7 @@ export const FEATURE_NAMES: Readonly<Record<Feature, string[]>> = {
   vent: ['vent.puff'],
   damagedFloor: ['floor.damaged.0', 'floor.damaged.1'],
   fire: ['fire.loop'],
-  icons: ['icon.fire', 'icon.oxygen', 'icon.breach', 'icon.door', 'icon.repair', 'icon.power'],
+  icons: ['icon.fire', 'icon.oxygen', 'icon.breach', 'icon.door', 'icon.repair', 'icon.power', 'icon.sensors', 'icon.weapons', 'icon.navigation'],
   arc: ['fx.arc'],
   sit: ['crew.sit'],
   glyphs: ['prompt.kb.E', 'prompt.kb.F', 'prompt.kb.Q', 'prompt.kb.Enter', 'prompt.kb.ShiftRight', 'prompt.kb.Backspace', 'prompt.pad.A', 'prompt.pad.X', 'prompt.pad.B']

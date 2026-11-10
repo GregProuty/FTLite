@@ -38,3 +38,9 @@
   - Console tiles on the starter ship: Navigation A(2,2), Doors A(3,1), Weapons B(7,2), Science D(12,2), Medbay F(17,2), Life Support E(10,9), Engineering C(18,9). The first spawn comes at 15 s and then every ~30 s, one in four being a power failure, so expect to wait a minute or two for one.
 - [ ] Manual, solo: five minutes survived against the spawner with Life Support manned at level 2. Date and notes: pending.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Increment 2a-ii: debris loop (closes the foundation's Increment 2a)
+- [x] `npm test` passes: debris (slots, target order, detection leads, warned-on-spawn boundary, impact effects and fallbacks, crew damage and immediate down, evasion), weapons (charge, targeting, firing, thresholds), spawner (fourth interval, debris in the cap), scripted-intent gate tests for Science, Weapons and Navigation, snapshot round trip of debris/weapons/impact ticks, HUD model (debris threats, three panels).
+- [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with Science, Weapons and Navigation unmanned (2026-11-10; no tuning changed; min hull figures not recorded by the run).
+- [ ] Manual, two players (`npm run dev`): a `Debris` threat appears only after Science is seated (D(12,2)) or in the last 4 s unmanned; from Weapons (B(7,2)) the panel lists targets, the beam bar fills in about 12 s, Confirm removes a target or resets the bar on a miss; an unstopped impact flashes the hit room, lowers `HULL` by 8 and leaves a breach or fire; the Navigation panel (A(2,2)) shows `Evade 35%` while seated. Date and notes: pending human playtest.
+- [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.

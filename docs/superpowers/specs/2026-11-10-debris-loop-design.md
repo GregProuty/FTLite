@@ -140,3 +140,9 @@ Added to `docs/gates.md` as "Increment 2a-ii" (closing the foundation's Incremen
 - Frequency, scanning, the beam selector and torpedoes: 2b (the Weapons cursor stays the target dimension; the selector becomes Left/Right).
 - Whether impacts should also knock crew prone or interrupt repairs: foundation does not say; playtest first.
 - Whether sitting at Science should reveal already-flying objects **beyond** the lead (an "active sweep"): no. Detection is evaluated every tick against the current lead, so a late Science seat immediately warns any object already inside the seated lead, but nothing further out. Revisit if playtests show Science feels useless mid-run.
+
+## 12. Amendments from the plan
+- `warnedTargets` and `nextTarget` live in `sim/debrisTargets.ts` (pure over `state.debris`) so `stations.ts` can import them without a cycle; `evades` lives in `sim/debris.ts` next to the evasion roll, `beamHits` in `sim/weapons.ts` (section 2 put both in `weapons.ts`).
+- The Weapons panel's charge is a continuous `ui.bar` (the existing `bar()` helper) with a `READY` label, not ten cells (section 8).
+- The impact flash reads `state.rooms.impactTick` and `state.tick` directly in `effects.ts`, like the other ship-view effects; `HudModel.tick` and `impactTick` are still exposed for tests and future use (section 8).
+- The golden replay is re-blessed in Task 1 (`SIM_VERSION`) and again in Task 2 (spawner weights and debris), each with the cause in the commit message and the ledger (section 9 said once).

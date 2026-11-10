@@ -4,7 +4,7 @@ Status: approved in brainstorming 2026-11-10. Parent: `2026-11-09-foundation-des
 
 ## 1. Goal
 
-Replace the always-on oxygen injector stub with a real power model and seated consoles, so the ship needs crew at stations to stay alive. After this increment: a reactor with a fixed bar budget, seven stations drawing bars, a seated **control mode** with a stick cursor, four consoles that do something (Engineering, Life Support, Medbay, Doors), three that are seatable power sinks until the debris half (Navigation, Weapons, Science), and a **power failure** hazard that the timer spawner adds to fires and breaches.
+Replace the always-on oxygen injector stub with a real power model and seated consoles, so the ship needs crew at stations to stay alive. After this increment: a reactor with a fixed bar budget, seven stations drawing bars, a seated **control mode** with a stick cursor, four consoles that do something (Engineering, Life Support, Medbay, Doors), three that gained their effect in 2a-ii (Navigation, Weapons, Science; see `2026-11-10-debris-loop-design.md`), and a **power failure** hazard that the timer spawner adds to fires and breaches.
 
 **Out of scope (later increments):** overdrive, heat and coolant (2b); torpedoes, beam, scanning, debris (2a-ii); skill levels, XP, Engineering bonus bars and power shedding (3, where bonus bars give shedding a cause); the director and productive predicates (4). Decisions taken here for those: output formulas take a `skillLevel()` that returns 0 for everyone; `Confirm` at Engineering does nothing; capacity never changes, so no shedding code exists yet.
 

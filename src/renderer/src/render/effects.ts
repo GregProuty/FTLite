@@ -13,6 +13,7 @@ import { syncCache } from './cache';
 export const LOW_O2_THRESHOLD = 0.98;
 export const LOW_O2_COLOR = 0xd13a3a;
 export const LOW_O2_MAX_ALPHA = 0.6;
+const IMPACT_FLASH_TICKS = 18, IMPACT_COLOR = 0xff6b5a, IMPACT_MAX_ALPHA = 0.7;
 const SCALE = TILE_PX / 16;
 
 export interface EffectsLayer { below: Container; above: Container; draw(state: SimState): void }
@@ -26,6 +27,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
   const damagedSprites = new Map<number, Sprite>();
   const fires = new Map<number, AnimatedSprite>();
   const outline = new Graphics(); above.addChild(outline);
+  const impactLayer = new Graphics(); above.addChild(impactLayer);
   const failLayer = new Container(); below.addChild(failLayer); const fails = new Map<number, AnimatedSprite>();
   const decals: Sprite[] = [], puffs: AnimatedSprite[] = [];
   const tileXY = (w: number, t: number): [number, number] => { const tx = t % w; return [tx, (t - tx) / w]; };
@@ -49,6 +51,14 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
         const frac = state.rooms.o2[r]! / d.volume[r]!;
         if (frac >= LOW_O2_THRESHOLD) continue;
         for (const t of d.roomTiles[r]!) { const [tx, ty] = tileXY(w, t); o2Layer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill({ color: LOW_O2_COLOR, alpha: LOW_O2_MAX_ALPHA * (1 - frac) }); }
+      }
+      // Debris impact flash: the hit room's floor, fading over IMPACT_FLASH_TICKS (several rooms can flash at once).
+      impactLayer.clear();
+      for (let r = 0; r < d.volume.length; r++) {
+        const age = state.tick - state.rooms.impactTick[r]!;
+        if (state.rooms.impactTick[r]! < 0 || age < 0 || age >= IMPACT_FLASH_TICKS) continue;
+        const alpha = IMPACT_MAX_ALPHA * (1 - age / IMPACT_FLASH_TICKS);
+        for (const t of d.roomTiles[r]!) { const [tx, ty] = tileXY(w, t); impactLayer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill({ color: IMPACT_COLOR, alpha }); }
       }
       // Fire: a stable, growing subset of each burning room's tiles.
       fallback.clear();
