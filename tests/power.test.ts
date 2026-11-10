@@ -35,6 +35,15 @@ describe('power model', () => {
     failStation(s, eng);
     expect(shiftBar(s, wpn, -1)).toBe(false);                        // allocations frozen while Engineering is failed
   });
+  it('refuses a bar at the station maximum even with spare power, and below the maximum when the pool is empty', () => {
+    const s = makeState(1), nav = idx(s, StationKind.Navigation), wpn = idx(s, StationKind.Weapons);
+    s.stations.level[nav] = STATION_MAX[StationKind.Navigation]!; s.stations.level[wpn] = 1;
+    expect(powerPool(s)).toBeGreaterThan(0);
+    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(STATION_MAX[StationKind.Navigation]);
+    s.stations.level[nav] = 0; s.stations.level[wpn] += powerPool(s);    // drain the pool while Navigation is below its maximum
+    expect(powerPool(s)).toBe(0);
+    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(0);
+  });
   it('failure returns bars except for Engineering, repair restores Engineering at its level and others at 0', () => {
     const s = makeState(1), ls = idx(s, StationKind.LifeSupport), eng = idx(s, StationKind.Engineering);
     const before = powerPool(s);

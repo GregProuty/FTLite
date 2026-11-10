@@ -36,6 +36,7 @@ describe('sitting and standing', () => {
     const pool = powerPool(s);
     run(s, 1, () => intents({ interactPressed: true, confirmPressed: true, moveX: 1 }));
     expect(Seated.station[s.crew[0]!]).toBe(-1); expect(powerPool(s)).toBe(pool);
+    expect(Position.x[s.crew[0]!]).toBe(18.5); expect(Position.y[s.crew[0]!]).toBe(9.5);   // the stand tick consumes the stick input
   });
   it('a console within reach but across a wall is not a target and Confirm does nothing', () => {
     // The starter ship keeps every console away from its walls, so move Life Support to the first E tile right of the G/E wall (x = 7).
@@ -185,6 +186,13 @@ describe('power repair', () => {
     expect(s.stations.failed[ls]).toBe(1);
     run(s, 10, () => intents({ interactHeld: true }));
     expect(s.stations.failed[ls]).toBe(0);
+  });
+  it('two repairers finishing the same station in one tick leave no residual progress', () => {
+    const s = makeState(2), eng = idx(s, StationKind.Engineering);
+    failStation(s, eng); at(s, 0, eng); at(s, 1, eng);
+    s.stations.repair[eng] = 0.999;
+    run(s, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
+    expect(s.stations.failed[eng]).toBe(0); expect(s.stations.repair[eng]).toBe(0);
   });
   it('same seed and intents with console use hash equal', () => {
     const script = (t: number) => (t === 0 ? intents(confirm) : t < 40 ? intents(down) : t === 40 ? intents(right) : t === 50 ? intents({ cancelPressed: true }) : intents({}));
