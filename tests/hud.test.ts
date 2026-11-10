@@ -3,6 +3,13 @@ import { buildHudModel, deviceKindOf, glyphName } from '../src/renderer/src/rend
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
+import starter from '../src/renderer/src/sim/ship/starter.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { createSimState } from '../src/renderer/src/sim/state';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import { failStation } from '../src/renderer/src/sim/power';
+import type { EngineeringPanel } from '../src/renderer/src/render/hudModel';
 import { makeState, room, run, teleport } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
@@ -65,5 +72,44 @@ describe('buildHudModel', () => {
   it('passes the credits sub-state through', () => {
     const m = buildHudModel(null, [], 'lobby', '', { lines: ['a', 'b'], scroll: 1 });
     expect(m.credits).toEqual(['a', 'b']); expect(m.creditsScroll).toBe(1);
+  });
+  it('reports power, stations, a failed station as a threat with the repair prompt and progress', () => {
+    const s = makeState(1);
+    const eng = s.derived.stationOfKind[StationKind.Engineering]!;
+    const m0 = buildHudModel(s, slots(1), 'running', '');
+    expect(m0.power).toEqual({ capacity: 10, used: 9 });
+    expect(m0.stations.map((st) => st.kind)).toEqual([0, 6, 1, 2, 5, 4, 3]);
+    expect(m0.stations.find((st) => st.kind === StationKind.LifeSupport)).toEqual({ kind: 4, name: 'Life Support', level: 2, max: 3, online: true, occupant: null });
+    failStation(s, eng); teleport(s, 0, 18.5, 9.5); s.stations.repair[eng] = 0.4;
+    const m = buildHudModel(s, slots(1), 'running', '');
+    expect(m.threats).toEqual([{ icon: 'icon.power', text: 'Power: Engineering' }]);
+    expect(m.stations.find((st) => st.kind === StationKind.Engineering)!.online).toBe(false);
+    expect(m.players[0]!.interactPrompt).toBe('Repair power'); expect(m.players[0]!.interactIcon).toBe('icon.power'); expect(m.players[0]!.progress).toBe(0.4);
+  });
+  it('offers Sit at a same-room console, and shows Stand plus the Engineering panel while seated', () => {
+    const s = makeState(1);
+    const eng = s.derived.stationOfKind[StationKind.Engineering]!;
+    teleport(s, 0, 17.5, 9.5);
+    expect(buildHudModel(s, slots(1), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Engineering');
+    sitDown(s, 0, eng); s.stations.cursor[eng] = StationKind.Weapons;
+    const p = buildHudModel(s, slots(1), 'running', '').players[0]!;
+    expect(p.seated).toBe(StationKind.Engineering); expect(p.cancelPrompt).toBe('Stand'); expect(p.confirmPrompt).toBe(''); expect(p.interactPrompt).toBe('');
+    const panel = p.console as EngineeringPanel;
+    expect(panel.cursor).toBe(StationKind.Weapons); expect(panel.pool).toBe(1);
+    expect(panel.rows[StationKind.Weapons]).toEqual({ kind: 1, name: 'Weapons', level: 2, max: 3, failed: false });
+    expect(panel.rows).toHaveLength(7);
+  });
+  it('shows the Doors panel with the selected door, or No doors on a doorless ship', () => {
+    const s = makeState(1);
+    const doors = s.derived.stationOfKind[StationKind.Doors]!;
+    sitDown(s, 0, doors);
+    const p = buildHudModel(s, slots(1), 'running', '').players[0]!;
+    const e = s.derived.doorEdges[0]!;
+    expect(p.console).toEqual({ doorIndex: 0, rooms: [s.layout.rooms[s.derived.edgeA[e]!]!.name, s.layout.rooms[s.derived.edgeB[e]!]!.name] });
+    const noDoors = JSON.parse(JSON.stringify(starter)) as typeof starter;
+    for (const edge of noDoors.edges) (edge as { kind: string }).kind = 'opening';
+    const t = createSimState(parseShip(noDoors), 1, 1);
+    sitDown(t, 0, t.derived.stationOfKind[StationKind.Doors]!);
+    expect(buildHudModel(t, slots(1), 'running', '').players[0]!.console).toEqual({ doorIndex: -1 });
   });
 });
