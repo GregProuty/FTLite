@@ -28,7 +28,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   };
 
   const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX);   // cells per row: the largest station maximum
-  const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number }): void } => {
+  const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean }): void } => {
     const root = new Container();
     const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
     const name = text(); name.position.set(12, 1); root.addChild(name);
@@ -38,7 +38,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       root,
       set(o) {
         mark.visible = o.cursor; name.text = o.name; name.tint = o.tint;
-        cells.forEach((sp, c) => { sp.visible = c < o.max; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; });
+        cells.forEach((sp, c) => { sp.visible = c < o.max; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; sp.tint = o.failed ? WARN : 0xffffff; });   // failed stations tint their bar cells; reset otherwise
         status.text = o.status; status.tint = o.status === 'OFF' || o.status === 'FAIL' ? WARN : DIM;   // occupant tags are informational, not warnings
       }
     };
@@ -111,7 +111,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     ui.consoleRoot.visible = p.console !== null;
     if (p.console && 'rows' in p.console) {
       const c = p.console;
-      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }));
+      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }));
       ui.consoleRows.forEach((r) => { r.root.visible = true; });
       fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}`, tint: DIM }]);
     } else if (p.console) {
