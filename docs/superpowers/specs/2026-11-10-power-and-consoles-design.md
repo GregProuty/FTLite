@@ -151,6 +151,8 @@ All under node, no pixi. New files: `tests/console.test.ts`, `tests/power.test.t
 - **Spawner:** three types by weight (seeded), skip at cap, skip when no target.
 - **Snapshot and hash:** round trip covers the new arrays; the same-seed/same-intents property holds with a script that sits, moves bars and stands.
 - **Ship validation:** each new rule has a failing fixture, including a fractional allocation and an unknown station id; a fixture with no doors loads and the Doors console sits with cursor `-1`.
+- **Interact:** a console within `REACH` but in a different room (fixture: console one tile past a wall) is not a Confirm candidate and Confirm does not sit or move the player.
+- **HUD model:** the new player and ship fields, the power threat entry, the `Repair power` prompt with its progress, and the `No doors` panel; Pixi code stays untested as before.
 - **Golden replay:** re-recorded once (`npm run bless`) in its own commit, because replacing the stub injector changes oxygen history. This is the one deliberate exception to the no-rebless rule and is noted in `.superpowers/sdd/progress.md`.
 
 ## 12. Gate
