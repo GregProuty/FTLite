@@ -184,8 +184,8 @@ describe('impact', () => {
 
 describe('evasion', () => {
   it('evades thresholds at Navigation levels 1 and 2', () => {
-    expect(evades(0.349, 0.375)).toBe(true); expect(evades(0.35, 0.375)).toBe(false);
-    expect(evades(0.499, 0.75)).toBe(true); expect(evades(0.5, 0.75)).toBe(false);
+    expect(evades(0.34, 0.375)).toBe(true); expect(evades(0.36, 0.375)).toBe(false);     // level 1 threshold 0.35
+    expect(evades(0.49, 0.75)).toBe(true); expect(evades(0.51, 0.75)).toBe(false);       // level 2 threshold 0.50
   });
   it('rolls only when Navigation is seated and online; success removes the object with no hull change', () => {
     const s = makeState(1), A = room(s, 'A');

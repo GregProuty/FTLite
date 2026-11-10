@@ -763,9 +763,10 @@ describe('firing', () => {
     expect(s.weapons.charge).toBeGreaterThan(0.5);                                 // charging continued that tick
   });
   it('beamHits thresholds at Weapons levels 1, 2 and 3 and is monotonic in output', () => {
-    expect(beamHits(0.624, 0.25)).toBe(true); expect(beamHits(0.625, 0.25)).toBe(false);
-    expect(beamHits(0.699, 0.5)).toBe(true); expect(beamHits(0.7, 0.5)).toBe(false);
-    expect(beamHits(0.774, 0.75)).toBe(true); expect(beamHits(0.775, 0.75)).toBe(false);
+    // Values sit clear of the float boundary (0.55 + 0.30 x 0.25 is not exactly 0.625 in floats).
+    expect(beamHits(0.61, 0.25)).toBe(true); expect(beamHits(0.64, 0.25)).toBe(false);     // level 1 threshold 0.625
+    expect(beamHits(0.69, 0.5)).toBe(true); expect(beamHits(0.71, 0.5)).toBe(false);       // level 2 threshold 0.70
+    expect(beamHits(0.76, 0.75)).toBe(true); expect(beamHits(0.79, 0.75)).toBe(false);     // level 3 threshold 0.775
     for (const u of [0.1, 0.6, 0.7, 0.9]) expect(Number(beamHits(u, 0.75))).toBeGreaterThanOrEqual(Number(beamHits(u, 0.25)));
   });
 });

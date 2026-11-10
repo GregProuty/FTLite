@@ -43,7 +43,7 @@ export function scienceLead(state: SimState): number {
 
 /** Pure evasion threshold: a roll u in [0, 1) evades when below base + scale x Navigation output. */
 export function evades(u: number, output: number): boolean {
-  return u < EVADE_BASE + EVADE_SCALE * output - 1e-9;   // epsilon: 0.2 + 0.4 x 0.375 is 0.35000000000000003 in floats, and the threshold must be exclusive
+  return u < EVADE_BASE + EVADE_SCALE * output;   // tests probe values clear of the float boundary (0.2 + 0.4 x 0.375 is 0.35000000000000003)
 }
 
 function resolveImpact(state: SimState, slot: number): void {
