@@ -6,17 +6,18 @@ import { DoorState } from '../sim/grid';
 import { CREW_HALF, FIRE_CAP } from '../sim/tuning';
 import { computeLetterbox } from './letterbox';
 import { syncCache } from './cache';
+import type { GameAssets } from './assets';
 
 const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
 
 export interface Renderer {
-  app: Application; world: Container; hud: Container;
+  app: Application; world: Container; hud: Container; assets: GameAssets;
   resize(winW: number, winH: number): void;
   recordPrev(state: SimState): void;
   draw(state: SimState, alpha: number): void;
 }
 
-export async function createRenderer(): Promise<Renderer> {
+export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const app = new Application();
   await app.init({ width: INTERNAL_W, height: INTERNAL_H, background: 0x05060a, antialias: false, roundPixels: true });
   document.body.appendChild(app.canvas);
@@ -46,7 +47,7 @@ export async function createRenderer(): Promise<Renderer> {
   }
 
   return {
-    app, world, hud,
+    app, world, hud, assets,
     resize(winW, winH) {
       const lb = computeLetterbox(winW, winH, INTERNAL_W, INTERNAL_H);
       app.renderer.resize(winW, winH);

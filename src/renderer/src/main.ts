@@ -1,5 +1,6 @@
 import starter from './sim/ship/starter.json';
 import { parseShip } from './sim/ship/schema';
+import { loadAssets } from './render/assets';
 import { createRenderer } from './render/renderer';
 import { createHud } from './render/hud';
 import { createKeyboardSources, sampleGamepads } from './input/sources';
@@ -7,10 +8,21 @@ import { createSession } from './app/session';
 
 declare global { interface Window { ftlite?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void } } }
 
+/** Startup failures (invalid ship, invalid manifest, missing required asset) stop here with the message on screen (spec ง7, parent ง9). */
+function showFatal(err: unknown): void {
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'color:#f88;background:#000;margin:0;padding:16px;font:14px monospace;white-space:pre-wrap';
+  pre.textContent = `FTLite cannot start.
+
+${err instanceof Error ? err.message : String(err)}`;
+  document.body.replaceChildren(pre);
+}
+
 async function start(): Promise<void> {
   const layout = parseShip(starter);          // throws with a clear message on invalid ship data (spec ยง9)
-  const renderer = await createRenderer();
-  const hud = createHud(renderer.hud);
+  const assets = await loadAssets('./assets/manifest.json');
+  const renderer = await createRenderer(assets);
+  const hud = createHud(renderer.hud, assets);
   const keyboard = createKeyboardSources(window);
   const session = createSession({
     layout,
@@ -29,4 +41,4 @@ async function start(): Promise<void> {
   window.ftlite?.onResume(() => session.resume());
   renderer.app.ticker.add(() => session.frame());
 }
-void start();
+start().catch(showFatal);

@@ -1,8 +1,9 @@
 import { Container, Text } from 'pixi.js';
 import type { HudModel } from './hudModel';
 import { INTERNAL_W } from '../../../shared/resolution';
+import type { GameAssets } from './assets';
 
-export function createHud(parent: Container) {
+export function createHud(parent: Container, _assets: GameAssets) {
   const style = { fill: 0xe8e8e8, fontFamily: 'monospace', fontSize: 14 };
   const top = new Text({ text: '', style }); top.position.set(8, 6);
   const threats = new Text({ text: '', style }); threats.position.set(INTERNAL_W - 220, 6);
