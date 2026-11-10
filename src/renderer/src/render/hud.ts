@@ -4,6 +4,7 @@ import type { GameAssets } from './assets';
 import { glyphName, type HudModel, type HudPlayer } from './hudModel';
 import { featureReady } from './fallback';
 import { STATION_NAMES } from '../sim/stationKinds';
+import { STATION_MAX } from '../sim/tuning';
 
 const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, WARN = 0xff6b5a;
 const LINE = 18;                 // px per text line at 16 px m5x7
@@ -26,7 +27,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     return { root, set(frac) { fill.width = Math.max(0, Math.min(1, frac)) * w; fill.visible = frac > 0; } };
   };
 
-  const CELL = 8, MAX_CELLS = 3;
+  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX);   // cells per row: the largest station maximum
   const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number }): void } => {
     const root = new Container();
     const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);

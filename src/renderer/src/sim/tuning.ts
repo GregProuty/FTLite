@@ -36,8 +36,8 @@ export const REACH = 1.5;               // tiles from crew centre to the nearest
 export const REPAIR_TIME_FIRE = 6;      // seconds for one repairer
 export const REPAIR_TIME_BREACH = 8;
 export const REVIVE_TIME = 4;
-export const SPAWN_FIRST = 15;          // seconds until the first stub hazard
-export const SPAWN_INTERVAL = 30;       // seconds between stub hazards
+export const SPAWN_FIRST = 15;          // seconds until the first spawned hazard
+export const SPAWN_INTERVAL = 30;       // seconds between spawned hazards
 export const SPAWN_JITTER = 0.2;        // ±fraction of the interval
 export const SPAWN_CAP = 3;             // max simultaneous fires + breaches + failed stations
 

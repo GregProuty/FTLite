@@ -36,7 +36,7 @@ describe('targets', () => {
     teleport(s, 0, 2.5, 8.5);
     expect(confirmTarget(s, 0)).toEqual({ kind: ConfirmKind.Door, index: 5 });
   });
-  it('revive outranks fire, fire outranks breach, breach outranks power', () => {
+  it('fire outranks a power failure in the same room', () => {
     const s = makeState(2);
     const eng = s.derived.stationOfKind[3]!;
     failStation(s, eng);
