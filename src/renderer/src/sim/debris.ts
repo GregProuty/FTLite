@@ -8,7 +8,7 @@ import { igniteRoom } from './hazards/fire';
 import { activateBreach } from './hazards/breach';
 import { downCrew } from './crew';
 import { nextTarget } from './debrisTargets';
-import { DT, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE } from './tuning';
+import { TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE } from './tuning';
 
 export function activeDebrisCount(state: SimState): number {
   let n = 0; for (const a of state.debris.active) if (a) n++; return n;
@@ -77,7 +77,7 @@ export function debrisSystem(state: SimState): void {
   const db = state.debris, lead = scienceLead(state), wpn = state.derived.stationOfKind[StationKind.Weapons]!;
   for (let k = 0; k < db.active.length; k++) {
     if (!db.active[k] || db.warned[k]) continue;
-    if ((db.impactTick[k]! - state.tick) * DT <= lead) {
+    if (db.impactTick[k]! - state.tick <= lead * TICK_HZ) {   // compare in ticks: lead x 60 is exact for the tuning values, remaining x DT is not
       db.warned[k] = 1;
       if (wpn >= 0 && state.stations.occupant[wpn]! >= 0 && state.stations.cursor[wpn]! < 0) state.stations.cursor[wpn] = k;   // first warning auto-selects
     }
