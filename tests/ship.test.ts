@@ -51,6 +51,37 @@ describe('ship schema', () => {
     s.edges = s.edges.filter((e) => e.a !== 'G');
     expect(() => parseShip(s)).toThrow(/reach|connected/);
   });
+  it('derives station kinds, tiles, kind lookup and door edges', () => {
+    const d = deriveLayout(parseShip(starter));
+    expect(Array.from(d.stationKind)).toEqual([0, 6, 1, 2, 5, 4, 3]);          // starter order: nav, doors, wpn, sci, med, ls, eng
+    expect(Array.from(d.stationOfKind)).toEqual([0, 2, 3, 6, 5, 4, 1]);
+    expect(d.stationTile[6]).toBe(9 * 25 + 18);
+    expect(d.stationRoom[6]).toBe(d.roomIndex.get('C'));
+    expect(d.doorEdges).toHaveLength(8);
+    expect(d.doorEdges.every((e) => d.edgeIsDoor[e] === 1)).toBe(true);
+  });
+  it('rejects an unknown station id, a missing kind, a fractional or over-max allocation, Engineering below 1, and a budget over capacity', () => {
+    let s = clone(); (s.stations[0] as { id: string }).id = 'radar';
+    expect(() => parseShip(s)).toThrow(/station/);
+    s = clone(); s.stations.pop();
+    expect(() => parseShip(s)).toThrow(/exactly 7/);
+    s = clone(); s.stations[0]!.allocation = 1.5;
+    expect(() => parseShip(s)).toThrow(/allocation/);
+    s = clone(); s.stations[0]!.allocation = 3;                                    // navigation max is 2
+    expect(() => parseShip(s)).toThrow(/exceeds max/);
+    s = clone(); s.stations.find((st) => st.id === 'engineering')!.allocation = 0;
+    expect(() => parseShip(s)).toThrow(/engineering/);
+    s = clone(); s.stations.find((st) => st.id === 'weapons')!.allocation = 3; s.stations.find((st) => st.id === 'lifeSupport')!.allocation = 3;   // 9 + 1 + 1 = 11 > 10
+    expect(() => parseShip(s)).toThrow(/capacity/);
+  });
+  it('layout identity changes when station kinds or allocations change', () => {
+    const base = deriveLayout(parseShip(starter)).layoutHash;
+    const a = clone(); a.stations.find((st) => st.id === 'navigation')!.allocation = 2;
+    expect(deriveLayout(parseShip(a)).layoutHash).not.toBe(base);
+    const b = clone(); const nav = b.stations.find((st) => st.id === 'navigation')!, sci = b.stations.find((st) => st.id === 'science')!;
+    [nav.room, sci.room] = [sci.room, nav.room]; [nav.tile, sci.tile] = [sci.tile, nav.tile];       // same tiles, swapped kinds, equal allocations
+    expect(deriveLayout(parseShip(b)).layoutHash).not.toBe(base);
+  });
 });
 
 describe('derived tables', () => {

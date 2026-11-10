@@ -50,13 +50,13 @@
     { "room": "C", "tile": [18, 11], "width": 1 }
   ],
   "stations": [
-    { "id": "navigation", "room": "A", "tile": [2, 2] },
-    { "id": "doors", "room": "A", "tile": [3, 1] },
-    { "id": "weapons", "room": "B", "tile": [7, 2] },
-    { "id": "science", "room": "D", "tile": [12, 2] },
-    { "id": "medbay", "room": "F", "tile": [17, 2] },
-    { "id": "lifeSupport", "room": "E", "tile": [10, 9] },
-    { "id": "engineering", "room": "C", "tile": [18, 9] }
+    { "id": "navigation", "room": "A", "tile": [2, 2], "allocation": 1 },
+    { "id": "doors", "room": "A", "tile": [3, 1], "allocation": 1 },
+    { "id": "weapons", "room": "B", "tile": [7, 2], "allocation": 2 },
+    { "id": "science", "room": "D", "tile": [12, 2], "allocation": 1 },
+    { "id": "medbay", "room": "F", "tile": [17, 2], "allocation": 1 },
+    { "id": "lifeSupport", "room": "E", "tile": [10, 9], "allocation": 2 },
+    { "id": "engineering", "room": "C", "tile": [18, 9], "allocation": 1 }
   ],
   "spawns": [[2, 9], [3, 9], [4, 9], [5, 9]]
 }

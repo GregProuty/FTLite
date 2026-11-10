@@ -1,5 +1,6 @@
 import type { ShipLayout } from './schema';
 import { hashF64 } from '../../../../shared/hash';
+import { STATION_COUNT, kindOfStationId } from '../stationKinds';
 import { O2_K, HAZARD_DT, PASSAGE_OPEN, PASSAGE_BREACH } from '../tuning';
 
 export interface Derived {
@@ -13,6 +14,9 @@ export interface Derived {
   edgeA: Int16Array; edgeB: Int16Array; edgeWidth: Float64Array; edgeIsDoor: Uint8Array; edgeTile: Int32Array;
   siteRoom: Int16Array; siteWidth: Float64Array; siteTile: Int32Array;
   kEff: number;
+  stationKind: Uint8Array; stationRoom: Int16Array; stationTile: Int32Array;
+  stationOfKind: Int8Array;   // kind -> station index
+  doorEdges: number[];        // edge indices that are doors, ascending
   layoutHash: string;   // content hash: rows, room order, edges, sites, stations, spawns
   idHash: string;       // hash of layout.id
 }
@@ -45,6 +49,14 @@ export function deriveLayout(layout: ShipLayout): Derived {
   const S = layout.breachSites.length;
   const siteRoom = new Int16Array(S), siteWidth = new Float64Array(S), siteTile = new Int32Array(S);
   layout.breachSites.forEach((b, i) => { siteRoom[i] = roomIndex.get(b.room)!; siteWidth[i] = b.width; siteTile[i] = b.tile[1] * width + b.tile[0]; });
+  const N = layout.stations.length;
+  const stationKind = new Uint8Array(N), stationRoom = new Int16Array(N), stationTile = new Int32Array(N), stationOfKind = new Int8Array(STATION_COUNT).fill(-1);
+  layout.stations.forEach((st, i) => {
+    const k = kindOfStationId(st.id);
+    stationKind[i] = k; stationRoom[i] = roomIndex.get(st.room)!; stationTile[i] = st.tile[1] * width + st.tile[0]; stationOfKind[k] = i;
+  });
+  const doorEdges: number[] = [];
+  for (let i = 0; i < E; i++) if (edgeIsDoor[i]) doorEdges.push(i);
   // Layout identity covers everything the derived tables depend on: row text, room order, edge endpoints,
   // site rooms, stations and spawns. Reordering rooms must change the hash (snapshots index rooms by position).
   const codes: number[] = [width, height, layout.rooms.length, E, S, layout.stations.length, layout.spawns.length];
@@ -52,7 +64,7 @@ export function deriveLayout(layout: ShipLayout): Derived {
   for (const r of layout.rooms) codes.push(r.id.charCodeAt(0));
   for (let i = 0; i < E; i++) codes.push(edgeA[i]!, edgeB[i]!, edgeTile[i]!, edgeWidth[i]!, edgeIsDoor[i]!);
   for (let i = 0; i < S; i++) codes.push(siteRoom[i]!, siteTile[i]!, siteWidth[i]!);
-  for (const st of layout.stations) codes.push(roomIndex.get(st.room)!, st.tile[1] * width + st.tile[0]);
+  for (const st of layout.stations) codes.push(roomIndex.get(st.room)!, st.tile[1] * width + st.tile[0], kindOfStationId(st.id), st.allocation);
   for (const sp of layout.spawns) codes.push(sp[1] * width + sp[0]);
   const idCodes: number[] = []; for (let i = 0; i < layout.id.length; i++) idCodes.push(layout.id.charCodeAt(i));
   // Stability bound (spec §5): k·dt·Σ incident conductance / V ≤ 1/2 for every room, at maximum passage.
@@ -64,6 +76,7 @@ export function deriveLayout(layout: ShipLayout): Derived {
   return {
     width, height, roomIndex, roomOfTile, wallTile, doorTileToEdge, volume, roomTiles,
     edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile,
+    stationKind, stationRoom, stationTile, stationOfKind, doorEdges,
     kEff,
     layoutHash: hashF64(Float64Array.from(codes)),
     idHash: hashF64(Float64Array.from(idCodes))

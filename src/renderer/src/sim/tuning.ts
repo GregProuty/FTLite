@@ -42,3 +42,7 @@ export const SPAWN_INTERVAL = 30;       // seconds between stub hazards
 export const SPAWN_JITTER = 0.2;        // ±fraction of the interval
 export const SPAWN_CAP = 3;             // max simultaneous fires + breaches
 export const SPAWN_FIRE_WEIGHT = 0.6;   // probability a spawn is a fire rather than a breach
+
+// Power (increment 2a-i)
+export const REACTOR_CAPACITY = 10;                 // bars, including Engineering's reserved one
+export const STATION_MAX = [2, 3, 2, 1, 3, 2, 1] as const;   // by StationKind: Nav, Wpn, Sci, Eng, LS, Med, Doors (sum 14 > capacity: choices are forced)

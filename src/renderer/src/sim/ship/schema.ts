@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { reachableTiles } from './reachability';
+import { STATION_IDS, StationKind } from '../stationKinds';
+import { STATION_MAX, REACTOR_CAPACITY } from '../tuning';
 
 const tile = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 
@@ -14,7 +16,11 @@ const shipSchema = z.object({
     a: z.string().length(1), b: z.string().length(1), kind: z.enum(['door', 'opening']), tile, width: z.number().positive()
   })),
   breachSites: z.array(z.object({ room: z.string().length(1), tile, width: z.number().positive() })),
-  stations: z.array(z.object({ id: z.string().min(1), room: z.string().length(1), tile })),
+  stations: z.array(z.object({
+    id: z.enum(STATION_IDS, { errorMap: () => ({ message: `station id must be one of ${STATION_IDS.join(', ')}` }) }),
+    room: z.string().length(1), tile,
+    allocation: z.number().int('station allocation must be an integer').min(0, 'station allocation must be >= 0')
+  })),
   spawns: z.array(tile).min(4)
 }).superRefine((s, ctx) => {
   const fail = (message: string): void => { ctx.addIssue({ code: z.ZodIssueCode.custom, message }); };
@@ -23,6 +29,15 @@ const shipSchema = z.object({
   const roomIds = new Set(s.rooms.map((r) => r.id));
   if (roomIds.size !== s.rooms.length) return fail('rooms: duplicate room id');
   if (new Set(s.stations.map((st) => st.id)).size !== s.stations.length) return fail('stations: duplicate station id');
+  if (s.stations.length !== STATION_IDS.length) return fail(`stations: expected exactly ${STATION_IDS.length} stations, one per kind`);
+  let budget = 0;
+  for (const st of s.stations) {
+    const kind = STATION_IDS.indexOf(st.id);
+    if (st.allocation > STATION_MAX[kind]!) return fail(`station ${st.id}: allocation ${st.allocation} exceeds max ${STATION_MAX[kind]}`);
+    if (kind === StationKind.Engineering && st.allocation < 1) return fail('station engineering: allocation must be at least 1');
+    budget += st.allocation;
+  }
+  if (budget > REACTOR_CAPACITY) return fail(`stations: total allocation ${budget} exceeds reactor capacity ${REACTOR_CAPACITY}`);
   if (new Set(s.stations.map((st) => `${st.tile[0]},${st.tile[1]}`)).size !== s.stations.length) return fail('stations: two stations on one tile');
   if (new Set(s.edges.map((e) => `${e.tile[0]},${e.tile[1]}`)).size !== s.edges.length) return fail('edge: two edges on one tile');
   if (new Set(s.breachSites.map((b) => `${b.tile[0]},${b.tile[1]}`)).size !== s.breachSites.length) return fail('breach site: two sites on one tile');
