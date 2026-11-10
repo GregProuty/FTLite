@@ -2,17 +2,19 @@ import { Application, Container, Graphics } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { Position, Stable, Life, LifeState, Owner } from '../sim/components';
-import { DoorState } from '../sim/grid';
 import { CREW_HALF, FIRE_CAP } from '../sim/tuning';
 import { computeLetterbox } from './letterbox';
 import { syncCache } from './cache';
 import type { GameAssets } from './assets';
+import { createRenderMemory } from './memory';
+import { createTileLayer } from './tiles';
 
-const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
+export const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
 
 export interface Renderer {
   app: Application; world: Container; hud: Container; assets: GameAssets;
   resize(winW: number, winH: number): void;
+  reset(): void;
   recordPrev(state: SimState): void;
   draw(state: SimState, alpha: number): void;
 }
@@ -24,27 +26,13 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const world = new Container(); world.isRenderGroup = true;
   const hud = new Container(); hud.isRenderGroup = true;
   app.stage.addChild(world, hud);
-  const tiles = new Graphics(), overlays = new Container(), breachLayer = new Graphics(), crewLayer = new Container();
-  world.addChild(tiles, overlays, breachLayer, crewLayer);
-  let doorCache: Uint8Array | null = null;
+  const memory = createRenderMemory();
+  const tiles = createTileLayer(assets, memory);
+  const overlays = new Container(), breachLayer = new Graphics(), crewLayer = new Container();
+  world.addChild(tiles.container, overlays, breachLayer, crewLayer);
   const roomGfx: Graphics[] = [];
   const crewGfx = new Map<number, Graphics>();
-  const prev = new Map<number, { x: number; y: number }>();
-
-  function rebuildTiles(state: SimState): void {
-    const d = state.derived;
-    tiles.clear();
-    for (let ty = 0; ty < d.height; ty++) for (let tx = 0; tx < d.width; tx++) {
-      const i = ty * d.width + tx;
-      const edge = d.doorTileToEdge[i]!;
-      let color: number;
-      if (edge >= 0) { const st = state.doors.state[edge]; color = st === DoorState.Open ? 0x3a4a3a : st === DoorState.Sealed ? 0x8a2a2a : 0x6a6a3a; }
-      else if (d.wallTile[i]) color = state.layout.rows[ty]!.charAt(tx) === ' ' ? 0x05060a : 0x3b3f4a;
-      else color = (tx + ty) % 2 ? 0x1b1e26 : 0x1f232c;
-      tiles.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill(color);
-    }
-    doorCache = Uint8Array.from(state.doors.state);
-  }
+  let lastDraw: number | null = null;
 
   return {
     app, world, hud, assets,
@@ -53,13 +41,16 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       app.renderer.resize(winW, winH);
       app.stage.scale.set(lb.scale); app.stage.position.set(lb.offsetX, lb.offsetY);
     },
+    reset() { memory.reset(); lastDraw = null; },
     recordPrev(state) {
-      for (const eid of state.crew) prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
+      for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
     },
     draw(state, alpha) {
       const d = state.derived;
+      const now = performance.now();
+      const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
       world.position.set(Math.floor((INTERNAL_W - d.width * TILE_PX) / 2), Math.floor((INTERNAL_H - d.height * TILE_PX) / 2));
-      if (!doorCache || doorCache.some((v, i) => v !== state.doors.state[i])) rebuildTiles(state);
+      tiles.update(state, dt);
       while (roomGfx.length < d.volume.length) { const g = new Graphics(); roomGfx.push(g); overlays.addChild(g); }
       for (let r = 0; r < d.volume.length; r++) {
         const g = roomGfx[r]!; g.clear();
@@ -76,9 +67,9 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
         breachLayer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill(0xff3030);
       }
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
-      syncCache(crewGfx, liveIds, () => { const g = new Graphics(); crewLayer.addChild(g); return g; }, (g, id) => { g.destroy(); prev.delete(id); });
+      syncCache(crewGfx, liveIds, () => { const g = new Graphics(); crewLayer.addChild(g); return g; }, (g, id) => { g.destroy(); memory.prev.delete(id); });
       for (const eid of state.crew) {
-        const id = Stable.id[eid]!, g = crewGfx.get(id)!, p = prev.get(id) ?? { x: Position.x[eid]!, y: Position.y[eid]! };
+        const id = Stable.id[eid]!, g = crewGfx.get(id)!, p = memory.prev.get(id) ?? { x: Position.x[eid]!, y: Position.y[eid]! };
         const x = p.x + (Position.x[eid]! - p.x) * alpha, y = p.y + (Position.y[eid]! - p.y) * alpha;
         const life = Life.state[eid];
         g.clear().circle(0, 0, CREW_HALF * TILE_PX).fill({ color: life === LifeState.Dead ? 0x777777 : CREW_COLORS[Owner.pid[eid]! % 4]!, alpha: life === LifeState.Downed ? 0.5 : 1 });

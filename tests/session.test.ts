@@ -79,7 +79,7 @@ describe('session', () => {
     let samples: SourceSample[] = [];
     const session = createSession({
       layout: LAYOUT, sampleDevices: () => samples,
-      renderer: { recordPrev() {}, draw() { if (faulted) throw new Error('draw must not run in error phase'); } },
+      renderer: { reset() {}, recordPrev() {}, draw() { if (faulted) throw new Error('draw must not run in error phase'); } },
       hud: { update(m) { hudModels++; if (m.phase === 'error') expect(m.players.every((p) => p.prompt === '')).toBe(true); } },
       now: () => (t += 20),   // time must advance by at least one tick (16.7ms, with margin for float error) or the fault never fires
       saveCrash: () => {}
@@ -135,5 +135,22 @@ describe('session', () => {
     can = true;
     h.press('a', { confirm: true }); h.frames(1); h.release();
     expect(h.session.phase).toBe('running');
+  });
+  it('calls renderer.reset() at every run start, before the first draw', () => {
+    const calls: string[] = [];
+    let samples: SourceSample[] = []; let t = 0;
+    const session = createSession({
+      layout: LAYOUT, sampleDevices: () => samples, hud: null, now: () => (t += 20), saveCrash: () => {},
+      renderer: { reset() { calls.push('reset'); }, recordPrev() {}, draw() { if (calls.at(-1) !== 'draw') calls.push('draw'); } }
+    });
+    const press = (o: Partial<SourceSample>) => { samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o }]; };
+    press({ interact: true }); session.frame(); press({}); session.frame();
+    press({ confirm: true }); session.frame(); press({}); session.frame();
+    expect(calls.slice(0, 2)).toEqual(['reset', 'draw']);
+    session.state!.hull = 0; session.frame(); session.frame();
+    expect(session.phase).toBe('gameover');
+    press({ confirm: true }); session.frame(); press({}); session.frame();   // back to lobby, same seed
+    press({ confirm: true }); session.frame(); press({});                    // start again
+    expect(calls.filter((c) => c === 'reset')).toHaveLength(2);
   });
 });

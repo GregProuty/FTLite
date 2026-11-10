@@ -16,7 +16,7 @@ const CRASH_HISTORY = 300;
 export interface SessionDeps {
   layout: ShipLayout;
   sampleDevices(): SourceSample[];
-  renderer: { recordPrev(s: SimState): void; draw(s: SimState, alpha: number): void } | null;
+  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number): void } | null;
   hud: { update(m: HudModel): void } | null;
   now(): number;
   saveCrash(payload: unknown): void;
@@ -37,6 +37,7 @@ export function createSession(deps: SessionDeps) {
   let intentsSinceBaseline: CompactIntent[][] = [];
 
   function start(): void {
+    deps.renderer?.reset();
     const playerCount = slots.filter((s) => s.status !== 'empty').length;
     state = createSimState(deps.layout, playerCount, seed);
     feed = createIntentFeed(playerCount);
