@@ -107,8 +107,9 @@ describe('crew lifecycle', () => {
     const s = makeState(1);
     const eng = s.derived.stationOfKind[StationKind.Engineering]!;
     sitDown(s, 0, eng);
-    downCrew(s, 0);
     const eid = s.crew[0]!;
+    Life.reviveProgress[eid] = 0.7; Life.reviverPid[eid] = 1;
+    downCrew(s, 0);
     expect(Life.state[eid]).toBe(LifeState.Downed); expect(Life.bleed[eid]).toBe(BLEEDOUT_TIME);
     expect(Seated.station[eid]).toBe(-1); expect(s.stations.occupant[eng]).toBe(-1);
     expect(Life.reviveProgress[eid]).toBe(0); expect(Life.reviverPid[eid]).toBe(-1);

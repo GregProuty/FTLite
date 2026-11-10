@@ -10,16 +10,17 @@ import { createRng, nextFloat } from '../src/shared/rng';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import starter from '../src/renderer/src/sim/ship/starter.json';
-import { makeState, run, seconds } from './helpers/sim';
+import { activeDebrisCount } from '../src/renderer/src/sim/debris';
+import { makeState, run, seconds, placeDebris } from './helpers/sim';
 
 describe('timer spawner', () => {
-  it('spawns the first hazard after SPAWN_FIRST and counts fires, breaches and failed stations', () => {
+  it('spawns the first hazard after SPAWN_FIRST and counts fires, breaches, failed stations and debris', () => {
     const s = makeState(2);
     run(s, seconds(SPAWN_FIRST) - 1);
     expect(activeHazardCount(s)).toBe(0);
     run(s, 2);
     expect(activeHazardCount(s)).toBe(1);
-    expect(burningRoomCount(s) + activeBreachCount(s) + failedStationCount(s)).toBe(1);
+    expect(burningRoomCount(s) + activeBreachCount(s) + failedStationCount(s) + activeDebrisCount(s)).toBe(1);
   });
   it('skips a spawn while the cap is full and still advances the timer', () => {
     const s = makeState(0);
@@ -30,14 +31,14 @@ describe('timer spawner', () => {
     expect(s.spawner.nextSpawnTick).toBeGreaterThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * 60 * (1 - SPAWN_JITTER)));
     expect(s.spawner.nextSpawnTick).toBeLessThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * 60 * (1 + SPAWN_JITTER)));
   });
-  it('produces all three types over many spawns, deterministically per seed', () => {
+  it('produces all four types over many spawns, deterministically per seed', () => {
     const kinds = new Set<string>();
     for (let seed = 1; seed <= 12; seed++) {
       const s = makeState(0, seed);                               // no crew: nothing gets repaired, so every spawn stays visible until the cap
       for (let n = 0; n < 3; n++) { s.spawner.nextSpawnTick = s.tick; spawner(s); }
-      if (burningRoomCount(s)) kinds.add('fire'); if (activeBreachCount(s)) kinds.add('breach'); if (failedStationCount(s)) kinds.add('power');
+      if (burningRoomCount(s)) kinds.add('fire'); if (activeBreachCount(s)) kinds.add('breach'); if (failedStationCount(s)) kinds.add('power'); if (activeDebrisCount(s)) kinds.add('debris');
     }
-    expect(kinds).toEqual(new Set(['fire', 'breach', 'power']));
+    expect(kinds).toEqual(new Set(['fire', 'breach', 'power', 'debris']));
     const a = makeState(2, 7), b = makeState(2, 7);
     run(a, seconds(120)); run(b, seconds(120));
     expect(Array.from(a.stations.failed)).toEqual(Array.from(b.stations.failed));
@@ -61,37 +62,47 @@ describe('timer spawner', () => {
     s.spawner.nextSpawnTick = s.tick; spawner(s);
     expect(failedStationCount(s)).toBe(4);                                       // cap full: nothing spawned
     s.stations.failed.fill(0); s.stations.failed[0] = 1; s.stations.failed[1] = 1; s.stations.repair[0] = 0.5;
-    for (let n = 0; n < 60 && failedStationCount(s) < SPAWN_CAP; n++) { s.spawner.nextSpawnTick = s.tick; s.rooms.fire.fill(0); s.breaches.active.fill(0); spawner(s); }
+    for (let n = 0; n < 60 && failedStationCount(s) < SPAWN_CAP; n++) { s.spawner.nextSpawnTick = s.tick; s.rooms.fire.fill(0); s.breaches.active.fill(0); s.debris.active.fill(0); spawner(s); }
     expect(failedStationCount(s)).toBe(SPAWN_CAP);
     expect(s.stations.repair[0]).toBe(0.5);                                      // the already failed station was not failed again (that would reset repair)
   });
-  it('the 2:1:1 roll maps each weight interval to its type', () => {
+  it('the 2:1:1:2 roll maps each weight interval to its type', () => {
     for (const r of [0, 0.5, 1.999]) expect(pickSpawnType(r)).toBe('fire');
     for (const r of [2, 2.5, 2.999]) expect(pickSpawnType(r)).toBe('breach');
     for (const r of [3, 3.5, 3.999]) expect(pickSpawnType(r)).toBe('power');
+    for (const r of [4, 5, 5.999]) expect(pickSpawnType(r)).toBe('debris');
   });
-  it('explicit director states select fire, breach and power through the spawner', () => {
-    // Director states chosen so that the second draw (the roll) lands in each interval: 1.30, 2.50 and 3.09 of 4.
+  it('explicit director states select fire, breach, power and debris through the spawner', () => {
+    // Director states chosen so that the second draw (the roll) lands in each interval of 6: 1.95, 2.55, 3.75 and 4.64.
     const spawn = (directorState: number) => {
       const s = makeState(0); s.rng.director.s = directorState;
       s.spawner.nextSpawnTick = s.tick; spawner(s); return s;
     };
-    const f = spawn(2), b = spawn(8), p = spawn(5);
-    expect([burningRoomCount(f), activeBreachCount(f), failedStationCount(f)]).toEqual([1, 0, 0]);
-    expect([burningRoomCount(b), activeBreachCount(b), failedStationCount(b)]).toEqual([0, 1, 0]);
-    expect([burningRoomCount(p), activeBreachCount(p), failedStationCount(p)]).toEqual([0, 0, 1]);
+    const f = spawn(2), b = spawn(14), p = spawn(8), d = spawn(5);
+    const counts = (s: ReturnType<typeof makeState>) => [burningRoomCount(s), activeBreachCount(s), failedStationCount(s), activeDebrisCount(s)];
+    expect(counts(f)).toEqual([1, 0, 0, 0]);
+    expect(counts(b)).toEqual([0, 1, 0, 0]);
+    expect(counts(p)).toEqual([0, 0, 1, 0]);
+    expect(counts(d)).toEqual([0, 0, 0, 1]);
+    expect(d.debris.warned[0]).toBe(0); expect(d.debris.stableId[0]).toBeGreaterThan(0);
   });
   it('a selected type with no valid target skips spawning but still advances the director stream and the timer', () => {
     const noSites = JSON.parse(JSON.stringify(starter)) as typeof starter;
     noSites.breachSites = [];
     const s = createSimState(parseShip(noSites), 0, 1);
-    s.rng.director.s = 8;                                                      // rolls a breach (2.50 of 4)
-    const expected = createRng(8); nextFloat(expected); nextFloat(expected);    // jitter draw, then roll draw
+    s.rng.director.s = 14;                                                     // rolls a breach (2.55 of 6)
+    const expected = createRng(14); nextFloat(expected); nextFloat(expected);  // jitter draw, then roll draw
     const hazardsBefore = s.rng.hazards.s;
     s.spawner.nextSpawnTick = s.tick; spawner(s);
     expect(activeHazardCount(s)).toBe(0);
-    expect(s.rng.director.s).toBe(expected.s); expect(s.rng.director.s).not.toBe(8);
+    expect(s.rng.director.s).toBe(expected.s); expect(s.rng.director.s).not.toBe(14);
     expect(s.rng.hazards.s).toBe(hazardsBefore);                               // no target to pick, so no target draw
     expect(s.spawner.nextSpawnTick).toBeGreaterThan(s.tick);
+  });
+  it('in-flight debris counts toward the cap', () => {
+    const s = makeState(0);
+    for (let k = 0; k < SPAWN_CAP; k++) placeDebris(s, 0, 600);
+    s.spawner.nextSpawnTick = s.tick; spawner(s);
+    expect(activeHazardCount(s)).toBe(SPAWN_CAP); expect(burningRoomCount(s) + activeBreachCount(s) + failedStationCount(s)).toBe(0);
   });
 });

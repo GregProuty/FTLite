@@ -10,6 +10,7 @@ import { oxygenStep } from './hazards/oxygen';
 import { fireStep } from './hazards/fire';
 import { crewSystem } from './crew';
 import { lifeSupportInjection } from './hazards/lifeSupport';
+import { debrisSystem } from './debris';
 import { spawner } from './hazards/spawner';
 import { medbayStep } from './medbay';
 
@@ -35,8 +36,9 @@ export function step(state: SimState, intents: readonly Intent[]): void {
     oxygenStep(state, state.injectionScratch);
     fireStep(state);
   }
-  // (5) debris                                      -> increment 2a-ii
+  // (5) spawner, then debris detection and impacts
   spawner(state);
+  debrisSystem(state);
   // (6) stations with per-tick effects
   medbayStep(state);
   // (7) crew lifecycle, run end
