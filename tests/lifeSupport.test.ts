@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { lifeSupportInjection } from '../src/renderer/src/sim/hazards/lifeSupport';
-import { totalO2 } from '../src/renderer/src/sim/hazards/oxygen';
-import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
+import { totalO2, oxygenStep } from '../src/renderer/src/sim/hazards/oxygen';
+import { activateBreach, repairBreach } from '../src/renderer/src/sim/hazards/breach';
 import { failStation } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -40,5 +40,21 @@ describe('Life Support injection', () => {
     s.rooms.o2[room(s, 'G')] = 0;
     run(s, seconds(5));
     expect(s.rooms.o2[room(s, 'G')]).toBeLessThan(0.3 * s.derived.volume[room(s, 'G')]!);
+  });
+  it('injection requested for a breached room adds no mass until the breach is repaired', () => {
+    const s = makeState(0), G = room(s, 'G');
+    activateBreach(s, 6);
+    s.rooms.o2[G] = 0;
+    lifeSupportInjection(s);
+    expect(s.injectionScratch[G]).toBeGreaterThan(0);                    // requested ...
+    const onlyG = new Float64Array(s.injectionScratch.length); onlyG[G] = s.injectionScratch[G]!;   // isolate G: other rooms would absorb injection after neighbour flow
+    const before = s.o2Counters.injected;
+    oxygenStep(s, onlyG);
+    expect(s.o2Counters.injected).toBe(before);                          // ... but refused while breached
+    repairBreach(s, 6);
+    s.rooms.o2[G] = 0;
+    oxygenStep(s, onlyG);
+    expect(s.o2Counters.injected).toBeGreaterThan(before);
+    expect(s.rooms.o2[G]).toBeGreaterThan(0);
   });
 });
