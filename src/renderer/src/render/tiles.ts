@@ -1,4 +1,4 @@
-import { Container, Sprite, type Texture } from 'pixi.js';
+import { Container, Rectangle, Sprite, Texture } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import type { GameAssets } from './assets';
@@ -7,6 +7,9 @@ import { floorVariant, wallVariant, wallKind } from './tilePick';
 import { advanceDoor, doorTarget, doorFrame, initialDoorProgress, DOOR_ANIM_SECONDS } from './doorAnim';
 
 export interface TileLayer { container: Container; build(state: SimState): void; update(state: SimState, dtSeconds: number): void }
+
+/** Red tint on a sealed door when the pack has no distinct sealed frame (same red as LOW_O2_COLOR in effects.ts). */
+export const SEALED_TINT = 0xd13a3a;
 
 const SCALE = TILE_PX / 16;   // 16 px art drawn at 2x
 
@@ -19,6 +22,10 @@ function bottomAnchored(tex: Texture, tx: number, ty: number): Sprite {
 }
 
 /** Floors, walls and doors as plain sprites. Built once per layout (never rebuilt in Increment 1); doors are reconciled every frame. */
+function lowerHalf(t: Texture): Texture {
+  return new Texture({ source: t.source, frame: new Rectangle(t.frame.x, t.frame.y + t.frame.height / 2, t.frame.width, t.frame.height / 2) });
+}
+
 export function createTileLayer(assets: GameAssets, memory: RenderMemory): TileLayer {
   const container = new Container();
   const floors = new Container(), walls = new Container(), doors = new Container();
@@ -26,11 +33,16 @@ export function createTileLayer(assets: GameAssets, memory: RenderMemory): TileL
   const doorSprites: Sprite[] = [];        // per edge index; non-door edges have no sprite
   const openFrames = assets.animation('door.open').textures;
   const sealed = assets.texture('door.sealed');
+  const openHalf = openFrames.map(lowerHalf), sealedHalf = lowerHalf(sealed);
+  const halfDoor: boolean[] = [];          // per edge: door has a floor above, draws lower half only
   let builtFor: string | null = null;
 
   function build(state: SimState): void {
       const d = state.derived, rows = state.layout.rows;
-      floors.removeChildren(); walls.removeChildren(); doors.removeChildren(); doorSprites.length = 0;
+      for (const c of floors.removeChildren()) c.destroy();
+      for (const c of walls.removeChildren()) c.destroy();
+      for (const c of doors.removeChildren()) c.destroy();
+      doorSprites.length = 0; halfDoor.length = 0;
       for (let ty = 0; ty < d.height; ty++) for (let tx = 0; tx < d.width; tx++) {
         const i = ty * d.width + tx, c = rows[ty]!.charAt(tx);
         if (c === ' ') continue;                                                  // void: nothing drawn
@@ -46,7 +58,8 @@ export function createTileLayer(assets: GameAssets, memory: RenderMemory): TileL
       for (let e = 0; e < d.edgeIsDoor.length; e++) {
         if (!d.edgeIsDoor[e]) continue;
         const t = d.edgeTile[e]!, tx = t % d.width, ty = (t - tx) / d.width;
-        const s = bottomAnchored(openFrames[0]!, tx, ty); doors.addChild(s); doorSprites[e] = s;
+        const half = wallKind(rows, tx, ty) === 'flat'; halfDoor[e] = half;
+        const s = bottomAnchored((half ? openHalf : openFrames)[0]!, tx, ty); doors.addChild(s); doorSprites[e] = s;
       }
       builtFor = d.layoutHash;
   }
@@ -62,7 +75,9 @@ export function createTileLayer(assets: GameAssets, memory: RenderMemory): TileL
         const st = state.doors.state[e]!;
         memory.doorProgress[e] = advanceDoor(memory.doorProgress[e]!, doorTarget(st), dt, DOOR_ANIM_SECONDS);
         const f = doorFrame(st, memory.doorProgress[e]!, openFrames.length);
-        s.texture = f.kind === 'sealed' ? sealed : openFrames[f.frame]!;
+        const half = halfDoor[e] === true;
+        s.texture = f.kind === 'sealed' ? (half ? sealedHalf : sealed) : (half ? openHalf : openFrames)[f.frame]!;
+        s.tint = f.kind === 'sealed' ? SEALED_TINT : 0xffffff;
       }
     }
   };
