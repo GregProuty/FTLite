@@ -32,15 +32,17 @@ New and changed modules:
 
 Step order inside `step()` (foundation §4 rule 4a, filling the reserved slots):
 
-1. `interactSystem` (unchanged role: revive and repair targets, local door Confirm, **now also Confirm-to-sit**, see §4)
-2. `consoleSystem` (seated players: stick edges, Confirm, Cancel/Interact to stand)
+1. `interactSystem` (revive and repair targets as today, **now also Confirm-to-sit**; local door Confirms are collected into the tick's door-toggle set instead of applied here, see §4 and §6)
+2. `consoleSystem` (players seated before this tick: stick edges, Confirm, Interact/Cancel to stand; then applies the tick's door-toggle set once)
 3. `movementSystem` (skips seated crew)
 4. `doorSystem`
-5. `powerStep` (apply repairs completed this tick, failed-station forced stand)
+5. `powerStep` (applies repairs that completed this tick)
 6. hazard tick (12 Hz): `lifeSupportInjection` → `oxygenStep` → `fireStep`
 7. `spawner`
 8. `medbayStep`
 9. `crewSystem` (Downed forces a stand before the run-end check)
+
+Forced stands are not tied to a step: `standUp(state, pid)` is called at the point of the change that makes a station unusable (inside `failStation`, inside the Engineering bar removal that takes a station to level 0, and in `crewSystem` on Downed), so an occupant never stays seated past the step that caused it, wherever in the tick that step runs (the spawner runs after the power step, so a failure spawned there stands its occupant in the spawner step).
 
 ## 3. Authoritative state
 
@@ -54,36 +56,36 @@ stations: {
   failed: Uint8Array;     // 1 while a power failure is unrepaired
   repair: Float64Array;   // 0..1 repair progress of the failure
   occupant: Int8Array;    // PlayerId or -1
-  cursor: Int16Array;     // Engineering: station index; Doors: door edge index; others unused (0)
+  cursor: Int16Array;     // Engineering: a StationKind (the list is in kind order); Doors: index into derived.doorEdges, or -1 when the ship has no doors; others unused (0)
 };
 power: { capacity: number };                                    // REACTOR_CAPACITY, fixed this increment
 stick: { heldDir: Int8Array; repeat: Int16Array };              // per player: 0 none, 1 up, 2 down, 3 left, 4 right; ticks until next repeat
 ```
 
-`Derived` gains `stationKind: Uint8Array`, `stationRoom: Int16Array`, `stationTile: Int32Array`, `stationOfKind: Int8Array` (kind → index), and `doorEdges: number[]` (edge indices that are doors, ascending). All new arrays are flattened, snapshotted and hashed; `SIM_VERSION` increments to 2 and snapshots of version 1 are rejected (existing rule).
+`Derived` gains `stationKind: Uint8Array`, `stationRoom: Int16Array`, `stationTile: Int32Array`, `stationOfKind: Int8Array` (kind → index), and `doorEdges: number[]` (edge indices that are doors, ascending). All new arrays are flattened, snapshotted and hashed; `SIM_VERSION` increments to 2 and snapshots of version 1 are rejected (existing rule). `layoutHash` gains each station's kind and allocation, so two ships that differ only in which console sits where, or in the starter budget, are different ships.
 
 `StationKind`: `Navigation = 0, Weapons = 1, Science = 2, Engineering = 3, LifeSupport = 4, Medbay = 5, Doors = 6`. The ship's station `id` strings map onto these kinds; the kind order is also the Engineering list order and the shedding order's future home.
 
 ## 4. Control mode
 
-**Sitting (walking mode).** `confirmTarget` now considers consoles as well as doors: the nearest console tile or door tile within `REACH`, ties by lower tile index. `ConfirmKind` gains `Console`. On a Confirm edge at a console: the station must be unoccupied and the player Conscious and not seated. If several players Confirm the same console on one tick, the lowest `PlayerId` sits and the others' edges are consumed with no effect. Sitting sets `Seated.station[eid]`, `stations.occupant`, and snaps the crew position to the console tile centre (so the sprite sits on the console and reach rules stay simple). The cursor resets on sit: Engineering to the Engineering station's own index, Doors to the first door edge.
+**Sitting (walking mode).** `confirmTarget` now considers consoles as well as doors: the nearest console tile or door tile within `REACH`, ties by lower tile index. `ConfirmKind` gains `Console`. On a Confirm edge at a console: the station must be **online** (`stationOnline`, §5), unoccupied, and the player Conscious and not seated; a Confirm at an offline console does nothing. If several players Confirm the same console on one tick, the lowest `PlayerId` sits and the others' edges are consumed with no effect. Sitting sets `Seated.station[eid]`, `stations.occupant`, and snaps the crew position to the console tile centre (so the sprite sits on the console and reach rules stay simple). The Confirm edge that seats a player is **consumed**: `consoleSystem` dispatches only for players who were already seated at the start of the tick (`interactSystem` marks the newly seated in a tick-scoped scratch array), so one press can never both sit and act. The cursor resets on sit: Engineering to `StationKind.Engineering`, Doors to `0` (the first entry of `doorEdges`) or `-1` when the ship has no doors.
 
-**Seated.** `movementSystem` ignores a seated crew member's `move`. `interactTarget` returns `None` for a seated player (they cannot repair or revive) and no one can target them for revive (they are Conscious). `Cancel` or `Interact` pressed stands up: clears `Seated.station`, `occupant`, and leaves the player at the console tile centre.
+**Seated.** `movementSystem` ignores a seated crew member's `move`. `interactTarget` returns `None` for a seated player (they cannot repair or revive) and no one can target them for revive (they are Conscious). Standing uses the **edges** `interactPressed` or `cancelPressed` (not `interactHeld`): it clears `Seated.station`, `occupant` and the player's stick state, and leaves the player at the console tile centre. Precedence within one tick for a seated player: a stand edge wins and the tick's Confirm and stick edges are ignored; otherwise stick edges are processed before Confirm.
 
-**Stick edges** (foundation §5 "Stick edges"), computed in `consoleSystem` for seated players only; `stick.heldDir` is reset to 0 on sit and stand:
+**Stick edges** (foundation §5 "Stick edges"), computed in `consoleSystem` for seated players only; `stick.heldDir` and `stick.repeat` are reset to 0 on sit and on stand:
 
 - Take the dominant axis of `(moveX, moveY)`. If its magnitude is below `STICK_EDGE_THRESHOLD` (0.5), `heldDir = 0`, no edge.
 - Otherwise the direction is `up/down/left/right`. If it differs from `heldDir`, fire one edge now and set `repeat = STICK_REPEAT_TICKS` (8). If it equals `heldDir`, decrement `repeat`; at 0 fire an edge and reset to 8.
 - Equal magnitudes on both axes count as horizontal (a deterministic tie rule).
 
-**Forced stand.** `powerStep` stands the occupant of a station that fails this tick; `crewSystem` stands a crew member that becomes Downed. Both call the same `standUp(state, pid)` and take effect in that step.
+**Forced stand.** A station's occupant stands whenever the station stops being online: `failStation` (any step that calls it, including the spawner) and the Engineering `−1` that takes a station to level 0 both call `standUp(state, pid)` immediately; `crewSystem` stands a crew member that becomes Downed. Engineering can therefore unseat another player by cutting their console's last bar; that is intended.
 
 **Per-station seated behaviour** (this increment):
 
 | Station | Edges | Confirm |
 |---|---|---|
-| Engineering | up/down move `cursor` over the seven stations (wrapping); right: `+1` bar to the selected station if `pool > 0`, `level < STATION_MAX`, and not failed; left: `-1` bar from it if `level > 0`, except Engineering never below 1 | nothing (coolant arrives in 2b) |
-| Doors | any direction cycles `cursor` through `doorEdges` (up/left previous, down/right next, wrapping) | `toggleSeal(state, cursor)` if Doors is online |
+| Engineering | up/down move `cursor` over the seven kinds in `StationKind` order (wrapping); the selected station is `stationOfKind[cursor]`; right: `+1` bar to it if `pool > 0`, `level < STATION_MAX[kind]`, and not failed; left: `-1` bar from it if `level > 0`, except Engineering never below 1 (a `−1` that reaches 0 stands that station's occupant) | nothing (coolant arrives in 2b) |
+| Doors | any direction cycles `cursor` through `doorEdges` (up/left previous, down/right next, wrapping); no-op when `cursor` is `-1` | adds `doorEdges[cursor]` to the tick's door-toggle set (§6); no-op when `cursor` is `-1` |
 | Life Support, Medbay, Navigation, Weapons, Science | ignored | ignored |
 
 `pool = capacity − Σ level`. Engineering's own level is part of the sum and its reserved bar is simply `STATION_MAX[Engineering] = 1` plus the never-below-1 rule.
@@ -100,7 +102,7 @@ stick: { heldDir: Int8Array; repeat: Int16Array };              // per player: 0
 
 - **Life Support** (hazard tick): for each non-breached room `r`, `injection[r] = INJECT_FRAC × volume[r] × HAZARD_DT × stationOutput(LS) × (occupied ? 1 + LS_SEATED_BONUS : 1)`; zero everywhere when offline. `oxygenStep` keeps its clamp to `volume − mass − net inflow` and its counters, so the mass-balance tests stay valid. `stubInjection` and `STUB_INJECT_FRAC` are deleted.
 - **Medbay** (every tick): for each Conscious crew member whose centre tile is in the Medbay room, `health += MEDBAY_HEAL × DT × stationOutput(Medbay) × (occupied ? 1 + MEDBAY_SEATED_BONUS : 1)`, clamped to `HEALTH_MAX`; Downed and Dead crew are untouched; nothing when offline. The occupant is in the room and heals too.
-- **Doors**: remote toggle through the shared `toggleSeal`, so the deferred-while-occupied rule is identical to local sealing. Offline Doors console: Confirm ignored; local sealing unaffected.
+- **Doors**: local Confirms at a door (from `interactSystem`) and remote Confirms (from a seated Doors operator) both add the door edge to one **tick-scoped door-toggle set**; at the end of `consoleSystem` each edge in the set is passed to `toggleSeal` exactly once, in ascending edge order. So a local and a remote press on the same door in one tick toggle it once, like two local presses do today, and the deferred-while-occupied rule is shared. An offline Doors console cannot be sat at (§4), so there is no remote control while offline; local sealing is unaffected.
 - **Navigation, Weapons, Science**: seatable, draw bars, no effect.
 
 ## 7. Spawner
@@ -128,12 +130,12 @@ SPAWN_WEIGHTS = { fire: 2, breach: 1, power: 1 }
 
 ## 9. Ship data and validation
 
-`stations[]` entries keep `id`, `room`, `tile` and gain `allocation: number`. Validation adds: every `id` is one of the seven kind names (`navigation, weapons, science, engineering, lifeSupport, medbay, doors`); each appears exactly once; `0 ≤ allocation ≤ STATION_MAX[kind]`; `allocation[engineering] ≥ 1`; `Σ allocation ≤ REACTOR_CAPACITY`. Failures are zod messages at load like today. `layoutHash` includes allocations (a different starter budget is a different ship).
+`stations[]` entries keep `id`, `room`, `tile` and gain `allocation: number` (a non-negative **integer**, `z.number().int()`). Validation adds: every `id` is one of the seven kind names (`navigation, weapons, science, engineering, lifeSupport, medbay, doors`); each appears exactly once; `0 ≤ allocation ≤ STATION_MAX[kind]`; `allocation[engineering] ≥ 1`; `Σ allocation ≤ REACTOR_CAPACITY`. A ship with no door edges is valid; the Doors console then has a `-1` cursor and its panel reads `No doors`. Failures are zod messages at load like today. `layoutHash` includes station kinds and allocations (§3).
 
 ## 10. Input, HUD and rendering
 
 - **Input/app:** unchanged. `Intent` keeps its six fields.
-- **HUD model** (`hudModel.ts`, pure): `HudPlayer` gains `seated: StationKind | null` and `console: EngineeringPanel | DoorsPanel | null`, where `EngineeringPanel = { rows: { kind, level, max, failed }[]; cursor: number; pool: number }` and `DoorsPanel = { doorIndex: number; rooms: [string, string] }`. The ship block gains `power: { capacity: number; used: number }` and `stations: { kind; level; max; online; occupant: number | null }[]`. Prompts: Confirm at a console reads `Sit: <station>`; seated players show `Stand` on the Cancel glyph; the Interact prompt gains `Repair power` with `icon.power`.
+- **HUD model** (`hudModel.ts`, pure): `HudPlayer` gains `seated: StationKind | null` and `console: EngineeringPanel | DoorsPanel | null`, where `EngineeringPanel = { rows: { kind, level, max, failed }[]; cursor: number; pool: number }` and `DoorsPanel = { doorIndex: number; rooms: [string, string] } | { doorIndex: -1 }` (rendered as `No doors`). The ship block gains `power: { capacity: number; used: number }` and `stations: { kind; level; max; online; occupant: number | null }[]`. Prompts: Confirm at a console reads `Sit: <station>`; seated players show `Stand` on the Cancel glyph; the Interact prompt gains `Repair power` with `icon.power`.
 - **Pixi HUD:** a seated player's row expands into a panel under it (same nine-slice): Engineering draws one row per station with `max` bar cells (`ui.bar.fill` for allocated, `ui.bar.bg` for empty, `WARN` tint when failed) and a `>` cursor glyph; Doors draws `Door <A>-<B>`. A ship-wide strip at the top right lists each station's bars and `OFF` when offline. Reuses Task 11 helpers; no new art names are required (`icon.power` is already in the name contract).
 - **Ship view:** seated crew use `crew.sit` when present, else the idle frame facing the console; the Doors cursor's door tile gets a tinted outline rectangle in `effects.above`; a failed station's tile shows the `fx.arc` animation when present, else a yellow 16 px square, through `featureReady`.
 
@@ -141,14 +143,14 @@ SPAWN_WEIGHTS = { fire: 2, breach: 1, power: 1 }
 
 All under node, no pixi. New files: `tests/console.test.ts`, `tests/power.test.ts`, `tests/stick.test.ts`, `tests/lifeSupport.test.ts`, `tests/medbay.test.ts`; extensions to `tests/interact.test.ts`, `tests/snapshot.test.ts`, `tests/hud.test.ts`, `tests/ship.test.ts`.
 
-- **Scripted-intent test per station** (the 2a gate): walk to the console (or spawn adjacent in a fixture), Confirm sits, edges/Confirm change state as §4 says, Cancel stands; Engineering: move a bar, refuse past max, refuse on empty pool, refuse Engineering below 1, cursor wraps; Doors: remote seal toggles the cursor door and defers while occupied; inert three: sit and stand, state otherwise unchanged (hash equality against a run with no console use except the sit/stand positions).
-- **Power:** failure returns bars for non-Engineering, freezes Engineering; repair restores Engineering to 1 and others to 0; failed station forces its occupant to stand in the same tick; Downed occupant stands; two Confirms on one console seat the lower pid.
+- **Scripted-intent test per station** (the 2a gate): walk to the console (or spawn adjacent in a fixture), Confirm sits, edges/Confirm change state as §4 says, Cancel stands; Engineering: move a bar, refuse past max, refuse on empty pool, refuse Engineering below 1, cursor wraps; Doors: remote seal toggles the cursor door and defers while occupied; inert three: sit, hold a direction for 30 ticks, press Confirm, stand; then assert explicitly that `stations.level`, `stations.failed`, `doors.state`, `rooms.o2` injection counters and every other player's position equal those of a control run in which the same player walks to the console tile and waits the same ticks without sitting, and that the player's own state ends with `Seated.station = -1`, `occupant = -1`, `heldDir = repeat = 0` and position at the console tile centre (whole-hash equality is not used: sitting legitimately rewrites seating and stick state).
+- **Power:** failure returns bars for non-Engineering, freezes Engineering; repair restores Engineering to 1 and others to 0; a failure produced through the real `spawner` inside `step()` stands the occupant in that same tick; Engineering cutting a station to level 0 stands its occupant; a Confirm at a failed or level-0 console does not sit; Downed occupant stands; two Confirms on one console seat the lower pid; the seating Confirm is consumed (a Doors sit does not toggle a door that tick); a local and a remote Confirm on the same door in one tick toggle it once.
 - **Stick edges:** one edge on crossing, repeat every 8 ticks, none below threshold, dominant axis, immediate edge on direction change, reset on stand.
 - **Life Support:** injection scales with level, zero at level 0 and when failed, seated bonus, breached rooms excluded; mass-balance tests unchanged and green.
 - **Medbay:** heals only in the room, only Conscious, scales with level, clamped at max.
 - **Spawner:** three types by weight (seeded), skip at cap, skip when no target.
 - **Snapshot and hash:** round trip covers the new arrays; the same-seed/same-intents property holds with a script that sits, moves bars and stands.
-- **Ship validation:** each new rule has a failing fixture.
+- **Ship validation:** each new rule has a failing fixture, including a fractional allocation and an unknown station id; a fixture with no doors loads and the Doors console sits with cursor `-1`.
 - **Golden replay:** re-recorded once (`npm run bless`) in its own commit, because replacing the stub injector changes oxygen history. This is the one deliberate exception to the no-rebless rule and is noted in `.superpowers/sdd/progress.md`.
 
 ## 12. Gate
