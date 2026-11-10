@@ -621,17 +621,8 @@ describe('sitting and standing', () => {
     expect(Seated.station[s.crew[0]!]).toBe(doors);
     expect(Array.from(s.doors.state).every((v) => v !== DoorState.Sealed)).toBe(true);
   });
-  it('a failure spawned inside step() stands the occupant that same tick; Downed stands too', () => {
-    const s = makeState(2), nav = idx(s, StationKind.Navigation), med = idx(s, StationKind.Medbay);
-    sitDown(s, 0, nav);
-    // Force a spawn every tick, clearing the other hazards so the cap never blocks, until the seeded spawner fails Navigation.
-    for (let n = 0; n < 2000 && !s.stations.failed[nav]; n++) {
-      s.spawner.nextSpawnTick = s.tick; s.rooms.fire.fill(0); s.breaches.active.fill(0);
-      for (let i = 0; i < s.stations.failed.length; i++) if (i !== nav) s.stations.failed[i] = 0;
-      run(s, 1);
-    }
-    expect(s.stations.failed[nav]).toBe(1);
-    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[nav]).toBe(-1);   // already standing in the tick the spawner ran
+  it('a Downed occupant stands in the same tick', () => {
+    const s = makeState(2), med = idx(s, StationKind.Medbay);
     sitDown(s, 1, med);
     Health.cur[s.crew[1]!] = 0.01; s.rooms.fire[s.derived.stationRoom[med]!] = 1;          // burning Medbay downs the occupant this tick (fire damage outpaces healing)
     run(s, 1);
@@ -679,32 +670,65 @@ describe('Doors console', () => {
     expect(s.derived.doorEdges[s.stations.cursor[doors]!]).toBe(first);
     run(s, 1, () => intents(confirm));
     expect(s.doors.state[first]).toBe(DoorState.Sealed);
-    // Player 1 stands at that door and presses Confirm on the same tick as the remote press: one toggle, so the door is unsealed, not re-sealed.
+    // Player 1 stands in the corridor below that door (edge 0 is the A/I door at (2,4): no console within reach there, and 1.4 tiles from the
+    // door centre keeps it outside DOOR_ZONE so it will not auto-open) and presses Confirm on the same tick as the remote press: one toggle, so
+    // the door is unsealed to Closed, not re-sealed.
     const t = s.derived.edgeTile[first]!, w = s.derived.width;
-    teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) - 0.5);
+    teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 1.9);
+    expect(confirmTarget(s, 1)).toEqual({ kind: ConfirmKind.Door, index: first });
     run(s, 1, () => intents(confirm, confirm));
     expect(s.doors.state[first]).toBe(DoorState.Closed);
+    run(s, 1, () => intents({}, {}));
+    expect(s.doors.state[first]).toBe(DoorState.Closed);
+  });
+  it('a remote seal on an occupied door is deferred until the tile is clear', () => {
+    const s = makeState(2), doors = idx(s, StationKind.Doors);
+    sitDown(s, 0, doors);
+    const first = s.derived.doorEdges[0]!, t = s.derived.edgeTile[first]!, w = s.derived.width;
+    teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 0.5);          // player 1 stands on the door tile
+    run(s, 1, () => intents(confirm, {}));
+    expect(s.doors.state[first]).not.toBe(DoorState.Sealed); expect(s.doors.sealRequested[first]).toBe(1);
+    teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 2.5);          // step off
+    run(s, 1, () => intents({}, {}));
+    expect(s.doors.state[first]).toBe(DoorState.Sealed);
   });
 });
 
-describe('inert consoles', () => {
-  it('sitting, pushing the stick and Confirm at Navigation change nothing but seating', () => {
-    const s = makeState(2), ctrl = makeState(2), nav = idx(s, StationKind.Navigation);
-    at(s, 0, nav); at(ctrl, 0, nav);
-    run(s, 1, () => intents(confirm));
-    run(s, 30, () => intents({ moveY: 1 }));
-    run(s, 1, () => intents(confirm));
-    run(s, 1, () => intents({ cancelPressed: true }));
-    run(ctrl, 33);
-    expect(Array.from(s.stations.level)).toEqual(Array.from(ctrl.stations.level));
-    expect(Array.from(s.stations.failed)).toEqual(Array.from(ctrl.stations.failed));
-    expect(Array.from(s.doors.state)).toEqual(Array.from(ctrl.doors.state));
-    expect(Array.from(s.rooms.o2)).toEqual(Array.from(ctrl.rooms.o2));
-    expect(Position.x[s.crew[1]!]).toBe(Position.x[ctrl.crew[1]!]);
-    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[nav]).toBe(-1);
-    expect(s.stick.heldDir[0]).toBe(0); expect(s.stick.repeat[0]).toBe(0);
-    expect(Position.x[s.crew[0]!]).toBe(2.5); expect(Position.y[s.crew[0]!]).toBe(2.5);
-  });
+describe('inert and passive consoles', () => {
+  for (const kind of [StationKind.Navigation, StationKind.Weapons, StationKind.Science]) {
+    it(`sitting, pushing the stick and Confirm at kind ${kind} change nothing but seating`, () => {
+      const s = makeState(2), ctrl = makeState(2), i = idx(s, kind);
+      at(s, 0, i); at(ctrl, 0, i);
+      run(s, 1, () => intents(confirm));
+      expect(Seated.station[s.crew[0]!]).toBe(i);
+      run(s, 30, () => intents({ moveY: 1 }));
+      run(s, 1, () => intents(confirm));
+      run(s, 1, () => intents({ cancelPressed: true }));
+      run(ctrl, 33);
+      expect(Array.from(s.stations.level)).toEqual(Array.from(ctrl.stations.level));
+      expect(Array.from(s.stations.failed)).toEqual(Array.from(ctrl.stations.failed));
+      expect(Array.from(s.doors.state)).toEqual(Array.from(ctrl.doors.state));
+      expect(Array.from(s.rooms.o2)).toEqual(Array.from(ctrl.rooms.o2));
+      expect(s.o2Counters).toEqual(ctrl.o2Counters);
+      expect(Position.x[s.crew[1]!]).toBe(Position.x[ctrl.crew[1]!]); expect(Position.y[s.crew[1]!]).toBe(Position.y[ctrl.crew[1]!]);
+      expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[i]).toBe(-1);
+      expect(s.stick.heldDir[0]).toBe(0); expect(s.stick.repeat[0]).toBe(0);
+      const t = s.derived.stationTile[i]!, w = s.derived.width;
+      expect(Position.x[s.crew[0]!]).toBe((t % w) + 0.5); expect(Position.y[s.crew[0]!]).toBe(Math.floor(t / w) + 0.5);
+    });
+  }
+  for (const kind of [StationKind.LifeSupport, StationKind.Medbay]) {
+    it(`Confirm sits at kind ${kind} and Cancel stands; the stick does nothing while seated`, () => {
+      const s = makeState(1), i = idx(s, kind), t = s.derived.stationTile[i]!, w = s.derived.width;
+      teleport(s, 0, (t % w) + 0.5, Math.floor(t / w) + 1.5);        // one tile below, same room, in reach
+      run(s, 1, () => intents(confirm));
+      expect(Seated.station[s.crew[0]!]).toBe(i); expect(s.stations.occupant[i]).toBe(0);
+      run(s, 20, () => intents({ moveX: 1, confirmPressed: true }));
+      expect(Seated.station[s.crew[0]!]).toBe(i); expect(Position.x[s.crew[0]!]).toBe((t % w) + 0.5);
+      run(s, 1, () => intents({ cancelPressed: true }));
+      expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[i]).toBe(-1);
+    });
+  }
 });
 
 describe('power repair', () => {
@@ -778,12 +802,12 @@ In `interactTarget`, change the first guard to `if (Life.state[eid] !== LifeStat
 
 ```ts
   if (best.kind !== TargetKind.None) return best;
-  // Power failure: nearest failed station tile in reach.
-  bestDist = Infinity;
+  // Power failure: nearest failed station tile in reach; equal distances go to the lower tile index.
+  bestDist = Infinity; let bestTile = Infinity;
   for (let i = 0; i < d.stationTile.length; i++) {
     if (!state.stations.failed[i]) continue;
-    const dist = distToTile(state, x, y, d.stationTile[i]!);
-    if (dist <= REACH && dist < bestDist) { best = { kind: TargetKind.Power, index: i }; bestDist = dist; }
+    const tile = d.stationTile[i]!, dist = distToTile(state, x, y, tile);
+    if (dist <= REACH && (dist < bestDist || (dist === bestDist && tile < bestTile))) { best = { kind: TargetKind.Power, index: i }; bestDist = dist; bestTile = tile; }
   }
   return best;
 ```
@@ -828,6 +852,7 @@ Replace the Confirm handling and the door loop in `interactSystem` (the `targets
     if (!stationOnline(state, i) || state.stations.occupant[i]! >= 0) continue;
     const pid = Math.min(...sitRequests.get(i)!);
     sitDown(state, pid, i); state.scratch.satThisTick[pid] = 1;
+    targets[pid] = NONE;                                                            // a player who sits this tick repairs or revives nothing this tick
   }
 ```
 
@@ -1048,7 +1073,9 @@ import { describe, it, expect } from 'vitest';
 import { activeHazardCount, spawner } from '../src/renderer/src/sim/hazards/spawner';
 import { burningRoomCount, igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activeBreachCount } from '../src/renderer/src/sim/hazards/breach';
-import { failedStationCount } from '../src/renderer/src/sim/stations';
+import { failedStationCount, sitDown } from '../src/renderer/src/sim/stations';
+import { Seated } from '../src/renderer/src/sim/components';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_CAP, SPAWN_JITTER } from '../src/renderer/src/sim/tuning';
 import { makeState, run, seconds } from './helpers/sim';
 
@@ -1082,6 +1109,18 @@ describe('timer spawner', () => {
     run(a, seconds(120)); run(b, seconds(120));
     expect(Array.from(a.stations.failed)).toEqual(Array.from(b.stations.failed));
     expect(Array.from(a.rooms.fire)).toEqual(Array.from(b.rooms.fire));
+  });
+  it('a failure spawned inside step() stands the occupant in that same tick', () => {
+    const s = makeState(2), nav = s.derived.stationOfKind[StationKind.Navigation]!;
+    sitDown(s, 0, nav);
+    // Force a spawn every tick, clearing the other hazards so the cap never blocks, until the seeded spawner fails Navigation.
+    for (let n = 0; n < 2000 && !s.stations.failed[nav]; n++) {
+      s.spawner.nextSpawnTick = s.tick; s.rooms.fire.fill(0); s.breaches.active.fill(0);
+      for (let i = 0; i < s.stations.failed.length; i++) if (i !== nav) s.stations.failed[i] = 0;
+      run(s, 1);
+    }
+    expect(s.stations.failed[nav]).toBe(1);
+    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[nav]).toBe(-1);   // already standing when the tick ended
   });
   it('power failures accumulate on distinct stations up to the cap and never re-fail one', () => {
     const s = makeState(0, 3);
@@ -1410,13 +1449,33 @@ In `src/renderer/src/render/fallback.ts`: `export type Feature = 'crew' | 'breac
 
 In `src/renderer/src/render/hud.ts`:
 
-Add a power strip under the hull panel (replace the `parent.addChild(panel(4, 4, 200, 40));` line and the `top` text with):
+Add a bar-cell row helper next to `bar(...)`: a station name, `max` 8×8 cells (`ui.bar.fill` for an allocated bar, `ui.bar.bg` for an empty one), a cursor marker and a status text.
 
 ```ts
-  parent.addChild(panel(4, 4, 200, 40));
-  const top = text(); top.position.set(12, 14); parent.addChild(top);
-  parent.addChild(panel(4, 48, 200, 8 * LINE + 12));
-  const powerRows = Array.from({ length: 8 }, (_, i) => { const row = new Container(); row.position.set(12, 54 + i * LINE); parent.addChild(row); return row; });
+  const CELL = 8, MAX_CELLS = 3;
+  const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number }): void } => {
+    const root = new Container();
+    const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
+    const name = text(); name.position.set(12, 1); root.addChild(name);
+    const cells = Array.from({ length: MAX_CELLS }, (_, c) => { const sp = new Sprite(assets.texture('ui.bar.bg')); sp.width = CELL; sp.height = CELL; sp.position.set(112 + c * (CELL + 2), 4); root.addChild(sp); return sp; });
+    const status = text(16, WARN); status.position.set(150, 1); root.addChild(status);
+    return {
+      root,
+      set(o) {
+        mark.visible = o.cursor; name.text = o.name; name.tint = o.tint;
+        cells.forEach((sp, c) => { sp.visible = c < o.max; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; });
+        status.text = o.status;
+      }
+    };
+  };
+```
+
+Add the ship power strip under the threats panel at the top right (after the `threatRows` line):
+
+```ts
+  parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
+  const powerTitle = text(); powerTitle.position.set(INTERNAL_W - 224, 114); parent.addChild(powerTitle);
+  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
 ```
 
 Per player, add a console panel above the player block (inside the `players` map, after `progress`):
@@ -1424,10 +1483,11 @@ Per player, add a console panel above the player block (inside the `players` map
 ```ts
     const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
     consoleRoot.addChild(panel(0, 0, 234, 8 * LINE + 12));
-    const consoleRows = Array.from({ length: 8 }, (_, i) => { const row = new Container(); row.position.set(8, 6 + i * LINE); consoleRoot.addChild(row); return row; });
+    const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
+    const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
 ```
 
-and return `consoleRoot, consoleRows` with the others. In `updatePlayer`, after the `lifeText` branch, replace the walking `else` with:
+and return `consoleRoot, consoleRows, consoleFooter` with the others. In `updatePlayer`, after the `lifeText` branch, replace the walking `else` with:
 
 ```ts
     else if (p.seated !== null) {
@@ -1440,21 +1500,23 @@ and return `consoleRoot, consoleRows` with the others. In `updatePlayer`, after 
     ui.consoleRoot.visible = p.console !== null;
     if (p.console && 'rows' in p.console) {
       const c = p.console;
-      c.rows.forEach((r, k) => fillRow(ui.consoleRows[k]!, [{ text: `${k === c.cursor ? '>' : ' '} ${r.name.padEnd(12)} ${'#'.repeat(r.level)}${'-'.repeat(r.max - r.level)}${r.failed ? ' FAIL' : ''}`, tint: r.failed ? WARN : k === c.cursor ? TEXT : DIM }]));
-      fillRow(ui.consoleRows[7]!, [{ text: `  pool ${c.pool}`, tint: DIM }]);
+      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }));
+      ui.consoleRows.forEach((r) => { r.root.visible = true; });
+      fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}`, tint: DIM }]);
     } else if (p.console) {
-      fillRow(ui.consoleRows[0]!, [{ text: p.console.doorIndex < 0 ? 'No doors' : `Door ${p.console.rooms[0]} - ${p.console.rooms[1]}`, tint: TEXT }]);
-      for (let k = 1; k < 8; k++) fillRow(ui.consoleRows[k]!, []);
+      ui.consoleRows.forEach((r) => { r.root.visible = false; });
+      fillRow(ui.consoleFooter, [{ text: 'rooms' in p.console ? `Door ${p.console.rooms[0]} - ${p.console.rooms[1]}` : 'No doors', tint: TEXT }]);
     }
 ```
 
 with `import { STATION_NAMES } from '../sim/stationKinds';`. In `update(m)` add the strip:
 
 ```ts
-      fillRow(powerRows[0]!, [{ text: `POWER ${m.power.used}/${m.power.capacity}`, tint: TEXT }]);
+      powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
       for (let k = 0; k < 7; k++) {
         const st = m.stations.find((s) => s.kind === k);
-        fillRow(powerRows[k + 1]!, st ? [{ text: `${st.name.padEnd(12)} ${'#'.repeat(st.level)}${'-'.repeat(st.max - st.level)}${st.online ? (st.occupant !== null ? ` P${st.occupant + 1}` : '') : ' OFF'}`, tint: st.online ? TEXT : WARN }] : []);
+        if (st) powerRows[k]!.set({ name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN });
+        powerRows[k]!.root.visible = !!st;
       }
 ```
 
