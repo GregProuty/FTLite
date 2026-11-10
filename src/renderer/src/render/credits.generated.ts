@@ -3,7 +3,7 @@ export const CREDITS: readonly string[] = [
   "FTLite",
   "",
   "\"1-Bit Input Prompts Pixel 16×\" by Kenney (www.kenney.nl), CC0",
-  "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+  "\"Cozy Space Interiors\" by Bramble & Byte (https://aquumgifts.itch.io), CC-BY 4.0",
   "\"Fire Smoke Animations\" by Reactorcore, CC0",
   "\"m5x7\" by Daniel Linssen, CC0",
   "\"Pixel UI Pack\" by Kenney (www.kenney.nl), CC0",

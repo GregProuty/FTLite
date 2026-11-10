@@ -9,7 +9,7 @@ import { CREDITS } from './render/credits.generated';
 
 declare global { interface Window { ftlite?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void } } }
 
-/** Startup failures (invalid ship, invalid manifest, missing required asset) stop here with the message on screen (spec �7, parent �9). */
+/** Startup failures (invalid ship, invalid manifest, missing required asset) stop here with the message on screen (spec §7, parent §9). */
 function showFatal(err: unknown): void {
   const pre = document.createElement('pre');
   pre.style.cssText = 'color:#f88;background:#000;margin:0;padding:16px;font:14px monospace;white-space:pre-wrap';
@@ -20,7 +20,7 @@ ${err instanceof Error ? err.message : String(err)}`;
 }
 
 async function start(): Promise<void> {
-  const layout = parseShip(starter);          // throws with a clear message on invalid ship data (spec §9)
+  const layout = parseShip(starter);          // throws with a clear message on invalid ship data (spec Â§9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   const hud = createHud(renderer.hud, assets);

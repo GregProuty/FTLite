@@ -7,9 +7,8 @@ import type { GameAssets } from './assets';
 import { createRenderMemory } from './memory';
 import { createTileLayer } from './tiles';
 import { createEffectsLayer } from './effects';
-import { createCrewLayer, CREW_COLORS } from './crewSprites';
+import { createCrewLayer } from './crewSprites';
 
-export { CREW_COLORS };
 
 export interface Renderer {
   app: Application; world: Container; hud: Container; assets: GameAssets;

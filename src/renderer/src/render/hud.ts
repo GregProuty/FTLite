@@ -1,4 +1,4 @@
-import { Container, Sprite, BitmapText, NineSliceSprite, type Texture } from 'pixi.js';
+import { Container, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
 import { glyphName, type HudModel, type HudPlayer } from './hudModel';
