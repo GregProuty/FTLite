@@ -8,7 +8,7 @@ import { Position, Seated } from '../src/renderer/src/sim/components';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
-import { LAYOUT, makeState, intents, run } from './helpers/sim';
+import { LAYOUT, makeState, intents, run, placeDebris } from './helpers/sim';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {
@@ -82,5 +82,17 @@ describe('snapshot', () => {
     expect(hashState(t)).toBe(hashState(s));
     expect(Seated.station[t.crew[0]!]).toBe(eng); expect(t.stations.occupant[eng]).toBe(0); expect(t.stations.cursor[eng]).toBe(5);
     expect(t.stations.failed[1]).toBe(1); expect(t.stations.repair[1]).toBe(0.25); expect(t.stick.heldDir[0]).toBe(2); expect(t.stick.repeat[0]).toBe(3);
+  });
+  it('round-trips debris, weapons charge and room impact ticks', () => {
+    const s = makeState(2, 5);
+    placeDebris(s, 3, 900, 1); placeDebris(s, 4, 1200, 0);
+    s.weapons.charge = 0.4; s.rooms.impactTick[3] = 77;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(hashState(t)).toBe(hashState(s));
+    expect(Array.from(t.debris.active)).toEqual(Array.from(s.debris.active));
+    expect(Array.from(t.debris.stableId)).toEqual(Array.from(s.debris.stableId));
+    expect(Array.from(t.debris.impactTick)).toEqual(Array.from(s.debris.impactTick));
+    expect(Array.from(t.debris.warned)).toEqual(Array.from(s.debris.warned));
+    expect(t.weapons.charge).toBe(0.4); expect(t.rooms.impactTick[3]).toBe(77);
   });
 });

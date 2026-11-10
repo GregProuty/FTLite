@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 2;
+export const SIM_VERSION = 3;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
@@ -55,4 +55,15 @@ export const INJECT_FRAC = 0.06;          // per second of room volume at full o
 export const LS_SEATED_BONUS = 0.5;
 export const MEDBAY_HEAL = 4;             // health per second at full output
 export const MEDBAY_SEATED_BONUS = 0.5;
-export const SPAWN_WEIGHTS = { fire: 2, breach: 1, power: 1 } as const;
+export const SPAWN_WEIGHTS = { fire: 2, breach: 1, power: 1, debris: 2 } as const;   // intervals in this order (total 6)
+
+// Debris (increment 2a-ii)
+export const DEBRIS_SLOTS = 8;                        // never reached: SPAWN_CAP counts in-flight debris
+export const DEBRIS_FLIGHT = 30, DEBRIS_FLIGHT_JITTER = 6;             // seconds from spawn to impact, +/- jitter
+export const SCIENCE_LEAD_UNMANNED = 4;               // seconds of warning with Science unoccupied or offline
+export const SCIENCE_LEAD_BASE = 12, SCIENCE_LEAD_SCALE = 16;          // seated lead = base + scale x output (18 s at level 1, 24 s at level 2, skill 0)
+export const BEAM_CHARGE_TIME = 6;                    // seconds at output 1 (24 / 12 / 8 s at levels 1 / 2 / 3, skill 0)
+export const BEAM_HIT_BASE = 0.55, BEAM_HIT_SCALE = 0.30;              // hit chance = base + scale x output
+export const EVADE_BASE = 0.20, EVADE_SCALE = 0.40;                    // evasion chance = base + scale x output
+export const DEBRIS_HULL_DAMAGE = 8;                  // of HULL_MAX per impact
+export const DEBRIS_CREW_DAMAGE = 20;                 // of HEALTH_MAX per Conscious crew member in the hit room

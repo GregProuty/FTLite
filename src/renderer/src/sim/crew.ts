@@ -30,10 +30,7 @@ export function crewSystem(state: SimState): void {
     if (Life.state[eid] === LifeState.Conscious) {
       const dmg = (inFire ? FIRE_DAMAGE : 0) + (lowO2 ? O2_DAMAGE : 0);
       if (dmg > 0) Health.cur[eid] = Math.max(0, Health.cur[eid]! - dmg * DT);
-      if (Health.cur[eid] === 0) {
-        Life.state[eid] = LifeState.Downed; standUp(state, pid); Life.bleed[eid] = BLEEDOUT_TIME;
-        Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1;
-      }
+      if (Health.cur[eid] === 0) downCrew(state, pid);
     } else {
       Life.bleed[eid] = Math.max(0, Life.bleed[eid]! - DT * (inFire || lowO2 ? BLEED_HAZARD_MULT : 1));
       if (Life.bleed[eid] === 0) { Life.state[eid] = LifeState.Dead; Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1; }
@@ -41,4 +38,11 @@ export function crewSystem(state: SimState): void {
   }
   if (state.hull <= 0) { state.hull = 0; state.ended = 1; state.endReason = EndReason.Hull; }
   else if (state.playerCount > 0 && consciousCount(state) === 0) { state.ended = 1; state.endReason = EndReason.Crew; }
+}
+
+/** Downed transition, shared by environmental damage and debris impacts: stands the player and starts the bleed-out. */
+export function downCrew(state: SimState, pid: number): void {
+  const eid = state.crew[pid]!;
+  Life.state[eid] = LifeState.Downed; standUp(state, pid); Life.bleed[eid] = BLEEDOUT_TIME;
+  Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1;
 }

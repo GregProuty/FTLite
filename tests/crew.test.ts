@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
-import { reviveCrew, consciousCount, EndReason } from '../src/renderer/src/sim/crew';
+import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
+import { reviveCrew, consciousCount, downCrew, EndReason } from '../src/renderer/src/sim/crew';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { oxygenStep } from '../src/renderer/src/sim/hazards/oxygen';
 import { O2_DAMAGE, BREATH_RATE, HAZARD_DT, HEALTH_MAX, FIRE_DAMAGE, BLEEDOUT_TIME, REVIVE_HEALTH_FRAC } from '../src/renderer/src/sim/tuning';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { makeState, run, room, seconds, teleport } from './helpers/sim';
 
 describe('doorway rule', () => {
@@ -100,5 +102,15 @@ describe('crew lifecycle', () => {
     const s = makeState(2);
     s.hull = 0; run(s, 5);
     expect(s.tick).toBe(1);
+  });
+  it('downCrew downs a crew member immediately, stands them up and starts the bleed timer', () => {
+    const s = makeState(1);
+    const eng = s.derived.stationOfKind[StationKind.Engineering]!;
+    sitDown(s, 0, eng);
+    downCrew(s, 0);
+    const eid = s.crew[0]!;
+    expect(Life.state[eid]).toBe(LifeState.Downed); expect(Life.bleed[eid]).toBe(BLEEDOUT_TIME);
+    expect(Seated.station[eid]).toBe(-1); expect(s.stations.occupant[eng]).toBe(-1);
+    expect(Life.reviveProgress[eid]).toBe(0); expect(Life.reviverPid[eid]).toBe(-1);
   });
 });
