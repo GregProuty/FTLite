@@ -1,0 +1,543 @@
+[
+  {
+    "file": "raw/cozy-space-interiors/floor-steel.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "floor.0"
+  },
+  {
+    "file": "raw/cozy-space-interiors/floor-steel-plain.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "floor.1"
+  },
+  {
+    "file": "raw/cozy-space-interiors/floor-steel-bolts.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "floor.2"
+  },
+  {
+    "file": "raw/cozy-space-interiors/floor-steel-vent.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "floor.3"
+  },
+  {
+    "file": "raw/cozy-space-interiors/frame-n.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "wall.flat"
+  },
+  {
+    "file": "raw/cozy-space-interiors/wall.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "wall.plain"
+  },
+  {
+    "file": "raw/cozy-space-interiors/wall-vent.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "wall.vent"
+  },
+  {
+    "file": "raw/cozy-space-interiors/wall-pipes.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "wall.pipes"
+  },
+  {
+    "file": "raw/cozy-space-interiors/wall-screen.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "name": "wall.screen"
+  },
+  {
+    "file": "raw/cozy-space-interiors/door-4f.png",
+    "title": "Cozy Space Interiors",
+    "author": "Bramble & Byte",
+    "source": "https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "archived": "https://web.archive.org/web/2026/https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset",
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Cozy Space Interiors\" by Bramble & Byte (https://opengameart.org/content/cozy-space-interiors-16-px-top-down-sci-fi-tileset), CC-BY 4.0",
+    "required": true,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 32,
+      "frames": {
+        "door.closed": 0,
+        "door.sealed": 0
+      },
+      "animations": {
+        "door.open": {
+          "frames": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "fps": 12,
+          "loop": false
+        }
+      }
+    }
+  },
+  {
+    "file": "raw/puny-characters/Human-Worker-Cyan.png",
+    "title": "Puny Characters",
+    "author": "Shade",
+    "source": "https://opengameart.org/content/puny-characters",
+    "archived": "https://web.archive.org/web/20260421075213/https://opengameart.org/content/puny-characters",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Puny Characters\" by Shade, CC0",
+    "required": true,
+    "sheet": {
+      "frameW": 32,
+      "frameH": 32,
+      "frames": {
+        "crew.idle.s": 1,
+        "crew.idle.se": 25,
+        "crew.idle.e": 49,
+        "crew.idle.ne": 73,
+        "crew.idle.n": 97,
+        "crew.idle.nw": 121,
+        "crew.idle.w": 145,
+        "crew.idle.sw": 169,
+        "crew.down": 23
+      },
+      "animations": {
+        "crew.walk.s": {
+          "frames": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew.walk.se": {
+          "frames": [
+            25,
+            26,
+            27,
+            28
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew.walk.e": {
+          "frames": [
+            49,
+            50,
+            51,
+            52
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew.walk.ne": {
+          "frames": [
+            73,
+            74,
+            75,
+            76
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew.walk.n": {
+          "frames": [
+            97,
+            98,
+            99,
+            100
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew.walk.nw": {
+          "frames": [
+            121,
+            122,
+            123,
+            124
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew.walk.w": {
+          "frames": [
+            145,
+            146,
+            147,
+            148
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew.walk.sw": {
+          "frames": [
+            169,
+            170,
+            171,
+            172
+          ],
+          "fps": 8,
+          "loop": true
+        }
+      }
+    }
+  },
+  {
+    "file": "raw/reactorcore-fire-smoke/OilyFireball_RefSheet.png",
+    "title": "Fire Smoke Animations",
+    "author": "Reactorcore",
+    "source": "https://opengameart.org/content/fire-smoke-animations",
+    "archived": "https://web.archive.org/web/20250908092802/https://opengameart.org/content/fire-smoke-animations",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Fire Smoke Animations\" by Reactorcore, CC0",
+    "required": true,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {},
+      "animations": {
+        "fire.loop": {
+          "frames": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "fps": 10,
+          "loop": true
+        }
+      }
+    }
+  },
+  {
+    "file": "raw/kenney-pixel-ui/space.png",
+    "title": "Pixel UI Pack",
+    "author": "Kenney",
+    "source": "https://opengameart.org/content/pixel-ui-pack-750-assets",
+    "archived": "https://web.archive.org/web/20261024143029/https://opengameart.org/content/pixel-ui-pack-750-assets",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Pixel UI Pack\" by Kenney (www.kenney.nl), CC0",
+    "required": true,
+    "name": "ui.panel",
+    "nineSlice": {
+      "left": 2,
+      "top": 2,
+      "right": 2,
+      "bottom": 2
+    }
+  },
+  {
+    "file": "raw/kenney-pixel-ui/grey.png",
+    "title": "Pixel UI Pack",
+    "author": "Kenney",
+    "source": "https://opengameart.org/content/pixel-ui-pack-750-assets",
+    "archived": "https://web.archive.org/web/20261024143029/https://opengameart.org/content/pixel-ui-pack-750-assets",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Pixel UI Pack\" by Kenney (www.kenney.nl), CC0",
+    "required": true,
+    "name": "ui.bar.bg",
+    "nineSlice": {
+      "left": 3,
+      "top": 3,
+      "right": 3,
+      "bottom": 5
+    }
+  },
+  {
+    "file": "raw/kenney-pixel-ui/green.png",
+    "title": "Pixel UI Pack",
+    "author": "Kenney",
+    "source": "https://opengameart.org/content/pixel-ui-pack-750-assets",
+    "archived": "https://web.archive.org/web/20261024143029/https://opengameart.org/content/pixel-ui-pack-750-assets",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"Pixel UI Pack\" by Kenney (www.kenney.nl), CC0",
+    "required": true,
+    "name": "ui.bar.fill"
+  },
+  {
+    "file": "raw/kenney-input-prompts/tilemap_white_packed.png",
+    "title": "1-Bit Input Prompts Pixel 16×",
+    "author": "Kenney",
+    "source": "https://kenney-assets.itch.io/1-bit-pixel-input-prompts-16",
+    "archived": "https://web.archive.org/web/20261030032928/https://kenney-assets.itch.io/1-bit-pixel-input-prompts-16",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"1-Bit Input Prompts Pixel 16×\" by Kenney (www.kenney.nl), CC0",
+    "required": true,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {
+        "prompt.kb.E": 87,
+        "prompt.kb.F": 123,
+        "prompt.kb.Q": 85,
+        "prompt.kb.Enter": 134,
+        "prompt.kb.ShiftRight": 255,
+        "prompt.kb.Backspace": 66,
+        "prompt.pad.A": 42,
+        "prompt.pad.X": 44,
+        "prompt.pad.B": 43
+      },
+      "animations": {}
+    }
+  },
+  {
+    "file": "raw/m5x7/m5x7.ttf",
+    "title": "m5x7",
+    "author": "Daniel Linssen",
+    "source": "https://managore.itch.io/m5x7",
+    "archived": "https://web.archive.org/web/20261030045254/https://managore.itch.io/m5x7",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-11-10",
+    "modifications": "none",
+    "credit": "\"m5x7\" by Daniel Linssen, CC0",
+    "required": true,
+    "name": "font.m5x7"
+  },
+  {
+    "file": "art/tiles/breach.png",
+    "title": "FTLite breach decal",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {
+        "breach.h": 0,
+        "breach.v": 1
+      },
+      "animations": {}
+    }
+  },
+  {
+    "file": "art/tiles/floor_damaged.png",
+    "title": "FTLite damaged floor",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {
+        "floor.damaged.0": 0,
+        "floor.damaged.1": 1
+      },
+      "animations": {}
+    }
+  },
+  {
+    "file": "art/crew/body_base.png",
+    "title": "Puny Characters",
+    "author": "Shade",
+    "source": "https://opengameart.org/content/puny-characters",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modifications": "outfit recoloured to light grey (#c8c8c8) for runtime tinting; skin and hair unchanged",
+    "editedBy": "FTLite project owner",
+    "credit": "\"Puny Characters\" by Shade, CC0",
+    "required": false,
+    "sheet": {
+      "frameW": 32,
+      "frameH": 32,
+      "frames": {},
+      "animations": {}
+    }
+  },
+  {
+    "file": "art/crew/sit.png",
+    "title": "FTLite crew sitting",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 32,
+      "frameH": 32,
+      "frames": {
+        "crew.sit": 0
+      },
+      "animations": {}
+    }
+  },
+  {
+    "file": "art/fx/vent.png",
+    "title": "FTLite oxygen vent",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {},
+      "animations": {
+        "vent.puff": {
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "fps": 12,
+          "loop": true
+        }
+      }
+    }
+  },
+  {
+    "file": "art/fx/arc.png",
+    "title": "FTLite electric arc",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {},
+      "animations": {
+        "fx.arc": {
+          "frames": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "fps": 12,
+          "loop": true
+        }
+      }
+    }
+  },
+  {
+    "file": "art/icons/hazards.png",
+    "title": "FTLite hazard icons",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {
+        "icon.fire": 0,
+        "icon.oxygen": 1,
+        "icon.breach": 2,
+        "icon.door": 3,
+        "icon.repair": 4,
+        "icon.medical": 5,
+        "icon.power": 6,
+        "icon.sensors": 7,
+        "icon.weapons": 8,
+        "icon.navigation": 9
+      },
+      "animations": {}
+    }
+  }
+]

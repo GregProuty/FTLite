@@ -81,3 +81,23 @@ describe('parseManifest', () => {
     expect(() => parseManifest([{ ...cozy, archived: undefined }])).toThrow(/archived/);
   });
 });
+
+import { pngSize } from '../src/renderer/src/render/png';
+
+describe('pngSize', () => {
+  const png = (w: number, h: number): Uint8Array => {
+    const b = new Uint8Array(33);
+    b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+    b.set([0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52], 8);          // IHDR length + type
+    new DataView(b.buffer).setUint32(16, w); new DataView(b.buffer).setUint32(20, h);
+    return b;
+  };
+  it('reads width and height from the IHDR chunk', () => {
+    expect(pngSize(png(160, 32))).toEqual({ width: 160, height: 32 });
+    expect(pngSize(png(1, 70000))).toEqual({ width: 1, height: 70000 });
+  });
+  it('rejects a non-PNG', () => {
+    expect(() => pngSize(new Uint8Array(40))).toThrow(/PNG/);
+    expect(() => pngSize(png(16, 16).slice(0, 20))).toThrow(/PNG/);
+  });
+});
