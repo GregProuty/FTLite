@@ -24,7 +24,7 @@ const FONT_SIZE = 16;
 const ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('');
 
 async function loadImage(url: string): Promise<Texture> {
-  const tex = await Assets.load<Texture>({ src: url, loadParser: 'loadTextures' });
+  const tex = await Assets.load<Texture>({ src: url, parser: 'loadTextures' });
   tex.source.scaleMode = 'nearest';
   return tex;
 }
