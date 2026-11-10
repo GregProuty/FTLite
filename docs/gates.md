@@ -19,3 +19,13 @@
   - [ ] Two keyboard clusters plus two pads: four players join.
   - Result and any device restrictions: pending human playtest.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Art pass
+- [x] `tests/assets.test.ts`: manifest valid, every raw/art file manifested, required files present, grids divide, names bound once, licences on the allow-list.
+- [x] `tests/credits.test.ts`: `THIRD_PARTY_NOTICES.txt` and `credits.generated.ts` match the manifest (`npm run credits` regenerates them).
+- [x] `tests/build-output.test.ts` after `npm run build`: `out/renderer/assets/manifest.json` and `out/renderer/THIRD_PARTY_NOTICES.txt` exist.
+- [x] Pure render tests: door state pairs, wall tall/flat rule, fire subsets, breach geometry, facing, render memory reset, credits sub-state.
+- [ ] Manual (`npm run dev`): Cozy Space ship with animated doors and tinted Puny crew; doors open on approach and show the sealed frame when sealed, including after a seal/unseal while another door is mid-animation; a fire shows animated flames whose count grows; a breach shows the decal (or the placeholder square until the decal is drawn) and the vent puff points outward; a restart shows no scorch marks from the previous run; the HUD uses the bitmap font and panels with the right glyph per device (kb1: E/F; kb2: Enter/Shift; pad: A/X); the credits screen opens from the lobby with Cancel and Confirm closes it without starting. Date and notes: pending human playtest.
+- [ ] Packaged build (`npm run dist`, installed): same art; `resources/THIRD_PARTY_NOTICES.txt` present. (pending)
+- [ ] Increment 1 manual items above still pass. (pending)
+- Optional in-house art not yet present at the time of this gate (placeholders in use): <list from the assets test warning>.

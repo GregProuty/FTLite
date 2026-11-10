@@ -5,6 +5,7 @@ import { createRenderer } from './render/renderer';
 import { createHud } from './render/hud';
 import { createKeyboardSources, sampleGamepads } from './input/sources';
 import { createSession } from './app/session';
+import { CREDITS } from './render/credits.generated';
 
 declare global { interface Window { ftlite?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void } } }
 
@@ -30,6 +31,7 @@ async function start(): Promise<void> {
     renderer, hud,
     now: () => performance.now(),
     canResume: () => !document.hidden && document.hasFocus(),
+    credits: CREDITS,
     saveCrash: (payload) => { try { localStorage.setItem('ftlite-crash', JSON.stringify(payload)); } catch { /* storage unavailable */ } }
   });
   const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);

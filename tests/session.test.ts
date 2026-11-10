@@ -7,17 +7,22 @@ import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay
 import { hashState } from '../src/renderer/src/sim/hash';
 import { step } from '../src/renderer/src/sim/step';
 
-function harness(canResume?: () => boolean) {
+import type { HudModel } from '../src/renderer/src/render/hudModel';
+
+function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C']) {
   let samples: SourceSample[] = [];
   let t = 0;
   const crashes: unknown[] = [];
+  let last: HudModel | null = null;
   const session = createSession({
-    layout: LAYOUT, sampleDevices: () => samples, renderer: null, hud: null,
-    now: () => t, canResume, saveCrash: (p) => { crashes.push(p); }
+    layout: LAYOUT, sampleDevices: () => samples, renderer: null, hud: { update(m) { last = m; } },
+    now: () => t, canResume, saveCrash: (p) => { crashes.push(p); }, credits
   });
-  const press = (key: string, o: Partial<SourceSample>) => { samples = [{ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o }]; };
+  const sample = (key: string, o: Partial<SourceSample>): SourceSample => ({ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o });
+  const press = (key: string, o: Partial<SourceSample>) => { samples = [sample(key, o)]; };
+  const pressMany = (...s: SourceSample[]) => { samples = s; };
   const frames = (n: number, ms = 1000 / 60) => { for (let i = 0; i < n; i++) { t += ms; session.frame(); } };
-  return { session, press, frames, crashes, release: () => press('a', {}) };
+  return { session, press, pressMany, sample, frames, crashes, release: () => press('a', {}), last: () => last! };
 }
 
 describe('session', () => {
@@ -152,5 +157,66 @@ describe('session', () => {
     press({ confirm: true }); session.frame(); press({}); session.frame();   // back to lobby, same seed
     press({ confirm: true }); session.frame(); press({});                    // start again
     expect(calls.filter((c) => c === 'reset')).toHaveLength(2);
+  });
+  describe('credits sub-state (spec §4)', () => {
+    const joined = () => { const h = harness(); h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); return h; };
+    it('opens on Cancel from a joined player, shows the lines, and stays in the lobby', () => {
+      const h = joined();
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      expect(h.session.phase).toBe('lobby'); expect(h.session.creditsOpen).toBe(true);
+      expect(h.last().credits).toEqual(['FTLite', '', 'Line A', 'Line B', 'Line C']); expect(h.last().creditsScroll).toBe(0);
+    });
+    it('does not open before anyone has joined (no routed input), and the lobby banner says how', () => {
+      const h = harness(); h.frames(1);
+      expect(h.last().message).toMatch(/Cancel/);
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      expect(h.session.creditsOpen).toBe(false);
+    });
+    it('scrolls one line per 150 ms while the stick is held, clamped to the last line', () => {
+      const h = joined();
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      h.press('a', { moveY: 1 }); h.frames(1, 50);
+      expect(h.last().creditsScroll).toBe(1);          // first step is immediate (hold starts full)
+      h.frames(1, 50); expect(h.last().creditsScroll).toBe(1);   // 50 ms held
+      h.frames(1, 50); expect(h.last().creditsScroll).toBe(1);   // 100 ms
+      h.frames(1, 50); expect(h.last().creditsScroll).toBe(2);   // 150 ms
+      h.frames(100, 50); expect(h.last().creditsScroll).toBe(4); // clamped to the last line
+      h.press('a', { moveY: -1 }); h.frames(1, 50); expect(h.last().creditsScroll).toBe(3);   // a new direction steps at once
+    });
+    it('closes on Cancel, and on Confirm without starting the run', () => {
+      const h = joined();
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      expect(h.session.creditsOpen).toBe(false); expect(h.last().credits).toBeNull();
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
+      expect(h.session.creditsOpen).toBe(false); expect(h.session.phase).toBe('lobby');
+    });
+    it('a frame with both Confirm and Cancel closes it and nothing else happens', () => {
+      const h = joined();
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      h.press('a', { confirm: true, cancel: true }); h.frames(1); h.release(); h.frames(1);
+      expect(h.session.creditsOpen).toBe(false); expect(h.session.phase).toBe('lobby');
+    });
+    it('a new device pressing Interact while credits are open does not join', () => {
+      const h = joined();
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      const both = () => h.pressMany(h.sample('a', {}), h.sample('b', {}));   // keep both devices present, nothing pressed
+      h.pressMany(h.sample('a', {}), h.sample('b', { interact: true })); h.frames(1); both(); h.frames(1);
+      expect(h.last().players[1]!.status).toBe('empty');
+      h.pressMany(h.sample('a', { cancel: true }), h.sample('b', {})); h.frames(1); both(); h.frames(1);   // close
+      h.pressMany(h.sample('a', {}), h.sample('b', { interact: true })); h.frames(1); both(); h.frames(1);
+      expect(h.last().players[1]!.status).toBe('active');
+    });
+    it('a reconnecting device cannot close the credits on the frame it reclaims its slot', () => {
+      const h = joined();
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      h.pressMany(); h.frames(1);                                                     // 'a' vanishes → reconnect
+      expect(h.last().players[0]!.status).toBe('reconnect');
+      h.press('a', { cancel: true, any: true }); h.frames(1); h.release(); h.frames(1); // reclaim + Cancel in one frame: ignored
+      expect(h.last().players[0]!.status).toBe('active'); expect(h.session.creditsOpen).toBe(true);
+      h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+      expect(h.session.creditsOpen).toBe(false);
+    });
   });
 });
