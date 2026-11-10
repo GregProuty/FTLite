@@ -2,6 +2,7 @@ import { AnimatedSprite, Container, Graphics, Sprite } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { FIRE_CAP } from '../sim/tuning';
+import { StationKind } from '../sim/stationKinds';
 import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
 import { fireTiles, breachOrientation, ventRotation, breachDamagedTiles } from './hazardTiles';
@@ -18,12 +19,14 @@ export interface EffectsLayer { below: Container; above: Container; draw(state: 
 
 export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): EffectsLayer {
   const missing = new Set(assets.missing);
-  const art = { fire: featureReady(missing, 'fire'), breach: featureReady(missing, 'breach'), vent: featureReady(missing, 'vent'), damaged: featureReady(missing, 'damagedFloor') };
+  const art = { fire: featureReady(missing, 'fire'), breach: featureReady(missing, 'breach'), vent: featureReady(missing, 'vent'), damaged: featureReady(missing, 'damagedFloor'), arc: featureReady(missing, 'arc') };
   const below = new Container(), above = new Container();
   const damagedLayer = new Container(), o2Layer = new Graphics(), fireLayer = new Container(), breachLayer = new Container(), fallback = new Graphics();
   below.addChild(damagedLayer, o2Layer, fireLayer, breachLayer, fallback);
   const damagedSprites = new Map<number, Sprite>();
   const fires = new Map<number, AnimatedSprite>();
+  const outline = new Graphics(); above.addChild(outline);
+  const failLayer = new Container(); below.addChild(failLayer); const fails = new Map<number, AnimatedSprite>();
   const decals: Sprite[] = [], puffs: AnimatedSprite[] = [];
   const tileXY = (w: number, t: number): [number, number] => { const tx = t % w; return [tx, (t - tx) / w]; };
 
@@ -80,6 +83,25 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
           }
           puffs[s]!.visible = active;
         }
+      }
+      // Doors console selection: outline the selected door tile while someone is seated there.
+      outline.clear();
+      const doorsIdx = d.stationOfKind[StationKind.Doors]!;
+      if (doorsIdx >= 0 && state.stations.occupant[doorsIdx]! >= 0 && state.stations.cursor[doorsIdx]! >= 0) {
+        const [tx, ty] = tileXY(w, d.edgeTile[d.doorEdges[state.stations.cursor[doorsIdx]!]!]!);
+        outline.rect(tx * TILE_PX + 1, ty * TILE_PX + 1, TILE_PX - 2, TILE_PX - 2).stroke({ color: 0x4fc3f7, width: 2 });
+      }
+      // Failed stations: arc animation on the console tile, or a yellow square.
+      const failedTiles: number[] = [];
+      for (let i = 0; i < d.stationTile.length; i++) if (state.stations.failed[i]) failedTiles.push(d.stationTile[i]!);
+      if (art.arc) {
+        const a = assets.animation('fx.arc');
+        syncCache(fails, failedTiles, (t) => {
+          const s = new AnimatedSprite(a.textures); s.scale.set(SCALE); s.animationSpeed = a.fps / 60; s.loop = true; s.play();
+          const [tx, ty] = tileXY(w, t); s.position.set(tx * TILE_PX, ty * TILE_PX); failLayer.addChild(s); return s;
+        }, (s) => s.destroy());
+      } else {
+        for (const t of failedTiles) { const [tx, ty] = tileXY(w, t); fallback.rect(tx * TILE_PX + 8, ty * TILE_PX + 8, TILE_PX - 16, TILE_PX - 16).fill({ color: 0xffd23a, alpha: 0.9 }); }
       }
     }
   };

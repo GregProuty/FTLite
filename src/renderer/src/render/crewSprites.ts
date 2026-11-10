@@ -1,7 +1,7 @@
 import { AnimatedSprite, Container, Graphics, type Texture } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
-import { Position, Stable, Life, LifeState, Owner } from '../sim/components';
+import { Position, Stable, Life, LifeState, Owner, Seated } from '../sim/components';
 import { CREW_HALF } from '../sim/tuning';
 import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
@@ -23,6 +23,7 @@ interface CrewSprite { sprite: AnimatedSprite; anim: string | null }
 export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewLayer {
   const container = new Container();
   const useArt = featureReady(new Set(assets.missing), 'crew');
+  const useSit = featureReady(new Set(assets.missing), 'sit');
   const sprites = new Map<number, CrewSprite>();
   const circles = new Map<number, Graphics>();
 
@@ -65,6 +66,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         const life = Life.state[eid];
         const moving = Math.abs(dx) >= MOVE_EPS_PX || Math.abs(dy) >= MOVE_EPS_PX;
         if (life !== LifeState.Conscious) setAnim(cs, 'crew.down', [assets.texture('crew.down')], 1, false);
+        else if (Seated.station[eid]! >= 0) { const n = useSit ? 'crew.sit' : 'crew.idle.s'; setAnim(cs, n, [assets.texture(n)], 1, false); }
         else if (!moving) setAnim(cs, `crew.idle.${facing}`, [assets.texture(`crew.idle.${facing}`)], 1, false);
         else { const a = assets.animation(`crew.walk.${facing}`); setAnim(cs, `crew.walk.${facing}`, a.textures, a.fps, a.loop, id); }
         cs.sprite.tint = life === LifeState.Dead ? DEAD_TINT : CREW_COLORS[Owner.pid[eid]! % 4]!;

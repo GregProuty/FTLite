@@ -3,6 +3,7 @@ import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
 import { glyphName, type HudModel, type HudPlayer } from './hudModel';
 import { featureReady } from './fallback';
+import { STATION_NAMES } from '../sim/stationKinds';
 
 const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, WARN = 0xff6b5a;
 const LINE = 18;                 // px per text line at 16 px m5x7
@@ -25,11 +26,31 @@ export function createHud(parent: Container, assets: GameAssets) {
     return { root, set(frac) { fill.width = Math.max(0, Math.min(1, frac)) * w; fill.visible = frac > 0; } };
   };
 
+  const CELL = 8, MAX_CELLS = 3;
+  const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number }): void } => {
+    const root = new Container();
+    const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
+    const name = text(); name.position.set(12, 1); root.addChild(name);
+    const cells = Array.from({ length: MAX_CELLS }, (_, c) => { const sp = new Sprite(assets.texture('ui.bar.bg')); sp.width = CELL; sp.height = CELL; sp.position.set(112 + c * (CELL + 2), 4); root.addChild(sp); return sp; });
+    const status = text(16, WARN); status.position.set(150, 1); root.addChild(status);
+    return {
+      root,
+      set(o) {
+        mark.visible = o.cursor; name.text = o.name; name.tint = o.tint;
+        cells.forEach((sp, c) => { sp.visible = c < o.max; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; });
+        status.text = o.status;
+      }
+    };
+  };
+
   // Top-left: hull and clock. Top-right: threats. Centre: banner. Bottom: four player blocks. Overlay: credits.
   parent.addChild(panel(4, 4, 200, 40));
   const top = text(); top.position.set(12, 14); parent.addChild(top);
   parent.addChild(panel(INTERNAL_W - 232, 4, 228, 100));
   const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 224, 12 + i * LINE); parent.addChild(row); return row; });
+  parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
+  const powerTitle = text(); powerTitle.position.set(INTERNAL_W - 224, 114); parent.addChild(powerTitle);
+  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
   const banner = text(16); banner.scale.set(2); banner.anchor.set(0.5, 0); banner.position.set(INTERNAL_W / 2, 24); parent.addChild(banner);
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
 
@@ -43,7 +64,11 @@ export function createHud(parent: Container, assets: GameAssets) {
     const line3 = new Container(); line3.position.set(0, LINE * 2);
     const progress = bar(216); progress.root.position.set(0, LINE * 3 - 6); progress.root.visible = false;
     root.addChild(name, hp.root, line2, line3, progress.root);
-    return { name, hp, oxygen, line2, line3, progress };
+    const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
+    consoleRoot.addChild(panel(0, 0, 234, 8 * LINE + 12));
+    const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
+    const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
+    return { name, hp, oxygen, line2, line3, progress, consoleRoot, consoleRows, consoleFooter };
   });
 
   const overlay = new Container(); overlay.visible = false;
@@ -69,15 +94,28 @@ export function createHud(parent: Container, assets: GameAssets) {
   }
 
   function updatePlayer(ui: (typeof players)[number], p: HudPlayer, i: number): void {
-    if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); ui.progress.root.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
-    if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); ui.progress.root.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
+    if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
+    if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
     ui.name.text = `P${i + 1}  HP ${Math.ceil(p.health)}`; ui.name.tint = TEXT;
     ui.hp.root.visible = true; ui.hp.set(p.health / 100);
     if (ui.oxygen) ui.oxygen.visible = p.lowOxygen;
     if (p.lifeText) { fillRow(ui.line2, [{ text: p.lifeText, tint: WARN }]); fillRow(ui.line3, []); }
-    else {
+    else if (p.seated !== null) {
+      fillRow(ui.line2, [{ text: STATION_NAMES[p.seated]!, tint: DIM }]);
+      fillRow(ui.line3, [{ glyph: glyphName('cancel', p.deviceKind), text: p.cancelPrompt }]);
+    } else {
       fillRow(ui.line2, [{ glyph: p.interactPrompt ? glyphName('interact', p.deviceKind) : null, icon: p.interactIcon, text: p.interactPrompt }]);
       fillRow(ui.line3, [{ glyph: p.confirmPrompt ? glyphName('confirm', p.deviceKind) : null, icon: p.confirmIcon, text: p.confirmPrompt }]);
+    }
+    ui.consoleRoot.visible = p.console !== null;
+    if (p.console && 'rows' in p.console) {
+      const c = p.console;
+      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }));
+      ui.consoleRows.forEach((r) => { r.root.visible = true; });
+      fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}`, tint: DIM }]);
+    } else if (p.console) {
+      ui.consoleRows.forEach((r) => { r.root.visible = false; });
+      fillRow(ui.consoleFooter, [{ text: 'rooms' in p.console ? `Door ${p.console.rooms[0]} - ${p.console.rooms[1]}` : 'No doors', tint: TEXT }]);
     }
     ui.progress.root.visible = p.progress > 0; ui.progress.set(p.progress);
   }
@@ -86,6 +124,12 @@ export function createHud(parent: Container, assets: GameAssets) {
     update(m: HudModel): void {
       top.text = `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s`;
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
+      powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
+      for (let k = 0; k < 7; k++) {
+        const st = m.stations.find((s) => s.kind === k);
+        if (st) powerRows[k]!.set({ name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN });
+        powerRows[k]!.root.visible = !!st;
+      }
       banner.text = m.message;
       // Cancel (and Confirm) glyphs appear only with the lobby and game-over banners, for the first joined player's device.
       const first = m.players.find((p) => p.status === 'active');

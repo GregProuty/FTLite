@@ -122,6 +122,7 @@ describe('featureReady', () => {
     expect(featureReady(new Set(), 'breach')).toBe(true);
     expect(featureReady(new Set(['breach.v']), 'breach')).toBe(false);
     expect(featureReady(new Set(['breach.v']), 'fire')).toBe(true);
+    expect(featureReady(new Set(['fx.arc']), 'arc')).toBe(false); expect(featureReady(new Set(), 'arc')).toBe(true);
     expect(FEATURE_NAMES.crew).toContain('crew.walk.sw'); expect(FEATURE_NAMES.crew).toContain('crew.down');
     expect(FEATURE_NAMES.glyphs).toContain('prompt.pad.B'); expect(FEATURE_NAMES.icons).toContain('icon.repair');
     expect(FEATURE_NAMES.crew).not.toContain('crew.sit');     // 2a-only names never gate a feature
