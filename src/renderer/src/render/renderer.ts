@@ -1,12 +1,12 @@
-import { Application, Container, Graphics } from 'pixi.js';
+import { Application, Container } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { Position, Stable } from '../sim/components';
-import { FIRE_CAP } from '../sim/tuning';
 import { computeLetterbox } from './letterbox';
 import type { GameAssets } from './assets';
 import { createRenderMemory } from './memory';
 import { createTileLayer } from './tiles';
+import { createEffectsLayer } from './effects';
 import { createCrewLayer, CREW_COLORS } from './crewSprites';
 
 export { CREW_COLORS };
@@ -28,10 +28,9 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   app.stage.addChild(world, hud);
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory);
-  const overlays = new Container(), breachLayer = new Graphics();
+  const effects = createEffectsLayer(assets, memory);
   const crew = createCrewLayer(assets, memory);
-  world.addChild(tiles.container, overlays, breachLayer, crew.container);
-  const roomGfx: Graphics[] = [];
+  world.addChild(tiles.container, effects.below, crew.container, effects.above);
   let lastDraw: number | null = null;
 
   return {
@@ -51,21 +50,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
       world.position.set(Math.floor((INTERNAL_W - d.width * TILE_PX) / 2), Math.floor((INTERNAL_H - d.height * TILE_PX) / 2));
       tiles.update(state, dt);
-      while (roomGfx.length < d.volume.length) { const g = new Graphics(); roomGfx.push(g); overlays.addChild(g); }
-      for (let r = 0; r < d.volume.length; r++) {
-        const g = roomGfx[r]!; g.clear();
-        const frac = state.rooms.o2[r]! / d.volume[r]!, fire = state.rooms.fire[r]!;
-        for (const t of d.roomTiles[r]!) {
-          const tx = t % d.width, ty = (t - tx) / d.width;
-          if (frac < 1) g.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill({ color: 0xff2040, alpha: 0.6 * (1 - frac) });
-          if (fire > 0) g.rect(tx * TILE_PX + 4, ty * TILE_PX + 4, TILE_PX - 8, TILE_PX - 8).fill({ color: 0xff8c1a, alpha: 0.3 + 0.7 * fire / FIRE_CAP });
-        }
-      }
-      breachLayer.clear();
-      for (let s = 0; s < d.siteTile.length; s++) if (state.breaches.active[s]) {
-        const t = d.siteTile[s]!, tx = t % d.width, ty = (t - tx) / d.width;
-        breachLayer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill(0xff3030);
-      }
+      effects.draw(state);
       crew.draw(state, alpha);
     }
   };
