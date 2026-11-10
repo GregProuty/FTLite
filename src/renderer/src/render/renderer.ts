@@ -1,15 +1,15 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
-import { Position, Stable, Life, LifeState, Owner } from '../sim/components';
-import { CREW_HALF, FIRE_CAP } from '../sim/tuning';
+import { Position, Stable } from '../sim/components';
+import { FIRE_CAP } from '../sim/tuning';
 import { computeLetterbox } from './letterbox';
-import { syncCache } from './cache';
 import type { GameAssets } from './assets';
 import { createRenderMemory } from './memory';
 import { createTileLayer } from './tiles';
+import { createCrewLayer, CREW_COLORS } from './crewSprites';
 
-export const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
+export { CREW_COLORS };
 
 export interface Renderer {
   app: Application; world: Container; hud: Container; assets: GameAssets;
@@ -28,10 +28,10 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   app.stage.addChild(world, hud);
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory);
-  const overlays = new Container(), breachLayer = new Graphics(), crewLayer = new Container();
-  world.addChild(tiles.container, overlays, breachLayer, crewLayer);
+  const overlays = new Container(), breachLayer = new Graphics();
+  const crew = createCrewLayer(assets, memory);
+  world.addChild(tiles.container, overlays, breachLayer, crew.container);
   const roomGfx: Graphics[] = [];
-  const crewGfx = new Map<number, Graphics>();
   let lastDraw: number | null = null;
 
   return {
@@ -66,15 +66,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
         const t = d.siteTile[s]!, tx = t % d.width, ty = (t - tx) / d.width;
         breachLayer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill(0xff3030);
       }
-      const liveIds = state.crew.map((eid) => Stable.id[eid]!);
-      syncCache(crewGfx, liveIds, () => { const g = new Graphics(); crewLayer.addChild(g); return g; }, (g, id) => { g.destroy(); memory.prev.delete(id); });
-      for (const eid of state.crew) {
-        const id = Stable.id[eid]!, g = crewGfx.get(id)!, p = memory.prev.get(id) ?? { x: Position.x[eid]!, y: Position.y[eid]! };
-        const x = p.x + (Position.x[eid]! - p.x) * alpha, y = p.y + (Position.y[eid]! - p.y) * alpha;
-        const life = Life.state[eid];
-        g.clear().circle(0, 0, CREW_HALF * TILE_PX).fill({ color: life === LifeState.Dead ? 0x777777 : CREW_COLORS[Owner.pid[eid]! % 4]!, alpha: life === LifeState.Downed ? 0.5 : 1 });
-        g.position.set(x * TILE_PX, y * TILE_PX);
-      }
+      crew.draw(state, alpha);
     }
   };
 }
