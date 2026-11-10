@@ -1,7 +1,7 @@
-/** Deterministic variant choice so the ship looks identical every run (spec §4). Knuth multiplicative hash; no RNG stream touched. */
+/** Deterministic variant choice so the ship looks identical every run (spec §4). Knuth multiplicative hash; no RNG stream touched. The high 16 bits are used: the low bits of a multiplicative hash equal the index's low bits, so power-of-two counts would otherwise degenerate to `i % count` striping. */
 export function pickVariant(seedIndex: number, count: number): number {
   if (count <= 1) return 0;
-  return (Math.imul(seedIndex | 0, 0x9e3779b1) >>> 0) % count;
+  return (((Math.imul(seedIndex | 0, 0x9e3779b1) >>> 0) >>> 16) % count);
 }
 
 export function floorVariant(roomIndex: number): number { return pickVariant(roomIndex, 4); }

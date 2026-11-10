@@ -23,6 +23,7 @@ describe('pickVariant', () => {
     expect(picks).toEqual(Array.from({ length: 64 }, (_, i) => pickVariant(i, 4)));
     for (const p of picks) { expect(p).toBeGreaterThanOrEqual(0); expect(p).toBeLessThan(4); }
     expect(new Set(picks).size).toBe(4);
+    expect(picks).not.toEqual(Array.from({ length: 64 }, (_, i) => i % 4));   // the low bits of a multiplicative hash are the index itself; the high bits must be used
     expect(pickVariant(123, 1)).toBe(0);
   });
   it('floorVariant and wallVariant derive from pickVariant', () => {
