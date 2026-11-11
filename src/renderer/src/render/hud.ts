@@ -63,15 +63,16 @@ export function createHud(parent: Container, assets: GameAssets) {
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
 
   const players = [0, 1, 2, 3].map((i) => {
-    const x = 4 + i * 238, y = INTERNAL_H - 76;
-    parent.addChild(panel(x, y, 234, 72));
+    const x = 4 + i * 238, y = INTERNAL_H - 94;
+    parent.addChild(panel(x, y, 234, 90));
     const root = new Container(); root.position.set(x + 8, y + 8); parent.addChild(root);
     const name = text(); const hp = bar(96); hp.root.position.set(110, 2);
     const oxygen = icon('icon.oxygen'); if (oxygen) { oxygen.position.set(210, 0); oxygen.visible = false; root.addChild(oxygen); }
     const line2 = new Container(); line2.position.set(0, LINE);
     const line3 = new Container(); line3.position.set(0, LINE * 2);
-    const progress = bar(216); progress.root.position.set(0, LINE * 3 - 6); progress.root.visible = false;
-    root.addChild(name, hp.root, line2, line3, progress.root);
+    const line4 = new Container(); line4.position.set(0, LINE * 3);
+    const progress = bar(216); progress.root.position.set(0, LINE * 4 - 6); progress.root.visible = false;
+    root.addChild(name, hp.root, line2, line3, line4, progress.root);
     const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
     consoleRoot.addChild(panel(0, 0, 234, 8 * LINE + 12));
     const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
@@ -79,7 +80,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
     const consoleBar = bar(216); consoleBar.root.position.set(8, 6 + 7 * LINE + 14); consoleBar.root.visible = false; consoleRoot.addChild(consoleBar.root);   // a 2 px strip under the footer text: the Weapons footer now spans the row
     for (const c of consoleBar.root.children) (c as Sprite).height = 2;
-    return { name, hp, oxygen, line2, line3, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar };
+    return { name, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar };
   });
 
   const overlay = new Container(); overlay.visible = false;
@@ -105,8 +106,8 @@ export function createHud(parent: Container, assets: GameAssets) {
   }
 
   function updatePlayer(ui: (typeof players)[number], p: HudPlayer, i: number): void {
-    if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
-    if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
+    if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
+    if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
     ui.name.text = `P${i + 1}  HP ${Math.ceil(p.health)}`; ui.name.tint = TEXT;
     ui.hp.root.visible = true; ui.hp.set(p.health / 100);
     if (ui.oxygen) ui.oxygen.visible = p.lowOxygen;
@@ -118,6 +119,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.line2, [{ glyph: p.interactPrompt ? glyphName('interact', p.deviceKind) : null, icon: p.interactIcon, text: p.interactPrompt }]);
       fillRow(ui.line3, [{ glyph: p.confirmPrompt ? glyphName('confirm', p.deviceKind) : null, icon: p.confirmIcon, text: p.confirmPrompt }]);
     }
+    fillRow(ui.line4, [{ text: ['N', 'E', 'W', 'S', 'C', 'R'].map((l, k) => `${l}${p.skills[k]}`).join(' '), tint: DIM }]);
     ui.consoleRoot.visible = p.console !== null;
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
     if (p.console && 'rows' in p.console) {

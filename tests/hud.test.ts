@@ -11,7 +11,8 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';
 import { HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
-import { makeState, room, run, teleport, placeDebris, seconds } from './helpers/sim';
+import { Skill } from '../src/renderer/src/sim/skills';
+import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
 
@@ -180,5 +181,24 @@ describe('buildHudModel', () => {
     expect(panel.coolantFree).toBe(COOLANT_POOL - 3);
     const st = m.stations.find((x) => x.kind === StationKind.Navigation)!;
     expect(st.level).toBe(3); expect(st.max).toBe(2); expect(st.heat).toBe(0.5); expect(st.coolant).toBe(2); expect(st.overdriven).toBe(true);
+  });
+  it('reports the six skill levels per player and zeros for empty slots or no state', () => {
+    const s = makeState(2);
+    setSkill(s, 0, Skill.Navigation, 1); setSkill(s, 0, Skill.Repair, 3); setSkill(s, 1, Skill.Weapons, 10);
+    const m = buildHudModel(s, slots(2), 'running', '');
+    expect(m.players[0]!.skills).toEqual([1, 0, 0, 0, 0, 3]); expect(m.players[1]!.skills).toEqual([0, 0, 10, 0, 0, 0]);
+    expect(buildHudModel(s, slots(3), 'running', '').players[2]!.skills).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(buildHudModel(null, slots(1), 'lobby', '').players[0]!.skills).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+  it('the Engineering footer pool and the strip capacity include bonus bars while a skilled engineer sits, and drop after standing', () => {
+    const s = makeState(1), eng = s.derived.stationOfKind[StationKind.Engineering]!;
+    s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, 8); sitDown(s, 0, eng);
+    const m1 = buildHudModel(s, slots(1), 'running', '');
+    expect((m1.players[0]!.console as EngineeringPanel).pool).toBe(3); expect(m1.power).toEqual({ capacity: 12, used: 9 });
+    shiftBar(s, s.derived.stationOfKind[StationKind.Science]!, 1); shiftBar(s, s.derived.stationOfKind[StationKind.Medbay]!, 1); shiftBar(s, s.derived.stationOfKind[StationKind.Medbay]!, 1);
+    const m2 = buildHudModel(s, slots(1), 'running', '');
+    expect((m2.players[0]!.console as EngineeringPanel).pool).toBe(0); expect(m2.power).toEqual({ capacity: 12, used: 12 });
+    run(s, 1, () => intents({ cancelPressed: true }));
+    expect(buildHudModel(s, slots(1), 'running', '').power).toEqual({ capacity: 10, used: 10 });
   });
 });

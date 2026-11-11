@@ -2,12 +2,13 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { TICK_HZ, STATION_MAX, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP } from '../sim/tuning';
+import { TICK_HZ, STATION_MAX, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT } from '../sim/tuning';
+import { skillLevelOf } from '../sim/skills';
 import { StationKind, STATION_NAMES } from '../sim/stationKinds';
 import { stationOnline, stationOutput } from '../sim/stations';
 import { scienceLead } from '../sim/debris';
 import { warnedTargets } from '../sim/debrisTargets';
-import { powerUsed } from '../sim/power';
+import { powerUsed, powerPool, powerCapacity } from '../sim/power';
 import { isOverdriven, coolantUsed } from '../sim/heat';
 import type { SlotInfo, SlotStatus } from '../input/deviceManager';
 
@@ -16,7 +17,7 @@ export type HudAction = 'interact' | 'confirm' | 'cancel';
 export interface HudPlayer {
   pid: number; status: SlotStatus; deviceKind: DeviceKind;
   health: number; life: number; bleed: number; lowOxygen: boolean;
-  lifeText: string;
+  lifeText: string; skills: number[];
   interactPrompt: string; interactIcon: string | null;
   confirmPrompt: string; confirmIcon: string | null;
   progress: number;
@@ -55,11 +56,12 @@ const GLYPHS: Record<Exclude<DeviceKind, null>, Record<HudAction, string>> = {
 };
 export function glyphName(action: HudAction, kind: DeviceKind): string | null { return kind ? GLYPHS[kind][action] : null; }
 
-const EMPTY = { health: 0, life: 0, bleed: 0, lowOxygen: false, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '' } as const;
+const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { health: 0, life: 0, bleed: 0, lowOxygen: false, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '', skills: [0, 0, 0, 0, 0, 0] };
 
 function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> {
   const eid = state.crew[pid]!;
-  const base = { health: Health.cur[eid]!, life: Life.state[eid]!, bleed: Life.bleed[eid]! };
+  const skills = Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k));
+  const base = { health: Health.cur[eid]!, life: Life.state[eid]!, bleed: Life.bleed[eid]!, skills };
   const r = conditionRoomAt(state, Position.x[eid]!, Position.y[eid]!);
   const lowOxygen = r >= 0 && state.rooms.o2[r]! / state.derived.volume[r]! < HUD_LOW_O2_FRAC;
   if (Life.state[eid] === LifeState.Downed) return { ...EMPTY, ...base, lowOxygen, lifeText: `DOWNED ${Math.ceil(Life.bleed[eid]!)}s`, progress: Life.reviveProgress[eid]! };
@@ -92,7 +94,7 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
   const d = state.derived;
   if (kind === StationKind.Engineering) {
     const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: STATION_MAX[k]!, failed: si >= 0 && state.stations.failed[si] === 1, ...thermal(state, si) }; });
-    return { rows, cursor: state.stations.cursor[i]!, pool: state.power.capacity - powerUsed(state), coolantFree: COOLANT_POOL - coolantUsed(state) };
+    return { rows, cursor: state.stations.cursor[i]!, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state) };
   }
   if (kind === StationKind.Doors) {
     const c = state.stations.cursor[i]!;
@@ -126,6 +128,6 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
     for (const k of warnedTargets(state)) threats.push({ icon: 'icon.sensors', text: `Debris: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` });
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: STATION_MAX[kind]!, online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, ...thermal(state, i) })) : [];
-  const power = state ? { capacity: state.power.capacity, used: powerUsed(state) } : { capacity: 0, used: 0 };
+  const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
   return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], players, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0 };
 }
