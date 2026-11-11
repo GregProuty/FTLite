@@ -5,14 +5,17 @@ import { activeBreachCount, activateBreach } from '../src/renderer/src/sim/hazar
 import { failedStationCount, sitDown } from '../src/renderer/src/sim/stations';
 import { failStation } from '../src/renderer/src/sim/power';
 import { activeDebrisCount } from '../src/renderer/src/sim/debris';
-import { Seated, Life, LifeState } from '../src/renderer/src/sim/components';
+import { Seated, Life, LifeState, Health } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import type { ShipLayout } from '../src/renderer/src/sim/ship/schema';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { TICK_HZ, SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_INTERVAL_MIN, SPAWN_CAP_MAX, STRESS_WEIGHTS, STRESS_PERIOD, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SINCE_CAP } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_INTERVAL_MIN, SPAWN_CAP_MAX, STRESS_WEIGHTS, STRESS_PERIOD, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SINCE_CAP, HULL_MAX, HEALTH_MAX } from '../src/renderer/src/sim/tuning';
+import { botIntent } from './helpers/bot';
+import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
+import { step } from '../src/renderer/src/sim/step';
 import { makeState, run, seconds, placeDebris, teleport, room, quiet, armSpawn } from './helpers/sim';
 
 /** The starter layout minus its Doors console (a synthetic layout that bypasses the seven-station schema rule, for the missing-console fixtures). */
@@ -262,5 +265,23 @@ describe('routing (3 or 4 players)', () => {
     const s = createSimState(withoutDoors(), 3, 1); quiet(s);
     s.director.sinceProductive[StationKind.Doors] = 1000 * T;                      // stale value for a missing console
     expect(typeWeights(s)).toEqual([4, 2, 2, 4]);
+  });
+});
+
+describe('soak', () => {
+  it('20 sim minutes with an unkillable bot crew: every phase twice, no stall past 60 s, no Relax past 60 s, stress within 0..1', { timeout: 60_000 }, () => {
+    const s = makeState(2, 1, DEFAULT_CHARACTERS);
+    const seen = [0, 0, 0, 0]; let last = s.director.phase; seen[last]!++;
+    for (let t = 0; t < 72_000; t++) {
+      step(s, [botIntent(s, 0), botIntent(s, 1)]);
+      s.hull = HULL_MAX; for (const eid of s.crew) if (Life.state[eid] === LifeState.Conscious) Health.cur[eid] = HEALTH_MAX;   // harness cheat: the run must not end
+      const d = s.director;
+      if (d.phase !== last) { seen[d.phase]!++; last = d.phase; }
+      if (d.phase === Phase.BuildUp) expect(s.tick - Math.max(d.lastSpawnTick, d.phaseTick)).toBeLessThanOrEqual(STALL_SECONDS * T + 1);
+      if (d.phase === Phase.Relax) expect(s.tick - d.phaseTick).toBeLessThanOrEqual(RELAX_MAX * T + 1);
+      expect(d.stress).toBeGreaterThanOrEqual(0); expect(d.stress).toBeLessThanOrEqual(1);
+    }
+    expect(s.tick).toBe(72_000); expect(s.ended).toBe(0);
+    for (const n of seen) expect(n).toBeGreaterThanOrEqual(2);
   });
 });

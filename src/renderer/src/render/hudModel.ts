@@ -12,6 +12,7 @@ import { warnedTargets } from '../sim/debrisTargets';
 import { powerUsed, powerPool, powerCapacity } from '../sim/power';
 import { isOverdriven, coolantUsed } from '../sim/heat';
 import type { SlotInfo, SlotStatus } from '../input/deviceManager';
+import { PHASE_NAMES } from '../sim/director';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -41,6 +42,7 @@ export interface HudModel {
   phase: 'lobby' | 'running' | 'paused' | 'gameover' | 'error'; message: string; hull: number; simSeconds: number; tick: number;
   threats: HudThreat[]; power: { capacity: number; used: number }; stations: HudStation[]; weapons: { charge: number; ready: boolean; torpedoLoaded: boolean; torpedoStock: number }; impactTick: number[];
   players: HudPlayer[]; summary: string[] | null; credits: string[] | null; creditsScroll: number;
+  director: { phase: string; stress: number };
 }
 
 /** A player's room is "low" on the HUD below this oxygen fraction (a warning, well above SUFFOCATE_FRAC). */
@@ -144,5 +146,5 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: STATION_MAX[kind]!, online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], players, summary: state && phase === 'gameover' ? gainsSummary(state) : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0 };
+  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], players, summary: state && phase === 'gameover' ? gainsSummary(state) : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 } };
 }

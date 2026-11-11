@@ -11,7 +11,9 @@ import { botIntent } from './helpers/bot';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room, overdrive, setSkill } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
+import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ } from '../src/renderer/src/sim/tuning';
+import { Phase, cycleBudget } from '../src/renderer/src/sim/director';
+import { STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {
@@ -204,6 +206,33 @@ describe('snapshot', () => {
     const first = mk(); for (let t = 0; t < 200; t++) step(first, script(t));
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
     for (let t = 200; t < 600; t++) step(resumed, script(t));
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+  it('a fresh director has the initial values; all fifteen director fields round-trip and each alone changes the hash', () => {
+    const f = makeState(2).director;
+    expect([f.phase, f.phaseTick, f.stress, f.nextStressTick, f.nextSpawnTick, f.budgetLeft, f.lastSpawnTick, f.lastType]).toEqual([Phase.BuildUp, 0, 0, STRESS_PERIOD * TICK_HZ, SPAWN_FIRST * TICK_HZ, cycleBudget(0, 2), -1, -1]);
+    expect(Array.from(f.sinceProductive)).toEqual(new Array(STATION_COUNT).fill(0));
+    const s = makeState(2, 5), d = s.director;
+    d.phase = Phase.Relax; d.phaseTick = 1234; d.stress = 0.37; d.nextStressTick = 1500; d.nextSpawnTick = 2222; d.budgetLeft = 4; d.lastSpawnTick = 1200; d.lastType = 2;
+    for (let k = 0; k < STATION_COUNT; k++) d.sinceProductive[k] = 100 + k;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s)))).director;
+    expect([t.phase, t.phaseTick, t.stress, t.nextStressTick, t.nextSpawnTick, t.budgetLeft, t.lastSpawnTick, t.lastType]).toEqual([Phase.Relax, 1234, 0.37, 1500, 2222, 4, 1200, 2]);
+    expect(Array.from(t.sinceProductive)).toEqual(Array.from(d.sinceProductive));
+    const base = hashState(makeState(2, 5));
+    const mutate = (f2: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f2(u); return hashState(u); };
+    expect(mutate((u) => { u.director.phase = 1; })).not.toBe(base); expect(mutate((u) => { u.director.phaseTick = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.director.stress = 0.1; })).not.toBe(base); expect(mutate((u) => { u.director.nextStressTick = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.director.nextSpawnTick = 1; })).not.toBe(base); expect(mutate((u) => { u.director.budgetLeft = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.director.lastSpawnTick = 1; })).not.toBe(base); expect(mutate((u) => { u.director.lastType = 1; })).not.toBe(base);
+    for (let k = 0; k < STATION_COUNT; k++) expect(mutate((u) => { u.director.sinceProductive[k] = 1; })).not.toBe(base);
+  });
+  it('a run saved mid Build Up continues like an uninterrupted run through at least two phase changes', () => {
+    const transitions = (s: ReturnType<typeof makeState>, ticks: number) => { let n = 0, last = s.director.phase; for (let t = 0; t < ticks; t++) { step(s, [NEUTRAL_INTENT, NEUTRAL_INTENT]); if (s.director.phase !== last) { n++; last = s.director.phase; } } return n; };
+    const whole = makeState(2, 21); transitions(whole, 6000);
+    const first = makeState(2, 21); transitions(first, 1500);
+    expect(first.director.phase).toBe(Phase.BuildUp);
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
+    expect(transitions(resumed, 4500)).toBeGreaterThanOrEqual(2);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { Phase } from '../src/renderer/src/sim/director';
 import { buildHudModel, deviceKindOf, glyphName } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
@@ -220,5 +221,10 @@ describe('buildHudModel', () => {
     expect(over.summary).toEqual(['Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
+  });
+  it('reports the director phase name and stress', () => {
+    const s = makeState(2); s.director.phase = Phase.PeakFade; s.director.stress = 0.42;
+    expect(buildHudModel(s, slots(2), 'running', '').director).toEqual({ phase: 'Peak Fade', stress: 0.42 });
+    expect(buildHudModel(null, slots(1), 'lobby', '').director).toEqual({ phase: 'Build Up', stress: 0 });
   });
 });

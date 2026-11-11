@@ -53,8 +53,9 @@ export function createHud(parent: Container, assets: GameAssets) {
   };
 
   // Top-left: hull and clock. Top-right: threats. Centre: banner. Bottom: four player blocks. Overlay: credits.
-  parent.addChild(panel(4, 4, 200, 40));
+  parent.addChild(panel(4, 4, 200, 58));
   const top = text(); top.position.set(12, 14); parent.addChild(top);
+  const directorLine = text(16, DIM); directorLine.position.set(12, 14 + LINE); parent.addChild(directorLine);
   parent.addChild(panel(INTERNAL_W - 232, 4, 228, 100));
   const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 224, 12 + i * LINE); parent.addChild(row); return row; });
   parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
@@ -171,6 +172,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   return {
     update(m: HudModel): void {
       top.text = `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s`;
+      directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%`;
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
       for (let k = 0; k < 7; k++) {
