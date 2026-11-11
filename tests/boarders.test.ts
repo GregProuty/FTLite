@@ -97,6 +97,8 @@ describe('boarders: melee (through step)', () => {
     const ten = calm(); teleport(ten, 0, 2.5, 9.5); setSkill(ten, 0, Skill.Combat, 10); const k3 = placeBoarder(ten, room(ten, 'G'));
     run(ten, 1, () => intents(hold));
     expect(ten.boarders.health[k3]).toBeCloseTo(BOARDER_HEALTH - combatDps(10) * DT, 9); expect(Health.cur[ten.crew[0]!]).toBeCloseTo(HEALTH_MAX - BOARDER_DPS * DT * (1 - combatDefence(10)), 9);
+    run(ten, 280, () => intents(hold)); expect(ten.boarders.active[k3]).toBe(1);                   // 281 blows landed, still alive
+    run(ten, 1, () => intents(hold)); expect(ten.boarders.active[k3]).toBe(0); expect(Health.cur[ten.crew[0]!]).toBeCloseTo(HEALTH_MAX - 281 * BOARDER_DPS * DT * (1 - 10 * COMBAT_DEFENCE), 9);   // none on the killing tick
     const slow = calm(1, 1, [2]); teleport(slow, 0, 2.5, 9.5); placeBoarder(slow, room(slow, 'G'));   // Reyes: Slow Learner
     const soloBlows = Math.ceil(BOARDER_HEALTH / (CREW_MELEE_DPS * DT) - 1e-9);                   // derived, so a tuning lever does not break it
     run(slow, soloBlows, () => intents(hold));
@@ -132,9 +134,9 @@ describe('boarders: melee (through step)', () => {
     run(solo, 1); expect(solo.ended).toBe(1); expect(solo.endReason).toBe(EndReason.Crew);
   });
   it('Medbay ordering: the survivor heals the same tick as the blow; boarders are immune to fire and never healed; a Downed crew member alone is ignored', () => {
-    const s = calm(1); const F = room(s, 'F'), mb = s.derived.stationOfKind[StationKind.Medbay]!; teleport(s, 0, 17.5, 3.5); Health.cur[s.crew[0]!] = 50; placeBoarder(s, F);
+    const s = calm(1); const F = room(s, 'F'), mb = s.derived.stationOfKind[StationKind.Medbay]!; teleport(s, 0, 17.5, 3.5); placeBoarder(s, F);
     run(s, 1, () => intents(hold));
-    expect(Health.cur[s.crew[0]!]).toBeCloseTo(50 - BOARDER_DPS * DT + MEDBAY_HEAL * stationOutput(s, mb) * DT, 9);
+    expect(Health.cur[s.crew[0]!]).toBeCloseTo(HEALTH_MAX - BOARDER_DPS * DT + MEDBAY_HEAL * stationOutput(s, mb) * DT, 9);
     const fire = calm(1); const G = room(fire, 'G'); igniteRoom(fire, G); const k = placeBoarder(fire, G); run(fire, 120); expect(fire.boarders.health[k]).toBe(BOARDER_HEALTH);
     const heal = calm(1); const k2 = placeBoarder(heal, room(heal, 'F'), 30); run(heal, 120); expect(heal.boarders.health[k2]).toBe(30);
     const down = calm(1); teleport(down, 0, 2.5, 9.5); downCrew(down, 0); Life.bleed[down.crew[0]!] = 1e9; const k3 = placeBoarder(down, room(down, 'G'));
@@ -209,7 +211,7 @@ describe('boarders: director and bot', () => {
     const f = calm(1); teleport(f, 0, 2.5, 2.5); igniteRoom(f, room(f, 'A')); placeBoarder(f, room(f, 'G')); expect(botIntent(f, 0).interactHeld).toBe(true);
     const g = calm(1); teleport(g, 0, 2.5, 5.5); igniteRoom(g, room(g, 'B')); placeBoarder(g, room(g, 'G'));
     const sl = calm(1); teleport(sl, 0, 2.5, 5.5); sl.doors.state[0] = DoorState.Sealed; placeBoarder(sl, room(sl, 'A')); igniteRoom(sl, room(sl, 'B'));
-    const si = botIntent(sl, 0); expect(si.moveX !== 0 || si.moveY !== 0).toBe(true);                                         // boarder room sealed off: falls through to the fire in B
+    const si = botIntent(sl, 0); expect(si.moveX).toBeGreaterThan(0); expect(si.moveY).toBeCloseTo(0, 9);                                         // boarder room sealed off: falls through to the fire in B
     const gi = botIntent(g, 0); expect(gi.moveY).toBeGreaterThan(0); expect(Math.abs(gi.moveX)).toBeLessThan(0.01);         // from I toward G's door at (2,7), not B's at (7,4)
   });
 });

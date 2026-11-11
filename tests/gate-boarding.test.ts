@@ -13,7 +13,7 @@ describe('boarding gate: two bots clear a forced boarding at 1:00 with the ship 
       let minHealth = HEALTH_MAX;
       for (let t = 0; t < seconds(180) && !s.ended; t++) {
         step(s, [botIntent(s, 0), botIntent(s, 1)]);
-        for (const eid of s.crew) if (Life.state[eid] === LifeState.Conscious) minHealth = Math.min(minHealth, Health.cur[eid]!);
+        for (const eid of s.crew) minHealth = Math.min(minHealth, Health.cur[eid]!);
       }
       const figures = `boardings ${s.telemetry.boardings}, killed ${s.telemetry.boardersKilled}, min health ${minHealth.toFixed(1)}`;
       expect(s.ended, figures).toBe(0);
