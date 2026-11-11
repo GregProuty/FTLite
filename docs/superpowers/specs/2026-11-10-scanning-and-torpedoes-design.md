@@ -125,3 +125,10 @@ Added to `docs/gates.md` as "Increment 2b-ii" (closing the foundation's Incremen
 - Whether a mismatched beam should be barred (no shot) rather than a long shot: no; guessing is a real decision for an unscanned object.
 - Whether the scan should reveal the target room's impact time more precisely or anything else: no; one reveal per object keeps the handoff legible.
 - Whether torpedoes should also have an evasion interaction or splash: no.
+
+## 12. Amendments from the plan
+- `cycleTarget(state, i, dir)` lives in `sim/debrisTargets.ts` and is shared by Weapons and Science; `Weapon` selector constants are exported from `weapons.ts`.
+- The Science panel shows scan progress as a percentage in the target row rather than a 60 px bar (section 8), so each target stays one row.
+- The Weapons panel's selector is its own text line above the target rows (section 8 described it as row 0), so the panel lists at most six targets.
+- The Weapons charge bar is a 2 px strip under the footer text, full width, because the footer now carries beam, torpedo and stock readouts.
+- The golden replay was re-blessed twice: in Task 1 (`SIM_VERSION` 5, new hashed fields, the frequency draw) and in Task 3 (torpedo regeneration advances `torpedoRegen` while Weapons is online in the recorded replay).

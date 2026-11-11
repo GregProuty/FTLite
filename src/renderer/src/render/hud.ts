@@ -77,7 +77,8 @@ export function createHud(parent: Container, assets: GameAssets) {
     const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
     const consoleSelector = new Container(); consoleSelector.position.set(8, 6); consoleSelector.visible = false; consoleRoot.addChild(consoleSelector);
     const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
-    const consoleBar = bar(100); consoleBar.root.position.set(120, 6 + 7 * LINE + 4); consoleBar.root.visible = false; consoleRoot.addChild(consoleBar.root);
+    const consoleBar = bar(216); consoleBar.root.position.set(8, 6 + 7 * LINE + 14); consoleBar.root.visible = false; consoleRoot.addChild(consoleBar.root);   // a 2 px strip under the footer text: the Weapons footer now spans the row
+    for (const c of consoleBar.root.children) (c as Sprite).height = 2;
     return { name, hp, oxygen, line2, line3, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar };
   });
 
