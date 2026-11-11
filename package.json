@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "bless": "tsx scripts/bless-golden.ts",
+    "acceptance": "tsx scripts/acceptance.ts",
     "credits": "tsx scripts/gen-credits.ts",
     "dist": "electron-vite build && electron-builder --win"
   },

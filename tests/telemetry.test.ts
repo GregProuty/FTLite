@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { telemetrySystem } from '../src/renderer/src/sim/telemetry';
+import { telemetrySystem, telemetryRecord, eventSeconds, durationSeconds } from '../src/renderer/src/sim/telemetry';
+import { hashState } from '../src/renderer/src/sim/hash';
+import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
+import { Skill } from '../src/renderer/src/sim/skills';
 import { step } from '../src/renderer/src/sim/step';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation } from '../src/renderer/src/sim/power';
@@ -12,8 +15,8 @@ import { stationOutput } from '../src/renderer/src/sim/stations';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Phase, HazardType, enterPhase, updateStress, directorSystem } from '../src/renderer/src/sim/director';
-import { DEBRIS_CREW_DAMAGE, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, DT } from '../src/renderer/src/sim/tuning';
-import { makeState, run, intents, teleport, placeDebris, room, seconds, quiet, armSpawn } from './helpers/sim';
+import { DEBRIS_CREW_DAMAGE, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, DT, SIM_VERSION, TICK_HZ } from '../src/renderer/src/sim/tuning';
+import { makeState, run, intents, teleport, placeDebris, room, seconds, quiet, armSpawn, setSkill } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 
@@ -209,5 +212,46 @@ describe('telemetry: event counters', () => {
     const two = makeState(2), G2 = room(two, 'G'); quiet(two); igniteRoom(two, G2); teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5); two.rooms.fireRepair[G2] = 0.999;
     run(two, 1, () => intents(hold, hold));
     expect(two.rooms.fire[G2]).toBe(0); expect(Array.from(two.telemetry.repairs)).toEqual([1, 0, 0]);
+  });
+});
+
+describe('telemetryRecord', () => {
+  it('rounds seconds: eventSeconds(0) is 0.0, durationSeconds(90) is 1.5', () => {
+    expect(eventSeconds(0)).toBe(0); expect(eventSeconds(59)).toBe(1); expect(durationSeconds(90)).toBe(1.5); expect(durationSeconds(0)).toBe(0);
+  });
+  it('maps a crafted state to the exact record', () => {
+    const s = makeState(2, 9, DEFAULT_CHARACTERS); quiet(s); const t = s.telemetry;
+    s.tick = 1200; s.ended = 1; s.endReason = 1;                      // 20 s, hull loss
+    t.firstDownTick = 599; t.firstDownPid = 1; t.firstDeathTick = 1199; t.firstDeathPid = 0;   // Okoro dies on the ending tick: reads as the duration
+    t.mannedTicks[StationKind.Navigation] = 600; t.mannedTicks[StationKind.Doors] = 30;
+    t.longestIdle[0] = 300; t.longestIdle[1] = 1200;
+    t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]);
+    setSkill(s, 0, Skill.Repair, 4);
+    const r = telemetryRecord(s, 9);
+    expect(r).toEqual({
+      version: 1, simVersion: SIM_VERSION, seed: 9, playerCount: 2, characters: ['Okoro', 'Lindqvist'],
+      endReason: 'hull', durationSeconds: 20,
+      firstDown: { who: 'Lindqvist', seconds: 10 }, firstDeath: { who: 'Okoro', seconds: 20 },
+      stationsNeverManned: ['Weapons', 'Science', 'Engineering', 'Life Support', 'Medbay'],
+      mannedSeconds: { Navigation: 10, Weapons: 0, Science: 0, Engineering: 0, 'Life Support': 0, Medbay: 0, Doors: 0.5 },
+      longestIdleSeconds: [5, 20],
+      spawns: { fire: 2, breach: 1, power: 0, debris: 3 }, impacts: 2, evadeRolls: 3, evasions: 1, shots: 4, hits: 2,
+      repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.55, phaseEntries: { buildUp: 2, sustainPeak: 1, peakFade: 1, relax: 1 },
+      skills: [[0, 0, 0, 0, 0, 4], [0, 3, 0, 0, 0, 0]]
+    });
+    expect(JSON.parse(JSON.stringify(r))).toEqual(r);
+    s.ended = 1; s.endReason = 2; expect(telemetryRecord(s, 9).endReason).toBe('crew');
+    s.ended = 0; expect(telemetryRecord(s, 9).endReason).toBe('running');
+    t.firstDeathTick = -1; t.firstDeathPid = -1; expect(telemetryRecord(s, 9).firstDeath).toBeNull();
+  });
+  it('lists only station kinds present on the ship, is pure, and returns fresh arrays', () => {
+    const s = makeState(1); quiet(s); s.derived.stationOfKind[StationKind.Medbay] = -1;   // a layout without a Medbay console
+    const before = hashState(s);
+    const r = telemetryRecord(s, 1);
+    expect(r.stationsNeverManned).not.toContain('Medbay'); expect(r.stationsNeverManned).toContain('Weapons'); expect(Object.keys(r.mannedSeconds)).not.toContain('Medbay');
+    expect(hashState(s)).toBe(before);
+    r.longestIdleSeconds[0] = 999; r.skills[0]![0] = 9; r.stationsNeverManned.length = 0; r.characters[0] = 'x';
+    expect(telemetryRecord(s, 1).longestIdleSeconds[0]).toBe(0); expect(telemetryRecord(s, 1).skills[0]![0]).toBe(0); expect(telemetryRecord(s, 1).stationsNeverManned.length).toBeGreaterThan(0);
+    expect(hashState(s)).toBe(before);
   });
 });
