@@ -30,7 +30,7 @@ export function chargeBeam(state: SimState): void {
   state.weapons.charge = Math.min(1, state.weapons.charge + DT * stationOutput(state, wpn) / BEAM_CHARGE_TIME);
 }
 
-/** Fire the selected weapon at the cursor's object. Beam needs a full charge, torpedo a loaded tube; one rng.combat draw; the readiness resets either way. */
+/** Fire the selected weapon at the cursor's object. Beam needs a full charge, torpedo a loaded tube; one rng.combat draw unless the enemy's shields absorb the beam; the readiness resets either way. */
 export function fireWeapon(state: SimState): boolean {
   const wpn = state.derived.stationOfKind[StationKind.Weapons]!, db = state.debris, w = state.weapons;
   if (wpn < 0 || !stationOnline(state, wpn) || state.stations.occupant[wpn]! < 0) return false;

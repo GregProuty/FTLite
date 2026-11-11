@@ -15,6 +15,7 @@ export function fireInterval(minutes: number, players: number): number {
 
 export const EnemySystem = { Weapons: 0, Engines: 1, Shields: 2 } as const;
 export const ENEMY_SYSTEM_NAMES = ['weapons', 'engines', 'shields'] as const;
+export const ENEMY_SYSTEM_COUNT = ENEMY_SYSTEM_NAMES.length;
 
 /** Beam threshold against the ship: the base and output term minus the evasion the engines provide; not clamped (spec Combat-ii section 5). */
 export function enemyBeamThreshold(state: SimState, output: number): number {
@@ -74,7 +75,7 @@ export function damageEnemy(state: SimState, slot: number, amount: number): void
 export function enemySystem(state: SimState): void {
   const e = state.enemy;
   if (!e.present) { if (state.tick >= e.nextArrivalTick) arrive(state); return; }
-  for (let sys = 0; sys < 3; sys++) {
+  for (let sys = 0; sys < ENEMY_SYSTEM_COUNT; sys++) {
     if (e.sysRepairTick[sys]! >= 0 && state.tick >= e.sysRepairTick[sys]!) {
       e.sysHp[sys] = ENEMY_SYS_HP; e.sysRepairTick[sys] = -1;
       if (sys === EnemySystem.Weapons) e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;

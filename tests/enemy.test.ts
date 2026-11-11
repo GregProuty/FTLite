@@ -7,7 +7,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, armSpawn, placeEnemy, disableSystem, guardDebris, placeShot, placeDebris, room, intents, teleport, seconds } from './helpers/sim';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
@@ -304,9 +304,9 @@ describe('combat gate: a level-2 Weapons operator destroys the enemy with one ab
     const s = makeState(2, 1); quiet(s); const w = wpn(s); sitDown(s, 0, w); placeEnemy(s, ENEMY_HULL, 2); s.enemy.nextShotTick = 1e9; s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 0; s.weapons.selector = Weapon.BeamF1;
     const depart = s.enemy.departTick; let shots = 0;
     while (s.enemy.present && s.tick < depart) {
-      const fire = s.weapons.charge >= 1; if (fire) { if (shots > 0) { s.weapons.selector = Weapon.BeamF2; s.rng.combat.s = 7; } shots++; }
+      const fire = s.weapons.charge >= 1; if (fire) { if (shots > 0) s.weapons.selector = Weapon.BeamF2; s.rng.combat.s = 7; shots++; }
       run(s, 1, () => intents(fire ? { confirmPressed: true } : {}, {}));
-      if (fire && shots === 1) expect([s.telemetry.shots, s.telemetry.hits, s.enemy.hull]).toEqual([1, 0, ENEMY_HULL]);   // the absorbed first beam
+      if (fire && shots === 1) expect([s.telemetry.shots, s.telemetry.hits, s.enemy.hull]).toEqual([1, 0, ENEMY_HULL]), expect(s.rng.combat.s).toBe(7);   // the absorbed first beam
     }
     expect(shots).toBe(8); expect([s.telemetry.shots, s.telemetry.hits, s.telemetry.enemiesDestroyed]).toEqual([8, 7, 1]); expect(s.enemy.present).toBe(0); expect(s.tick).toBeLessThan(depart);
   });
@@ -419,6 +419,7 @@ describe('enemy systems: shields in the fire path, subsystem rows, the scan', ()
   it('productive: a running enemy scan is productive; the enemy alone (all four rows) is not; the read trap covers slots 8 to 11', () => {
     const s = makeState(2); quiet(s); placeEnemy(s); s.enemy.nextShotTick = 1e9; const c = sci(s), n = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, c); sitDown(s, 1, n);
     for (const slot of ENEMY_SLOTS) { s.stations.cursor[c] = slot; expect(isProductive(s, c)).toBe(false); }
+    s.science.scanning = 1; s.stations.cursor[c] = ENEMY_WEAPONS_SLOT; expect(isProductive(s, c)).toBe(false); s.science.scanning = 0;   // scanning, but on a system row with no object in flight
     expect(isProductive(s, n)).toBe(false);
     s.stations.cursor[c] = ENEMY_SLOT; s.science.scanning = 1; expect(isProductive(s, c)).toBe(true);
     s.enemy.scanned = 1; expect(isProductive(s, c)).toBe(false);
