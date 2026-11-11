@@ -11,6 +11,7 @@ import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 
 import { Dir } from './dir';
 import { chargeBeam, weaponsInput } from './weapons';
+import { scienceInput, scanStep } from './science';
 
 export { Dir };
 
@@ -49,6 +50,7 @@ function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): 
 /** Step 2: seated players' input, then the tick's door toggles (local and remote) once per door, ascending (spec sections 4, 6). */
 export function consoleSystem(state: SimState, intents: readonly Intent[]): void {
   chargeBeam(state);
+  scanStep(state);
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!, i = Seated.station[eid]!;
     if (i < 0 || state.scratch.satThisTick[pid]) continue;              // players who sat this tick act from the next tick
@@ -59,7 +61,8 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     if (kind === StationKind.Engineering) engineeringInput(state, i, dir, it.confirmPressed);
     else if (kind === StationKind.Doors) doorsInput(state, i, dir, it.confirmPressed);
     else if (kind === StationKind.Weapons) weaponsInput(state, i, dir, it.confirmPressed);
-    // Navigation, Science, Life Support, Medbay: no seated controls.
+    else if (kind === StationKind.Science) scienceInput(state, i, dir, it.confirmPressed);
+    // Navigation, Life Support, Medbay: no seated controls.
   }
   for (const e of [...state.scratch.doorToggles].sort((a, b) => a - b)) toggleSeal(state, e);
 }
