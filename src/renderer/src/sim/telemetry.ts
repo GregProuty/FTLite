@@ -36,7 +36,7 @@ export interface TelemetryRecord {
   spawns: { fire: number; breach: number; power: number; debris: number };
   impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number;
   repairs: { fire: number; breach: number; power: number };
-  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number };
+  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number }; boarders: { parties: number; killed: number };
   skills: number[][];
 }
 
@@ -68,6 +68,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
     maxStress: t.maxStress,
     phaseEntries: { buildUp: t.phaseEntries[Phase.BuildUp]!, sustainPeak: t.phaseEntries[Phase.SustainPeak]!, peakFade: t.phaseEntries[Phase.PeakFade]!, relax: t.phaseEntries[Phase.Relax]! },
     enemy: { met: t.encounters, destroyed: t.enemiesDestroyed, disables: t.enemyDisables },
+    boarders: { parties: t.boardings, killed: t.boardersKilled },
     skills: state.crew.map((_, pid) => Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k)))
   };
 }

@@ -17,7 +17,7 @@ export function runAcceptance({ players, seed, minutes, characters = DEFAULT_CHA
   return telemetryRecord(state, seed);
 }
 
-const COLUMNS = ['players', 'seed', 'ended-at', 'reason', 'first-down', 'first-death', 'never-manned', 'longest-idle', 'spawns', 'impacts', 'hits/shots', 'enemy'];
+const COLUMNS = ['players', 'seed', 'ended-at', 'reason', 'first-down', 'first-death', 'never-manned', 'longest-idle', 'spawns', 'impacts', 'hits/shots', 'enemy', 'boarders'];
 
 function clock(seconds: number): string {
   const t = Math.round(seconds * 10), whole = Math.floor(t / 10), frac = t % 10, m = Math.floor(whole / 60), s = whole % 60;
@@ -28,7 +28,7 @@ const who = (e: { who: string; seconds: number } | null): string => (e ? `${e.wh
 function row(r: TelemetryRecord): string[] {
   return [String(r.playerCount), String(r.seed), clock(r.durationSeconds), r.endReason, who(r.firstDown), who(r.firstDeath),
     r.stationsNeverManned.length ? r.stationsNeverManned.join(',') : 'none', r.longestIdleSeconds.join('/'),
-    `${r.spawns.fire}/${r.spawns.breach}/${r.spawns.power}/${r.spawns.debris}`, String(r.impacts), `${r.hits}/${r.shots}`, `${r.enemy.met}/${r.enemy.destroyed}/${r.enemy.disables}`];
+    `${r.spawns.fire}/${r.spawns.breach}/${r.spawns.power}/${r.spawns.debris}`, String(r.impacts), `${r.hits}/${r.shots}`, `${r.enemy.met}/${r.enemy.destroyed}/${r.enemy.disables}`, `${r.boarders.parties}/${r.boarders.killed}`];
 }
 
 /** One header line and one line per record, columns padded to the widest cell (spec 4-ii section 8). */

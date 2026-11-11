@@ -8,6 +8,7 @@ import { createRenderMemory } from './memory';
 import { createTileLayer } from './tiles';
 import { createEffectsLayer } from './effects';
 import { createCrewLayer } from './crewSprites';
+import { createBoarderLayer } from './boarderLayer';
 
 
 export interface Renderer {
@@ -29,7 +30,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const tiles = createTileLayer(assets, memory);
   const effects = createEffectsLayer(assets, memory);
   const crew = createCrewLayer(assets, memory);
-  world.addChild(tiles.container, effects.below, crew.container, effects.above);
+  const boarders = createBoarderLayer();
+  world.addChild(tiles.container, effects.below, crew.container, boarders.container, effects.above);
   let lastDraw: number | null = null;
 
   return {
@@ -51,6 +53,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       tiles.update(state, dt);
       effects.draw(state);
       crew.draw(state, alpha);
+      boarders.draw(state);
     }
   };
 }

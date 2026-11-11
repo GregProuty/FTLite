@@ -17,7 +17,9 @@ import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
-import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris } from './helpers/sim';
+import { boarderMarkers } from '../src/renderer/src/sim/boarders';
+import { BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
+import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
 
@@ -315,5 +317,24 @@ describe('buildHudModel', () => {
     const s = makeState(2); s.director.phase = Phase.PeakFade; s.director.stress = 0.42;
     expect(buildHudModel(s, slots(2), 'running', '').director).toEqual({ phase: 'Peak Fade', stress: 0.42 });
     expect(buildHudModel(null, slots(1), 'lobby', '').director).toEqual({ phase: 'Build Up', stress: 0 });
+  });
+  it('boarders: threat rows per room after the enemy row, the Fight prompt with a draining bar, and the markers', () => {
+    const s = makeState(1), A = room(s, 'A'), G = room(s, 'G'); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9;
+    expect(buildHudModel(s, slots(1), 'running', '').boarders).toEqual([]); expect(buildHudModel(null, slots(1), 'lobby', '').boarders).toEqual([]);
+    const k0 = placeBoarder(s, G), k1 = placeBoarder(s, A), k2 = placeBoarder(s, G, 30);
+    placeEnemy(s); igniteRoom(s, room(s, 'B'));
+    const m = buildHudModel(s, slots(1), 'running', '');
+    expect(m.threats.slice(0, 4).map((t) => t.text)).toEqual([expect.stringMatching(/^Enemy ship/), 'Boarders: Bridge x1', 'Boarders: Crew Quarters x2', 'Fire: Weapons Bay']);
+    expect(m.threats[1]!.icon).toBe('icon.sensors');
+    expect(m.boarders).toEqual([
+      { stableId: s.boarders.stableId[k0], x: 4 - 0.6, y: 9.5, health: 1 },
+      { stableId: s.boarders.stableId[k1], x: 3 - 0.2, y: 2.5, health: 1 },
+      { stableId: s.boarders.stableId[k2], x: 4 + 0.2, y: 9.5, health: 0.5 }]);
+    expect(m.boarders).toEqual(boarderMarkers(s));
+    teleport(s, 0, 2.5, 9.5);
+    const lowId = s.boarders.stableId[k0]!; s.boarders.stableId[k0] = s.boarders.stableId[k2]!; s.boarders.stableId[k2] = lowId;
+    let p = buildHudModel(s, slots(1), 'running', '').players[0]!;
+    expect(p.interactPrompt).toBe('Fight boarder'); expect(p.interactIcon).toBeNull(); expect(p.progress).toBeCloseTo(30 / BOARDER_HEALTH, 12);
+    s.boarders.health[k2] = 15; p = buildHudModel(s, slots(1), 'running', '').players[0]!; expect(p.progress).toBeCloseTo(15 / BOARDER_HEALTH, 12);
   });
 });
