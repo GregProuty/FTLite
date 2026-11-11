@@ -146,3 +146,10 @@ Added to `docs/gates.md` as "Combat-i: enemy ship":
 - Enemy accuracy against Navigation (today every shot flies true and only our evasion roll matters): revisit with Combat-ii's engines.
 - Rewards for a kill (scrap, repairs): run structure, roadmap item 9.
 - A console-operating bot so the acceptance soak can measure kills: 4-ii §12.
+
+## 13. Amendments from the plan
+- `spawnDebris` and `spawnShot` share a private `spawnObject(state, kind, flight, jitter)`, so the three `rng.hazards` draws (room, flight, frequency) live in one place.
+- The cooldown re-arm in `leave` uses `ENEMY_FIRE_JITTER` (+/- 20 %), the same constant as the shot re-arm.
+- `DebrisTarget` always carries `kind` and `hull` (`hull: null` for objects).
+- Survival gate tuning fallbacks taken in Task 1, before the single golden re-bless, in the order section 9 prescribes: `ENEMY_SHOT_HULL_DAMAGE` 6 -> **4**, `ENCOUNTER_FIRST` 180 -> **210**, `ENEMY_SHOTS_MAX` 2 -> **1**; `ENEMY_FIRE_INTERVAL` stays 15. Sections 8 and 10 should be read with these values: the first encounter comes at 3:30, one shot is in flight at a time, and an unanswered encounter costs about 40 hull rather than 60. Gate figures are in `docs/gates.md`.
+- `targetRowText` lives in `hudModel.ts` (pixi-free) so the exact row strings are unit-tested; `hud.ts` only slices the window and places the text.
