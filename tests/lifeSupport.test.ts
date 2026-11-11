@@ -27,15 +27,15 @@ describe('Life Support injection', () => {
   });
   it('a quiet ship at the starter allocation stays full; with Life Support failed it drains', () => {
     const full = Array.from(makeState(2).derived.volume).reduce((a, b) => a + b, 0);
-    const s = makeState(2); s.spawner.nextSpawnTick = 1e9;
+    const s = makeState(2); s.director.nextSpawnTick = 1e9;
     run(s, seconds(60));
     expect(totalO2(s)).toBeGreaterThan(0.99 * full); expect(s.o2Counters.injected).toBeGreaterThan(0);
-    const t = makeState(2); t.spawner.nextSpawnTick = 1e9; failStation(t, ls(t));
+    const t = makeState(2); t.director.nextSpawnTick = 1e9; failStation(t, ls(t));
     run(t, seconds(60));
     expect(t.o2Counters.injected).toBe(0); expect(totalO2(t)).toBeLessThan(totalO2(s));
   });
   it('a breached room receives nothing until repaired (existing oxygenStep rule still applies)', () => {
-    const s = makeState(1); s.spawner.nextSpawnTick = 1e9;
+    const s = makeState(1); s.director.nextSpawnTick = 1e9;
     activateBreach(s, 6);
     s.rooms.o2[room(s, 'G')] = 0;
     run(s, seconds(5));

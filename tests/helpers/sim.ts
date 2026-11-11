@@ -1,3 +1,4 @@
+import { Phase } from '../../src/renderer/src/sim/director';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { createSimState, type SimState } from '../../src/renderer/src/sim/state';
@@ -56,4 +57,13 @@ export function overdrive(state: SimState, kind: number): number {
 /** Set a crew member's skill to exactly the XP threshold of a level. */
 export function setSkill(state: SimState, pid: number, skill: number, level: number): void {
   state.skills.xp[pid * SKILL_COUNT + skill] = XP_THRESHOLDS[level]!;
+}
+
+/** Silence the director: no spawn attempt can come due (re-arming never pulls a later timer earlier). */
+export function quiet(state: SimState): void { state.director.nextSpawnTick = 1e9; }
+
+/** Put the director in Build Up with a due attempt, plenty of budget and no stress or stall pressure, so one spawn can be observed in isolation. */
+export function armSpawn(state: SimState): void {
+  const d = state.director;
+  d.phase = Phase.BuildUp; d.phaseTick = state.tick; d.lastSpawnTick = state.tick; d.budgetLeft = 99; d.stress = 0; d.nextStressTick = 1e9; d.nextSpawnTick = state.tick;
 }

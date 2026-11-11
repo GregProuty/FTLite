@@ -14,7 +14,7 @@ const confirm = { confirmPressed: true }, down = { moveY: 1 }, cancel = { cancel
 describe('scanning', () => {
   it('Confirm starts a scan of an unscanned target; progress is DT x output / SCAN_TIME per tick; completion marks scanned and stops', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     placeDebris(s, A, 1e6, 1, undefined, 2);
     sitDown(s, 0, i);                                                           // starter Science level 1: output 0.375
     run(s, 5);
@@ -40,7 +40,7 @@ describe('scanning', () => {
   });
   it('Confirm with cursor -1, an inactive slot or an unwarned object starts nothing', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, i);
+    s.director.nextSpawnTick = 1e9; sitDown(s, 0, i);
     run(s, 1, () => intents(confirm)); expect(s.science.scanning).toBe(0);                 // cursor -1
     s.stations.cursor[i] = 3; run(s, 1, () => intents(confirm)); expect(s.science.scanning).toBe(0);   // inactive slot
     const u = placeDebris(s, A, 1e6, 0); s.stations.cursor[i] = u;
@@ -49,7 +49,7 @@ describe('scanning', () => {
   });
   it('same tick: Down + Confirm starts scanning the newly selected target', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     placeDebris(s, A, 1e6, 1, 10, 2); placeDebris(s, A, 1e6, 1, 20, 1);
     s.debris.scanned[0] = 1; s.debris.scan[0] = 1;                                           // the old target is scanned: Confirm on it would start nothing
     sitDown(s, 0, i);
@@ -59,15 +59,15 @@ describe('scanning', () => {
   });
   it('level 2 scans within 8 s; overdriven within 5.4 s; unmanned or offline never progresses', () => {
     const a = makeState(1), ia = sci(a), A = room(a, 'A');
-    a.spawner.nextSpawnTick = 1e9; a.stations.level[ia] = 2; placeDebris(a, A, 1e6, 1); sitDown(a, 0, ia);
+    a.director.nextSpawnTick = 1e9; a.stations.level[ia] = 2; placeDebris(a, A, 1e6, 1); sitDown(a, 0, ia);
     run(a, 1, () => intents(confirm)); run(a, seconds(8) + 2);
     expect(a.debris.scanned[0]).toBe(1);
     const b = makeState(1), ib = overdrive(b, StationKind.Science);
-    b.spawner.nextSpawnTick = 1e9; b.stations.coolant[ib] = 2; placeDebris(b, A, 1e6, 1); sitDown(b, 0, ib);   // held overdrive: no overheat during the scan
+    b.director.nextSpawnTick = 1e9; b.stations.coolant[ib] = 2; placeDebris(b, A, 1e6, 1); sitDown(b, 0, ib);   // held overdrive: no overheat during the scan
     run(b, 1, () => intents(confirm)); run(b, Math.ceil(seconds(6 / 1.125)) + 2);
     expect(b.debris.scanned[0]).toBe(1);
     const c = makeState(1), ic = sci(c);
-    c.spawner.nextSpawnTick = 1e9; placeDebris(c, A, 1e6, 1); c.science.scanning = 1; c.stations.cursor[ic] = 0;
+    c.director.nextSpawnTick = 1e9; placeDebris(c, A, 1e6, 1); c.science.scanning = 1; c.stations.cursor[ic] = 0;
     run(c, seconds(5));
     expect(c.debris.scan[0]).toBe(0);                                           // nobody seated
     sitDown(c, 0, ic); run(c, 1, () => intents(confirm)); run(c, 30);
@@ -81,7 +81,7 @@ describe('scanning', () => {
   });
   it('switching targets pauses the first object and resumes the second from its own progress; Cancel clears scanning and a re-seat resumes', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     placeDebris(s, A, 1e6, 1, 10); placeDebris(s, A, 1e6, 1, 20);
     sitDown(s, 0, i);
     run(s, 1, () => intents(confirm)); run(s, seconds(4));
@@ -101,7 +101,7 @@ describe('scanning', () => {
   });
   it('impact of the object being scanned discards its progress and retargets', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     placeDebris(s, A, seconds(3), 1, 10); placeDebris(s, A, 1e6, 1, 20);
     sitDown(s, 0, i);
     run(s, 1, () => intents(confirm)); run(s, seconds(1));

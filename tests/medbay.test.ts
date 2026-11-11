@@ -10,7 +10,7 @@ const med = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[Station
 
 describe('Medbay', () => {
   it('heals Conscious crew standing in the Medbay at the level-scaled rate, more when seated, nothing elsewhere or offline', () => {
-    const s = makeState(2); s.spawner.nextSpawnTick = 1e9;
+    const s = makeState(2); s.director.nextSpawnTick = 1e9;
     const mid = (OUTPUT_SLOW + OUTPUT_FAST) / 2, rate = MEDBAY_HEAL * (1 / STATION_MAX[StationKind.Medbay]) * mid;
     Health.cur[s.crew[0]!] = 50; Health.cur[s.crew[1]!] = 50;
     teleport(s, 0, 17.5, 2.5);                                   // in F, next to the console
@@ -26,7 +26,7 @@ describe('Medbay', () => {
     expect(Health.cur[s.crew[0]!]).toBe(50);
   });
   it('clamps at HEALTH_MAX and ignores Downed crew', () => {
-    const s = makeState(2); s.spawner.nextSpawnTick = 1e9;
+    const s = makeState(2); s.director.nextSpawnTick = 1e9;
     teleport(s, 0, 17.5, 2.5); teleport(s, 1, 18.5, 2.5);
     Health.cur[s.crew[0]!] = HEALTH_MAX - 0.5;
     Life.state[s.crew[1]!] = LifeState.Downed; Life.bleed[s.crew[1]!] = 30; Health.cur[s.crew[1]!] = 0;

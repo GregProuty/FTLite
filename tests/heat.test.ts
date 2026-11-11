@@ -6,7 +6,7 @@ import { isOverdriven, coolingPerUnit, coolantUsed, cycleCoolant, heatStep } fro
 import { STATION_MAX, STATION_OVERDRIVE, HEAT_COOL_UNIT, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, HAZARD_EVERY, FIRE_START, HULL_MAX, HEALTH_MAX, DEBRIS_HULL_DAMAGE, SPAWN_CAP, HEAT_COOL_SKILL } from '../src/renderer/src/sim/tuning';
 import { Seated, Health } from '../src/renderer/src/sim/components';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
-import { activeHazardCount } from '../src/renderer/src/sim/hazards/spawner';
+import { activeHazardCount } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { makeState, overdrive, run, room, seconds, teleport, placeDebris, intents, setSkill } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
@@ -57,7 +57,7 @@ const atStation = (s: ReturnType<typeof makeState>, pid: number, i: number) => {
 describe('heat', () => {
   it('rises HEAT_RISE per hazard tick while overdriven with no coolant, never on other ticks, and caps at an overheat', () => {
     const s = makeState(1), nav = overdrive(s, StationKind.Navigation);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     expect(s.stations.occupant[idx(s, StationKind.Engineering)]).toBe(-1);    // unattended: nobody at Engineering
     run(s, 1);                                                                 // tick 0 is a hazard tick
     expect(s.stations.heat[nav]).toBe(HEAT_RISE);
@@ -72,19 +72,19 @@ describe('heat', () => {
   });
   it('one unit halves the climb (20 s), two units hold it indefinitely', () => {
     const a = makeState(1), nav = overdrive(a, StationKind.Navigation);
-    a.spawner.nextSpawnTick = 1e9; a.stations.coolant[nav] = 1;
+    a.director.nextSpawnTick = 1e9; a.stations.coolant[nav] = 1;
     run(a, seconds(20) - HAZARD_EVERY);
     expect(a.stations.heat[nav]).toBe(HEAT_MAX - 1); expect(a.stations.failed[nav]).toBe(0);
     run(a, HAZARD_EVERY);
     expect(a.stations.failed[nav]).toBe(1);
     const b = makeState(1), nav2 = overdrive(b, StationKind.Navigation);
-    b.spawner.nextSpawnTick = 1e9; b.stations.coolant[nav2] = 2; b.stations.heat[nav2] = HEAT_MAX / 2;   // nonzero start: a net-negative rate would show as a drop, not hide behind the 0 clamp
+    b.director.nextSpawnTick = 1e9; b.stations.coolant[nav2] = 2; b.stations.heat[nav2] = HEAT_MAX / 2;   // nonzero start: a net-negative rate would show as a drop, not hide behind the 0 clamp
     run(b, seconds(30));
     expect(b.stations.heat[nav2]).toBe(HEAT_MAX / 2); expect(b.stations.failed[nav2]).toBe(0); expect(b.stations.level[nav2]).toBe(3);
   });
   it('a station at or below its max cools HEAT_COOL_IDLE per hazard tick to a floor of 0; a spawner-style failure leaves heat to decay', () => {
     const s = makeState(1), nav = idx(s, StationKind.Navigation), wpn = idx(s, StationKind.Weapons);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     s.stations.heat[nav] = HEAT_MAX - 1; s.stations.heat[wpn] = 10;
     run(s, 1);
     expect(s.stations.heat[nav]).toBe(HEAT_MAX - 1 - HEAT_COOL_IDLE); expect(s.stations.heat[wpn]).toBe(10 - HEAT_COOL_IDLE);
@@ -93,7 +93,7 @@ describe('heat', () => {
     run(s, seconds(5));
     expect(s.stations.heat[nav]).toBe(0);
     const t = makeState(1), sci = overdrive(t, StationKind.Science);
-    t.spawner.nextSpawnTick = 1e9;
+    t.director.nextSpawnTick = 1e9;
     run(t, seconds(5));
     const hot = t.stations.heat[sci]!; expect(hot).toBeGreaterThan(0);
     failStation(t, sci);
@@ -104,7 +104,7 @@ describe('heat', () => {
   it('overheat fails the station, stands its occupant, zeroes heat and draws exactly one hazards roll that may ignite the room', () => {
     const mk = (seed: number) => {
       const s = makeState(2), doors = overdrive(s, StationKind.Doors);
-      s.spawner.nextSpawnTick = 1e9; sitDown(s, 1, doors);
+      s.director.nextSpawnTick = 1e9; sitDown(s, 1, doors);
       s.stations.heat[doors] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = seed;
       s.stick.heldDir[1] = 2; s.stick.repeat[1] = 3;                           // stick state the forced stand must clear
       atStation(s, 0, idx(s, StationKind.Navigation));                         // player 0 stands in the Doors room (A) for the fire-damage check
@@ -129,7 +129,7 @@ describe('heat', () => {
   });
   it('two stations overheating on one hazard tick resolve in ascending index with one draw each', () => {
     const s = makeState(1), wpn = overdrive(s, StationKind.Weapons), sci = overdrive(s, StationKind.Science);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     expect(wpn).toBeLessThan(sci);                                             // starter layout: Weapons precedes Science in station order
     expect(s.derived.stationRoom[wpn]).not.toBe(s.derived.stationRoom[sci]);
     s.stations.heat[wpn] = HEAT_MAX - HEAT_RISE; s.stations.heat[sci] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = 8;   // draws 0.156 (fire), 0.625 (none)
@@ -143,7 +143,7 @@ describe('heat', () => {
     const s = makeState(1), nav = overdrive(s, StationKind.Navigation);
     expect(activateBreach(s, 0)).toBe(true); expect(activateBreach(s, 1)).toBe(true);   // two hazards that draw no RNG
     s.stations.heat[nav] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = 1;          // overheat draw 0.627: no fire
-    s.spawner.nextSpawnTick = s.tick;                                          // the spawner runs this tick, after heatStep
+    s.director.nextSpawnTick = s.tick;                                          // the spawner runs this tick, after heatStep
     const jitterOnly = createRng(s.rng.director.s); nextFloat(jitterOnly);
     run(s, 1);
     expect(s.stations.failed[nav]).toBe(1);
@@ -152,7 +152,7 @@ describe('heat', () => {
     const t = makeState(1), nav2 = overdrive(t, StationKind.Navigation);
     expect(activateBreach(t, 0)).toBe(true);                                   // one breach
     t.stations.heat[nav2] = HEAT_MAX - HEAT_RISE; t.rng.hazards.s = 7;         // overheat draw 0.012: fire in the Navigation room
-    t.spawner.nextSpawnTick = t.tick;
+    t.director.nextSpawnTick = t.tick;
     const jitterOnly2 = createRng(t.rng.director.s); nextFloat(jitterOnly2);
     run(t, 1);
     expect(t.rooms.fire[t.derived.stationRoom[nav2]!]).toBe(FIRE_START);
@@ -161,7 +161,7 @@ describe('heat', () => {
   });
   it('a failed Engineering ejects its operator, and no coolant or bar input lands until it is repaired', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering), wpn = idx(s, StationKind.Weapons);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     sitDown(s, 0, eng); s.stations.cursor[eng] = StationKind.Weapons; s.stations.coolant[wpn] = 1;
     const levels = Array.from(s.stations.level);
     failStation(s, eng);
@@ -171,7 +171,7 @@ describe('heat', () => {
   });
   it('failed Engineering freezes nothing thermal; coolant and residual heat survive failures and repairs', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering), nav = overdrive(s, StationKind.Navigation);
-    s.spawner.nextSpawnTick = 1e9; s.stations.coolant[nav] = 1;
+    s.director.nextSpawnTick = 1e9; s.stations.coolant[nav] = 1;
     failStation(s, eng);
     run(s, seconds(5));                                                        // 60 hazard ticks at net +1
     expect(s.stations.heat[nav]).toBe(60 * (HEAT_RISE - HEAT_COOL_UNIT)); expect(s.stations.coolant[nav]).toBe(1);
@@ -182,7 +182,7 @@ describe('heat', () => {
   });
   it('same tick: a Navigation overheat removes that tick\'s evasion roll and the hull takes the impact', () => {
     const s = makeState(2), nav = overdrive(s, StationKind.Navigation);
-    s.spawner.nextSpawnTick = 1e9; sitDown(s, 1, nav);
+    s.director.nextSpawnTick = 1e9; sitDown(s, 1, nav);
     s.stations.heat[nav] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = 1;          // no fire
     placeDebris(s, room(s, 'D'), 0, 1);                                        // impacts this tick, in debrisSystem after heatStep
     const combat = s.rng.combat.s;
@@ -191,12 +191,12 @@ describe('heat', () => {
   });
   it('same tick: Life Support still injects on its overheat tick; the Medbay does not heal on its', () => {
     const a = makeState(1), ls = overdrive(a, StationKind.LifeSupport);
-    a.spawner.nextSpawnTick = 1e9; a.stations.heat[ls] = HEAT_MAX - HEAT_RISE; a.rng.hazards.s = 1;
+    a.director.nextSpawnTick = 1e9; a.stations.heat[ls] = HEAT_MAX - HEAT_RISE; a.rng.hazards.s = 1;
     a.rooms.o2[room(a, 'A')] = 0;
     run(a, 1);
     expect(a.stations.failed[ls]).toBe(1); expect(a.o2Counters.injected).toBeGreaterThan(0);
     const b = makeState(1), med = overdrive(b, StationKind.Medbay);
-    b.spawner.nextSpawnTick = 1e9; b.stations.heat[med] = HEAT_MAX - HEAT_RISE; b.rng.hazards.s = 1;
+    b.director.nextSpawnTick = 1e9; b.stations.heat[med] = HEAT_MAX - HEAT_RISE; b.rng.hazards.s = 1;
     atStation(b, 0, med); Health.cur[b.crew[0]!] = 50;
     run(b, 1);
     expect(b.stations.failed[med]).toBe(1); expect(Health.cur[b.crew[0]!]).toBe(50);
@@ -206,7 +206,7 @@ describe('heat', () => {
 describe('cooling skill', () => {
   it('a level-5 engineer adds one cooling per unit while seated; level 4 and unseated are baseline; heat holds flat with one unit and rises when they stand', () => {
     const s = makeState(2), eng = idx(s, StationKind.Engineering), nav = overdrive(s, StationKind.Navigation);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
     setSkill(s, 0, Skill.Engineering, 4); sitDown(s, 0, eng); expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
     setSkill(s, 0, Skill.Engineering, 5); expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT + 1); expect(Math.floor(HEAT_COOL_SKILL * 5)).toBe(1);

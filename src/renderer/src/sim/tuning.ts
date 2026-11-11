@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 7;
+export const SIM_VERSION = 8;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
@@ -108,3 +108,18 @@ export const TRAIT_FIRE_DAMAGE = 1.5;         // Flammable
 export const TRAIT_O2_DAMAGE = 0.5;           // Iron Lungs
 export const TRAIT_XP_MULT = 0.75;            // Slow Learner
 export const TRAIT_BLEEDOUT = 0.6;            // Frail
+
+// Director (increment 4-i)
+export const STRESS_PERIOD = 5;                        // seconds between stress recomputes
+export const STRESS_WEIGHTS = { fire: 0.25, breach: 0.30, power: 0.20, debris: 0.20, downed: 0.40 } as const;
+export const STRESS_RISE = 0.5, STRESS_FALL = 0.15;    // smoothing per period; the fall is halved while a hazard is unattended
+export const PEAK_LEVEL = 0.7, RELAX_LEVEL = 0.25;
+export const SUSTAIN_SECONDS = 10, FADE_TIMEOUT = 30, RELAX_MIN = 30, RELAX_MAX = 60, STALL_SECONDS = 60;
+export const SPAWN_INTERVAL_MIN = 10;                  // seconds; the escalated interval never goes below this
+export const ESCALATION_RATE = 0.1;                    // per minute: interval = SPAWN_INTERVAL / (1 + rate x minutes)
+export const SOLO_INTERVAL_MULT = 1.5;
+export const SPAWN_CAP_MAX = 6, CAP_MINUTES = 4;        // +1 cap per 4 minutes up to the max
+export const BUDGET_BASE = 3, BUDGET_GROWTH = 0.5;      // spawns per Build Up cycle: (base + growth x minutes) x playerScale
+export const WEIGHT_MINUTES = 4;                       // power and debris weights grow every 4 minutes
+export const ROUTE_BONUS = 2, ROUTE_IDLE_SECONDS = 60;  // routing toward consoles idle longer than this (3-4 players)
+export const SINCE_CAP = 36000;                        // ticks: sinceProductive counters stop at 10 minutes

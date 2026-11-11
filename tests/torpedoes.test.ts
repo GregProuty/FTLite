@@ -11,7 +11,7 @@ const wpn = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[Station
 describe('torpedo loading', () => {
   it('loads only while seated and online with stock and an empty tube; completion moves one from stock to the tube', () => {
     const s = makeState(1), i = wpn(s);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     expect(s.weapons.torpedoStock).toBe(TORP_START);
     run(s, 60);
     expect(s.weapons.torpedoLoad).toBe(0);                                      // nobody seated
@@ -28,7 +28,7 @@ describe('torpedo loading', () => {
   });
   it('standing or failing mid-load keeps progress and stock; a loaded torpedo survives both; level 1 and overdrive load in 40 s and 10 s', () => {
     const s = makeState(2), i = wpn(s);
-    s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, i);
+    s.director.nextSpawnTick = 1e9; sitDown(s, 0, i);
     run(s, seconds(5));
     run(s, 1, () => intents({ cancelPressed: true }, {}));                       // loadTorpedo precedes the stand: this tick still loads once
     const partial = s.weapons.torpedoLoad; expect(partial).toBeGreaterThan(0);
@@ -40,10 +40,10 @@ describe('torpedo loading', () => {
     s.weapons.torpedoLoaded = 1; sitDown(s, 0, i);
     run(s, 1, () => intents({ cancelPressed: true }, {})); failStation(s, i);
     expect(s.weapons.torpedoLoaded).toBe(1);
-    const a = makeState(1), ia = wpn(a); a.spawner.nextSpawnTick = 1e9; a.stations.level[ia] = 1; sitDown(a, 0, ia);
+    const a = makeState(1), ia = wpn(a); a.director.nextSpawnTick = 1e9; a.stations.level[ia] = 1; sitDown(a, 0, ia);
     run(a, seconds(40) - 2); expect(a.weapons.torpedoLoaded).toBe(0);           // level 1 (output 0.25): 40 s
     run(a, 4); expect(a.weapons.torpedoLoaded).toBe(1);
-    const b = makeState(1), ib = overdrive(b, StationKind.Weapons); b.spawner.nextSpawnTick = 1e9; b.stations.coolant[ib] = 2; sitDown(b, 0, ib);   // two units hold the overdrive (unassisted it would overheat on tick 595)
+    const b = makeState(1), ib = overdrive(b, StationKind.Weapons); b.director.nextSpawnTick = 1e9; b.stations.coolant[ib] = 2; sitDown(b, 0, ib);   // two units hold the overdrive (unassisted it would overheat on tick 595)
     run(b, seconds(10) + 2); expect(b.weapons.torpedoLoaded).toBe(1);
     run(a, seconds(39)); expect(a.weapons.torpedoLoaded).toBe(1); expect(a.weapons.torpedoLoad).toBe(0);   // tube full: nothing loads until it is fired
   });
@@ -52,7 +52,7 @@ describe('torpedo loading', () => {
 describe('torpedo regeneration', () => {
   it('adds one unit every TORP_REGEN_TIME s while Weapons is online, seated or not; holds at the cap; pauses offline', () => {
     const s = makeState(1), i = wpn(s);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     run(s, 1);
     expect(s.weapons.torpedoRegen).toBeCloseTo(DT / TORP_REGEN_TIME);
     run(s, seconds(TORP_REGEN_TIME) + 1);

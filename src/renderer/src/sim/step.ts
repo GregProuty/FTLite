@@ -12,7 +12,7 @@ import { heatStep } from './heat';
 import { crewSystem } from './crew';
 import { lifeSupportInjection } from './hazards/lifeSupport';
 import { debrisSystem } from './debris';
-import { spawner } from './hazards/spawner';
+import { directorSystem } from './director';
 import { medbayStep } from './medbay';
 import { xpSystem } from './xp';
 
@@ -40,8 +40,8 @@ export function step(state: SimState, intents: readonly Intent[]): void {
     fireStep(state);
     heatStep(state);
   }
-  // (5) spawner, then debris detection and impacts
-  spawner(state);
+  // (5) director: stress, pacing phases and spawns, then debris detection and impacts
+  directorSystem(state);
   debrisSystem(state);
   // (6) stations with per-tick effects
   medbayStep(state);

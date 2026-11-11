@@ -93,7 +93,7 @@ describe('detection', () => {
   });
   it('unmanned, an object is warned at 4 s remaining and not before; warned is permanent', () => {
     const s = makeState(1), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     placeDebris(s, A, seconds(5));
     run(s, seconds(1));                                      // ticks 0..59: remaining is still above 4 s at tick 59 (241 ticks)
     expect(s.debris.warned[0]).toBe(0);
@@ -102,7 +102,7 @@ describe('detection', () => {
   });
   it('a seated operator warns at the seated lead; standing or a failure never un-warns', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     sitDown(s, 0, i);
     placeDebris(s, A, seconds(18) + 2);
     run(s, 1);
@@ -116,7 +116,7 @@ describe('detection', () => {
   it('flight shorter than or equal to the lead is warned on its spawn tick; longer is not', () => {
     for (const [flightTicks, expected] of [[seconds(23), 1], [seconds(24), 1], [seconds(25), 0]] as const) {
       const s = makeState(1), i = sci(s), A = room(s, 'A');
-      s.spawner.nextSpawnTick = 1e9; s.stations.level[i] = 2; sitDown(s, 0, i);   // lead 24 s
+      s.director.nextSpawnTick = 1e9; s.stations.level[i] = 2; sitDown(s, 0, i);   // lead 24 s
       placeDebris(s, A, flightTicks);
       debrisSystem(s);
       expect(s.debris.warned[0]).toBe(expected);
@@ -152,7 +152,7 @@ describe('impact', () => {
   });
   it('damages Conscious crew in the room by roomAt, downs a lethal hit at once, and a second impact that tick does not hit them again', () => {
     const s = makeState(4), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     const down = s.crew[3]!;
     teleport(s, 3, 2.5, 2.5); Life.state[down] = LifeState.Downed; Life.bleed[down] = 30; Health.cur[down] = 50;   // already Downed in A: the Conscious guard
     teleport(s, 0, 2.5, 2.5);                                // in A
@@ -177,7 +177,7 @@ describe('impact', () => {
   });
   it('a lethal impact in the Medbay through step() downs the crew member before the Medbay can heal them', () => {
     const s = makeState(1), F = room(s, 'F');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     teleport(s, 0, 17.5, 3.5); Health.cur[s.crew[0]!] = DEBRIS_CREW_DAMAGE;   // standing in the Medbay room (F), online at the starter allocation
     placeDebris(s, F, 1);
     run(s, 2);
@@ -191,7 +191,7 @@ describe('impact', () => {
   });
   it('hull reaching 0 ends the run with EndReason.Hull through step()', () => {
     const s = makeState(1), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; s.hull = DEBRIS_HULL_DAMAGE;
+    s.director.nextSpawnTick = 1e9; s.hull = DEBRIS_HULL_DAMAGE;
     placeDebris(s, A, 1);
     run(s, 2);
     expect(s.hull).toBe(0); expect(s.ended).toBe(1); expect(s.endReason).toBe(EndReason.Hull);
@@ -253,7 +253,7 @@ describe('frequency and shared cursors (2b-ii)', () => {
   });
   it('the first warning auto-selects for a seated Science operator at -1; cycleTarget cycles and wraps for either console', () => {
     const s = makeState(1), A = room(s, 'A'), sci = s.derived.stationOfKind[StationKind.Science]!;
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     sitDown(s, 0, sci);
     expect(s.stations.cursor[sci]).toBe(-1);
     placeDebris(s, A, 60, 0);                                                                // inside the seated lead: warned next tick

@@ -16,7 +16,7 @@ const up = { moveY: -1 }, down = { moveY: 1 }, left = { moveX: -1 }, right = { m
 describe('beam charge', () => {
   it('progresses only while seated and online, scales with level, is kept on stand and on failure', () => {
     const s = makeState(1), i = wpn(s);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     run(s, 10);
     expect(s.weapons.charge).toBe(0);                                              // nobody seated
     sitDown(s, 0, i);                                                              // starter level 2: output 0.5
@@ -38,7 +38,7 @@ describe('beam charge', () => {
 describe('targeting', () => {
   it('sitting selects the smallest warned StableId or -1; the first warning auto-selects; up/down cycle and wrap', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     sitDown(s, 0, i);
     expect(s.stations.cursor[i]).toBe(-1);
     run(s, 10, () => intents(down));
@@ -67,7 +67,7 @@ describe('targeting', () => {
 describe('selector', () => {
   it('Left/Right cycle F1, F2, F3, Torpedo with wrap and survive standing; Up/Down still cycle targets', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1); sitDown(s, 0, i); s.weapons.charge = 1;
+    s.director.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1); sitDown(s, 0, i); s.weapons.charge = 1;
     expect(s.weapons.selector).toBe(Weapon.BeamF1);
     const edge = (p: { moveX?: number; moveY?: number }) => { run(s, 1, () => intents(p)); run(s, 1, () => intents({})); };
     edge(right); expect(s.weapons.selector).toBe(Weapon.BeamF2);
@@ -84,7 +84,7 @@ describe('selector', () => {
 describe('firing', () => {
   const armed = (selector: number, frequency: number, combatSeed: number) => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1, undefined, frequency); sitDown(s, 0, i);
+    s.director.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1, undefined, frequency); sitDown(s, 0, i);
     s.weapons.charge = 1; s.weapons.torpedoLoaded = 1; s.weapons.selector = selector; s.rng.combat.s = combatSeed;
     const one = createRng(combatSeed); nextFloat(one);
     return { s, i, one };
@@ -109,7 +109,7 @@ describe('firing', () => {
   });
   it('an unready weapon or a missing target draws nothing: torpedo slot with nothing loaded despite a full charge, beam slot with no charge despite a loaded torpedo', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, i); s.weapons.charge = 1; s.weapons.torpedoLoaded = 1;
+    s.director.nextSpawnTick = 1e9; sitDown(s, 0, i); s.weapons.charge = 1; s.weapons.torpedoLoaded = 1;
     const c0 = s.rng.combat.s;
     run(s, 1, () => intents(confirm));
     expect(s.weapons.charge).toBe(1); expect(s.weapons.torpedoLoaded).toBe(1); expect(s.rng.combat.s).toBe(c0);   // no target
@@ -144,7 +144,7 @@ describe('firing', () => {
 describe('same-tick input order', () => {
   it('Right + Confirm on one tick fires the newly selected weapon', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1, undefined, 2); sitDown(s, 0, i);
+    s.director.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1, undefined, 2); sitDown(s, 0, i);
     s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1; s.rng.combat.s = 1;   // 0.627: a matched beam hits, a mismatched one misses
     run(s, 1, () => intents({ moveX: 1, confirmPressed: true }));
     expect(s.weapons.selector).toBe(Weapon.BeamF2); expect(s.debris.active[0]).toBe(0); expect(s.weapons.charge).toBe(0);   // fired as F2 (a match): F1 would have missed
@@ -158,7 +158,7 @@ describe('properties', () => {
     const refill = (s: ReturnType<typeof makeState>, A: number) => { if (s.debris.active.every((a) => !a)) for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3)); };
     fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), fc.constantFrom(0, 1, 2, 3), arbScript, (seed, selector, script) => {
       const s = makeState(1, seed), i = wpn(s), A = room(s, 'A');
-      s.spawner.nextSpawnTick = 1e9;
+      s.director.nextSpawnTick = 1e9;
       for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3));
       sitDown(s, 0, i);                                                           // after the placements, so the sit selects a target
       if (s.stations.cursor[i]! < 0) return false;

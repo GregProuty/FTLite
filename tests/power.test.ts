@@ -92,7 +92,7 @@ describe('power model', () => {
 describe('bonus bars and shedding', () => {
   it('a level-8 engineer adds two bars while seated; level 3 adds none; standing sheds in SHED_ORDER down to the base capacity', () => {
     const s = makeState(2), eng = idx(s, StationKind.Engineering), doors = idx(s, StationKind.Doors), med = idx(s, StationKind.Medbay), sci = idx(s, StationKind.Science);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     setSkill(s, 0, Skill.Engineering, 3); sitDown(s, 0, eng);
     expect(bonusBars(s)).toBe(0); expect(powerCapacity(s)).toBe(REACTOR_CAPACITY); expect(powerPool(s)).toBe(1);
     setSkill(s, 0, Skill.Engineering, 8);
@@ -110,13 +110,13 @@ describe('bonus bars and shedding', () => {
   });
   it('failing Engineering with bonus bars allocated sheds despite the allocation freeze; a Downed engineer sheds through crewSystem', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering), sci = idx(s, StationKind.Science), med = idx(s, StationKind.Medbay);
-    s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, 8); sitDown(s, 0, eng);
+    s.director.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, 8); sitDown(s, 0, eng);
     shiftBar(s, sci, 1); shiftBar(s, med, 1); shiftBar(s, med, 1);
     expect(powerUsed(s)).toBe(12);
     failStation(s, eng);
     expect(powerUsed(s)).toBe(REACTOR_CAPACITY); expect(s.stations.level[eng]).toBe(1); expect(shiftBar(s, sci, -1)).toBe(false);   // shed happened; the freeze still holds for input
     const t = makeState(1), engT = idx(t, StationKind.Engineering), sciT = idx(t, StationKind.Science), medT = idx(t, StationKind.Medbay);
-    t.spawner.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);
+    t.director.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);
     shiftBar(t, sciT, 1); shiftBar(t, medT, 1); shiftBar(t, medT, 1);
     Health.cur[t.crew[0]!] = 0.01; t.rooms.fire[t.derived.stationRoom[engT]!] = 1;   // burning Engineering room downs the operator this tick
     run(t, 1);
@@ -147,7 +147,7 @@ describe('bonus bars and shedding', () => {
     const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean(), stand: fc.boolean(), down: fc.boolean() }), { minLength: 20, maxLength: 200 });
     fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), fc.constantFrom(3, 4, 7, 8), arbScript, (seed, level, script) => {
       const s = makeState(2, seed), eng = idx(s, StationKind.Engineering), eid = s.crew[0]!;   // a second, idle crew member keeps the run alive through downings
-      s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, level); sitDown(s, 0, eng);
+      s.director.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, level); sitDown(s, 0, eng);
       const fill = () => { for (const kind of [StationKind.Science, StationKind.Medbay, StationKind.Navigation, StationKind.Weapons]) while (shiftBar(s, idx(s, kind), 1)) { /* spend the whole pool, bonus bars included */ } };
       let usedAboveBase = false, ticks = 0;
       for (const e of script) {

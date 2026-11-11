@@ -5,7 +5,9 @@ import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
 import { DEFAULT_CHARACTERS, RECRUIT, applyHeadStarts } from './characters';
-import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT } from './tuning';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD } from './tuning';
+import { cycleBudget } from './director';
+import { STATION_COUNT } from './stationKinds';
 
 export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState }
 export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic'] as const;
@@ -26,7 +28,8 @@ export interface SimState {
   doors: { state: Uint8Array; closeTimer: Float64Array; sealRequested: Uint8Array };
   breaches: { active: Uint8Array; repair: Float64Array };
   o2Counters: { injected: number; breathed: number; burned: number; vented: number; residual: number };
-  spawner: { nextSpawnTick: number };
+  /** Pacing director (spec 4-i section 4): phase machine, smoothed stress, spawn timing and budget, per-kind idle counters. */
+  director: { phase: number; phaseTick: number; stress: number; nextStressTick: number; nextSpawnTick: number; budgetLeft: number; lastSpawnTick: number; lastType: number; sinceProductive: Int32Array };
   /** Derived scratch (not snapshotted): per-room oxygen injection requested for the next hazard step. */
   injectionScratch: Float64Array;
   stations: { level: Uint8Array; failed: Uint8Array; repair: Float64Array; occupant: Int8Array; cursor: Int16Array; heat: Int16Array; coolant: Uint8Array };   // heat 0..HEAT_MAX and coolant units per station (spec 2b-i section 3)
@@ -68,7 +71,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     doors: { state: new Uint8Array(E), closeTimer: new Float64Array(E), sealRequested: new Uint8Array(E) },
     breaches: { active: new Uint8Array(S), repair: new Float64Array(S) },
     o2Counters: { injected: 0, breathed: 0, burned: 0, vented: 0, residual: 0 },
-    spawner: { nextSpawnTick: SPAWN_FIRST * TICK_HZ },
+    director: { phase: 0, phaseTick: 0, stress: 0, nextStressTick: STRESS_PERIOD * TICK_HZ, nextSpawnTick: SPAWN_FIRST * TICK_HZ, budgetLeft: cycleBudget(0, playerCount), lastSpawnTick: -1, lastType: -1, sinceProductive: new Int32Array(STATION_COUNT) },
     injectionScratch: new Float64Array(R),
     stations: { level: Uint8Array.from(layout.stations.map((st) => st.allocation)), failed: new Uint8Array(N), repair: new Float64Array(N), occupant: new Int8Array(N).fill(-1), cursor: new Int16Array(N), heat: new Int16Array(N), coolant: new Uint8Array(N) },
     power: { capacity: REACTOR_CAPACITY },

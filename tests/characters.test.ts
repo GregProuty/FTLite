@@ -85,22 +85,22 @@ describe('trait effects', () => {
   it('Quick Hands with Repair 3 repairs a fire and a power failure in 6 / 1.475 s and a breach in 8 / 1.475 s; Lindqvist (Repair 0, no repair trait) adds 1 x; revive is unchanged', () => {
     const m = TRAIT_REPAIR_MULT * repairMult(3);
     expect(m).toBeCloseTo(1.475);
-    const fire = makeState(1, 1, DEFAULT_CHARACTERS), G = room(fire, 'G'); fire.spawner.nextSpawnTick = 1e9; igniteRoom(fire, G); teleport(fire, 0, 2.5, 9.5);
+    const fire = makeState(1, 1, DEFAULT_CHARACTERS), G = room(fire, 'G'); fire.director.nextSpawnTick = 1e9; igniteRoom(fire, G); teleport(fire, 0, 2.5, 9.5);
     const nF = ticksFor(REPAIR_TIME_FIRE, m);
     run(fire, nF - 2, () => intents({ interactHeld: true })); expect(fire.rooms.fire[G]).toBeGreaterThan(0);
     run(fire, 4, () => intents({ interactHeld: true })); expect(fire.rooms.fire[G]).toBe(0);
-    const br = makeState(1, 1, DEFAULT_CHARACTERS); br.spawner.nextSpawnTick = 1e9; activateBreach(br, 6); teleport(br, 0, 2.5, 10.5);
+    const br = makeState(1, 1, DEFAULT_CHARACTERS); br.director.nextSpawnTick = 1e9; activateBreach(br, 6); teleport(br, 0, 2.5, 10.5);
     const nB = ticksFor(REPAIR_TIME_BREACH, m);
     run(br, nB - 2, () => intents({ interactHeld: true })); expect(br.breaches.active[6]).toBe(1);
     run(br, 4, () => intents({ interactHeld: true })); expect(br.breaches.active[6]).toBe(0);
-    const pw = makeState(1, 1, DEFAULT_CHARACTERS), eng = idx(pw, StationKind.Engineering); pw.spawner.nextSpawnTick = 1e9; failStation(pw, eng); teleport(pw, 0, 18.5, 9.5);
+    const pw = makeState(1, 1, DEFAULT_CHARACTERS), eng = idx(pw, StationKind.Engineering); pw.director.nextSpawnTick = 1e9; failStation(pw, eng); teleport(pw, 0, 18.5, 9.5);
     const nP = ticksFor(REPAIR_TIME_POWER, m);
     run(pw, nP - 2, () => intents({ interactHeld: true })); expect(pw.stations.failed[eng]).toBe(1);
     run(pw, 4, () => intents({ interactHeld: true })); expect(pw.stations.failed[eng]).toBe(0);
-    const two = makeState(2, 1, DEFAULT_CHARACTERS), G2 = room(two, 'G'); two.spawner.nextSpawnTick = 1e9; igniteRoom(two, G2); teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5);
+    const two = makeState(2, 1, DEFAULT_CHARACTERS), G2 = room(two, 'G'); two.director.nextSpawnTick = 1e9; igniteRoom(two, G2); teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5);
     run(two, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
     expect(two.rooms.fireRepair[G2]).toBeCloseTo(DT * (m + 1) / REPAIR_TIME_FIRE, 12);                   // Okoro's 1.475 plus Lindqvist's 1 (Repair 0, no repair trait)
-    const rv = makeState(2, 1, DEFAULT_CHARACTERS); rv.spawner.nextSpawnTick = 1e9;
+    const rv = makeState(2, 1, DEFAULT_CHARACTERS); rv.director.nextSpawnTick = 1e9;
     Life.state[rv.crew[1]!] = LifeState.Downed; Life.bleed[rv.crew[1]!] = 30; teleport(rv, 0, 2.5, 9.5); teleport(rv, 1, 3.0, 9.5);
     run(rv, seconds(REVIVE_TIME) - 2, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Downed);
     run(rv, 3, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Conscious);
@@ -116,7 +116,7 @@ describe('trait effects', () => {
   });
   it('Cool Head adds one cooling per unit on top of the skill term while seated; Okoro adds none', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS), eng = idx(s, StationKind.Engineering);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
     sitDown(s, 1, eng);                                                                                   // Lindqvist: Engineering 3
     expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT + 1 + Math.floor(HEAT_COOL_SKILL * 3));
@@ -132,20 +132,20 @@ describe('trait effects', () => {
   });
   it('Flammable takes 1.5 x fire damage, Iron Lungs 0.5 x suffocation damage; a debris impact ignores both', () => {
     const s = makeState(3, 1, DEFAULT_CHARACTERS), G = room(s, 'G');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     for (const pid of [0, 1, 2]) teleport(s, pid, 2.5, 9.5);
     igniteRoom(s, G);
     run(s, 1);
     expect(HEALTH_MAX - Health.cur[s.crew[0]!]!).toBeCloseTo(FIRE_DAMAGE * DT, 9);
     expect(HEALTH_MAX - Health.cur[s.crew[1]!]!).toBeCloseTo(FIRE_DAMAGE * TRAIT_FIRE_DAMAGE * DT, 9);
     const t = makeState(3, 1, DEFAULT_CHARACTERS), G2 = room(t, 'G');
-    t.spawner.nextSpawnTick = 1e9; for (const pid of [0, 1, 2]) teleport(t, pid, 2.5, 9.5);
+    t.director.nextSpawnTick = 1e9; for (const pid of [0, 1, 2]) teleport(t, pid, 2.5, 9.5);
     t.rooms.o2[G2] = 0; t.doors.state.fill(2);
     run(t, 1);
     expect(HEALTH_MAX - Health.cur[t.crew[0]!]!).toBeCloseTo(O2_DAMAGE * DT, 9);
     expect(HEALTH_MAX - Health.cur[t.crew[2]!]!).toBeCloseTo(O2_DAMAGE * TRAIT_O2_DAMAGE * DT, 9);
     const d = makeState(3, 1, DEFAULT_CHARACTERS), A = room(d, 'A');
-    d.spawner.nextSpawnTick = 1e9; teleport(d, 1, 2.5, 2.5); teleport(d, 2, 2.5, 2.5); d.rng.combat.s = 36;
+    d.director.nextSpawnTick = 1e9; teleport(d, 1, 2.5, 2.5); teleport(d, 2, 2.5, 2.5); d.rng.combat.s = 36;
     placeDebris(d, A, 0, 1); debrisSystem(d);                                                             // the impact alone: through step() the fire it may start would add environmental damage this tick
     expect(HEALTH_MAX - Health.cur[d.crew[1]!]!).toBeCloseTo(DEBRIS_CREW_DAMAGE, 9);                      // Lindqvist in the hit room: no fire multiplier on impacts
     expect(HEALTH_MAX - Health.cur[d.crew[2]!]!).toBeCloseTo(DEBRIS_CREW_DAMAGE, 9);                      // Reyes in the hit room: no suffocation multiplier on impacts
@@ -157,27 +157,27 @@ describe('trait effects', () => {
     const only = (pid: number, p: object): object[] => [0, 1, 2].map((k) => (k === pid ? p : {}));           // intents for one of three crew
     for (const [pid, mult] of [[2, TRAIT_XP_MULT], [0, 1]] as const) {                                       // Reyes at 0.75, Okoro at the full rate
       const nav = makeState(3, 1, DEFAULT_CHARACTERS), navI = idx(nav, StationKind.Navigation), A = room(nav, 'A');
-      nav.spawner.nextSpawnTick = 1e9; sitDown(nav, pid, navI); placeDebris(nav, A, 1e6, 1);
+      nav.director.nextSpawnTick = 1e9; sitDown(nav, pid, navI); placeDebris(nav, A, 1e6, 1);
       const before = xp(nav, pid, Skill.Navigation); run(nav, 1);
       expect(xp(nav, pid, Skill.Navigation) - before).toBeCloseTo(mult * XP_RATE * DT, 12);
       nav.rng.combat.s = 36; placeDebris(nav, A, 0, 1); const b2 = xp(nav, pid, Skill.Navigation); run(nav, 1);
       expect(xp(nav, pid, Skill.Navigation) - b2).toBeCloseTo(mult * (XP_RATE * DT + XP_PER_EVADE_ROLL), 9);
       const w = makeState(3, 1, DEFAULT_CHARACTERS), wpn = idx(w, StationKind.Weapons);
-      w.spawner.nextSpawnTick = 1e9; placeDebris(w, A, 1e6, 1); sitDown(w, pid, wpn); w.weapons.charge = 1; w.weapons.selector = Weapon.BeamF1; w.rng.combat.s = 36;
+      w.director.nextSpawnTick = 1e9; placeDebris(w, A, 1e6, 1); sitDown(w, pid, wpn); w.weapons.charge = 1; w.weapons.selector = Weapon.BeamF1; w.rng.combat.s = 36;
       const bw = xp(w, pid, Skill.Weapons); run(w, 1, () => intents(...only(pid, { confirmPressed: true })));
       expect(xp(w, pid, Skill.Weapons) - bw).toBeCloseTo(mult * XP_PER_SHOT, 9);
       const ls = makeState(3, 1, DEFAULT_CHARACTERS), lsI = idx(ls, StationKind.LifeSupport);
-      ls.spawner.nextSpawnTick = 1e9; ls.rooms.o2[A] = 0; sitDown(ls, pid, lsI);
+      ls.director.nextSpawnTick = 1e9; ls.rooms.o2[A] = 0; sitDown(ls, pid, lsI);
       const bl = xp(ls, pid, Skill.Engineering); run(ls, 1);                                                  // hazard tick 0 delivers with the operator seated
       expect(xp(ls, pid, Skill.Engineering) - bl).toBeCloseTo(mult * XP_RATE * HAZARD_DT, 9);
       const rp = makeState(3, 1, DEFAULT_CHARACTERS), G = room(rp, 'G');
-      rp.spawner.nextSpawnTick = 1e9; igniteRoom(rp, G); teleport(rp, pid, 2.5, 9.5);
+      rp.director.nextSpawnTick = 1e9; igniteRoom(rp, G); teleport(rp, pid, 2.5, 9.5);
       const br = xp(rp, pid, Skill.Repair); run(rp, 1, () => intents(...only(pid, { interactHeld: true })));
       expect(xp(rp, pid, Skill.Repair) - br).toBeCloseTo(mult * XP_RATE * DT, 12);                            // Okoro's head start sits underneath: deltas, not totals
     }
   });
   it('Frail bleeds out from 18 s and dies in 18 s on clean floor or 9 s in fire or low oxygen; Okoro starts at 30 s', () => {
-    const mk = () => { const s = makeState(4, 1, DEFAULT_CHARACTERS); s.spawner.nextSpawnTick = 1e9; teleport(s, 0, 20.5, 5.5); teleport(s, 1, 20.5, 5.5); teleport(s, 2, 20.5, 5.5); teleport(s, 3, 2.5, 9.5); return s; };
+    const mk = () => { const s = makeState(4, 1, DEFAULT_CHARACTERS); s.director.nextSpawnTick = 1e9; teleport(s, 0, 20.5, 5.5); teleport(s, 1, 20.5, 5.5); teleport(s, 2, 20.5, 5.5); teleport(s, 3, 2.5, 9.5); return s; };
     const a = mk(); downCrew(a, 3); downCrew(a, 0);
     expect(Life.bleed[a.crew[3]!]).toBeCloseTo(BLEEDOUT_TIME * TRAIT_BLEEDOUT); expect(Life.bleed[a.crew[0]!]).toBe(BLEEDOUT_TIME);
     reviveCrew(a, a.crew[0]!);
@@ -194,7 +194,7 @@ describe('trait effects', () => {
 
 describe('determinism with the four characters', () => {
   it('two runs and a snapshot round-trip at tick 300 agree after 600 ticks, with a live fire, Okoro repairing it and the spawner running', () => {
-    const mk = () => { const s = makeState(4, 11, DEFAULT_CHARACTERS); igniteRoom(s, room(s, 'G')); teleport(s, 0, 2.5, 9.5); s.spawner.nextSpawnTick = 0; return s; };   // RNG draws (spread, spawns) and earned XP both happen before the save
+    const mk = () => { const s = makeState(4, 11, DEFAULT_CHARACTERS); igniteRoom(s, room(s, 'G')); teleport(s, 0, 2.5, 9.5); s.director.nextSpawnTick = 0; return s; };   // RNG draws (spread, spawns) and earned XP both happen before the save
     const f = () => intents({ interactHeld: true }, { moveY: 1 }, { moveX: 1 }, {});
     const a = mk(), b = mk(), c = mk();
     const hazards0 = a.rng.hazards.s, director0 = a.rng.director.s, repair0 = xp(a, 0, Skill.Repair);

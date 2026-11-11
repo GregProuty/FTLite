@@ -139,20 +139,20 @@ describe('interactSystem', () => {
 describe('repair skill', () => {
   it('level 10 repairs a fire and a power failure in 3.75 s and a breach in 5 s; two holders leave no residue; revive is unchanged', () => {
     const mult = 1 + 10 * REPAIR_SKILL_GAIN;
-    const fire = makeState(1), G = room(fire, 'G'); fire.spawner.nextSpawnTick = 1e9; setSkill(fire, 0, Skill.Repair, 10); igniteRoom(fire, G); teleport(fire, 0, 2.5, 9.5);
+    const fire = makeState(1), G = room(fire, 'G'); fire.director.nextSpawnTick = 1e9; setSkill(fire, 0, Skill.Repair, 10); igniteRoom(fire, G); teleport(fire, 0, 2.5, 9.5);
     run(fire, Math.floor(seconds(REPAIR_TIME_FIRE / mult)) - 2, () => intents({ interactHeld: true })); expect(fire.rooms.fire[G]).toBeGreaterThan(0);
     run(fire, 4, () => intents({ interactHeld: true })); expect(fire.rooms.fire[G]).toBe(0);
-    const br = makeState(1); br.spawner.nextSpawnTick = 1e9; setSkill(br, 0, Skill.Repair, 10); activateBreach(br, 6); teleport(br, 0, 2.5, 10.5);
+    const br = makeState(1); br.director.nextSpawnTick = 1e9; setSkill(br, 0, Skill.Repair, 10); activateBreach(br, 6); teleport(br, 0, 2.5, 10.5);
     run(br, Math.floor(seconds(REPAIR_TIME_BREACH / mult)) - 2, () => intents({ interactHeld: true })); expect(br.breaches.active[6]).toBe(1);
     run(br, 4, () => intents({ interactHeld: true })); expect(br.breaches.active[6]).toBe(0);
-    const pw = makeState(1), eng = pw.derived.stationOfKind[3]!; pw.spawner.nextSpawnTick = 1e9; setSkill(pw, 0, Skill.Repair, 10); failStation(pw, eng); teleport(pw, 0, 18.5, 9.5);
+    const pw = makeState(1), eng = pw.derived.stationOfKind[3]!; pw.director.nextSpawnTick = 1e9; setSkill(pw, 0, Skill.Repair, 10); failStation(pw, eng); teleport(pw, 0, 18.5, 9.5);
     run(pw, Math.floor(seconds(REPAIR_TIME_POWER / mult)) - 2, () => intents({ interactHeld: true })); expect(pw.stations.failed[eng]).toBe(1);
     run(pw, 4, () => intents({ interactHeld: true })); expect(pw.stations.failed[eng]).toBe(0);
-    const two = makeState(2), G2 = room(two, 'G'); two.spawner.nextSpawnTick = 1e9; setSkill(two, 0, Skill.Repair, 10); setSkill(two, 1, Skill.Repair, 10); igniteRoom(two, G2);
+    const two = makeState(2), G2 = room(two, 'G'); two.director.nextSpawnTick = 1e9; setSkill(two, 0, Skill.Repair, 10); setSkill(two, 1, Skill.Repair, 10); igniteRoom(two, G2);
     teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5);
     run(two, Math.ceil(seconds(REPAIR_TIME_FIRE / mult / 2)) + 2, () => intents({ interactHeld: true }, { interactHeld: true }));
     expect(two.rooms.fire[G2]).toBe(0); expect(two.rooms.fireRepair[G2]).toBe(0);
-    const rv = makeState(2); rv.spawner.nextSpawnTick = 1e9; setSkill(rv, 0, Skill.Repair, 10);
+    const rv = makeState(2); rv.director.nextSpawnTick = 1e9; setSkill(rv, 0, Skill.Repair, 10);
     Life.state[rv.crew[1]!] = LifeState.Downed; Life.bleed[rv.crew[1]!] = 30; teleport(rv, 0, 2.5, 9.5); teleport(rv, 1, 3.0, 9.5);
     run(rv, seconds(REVIVE_TIME) - 2, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Downed);
     run(rv, 3, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Conscious);

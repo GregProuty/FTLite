@@ -16,7 +16,7 @@ import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {
   const s = makeState(players, seed);
-  s.spawner.nextSpawnTick = 0;
+  s.director.nextSpawnTick = 0;
   for (let i = 0; i < 1500; i++) step(s, Array.from({ length: players }, (_, pid) => botIntent(s, pid)));
   return s;
 }
@@ -41,10 +41,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-6 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-7 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 6 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 6;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 7 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 7;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -90,7 +90,7 @@ describe('snapshot', () => {
       const s = makeState(1, 9);
       const w = s.derived.stationOfKind[StationKind.Weapons]!, tile = s.derived.stationTile[w]!, width = s.derived.width;
       teleport(s, 0, (tile % width) + 0.5, Math.floor(tile / width) + 0.5);
-      s.spawner.nextSpawnTick = 1e9;
+      s.director.nextSpawnTick = 1e9;
       placeDebris(s, room(s, 'A'), 1e6, 1);
       return s;
     };
@@ -177,7 +177,7 @@ describe('snapshot', () => {
     const c = makeState(2, 5); c.stations.coolant[2] = 1; expect(hashState(c)).not.toBe(base);       // coolant alone changes the hash
   });
   it('an overdrive with one unit saved ten ticks before its overheat continues through the failure and fire roll like an uninterrupted run', () => {
-    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; const d = overdrive(s, StationKind.Doors); s.stations.coolant[d] = 1; return s; };
+    const mk = () => { const s = makeState(1, 9); s.director.nextSpawnTick = 1e9; const d = overdrive(s, StationKind.Doors); s.stations.coolant[d] = 1; return s; };
     const whole = mk(); run(whole, 1260);
     expect(whole.stations.failed[whole.derived.stationOfKind[StationKind.Doors]!]).toBe(1);      // net +1 per hazard tick: the overheat lands on tick 1195
     const first = mk(); run(first, 1185);
@@ -187,7 +187,7 @@ describe('snapshot', () => {
     expect(hashState(resumed)).toBe(hashState(whole));
   });
   it('a scan in progress saved mid-scan and continued hashes equal to the uninterrupted run', () => {
-    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; const sci = s.derived.stationOfKind[StationKind.Science]!; placeDebris(s, room(s, 'A'), 1e6, 1, undefined, 2); sitDown(s, 0, sci); s.science.scanning = 1; return s; };
+    const mk = () => { const s = makeState(1, 9); s.director.nextSpawnTick = 1e9; const sci = s.derived.stationOfKind[StationKind.Science]!; placeDebris(s, room(s, 'A'), 1e6, 1, undefined, 2); sitDown(s, 0, sci); s.science.scanning = 1; return s; };
     const whole = mk(); run(whole, 1200);
     expect(whole.debris.scanned[0]).toBe(1);                                     // 16 s scan at level 1 is done by 20 s
     const first = mk(); run(first, 500);
@@ -197,7 +197,7 @@ describe('snapshot', () => {
     expect(hashState(resumed)).toBe(hashState(whole));
   });
   it('a run saved inside an active Engineering productivity window continues like an uninterrupted run through the window expiry', () => {
-    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, s.derived.stationOfKind[StationKind.Engineering]!); return s; };
+    const mk = () => { const s = makeState(1, 9); s.director.nextSpawnTick = 1e9; sitDown(s, 0, s.derived.stationOfKind[StationKind.Engineering]!); return s; };
     const script = (t: number) => t === 50 ? intents({ moveY: 1 }) : t === 52 ? intents({ moveX: 1 }) : intents();   // cursor to Life Support, then a bar move at tick 52
     const whole = mk(); for (let t = 0; t < 600; t++) step(whole, script(t));
     expect(whole.skills.lastEngChangeTick).toBe(52); expect(whole.skills.xp[1]).toBeGreaterThan(0);                 // Engineering XP accrued inside the window

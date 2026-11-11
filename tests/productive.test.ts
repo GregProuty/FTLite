@@ -25,7 +25,7 @@ describe('recent', () => {
 describe('isProductive', () => {
   it('Navigation and Science: a warned object; Science scanning alone with nothing warned is not enough', () => {
     const s = makeState(2), nav = idx(s, StationKind.Navigation), sci = idx(s, StationKind.Science), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, nav); sitDown(s, 1, sci);
+    s.director.nextSpawnTick = 1e9; sitDown(s, 0, nav); sitDown(s, 1, sci);
     expect(isProductive(s, nav)).toBe(false); expect(isProductive(s, sci)).toBe(false);
     s.science.scanning = 1; s.stations.cursor[sci] = 0;                          // no valid target: the scan branch needs one
     expect(isProductive(s, sci)).toBe(false);
@@ -36,7 +36,7 @@ describe('isProductive', () => {
   });
   it('Engineering: overdrive, a shortfall covered by bonus bars, or a recent change', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering);
-    s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, eng);
+    s.director.nextSpawnTick = 1e9; sitDown(s, 0, eng);
     expect(isProductive(s, eng)).toBe(false);                                     // stamps unset at tick 0
     s.stations.cursor[eng] = StationKind.Doors; run(s, 1, () => intents(right)); // Doors 1 -> 2 (the spare bar): a change, and an overdrive
     expect(s.skills.lastEngChangeTick).toBe(0); expect(isProductive(s, eng)).toBe(true);
@@ -55,7 +55,7 @@ describe('isProductive', () => {
     s.stations.cursor[eng] = StationKind.Engineering; run(s, 1, () => intents(confirm));   // refused: the Engineering row holds no coolant
     expect(isProductive(s, eng)).toBe(false);
     const t = makeState(1), engT = idx(t, StationKind.Engineering), doors = idx(t, StationKind.Doors);
-    t.spawner.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);
+    t.director.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);
     const navT = idx(t, StationKind.Navigation), sciT = idx(t, StationKind.Science), medT = idx(t, StationKind.Medbay);
     t.stations.level[navT] = 2; t.stations.level[sciT] = 2; t.stations.level[medT] = 2;   // usage 12 against base 10, nothing overdriven (all three have max 2): covered by the two bonus bars
     expect(t.stations.level[doors]).toBe(1); expect(isProductive(t, engT)).toBe(true);
@@ -64,7 +64,7 @@ describe('isProductive', () => {
   });
   it('Life Support: recent delivery only; Medbay: a hurt Conscious patient in the room', () => {
     const s = makeState(1), ls = idx(s, StationKind.LifeSupport), med = idx(s, StationKind.Medbay);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     expect(isProductive(s, ls)).toBe(false);
     const breached = room(s, 'A'); activateBreach(s, 0);   // site 0 is in room A; every room is full, and the only room with free volume is the breached one, so no delivery
     for (let r = 0; r < s.rooms.o2.length; r++) if (r !== breached) s.rooms.o2[r] = s.derived.volume[r]!;
@@ -79,7 +79,7 @@ describe('isProductive', () => {
   });
   it('Doors: a fire or breach anywhere, or a recent remote toggle; local toggles do not count', () => {
     const s = makeState(2), doors = idx(s, StationKind.Doors);
-    s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, doors);
+    s.director.nextSpawnTick = 1e9; sitDown(s, 0, doors);
     expect(isProductive(s, doors)).toBe(false);
     igniteRoom(s, room(s, 'G'));
     expect(isProductive(s, doors)).toBe(true);

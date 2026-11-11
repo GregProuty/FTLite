@@ -127,20 +127,20 @@ describe('Engineering console', () => {
   });
   it('same tick: a Left out of overdrive, or a Confirm to two units, on the would-be overheat tick prevents it', () => {
     const a = makeState(1), engA = idx(a, StationKind.Engineering), wpnA = overdrive(a, StationKind.Weapons);
-    a.spawner.nextSpawnTick = 1e9; sitDown(a, 0, engA); a.stations.cursor[engA] = StationKind.Weapons;
+    a.director.nextSpawnTick = 1e9; sitDown(a, 0, engA); a.stations.cursor[engA] = StationKind.Weapons;
     a.stations.heat[wpnA] = HEAT_MAX - HEAT_RISE;
     run(a, 1, () => intents(left));                                            // consoleSystem (level 4 -> 3) precedes heatStep
     expect(a.stations.level[wpnA]).toBe(3); expect(a.stations.failed[wpnA]).toBe(0);
     expect(a.stations.heat[wpnA]).toBe(HEAT_MAX - HEAT_RISE - HEAT_COOL_IDLE);   // idle cooling instead of an overheat
     const b = makeState(1), engB = idx(b, StationKind.Engineering), wpnB = overdrive(b, StationKind.Weapons);
-    b.spawner.nextSpawnTick = 1e9; sitDown(b, 0, engB); b.stations.cursor[engB] = StationKind.Weapons;
+    b.director.nextSpawnTick = 1e9; sitDown(b, 0, engB); b.stations.cursor[engB] = StationKind.Weapons;
     b.stations.heat[wpnB] = HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT); b.stations.coolant[wpnB] = 1;   // one unit: the next update would reach HEAT_MAX
     run(b, 1, () => intents(confirm));                                         // 1 -> 2 units before heatStep: net 0
     expect(b.stations.coolant[wpnB]).toBe(2); expect(b.stations.failed[wpnB]).toBe(0); expect(b.stations.heat[wpnB]).toBe(HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT));
   });
   it('same tick: a Weapons shot on the Weapons overheat tick resolves before the failure stands the operator', () => {
     const s = makeState(2), wpn = overdrive(s, StationKind.Weapons);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     placeDebris(s, room(s, 'A'), 600, 1); sitDown(s, 1, wpn); s.weapons.charge = 1;
     s.stations.heat[wpn] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = 1;         // no fire
     const oneDraw = createRng(s.rng.combat.s); nextFloat(oneDraw);
@@ -161,7 +161,7 @@ describe('Engineering console', () => {
     };
     fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), arbScript, (seed, script) => {
       const s = makeState(1, seed), eng = idx(s, StationKind.Engineering);
-      s.spawner.nextSpawnTick = 1e9;                                       // no unrelated failures: Engineering stays occupied for the whole script
+      s.director.nextSpawnTick = 1e9;                                       // no unrelated failures: Engineering stays occupied for the whole script
       sitDown(s, 0, eng);
       for (const e of script) {
         for (let k = 0; k < HAZARD_EVERY; k++) {                           // one stick edge per 5 ticks, Confirm edges every tick while true
@@ -212,7 +212,7 @@ describe('Doors console', () => {
 describe('scripted-intent gate: Science, Weapons, Navigation', () => {
   it('Science: a 16 s object is unwarned unmanned, warned at the end of the seating tick, and stays warned after Cancel', () => {
     const s = makeState(1), i = idx(s, StationKind.Science), A = s.derived.roomIndex.get('A')!;
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     at(s, 0, i);
     placeDebris(s, A, seconds(16));
     run(s, 1);
@@ -224,7 +224,7 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
   });
   it('Science scans, Weapons retunes and fires a matched beam, then a torpedo', () => {
     const s = makeState(2), sci = idx(s, StationKind.Science), wpn = idx(s, StationKind.Weapons), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; s.stations.level[sci] = 2;                   // Science level 2: 8 s scan (the starter has 1)
+    s.director.nextSpawnTick = 1e9; s.stations.level[sci] = 2;                   // Science level 2: 8 s scan (the starter has 1)
     s.stations.level[idx(s, StationKind.LifeSupport)] = 1;                      // pay for it from Life Support (pool stays >= 0)
     placeDebris(s, A, seconds(30), 1, undefined, 3);
     at(s, 0, sci); at(s, 1, wpn);
@@ -261,7 +261,7 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
   });
   it('Navigation: seated, an impact draws exactly one combat roll; a low roll evades with hull unchanged', () => {
     const s = makeState(1), i = idx(s, StationKind.Navigation), A = s.derived.roomIndex.get('A')!;
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     at(s, 0, i);
     run(s, 1, () => intents(confirm));
     expect(Seated.station[s.crew[0]!]).toBe(i);
@@ -291,7 +291,7 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
 describe('scripted-intent gate: Engineering overdrive', () => {
   it('overdriven Weapons with two units holds 30 s; at zero units it overheats within 10 s and stands the Weapons operator', () => {
     const s = makeState(2), eng = idx(s, StationKind.Engineering), wpn = idx(s, StationKind.Weapons), ls = idx(s, StationKind.LifeSupport);
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     sitDown(s, 0, eng); sitDown(s, 1, wpn);
     const edge = (p: Partial<Intent>) => { run(s, 1, () => intents(p, {})); run(s, 1, () => intents({}, {})); };
     edge(down);                                                               // cursor Engineering -> Life Support

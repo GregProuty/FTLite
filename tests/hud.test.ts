@@ -119,7 +119,7 @@ describe('buildHudModel', () => {
   });
   it('lists warned debris as threats in StableId order with the ETA, hides unwarned ones, and exposes tick, charge and impact ticks', () => {
     const s = makeState(1), A = room(s, 'A'), B = room(s, 'B');
-    s.spawner.nextSpawnTick = 1e9;
+    s.director.nextSpawnTick = 1e9;
     placeDebris(s, A, seconds(10) + 1, 1, 30); placeDebris(s, B, seconds(3), 1, 10); placeDebris(s, A, seconds(20), 0, 20);
     s.weapons.charge = 1; s.rooms.impactTick[B] = 5;
     const m = buildHudModel(s, slots(1), 'running', '');
@@ -193,7 +193,7 @@ describe('buildHudModel', () => {
   });
   it('the Engineering footer pool and the strip capacity include bonus bars while a skilled engineer sits, and drop after standing', () => {
     const s = makeState(1), eng = s.derived.stationOfKind[StationKind.Engineering]!;
-    s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, 8); sitDown(s, 0, eng);
+    s.director.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, 8); sitDown(s, 0, eng);
     const m1 = buildHudModel(s, slots(1), 'running', '');
     expect((m1.players[0]!.console as EngineeringPanel).pool).toBe(3); expect(m1.power).toEqual({ capacity: 12, used: 9 });
     shiftBar(s, s.derived.stationOfKind[StationKind.Science]!, 1); shiftBar(s, s.derived.stationOfKind[StationKind.Medbay]!, 1); shiftBar(s, s.derived.stationOfKind[StationKind.Medbay]!, 1);
