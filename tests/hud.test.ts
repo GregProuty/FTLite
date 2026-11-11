@@ -12,6 +12,7 @@ import { failStation, shiftBar } from '../src/renderer/src/sim/power';
 import { HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
+import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
@@ -200,5 +201,24 @@ describe('buildHudModel', () => {
     expect((m2.players[0]!.console as EngineeringPanel).pool).toBe(0); expect(m2.power).toEqual({ capacity: 12, used: 12 });
     run(s, 1, () => intents({ cancelPressed: true }));
     expect(buildHudModel(s, slots(1), 'running', '').power).toEqual({ capacity: 10, used: 10 });
+  });
+  it("reports each slot's character with trait names, from the state when there is one and from the default list otherwise", () => {
+    const s = makeState(2, 1, DEFAULT_CHARACTERS);
+    const m = buildHudModel(s, slots(3), 'running', '');
+    expect(m.players[0]!.character).toEqual({ name: 'Okoro', asset: 'Quick Hands', complication: 'Heavy Boots' });
+    expect(m.players[1]!.character).toEqual({ name: 'Lindqvist', asset: 'Cool Head', complication: 'Flammable' });
+    expect(m.players[2]!.character).toEqual({ name: 'Reyes', asset: 'Iron Lungs', complication: 'Slow Learner' });   // slot beyond the crew: the default list
+    const lobby = buildHudModel(null, slots(4), 'lobby', '');
+    expect(lobby.players[3]!.character).toEqual({ name: 'Dubois', asset: 'Sprinter', complication: 'Frail' });
+    expect(buildHudModel(makeState(1), slots(1), 'running', '').players[0]!.character).toEqual({ name: 'Recruit', asset: '', complication: '' });
+    expect(m.players[1]!.skills).toEqual([0, 3, 0, 0, 0, 0]);                                              // Lindqvist's head start shows as a level
+  });
+  it("the game-over summary lists each crew member's skill gains above the head start, and is null in every other phase", () => {
+    const s = makeState(3, 1, DEFAULT_CHARACTERS);
+    setSkill(s, 2, Skill.Science, 3); setSkill(s, 0, Skill.Repair, 4); setSkill(s, 0, Skill.Navigation, 1);
+    const over = buildHudModel(s, slots(3), 'gameover', 'HULL LOST');
+    expect(over.summary).toEqual(['Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
+    for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
+    expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
   });
 });

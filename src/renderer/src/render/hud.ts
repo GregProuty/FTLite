@@ -62,6 +62,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
   const banner = text(16); banner.scale.set(2); banner.anchor.set(0.5, 0); banner.position.set(INTERNAL_W / 2, 24); parent.addChild(banner);
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
+  const summaryRows = Array.from({ length: 4 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 88 + k * LINE); t.visible = false; parent.addChild(t); return t; });
 
   const players = [0, 1, 2, 3].map((i) => {
     const x = 4 + i * 238, y = INTERNAL_H - 94;
@@ -106,9 +107,14 @@ export function createHud(parent: Container, assets: GameAssets) {
     }
   }
 
-  function updatePlayer(ui: (typeof players)[number], p: HudPlayer, i: number): void {
+  function updatePlayer(ui: (typeof players)[number], p: HudPlayer, i: number, phase: HudModel['phase']): void {
     if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
     if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
+    if (phase === 'lobby') {
+      ui.name.text = `P${i + 1}  ${p.character.name}`; ui.name.tint = TEXT; ui.hp.root.visible = false;
+      fillRow(ui.line2, [{ text: p.character.asset && p.character.complication ? `${p.character.asset} / ${p.character.complication}` : '', tint: DIM }]); fillRow(ui.line3, []); fillRow(ui.line4, []);
+      ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return;
+    }
     ui.name.text = `P${i + 1}  HP ${Math.ceil(p.health)}`; ui.name.tint = TEXT;
     ui.hp.root.visible = true; ui.hp.set(p.health / 100);
     if (ui.oxygen) ui.oxygen.visible = p.lowOxygen;
@@ -120,7 +126,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.line2, [{ glyph: p.interactPrompt ? glyphName('interact', p.deviceKind) : null, icon: p.interactIcon, text: p.interactPrompt }]);
       fillRow(ui.line3, [{ glyph: p.confirmPrompt ? glyphName('confirm', p.deviceKind) : null, icon: p.confirmIcon, text: p.confirmPrompt }]);
     }
-    fillRow(ui.line4, [{ text: SKILL_NAMES.map((n, k) => `${n[0]}${p.skills[k]}`).join(' '), tint: DIM }]);
+    fillRow(ui.line4, [{ text: `${p.character.name}  ${SKILL_NAMES.map((n, k) => `${n[0]}${p.skills[k]}`).join(' ')}`, tint: DIM }]);
     ui.consoleRoot.visible = p.console !== null;
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
     if (p.console && 'rows' in p.console) {
@@ -178,7 +184,8 @@ export function createHud(parent: Container, assets: GameAssets) {
       const showBannerGlyphs = (m.phase === 'lobby' || m.phase === 'gameover') && !!first?.deviceKind;
       fillRow(bannerGlyphs, showBannerGlyphs ? [{ glyph: glyphName('confirm', first!.deviceKind), text: 'Confirm' }, { glyph: glyphName('cancel', first!.deviceKind), text: 'Cancel' }] : []);
       bannerGlyphs.position.x = INTERNAL_W / 2 - bannerGlyphs.width / 2;
-      m.players.forEach((p, i) => updatePlayer(players[i]!, p, i));
+      summaryRows.forEach((t, k) => { const line = m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; });
+      m.players.forEach((p, i) => updatePlayer(players[i]!, p, i, m.phase));
       overlay.visible = m.credits !== null;
       if (m.credits) creditLines.forEach((t, i) => { t.text = m.credits![m.creditsScroll + i] ?? ''; });
     }
