@@ -234,3 +234,33 @@ describe('spawning', () => {
     const t = createSimState(withoutDoors(), 1, 1); quiet(t); run(t, 10); expect(t.director.sinceProductive[StationKind.Doors]).toBe(0);
   });
 });
+
+describe('routing (3 or 4 players)', () => {
+  const idle = (s: ReturnType<typeof makeState>, kind: number, secondsIdle: number) => { s.director.sinceProductive[kind] = secondsIdle * T; };
+  it('the longest-idle responding console gets the bonus; fire and breach tie when Life Support is at least as idle as Doors', () => {
+    const s = makeState(3); quiet(s);
+    idle(s, StationKind.Doors, 61);
+    expect(typeWeights(s)).toEqual([8, 2, 2, 4]);                                 // breach's idle is min(Doors 61, Life Support 0) = 0
+    idle(s, StationKind.LifeSupport, 90);
+    expect(typeWeights(s)).toEqual([8, 6, 2, 4]);                                 // both at 61: both routed
+    s.director.sinceProductive.fill(0); idle(s, StationKind.Engineering, 61);
+    expect(typeWeights(s)).toEqual([4, 2, 6, 4]);
+    s.director.sinceProductive.fill(0); for (const k of [StationKind.Science, StationKind.Weapons, StationKind.Navigation]) idle(s, k, 61);
+    expect(typeWeights(s)).toEqual([4, 2, 2, 8]);
+    s.director.sinceProductive.fill(0); idle(s, StationKind.Science, 61);
+    expect(typeWeights(s)).toEqual([4, 2, 2, 4]);                                 // Weapons and Navigation at 0: the minimum governs
+  });
+  it('exactly 60 s gives no bonus, 61 s does; two players never route; halving precedes the bonus', () => {
+    const s = makeState(3); quiet(s);
+    idle(s, StationKind.Engineering, 60); expect(typeWeights(s)).toEqual([4, 2, 2, 4]);
+    idle(s, StationKind.Engineering, 61); expect(typeWeights(s)).toEqual([4, 2, 6, 4]);
+    s.director.lastType = HazardType.Power; expect(typeWeights(s)).toEqual([4, 2, 5, 4]);   // 2 halved to 1, then +4
+    const two = makeState(2); quiet(two); idle(two, StationKind.Engineering, 300);
+    expect(typeWeights(two)).toEqual([4, 2, 2, 4]);
+  });
+  it('a console not on the ship has idle 0 and never attracts routing', () => {
+    const s = createSimState(withoutDoors(), 3, 1); quiet(s);
+    s.director.sinceProductive[StationKind.Doors] = 1000 * T;                      // stale value for a missing console
+    expect(typeWeights(s)).toEqual([4, 2, 2, 4]);
+  });
+});
