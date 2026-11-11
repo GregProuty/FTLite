@@ -10,12 +10,14 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill } from './helpers/sim';
+import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST, ENEMY_SYS_HP } from '../src/renderer/src/sim/tuning';
+import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST, ENEMY_SYS_HP, BOARDER_SLOTS } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { DoorState } from '../src/renderer/src/sim/grid';
+import { failStation } from '../src/renderer/src/sim/power';
 import { Phase, cycleBudget } from '../src/renderer/src/sim/director';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
@@ -46,10 +48,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-10 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-11 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 10 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 10;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 11 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 11;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -327,6 +329,39 @@ describe('snapshot', () => {
     expect(resumed.enemy.departTick).toBe(pushed);
     run(whole, 50); run(resumed, 50);
     expect(resumed.enemy.departTick).toBe(pushed + 20); expect(resumed.enemy.sysHp[EnemySystem.Engines]).toBe(ENEMY_SYS_HP);
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+  it('round-trips the boarders block and counters (incl. an aloneSince of -2); each field alone changes the hash', () => {
+    const s = makeState(2, 5), b = s.boarders;
+    b.active.set([1, 0, 1, 0]); b.stableId.set([41, 0, 43, 0]); b.room.set([3, 0, 6, 0]); b.health.set([12.5, 0, 60, 0]); b.nextMoveTick.set([900, 0, 1200, 0]); b.aloneSince.set([-2, -1, 777, -1]); b.nextArrivalTick = 9999;
+    s.telemetry.boardings = 2; s.telemetry.boardersKilled = 3;
+    const loaded = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s)))), t = loaded.boarders;
+    for (const k of ['active', 'stableId', 'room', 'health', 'nextMoveTick', 'aloneSince'] as const) expect(Array.from(t[k])).toEqual(Array.from(b[k]));
+    expect(t.nextArrivalTick).toBe(9999); expect([loaded.telemetry.boardings, loaded.telemetry.boardersKilled]).toEqual([2, 3]);
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
+    expect(mutate((u) => { u.boarders.nextArrivalTick = 1; })).not.toBe(base);
+    for (let k = 0; k < BOARDER_SLOTS; k++) for (const key of ['active', 'stableId', 'room', 'health', 'nextMoveTick'] as const) expect(mutate((u) => { u.boarders[key][k] = 1; })).not.toBe(base);
+    for (let k = 0; k < BOARDER_SLOTS; k++) expect(mutate((u) => { u.boarders.aloneSince[k] = -2; })).not.toBe(base);
+    expect(mutate((u) => { u.telemetry.boardings = 1; })).not.toBe(base); expect(mutate((u) => { u.telemetry.boardersKilled = 1; })).not.toBe(base);
+  });
+  it('a run saved mid-fight (after 60 ticks of melee) continues to the kill and the cooldown re-arm like the uninterrupted run', () => {
+    const drive = (s: ReturnType<typeof makeState>, n: number) => { for (let i = 0; i < n; i++) step(s, [botIntent(s, 0), botIntent(s, 1)]); };
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; run(s, 100); teleport(s, 0, 2.5, 9.5); teleport(s, 1, 3.5, 9.5); placeBoarder(s, room(s, 'G'), 30); drive(s, 60); };
+    const whole = makeState(2, 31); setup(whole); const part = makeState(2, 31); setup(part);
+    expect(part.boarders.health[0]).toBeLessThan(30); expect(part.boarders.active[0]).toBe(1);        // saved mid-fight
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    drive(whole, 300); drive(resumed, 300);
+    expect(resumed.telemetry.boardersKilled).toBe(1); expect(resumed.boarders.nextArrivalTick).not.toBe(1e9);
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+  it('a sabotaged visit (-2) saved mid-containment does not sabotage again after loading', () => {
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; teleport(s, 0, 2.5, 9.5); teleport(s, 1, 3.5, 9.5); s.doors.state[0] = DoorState.Sealed; const k = placeBoarder(s, room(s, 'A')); s.boarders.aloneSince[k] = -2; failStation(s, 0); };
+    const whole = makeState(2, 32); setup(whole); const part = makeState(2, 32); setup(part);
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    expect(resumed.boarders.aloneSince[0]).toBe(-2);
+    run(whole, 20 * TICK_HZ); run(resumed, 20 * TICK_HZ);
+    expect(resumed.stations.failed[1]).toBe(0); expect(resumed.boarders.aloneSince[0]).toBe(-2);     // Doors stays online: the visit already sabotaged
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 });

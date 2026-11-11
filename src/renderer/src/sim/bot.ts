@@ -46,6 +46,8 @@ function goalTiles(state: SimState, pid: number): Set<number> {
     goals.add(Math.floor(Position.y[state.crew[other]!]!) * d.width + Math.floor(Position.x[state.crew[other]!]!));
   }
   if (goals.size) return goals;
+  for (let k = 0; k < state.boarders.active.length; k++) if (state.boarders.active[k]) for (const t of d.roomTiles[state.boarders.room[k]!]!) goals.add(t);
+  if (goals.size) return goals;                                                       // boarders outrank hazards (spec Boarders-i section 6)
   for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) for (const t of d.roomTiles[r]!) goals.add(t);
   for (let s = 0; s < d.siteTile.length; s++) {
     if (!state.breaches.active[s]) continue;

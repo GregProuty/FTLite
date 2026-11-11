@@ -3,6 +3,7 @@ import { nextFloat, nextInt } from '../../../shared/rng';
 import { Position, Life, LifeState } from './components';
 import { roomAt } from './grid';
 import { StationKind } from './stationKinds';
+import { activeBoarderCount } from './boarders';
 import { igniteRoom, burningRoomCount } from './hazards/fire';
 import { activateBreach, activeBreachCount, freeSites } from './hazards/breach';
 import { failStation } from './power';
@@ -43,7 +44,7 @@ function downedCount(state: SimState): number {
 /** Unsmoothed stress: a weighted count of what is wrong right now, clamped to 1 (spec 4-i section 5). */
 export function rawStress(state: SimState): number {
   const w = STRESS_WEIGHTS;
-  const raw = w.fire * burningRoomCount(state) + w.breach * activeBreachCount(state) + w.power * failedStationCount(state) + w.debris * activeDebrisCount(state) + w.downed * downedCount(state) + w.enemy * state.enemy.present;
+  const raw = w.fire * burningRoomCount(state) + w.breach * activeBreachCount(state) + w.power * failedStationCount(state) + w.debris * activeDebrisCount(state) + w.downed * downedCount(state) + w.enemy * state.enemy.present + w.boarder * activeBoarderCount(state);
   return Math.max(0, Math.min(1, raw));
 }
 
@@ -90,6 +91,7 @@ export function anyUnattended(state: SimState): boolean {
     const eid = state.crew[pid]!;
     if (Life.state[eid] === LifeState.Downed && !consciousNear(state, Position.x[eid]!, Position.y[eid]!)) return true;
   }
+  for (let k = 0; k < state.boarders.active.length; k++) if (state.boarders.active[k] && !consciousInRoom(state, state.boarders.room[k]!)) return true;   // a boarder in a room without Conscious crew (spec Boarders-i section 6)
   return false;
 }
 

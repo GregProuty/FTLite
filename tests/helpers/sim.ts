@@ -5,7 +5,7 @@ import { createSimState, type SimState } from '../../src/renderer/src/sim/state'
 import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
-import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR } from '../../src/renderer/src/sim/tuning';
+import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, BOARDER_HEALTH, BOARDER_MOVE } from '../../src/renderer/src/sim/tuning';
 import { ObjectKind } from '../../src/renderer/src/sim/debris';
 import { ENEMY_SLOTS } from '../../src/renderer/src/sim/debrisTargets';
 import { RECRUIT } from '../../src/renderer/src/sim/characters';
@@ -93,5 +93,16 @@ export function guardDebris(s: SimState): void {
 export function placeShot(state: SimState, room: number, ticksOut: number, warned = 0, stableId?: number, frequency = 1): number {
   const slot = placeDebris(state, room, ticksOut, warned, stableId, frequency);
   state.debris.kind[slot] = ObjectKind.Shot;
+  return slot;
+}
+
+/** Place a boarder directly (no draw): fresh StableId, full health, a move due in BOARDER_MOVE seconds, clock idle. Returns the slot. */
+export function placeBoarder(state: SimState, room: number, health = BOARDER_HEALTH): number {
+  const b = state.boarders;
+  let slot = -1;
+  for (let k = 0; k < b.active.length; k++) if (!b.active[k]) { slot = k; break; }
+  if (slot < 0) throw new Error('no free boarder slot');
+  b.active[slot] = 1; b.stableId[slot] = state.nextStableId++; b.room[slot] = room; b.health[slot] = health;
+  b.nextMoveTick[slot] = state.tick + BOARDER_MOVE * TICK_HZ; b.aloneSince[slot] = -1;
   return slot;
 }

@@ -12,6 +12,7 @@ import { heatStep } from './heat';
 import { crewSystem } from './crew';
 import { lifeSupportInjection } from './hazards/lifeSupport';
 import { debrisSystem } from './debris';
+import { boarderSystem } from './boarders';
 import { directorSystem } from './director';
 import { enemySystem } from './enemy';
 import { medbayStep } from './medbay';
@@ -46,6 +47,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   directorSystem(state);
   enemySystem(state);   // (5b) the enemy: arrival, withdrawal, a due shot (spec Combat-i section 5)
   debrisSystem(state);
+  boarderSystem(state);   // (5c) boarders: arrival, melee, sabotage, hunting (spec Boarders-i section 5)
   // (6) stations with per-tick effects
   medbayStep(state);
   // (7) crew lifecycle, run end

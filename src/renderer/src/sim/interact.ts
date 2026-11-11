@@ -5,6 +5,7 @@ import { roomAt } from './grid';
 import { extinguishRoom } from './hazards/fire';
 import { repairBreach } from './hazards/breach';
 import { reviveCrew } from './crew';
+import { boarderTarget, damageBoarder, combatDps } from './boarders';
 import { intentFor } from './step';
 import { stationOnline, sitDown } from './stations';
 import { repairStation } from './power';
@@ -13,7 +14,7 @@ import { Skill, skillLevelOf, repairMult, addXp } from './skills';
 import { repairTraitMult } from './characters';
 import { XP_RATE, DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME } from './tuning';
 
-export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3, Power: 4 } as const;
+export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3, Power: 4, Fight: 5 } as const;
 export interface Target { kind: number; index: number }
 export const ConfirmKind = { None: 0, Door: 1, Console: 2 } as const;
 export interface ConfirmTarget { kind: number; index: number }
@@ -35,6 +36,7 @@ export function inReachOfTile(state: SimState, eid: number, tileIdx: number): bo
 export function interactTarget(state: SimState, pid: number): Target {
   const eid = state.crew[pid]!;
   if (Life.state[eid] !== LifeState.Conscious || Seated.station[eid]! >= 0) return NONE;
+  const fight = boarderTarget(state, pid); if (fight >= 0) return { kind: TargetKind.Fight, index: fight };   // a boarder in the room outranks everything (spec Boarders-i section 5)
   const x = Position.x[eid]!, y = Position.y[eid]!;
   // Revive: nearest Downed teammate within REACH (centre to centre), ties by lower pid.
   let best: Target = NONE, bestDist = Infinity;
@@ -125,6 +127,12 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
   // Repair: every holder adds progress.
   for (let pid = 0; pid < state.playerCount; pid++) {
     const t = targets[pid]!, level = skillLevelOf(state, pid, Skill.Repair), trait = repairTraitMult(state, pid);
+    if (t.kind === TargetKind.Fight) {
+      if (!state.boarders.active[t.index]) continue;                                 // an earlier holder this tick already killed it
+      damageBoarder(state, t.index, combatDps(skillLevelOf(state, pid, Skill.Combat)) * DT, pid);
+      addXp(state, pid, Skill.Combat, XP_RATE * DT); state.scratch.activeThisTick[pid] = 1;
+      continue;
+    }
     if (t.kind === TargetKind.Fire) {
       if (!(state.rooms.fire[t.index]! > 0)) continue;                             // an earlier holder this tick already put it out
       state.rooms.fireRepair[t.index]! += DT * repairMult(level) * trait / REPAIR_TIME_FIRE;
