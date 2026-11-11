@@ -7,13 +7,13 @@ import { hashState } from '../src/renderer/src/sim/hash';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
 import { SKILL_COUNT, XP_THRESHOLDS, STATION_MAX } from '../src/renderer/src/sim/tuning';
-import { LAYOUT, makeState, RECRUITS, intents, run, teleport, room, seconds, placeDebris } from './helpers/sim';
+import { LAYOUT, makeState, RECRUITS, intents, run, teleport, room, seconds, placeDebris, setSkill } from './helpers/sim';
 import { Health, Life, LifeState, Position } from '../src/renderer/src/sim/components';
 import { coolingPerUnit } from '../src/renderer/src/sim/heat';
 import { debrisSystem } from '../src/renderer/src/sim/debris';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
-import { failStation } from '../src/renderer/src/sim/power';
+import { failStation, repairStation } from '../src/renderer/src/sim/power';
 import { downCrew, reviveCrew } from '../src/renderer/src/sim/crew';
 import { Weapon } from '../src/renderer/src/sim/weapons';
 import { repairMult, addXp } from '../src/renderer/src/sim/skills';
@@ -120,7 +120,14 @@ describe('trait effects', () => {
     expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
     sitDown(s, 1, eng);                                                                                   // Lindqvist: Engineering 3
     expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT + 1 + Math.floor(HEAT_COOL_SKILL * 3));
-    run(s, 1, () => intents({}, { cancelPressed: true })); sitDown(s, 0, eng);                             // Okoro: Engineering 0, no trait
+    setSkill(s, 1, Skill.Engineering, 5);                                                                 // skill term 1 and trait 1 add: both must survive
+    expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT + 1 + 1); expect(Math.floor(HEAT_COOL_SKILL * 5)).toBe(1);
+    failStation(s, eng);                                                                                  // offline (operator stood): baseline
+    expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
+    repairStation(s, eng); sitDown(s, 1, eng); expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT + 2);
+    Health.cur[s.crew[1]!] = 0; run(s, 1);                                                                // downed through crewSystem: stood, baseline again
+    expect(Life.state[s.crew[1]!]).toBe(LifeState.Downed); expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
+    reviveCrew(s, s.crew[1]!); sitDown(s, 0, eng);                                                        // Okoro: Engineering 0, no trait
     expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
   });
   it('Flammable takes 1.5 x fire damage, Iron Lungs 0.5 x suffocation damage; a debris impact ignores both', () => {
@@ -147,24 +154,27 @@ describe('trait effects', () => {
     const s = makeState(3, 1, DEFAULT_CHARACTERS);
     addXp(s, 0, Skill.Combat, 100); addXp(s, 2, Skill.Combat, 100);
     expect(xp(s, 0, Skill.Combat)).toBe(100); expect(xp(s, 2, Skill.Combat)).toBe(75);
-    const nav = makeState(3, 1, DEFAULT_CHARACTERS), navI = idx(nav, StationKind.Navigation), A = room(nav, 'A');
-    nav.spawner.nextSpawnTick = 1e9; sitDown(nav, 2, navI); placeDebris(nav, A, 1e6, 1);
-    const before = xp(nav, 2, Skill.Navigation); run(nav, 1);
-    expect(xp(nav, 2, Skill.Navigation) - before).toBeCloseTo(TRAIT_XP_MULT * XP_RATE * DT, 12);
-    nav.rng.combat.s = 36; placeDebris(nav, A, 0, 1); const b2 = xp(nav, 2, Skill.Navigation); run(nav, 1);
-    expect(xp(nav, 2, Skill.Navigation) - b2).toBeCloseTo(TRAIT_XP_MULT * (XP_RATE * DT + XP_PER_EVADE_ROLL), 9);
-    const w = makeState(3, 1, DEFAULT_CHARACTERS), wpn = idx(w, StationKind.Weapons);
-    w.spawner.nextSpawnTick = 1e9; placeDebris(w, A, 1e6, 1); sitDown(w, 2, wpn); w.weapons.charge = 1; w.weapons.selector = Weapon.BeamF1; w.rng.combat.s = 36;
-    run(w, 1, () => intents({}, {}, { confirmPressed: true }));
-    expect(xp(w, 2, Skill.Weapons)).toBeCloseTo(TRAIT_XP_MULT * XP_PER_SHOT, 9);
-    const ls = makeState(3, 1, DEFAULT_CHARACTERS), lsI = idx(ls, StationKind.LifeSupport);
-    ls.spawner.nextSpawnTick = 1e9; ls.rooms.o2[A] = 0; sitDown(ls, 2, lsI);
-    run(ls, 1);                                                                                           // hazard tick 0 delivers with Reyes seated
-    expect(xp(ls, 2, Skill.Engineering)).toBeCloseTo(TRAIT_XP_MULT * XP_RATE * HAZARD_DT, 9);
-    const rp = makeState(3, 1, DEFAULT_CHARACTERS), G = room(rp, 'G');
-    rp.spawner.nextSpawnTick = 1e9; igniteRoom(rp, G); teleport(rp, 2, 2.5, 9.5);
-    run(rp, 1, () => intents({}, {}, { interactHeld: true }));
-    expect(xp(rp, 2, Skill.Repair)).toBeCloseTo(TRAIT_XP_MULT * XP_RATE * DT, 12);
+    const only = (pid: number, p: object): object[] => [0, 1, 2].map((k) => (k === pid ? p : {}));           // intents for one of three crew
+    for (const [pid, mult] of [[2, TRAIT_XP_MULT], [0, 1]] as const) {                                       // Reyes at 0.75, Okoro at the full rate
+      const nav = makeState(3, 1, DEFAULT_CHARACTERS), navI = idx(nav, StationKind.Navigation), A = room(nav, 'A');
+      nav.spawner.nextSpawnTick = 1e9; sitDown(nav, pid, navI); placeDebris(nav, A, 1e6, 1);
+      const before = xp(nav, pid, Skill.Navigation); run(nav, 1);
+      expect(xp(nav, pid, Skill.Navigation) - before).toBeCloseTo(mult * XP_RATE * DT, 12);
+      nav.rng.combat.s = 36; placeDebris(nav, A, 0, 1); const b2 = xp(nav, pid, Skill.Navigation); run(nav, 1);
+      expect(xp(nav, pid, Skill.Navigation) - b2).toBeCloseTo(mult * (XP_RATE * DT + XP_PER_EVADE_ROLL), 9);
+      const w = makeState(3, 1, DEFAULT_CHARACTERS), wpn = idx(w, StationKind.Weapons);
+      w.spawner.nextSpawnTick = 1e9; placeDebris(w, A, 1e6, 1); sitDown(w, pid, wpn); w.weapons.charge = 1; w.weapons.selector = Weapon.BeamF1; w.rng.combat.s = 36;
+      const bw = xp(w, pid, Skill.Weapons); run(w, 1, () => intents(...only(pid, { confirmPressed: true })));
+      expect(xp(w, pid, Skill.Weapons) - bw).toBeCloseTo(mult * XP_PER_SHOT, 9);
+      const ls = makeState(3, 1, DEFAULT_CHARACTERS), lsI = idx(ls, StationKind.LifeSupport);
+      ls.spawner.nextSpawnTick = 1e9; ls.rooms.o2[A] = 0; sitDown(ls, pid, lsI);
+      const bl = xp(ls, pid, Skill.Engineering); run(ls, 1);                                                  // hazard tick 0 delivers with the operator seated
+      expect(xp(ls, pid, Skill.Engineering) - bl).toBeCloseTo(mult * XP_RATE * HAZARD_DT, 9);
+      const rp = makeState(3, 1, DEFAULT_CHARACTERS), G = room(rp, 'G');
+      rp.spawner.nextSpawnTick = 1e9; igniteRoom(rp, G); teleport(rp, pid, 2.5, 9.5);
+      const br = xp(rp, pid, Skill.Repair); run(rp, 1, () => intents(...only(pid, { interactHeld: true })));
+      expect(xp(rp, pid, Skill.Repair) - br).toBeCloseTo(mult * XP_RATE * DT, 12);                            // Okoro's head start sits underneath: deltas, not totals
+    }
   });
   it('Frail bleeds out from 18 s and dies in 18 s on clean floor or 9 s in fire or low oxygen; Okoro starts at 30 s', () => {
     const mk = () => { const s = makeState(4, 1, DEFAULT_CHARACTERS); s.spawner.nextSpawnTick = 1e9; teleport(s, 0, 20.5, 5.5); teleport(s, 1, 20.5, 5.5); teleport(s, 2, 20.5, 5.5); teleport(s, 3, 2.5, 9.5); return s; };
@@ -183,13 +193,17 @@ describe('trait effects', () => {
 });
 
 describe('determinism with the four characters', () => {
-  it('two runs and a snapshot round-trip at tick 300 agree after 600 ticks', () => {
-    const f = () => intents({ moveX: 1 }, { moveY: 1 }, { interactHeld: true }, {});
-    const a = makeState(4, 11, DEFAULT_CHARACTERS), b = makeState(4, 11, DEFAULT_CHARACTERS), c = makeState(4, 11, DEFAULT_CHARACTERS);
+  it('two runs and a snapshot round-trip at tick 300 agree after 600 ticks, with a live fire, Okoro repairing it and the spawner running', () => {
+    const mk = () => { const s = makeState(4, 11, DEFAULT_CHARACTERS); igniteRoom(s, room(s, 'G')); teleport(s, 0, 2.5, 9.5); s.spawner.nextSpawnTick = 0; return s; };   // RNG draws (spread, spawns) and earned XP both happen before the save
+    const f = () => intents({ interactHeld: true }, { moveY: 1 }, { moveX: 1 }, {});
+    const a = mk(), b = mk(), c = mk();
+    const hazards0 = a.rng.hazards.s, director0 = a.rng.director.s, repair0 = xp(a, 0, Skill.Repair);
     run(a, 600, f); run(b, 600, f);
     run(c, 300, f);
+    expect(xp(c, 0, Skill.Repair)).toBeGreaterThan(repair0); expect(c.rng.hazards.s).not.toBe(hazards0); expect(c.rng.director.s).not.toBe(director0);
     const c2 = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(c))));
     run(c2, 300, f);
     expect(hashState(b)).toBe(hashState(a)); expect(hashState(c2)).toBe(hashState(a));
+    expect(xp(c2, 0, Skill.Repair)).toBe(xp(a, 0, Skill.Repair));
   });
 });
