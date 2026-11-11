@@ -253,6 +253,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { Health } from '../src/renderer/src/sim/components';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
+import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { PRODUCTIVE_WINDOW_TICKS, HAZARD_EVERY, HEALTH_MAX } from '../src/renderer/src/sim/tuning';
 import { makeState, intents, run, placeDebris, room, overdrive, setSkill, teleport } from './helpers/sim';
@@ -293,6 +294,12 @@ describe('isProductive', () => {
     run(s, 1, () => intents(right)); run(s, 1, () => intents(right));            // refused second move (pool empty) does not re-stamp
     const stamp = s.skills.lastEngChangeTick; run(s, 1, () => intents(right));
     expect(s.skills.lastEngChangeTick).toBe(stamp);
+    run(s, PRODUCTIVE_WINDOW_TICKS + 1); expect(isProductive(s, eng)).toBe(false);
+    s.stations.cursor[eng] = StationKind.Weapons; run(s, 1, () => intents(confirm));   // coolant 0 -> 1 on Weapons: a change
+    expect(s.stations.coolant[idx(s, StationKind.Weapons)]).toBe(1); expect(s.skills.lastEngChangeTick).toBe(s.tick - 1); expect(isProductive(s, eng)).toBe(true);
+    run(s, PRODUCTIVE_WINDOW_TICKS + 1);
+    s.stations.cursor[eng] = StationKind.Engineering; run(s, 1, () => intents(confirm));   // refused: the Engineering row holds no coolant
+    expect(isProductive(s, eng)).toBe(false);
     const t = makeState(1), engT = idx(t, StationKind.Engineering), doors = idx(t, StationKind.Doors);
     t.spawner.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);
     t.stations.level[doors] = 2; t.stations.level[idx(t, StationKind.Medbay)] = 2; t.stations.level[idx(t, StationKind.Science)] = 2;   // usage 12 against base 10: covered by the two bonus bars
@@ -304,6 +311,10 @@ describe('isProductive', () => {
     const s = makeState(1), ls = idx(s, StationKind.LifeSupport), med = idx(s, StationKind.Medbay);
     s.spawner.nextSpawnTick = 1e9;
     expect(isProductive(s, ls)).toBe(false);
+    const drained = room(s, 'A'); s.rooms.o2[drained] = 0; activateBreach(s, 0);   // site 0 is in room A: the only drained room is breached, so no delivery
+    for (let r = 0; r < s.rooms.o2.length; r++) if (r !== drained) s.rooms.o2[r] = s.derived.volume[r]!;
+    for (let pid = 0; pid < s.playerCount; pid++) teleport(s, pid, 2.5, 2.5);                                 // crew in the breached room: breathing makes no room elsewhere
+    run(s, 1); expect(s.skills.lsDeliveredTick).toBe(-1); expect(isProductive(s, ls)).toBe(false);
     s.skills.lsDeliveredTick = 10; s.tick = 15; expect(isProductive(s, ls)).toBe(true);
     s.tick = 16; expect(isProductive(s, ls)).toBe(false); expect(HAZARD_EVERY + 1).toBe(6);
     s.tick = 0; sitDown(s, 0, med);
@@ -434,9 +445,24 @@ describe('event XP', () => {
 });
 ```
 
+Append to `tests/snapshot.test.ts` (imports `sitDown`, `StationKind`, `intents`, `run` are present):
+
+```ts
+  it('a run saved inside an active Engineering productivity window continues like an uninterrupted run through the window expiry', () => {
+    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, s.derived.stationOfKind[StationKind.Engineering]!); return s; };
+    const script = (t: number) => t === 50 ? intents({ moveY: 1 }) : t === 52 ? intents({ moveX: 1 }) : intents();   // cursor to Life Support, then a bar move at tick 52
+    const whole = mk(); for (let t = 0; t < 600; t++) step(whole, script(t));
+    expect(whole.skills.lastEngChangeTick).toBe(52); expect(whole.skills.xp[1]).toBeGreaterThan(0);                 // Engineering XP accrued inside the window
+    const first = mk(); for (let t = 0; t < 200; t++) step(first, script(t));
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
+    for (let t = 200; t < 600; t++) step(resumed, script(t));
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+```
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
-`npx vitest run tests/productive.test.ts tests/xp.test.ts` → FAIL (modules missing; no XP accrues).
+`npx vitest run tests/productive.test.ts tests/xp.test.ts tests/snapshot.test.ts` → FAIL (modules missing; no XP accrues; no stamp).
 
 - [ ] **Step 3: Implement**
 
@@ -575,7 +601,7 @@ export function xpSystem(state: SimState): void {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/sim/productive.ts src/renderer/src/sim/xp.ts src/renderer/src/sim/step.ts src/renderer/src/sim/console.ts src/renderer/src/sim/weapons.ts src/renderer/src/sim/debris.ts src/renderer/src/sim/interact.ts src/renderer/src/sim/power.ts src/renderer/src/sim/hazards/oxygen.ts tests/productive.test.ts tests/xp.test.ts tests/golden/basic.json
+git add src/renderer/src/sim/productive.ts src/renderer/src/sim/xp.ts src/renderer/src/sim/step.ts src/renderer/src/sim/console.ts src/renderer/src/sim/weapons.ts src/renderer/src/sim/debris.ts src/renderer/src/sim/interact.ts src/renderer/src/sim/power.ts src/renderer/src/sim/hazards/oxygen.ts tests/productive.test.ts tests/xp.test.ts tests/snapshot.test.ts tests/golden/basic.json
 git commit -m "feat: productive predicates and XP flow: continuous station XP at the observation point, shot and evasion lumps, Life Support XP at delivery, Repair XP
 
 Golden re-blessed: the replay's seated operators now accrue XP and the productivity stamps are hashed."
@@ -658,7 +684,7 @@ describe('sealed doors and the Doors operator', () => {
 });
 ```
 
-Append to `tests/power.test.ts` (imports: `bonusBars, powerCapacity, shedPower, SHED_ORDER` from power, `Skill` from skills, `Health` from components, `setSkill, run, intents, teleport` from helpers, `fc from 'fast-check'`, `COOLANT_POOL, maxLevel`):
+Append to `tests/power.test.ts` (imports: `bonusBars, powerCapacity, shedPower, SHED_ORDER, maxLevel` from power, `Skill` from skills, `Health, Life, LifeState` from components, `reviveCrew` from `../src/renderer/src/sim/crew`, `setSkill, run, intents, teleport` from helpers, `fc from 'fast-check'`, `COOLANT_POOL` from tuning):
 
 ```ts
 describe('bonus bars and shedding', () => {
@@ -702,15 +728,29 @@ describe('bonus bars and shedding', () => {
     expect(s.stations.level[eng]).toBe(1); expect(powerUsed(s)).toBe(1);
     expect(SHED_ORDER[0]).toBe(StationKind.Doors); expect(SHED_ORDER[SHED_ORDER.length - 1]).toBe(StationKind.Engineering);
   });
-  it('property: with an engineer of level 3, 4, 7 or 8, random inputs, sits and stands keep usage within capacity, coolant within the pool and levels within maxLevel', () => {
+  it('shedding one bar at a time follows SHED_ORDER through every station down to the Engineering floor', () => {
+    const s = makeState(1);
+    for (let i = 0; i < s.stations.level.length; i++) s.stations.level[i] = 1;      // one bar everywhere: usage 7
+    s.power.capacity = 7;
+    const removed: number[] = [];
+    for (let cap = 6; cap >= 0; cap--) {
+      s.power.capacity = cap; shedPower(s);
+      for (let i = 0; i < s.stations.level.length; i++) if (s.stations.level[i] === 0 && !removed.includes(s.derived.stationKind[i]!)) removed.push(s.derived.stationKind[i]!);
+    }
+    expect(removed).toEqual([StationKind.Doors, StationKind.Medbay, StationKind.Science, StationKind.Weapons, StationKind.Navigation, StationKind.LifeSupport]);   // Engineering keeps its bar
+    expect(s.stations.level[idx(s, StationKind.Engineering)]).toBe(1); expect(powerUsed(s)).toBe(1);
+  });
+  it('property: with an engineer of level 3, 4, 7 or 8, random inputs, sits, stands and downings keep usage within capacity, coolant within the pool and levels within maxLevel', () => {
     const arbDir = fc.constantFrom({}, { moveY: -1 }, { moveY: 1 }, { moveX: -1 }, { moveX: 1 });
-    const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean(), stand: fc.boolean() }), { minLength: 20, maxLength: 200 });
+    const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean(), stand: fc.boolean(), down: fc.boolean() }), { minLength: 20, maxLength: 200 });
     fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), fc.constantFrom(3, 4, 7, 8), arbScript, (seed, level, script) => {
-      const s = makeState(1, seed), eng = idx(s, StationKind.Engineering);
+      const s = makeState(1, seed), eng = idx(s, StationKind.Engineering), eid = s.crew[0]!;
       s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, level); sitDown(s, 0, eng);
       for (const e of script) {
         for (let t = 0; t < 5; t++) {
-          if (Seated.station[s.crew[0]!]! < 0 && !e.stand) sitDown(s, 0, eng);
+          if (Life.state[eid] === LifeState.Downed) reviveCrew(s, eid);                      // bring them back so the run keeps using the seat
+          if (Seated.station[eid]! < 0 && !e.stand) sitDown(s, 0, eng);
+          if (e.down && t === 2 && Seated.station[eid]! >= 0) Health.cur[eid] = 0;          // crewSystem downs them this tick: a forced stand through downCrew
           run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm, cancelPressed: e.stand && t === 0 }));
           if (powerUsed(s) > powerCapacity(s)) return false;
           let coolant = 0;
@@ -830,7 +870,20 @@ Append to `tests/hud.test.ts` (imports: `Skill` from skills, `setSkill` from hel
     expect(buildHudModel(s, slots(3), 'running', '').players[2]!.skills).toEqual([0, 0, 0, 0, 0, 0]);
     expect(buildHudModel(null, slots(1), 'lobby', '').players[0]!.skills).toEqual([0, 0, 0, 0, 0, 0]);
   });
+  it('the Engineering footer pool and the strip capacity include bonus bars while a skilled engineer sits, and drop after standing', () => {
+    const s = makeState(1), eng = s.derived.stationOfKind[StationKind.Engineering]!;
+    s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, 8); sitDown(s, 0, eng);
+    const m1 = buildHudModel(s, slots(1), 'running', '');
+    expect((m1.players[0]!.console as EngineeringPanel).pool).toBe(3); expect(m1.power).toEqual({ capacity: 12, used: 9 });
+    shiftBar(s, s.derived.stationOfKind[StationKind.Science]!, 1); shiftBar(s, s.derived.stationOfKind[StationKind.Medbay]!, 1); shiftBar(s, s.derived.stationOfKind[StationKind.Medbay]!, 1);
+    const m2 = buildHudModel(s, slots(1), 'running', '');
+    expect((m2.players[0]!.console as EngineeringPanel).pool).toBe(0); expect(m2.power).toEqual({ capacity: 12, used: 12 });
+    run(s, 1, () => intents({ cancelPressed: true }));
+    expect(buildHudModel(s, slots(1), 'running', '').power).toEqual({ capacity: 10, used: 10 });
+  });
 ```
+
+(imports `intents` from the helpers and `EngineeringPanel` is already imported.)
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -838,7 +891,7 @@ Append to `tests/hud.test.ts` (imports: `Skill` from skills, `setSkill` from hel
 
 - [ ] **Step 3: HUD model and Pixi HUD**
 
-`hudModel.ts`: `HudPlayer` gains `skills: number[];`; `EMPTY` gains `skills: [0, 0, 0, 0, 0, 0]`; in `player()` compute `const skills = Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k));` and include `skills` in every returned object (the Downed, Dead, seated and walking branches), spreading `...EMPTY` first where applicable (imports `skillLevelOf` from `../sim/skills`, `SKILL_COUNT` from tuning).
+`hudModel.ts`: `HudPlayer` gains `skills: number[];`. `EMPTY` is currently `{...} as const`, which would make the added array a readonly tuple incompatible with `number[]`: retype it as `const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { ...existing fields, skills: [0, 0, 0, 0, 0, 0] };` and drop `as const`. In `player()` compute `const skills = Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k));` and include `skills` in every returned object (the Downed, Dead, seated and walking branches), placed after any `...EMPTY` spread so the computed value wins (imports `skillLevelOf` from `../sim/skills`, `SKILL_COUNT` from tuning). Also make the power readouts see bonus bars: the Engineering panel's `pool` becomes `powerPool(state)` and `HudModel.power.capacity` becomes `powerCapacity(state)` (import both from `../sim/power` in place of the hand-computed difference), so a seated skilled engineer sees the larger pool and the strip's `POWER n/m` denominator.
 
 `hud.ts`: in the `players` map: `const x = 4 + i * 238, y = INTERNAL_H - 94; parent.addChild(panel(x, y, 234, 90));`; add `const line4 = new Container(); line4.position.set(0, LINE * 3);` and `progress.root.position.set(0, LINE * 4 - 6);`; `root.addChild(name, hp.root, line2, line3, line4, progress.root);` and return `line4` too. In `updatePlayer`: the `empty` and `reconnect` branches also `fillRow(ui.line4, [])`; after the line2/line3 logic for an active player: `fillRow(ui.line4, [{ text: ['N', 'E', 'W', 'S', 'C', 'R'].map((l, k) => `${l}${p.skills[k]}`).join(' '), tint: DIM }]);`.
 
@@ -867,8 +920,8 @@ Append to `docs/gates.md`:
 ```markdown
 ## Increment 3-i: skills and XP
 - [x] `npm test` passes: skills (table, cap, mapping, curve), productive predicates (every station, stamp production and expiry, unset stamps), XP flow (continuous at the observation point, shot and evasion lumps, Life Support at delivery, Repair, revive excluded), effects (repair speed at level 10 for fire, breach and power, cooling at level 5 integrated, sealed leak at level 10, output at level 10), bonus bars and shedding (order, freeze exception, downing, floor, property), snapshot round trip with stamps and version-5 rejection, HUD skills.
-- [x] `tests/gate-survival.test.ts` passes on seeds 1-3 unmanned (nobody seated: no XP, no formula change).
-- [ ] Manual, two players (`npm run dev`): the player panel shows `N0 E0 W0 S0 C0 R0`; sitting at Science (D(12,2)) while a `Debris` warning is in flight and repairing fires raise `S` and `R` over a few minutes (level 1 at 240 productive seconds); with Engineering at level 4 (reach it, or set `XP_THRESHOLDS[4]` on a crew member in a debug build) the Engineering footer shows one more pool bar while seated; allocate the spare and the bonus bar, stand, and the strip drops one bar from Doors. Date and notes: pending human playtest.
+- [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with every station unmanned; the bot crew repairs fires and breaches, so Repair XP accrues during the gate (the only skill effect in play, since repair speed only rises from level 1 at 240 s of repairing).
+- [ ] Manual, two players (`npm run dev`): the player panel shows `N0 E0 W0 S0 C0 R0`; sitting at Science (D(12,2)) while a `Debris` warning is in flight and repairing fires raise `S` and `R` (level 1 after about four minutes of productive time); with Engineering at level 4 (reach it, or set `XP_THRESHOLDS[4]` on a crew member in a debug build) the Engineering footer shows one more pool bar while seated; allocate the spare and the bonus bar, stand, and the strip drops one bar from Doors. Date and notes: pending human playtest.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
 ```
 
@@ -881,6 +934,9 @@ Append to the spec:
 - `shedPower` is called by the three systems that stand a player (the voluntary stand in `consoleSystem`, `failStation`, `downCrew`) right after `standUp`, not inside `standUp` (section 7): `power.ts` imports `standUp` from `stations.ts`, so the reverse would be a module cycle. It is a no-op unless usage exceeds capacity.
 - `repairMult` lives in `skills.ts` next to `skillCurve`.
 - `bonusBars` requires the seated operator to be Conscious and Engineering to be online; `coolingPerUnit` and `passageFor` likewise read the operator only while their station is online.
+- The golden replay was re-blessed twice, not once (section 10): in Task 1 for `SIM_VERSION` 6 and the new hashed block, and in Task 2 when XP and the stamps first accrue in the replay.
+- The survival gate is not XP-free (section 10): its bot crew repairs hazards and earns Repair XP; no station is manned, so no other formula moves.
+- The HUD's Engineering pool and strip capacity read `powerPool` and `powerCapacity`, so bonus bars are visible (section 9 did not say so).
 ```
 
 `docs/roadmap.md`: set item 1's status to `merged` and item 2's to `next`.

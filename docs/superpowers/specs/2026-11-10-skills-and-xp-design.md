@@ -134,7 +134,7 @@ All under node, no pixi. New: `tests/skills.test.ts`, `tests/productive.test.ts`
 - **Bonus bars and shedding:** with the starter allocation (9 of 10), a level-8 engineer seated makes the pool 3; the test first spends the original spare, then both bonus bars (usage 12, with Doors kept at one bar), then stands: two bars shed, Doors first then Medbay, leaving `powerUsed === power.capacity` (10); a shed that cuts an occupied station stands its occupant; a level-3 engineer adds nothing; failing Engineering with bonus bars allocated sheds too; a Downed engineer (through `crewSystem`) sheds too; restored capacity (re-seating) does not restore shed bars; the Engineering floor of 1 holds when everything else is at 0; property (fast-check): with the engineer's level drawn from {3, 4, 7, 8}, random Engineering inputs, sits, stands and a possible downing keep `powerUsed <= powerCapacity`, Σ coolant within the pool and every level within `maxLevel`, and every shed removes bars in `SHED_ORDER`.
 - **Snapshot and hash:** round trip of `skills` with distinct non-default stamps; mutating `xp` alone, and each of the three stamps alone, changes the hash; version-5 rejection by header and by the flattened `SIM_VERSION`; a run saved inside an active productivity window (a recent Engineering change) and continued hashes equal to the uninterrupted run.
 - **HUD model:** `skills` for a joined player at mixed levels and zeros for an empty slot.
-- **Boundary and existing suites:** unchanged and green; survival gate seeds 1 to 3 pass unmanned (nobody seated, so no XP and no formula change).
+- **Boundary and existing suites:** unchanged and green; survival gate seeds 1 to 3 pass with every station unmanned (the bot crew repairs hazards and earns Repair XP, the only skill effect in play).
 - **Golden replay:** re-blessed once (version 6, new fields, XP accrual by the replay's seated players) with the cause recorded.
 
 ## 11. Gate
@@ -142,7 +142,7 @@ All under node, no pixi. New: `tests/skills.test.ts`, `tests/productive.test.ts`
 Added to `docs/gates.md` as "Increment 3-i":
 
 - The skills, productive, xp, power, heat, oxygen/doors, interact, weapons, debris, snapshot and HUD tests pass; typecheck and build pass; survival gate seeds 1 to 3 pass unmanned.
-- Manual, two players: the player panel shows six levels; sitting at Science with a debris warning in flight raises `S` from 0 to 1 after about two minutes of warnings; repairing fires raises `R`; after reaching Engineering level 4 (or setting it in a debug build) the Engineering footer shows one more pool bar while seated; allocate the original spare and the bonus bar, stand, and the strip drops one bar from Doors (shedding only happens when usage exceeds the base capacity).
+- Manual, two players: the player panel shows six levels; sitting at Science with debris warnings in flight raises `S` from 0 to 1 after about four minutes of warnings (240 productive seconds); repairing fires raises `R`; after reaching Engineering level 4 (or setting it in a debug build) the Engineering footer shows one more pool bar while seated; allocate the original spare and the bonus bar, stand, and the strip drops one bar from Doors (shedding only happens when usage exceeds the base capacity).
 
 ## 12. Open questions deferred
 
