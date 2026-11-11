@@ -139,3 +139,11 @@ Added to `docs/gates.md` as "Combat-ii: enemy systems and shields (closes sub-pr
 - Enemy evasion as a function of our Navigation (a dogfight model): later, with run structure.
 - Rewards for a kill or a disable: roadmap item 9.
 - Enemy "repair" flavour and a visible enemy crew: never for this scope.
+
+## 13. Amendments from the plan
+- `enemyBeamHits(u, output)` is replaced by `enemyBeamThreshold(state, output)`; callers compare `u < enemyBeamThreshold(...)`.
+- `enemySystemOf(slot)` (`slot - DEBRIS_SLOTS - 1`, -1 for the hull row) lives in `debrisTargets.ts` beside `isEnemySlot`.
+- In `fireWeapon` the beam's charge reset precedes the roll so the absorbed and rolled paths share it (no read sits between, so behaviour is unchanged).
+- The HUD slot guards and the objects-only `anyWarned` were built with the state (plan Task 1) because four enemy slots would otherwise crash the HUD and skew the survival gate before the single golden re-bless.
+- Survival gate: `ENEMY_FIRE_INTERVAL` 15 -> **20** (Combat-i's fallback 4) was needed (seed 3 died at 267 s); figures and the thin seed-2 margin are in `docs/gates.md`. Section 8's worked numbers should be read with a 20 s base interval (13.3 s at minute 3.5).
+- The kill-with-disable example in section 9 needs the shields pre-damaged to 15; with full shields the killing beam only drops them to 15 before `leave` clears them (no disable).
