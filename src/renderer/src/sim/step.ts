@@ -8,6 +8,7 @@ import { movementSystem } from './movement';
 import { doorSystem } from './doors';
 import { oxygenStep } from './hazards/oxygen';
 import { fireStep } from './hazards/fire';
+import { heatStep } from './heat';
 import { crewSystem } from './crew';
 import { lifeSupportInjection } from './hazards/lifeSupport';
 import { debrisSystem } from './debris';
@@ -30,11 +31,12 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   // (3) movement, doors
   movementSystem(state, intents);
   doorSystem(state);
-  // (4) hazards on the hazard tick
+  // (4) hazards and heat on the hazard tick
   if (hazardTick) {
     lifeSupportInjection(state);
     oxygenStep(state, state.injectionScratch);
     fireStep(state);
+    heatStep(state);
   }
   // (5) spawner, then debris detection and impacts
   spawner(state);

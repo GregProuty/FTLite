@@ -1,7 +1,10 @@
 import type { SimState } from './state';
 import { StationKind } from './stationKinds';
 import { stationOnline } from './stations';
-import { STATION_MAX, HEAT_COOL_UNIT, COOLANT_POOL, COOLANT_MAX_PER_STATION } from './tuning';
+import { nextFloat } from '../../../shared/rng';
+import { failStation } from './power';
+import { igniteRoom } from './hazards/fire';
+import { STATION_MAX, HEAT_COOL_UNIT, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE } from './tuning';
 
 /** A station is overdriven while online above its STATION_MAX. A failed station has level 0 and is never overdriven. */
 export function isOverdriven(state: SimState, i: number): boolean {
@@ -23,4 +26,20 @@ export function cycleCoolant(state: SimState, i: number): boolean {
   if (next > COOLANT_MAX_PER_STATION || COOLANT_POOL - coolantUsed(state) < 1) next = 0;
   state.stations.coolant[i] = next;
   return next !== c;
+}
+
+function overheat(state: SimState, i: number): void {
+  failStation(state, i);                                        // the existing power failure: bars return, the occupant stands, repair is the usual loop
+  state.stations.heat[i] = 0;
+  if (nextFloat(state.rng.hazards) < OVERHEAT_FIRE_CHANCE) igniteRoom(state, state.derived.stationRoom[i]!);   // draw always consumed; no-op if already burning
+}
+
+/** Hazard tick: heat rises while overdriven and falls per coolant unit, otherwise decays at the idle rate; HEAT_MAX overheats. Ascending station index (spec 2b-i section 5). */
+export function heatStep(state: SimState): void {
+  const st = state.stations, cool = coolingPerUnit(state);
+  for (let i = 0; i < st.level.length; i++) {
+    if (isOverdriven(state, i)) st.heat[i] = Math.max(0, Math.min(HEAT_MAX, st.heat[i]! + HEAT_RISE - st.coolant[i]! * cool));
+    else st.heat[i] = Math.max(0, st.heat[i]! - HEAT_COOL_IDLE);
+    if (st.heat[i]! >= HEAT_MAX) overheat(state, i);
+  }
 }

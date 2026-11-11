@@ -9,7 +9,8 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room } from './helpers/sim';
+import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room, overdrive } from './helpers/sim';
+import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {
@@ -135,5 +136,15 @@ describe('snapshot', () => {
     const base = hashState(makeState(2, 5));
     const h = makeState(2, 5); h.stations.heat[2] = 1; expect(hashState(h)).not.toBe(base);          // heat alone changes the hash
     const c = makeState(2, 5); c.stations.coolant[2] = 1; expect(hashState(c)).not.toBe(base);       // coolant alone changes the hash
+  });
+  it('an overdrive with one unit saved ten ticks before its overheat continues through the failure and fire roll like an uninterrupted run', () => {
+    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; const d = overdrive(s, StationKind.Doors); s.stations.coolant[d] = 1; return s; };
+    const whole = mk(); run(whole, 1260);
+    expect(whole.stations.failed[whole.derived.stationOfKind[StationKind.Doors]!]).toBe(1);      // net +1 per hazard tick: the overheat lands on tick 1195
+    const first = mk(); run(first, 1185);
+    expect(first.stations.heat[first.derived.stationOfKind[StationKind.Doors]!]).toBe(HEAT_MAX - 3);
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
+    run(resumed, 75);
+    expect(hashState(resumed)).toBe(hashState(whole));
   });
 });
