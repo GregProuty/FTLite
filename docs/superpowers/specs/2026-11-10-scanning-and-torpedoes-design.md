@@ -16,11 +16,11 @@ Approach chosen: **extend `debris.ts` and `weapons.ts`; add `sim/science.ts` (sc
 |---|---|
 | `sim/debris.ts` | `spawnDebris` draws `frequency`; `removeDebris` retargets every station whose cursor is a debris slot (Weapons and Science). |
 | `sim/debrisTargets.ts` | unchanged (`warnedTargets`, `nextTarget`). |
-| `sim/science.ts` (new) | `scienceInput` (Up/Down cycle, Confirm starts scanning), `scanStep` (per-tick progress), `clearScanning` (on stand). |
+| `sim/science.ts` (new) | `scienceInput` (Up/Down cycle, Confirm starts scanning), `scanStep` (per-tick progress). |
 | `sim/weapons.ts` | `weaponsInput` gains Left/Right selector cycling; `beamHits(u, output, match)`, `torpedoHits(u, output)`; `fireWeapon` dispatches beam or torpedo. |
 | `sim/torpedoes.ts` (new) | `loadTorpedo` (per tick, seated), `regenTorpedo` (per tick, powered). |
-| `sim/console.ts` | calls `regenTorpedo`, `loadTorpedo` next to `chargeBeam`; Science dispatch; a voluntary stand at Science calls `clearScanning`. |
-| `sim/stations.ts` | `sitDown` at Science initialises the cursor like Weapons; `standUp` clears `science.scanning` when the stood player was at Science (covers forced stands). |
+| `sim/console.ts` | calls `regenTorpedo`, `loadTorpedo`, `scanStep` next to `chargeBeam`; Science dispatch to `scienceInput`. |
+| `sim/stations.ts` | `sitDown` at Science initialises the cursor like Weapons; `standUp` clears `science.scanning` when the stood player was at Science (one place for voluntary and forced stands). |
 | `sim/state.ts`, `flatten.ts` | new fields hashed; `SIM_VERSION = 5`. |
 | `sim/tuning.ts` | constants (§7). |
 | `render/hudModel.ts`, `hud.ts` | frequency in threats, Weapons selector and torpedo readout, Science target list with scan bars. |
