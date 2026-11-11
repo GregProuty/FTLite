@@ -44,10 +44,12 @@
 ### Task 1: Enemy state, the four target rows, arrival, repairs and the engines and weapons effects
 
 **Files:**
-- Modify: `src/renderer/src/sim/state.ts`, `flatten.ts`, `tuning.ts`, `debrisTargets.ts`, `enemy.ts`, `tests/helpers/sim.ts`, `tests/enemy.test.ts`, `tests/snapshot.test.ts`, `tests/gate-survival.test.ts` (figures only), `tests/golden/basic.json` (re-bless)
+- Modify: `src/renderer/src/sim/state.ts`, `flatten.ts`, `tuning.ts`, `debrisTargets.ts`, `enemy.ts`, `weapons.ts` (mechanical rename only), `productive.ts` (objects-only predicate), `src/renderer/src/render/hudModel.ts` (slot guards and the `DebrisTarget` shape only), `tests/helpers/sim.ts`, `tests/enemy.test.ts`, `tests/snapshot.test.ts`, `tests/hud.test.ts` (fixture shapes and the twelve-entry window), `tests/golden/basic.json` (re-bless)
 
 **Interfaces:**
-- Produces: the state fields; from `debrisTargets.ts`: `ENEMY_WEAPONS_SLOT`, `ENEMY_ENGINES_SLOT`, `ENEMY_SHIELDS_SLOT`, `ENEMY_SLOTS`, `isEnemySlot(slot)`, `enemySystemOf(slot)`, `nextTarget(state, afterStableId, exclude?: number | readonly number[])`; from `enemy.ts`: `EnemySystem`, `ENEMY_SYSTEM_NAMES`, `enemyBeamThreshold(state, output)`, `beamAbsorbed(state, selector)`, `damageEnemy(state, slot, amount)`; helpers `placeEnemy(state, hull?, shieldFreq = 1)`, `disableSystem(state, system)`. `enemyBeamHits` is removed (Task 2 rewires `weapons.ts`; until then `weapons.ts` keeps compiling by calling `u < enemyBeamThreshold(state, output)` in place of `enemyBeamHits(u, output)`, which this task does as a mechanical rename).
+- Produces: the state fields; from `debrisTargets.ts`: `ENEMY_WEAPONS_SLOT`, `ENEMY_ENGINES_SLOT`, `ENEMY_SHIELDS_SLOT`, `ENEMY_SLOTS`, `isEnemySlot(slot)`, `enemySystemOf(slot)`, `nextTarget(state, afterStableId, exclude?: number | readonly number[])`; from `enemy.ts`: `EnemySystem`, `ENEMY_SYSTEM_NAMES`, `enemyBeamThreshold(state, output)`, `beamAbsorbed(state, selector)`, `damageEnemy(state, slot, amount)`; from `hudModel.ts`: the full `DebrisTarget` shape (`system`, `status`, `shieldsUp`) and a `target()` that handles all four enemy slots (row **strings** stay Combat-i's until Task 3); helpers `placeEnemy(state, hull?, shieldFreq = 1)`, `disableSystem(state, system)`, `guardDebris(state)` (moved into `tests/helpers/sim.ts`, trapping every enemy slot). `enemyBeamHits` is removed (`weapons.ts` keeps compiling by calling `u < enemyBeamThreshold(state, output)` in place of `enemyBeamHits(u, output)` and `damageEnemy(state, c, amount)`, a mechanical rename; Task 2 does the real rewiring).
+
+Why the HUD guards and the productive predicate are in this task: with four enemy slots in `warnedTargets`, the Combat-i `hudModel` readers would dereference `rooms[undefined]` for slots 9 to 11 and the Combat-i `anyWarned` (`k !== ENEMY_SLOT`) would make the enemy alone productive; both would break existing tests and the survival gate that this task must run before the single re-bless.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -67,15 +69,29 @@ export function disableSystem(state: SimState, system: number): void {
 }
 ```
 
-(import `ENEMY_SYS_HP, ENEMY_SYS_REPAIR` from tuning.)
+(import `ENEMY_SYS_HP, ENEMY_SYS_REPAIR` from tuning.) Move `guardDebris` from `tests/enemy.test.ts` into `tests/helpers/sim.ts` as an export, trapping every enemy slot:
+
+```ts
+/** Replace every debris array with a Proxy that throws on a read at any enemy slot, so a test proves the pseudo-slots never index the table. */
+export function guardDebris(s: SimState): void {
+  const keys = new Set(ENEMY_SLOTS.map(String));
+  const trap = <A extends object>(arr: A): A => new Proxy(arr, { get(t, p) { if (typeof p === 'string' && keys.has(p)) throw new Error(`debris array read at enemy slot ${p}`); const v = Reflect.get(t, p); return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v; } });
+  const db = s.debris as unknown as Record<string, object>;
+  for (const key of Object.keys(db)) db[key] = trap(db[key]!);
+}
+```
+
+(import `ENEMY_SLOTS` from debrisTargets; `tests/enemy.test.ts` imports `guardDebris` from the helpers and deletes its local copy.)
 
 `tests/enemy.test.ts` changes (imports to add: `EnemySystem, enemyBeamThreshold, beamAbsorbed, damageEnemy` from enemy, remove `enemyBeamHits`; `ENEMY_SLOTS, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, isEnemySlot, enemySystemOf` from debrisTargets; `disableSystem` from helpers; `ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE` from tuning):
 
-1. The arrival test: replace the two "unchanged stream" assertions with `expect(s.rng.director.s).toBe(d0);` and, after computing `const hz = createRng(h0); const freq = 1 + nextInt(hz, FREQ_COUNT);` before the call, `expect(s.rng.hazards.s).toBe(hz.s); expect(s.enemy.shieldFreq).toBe(freq);`; also assert `expect(Array.from(s.enemy.sysHp)).toEqual([ENEMY_SYS_HP, ENEMY_SYS_HP, ENEMY_SYS_HP]); expect(Array.from(s.enemy.sysRepairTick)).toEqual([-1, -1, -1]); expect([s.enemy.scanned, s.enemy.scan]).toEqual([0, 0]);`. Add to the initial-values test: `expect(Array.from(e.sysHp)).toEqual([0, 0, 0]); expect(Array.from(e.sysRepairTick)).toEqual([-1, -1, -1]); expect([e.shieldFreq, e.scanned, e.scan]).toEqual([0, 0, 0]); expect(s.telemetry.enemyDisables).toBe(0);`. In the "due shot" test and the "step() arrival" test, if they pin the hazards stream across an arrival, recompute with the extra draw (the step() test asserts only presence and counts, so it is unaffected).
+1. The arrival test: set `s.rng.hazards.s = 7` before capturing `h0`; replace the two "unchanged stream" assertions with `expect(s.rng.director.s).toBe(d0);` and, after computing `const hz = createRng(7); const freq = 1 + nextInt(hz, FREQ_COUNT);` before the call, `expect(s.rng.hazards.s).toBe(hz.s); expect(s.enemy.shieldFreq).toBe(freq); expect(freq).toBe(1); expect(hz.s).toBe(1831565820);` (the last two pin the spec's recorded values; if they do not hold, print the real ones, use them, and say so in the report); also assert `expect(Array.from(s.enemy.sysHp)).toEqual([ENEMY_SYS_HP, ENEMY_SYS_HP, ENEMY_SYS_HP]); expect(Array.from(s.enemy.sysRepairTick)).toEqual([-1, -1, -1]); expect([s.enemy.scanned, s.enemy.scan]).toEqual([0, 0]);`. Add to the initial-values test: `expect(Array.from(e.sysHp)).toEqual([0, 0, 0]); expect(Array.from(e.sysRepairTick)).toEqual([-1, -1, -1]); expect([e.shieldFreq, e.scanned, e.scan]).toEqual([0, 0, 0]); expect(s.telemetry.enemyDisables).toBe(0);`. In the "due shot" test and the "step() arrival" test, if they pin the hazards stream across an arrival, recompute with the extra draw (the step() test asserts only presence and counts, so it is unaffected).
 2. The targets test: expected list `[a, ENEMY_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, b]`; `isTarget` true for all four, and all four false after `present = 0`; cycling Down from `a`: 8, 9, 10, 11, b, a; add `expect([isEnemySlot(7), isEnemySlot(8), isEnemySlot(11)]).toEqual([false, true, true]); expect([enemySystemOf(ENEMY_SLOT), enemySystemOf(ENEMY_WEAPONS_SLOT), enemySystemOf(ENEMY_SHIELDS_SLOT)]).toEqual([-1, 0, 2]);`.
 3. The `nextTarget` fixture: `nextTarget(s, 5) === ENEMY_SLOT`, `nextTarget(s, 6) === b`, `nextTarget(s, 7) === a`, and `nextTarget(s, 6, ENEMY_SLOTS) === b`, `nextTarget(s, 5, ENEMY_SLOTS) === b`.
 4. The `leave` retarget test: set the Weapons cursor to `ENEMY_SHIELDS_SLOT` and the Science cursor to `ENEMY_WEAPONS_SLOT`; both retarget to `b`; the enemy-alone case still gives −1; add `s.science.scanning = 1` before `leave` with the Science cursor on `ENEMY_SLOT` and assert `scanning 0` after; assert after `leave`: `sysHp` all 0, `sysRepairTick` all −1, `shieldFreq 0`, `scanned 0`, `scan 0`.
-5. Replace every `enemyBeamHits(x, y)` assertion with `x < enemyBeamThreshold(s, y)` on an `armed()` state (engines up): `0.69/0.71 at 0.5 → true/false`, `0.84/0.86 at 1 → true/false`; add `disableSystem(s, EnemySystem.Engines)` then `0.84/0.86 at 0.5 → true/false` and `0.999 < enemyBeamThreshold(s, 1) → true`.
+5. Replace every `enemyBeamHits(x, y)` assertion with `x < enemyBeamThreshold(s, y)` on an `armed()` state (engines up): `0.69/0.71 at 0.5 → true/false`, `0.84/0.86 at 1 → true/false`; add `disableSystem(s, EnemySystem.Engines)` then `0.84/0.86 at 0.5 → true/false` and `0.999 < enemyBeamThreshold(s, 1) → true`. In the beam-hit test replace `expect(ENEMY_BEAM_BASE + ENEMY_BEAM_SCALE * 0.5).toBeCloseTo(0.7, 10)` (now 0.85) with `expect(enemyBeamThreshold(s, 0.5)).toBeCloseTo(0.7, 10)` on the `armed()` state.
+6. The existing "Science guards" test: its Confirm-on-the-hull-row assertion (`scanning 0`) is now wrong (the hull row scans the ship). Keep the trap and the object-progress assertion; change the Confirm expectation to `scanning 1` and `scan` of the object unchanged after `scanStep` (the enemy scan path itself is Task 2's; in this task `scanStep` still returns early for enemy slots, so also assert `s.enemy.scan === 0` here and let Task 2 replace that line).
+7. The survival gate fallback: if `ENEMY_FIRE_INTERVAL` becomes 20, the `fireInterval` test's pinned values change to `20`, `200 / 13`, `10`, and the floor binds later: assert `fireInterval(30, 2) === 6` (20 / 4 = 5 → floor 6) and `fireInterval(0, 1) === 20 × SOLO_INTERVAL_MULT`; keep the escalation, floor and solo checks.
 
 Append to `tests/enemy.test.ts`:
 
@@ -96,11 +112,12 @@ describe('enemy systems: repairs, engines and weapons effects (enemySystem calle
     late.tick = late.enemy.sysRepairTick[EnemySystem.Weapons]!; enemySystem(late);
     expect(late.enemy.nextShotTick).toBe(late.tick + ENEMY_FIRST_SHOT * T);                  // unconditional, even when the old value was later
   });
-  it('engines down: departTick advances one per tick, the enemy stays past the original departure, the threshold rises to 0.85; repaired engines stop the clock', () => {
+  it('engines down: departTick advances one per tick, the enemy stays past the original departure, the threshold rises to 0.85; repaired engines stop the clock; none of it draws', () => {
     const s = makeState(2); quiet(s); placeEnemy(s); s.enemy.nextShotTick = 1e9; disableSystem(s, EnemySystem.Engines); s.enemy.sysRepairTick[EnemySystem.Engines] = 1e9;
-    const depart = s.enemy.departTick;
+    const depart = s.enemy.departTick, d0 = s.rng.director.s, h0 = s.rng.hazards.s, c0 = s.rng.combat.s;
     for (let n = 0; n < 100; n++) { s.tick++; enemySystem(s); }
     expect(s.enemy.departTick).toBe(depart + 100);
+    expect([s.rng.director.s, s.rng.hazards.s, s.rng.combat.s]).toEqual([d0, h0, c0]);          // pause, repair and damage never draw
     s.tick = depart; enemySystem(s); expect(s.enemy.present).toBe(1);
     expect(enemyBeamThreshold(s, 0.5)).toBeCloseTo(0.85, 12);
     s.enemy.sysRepairTick[EnemySystem.Engines] = s.tick + 1; s.tick += 1; enemySystem(s);
@@ -108,21 +125,30 @@ describe('enemy systems: repairs, engines and weapons effects (enemySystem calle
     s.tick += 1; enemySystem(s); expect(s.enemy.departTick).toBe(fixed);
     expect(enemyBeamThreshold(s, 0.5)).toBeCloseTo(0.70, 12);
   });
-  it('a repair due on the departure tick happens first; a repair of an intact system is never armed by extra damage', () => {
-    const s = makeState(2); quiet(s); placeEnemy(s); s.enemy.nextShotTick = 1e9; disableSystem(s, EnemySystem.Shields);
-    s.enemy.sysRepairTick[EnemySystem.Shields] = s.enemy.departTick; s.tick = s.enemy.departTick;
+  it('a repair due on the departure tick happens first (repaired engines do not pause that tick, so the enemy leaves); shields repair while present; damage never arms an intact system twice', () => {
+    const s = makeState(2); quiet(s); placeEnemy(s); s.enemy.nextShotTick = 1e9; disableSystem(s, EnemySystem.Engines);
+    s.enemy.sysRepairTick[EnemySystem.Engines] = s.enemy.departTick; s.tick = s.enemy.departTick;
     enemySystem(s);
-    expect(s.enemy.present).toBe(0); expect(Array.from(s.enemy.sysHp)).toEqual([0, 0, 0]); expect(Array.from(s.enemy.sysRepairTick)).toEqual([-1, -1, -1]);   // repaired, then left: leave clears the block
-    const d = makeState(1); quiet(d); placeEnemy(d);
+    expect(s.enemy.present).toBe(0);                                                   // the repair ran before the pause check, so departTick was not pushed and the enemy left
+    const sh = makeState(1); quiet(sh); placeEnemy(sh, ENEMY_HULL, 1); disableSystem(sh, EnemySystem.Shields); sh.enemy.nextShotTick = 1e9;
+    const c1 = sh.rng.combat.s, d1 = sh.rng.director.s, h1 = sh.rng.hazards.s;
+    sh.tick = sh.enemy.sysRepairTick[EnemySystem.Shields]! - 1; enemySystem(sh); expect(sh.enemy.sysHp[EnemySystem.Shields]).toBe(0);
+    sh.tick += 1; enemySystem(sh);
+    expect(sh.enemy.sysHp[EnemySystem.Shields]).toBe(ENEMY_SYS_HP); expect(sh.enemy.sysRepairTick[EnemySystem.Shields]).toBe(-1); expect(sh.enemy.present).toBe(1);
+    expect(beamAbsorbed(sh, Weapon.BeamF2)).toBe(true); expect([sh.rng.combat.s, sh.rng.director.s, sh.rng.hazards.s]).toEqual([c1, d1, h1]);
+    const d = makeState(1); quiet(d); placeEnemy(d); const c2 = d.rng.combat.s;
     damageEnemy(d, ENEMY_WEAPONS_SLOT, ENEMY_BEAM_DAMAGE); expect(d.enemy.sysHp[EnemySystem.Weapons]).toBe(ENEMY_SYS_HP - ENEMY_BEAM_DAMAGE); expect(d.enemy.sysRepairTick[EnemySystem.Weapons]).toBe(-1); expect(d.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE);
     damageEnemy(d, ENEMY_WEAPONS_SLOT, ENEMY_BEAM_DAMAGE); const armedAt = d.enemy.sysRepairTick[EnemySystem.Weapons]!;
     expect(d.enemy.sysHp[EnemySystem.Weapons]).toBe(0); expect(armedAt).toBe(d.tick + ENEMY_SYS_REPAIR * T); expect(d.telemetry.enemyDisables).toBe(1);
     damageEnemy(d, ENEMY_WEAPONS_SLOT, ENEMY_BEAM_DAMAGE);
     expect(d.enemy.hull).toBe(ENEMY_HULL - 3 * ENEMY_BEAM_DAMAGE); expect(d.enemy.sysRepairTick[EnemySystem.Weapons]).toBe(armedAt); expect(d.telemetry.enemyDisables).toBe(1);
     damageEnemy(d, ENEMY_ENGINES_SLOT, ENEMY_TORP_DAMAGE); expect(d.enemy.sysHp[EnemySystem.Engines]).toBe(0); expect(d.telemetry.enemyDisables).toBe(2);
-    damageEnemy(d, ENEMY_SLOT, ENEMY_BEAM_DAMAGE); expect(Array.from(d.enemy.sysHp)).toEqual([0, 0, ENEMY_SYS_HP]);
-    const k = makeState(1); quiet(k); placeEnemy(k, 15); damageEnemy(k, ENEMY_SHIELDS_SLOT, ENEMY_BEAM_DAMAGE);
+    damageEnemy(d, ENEMY_SLOT, ENEMY_BEAM_DAMAGE); expect(Array.from(d.enemy.sysHp)).toEqual([0, 0, ENEMY_SYS_HP]); expect(d.rng.combat.s).toBe(c2);   // damage never draws
+    const k = makeState(1); quiet(k); placeEnemy(k, 15); k.enemy.sysHp[EnemySystem.Shields] = 15;   // shields already at 15: the killing beam also disables them
+    damageEnemy(k, ENEMY_SHIELDS_SLOT, ENEMY_BEAM_DAMAGE);
     expect([k.enemy.present, k.telemetry.enemiesDestroyed, k.telemetry.enemyDisables]).toEqual([0, 1, 1]); expect(Array.from(k.enemy.sysHp)).toEqual([0, 0, 0]);
+    const k2 = makeState(1); quiet(k2); placeEnemy(k2, 15); damageEnemy(k2, ENEMY_SHIELDS_SLOT, ENEMY_BEAM_DAMAGE);   // shields at 30 only drop to 15 before leave clears them: no disable
+    expect([k2.enemy.present, k2.telemetry.enemiesDestroyed, k2.telemetry.enemyDisables]).toEqual([0, 1, 0]);
   });
   it('beamAbsorbed: shields up and a mismatched selector; never when shields are down', () => {
     const s = makeState(1); placeEnemy(s, ENEMY_HULL, 2);
@@ -136,13 +162,17 @@ describe('enemy systems: repairs, engines and weapons effects (enemySystem calle
 `tests/snapshot.test.ts`: the version test moves from 9 to 10 (title, header, flattened value). Extend the enemy round-trip test: set `s.enemy.sysHp.set([30, 0, 12]); s.enemy.sysRepairTick.set([-1, 7777, -1]); s.enemy.shieldFreq = 3; s.enemy.scanned = 1; s.enemy.scan = 0.45; s.telemetry.enemyDisables = 4;`, assert they round-trip, and add mutate checks for each of the ten new fields (`sysHp[k]` and `sysRepairTick[k]` for k 0..2, `shieldFreq`, `scanned`, `scan`, `enemyDisables`). Add:
 
 ```ts
-  it('a run saved with the enemy weapons down, a repair due in 10 ticks, a shot due in 15 and an enemy scan running continues like the uninterrupted run', () => {
+  it('a run saved with the enemy weapons down, a repair due in 10 ticks and an enemy scan running continues like the uninterrupted run through the repair and the repaired first shot', () => {
     const setup = (s: ReturnType<typeof makeState>) => { run(s, 100); placeEnemy(s); disableSystem(s, EnemySystem.Weapons); s.enemy.sysRepairTick[EnemySystem.Weapons] = s.tick + 10; s.enemy.nextShotTick = s.tick + 15; const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 1, c); s.stations.cursor[c] = ENEMY_SLOT; s.science.scanning = 1; };
     const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9; setup(whole);
     const part = makeState(2, 31); part.director.nextSpawnTick = 1e9; setup(part);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
     run(whole, 40); run(resumed, 40);
-    expect(resumed.enemy.sysHp[EnemySystem.Weapons]).toBe(ENEMY_SYS_HP); expect(shotsInFlight(resumed)).toBe(1); expect(resumed.enemy.scan).toBeGreaterThan(0);
+    // The repair at tick 110 set nextShotTick to 110 + 300 = 410, replacing the 115 deadline: no shot yet.
+    expect(resumed.enemy.sysHp[EnemySystem.Weapons]).toBe(ENEMY_SYS_HP); expect(resumed.enemy.sysRepairTick[EnemySystem.Weapons]).toBe(-1); expect(resumed.enemy.nextShotTick).toBe(410); expect(shotsInFlight(resumed)).toBe(0);
+    expect(resumed.enemy.scan).toBe(0);                                                 // Task 1: scanStep has no enemy path yet; Task 2 changes this line to toBeGreaterThan(0)
+    run(whole, 280); run(resumed, 280);                                                 // through tick 420: the repaired weapons fire at 410
+    expect(shotsInFlight(resumed)).toBe(1);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 ```
@@ -244,16 +274,44 @@ export function enemySystem(state: SimState): void {
 }
 ```
 
+(`enemy.ts` imports `isEnemySlot, ENEMY_SLOTS, enemySystemOf` from debrisTargets and `nextInt` from the rng module.)
+
 `weapons.ts` (mechanical, so the task compiles; Task 2 does the real rewiring): replace `enemyBeamHits(u, output)` with `u < enemyBeamThreshold(state, output)` and `damageEnemy(state, amount)` with `damageEnemy(state, c, amount)`; import the new name.
+
+- [ ] **Step 5b: Slot guards in `productive.ts` and `hudModel.ts` (behaviour-preserving for Combat-i rows; needed before any suite run)**
+
+`productive.ts`: `function anyWarned(state: SimState): boolean { return warnedTargets(state).some((k) => k < DEBRIS_SLOTS); }   // objects only (spec Combat-ii section 3)` and the Science case's `scanningValid` gains `!isEnemySlot(c) &&` in place of `c !== ENEMY_SLOT &&` (import `DEBRIS_SLOTS` from tuning and `isEnemySlot` from debrisTargets; Task 2 adds the enemy-scan branch).
+
+`hudModel.ts` (imports: `isEnemySlot, enemySystemOf, ENEMY_SLOT` from debrisTargets; `EnemySystem` from enemy; `TICK_HZ` from tuning):
+
+```ts
+export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null }
+
+function target(state: SimState, k: number): DebrisTarget {
+  if (isEnemySlot(k)) {
+    const e = state.enemy, shieldsUp = e.sysHp[EnemySystem.Shields]! > 0;
+    const base = { stableId: e.stableId, kind: 'enemy' as const, room: 'Enemy ship', eta: Math.ceil((e.departTick - state.tick) * DT), frequency: null as number | null, hull: null as number | null, system: null as number | null, status: null as DebrisTarget['status'], shieldsUp };
+    if (k === ENEMY_SLOT) return { ...base, hull: e.hull / ENEMY_HULL, frequency: e.scanned ? e.shieldFreq : null };
+    const sys = enemySystemOf(k), hp = e.sysHp[sys]!;
+    return { ...base, system: sys, status: { hp, repairIn: hp > 0 ? null : Math.ceil((e.sysRepairTick[sys]! - state.tick) / TICK_HZ) } };
+  }
+  const db = state.debris;
+  return { stableId: db.stableId[k]!, kind: db.kind[k] === ObjectKind.Shot ? 'shot' : 'debris', room: state.layout.rooms[db.room[k]!]!.name, eta: etaSeconds(state, k), frequency: db.scanned[k] ? db.frequency[k]! : null, hull: null, system: null, status: null, shieldsUp: null };
+}
+```
+
+Science panel: `scan: k === ENEMY_SLOT ? state.enemy.scan : isEnemySlot(k) ? 0 : state.debris.scan[k]!`. Threat loop: `if (isEnemySlot(k)) continue;`. `targetRowText` is untouched in this task (subsystem rows render as `Enemy 0% Ns` until Task 3; a visual-only gap).
+
+`tests/hud.test.ts` in this task: every expected target object gains `system: null, status: null` and `shieldsUp: null` (objects) or `shieldsUp: true` (enemy hull rows); the `targetRowText` fixtures (`debris`, `shot`, `enemy` literals) gain the same three fields so they typecheck; the nine-entry window test becomes twelve entries (`toHaveLength(12)`, cursor 8, `first` 3 and 2 unchanged). Task 3 adds the new string and row assertions.
 
 - [ ] **Step 6: Run, survival gate, re-bless, full suite**
 
-`npx vitest run tests/enemy.test.ts tests/snapshot.test.ts tests/weapons.test.ts tests/boundary.test.ts` → PASS. Then the survival gate **before** the re-bless: `npx vitest run tests/gate-survival.test.ts`; copy the three figure lines (add a temporary `console.log`, then remove it). If a seed fails: `ENEMY_FIRE_INTERVAL` 15 → 20 in `tuning.ts`, re-run, record before/after. Then `npm run bless` (cause: SIM_VERSION 11 and the new enemy and telemetry fields are hashed; no enemy in the two-minute replay), `npm test`, `npm run typecheck`, `npm run build` → pass. (`tests/hud.test.ts` may fail on the nine-entry window counts now being twelve; if so, that failure belongs to Task 3: change only `toHaveLength(9)` → `toHaveLength(12)` and `cursor 8` stays, `first` stays 3 and 2, to keep the suite green here, and say so in the report.)
+`npx vitest run tests/enemy.test.ts tests/snapshot.test.ts tests/weapons.test.ts tests/hud.test.ts tests/productive.test.ts tests/boundary.test.ts` → PASS. Then the survival gate **before** the re-bless: `npx vitest run tests/gate-survival.test.ts`; copy the three figure lines (add a temporary `console.log`, then remove it). If a seed fails: `ENEMY_FIRE_INTERVAL` 15 → 20 in `tuning.ts` and the `fireInterval` expectations as Step 1 item 7 says; re-run; record before/after. Then `npm run bless` (cause: SIM_VERSION 11 and the new enemy and telemetry fields are hashed; no enemy in the two-minute replay), `npm test`, `npm run typecheck`, `npm run build` → pass.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/renderer/src/sim/state.ts src/renderer/src/sim/flatten.ts src/renderer/src/sim/tuning.ts src/renderer/src/sim/debrisTargets.ts src/renderer/src/sim/enemy.ts src/renderer/src/sim/weapons.ts tests/helpers/sim.ts tests/enemy.test.ts tests/snapshot.test.ts tests/hud.test.ts tests/golden/basic.json
+git add src/renderer/src/sim/state.ts src/renderer/src/sim/flatten.ts src/renderer/src/sim/tuning.ts src/renderer/src/sim/debrisTargets.ts src/renderer/src/sim/enemy.ts src/renderer/src/sim/weapons.ts src/renderer/src/sim/productive.ts src/renderer/src/render/hudModel.ts tests/helpers/sim.ts tests/enemy.test.ts tests/snapshot.test.ts tests/hud.test.ts tests/golden/basic.json
 git commit -m "feat: enemy subsystems with health and self-repair, a shield frequency drawn on arrival, four enemy target rows; engines pause the departure and raise the beam threshold, downed weapons stop new shots; SIM_VERSION 11 (golden re-blessed: the new enemy and telemetry fields are hashed)"
 ```
 
@@ -270,7 +328,7 @@ git commit -m "feat: enemy subsystems with health and self-repair, a shield freq
 
 - [ ] **Step 1: Write the failing tests**
 
-In `tests/enemy.test.ts` the `armed()` helper gains `shieldFreq = 1` as a third parameter passed to `placeEnemy`, and the "every beam selector" loop becomes:
+In `tests/enemy.test.ts` the `armed()` helper becomes `const armed = (hull = ENEMY_HULL, shieldFreq = 1) => { ... placeEnemy(s, hull, shieldFreq); ... }` (two parameters, both forwarded), and the "every beam selector" loop becomes:
 
 ```ts
     for (const selector of [Weapon.BeamF1, Weapon.BeamF2, Weapon.BeamF3]) {   // shields up: only the matched selector rolls
@@ -308,17 +366,20 @@ describe('enemy systems: shields in the fire path, subsystem rows, the scan', ()
     shoot(); expect([s.enemy.hull, s.enemy.sysHp[EnemySystem.Weapons], s.telemetry.enemyDisables]).toEqual([55, 0, 1]); expect(s.enemy.sysRepairTick[EnemySystem.Weapons]).toBe(armedTick);
     s.stations.cursor[w] = ENEMY_ENGINES_SLOT; s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 1; s.rng.combat.s = 7;
     expect(fireWeapon(s)).toBe(true); expect([s.enemy.hull, s.enemy.sysHp[EnemySystem.Engines], s.telemetry.enemyDisables]).toEqual([20, 0, 2]);
-    const k = armedAt(ENEMY_SHIELDS_SLOT, 1, 15); k.s.rng.combat.s = 7;
+    const k = armedAt(ENEMY_SHIELDS_SLOT, 1, 15); k.s.enemy.sysHp[EnemySystem.Shields] = 15; k.s.rng.combat.s = 7;   // the killing beam also drops the shields to 0
     expect(fireWeapon(k.s)).toBe(true); expect([k.s.enemy.present, k.s.telemetry.enemiesDestroyed, k.s.telemetry.enemyDisables]).toEqual([0, 1, 1]);
   });
   it('the enemy scan: Confirm on the hull row starts it, scanStep advances and completes it, subsystem rows neither start nor progress it, leave clears it', () => {
     const s = makeState(1); quiet(s); placeEnemy(s, ENEMY_HULL, 3); const c = sci(s); sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
+    const output = stationOutput(s, c); expect(output).toBeCloseTo(0.375, 12);                 // starter Science allocation 1 of 2, skill curve 0.75 at level 0
     scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(1);
-    scanStep(s); expect(s.enemy.scan).toBeCloseTo(DT * 0.5 / SCAN_TIME, 12);                 // Recruit at the starter Science allocation: output 0.5
+    scanStep(s); expect(s.enemy.scan).toBeCloseTo(DT * output / SCAN_TIME, 12);
     s.stations.cursor[c] = ENEMY_SHIELDS_SLOT; const paused = s.enemy.scan; scanStep(s); expect(s.enemy.scan).toBe(paused);
-    s.stations.cursor[c] = ENEMY_SLOT; const calls = Math.ceil(SCAN_TIME / 0.5 / DT);
-    for (let n = 0; n < calls; n++) scanStep(s);
-    expect(s.enemy.scan).toBe(1); expect(s.enemy.scanned).toBe(1); expect(s.science.scanning).toBe(0);
+    s.stations.cursor[c] = ENEMY_SLOT; const total = Math.ceil(SCAN_TIME / output / DT);     // 960 calls in all reach 1
+    for (let n = 1; n < total - 1; n++) scanStep(s);
+    expect(s.enemy.scan).toBeLessThan(1); expect(s.science.scanning).toBe(1);
+    scanStep(s); expect(s.enemy.scan).toBe(1); expect(s.enemy.scanned).toBe(1); expect(s.science.scanning).toBe(0);
+    scanStep(s); expect(s.enemy.scan).toBe(1);                                                // clamped, and scanning is off
     scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(0);                          // scanned: nothing to start
     const t = makeState(1); quiet(t); placeEnemy(t); const c2 = sci(t); sitDown(t, 0, c2); t.stations.cursor[c2] = ENEMY_WEAPONS_SLOT;
     scienceInput(t, c2, -1, true); expect(t.science.scanning).toBe(0);
@@ -342,7 +403,7 @@ describe('enemy systems: shields in the fire path, subsystem rows, the scan', ()
 });
 ```
 
-(imports: `standUp` from stations; `DT, SCAN_TIME` from tuning; `guardDebris` must trap `String(k)` for every `k` in `ENEMY_SLOTS`: change its check to `ENEMY_SLOTS.map(String).includes(p as string)`.) The combat gate test becomes: `placeEnemy(s, ENEMY_HULL, 2)`, selector `BeamF1` for the first full charge (no combat reset; assert after it `shots 1, hits 0, hull 100`), then `s.weapons.selector = Weapon.BeamF2` and `rng.combat.s = 7` before every later Confirm; final `shots 8`, `[8, 7, 1]`, `present 0`, `tick < depart`; rename the describe to "… one absorbed beam, then seven hits".
+(imports: `standUp, stationOutput` from stations; `DT, SCAN_TIME` from tuning; `guardDebris` from the helpers, already trapping every enemy slot since Task 1.) The existing "Science guards" test: replace its Task 1 interim line `expect(s.enemy.scan).toBe(0)` after `scanStep` with the enemy-scan assertions (`scan > 0`) or delete it, since the new scan test above covers the path; keep the trap and the object-progress assertion. In the snapshot continuation test, change `expect(resumed.enemy.scan).toBe(0)` to `toBeGreaterThan(0)` (the enemy scan now runs). The combat gate test becomes: `placeEnemy(s, ENEMY_HULL, 2)`, selector `BeamF1` for the first full charge (no combat reset; assert after it `shots 1, hits 0, hull 100`), then `s.weapons.selector = Weapon.BeamF2` and `rng.combat.s = 7` before every later Confirm; final `shots 8`, `[8, 7, 1]`, `present 0`, `tick < depart`; rename the describe to "… one absorbed beam, then seven hits".
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -377,7 +438,7 @@ describe('enemy systems: shields in the fire path, subsystem rows, the scan', ()
 
 (import `isEnemySlot` instead of `ENEMY_SLOT`, `beamAbsorbed` and `enemyBeamThreshold` from enemy.)
 
-`science.ts`:
+`science.ts` (import `isEnemySlot` beside `ENEMY_SLOT` from debrisTargets):
 
 ```ts
 export function scienceInput(state: SimState, i: number, dir: number, confirm: boolean): void {
@@ -406,7 +467,7 @@ export function scanStep(state: SimState): void {
 }
 ```
 
-`productive.ts`: `function anyWarned(state: SimState): boolean { return warnedTargets(state).some((k) => k < DEBRIS_SLOTS); }   // objects only (spec Combat-ii section 3)`; the Science case: `const e = state.enemy; const scanningValid = state.science.scanning === 1 && c >= 0 && (c === ENEMY_SLOT ? e.present === 1 && e.scanned === 0 : !isEnemySlot(c) && db.active[c] === 1 && db.warned[c] === 1 && db.scanned[c] === 0);` (import `DEBRIS_SLOTS` from tuning and `isEnemySlot` from debrisTargets).
+`productive.ts` (Task 1 already made `anyWarned` objects-only): the Science case becomes `const e = state.enemy; const scanningValid = state.science.scanning === 1 && c >= 0 && (c === ENEMY_SLOT ? e.present === 1 && e.scanned === 0 : !isEnemySlot(c) && db.active[c] === 1 && db.warned[c] === 1 && db.scanned[c] === 0);`.
 
 - [ ] **Step 4: Run and full suite**
 
@@ -431,7 +492,7 @@ git commit -m "feat: shields absorb mismatched beams without a roll, torpedoes b
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/hud.test.ts`: every existing expected target object gains `system: null, status: null` and `shieldsUp: null` (objects) or `shieldsUp: true` (the enemy hull row); the nine-entry window test becomes twelve entries (`toHaveLength(12)`, cursor 8, `first` 3 and 2 unchanged) and adds the cursor on `ENEMY_SHIELDS_SLOT` (index 11): `first` 6 (Weapons) and 5 (Science); the `targetRowText` test's enemy fixture gains `system: null, status: null, shieldsUp: true` and expects `'Enemy 64% 87s S?'` (both with and without scan 0 → with `scan 0.4` expects `'Enemy 64% 87s S? 40%'`). Append:
+`tests/hud.test.ts` (Task 1 already reshaped the fixtures and the twelve-entry count; imports to add: `ENEMY_SLOTS, ENEMY_SHIELDS_SLOT` from debrisTargets, `EnemySystem` from enemy, `disableSystem, guardDebris` from helpers): the window test adds the cursor on `ENEMY_SHIELDS_SLOT` (index 11): `first` 6 (Weapons) and 5 (Science); the existing `targetRowText` enemy expectations become `'Enemy 64% 87s S?'` without scan and `'Enemy 64% 87s S? 40%'` with `scan 0.4`. Append:
 
 ```ts
   it('targetRowText: the hull row markers and scan suffix, the subsystem rows intact and down', () => {
@@ -455,11 +516,10 @@ git commit -m "feat: shields absorb mismatched beams without a roll, torpedoes b
     m = buildHudModel(s, slots(2), 'running', ''); wp = m.players[0]!.console as WeaponsPanel;
     expect(wp.targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[4]!.status).toEqual({ hp: 0, repairIn: 45 });
     expect(m.threats[0]!.text).toBe('Enemy ship: hull 64% weapons DOWN shields DOWN');
+    guardDebris(s);                                                                       // a read at slots 8..11 throws: the model must branch before indexing
     expect(() => { for (const slot of ENEMY_SLOTS) { s.stations.cursor[w] = slot; s.stations.cursor[c] = slot; buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
   });
 ```
-
-(imports: `ENEMY_SLOTS` from debrisTargets, `EnemySystem` from enemy, `disableSystem` from helpers.)
 
 `tests/telemetry.test.ts`: the exact-record fixture sets `t.enemyDisables = 3` and expects `enemy: { met: 2, destroyed: 1, disables: 3 }`; the fresh-state assertion expects `{ met: 0, destroyed: 0, disables: 0 }`. `tests/acceptance.test.ts`: `rec()` gains `disables: 0` in `enemy`; the second row's `over` becomes `enemy: { met: 2, destroyed: 1, disables: 3 }`; row regex tails `1\/3\s+0\/0$` → `1\/3\s+0\/0\/0$` and `0\/0\s+2\/1$` → `0\/0\s+2\/1\/3$`.
 
@@ -469,23 +529,9 @@ git commit -m "feat: shields absorb mismatched beams without a roll, torpedoes b
 
 - [ ] **Step 3: hudModel.ts, telemetry.ts, acceptance.ts**
 
-`hudModel.ts` (imports: `isEnemySlot, enemySystemOf, ENEMY_SLOT` from debrisTargets; `EnemySystem, ENEMY_SYSTEM_NAMES` from enemy; `ENEMY_SYS_HP, TICK_HZ` from tuning):
+`hudModel.ts` (Task 1 already added the `DebrisTarget` fields, the slot-aware `target()`, the Science scan source and the threat-loop guard; this task adds the strings; import `ENEMY_SYSTEM_NAMES` from enemy and `ENEMY_SYS_HP` from tuning):
 
 ```ts
-export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null }
-
-function target(state: SimState, k: number): DebrisTarget {
-  if (isEnemySlot(k)) {
-    const e = state.enemy, shieldsUp = e.sysHp[EnemySystem.Shields]! > 0;
-    const base = { stableId: e.stableId, kind: 'enemy' as const, room: 'Enemy ship', eta: Math.ceil((e.departTick - state.tick) * DT), frequency: null as number | null, hull: null as number | null, system: null as number | null, status: null as DebrisTarget['status'], shieldsUp };
-    if (k === ENEMY_SLOT) return { ...base, hull: e.hull / ENEMY_HULL, frequency: e.scanned ? e.shieldFreq : null };
-    const sys = enemySystemOf(k), hp = e.sysHp[sys]!;
-    return { ...base, system: sys, status: { hp, repairIn: hp > 0 ? null : Math.ceil((e.sysRepairTick[sys]! - state.tick) / TICK_HZ) } };
-  }
-  const db = state.debris;
-  return { stableId: db.stableId[k]!, kind: db.kind[k] === ObjectKind.Shot ? 'shot' : 'debris', room: state.layout.rooms[db.room[k]!]!.name, eta: etaSeconds(state, k), frequency: db.scanned[k] ? db.frequency[k]! : null, hull: null, system: null, status: null, shieldsUp: null };
-}
-
 export function targetRowText(t: DebrisTarget, scan = 0): string {
   if (t.kind === 'enemy') {
     if (t.system !== null && t.status) return t.status.hp > 0 ? `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} ${Math.round(t.status.hp / ENEMY_SYS_HP * 100)}%` : `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} DOWN ${t.status.repairIn}s`;
