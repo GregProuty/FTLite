@@ -76,11 +76,12 @@ describe('stress', () => {
     expect(anyUnattended(s)).toBe(false);
     igniteRoom(s, room(s, 'G')); expect(anyUnattended(s)).toBe(true);
     teleport(s, 0, 2.5, 9.5); expect(anyUnattended(s)).toBe(false);                                 // inside the burning room
-    Life.state[s.crew[0]!] = LifeState.Downed;                                                      // Downed inside the fire; crew 1 attends the Downed member from outside the room
-    teleport(s, 1, 2.5, 7.9); expect(roomAt(s, 2.5, 7.9)).not.toBe(room(s, 'G'));
-    expect(anyUnattended(s)).toBe(true);                                                             // the fire still has no Conscious crew member inside
-    teleport(s, 1, 20.5, 5.5);                                                                       // back to the corridor
-    Life.state[s.crew[0]!] = LifeState.Conscious; s.rooms.fire.fill(0);
+    Life.state[s.crew[0]!] = LifeState.Downed; teleport(s, 0, 2.5, 8.5);                            // Downed inside the fire, near its top edge
+    teleport(s, 1, 2.5, 7.9); expect(roomAt(s, 2.5, 7.9)).not.toBe(room(s, 'G')); expect(roomAt(s, 2.5, 8.5)).toBe(room(s, 'G'));
+    expect(anyUnattended(s)).toBe(true);                                                             // crew 1 (0.6 away, outside the room) attends the Downed member, but the fire has no Conscious crew inside
+    s.rooms.fire.fill(0); expect(anyUnattended(s)).toBe(false);                                      // isolation: with the fire gone the attended Downed member is not unattended
+    teleport(s, 1, 20.5, 5.5); teleport(s, 0, 2.5, 9.5);                                            // back to the corridor and the room centre
+    Life.state[s.crew[0]!] = LifeState.Conscious;
     activateBreach(s, 6);                                                                             // G bottom wall at (2,11)
     teleport(s, 0, 2.5, 10.5); expect(anyUnattended(s)).toBe(false);
     teleport(s, 0, 2.5, 8.5); expect(anyUnattended(s)).toBe(true);                                  // out of REACH
@@ -108,6 +109,17 @@ describe('stress', () => {
     run(t, STRESS_PERIOD * T - 1); expect(t.director.stress).toBe(0);                                // ticks 0..298: the first recompute is due at tick 300
     run(t, 2); expect(t.director.stress).toBeGreaterThan(0);                                          // ticks 299 and 300: the recompute at 300 sees the fire
     const after = t.director.stress; run(t, STRESS_PERIOD * T - 1); expect(t.director.stress).toBe(after);
+    expect(t.director.nextStressTick).toBe(2 * STRESS_PERIOD * T);
+    run(t, 1); expect(t.director.stress).toBeGreaterThan(after); expect(t.director.nextStressTick).toBe(3 * STRESS_PERIOD * T);   // tick 600: the second recompute, period unchanged
+  });
+  it('stress is recomputed before the phase exits: a recompute that crosses the peak on a due-spawn tick spawns nothing and draws nothing', () => {
+    const s = makeState(2); armSpawn(s);
+    Life.state[s.crew[0]!] = LifeState.Downed; Life.state[s.crew[1]!] = LifeState.Downed;         // raw 0.8, no hazards so the cap is not what blocks
+    s.director.stress = 0.6; s.director.nextStressTick = s.tick;                                     // 0.6 + 0.5 x (0.8 - 0.6) = 0.7 = PEAK_LEVEL
+    const d = s.rng.director.s, h = s.rng.hazards.s;
+    directorSystem(s);
+    expect(s.director.stress).toBeGreaterThanOrEqual(PEAK_LEVEL); expect(s.director.phase).toBe(Phase.SustainPeak);
+    expect(activeHazardCount(s)).toBe(0); expect(s.rng.director.s).toBe(d); expect(s.rng.hazards.s).toBe(h);
   });
 });
 
@@ -127,6 +139,16 @@ describe('phase machine', () => {
     const t = makeState(2); at(t, Phase.BuildUp, 500, 0.3); t.director.lastSpawnTick = -1;
     t.tick = 500 + STALL_SECONDS * T - 1; phaseStep(t); expect(t.director.phase).toBe(Phase.BuildUp);
     t.tick = 500 + STALL_SECONDS * T; phaseStep(t); expect(t.director.phase).toBe(Phase.SustainPeak);
+    // Through directorSystem with a due timer: one tick before the stall the attempt runs (two draws, one hazard); on the stall tick the exit comes first and nothing is drawn.
+    const before = makeState(0); at(before, Phase.BuildUp, 0, 0, 5); before.director.lastSpawnTick = -1;
+    before.tick = STALL_SECONDS * T - 1; before.director.nextSpawnTick = before.tick;
+    const two = createRng(before.rng.director.s); nextFloat(two); nextFloat(two);
+    directorSystem(before);
+    expect(before.director.phase).toBe(Phase.BuildUp); expect(activeHazardCount(before)).toBe(1); expect(before.rng.director.s).toBe(two.s);
+    const on = makeState(0); at(on, Phase.BuildUp, 0, 0, 5); on.director.lastSpawnTick = -1;
+    on.tick = STALL_SECONDS * T; on.director.nextSpawnTick = on.tick; const r = on.rng.director.s;
+    directorSystem(on);
+    expect(on.director.phase).toBe(Phase.SustainPeak); expect(activeHazardCount(on)).toBe(0); expect(on.rng.director.s).toBe(r);
   });
   it('Build Up -> Sustain Peak when a real due spawn exhausts the budget, on that tick', () => {
     const s = makeState(0); armSpawn(s); s.director.budgetLeft = 1;
