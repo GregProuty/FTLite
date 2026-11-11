@@ -9,7 +9,7 @@ import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';
-import { HEAT_MAX, COOLANT_POOL } from '../src/renderer/src/sim/tuning';
+import { HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { makeState, room, run, teleport, placeDebris, seconds } from './helpers/sim';
 
@@ -121,7 +121,7 @@ describe('buildHudModel', () => {
     s.weapons.charge = 1; s.rooms.impactTick[B] = 5;
     const m = buildHudModel(s, slots(1), 'running', '');
     expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Debris: Weapons Bay 3s' }, { icon: 'icon.sensors', text: 'Debris: Bridge 11s' }]);
-    expect(m.tick).toBe(0); expect(m.weapons).toEqual({ charge: 1, ready: true }); expect(m.impactTick[B]).toBe(5); expect(m.impactTick[A]).toBe(-1);
+    expect(m.tick).toBe(0); expect(m.weapons).toEqual({ charge: 1, ready: true, torpedoLoaded: false, torpedoStock: TORP_START }); expect(m.impactTick[B]).toBe(5); expect(m.impactTick[A]).toBe(-1);
   });
   it('shows the Weapons panel with charge, targets by StableId and the cursor index', () => {
     const s = makeState(1), A = room(s, 'A'), B = room(s, 'B');
@@ -132,7 +132,8 @@ describe('buildHudModel', () => {
     expect(p.seated).toBe(StationKind.Weapons);
     const panel = p.console as WeaponsPanel;
     expect(panel.kind).toBe('weapons'); expect(panel.charge).toBe(0.25);
-    expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5 }, { stableId: 30, room: 'Bridge', eta: 10 }]);
+    expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null }]);
+    expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0 });
     expect(panel.cursor).toBe(0);                                                  // sitDown selected id 10 (slot 1), which is targets[0]
     s.stations.cursor[wpn] = 0;                                                    // slot 0 is id 30: targets[1]
     expect((buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel).cursor).toBe(1);
@@ -142,12 +143,29 @@ describe('buildHudModel', () => {
   });
   it('shows the Science and Navigation panels', () => {
     const s = makeState(2), A = room(s, 'A');
-    sitDown(s, 0, s.derived.stationOfKind[StationKind.Science]!); sitDown(s, 1, s.derived.stationOfKind[StationKind.Navigation]!);
     placeDebris(s, A, seconds(10), 1);
+    sitDown(s, 0, s.derived.stationOfKind[StationKind.Science]!); sitDown(s, 1, s.derived.stationOfKind[StationKind.Navigation]!);
     const m = buildHudModel(s, slots(2), 'running', '');
     const sciPanel = m.players[0]!.console as SciencePanel, navPanel = m.players[1]!.console as NavigationPanel;
-    expect(sciPanel.kind).toBe('science'); expect(sciPanel.leadSeconds).toBeCloseTo(18); expect(sciPanel.warnedCount).toBe(1);
+    expect(sciPanel.kind).toBe('science'); expect(sciPanel.leadSeconds).toBeCloseTo(18); expect(sciPanel.targets).toHaveLength(1); expect(sciPanel.cursor).toBe(0); expect(sciPanel.scanning).toBe(false);
     expect(navPanel.kind).toBe('navigation'); expect(navPanel.evadeChance).toBeCloseTo(0.35);
+  });
+  it('shows a scanned frequency in the threat text and on both panels, with scan progress and the selector and torpedo state', () => {
+    const s = makeState(2), A = room(s, 'A'), B = room(s, 'B');
+    const wpn = s.derived.stationOfKind[StationKind.Weapons]!, sci = s.derived.stationOfKind[StationKind.Science]!;
+    placeDebris(s, A, 300, 1, 10, 2); placeDebris(s, B, 600, 1, 20, 3);
+    s.debris.scanned[0] = 1; s.debris.scan[0] = 1; s.debris.scan[1] = 0.4;
+    sitDown(s, 0, wpn); sitDown(s, 1, sci); s.science.scanning = 1; s.stations.cursor[sci] = 1;
+    s.weapons.selector = 3; s.weapons.torpedoLoaded = 1; s.weapons.torpedoStock = 2; s.weapons.torpedoLoad = 0;
+    const m = buildHudModel(s, slots(2), 'running', '');
+    expect(m.threats.map((t) => t.text)).toEqual(['Debris: Bridge 5s F2', 'Debris: Weapons Bay 10s']);
+    expect(m.weapons).toEqual({ charge: 0, ready: false, torpedoLoaded: true, torpedoStock: 2 });
+    const w = m.players[0]!.console as WeaponsPanel;
+    expect(w.selector).toBe(3); expect(w.torpedo).toEqual({ stock: 2, cap: TORP_CAP, loaded: true, load: 0 });
+    expect(w.targets.map((t) => t.frequency)).toEqual([2, null]);
+    const p = m.players[1]!.console as SciencePanel;
+    expect(p.targets).toEqual([{ stableId: 10, room: 'Bridge', eta: 5, frequency: 2, scan: 1 }, { stableId: 20, room: 'Weapons Bay', eta: 10, frequency: null, scan: 0.4 }]);
+    expect(p.cursor).toBe(1); expect(p.scanning).toBe(true);
   });
   it('reports heat fraction, coolant and overdrive per Engineering row and per station, and the free coolant', () => {
     const s = makeState(1);
