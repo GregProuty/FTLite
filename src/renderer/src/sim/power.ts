@@ -6,7 +6,8 @@ import { Life, LifeState } from './components';
 import { Skill, skillLevelOf } from './skills';
 
 export function powerUsed(state: SimState): number { let t = 0; for (const v of state.stations.level) t += v; return t; }
-export function powerPool(state: SimState): number { return state.power.capacity - powerUsed(state); }
+export function powerCapacity(state: SimState): number { return state.power.capacity + bonusBars(state); }
+export function powerPool(state: SimState): number { return powerCapacity(state) - powerUsed(state); }
 
 /** Power failure: offline until repaired. Bars return to the pool except Engineering's, which keeps its level frozen (spec §5). */
 export function failStation(state: SimState, i: number): void {
@@ -14,6 +15,7 @@ export function failStation(state: SimState, i: number): void {
   if (state.derived.stationKind[i] !== StationKind.Engineering) state.stations.level[i] = 0;
   const occ = state.stations.occupant[i]!;
   if (occ >= 0) standUp(state, occ);
+  shedPower(state);                                                   // an Engineering failure drops bonus bars; a no-op elsewhere
 }
 
 /** Repair complete: Engineering comes back at its kept level (>= 1); any other station comes back at level 0. */
@@ -50,4 +52,25 @@ export function bonusBars(state: SimState): number {
   const occ = state.stations.occupant[eng]!;
   if (occ < 0 || Life.state[state.crew[occ]!] !== LifeState.Conscious) return 0;
   return Math.floor(skillLevelOf(state, occ, Skill.Engineering) / BONUS_BAR_LEVELS);
+}
+
+/** Shedding order when capacity falls below allocation: shed first to last; Engineering never below 1 (spec 3-i section 7). */
+export const SHED_ORDER = [StationKind.Doors, StationKind.Medbay, StationKind.Science, StationKind.Weapons, StationKind.Navigation, StationKind.LifeSupport, StationKind.Engineering] as const;
+
+/** Bring usage back under capacity one bar at a time in SHED_ORDER. Writes levels directly: the one exception to the frozen-while-failed rule. No-op when usage already fits. */
+export function shedPower(state: SimState): void {
+  const d = state.derived;
+  while (powerUsed(state) > powerCapacity(state)) {
+    let shed = false;
+    for (const kind of SHED_ORDER) {
+      const i = d.stationOfKind[kind]!;
+      if (i < 0) continue;
+      const floor = kind === StationKind.Engineering ? 1 : 0, level = state.stations.level[i]!;
+      if (level <= floor) continue;
+      state.stations.level[i] = level - 1;
+      if (level - 1 === 0) { const occ = state.stations.occupant[i]!; if (occ >= 0) standUp(state, occ); }
+      shed = true; break;
+    }
+    if (!shed) return;                                                // nothing above its floor: the reserved Engineering bar stays
+  }
 }

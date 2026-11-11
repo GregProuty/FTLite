@@ -10,6 +10,9 @@ import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { activeHazardCount } from '../src/renderer/src/sim/hazards/spawner';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { makeState, overdrive, run, room, seconds, teleport, placeDebris, intents } from './helpers/sim';
+import { Skill } from '../src/renderer/src/sim/skills';
+import { HEAT_COOL_SKILL } from '../src/renderer/src/sim/tuning';
+import { setSkill } from './helpers/sim';
 
 const down = { moveY: 1 };
 
@@ -200,5 +203,22 @@ describe('heat', () => {
     atStation(b, 0, med); Health.cur[b.crew[0]!] = 50;
     run(b, 1);
     expect(b.stations.failed[med]).toBe(1); expect(Health.cur[b.crew[0]!]).toBe(50);
+  });
+});
+
+describe('cooling skill', () => {
+  it('a level-5 engineer adds one cooling per unit while seated; level 4 and unseated are baseline; heat holds flat with one unit and rises when they stand', () => {
+    const s = makeState(2), eng = idx(s, StationKind.Engineering), nav = overdrive(s, StationKind.Navigation);
+    s.spawner.nextSpawnTick = 1e9;
+    expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
+    setSkill(s, 0, Skill.Engineering, 4); sitDown(s, 0, eng); expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT);
+    setSkill(s, 0, Skill.Engineering, 5); expect(coolingPerUnit(s)).toBe(HEAT_COOL_UNIT + 1); expect(Math.floor(HEAT_COOL_SKILL * 5)).toBe(1);
+    s.stations.coolant[nav] = 1; s.stations.heat[nav] = 100;
+    run(s, HAZARD_EVERY * 12);
+    expect(s.stations.heat[nav]).toBe(100);                                        // 2 - 1 x 2 = 0 per hazard tick
+    run(s, 1, () => intents({ cancelPressed: true }, {}));                           // the engineer stands: baseline cooling
+    const after = s.stations.heat[nav]!;
+    run(s, HAZARD_EVERY * 10);
+    expect(s.stations.heat[nav]).toBe(after + 10);                                   // +1 per hazard tick with one baseline unit
   });
 });

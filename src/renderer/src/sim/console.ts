@@ -4,7 +4,7 @@ import { Seated } from './components';
 import { StationKind, STATION_COUNT } from './stationKinds';
 import { intentFor } from './step';
 import { standUp } from './stations';
-import { shiftBar } from './power';
+import { shiftBar, shedPower } from './power';
 import { cycleCoolant } from './heat';
 import { toggleSeal } from './doors';
 import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
@@ -58,7 +58,7 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     const eid = state.crew[pid]!, i = Seated.station[eid]!;
     if (i < 0 || state.scratch.satThisTick[pid]) continue;              // players who sat this tick act from the next tick
     const it = intentFor(intents, pid);
-    if (it.cancelPressed || it.interactPressed) { standUp(state, pid); state.scratch.stoodThisTick[pid] = 1; continue; }   // standing consumes the tick's stick input
+    if (it.cancelPressed || it.interactPressed) { standUp(state, pid); shedPower(state); state.scratch.stoodThisTick[pid] = 1; continue; }   // standing consumes the tick's stick input
     const dir = stickEdge(state, pid, it.moveX, it.moveY);
     const kind = state.derived.stationKind[i]!;
     if (kind === StationKind.Engineering) engineeringInput(state, i, dir, it.confirmPressed);

@@ -2,6 +2,7 @@ import type { SimState } from './state';
 import { Position, Health, Life, LifeState } from './components';
 import { conditionRoomAt } from './grid';
 import { standUp } from './stations';
+import { shedPower } from './power';
 import { DT, FIRE_DAMAGE, O2_DAMAGE, SUFFOCATE_FRAC, BLEEDOUT_TIME, BLEED_HAZARD_MULT, HEALTH_MAX, REVIVE_HEALTH_FRAC } from './tuning';
 
 export const EndReason = { None: 0, Hull: 1, Crew: 2 } as const;
@@ -43,6 +44,6 @@ export function crewSystem(state: SimState): void {
 /** Downed transition, shared by environmental damage and debris impacts: stands the player and starts the bleed-out. */
 export function downCrew(state: SimState, pid: number): void {
   const eid = state.crew[pid]!;
-  Life.state[eid] = LifeState.Downed; standUp(state, pid); Life.bleed[eid] = BLEEDOUT_TIME;
+  Life.state[eid] = LifeState.Downed; standUp(state, pid); shedPower(state); Life.bleed[eid] = BLEEDOUT_TIME;
   Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1;
 }

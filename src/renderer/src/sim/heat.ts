@@ -3,17 +3,21 @@ import { StationKind } from './stationKinds';
 import { stationOnline } from './stations';
 import { nextFloat } from '../../../shared/rng';
 import { failStation } from './power';
+import { Skill, skillLevelOf } from './skills';
 import { igniteRoom } from './hazards/fire';
-import { STATION_MAX, HEAT_COOL_UNIT, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE } from './tuning';
+import { STATION_MAX, HEAT_COOL_UNIT, HEAT_COOL_SKILL, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE } from './tuning';
 
 /** A station is overdriven while online above its STATION_MAX. A failed station has level 0 and is never overdriven. */
 export function isOverdriven(state: SimState, i: number): boolean {
   return stationOnline(state, i) && state.stations.level[i]! > STATION_MAX[state.derived.stationKind[i]!]!;
 }
 
-/** Heat removed per coolant unit per hazard tick. Increment 3 adds a floor-rounded term from the seated Engineering operator's skill here. */
-export function coolingPerUnit(_state: SimState): number {
-  return HEAT_COOL_UNIT;
+/** Heat removed per coolant unit per hazard tick: the baseline plus a floor-rounded term from the seated Engineering operator's Engineering level (spec 3-i section 7). */
+export function coolingPerUnit(state: SimState): number {
+  const eng = state.derived.stationOfKind[StationKind.Engineering]!;
+  const occ = eng >= 0 && stationOnline(state, eng) ? state.stations.occupant[eng]! : -1;
+  const level = occ >= 0 ? skillLevelOf(state, occ, Skill.Engineering) : 0;
+  return HEAT_COOL_UNIT + Math.floor(HEAT_COOL_SKILL * level);
 }
 
 export function coolantUsed(state: SimState): number { let t = 0; for (const v of state.stations.coolant) t += v; return t; }

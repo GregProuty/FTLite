@@ -5,6 +5,13 @@ import { stationOnline, stationOutput, sitDown, standUp } from '../src/renderer/
 import { powerPool, powerUsed, failStation, repairStation, shiftBar, maxLevel } from '../src/renderer/src/sim/power';
 import { REACTOR_CAPACITY, STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST } from '../src/renderer/src/sim/tuning';
 import { makeState } from './helpers/sim';
+import { bonusBars, powerCapacity, shedPower, SHED_ORDER } from '../src/renderer/src/sim/power';
+import { Skill } from '../src/renderer/src/sim/skills';
+import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
+import { reviveCrew } from '../src/renderer/src/sim/crew';
+import { setSkill, run, intents } from './helpers/sim';
+import fc from 'fast-check';
+import { COOLANT_POOL } from '../src/renderer/src/sim/tuning';
 
 const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.stationOfKind[kind]!;
 
@@ -82,5 +89,81 @@ describe('power model', () => {
     sitDown(s, 1, nav);
     expect(shiftBar(s, nav, -1)).toBe(true);
     expect(s.stations.level[nav]).toBe(0); expect(Seated.station[s.crew[1]!]).toBe(-1); expect(s.stations.occupant[nav]).toBe(-1);
+  });
+});
+
+describe('bonus bars and shedding', () => {
+  it('a level-8 engineer adds two bars while seated; level 3 adds none; standing sheds in SHED_ORDER down to the base capacity', () => {
+    const s = makeState(2), eng = idx(s, StationKind.Engineering), doors = idx(s, StationKind.Doors), med = idx(s, StationKind.Medbay), sci = idx(s, StationKind.Science);
+    s.spawner.nextSpawnTick = 1e9;
+    setSkill(s, 0, Skill.Engineering, 3); sitDown(s, 0, eng);
+    expect(bonusBars(s)).toBe(0); expect(powerCapacity(s)).toBe(REACTOR_CAPACITY); expect(powerPool(s)).toBe(1);
+    setSkill(s, 0, Skill.Engineering, 8);
+    expect(bonusBars(s)).toBe(2); expect(powerCapacity(s)).toBe(REACTOR_CAPACITY + 2); expect(powerPool(s)).toBe(3);
+    expect(shiftBar(s, sci, 1)).toBe(true);                                        // the original spare: Science 1 -> 2
+    expect(shiftBar(s, med, 1)).toBe(true); expect(shiftBar(s, med, 1)).toBe(true);   // both bonus bars: Medbay 1 -> 3 (overdrive)
+    expect(powerUsed(s)).toBe(12); expect(powerPool(s)).toBe(0); expect(s.stations.level[doors]).toBe(1);
+    sitDown(s, 1, doors);
+    run(s, 1, () => intents({ cancelPressed: true }, {}));                           // the engineer stands: capacity back to 10, usage 12
+    expect(powerUsed(s)).toBe(REACTOR_CAPACITY);
+    expect(s.stations.level[doors]).toBe(0); expect(s.stations.level[med]).toBe(2);   // Doors first (1 -> 0, standing player 1), then Medbay (3 -> 2)
+    expect(Seated.station[s.crew[1]!]).toBe(-1); expect(s.stations.level[sci]).toBe(2);
+    sitDown(s, 0, eng);
+    expect(powerPool(s)).toBe(2); expect(s.stations.level[doors]).toBe(0);         // restored capacity does not restore shed bars
+  });
+  it('failing Engineering with bonus bars allocated sheds despite the allocation freeze; a Downed engineer sheds through crewSystem', () => {
+    const s = makeState(1), eng = idx(s, StationKind.Engineering), sci = idx(s, StationKind.Science), med = idx(s, StationKind.Medbay);
+    s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, 8); sitDown(s, 0, eng);
+    shiftBar(s, sci, 1); shiftBar(s, med, 1); shiftBar(s, med, 1);
+    expect(powerUsed(s)).toBe(12);
+    failStation(s, eng);
+    expect(powerUsed(s)).toBe(REACTOR_CAPACITY); expect(s.stations.level[eng]).toBe(1); expect(shiftBar(s, sci, -1)).toBe(false);   // shed happened; the freeze still holds for input
+    const t = makeState(1), engT = idx(t, StationKind.Engineering), sciT = idx(t, StationKind.Science), medT = idx(t, StationKind.Medbay);
+    t.spawner.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);
+    shiftBar(t, sciT, 1); shiftBar(t, medT, 1); shiftBar(t, medT, 1);
+    Health.cur[t.crew[0]!] = 0.01; t.rooms.fire[t.derived.stationRoom[engT]!] = 1;   // burning Engineering room downs the operator this tick
+    run(t, 1);
+    expect(Seated.station[t.crew[0]!]).toBe(-1); expect(powerUsed(t)).toBe(REACTOR_CAPACITY);
+  });
+  it('shedding keeps the Engineering floor when everything else is empty', () => {
+    const s = makeState(1), eng = idx(s, StationKind.Engineering);
+    for (let i = 0; i < s.stations.level.length; i++) s.stations.level[i] = 0;
+    s.stations.level[eng] = 1; s.power.capacity = 0;                                 // an impossible deficit: nothing to shed below the floor
+    shedPower(s);
+    expect(s.stations.level[eng]).toBe(1); expect(powerUsed(s)).toBe(1);
+    expect(SHED_ORDER[0]).toBe(StationKind.Doors); expect(SHED_ORDER[SHED_ORDER.length - 1]).toBe(StationKind.Engineering);
+  });
+  it('shedding one bar at a time follows SHED_ORDER through every station down to the Engineering floor', () => {
+    const s = makeState(1);
+    for (let i = 0; i < s.stations.level.length; i++) s.stations.level[i] = 1;      // one bar everywhere: usage 7
+    s.power.capacity = 7;
+    const removed: number[] = [];
+    for (let cap = 6; cap >= 0; cap--) {
+      s.power.capacity = cap; shedPower(s);
+      for (let i = 0; i < s.stations.level.length; i++) if (s.stations.level[i] === 0 && !removed.includes(s.derived.stationKind[i]!)) removed.push(s.derived.stationKind[i]!);
+    }
+    expect(removed).toEqual([StationKind.Doors, StationKind.Medbay, StationKind.Science, StationKind.Weapons, StationKind.Navigation, StationKind.LifeSupport]);   // Engineering keeps its bar
+    expect(s.stations.level[idx(s, StationKind.Engineering)]).toBe(1); expect(powerUsed(s)).toBe(1);
+  });
+  it('property: with an engineer of level 3, 4, 7 or 8, random inputs, sits, stands and downings keep usage within capacity, coolant within the pool and levels within maxLevel', () => {
+    const arbDir = fc.constantFrom({}, { moveY: -1 }, { moveY: 1 }, { moveX: -1 }, { moveX: 1 });
+    const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean(), stand: fc.boolean(), down: fc.boolean() }), { minLength: 20, maxLength: 200 });
+    fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), fc.constantFrom(3, 4, 7, 8), arbScript, (seed, level, script) => {
+      const s = makeState(1, seed), eng = idx(s, StationKind.Engineering), eid = s.crew[0]!;
+      s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, level); sitDown(s, 0, eng);
+      for (const e of script) {
+        for (let t = 0; t < 5; t++) {
+          if (Life.state[eid] === LifeState.Downed) reviveCrew(s, eid);                      // bring them back so the run keeps using the seat
+          if (Seated.station[eid]! < 0 && !e.stand) sitDown(s, 0, eng);
+          if (e.down && t === 2 && Seated.station[eid]! >= 0) Health.cur[eid] = 0;          // crewSystem downs them this tick: a forced stand through downCrew
+          run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm, cancelPressed: e.stand && t === 0 }));
+          if (powerUsed(s) > powerCapacity(s)) return false;
+          let coolant = 0;
+          for (let i = 0; i < s.stations.level.length; i++) { coolant += s.stations.coolant[i]!; if (s.stations.level[i]! > maxLevel(s.derived.stationKind[i]!)) return false; }
+          if (coolant > COOLANT_POOL) return false;
+        }
+      }
+      return true;
+    }), { numRuns: 25 });
   });
 });

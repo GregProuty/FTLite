@@ -4,6 +4,12 @@ import { oxygenStep, totalO2, roomBreached } from '../src/renderer/src/sim/hazar
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { O2_K, O2_SNAP_EPS } from '../src/renderer/src/sim/tuning';
 import { makeState, room, teleport } from './helpers/sim';
+import { passageFor } from '../src/renderer/src/sim/hazards/oxygen';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import { Skill } from '../src/renderer/src/sim/skills';
+import { PASSAGE_SEALED, PASSAGE_CLOSED, PASSAGE_OPEN, SEAL_SKILL } from '../src/renderer/src/sim/tuning';
+import { setSkill } from './helpers/sim';
 
 function balance(before: number, s: ReturnType<typeof makeState>, c0: typeof s.o2Counters): void {
   const c = s.o2Counters;
@@ -96,5 +102,17 @@ describe('oxygen', () => {
         }
       }
     ), { numRuns: 200 });
+  });
+});
+
+describe('sealed doors and the Doors operator', () => {
+  it('a level-10 Doors operator halves the sealed leak; Open and Closed are unchanged; unmanned is baseline', () => {
+    const s = makeState(1), doors = s.derived.stationOfKind[StationKind.Doors]!, e = s.derived.doorEdges[0]!;
+    s.doors.state[e] = DoorState.Sealed;
+    expect(passageFor(s, e)).toBeCloseTo(PASSAGE_SEALED);
+    setSkill(s, 0, Skill.Engineering, 10); sitDown(s, 0, doors);
+    expect(passageFor(s, e)).toBeCloseTo(PASSAGE_SEALED * (1 - 10 * SEAL_SKILL)); expect(1 - 10 * SEAL_SKILL).toBeCloseTo(0.5);
+    s.doors.state[e] = DoorState.Closed; expect(passageFor(s, e)).toBe(PASSAGE_CLOSED);
+    s.doors.state[e] = DoorState.Open; expect(passageFor(s, e)).toBe(PASSAGE_OPEN);
   });
 });

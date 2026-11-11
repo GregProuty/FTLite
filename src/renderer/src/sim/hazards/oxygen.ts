@@ -2,13 +2,19 @@ import type { SimState } from '../state';
 import { Life, LifeState, Position } from '../components';
 import { DoorState, conditionRoomAt } from '../grid';
 import { StationKind } from '../stationKinds';
-import { Skill, addXp } from '../skills';
-import { XP_RATE, HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
+import { Skill, addXp, skillLevelOf } from '../skills';
+import { stationOnline } from '../stations';
+import { XP_RATE, HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, SEAL_SKILL, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
 
 export function passageFor(state: SimState, edge: number): number {
   if (!state.derived.edgeIsDoor[edge]) return PASSAGE_OPEN;
   const st = state.doors.state[edge];
-  return st === DoorState.Open ? PASSAGE_OPEN : st === DoorState.Sealed ? PASSAGE_SEALED : PASSAGE_CLOSED;
+  if (st === DoorState.Open) return PASSAGE_OPEN;
+  if (st !== DoorState.Sealed) return PASSAGE_CLOSED;
+  const doors = state.derived.stationOfKind[StationKind.Doors]!;
+  const occ = doors >= 0 && stationOnline(state, doors) ? state.stations.occupant[doors]! : -1;
+  const level = occ >= 0 ? skillLevelOf(state, occ, Skill.Engineering) : 0;
+  return PASSAGE_SEALED * (1 - SEAL_SKILL * level);                   // a sealed door leaks less under a skilled Doors operator
 }
 
 export function roomBreached(state: SimState, room: number): boolean {
