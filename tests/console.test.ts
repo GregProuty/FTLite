@@ -9,10 +9,13 @@ import { failStation, powerPool, maxLevel } from '../src/renderer/src/sim/power'
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { REPAIR_TIME_POWER, STICK_REPEAT_TICKS, HEAT_MAX, HEAT_RISE, HEAT_COOL_UNIT, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY } from '../src/renderer/src/sim/tuning';
+import { TORP_START, REPAIR_TIME_POWER, STICK_REPEAT_TICKS, HEAT_MAX, HEAT_RISE, HEAT_COOL_UNIT, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY } from '../src/renderer/src/sim/tuning';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
+import { Weapon } from '../src/renderer/src/sim/weapons';
+import { buildHudModel } from '../src/renderer/src/render/hudModel';
+import type { SlotInfo } from '../src/renderer/src/input/deviceManager';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { makeState, intents, run, teleport, seconds, placeDebris, overdrive, room } from './helpers/sim';
 
@@ -219,21 +222,40 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     run(s, 1, () => intents({ cancelPressed: true }));
     expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.debris.warned[0]).toBe(1);
   });
-  it('Weapons: sit, charge to full, Confirm fires one shot (destroyed or missed, charge 0, one combat draw), Cancel stands', () => {
-    const s = makeState(1), i = idx(s, StationKind.Weapons), A = s.derived.roomIndex.get('A')!;
-    s.spawner.nextSpawnTick = 1e9;
-    at(s, 0, i); placeDebris(s, A, 1e6, 1);
-    run(s, 1, () => intents(confirm));
-    expect(Seated.station[s.crew[0]!]).toBe(i); expect(s.stations.cursor[i]).toBe(0);
-    let n = 0; while (s.weapons.charge < 1 && n++ < seconds(12) + 2) run(s, 1);
+  it('Science scans, Weapons retunes and fires a matched beam, then a torpedo', () => {
+    const s = makeState(2), sci = idx(s, StationKind.Science), wpn = idx(s, StationKind.Weapons), A = room(s, 'A');
+    s.spawner.nextSpawnTick = 1e9; s.stations.level[sci] = 2;                   // Science level 2: 8 s scan (the starter has 1)
+    s.stations.level[idx(s, StationKind.LifeSupport)] = 1;                      // pay for it from Life Support (pool stays >= 0)
+    placeDebris(s, A, seconds(30), 1, undefined, 3);
+    at(s, 0, sci); at(s, 1, wpn);
+    run(s, 1, () => intents(confirm, confirm));                                 // both sit
+    expect(Seated.station[s.crew[0]!]).toBe(sci); expect(Seated.station[s.crew[1]!]).toBe(wpn);
+    run(s, 1, () => intents(confirm, {}));                                      // Science starts the scan
+    expect(s.science.scanning).toBe(1);
+    run(s, seconds(8) + 2);
+    expect(s.debris.scanned[0]).toBe(1);
+    const slots: SlotInfo[] = [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }];
+    expect(buildHudModel(s, slots, 'running', '').threats[0]!.text).toMatch(/F3$/);
+    run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {})); run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
+    expect(s.weapons.selector).toBe(Weapon.BeamF3);
+    run(s, seconds(12) + 2 - (seconds(8) + 6));                                 // the beam has been charging since the sit: top it up to 12 s + 2 ticks
     expect(s.weapons.charge).toBe(1);
-    const oneDraw = createRng(s.rng.combat.s); nextFloat(oneDraw);
-    run(s, 1, () => intents(confirm));
-    expect(s.weapons.charge).toBe(0); expect(s.rng.combat.s).toBe(oneDraw.s);         // exactly one combat draw per shot
-    const destroyed = s.debris.active[0] === 0;
-    expect(destroyed ? s.stations.cursor[i] : s.debris.warned[0]).toBe(destroyed ? -1 : 1);
-    run(s, 1, () => intents({ cancelPressed: true }));
-    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[i]).toBe(-1);
+    s.rng.combat.s = 7; const one = createRng(7); nextFloat(one);
+    run(s, 1, () => intents({}, confirm));
+    expect(s.debris.active[0]).toBe(0); expect(s.rng.combat.s).toBe(one.s); expect(s.weapons.charge).toBe(0);
+    const second = placeDebris(s, A, seconds(30), 1, undefined, 1);            // reuses slot 0; already warned, so nothing auto-selects it
+    expect(s.stations.cursor[wpn]).toBe(-1);
+    run(s, 1, () => intents({}, down)); run(s, 1, () => intents({}, {}));       // Down with cursor -1 selects the first warned target
+    expect(s.stations.cursor[wpn]).toBe(second);
+    run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
+    expect(s.weapons.selector).toBe(Weapon.Torpedo);
+    run(s, seconds(21));                                                         // the tube has been loading since the sit (20 s at level 2); about 12 s have passed, so wait out the rest with margin
+    expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(TORP_START - 1); expect(s.debris.active[second]).toBe(1);
+    s.rng.combat.s = 7; const oneT = createRng(7); nextFloat(oneT);
+    run(s, 1, () => intents({}, confirm));
+    expect(s.debris.active[second]).toBe(0); expect(s.rng.combat.s).toBe(oneT.s); expect(s.weapons.torpedoLoaded).toBe(0); expect(s.weapons.torpedoStock).toBe(TORP_START - 1);
+    run(s, 1, () => intents({ cancelPressed: true }, { cancelPressed: true }));
+    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(Seated.station[s.crew[1]!]).toBe(-1);
   });
   it('Navigation: seated, an impact draws exactly one combat roll; a low roll evades with hull unchanged', () => {
     const s = makeState(1), i = idx(s, StationKind.Navigation), A = s.derived.roomIndex.get('A')!;

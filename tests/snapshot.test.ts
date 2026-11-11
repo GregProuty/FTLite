@@ -169,4 +169,14 @@ describe('snapshot', () => {
     run(resumed, 75);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
+  it('a scan in progress saved mid-scan and continued hashes equal to the uninterrupted run', () => {
+    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; const sci = s.derived.stationOfKind[StationKind.Science]!; placeDebris(s, room(s, 'A'), 1e6, 1, undefined, 2); sitDown(s, 0, sci); s.science.scanning = 1; return s; };
+    const whole = mk(); run(whole, 1200);
+    expect(whole.debris.scanned[0]).toBe(1);                                     // 16 s scan at level 1 is done by 20 s
+    const first = mk(); run(first, 500);
+    expect(first.debris.scan[0]).toBeGreaterThan(0); expect(first.debris.scan[0]).toBeLessThan(1);
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
+    run(resumed, 700);
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
 });
