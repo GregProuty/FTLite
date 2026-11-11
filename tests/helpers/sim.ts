@@ -4,7 +4,7 @@ import { createSimState, type SimState } from '../../src/renderer/src/sim/state'
 import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
-import { TICK_HZ } from '../../src/renderer/src/sim/tuning';
+import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS } from '../../src/renderer/src/sim/tuning';
 import { shiftBar, maxLevel } from '../../src/renderer/src/sim/power';
 
 export const LAYOUT = parseShip(starter);
@@ -49,4 +49,9 @@ export function overdrive(state: SimState, kind: number): number {
   state.power.capacity = 20;
   while (state.stations.level[i]! < maxLevel(kind)) if (!shiftBar(state, i, 1)) throw new Error('shiftBar refused');
   return i;
+}
+
+/** Set a crew member's skill to exactly the XP threshold of a level. */
+export function setSkill(state: SimState, pid: number, skill: number, level: number): void {
+  state.skills.xp[pid * SKILL_COUNT + skill] = XP_THRESHOLDS[level]!;
 }

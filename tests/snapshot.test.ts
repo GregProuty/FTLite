@@ -9,7 +9,8 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room, overdrive } from './helpers/sim';
+import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room, overdrive, setSkill } from './helpers/sim';
+import { Skill } from '../src/renderer/src/sim/skills';
 import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
@@ -40,11 +41,27 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-4 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-5 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 4 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 4;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 5 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 5;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
+  });
+  it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
+    const s = makeState(2, 5);
+    setSkill(s, 0, Skill.Science, 3); setSkill(s, 1, Skill.Repair, 7); s.skills.xp[Skill.Combat] = 12.5;
+    s.skills.lastEngChangeTick = 40; s.skills.lastDoorToggleTick = 41; s.skills.lsDeliveredTick = 45; s.skills.lastShotTick = 46;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(hashState(t)).toBe(hashState(s));
+    expect(Array.from(t.skills.xp)).toEqual(Array.from(s.skills.xp));
+    expect([t.skills.lastEngChangeTick, t.skills.lastDoorToggleTick, t.skills.lsDeliveredTick, t.skills.lastShotTick]).toEqual([40, 41, 45, 46]);
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
+    expect(mutate((u) => { u.skills.xp[3] = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.skills.lastEngChangeTick = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.skills.lastDoorToggleTick = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.skills.lsDeliveredTick = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.skills.lastShotTick = 1; })).not.toBe(base);
   });
   it('round-trips frequency, scan state, the weapon selector, torpedo state and scanning; each new field alone changes the hash', () => {
     const s = makeState(2, 5);

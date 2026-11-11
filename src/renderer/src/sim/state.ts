@@ -4,7 +4,7 @@ import { createRng, nextU32, type RngState } from '../../../shared/rng';
 import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
-import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START } from './tuning';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT } from './tuning';
 
 export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState }
 export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic'] as const;
@@ -34,6 +34,8 @@ export interface SimState {
   /** Debris objects in fixed slots (spec 2a-ii section 3). stableId is 0 while a slot is inactive. */
   debris: { active: Uint8Array; stableId: Int32Array; room: Int16Array; impactTick: Int32Array; warned: Uint8Array; frequency: Uint8Array; scanned: Uint8Array; scan: Float64Array };
   weapons: { charge: number; selector: number; torpedoStock: number; torpedoLoaded: number; torpedoLoad: number; torpedoRegen: number };   // selector 0..2 beam F1..F3, 3 torpedo; beam charge 0..1 survives standing and power failure
+  /** Per-crew skill XP (pid x SKILL_COUNT + skill) and the productivity stamps (spec 3-i section 4); stamps are -1 until set. */
+  skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
   science: { scanning: number };                        // 1 while a scan is running (spec 2b-ii section 4)
   /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */
   scratch: { doorToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array };
@@ -72,6 +74,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS), frequency: new Uint8Array(DEBRIS_SLOTS), scanned: new Uint8Array(DEBRIS_SLOTS), scan: new Float64Array(DEBRIS_SLOTS) },
     weapons: { charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 },
     science: { scanning: 0 },
+    skills: { xp: new Float64Array(playerCount * SKILL_COUNT), lastEngChangeTick: -1, lastDoorToggleTick: -1, lsDeliveredTick: -1, lastShotTick: -1 },
     scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount) }
   };
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));

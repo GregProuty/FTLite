@@ -1,8 +1,8 @@
 import type { SimState } from './state';
 import { Position, Seated } from './components';
 import { StationKind } from './stationKinds';
-import { STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST } from './tuning';
-import { skillLevel } from './skills';
+import { STATION_MAX } from './tuning';
+import { skillLevel, skillCurve } from './skills';
 import { warnedTargets } from './debrisTargets';
 
 export function stationOnline(state: SimState, i: number): boolean {
@@ -13,9 +13,7 @@ export function stationOnline(state: SimState, i: number): boolean {
 export function stationOutput(state: SimState, i: number): number {
   if (!stationOnline(state, i)) return 0;
   const kind = state.derived.stationKind[i]!, occ = state.stations.occupant[i]!;
-  const skill = occ >= 0 ? skillLevel(state, occ, kind) : 0;
-  const curve = OUTPUT_SLOW + (OUTPUT_FAST - OUTPUT_SLOW) * ((skill + 10) / 20);
-  return (state.stations.level[i]! / STATION_MAX[kind]!) * curve;
+  return (state.stations.level[i]! / STATION_MAX[kind]!) * skillCurve(occ >= 0 ? skillLevel(state, occ, kind) : 0);
 }
 
 export function failedStationCount(state: SimState): number {

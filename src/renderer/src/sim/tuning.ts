@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 5;
+export const SIM_VERSION = 6;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
@@ -86,3 +86,15 @@ export const TORP_HIT_BASE = 0.85, TORP_HIT_SCALE = 0.10;       // homing: frequ
 export const TORP_START = 3, TORP_CAP = 6;
 export const TORP_LOAD_TIME = 10;                     // seconds at output 1 to move one from stock into the tube
 export const TORP_REGEN_TIME = 90;                    // seconds per stock unit while Weapons is online
+
+// Skills and XP (increment 3-i)
+export const SKILL_COUNT = 6, SKILL_MAX = 10;
+export const XP_THRESHOLDS = [0, 240, 600, 1080, 1680, 2400, 3240, 4200, 5280, 6480, 7800] as const;   // cumulative productive seconds per level
+export const XP_RATE = 1;                              // per productive second
+export const XP_PER_SHOT = 10;                         // Weapons, per shot taken
+export const XP_PER_EVADE_ROLL = 5;                    // Navigation, per evasion roll
+export const PRODUCTIVE_WINDOW_TICKS = 300;            // 5 s: a change keeps Engineering or Doors productive this long
+export const REPAIR_SKILL_GAIN = 0.06;                 // repair speed 1 + gain x level
+export const HEAT_COOL_SKILL = 0.2;                    // extra cooling per unit: floor(0.2 x level)
+export const SEAL_SKILL = 0.05;                        // sealed passage x (1 - 0.05 x level)
+export const BONUS_BAR_LEVELS = 4;                     // one bonus bar per 4 Engineering levels while seated
