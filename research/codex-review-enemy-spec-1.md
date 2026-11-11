@@ -1,0 +1,13 @@
+# Codex review: Combat-i spec half 1 (2026-11-11)
+
+1. **High — §3 line 32; §6 line 81:** `nextTarget` cannot remain unchanged. `debrisTargets.ts:15` compares `db.stableId[k]`; for `ENEMY_SLOT`, this is `undefined`, so retargeting can skip the enemy incorrectly. **Fix:** explicitly replace that comparison with `targetStableId(state, k)`. `cycleTarget` and `removeDebris` can remain unchanged after this fix.
+
+2. **High — §3 line 40; §4 line 59:** The HUD responsibility omits several unsafe pseudo-slot reads: `hudModel.ts:98` indexes debris identity/room/ETA, line 119 reads `debris.scan[k]`, and line 163 indexes debris fields for every `warnedTargets` entry. The enemy can cause an undefined-room crash. **Fix:** require an enemy branch before all debris indexing in `target`, Science row construction, and threat construction; supply enemy ETA, hull, null frequency, and scan `0`.
+
+3. **Medium — §4 line 59; §5 line 77; §6 line 81:** `productive.ts` is missing from the migration. Line 28 indexes debris arrays with the Science cursor, including `ENEMY_SLOT`; `anyWarned` at line 15 now makes an enemy alone productive for Science and Navigation. That awards continuous XP and resets director routing idle counters even without incoming objects. **Fix:** guard scan validity with `c !== ENEMY_SLOT`; explicitly decide whether enemy presence earns productivity, and filter `ENEMY_SLOT` from `anyWarned` if it should require debris/shots.
+
+4. **Medium — §2 line 16; §3 line 40; §6 line 83:** The unified target list can contain nine entries, but `hud.ts:81,142–158` renders only six Weapons targets and seven Science targets. With enough older objects, the enemy and selected later targets are invisible. **Fix:** specify a cursor-following scroll window or sufficient target rows, including the mapping from list cursor to visible row.
+
+5. **Medium — §3 line 31; §6 line 81:** Keeping `removeDebris` unchanged leaves `kind = Shot` in freed slots. Production `spawnDebris` resets it as specified, but `tests/helpers/sim.ts:37–46` does not; placing debris into a former shot slot silently creates another shot, changing damage and shot-cap accounting. **Fix:** require `placeDebris` to write `ObjectKind.Debris`, with `placeShot` explicitly overriding it.
+
+6. **Low — §3 line 34 versus §6 line 81:** Architecture says `scanStep` is unchanged; Targets requires a new enemy guard. Its current active-slot check happens to reject index 8, but still violates §4’s prohibition on debris indexing with `ENEMY_SLOT`. **Fix:** make both sections require an early `c === ENEMY_SLOT` return, preserving `science.scanning` and object progress.

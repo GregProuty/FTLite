@@ -1,0 +1,25 @@
+# Codex review: Combat-i spec half 2 (2026-11-11)
+
+1. **Medium — §7, line 88:** Target-row text is ambiguous. Current `hud.ts` combines room, ETA, frequency and scan progress into one name string; there is no separate scan column. §10 instead expects `Enemy 100%`. **Fix:** prescribe exact strings for each kind, including enemy ETA placement, percentage rounding, and omission of frequency/scan text; explicitly set the Science enemy target’s `scan` to `0`.
+
+2. **Medium — §7, line 88:** The combined list permits nine targets, but `hud.ts` renders only six Weapons targets and seven Science targets. Cycling can select an invisible enemy or shot. **Fix:** specify a cursor-following viewport and test selection beyond each panel’s visible capacity.
+
+3. **Medium — §8, line 109:** Seated Science cannot provide 18–24 seconds of warning for shots whose entire flight lasts 8–12 seconds. Those are detection thresholds; seated shots are warned on spawn. **Fix:** say “4 seconds unmanned; warned immediately when seated, giving 8–12 seconds.”
+
+4. **Medium — §8, line 109:** Three torpedoes require approximately **60 seconds** of loading at output `0.5`, since `TORP_LOAD_TIME / output = 20` seconds each. Thirty seconds assumes output `1`. **Fix:** correct the example and state whether the tube starts loaded.
+
+5. **Medium — §8, line 109; §9, line 123:** “Up to 60 hull” is not an upper bound: cadence accelerates from 11.54 to 10 seconds, with jitter allowing additional shots. Current baseline seeds finish with hull `76/84/92` and health approximately `69/49`, `70/48`, `61/35`. Roughly ten impacts are plausibly survivable by hull, but crew survival is uncertain: every shot also deals 20 room damage and creates a hazard. Lowering hull damage does not address that drain; delaying arrival only reduces exposure. **Fix:** label 60 an estimate, record actual encounter impacts and minimum crew health, and define a further cadence/shot-count fallback if both prescribed steps fail.
+
+6. **Medium — §9, line 115:** Schedule tests lack pinned RNG inputs and exact expected spawn/rearm values. Checking global RNG around `step()` also includes director and fire-system draws, so “no draw on arrival” is not isolated. **Fix:** test `enemySystem` directly with explicit stream states and exact tick/room/frequency expectations; separately test integration ordering. Pin interval results to `15`, `150/13`, `7.5`, and `6` seconds at minutes `0`, `3`, `10`, and `15`, with solo results multiplied by `1.5`.
+
+7. **Medium — §9, lines 115–118:** Several §5–6 rules have no required test: full-table rejection independently of the shot cap, Science Confirm/scan-step guards on `ENEMY_SLOT`, and a kill coinciding with a due enemy shot. **Fix:** add fixtures asserting rearm with one director/no hazards draw for a full debris table; unchanged scan state/progress on the enemy; and no new shot when Weapons kills the enemy before `enemySystem`.
+
+8. **Medium — §9, lines 117–118:** “Pinned combat seed,” “pinned roll,” and “breach or fire” leave random outcomes unspecified. Enemy-specific readiness rejection cases are also absent. **Fix:** use combat state `7` for hits/evasion and `4` for misses at output `0.5`; hazards state `7` for breach-first and `1` for fire-first. State exact hull, health, counters and draw counts, and cover offline, unoccupied, uncharged and unloaded enemy attacks.
+
+9. **Medium — §9, line 120:** Continuation hash equality can pass vacuously if both runs end before impact or withdrawal. No fixture or event assertions prevent this. **Fix:** save a quiet, living two-crew fixture with impact due in 10 ticks and departure in 20; run beyond both, assert the impact and withdrawal occurred, then compare hashes.
+
+10. **Medium — §9, line 124:** The combat gate does not identify the operator, initial charge, all-hit roll sequence, or protection from unrelated hazards. `quiet()` suppresses director spawns but leaves enemy fire active. **Fix:** specify a Recruit at Weapons allocation 2, zero initial charge, isolated incoming fire, and combat state `7` before each Confirm; assert seven shots/hits, destruction, and completion before `departTick`.
+
+11. **Low — §9, line 122:** The telemetry/table test omits exact record mapping, column placement and fixture updates. Existing tests compare whole records and anchored table rows, not merely headers. **Fix:** append `enemy` after `hits/shots`; require `{ encounters: 2, enemiesDestroyed: 1 } → enemy: { met: 2, destroyed: 1 } → 2/1`, plus the zero case, JSON round trip, and updated complete record/table fixtures.
+
+12. **Medium — §10, line 131:** The automated gate names selected suites rather than the full `npm test` required by existing gate entries, leaving golden replay and other regressions outside the stated gate. **Fix:** require `npm run typecheck`, `npm test`, and `npm run build` on the final commit; retain recorded seed results and the unchecked manual playtest item.
