@@ -5,14 +5,14 @@ import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { step } from '../src/renderer/src/sim/step';
 import { sitDown } from '../src/renderer/src/sim/stations';
-import { failStation } from '../src/renderer/src/sim/power';
+import { failStation, powerUsed } from '../src/renderer/src/sim/power';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { downCrew } from '../src/renderer/src/sim/crew';
 import { debrisSystem } from '../src/renderer/src/sim/debris';
 import { fireWeapon, beamHits, Weapon } from '../src/renderer/src/sim/weapons';
 import { stationOutput } from '../src/renderer/src/sim/stations';
-import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
+import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Phase, HazardType, enterPhase, updateStress, directorSystem } from '../src/renderer/src/sim/director';
 import { DEBRIS_CREW_DAMAGE, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, DT, SIM_VERSION, TICK_HZ } from '../src/renderer/src/sim/tuning';
@@ -47,6 +47,25 @@ describe('telemetry: manned ticks and idle streaks', () => {
     s.stations.failed[n] = 1; s.stations.occupant[n] = 0;      // stale occupant byte on a failed station
     telemetrySystem(s);
     expect(s.telemetry.mannedTicks[StationKind.Navigation]).toBe(10);
+    expect(Seated.station[s.crew[0]!]).toBe(n);                       // seating survives: the offline seat is not a stand-up, and the seated player is idle
+    expect(s.telemetry.idleRun[0]).toBe(1);
+    s.stations.failed[n] = 0; s.stations.level[n] = 0;                // online but zero allocation behaves the same
+    telemetrySystem(s);
+    expect(s.telemetry.idleRun[0]).toBe(2);
+    expect(s.telemetry.mannedTicks[StationKind.Navigation]).toBe(10);
+  });
+  it('shedPower standing a second seated operator during step() leaves that station unmanned and its operator idle that tick', () => {
+    const s = makeState(2); quiet(s);
+    const eng = s.derived.stationOfKind[StationKind.Engineering]!, doors = s.derived.stationOfKind[StationKind.Doors]!;
+    setSkill(s, 0, Skill.Engineering, 4);
+    sitDown(s, 0, eng); sitDown(s, 1, doors);
+    s.power.capacity = powerUsed(s) - 1;                              // Doors is first in SHED_ORDER, so its bar is the one shed
+    run(s, 1);
+    run(s, 1, () => intents({ cancelPressed: true }, {}));
+    expect([
+      s.stations.level[doors], Seated.station[s.crew[1]!],
+      s.telemetry.mannedTicks[StationKind.Doors], s.telemetry.idleRun[1]
+    ]).toEqual([0, -1, 1, 1]);
   });
   it('idleRun counts walking and standing, resets on a seated tick, and longestIdle keeps the maximum streak', () => {
     const s = makeState(1); quiet(s); const n = nav(s);
@@ -86,6 +105,23 @@ describe('telemetry: manned ticks and idle streaks', () => {
     Life.reviveProgress[s.crew[1]!] = 1 - DT / REVIVE_TIME / 2;     // completes on the next progress tick
     run(s, 1, () => intents(hold, {}));
     expect(Life.state[s.crew[1]!]).toBe(LifeState.Conscious); expect(s.telemetry.idleRun[0]).toBe(0);
+  });
+  it('revive wins priority over a competing fire, prevLife follows, and a second downing does not overwrite the first-down event', () => {
+    const s = makeState(2); quiet(s);
+    downCrew(s, 1); run(s, 1);                                        // records the original downing
+    teleport(s, 0, 2.5, 9.5); teleport(s, 1, 2.5, 9.5);
+    igniteRoom(s, room(s, 'G'));                                      // a fire in the same room competes for the reviver
+    Life.reviveProgress[s.crew[1]!] = 1 - DT / REVIVE_TIME / 2;
+    run(s, 1, () => intents(hold, {}));
+    expect(Life.state[s.crew[1]!]).toBe(LifeState.Conscious);
+    expect(s.rooms.fireRepair[room(s, 'G')]).toBe(0);                 // revive took the tick, so the fire got no repair progress
+    expect(s.telemetry.prevLife[1]).toBe(LifeState.Conscious);
+    run(s, 1);
+    expect(s.telemetry.idleRun[0]).toBe(1);
+    const first = [s.telemetry.firstDownTick, s.telemetry.firstDownPid];
+    downCrew(s, 1); run(s, 1);
+    expect(s.telemetry.prevLife[1]).toBe(LifeState.Downed);
+    expect([s.telemetry.firstDownTick, s.telemetry.firstDownPid]).toEqual(first);
   });
   it('mixed case: a crew member who adds repair progress and is downed by debris in the same tick is active that tick and idle the next', () => {
     const s = makeState(1); quiet(s); const G = room(s, 'G');
@@ -163,12 +199,17 @@ describe('telemetry: event counters', () => {
     for (let seed = 1; seed <= 24; seed++) {                           // director seeds cover every type; each spawn increments exactly its own counter
       const s = makeState(2); armSpawn(s); s.rng.director.s = seed;
       directorSystem(s);
-      if (s.director.lastType < 0) continue;                          // a skipped attempt (no target) increments nothing
+      if (s.director.lastType < 0) { expect(Array.from(s.telemetry.spawns)).toEqual([0, 0, 0, 0]); continue; }   // a skipped attempt (no target) increments nothing
       typesSeen.add(s.director.lastType);
       const expected = [0, 0, 0, 0]; expected[s.director.lastType] = 1;
       expect(Array.from(s.telemetry.spawns)).toEqual(expected);
     }
     expect([...typesSeen].sort()).toEqual([HazardType.Fire, HazardType.Breach, HazardType.Power, HazardType.Debris]);
+    const capped = makeState(2); armSpawn(capped);                    // debris cap reached: every attempt is rejected
+    capped.debris.active.fill(1);
+    directorSystem(capped);
+    expect(capped.director.lastType).toBe(-1);
+    expect(Array.from(capped.telemetry.spawns)).toEqual([0, 0, 0, 0]);
     const s = makeState(2);
     enterPhase(s, Phase.SustainPeak); enterPhase(s, Phase.PeakFade); enterPhase(s, Phase.Relax); enterPhase(s, Phase.BuildUp);
     expect(Array.from(s.telemetry.phaseEntries)).toEqual([2, 1, 1, 1]);
@@ -218,6 +259,8 @@ describe('telemetry: event counters', () => {
 describe('telemetryRecord', () => {
   it('rounds seconds: eventSeconds(0) is 0.0, durationSeconds(90) is 1.5', () => {
     expect(eventSeconds(0)).toBe(0); expect(eventSeconds(59)).toBe(1); expect(durationSeconds(90)).toBe(1.5); expect(durationSeconds(0)).toBe(0);
+    expect(eventSeconds(2)).toBe(0.1);                                // (2+1)/60 = 0.05 rounds up; without the +1 it would be 0
+    expect(durationSeconds(2)).toBe(0);                               // 2/60 = 0.033 rounds to 0
   });
   it('maps a crafted state to the exact record', () => {
     const s = makeState(2, 9, DEFAULT_CHARACTERS); quiet(s); const t = s.telemetry;
