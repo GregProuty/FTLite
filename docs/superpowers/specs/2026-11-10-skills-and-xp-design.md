@@ -149,3 +149,13 @@ Added to `docs/gates.md` as "Increment 3-i":
 - Whether XP should be shared partially across the crew (no: individual skills are the point of the character layer).
 - Whether a Downed operator should lose XP (no).
 - Level-up notice on the HUD: revisit with 3-ii's game-over summary.
+
+## 13. Amendments from the plan
+- `shedPower` is called by the three systems that stand a player (the voluntary stand in `consoleSystem`, `failStation`, `downCrew`) right after `standUp`, not inside `standUp` (section 7): `power.ts` imports `standUp` from `stations.ts`, so the reverse would be a module cycle. It is a no-op unless usage exceeds capacity.
+- `repairMult` lives in `skills.ts` next to `skillCurve`.
+- `bonusBars` requires the seated operator to be Conscious and Engineering to be online; `coolingPerUnit` and `passageFor` likewise read the operator only while their station is online.
+- The golden replay was re-blessed twice, not once (section 10): in Task 1 for `SIM_VERSION` 6 and the new hashed block, and in Task 2 when XP and the stamps first accrue in the replay.
+- The survival gate is not XP-free (section 10): its bot crew repairs hazards and earns Repair XP; no station is manned, so no other formula moves.
+- The HUD's Engineering pool and strip capacity read `powerPool` and `powerCapacity`, so bonus bars are visible (section 9 did not say so).
+- `recent(stamp, tick, span)`: the third parameter is named `span` because the boundary test bans the identifier `window` in sim files.
+- The "only drained room is breached" Life Support fixture in section 10 does not exist in practice: oxygen diffuses from a drained room into its neighbours and injection then delivers there. The no-delivery fixtures keep every room full with a breach in the Life Support room instead.
