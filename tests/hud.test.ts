@@ -235,7 +235,11 @@ describe('buildHudModel', () => {
       ['enemy', null, null, true, null, 0.64], ['enemy', 0, { hp: 30, repairIn: null }, true, null, null], ['enemy', 1, { hp: 30, repairIn: null }, true, null, null], ['enemy', 2, { hp: 30, repairIn: null }, true, null, null]]);
     expect(sp.targets.slice(1).map((t) => t.scan)).toEqual([0.4, 0, 0, 0]);
     expect(m.threats[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64%' });
-    disableSystem(s, EnemySystem.Weapons); disableSystem(s, EnemySystem.Shields); s.enemy.scanned = 1;
+    s.enemy.scanned = 1;
+    expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as WeaponsPanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: true });   // revealed, shields still up
+    disableSystem(s, EnemySystem.Weapons);
+    expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Enemy ship: hull 64% weapons DOWN');
+    disableSystem(s, EnemySystem.Shields);
     m = buildHudModel(s, slots(2), 'running', ''); wp = m.players[0]!.console as WeaponsPanel;
     expect(wp.targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[4]!.status).toEqual({ hp: 0, repairIn: 45 });
     expect(m.threats[0]!.text).toBe('Enemy ship: hull 64% weapons DOWN shields DOWN');

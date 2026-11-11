@@ -279,11 +279,11 @@ describe('snapshot', () => {
     const f = makeState(2).enemy;
     expect([f.present, f.hull, f.stableId, f.nextArrivalTick, f.nextShotTick, f.departTick]).toEqual([0, 0, 0, ENCOUNTER_FIRST * TICK_HZ, -1, -1]);
     const s = makeState(2, 5); s.enemy.present = 1; s.enemy.hull = 37; s.enemy.stableId = 41; s.enemy.nextArrivalTick = 9000; s.enemy.nextShotTick = 1234; s.enemy.departTick = 5678;
-    s.enemy.sysHp.set([30, 0, 12]); s.enemy.sysRepairTick.set([-1, 7777, -1]); s.enemy.shieldFreq = 3; s.enemy.scanned = 1; s.enemy.scan = 0.45; s.telemetry.enemyDisables = 4;
+    s.enemy.sysHp.set([7, 11, 19]); s.enemy.sysRepairTick.set([111, 222, 333]); s.enemy.shieldFreq = 3; s.enemy.scanned = 1; s.enemy.scan = 0.45; s.telemetry.enemyDisables = 4;
     s.debris.kind[2] = 1; s.debris.kind[5] = 1; s.telemetry.encounters = 3; s.telemetry.enemiesDestroyed = 2;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect([t.enemy.present, t.enemy.hull, t.enemy.stableId, t.enemy.nextArrivalTick, t.enemy.nextShotTick, t.enemy.departTick]).toEqual([1, 37, 41, 9000, 1234, 5678]);
-    expect(Array.from(t.enemy.sysHp)).toEqual([30, 0, 12]); expect(Array.from(t.enemy.sysRepairTick)).toEqual([-1, 7777, -1]); expect([t.enemy.shieldFreq, t.enemy.scanned, t.enemy.scan, t.telemetry.enemyDisables]).toEqual([3, 1, 0.45, 4]);
+    expect(Array.from(t.enemy.sysHp)).toEqual([7, 11, 19]); expect(Array.from(t.enemy.sysRepairTick)).toEqual([111, 222, 333]); expect([t.enemy.shieldFreq, t.enemy.scanned, t.enemy.scan, t.telemetry.enemyDisables]).toEqual([3, 1, 0.45, 4]);
     expect(Array.from(t.debris.kind)).toEqual(Array.from(s.debris.kind)); expect([t.telemetry.encounters, t.telemetry.enemiesDestroyed]).toEqual([3, 2]);
     const base = hashState(makeState(2, 5));
     const mutate = (fn: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); fn(u); return hashState(u); };
@@ -316,6 +316,17 @@ describe('snapshot', () => {
     expect(resumed.enemy.scan).toBeGreaterThan(0);                                      // the enemy scan runs
     run(whole, 280); run(resumed, 280);                                                 // through tick 420: the repaired weapons fire at 410
     expect(shotsInFlight(resumed)).toBe(1);
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+  it('a run saved with the engines down and the departure clock already pushed continues like the uninterrupted run through the repair, the clock stopping at the push of 20 more', () => {
+    const setup = (s: ReturnType<typeof makeState>) => { run(s, 0); placeEnemy(s); disableSystem(s, EnemySystem.Engines); s.enemy.sysRepairTick[EnemySystem.Engines] = s.tick + 120; s.enemy.nextShotTick = 1e9; run(s, 100); };
+    const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9; setup(whole);
+    const part = makeState(2, 31); part.director.nextSpawnTick = 1e9; setup(part);
+    const pushed = part.enemy.departTick;
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    expect(resumed.enemy.departTick).toBe(pushed);
+    run(whole, 50); run(resumed, 50);
+    expect(resumed.enemy.departTick).toBe(pushed + 20); expect(resumed.enemy.sysHp[EnemySystem.Engines]).toBe(ENEMY_SYS_HP);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 });
