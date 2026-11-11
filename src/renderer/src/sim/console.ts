@@ -5,6 +5,7 @@ import { StationKind, STATION_COUNT } from './stationKinds';
 import { intentFor } from './step';
 import { standUp } from './stations';
 import { shiftBar } from './power';
+import { cycleCoolant } from './heat';
 import { toggleSeal } from './doors';
 import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 
@@ -26,7 +27,7 @@ export function stickEdge(state: SimState, pid: number, moveX: number, moveY: nu
   rep[pid] = r; return Dir.None;
 }
 
-function engineeringInput(state: SimState, i: number, dir: number): void {
+function engineeringInput(state: SimState, i: number, dir: number, confirm: boolean): void {
   const c = state.stations.cursor;
   if (dir === Dir.Up) c[i] = (c[i]! + STATION_COUNT - 1) % STATION_COUNT;
   else if (dir === Dir.Down) c[i] = (c[i]! + 1) % STATION_COUNT;
@@ -34,6 +35,7 @@ function engineeringInput(state: SimState, i: number, dir: number): void {
     const target = state.derived.stationOfKind[c[i]!]!;
     if (target >= 0) shiftBar(state, target, dir === Dir.Right ? 1 : -1);
   }
+  if (confirm) cycleCoolant(state, state.derived.stationOfKind[c[i]!]!);   // spec 2b-i section 5: the cursor's station after this tick's stick edge
 }
 
 function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): void {
@@ -54,7 +56,7 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     if (it.cancelPressed || it.interactPressed) { standUp(state, pid); state.scratch.stoodThisTick[pid] = 1; continue; }   // standing consumes the tick's stick input
     const dir = stickEdge(state, pid, it.moveX, it.moveY);
     const kind = state.derived.stationKind[i]!;
-    if (kind === StationKind.Engineering) engineeringInput(state, i, dir);
+    if (kind === StationKind.Engineering) engineeringInput(state, i, dir, it.confirmPressed);
     else if (kind === StationKind.Doors) doorsInput(state, i, dir, it.confirmPressed);
     else if (kind === StationKind.Weapons) weaponsInput(state, i, dir, it.confirmPressed);
     // Navigation, Science, Life Support, Medbay: no seated controls.

@@ -1,17 +1,20 @@
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
+import type { Intent } from '../src/shared/intent';
+import { coolantUsed } from '../src/renderer/src/sim/heat';
 import { Seated, Position, Life, LifeState, Health } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { confirmTarget, ConfirmKind, interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
-import { failStation, powerPool } from '../src/renderer/src/sim/power';
+import { failStation, powerPool, maxLevel } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { REPAIR_TIME_POWER, STICK_REPEAT_TICKS } from '../src/renderer/src/sim/tuning';
+import { REPAIR_TIME_POWER, STICK_REPEAT_TICKS, HEAT_MAX, HEAT_RISE, HEAT_COOL_UNIT, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY } from '../src/renderer/src/sim/tuning';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { makeState, intents, run, teleport, seconds, placeDebris } from './helpers/sim';
+import { makeState, intents, run, teleport, seconds, placeDebris, overdrive, room } from './helpers/sim';
 
 const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.stationOfKind[kind]!;
 const at = (s: ReturnType<typeof makeState>, pid: number, i: number) => { const t = s.derived.stationTile[i]!, w = s.derived.width; teleport(s, pid, (t % w) + 0.5, Math.floor(t / w) + 0.5); };
@@ -103,6 +106,66 @@ describe('Engineering console', () => {
     s.stations.cursor[eng] = StationKind.Weapons;
     run(s, STICK_REPEAT_TICKS * 2 + 1, () => intents(right));
     expect(s.stations.level[wpn]).toBe(3); expect(powerPool(s)).toBe(0);
+  });
+  it('Confirm cycles the selected station\'s coolant 0, 1, 2, 0; wraps to 0 when the pool is exhausted; does nothing on the Engineering row', () => {
+    const s = makeState(1), eng = idx(s, StationKind.Engineering), wpn = idx(s, StationKind.Weapons), nav = idx(s, StationKind.Navigation);
+    sitDown(s, 0, eng);
+    run(s, 1, () => intents(confirm));
+    expect(coolantUsed(s)).toBe(0);                                      // Engineering row: nothing
+    s.stations.cursor[eng] = StationKind.Weapons;
+    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(1);
+    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(2);
+    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(0);
+    run(s, 1, () => intents(confirm)); run(s, 1, () => intents(confirm));   // back to 2
+    s.stations.coolant[idx(s, StationKind.Science)] = 1;                  // 3 of 4 used
+    s.stations.cursor[eng] = StationKind.Navigation;
+    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[nav]).toBe(1); expect(coolantUsed(s)).toBe(COOLANT_POOL);
+    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[nav]).toBe(0);   // the step to 2 cannot be supplied: wrap
+    expect(coolantUsed(s)).toBe(3);
+  });
+  it('same tick: a Left out of overdrive, or a Confirm to two units, on the would-be overheat tick prevents it', () => {
+    const a = makeState(1), engA = idx(a, StationKind.Engineering), wpnA = overdrive(a, StationKind.Weapons);
+    a.spawner.nextSpawnTick = 1e9; sitDown(a, 0, engA); a.stations.cursor[engA] = StationKind.Weapons;
+    a.stations.heat[wpnA] = HEAT_MAX - HEAT_RISE;
+    run(a, 1, () => intents(left));                                            // consoleSystem (level 4 -> 3) precedes heatStep
+    expect(a.stations.level[wpnA]).toBe(3); expect(a.stations.failed[wpnA]).toBe(0);
+    expect(a.stations.heat[wpnA]).toBe(HEAT_MAX - HEAT_RISE - HEAT_COOL_IDLE);   // idle cooling instead of an overheat
+    const b = makeState(1), engB = idx(b, StationKind.Engineering), wpnB = overdrive(b, StationKind.Weapons);
+    b.spawner.nextSpawnTick = 1e9; sitDown(b, 0, engB); b.stations.cursor[engB] = StationKind.Weapons;
+    b.stations.heat[wpnB] = HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT); b.stations.coolant[wpnB] = 1;   // one unit: the next update would reach HEAT_MAX
+    run(b, 1, () => intents(confirm));                                         // 1 -> 2 units before heatStep: net 0
+    expect(b.stations.coolant[wpnB]).toBe(2); expect(b.stations.failed[wpnB]).toBe(0); expect(b.stations.heat[wpnB]).toBe(HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT));
+  });
+  it('same tick: a Weapons shot on the Weapons overheat tick resolves before the failure stands the operator', () => {
+    const s = makeState(2), wpn = overdrive(s, StationKind.Weapons);
+    s.spawner.nextSpawnTick = 1e9;
+    placeDebris(s, room(s, 'A'), 600, 1); sitDown(s, 1, wpn); s.weapons.charge = 1;
+    s.stations.heat[wpn] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = 1;         // no fire
+    const oneDraw = createRng(s.rng.combat.s); nextFloat(oneDraw);
+    run(s, 1, () => intents({}, confirm));
+    expect(s.rng.combat.s).toBe(oneDraw.s); expect(s.weapons.charge).toBe(0);  // the shot was taken
+    expect(s.stations.failed[wpn]).toBe(1); expect(Seated.station[s.crew[1]!]).toBe(-1);
+  });
+  it('property: random Engineering inputs over 60 s keep coolant within the pool, heat within range, levels within maxLevel and the capacity, checked every hazard tick', () => {
+    const arbDir = fc.constantFrom({}, up, down, left, right);
+    const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean() }), { minLength: 720, maxLength: 720 });   // 720 x 5 ticks = 3600 ticks = 60 s
+    const check = (s: ReturnType<typeof makeState>) => {
+      let used = 0, levels = 0;
+      for (let i = 0; i < s.stations.level.length; i++) {
+        used += s.stations.coolant[i]!; levels += s.stations.level[i]!;
+        if (s.stations.coolant[i]! > 2 || s.stations.heat[i]! < 0 || s.stations.heat[i]! > HEAT_MAX || s.stations.level[i]! > maxLevel(s.derived.stationKind[i]!)) return false;
+      }
+      return used <= COOLANT_POOL && levels <= s.power.capacity;
+    };
+    fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), arbScript, (seed, script) => {
+      const s = makeState(1, seed), eng = idx(s, StationKind.Engineering);
+      sitDown(s, 0, eng);
+      for (const e of script) {
+        run(s, HAZARD_EVERY, () => intents({ ...e.dir, confirmPressed: e.confirm }));   // one stick edge per 5 ticks, Confirm edges every tick while true
+        if (!check(s)) return false;
+      }
+      return true;
+    }), { numRuns: 20 });
   });
 });
 
@@ -197,6 +260,34 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
       expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[i]).toBe(-1);
     });
   }
+});
+
+describe('scripted-intent gate: Engineering overdrive', () => {
+  it('overdriven Weapons with two units holds 30 s; at zero units it overheats within 10 s and stands the Weapons operator', () => {
+    const s = makeState(2), eng = idx(s, StationKind.Engineering), wpn = idx(s, StationKind.Weapons), ls = idx(s, StationKind.LifeSupport);
+    s.spawner.nextSpawnTick = 1e9;
+    sitDown(s, 0, eng); sitDown(s, 1, wpn);
+    const edge = (p: Partial<Intent>) => { run(s, 1, () => intents(p, {})); run(s, 1, () => intents({}, {})); };
+    edge(down);                                                               // cursor Engineering -> Life Support
+    edge(left); expect(s.stations.level[ls]).toBe(1); expect(powerPool(s)).toBe(2);
+    edge(up); edge(up); edge(up);                                             // Life Support -> Engineering -> Science -> Weapons
+    expect(s.stations.cursor[eng]).toBe(StationKind.Weapons);
+    edge(right); edge(right);
+    expect(s.stations.level[wpn]).toBe(4); expect(powerPool(s)).toBe(0);
+    edge(confirm); edge(confirm);
+    expect(s.stations.coolant[wpn]).toBe(2);
+    run(s, seconds(30));
+    expect(s.stations.level[wpn]).toBe(4); expect(s.stations.failed[wpn]).toBe(0); expect(s.stations.heat[wpn]).toBeLessThan(HEAT_MAX);
+    expect(s.stations.occupant[wpn]).toBe(1);
+    edge(confirm);
+    expect(s.stations.coolant[wpn]).toBe(0);
+    let failedAt = -1;
+    for (let t = 0; t < seconds(10) + 2 * HAZARD_EVERY && failedAt < 0; t++) { run(s, 1); if (s.stations.failed[wpn]) failedAt = t; }
+    expect(failedAt).toBeGreaterThanOrEqual(0);
+    expect(s.stations.level[wpn]).toBe(0); expect(s.stations.heat[wpn]).toBe(0);
+    expect(Seated.station[s.crew[1]!]).toBe(-1); expect(s.stations.occupant[wpn]).toBe(-1);
+    expect(Seated.station[s.crew[0]!]).toBe(eng);                             // the Engineering operator is unaffected
+  });
 });
 
 describe('power repair', () => {
