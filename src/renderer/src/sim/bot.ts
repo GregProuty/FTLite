@@ -39,7 +39,7 @@ function firstStep(state: SimState, fromIdx: number, goals: Set<number>): number
   return -1;
 }
 
-function goalTiles(state: SimState, pid: number): Set<number> {
+function goalTiles(state: SimState, pid: number, here: number): Set<number> {
   const d = state.derived, goals = new Set<number>();
   for (let other = 0; other < state.playerCount; other++) {
     if (other === pid || Life.state[state.crew[other]!] !== LifeState.Downed) continue;
@@ -47,7 +47,8 @@ function goalTiles(state: SimState, pid: number): Set<number> {
   }
   if (goals.size) return goals;
   for (let k = 0; k < state.boarders.active.length; k++) if (state.boarders.active[k]) for (const t of d.roomTiles[state.boarders.room[k]!]!) goals.add(t);
-  if (goals.size) return goals;                                                       // boarders outrank hazards (spec Boarders-i section 6)
+  if (goals.size && firstStep(state, here, goals) >= 0) return goals;                 // boarders outrank hazards (spec Boarders-i section 6), unless every boarder room is sealed off
+  goals.clear();
   for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) for (const t of d.roomTiles[r]!) goals.add(t);
   for (let s = 0; s < d.siteTile.length; s++) {
     if (!state.breaches.active[s]) continue;
@@ -64,7 +65,7 @@ export function botIntent(state: SimState, pid: number): Intent {
   const x = Position.x[eid]!, y = Position.y[eid]!, w = state.derived.width;
   const here = Math.floor(y) * w + Math.floor(x);
   const target = interactTarget(state, pid);
-  const goals = goalTiles(state, pid);
+  const goals = goalTiles(state, pid, here);
   if (target.kind !== TargetKind.None) return { ...NEUTRAL_INTENT, interactHeld: true };
   if (!goals.size) return NEUTRAL_INTENT;
   const next = firstStep(state, here, goals);

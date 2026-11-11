@@ -58,7 +58,7 @@ function consciousNear(state: SimState, x: number, y: number): boolean {
   return false;
 }
 
-function consciousInRoom(state: SimState, room: number): boolean {
+function hasConsciousInRoom(state: SimState, room: number): boolean {
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!;
     if (Life.state[eid] === LifeState.Conscious && roomAt(state, Position.x[eid]!, Position.y[eid]!) === room) return true;
@@ -84,14 +84,14 @@ function withinReachOfTile(state: SimState, x: number, y: number, tileIdx: numbe
 /** The one unattended definition (spec 4-i section 5): fires by room, breaches and failures by reach of the tile, Downed crew by reach; debris never. */
 export function anyUnattended(state: SimState): boolean {
   const d = state.derived;
-  for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0 && !consciousInRoom(state, r)) return true;
+  for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0 && !hasConsciousInRoom(state, r)) return true;
   for (let s = 0; s < state.breaches.active.length; s++) if (state.breaches.active[s] && !consciousInReachOfTile(state, d.siteTile[s]!)) return true;
   for (let i = 0; i < state.stations.failed.length; i++) if (state.stations.failed[i] && !consciousInReachOfTile(state, d.stationTile[i]!)) return true;
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!;
     if (Life.state[eid] === LifeState.Downed && !consciousNear(state, Position.x[eid]!, Position.y[eid]!)) return true;
   }
-  for (let k = 0; k < state.boarders.active.length; k++) if (state.boarders.active[k] && !consciousInRoom(state, state.boarders.room[k]!)) return true;   // a boarder in a room without Conscious crew (spec Boarders-i section 6)
+  for (let k = 0; k < state.boarders.active.length; k++) if (state.boarders.active[k] && !hasConsciousInRoom(state, state.boarders.room[k]!)) return true;   // a boarder in a room without Conscious crew (spec Boarders-i section 6)
   return false;
 }
 

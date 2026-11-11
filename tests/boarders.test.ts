@@ -108,11 +108,12 @@ describe('boarders: melee (through step)', () => {
     s.boarders.stableId[k0] = b; s.boarders.stableId[k1] = a;                                     // slot 1 now holds the lower id
     expect(boarderTarget(s, 0)).toBe(k1); expect(interactTarget(s, 0)).toEqual({ kind: TargetKind.Fight, index: k1 });
     downCrew(s, 1); expect(interactTarget(s, 0).kind).toBe(TargetKind.Fight);                     // a Downed teammate in reach does not outrank the fight
+    damageBoarder(s, k0, 1000, 0); damageBoarder(s, k1, 1000, 0); expect(interactTarget(s, 0).kind).toBe(TargetKind.Revive);
     const two = calm(2); teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5); const kk = placeBoarder(two, room(two, 'G'), CREW_MELEE_DPS * DT - 1e-6);   // one blow from pid 0 kills it
     const [d0, h0, c0] = streams(two); const dr = createRng(d0); nextFloat(dr);
     run(two, 1, () => intents(hold, hold));
     expect(two.boarders.active[kk]).toBe(0); expect(two.telemetry.boardersKilled).toBe(1);
-    expect(two.skills.xp[xpIndex(0, Skill.Combat)]).toBeCloseTo(XP_RATE * DT + XP_PER_KILL, 9); expect(two.skills.xp[xpIndex(1, Skill.Combat)]).toBe(0); expect(two.scratch.activeThisTick[1]).toBe(0);
+    expect(two.skills.xp[xpIndex(0, Skill.Combat)]).toBeCloseTo(XP_RATE * DT + XP_PER_KILL, 9); expect(two.skills.xp[xpIndex(1, Skill.Combat)]).toBe(0); expect(two.scratch.activeThisTick[1]).toBe(0); expect(two.scratch.activeThisTick[0]).toBe(1);
     expect(streams(two)).toEqual([dr.s, h0, c0]);                                                 // the last kill draws the cooldown once; hazards and combat untouched
     const long = calm(2); teleport(long, 0, 2.5, 9.5); teleport(long, 1, 3.5, 9.5); placeBoarder(long, room(long, 'G')); const b0 = streams(long);
     run(long, 100, () => intents(hold, hold)); expect(streams(long)).toEqual(b0);
@@ -125,6 +126,8 @@ describe('boarders: melee (through step)', () => {
     run(two, 1);
     expect(Life.state[two.crew[0]!]).toBe(LifeState.Downed); expect(Life.bleed[two.crew[0]!]).toBeGreaterThan(0); expect(Health.cur[two.crew[1]!]).toBe(HEALTH_MAX);
     run(two, 1); expect(Health.cur[two.crew[1]!]).toBeCloseTo(HEALTH_MAX - BOARDER_DPS * DT, 9);
+    const duo = calm(2); teleport(duo, 0, 2.5, 9.5); teleport(duo, 1, 3.5, 9.5); Health.cur[duo.crew[0]!] = 0.05; placeBoarder(duo, room(duo, 'G')); placeBoarder(duo, room(duo, 'G'));
+    run(duo, 1); expect(Life.state[duo.crew[0]!]).toBe(LifeState.Downed); expect(Health.cur[duo.crew[1]!]).toBeCloseTo(HEALTH_MAX - BOARDER_DPS * DT, 9);   // the second boarder retargets the same tick
     const solo = calm(1); teleport(solo, 0, 2.5, 9.5); Health.cur[solo.crew[0]!] = 0.05; placeBoarder(solo, room(solo, 'G'));
     run(solo, 1); expect(solo.ended).toBe(1); expect(solo.endReason).toBe(EndReason.Crew);
   });
@@ -134,7 +137,7 @@ describe('boarders: melee (through step)', () => {
     expect(Health.cur[s.crew[0]!]).toBeCloseTo(50 - BOARDER_DPS * DT + MEDBAY_HEAL * stationOutput(s, mb) * DT, 9);
     const fire = calm(1); const G = room(fire, 'G'); igniteRoom(fire, G); const k = placeBoarder(fire, G); run(fire, 120); expect(fire.boarders.health[k]).toBe(BOARDER_HEALTH);
     const heal = calm(1); const k2 = placeBoarder(heal, room(heal, 'F'), 30); run(heal, 120); expect(heal.boarders.health[k2]).toBe(30);
-    const down = calm(1); teleport(down, 0, 2.5, 9.5); downCrew(down, 0); Life.bleed[down.crew[0]!] = 1e9; down.playerCount = 1; const k3 = placeBoarder(down, room(down, 'G'));
+    const down = calm(1); teleport(down, 0, 2.5, 9.5); downCrew(down, 0); Life.bleed[down.crew[0]!] = 1e9; const k3 = placeBoarder(down, room(down, 'G'));
     const h0 = Health.cur[down.crew[0]!]; const due = down.boarders.nextMoveTick[k3]!;
     while (down.tick <= due) { boarderSystem(down); down.tick++; }                                  // processes the due tick itself
     expect(Health.cur[down.crew[0]!]).toBe(h0); expect(down.boarders.room[k3]).toBe(room(down, 'I'));   // ignored, then it moved on to I, G's only neighbour
@@ -185,7 +188,7 @@ describe('boarders: sabotage (A sealed, crew elsewhere)', () => {
     teleport(s, 0, 2.5, 9.5); s.tick += 1; boarderSystem(s); expect(s.boarders.aloneSince[k]).toBe(s.tick);
     s.boarders.aloneSince[k] = ALONE_SABOTAGED; teleport(s, 0, 2.5, 2.5); boarderSystem(s); teleport(s, 0, 2.5, 9.5); boarderSystem(s); expect(s.boarders.aloneSince[k]).toBe(ALONE_SABOTAGED);
     s.doors.state[0] = DoorState.Open; teleport(s, 0, 2.5, 5.5); s.tick = s.boarders.nextMoveTick[k]!; boarderSystem(s); expect(s.boarders.room[k]).toBe(room(s, 'I')); expect(s.boarders.aloneSince[k]).toBe(ALONE_IDLE);
-    teleport(s, 0, 2.5, 9.5); sealAllBut(s, [0]); repairStation(s, 0);                           // crew to G, only the I-A door unsealed, Navigation repaired
+    teleport(s, 0, 2.5, 9.5); sealAllBut(s, [0]);                                          // crew to G, only the I-A door unsealed
     s.tick = s.boarders.nextMoveTick[k]!; boarderSystem(s); expect(s.boarders.room[k]).toBe(room(s, 'A')); expect(s.boarders.aloneSince[k]).toBe(ALONE_IDLE);   // moving does not start the clock
     s.doors.state[0] = DoorState.Sealed; s.tick += 1; boarderSystem(s); const again = s.boarders.aloneSince[k]!; expect(again).toBe(s.tick);
     s.tick = again + BOARDER_SABOTAGE * T; boarderSystem(s); expect(s.stations.failed[0]).toBe(1); expect(s.boarders.aloneSince[k]).toBe(ALONE_SABOTAGED);   // a new visit sabotages again
@@ -205,6 +208,8 @@ describe('boarders: director and bot', () => {
     const r = calm(2); teleport(r, 0, 2.5, 2.5); teleport(r, 1, 3.5, 2.5); downCrew(r, 1); placeBoarder(r, room(r, 'G')); expect(botIntent(r, 0).interactHeld).toBe(true);
     const f = calm(1); teleport(f, 0, 2.5, 2.5); igniteRoom(f, room(f, 'A')); placeBoarder(f, room(f, 'G')); expect(botIntent(f, 0).interactHeld).toBe(true);
     const g = calm(1); teleport(g, 0, 2.5, 5.5); igniteRoom(g, room(g, 'B')); placeBoarder(g, room(g, 'G'));
+    const sl = calm(1); teleport(sl, 0, 2.5, 5.5); sl.doors.state[0] = DoorState.Sealed; placeBoarder(sl, room(sl, 'A')); igniteRoom(sl, room(sl, 'B'));
+    const si = botIntent(sl, 0); expect(si.moveX !== 0 || si.moveY !== 0).toBe(true);                                         // boarder room sealed off: falls through to the fire in B
     const gi = botIntent(g, 0); expect(gi.moveY).toBeGreaterThan(0); expect(Math.abs(gi.moveX)).toBeLessThan(0.01);         // from I toward G's door at (2,7), not B's at (7,4)
   });
 });
