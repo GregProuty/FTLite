@@ -6,6 +6,7 @@ import { failStation } from '../src/renderer/src/sim/power';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Seated } from '../src/renderer/src/sim/components';
 import { BEAM_CHARGE_TIME, DT, TORP_CAP, TORP_LOAD_TIME } from '../src/renderer/src/sim/tuning';
+import { warnedTargets } from '../src/renderer/src/sim/debrisTargets';
 import { makeState, intents, run, placeDebris, room, seconds } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
 
@@ -157,9 +158,10 @@ describe('properties', () => {
       if ((s.weapons.torpedoLoaded as number) !== 1 || s.weapons.torpedoStock !== stockBefore - 1) return false;   // one load completed: stock moved into the tube
       s.weapons.selector = selector;
       const output = 0.5;                                                         // starter Weapons level 2, online throughout (spawner off, nobody fails it)
-      let draws = 0, shots = 0, prevStock = s.weapons.torpedoStock;
+      let draws = 0, shots = 0, prevStock = s.weapons.torpedoStock, prevLoaded = s.weapons.torpedoLoaded;
       for (const e of [{ dir: {}, confirm: true }, ...script]) {                   // a forced first Confirm: charge is 1 and the tube is loaded, so it fires on every selector
         for (let t = 0; t < 5; t++) {
+          if (s.stations.cursor[i]! < 0) s.stations.cursor[i] = warnedTargets(s)[0] ?? -1;   // keep a target selected: a hit leaves -1, and an Up/Down edge would otherwise retarget and fire inside the tick
           const before = s.rng.combat.s, w = s.weapons, c = s.stations.cursor[i]!;
           // Readiness after this tick's increments, computed with the sim's own arithmetic (charging and loading precede input).
           const chargeAfter = Math.min(1, w.charge + DT * output / BEAM_CHARGE_TIME);
@@ -171,8 +173,8 @@ describe('properties', () => {
           const drew = s.rng.combat.s !== before;
           if (drew) draws++; if (willShoot) shots++;
           if (w.torpedoStock < 0 || w.torpedoStock > TORP_CAP || (w.torpedoLoaded !== 0 && w.torpedoLoaded !== 1)) return false;
-          if (w.torpedoStock < prevStock && !(w.torpedoStock === prevStock - 1 && (w.torpedoLoaded === 1 || (drew && w.selector === Weapon.Torpedo)))) return false;   // stock falls only by one, into the tube (which may fire the same tick)
-          prevStock = w.torpedoStock;
+          if (w.torpedoStock < prevStock && !(w.torpedoStock === prevStock - 1 && ((w.torpedoLoaded === 1 && prevLoaded === 0) || (drew && w.selector === Weapon.Torpedo)))) return false;   // stock falls only by one, into a tube that was empty (which may fire the same tick)
+          prevStock = w.torpedoStock; prevLoaded = w.torpedoLoaded;
           refill(s, A);
         }
       }
