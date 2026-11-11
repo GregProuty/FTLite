@@ -136,3 +136,11 @@ Every automated entry starts **unchecked** and is checked only once the implemen
 - Node types, events and shops at nodes (Run-ii); scrap; a drawn map.
 - Fuel or a cost to jumping; jumping while boarders are aboard as a tactic (allowed and free in Run-i).
 - Difficulty by column instead of by total time: revisit once Run-ii adds node types.
+
+## 12. Amendments from the plan
+- `nodeLabel` lives in `sim/run.ts`; `clockLine` and `navigationFooter` in `render/hudModel.ts`.
+- `jumpShip` reads the destination from the Navigation console's cursor (clamped to the reachable list; 0 when the console is absent) and resets it to 0.
+- `clearObjects(state)` in `debris.ts` also clears `science.scanning`.
+- The three pre-feature stream seeds for seed 1 (`hazards 2693262067`, `director 11749833`, `combat 2265367787`) are pinned in `tests/run.test.ts`, proving the appended `map` stream left them unchanged; the survival and boarding gate figures were identical before and after.
+- The charge test counts the seating tick, so its middle run is `JUMP_CHARGE_TIME x TICK_HZ - 2` ticks (3599 before the Confirm tick, which is tick 3600).
+- `hud.ts`'s Navigation rows and the `top.text` wiring have no render test (none of the HUD placement code does); the formatters are unit-tested and the manual gate covers the rest.

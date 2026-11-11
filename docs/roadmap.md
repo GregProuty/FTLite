@@ -11,8 +11,8 @@ Written 2026-11-10 when the owner asked for an autonomous run through the featur
 | 5 | **Combat-i Enemy ship:** an abstract enemy ship with hull and weapons that fires at our rooms on the director's cadence; our beams and torpedoes can target it; the encounter ends when it is destroyed or withdraws | sub-project 2 | merged 2026-11-11 |
 | 6 | **Combat-ii Enemy systems and shields:** enemy subsystems to target (weapons, engines, shields) with effects on its fire and escape, enemy shields that beams must pierce by frequency and torpedoes bypass | sub-project 2 | merged 2026-11-11 |
 | 7 | **Boarders-i:** boarding parties that arrive in a room, crew-vs-boarder melee using the Combat skill, Doors sealing as a containment tool, Medbay recovery | sub-project 3 | merged 2026-11-11 |
-| 8 | **Run-i Sector map and jumps:** a run becomes a sequence of encounters joined by jumps from a node map; hull and crew persist; survival time becomes nodes reached | sub-project 4 | next |
-| 9 | **Run-ii Events and shops:** text events with choices at nodes, scrap as a resource, repairs and upgrades (station max levels, torpedo stock, hull) at shops | sub-project 4 | |
+| 8 | **Run-i Sector map and jumps:** a run becomes a sequence of encounters joined by jumps from a node map; hull and crew persist; survival time becomes nodes reached | sub-project 4 | in review |
+| 9 | **Run-ii Events and shops:** text events with choices at nodes, scrap as a resource, repairs and upgrades (station max levels, torpedo stock, hull) at shops | sub-project 4 | next |
 | 10 | **Run-iii Progression and permadeath:** run end and scoring, unlocks across runs kept on disk, a ship quirk per run ("the ship as a character"), restart flow | sub-project 4, §14 | |
 
 Deferred beyond this list: networking (sub-project 5), audio, a solo drone, the shared luck resource, procedural ships.
