@@ -82,7 +82,7 @@ describe('heat', () => {
     run(b, seconds(30));
     expect(b.stations.heat[nav2]).toBe(HEAT_MAX / 2); expect(b.stations.failed[nav2]).toBe(0); expect(b.stations.level[nav2]).toBe(3);
   });
-  it('a station at or below its max cools HEAT_COOL_IDLE per hazard tick to a floor of 0; a spawner-style failure leaves heat to decay', () => {
+  it('a station at or below its max cools HEAT_COOL_IDLE per hazard tick to a floor of 0; a director-style failure leaves heat to decay', () => {
     const s = makeState(1), nav = idx(s, StationKind.Navigation), wpn = idx(s, StationKind.Weapons);
     s.director.nextSpawnTick = 1e9;
     s.stations.heat[nav] = HEAT_MAX - 1; s.stations.heat[wpn] = 10;
@@ -139,11 +139,11 @@ describe('heat', () => {
     expect(s.rooms.fire[s.derived.stationRoom[wpn]!]).toBe(FIRE_START); expect(s.rooms.fire[s.derived.stationRoom[sci]!]).toBe(0);
     expect(s.rng.hazards.s).toBe(two.s);
   });
-  it('the spawner on the overheat tick counts the new failure: at the cap it skips its spawn', () => {
+  it('the director on the overheat tick counts the new failure: at the cap it skips its spawn', () => {
     const s = makeState(1), nav = overdrive(s, StationKind.Navigation);
     expect(activateBreach(s, 0)).toBe(true); expect(activateBreach(s, 1)).toBe(true);   // two hazards that draw no RNG
     s.stations.heat[nav] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = 1;          // overheat draw 0.627: no fire
-    s.director.nextSpawnTick = s.tick;                                          // the spawner runs this tick, after heatStep
+    s.director.nextSpawnTick = s.tick;                                          // the director runs this tick, after heatStep
     const jitterOnly = createRng(s.rng.director.s); nextFloat(jitterOnly);
     run(s, 1);
     expect(s.stations.failed[nav]).toBe(1);
@@ -156,7 +156,7 @@ describe('heat', () => {
     const jitterOnly2 = createRng(t.rng.director.s); nextFloat(jitterOnly2);
     run(t, 1);
     expect(t.rooms.fire[t.derived.stationRoom[nav2]!]).toBe(FIRE_START);
-    expect(activeHazardCount(t)).toBe(SPAWN_CAP);                              // breach + failure + the overheat fire: the spawner saw the fire too
+    expect(activeHazardCount(t)).toBe(SPAWN_CAP);                              // breach + failure + the overheat fire: the director saw the fire too
     expect(t.rng.director.s).toBe(jitterOnly2.s);
   });
   it('a failed Engineering ejects its operator, and no coolant or bar input lands until it is repaired', () => {

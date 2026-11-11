@@ -160,7 +160,7 @@ function rearm(state: SimState): void {
 }
 
 /** A due Build Up attempt: re-arm first, then the cap, then one type roll and the target draw. Returns whether a hazard was spawned. */
-export function attemptSpawn(state: SimState): boolean {
+function attemptSpawn(state: SimState): boolean {
   const d = state.director;
   d.nextSpawnTick = state.tick;                                                   // the re-arm below is relative to now
   rearm(state);

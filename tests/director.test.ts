@@ -12,11 +12,12 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import type { ShipLayout } from '../src/renderer/src/sim/ship/schema';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { TICK_HZ, SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_INTERVAL_MIN, SPAWN_CAP_MAX, STRESS_WEIGHTS, STRESS_PERIOD, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SINCE_CAP, HULL_MAX, HEALTH_MAX } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_INTERVAL_MIN, SPAWN_CAP_MAX, STRESS_WEIGHTS, STRESS_PERIOD, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SINCE_CAP, HULL_MAX, HEALTH_MAX, PRODUCTIVE_WINDOW_TICKS, HAZARD_EVERY } from '../src/renderer/src/sim/tuning';
 import { botIntent } from './helpers/bot';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { step } from '../src/renderer/src/sim/step';
-import { makeState, run, seconds, placeDebris, teleport, room, quiet, armSpawn } from './helpers/sim';
+import { roomAt } from '../src/renderer/src/sim/grid';
+import { makeState, run, intents, seconds, placeDebris, teleport, room, quiet, armSpawn } from './helpers/sim';
 
 /** The starter layout minus its Doors console (a synthetic layout that bypasses the seven-station schema rule, for the missing-console fixtures). */
 const withoutDoors = (): ShipLayout => { const base = parseShip(starter); return { ...base, stations: base.stations.filter((st) => st.id !== 'doors') }; };
@@ -75,7 +76,10 @@ describe('stress', () => {
     expect(anyUnattended(s)).toBe(false);
     igniteRoom(s, room(s, 'G')); expect(anyUnattended(s)).toBe(true);
     teleport(s, 0, 2.5, 9.5); expect(anyUnattended(s)).toBe(false);                                 // inside the burning room
-    Life.state[s.crew[0]!] = LifeState.Downed; expect(anyUnattended(s)).toBe(true);                 // a Downed crew member attends nothing (and is itself unattended)
+    Life.state[s.crew[0]!] = LifeState.Downed;                                                      // Downed inside the fire; crew 1 attends the Downed member from outside the room
+    teleport(s, 1, 2.5, 7.9); expect(roomAt(s, 2.5, 7.9)).not.toBe(room(s, 'G'));
+    expect(anyUnattended(s)).toBe(true);                                                             // the fire still has no Conscious crew member inside
+    teleport(s, 1, 20.5, 5.5);                                                                       // back to the corridor
     Life.state[s.crew[0]!] = LifeState.Conscious; s.rooms.fire.fill(0);
     activateBreach(s, 6);                                                                             // G bottom wall at (2,11)
     teleport(s, 0, 2.5, 10.5); expect(anyUnattended(s)).toBe(false);
@@ -189,7 +193,11 @@ describe('spawning', () => {
     expect(s.director.nextSpawnTick).toBeLessThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * T * (1 + SPAWN_JITTER)));
   });
   it('explicit director states select fire, breach, power and debris (second draw 0.325, 0.425, 0.625, 0.773 of the unit interval)', () => {
-    const spawn = (directorState: number) => { const s = makeState(0); armSpawn(s); s.rng.director.s = directorState; directorSystem(s); return s; };
+    const spawn = (directorState: number) => {
+      const s = makeState(0); armSpawn(s); s.rng.director.s = directorState;
+      const two = createRng(directorState); nextFloat(two); nextFloat(two);                          // jitter, then one type roll
+      directorSystem(s); expect(s.rng.director.s).toBe(two.s); return s;
+    };
     const counts = (s: ReturnType<typeof makeState>) => [burningRoomCount(s), activeBreachCount(s), failedStationCount(s), activeDebrisCount(s)];
     const f = spawn(2), b = spawn(14), p = spawn(8), d = spawn(5);
     expect(counts(f)).toEqual([1, 0, 0, 0]); expect(f.director.lastType).toBe(HazardType.Fire);
@@ -224,6 +232,23 @@ describe('spawning', () => {
     const r = t.rng.director.s; const one = createRng(r); nextFloat(one);
     directorSystem(t);
     expect(activeHazardCount(t)).toBe(SPAWN_CAP); expect(burningRoomCount(t) + activeBreachCount(t) + activeDebrisCount(t)).toBe(0); expect(t.rng.director.s).toBe(one.s);
+  });
+  it('sinceProductive follows the Weapons and Life Support stamps: a shot resets Weapons and it counts again after the window; a delivering hazard tick resets Life Support and it counts once the stamp expires', () => {
+    const w = makeState(1); quiet(w);
+    placeDebris(w, room(w, 'A'), 1e6, 1); sitDown(w, 0, idx(w, StationKind.Weapons)); w.weapons.charge = 1; w.rng.combat.s = 36;
+    const W = StationKind.Weapons;
+    run(w, 10); expect(w.director.sinceProductive[W]).toBe(10);
+    run(w, 1, () => intents({ confirmPressed: true })); expect(w.director.sinceProductive[W]).toBe(0);   // lastShotTick is stamped in consoleSystem, before xpSystem
+    run(w, PRODUCTIVE_WINDOW_TICKS);
+    expect(w.director.sinceProductive[W]).toBe(1);                                                       // shot tick T: stamp recent through T+299; the counter first counts at T+300 (the last tick run)
+    const l = makeState(1); quiet(l);
+    const L = StationKind.LifeSupport;
+    sitDown(l, 0, idx(l, L)); l.rooms.o2[room(l, 'A')] = 0;
+    run(l, 1); expect(l.director.sinceProductive[L]).toBe(1);                                            // tick 0 delivers after xpSystem ran
+    run(l, 1); expect(l.director.sinceProductive[L]).toBe(0);                                            // tick 1 sees the stamp from tick 0
+    for (let i = 0; i < HAZARD_EVERY; i++) { run(l, 1); expect(l.director.sinceProductive[L]).toBe(0); }
+    for (let r = 0; r < l.rooms.o2.length; r++) l.rooms.o2[r] = l.derived.volume[r]! * 1.5;   // full (breathing would otherwise draw a little down and keep delivering); nothing to inject
+    run(l, HAZARD_EVERY + 2); expect(l.director.sinceProductive[L]).toBeGreaterThan(0);
   });
   it('sinceProductive counts up, resets only for an online, occupied, Conscious, productive station, and caps', () => {
     const s = makeState(2), nav = idx(s, StationKind.Navigation), A = room(s, 'A'); quiet(s);

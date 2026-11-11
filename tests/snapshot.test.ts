@@ -8,12 +8,11 @@ import { Position, Seated } from '../src/renderer/src/sim/components';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
-import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
 import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room, overdrive, setSkill } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ } from '../src/renderer/src/sim/tuning';
 import { Phase, cycleBudget } from '../src/renderer/src/sim/director';
-import { STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {

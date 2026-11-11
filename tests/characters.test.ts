@@ -193,7 +193,7 @@ describe('trait effects', () => {
 });
 
 describe('determinism with the four characters', () => {
-  it('two runs and a snapshot round-trip at tick 300 agree after 600 ticks, with a live fire, Okoro repairing it and the spawner running', () => {
+  it('two runs and a snapshot round-trip at tick 300 agree after 600 ticks, with a live fire, Okoro repairing it and the director running', () => {
     const mk = () => { const s = makeState(4, 11, DEFAULT_CHARACTERS); igniteRoom(s, room(s, 'G')); teleport(s, 0, 2.5, 9.5); s.director.nextSpawnTick = 0; return s; };   // RNG draws (spread, spawns) and earned XP both happen before the save
     const f = () => intents({ interactHeld: true }, { moveY: 1 }, { moveX: 1 }, {});
     const a = mk(), b = mk(), c = mk();

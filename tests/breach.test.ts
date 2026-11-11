@@ -5,7 +5,7 @@ import { DoorState } from '../src/renderer/src/sim/grid';
 import { makeState, room } from './helpers/sim';
 
 // Pure physics tests: step the oxygen model directly with no injection, so the later injector stub
-// and spawner (Task 13) cannot mask venting.
+// and director (Task 13) cannot mask venting.
 function ventFor(s: ReturnType<typeof makeState>, secondsOfHazard: number): void {
   const zero = new Float64Array(s.rooms.o2.length);
   for (let i = 0; i < secondsOfHazard * 12; i++) oxygenStep(s, zero);
