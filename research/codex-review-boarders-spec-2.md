@@ -1,0 +1,25 @@
+# Codex review: Boarders-i spec half 2 (2026-11-11)
+
+1. **High — §9, line 124:** The survival estimate is too optimistic. Running the existing baseline gives seed 2 health **65.05/52.55 at 4:00**; its 0.075 minimum occurs at 4:46. Two simultaneous fighters clearing two boarders take approximately **67.5 focused damage**, enough to down pid 0 before other damage. **Fix:** record health at arrival and require a tuned, in-window boarding run; do not infer survivability from the fresh-Recruit combat gate.
+
+2. **High — §§9–10, lines 124, 133–136:** The lever order can bypass the feature: moving arrival to 330 seconds removes boarding from both the survival gate and five-minute acceptance run before trying DPS 4. The four levers can restore the old gate, but cannot establish boarding survival in this order. **Fix:** try DPS reduction before delaying arrival; retain a mandatory integrated boarding scenario if the delay is taken, and update the manual arrival time.
+
+3. **Medium — §§8–9, lines 109, 116:** The exact combat assertions conflict with floating-point subtraction and killing-tick ordering. Repeated `max(0, health - 8/60)` leaves approximately `1.73e-13` health after 450 blows: death occurs on call 451; two fighters need 226 calls. With an epsilon clamp enforcing 450/225 calls, survivors have **55.1/77.6**, because the killing tick deals no incoming damage. **Fix:** specify numerical termination and pin compatible tick, health and XP expectations. Solo XP is **27.5** with 450 calls.
+
+4. **Medium — §7, lines 88–89:** `CrewLayer.draw(state, alpha)` receives no `HudModel`; `renderer.draw` runs before the session builds the HUD model. The proposed marker consumer therefore lacks its input. **Fix:** explicitly pass marker data through renderer/session interfaces, or use one pure marker projection shared by the HUD model and a separate world layer; cover art and fallback paths.
+
+5. **Medium — §9, line 117:** The movement fixtures omit the actual graph. A has only neighbour **I**; every outer room A/B/D/F/H/G/E/C connects only to I. A cannot supply two candidates, and A/G are not adjacent. **Fix:** use A→I for pursuit; use I with only A/B unsealed for the seeded random case; pin candidate order, destination and RNG state.
+
+6. **High — §9, line 118:** The sabotage fixture cannot produce the promised result as written: an uncontained boarder leaves A after 480 ticks, before 900. Also, §5’s post-sabotage `aloneSince = -1` restarts the timer next tick, allowing Doors to fail on the same visit. **Fix:** seal A’s sole door, place every crew member elsewhere, and distinguish “already sabotaged” from “timer not started”; assert Navigation fails once and Doors remains online.
+
+7. **Medium — §9, line 121:** The bot test has no competing goals, so it cannot verify §6’s priority requirement. Appending boarder tiles to the existing goal set still permits BFS to choose a nearer fire; an existing local repair target also takes precedence over movement goals. **Fix:** specify fixtures for downed teammate versus boarder, and boarder versus nearer fire, with explicit expected intents and the intended local-repair policy.
+
+8. **Medium — §9, line 116:** Combat coverage omits lowest-**StableId** selection with slot order reversed, skipped later holders after a kill, kill-XP ownership, and RNG neutrality. These are substantive §5 rules. **Fix:** seed two boarders with reversed IDs; arrange a pid-0 killing blow; assert pid 1 receives no fight XP/activity that tick, exactly one kill award occurs, and combat draws nothing.
+
+9. **Medium — §9, lines 116–125:** No explicit tests cover immediate downing and same-tick focus transfer, last-Conscious run end, Medbay ordering, boarder immunity to environment/healing, or Slow Learner scaling on both Combat XP paths. **Fix:** add isolated fixtures with exact health/life/XP assertions; use Reyes to verify the **0.75 multiplier** and a powered Medbay fixture to distinguish healing from revival.
+
+10. **Medium — §9, line 122:** Checking marker positions against `roomCentre()` itself permits a wrong helper to pass. The placement coordinates are valid interior tile centres, but room centroids are **A=(3,2.5)** and **G=(4,9.5)**. **Fix:** pin independent coordinates: slots 0/1 in A yield **(2.4,2.5)/(2.8,2.5)**. Also assert room-name strings, row order, and `boarders: []` without state.
+
+11. **Low — §9, line 123:** “Fixtures updated” leaves the new mapping weakly specified. Existing acceptance regexes anchor `enemy` at end-of-line, and zero-only fixtures would miss swapped boarder counters. **Fix:** append `boarders` after `enemy`, set distinct nonzero counters, assert `{ parties: 1, killed: 2 }`, and update the header plus both anchored row regexes to include `1/2`.
+
+12. **Low — §10, line 136:** “C … rises after a few fights” is unreliable: level 1 requires **240 XP**. A solo kill gives 27.5 XP; paired kills give roughly 23.75 to the killer and 3.75 to the other fighter. **Fix:** provide a manual fixture near the threshold, or specify the required kill count and learning trait.
