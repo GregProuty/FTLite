@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
-import { buildHudModel, deviceKindOf, glyphName } from '../src/renderer/src/render/hudModel';
+import { buildHudModel, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -10,12 +10,13 @@ import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';
-import { HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP } from '../src/renderer/src/sim/tuning';
+import { HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { EndReason } from '../src/renderer/src/sim/crew';
-import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents } from './helpers/sim';
+import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
 
@@ -137,7 +138,7 @@ describe('buildHudModel', () => {
     expect(p.seated).toBe(StationKind.Weapons);
     const panel = p.console as WeaponsPanel;
     expect(panel.kind).toBe('weapons'); expect(panel.charge).toBe(0.25);
-    expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null }]);
+    expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null, kind: 'debris', hull: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null, kind: 'debris', hull: null }]);
     expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0 });
     expect(panel.cursor).toBe(0);                                                  // sitDown selected id 10 (slot 1), which is targets[0]
     s.stations.cursor[wpn] = 0;                                                    // slot 0 is id 30: targets[1]
@@ -169,8 +170,50 @@ describe('buildHudModel', () => {
     expect(w.selector).toBe(3); expect(w.torpedo).toEqual({ stock: 2, cap: TORP_CAP, loaded: true, load: 0 });
     expect(w.targets.map((t) => t.frequency)).toEqual([2, null]);
     const p = m.players[1]!.console as SciencePanel;
-    expect(p.targets).toEqual([{ stableId: 10, room: 'Bridge', eta: 5, frequency: 2, scan: 1 }, { stableId: 20, room: 'Weapons Bay', eta: 10, frequency: null, scan: 0.4 }]);
+    expect(p.targets).toEqual([{ stableId: 10, kind: 'debris', hull: null, room: 'Bridge', eta: 5, frequency: 2, scan: 1 }, { stableId: 20, kind: 'debris', hull: null, room: 'Weapons Bay', eta: 10, frequency: null, scan: 0.4 }]);
     expect(p.cursor).toBe(1); expect(p.scanning).toBe(true);
+  });
+  it('threat rows: the enemy first with its hull percent, shots with and without a scanned frequency; none when absent', () => {
+    const s = makeState(1), A = room(s, 'A'); quiet(s);
+    expect(buildHudModel(s, slots(1), 'running', '').threats.some((t) => t.text.startsWith('Enemy'))).toBe(false);
+    placeEnemy(s); s.enemy.hull = 64;
+    const k = placeShot(s, A, 7 * 60, 1); const k2 = placeShot(s, A, 7 * 60, 1, undefined, 2); s.debris.scanned[k2] = 1;
+    const th = buildHudModel(s, slots(1), 'running', '').threats;
+    expect(th[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64%' });
+    const shotRows = th.filter((t) => t.text.startsWith('Shot'));
+    expect(shotRows).toEqual([{ icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s` }, { icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s F2` }]);
+    void k;
+  });
+  it('target rows: the enemy row on Weapons and Science, nothing throws with the cursor on the enemy or with it unselected', () => {
+    const s = makeState(2), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!, c = s.derived.stationOfKind[StationKind.Science]!;
+    const k = placeDebris(s, A, 600, 1); placeEnemy(s); s.enemy.hull = 64; sitDown(s, 0, w); sitDown(s, 1, c);
+    s.stations.cursor[w] = ENEMY_SLOT;                                   // Science stays on the object
+    const m = buildHudModel(s, slots(2), 'running', '');
+    const wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
+    expect(wp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64 });
+    expect(wp.cursor).toBe(1); expect(wp.first).toBe(0);
+    expect(sp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, scan: 0 });
+    expect(sp.targets[0]!.kind).toBe('debris'); expect(sp.cursor).toBe(0);
+    void k;
+  });
+  it('targetWindow follows the cursor; a nine-entry list with the cursor last gives first 3 on Weapons', () => {
+    expect([targetWindow(-1, 3, 6), targetWindow(5, 9, 6), targetWindow(6, 9, 6), targetWindow(8, 9, 6), targetWindow(8, 9, 7), targetWindow(2, 2, 6)]).toEqual([0, 0, 1, 3, 2, 0]);
+    const s = makeState(1), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!;
+    for (let n = 0; n < 8; n++) placeDebris(s, A, 600, 1); placeEnemy(s);
+    sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT;
+    const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
+    expect(wp.targets).toHaveLength(9); expect(wp.cursor).toBe(8); expect(wp.first).toBe(3);
+    run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
+    const sp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel;
+    expect(sp.targets).toHaveLength(9); expect(sp.cursor).toBe(8); expect(sp.first).toBe(2);        // seven Science rows
+  });
+  it('targetRowText renders the exact row strings for debris, shots and the enemy on both panels', () => {
+    const debris = { stableId: 1, kind: 'debris' as const, room: 'Engine', eta: 7, frequency: null, hull: null };
+    expect(targetRowText(debris)).toBe('Engine 7s F?'); expect(targetRowText({ ...debris, frequency: 2 })).toBe('Engine 7s F2'); expect(targetRowText(debris, 0.4)).toBe('Engine 7s F? 40%');
+    const shot = { ...debris, kind: 'shot' as const };
+    expect(targetRowText(shot)).toBe('Shot Engine 7s F?'); expect(targetRowText({ ...shot, frequency: 2 })).toBe('Shot Engine 7s F2'); expect(targetRowText(shot, 0.4)).toBe('Shot Engine 7s F? 40%'); expect(targetRowText({ ...shot, frequency: 2 }, 0.4)).toBe('Shot Engine 7s F2');
+    const enemy = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null, hull: 0.64 };
+    expect(targetRowText(enemy)).toBe('Enemy 64% 87s'); expect(targetRowText(enemy, 0.4)).toBe('Enemy 64% 87s');   // no frequency, no scan text
   });
   it('reports heat fraction, coolant and overdrive per Engineering row and per station, and the free coolant', () => {
     const s = makeState(1);

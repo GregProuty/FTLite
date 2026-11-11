@@ -1,7 +1,7 @@
 import { Container, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, targetRowText, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { featureReady } from './fallback';
 import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
@@ -139,10 +139,11 @@ export function createHud(parent: Container, assets: GameAssets) {
       const c = p.console;
       fillRow(ui.consoleSelector, ['Beam F1', 'F2', 'F3', 'Torp'].map((label, n) => ({ text: label, tint: n === c.selector ? TEXT : DIM })));
       ui.consoleSelector.visible = true;
+      const vis = c.targets.slice(c.first, c.first + WEAPONS_ROWS);
       ui.consoleRows.forEach((r, k) => {
-        const t = k >= 1 ? c.targets[k - 1] : undefined;
+        const t = k >= 1 ? vis[k - 1] : undefined;
         r.root.visible = !!t;
-        if (t) r.set({ name: `${t.room} ${t.eta}s F${t.frequency ?? '?'}`, level: 0, max: 0, status: '', cursor: k - 1 === c.cursor, tint: k - 1 === c.cursor ? TEXT : DIM });
+        if (t) r.set({ name: targetRowText(t), level: 0, max: 0, status: '', cursor: k - 1 === c.cursor - c.first, tint: k - 1 === c.cursor - c.first ? TEXT : DIM });
       });
       fillRow(ui.consoleFooter, [
         { text: c.charge >= 1 ? 'Beam READY' : `Beam ${Math.floor(c.charge * 100)}%`, tint: c.charge >= 1 ? TEXT : DIM },
@@ -152,10 +153,11 @@ export function createHud(parent: Container, assets: GameAssets) {
       ui.consoleBar.root.visible = true; ui.consoleBar.set(c.charge);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'science') {
       const c = p.console;
+      const vis = c.targets.slice(c.first, c.first + SCIENCE_ROWS);
       ui.consoleRows.forEach((r, k) => {
-        const t = c.targets[k];
+        const t = vis[k];
         r.root.visible = !!t;
-        if (t) r.set({ name: `${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && t.scan > 0 ? ` ${Math.floor(t.scan * 100)}%` : ''}`, level: 0, max: 0, status: '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM });
+        if (t) r.set({ name: targetRowText(t, t.scan), level: 0, max: 0, status: '', cursor: k === c.cursor - c.first, tint: k === c.cursor - c.first ? TEXT : DIM });
       });
       fillRow(ui.consoleFooter, [{ text: `Lead ${Math.round(c.leadSeconds)}s${c.scanning ? '   Scanning' : ''}`, tint: TEXT }]);
     } else if (p.console && 'kind' in p.console) {
