@@ -85,6 +85,8 @@ describe('levels', () => {
     const s = makeState(2);
     addXp(s, 1, Skill.Repair, 100); addXp(s, 1, Skill.Repair, 150);
     expect(skillLevelOf(s, 1, Skill.Repair)).toBe(1); expect(skillLevelOf(s, 0, Skill.Repair)).toBe(0);
+    addXp(s, 1, Skill.Repair, -50); addXp(s, 1, Skill.Repair, 0);
+    expect(s.skills.xp[1 * 6 + Skill.Repair]).toBe(250);                             // never decreases
     addXp(s, 1, Skill.Repair, 1e9);
     expect(s.skills.xp[1 * 6 + Skill.Repair]).toBe(XP_THRESHOLDS[SKILL_MAX]); expect(skillLevelOf(s, 1, Skill.Repair)).toBe(SKILL_MAX);
   });
@@ -187,8 +189,9 @@ export function skillLevel(state: SimState, pid: number, kind: number): number {
   return skillLevelOf(state, pid, STATION_SKILL[kind]!);
 }
 
-/** XP only ever rises, capped at the top threshold. */
+/** XP only ever rises (a non-positive amount is ignored), capped at the top threshold. */
 export function addXp(state: SimState, pid: number, skill: number, amount: number): void {
+  if (amount <= 0) return;
   const k = xpIndex(pid, skill);
   state.skills.xp[k] = Math.min(XP_THRESHOLDS[SKILL_MAX]!, state.skills.xp[k]! + amount);
 }
@@ -302,9 +305,10 @@ describe('isProductive', () => {
     expect(isProductive(s, eng)).toBe(false);
     const t = makeState(1), engT = idx(t, StationKind.Engineering), doors = idx(t, StationKind.Doors);
     t.spawner.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);
-    t.stations.level[doors] = 2; t.stations.level[idx(t, StationKind.Medbay)] = 2; t.stations.level[idx(t, StationKind.Science)] = 2;   // usage 12 against base 10: covered by the two bonus bars
-    expect(isProductive(t, engT)).toBe(true);
-    t.stations.level[doors] = 1; t.stations.level[idx(t, StationKind.Medbay)] = 1; t.stations.level[idx(t, StationKind.Science)] = 1;   // back under base capacity, nothing overdriven
+    const navT = idx(t, StationKind.Navigation), sciT = idx(t, StationKind.Science), medT = idx(t, StationKind.Medbay);
+    t.stations.level[navT] = 2; t.stations.level[sciT] = 2; t.stations.level[medT] = 2;   // usage 12 against base 10, nothing overdriven (all three have max 2): covered by the two bonus bars
+    expect(t.stations.level[doors]).toBe(1); expect(isProductive(t, engT)).toBe(true);
+    t.stations.level[navT] = 1; t.stations.level[sciT] = 1; t.stations.level[medT] = 1;   // back under base capacity
     expect(isProductive(t, engT)).toBe(false);
   });
   it('Life Support: recent delivery only; Medbay: a hurt Conscious patient in the room', () => {
@@ -333,8 +337,8 @@ describe('isProductive', () => {
     expect(s.skills.lastDoorToggleTick).toBe(-1); expect(isProductive(s, doors)).toBe(false);
     run(s, 1, () => intents(confirm, {}));                                       // the seated operator toggles remotely
     expect(s.skills.lastDoorToggleTick).toBe(s.tick - 1); expect(isProductive(s, doors)).toBe(true);
-    run(s, PRODUCTIVE_WINDOW_TICKS - 1); expect(isProductive(s, doors)).toBe(true);
-    run(s, 1); expect(isProductive(s, doors)).toBe(false);
+    run(s, PRODUCTIVE_WINDOW_TICKS - 2); expect(s.tick - s.skills.lastDoorToggleTick).toBe(PRODUCTIVE_WINDOW_TICKS - 1); expect(isProductive(s, doors)).toBe(true);
+    run(s, 1); expect(isProductive(s, doors)).toBe(false);                      // exactly PRODUCTIVE_WINDOW_TICKS old: expired
     run(s, 1, () => intents(down, {}));                                          // moving the cursor is not a toggle
     expect(isProductive(s, doors)).toBe(false);
   });
@@ -361,6 +365,7 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation } from '../src/renderer/src/sim/power';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
+import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { Weapon } from '../src/renderer/src/sim/weapons';
 import { DT, HAZARD_DT, HAZARD_EVERY, XP_RATE, XP_PER_SHOT, XP_PER_EVADE_ROLL, HEALTH_MAX, REPAIR_TIME_FIRE } from '../src/renderer/src/sim/tuning';
@@ -422,11 +427,9 @@ describe('event XP', () => {
     const t = makeState(1), lsT = idx(t, StationKind.LifeSupport);
     t.spawner.nextSpawnTick = 1e9; sitDown(t, 0, lsT);
     for (let r = 0; r < t.rooms.o2.length; r++) t.rooms.o2[r] = t.derived.volume[r]!;
-    t.rooms.o2[t.derived.stationRoom[lsT]!] = t.derived.volume[t.derived.stationRoom[lsT]!]!;
-    const eid = t.crew[0]!; Life.state[eid] = LifeState.Dead;                        // no breathing anywhere: every room stays full, nothing delivered
-    t.stations.occupant[lsT] = 0;                                                   // keep the seat for the check (a Dead occupant is not Conscious, so no XP either way)
+    activateBreach(t, 7);                                                           // site 7 is in room E, the Life Support room: the operator breathes there, but a breached room takes no injection, and every other room is full
     run(t, 1);
-    expect(t.skills.lsDeliveredTick).toBe(-1);
+    expect(t.skills.lsDeliveredTick).toBe(-1); expect(xp(t, 0, Skill.Engineering)).toBe(0);   // a Conscious seated operator earns nothing without delivery
   });
   it('repairers earn Repair XP per tick of progress; a hazard already repaired this tick earns nothing; revive earns nothing', () => {
     const s = makeState(2), G = room(s, 'G');
@@ -684,7 +687,7 @@ describe('sealed doors and the Doors operator', () => {
 });
 ```
 
-Append to `tests/power.test.ts` (imports: `bonusBars, powerCapacity, shedPower, SHED_ORDER, maxLevel` from power, `Skill` from skills, `Health, Life, LifeState` from components, `reviveCrew` from `../src/renderer/src/sim/crew`, `setSkill, run, intents, teleport` from helpers, `fc from 'fast-check'`, `COOLANT_POOL` from tuning):
+Append to `tests/power.test.ts` (imports: `bonusBars, powerCapacity, shedPower, SHED_ORDER, maxLevel` from power, `Skill` from skills, `Health, Life, LifeState` from components, `reviveCrew` from `../src/renderer/src/sim/crew`, `setSkill, run, intents` from helpers, `fc from 'fast-check'`, `COOLANT_POOL` from tuning):
 
 ```ts
 describe('bonus bars and shedding', () => {
@@ -815,6 +818,8 @@ export function coolingPerUnit(state: SimState): number {
   return HEAT_COOL_UNIT + Math.floor(HEAT_COOL_SKILL * level);
 }
 ```
+
+(`heat.ts` imports to add: `Skill, skillLevelOf` from `./skills`; `HEAT_COOL_SKILL` in the tuning import.)
 
 `hazards/oxygen.ts` `passageFor`:
 
