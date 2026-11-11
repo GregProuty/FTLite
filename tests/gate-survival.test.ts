@@ -5,13 +5,14 @@ import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { makeState, seconds } from './helpers/sim';
 import { botIntent } from './helpers/bot';
+import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 
 const FIVE_MINUTES = seconds(300);
 
 describe('increment 1 gate: two bots survive five minutes', () => {
   for (const seed of [1, 2, 3]) {
     it(`seed ${seed}`, () => {
-      const s = makeState(2, seed);
+      const s = makeState(2, seed, DEFAULT_CHARACTERS);
       let minHull = s.hull, impacts = 0, lastImpact = -1, maxHazards = 0, repairsSeen = false, fireRepairOutsideRoom = 0;
       for (let t = 0; t < FIVE_MINUTES && !s.ended; t++) {
         const intents = [botIntent(s, 0), botIntent(s, 1)];

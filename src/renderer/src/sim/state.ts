@@ -4,6 +4,7 @@ import { createRng, nextU32, type RngState } from '../../../shared/rng';
 import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
+import { DEFAULT_CHARACTERS, RECRUIT, applyHeadStarts } from './characters';
 import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT } from './tuning';
 
 export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState }
@@ -35,6 +36,7 @@ export interface SimState {
   debris: { active: Uint8Array; stableId: Int32Array; room: Int16Array; impactTick: Int32Array; warned: Uint8Array; frequency: Uint8Array; scanned: Uint8Array; scan: Float64Array };
   weapons: { charge: number; selector: number; torpedoStock: number; torpedoLoaded: number; torpedoLoad: number; torpedoRegen: number };   // selector 0..2 beam F1..F3, 3 torpedo; beam charge 0..1 survives standing and power failure
   /** Per-crew skill XP (pid x SKILL_COUNT + skill) and the productivity stamps (spec 3-i section 4); stamps are -1 until set. */
+  crewCharacter: Uint8Array;   // CHARACTERS index per crew member (spec 3-ii section 4)
   skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
   science: { scanning: number };                        // 1 while a scan is running (spec 2b-ii section 4)
   /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */
@@ -54,7 +56,7 @@ export function deriveStreams(seed: number): RngStreams {
 // withVersioning() misbehaves under recycling (docs/spikes.md).
 const SHARED_ENTITY_INDEX = createEntityIndex();
 
-export function createSimState(layout: ShipLayout, playerCount: number, seed: number): SimState {
+export function createSimState(layout: ShipLayout, playerCount: number, seed: number, characters: readonly number[] = DEFAULT_CHARACTERS): SimState {
   const derived = deriveLayout(layout);
   const world = createWorld(SHARED_ENTITY_INDEX);
   const R = derived.volume.length, E = layout.edges.length, S = layout.breachSites.length;
@@ -74,10 +76,12 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS), frequency: new Uint8Array(DEBRIS_SLOTS), scanned: new Uint8Array(DEBRIS_SLOTS), scan: new Float64Array(DEBRIS_SLOTS) },
     weapons: { charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 },
     science: { scanning: 0 },
+    crewCharacter: Uint8Array.from({ length: playerCount }, (_, pid) => characters[pid] ?? RECRUIT),
     skills: { xp: new Float64Array(playerCount * SKILL_COUNT), lastEngChangeTick: -1, lastDoorToggleTick: -1, lsDeliveredTick: -1, lastShotTick: -1 },
     scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount) }
   };
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));
+  applyHeadStarts(state);
   return state;
 }
 

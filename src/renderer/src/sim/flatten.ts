@@ -3,7 +3,7 @@ import { STREAM_NAMES } from './state';
 import { Position, Health, Life, Stable, Seated } from './components';
 import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT } from './tuning';
 
-export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'spawner', 'stations', 'power', 'stick', 'debris', 'weapons', 'science', 'skills', 'crew'];
+export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'spawner', 'stations', 'power', 'stick', 'debris', 'weapons', 'science', 'skills', 'characters', 'crew'];
 const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, SPAWNER_FIELDS = 1, CREW_FIELDS = 9, STATION_FIELDS = 7, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 8, WEAPONS_FIELDS = 6, SCIENCE_FIELDS = 1, SKILL_STAMP_FIELDS = 4;
 
 /** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec §4). */
@@ -14,7 +14,7 @@ function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3
     + s.breaches.active.length * 2 + COUNTER_FIELDS + SPAWNER_FIELDS
     + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + s.playerCount * STICK_FIELDS
-    + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length * CREW_FIELDS;
+    + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length + s.crew.length * CREW_FIELDS;
 }
 
 /** Canonical order. Crew by PlayerId (their StableIds were allocated in that order). -0 is written as 0. */
@@ -40,6 +40,7 @@ export function flatten(s: SimState): Float64Array {
   for (const v of dbf.frequency) put(v); for (const v of dbf.scanned) put(v); for (const v of dbf.scan) put(v);
   const w = s.weapons; put(w.charge); put(w.selector); put(w.torpedoStock); put(w.torpedoLoaded); put(w.torpedoLoad); put(w.torpedoRegen); put(s.science.scanning);
   for (const v of s.skills.xp) put(v); put(s.skills.lastEngChangeTick); put(s.skills.lastDoorToggleTick); put(s.skills.lsDeliveredTick); put(s.skills.lastShotTick);
+  for (const v of s.crewCharacter) put(v);
   for (const eid of s.crew) {
     put(Stable.id[eid]!); put(Position.x[eid]!); put(Position.y[eid]!); put(Health.cur[eid]!);
     put(Life.state[eid]!); put(Life.bleed[eid]!); put(Life.reviveProgress[eid]!); put(Life.reviverPid[eid]!); put(Seated.station[eid]!);
@@ -88,6 +89,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   s.science.scanning = get();
   for (let k = 0; k < s.skills.xp.length; k++) s.skills.xp[k] = get();
   s.skills.lastEngChangeTick = get(); s.skills.lastDoorToggleTick = get(); s.skills.lsDeliveredTick = get(); s.skills.lastShotTick = get();
+  for (let p = 0; p < s.crewCharacter.length; p++) s.crewCharacter[p] = get();
   for (const eid of s.crew) {
     Stable.id[eid] = get(); Position.x[eid] = get(); Position.y[eid] = get(); Health.cur[eid] = get();
     Life.state[eid] = get(); Life.bleed[eid] = get(); Life.reviveProgress[eid] = get(); Life.reviverPid[eid] = get(); Seated.station[eid] = get();

@@ -5,12 +5,14 @@ import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
 import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS } from '../../src/renderer/src/sim/tuning';
+import { RECRUIT } from '../../src/renderer/src/sim/characters';
 import { shiftBar, maxLevel } from '../../src/renderer/src/sim/power';
 
 export const LAYOUT = parseShip(starter);
+export const RECRUITS: readonly number[] = [RECRUIT, RECRUIT, RECRUIT, RECRUIT];
 
-export function makeState(players = 2, seed = 1): SimState {
-  return createSimState(LAYOUT, players, seed);
+export function makeState(players = 2, seed = 1, characters: readonly number[] = RECRUITS): SimState {
+  return createSimState(LAYOUT, players, seed, characters);
 }
 
 export function intents(...per: Partial<Intent>[]): Intent[] {

@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 6;
+export const SIM_VERSION = 7;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
@@ -98,3 +98,13 @@ export const REPAIR_SKILL_GAIN = 0.06;                 // repair speed 1 + gain 
 export const HEAT_COOL_SKILL = 0.2;                    // extra cooling per unit: floor(0.2 x level)
 export const SEAL_SKILL = 0.05;                        // sealed passage x (1 - 0.05 x level)
 export const BONUS_BAR_LEVELS = 4;                     // one bonus bar per 4 Engineering levels while seated
+
+// Characters (increment 3-ii): Assets and Complications as multipliers on existing formulas
+export const TRAIT_REPAIR_MULT = 1.25;        // Quick Hands
+export const TRAIT_SLOW_SPEED = 0.85;         // Heavy Boots
+export const TRAIT_FAST_SPEED = 1.2;          // Sprinter
+export const TRAIT_COOLING_BONUS = 1;         // Cool Head, per coolant unit while seated at Engineering
+export const TRAIT_FIRE_DAMAGE = 1.5;         // Flammable
+export const TRAIT_O2_DAMAGE = 0.5;           // Iron Lungs
+export const TRAIT_XP_MULT = 0.75;            // Slow Learner
+export const TRAIT_BLEEDOUT = 0.6;            // Frail
