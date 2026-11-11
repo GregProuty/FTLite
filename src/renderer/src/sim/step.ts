@@ -14,6 +14,7 @@ import { lifeSupportInjection } from './hazards/lifeSupport';
 import { debrisSystem } from './debris';
 import { spawner } from './hazards/spawner';
 import { medbayStep } from './medbay';
+import { xpSystem } from './xp';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
@@ -28,6 +29,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   interactSystem(state, intents);
   // (2) control mode: seated input and the tick's door toggles
   consoleSystem(state, intents);
+  xpSystem(state);   // (2b) XP at the observation point: operators are seated and this tick's conditions still stand
   // (3) movement, doors
   movementSystem(state, intents);
   doorSystem(state);

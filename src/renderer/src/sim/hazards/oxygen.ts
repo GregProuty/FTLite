@@ -1,7 +1,9 @@
 import type { SimState } from '../state';
 import { Life, LifeState, Position } from '../components';
 import { DoorState, conditionRoomAt } from '../grid';
-import { HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
+import { StationKind } from '../stationKinds';
+import { Skill, addXp } from '../skills';
+import { XP_RATE, HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
 
 export function passageFor(state: SimState, edge: number): number {
   if (!state.derived.edgeIsDoor[edge]) return PASSAGE_OPEN;
@@ -77,11 +79,17 @@ export function oxygenStep(state: SimState, injection: Float64Array): void {
     o2[r]! -= b + f; c.breathed += b; c.burned += f;
   }
   // Injection, clamped to the free volume, none into breached rooms.
+  let delivered = 0;
   for (let r = 0; r < R; r++) {
     const want = injection[r] ?? 0;
     if (want <= 0 || roomBreached(state, r)) continue;
     const inj = Math.min(want, Math.max(0, V[r]! - o2[r]!));
-    if (inj > 0) { o2[r]! += inj; c.injected += inj; }
+    if (inj > 0) { o2[r]! += inj; c.injected += inj; delivered += inj; }
+  }
+  if (delivered > 0) {
+    state.skills.lsDeliveredTick = state.tick;
+    const ls = d.stationOfKind[StationKind.LifeSupport]!, occ = ls >= 0 ? state.stations.occupant[ls]! : -1;
+    if (occ >= 0 && Life.state[state.crew[occ]!] === LifeState.Conscious) addXp(state, occ, Skill.Engineering, XP_RATE * HAZARD_DT);   // spec 3-i section 5: XP at the delivery event
   }
   // Snap tiny values; the discarded mass is tracked so the balance test can account for it.
   for (let r = 0; r < R; r++) {

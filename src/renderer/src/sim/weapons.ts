@@ -5,7 +5,8 @@ import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
 import { cycleTarget } from './debrisTargets';
 import { Dir } from './dir';
-import { DT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE } from './tuning';
+import { Skill, addXp } from './skills';
+import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE } from './tuning';
 
 /** The four-slot weapon selector (spec 2b-ii section 5): beams tuned to frequency selector + 1, then the torpedo. */
 export const Weapon = { BeamF1: 0, BeamF2: 1, BeamF3: 2, Torpedo: 3 } as const;
@@ -45,6 +46,7 @@ export function fireWeapon(state: SimState): boolean {
     hit = beamHits(nextFloat(state.rng.combat), output, w.selector + 1 === db.frequency[c]);   // the true frequency decides, scanned or not
     w.charge = 0;
   }
+  state.skills.lastShotTick = state.tick; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
   if (hit) removeDebris(state, c);
   return hit;
 }

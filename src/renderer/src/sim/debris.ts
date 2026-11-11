@@ -8,7 +8,8 @@ import { igniteRoom } from './hazards/fire';
 import { activateBreach } from './hazards/breach';
 import { downCrew } from './crew';
 import { nextTarget } from './debrisTargets';
-import { TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT } from './tuning';
+import { Skill, addXp } from './skills';
+import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT } from './tuning';
 
 export function activeDebrisCount(state: SimState): number {
   let n = 0; for (const a of state.debris.active) if (a) n++; return n;
@@ -56,9 +57,9 @@ export function evades(u: number, output: number): boolean {
 function resolveImpact(state: SimState, slot: number): void {
   const d = state.derived, db = state.debris, room = db.room[slot]!;
   const nav = d.stationOfKind[StationKind.Navigation]!;
-  if (nav >= 0 && stationOnline(state, nav) && state.stations.occupant[nav]! >= 0 && evades(nextFloat(state.rng.combat), stationOutput(state, nav))) {
-    removeDebris(state, slot);
-    return;
+  if (nav >= 0 && stationOnline(state, nav) && state.stations.occupant[nav]! >= 0) {
+    addXp(state, state.stations.occupant[nav]!, Skill.Navigation, XP_PER_EVADE_ROLL);   // the roll itself is the productive act
+    if (evades(nextFloat(state.rng.combat), stationOutput(state, nav))) { removeDebris(state, slot); return; }
   }
   state.hull = Math.max(0, state.hull - DEBRIS_HULL_DAMAGE);
   const breachFirst = nextFloat(state.rng.hazards) < 0.5;

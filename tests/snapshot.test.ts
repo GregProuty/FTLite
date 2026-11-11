@@ -196,4 +196,14 @@ describe('snapshot', () => {
     run(resumed, 700);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
+  it('a run saved inside an active Engineering productivity window continues like an uninterrupted run through the window expiry', () => {
+    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, s.derived.stationOfKind[StationKind.Engineering]!); return s; };
+    const script = (t: number) => t === 50 ? intents({ moveY: 1 }) : t === 52 ? intents({ moveX: 1 }) : intents();   // cursor to Life Support, then a bar move at tick 52
+    const whole = mk(); for (let t = 0; t < 600; t++) step(whole, script(t));
+    expect(whole.skills.lastEngChangeTick).toBe(52); expect(whole.skills.xp[1]).toBeGreaterThan(0);                 // Engineering XP accrued inside the window
+    const first = mk(); for (let t = 0; t < 200; t++) step(first, script(t));
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
+    for (let t = 200; t < 600; t++) step(resumed, script(t));
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
 });

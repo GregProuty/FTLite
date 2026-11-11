@@ -35,9 +35,9 @@ function engineeringInput(state: SimState, i: number, dir: number, confirm: bool
   else if (dir === Dir.Down) c[i] = (c[i]! + 1) % STATION_COUNT;
   else if (dir === Dir.Right || dir === Dir.Left) {
     const target = state.derived.stationOfKind[c[i]!]!;
-    if (target >= 0) shiftBar(state, target, dir === Dir.Right ? 1 : -1);
+    if (target >= 0 && shiftBar(state, target, dir === Dir.Right ? 1 : -1)) state.skills.lastEngChangeTick = state.tick;
   }
-  if (confirm) cycleCoolant(state, state.derived.stationOfKind[c[i]!]!);   // spec 2b-i section 5: the cursor's station after this tick's stick edge
+  if (confirm && cycleCoolant(state, state.derived.stationOfKind[c[i]!]!)) state.skills.lastEngChangeTick = state.tick;   // spec 2b-i section 5: the cursor's station after this tick's stick edge
 }
 
 function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): void {
@@ -45,7 +45,7 @@ function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): 
   if (c[i]! < 0) return;                                              // a ship without doors
   if (dir === Dir.Up || dir === Dir.Left) c[i] = (c[i]! + n - 1) % n;
   else if (dir === Dir.Down || dir === Dir.Right) c[i] = (c[i]! + 1) % n;
-  if (confirm) state.scratch.doorToggles.add(edges[c[i]!]!);
+  if (confirm) { state.scratch.doorToggles.add(edges[c[i]!]!); state.skills.lastDoorToggleTick = state.tick; }
 }
 
 /** Step 2: seated players' input, then the tick's door toggles (local and remote) once per door, ascending (spec sections 4, 6). */
