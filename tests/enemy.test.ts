@@ -7,8 +7,14 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE } from '../src/renderer/src/sim/tuning';
-import { makeState, run, quiet, armSpawn, placeEnemy, placeShot, placeDebris, room, intents } from './helpers/sim';
+import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS } from '../src/renderer/src/sim/tuning';
+import { makeState, run, quiet, armSpawn, placeEnemy, placeShot, placeDebris, room, intents, teleport, seconds } from './helpers/sim';
+import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
+import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
+import { isProductive } from '../src/renderer/src/sim/productive';
+import { failStation } from '../src/renderer/src/sim/power';
+import { rawStress, anyUnattended, activeHazardCount } from '../src/renderer/src/sim/director';
+import { Health } from '../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 
 const T = TICK_HZ;
@@ -174,5 +180,115 @@ describe('enemy: targets', () => {
     const ks = placeShot(p, A, 600); p.debris.impactTick[ks] = p.tick; debrisSystem(p); expect(p.hull).toBe(HULL_MAX - ENEMY_SHOT_HULL_DAMAGE);
     const kd = spawnDebris(p); expect(kd).toBe(ks); expect(p.debris.kind[kd]).toBe(ObjectKind.Debris);
     p.debris.impactTick[kd] = p.tick; debrisSystem(p); expect(p.hull).toBe(HULL_MAX - ENEMY_SHOT_HULL_DAMAGE - DEBRIS_HULL_DAMAGE);
+  });
+});
+
+/** Replace every debris array with a Proxy that throws on a read at ENEMY_SLOT, so a test proves the pseudo-slot never indexes the table. */
+function guardDebris(s: ReturnType<typeof makeState>): void {
+  const trap = <A extends object>(arr: A): A => new Proxy(arr, { get(t, p) { if (p === String(ENEMY_SLOT)) throw new Error(`debris array read at ENEMY_SLOT`); const v = Reflect.get(t, p); return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v; } });
+  const db = s.debris as unknown as Record<string, object>;
+  for (const key of Object.keys(db)) db[key] = trap(db[key]!);
+}
+
+describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 misses at output 0.5)', () => {
+  const armed = (hull = ENEMY_HULL) => { const s = makeState(1); quiet(s); placeEnemy(s, hull); const w = wpn(s); sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 1; return { s, w }; };
+  it('enemyBeamHits thresholds', () => {
+    expect(enemyBeamHits(0.69, 0.5)).toBe(true); expect(enemyBeamHits(0.71, 0.5)).toBe(false); expect(enemyBeamHits(0.84, 1)).toBe(true); expect(enemyBeamHits(0.86, 1)).toBe(false);
+  });
+  it('a beam hit takes 15 hull, counts the shot and hit, resets the charge, stamps the shot and draws once; a miss takes nothing', () => {
+    const { s } = armed(); s.rng.combat.s = 7; const one = createRng(7); nextFloat(one);
+    expect(fireWeapon(s)).toBe(true);
+    expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE); expect([s.telemetry.shots, s.telemetry.hits]).toEqual([1, 1]); expect(s.weapons.charge).toBe(0); expect(s.skills.lastShotTick).toBe(s.tick); expect(s.rng.combat.s).toBe(one.s);
+    const m = armed(); m.s.rng.combat.s = 4;
+    expect(fireWeapon(m.s)).toBe(false); expect(m.s.enemy.hull).toBe(ENEMY_HULL); expect([m.s.telemetry.shots, m.s.telemetry.hits]).toEqual([1, 0]); expect(m.s.weapons.charge).toBe(0);
+    const f3 = armed(); f3.s.weapons.selector = Weapon.BeamF3; f3.s.rng.combat.s = 7;
+    expect(fireWeapon(f3.s)).toBe(true); expect(f3.s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE);   // frequency ignored
+  });
+  it('a torpedo hit takes 35 and unloads the tube; a miss takes nothing', () => {
+    const { s } = armed(); s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 1; s.rng.combat.s = 7;
+    expect(fireWeapon(s)).toBe(true); expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_TORP_DAMAGE); expect(s.weapons.torpedoLoaded).toBe(0);
+    const m = armed(); m.s.weapons.selector = Weapon.Torpedo; m.s.weapons.torpedoLoaded = 1; m.s.rng.combat.s = 4;
+    expect(fireWeapon(m.s)).toBe(false); expect(m.s.enemy.hull).toBe(ENEMY_HULL);
+  });
+  it('the kill: hull 15 and a beam hit destroys the enemy, retargets, draws the cooldown once, and leaves a shot in flight', () => {
+    const { s, w } = armed(15); const A = room(s, 'A'); const k = placeShot(s, A, 600, 1); const b = placeDebris(s, A, 600, 1);
+    s.stations.cursor[w] = ENEMY_SLOT; s.rng.combat.s = 7; s.rng.director.s = 7; const dr = createRng(7), u = nextFloat(dr);
+    expect(fireWeapon(s)).toBe(true);
+    expect([s.enemy.present, s.enemy.hull, s.telemetry.enemiesDestroyed, s.telemetry.shots, s.telemetry.hits]).toEqual([0, 0, 1, 1, 1]);
+    expect(s.stations.cursor[w]).toBe(k === 0 ? (s.debris.stableId[k]! > s.debris.stableId[b]! ? b : k) : k);   // the next StableId after the enemy's: the shot (placed after placeEnemy) sorts first
+    expect(s.rng.director.s).toBe(dr.s); expect(s.enemy.nextArrivalTick).toBe(s.tick + Math.round(ENCOUNTER_COOLDOWN * T * jitter(u)));
+    expect(s.debris.active[k]).toBe(1); expect(s.debris.kind[k]).toBe(ObjectKind.Shot);
+  });
+  it('readiness rejections against the enemy: absent, offline, unoccupied, uncharged, unloaded (no draw, no shot)', () => {
+    const check = (s: ReturnType<typeof makeState>) => { const c0 = s.rng.combat.s; expect(fireWeapon(s)).toBe(false); expect(s.rng.combat.s).toBe(c0); expect(s.telemetry.shots).toBe(0); expect(s.enemy.hull).toBe(s.enemy.present ? ENEMY_HULL : 0); };
+    const absent = armed(); absent.s.enemy.present = 0; absent.s.enemy.hull = 0; check(absent.s);
+    const off = armed(); failStation(off.s, off.w); check(off.s);                                   // failStation also stands the operator
+    const failedSeated = armed(); failedSeated.s.stations.failed[failedSeated.w] = 1; check(failedSeated.s);      // failed byte alone, operator still seated: the online guard
+    const unpowered = armed(); unpowered.s.stations.level[unpowered.w] = 0; check(unpowered.s);                   // allocation 0, operator still seated
+    const empty = armed(); empty.s.stations.occupant[empty.w] = -1; check(empty.s);
+    const low = armed(); low.s.weapons.charge = 0.5; check(low.s);
+    const noTorp = armed(); noTorp.s.weapons.selector = Weapon.Torpedo; noTorp.s.weapons.torpedoLoaded = 0; check(noTorp.s);
+  });
+  it('a kill on a due-shot tick fires nothing: destroyed in the Weapons step, enemySystem finds it absent', () => {
+    const s = makeState(2); quiet(s); placeEnemy(s, 15); const w = wpn(s); sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 1;
+    s.enemy.nextShotTick = s.tick; s.rng.combat.s = 7; const d1 = createRng(s.rng.director.s); nextFloat(d1); const h = s.rng.hazards.s;
+    run(s, 1, () => intents({ confirmPressed: true }, {}));
+    expect(s.enemy.present).toBe(0); expect(s.telemetry.enemiesDestroyed).toBe(1); expect(shotsInFlight(s)).toBe(0); expect(s.rng.director.s).toBe(d1.s); expect(s.rng.hazards.s).toBe(h);
+  });
+});
+
+describe('enemy: shot impacts and guards', () => {
+  it('an unevaded shot takes 6 hull, 20 crew health, leaves one hazard, stamps impactTick and counts; an evaded shot counts a roll and an evasion only', () => {
+    const s = makeState(1), A = room(s, 'A'); quiet(s); teleport(s, 0, 2.5, 2.5); s.rng.hazards.s = 7;   // 0.012 < 0.5: breach first
+    placeShot(s, A, 0); debrisSystem(s);
+    expect(s.hull).toBe(100 - ENEMY_SHOT_HULL_DAMAGE); expect(Health.cur[s.crew[0]!]).toBe(100 - DEBRIS_CREW_DAMAGE);
+    const breaches = Array.from(s.breaches.active).filter((b, i) => b && s.derived.siteRoom[i] === A).length, fire = s.rooms.fire[A]! > 0 ? 1 : 0;
+    expect(breaches + fire).toBe(1); expect(s.rooms.impactTick[A]).toBe(s.tick); expect(s.telemetry.impacts).toBe(1); expect(s.debris.active[0]).toBe(0);
+    const e = makeState(1); quiet(e); sitDown(e, 0, e.derived.stationOfKind[StationKind.Navigation]!); e.rng.combat.s = 7; placeShot(e, A, 0); debrisSystem(e);
+    expect([e.telemetry.evadeRolls, e.telemetry.evasions, e.telemetry.impacts, e.hull]).toEqual([1, 1, 0, 100]);
+  });
+  it('a shot can be scanned and shot down exactly like debris', () => {
+    const s = makeState(1), B = room(s, 'B'); quiet(s); const c = sci(s); sitDown(s, 0, c); const k = placeShot(s, B, 6000, 1, undefined, 2);
+    s.stations.cursor[c] = k; scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(1);
+    run(s, seconds(20)); expect(s.debris.scanned[k]).toBe(1); expect(s.debris.frequency[k]).toBe(2);
+    run(s, 1, () => intents({ cancelPressed: true }));
+    const w = wpn(s); sitDown(s, 0, w); s.stations.cursor[w] = k; s.weapons.selector = Weapon.BeamF2; s.weapons.charge = 1; s.rng.combat.s = 7;
+    expect(fireWeapon(s)).toBe(true); expect(s.debris.active[k]).toBe(0); expect([s.telemetry.shots, s.telemetry.hits]).toEqual([1, 1]);
+  });
+  it('Science guards: Confirm on the enemy starts no scan; scanStep with the cursor on the enemy touches nothing; neither reads a debris array at ENEMY_SLOT', () => {
+    const s = makeState(1), A = room(s, 'A'); placeEnemy(s); const c = sci(s); sitDown(s, 0, c); const k = placeDebris(s, A, 600, 1); s.debris.scan[k] = 0.4;
+    s.stations.cursor[c] = ENEMY_SLOT; guardDebris(s);
+    scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(0);
+    s.science.scanning = 1; scanStep(s); expect(s.science.scanning).toBe(1); expect(s.debris.scan[k]).toBe(0.4);
+  });
+  it('productive: the enemy alone makes neither Science nor Navigation productive; one shot in flight does', () => {
+    const s = makeState(2); quiet(s); placeEnemy(s); s.enemy.nextShotTick = 1e9;   // no enemy fire either: the enemy alone
+    const c = sci(s), n = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, c); sitDown(s, 1, n);
+    expect(isProductive(s, c)).toBe(false); expect(isProductive(s, n)).toBe(false);
+    const before = [s.director.sinceProductive[StationKind.Science], s.director.sinceProductive[StationKind.Navigation]];
+    run(s, seconds(10));
+    expect(s.director.sinceProductive[StationKind.Science]).toBe(before[0]! + seconds(10)); expect(s.director.sinceProductive[StationKind.Navigation]).toBe(before[1]! + seconds(10));
+    expect(s.skills.xp[0 * 6 + 3]).toBe(0); expect(s.skills.xp[1 * 6 + 0]).toBe(0);                  // no Science or Navigation XP
+    placeShot(s, room(s, 'A'), 6000, 1);
+    expect(isProductive(s, c)).toBe(true); expect(isProductive(s, n)).toBe(true);
+    s.science.scanning = 1; s.stations.cursor[c] = ENEMY_SLOT; guardDebris(s); expect(isProductive(s, c)).toBe(true);   // through anyWarned, not the scan branch; the guard proves no debris array is read at ENEMY_SLOT
+  });
+  it('director: rawStress with the enemy alone is 0.30, with one shot 0.50; the enemy is never unattended; a shot counts toward the hazard cap', () => {
+    const s = makeState(2); placeEnemy(s);
+    expect(rawStress(s)).toBeCloseTo(STRESS_WEIGHTS.enemy, 12); expect(anyUnattended(s)).toBe(false); expect(activeHazardCount(s)).toBe(0);
+    placeShot(s, room(s, 'A'), 600);
+    expect(rawStress(s)).toBeCloseTo(STRESS_WEIGHTS.enemy + STRESS_WEIGHTS.debris, 12); expect(activeHazardCount(s)).toBe(1);
+  });
+});
+
+describe('combat gate: a level-2 Weapons operator destroys the enemy with seven beams inside the window', () => {
+  it('seven shots, seven hits, destroyed before departTick', () => {
+    const s = makeState(2, 1); quiet(s); const w = wpn(s); sitDown(s, 0, w); placeEnemy(s); s.enemy.nextShotTick = 1e9; s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 0;
+    const depart = s.enemy.departTick; let shots = 0;
+    while (s.enemy.present && s.tick < depart) {
+      const fire = s.weapons.charge >= 1; if (fire) { s.rng.combat.s = 7; shots++; }
+      run(s, 1, () => intents(fire ? { confirmPressed: true } : {}, {}));
+    }
+    expect(shots).toBe(7); expect([s.telemetry.shots, s.telemetry.hits, s.telemetry.enemiesDestroyed]).toEqual([7, 7, 1]); expect(s.enemy.present).toBe(0); expect(s.tick).toBeLessThan(depart);
   });
 });

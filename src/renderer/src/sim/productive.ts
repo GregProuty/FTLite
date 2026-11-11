@@ -2,7 +2,7 @@ import type { SimState } from './state';
 import { Position, Health, Life, LifeState } from './components';
 import { roomAt } from './grid';
 import { StationKind } from './stationKinds';
-import { warnedTargets } from './debrisTargets';
+import { warnedTargets, ENEMY_SLOT } from './debrisTargets';
 import { isOverdriven } from './heat';
 import { bonusBars, powerUsed } from './power';
 import { PRODUCTIVE_WINDOW_TICKS, HAZARD_EVERY, HEALTH_MAX } from './tuning';
@@ -12,7 +12,7 @@ export function recent(stamp: number, tick: number, span: number): boolean {
   return stamp >= 0 && tick - stamp >= 0 && tick - stamp < span;
 }
 
-function anyWarned(state: SimState): boolean { return warnedTargets(state).length > 0; }
+function anyWarned(state: SimState): boolean { return warnedTargets(state).some((k) => k !== ENEMY_SLOT); }   // objects only: the enemy's presence alone is not incoming work (spec Combat-i section 3)
 
 /**
  * Productive predicate per station index (foundation section 5, spec 3-i section 6). The caller checks that the station
@@ -25,7 +25,7 @@ export function isProductive(state: SimState, i: number): boolean {
     case StationKind.Weapons: return recent(sk.lastShotTick, tick, PRODUCTIVE_WINDOW_TICKS);
     case StationKind.Science: {
       const c = state.stations.cursor[i]!, db = state.debris;
-      const scanningValid = state.science.scanning === 1 && c >= 0 && db.active[c] === 1 && db.warned[c] === 1 && db.scanned[c] === 0;
+      const scanningValid = state.science.scanning === 1 && c >= 0 && c !== ENEMY_SLOT && db.active[c] === 1 && db.warned[c] === 1 && db.scanned[c] === 0;
       return scanningValid || anyWarned(state);
     }
     case StationKind.Engineering: {

@@ -3,10 +3,11 @@ import { nextFloat } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
-import { cycleTarget } from './debrisTargets';
+import { cycleTarget, isTarget, ENEMY_SLOT } from './debrisTargets';
+import { enemyBeamHits, damageEnemy } from './enemy';
 import { Dir } from './dir';
 import { Skill, addXp } from './skills';
-import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE } from './tuning';
+import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE } from './tuning';
 
 /** The four-slot weapon selector (spec 2b-ii section 5): beams tuned to frequency selector + 1, then the torpedo. */
 export const Weapon = { BeamF1: 0, BeamF2: 1, BeamF3: 2, Torpedo: 3 } as const;
@@ -34,8 +35,8 @@ export function fireWeapon(state: SimState): boolean {
   const wpn = state.derived.stationOfKind[StationKind.Weapons]!, db = state.debris, w = state.weapons;
   if (wpn < 0 || !stationOnline(state, wpn) || state.stations.occupant[wpn]! < 0) return false;
   const c = state.stations.cursor[wpn]!;
-  if (c < 0 || !db.active[c] || !db.warned[c]) return false;
-  const output = stationOutput(state, wpn);
+  if (c < 0 || !isTarget(state, c)) return false;
+  const enemy = c === ENEMY_SLOT, output = stationOutput(state, wpn);
   let hit: boolean;
   if (w.selector === Weapon.Torpedo) {
     if (!w.torpedoLoaded) return false;
@@ -43,11 +44,15 @@ export function fireWeapon(state: SimState): boolean {
     w.torpedoLoaded = 0;                                                       // the stock was spent when the tube loaded
   } else {
     if (w.charge < 1) return false;
-    hit = beamHits(nextFloat(state.rng.combat), output, w.selector + 1 === db.frequency[c]);   // the true frequency decides, scanned or not
+    const u = nextFloat(state.rng.combat);
+    hit = enemy ? enemyBeamHits(u, output) : beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides, scanned or not; against the ship it plays no part until Combat-ii
     w.charge = 0;
   }
   state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
-  if (hit) { state.telemetry.hits++; removeDebris(state, c); }
+  if (hit) {
+    state.telemetry.hits++;
+    if (enemy) damageEnemy(state, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); else removeDebris(state, c);
+  }
   return hit;
 }
 
