@@ -137,3 +137,9 @@ Added to `docs/gates.md` as "Increment 2b-i":
 - Whether a hot station should throttle output before failing (a soft ceiling): no; the foundation's model is a hard failure, and the heat bar is the warning. Revisit after playtests.
 - Whether coolant should also speed idle cooling: no (foundation: idle cooling is a flat base rate); it keeps "two units hold one station" the only rule to learn.
 - Whether an overheat should also damage the seated operator: no; the forced stand and the fire chance are the cost. Revisit with 2b-ii if overdrive proves too cheap.
+
+## 11. Amendments from the plan
+- `maxLevel(kind)` lives in `sim/power.ts` next to `shiftBar` (section 2 put it in `heat.ts`); `heat.ts` imports `failStation` from `power.ts`, so the reverse placement would make an import cycle.
+- `coolingPerUnit(state)` returns `HEAT_COOL_UNIT` with the skill term deferred to increment 3 (section 5 describes the future formula).
+- The Pixi heat bar is a 2 px strip under the cells rather than reusing `bar()` (section 7), so it fits inside the 18 px row.
+- The `overdrive(state, kind)` test helper lives in `tests/helpers/sim.ts` and widens `power.capacity` to 20 so heat fixtures never fight the pool; the spawner-cap fixture uses two breaches rather than fires because `fireStep` draws spread rolls from `rng.hazards` and would move the pinned overheat draw.
