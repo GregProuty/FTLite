@@ -105,6 +105,7 @@ Added to `docs/gates.md` as "Increment 3-ii" (closing the foundation's Increment
 
 - A character selector in the lobby (any slot picks any character): later, once there are more than four characters or players ask.
 - Portraits: the art budget is unchanged; the per-player tint remains the identifier.
+- A lobby selector must also record the character list in the replay format (`Replay` has no `characters` field today; the recorder and the runner both use `DEFAULT_CHARACTERS`, so replays are deterministic until a selector exists) and bump the replay version.
 
 ## 11. Amendments from the plan
 - `Skill`, `SKILL_NAMES` and `xpIndex` live in `sim/skillIds.ts` (re-exported by `skills.ts`) so `characters.ts` and `skills.ts` do not import each other; `addXp` reads `xpMult` from `characters.ts`.

@@ -19,12 +19,16 @@ import { Weapon } from '../src/renderer/src/sim/weapons';
 import { repairMult, addXp } from '../src/renderer/src/sim/skills';
 import { DT, HAZARD_DT, CREW_SPEED, FIRE_DAMAGE, O2_DAMAGE, BLEEDOUT_TIME, HEALTH_MAX, HEAT_COOL_UNIT, HEAT_COOL_SKILL, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, XP_RATE, XP_PER_SHOT, XP_PER_EVADE_ROLL, DEBRIS_CREW_DAMAGE, TRAIT_REPAIR_MULT, TRAIT_SLOW_SPEED, TRAIT_FAST_SPEED, TRAIT_FIRE_DAMAGE, TRAIT_O2_DAMAGE, TRAIT_XP_MULT, TRAIT_BLEEDOUT } from '../src/renderer/src/sim/tuning';
 
+const ASSET_MECHANIC = { [Asset.QuickHands]: 'repair', [Asset.CoolHead]: 'cooling', [Asset.IronLungs]: 'damage', [Asset.Sprinter]: 'speed' } as Record<number, string>;
+const COMPLICATION_MECHANIC = { [Complication.HeavyBoots]: 'speed', [Complication.Flammable]: 'damage', [Complication.SlowLearner]: 'xp', [Complication.Frail]: 'bleed' } as Record<number, string>;
+
 describe('character data', () => {
   it('four playable characters with distinct names and traits on different mechanics; Recruit is neutral', () => {
     const playable = CHARACTERS.slice(0, 4);
     expect(new Set(playable.map((c) => c.name)).size).toBe(4);
     for (const c of playable) { expect(c.asset).not.toBe(Asset.None); expect(c.complication).not.toBe(Complication.None); expect(c.headStart.length).toBeGreaterThan(0); }
     expect(new Set(playable.map((c) => c.asset)).size).toBe(4); expect(new Set(playable.map((c) => c.complication)).size).toBe(4);
+    for (const c of playable) expect(ASSET_MECHANIC[c.asset]).toBeDefined(), expect(COMPLICATION_MECHANIC[c.complication]).toBeDefined(), expect(ASSET_MECHANIC[c.asset]).not.toBe(COMPLICATION_MECHANIC[c.complication]);
     const r = CHARACTERS[RECRUIT]!;
     expect(r.name).toBe('Recruit'); expect(r.asset).toBe(Asset.None); expect(r.complication).toBe(Complication.None); expect(r.headStart).toEqual([]);
     expect(DEFAULT_CHARACTERS).toEqual([0, 1, 2, 3]);
@@ -38,6 +42,7 @@ describe('character data', () => {
     expect(xpMult(s, 2)).toBe(0.75); expect(xpMult(s, 0)).toBe(1);
     expect(coolingTraitBonus(s, 1)).toBe(1); expect(coolingTraitBonus(s, 0)).toBe(0);
     expect(bleedoutMult(s, 3)).toBe(0.6); expect(bleedoutMult(s, 0)).toBe(1);
+    expect(fireDamageMult(n, 0)).toBe(1); expect(o2DamageMult(n, 0)).toBe(1); expect(xpMult(n, 0)).toBe(1); expect(coolingTraitBonus(n, 0)).toBe(0); expect(bleedoutMult(n, 0)).toBe(1);
     expect(characterOf(n, 0).name).toBe('Recruit');
   });
 });
@@ -77,7 +82,7 @@ const xp = (s: ReturnType<typeof makeState>, pid: number, skill: number) => s.sk
 const ticksFor = (T: number, m: number) => Math.ceil(T / (m * DT) - 1e-9);
 
 describe('trait effects', () => {
-  it('Quick Hands with Repair 3 repairs a fire and a power failure in 6 / 1.475 s and a breach in 8 / 1.475 s; a Recruit partner adds only their own rate; revive is unchanged', () => {
+  it('Quick Hands with Repair 3 repairs a fire and a power failure in 6 / 1.475 s and a breach in 8 / 1.475 s; Lindqvist (Repair 0, no repair trait) adds 1 x; revive is unchanged', () => {
     const m = TRAIT_REPAIR_MULT * repairMult(3);
     expect(m).toBeCloseTo(1.475);
     const fire = makeState(1, 1, DEFAULT_CHARACTERS), G = room(fire, 'G'); fire.spawner.nextSpawnTick = 1e9; igniteRoom(fire, G); teleport(fire, 0, 2.5, 9.5);
@@ -132,10 +137,11 @@ describe('trait effects', () => {
     run(t, 1);
     expect(HEALTH_MAX - Health.cur[t.crew[0]!]!).toBeCloseTo(O2_DAMAGE * DT, 9);
     expect(HEALTH_MAX - Health.cur[t.crew[2]!]!).toBeCloseTo(O2_DAMAGE * TRAIT_O2_DAMAGE * DT, 9);
-    const d = makeState(2, 1, DEFAULT_CHARACTERS), A = room(d, 'A');
-    d.spawner.nextSpawnTick = 1e9; teleport(d, 1, 2.5, 2.5); d.rng.combat.s = 36;
+    const d = makeState(3, 1, DEFAULT_CHARACTERS), A = room(d, 'A');
+    d.spawner.nextSpawnTick = 1e9; teleport(d, 1, 2.5, 2.5); teleport(d, 2, 2.5, 2.5); d.rng.combat.s = 36;
     placeDebris(d, A, 0, 1); debrisSystem(d);                                                             // the impact alone: through step() the fire it may start would add environmental damage this tick
     expect(HEALTH_MAX - Health.cur[d.crew[1]!]!).toBeCloseTo(DEBRIS_CREW_DAMAGE, 9);                      // Lindqvist in the hit room: no fire multiplier on impacts
+    expect(HEALTH_MAX - Health.cur[d.crew[2]!]!).toBeCloseTo(DEBRIS_CREW_DAMAGE, 9);                      // Reyes in the hit room: no suffocation multiplier on impacts
   });
   it('Slow Learner scales every XP path by 0.75 while Okoro earns the full amounts', () => {
     const s = makeState(3, 1, DEFAULT_CHARACTERS);
@@ -173,5 +179,17 @@ describe('trait effects', () => {
     const c = mk(); downCrew(c, 3); c.rooms.o2[room(c, 'G')] = 0; c.doors.state.fill(2); c.stations.level[idx(c, StationKind.LifeSupport)] = 0;   // Life Support off, or injection refills G within nine seconds
     run(c, seconds(BLEEDOUT_TIME * TRAIT_BLEEDOUT / 2) - 1); expect(Life.state[c.crew[3]!]).toBe(LifeState.Downed);
     run(c, 2); expect(Life.state[c.crew[3]!]).toBe(LifeState.Dead);
+  });
+});
+
+describe('determinism with the four characters', () => {
+  it('two runs and a snapshot round-trip at tick 300 agree after 600 ticks', () => {
+    const f = () => intents({ moveX: 1 }, { moveY: 1 }, { interactHeld: true }, {});
+    const a = makeState(4, 11, DEFAULT_CHARACTERS), b = makeState(4, 11, DEFAULT_CHARACTERS), c = makeState(4, 11, DEFAULT_CHARACTERS);
+    run(a, 600, f); run(b, 600, f);
+    run(c, 300, f);
+    const c2 = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(c))));
+    run(c2, 300, f);
+    expect(hashState(b)).toBe(hashState(a)); expect(hashState(c2)).toBe(hashState(a));
   });
 });

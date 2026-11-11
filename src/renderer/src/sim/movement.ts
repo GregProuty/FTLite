@@ -38,7 +38,8 @@ export function movementSystem(state: SimState, intents: readonly Intent[]): voi
     if (Seated.station[eid]! >= 0 || state.scratch.stoodThisTick[pid]) continue;
     const it = intentFor(intents, pid);
     if (it.moveX === 0 && it.moveY === 0) continue;
-    const p = moveAABB(solid, Position.x[eid]!, Position.y[eid]!, it.moveX * CREW_SPEED * speedMult(state, pid) * DT, it.moveY * CREW_SPEED * speedMult(state, pid) * DT, CREW_HALF);
+    const v = CREW_SPEED * speedMult(state, pid) * DT;
+    const p = moveAABB(solid, Position.x[eid]!, Position.y[eid]!, it.moveX * v, it.moveY * v, CREW_HALF);
     Position.x[eid] = p.x; Position.y[eid] = p.y;
   }
 }

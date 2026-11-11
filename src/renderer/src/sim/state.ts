@@ -35,8 +35,8 @@ export interface SimState {
   /** Debris objects in fixed slots (spec 2a-ii section 3). stableId is 0 while a slot is inactive. */
   debris: { active: Uint8Array; stableId: Int32Array; room: Int16Array; impactTick: Int32Array; warned: Uint8Array; frequency: Uint8Array; scanned: Uint8Array; scan: Float64Array };
   weapons: { charge: number; selector: number; torpedoStock: number; torpedoLoaded: number; torpedoLoad: number; torpedoRegen: number };   // selector 0..2 beam F1..F3, 3 torpedo; beam charge 0..1 survives standing and power failure
-  /** Per-crew skill XP (pid x SKILL_COUNT + skill) and the productivity stamps (spec 3-i section 4); stamps are -1 until set. */
   crewCharacter: Uint8Array;   // CHARACTERS index per crew member (spec 3-ii section 4)
+  /** Per-crew skill XP (pid x SKILL_COUNT + skill) and the productivity stamps (spec 3-i section 4); stamps are -1 until set. */
   skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
   science: { scanning: number };                        // 1 while a scan is running (spec 2b-ii section 4)
   /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */

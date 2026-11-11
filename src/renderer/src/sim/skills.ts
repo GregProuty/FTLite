@@ -22,7 +22,6 @@ export function skillCurve(level: number): number {
 /** Repair speed multiplier: 1 at level 0, 1.6 at level 10. */
 export function repairMult(level: number): number { return 1 + REPAIR_SKILL_GAIN * level; }
 
-
 export function skillLevelOf(state: SimState, pid: number, skill: number): number {
   return levelFor(state.skills.xp[xpIndex(pid, skill)]!);
 }
