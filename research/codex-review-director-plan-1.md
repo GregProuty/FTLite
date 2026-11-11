@@ -1,0 +1,13 @@
+# Codex review: 4-i plan Task 1 (2026-11-10)
+
+1. **P2 — Engineering fixture is still within reach.** [Plan line 154](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-10-director.md:154): `(16.5, 9.5)` is exactly `1.5` tiles from the nearest point of Engineering’s tile `(18,9)`. `inReachOfTile` includes that boundary, so `anyUnattended(s)` returns `false`. **Fix:** move the crew member to `(16.4, 9.5)` before asserting `true`.
+
+2. **P2 — Stress-period test checks before tick 300 executes.** [Plan line 173](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-10-director.md:173): the preceding 299 steps process ticks `0..298`; another step processes tick `299`. Stress remains zero because its first update runs at tick `300`. **Fix:** change that call to `run(t, 2)`, then retain the following 299-tick unchanged-stress check.
+
+3. **P2 — Forced-power-spawn fixture blocks its own spawn.** [Plan line 281](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-10-director.md:281): failing all six other stations makes `activeHazardCount === 6`, exceeding the initial two-player cap of `3`. The director stops before the power roll; Navigation stays operational and occupied. Increasing reactor capacity does not change this cap. **Fix:** leave other stations healthy, retain director state `8`, and set `s.rng.hazards.s = 7`. Its first target draw selects station index `0`, Navigation, without filling the cap.
+
+4. **P2 — Missing-console fixture is rejected before reaching its assertion.** [Plan line 304](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-10-director.md:304): after removing Doors, `parseShip(noDoors)` throws `stations: expected exactly 7 stations, one per kind`. **Fix:** construct this synthetic fixture from an already parsed layout, filter its stations, and pass it directly to `createSimState`. If missing consoles must also be accepted through production parsing, add an explicit schema-change step and corresponding schema tests; Task 1 currently supplies neither.
+
+5. **P2 — Re-entry timer assertion uses the wrong interval.** [Plan line 221](C:/Users/djuar/FTLite/docs/superpowers/plans/2026-11-10-director.md:221): re-entry occurs at tick `2400`, or two-thirds of a minute. Its interval is `28.125` seconds, but the bounds use the initial `30` seconds. Those bounds can reject valid jitter results and accept a timer that ignores escalation. **Fix:** capture `u = nextFloat(one)` and assert the exact timer using `spawnInterval(s.tick / (60 * T), 2)` and `1 + SPAWN_JITTER * (2 * u - 1)`.
+
+Read-only execution of the proposed code through an in-memory TypeScript harness reproduced findings 1–4. No files were changed.
