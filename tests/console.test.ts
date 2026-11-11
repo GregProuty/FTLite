@@ -230,6 +230,7 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     at(s, 0, sci); at(s, 1, wpn);
     run(s, 1, () => intents(confirm, confirm));                                 // both sit
     expect(Seated.station[s.crew[0]!]).toBe(sci); expect(Seated.station[s.crew[1]!]).toBe(wpn);
+    const sitTick = s.tick;                                                     // loading starts here, whatever the selector shows
     run(s, 1, () => intents(confirm, {}));                                      // Science starts the scan
     expect(s.science.scanning).toBe(1);
     run(s, seconds(8) + 2);
@@ -249,7 +250,8 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     expect(s.stations.cursor[wpn]).toBe(second);
     run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
     expect(s.weapons.selector).toBe(Weapon.Torpedo);
-    run(s, seconds(21));                                                         // the tube has been loading since the sit (20 s at level 2); about 12 s have passed, so wait out the rest with margin
+    expect(s.weapons.torpedoLoaded).toBe(0);                                     // about 12 s in: not yet
+    run(s, sitTick + seconds(20) + 2 - s.tick);                                  // the gate deadline: 20 s + 2 ticks from the sit at level 2
     expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(TORP_START - 1); expect(s.debris.active[second]).toBe(1);
     s.rng.combat.s = 7; const oneT = createRng(7); nextFloat(oneT);
     run(s, 1, () => intents({}, confirm));

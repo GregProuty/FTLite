@@ -141,6 +141,16 @@ describe('firing', () => {
   });
 });
 
+describe('same-tick input order', () => {
+  it('Right + Confirm on one tick fires the newly selected weapon', () => {
+    const s = makeState(1), i = wpn(s), A = room(s, 'A');
+    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1, undefined, 2); sitDown(s, 0, i);
+    s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1; s.rng.combat.s = 1;   // 0.627: a matched beam hits, a mismatched one misses
+    run(s, 1, () => intents({ moveX: 1, confirmPressed: true }));
+    expect(s.weapons.selector).toBe(Weapon.BeamF2); expect(s.debris.active[0]).toBe(0); expect(s.weapons.charge).toBe(0);   // fired as F2 (a match): F1 would have missed
+  });
+});
+
 describe('properties', () => {
   it('stock stays in 0..TORP_CAP, loaded is 0 or 1, stock only falls by one at a load completion, and draws equal shots', () => {
     const arbDir = fc.constantFrom({}, up, down);                                // no selector edges: the shot prediction below reads the selector before the tick
@@ -152,36 +162,38 @@ describe('properties', () => {
       for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3));
       sitDown(s, 0, i);                                                           // after the placements, so the sit selects a target
       if (s.stations.cursor[i]! < 0) return false;
+      const output = 0.5;                                                         // starter Weapons level 2, online throughout (spawner off, nobody fails it)
+      let shots = 0, loadsCompleted = 0, prevStock = s.weapons.torpedoStock;
+      // One tick with every check: exactly one combat draw per predicted shot, stock moves only at a predicted load completion.
+      const tick = (dir: object, confirm: boolean): boolean => {
+        if (s.stations.cursor[i]! < 0) s.stations.cursor[i] = warnedTargets(s)[0] ?? -1;   // keep a target selected: a hit leaves -1, and an Up/Down edge would otherwise retarget and fire inside the tick
+        const w = s.weapons, c = s.stations.cursor[i]!;
+        // Readiness after this tick's increments, computed with the sim's own arithmetic (charging and loading precede input).
+        const chargeAfter = Math.min(1, w.charge + DT * output / BEAM_CHARGE_TIME);
+        const loadCompletes = w.torpedoLoaded === 0 && w.torpedoStock > 0 && Math.min(1, w.torpedoLoad + DT * output / TORP_LOAD_TIME) >= 1;
+        const ready = w.selector === Weapon.Torpedo ? (w.torpedoLoaded === 1 || loadCompletes) : chargeAfter >= 1;
+        const target = c >= 0 && s.debris.active[c] === 1 && s.debris.warned[c] === 1;
+        const willShoot = confirm && ready && target;
+        const expected = createRng(s.rng.combat.s); if (willShoot) nextFloat(expected);
+        run(s, 1, () => intents({ ...dir, confirmPressed: confirm }));
+        if (s.rng.combat.s !== expected.s) return false;                           // one draw for a shot, none otherwise
+        if (w.torpedoStock !== prevStock - (loadCompletes ? 1 : 0)) return false;   // the only stock change is a load completion (regeneration needs 90 s; the run is shorter)
+        if (w.torpedoStock < 0 || w.torpedoStock > TORP_CAP || (w.torpedoLoaded !== 0 && w.torpedoLoaded !== 1)) return false;
+        if (willShoot) shots++; if (loadCompletes) loadsCompleted++;
+        prevStock = w.torpedoStock;
+        refill(s, A);
+        return true;
+      };
       // Deterministic prelude: fire the loaded tube once and reload it, so every run completes at least one load.
       s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 1; s.weapons.charge = 1;
-      run(s, 1, () => intents({ confirmPressed: true }));
-      if (s.weapons.torpedoLoaded !== 0) return false;
-      const stockBefore = s.weapons.torpedoStock;
-      run(s, seconds(20) + 2); refill(s, A);
-      if ((s.weapons.torpedoLoaded as number) !== 1 || s.weapons.torpedoStock !== stockBefore - 1) return false;   // one load completed: stock moved into the tube
+      if (!tick({}, true) || (s.weapons.torpedoLoaded as number) !== 0) return false;
+      for (let t = 0; t < seconds(20) + 2; t++) if (!tick({}, false)) return false;
+      if ((s.weapons.torpedoLoaded as number) !== 1 || loadsCompleted !== 1) return false;
       s.weapons.selector = selector;
-      const output = 0.5;                                                         // starter Weapons level 2, online throughout (spawner off, nobody fails it)
-      let draws = 0, shots = 0, prevStock = s.weapons.torpedoStock, prevLoaded = s.weapons.torpedoLoaded;
       for (const e of [{ dir: {}, confirm: true }, ...script]) {                   // a forced first Confirm: charge is 1 and the tube is loaded, so it fires on every selector
-        for (let t = 0; t < 5; t++) {
-          if (s.stations.cursor[i]! < 0) s.stations.cursor[i] = warnedTargets(s)[0] ?? -1;   // keep a target selected: a hit leaves -1, and an Up/Down edge would otherwise retarget and fire inside the tick
-          const before = s.rng.combat.s, w = s.weapons, c = s.stations.cursor[i]!;
-          // Readiness after this tick's increments, computed with the sim's own arithmetic (charging and loading precede input).
-          const chargeAfter = Math.min(1, w.charge + DT * output / BEAM_CHARGE_TIME);
-          const loadedAfter = w.torpedoLoaded === 1 || (w.torpedoStock > 0 && Math.min(1, w.torpedoLoad + DT * output / TORP_LOAD_TIME) >= 1);
-          const ready = w.selector === Weapon.Torpedo ? loadedAfter : chargeAfter >= 1;
-          const target = c >= 0 && s.debris.active[c] === 1 && s.debris.warned[c] === 1;
-          const willShoot = e.confirm && ready && target;
-          run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm }));
-          const drew = s.rng.combat.s !== before;
-          if (drew) draws++; if (willShoot) shots++;
-          if (w.torpedoStock < 0 || w.torpedoStock > TORP_CAP || (w.torpedoLoaded !== 0 && w.torpedoLoaded !== 1)) return false;
-          if (w.torpedoStock < prevStock && !(w.torpedoStock === prevStock - 1 && ((w.torpedoLoaded === 1 && prevLoaded === 0) || (drew && w.selector === Weapon.Torpedo)))) return false;   // stock falls only by one, into a tube that was empty (which may fire the same tick)
-          prevStock = w.torpedoStock; prevLoaded = w.torpedoLoaded;
-          refill(s, A);
-        }
+        for (let t = 0; t < 5; t++) if (!tick(e.dir, e.confirm)) return false;
       }
-      return draws === shots && shots >= 1;
+      return shots >= 2 && loadsCompleted >= 1;
     }), { numRuns: 25 });
   });
 });

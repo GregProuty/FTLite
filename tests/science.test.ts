@@ -38,6 +38,25 @@ describe('scanning', () => {
     expect(s.debris.scanned[0]).toBe(1); expect(s.debris.frequency[0]).toBe(2);
     expect(buildHudModel(s, [{ status: 'active', key: 'kb:0' }], 'running', '').threats.map((t) => t.text).filter((x) => /F\d$/.test(x))[0]).toMatch(/F2$/);   // the Power threat precedes debris, so take the first debris one
   });
+  it('Confirm with cursor -1, an inactive slot or an unwarned object starts nothing', () => {
+    const s = makeState(1), i = sci(s), A = room(s, 'A');
+    s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, i);
+    run(s, 1, () => intents(confirm)); expect(s.science.scanning).toBe(0);                 // cursor -1
+    s.stations.cursor[i] = 3; run(s, 1, () => intents(confirm)); expect(s.science.scanning).toBe(0);   // inactive slot
+    const u = placeDebris(s, A, 1e6, 0); s.stations.cursor[i] = u;
+    run(s, 1, () => intents(confirm));
+    expect(s.science.scanning).toBe(0); expect(s.debris.scan[u]).toBe(0);                  // active but unwarned
+  });
+  it('same tick: Down + Confirm starts scanning the newly selected target', () => {
+    const s = makeState(1), i = sci(s), A = room(s, 'A');
+    s.spawner.nextSpawnTick = 1e9;
+    placeDebris(s, A, 1e6, 1, 10, 2); placeDebris(s, A, 1e6, 1, 20, 1);
+    s.debris.scanned[0] = 1; s.debris.scan[0] = 1;                                           // the old target is scanned: Confirm on it would start nothing
+    sitDown(s, 0, i);
+    expect(s.stations.cursor[i]).toBe(0);
+    run(s, 1, () => intents({ moveY: 1, confirmPressed: true }));
+    expect(s.stations.cursor[i]).toBe(1); expect(s.science.scanning).toBe(1);                 // the stick edge moved the cursor first, then Confirm acted on slot 1
+  });
   it('level 2 scans within 8 s; overdriven within 5.4 s; unmanned or offline never progresses', () => {
     const a = makeState(1), ia = sci(a), A = room(a, 'A');
     a.spawner.nextSpawnTick = 1e9; a.stations.level[ia] = 2; placeDebris(a, A, 1e6, 1); sitDown(a, 0, ia);

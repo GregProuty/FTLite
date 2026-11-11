@@ -1,0 +1,11 @@
+# Codex review: 2b-ii implementation (2026-11-10)
+
+1. **Important — [tests/weapons.test.ts:176](/C:/Users/djuar/FTLite/tests/weapons.test.ts:176): The property counts ticks with RNG changes, not combat draws.** Two draws during one shot still increment `draws` once, so `draws === shots` passes despite violating §9’s exact-draw requirement. Clone the pre-tick combat RNG, advance it exactly once for a predicted shot, and compare the resulting RNG state after every tick.
+
+2. **Important — [tests/weapons.test.ts:179](/C:/Users/djuar/FTLite/tests/weapons.test.ts:179): The stock property does not require a load completion before accepting a decrement.** Any torpedo shot satisfies the `drew && selector === Torpedo` alternative, permitting stock consumption at firing even without a load completion. The guaranteed reload also occurs outside the per-tick checks. Predict load completion from pre-tick stock, tube state and progress; assert the exact stock delta throughout the prelude and generated script.
+
+3. **Important — [tests/console.test.ts:239](/C:/Users/djuar/FTLite/tests/console.test.ts:239): Same-tick stick-plus-Confirm ordering is untested.** The gate separates selector changes from firing; Science tests likewise separate target changes from Confirm. Reversing input order could therefore pass while violating §5. Add combined Right+Confirm and Down+Confirm cases with distinguishable outcomes, proving that firing uses the new selector and scanning starts on the new target.
+
+4. **Minor — [tests/science.test.ts:30](/C:/Users/djuar/FTLite/tests/science.test.ts:30): Invalid-target scan-start guards lack coverage.** Confirm on a scanned target is checked, but Confirm with cursor `-1`, an inactive slot or an active unwarned object is not. Add separate fixtures asserting that `scanning` remains zero and progress remains unchanged, as required by §§4 and 9.
+
+5. **Minor — [tests/console.test.ts:252](/C:/Users/djuar/FTLite/tests/console.test.ts:252): The handoff gate allows roughly 33 seconds for the first torpedo load.** It waits another 21 seconds after approximately 12 seconds have already elapsed, so it does not enforce §9’s gate deadline of 20 seconds plus two ticks from sitting. Track elapsed loading ticks and wait only until that deadline before asserting `loaded` and stock.
