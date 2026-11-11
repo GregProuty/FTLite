@@ -20,7 +20,7 @@ export function runAcceptance({ players, seed, minutes, characters = DEFAULT_CHA
 const COLUMNS = ['players', 'seed', 'ended-at', 'reason', 'first-down', 'first-death', 'never-manned', 'longest-idle', 'spawns', 'impacts', 'hits/shots'];
 
 function clock(seconds: number): string {
-  const whole = Math.floor(seconds), m = Math.floor(whole / 60), s = whole % 60, frac = Math.round((seconds - whole) * 10);
+  const t = Math.round(seconds * 10), whole = Math.floor(t / 10), frac = t % 10, m = Math.floor(whole / 60), s = whole % 60;
   return `${m}:${String(s).padStart(2, '0')}${frac ? `.${frac}` : ''}`;
 }
 const who = (e: { who: string; seconds: number } | null): string => (e ? `${e.who} ${clock(e.seconds)}` : '-');

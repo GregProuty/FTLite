@@ -8,7 +8,7 @@ import { reviveCrew } from './crew';
 import { intentFor } from './step';
 import { stationOnline, sitDown } from './stations';
 import { repairStation } from './power';
-import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER } from './telemetry';
+import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER } from './tuning';
 import { Skill, skillLevelOf, repairMult, addXp } from './skills';
 import { repairTraitMult } from './characters';
 import { XP_RATE, DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME } from './tuning';

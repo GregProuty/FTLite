@@ -14,6 +14,7 @@ import { HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP } from '../src/renderer/sr
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
+import { EndReason } from '../src/renderer/src/sim/crew';
 import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
@@ -216,7 +217,7 @@ describe('buildHudModel', () => {
   });
   it('the game-over summary has four headline lines then one skill line per crew member, and is null in every other phase', () => {
     const s = makeState(3, 1, DEFAULT_CHARACTERS); const t = s.telemetry;
-    s.tick = 452 * 60; s.ended = 1; s.endReason = 1;
+    s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;
     t.firstDownTick = 190 * 60 - 1; t.firstDownPid = 0;                       // Okoro at 3:10
     t.mannedTicks.fill(1); t.mannedTicks[StationKind.Doors] = 0; t.mannedTicks[StationKind.Medbay] = 0;
     t.longestIdle.set([95 * 60, 40 * 60, 7 * 60]);
@@ -227,10 +228,10 @@ describe('buildHudModel', () => {
       'Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
-    s.endReason = 2; t.mannedTicks.fill(1); t.firstDeathTick = 452 * 60 - 1; t.firstDeathPid = 2;
+    s.endReason = EndReason.Crew; t.mannedTicks.fill(1); t.firstDeathTick = 452 * 60 - 1; t.firstDeathPid = 2;
     const crew = buildHudModel(s, slots(3), 'gameover', 'CREW LOST').summary!;
     expect(crew[0]).toBe('Survived 7:32  CREW LOST'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
-    const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = 1;
+    const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = EndReason.Hull;
     expect(buildHudModel(four, slots(4), 'gameover', '').summary).toEqual([
       'Survived 0:00  HULL LOST', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
       'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s',

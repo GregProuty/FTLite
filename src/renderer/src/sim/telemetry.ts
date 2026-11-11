@@ -1,7 +1,7 @@
 import type { SimState } from './state';
 import { Life, LifeState, Seated } from './components';
 import { stationOnline } from './stations';
-import { TICK_HZ, SIM_VERSION, SKILL_COUNT } from './tuning';
+import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER, TICK_HZ, SIM_VERSION, SKILL_COUNT } from './tuning';
 import { STATION_NAMES } from './stationKinds';
 import { EndReason } from './crew';
 import { characterOf } from './characters';
@@ -9,7 +9,6 @@ import { skillLevelOf } from './skills';
 import { HazardType, Phase } from './director';
 
 /** Indices into telemetry.repairs (spec 4-ii section 5). */
-export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;
 
 /** Last system in step(), after crewSystem and before tick++: final-state samples of manning and activity, and the life-state edges (spec 4-ii section 5). */
 export function telemetrySystem(state: SimState): void {

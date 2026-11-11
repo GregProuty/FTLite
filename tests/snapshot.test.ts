@@ -235,7 +235,7 @@ describe('snapshot', () => {
     expect(transitions(resumed, 4500)).toBeGreaterThanOrEqual(2);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
-  it('a fresh telemetry block has the initial values; every telemetry field round-trips and each alone changes the hash', () => {
+  it('every telemetry field round-trips and each alone changes the hash', () => {
     const s = makeState(2, 5), t = s.telemetry;
     t.firstDownTick = 11; t.firstDownPid = 1; t.firstDeathTick = 22; t.firstDeathPid = 0; t.impacts = 3; t.evadeRolls = 4; t.evasions = 2; t.shots = 9; t.hits = 5; t.maxStress = 0.61;
     for (let k = 0; k < STATION_COUNT; k++) t.mannedTicks[k] = 100 + k;

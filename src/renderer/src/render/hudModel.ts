@@ -131,7 +131,7 @@ function headlineSummary(state: SimState): string[] {
   const never: string[] = [];
   for (let k = 0; k < STATION_NAMES.length; k++) if (state.derived.stationOfKind[k]! >= 0 && t.mannedTicks[k] === 0) never.push(STATION_NAMES[k]!);
   return [
-    `Survived ${clock(durationSeconds(state.tick))}  ${state.endReason === EndReason.Hull ? 'HULL LOST' : 'CREW LOST'}`,
+    `Survived ${clock(state.tick / TICK_HZ)}  ${state.endReason === EndReason.Hull ? 'HULL LOST' : 'CREW LOST'}`,
     `First down: ${event(t.firstDownTick, t.firstDownPid)}   First death: ${event(t.firstDeathTick, t.firstDeathPid)}`,
     never.length ? `Never manned: ${never.join(', ')}` : 'Every station manned',
     `Longest idle: ${names.map((n, pid) => `${n} ${Math.round(durationSeconds(t.longestIdle[pid]!))} s`).join(', ')}`

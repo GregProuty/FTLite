@@ -6,6 +6,7 @@ export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
 export const SIM_VERSION = 9;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
+export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
