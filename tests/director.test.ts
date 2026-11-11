@@ -31,7 +31,6 @@ describe('escalation helpers', () => {
     expect(spawnCap(0, 2)).toBe(SPAWN_CAP); expect(spawnCap(4, 2)).toBe(4); expect(spawnCap(8, 2)).toBe(5); expect(spawnCap(40, 2)).toBe(SPAWN_CAP_MAX);
     expect(spawnCap(0, 3)).toBe(3); expect(spawnCap(0, 4)).toBe(4); expect(spawnCap(40, 4)).toBe(SPAWN_CAP_MAX);
     expect(spawnCap(0, 1)).toBe(2); expect(spawnCap(0, 0)).toBe(3);
-    expect(Math.max(1, 1 - 1)).toBe(1);
   });
   it('cycleBudget scales with minutes and players', () => {
     expect(cycleBudget(0, 1)).toBe(1); expect(cycleBudget(0, 2)).toBe(3); expect(cycleBudget(0, 3)).toBe(4); expect(cycleBudget(0, 4)).toBe(6);
@@ -217,6 +216,11 @@ describe('spawning', () => {
     for (let k = 0; k < SPAWN_CAP; k++) placeDebris(s, 0, 600);
     directorSystem(s);
     expect(activeHazardCount(s)).toBe(SPAWN_CAP); expect(burningRoomCount(s) + activeBreachCount(s) + failedStationCount(s)).toBe(0);
+    const t = makeState(0); armSpawn(t);
+    for (let i = 0; i < SPAWN_CAP; i++) failStation(t, i);                                                 // three failed stations fill the cap too
+    const r = t.rng.director.s; const one = createRng(r); nextFloat(one);
+    directorSystem(t);
+    expect(activeHazardCount(t)).toBe(SPAWN_CAP); expect(burningRoomCount(t) + activeBreachCount(t) + activeDebrisCount(t)).toBe(0); expect(t.rng.director.s).toBe(one.s);
   });
   it('sinceProductive counts up, resets only for an online, occupied, Conscious, productive station, and caps', () => {
     const s = makeState(2), nav = idx(s, StationKind.Navigation), A = room(s, 'A'); quiet(s);

@@ -2,7 +2,6 @@ import type { SimState } from './state';
 import { nextFloat, nextInt } from '../../../shared/rng';
 import { Position, Life, LifeState } from './components';
 import { roomAt } from './grid';
-import { inReachOfTile } from './interact';
 import { StationKind } from './stationKinds';
 import { igniteRoom, burningRoomCount } from './hazards/fire';
 import { activateBreach, activeBreachCount, freeSites } from './hazards/breach';
@@ -69,9 +68,16 @@ function consciousInRoom(state: SimState, room: number): boolean {
 function consciousInReachOfTile(state: SimState, tile: number): boolean {
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!;
-    if (Life.state[eid] === LifeState.Conscious && inReachOfTile(state, eid, tile)) return true;
+    if (Life.state[eid] === LifeState.Conscious && withinReachOfTile(state, Position.x[eid]!, Position.y[eid]!, tile)) return true;
   }
   return false;
+}
+
+/** Same geometry as interact.ts (distance to the nearest point of the tile's unit square), kept local so director.ts does not import interact.ts, which imports step.ts, which imports this module. */
+function withinReachOfTile(state: SimState, x: number, y: number, tileIdx: number): boolean {
+  const w = state.derived.width, tx = tileIdx % w, ty = (tileIdx - tx) / w;
+  const dx = Math.max(tx - x, 0, x - (tx + 1)), dy = Math.max(ty - y, 0, y - (ty + 1));
+  return Math.sqrt(dx * dx + dy * dy) <= REACH;
 }
 
 /** The one unattended definition (spec 4-i section 5): fires by room, breaches and failures by reach of the tile, Downed crew by reach; debris never. */
@@ -184,8 +190,11 @@ export function phaseStep(state: SimState): void {
     case Phase.PeakFade:
       if (d.stress <= RELAX_LEVEL || elapsed >= FADE_TIMEOUT) enterPhase(state, Phase.Relax);
       break;
-    default:
+    case Phase.Relax:
       if ((elapsed >= RELAX_MIN && d.stress <= RELAX_LEVEL) || elapsed >= RELAX_MAX) enterPhase(state, Phase.BuildUp);
+      break;
+    default:
+      break;                                                                      // an unknown phase value never transitions
   }
 }
 
