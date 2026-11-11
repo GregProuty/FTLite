@@ -7,7 +7,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, armSpawn, placeEnemy, placeShot, placeDebris, room, intents, teleport, seconds } from './helpers/sim';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
@@ -197,8 +197,12 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
     expect(s.skills.xp[xpIndex(0, Skill.Weapons)]).toBe(XP_PER_SHOT);
     const m = armed(); m.s.rng.combat.s = 4;
     expect(fireWeapon(m.s)).toBe(false); expect(m.s.enemy.hull).toBe(ENEMY_HULL); expect([m.s.telemetry.shots, m.s.telemetry.hits]).toEqual([1, 0]); expect(m.s.weapons.charge).toBe(0);
-    const f3 = armed(); f3.s.weapons.selector = Weapon.BeamF3; f3.s.rng.combat.s = 7;
-    expect(fireWeapon(f3.s)).toBe(true); expect(f3.s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE);   // frequency ignored
+    // seed 6: first combat float 0.526 (checked below) hits the enemy at 0.70 (BASE + SCALE * 0.5) but would miss a mismatched debris beam at 0.20
+    expect(nextFloat(createRng(6))).toBeCloseTo(0.526, 3); expect(ENEMY_BEAM_BASE + ENEMY_BEAM_SCALE * 0.5).toBeCloseTo(0.7, 10);
+    for (const selector of [Weapon.BeamF1, Weapon.BeamF2, Weapon.BeamF3]) {   // frequency ignored
+      const { s } = armed(); s.weapons.selector = selector; s.rng.combat.s = 6;
+      expect(fireWeapon(s)).toBe(true); expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE);
+    }
   });
   it('a torpedo hit takes 35 and unloads the tube; a miss takes nothing', () => {
     const { s } = armed(); s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 1; s.rng.combat.s = 7;
@@ -239,7 +243,10 @@ describe('enemy: shot impacts and guards', () => {
     placeShot(s, A, 0); debrisSystem(s);
     expect(s.hull).toBe(100 - ENEMY_SHOT_HULL_DAMAGE); expect(Health.cur[s.crew[0]!]).toBe(100 - DEBRIS_CREW_DAMAGE);
     const breaches = Array.from(s.breaches.active).filter((b, i) => b && s.derived.siteRoom[i] === A).length, fire = s.rooms.fire[A]! > 0 ? 1 : 0;
-    expect(breaches + fire).toBe(1); expect(s.rooms.impactTick[A]).toBe(s.tick); expect(s.telemetry.impacts).toBe(1); expect(s.debris.active[0]).toBe(0);
+    expect([breaches, fire]).toEqual([1, 0]); expect(s.rooms.impactTick[A]).toBe(s.tick); expect(s.telemetry.impacts).toBe(1); expect(s.debris.active[0]).toBe(0);
+    const f = makeState(1); quiet(f); teleport(f, 0, 2.5, 2.5); f.rng.hazards.s = 1;   // fire first
+    placeShot(f, A, 0); debrisSystem(f);
+    expect([Array.from(f.breaches.active).filter((b, i) => b && f.derived.siteRoom[i] === A).length, f.rooms.fire[A]! > 0 ? 1 : 0]).toEqual([0, 1]);
     const e = makeState(1); quiet(e); sitDown(e, 0, e.derived.stationOfKind[StationKind.Navigation]!); e.rng.combat.s = 7; placeShot(e, A, 0); debrisSystem(e);
     expect([e.telemetry.evadeRolls, e.telemetry.evasions, e.telemetry.impacts, e.hull]).toEqual([1, 1, 0, 100]);
   });

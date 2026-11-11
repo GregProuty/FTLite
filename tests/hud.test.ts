@@ -186,6 +186,7 @@ describe('buildHudModel', () => {
   it('target rows: the enemy row on Weapons and Science, nothing throws with the cursor on the enemy or with it unselected', () => {
     const s = makeState(2), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!, c = s.derived.stationOfKind[StationKind.Science]!;
     placeDebris(s, A, 600, 1); placeEnemy(s); s.enemy.hull = 64; sitDown(s, 0, w); sitDown(s, 1, c);
+    const k = placeShot(s, A, 420, 1, undefined, 2); s.debris.scanned[k] = 1;
     s.stations.cursor[w] = ENEMY_SLOT;                                   // Science stays on the object
     const m = buildHudModel(s, slots(2), 'running', '');
     const wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
@@ -193,6 +194,7 @@ describe('buildHudModel', () => {
     expect(wp.cursor).toBe(1); expect(wp.first).toBe(0);
     expect(sp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, scan: 0 });
     expect(sp.targets[0]!.kind).toBe('debris'); expect(sp.cursor).toBe(0);
+    for (const panel of [wp, sp]) expect(panel.targets.find((t) => t.stableId === s.debris.stableId[k])).toMatchObject({ kind: 'shot', frequency: 2, eta: 7, hull: null });
   });
   it('targetWindow follows the cursor; a nine-entry list with the cursor last gives first 3 on Weapons', () => {
     expect([targetWindow(-1, 3, 6), targetWindow(5, 9, 6), targetWindow(6, 9, 6), targetWindow(8, 9, 6), targetWindow(8, 9, 7), targetWindow(2, 2, 6)]).toEqual([0, 0, 1, 3, 2, 0]);
