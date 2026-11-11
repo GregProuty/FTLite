@@ -137,9 +137,9 @@ describe('run: charge and Navigation input', () => {
     run(s, JUMP_CHARGE_TIME * T - 2); expect(s.run.jumpCharge).toBeLessThan(1);
     const n = seatNavigator(s, 0); run(s, 1);                                            // the seating tick (sat this tick: no action)
     expect(s.run.jumpCharge).toBeCloseTo(1, 12); run(s, 5); expect(s.run.jumpCharge).toBe(1);
-    const r = calm(); seatNavigator(r, 0); run(r, 1); run(r, JUMP_CHARGE_TIME * T - 2, () => intents({}, {}));
+    const r = calm(); seatNavigator(r, 0); run(r, 1); run(r, JUMP_CHARGE_TIME * T - 1, () => intents({}, {}));   // 3599 ticks so far: charge just under 1
     expect(r.run.jumpCharge).toBeLessThan(1);
-    run(r, 1, () => intents({ confirmPressed: true }, {}));                              // this tick reaches 1 (jumpStep runs first) and the edge jumps
+    run(r, 1, () => intents({ confirmPressed: true }, {}));                              // tick 3600 reaches 1 (jumpStep runs first) and the edge jumps
     expect(r.run.nodesReached).toBe(1); expect(r.run.jumpCharge).toBe(0);
     run(r, 1); expect(r.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
     void n;
@@ -432,7 +432,7 @@ git commit -m "feat: a seeded sector map and the run block; the drive charges fr
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `tests/hud.test.ts` (imports: `clockLine, navigationFooter` from hudModel; `setMap, seatNavigator, chargeJump` from helpers; `RUN_COLUMNS, EVADE_BASE, EVADE_SCALE` from tuning; `stationOutput` from stations; `EndReason` already imported):
+`tests/hud.test.ts`: the three **existing** exact headline expectations (the `Survived 7:32  HULL LOST` and `CREW LOST` strings and the four-player `Survived 0:00  HULL LOST`) gain the suffix `  Reached node 1 of 8`, or the suite fails. Then append (imports: `clockLine, navigationFooter` from hudModel; `setMap, seatNavigator, chargeJump` from helpers; `RUN_COLUMNS, EVADE_BASE, EVADE_SCALE` from tuning; `stationOutput` from stations; `EndReason` already imported):
 
 ```ts
   it('the clock line carries the node ordinal; the Navigation panel lists destinations, cursor, jump state and final; the footer formats', () => {
@@ -489,17 +489,17 @@ export function clockLine(m: HudModel): string { return `HULL ${Math.round(m.hul
 export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%   Jump ${p.final ? '-' : p.jump.ready ? 'READY' : `${Math.floor(p.jump.charge * 100)}%`}`; }
 ```
 
-`consolePanel` Navigation branch: `const r = state.run, list = reachable(state); return { kind: 'navigation', evadeChance: EVADE_BASE + EVADE_SCALE * stationOutput(state, i), jump: { charge: r.jumpCharge, ready: r.jumpCharge >= 1 }, here: nodeLabel(r.column, r.node), destinations: list.map((d) => nodeLabel(r.column + 1, d)), cursor: Math.min(state.stations.cursor[i]!, Math.max(0, list.length - 1)), final: r.column === RUN_COLUMNS - 1 };`. The returned model gains `run: state ? { column: state.run.column, columns: RUN_COLUMNS } : { column: 0, columns: RUN_COLUMNS }`. `headlineSummary`'s first line: `` `Survived ${clock(state.tick / TICK_HZ)}  ${state.endReason === EndReason.Hull ? 'HULL LOST' : state.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'}  Reached node ${state.run.column + 1} of ${RUN_COLUMNS}` ``.
+`consolePanel` Navigation branch: `const r = state.run, list = reachable(state); return { kind: 'navigation', evadeChance: EVADE_BASE + EVADE_SCALE * stationOutput(state, i), jump: { charge: r.jumpCharge, ready: r.jumpCharge >= 1 }, here: nodeLabel(r.column, r.node), destinations: list.map((d) => nodeLabel(r.column + 1, d)), cursor: Math.min(state.stations.cursor[i]!, Math.max(0, list.length - 1)), final: r.column === RUN_COLUMNS - 1 };`. The returned model gains `run: state ? { column: state.run.column, columns: RUN_COLUMNS } : { column: 0, columns: RUN_COLUMNS }`. `headlineSummary`'s first line: `` `Survived ${clock(state.tick / TICK_HZ)}  ${state.endReason === EndReason.Hull ? 'HULL LOST' : state.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'}  Reached node ${state.run.nodesReached + 1} of ${RUN_COLUMNS}` `` (the spec's data source; equal to `column + 1` by the invariant).
 
 `hud.ts`: `top.text = clockLine(m)` (import `clockLine, navigationFooter`); the Navigation branch: `const c = p.console; ui.consoleRows.forEach((r, k) => { const d = c.destinations[k]; r.root.visible = !!d; if (d) r.set({ name: d, level: 0, max: 0, status: '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }); }); fillRow(ui.consoleFooter, [{ text: navigationFooter(c), tint: TEXT }]);` (this branch must test `p.console.kind === 'navigation'` explicitly; today it is the `'kind' in p.console` fallthrough).
 
 `session.ts`: the message's end word: `state.endReason === EndReason.Hull ? 'HULL LOST' : state.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'`.
 
-`telemetry.ts`: `endReason: 'hull' | 'crew' | 'victory' | 'running'`; the mapping `state.ended ? (state.endReason === EndReason.Hull ? 'hull' : state.endReason === EndReason.Victory ? 'victory' : 'crew') : 'running'`; `TelemetryRecord` gains `run: { nodesReached: number; jumps: number; columns: number }` after `boarders`; the builder adds `run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS }`. `acceptance.ts`: `COLUMNS` gains `'nodes'` last; `row` pushes `` `${r.run.nodesReached}/${r.run.columns}` ``.
+`telemetry.ts` (add `RUN_COLUMNS` to its tuning import): `endReason: 'hull' | 'crew' | 'victory' | 'running'`; the mapping `state.ended ? (state.endReason === EndReason.Hull ? 'hull' : state.endReason === EndReason.Victory ? 'victory' : 'crew') : 'running'`; `TelemetryRecord` gains `run: { nodesReached: number; jumps: number; columns: number }` after `boarders`; the builder adds `run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS }`. `acceptance.ts`: `COLUMNS` gains `'nodes'` last; `row` pushes `` `${r.run.nodesReached}/${r.run.columns}` ``.
 
 - [ ] **Step 4: Run and full suite**
 
-`npx vitest run tests/hud.test.ts tests/session.test.ts tests/telemetry.test.ts tests/acceptance.test.ts tests/render.test.ts tests/renderPure.test.ts` → PASS. `npm test`, `npm run typecheck`, `npm run build` → pass; golden unchanged; `npm run acceptance 1 1` → three rows ending `0/8`.
+`npx vitest run tests/hud.test.ts tests/session.test.ts tests/telemetry.test.ts tests/acceptance.test.ts tests/render.test.ts tests/renderPure.test.ts` → PASS (the render tests do not construct the HUD; `hud.ts`'s destination rows, cursor highlight, row hiding, last-column rendering and `top.text` wiring are covered by the formatters' unit tests and the manual gate, as every earlier HUD change has been; note this in the report). `npm test`, `npm run typecheck`, `npm run build` → pass; golden unchanged; `npm run acceptance 1 1` → three rows ending `0/8`.
 
 - [ ] **Step 5: Commit**
 
