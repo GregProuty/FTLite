@@ -12,6 +12,7 @@ import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 import { Dir } from './dir';
 import { chargeBeam, weaponsInput } from './weapons';
 import { scienceInput, scanStep } from './science';
+import { regenTorpedo, loadTorpedo } from './torpedoes';
 
 export { Dir };
 
@@ -50,6 +51,8 @@ function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): 
 /** Step 2: seated players' input, then the tick's door toggles (local and remote) once per door, ascending (spec sections 4, 6). */
 export function consoleSystem(state: SimState, intents: readonly Intent[]): void {
   chargeBeam(state);
+  regenTorpedo(state);
+  loadTorpedo(state);
   scanStep(state);
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!, i = Seated.station[eid]!;
