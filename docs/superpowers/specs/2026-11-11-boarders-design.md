@@ -151,7 +151,7 @@ Added to `docs/gates.md` as "Boarders-i":
 - `TargetKind.Fight = 5` is appended after `Power`; the sentinels `ALONE_IDLE = -1` and `ALONE_SABOTAGED = -2` are exported from `sim/boarders.ts`.
 - The telemetry `repairs` array length in `state.ts` is the literal 3 again (a Combat-ii polish had used `ENEMY_SYSTEM_COUNT`, same value, wrong meaning).
 - No survival-gate lever was needed: every seed passed at the first-pass tuning, but all three now bottom out below 5 crew health (seed 1 at 0.0, down from 14.9); recorded in `docs/gates.md` as a tuning item for the next feature. The solo acceptance row is overrun by the 4:00 party.
-- `repairStation` leaves a station at level 0, which `stationOnline` treats as offline, so the sabotage fixture that repairs Navigation also restores its level before expecting a second sabotage.
+- `repairStation` leaves a station at level 0, which `stationOnline` treats as offline; a fixture that repairs a failed console must also restore its level before expecting it to count as online (the final return-and-sabotage sequence no longer repairs Navigation at all, since its -2 is set by hand while Navigation is still online).
 - The world markers are drawn by `render/boarderLayer.ts`, covered by a node test for positions and removal; the renderer wiring and the look remain with the manual gate.
 - Sections 8 and 9's 'about 55' for the combat gate's focused crew member was wrong: the loss is (3 x 225 - 2) x 0.1 = 67.3, leaving 32.7, as the test and docs/gates.md record.
 - 'The focus moves on the next tick' applies per boarder: with two boarders in a room, the second one, processed later in the same tick, already strikes the next Conscious crew member that tick (pinned by a test).
