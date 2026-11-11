@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Seated, Position } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { stationOnline, stationOutput, sitDown, standUp } from '../src/renderer/src/sim/stations';
-import { powerPool, powerUsed, failStation, repairStation, shiftBar } from '../src/renderer/src/sim/power';
+import { powerPool, powerUsed, failStation, repairStation, shiftBar, maxLevel } from '../src/renderer/src/sim/power';
 import { REACTOR_CAPACITY, STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST } from '../src/renderer/src/sim/tuning';
 import { makeState } from './helpers/sim';
 
@@ -35,14 +35,22 @@ describe('power model', () => {
     failStation(s, eng);
     expect(shiftBar(s, wpn, -1)).toBe(false);                        // allocations frozen while Engineering is failed
   });
-  it('refuses a bar at the station maximum even with spare power, and below the maximum when the pool is empty', () => {
+  it('refuses a bar at maxLevel even with spare power, and below it when the pool is empty', () => {
     const s = makeState(1), nav = idx(s, StationKind.Navigation), wpn = idx(s, StationKind.Weapons);
-    s.stations.level[nav] = STATION_MAX[StationKind.Navigation]!; s.stations.level[wpn] = 1;
+    s.stations.level[nav] = maxLevel(StationKind.Navigation); s.stations.level[wpn] = 0;
     expect(powerPool(s)).toBeGreaterThan(0);
-    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(STATION_MAX[StationKind.Navigation]);
-    s.stations.level[nav] = 0; s.stations.level[wpn] += powerPool(s);    // drain the pool while Navigation is below its maximum
+    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(maxLevel(StationKind.Navigation));
+    s.stations.level[nav] = 0; s.stations.level[wpn] += powerPool(s);    // drain the pool while Navigation is below its ceiling
     expect(powerPool(s)).toBe(0);
     expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(0);
+  });
+  it('shiftBar reaches max + 1 and no further; -1 from the overdrive bar returns it to the pool', () => {
+    const s = makeState(1), doors = idx(s, StationKind.Doors);
+    expect(powerPool(s)).toBe(1);
+    expect(shiftBar(s, doors, 1)).toBe(true); expect(s.stations.level[doors]).toBe(STATION_MAX[StationKind.Doors]! + 1); expect(powerPool(s)).toBe(0);
+    s.power.capacity += 1;
+    expect(shiftBar(s, doors, 1)).toBe(false);
+    expect(shiftBar(s, doors, -1)).toBe(true); expect(powerPool(s)).toBe(2);
   });
   it('failure returns bars except for Engineering, repair restores Engineering at its level and others at 0', () => {
     const s = makeState(1), ls = idx(s, StationKind.LifeSupport), eng = idx(s, StationKind.Engineering);

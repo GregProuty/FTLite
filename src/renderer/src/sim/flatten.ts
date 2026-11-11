@@ -4,7 +4,7 @@ import { Position, Health, Life, Stable, Seated } from './components';
 import { SIM_VERSION, DEBRIS_SLOTS } from './tuning';
 
 export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'spawner', 'stations', 'power', 'stick', 'debris', 'weapons', 'crew'];
-const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, SPAWNER_FIELDS = 1, CREW_FIELDS = 9, STATION_FIELDS = 5, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 5, WEAPONS_FIELDS = 1;
+const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, SPAWNER_FIELDS = 1, CREW_FIELDS = 9, STATION_FIELDS = 7, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 5, WEAPONS_FIELDS = 1;
 
 /** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec §4). */
 export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
@@ -32,6 +32,7 @@ export function flatten(s: SimState): Float64Array {
   put(s.spawner.nextSpawnTick);
   for (const v of s.stations.level) put(v); for (const v of s.stations.failed) put(v); for (const v of s.stations.repair) put(v);
   for (const v of s.stations.occupant) put(v); for (const v of s.stations.cursor) put(v);
+  for (const v of s.stations.heat) put(v); for (const v of s.stations.coolant) put(v);
   put(s.power.capacity);
   for (let p = 0; p < s.playerCount; p++) put(s.stick.heldDir[p]!); for (let p = 0; p < s.playerCount; p++) put(s.stick.repeat[p]!);
   const dbf = s.debris;
@@ -72,6 +73,8 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (let i = 0; i < s.stations.repair.length; i++) s.stations.repair[i] = get();
   for (let i = 0; i < s.stations.occupant.length; i++) s.stations.occupant[i] = get();
   for (let i = 0; i < s.stations.cursor.length; i++) s.stations.cursor[i] = get();
+  for (let i = 0; i < s.stations.heat.length; i++) s.stations.heat[i] = get();
+  for (let i = 0; i < s.stations.coolant.length; i++) s.stations.coolant[i] = get();
   s.power.capacity = get();
   for (let p = 0; p < s.playerCount; p++) s.stick.heldDir[p] = get(); for (let p = 0; p < s.playerCount; p++) s.stick.repeat[p] = get();
   const db = s.debris;

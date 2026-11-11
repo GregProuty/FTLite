@@ -39,10 +39,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-2 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-3 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 2 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 2;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 3 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 3;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('weapons charge and fire script is deterministic and survives a mid-charge save/load', () => {
@@ -124,5 +124,16 @@ describe('snapshot', () => {
     expect(Array.from(t.debris.impactTick)).toEqual(Array.from(s.debris.impactTick));
     expect(Array.from(t.debris.warned)).toEqual(Array.from(s.debris.warned));
     expect(t.weapons.charge).toBe(0.4); expect(t.rooms.impactTick[3]).toBe(77);
+  });
+  it('round-trips station heat and coolant', () => {
+    const s = makeState(2, 5);
+    s.stations.heat[1] = 137; s.stations.coolant[1] = 2; s.stations.coolant[4] = 1;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(hashState(t)).toBe(hashState(s));
+    expect(Array.from(t.stations.heat)).toEqual(Array.from(s.stations.heat));
+    expect(Array.from(t.stations.coolant)).toEqual(Array.from(s.stations.coolant));
+    const base = hashState(makeState(2, 5));
+    const h = makeState(2, 5); h.stations.heat[2] = 1; expect(hashState(h)).not.toBe(base);          // heat alone changes the hash
+    const c = makeState(2, 5); c.stations.coolant[2] = 1; expect(hashState(c)).not.toBe(base);       // coolant alone changes the hash
   });
 });

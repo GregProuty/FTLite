@@ -1,6 +1,6 @@
 import type { SimState } from './state';
 import { StationKind } from './stationKinds';
-import { STATION_MAX } from './tuning';
+import { STATION_MAX, STATION_OVERDRIVE } from './tuning';
 import { standUp } from './stations';
 
 export function powerUsed(state: SimState): number { let t = 0; for (const v of state.stations.level) t += v; return t; }
@@ -19,6 +19,11 @@ export function repairStation(state: SimState, i: number): void {
   state.stations.failed[i] = 0; state.stations.repair[i] = 0;
 }
 
+/** Highest level a station may hold: STATION_MAX plus the overdrive bar for every kind except Engineering (spec 2b-i section 4). */
+export function maxLevel(kind: number): number {
+  return STATION_MAX[kind]! + (kind === StationKind.Engineering ? 0 : STATION_OVERDRIVE);
+}
+
 /** Engineering operator moves one bar to (+1) or from (-1) station i. Returns whether the allocation changed. */
 export function shiftBar(state: SimState, i: number, delta: 1 | -1): boolean {
   const d = state.derived, eng = d.stationOfKind[StationKind.Engineering]!;
@@ -26,7 +31,7 @@ export function shiftBar(state: SimState, i: number, delta: 1 | -1): boolean {
   if (state.stations.failed[i]) return false;
   const kind = d.stationKind[i]!, level = state.stations.level[i]!;
   if (delta > 0) {
-    if (level >= STATION_MAX[kind]! || powerPool(state) <= 0) return false;
+    if (level >= maxLevel(kind) || powerPool(state) <= 0) return false;
     state.stations.level[i] = level + 1; return true;
   }
   const floor = kind === StationKind.Engineering ? 1 : 0;

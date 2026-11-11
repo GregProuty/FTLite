@@ -28,7 +28,7 @@ export interface SimState {
   spawner: { nextSpawnTick: number };
   /** Derived scratch (not snapshotted): per-room oxygen injection requested for the next hazard step. */
   injectionScratch: Float64Array;
-  stations: { level: Uint8Array; failed: Uint8Array; repair: Float64Array; occupant: Int8Array; cursor: Int16Array };
+  stations: { level: Uint8Array; failed: Uint8Array; repair: Float64Array; occupant: Int8Array; cursor: Int16Array; heat: Int16Array; coolant: Uint8Array };   // heat 0..HEAT_MAX and coolant units per station (spec 2b-i section 3)
   power: { capacity: number };
   stick: { heldDir: Int8Array; repeat: Int16Array };   // per player: 0 none, 1 up, 2 down, 3 left, 4 right; ticks until the next repeat edge
   /** Debris objects in fixed slots (spec 2a-ii section 3). stableId is 0 while a slot is inactive. */
@@ -65,7 +65,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     o2Counters: { injected: 0, breathed: 0, burned: 0, vented: 0, residual: 0 },
     spawner: { nextSpawnTick: SPAWN_FIRST * TICK_HZ },
     injectionScratch: new Float64Array(R),
-    stations: { level: Uint8Array.from(layout.stations.map((st) => st.allocation)), failed: new Uint8Array(N), repair: new Float64Array(N), occupant: new Int8Array(N).fill(-1), cursor: new Int16Array(N) },
+    stations: { level: Uint8Array.from(layout.stations.map((st) => st.allocation)), failed: new Uint8Array(N), repair: new Float64Array(N), occupant: new Int8Array(N).fill(-1), cursor: new Int16Array(N), heat: new Int16Array(N), coolant: new Uint8Array(N) },
     power: { capacity: REACTOR_CAPACITY },
     stick: { heldDir: new Int8Array(playerCount), repeat: new Int16Array(playerCount) },
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS) },

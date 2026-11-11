@@ -5,6 +5,7 @@ import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
 import { TICK_HZ } from '../../src/renderer/src/sim/tuning';
+import { shiftBar, maxLevel } from '../../src/renderer/src/sim/power';
 
 export const LAYOUT = parseShip(starter);
 
@@ -39,4 +40,12 @@ export function placeDebris(state: SimState, room: number, ticksOut: number, war
   db.stableId[slot] = stableId ?? state.nextStableId++;
   if (stableId !== undefined && stableId >= state.nextStableId) state.nextStableId = stableId + 1;
   return slot;
+}
+
+/** Push a station to max + 1 with a widened reactor so the pool never refuses (heat tests are about heat, not bars). Returns the station index. */
+export function overdrive(state: SimState, kind: number): number {
+  const i = state.derived.stationOfKind[kind]!;
+  state.power.capacity = 20;
+  while (state.stations.level[i]! < maxLevel(kind)) if (!shiftBar(state, i, 1)) throw new Error('shiftBar refused');
+  return i;
 }

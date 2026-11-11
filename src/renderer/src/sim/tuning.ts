@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 3;
+export const SIM_VERSION = 4;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
@@ -67,3 +67,13 @@ export const BEAM_HIT_BASE = 0.55, BEAM_HIT_SCALE = 0.30;              // hit ch
 export const EVADE_BASE = 0.20, EVADE_SCALE = 0.40;                    // evasion chance = base + scale x output
 export const DEBRIS_HULL_DAMAGE = 8;                  // of HULL_MAX per impact
 export const DEBRIS_CREW_DAMAGE = 20;                 // of HEALTH_MAX per Conscious crew member in the hit room
+
+// Overdrive, heat and coolant (increment 2b-i)
+export const STATION_OVERDRIVE = 1;                   // extra level above STATION_MAX for every kind except Engineering
+export const HEAT_MAX = 240;                          // integer heat units
+export const HEAT_RISE = 2;                           // per hazard tick while overdriven (10 s to max unassisted)
+export const HEAT_COOL_UNIT = 1;                      // per coolant unit per hazard tick (1 unit: 20 s; 2 units: hold)
+export const HEAT_COOL_IDLE = 4;                      // per hazard tick while not overdriven (5 s from max to 0)
+export const COOLANT_POOL = 4;                        // shared units, never consumed
+export const COOLANT_MAX_PER_STATION = 2;
+export const OVERHEAT_FIRE_CHANCE = 0.5;              // rng.hazards, one draw per overheat
