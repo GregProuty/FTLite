@@ -1,0 +1,13 @@
+# Codex review: Combat-ii spec half 1 (2026-11-11)
+
+1. **High — §6, line 82: HUD migration needs explicit guards at all three readers.** Besides `hudModel.target` (104–106), the Science row builder (132) reads `debris.scan[9..11]`, and the threat loop (177) indexes `layout.rooms[undefined].name`, crashing the HUD. **Fix:** explicitly require all three migrations: enemy handling before debris reads; Science scan values `enemy.scan` for hull, `0` for subsystems; skip every enemy slot in the object threat loop.
+
+2. **Medium — §3, line 30 versus §5, line 74: conflicting `nextTarget` contracts.** Architecture says unchanged; leave requires excluding four slots. The current single exclusion cannot suffice while `enemy.present` remains true: with only the enemy, excluding hull makes fallback select slot 9. **Fix:** choose one contract, preserve existing single-slot callers such as `removeDebris`, and explicitly exclude all four during leave. Capture Science’s old cursor before retargeting to decide whether to clear `scanning`.
+
+3. **Medium — §2, line 18 versus §5, line 62: weapon repair has two different firing deadlines.** “Next shot comes `ENEMY_FIRST_SHOT` later” promises exactly five seconds; `max(nextShotTick, tick + 300)` can retain a much later deadline from the running re-arm clock. **Fix:** change the decision to “no earlier than five seconds after repair,” or assign `tick + 300` unconditionally.
+
+4. **Medium — §5, line 76 versus §4, line 48: scan progress can exceed its authoritative range.** Literal `enemy.scan += …` lacks the existing object scan’s clamp; “at 1” also leaves the completion comparison implicit. **Fix:** use `Math.min(1, enemy.scan + DT * output / SCAN_TIME)` and complete on `>= 1`.
+
+5. **Medium — §3, line 34: `anyWarned` is incorrectly described as unchanged.** Actual `productive.ts:15` uses `k !== ENEMY_SLOT`, not `k < DEBRIS_SLOTS`; retaining it makes slots 9–11 grant Science and Navigation productivity without incoming objects. §6 implies a change but conflicts with “unchanged.” **Fix:** explicitly require replacing the predicate with `k < DEBRIS_SLOTS`.
+
+The remaining checks resolve consistently: arrival explicitly supersedes the parent with one hazards draw; absorption draws nothing; target ordering has a slot tie-break. `console.ts`, `cycleTarget`, `removeDebris`, and `sitDown` need no additional slot handling. Repairs precede withdrawal, but console shooting precedes repairs; a lethal shot therefore skips repair. Serialized departure/repair ticks preserve engine pauses across loading. Leave discards enemy scan state, and hitting an already-disabled subsystem damages hull only. `hits` remains once per successful shot, including object interceptions.
