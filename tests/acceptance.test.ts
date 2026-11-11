@@ -37,14 +37,14 @@ describe('acceptanceTable and runAcceptanceCli', () => {
     version: 1, simVersion: 9, seed, playerCount: players, characters: ['Okoro'], endReason: 'running', durationSeconds: 60,
     firstDown: null, firstDeath: null, stationsNeverManned: ['Doors'], mannedSeconds: {}, longestIdleSeconds: [12.5],
     spawns: { fire: 1, breach: 0, power: 0, debris: 2 }, impacts: 1, evadeRolls: 0, evasions: 0, shots: 3, hits: 1,
-    repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.4, phaseEntries: { buildUp: 1, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0 }, skills: [[0, 0, 0, 0, 0, 0]], ...over
+    repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.4, phaseEntries: { buildUp: 1, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0, disables: 0 }, skills: [[0, 0, 0, 0, 0, 0]], ...over
   });
   it('renders a header and one row per record with the record values', () => {
-    const lines = acceptanceTable([rec(1, 1), rec(4, 3, { endReason: 'hull', durationSeconds: 42.5, firstDown: { who: 'Reyes', seconds: 10 }, hits: 0, shots: 0, enemy: { met: 2, destroyed: 1 } })]).split('\n');
+    const lines = acceptanceTable([rec(1, 1), rec(4, 3, { endReason: 'hull', durationSeconds: 42.5, firstDown: { who: 'Reyes', seconds: 10 }, hits: 0, shots: 0, enemy: { met: 2, destroyed: 1, disables: 3 } })]).split('\n');
     expect(lines).toHaveLength(3);
     expect(lines[0]).toMatch(/^players\s+seed\s+ended-at\s+reason\s+first-down\s+first-death\s+never-manned\s+longest-idle\s+spawns\s+impacts\s+hits\/shots\s+enemy$/);
-    expect(lines[1]).toMatch(/^1\s+1\s+1:00\s+running\s+-\s+-\s+Doors\s+12\.5\s+1\/0\/0\/2\s+1\s+1\/3\s+0\/0$/);
-    expect(lines[2]).toMatch(/^4\s+3\s+0:42\.5\s+hull\s+Reyes 0:10\s+-\s+Doors\s+12\.5\s+1\/0\/0\/2\s+1\s+0\/0\s+2\/1$/);
+    expect(lines[1]).toMatch(/^1\s+1\s+1:00\s+running\s+-\s+-\s+Doors\s+12\.5\s+1\/0\/0\/2\s+1\s+1\/3\s+0\/0\/0$/);
+    expect(lines[2]).toMatch(/^4\s+3\s+0:42\.5\s+hull\s+Reyes 0:10\s+-\s+Doors\s+12\.5\s+1\/0\/0\/2\s+1\s+0\/0\s+2\/1\/3$/);
   });
   it('no arguments: nine runs in players-major order at the default minutes; "1 1": three runs; --json prints records; bad input prints usage and runs nothing', () => {
     const calls: { players: number; seed: number; minutes: number }[] = []; const out: string[] = [];

@@ -34,7 +34,7 @@ describe('telemetry: initial values', () => {
     expect(Array.from(t.prevLife)).toEqual([LifeState.Conscious, LifeState.Conscious]);
     expect(Array.from(t.spawns)).toEqual([0, 0, 0, 0]); expect(Array.from(t.repairs)).toEqual([0, 0, 0]);
     expect(Array.from(t.phaseEntries)).toEqual([1, 0, 0, 0]);
-    expect(telemetryRecord(makeState(2), 1).enemy).toEqual({ met: 0, destroyed: 0 });
+    expect(telemetryRecord(makeState(2), 1).enemy).toEqual({ met: 0, destroyed: 0, disables: 0 });
   });
 });
 
@@ -269,7 +269,7 @@ describe('telemetryRecord', () => {
     t.firstDownTick = 599; t.firstDownPid = 1; t.firstDeathTick = 1199; t.firstDeathPid = 0;   // Okoro dies on the ending tick: reads as the duration
     t.mannedTicks[StationKind.Navigation] = 600; t.mannedTicks[StationKind.Doors] = 30;
     t.longestIdle[0] = 300; t.longestIdle[1] = 1200;
-    t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]); t.encounters = 2; t.enemiesDestroyed = 1;
+    t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]); t.encounters = 2; t.enemiesDestroyed = 1; t.enemyDisables = 3;
     setSkill(s, 0, Skill.Repair, 4);
     const r = telemetryRecord(s, 9);
     expect(r).toEqual({
@@ -281,7 +281,7 @@ describe('telemetryRecord', () => {
       longestIdleSeconds: [5, 20],
       spawns: { fire: 2, breach: 1, power: 0, debris: 3 }, impacts: 2, evadeRolls: 3, evasions: 1, shots: 4, hits: 2,
       repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.55, phaseEntries: { buildUp: 2, sustainPeak: 1, peakFade: 1, relax: 1 },
-      enemy: { met: 2, destroyed: 1 },
+      enemy: { met: 2, destroyed: 1, disables: 3 },
       skills: [[0, 0, 0, 0, 0, 4], [0, 3, 0, 0, 0, 0]]
     });
     expect(JSON.parse(JSON.stringify(r))).toEqual(r);
