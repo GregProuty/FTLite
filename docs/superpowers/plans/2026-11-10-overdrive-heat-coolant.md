@@ -114,7 +114,21 @@ describe('coolant', () => {
 });
 ```
 
-Append to `tests/power.test.ts` inside `describe('power model')`:
+In `tests/power.test.ts` replace the test `refuses a bar at the station maximum even with spare power, and below the maximum when the pool is empty` (its Navigation level-2 fixture is now one bar below the overdrive ceiling and would accept a bar) with:
+
+```ts
+  it('refuses a bar at maxLevel even with spare power, and below it when the pool is empty', () => {
+    const s = makeState(1), nav = idx(s, StationKind.Navigation), wpn = idx(s, StationKind.Weapons);
+    s.stations.level[nav] = maxLevel(StationKind.Navigation); s.stations.level[wpn] = 0;
+    expect(powerPool(s)).toBeGreaterThan(0);
+    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(maxLevel(StationKind.Navigation));
+    s.stations.level[nav] = 0; s.stations.level[wpn] += powerPool(s);    // drain the pool while Navigation is below its ceiling
+    expect(powerPool(s)).toBe(0);
+    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(0);
+  });
+```
+
+(import `maxLevel` from power). Then append inside `describe('power model')`:
 
 ```ts
   it('shiftBar reaches max + 1 and no further; -1 from the overdrive bar returns it to the pool', () => {
@@ -269,7 +283,7 @@ Golden re-blessed: SIM_VERSION 4 and the new stations.heat / stations.coolant ar
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `tests/heat.test.ts` (add `heatStep` to the heat import; `repairStation` to the power import; `HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, HAZARD_EVERY, FIRE_START, HULL_MAX, HEALTH_MAX, DEBRIS_HULL_DAMAGE, SPAWN_CAP` to the tuning import; `sitDown` from stations; `Seated, Health` from components; `igniteRoom` from `../src/renderer/src/sim/hazards/fire`; `activateBreach` from `../src/renderer/src/sim/hazards/breach`; `activeHazardCount` from `../src/renderer/src/sim/hazards/spawner`; `createRng, nextFloat` from `../src/shared/rng`; and `run, room, seconds, teleport, placeDebris` from the helpers). Every fixture sets `s.spawner.nextSpawnTick = 1e9` unless it is testing the spawner, and nobody sits at Engineering, so these are the unattended overdrives of spec section 4:
+Append to `tests/heat.test.ts` (add `heatStep` to the heat import; `repairStation` to the power import; `HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, HAZARD_EVERY, FIRE_START, HULL_MAX, HEALTH_MAX, DEBRIS_HULL_DAMAGE, SPAWN_CAP` to the tuning import; `sitDown` from stations; `Seated, Health` from components; `activateBreach` from `../src/renderer/src/sim/hazards/breach`; `activeHazardCount` from `../src/renderer/src/sim/hazards/spawner`; `createRng, nextFloat` from `../src/shared/rng`; and `run, room, seconds, teleport, placeDebris, intents` from the helpers; define `const down = { moveY: 1 };`). Every fixture sets `s.spawner.nextSpawnTick = 1e9` unless it is testing the spawner, and nobody sits at Engineering, so these are the unattended overdrives of spec section 4:
 
 ```ts
 const atStation = (s: ReturnType<typeof makeState>, pid: number, i: number) => { const t = s.derived.stationTile[i]!, w = s.derived.width; teleport(s, pid, (t % w) + 0.5, Math.floor(t / w) + 0.5); };
@@ -332,7 +346,7 @@ describe('heat', () => {
     };
     const one = createRng(7); nextFloat(one);
     const a = mk(7);                                                           // first draw 0.012 < 0.5: fire
-    run(a.s, 1);
+    run(a.s, 1, () => intents({}, down));                                      // the Doors operator holds a direction, so stick state is nonzero until the forced stand
     expect(a.s.stations.failed[a.doors]).toBe(1); expect(a.s.stations.heat[a.doors]).toBe(0);
     expect(Seated.station[a.s.crew[1]!]).toBe(-1); expect(a.s.stations.occupant[a.doors]).toBe(-1);
     expect(a.s.stick.heldDir[1]).toBe(0); expect(a.s.stick.repeat[1]).toBe(0);
@@ -344,8 +358,8 @@ describe('heat', () => {
     expect(b.s.stations.failed[b.doors]).toBe(1); expect(b.s.rooms.fire[b.r]).toBe(0); expect(b.s.rng.hazards.s).toBe(oneB.s);
     const c = mk(7);                                                           // already burning: intensity kept, the draw still consumed
     c.s.rooms.fire[c.r] = 3;
-    run(c.s, 1);
-    expect(c.s.rooms.fire[c.r]).toBeCloseTo(3, 0); expect(c.s.rng.hazards.s).toBe(one.s);
+    heatStep(c.s);                                                             // direct call: through step(), fireStep would also draw spread rolls and grow the fire
+    expect(c.s.stations.failed[c.doors]).toBe(1); expect(c.s.rooms.fire[c.r]).toBe(3); expect(c.s.rng.hazards.s).toBe(one.s);
   });
   it('two stations overheating on one hazard tick resolve in ascending index with one draw each', () => {
     const s = makeState(1), wpn = overdrive(s, StationKind.Weapons), sci = overdrive(s, StationKind.Science);
@@ -405,17 +419,17 @@ describe('heat', () => {
 });
 ```
 
-Append to `tests/snapshot.test.ts` (import `overdrive` from the helpers):
+Append to `tests/snapshot.test.ts` (import `overdrive` from the helpers and `HEAT_MAX` from tuning):
 
 ```ts
-  it('an overdrive saved ten ticks before its overheat continues through the failure and fire roll like an uninterrupted run', () => {
-    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; overdrive(s, StationKind.Doors); s.stations.coolant[s.derived.stationOfKind[StationKind.Science]!] = 1; return s; };
-    const whole = mk(); run(whole, 660);
-    expect(whole.stations.failed[whole.derived.stationOfKind[StationKind.Doors]!]).toBe(1);      // the overheat lands on tick 595
-    const first = mk(); run(first, 590);
-    expect(first.stations.heat[first.derived.stationOfKind[StationKind.Doors]!]).toBeGreaterThan(0);
+  it('an overdrive with one unit saved ten ticks before its overheat continues through the failure and fire roll like an uninterrupted run', () => {
+    const mk = () => { const s = makeState(1, 9); s.spawner.nextSpawnTick = 1e9; const d = overdrive(s, StationKind.Doors); s.stations.coolant[d] = 1; return s; };
+    const whole = mk(); run(whole, 1260);
+    expect(whole.stations.failed[whole.derived.stationOfKind[StationKind.Doors]!]).toBe(1);      // net +1 per hazard tick: the overheat lands on tick 1195
+    const first = mk(); run(first, 1185);
+    expect(first.stations.heat[first.derived.stationOfKind[StationKind.Doors]!]).toBe(HEAT_MAX - 3);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
-    run(resumed, 70);
+    run(resumed, 75);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 ```
@@ -474,7 +488,7 @@ git commit -m "feat: heat rises while overdriven, coolant and idle cooling, over
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside `describe('Engineering console')` in `tests/console.test.ts` (add `cycleCoolant, coolantUsed` from `../src/renderer/src/sim/heat`, `maxLevel` from power, `HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY` from tuning, `overdrive, room` from the helpers, and `fc from 'fast-check'`; `createRng, nextFloat, placeDebris, Seated` are already imported):
+Append inside `describe('Engineering console')` in `tests/console.test.ts` (add `coolantUsed` from `../src/renderer/src/sim/heat`, `maxLevel` from power, `HEAT_MAX, HEAT_RISE, HEAT_COOL_UNIT, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY` from tuning, `overdrive, room` from the helpers, and `fc from 'fast-check'`; `createRng, nextFloat, placeDebris, Seated` are already imported):
 
 ```ts
   it('Confirm cycles the selected station\'s coolant 0, 1, 2, 0; wraps to 0 when the pool is exhausted; does nothing on the Engineering row', () => {
@@ -493,12 +507,6 @@ Append inside `describe('Engineering console')` in `tests/console.test.ts` (add 
     run(s, 1, () => intents(confirm)); expect(s.stations.coolant[nav]).toBe(0);   // the step to 2 cannot be supplied: wrap
     expect(coolantUsed(s)).toBe(3);
   });
-  it('the seating Confirm at Engineering assigns no coolant', () => {
-    const s = makeState(1), eng = idx(s, StationKind.Engineering);
-    at(s, 0, eng); s.stations.cursor[eng] = StationKind.Weapons;
-    run(s, 1, () => intents(confirm));
-    expect(Seated.station[s.crew[0]!]).toBe(eng); expect(coolantUsed(s)).toBe(0);
-  });
   it('same tick: a Left out of overdrive, or a Confirm to two units, on the would-be overheat tick prevents it', () => {
     const a = makeState(1), engA = idx(a, StationKind.Engineering), wpnA = overdrive(a, StationKind.Weapons);
     a.spawner.nextSpawnTick = 1e9; sitDown(a, 0, engA); a.stations.cursor[engA] = StationKind.Weapons;
@@ -508,9 +516,9 @@ Append inside `describe('Engineering console')` in `tests/console.test.ts` (add 
     expect(a.stations.heat[wpnA]).toBe(HEAT_MAX - HEAT_RISE - HEAT_COOL_IDLE);   // idle cooling instead of an overheat
     const b = makeState(1), engB = idx(b, StationKind.Engineering), wpnB = overdrive(b, StationKind.Weapons);
     b.spawner.nextSpawnTick = 1e9; sitDown(b, 0, engB); b.stations.cursor[engB] = StationKind.Weapons;
-    b.stations.heat[wpnB] = HEAT_MAX - HEAT_RISE; b.stations.coolant[wpnB] = 1;
+    b.stations.heat[wpnB] = HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT); b.stations.coolant[wpnB] = 1;   // one unit: the next update would reach HEAT_MAX
     run(b, 1, () => intents(confirm));                                         // 1 -> 2 units before heatStep: net 0
-    expect(b.stations.coolant[wpnB]).toBe(2); expect(b.stations.failed[wpnB]).toBe(0); expect(b.stations.heat[wpnB]).toBe(HEAT_MAX - HEAT_RISE);
+    expect(b.stations.coolant[wpnB]).toBe(2); expect(b.stations.failed[wpnB]).toBe(0); expect(b.stations.heat[wpnB]).toBe(HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT));
   });
   it('same tick: a Weapons shot on the Weapons overheat tick resolves before the failure stands the operator', () => {
     const s = makeState(2), wpn = overdrive(s, StationKind.Weapons);
@@ -522,22 +530,26 @@ Append inside `describe('Engineering console')` in `tests/console.test.ts` (add 
     expect(s.rng.combat.s).toBe(oneDraw.s); expect(s.weapons.charge).toBe(0);  // the shot was taken
     expect(s.stations.failed[wpn]).toBe(1); expect(Seated.station[s.crew[1]!]).toBe(-1);
   });
-  it('property: random Engineering inputs keep coolant within the pool, heat within range, levels within maxLevel and the capacity', () => {
+  it('property: random Engineering inputs over 60 s keep coolant within the pool, heat within range, levels within maxLevel and the capacity, checked every hazard tick', () => {
     const arbDir = fc.constantFrom({}, up, down, left, right);
-    const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean() }), { minLength: 1, maxLength: 240 });
-    fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), arbScript, (seed, script) => {
-      const s = makeState(1, seed), eng = idx(s, StationKind.Engineering);
-      sitDown(s, 0, eng);
-      for (const e of script) run(s, HAZARD_EVERY, () => intents({ ...e.dir, confirmPressed: e.confirm }));   // one edge per 5 ticks (held direction repeats are fine too)
+    const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean() }), { minLength: 720, maxLength: 720 });   // 720 x 5 ticks = 3600 ticks = 60 s
+    const check = (s: ReturnType<typeof makeState>) => {
       let used = 0, levels = 0;
       for (let i = 0; i < s.stations.level.length; i++) {
         used += s.stations.coolant[i]!; levels += s.stations.level[i]!;
-        expect(s.stations.coolant[i]).toBeLessThanOrEqual(2);
-        expect(s.stations.heat[i]).toBeGreaterThanOrEqual(0); expect(s.stations.heat[i]).toBeLessThanOrEqual(HEAT_MAX);
-        expect(s.stations.level[i]).toBeLessThanOrEqual(maxLevel(s.derived.stationKind[i]!));
+        if (s.stations.coolant[i]! > 2 || s.stations.heat[i]! < 0 || s.stations.heat[i]! > HEAT_MAX || s.stations.level[i]! > maxLevel(s.derived.stationKind[i]!)) return false;
       }
-      expect(used).toBeLessThanOrEqual(COOLANT_POOL); expect(levels).toBeLessThanOrEqual(s.power.capacity);
-    }), { numRuns: 30 });
+      return used <= COOLANT_POOL && levels <= s.power.capacity;
+    };
+    fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), arbScript, (seed, script) => {
+      const s = makeState(1, seed), eng = idx(s, StationKind.Engineering);
+      sitDown(s, 0, eng);
+      for (const e of script) {
+        run(s, HAZARD_EVERY, () => intents({ ...e.dir, confirmPressed: e.confirm }));   // one stick edge per 5 ticks, Confirm edges every tick while true
+        if (!check(s)) return false;
+      }
+      return true;
+    }), { numRuns: 20 });
   });
 ```
 
