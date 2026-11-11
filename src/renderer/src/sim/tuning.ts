@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 9;
+export const SIM_VERSION = 10;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -114,7 +114,7 @@ export const TRAIT_BLEEDOUT = 0.6;            // Frail
 
 // Director (increment 4-i)
 export const STRESS_PERIOD = 5;                        // seconds between stress recomputes
-export const STRESS_WEIGHTS = { fire: 0.25, breach: 0.30, power: 0.20, debris: 0.20, downed: 0.40 } as const;
+export const STRESS_WEIGHTS = { fire: 0.25, breach: 0.30, power: 0.20, debris: 0.20, downed: 0.40, enemy: 0.30 } as const;
 export const STRESS_RISE = 0.5, STRESS_FALL = 0.15;    // smoothing per period; the fall is halved while a hazard is unattended
 export const PEAK_LEVEL = 0.7, RELAX_LEVEL = 0.25;
 export const SUSTAIN_SECONDS = 10, FADE_TIMEOUT = 30, RELAX_MIN = 30, RELAX_MAX = 60, STALL_SECONDS = 60;
@@ -126,3 +126,13 @@ export const BUDGET_BASE = 3, BUDGET_GROWTH = 0.5;      // spawns per Build Up c
 export const WEIGHT_MINUTES = 4;                       // power and debris weights grow every 4 minutes
 export const ROUTE_BONUS = 2, ROUTE_IDLE_SECONDS = 60;  // routing toward consoles idle longer than this (3-4 players)
 export const SINCE_CAP = 36000;                        // ticks: sinceProductive counters stop at 10 minutes
+
+// Enemy ship (Combat-i)
+export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120, ENCOUNTER_COOLDOWN = 150;   // seconds: first arrival, stay, gap (x jitter)
+export const ENEMY_HULL = 100, ENEMY_FIRST_SHOT = 5;
+export const ENEMY_FIRE_INTERVAL = 15, ENEMY_FIRE_MIN = 6, ENEMY_FIRE_JITTER = 0.2;   // escalation shares ESCALATION_RATE and SOLO_INTERVAL_MULT
+export const ENEMY_SHOTS_MAX = 1;                      // shots in flight at once
+export const ENEMY_SHOT_FLIGHT = 10, ENEMY_SHOT_JITTER = 2;   // seconds (debris is 30 +/- 6)
+export const ENEMY_SHOT_HULL_DAMAGE = 4;               // debris is 8; crew damage shared
+export const ENEMY_BEAM_BASE = 0.55, ENEMY_BEAM_SCALE = 0.30;   // beam hit chance against the ship (0.70 at output 0.5)
+export const ENEMY_BEAM_DAMAGE = 15, ENEMY_TORP_DAMAGE = 35;

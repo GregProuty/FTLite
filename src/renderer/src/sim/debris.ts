@@ -9,25 +9,34 @@ import { activateBreach } from './hazards/breach';
 import { downCrew } from './crew';
 import { nextTarget } from './debrisTargets';
 import { Skill, addXp } from './skills';
-import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT } from './tuning';
+import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE } from './tuning';
 
 export function activeDebrisCount(state: SimState): number {
   let n = 0; for (const a of state.debris.active) if (a) n++; return n;
 }
 
-/** Spawn one hidden object: uniform target room and a jittered flight from rng.hazards (spec 2a-ii section 4). Returns the slot, or -1 if the table is full. */
-export function spawnDebris(state: SimState): number {
+/** Object kinds in the debris table (spec Combat-i section 4). */
+export const ObjectKind = { Debris: 0, Shot: 1 } as const;
+
+/** Spawn one hidden object: uniform target room, jittered flight and a frequency, three rng.hazards draws in that order (spec 2a-ii section 4). Returns the slot, or -1 if the table is full. */
+function spawnObject(state: SimState, kind: number, flightBase: number, flightJitter: number): number {
   const db = state.debris;
   let slot = -1;
   for (let k = 0; k < db.active.length; k++) if (!db.active[k]) { slot = k; break; }
   if (slot < 0) return -1;
   const room = nextInt(state.rng.hazards, state.derived.volume.length);
-  const flight = DEBRIS_FLIGHT + (2 * nextFloat(state.rng.hazards) - 1) * DEBRIS_FLIGHT_JITTER;
+  const flight = flightBase + (2 * nextFloat(state.rng.hazards) - 1) * flightJitter;
   const frequency = 1 + nextInt(state.rng.hazards, FREQ_COUNT);
-  db.frequency[slot] = frequency; db.scanned[slot] = 0; db.scan[slot] = 0;
+  db.frequency[slot] = frequency; db.scanned[slot] = 0; db.scan[slot] = 0; db.kind[slot] = kind;
   db.active[slot] = 1; db.stableId[slot] = state.nextStableId++; db.room[slot] = room;
   db.impactTick[slot] = state.tick + Math.round(flight * TICK_HZ); db.warned[slot] = 0;
   return slot;
+}
+export function spawnDebris(state: SimState): number { return spawnObject(state, ObjectKind.Debris, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER); }
+/** An enemy shot: a short-flight object the enemy fires at us (spec Combat-i section 5). */
+export function spawnShot(state: SimState): number { return spawnObject(state, ObjectKind.Shot, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER); }
+export function shotsInFlight(state: SimState): number {
+  let n = 0; const db = state.debris; for (let k = 0; k < db.active.length; k++) if (db.active[k] && db.kind[k] === ObjectKind.Shot) n++; return n;
 }
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
@@ -64,7 +73,7 @@ function resolveImpact(state: SimState, slot: number): void {
     addXp(state, state.stations.occupant[nav]!, Skill.Navigation, XP_PER_EVADE_ROLL);   // the roll itself is the productive act, evaded or not
     if (evaded) { state.telemetry.evasions++; removeDebris(state, slot); return; }
   }
-  state.hull = Math.max(0, state.hull - DEBRIS_HULL_DAMAGE);
+  state.hull = Math.max(0, state.hull - (db.kind[slot] === ObjectKind.Shot ? ENEMY_SHOT_HULL_DAMAGE : DEBRIS_HULL_DAMAGE));
   state.telemetry.impacts++;
   const breachFirst = nextFloat(state.rng.hazards) < 0.5;
   const tryBreach = (): boolean => {

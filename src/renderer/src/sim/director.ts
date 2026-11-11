@@ -43,7 +43,7 @@ function downedCount(state: SimState): number {
 /** Unsmoothed stress: a weighted count of what is wrong right now, clamped to 1 (spec 4-i section 5). */
 export function rawStress(state: SimState): number {
   const w = STRESS_WEIGHTS;
-  const raw = w.fire * burningRoomCount(state) + w.breach * activeBreachCount(state) + w.power * failedStationCount(state) + w.debris * activeDebrisCount(state) + w.downed * downedCount(state);
+  const raw = w.fire * burningRoomCount(state) + w.breach * activeBreachCount(state) + w.power * failedStationCount(state) + w.debris * activeDebrisCount(state) + w.downed * downedCount(state) + w.enemy * state.enemy.present;
   return Math.max(0, Math.min(1, raw));
 }
 

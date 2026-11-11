@@ -10,9 +10,10 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room, overdrive, setSkill } from './helpers/sim';
+import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, teleport, seconds, room, overdrive, setSkill } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ } from '../src/renderer/src/sim/tuning';
+import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST } from '../src/renderer/src/sim/tuning';
+import { ObjectKind } from '../src/renderer/src/sim/debris';
 import { Phase, cycleBudget } from '../src/renderer/src/sim/director';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
@@ -43,10 +44,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-8 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-9 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 8 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 8;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 9 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 9;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -269,6 +270,33 @@ describe('snapshot', () => {
     expect(resumed.telemetry.longestIdle[0]).toBeGreaterThan(savedLongest); expect(resumed.telemetry.firstDeathTick).toBeGreaterThan(150); expect(resumed.telemetry.firstDeathPid).toBe(1);
     const fields = (s: ReturnType<typeof makeState>) => JSON.stringify(s.telemetry, (_k, v) => (ArrayBuffer.isView(v) ? Array.from(v as Int32Array) : v));
     expect(fields(resumed)).toBe(fields(whole));
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+
+  it('round-trips the enemy block, debris kinds and the encounter counters; each alone changes the hash; a fresh state has the initial values', () => {
+    const f = makeState(2).enemy;
+    expect([f.present, f.hull, f.stableId, f.nextArrivalTick, f.nextShotTick, f.departTick]).toEqual([0, 0, 0, ENCOUNTER_FIRST * TICK_HZ, -1, -1]);
+    const s = makeState(2, 5); s.enemy.present = 1; s.enemy.hull = 37; s.enemy.stableId = 41; s.enemy.nextArrivalTick = 9000; s.enemy.nextShotTick = 1234; s.enemy.departTick = 5678;
+    s.debris.kind[2] = 1; s.debris.kind[5] = 1; s.telemetry.encounters = 3; s.telemetry.enemiesDestroyed = 2;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect([t.enemy.present, t.enemy.hull, t.enemy.stableId, t.enemy.nextArrivalTick, t.enemy.nextShotTick, t.enemy.departTick]).toEqual([1, 37, 41, 9000, 1234, 5678]);
+    expect(Array.from(t.debris.kind)).toEqual(Array.from(s.debris.kind)); expect([t.telemetry.encounters, t.telemetry.enemiesDestroyed]).toEqual([3, 2]);
+    const base = hashState(makeState(2, 5));
+    const mutate = (fn: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); fn(u); return hashState(u); };
+    expect(mutate((u) => { u.enemy.present = 1; })).not.toBe(base); expect(mutate((u) => { u.enemy.hull = 1; })).not.toBe(base); expect(mutate((u) => { u.enemy.stableId = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.enemy.nextArrivalTick = 1; })).not.toBe(base); expect(mutate((u) => { u.enemy.nextShotTick = 1; })).not.toBe(base); expect(mutate((u) => { u.enemy.departTick = 1; })).not.toBe(base);
+    for (let k = 0; k < DEBRIS_SLOTS; k++) expect(mutate((u) => { u.debris.kind[k] = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.telemetry.encounters = 1; })).not.toBe(base); expect(mutate((u) => { u.telemetry.enemiesDestroyed = 1; })).not.toBe(base);
+  });
+  it('a run saved mid-encounter with a shot due in 10 ticks and the withdrawal in 20 continues like the uninterrupted run through both', () => {
+    const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9;
+    const part = makeState(2, 31); part.director.nextSpawnTick = 1e9;
+    for (const s of [whole, part]) { run(s, 100); placeEnemy(s); s.enemy.departTick = s.tick + 20; s.enemy.nextShotTick = 1e9; placeShot(s, room(s, 'A'), 10); }
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    run(whole, 30); run(resumed, 30);
+    expect(resumed.telemetry.impacts).toBe(1); expect(resumed.rooms.impactTick[room(resumed, 'A')]).toBe(110);
+    expect(resumed.enemy.present).toBe(0); expect(resumed.enemy.nextArrivalTick).toBeGreaterThan(resumed.tick);
+    expect([resumed.enemy.present, resumed.enemy.hull, resumed.enemy.stableId, resumed.enemy.nextArrivalTick, resumed.enemy.nextShotTick, resumed.enemy.departTick]).toEqual([whole.enemy.present, whole.enemy.hull, whole.enemy.stableId, whole.enemy.nextArrivalTick, whole.enemy.nextShotTick, whole.enemy.departTick]);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 });

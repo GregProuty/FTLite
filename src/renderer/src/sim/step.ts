@@ -13,6 +13,7 @@ import { crewSystem } from './crew';
 import { lifeSupportInjection } from './hazards/lifeSupport';
 import { debrisSystem } from './debris';
 import { directorSystem } from './director';
+import { enemySystem } from './enemy';
 import { medbayStep } from './medbay';
 import { xpSystem } from './xp';
 import { telemetrySystem } from './telemetry';
@@ -43,6 +44,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   }
   // (5) director: stress, pacing phases and spawns, then debris detection and impacts
   directorSystem(state);
+  enemySystem(state);   // (5b) the enemy: arrival, withdrawal, a due shot (spec Combat-i section 5)
   debrisSystem(state);
   // (6) stations with per-tick effects
   medbayStep(state);

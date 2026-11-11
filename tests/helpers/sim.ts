@@ -5,7 +5,8 @@ import { createSimState, type SimState } from '../../src/renderer/src/sim/state'
 import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
-import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS } from '../../src/renderer/src/sim/tuning';
+import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT } from '../../src/renderer/src/sim/tuning';
+import { ObjectKind } from '../../src/renderer/src/sim/debris';
 import { RECRUIT } from '../../src/renderer/src/sim/characters';
 import { shiftBar, maxLevel } from '../../src/renderer/src/sim/power';
 
@@ -40,7 +41,7 @@ export function placeDebris(state: SimState, room: number, ticksOut: number, war
   for (let i = 0; i < db.active.length; i++) if (!db.active[i]) { slot = i; break; }
   if (slot < 0) throw new Error('no free debris slot');
   db.active[slot] = 1; db.room[slot] = room; db.impactTick[slot] = state.tick + ticksOut; db.warned[slot] = warned;
-  db.frequency[slot] = frequency; db.scanned[slot] = 0; db.scan[slot] = 0;
+  db.frequency[slot] = frequency; db.scanned[slot] = 0; db.scan[slot] = 0; db.kind[slot] = ObjectKind.Debris;
   db.stableId[slot] = stableId ?? state.nextStableId++;
   if (stableId !== undefined && stableId >= state.nextStableId) state.nextStableId = stableId + 1;
   return slot;
@@ -66,4 +67,18 @@ export function quiet(state: SimState): void { state.director.nextSpawnTick = 1e
 export function armSpawn(state: SimState): void {
   const d = state.director;
   d.phase = Phase.BuildUp; d.phaseTick = state.tick; d.lastSpawnTick = state.tick; d.budgetLeft = 99; d.stress = 0; d.nextStressTick = 1e9; d.nextSpawnTick = state.tick;
+}
+
+/** Place an enemy as arrive() would, with a fresh StableId and no draw. */
+export function placeEnemy(state: SimState, hull = ENEMY_HULL): void {
+  const e = state.enemy;
+  e.present = 1; e.hull = hull; e.stableId = state.nextStableId++;
+  e.departTick = state.tick + ENCOUNTER_MAX * TICK_HZ; e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;
+}
+
+/** Place an enemy shot directly: placeDebris with kind Shot. */
+export function placeShot(state: SimState, room: number, ticksOut: number, warned = 0, stableId?: number, frequency = 1): number {
+  const slot = placeDebris(state, room, ticksOut, warned, stableId, frequency);
+  state.debris.kind[slot] = ObjectKind.Shot;
+  return slot;
 }
