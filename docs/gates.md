@@ -74,3 +74,25 @@
 - [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with the default crew under the director (2026-11-10; the test records no hull figures, so none are listed).
 - [ ] Manual, two players (`npm run dev`): the top-left panel cycles `Build Up` -> `Sustain Peak` -> `Peak Fade` -> `Relax` over a few minutes; hazards arrive only during `Build Up`; after about five minutes they come noticeably faster than at the start. Date and notes: pending human playtest.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Increment 4-ii: telemetry and acceptance (closes the foundation's Increment 4 and the Foundation sub-project)
+- [x] `npm test` passes: telemetry (initial values, manned ticks and the stale-occupant guard, idle streaks incl. the revive arbitration, the Dead streak and the mixed repair-then-downed case, first down/death with pid and same-tick ties for both edges, the Conscious -> Dead jump, ending-tick capture through step(), final-state sample of a downed operator, scratch clearing, spawns per type across director seeds, phase entries, maxStress, pinned evasion and impact rolls, shots and hits for hit/miss/torpedo/rejected, repairs per kind), record (exact mapping, rounding, present-on-the-ship filter, purity, JSON round trip), snapshot (all 17 telemetry fields round-trip and hash, version-8 rejection, continuation through a new longest idle and a bleed-out), store (missing key, append order, 50-to-51 boundary, malformed roots, throwing storage), session (hull loss and crew loss records, fault without a record, no dependency), HUD (headline lines, CREW LOST, every station manned, the full eight lines at four players), acceptance (oracle equality, repeatability, crew lists, early end, table and CLI orchestration incl. seed de-duplication).
+- [x] `npm run acceptance 1 1` prints a header and three rows (1, 2 and 4 players) and exits 0 (2026-11-11).
+- [x] Automated soak observables (unmanned-console bot crew; the station-choice and task-clarity questions of foundation section 10 remain for the human playtest), `npm run acceptance`, 2026-11-11:
+
+```
+players  seed  ended-at  reason  first-down         first-death     never-manned                                                      longest-idle          spawns      impacts  hits/shots
+1        1     14:24.1   crew    Okoro 14:24.1      -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  102.4                 3/3/6/8     8        0/0
+1        2     16:32.2   hull    -                  -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  111.5                 5/2/5/13    13       0/0
+1        3     10:36.6   crew    Okoro 10:36.6      -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  103.7                 5/2/3/4     4        0/0
+2        1     15:30.7   crew    Lindqvist 8:07.9   -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  98.2/97.5             7/7/9/11    10       0/0
+2        2     14:04.4   crew    Lindqvist 8:45     -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  66.1/65.7             5/4/7/13    12       0/0
+2        3     13:25     crew    Lindqvist 12:51.5  -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  72.3/71.8             8/7/3/11    11       0/0
+4        1     15:46.4   crew    Lindqvist 12:47.1  Dubois 13:42.2  Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  77.9/77.3/77.3/133.2  7/11/11/12  12       0/0
+4        2     14:37.4   hull    Lindqvist 13:41.6  -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  67.6/67.5/67.5/67.4   8/6/11/15   13       0/0
+4        3     12:35.2   hull    -                  -               Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  63.6/63.3/63.3/63.1   8/7/2/14    13       0/0
+```
+
+  Reading: with no console manned every run ends between 10:36 and 16:32, six by crew loss and three by hull loss; the first downing comes between 8:07 and 14:24; longest idle stretches run 63 to 133 s; no shots are fired. These are the baseline the human playtest with manned consoles should beat.
+- [ ] Manual, four players (`npm run dev`): a game over shows exactly eight summary lines in order (run length and reason, first down/first death, never manned, longest idle, then four skill lines), all visible and evenly spaced, and a long `Never manned` line does not run under the threat panel at the top right; `localStorage['ftlite-telemetry']` holds the run's record afterwards (DevTools console). Date and notes: pending human playtest.
+- [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.

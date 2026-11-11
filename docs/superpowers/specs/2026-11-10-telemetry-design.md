@@ -153,3 +153,12 @@ Added to `docs/gates.md` as "Increment 4-ii" (closing the foundation's Increment
 - A console-operating bot (sit, scan, fire, evade) so the headless soak can also report station use: add when the human playtest shows a station question the records cannot settle.
 - Per-station "productive seconds" in the record (the director already counts idle ticks per console): add if a playtest asks "was Science ever useful", not before.
 - Exporting records to a file: later, with the run structure (roadmap items 8 to 10).
+
+## 13. Amendments from the plan
+- The telemetry block has ten scalars (`firstDownTick, firstDownPid, firstDeathTick, firstDeathPid, impacts, evadeRolls, evasions, shots, hits, maxStress`), then `mannedTicks, idleRun, longestIdle, prevLife, spawns, repairs, phaseEntries`; section 4 said nine.
+- The "layout missing a station kind" fixture sets `derived.stationOfKind[kind] = -1` on a starter state, since `parseShip` requires one station per kind.
+- The acceptance table renders `ended-at` as `m:ss` with a tenth when the duration is fractional, `never-manned` as a comma list or `none`, `longest-idle` as per-player seconds joined by `/`, `spawns` as `fire/breach/power/debris`.
+- The HUD's `Never manned` line lists stations in `StationKind` order, the same order as the record (section 7's `Doors, Medbay` example was illustrative; the starter ship reads `Medbay, Doors`).
+- The "down" edge is leaving Conscious (so a Conscious -> Dead jump in one tick sets both first-down and first-death), as section 5 intended.
+- The CLI de-duplicates repeated seeds, keeping the first occurrence's position.
+- `main.ts` wraps the storage call in its own try so a denied `localStorage` cannot turn a game over into a sim fault.
