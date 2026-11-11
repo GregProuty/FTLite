@@ -78,9 +78,9 @@ describe('heat', () => {
     run(a, HAZARD_EVERY);
     expect(a.stations.failed[nav]).toBe(1);
     const b = makeState(1), nav2 = overdrive(b, StationKind.Navigation);
-    b.spawner.nextSpawnTick = 1e9; b.stations.coolant[nav2] = 2;
+    b.spawner.nextSpawnTick = 1e9; b.stations.coolant[nav2] = 2; b.stations.heat[nav2] = HEAT_MAX / 2;   // nonzero start: a net-negative rate would show as a drop, not hide behind the 0 clamp
     run(b, seconds(30));
-    expect(b.stations.heat[nav2]).toBe(0); expect(b.stations.failed[nav2]).toBe(0); expect(b.stations.level[nav2]).toBe(3);
+    expect(b.stations.heat[nav2]).toBe(HEAT_MAX / 2); expect(b.stations.failed[nav2]).toBe(0); expect(b.stations.level[nav2]).toBe(3);
   });
   it('a station at or below its max cools HEAT_COOL_IDLE per hazard tick to a floor of 0; a spawner-style failure leaves heat to decay', () => {
     const s = makeState(1), nav = idx(s, StationKind.Navigation), wpn = idx(s, StationKind.Weapons);

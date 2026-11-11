@@ -113,10 +113,9 @@ describe('Engineering console', () => {
     run(s, 1, () => intents(confirm));
     expect(coolantUsed(s)).toBe(0);                                      // Engineering row: nothing
     s.stations.cursor[eng] = StationKind.Weapons;
-    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(1);
-    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(2);
-    run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(0);
-    run(s, 1, () => intents(confirm)); run(s, 1, () => intents(confirm));   // back to 2
+    const stepTo = (expected: number, delta: number) => { const before = coolantUsed(s); run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(expected); expect(coolantUsed(s)).toBe(before + delta); };
+    stepTo(1, 1); stepTo(2, 1); stepTo(0, -2);                            // the pool total moves by exactly the step
+    stepTo(1, 1); stepTo(2, 1);                                           // back to 2
     s.stations.coolant[idx(s, StationKind.Science)] = 1;                  // 3 of 4 used
     s.stations.cursor[eng] = StationKind.Navigation;
     run(s, 1, () => intents(confirm)); expect(s.stations.coolant[nav]).toBe(1); expect(coolantUsed(s)).toBe(COOLANT_POOL);

@@ -9,7 +9,7 @@ export function stationOnline(state: SimState, i: number): boolean {
   return state.stations.failed[i] === 0 && state.stations.level[i]! > 0;
 }
 
-/** Effect multiplier in [0, 1]: level over max, times the skill curve (spec §5). Offline is 0. */
+/** Effect multiplier: level over STATION_MAX, times the skill curve (spec 2a-i section 5); exceeds 1 while overdriven (2b-i). Offline is 0. */
 export function stationOutput(state: SimState, i: number): number {
   if (!stationOnline(state, i)) return 0;
   const kind = state.derived.stationKind[i]!, occ = state.stations.occupant[i]!;

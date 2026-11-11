@@ -143,3 +143,4 @@ Added to `docs/gates.md` as "Increment 2b-i":
 - `coolingPerUnit(state)` returns `HEAT_COOL_UNIT` with the skill term deferred to increment 3 (section 5 describes the future formula).
 - The Pixi heat bar is a 2 px strip under the cells rather than reusing `bar()` (section 7), so it fits inside the 18 px row.
 - The `overdrive(state, kind)` test helper lives in `tests/helpers/sim.ts` and widens `power.capacity` to 20 so heat fixtures never fight the pool; the spawner-cap fixture uses two breaches rather than fires because `fireStep` draws spread rolls from `rng.hazards` and would move the pinned overheat draw.
+- The Engineering footer labels are lowercase (`pool n   coolant free/4`), matching the existing `pool n` footer, not the capitalised form in section 7.
