@@ -1,0 +1,5 @@
+# Codex review: 3-ii spec (mechanics, 2026-11-10)
+
+1. **High — [Spec line 57](C:/Users/djuar/FTLite/docs/superpowers/specs/2026-11-10-characters-design.md:57): Head-start writes contradict the XP storage layout.** `xp[pid][skill]` throws against the current flat `Float64Array` (`state.ts:77`, `skills.ts:24`). **Fix:** specify `state.skills.xp[xpIndex(pid, skill)] = XP_THRESHOLDS[level]`, applied once during creation for each spawned pid.
+
+2. **Medium — [Spec lines 37 and 53](C:/Users/djuar/FTLite/docs/superpowers/specs/2026-11-10-characters-design.md:53): Cooling lookup leaves the empty-occupant case unsafe.** Current `coolingPerUnit` uses occupant `-1` when Engineering is absent, offline, or empty (`heat.ts:18`). Passing that to the prescribed modulo lookup produces `CHARACTERS[-1]`, which is undefined. “Baseline when nobody sits” states the result without defining the guard. **Fix:** explicitly use `occ >= 0 ? coolingTraitBonus(occ) : 0`, retaining the existing online check; define valid character pids as nonnegative integers.
