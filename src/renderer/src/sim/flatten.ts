@@ -1,13 +1,14 @@
 import type { SimState } from './state';
 import { STREAM_NAMES } from './state';
 import { Position, Health, Life, Stable, Seated } from './components';
-import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS } from './tuning';
+import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, RUN_COLUMNS } from './tuning';
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
-export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'science', 'skills', 'characters', 'crew'];
+export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
 const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 7, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 6, SCIENCE_FIELDS = 1, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 15, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
-const TELEMETRY_SCALARS = 15, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
+const RUN_FIELDS = 4 + 4 * RUN_COLUMNS;
+const TELEMETRY_SCALARS = 16, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
 
 /** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec §4). */
 export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
@@ -17,7 +18,7 @@ function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3
     + s.breaches.active.length * 2 + COUNTER_FIELDS + DIRECTOR_FIELDS + TELEMETRY_SCALARS + TELEMETRY_FIXED + 3 * s.playerCount
     + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + s.playerCount * STICK_FIELDS
-    + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + ENEMY_FIELDS + BOARDERS_FIELDS + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length + s.crew.length * CREW_FIELDS;
+    + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + ENEMY_FIELDS + BOARDERS_FIELDS + RUN_FIELDS + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length + s.crew.length * CREW_FIELDS;
 }
 
 /** Canonical order. Crew by PlayerId (their StableIds were allocated in that order). -0 is written as 0. */
@@ -33,7 +34,7 @@ export function flatten(s: SimState): Float64Array {
   for (const v of s.breaches.active) put(v); for (const v of s.breaches.repair) put(v);
   const c = s.o2Counters; put(c.injected); put(c.breathed); put(c.burned); put(c.vented); put(c.residual);
   const dr = s.director; put(dr.phase); put(dr.phaseTick); put(dr.stress); put(dr.nextStressTick); put(dr.nextSpawnTick); put(dr.budgetLeft); put(dr.lastSpawnTick); put(dr.lastType); for (const v of dr.sinceProductive) put(v);
-  const tm = s.telemetry; put(tm.firstDownTick); put(tm.firstDownPid); put(tm.firstDeathTick); put(tm.firstDeathPid); put(tm.impacts); put(tm.evadeRolls); put(tm.evasions); put(tm.shots); put(tm.hits); put(tm.maxStress); put(tm.encounters); put(tm.enemiesDestroyed); put(tm.enemyDisables); put(tm.boardings); put(tm.boardersKilled);
+  const tm = s.telemetry; put(tm.firstDownTick); put(tm.firstDownPid); put(tm.firstDeathTick); put(tm.firstDeathPid); put(tm.impacts); put(tm.evadeRolls); put(tm.evasions); put(tm.shots); put(tm.hits); put(tm.maxStress); put(tm.encounters); put(tm.enemiesDestroyed); put(tm.enemyDisables); put(tm.boardings); put(tm.boardersKilled); put(tm.jumps);
   for (const v of tm.mannedTicks) put(v); for (const v of tm.idleRun) put(v); for (const v of tm.longestIdle) put(v); for (const v of tm.prevLife) put(v);
   for (const v of tm.spawns) put(v); for (const v of tm.repairs) put(v); for (const v of tm.phaseEntries) put(v);
   for (const v of s.stations.level) put(v); for (const v of s.stations.failed) put(v); for (const v of s.stations.repair) put(v);
@@ -47,6 +48,7 @@ export function flatten(s: SimState): Float64Array {
   const w = s.weapons; put(w.charge); put(w.selector); put(w.torpedoStock); put(w.torpedoLoaded); put(w.torpedoLoad); put(w.torpedoRegen);
   const en = s.enemy; put(en.present); put(en.hull); put(en.stableId); put(en.nextArrivalTick); put(en.nextShotTick); put(en.departTick); for (const v of en.sysHp) put(v); for (const v of en.sysRepairTick) put(v); put(en.shieldFreq); put(en.scanned); put(en.scan);
   const bd = s.boarders; put(bd.nextArrivalTick); for (const v of bd.active) put(v); for (const v of bd.stableId) put(v); for (const v of bd.room) put(v); for (const v of bd.health) put(v); for (const v of bd.nextMoveTick) put(v); for (const v of bd.aloneSince) put(v);
+  const rn = s.run; put(rn.column); put(rn.node); put(rn.nodesReached); put(rn.jumpCharge); for (const v of rn.colNodes) put(v); for (const v of rn.edgeMask) put(v);
   put(s.science.scanning);
   for (const v of s.skills.xp) put(v); put(s.skills.lastEngChangeTick); put(s.skills.lastDoorToggleTick); put(s.skills.lsDeliveredTick); put(s.skills.lastShotTick);
   for (const v of s.crewCharacter) put(v);
@@ -82,7 +84,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (const k of ['phase', 'phaseTick', 'stress', 'nextStressTick', 'nextSpawnTick', 'budgetLeft', 'lastSpawnTick', 'lastType'] as const) s.director[k] = get();
   for (let k = 0; k < s.director.sinceProductive.length; k++) s.director.sinceProductive[k] = get();
   const tm = s.telemetry;
-  for (const k of ['firstDownTick', 'firstDownPid', 'firstDeathTick', 'firstDeathPid', 'impacts', 'evadeRolls', 'evasions', 'shots', 'hits', 'maxStress', 'encounters', 'enemiesDestroyed', 'enemyDisables', 'boardings', 'boardersKilled'] as const) tm[k] = get();
+  for (const k of ['firstDownTick', 'firstDownPid', 'firstDeathTick', 'firstDeathPid', 'impacts', 'evadeRolls', 'evasions', 'shots', 'hits', 'maxStress', 'encounters', 'enemiesDestroyed', 'enemyDisables', 'boardings', 'boardersKilled', 'jumps'] as const) tm[k] = get();
   for (const arr of [tm.mannedTicks, tm.idleRun, tm.longestIdle, tm.prevLife, tm.spawns, tm.repairs, tm.phaseEntries]) for (let k = 0; k < arr.length; k++) arr[k] = get();
   for (let i = 0; i < s.stations.level.length; i++) s.stations.level[i] = get();
   for (let i = 0; i < s.stations.failed.length; i++) s.stations.failed[i] = get();
@@ -103,6 +105,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (const k of ['present', 'hull', 'stableId', 'nextArrivalTick', 'nextShotTick', 'departTick'] as const) s.enemy[k] = get();
   for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysHp[k] = get(); for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysRepairTick[k] = get(); s.enemy.shieldFreq = get(); s.enemy.scanned = get(); s.enemy.scan = get();
   s.boarders.nextArrivalTick = get(); for (const arr of [s.boarders.active, s.boarders.stableId, s.boarders.room, s.boarders.health, s.boarders.nextMoveTick, s.boarders.aloneSince]) for (let k = 0; k < BOARDER_SLOTS; k++) arr[k] = get();
+  s.run.column = get(); s.run.node = get(); s.run.nodesReached = get(); s.run.jumpCharge = get(); for (let k = 0; k < RUN_COLUMNS; k++) s.run.colNodes[k] = get(); for (let k = 0; k < RUN_COLUMNS * 3; k++) s.run.edgeMask[k] = get();
   s.science.scanning = get();
   for (let k = 0; k < s.skills.xp.length; k++) s.skills.xp[k] = get();
   s.skills.lastEngChangeTick = get(); s.skills.lastDoorToggleTick = get(); s.skills.lsDeliveredTick = get(); s.skills.lastShotTick = get();

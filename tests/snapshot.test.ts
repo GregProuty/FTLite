@@ -10,9 +10,9 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder } from './helpers/sim';
+import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST, ENEMY_SYS_HP, BOARDER_SLOTS } from '../src/renderer/src/sim/tuning';
+import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
@@ -48,10 +48,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-11 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-12 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 11 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 11;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 12 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 12;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -362,6 +362,28 @@ describe('snapshot', () => {
     expect(resumed.boarders.aloneSince[0]).toBe(-2);
     run(whole, 20 * TICK_HZ); run(resumed, 20 * TICK_HZ);
     expect(resumed.stations.failed[1]).toBe(0); expect(resumed.boarders.aloneSince[0]).toBe(-2);     // Doors stays online: the visit already sabotaged
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+  it('round-trips the run block, the map stream and telemetry.jumps; each alone changes the hash', () => {
+    const s = makeState(2, 5); s.run.column = 3; s.run.node = 2; s.run.nodesReached = 3; s.run.jumpCharge = 0.42; s.run.colNodes.set([1, 3, 2, 3, 2, 2, 3, 1]); s.run.edgeMask[4] = 5; s.telemetry.jumps = 3; s.rng.map.s = 123456;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect([t.run.column, t.run.node, t.run.nodesReached, t.run.jumpCharge, t.telemetry.jumps, t.rng.map.s]).toEqual([3, 2, 3, 0.42, 3, 123456]);
+    expect(Array.from(t.run.colNodes)).toEqual(Array.from(s.run.colNodes)); expect(Array.from(t.run.edgeMask)).toEqual(Array.from(s.run.edgeMask));
+    expect(saveSnapshot(s).header.rngStates['map']).toBe(123456);
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
+    for (const k of ['column', 'node', 'nodesReached', 'jumpCharge'] as const) expect(mutate((u) => { u.run[k] = 0.5; })).not.toBe(base);
+    expect(mutate((u) => { u.run.colNodes[1] = 1; })).not.toBe(base); expect(mutate((u) => { u.run.edgeMask[0] = u.run.edgeMask[0]! ^ 1; })).not.toBe(base);
+    expect(mutate((u) => { u.telemetry.jumps = 1; })).not.toBe(base); expect(mutate((u) => { u.rng.map.s = 1; })).not.toBe(base);
+  });
+  it('a run saved mid-charge with the cursor on the second destination continues to the same jump as the uninterrupted run', () => {
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.9; return n; };
+    const whole = makeState(2, 31), part = makeState(2, 31); const n = setup(whole); setup(part);
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    expect(resumed.stations.cursor[n]).toBe(1); expect(resumed.run.jumpCharge).toBe(0.9);
+    const drive = (s: ReturnType<typeof makeState>) => run(s, 0.1 * JUMP_CHARGE_TIME * TICK_HZ + 600, () => intents({ confirmPressed: true }, {}));
+    drive(whole); drive(resumed);
+    expect([resumed.run.column, resumed.run.node, resumed.run.nodesReached]).toEqual([1, 1, 1]);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 });

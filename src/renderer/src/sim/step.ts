@@ -3,6 +3,7 @@ import { NEUTRAL_INTENT, clampIntent } from '../../../shared/intent';
 import type { SimState } from './state';
 import { HAZARD_EVERY } from './tuning';
 import { interactSystem } from './interact';
+import { jumpStep } from './run';
 import { consoleSystem } from './console';
 import { movementSystem } from './movement';
 import { doorSystem } from './doors';
@@ -28,6 +29,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const hazardTick = state.tick % HAZARD_EVERY === 0;
   state.scratch.doorToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0); state.scratch.activeThisTick.fill(0);
+  jumpStep(state);   // (0) the jump drive charges first, so a Confirm on the ready tick jumps (spec Run-i section 6)
   // (1) input, arbitration
   interactSystem(state, intents);
   // (2) control mode: seated input and the tick's door toggles

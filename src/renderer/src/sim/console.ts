@@ -12,6 +12,7 @@ import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 import { Dir } from './dir';
 import { chargeBeam, weaponsInput } from './weapons';
 import { scienceInput, scanStep } from './science';
+import { navigationInput } from './run';
 import { regenTorpedo, loadTorpedo } from './torpedoes';
 
 export { Dir };
@@ -65,7 +66,8 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     else if (kind === StationKind.Doors) doorsInput(state, i, dir, it.confirmPressed);
     else if (kind === StationKind.Weapons) weaponsInput(state, i, dir, it.confirmPressed);
     else if (kind === StationKind.Science) scienceInput(state, i, dir, it.confirmPressed);
-    // Navigation, Life Support, Medbay: no seated controls.
+    else if (kind === StationKind.Navigation) navigationInput(state, i, dir, it.confirmPressed);
+    // Life Support, Medbay: no seated controls.
   }
   for (const e of [...state.scratch.doorToggles].sort((a, b) => a - b)) toggleSeal(state, e);
 }

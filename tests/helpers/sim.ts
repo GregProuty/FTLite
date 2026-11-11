@@ -10,6 +10,8 @@ import { ObjectKind } from '../../src/renderer/src/sim/debris';
 import { ENEMY_SLOTS } from '../../src/renderer/src/sim/debrisTargets';
 import { RECRUIT } from '../../src/renderer/src/sim/characters';
 import { shiftBar, maxLevel } from '../../src/renderer/src/sim/power';
+import { sitDown } from '../../src/renderer/src/sim/stations';
+import { StationKind } from '../../src/renderer/src/sim/stationKinds';
 
 export const LAYOUT = parseShip(starter);
 export const RECRUITS: readonly number[] = [RECRUIT, RECRUIT, RECRUIT, RECRUIT];
@@ -105,4 +107,12 @@ export function placeBoarder(state: SimState, room: number, health = BOARDER_HEA
   b.active[slot] = 1; b.stableId[slot] = state.nextStableId++; b.room[slot] = room; b.health[slot] = health;
   b.nextMoveTick[slot] = state.tick + BOARDER_MOVE * TICK_HZ; b.aloneSince[slot] = -1;
   return slot;
+}
+
+export function chargeJump(state: SimState): void { state.run.jumpCharge = 1; }
+export function seatNavigator(state: SimState, pid: number): number { const i = state.derived.stationOfKind[StationKind.Navigation]!; sitDown(state, pid, i); return i; }
+/** Overwrite the generated map: nodes per column and `"c:n"` -> mask entries (unlisted masks become 0). */
+export function setMap(state: SimState, colNodes: number[], masks: Record<string, number>): void {
+  state.run.colNodes.set(colNodes); state.run.edgeMask.fill(0);
+  for (const [key, mask] of Object.entries(masks)) { const [c, n] = key.split(':').map(Number); state.run.edgeMask[c! * 3 + n!] = mask; }
 }

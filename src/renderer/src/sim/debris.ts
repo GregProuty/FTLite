@@ -51,6 +51,9 @@ export function removeDebris(state: SimState, slot: number): void {
   db.active[slot] = 0; db.warned[slot] = 0; db.stableId[slot] = 0; db.frequency[slot] = 0; db.scanned[slot] = 0; db.scan[slot] = 0;
 }
 
+/** The jump leaves every object behind (spec Run-i section 6): every slot through removeDebris, then scanning stops. */
+export function clearObjects(state: SimState): void { for (let k = 0; k < state.debris.active.length; k++) if (state.debris.active[k]) removeDebris(state, k); state.science.scanning = 0; }
+
 /** Detection lead in seconds: the unmanned value unless Science is online and occupied. */
 export function scienceLead(state: SimState): number {
   const sci = state.derived.stationOfKind[StationKind.Science]!;

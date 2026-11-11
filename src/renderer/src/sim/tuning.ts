@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 12;
+export const SIM_VERSION = 13;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -147,3 +147,8 @@ export const CREW_MELEE_DPS = 8, COMBAT_GAIN = 0.06, COMBAT_DEFENCE = 0.04;     
 export const BOARDER_MOVE = 8, BOARDER_SABOTAGE = 15;                                // seconds between moves while alone; seconds alone with an online console before it fails
 export const XP_PER_KILL = 20;                                                       // Combat XP to the killer
 export const HEALTH_EPS = 1e-9;                                                      // health below this snaps to 0 (melee arithmetic, spec Boarders-i section 2)
+
+// Sector map and jumps (Run-i)
+export const RUN_COLUMNS = 8, EDGE_CHANCE = 0.5;                                   // node columns; chance of each candidate edge
+export const JUMP_CHARGE_TIME = 60;                                                 // seconds from arrival to a ready drive
+export const ENCOUNTER_AFTER_JUMP = 60, BOARDING_AFTER_JUMP = 120;                  // seconds after a jump before the enemy / a party can arrive (no draw)

@@ -5,13 +5,14 @@ import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
 import { DEFAULT_CHARACTERS, RECRUIT, applyHeadStarts } from './characters';
-import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, BOARDER_SLOTS, BOARDING_FIRST } from './tuning';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, BOARDER_SLOTS, BOARDING_FIRST, RUN_COLUMNS } from './tuning';
+import { generateMap } from './run';
 import { cycleBudget } from './director';
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
-export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState }
-export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic'] as const;
+export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState; map: RngState }
+export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic', 'map'] as const;
 
 export interface SimState {
   tick: number;
@@ -32,7 +33,7 @@ export interface SimState {
   /** Pacing director (spec 4-i section 4): phase machine, smoothed stress, spawn timing and budget, per-kind idle counters. */
   director: { phase: number; phaseTick: number; stress: number; nextStressTick: number; nextSpawnTick: number; budgetLeft: number; lastSpawnTick: number; lastType: number; sinceProductive: Int32Array };
   /** Run telemetry (spec 4-ii section 4): first down/death with the player, manned ticks per kind, idle streaks per player, event counts. Ticks and pids are -1 until set. */
-  telemetry: { firstDownTick: number; firstDownPid: number; firstDeathTick: number; firstDeathPid: number; mannedTicks: Int32Array; idleRun: Int32Array; longestIdle: Int32Array; prevLife: Uint8Array; spawns: Int32Array; impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number; repairs: Int32Array; maxStress: number; phaseEntries: Int32Array; encounters: number; enemiesDestroyed: number; enemyDisables: number; boardings: number; boardersKilled: number };
+  telemetry: { firstDownTick: number; firstDownPid: number; firstDeathTick: number; firstDeathPid: number; mannedTicks: Int32Array; idleRun: Int32Array; longestIdle: Int32Array; prevLife: Uint8Array; spawns: Int32Array; impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number; repairs: Int32Array; maxStress: number; phaseEntries: Int32Array; encounters: number; enemiesDestroyed: number; enemyDisables: number; boardings: number; boardersKilled: number; jumps: number };
   /** Derived scratch (not snapshotted): per-room oxygen injection requested for the next hazard step. */
   injectionScratch: Float64Array;
   stations: { level: Uint8Array; failed: Uint8Array; repair: Float64Array; occupant: Int8Array; cursor: Int16Array; heat: Int16Array; coolant: Uint8Array };   // heat 0..HEAT_MAX and coolant units per station (spec 2b-i section 3)
@@ -45,6 +46,8 @@ export interface SimState {
   enemy: { present: number; hull: number; stableId: number; nextArrivalTick: number; nextShotTick: number; departTick: number; sysHp: Int32Array; sysRepairTick: Int32Array; shieldFreq: number; scanned: number; scan: number };
   /** Boarders (spec Boarders-i section 4): a room-level party, one at a time; aloneSince is -1 idle, a tick while running, -2 once this visit sabotaged. */
   boarders: { active: Uint8Array; stableId: Int32Array; room: Int16Array; health: Float64Array; nextMoveTick: Int32Array; aloneSince: Int32Array; nextArrivalTick: number };
+  /** The run (spec Run-i section 4): position on the node map, the score, the drive charge, and the map itself. */
+  run: { column: number; node: number; nodesReached: number; jumpCharge: number; colNodes: Uint8Array; edgeMask: Uint8Array };
   crewCharacter: Uint8Array;   // CHARACTERS index per crew member (spec 3-ii section 4)
   /** Per-crew skill XP (pid x SKILL_COUNT + skill) and the productivity stamps (spec 3-i section 4); stamps are -1 until set. */
   skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
@@ -71,15 +74,16 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
   const world = createWorld(SHARED_ENTITY_INDEX);
   const R = derived.volume.length, E = layout.edges.length, S = layout.breachSites.length;
   const N = layout.stations.length;
+  const rng = deriveStreams(seed);
   const state: SimState = {
-    tick: 0, rng: deriveStreams(seed), nextStableId: 1, layout, derived, playerCount, world, crew: [],
+    tick: 0, rng, nextStableId: 1, layout, derived, playerCount, world, crew: [],
     hull: HULL_MAX, ended: 0, endReason: 0,
     rooms: { o2: Float64Array.from(derived.volume), fire: new Float64Array(R), fireRepair: new Float64Array(R), impactTick: new Int32Array(R).fill(-1) },
     doors: { state: new Uint8Array(E), closeTimer: new Float64Array(E), sealRequested: new Uint8Array(E) },
     breaches: { active: new Uint8Array(S), repair: new Float64Array(S) },
     o2Counters: { injected: 0, breathed: 0, burned: 0, vented: 0, residual: 0 },
     director: { phase: 0, phaseTick: 0, stress: 0, nextStressTick: STRESS_PERIOD * TICK_HZ, nextSpawnTick: SPAWN_FIRST * TICK_HZ, budgetLeft: cycleBudget(0, playerCount), lastSpawnTick: -1, lastType: -1, sinceProductive: new Int32Array(STATION_COUNT) },
-    telemetry: { firstDownTick: -1, firstDownPid: -1, firstDeathTick: -1, firstDeathPid: -1, mannedTicks: new Int32Array(STATION_COUNT), idleRun: new Int32Array(playerCount), longestIdle: new Int32Array(playerCount), prevLife: new Uint8Array(playerCount).fill(LifeState.Conscious), spawns: new Int32Array(4), impacts: 0, evadeRolls: 0, evasions: 0, shots: 0, hits: 0, repairs: new Int32Array(3), maxStress: 0, phaseEntries: Int32Array.of(1, 0, 0, 0), encounters: 0, enemiesDestroyed: 0, enemyDisables: 0, boardings: 0, boardersKilled: 0 },
+    telemetry: { firstDownTick: -1, firstDownPid: -1, firstDeathTick: -1, firstDeathPid: -1, mannedTicks: new Int32Array(STATION_COUNT), idleRun: new Int32Array(playerCount), longestIdle: new Int32Array(playerCount), prevLife: new Uint8Array(playerCount).fill(LifeState.Conscious), spawns: new Int32Array(4), impacts: 0, evadeRolls: 0, evasions: 0, shots: 0, hits: 0, repairs: new Int32Array(3), maxStress: 0, phaseEntries: Int32Array.of(1, 0, 0, 0), encounters: 0, enemiesDestroyed: 0, enemyDisables: 0, boardings: 0, boardersKilled: 0, jumps: 0 },
     injectionScratch: new Float64Array(R),
     stations: { level: Uint8Array.from(layout.stations.map((st) => st.allocation)), failed: new Uint8Array(N), repair: new Float64Array(N), occupant: new Int8Array(N).fill(-1), cursor: new Int16Array(N), heat: new Int16Array(N), coolant: new Uint8Array(N) },
     power: { capacity: REACTOR_CAPACITY },
@@ -87,6 +91,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS), frequency: new Uint8Array(DEBRIS_SLOTS), scanned: new Uint8Array(DEBRIS_SLOTS), scan: new Float64Array(DEBRIS_SLOTS), kind: new Uint8Array(DEBRIS_SLOTS) },
     weapons: { charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 },
     boarders: { active: new Uint8Array(BOARDER_SLOTS), stableId: new Int32Array(BOARDER_SLOTS), room: new Int16Array(BOARDER_SLOTS), health: new Float64Array(BOARDER_SLOTS), nextMoveTick: new Int32Array(BOARDER_SLOTS), aloneSince: new Int32Array(BOARDER_SLOTS).fill(-1), nextArrivalTick: BOARDING_FIRST * TICK_HZ },
+    run: { column: 0, node: 0, nodesReached: 0, jumpCharge: 0, ...generateMap(rng.map, RUN_COLUMNS) },
     enemy: { present: 0, hull: 0, stableId: 0, nextArrivalTick: ENCOUNTER_FIRST * TICK_HZ, nextShotTick: -1, departTick: -1, sysHp: new Int32Array(ENEMY_SYSTEM_COUNT), sysRepairTick: new Int32Array(ENEMY_SYSTEM_COUNT).fill(-1), shieldFreq: 0, scanned: 0, scan: 0 },
     science: { scanning: 0 },
     crewCharacter: Uint8Array.from({ length: playerCount }, (_, pid) => characters[pid] ?? RECRUIT),
