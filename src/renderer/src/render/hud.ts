@@ -63,7 +63,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
   const banner = text(16); banner.scale.set(2); banner.anchor.set(0.5, 0); banner.position.set(INTERNAL_W / 2, 24); parent.addChild(banner);
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
-  const summaryRows = Array.from({ length: 4 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 88 + k * LINE); t.visible = false; parent.addChild(t); return t; });
+  const summaryRows = Array.from({ length: 8 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 88 + k * LINE); t.visible = false; parent.addChild(t); return t; });
 
   const players = [0, 1, 2, 3].map((i) => {
     const x = 4 + i * 238, y = INTERNAL_H - 94;

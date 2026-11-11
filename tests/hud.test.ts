@@ -214,13 +214,27 @@ describe('buildHudModel', () => {
     expect(buildHudModel(makeState(1), slots(1), 'running', '').players[0]!.character).toEqual({ name: 'Recruit', asset: '', complication: '' });
     expect(m.players[1]!.skills).toEqual([0, 3, 0, 0, 0, 0]);                                              // Lindqvist's head start shows as a level
   });
-  it("the game-over summary lists each crew member's skill gains above the head start, and is null in every other phase", () => {
-    const s = makeState(3, 1, DEFAULT_CHARACTERS);
+  it('the game-over summary has four headline lines then one skill line per crew member, and is null in every other phase', () => {
+    const s = makeState(3, 1, DEFAULT_CHARACTERS); const t = s.telemetry;
+    s.tick = 452 * 60; s.ended = 1; s.endReason = 1;
+    t.firstDownTick = 190 * 60 - 1; t.firstDownPid = 0;                       // Okoro at 3:10
+    t.mannedTicks.fill(1); t.mannedTicks[StationKind.Doors] = 0; t.mannedTicks[StationKind.Medbay] = 0;
+    t.longestIdle.set([95 * 60, 40 * 60, 7 * 60]);
     setSkill(s, 2, Skill.Science, 3); setSkill(s, 0, Skill.Repair, 4); setSkill(s, 0, Skill.Navigation, 1);
     const over = buildHudModel(s, slots(3), 'gameover', 'HULL LOST');
-    expect(over.summary).toEqual(['Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
+    expect(over.summary).toEqual([
+      'Survived 7:32  HULL LOST', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s',   // StationKind order, as in the record
+      'Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
+    s.endReason = 2; t.mannedTicks.fill(1); t.firstDeathTick = 452 * 60 - 1; t.firstDeathPid = 2;
+    const crew = buildHudModel(s, slots(3), 'gameover', 'CREW LOST').summary!;
+    expect(crew[0]).toBe('Survived 7:32  CREW LOST'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
+    const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = 1;
+    expect(buildHudModel(four, slots(4), 'gameover', '').summary).toEqual([
+      'Survived 0:00  HULL LOST', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
+      'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s',
+      'Okoro: no skill gains', 'Lindqvist: no skill gains', 'Reyes: no skill gains', 'Dubois: no skill gains']);
   });
   it('reports the director phase name and stress', () => {
     const s = makeState(2); s.director.phase = Phase.PeakFade; s.director.stress = 0.42;

@@ -5,6 +5,7 @@ import { createRenderer } from './render/renderer';
 import { createHud } from './render/hud';
 import { createKeyboardSources, sampleGamepads } from './input/sources';
 import { createSession } from './app/session';
+import { appendTelemetry } from './app/telemetryStore';
 import { CREDITS } from './render/credits.generated';
 
 declare global { interface Window { ftlite?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void } } }
@@ -32,7 +33,8 @@ async function start(): Promise<void> {
     now: () => performance.now(),
     canResume: () => !document.hidden && document.hasFocus(),
     credits: CREDITS,
-    saveCrash: (payload) => { try { localStorage.setItem('ftlite-crash', JSON.stringify(payload)); } catch { /* storage unavailable */ } }
+    saveCrash: (payload) => { try { localStorage.setItem('ftlite-crash', JSON.stringify(payload)); } catch { /* storage unavailable */ } },
+    saveTelemetry: (record) => { try { appendTelemetry(localStorage, record); } catch { /* storage denied: evaluating localStorage itself can throw, and the callback runs inside the session's sim-fault try */ } }
   });
   const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
   window.addEventListener('resize', resize); resize();

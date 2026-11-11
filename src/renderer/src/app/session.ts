@@ -9,6 +9,7 @@ import { createIntentFeed, NEUTRAL_FRAME, type InputFrame } from './intents';
 import { stepAccumulator } from './loop';
 import { buildHudModel, type HudModel } from '../render/hudModel';
 import { EndReason } from '../sim/crew';
+import { telemetryRecord, type TelemetryRecord } from '../sim/telemetry';
 
 export const DEFAULT_SEED = 2026;
 const CRASH_HISTORY = 300;
@@ -21,6 +22,8 @@ export interface SessionDeps {
   hud: { update(m: HudModel): void } | null;
   now(): number;
   saveCrash(payload: unknown): void;
+  /** Called once with the run's record on the tick it ends (spec 4-ii section 7). */
+  saveTelemetry?: (record: TelemetryRecord) => void;
   /** Whether a Confirm press may resume a paused session (false while the window is hidden or unfocused). */
   canResume?: () => boolean;
   credits?: readonly string[];
@@ -102,6 +105,7 @@ export function createSession(deps: SessionDeps) {
             intentsSinceBaseline.push(intents.map(encodeIntent));
             step(state, intents);
             if (state.ended) {
+              deps.saveTelemetry?.(telemetryRecord(state, seed));
               phase = 'gameover';
               message = `${state.endReason === EndReason.Hull ? 'HULL LOST' : 'CREW LOST'} after ${Math.floor(state.tick / TICK_HZ)}s. Confirm: same seed. Cancel: new seed.`;
               break;

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createSession } from '../src/renderer/src/app/session';
+import { createSession, DEFAULT_SEED } from '../src/renderer/src/app/session';
+import type { TelemetryRecord } from '../src/renderer/src/sim/telemetry';
+import { downCrew } from '../src/renderer/src/sim/crew';
 import type { SourceSample } from '../src/renderer/src/input/deviceManager';
 import { LAYOUT } from './helpers/sim';
 import { loadSnapshot, type Snapshot } from '../src/renderer/src/sim/snapshot';
@@ -9,20 +11,22 @@ import { step } from '../src/renderer/src/sim/step';
 
 import type { HudModel } from '../src/renderer/src/render/hudModel';
 
-function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C']) {
+function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C'], withTelemetry = true) {
   let samples: SourceSample[] = [];
   let t = 0;
   const crashes: unknown[] = [];
   let last: HudModel | null = null;
+  const records: TelemetryRecord[] = [];
   const session = createSession({
     layout: LAYOUT, sampleDevices: () => samples, renderer: null, hud: { update(m) { last = m; } },
-    now: () => t, canResume, saveCrash: (p) => { crashes.push(p); }, credits
+    now: () => t, canResume, saveCrash: (p) => { crashes.push(p); }, credits,
+    ...(withTelemetry ? { saveTelemetry: (r: TelemetryRecord) => { records.push(r); } } : {})
   });
   const sample = (key: string, o: Partial<SourceSample>): SourceSample => ({ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o });
   const press = (key: string, o: Partial<SourceSample>) => { samples = [sample(key, o)]; };
   const pressMany = (...s: SourceSample[]) => { samples = s; };
   const frames = (n: number, ms = 1000 / 60) => { for (let i = 0; i < n; i++) { t += ms; session.frame(); } };
-  return { session, press, pressMany, sample, frames, crashes, release: () => press('a', {}), last: () => last! };
+  return { session, press, pressMany, sample, frames, crashes, records, release: () => press('a', {}), last: () => last! };
 }
 
 describe('session', () => {
@@ -59,7 +63,38 @@ describe('session', () => {
     h.frames(20);
     expect(h.session.state!.tick).toBeGreaterThan(tick);
   });
-  it('ends when the solo player dies and restarts with the same or next seed', () => {
+  it('hull loss saves exactly one telemetry record with endReason hull, and no more on the game-over frames', () => {
+    const h = harness();
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
+    h.press('a', { confirm: true }); h.frames(1); h.release();
+    h.session.state!.hull = 0; h.frames(2);
+    expect(h.session.phase).toBe('gameover'); expect(h.records).toHaveLength(1);
+    expect(h.records[0]).toMatchObject({ endReason: 'hull', playerCount: 1, seed: DEFAULT_SEED, characters: ['Okoro'] });
+    h.frames(10); expect(h.records).toHaveLength(1);
+  });
+  it('crew loss (the solo player downed) saves exactly one record with endReason crew', () => {
+    const h = harness();
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
+    h.press('a', { confirm: true }); h.frames(1); h.release();
+    downCrew(h.session.state!, 0); h.frames(2);
+    expect(h.session.phase).toBe('gameover'); expect(h.records).toHaveLength(1);
+    expect(h.records[0]).toMatchObject({ endReason: 'crew', playerCount: 1, seed: DEFAULT_SEED });
+    expect(h.records[0]!.firstDown).toEqual({ who: 'Okoro', seconds: h.records[0]!.durationSeconds });   // downed on the ending tick
+    h.frames(10); expect(h.records).toHaveLength(1);
+  });
+  it('a sim fault saves a crash but no telemetry record; a session without saveTelemetry still ends normally', () => {
+    const h = harness();
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
+    h.press('a', { confirm: true }); h.frames(1); h.release();
+    (h.session.state as unknown as { rooms: null }).rooms = null; h.frames(2);
+    expect(h.crashes).toHaveLength(1); expect(h.records).toHaveLength(0);
+    const g = harness(undefined, undefined, false);
+    g.press('a', { interact: true }); g.frames(1); g.release(); g.frames(1);
+    g.press('a', { confirm: true }); g.frames(1); g.release();
+    g.session.state!.hull = 0; g.frames(2);
+    expect(g.session.phase).toBe('gameover'); expect(g.records).toHaveLength(0);
+  });
+  it('ends on hull loss and restarts with the same or next seed', () => {
     const h = harness();
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
     h.press('a', { confirm: true }); h.frames(1); h.release();
