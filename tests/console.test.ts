@@ -158,12 +158,15 @@ describe('Engineering console', () => {
     };
     fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), arbScript, (seed, script) => {
       const s = makeState(1, seed), eng = idx(s, StationKind.Engineering);
+      s.spawner.nextSpawnTick = 1e9;                                       // no unrelated failures: Engineering stays occupied for the whole script
       sitDown(s, 0, eng);
       for (const e of script) {
-        run(s, HAZARD_EVERY, () => intents({ ...e.dir, confirmPressed: e.confirm }));   // one stick edge per 5 ticks, Confirm edges every tick while true
-        if (!check(s)) return false;
+        for (let k = 0; k < HAZARD_EVERY; k++) {                           // one stick edge per 5 ticks, Confirm edges every tick while true
+          run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm }));
+          if (!check(s)) return false;                                     // checked after every tick, so nothing can hide behind a later input
+        }
       }
-      return true;
+      return s.tick === script.length * HAZARD_EVERY && s.stations.occupant[eng] === 0 && !s.ended;
     }), { numRuns: 20 });
   });
 });

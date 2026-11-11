@@ -149,6 +149,25 @@ describe('heat', () => {
     expect(s.stations.failed[nav]).toBe(1);
     expect(activeHazardCount(s)).toBe(SPAWN_CAP);                              // 2 breaches + the overheat failure: nothing spawned
     expect(s.rng.director.s).toBe(jitterOnly.s);                               // only the interval jitter was drawn, no type roll
+    const t = makeState(1), nav2 = overdrive(t, StationKind.Navigation);
+    expect(activateBreach(t, 0)).toBe(true);                                   // one breach
+    t.stations.heat[nav2] = HEAT_MAX - HEAT_RISE; t.rng.hazards.s = 7;         // overheat draw 0.012: fire in the Navigation room
+    t.spawner.nextSpawnTick = t.tick;
+    const jitterOnly2 = createRng(t.rng.director.s); nextFloat(jitterOnly2);
+    run(t, 1);
+    expect(t.rooms.fire[t.derived.stationRoom[nav2]!]).toBe(FIRE_START);
+    expect(activeHazardCount(t)).toBe(SPAWN_CAP);                              // breach + failure + the overheat fire: the spawner saw the fire too
+    expect(t.rng.director.s).toBe(jitterOnly2.s);
+  });
+  it('a failed Engineering ejects its operator, and no coolant or bar input lands until it is repaired', () => {
+    const s = makeState(1), eng = idx(s, StationKind.Engineering), wpn = idx(s, StationKind.Weapons);
+    s.spawner.nextSpawnTick = 1e9;
+    sitDown(s, 0, eng); s.stations.cursor[eng] = StationKind.Weapons; s.stations.coolant[wpn] = 1;
+    const levels = Array.from(s.stations.level);
+    failStation(s, eng);
+    expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[eng]).toBe(-1);
+    run(s, 3, () => intents({ confirmPressed: true, moveX: 1 }));             // Confirm and Right through step(): the player is standing, so nothing reaches the console
+    expect(s.stations.coolant[wpn]).toBe(1); expect(coolantUsed(s)).toBe(1); expect(Array.from(s.stations.level)).toEqual(levels);
   });
   it('failed Engineering freezes nothing thermal; coolant and residual heat survive failures and repairs', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering), nav = overdrive(s, StationKind.Navigation);
