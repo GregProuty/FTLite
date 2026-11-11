@@ -162,9 +162,9 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     expect(Seated.station[s.crew[0]!]).toBe(i); expect(s.stations.cursor[i]).toBe(0);
     let n = 0; while (s.weapons.charge < 1 && n++ < seconds(12) + 2) run(s, 1);
     expect(s.weapons.charge).toBe(1);
-    const c0 = s.rng.combat.s;
+    const oneDraw = createRng(s.rng.combat.s); nextFloat(oneDraw);
     run(s, 1, () => intents(confirm));
-    expect(s.weapons.charge).toBe(0); expect(s.rng.combat.s).not.toBe(c0);
+    expect(s.weapons.charge).toBe(0); expect(s.rng.combat.s).toBe(oneDraw.s);         // exactly one combat draw per shot
     const destroyed = s.debris.active[0] === 0;
     expect(destroyed ? s.stations.cursor[i] : s.debris.warned[0]).toBe(destroyed ? -1 : 1);
     run(s, 1, () => intents({ cancelPressed: true }));

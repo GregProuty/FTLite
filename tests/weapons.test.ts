@@ -6,6 +6,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Seated } from '../src/renderer/src/sim/components';
 import { BEAM_CHARGE_TIME, DT } from '../src/renderer/src/sim/tuning';
 import { makeState, intents, run, placeDebris, room, seconds } from './helpers/sim';
+import { createRng, nextFloat } from '../src/shared/rng';
 
 const wpn = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[StationKind.Weapons]!;
 const up = { moveY: -1 }, down = { moveY: 1 }, confirm = { confirmPressed: true };
@@ -63,13 +64,14 @@ describe('firing', () => {
   it('a hit destroys the target and resets charge; a miss keeps it and resets charge; one combat draw per shot', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
     placeDebris(s, A, 600, 1); sitDown(s, 0, i); s.weapons.charge = 1; s.rng.combat.s = 7;        // first draw 0.012 < 0.70: hit
-    const before = s.rng.combat.s;
+    const oneDraw = createRng(7); nextFloat(oneDraw);
     expect(fireBeam(s)).toBe(true);
-    expect(s.debris.active[0]).toBe(0); expect(s.weapons.charge).toBe(0); expect(s.stations.cursor[i]).toBe(-1); expect(s.rng.combat.s).not.toBe(before);
+    expect(s.debris.active[0]).toBe(0); expect(s.weapons.charge).toBe(0); expect(s.stations.cursor[i]).toBe(-1); expect(s.rng.combat.s).toBe(oneDraw.s);
     const t = makeState(1), j = wpn(t);
     placeDebris(t, A, 600, 1); sitDown(t, 0, j); t.weapons.charge = 1; t.rng.combat.s = 4;        // first draw 0.924 >= 0.70: miss
+    const oneDrawMiss = createRng(4); nextFloat(oneDrawMiss);
     expect(fireBeam(t)).toBe(false);
-    expect(t.debris.active[0]).toBe(1); expect(t.weapons.charge).toBe(0); expect(t.stations.cursor[j]).toBe(0);
+    expect(t.debris.active[0]).toBe(1); expect(t.weapons.charge).toBe(0); expect(t.stations.cursor[j]).toBe(0); expect(t.rng.combat.s).toBe(oneDrawMiss.s);
   });
   it('Confirm with no charge or no target does nothing and draws nothing', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');

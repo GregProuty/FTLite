@@ -9,6 +9,7 @@ import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ } from '../src/renderer/src/sim/tuning';
 import { makeState, placeDebris, room, run, teleport, seconds, intents } from './helpers/sim';
+import { createRng, nextFloat } from '../src/shared/rng';
 
 describe('debris slots and target order', () => {
   it('a fresh state has empty slots, no impacts and no charge', () => {
@@ -164,11 +165,22 @@ describe('impact', () => {
     expect(Health.cur[s.crew[1]!]).toBe(100); expect(Health.cur[s.crew[2]!]).toBe(DEBRIS_CREW_DAMAGE);
     expect(Health.cur[down]).toBe(50); expect(Life.bleed[down]).toBe(30);
     expect(s.hull).toBe(100 - 2 * DEBRIS_HULL_DAMAGE);
-    const t = makeState(1), B = room(t, 'B');
-    teleport(t, 0, 7.5, 2.5); Health.cur[t.crew[0]!] = DEBRIS_CREW_DAMAGE;
-    placeDebris(t, B, 0); placeDebris(t, B, 0);
+    // A seated Navigator killed by the first impact is stood up at once, so the second impact draws no evasion roll: exactly one combat draw.
+    const t = makeState(1), n = nav(t);
+    sitDown(t, 0, n); Health.cur[t.crew[0]!] = DEBRIS_CREW_DAMAGE; t.rng.combat.s = 4;   // first draw 0.924: not evaded
+    const oneDraw = createRng(4); nextFloat(oneDraw);
+    placeDebris(t, A, 0); placeDebris(t, A, 0);
     debrisSystem(t);
-    expect(Health.cur[t.crew[0]!]).toBe(0); expect(Life.state[t.crew[0]!]).toBe(LifeState.Downed);   // downed by the first, untouched by the second
+    expect(Health.cur[t.crew[0]!]).toBe(0); expect(Life.state[t.crew[0]!]).toBe(LifeState.Downed); expect(t.stations.occupant[n]).toBe(-1);
+    expect(t.rng.combat.s).toBe(oneDraw.s); expect(t.hull).toBe(100 - 2 * DEBRIS_HULL_DAMAGE);
+  });
+  it('a lethal impact in the Medbay through step() downs the crew member before the Medbay can heal them', () => {
+    const s = makeState(1), F = room(s, 'F');
+    s.spawner.nextSpawnTick = 1e9;
+    teleport(s, 0, 17.5, 3.5); Health.cur[s.crew[0]!] = DEBRIS_CREW_DAMAGE;   // standing in the Medbay room (F), online at the starter allocation
+    placeDebris(s, F, 1);
+    run(s, 2);
+    expect(Health.cur[s.crew[0]!]).toBe(0); expect(Life.state[s.crew[0]!]).toBe(LifeState.Downed);
   });
   it('two impacts in one tick on different rooms stamp both rooms', () => {
     const s = makeState(0), A = room(s, 'A'), B = room(s, 'B');
