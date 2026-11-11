@@ -68,3 +68,9 @@
 - [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with the default crew (Okoro and Lindqvist).
 - [ ] Manual, two players (`npm run dev`): the lobby shows `P1  Okoro` / `Quick Hands / Heavy Boots` and `P2  Lindqvist` / `Cool Head / Flammable` once joined; in the run Okoro's panel reads `Okoro  N0 E0 W0 S0 C0 R3` and Okoro visibly walks slower than Lindqvist; a game over lists each crew member's skill gains under the banner. Date and notes: pending human playtest.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Increment 4-i: director
+- [x] `npm test` passes: director (escalation helpers, weights and selection, stress contributions and smoothing, attendance per category, the transition table with isolated exits, spawning fixtures incl. the forced same-tick stand, sinceProductive, routing at 3-4 players), snapshot (initial values, fifteen-field round trip and hash coverage, version-7 rejection, mid-Build-Up continuation with two transitions), HUD director line, and the 20-minute soak with an unkillable crew (every phase at least twice, no stall or Relax overrun; about 1.1 s to run).
+- [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with the default crew under the director (2026-11-10; the test records no hull figures, so none are listed).
+- [ ] Manual, two players (`npm run dev`): the top-left panel cycles `Build Up` -> `Sustain Peak` -> `Peak Fade` -> `Relax` over a few minutes; hazards arrive only during `Build Up`; after about five minutes they come noticeably faster than at the start. Date and notes: pending human playtest.
+- [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.

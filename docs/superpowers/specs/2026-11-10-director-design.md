@@ -148,3 +148,10 @@ Added to `docs/gates.md` as "Increment 4-i":
 - Whether stress should also count low hull or a low-oxygen room: not in this increment; revisit with the telemetry in 4-ii.
 - Whether routing should ever target Medbay (foundation: no, injuries drive it): no.
 - A solo "drone" crew member: sub-project 4.
+
+## 13. Amendments from the plan
+- Build Up re-arming never pulls an already-later timer earlier (`max(nextSpawnTick, tick + interval x jitter)`); in play the old timer is always earlier, and tests silence the director with `director.nextSpawnTick = 1e9`.
+- `chooseType(weights, u)` takes the unit roll and scales by the weight sum itself.
+- `director.ts` keeps a local copy of the tile-reach geometry instead of importing `interact.ts`, whose import of `step.ts` would close a module cycle through the director.
+- The forced same-tick stand fixture pins the hazards stream (first target draw picks station 0, Navigation) instead of failing every other station, which would fill the cap.
+- Missing-console fixtures use a synthetic layout built from the parsed starter (the ship schema insists on seven stations).
