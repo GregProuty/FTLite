@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enemySystem, fireInterval, arrive, leave, enemyBeamHits } from '../src/renderer/src/sim/enemy';
+import { enemySystem, fireInterval, leave, enemyBeamHits } from '../src/renderer/src/sim/enemy';
 import { ObjectKind, shotsInFlight, debrisSystem, spawnDebris } from '../src/renderer/src/sim/debris';
 import { ENEMY_SLOT, targetStableId, isTarget, warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
 import { sitDown } from '../src/renderer/src/sim/stations';
@@ -7,7 +7,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, armSpawn, placeEnemy, placeShot, placeDebris, room, intents, teleport, seconds } from './helpers/sim';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
@@ -15,6 +15,7 @@ import { isProductive } from '../src/renderer/src/sim/productive';
 import { failStation } from '../src/renderer/src/sim/power';
 import { rawStress, anyUnattended, activeHazardCount } from '../src/renderer/src/sim/director';
 import { Health } from '../src/renderer/src/sim/components';
+import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 
 const T = TICK_HZ;
@@ -47,7 +48,7 @@ describe('enemy: schedule (enemySystem called directly)', () => {
   });
   it('arrival auto-selects the enemy only for a seated targeting console with no selection', () => {
     const s = makeState(2), w = wpn(s), c = sci(s), A = room(s, 'A');
-    sitDown(s, 0, w); placeDebris(s, A, 600, 1); sitDown(s, 1, c);   // Science sat after the warning: cursor on slot 0; Weapons sat before: cursor -1 until... (sitDown selects warnedTargets()[0], so both are on slot 0)
+    sitDown(s, 0, w); placeDebris(s, A, 600, 1); sitDown(s, 1, c);   // Science sits after the warning, so its cursor is on slot 0
     s.stations.cursor[w] = -1;                                      // force Weapons to "nothing selected"
     s.tick = ENCOUNTER_FIRST * T; enemySystem(s);
     expect(s.stations.cursor[w]).toBe(ENEMY_SLOT); expect(s.stations.cursor[c]).toBe(0);
@@ -118,17 +119,12 @@ describe('enemy: schedule (enemySystem called directly)', () => {
   it('through step(): the director spawns before the enemy fires on a tick where both are due (StableId order and independent RNG outcomes)', () => {
     const s = makeState(2); armSpawn(s); placeEnemy(s); s.enemy.nextShotTick = s.tick;
     s.rng.director.s = 7; s.rng.hazards.s = 7;
-    // The director attempt: jitter draw, type roll, then a target draw from hazards; the type is whatever seed 7 picks. Force a debris spawn so both
-    // systems allocate a StableId this tick: give every other type no target (all rooms burning, all sites breached, all stations failed is heavy),
-    // so instead assert the order generically: the enemy's shot has the LARGER StableId of the two objects/hazards allocated this tick when a debris
-    // object was spawned, and the director stream advanced by exactly 2 + 1 draws (jitter, type, enemy re-arm) in total.
-    const idBefore = s.nextStableId; const dr = createRng(7); nextFloat(dr); nextFloat(dr); nextFloat(dr);
+    const tick = s.tick; const dr = createRng(7); nextFloat(dr); nextFloat(dr); const u3 = nextFloat(dr);
     run(s, 1, () => [NEUTRAL_INTENT, NEUTRAL_INTENT]);
-    expect(s.rng.director.s).toBe(dr.s);                             // director: jitter + type; enemy: one re-arm draw; nothing else draws from the director stream
+    expect(s.rng.director.s).toBe(dr.s);                             // director jitter + type, then the enemy re-arm: three draws
+    expect(s.enemy.nextShotTick).toBe(tick + Math.round(fireInterval(minutesOf(s), 2) * T * jitter(u3)));   // the third-float pin fails if the systems are swapped
     const shot = Array.from(s.debris.active).map((a, k) => (a && s.debris.kind[k] === ObjectKind.Shot ? k : -1)).find((k) => k >= 0)!;
     expect(shot).toBeGreaterThanOrEqual(0);
-    expect(s.debris.stableId[shot]).toBe(s.nextStableId - 1);        // the shot took the last StableId of the tick: it was allocated after the director's spawn (if any)
-    expect(s.nextStableId - idBefore).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -157,7 +153,7 @@ describe('enemy: targets', () => {
   });
   it('leave retargets cursors on the enemy to the next StableId or -1; removeDebris can land a cursor on the enemy', () => {
     const s = makeState(2), A = room(s, 'A'), w = wpn(s), c = sci(s);
-    const a = placeDebris(s, A, 600, 1); placeEnemy(s); const b = placeDebris(s, A, 600, 1);
+    placeDebris(s, A, 600, 1); placeEnemy(s); const b = placeDebris(s, A, 600, 1);
     sitDown(s, 0, w); sitDown(s, 1, c); s.stations.cursor[w] = ENEMY_SLOT; s.stations.cursor[c] = ENEMY_SLOT;
     leave(s, false);
     expect(s.stations.cursor[w]).toBe(b); expect(s.stations.cursor[c]).toBe(b);
@@ -167,7 +163,6 @@ describe('enemy: targets', () => {
     expect(t.stations.cursor[w2]).toBe(ENEMY_SLOT);
     const alone = makeState(1), w3 = wpn(alone); placeEnemy(alone); sitDown(alone, 0, w3); expect(alone.stations.cursor[w3]).toBe(ENEMY_SLOT);
     leave(alone, false); expect(alone.stations.cursor[w3]).toBe(-1);
-    void a; void arrive; void enemyBeamHits;
   });
   it('placeDebris into a slot freed by a shot writes kind 0 (a later debris impact deals the debris damage, not the shot damage)', () => {
     const s = makeState(1), A = room(s, 'A'); quiet(s);
@@ -199,6 +194,7 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
     const { s } = armed(); s.rng.combat.s = 7; const one = createRng(7); nextFloat(one);
     expect(fireWeapon(s)).toBe(true);
     expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE); expect([s.telemetry.shots, s.telemetry.hits]).toEqual([1, 1]); expect(s.weapons.charge).toBe(0); expect(s.skills.lastShotTick).toBe(s.tick); expect(s.rng.combat.s).toBe(one.s);
+    expect(s.skills.xp[xpIndex(0, Skill.Weapons)]).toBe(XP_PER_SHOT);
     const m = armed(); m.s.rng.combat.s = 4;
     expect(fireWeapon(m.s)).toBe(false); expect(m.s.enemy.hull).toBe(ENEMY_HULL); expect([m.s.telemetry.shots, m.s.telemetry.hits]).toEqual([1, 0]); expect(m.s.weapons.charge).toBe(0);
     const f3 = armed(); f3.s.weapons.selector = Weapon.BeamF3; f3.s.rng.combat.s = 7;
@@ -215,7 +211,7 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
     s.stations.cursor[w] = ENEMY_SLOT; s.rng.combat.s = 7; s.rng.director.s = 7; const dr = createRng(7), u = nextFloat(dr);
     expect(fireWeapon(s)).toBe(true);
     expect([s.enemy.present, s.enemy.hull, s.telemetry.enemiesDestroyed, s.telemetry.shots, s.telemetry.hits]).toEqual([0, 0, 1, 1, 1]);
-    expect(s.stations.cursor[w]).toBe(k === 0 ? (s.debris.stableId[k]! > s.debris.stableId[b]! ? b : k) : k);   // the next StableId after the enemy's: the shot (placed after placeEnemy) sorts first
+    expect(s.stations.cursor[w]).toBe(k);   // the next StableId after the enemy's: the shot (placed after placeEnemy) sorts first
     expect(s.rng.director.s).toBe(dr.s); expect(s.enemy.nextArrivalTick).toBe(s.tick + Math.round(ENCOUNTER_COOLDOWN * T * jitter(u)));
     expect(s.debris.active[k]).toBe(1); expect(s.debris.kind[k]).toBe(ObjectKind.Shot);
   });

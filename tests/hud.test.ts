@@ -177,16 +177,15 @@ describe('buildHudModel', () => {
     const s = makeState(1), A = room(s, 'A'); quiet(s);
     expect(buildHudModel(s, slots(1), 'running', '').threats.some((t) => t.text.startsWith('Enemy'))).toBe(false);
     placeEnemy(s); s.enemy.hull = 64;
-    const k = placeShot(s, A, 7 * 60, 1); const k2 = placeShot(s, A, 7 * 60, 1, undefined, 2); s.debris.scanned[k2] = 1;
+    placeShot(s, A, 7 * 60, 1); const k2 = placeShot(s, A, 7 * 60, 1, undefined, 2); s.debris.scanned[k2] = 1;
     const th = buildHudModel(s, slots(1), 'running', '').threats;
     expect(th[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64%' });
     const shotRows = th.filter((t) => t.text.startsWith('Shot'));
     expect(shotRows).toEqual([{ icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s` }, { icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s F2` }]);
-    void k;
   });
   it('target rows: the enemy row on Weapons and Science, nothing throws with the cursor on the enemy or with it unselected', () => {
     const s = makeState(2), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!, c = s.derived.stationOfKind[StationKind.Science]!;
-    const k = placeDebris(s, A, 600, 1); placeEnemy(s); s.enemy.hull = 64; sitDown(s, 0, w); sitDown(s, 1, c);
+    placeDebris(s, A, 600, 1); placeEnemy(s); s.enemy.hull = 64; sitDown(s, 0, w); sitDown(s, 1, c);
     s.stations.cursor[w] = ENEMY_SLOT;                                   // Science stays on the object
     const m = buildHudModel(s, slots(2), 'running', '');
     const wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
@@ -194,7 +193,6 @@ describe('buildHudModel', () => {
     expect(wp.cursor).toBe(1); expect(wp.first).toBe(0);
     expect(sp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, scan: 0 });
     expect(sp.targets[0]!.kind).toBe('debris'); expect(sp.cursor).toBe(0);
-    void k;
   });
   it('targetWindow follows the cursor; a nine-entry list with the cursor last gives first 3 on Weapons', () => {
     expect([targetWindow(-1, 3, 6), targetWindow(5, 9, 6), targetWindow(6, 9, 6), targetWindow(8, 9, 6), targetWindow(8, 9, 7), targetWindow(2, 2, 6)]).toEqual([0, 0, 1, 3, 2, 0]);

@@ -128,11 +128,11 @@ export const ROUTE_BONUS = 2, ROUTE_IDLE_SECONDS = 60;  // routing toward consol
 export const SINCE_CAP = 36000;                        // ticks: sinceProductive counters stop at 10 minutes
 
 // Enemy ship (Combat-i)
-export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120, ENCOUNTER_COOLDOWN = 150;   // seconds: first arrival, stay, gap (x jitter)
+export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120, ENCOUNTER_COOLDOWN = 150;   // seconds: first arrival, stay, gap (x jitter) (survival-gate fallback, spec Combat-i section 13; first-pass values 180 / 2 / 6)
 export const ENEMY_HULL = 100, ENEMY_FIRST_SHOT = 5;
 export const ENEMY_FIRE_INTERVAL = 15, ENEMY_FIRE_MIN = 6, ENEMY_FIRE_JITTER = 0.2;   // escalation shares ESCALATION_RATE and SOLO_INTERVAL_MULT
-export const ENEMY_SHOTS_MAX = 1;                      // shots in flight at once
+export const ENEMY_SHOTS_MAX = 1;                      // shots in flight at once (survival-gate fallback, spec Combat-i section 13; first-pass values 180 / 2 / 6)
 export const ENEMY_SHOT_FLIGHT = 10, ENEMY_SHOT_JITTER = 2;   // seconds (debris is 30 +/- 6)
-export const ENEMY_SHOT_HULL_DAMAGE = 4;               // debris is 8; crew damage shared
+export const ENEMY_SHOT_HULL_DAMAGE = 4;               // debris is 8; crew damage shared (survival-gate fallback, spec Combat-i section 13; first-pass values 180 / 2 / 6)
 export const ENEMY_BEAM_BASE = 0.55, ENEMY_BEAM_SCALE = 0.30;   // beam hit chance against the ship (0.70 at output 0.5)
 export const ENEMY_BEAM_DAMAGE = 15, ENEMY_TORP_DAMAGE = 35;
