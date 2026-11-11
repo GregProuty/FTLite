@@ -1,18 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
-import { stationOutput } from '../src/renderer/src/sim/stations';
+import { stationOutput, sitDown } from '../src/renderer/src/sim/stations';
 import { shiftBar, maxLevel, failStation, repairStation } from '../src/renderer/src/sim/power';
 import { isOverdriven, coolingPerUnit, coolantUsed, cycleCoolant, heatStep } from '../src/renderer/src/sim/heat';
-import { STATION_MAX, STATION_OVERDRIVE, HEAT_COOL_UNIT, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, HAZARD_EVERY, FIRE_START, HULL_MAX, HEALTH_MAX, DEBRIS_HULL_DAMAGE, SPAWN_CAP } from '../src/renderer/src/sim/tuning';
-import { sitDown } from '../src/renderer/src/sim/stations';
+import { STATION_MAX, STATION_OVERDRIVE, HEAT_COOL_UNIT, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, HAZARD_EVERY, FIRE_START, HULL_MAX, HEALTH_MAX, DEBRIS_HULL_DAMAGE, SPAWN_CAP, HEAT_COOL_SKILL } from '../src/renderer/src/sim/tuning';
 import { Seated, Health } from '../src/renderer/src/sim/components';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { activeHazardCount } from '../src/renderer/src/sim/hazards/spawner';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { makeState, overdrive, run, room, seconds, teleport, placeDebris, intents } from './helpers/sim';
+import { makeState, overdrive, run, room, seconds, teleport, placeDebris, intents, setSkill } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { HEAT_COOL_SKILL } from '../src/renderer/src/sim/tuning';
-import { setSkill } from './helpers/sim';
 
 const down = { moveY: 1 };
 

@@ -4,12 +4,10 @@ import { Life, LifeState, Health } from '../src/renderer/src/sim/components';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { DoorState } from '../src/renderer/src/sim/grid';
-import { REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REVIVE_TIME, HEALTH_MAX, REVIVE_HEALTH_FRAC } from '../src/renderer/src/sim/tuning';
-import { makeState, intents, run, teleport, room, seconds } from './helpers/sim';
+import { REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REVIVE_TIME, HEALTH_MAX, REVIVE_HEALTH_FRAC, REPAIR_TIME_POWER, REPAIR_SKILL_GAIN } from '../src/renderer/src/sim/tuning';
+import { makeState, intents, run, teleport, room, seconds, setSkill } from './helpers/sim';
 import { failStation } from '../src/renderer/src/sim/power';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { REPAIR_TIME_POWER, REPAIR_SKILL_GAIN } from '../src/renderer/src/sim/tuning';
-import { setSkill } from './helpers/sim';
 
 describe('targets', () => {
   it('fire in own room is a target anywhere in the room; none when nothing is near', () => {
@@ -139,7 +137,7 @@ describe('interactSystem', () => {
 });
 
 describe('repair skill', () => {
-  it('level 10 repairs a fire and a power failure in 6 / 1.6 s and a breach in 8 / 1.6 s; two holders leave no residue; revive is unchanged', () => {
+  it('level 10 repairs a fire and a power failure in 3.75 s and a breach in 5 s; two holders leave no residue; revive is unchanged', () => {
     const mult = 1 + 10 * REPAIR_SKILL_GAIN;
     const fire = makeState(1), G = room(fire, 'G'); fire.spawner.nextSpawnTick = 1e9; setSkill(fire, 0, Skill.Repair, 10); igniteRoom(fire, G); teleport(fire, 0, 2.5, 9.5);
     run(fire, Math.floor(seconds(REPAIR_TIME_FIRE / mult)) - 2, () => intents({ interactHeld: true })); expect(fire.rooms.fire[G]).toBeGreaterThan(0);

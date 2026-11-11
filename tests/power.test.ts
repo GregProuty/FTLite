@@ -2,16 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { Seated, Position } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { stationOnline, stationOutput, sitDown, standUp } from '../src/renderer/src/sim/stations';
-import { powerPool, powerUsed, failStation, repairStation, shiftBar, maxLevel } from '../src/renderer/src/sim/power';
-import { REACTOR_CAPACITY, STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST } from '../src/renderer/src/sim/tuning';
-import { makeState } from './helpers/sim';
-import { bonusBars, powerCapacity, shedPower, SHED_ORDER } from '../src/renderer/src/sim/power';
+import { powerPool, powerUsed, failStation, repairStation, shiftBar, maxLevel, bonusBars, powerCapacity, shedPower, SHED_ORDER } from '../src/renderer/src/sim/power';
+import { REACTOR_CAPACITY, STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST, COOLANT_POOL } from '../src/renderer/src/sim/tuning';
+import { makeState, setSkill, run, intents } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { reviveCrew } from '../src/renderer/src/sim/crew';
-import { setSkill, run, intents } from './helpers/sim';
 import fc from 'fast-check';
-import { COOLANT_POOL } from '../src/renderer/src/sim/tuning';
 
 const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.stationOfKind[kind]!;
 

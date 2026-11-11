@@ -6,6 +6,8 @@ import { Health } from '../src/renderer/src/sim/components';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Skill } from '../src/renderer/src/sim/skills';
+import { confirmTarget } from '../src/renderer/src/sim/interact';
+import { DoorState } from '../src/renderer/src/sim/grid';
 import { PRODUCTIVE_WINDOW_TICKS, HAZARD_EVERY, HEALTH_MAX } from '../src/renderer/src/sim/tuning';
 import { makeState, intents, run, placeDebris, room, overdrive, setSkill, teleport } from './helpers/sim';
 
@@ -42,7 +44,8 @@ describe('isProductive', () => {
     expect(isProductive(s, eng)).toBe(true);
     run(s, PRODUCTIVE_WINDOW_TICKS);
     expect(s.tick - s.skills.lastEngChangeTick).toBeGreaterThanOrEqual(PRODUCTIVE_WINDOW_TICKS); expect(isProductive(s, eng)).toBe(false);
-    s.stations.cursor[eng] = StationKind.Weapons; run(s, 1, () => intents(right)); run(s, 1);   // Weapons 1 -> 2 takes the spare bar without overdrive (its max is 3)
+    s.stations.cursor[eng] = StationKind.Weapons; run(s, 1, () => intents(right)); run(s, 1);
+    expect(s.stations.level[idx(s, StationKind.Weapons)]).toBe(3);   // Weapons 1 -> 2 takes the spare bar without overdrive (its max is 3)
     const stamp = s.skills.lastEngChangeTick; run(s, 1, () => intents(right));   // refused: the pool is empty, so no re-stamp
     expect(s.skills.lastEngChangeTick).toBe(stamp);
     run(s, PRODUCTIVE_WINDOW_TICKS + 1); expect(isProductive(s, eng)).toBe(false);
@@ -63,8 +66,8 @@ describe('isProductive', () => {
     const s = makeState(1), ls = idx(s, StationKind.LifeSupport), med = idx(s, StationKind.Medbay);
     s.spawner.nextSpawnTick = 1e9;
     expect(isProductive(s, ls)).toBe(false);
-    const drained = room(s, 'A'); activateBreach(s, 0);   // site 0 is in room A; every room is full, and the only room with free volume is the breached one, so no delivery
-    for (let r = 0; r < s.rooms.o2.length; r++) if (r !== drained) s.rooms.o2[r] = s.derived.volume[r]!;
+    const breached = room(s, 'A'); activateBreach(s, 0);   // site 0 is in room A; every room is full, and the only room with free volume is the breached one, so no delivery
+    for (let r = 0; r < s.rooms.o2.length; r++) if (r !== breached) s.rooms.o2[r] = s.derived.volume[r]!;
     for (let pid = 0; pid < s.playerCount; pid++) teleport(s, pid, 2.5, 2.5);                                 // crew in the breached room: breathing makes no room elsewhere
     run(s, 1); expect(s.skills.lsDeliveredTick).toBe(-1); expect(isProductive(s, ls)).toBe(false);
     s.skills.lsDeliveredTick = 10; s.tick = 15; expect(isProductive(s, ls)).toBe(true);
@@ -81,7 +84,8 @@ describe('isProductive', () => {
     igniteRoom(s, room(s, 'G'));
     expect(isProductive(s, doors)).toBe(true);
     s.rooms.fire[room(s, 'G')] = 0;
-    teleport(s, 1, 2.5, 8.5); run(s, 1, () => intents({}, confirm));            // player 1 toggles a door locally
+    teleport(s, 1, 2.5, 8.5); const e = confirmTarget(s, 1).index; run(s, 1, () => intents({}, confirm));
+    expect(s.doors.state[e]).toBe(DoorState.Sealed);            // player 1 toggles a door locally
     expect(s.skills.lastDoorToggleTick).toBe(-1); expect(isProductive(s, doors)).toBe(false);
     run(s, 1, () => intents(confirm, {}));                                       // the seated operator toggles remotely
     expect(s.skills.lastDoorToggleTick).toBe(s.tick - 1); expect(isProductive(s, doors)).toBe(true);

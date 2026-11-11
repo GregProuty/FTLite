@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Skill, STATION_SKILL, levelFor, skillCurve, repairMult, skillLevel, skillLevelOf, addXp } from '../src/renderer/src/sim/skills';
+import { Skill, STATION_SKILL, levelFor, skillCurve, repairMult, skillLevel, skillLevelOf, addXp, xpIndex } from '../src/renderer/src/sim/skills';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { stationOutput } from '../src/renderer/src/sim/stations';
 import { XP_THRESHOLDS, SKILL_MAX, OUTPUT_SLOW, OUTPUT_FAST, REPAIR_SKILL_GAIN, STATION_MAX } from '../src/renderer/src/sim/tuning';
@@ -19,9 +19,9 @@ describe('levels', () => {
     addXp(s, 1, Skill.Repair, 100); addXp(s, 1, Skill.Repair, 150);
     expect(skillLevelOf(s, 1, Skill.Repair)).toBe(1); expect(skillLevelOf(s, 0, Skill.Repair)).toBe(0);
     addXp(s, 1, Skill.Repair, -50); addXp(s, 1, Skill.Repair, 0);
-    expect(s.skills.xp[1 * 6 + Skill.Repair]).toBe(250);                             // never decreases
+    expect(s.skills.xp[xpIndex(1, Skill.Repair)]).toBe(250);                             // never decreases
     addXp(s, 1, Skill.Repair, 1e9);
-    expect(s.skills.xp[1 * 6 + Skill.Repair]).toBe(XP_THRESHOLDS[SKILL_MAX]); expect(skillLevelOf(s, 1, Skill.Repair)).toBe(SKILL_MAX);
+    expect(s.skills.xp[xpIndex(1, Skill.Repair)]).toBe(XP_THRESHOLDS[SKILL_MAX]); expect(skillLevelOf(s, 1, Skill.Repair)).toBe(SKILL_MAX);
   });
   it('station kinds map to skills: Life Support and Doors train Engineering, the Medbay trains Science', () => {
     expect(STATION_SKILL[StationKind.LifeSupport]).toBe(Skill.Engineering); expect(STATION_SKILL[StationKind.Doors]).toBe(Skill.Engineering);
@@ -31,11 +31,11 @@ describe('levels', () => {
     expect(skillLevel(s, 0, StationKind.LifeSupport)).toBe(7); expect(skillLevel(s, 0, StationKind.Doors)).toBe(7); expect(skillLevel(s, 0, StationKind.Weapons)).toBe(0);
   });
   it('skillCurve and repairMult at the ends; stationOutput at level 10 reaches level / max x 1.0', () => {
-    expect(skillCurve(0)).toBeCloseTo((OUTPUT_SLOW + OUTPUT_FAST) / 2); expect(skillCurve(10)).toBeCloseTo(OUTPUT_FAST);
+    expect(skillCurve(0)).toBeCloseTo((OUTPUT_SLOW + OUTPUT_FAST) / 2); expect(skillCurve(10)).toBe(OUTPUT_FAST);
     expect(repairMult(0)).toBe(1); expect(repairMult(10)).toBeCloseTo(1 + 10 * REPAIR_SKILL_GAIN);
     const s = makeState(1), wpn = s.derived.stationOfKind[StationKind.Weapons]!;
     s.stations.occupant[wpn] = 0;                                                 // seated for the output formula
-    expect(stationOutput(s, wpn)).toBeCloseTo((2 / STATION_MAX[StationKind.Weapons]!) * 0.75);
+    expect(stationOutput(s, wpn)).toBeCloseTo((2 / STATION_MAX[StationKind.Weapons]!) * skillCurve(0));
     setSkill(s, 0, Skill.Weapons, 10);
     expect(stationOutput(s, wpn)).toBeCloseTo(2 / STATION_MAX[StationKind.Weapons]!);
   });

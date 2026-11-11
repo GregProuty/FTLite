@@ -4,6 +4,7 @@ import type { GameAssets } from './assets';
 import { glyphName, type HudModel, type HudPlayer } from './hudModel';
 import { featureReady } from './fallback';
 import { STATION_NAMES } from '../sim/stationKinds';
+import { SKILL_NAMES } from '../sim/skills';
 import { STATION_MAX, COOLANT_POOL } from '../sim/tuning';
 
 const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, WARN = 0xff6b5a;
@@ -119,7 +120,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.line2, [{ glyph: p.interactPrompt ? glyphName('interact', p.deviceKind) : null, icon: p.interactIcon, text: p.interactPrompt }]);
       fillRow(ui.line3, [{ glyph: p.confirmPrompt ? glyphName('confirm', p.deviceKind) : null, icon: p.confirmIcon, text: p.confirmPrompt }]);
     }
-    fillRow(ui.line4, [{ text: ['N', 'E', 'W', 'S', 'C', 'R'].map((l, k) => `${l}${p.skills[k]}`).join(' '), tint: DIM }]);
+    fillRow(ui.line4, [{ text: SKILL_NAMES.map((n, k) => `${n[0]}${p.skills[k]}`).join(' '), tint: DIM }]);
     ui.consoleRoot.visible = p.console !== null;
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
     if (p.console && 'rows' in p.console) {

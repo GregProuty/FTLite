@@ -117,7 +117,7 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
 export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: HudModel['phase'], message: string, credits: { lines: readonly string[]; scroll: number } | null = null): HudModel {
   const players: HudPlayer[] = slots.map((slot, pid) => {
     const head = { pid, status: slot.status, deviceKind: slot.status === 'active' ? deviceKindOf(slot.key) : null };
-    if (!state || pid >= state.playerCount) return { ...head, ...EMPTY };
+    if (!state || pid >= state.playerCount) return { ...head, ...EMPTY, skills: [0, 0, 0, 0, 0, 0] };
     return { ...head, ...player(state, pid) };
   });
   const threats: HudThreat[] = [];
