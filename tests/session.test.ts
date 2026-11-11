@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createSession, DEFAULT_SEED } from '../src/renderer/src/app/session';
 import type { TelemetryRecord } from '../src/renderer/src/sim/telemetry';
-import { downCrew } from '../src/renderer/src/sim/crew';
+import { downCrew, EndReason } from '../src/renderer/src/sim/crew';
 import type { SourceSample } from '../src/renderer/src/input/deviceManager';
-import { LAYOUT } from './helpers/sim';
+import { LAYOUT, seatNavigator, chargeJump } from './helpers/sim';
 import { loadSnapshot, type Snapshot } from '../src/renderer/src/sim/snapshot';
 import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay';
 import { hashState } from '../src/renderer/src/sim/hash';
@@ -253,5 +253,15 @@ describe('session', () => {
       h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
       expect(h.session.creditsOpen).toBe(false);
     });
+  });
+  it('a victory ends the run with the VICTORY banner and one record with endReason victory', () => {
+    const h = harness();
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
+    h.press('a', { confirm: true }); h.frames(1); h.release();
+    const st = h.session.state!; st.run.column = 6; st.run.node = 0; st.run.nodesReached = 6; st.telemetry.jumps = 6; seatNavigator(st, 0); h.frames(2); chargeJump(st);
+    h.press('a', { confirm: true }); h.frames(2); h.release(); h.frames(2);
+    expect(h.session.phase).toBe('gameover'); expect(st.endReason).toBe(EndReason.Victory);
+    expect(h.last().message).toMatch(/^VICTORY after \d+s\./);
+    expect(h.records).toHaveLength(1); expect(h.records[0]).toMatchObject({ endReason: 'victory', run: { nodesReached: 7, jumps: 7, columns: 8 } });
   });
 });

@@ -107,7 +107,7 @@ export function createSession(deps: SessionDeps) {
             if (state.ended) {
               deps.saveTelemetry?.(telemetryRecord(state, seed));
               phase = 'gameover';
-              message = `${state.endReason === EndReason.Hull ? 'HULL LOST' : 'CREW LOST'} after ${Math.floor(state.tick / TICK_HZ)}s. Confirm: same seed. Cancel: new seed.`;
+              message = `${state.endReason === EndReason.Hull ? 'HULL LOST' : state.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'} after ${Math.floor(state.tick / TICK_HZ)}s. Confirm: same seed. Cancel: new seed.`;
               break;
             }
           }

@@ -1,7 +1,7 @@
 import type { SimState } from './state';
 import { Life, LifeState, Seated } from './components';
 import { stationOnline } from './stations';
-import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER, TICK_HZ, SIM_VERSION, SKILL_COUNT } from './tuning';
+import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER, TICK_HZ, SIM_VERSION, SKILL_COUNT, RUN_COLUMNS } from './tuning';
 import { STATION_NAMES } from './stationKinds';
 import { EndReason } from './crew';
 import { characterOf } from './characters';
@@ -29,14 +29,14 @@ export function telemetrySystem(state: SimState): void {
 
 export interface TelemetryRecord {
   version: 1; simVersion: number; seed: number; playerCount: number; characters: string[];
-  endReason: 'hull' | 'crew' | 'running';
+  endReason: 'hull' | 'crew' | 'victory' | 'running';
   durationSeconds: number;
   firstDown: { who: string; seconds: number } | null; firstDeath: { who: string; seconds: number } | null;
   stationsNeverManned: string[]; mannedSeconds: Record<string, number>; longestIdleSeconds: number[];
   spawns: { fire: number; breach: number; power: number; debris: number };
   impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number;
   repairs: { fire: number; breach: number; power: number };
-  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number }; boarders: { parties: number; killed: number };
+  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number }; boarders: { parties: number; killed: number }; run: { nodesReached: number; jumps: number; columns: number };
   skills: number[][];
 }
 
@@ -56,7 +56,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
   const event = (tick: number, pid: number) => (tick < 0 ? null : { who: characters[pid]!, seconds: eventSeconds(tick) });
   return {
     version: 1, simVersion: SIM_VERSION, seed, playerCount: state.playerCount, characters,
-    endReason: state.ended ? (state.endReason === EndReason.Hull ? 'hull' : 'crew') : 'running',
+    endReason: state.ended ? (state.endReason === EndReason.Hull ? 'hull' : state.endReason === EndReason.Victory ? 'victory' : 'crew') : 'running',
     durationSeconds: durationSeconds(state.tick),
     firstDown: event(t.firstDownTick, t.firstDownPid), firstDeath: event(t.firstDeathTick, t.firstDeathPid),
     stationsNeverManned: present.filter((k) => t.mannedTicks[k] === 0).map((k) => STATION_NAMES[k]!),
@@ -69,6 +69,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
     phaseEntries: { buildUp: t.phaseEntries[Phase.BuildUp]!, sustainPeak: t.phaseEntries[Phase.SustainPeak]!, peakFade: t.phaseEntries[Phase.PeakFade]!, relax: t.phaseEntries[Phase.Relax]! },
     enemy: { met: t.encounters, destroyed: t.enemiesDestroyed, disables: t.enemyDisables },
     boarders: { parties: t.boardings, killed: t.boardersKilled },
+    run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS },
     skills: state.crew.map((_, pid) => Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k)))
   };
 }

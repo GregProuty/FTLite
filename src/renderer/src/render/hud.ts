@@ -1,7 +1,7 @@
 import { Container, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, targetRowText, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, navigationFooter, targetRowText, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { featureReady } from './fallback';
 import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
@@ -160,10 +160,10 @@ export function createHud(parent: Container, assets: GameAssets) {
         if (t) r.set({ name: targetRowText(t, t.scan), level: 0, max: 0, status: '', cursor: k === c.cursor - c.first, tint: k === c.cursor - c.first ? TEXT : DIM });
       });
       fillRow(ui.consoleFooter, [{ text: `Lead ${Math.round(c.leadSeconds)}s${c.scanning ? '   Scanning' : ''}`, tint: TEXT }]);
-    } else if (p.console && 'kind' in p.console) {
-      ui.consoleRows.forEach((r) => { r.root.visible = false; });
-      const text = `Evade ${Math.round(p.console.evadeChance * 100)}%`;
-      fillRow(ui.consoleFooter, [{ text, tint: TEXT }]);
+    } else if (p.console && 'kind' in p.console && p.console.kind === 'navigation') {
+      const c = p.console;   // spec 7: one row per destination, the cursor row lit, the footer carries evade and the jump state
+      ui.consoleRows.forEach((r, k) => { const d = c.destinations[k]; r.root.visible = !!d; if (d) r.set({ name: d, level: 0, max: 0, status: '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }); });
+      fillRow(ui.consoleFooter, [{ text: navigationFooter(c), tint: TEXT }]);
     } else if (p.console) {
       ui.consoleRows.forEach((r) => { r.root.visible = false; });
       fillRow(ui.consoleFooter, [{ text: 'rooms' in p.console ? `Door ${p.console.rooms[0]} - ${p.console.rooms[1]}` : 'No doors', tint: TEXT }]);
@@ -173,7 +173,7 @@ export function createHud(parent: Container, assets: GameAssets) {
 
   return {
     update(m: HudModel): void {
-      top.text = `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s`;
+      top.text = clockLine(m);
       directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%`;
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;

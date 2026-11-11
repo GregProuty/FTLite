@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
-import { buildHudModel, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
+import { buildHudModel, clockLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -8,9 +8,9 @@ import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
-import { sitDown } from '../src/renderer/src/sim/stations';
+import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';
-import { HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX } from '../src/renderer/src/sim/tuning';
+import { RUN_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -19,7 +19,7 @@ import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
 import { boarderMarkers } from '../src/renderer/src/sim/boarders';
 import { BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
-import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder } from './helpers/sim';
+import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder, setMap, seatNavigator, chargeJump } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
 
@@ -300,16 +300,16 @@ describe('buildHudModel', () => {
     setSkill(s, 2, Skill.Science, 3); setSkill(s, 0, Skill.Repair, 4); setSkill(s, 0, Skill.Navigation, 1);
     const over = buildHudModel(s, slots(3), 'gameover', 'HULL LOST');
     expect(over.summary).toEqual([
-      'Survived 7:32  HULL LOST', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s',   // StationKind order, as in the record
+      'Survived 7:32  HULL LOST  Reached node 1 of 8', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s',   // StationKind order, as in the record
       'Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
     s.endReason = EndReason.Crew; t.mannedTicks.fill(1); t.firstDeathTick = 452 * 60 - 1; t.firstDeathPid = 2;
     const crew = buildHudModel(s, slots(3), 'gameover', 'CREW LOST').summary!;
-    expect(crew[0]).toBe('Survived 7:32  CREW LOST'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
+    expect(crew[0]).toBe('Survived 7:32  CREW LOST  Reached node 1 of 8'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
     const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = EndReason.Hull;
     expect(buildHudModel(four, slots(4), 'gameover', '').summary).toEqual([
-      'Survived 0:00  HULL LOST', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
+      'Survived 0:00  HULL LOST  Reached node 1 of 8', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
       'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s',
       'Okoro: no skill gains', 'Lindqvist: no skill gains', 'Reyes: no skill gains', 'Dubois: no skill gains']);
   });
@@ -336,5 +336,25 @@ describe('buildHudModel', () => {
     let p = buildHudModel(s, slots(1), 'running', '').players[0]!;
     expect(p.interactPrompt).toBe('Fight boarder'); expect(p.interactIcon).toBeNull(); expect(p.progress).toBeCloseTo(30 / BOARDER_HEALTH, 12);
     s.boarders.health[k2] = 15; p = buildHudModel(s, slots(1), 'running', '').players[0]!; expect(p.progress).toBeCloseTo(15 / BOARDER_HEALTH, 12);
+  });
+  it('the clock line carries the node ordinal; the Navigation panel lists destinations, cursor, jump state and final; the footer formats', () => {
+    const s = makeState(2); quiet(s);
+    expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe('HULL 100   TIME 0s   node 1/8'); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toMatch(/node 1\/8$/);
+    s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(/node 4\/8$/);
+    s.run.column = 0; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 });
+    const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
+    const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
+    const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;
+    expect(p.here).toBe('Node 1a'); expect(p.destinations).toEqual(['Node 2a', 'Node 2b']); expect(p.cursor).toBe(1); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect(p.final).toBe(false);
+    expect(navigationFooter(p)).toBe(`${evade}   Jump 64%`);
+    chargeJump(s); expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toBe(`${evade}   Jump READY`);
+    s.run.column = RUN_COLUMNS - 1; const f = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
+    expect(f.final).toBe(true); expect(f.destinations).toEqual([]); expect(navigationFooter(f)).toBe(`${evade}   Jump -`);
+  });
+  it('the game-over headline counts the node and names a victory', () => {
+    const s = makeState(2, 1, DEFAULT_CHARACTERS); s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;
+    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  HULL LOST  Reached node 1 of 8');
+    s.endReason = EndReason.Victory; s.run.column = 7; s.run.nodesReached = 7;
+    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  VICTORY  Reached node 8 of 8');
   });
 });

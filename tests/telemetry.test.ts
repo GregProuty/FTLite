@@ -8,7 +8,7 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation, powerUsed } from '../src/renderer/src/sim/power';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
-import { downCrew } from '../src/renderer/src/sim/crew';
+import { downCrew, EndReason } from '../src/renderer/src/sim/crew';
 import { debrisSystem } from '../src/renderer/src/sim/debris';
 import { fireWeapon, beamHits, Weapon } from '../src/renderer/src/sim/weapons';
 import { stationOutput } from '../src/renderer/src/sim/stations';
@@ -270,7 +270,7 @@ describe('telemetryRecord', () => {
     t.firstDownTick = 599; t.firstDownPid = 1; t.firstDeathTick = 1199; t.firstDeathPid = 0;   // Okoro dies on the ending tick: reads as the duration
     t.mannedTicks[StationKind.Navigation] = 600; t.mannedTicks[StationKind.Doors] = 30;
     t.longestIdle[0] = 300; t.longestIdle[1] = 1200;
-    t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]); t.encounters = 2; t.enemiesDestroyed = 1; t.enemyDisables = 3; t.boardings = 1; t.boardersKilled = 2;
+    t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]); t.encounters = 2; t.enemiesDestroyed = 1; t.enemyDisables = 3; t.boardings = 1; t.boardersKilled = 2; s.run.nodesReached = 3; t.jumps = 3;
     setSkill(s, 0, Skill.Repair, 4);
     const r = telemetryRecord(s, 9);
     expect(r).toEqual({
@@ -282,11 +282,12 @@ describe('telemetryRecord', () => {
       longestIdleSeconds: [5, 20],
       spawns: { fire: 2, breach: 1, power: 0, debris: 3 }, impacts: 2, evadeRolls: 3, evasions: 1, shots: 4, hits: 2,
       repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.55, phaseEntries: { buildUp: 2, sustainPeak: 1, peakFade: 1, relax: 1 },
-      enemy: { met: 2, destroyed: 1, disables: 3 }, boarders: { parties: 1, killed: 2 },
+      enemy: { met: 2, destroyed: 1, disables: 3 }, boarders: { parties: 1, killed: 2 }, run: { nodesReached: 3, jumps: 3, columns: 8 },
       skills: [[0, 0, 0, 0, 0, 4], [0, 3, 0, 0, 0, 0]]
     });
     expect(JSON.parse(JSON.stringify(r))).toEqual(r);
     s.ended = 1; s.endReason = 2; expect(telemetryRecord(s, 9).endReason).toBe('crew');
+    s.ended = 1; s.endReason = EndReason.Victory; expect(telemetryRecord(s, 9).endReason).toBe('victory');
     s.ended = 0; expect(telemetryRecord(s, 9).endReason).toBe('running');
     t.firstDeathTick = -1; t.firstDeathPid = -1; expect(telemetryRecord(s, 9).firstDeath).toBeNull();
   });
