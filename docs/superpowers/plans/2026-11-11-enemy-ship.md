@@ -79,7 +79,7 @@ Create `tests/enemy.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import { enemySystem, fireInterval, arrive, leave, enemyBeamHits } from '../src/renderer/src/sim/enemy';
-import { ObjectKind, shotsInFlight, debrisSystem } from '../src/renderer/src/sim/debris';
+import { ObjectKind, shotsInFlight, debrisSystem, spawnDebris } from '../src/renderer/src/sim/debris';
 import { ENEMY_SLOT, targetStableId, isTarget, warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -87,7 +87,8 @@ import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
 import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, SOLO_INTERVAL_MULT, DEBRIS_SLOTS } from '../src/renderer/src/sim/tuning';
-import { makeState, run, quiet, placeEnemy, placeShot, placeDebris, room, intents } from './helpers/sim';
+import { makeState, run, quiet, armSpawn, placeEnemy, placeShot, placeDebris, room, intents } from './helpers/sim';
+import { NEUTRAL_INTENT } from '../src/shared/intent';
 
 const T = TICK_HZ;
 const wpn = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[StationKind.Weapons]!;
@@ -141,14 +142,16 @@ describe('enemy: schedule (enemySystem called directly)', () => {
   it('with the shot cap reached, or the table full of debris, a due shot re-arms (one director draw) and draws nothing from hazards', () => {
     const s = makeState(2); quiet(s); placeEnemy(s); const A = room(s, 'A');
     for (let n = 0; n < ENEMY_SHOTS_MAX; n++) placeShot(s, A, 600);
-    s.tick = s.enemy.nextShotTick; const d1 = createRng(s.rng.director.s); nextFloat(d1); const h1 = s.rng.hazards.s;
+    s.tick = s.enemy.nextShotTick; const d1 = createRng(s.rng.director.s); const u1 = nextFloat(d1); const h1 = s.rng.hazards.s;
     enemySystem(s);
-    expect(s.rng.director.s).toBe(d1.s); expect(s.rng.hazards.s).toBe(h1); expect(shotsInFlight(s)).toBe(ENEMY_SHOTS_MAX); expect(s.enemy.nextShotTick).toBeGreaterThan(s.tick);
+    expect(s.rng.director.s).toBe(d1.s); expect(s.rng.hazards.s).toBe(h1); expect(shotsInFlight(s)).toBe(ENEMY_SHOTS_MAX);
+    expect(s.enemy.nextShotTick).toBe(s.tick + Math.round(fireInterval(minutesOf(s), 2) * T * jitter(u1)));
     const f = makeState(2); quiet(f); placeEnemy(f);
     for (let n = 0; n < DEBRIS_SLOTS; n++) placeDebris(f, A, 600);   // full of debris: the cap is not the reason
-    f.tick = f.enemy.nextShotTick; const d2 = createRng(f.rng.director.s); nextFloat(d2); const h2 = f.rng.hazards.s;
+    f.tick = f.enemy.nextShotTick; const d2 = createRng(f.rng.director.s); const u2 = nextFloat(d2); const h2 = f.rng.hazards.s;
     enemySystem(f);
     expect(f.rng.director.s).toBe(d2.s); expect(f.rng.hazards.s).toBe(h2); expect(shotsInFlight(f)).toBe(0);
+    expect(f.enemy.nextShotTick).toBe(f.tick + Math.round(fireInterval(minutesOf(f), 2) * T * jitter(u2)));
   });
   it('withdraws exactly at departTick with one director draw, leaving shots in flight and arming the cooldown; a tick with both clocks due fires nothing', () => {
     const s = makeState(2); quiet(s); placeEnemy(s); const A = room(s, 'A'); placeShot(s, A, 600);
@@ -167,11 +170,13 @@ describe('enemy: schedule (enemySystem called directly)', () => {
     enemySystem(both);
     expect(both.enemy.present).toBe(0); expect(shotsInFlight(both)).toBe(0); expect(both.rng.director.s).toBe(d3.s); expect(both.rng.hazards.s).toBe(h3);
   });
-  it('a second encounter arrives after the cooldown with a new StableId', () => {
-    const s = makeState(2); quiet(s); placeEnemy(s); const first = s.enemy.stableId;
+  it('a second encounter arrives after the cooldown with a new StableId and encounters 2', () => {
+    const s = makeState(2); quiet(s);
+    s.tick = s.enemy.nextArrivalTick; enemySystem(s); const first = s.enemy.stableId;
+    expect(s.telemetry.encounters).toBe(1);
     s.tick = s.enemy.departTick; enemySystem(s);
     s.tick = s.enemy.nextArrivalTick; enemySystem(s);
-    expect(s.enemy.present).toBe(1); expect(s.enemy.stableId).toBeGreaterThan(first); expect(s.telemetry.encounters).toBe(1);   // placeEnemy does not count; arrive does
+    expect(s.enemy.present).toBe(1); expect(s.enemy.stableId).toBeGreaterThan(first); expect(s.telemetry.encounters).toBe(2);
   });
   it('through step(): arrival at ENCOUNTER_FIRST, a shot warned on its spawn tick when Science is seated', () => {
     const s = makeState(2); quiet(s);
@@ -182,6 +187,21 @@ describe('enemy: schedule (enemySystem called directly)', () => {
     expect(shotsInFlight(s)).toBe(1);
     const k = Array.from(s.debris.active).indexOf(1);
     expect(s.debris.warned[k]).toBe(1);                              // seated lead (18 s+) exceeds the shot's flight: warned the tick it spawned
+  });
+  it('through step(): the director spawns before the enemy fires on a tick where both are due (StableId order and independent RNG outcomes)', () => {
+    const s = makeState(2); armSpawn(s); placeEnemy(s); s.enemy.nextShotTick = s.tick;
+    s.rng.director.s = 7; s.rng.hazards.s = 7;
+    // The director attempt: jitter draw, type roll, then a target draw from hazards; the type is whatever seed 7 picks. Force a debris spawn so both
+    // systems allocate a StableId this tick: give every other type no target (all rooms burning, all sites breached, all stations failed is heavy),
+    // so instead assert the order generically: the enemy's shot has the LARGER StableId of the two objects/hazards allocated this tick when a debris
+    // object was spawned, and the director stream advanced by exactly 2 + 1 draws (jitter, type, enemy re-arm) in total.
+    const idBefore = s.nextStableId; const dr = createRng(7); nextFloat(dr); nextFloat(dr); nextFloat(dr);
+    run(s, 1, () => [NEUTRAL_INTENT, NEUTRAL_INTENT]);
+    expect(s.rng.director.s).toBe(dr.s);                             // director: jitter + type; enemy: one re-arm draw; nothing else draws from the director stream
+    const shot = Array.from(s.debris.active).map((a, k) => (a && s.debris.kind[k] === ObjectKind.Shot ? k : -1)).find((k) => k >= 0)!;
+    expect(shot).toBeGreaterThanOrEqual(0);
+    expect(s.debris.stableId[shot]).toBe(s.nextStableId - 1);        // the shot took the last StableId of the tick: it was allocated after the director's spawn (if any)
+    expect(s.nextStableId - idBefore).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -229,6 +249,10 @@ describe('enemy: targets', () => {
     const k2 = placeDebris(s, A, 600); expect(k2).toBe(k); expect(s.debris.kind[k2]).toBe(ObjectKind.Debris);
     s.debris.impactTick[k2] = s.tick; debrisSystem(s);
     expect(s.hull).toBe(94 - 8);
+    const p = makeState(1); quiet(p);                                 // production path: spawnDebris into a slot freed by a shot
+    const ks = placeShot(p, A, 600); p.debris.impactTick[ks] = p.tick; debrisSystem(p); expect(p.hull).toBe(94);
+    const kd = spawnDebris(p); expect(kd).toBe(ks); expect(p.debris.kind[kd]).toBe(ObjectKind.Debris);
+    p.debris.impactTick[kd] = p.tick; debrisSystem(p); expect(p.hull).toBe(94 - 8);
   });
 });
 ```
@@ -424,7 +448,11 @@ Note `nextTarget(state, e.stableId, ENEMY_SLOT)` runs while `present` is still 1
 
 - [ ] **Step 6: Run, re-bless, full suite**
 
-`npx vitest run tests/enemy.test.ts tests/snapshot.test.ts tests/debris.test.ts tests/director.test.ts tests/boundary.test.ts` → PASS (the enemy module cycle `enemy → director → debris` is one-way; if vitest reports an import cycle involving `enemy.ts`, report it rather than restructuring). Then `npm run bless` (cause: SIM_VERSION 10, the enemy block, `kind` and the two counters are hashed; no enemy appears in the two-minute replay), `npm test`, `npm run typecheck`, `npm run build` → pass. `npx vitest run tests/gate-survival.test.ts` → still passes (the gate's assertions change in Task 2; if a seed now fails because of the encounter at 3:00, STOP and report the figures: Task 2 owns the tuning fallback).
+`npx vitest run tests/enemy.test.ts tests/snapshot.test.ts tests/debris.test.ts tests/director.test.ts tests/boundary.test.ts` → PASS (the enemy module chain `enemy → director → debris` is one-way; if vitest reports an import cycle involving `enemy.ts`, report it rather than restructuring).
+
+**Survival gate before the re-bless** (`ENCOUNTER_FIRST` initialises the hashed `nextArrivalTick`, so tuning must be final before the single golden re-bless): `npx vitest run tests/gate-survival.test.ts`. If a seed fails because of the encounter at 3:00, apply the spec's fallbacks **in order, one at a time**, re-running the gate after each: (1) `ENEMY_SHOT_HULL_DAMAGE` 6 → 4; (2) `ENCOUNTER_FIRST` 180 → 210; (3) `ENEMY_SHOTS_MAX` 2 → 1; (4) `ENEMY_FIRE_INTERVAL` 15 → 20. Record every change and the gate's output in the report (Task 4 copies them into `docs/gates.md` and the spec's §13). The planned tests read these constants by name, so no test expectation changes.
+
+Then `npm run bless` (cause: SIM_VERSION 10, the enemy block, `kind` and the two counters are hashed; no enemy appears in the two-minute replay), `npm test`, `npm run typecheck`, `npm run build` → pass.
 
 - [ ] **Step 7: Commit**
 
@@ -449,6 +477,13 @@ git commit -m "feat: the enemy ship arrives, fires kind-tagged shots through the
 Append to `tests/enemy.test.ts` (imports to add: `fireWeapon, Weapon` from weapons; `scienceInput, scanStep` from science; `isProductive` from productive; `failStation` from power; `igniteRoom` from `../src/renderer/src/sim/hazards/fire`; `rawStress, anyUnattended, activeHazardCount` from director; `Health, Life, LifeState` from components; `teleport, seconds, run` from helpers; `ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, ENEMY_SHOT_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS` from tuning):
 
 ```ts
+/** Replace every debris array with a Proxy that throws on a read at ENEMY_SLOT, so a test proves the pseudo-slot never indexes the table. */
+function guardDebris(s: ReturnType<typeof makeState>): void {
+  const trap = <A extends object>(arr: A): A => new Proxy(arr, { get(t, p) { if (p === String(ENEMY_SLOT)) throw new Error(`debris array read at ENEMY_SLOT`); const v = Reflect.get(t, p); return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v; } });
+  const db = s.debris as unknown as Record<string, object>;
+  for (const key of Object.keys(db)) db[key] = trap(db[key]!);
+}
+
 describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 misses at output 0.5)', () => {
   const armed = (hull = ENEMY_HULL) => { const s = makeState(1); quiet(s); placeEnemy(s, hull); const w = wpn(s); sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 1; return { s, w }; };
   it('enemyBeamHits thresholds', () => {
@@ -481,7 +516,9 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
   it('readiness rejections against the enemy: absent, offline, unoccupied, uncharged, unloaded (no draw, no shot)', () => {
     const check = (s: ReturnType<typeof makeState>) => { const c0 = s.rng.combat.s; expect(fireWeapon(s)).toBe(false); expect(s.rng.combat.s).toBe(c0); expect(s.telemetry.shots).toBe(0); expect(s.enemy.hull).toBe(s.enemy.present ? ENEMY_HULL : 0); };
     const absent = armed(); absent.s.enemy.present = 0; absent.s.enemy.hull = 0; check(absent.s);
-    const off = armed(); failStation(off.s, off.w); check(off.s);
+    const off = armed(); failStation(off.s, off.w); check(off.s);                                   // failStation also stands the operator
+    const failedSeated = armed(); failedSeated.s.stations.failed[failedSeated.w] = 1; check(failedSeated.s);      // failed byte alone, operator still seated: the online guard
+    const unpowered = armed(); unpowered.s.stations.level[unpowered.w] = 0; check(unpowered.s);                   // allocation 0, operator still seated
     const empty = armed(); empty.s.stations.occupant[empty.w] = -1; check(empty.s);
     const low = armed(); low.s.weapons.charge = 0.5; check(low.s);
     const noTorp = armed(); noTorp.s.weapons.selector = Weapon.Torpedo; noTorp.s.weapons.torpedoLoaded = 0; check(noTorp.s);
@@ -512,13 +549,15 @@ describe('enemy: shot impacts and guards', () => {
     const w = wpn(s); sitDown(s, 0, w); s.stations.cursor[w] = k; s.weapons.selector = Weapon.BeamF2; s.weapons.charge = 1; s.rng.combat.s = 7;
     expect(fireWeapon(s)).toBe(true); expect(s.debris.active[k]).toBe(0); expect([s.telemetry.shots, s.telemetry.hits]).toEqual([1, 1]);
   });
-  it('Science guards: Confirm on the enemy starts no scan; scanStep with the cursor on the enemy touches nothing', () => {
+  it('Science guards: Confirm on the enemy starts no scan; scanStep with the cursor on the enemy touches nothing; neither reads a debris array at ENEMY_SLOT', () => {
     const s = makeState(1), A = room(s, 'A'); placeEnemy(s); const c = sci(s); sitDown(s, 0, c); const k = placeDebris(s, A, 600, 1); s.debris.scan[k] = 0.4;
-    s.stations.cursor[c] = ENEMY_SLOT; scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(0);
+    s.stations.cursor[c] = ENEMY_SLOT; guardDebris(s);
+    scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(0);
     s.science.scanning = 1; scanStep(s); expect(s.science.scanning).toBe(1); expect(s.debris.scan[k]).toBe(0.4);
   });
   it('productive: the enemy alone makes neither Science nor Navigation productive; one shot in flight does', () => {
-    const s = makeState(2); quiet(s); placeEnemy(s); const c = sci(s), n = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, c); sitDown(s, 1, n);
+    const s = makeState(2); quiet(s); placeEnemy(s); s.enemy.nextShotTick = 1e9;   // no enemy fire either: the enemy alone
+    const c = sci(s), n = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, c); sitDown(s, 1, n);
     expect(isProductive(s, c)).toBe(false); expect(isProductive(s, n)).toBe(false);
     const before = [s.director.sinceProductive[StationKind.Science], s.director.sinceProductive[StationKind.Navigation]];
     run(s, seconds(10));
@@ -526,7 +565,7 @@ describe('enemy: shot impacts and guards', () => {
     expect(s.skills.xp[0 * 6 + 3]).toBe(0); expect(s.skills.xp[1 * 6 + 0]).toBe(0);                  // no Science or Navigation XP
     placeShot(s, room(s, 'A'), 6000, 1);
     expect(isProductive(s, c)).toBe(true); expect(isProductive(s, n)).toBe(true);
-    s.science.scanning = 1; s.stations.cursor[c] = ENEMY_SLOT; expect(isProductive(s, c)).toBe(true);   // through anyWarned, not the scan branch; no throw
+    s.science.scanning = 1; s.stations.cursor[c] = ENEMY_SLOT; guardDebris(s); expect(isProductive(s, c)).toBe(true);   // through anyWarned, not the scan branch; the guard proves no debris array is read at ENEMY_SLOT
   });
   it('director: rawStress with the enemy alone is 0.30, with one shot 0.50; the enemy is never unattended; a shot counts toward the hazard cap', () => {
     const s = makeState(2); placeEnemy(s);
@@ -560,7 +599,7 @@ describe('combat gate: a level-2 Weapons operator destroys the enemy with seven 
         for (const eid of s.crew) if (Life.state[eid] === LifeState.Conscious) minHealth = Math.min(minHealth, Health.cur[eid]!);
 ```
 
-Concretely: declare `let minHealth = HEALTH_MAX, impactsBefore = 0, encounterImpacts = 0;` before the loop; after `step(s, intents)` add `for (const eid of s.crew) if (Life.state[eid] === LifeState.Conscious) minHealth = Math.min(minHealth, Health.cur[eid]!);` and after the existing impact bookkeeping `if (s.enemy.present) encounterImpacts = impacts - impactsBefore; else impactsBefore = impacts;` (so `encounterImpacts` is the count accumulated while present). After the loop add `expect(s.telemetry.encounters, 'the first encounter must fall inside the gate').toBeGreaterThanOrEqual(1);` and change the hull message to include the new figures: `expect(impacts, \`min hull ${minHull}, encounter impacts ${encounterImpacts}, min health ${minHealth.toFixed(1)}\`).toBeGreaterThan(0);`. Import `Health` from components and `HEALTH_MAX` from tuning. Run `npx vitest run tests/gate-survival.test.ts` and copy the three message strings (vitest prints them only on failure, so add a temporary `console.log` of the same string, run, record the three lines in the report, then remove the log).
+Concretely: declare `let minHealth = HEALTH_MAX, encounterImpacts = 0, lastTelemetryImpacts = 0;` before the loop; after `step(s, intents)` add `for (const eid of s.crew) if (Life.state[eid] === LifeState.Conscious) minHealth = Math.min(minHealth, Health.cur[eid]!);` and `if (s.enemy.present) encounterImpacts += s.telemetry.impacts - lastTelemetryImpacts; lastTelemetryImpacts = s.telemetry.impacts;` (telemetry counts every impact, including two in one tick, which the existing timestamp-based `impacts` counter does not). After the loop add `expect(s.telemetry.encounters, 'the first encounter must fall inside the gate').toBeGreaterThanOrEqual(1);` and change the hull message to include the new figures: `expect(impacts, \`min hull ${minHull}, encounter impacts ${encounterImpacts}, min health ${minHealth.toFixed(1)}\`).toBeGreaterThan(0);`. Import `Health` from components and `HEALTH_MAX` from tuning. Run `npx vitest run tests/gate-survival.test.ts` and copy the three message strings (vitest prints them only on failure, so add a temporary `console.log` of the same string, run, record the three lines in the report, then remove the log).
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -595,11 +634,11 @@ Concretely: declare `let minHealth = HEALTH_MAX, impactsBefore = 0, encounterImp
 
 `science.ts`: import `ENEMY_SLOT`; `scienceInput`: `if (c >= 0 && c !== ENEMY_SLOT && db.active[c] && db.warned[c] && !db.scanned[c]) state.science.scanning = 1;`; `scanStep`: `if (c < 0 || c === ENEMY_SLOT || !db.active[c] || !db.warned[c] || db.scanned[c]) return;`.
 
-`productive.ts`: import `ENEMY_SLOT`; `function anyWarned(state) { return warnedTargets(state).some((k) => k !== ENEMY_SLOT); }   // objects only: the enemy's presence alone is not incoming work (spec Combat-i section 3)`; `scanningValid` gains `c !== ENEMY_SLOT &&` right after `c >= 0 &&`.
+`productive.ts`: import `ENEMY_SLOT`; `function anyWarned(state: SimState): boolean { return warnedTargets(state).some((k) => k !== ENEMY_SLOT); }   // objects only: the enemy's presence alone is not incoming work (spec Combat-i section 3)`; `scanningValid` gains `c !== ENEMY_SLOT &&` right after `c >= 0 &&`.
 
 - [ ] **Step 4: Run, the gate, full suite**
 
-`npx vitest run tests/enemy.test.ts tests/weapons.test.ts tests/science.test.ts tests/productive.test.ts tests/director.test.ts tests/gate-survival.test.ts` → PASS. If a survival seed fails, apply the spec's fallbacks in order, one at a time, re-running the gate after each: (1) `ENEMY_SHOT_HULL_DAMAGE` 6 → 4; (2) `ENCOUNTER_FIRST` 180 → 210; (3) `ENEMY_SHOTS_MAX` 2 → 1; (4) `ENEMY_FIRE_INTERVAL` 15 → 20. Record every change and the final three figure lines in the report (Task 4 copies them into `docs/gates.md` and the spec's §13); update the affected `enemy.test.ts` expectations only where a constant's value is asserted directly (none of the planned tests hard-code these four). Then `npm test`, `npm run typecheck`, `npm run build` → pass; `tests/golden/basic.json` unchanged (if a fallback changed `ENCOUNTER_FIRST` the replay is still enemy-free; if it changed another constant the golden is also unaffected because no enemy appears in it).
+`npx vitest run tests/enemy.test.ts tests/weapons.test.ts tests/science.test.ts tests/productive.test.ts tests/director.test.ts tests/gate-survival.test.ts` → PASS. Task 1 already settled the survival tuning before the re-bless, so the gate must pass here with no tuning change; if it does not (the new assertions only add the encounter count and the figures), STOP and report. Record the three figure lines in the report. Then `npm test`, `npm run typecheck`, `npm run build` → pass; `tests/golden/basic.json` unchanged (this task changes no constant and no draw).
 
 - [ ] **Step 5: Commit**
 
@@ -607,8 +646,6 @@ Concretely: declare `let minHealth = HEALTH_MAX, impactsBefore = 0, encounterImp
 git add src/renderer/src/sim/weapons.ts src/renderer/src/sim/science.ts src/renderer/src/sim/productive.ts tests/enemy.test.ts tests/gate-survival.test.ts
 git commit -m "feat: beams and torpedoes damage the enemy ship; Science and the productive predicates ignore the enemy pseudo-slot; survival gate records encounter impacts and crew health; combat gate"
 ```
-
-(Add `src/renderer/src/sim/tuning.ts` to the add list if a fallback changed it, and say so in the subject.)
 
 ---
 
@@ -619,11 +656,11 @@ git commit -m "feat: beams and torpedoes damage the enemy ship; Science and the 
 
 **Interfaces:**
 - Consumes: `ENEMY_SLOT`, `ObjectKind`, `state.enemy`, `telemetry.encounters/enemiesDestroyed`.
-- Produces: `DebrisTarget.kind`, `DebrisTarget.hull`, `WeaponsPanel.first`, `SciencePanel.first`, `targetWindow(cursor, length, rows)` exported from `hudModel.ts`; `TelemetryRecord.enemy`; the `enemy` table column.
+- Produces: `DebrisTarget.kind`, `DebrisTarget.hull`, `WeaponsPanel.first`, `SciencePanel.first`, `targetWindow(cursor, length, rows)`, `targetRowText(t, scan?)`, `WEAPONS_ROWS`, `SCIENCE_ROWS` exported from `hudModel.ts`; `TelemetryRecord.enemy`; the `enemy` table column.
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/hud.test.ts`: in the existing Weapons panel test, the expected targets gain `kind: 'debris', hull: null` on each entry and the panel gains `first: 0` where whole-panel equality is asserted (adjust only where needed). Append (imports: `targetWindow` from hudModel; `placeEnemy, placeShot` from helpers; `ENEMY_SLOT` from debrisTargets; `ENCOUNTER_MAX` from tuning):
+`tests/hud.test.ts`: in the existing Weapons panel test **and** the existing Science panel test (`tests/hud.test.ts` around line 172), every expected target object gains `kind: 'debris', hull: null`, and a panel gains `first: 0` wherever whole-panel equality is asserted. Append (imports: `targetWindow, targetRowText` from hudModel; `placeEnemy, placeShot, quiet` from helpers (`quiet` is not imported today); `ENEMY_SLOT` from debrisTargets; `ENCOUNTER_MAX` from tuning):
 
 ```ts
   it('threat rows: the enemy first with its hull percent, shots with and without a scanned frequency; none when absent', () => {
@@ -656,6 +693,17 @@ git commit -m "feat: beams and torpedoes damage the enemy ship; Science and the 
     sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT;
     const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
     expect(wp.targets).toHaveLength(9); expect(wp.cursor).toBe(8); expect(wp.first).toBe(3);
+    run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
+    const sp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel;
+    expect(sp.targets).toHaveLength(9); expect(sp.cursor).toBe(8); expect(sp.first).toBe(2);        // seven Science rows
+  });
+  it('targetRowText renders the exact row strings for debris, shots and the enemy on both panels', () => {
+    const debris = { stableId: 1, kind: 'debris' as const, room: 'Engine', eta: 7, frequency: null, hull: null };
+    expect(targetRowText(debris)).toBe('Engine 7s F?'); expect(targetRowText({ ...debris, frequency: 2 })).toBe('Engine 7s F2'); expect(targetRowText(debris, 0.4)).toBe('Engine 7s F? 40%');
+    const shot = { ...debris, kind: 'shot' as const };
+    expect(targetRowText(shot)).toBe('Shot Engine 7s F?'); expect(targetRowText({ ...shot, frequency: 2 })).toBe('Shot Engine 7s F2'); expect(targetRowText(shot, 0.4)).toBe('Shot Engine 7s F? 40%'); expect(targetRowText({ ...shot, frequency: 2 }, 0.4)).toBe('Shot Engine 7s F2');
+    const enemy = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null, hull: 0.64 };
+    expect(targetRowText(enemy)).toBe('Enemy 64% 87s'); expect(targetRowText(enemy, 0.4)).toBe('Enemy 64% 87s');   // no frequency, no scan text
   });
 ```
 
@@ -696,14 +744,17 @@ function target(state: SimState, k: number): DebrisTarget {
 
 Weapons panel: `const slots = warnedTargets(state), c = state.stations.cursor[i]!, cursor = slots.indexOf(c); return { ..., targets: slots.map((k) => target(state, k)), cursor, first: targetWindow(cursor, slots.length, WEAPONS_ROWS) };`. Science panel: `targets: slots.map((k) => ({ ...target(state, k), scan: k === ENEMY_SLOT ? 0 : state.debris.scan[k]! }))`, `cursor`, `first: targetWindow(cursor, slots.length, SCIENCE_ROWS)`. Threats: before the fire loop, `if (state.enemy.present) threats.push({ icon: 'icon.weapons', text: \`Enemy ship: hull ${Math.round(state.enemy.hull / ENEMY_HULL * 100)}%\` });`; the debris loop becomes `for (const k of warnedTargets(state)) { if (k === ENEMY_SLOT) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : 'Debris'; threats.push({ icon: 'icon.sensors', text: \`${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? \` F${state.debris.frequency[k]}\` : ''}\` }); }`.
 
-`hud.ts`: a shared row-name helper near the top of the update code:
+The row text lives in `hudModel.ts` (pixi-free, so it is unit-tested) and `hud.ts` only places it:
 
 ```ts
-const targetName = (t: DebrisTarget, scan = 0): string => t.kind === 'enemy' ? `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${t.eta}s`
-  : `${t.kind === 'shot' ? 'Shot ' : ''}${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
+/** Exact target-row strings for the Weapons and Science panels (spec Combat-i section 7). */
+export function targetRowText(t: DebrisTarget, scan = 0): string {
+  if (t.kind === 'enemy') return `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${t.eta}s`;
+  return `${t.kind === 'shot' ? 'Shot ' : ''}${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
+}
 ```
 
-(import `DebrisTarget` type from hudModel). Weapons rows: `const vis = c.targets.slice(c.first, c.first + 6); ui.consoleRows.forEach((r, k) => { const t = k >= 1 ? vis[k - 1] : undefined; r.root.visible = !!t; if (t) r.set({ name: targetName(t), level: 0, max: 0, status: '', cursor: k - 1 === c.cursor - c.first, tint: k - 1 === c.cursor - c.first ? TEXT : DIM }); });`. Science rows: `const vis = c.targets.slice(c.first, c.first + 7); ... const t = vis[k]; ... name: targetName(t, t.scan), cursor: k === c.cursor - c.first ...`.
+`hud.ts` (import `targetRowText, WEAPONS_ROWS, SCIENCE_ROWS` from hudModel). Weapons rows: `const vis = c.targets.slice(c.first, c.first + WEAPONS_ROWS); ui.consoleRows.forEach((r, k) => { const t = k >= 1 ? vis[k - 1] : undefined; r.root.visible = !!t; if (t) r.set({ name: targetRowText(t), level: 0, max: 0, status: '', cursor: k - 1 === c.cursor - c.first, tint: k - 1 === c.cursor - c.first ? TEXT : DIM }); });`. Science rows: `const vis = c.targets.slice(c.first, c.first + SCIENCE_ROWS); ... const t = vis[k]; ... name: targetRowText(t, t.scan), cursor: k === c.cursor - c.first ...`. The slicing and highlight offset stay in `hud.ts` and are covered by the manual gate's scrolling check.
 
 - [ ] **Step 4: telemetry.ts and acceptance.ts**
 
@@ -729,7 +780,7 @@ git commit -m "feat: HUD shows the enemy ship and its shots in the threats and t
 
 - [ ] **Step 1: Gate section**
 
-Run `npm run acceptance 5 1` (five minutes, seed 1: one encounter from 3:00) and keep its three rows. Append to `docs/gates.md` (fill the survival figures from the Task 2 report):
+Run `npm run acceptance 5 1` (five minutes, seed 1: one encounter from `ENCOUNTER_FIRST`) and keep its three rows. Append to `docs/gates.md`, filling the survival figures from the Task 2 report and **replacing every tuning number in the narrative (3:00, 10 to 15 s, 118s) with the final values from `tuning.ts`** if Task 1 took a fallback:
 
 ```markdown
 ## Combat-i: enemy ship
@@ -755,7 +806,8 @@ Append to the spec:
 - `spawnDebris` and `spawnShot` share a private `spawnObject(state, kind, flight, jitter)`, so the three `rng.hazards` draws (room, flight, frequency) live in one place.
 - The cooldown re-arm in `leave` uses `ENEMY_FIRE_JITTER` (+/- 20 %), the same constant as the shot re-arm.
 - `DebrisTarget` always carries `kind` and `hull` (`hull: null` for objects).
-- Survival gate tuning fallbacks taken: <none | list with values>.
+- Survival gate tuning fallbacks taken (Task 1, before the single golden re-bless): <none | list with values>; sections 8 and 10 read with the final values.
+- `targetRowText` lives in `hudModel.ts` (pixi-free) so the exact row strings are unit-tested; `hud.ts` only slices the window and places the text.
 ```
 
 `docs/roadmap.md`: item 5 → `in review` (the merge commit flips it to `merged 2026-11-11`), item 6 → `next`.
