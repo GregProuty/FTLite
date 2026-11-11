@@ -62,3 +62,9 @@
 - [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with every station unmanned; the bot crew repairs fires and breaches, so Repair XP accrues during the gate (the only skill effect in play, since repair speed only rises from level 1 at 240 s of repairing).
 - [ ] Manual, two players (`npm run dev`): the player panel shows `N0 E0 W0 S0 C0 R0`; sitting at Science (D(12,2)) while a `Debris` warning is in flight and repairing fires raise `S` and `R` (level 1 after about four minutes of productive time); with Engineering at level 4 (reach it, or set `XP_THRESHOLDS[4]` on a crew member in a debug build) the Engineering footer shows one more pool bar while seated; allocate the spare and the bonus bar, stand, and the strip drops one bar from Doors. Date and notes: pending human playtest.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Increment 3-ii: characters (closes the foundation's Increment 3)
+- [x] `npm test` passes: characters (data, readers, default and fallback assignment, exact head-start matrix, snapshot of a non-default assignment, every trait effect incl. the combined Okoro repair time, Slow Learner on all five XP paths, Frail under hazards), snapshot version-6 rejection, HUD character fields and game-over summary gating.
+- [x] `tests/gate-survival.test.ts` passes on seeds 1-3 with the default crew (Okoro and Lindqvist).
+- [ ] Manual, two players (`npm run dev`): the lobby shows `P1  Okoro` / `Quick Hands / Heavy Boots` and `P2  Lindqvist` / `Cool Head / Flammable` once joined; in the run Okoro's panel reads `Okoro  N0 E0 W0 S0 C0 R3` and Okoro visibly walks slower than Lindqvist; a game over lists each crew member's skill gains under the banner. Date and notes: pending human playtest.
+- [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.

@@ -105,3 +105,8 @@ Added to `docs/gates.md` as "Increment 3-ii" (closing the foundation's Increment
 
 - A character selector in the lobby (any slot picks any character): later, once there are more than four characters or players ask.
 - Portraits: the art budget is unchanged; the per-player tint remains the identifier.
+
+## 11. Amendments from the plan
+- `Skill`, `SKILL_NAMES` and `xpIndex` live in `sim/skillIds.ts` (re-exported by `skills.ts`) so `characters.ts` and `skills.ts` do not import each other; `addXp` reads `xpMult` from `characters.ts`.
+- Lobby display: the joined slot's name row reads `P1  Okoro` and line 2 reads `Quick Hands / Heavy Boots` (section 7 put the name on line 2 and the traits on line 3).
+- The golden replay was re-blessed twice: in Task 1 (version 7, the assignment field, head starts) and in Task 2 (the traits acting in the replay).

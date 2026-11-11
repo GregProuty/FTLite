@@ -5,8 +5,8 @@ Written 2026-11-10 when the owner asked for an autonomous run through the featur
 | # | Feature | Source | Status |
 |---|---|---|---|
 | 1 | **3-i Skills and XP:** six skills with XP and levels from a threshold table, productive predicates per station, XP from repairs, skill effects on every station formula, repair speed, cooling per unit and sealed doors, Engineering bonus bars with power shedding | foundation §5 Skill model, §11 item 3 | merged 2026-11-10 |
-| 2 | **3-ii Characters:** the four pre-made characters with an Asset, a Complication and a skill head start; lobby character display; game-over skill gains | foundation §5 Crew, §7 session flow, §11 item 3 | next |
-| 3 | **4-i Director:** stress and pacing phase machine, elapsed-time escalation, concurrency cap, routing hazards to idle consoles, player-count scaling, replacing the timer spawner | foundation §5 Director, §11 item 4 | |
+| 2 | **3-ii Characters:** the four pre-made characters with an Asset, a Complication and a skill head start; lobby character display; game-over skill gains | foundation §5 Crew, §7 session flow, §11 item 3 | in review |
+| 3 | **4-i Director:** stress and pacing phase machine, elapsed-time escalation, concurrency cap, routing hazards to idle consoles, player-count scaling, replacing the timer spawner | foundation §5 Director, §11 item 4 | next |
 | 4 | **4-ii Telemetry and acceptance:** session telemetry log (time to first death, stations never manned, longest idle per player, how the run ended), game-over summary, long headless soak test for the director | foundation §10, §11 item 4 | |
 | 5 | **Combat-i Enemy ship:** an abstract enemy ship with hull and weapons that fires at our rooms on the director's cadence; our beams and torpedoes can target it; the encounter ends when it is destroyed or withdraws | sub-project 2 | |
 | 6 | **Combat-ii Enemy systems and shields:** enemy subsystems to target (weapons, engines, shields) with effects on its fire and escape, enemy shields that beams must pierce by frequency and torpedoes bypass | sub-project 2 | |
