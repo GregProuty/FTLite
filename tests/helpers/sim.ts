@@ -5,8 +5,9 @@ import { createSimState, type SimState } from '../../src/renderer/src/sim/state'
 import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
-import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT } from '../../src/renderer/src/sim/tuning';
+import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR } from '../../src/renderer/src/sim/tuning';
 import { ObjectKind } from '../../src/renderer/src/sim/debris';
+import { ENEMY_SLOTS } from '../../src/renderer/src/sim/debrisTargets';
 import { RECRUIT } from '../../src/renderer/src/sim/characters';
 import { shiftBar, maxLevel } from '../../src/renderer/src/sim/power';
 
@@ -69,11 +70,23 @@ export function armSpawn(state: SimState): void {
   d.phase = Phase.BuildUp; d.phaseTick = state.tick; d.lastSpawnTick = state.tick; d.budgetLeft = 99; d.stress = 0; d.nextStressTick = 1e9; d.nextSpawnTick = state.tick;
 }
 
-/** Place an enemy as arrive() would, with a fresh StableId and no draw. */
-export function placeEnemy(state: SimState, hull = ENEMY_HULL): void {
+/** Place an enemy as arrive() would (no draw): fresh StableId, full systems, the given shield frequency. */
+export function placeEnemy(state: SimState, hull = ENEMY_HULL, shieldFreq = 1): void {
   const e = state.enemy;
   e.present = 1; e.hull = hull; e.stableId = state.nextStableId++;
   e.departTick = state.tick + ENCOUNTER_MAX * TICK_HZ; e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;
+  e.sysHp.fill(ENEMY_SYS_HP); e.sysRepairTick.fill(-1); e.shieldFreq = shieldFreq; e.scanned = 0; e.scan = 0;
+}
+/** Knock a subsystem out as damageEnemy would, arming its repair. */
+export function disableSystem(state: SimState, system: number): void {
+  state.enemy.sysHp[system] = 0; state.enemy.sysRepairTick[system] = state.tick + ENEMY_SYS_REPAIR * TICK_HZ;
+}
+/** Replace every debris array with a Proxy that throws on a read at any enemy slot, so a test proves the pseudo-slots never index the table. */
+export function guardDebris(s: SimState): void {
+  const keys = new Set(ENEMY_SLOTS.map(String));
+  const trap = <A extends object>(arr: A): A => new Proxy(arr, { get(t, p) { if (typeof p === 'string' && keys.has(p)) throw new Error(`debris array read at enemy slot ${p}`); const v = Reflect.get(t, p); return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v; } });
+  const db = s.debris as unknown as Record<string, object>;
+  for (const key of Object.keys(db)) db[key] = trap(db[key]!);
 }
 
 /** Place an enemy shot directly: placeDebris with kind Shot. */

@@ -2,12 +2,16 @@ import type { SimState } from './state';
 import { Dir } from './dir';
 import { DEBRIS_SLOTS } from './tuning';
 
-/** The enemy ship's pseudo-slot in the target list (spec Combat-i section 6). Never an index into the debris arrays. */
-export const ENEMY_SLOT = DEBRIS_SLOTS;
-export function targetStableId(state: SimState, slot: number): number { return slot === ENEMY_SLOT ? state.enemy.stableId : state.debris.stableId[slot]!; }
+export const ENEMY_SLOT = DEBRIS_SLOTS, ENEMY_WEAPONS_SLOT = DEBRIS_SLOTS + 1, ENEMY_ENGINES_SLOT = DEBRIS_SLOTS + 2, ENEMY_SHIELDS_SLOT = DEBRIS_SLOTS + 3;
+/** Hull, weapons, engines, shields: four rows of one enemy (spec Combat-ii section 6). Never indices into the debris arrays. */
+export const ENEMY_SLOTS: readonly number[] = [ENEMY_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT];
+export function isEnemySlot(slot: number): boolean { return slot >= DEBRIS_SLOTS; }
+/** EnemySystem index of a subsystem slot; -1 for the hull row. */
+export function enemySystemOf(slot: number): number { return slot - DEBRIS_SLOTS - 1; }
+export function targetStableId(state: SimState, slot: number): number { return isEnemySlot(slot) ? state.enemy.stableId : state.debris.stableId[slot]!; }
 /** A slot the consoles may act on: a warned active object, or the present enemy. */
 export function isTarget(state: SimState, slot: number): boolean {
-  if (slot === ENEMY_SLOT) return state.enemy.present === 1;
+  if (isEnemySlot(slot)) return state.enemy.present === 1;
   return state.debris.active[slot] === 1 && state.debris.warned[slot] === 1;
 }
 
@@ -15,13 +19,13 @@ export function isTarget(state: SimState, slot: number): boolean {
 export function warnedTargets(state: SimState): number[] {
   const db = state.debris, out: number[] = [];
   for (let k = 0; k < db.active.length; k++) if (db.active[k] && db.warned[k]) out.push(k);
-  if (state.enemy.present) out.push(ENEMY_SLOT);
-  return out.sort((a, b) => targetStableId(state, a) - targetStableId(state, b));
+  if (state.enemy.present) out.push(...ENEMY_SLOTS);
+  return out.sort((a, b) => targetStableId(state, a) - targetStableId(state, b) || a - b);
 }
 
-/** The warned slot with the smallest StableId above `afterStableId`, else the smallest overall, else -1. `excludeSlot` is ignored (used while removing it). */
-export function nextTarget(state: SimState, afterStableId: number, excludeSlot = -1): number {
-  const list = warnedTargets(state).filter((k) => k !== excludeSlot);
+/** The warned slot with the smallest StableId above `afterStableId`, else the smallest overall, else -1. `exclude` slot(s) are ignored (used while removing the enemy). */
+export function nextTarget(state: SimState, afterStableId: number, exclude: number | readonly number[] = -1): number {
+  const ex = typeof exclude === 'number' ? [exclude] : exclude, list = warnedTargets(state).filter((k) => !ex.includes(k));
   if (!list.length) return -1;
   for (const k of list) if (targetStableId(state, k) > afterStableId) return k;
   return list[0]!;

@@ -4,7 +4,7 @@ import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
 import { cycleTarget, isTarget, ENEMY_SLOT } from './debrisTargets';
-import { enemyBeamHits, damageEnemy } from './enemy';
+import { enemyBeamThreshold, damageEnemy } from './enemy';
 import { Dir } from './dir';
 import { Skill, addXp } from './skills';
 import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE } from './tuning';
@@ -45,13 +45,13 @@ export function fireWeapon(state: SimState): boolean {
   } else {
     if (w.charge < 1) return false;
     const u = nextFloat(state.rng.combat);
-    hit = enemy ? enemyBeamHits(u, output) : beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides, scanned or not; against the ship it plays no part until Combat-ii
+    hit = enemy ? u < enemyBeamThreshold(state, output) : beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides, scanned or not; against the ship it plays no part until Combat-ii
     w.charge = 0;
   }
   state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
   if (hit) {
     state.telemetry.hits++;
-    if (enemy) damageEnemy(state, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); else removeDebris(state, c);
+    if (enemy) damageEnemy(state, c, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); else removeDebris(state, c);
   }
   return hit;
 }
