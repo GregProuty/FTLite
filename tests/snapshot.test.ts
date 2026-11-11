@@ -313,7 +313,7 @@ describe('snapshot', () => {
     run(whole, 40); run(resumed, 40);
     // The repair at tick 110 set nextShotTick to 110 + 300 = 410, replacing the 115 deadline: no shot yet.
     expect(resumed.enemy.sysHp[EnemySystem.Weapons]).toBe(ENEMY_SYS_HP); expect(resumed.enemy.sysRepairTick[EnemySystem.Weapons]).toBe(-1); expect(resumed.enemy.nextShotTick).toBe(410); expect(shotsInFlight(resumed)).toBe(0);
-    expect(resumed.enemy.scan).toBe(0);                                                 // Task 1: scanStep has no enemy path yet; Task 2 changes this line to toBeGreaterThan(0)
+    expect(resumed.enemy.scan).toBeGreaterThan(0);                                      // the enemy scan runs
     run(whole, 280); run(resumed, 280);                                                 // through tick 420: the repaired weapons fire at 410
     expect(shotsInFlight(resumed)).toBe(1);
     expect(hashState(resumed)).toBe(hashState(whole));

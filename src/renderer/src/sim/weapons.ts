@@ -3,8 +3,8 @@ import { nextFloat } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
-import { cycleTarget, isTarget, ENEMY_SLOT } from './debrisTargets';
-import { enemyBeamThreshold, damageEnemy } from './enemy';
+import { cycleTarget, isTarget, isEnemySlot } from './debrisTargets';
+import { enemyBeamThreshold, beamAbsorbed, damageEnemy } from './enemy';
 import { Dir } from './dir';
 import { Skill, addXp } from './skills';
 import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE } from './tuning';
@@ -36,17 +36,19 @@ export function fireWeapon(state: SimState): boolean {
   if (wpn < 0 || !stationOnline(state, wpn) || state.stations.occupant[wpn]! < 0) return false;
   const c = state.stations.cursor[wpn]!;
   if (c < 0 || !isTarget(state, c)) return false;
-  const enemy = c === ENEMY_SLOT, output = stationOutput(state, wpn);
-  let hit: boolean;
+  const enemy = isEnemySlot(c), output = stationOutput(state, wpn);
+  let hit = false;
   if (w.selector === Weapon.Torpedo) {
     if (!w.torpedoLoaded) return false;
-    hit = torpedoHits(nextFloat(state.rng.combat), output);
+    hit = torpedoHits(nextFloat(state.rng.combat), output);                      // homing: no shield, no evasion
     w.torpedoLoaded = 0;                                                       // the stock was spent when the tube loaded
   } else {
     if (w.charge < 1) return false;
-    const u = nextFloat(state.rng.combat);
-    hit = enemy ? u < enemyBeamThreshold(state, output) : beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides, scanned or not; against the ship it plays no part until Combat-ii
     w.charge = 0;
+    if (!(enemy && beamAbsorbed(state, w.selector))) {                             // an absorbed beam is a shot taken with no roll (spec Combat-ii section 5)
+      const u = nextFloat(state.rng.combat);
+      hit = enemy ? u < enemyBeamThreshold(state, output) : beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides against debris, scanned or not
+    }
   }
   state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
   if (hit) {
