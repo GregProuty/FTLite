@@ -5,6 +5,7 @@ import { failStation } from '../src/renderer/src/sim/power';
 import { scanStep } from '../src/renderer/src/sim/science';
 import { Seated } from '../src/renderer/src/sim/components';
 import { DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
+import { buildHudModel } from '../src/renderer/src/render/hudModel';
 import { makeState, intents, run, placeDebris, room, seconds, overdrive } from './helpers/sim';
 
 const sci = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[StationKind.Science]!;
@@ -35,6 +36,7 @@ describe('scanning', () => {
     expect(s.science.scanning).toBe(1); expect(s.debris.scan[1]).toBe(p1); expect(s.debris.scan[0]).toBe(1);
     run(s, 1, () => intents(cancel)); failStation(s, i);                       // revealed information survives a stand and a failure
     expect(s.debris.scanned[0]).toBe(1); expect(s.debris.frequency[0]).toBe(2);
+    expect(buildHudModel(s, [{ status: 'active', key: 'kb:0' }], 'running', '').threats.map((t) => t.text).filter((x) => /F\d$/.test(x))[0]).toMatch(/F2$/);   // the Power threat precedes debris, so take the first debris one
   });
   it('level 2 scans within 8 s; overdriven within 5.4 s; unmanned or offline never progresses', () => {
     const a = makeState(1), ia = sci(a), A = room(a, 'A');
@@ -49,9 +51,14 @@ describe('scanning', () => {
     c.spawner.nextSpawnTick = 1e9; placeDebris(c, A, 1e6, 1); c.science.scanning = 1; c.stations.cursor[ic] = 0;
     run(c, seconds(5));
     expect(c.debris.scan[0]).toBe(0);                                           // nobody seated
-    sitDown(c, 0, ic); failStation(c, ic);
-    c.science.scanning = 1; run(c, seconds(5));
-    expect(c.debris.scan[0]).toBe(0);                                           // offline (and the failure stood the operator)
+    sitDown(c, 0, ic); run(c, 1, () => intents(confirm)); run(c, 30);
+    const p = c.debris.scan[0]!; expect(p).toBeGreaterThan(0);
+    failStation(c, ic);
+    expect(Seated.station[c.crew[0]!]).toBe(-1); expect(c.science.scanning).toBe(0);
+    run(c, 30); expect(c.debris.scan[0]).toBe(p);                               // the failure stood the operator and stopped the scan
+    c.stations.occupant[ic] = 0; c.science.scanning = 1; scanStep(c);           // occupied but offline (failed stays 1)
+    expect(c.debris.scan[0]).toBe(p);
+    c.stations.occupant[ic] = -1;
   });
   it('switching targets pauses the first object and resumes the second from its own progress; Cancel clears scanning and a re-seat resumes', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
@@ -73,7 +80,7 @@ describe('scanning', () => {
     run(s, 1, () => intents(confirm)); run(s, 1);
     expect(s.debris.scan[1]).toBeGreaterThan(second);                            // resumed from the kept progress
   });
-  it('impact or destruction of the object being scanned discards its progress and retargets', () => {
+  it('impact of the object being scanned discards its progress and retargets', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
     s.spawner.nextSpawnTick = 1e9;
     placeDebris(s, A, seconds(3), 1, 10); placeDebris(s, A, 1e6, 1, 20);

@@ -69,6 +69,7 @@ describe('buildHudModel', () => {
     const m = buildHudModel(null, [{ status: 'active', key: 'gp:2' }, { status: 'empty', key: null }, { status: 'reconnect', key: null }], 'lobby', 'Press Interact to join');
     expect(m.players).toHaveLength(3);
     expect(m.players[0]!.deviceKind).toBe('pad'); expect(m.players[1]!.status).toBe('empty'); expect(m.players[1]!.deviceKind).toBeNull(); expect(m.players[2]!.deviceKind).toBeNull();
+    expect(m.weapons).toEqual({ charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 });
   });
   it('passes the credits sub-state through', () => {
     const m = buildHudModel(null, [], 'lobby', '', { lines: ['a', 'b'], scroll: 1 });

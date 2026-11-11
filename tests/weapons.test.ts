@@ -113,6 +113,9 @@ describe('firing', () => {
     const c0 = s.rng.combat.s;
     run(s, 1, () => intents(confirm));
     expect(s.weapons.charge).toBe(1); expect(s.weapons.torpedoLoaded).toBe(1); expect(s.rng.combat.s).toBe(c0);   // no target
+    s.weapons.selector = Weapon.Torpedo; const stock0 = s.weapons.torpedoStock;
+    run(s, 1, () => intents(confirm));
+    expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(stock0); expect(s.rng.combat.s).toBe(c0);   // no target, torpedo selected
     placeDebris(s, A, 600, 1); s.stations.cursor[i] = 0;
     s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 0; s.weapons.torpedoStock = 0;
     run(s, 1, () => intents(confirm));

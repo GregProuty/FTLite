@@ -1,7 +1,7 @@
 import type { SimState } from './state';
 import { Dir } from './dir';
 
-/** Warned, active debris slots in ascending StableId: the Weapons target order (spec 2a-ii section 5). Pure over state.debris. */
+/** Warned, active debris slots in ascending StableId: the target order shared by Weapons and Science (spec 2a-ii section 5). Pure over state.debris. */
 export function warnedTargets(state: SimState): number[] {
   const db = state.debris, out: number[] = [];
   for (let k = 0; k < db.active.length; k++) if (db.active[k] && db.warned[k]) out.push(k);

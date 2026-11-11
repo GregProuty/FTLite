@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { warnedTargets, nextTarget } from '../src/renderer/src/sim/debrisTargets';
+import { warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
 import { spawnDebris, removeDebris, scienceLead, evades, debrisSystem, activeDebrisCount } from '../src/renderer/src/sim/debris';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
-import { cycleTarget } from '../src/renderer/src/sim/debrisTargets';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { failStation } from '../src/renderer/src/sim/power';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { EndReason } from '../src/renderer/src/sim/crew';
-import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ, FREQ_COUNT, TORP_START } from '../src/renderer/src/sim/tuning';
+import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ, TORP_START } from '../src/renderer/src/sim/tuning';
 import { makeState, placeDebris, room, run, teleport, seconds, intents } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
 
@@ -232,7 +231,6 @@ describe('frequency and shared cursors (2b-ii)', () => {
       expect(s.debris.scanned[slot]).toBe(0); expect(s.debris.scan[slot]).toBe(0);
       expect(s.rng.hazards.s).toBe(three.s);                                 // room, flight, frequency: exactly three draws
     }
-    expect(FREQ_COUNT).toBe(3);
   });
   it('a fresh state starts with selector 0, TORP_START stock and every other new field at 0', () => {
     const s = makeState(2);
