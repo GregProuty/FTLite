@@ -8,7 +8,8 @@ import { Position, Seated } from '../src/renderer/src/sim/components';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
-import { LAYOUT, makeState, intents, run, placeDebris } from './helpers/sim';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { LAYOUT, makeState, intents, run, placeDebris, teleport, seconds, room } from './helpers/sim';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {
@@ -37,6 +38,35 @@ describe('snapshot', () => {
     const snap = saveSnapshot(makeState(2));
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
+  });
+  it('rejects a version-2 snapshot, by header and by the flattened SIM_VERSION', () => {
+    const snap = saveSnapshot(makeState(2));
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 2 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 2;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
+  });
+  it('weapons charge and fire script is deterministic and survives a mid-charge save/load', () => {
+    const mk = () => {
+      const s = makeState(1, 9);
+      const w = s.derived.stationOfKind[StationKind.Weapons]!, tile = s.derived.stationTile[w]!, width = s.derived.width;
+      teleport(s, 0, (tile % width) + 0.5, Math.floor(tile / width) + 0.5);
+      s.spawner.nextSpawnTick = 1e9;
+      placeDebris(s, room(s, 'A'), 1e6, 1);
+      return s;
+    };
+    const fireAt = seconds(12) + 3;
+    const total = fireAt + 12;
+    const script = (t: number) => t === 0 || t === fireAt ? intents({ confirmPressed: true }) : t === fireAt + 1 ? intents({ cancelPressed: true }) : intents();
+    const a = mk(), b = mk();
+    const initial = a.rng.combat.s;
+    for (let t = 0; t < total; t++) { step(a, script(t)); step(b, script(t)); }
+    expect(hashState(a)).toBe(hashState(b));
+    expect(a.rng.combat.s).not.toBe(initial);
+    const c = mk();
+    for (let t = 0; t < 300; t++) step(c, script(t));
+    const d = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(c))));
+    for (let t = 300; t < total; t++) step(d, script(t));
+    expect(hashState(d)).toBe(hashState(a));
   });
   it('property: same seed and intents give the same hash', () => {
     fc.assert(fc.property(fc.integer(), arbScript(2), (seed, script) => {

@@ -31,6 +31,14 @@ describe('timer spawner', () => {
     expect(s.spawner.nextSpawnTick).toBeGreaterThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * 60 * (1 - SPAWN_JITTER)));
     expect(s.spawner.nextSpawnTick).toBeLessThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * 60 * (1 + SPAWN_JITTER)));
   });
+  it('a debris spawn through step() lands in slot 0', () => {
+    const s = makeState(0);
+    s.rng.director.s = 5;                                   // its second draw is 4.64 of 6: debris
+    s.spawner.nextSpawnTick = s.tick;
+    run(s, 1);
+    expect(s.debris.active[0]).toBe(1); expect(s.debris.warned[0]).toBe(0);
+    expect(s.debris.stableId[0]).toBeGreaterThan(0); expect(s.debris.impactTick[0]).toBeGreaterThan(s.tick);
+  });
   it('produces all four types over many spawns, deterministically per seed', () => {
     const kinds = new Set<string>();
     for (let seed = 1; seed <= 12; seed++) {

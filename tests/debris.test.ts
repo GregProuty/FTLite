@@ -149,8 +149,10 @@ describe('impact', () => {
     expect(t.rng.hazards.s).not.toBe(before);
   });
   it('damages Conscious crew in the room by roomAt, downs a lethal hit at once, and a second impact that tick does not hit them again', () => {
-    const s = makeState(3), A = room(s, 'A');
+    const s = makeState(4), A = room(s, 'A');
     s.spawner.nextSpawnTick = 1e9;
+    const down = s.crew[3]!;
+    teleport(s, 3, 2.5, 2.5); Life.state[down] = LifeState.Downed; Life.bleed[down] = 30; Health.cur[down] = 50;   // already Downed in A: the Conscious guard
     teleport(s, 0, 2.5, 2.5);                                // in A
     teleport(s, 1, 2.5, 4.5);                                // A/I door tile: roomAt is -1, not hit
     Health.cur[s.crew[2]!] = DEBRIS_CREW_DAMAGE;             // in G (spawn room), not in A
@@ -160,6 +162,7 @@ describe('impact', () => {
     debrisSystem(s);
     expect(Health.cur[s.crew[0]!]).toBe(0); expect(Life.state[s.crew[0]!]).toBe(LifeState.Downed);
     expect(Health.cur[s.crew[1]!]).toBe(100); expect(Health.cur[s.crew[2]!]).toBe(DEBRIS_CREW_DAMAGE);
+    expect(Health.cur[down]).toBe(50); expect(Life.bleed[down]).toBe(30);
     expect(s.hull).toBe(100 - 2 * DEBRIS_HULL_DAMAGE);
     const t = makeState(1), B = room(t, 'B');
     teleport(t, 0, 7.5, 2.5); Health.cur[t.crew[0]!] = DEBRIS_CREW_DAMAGE;

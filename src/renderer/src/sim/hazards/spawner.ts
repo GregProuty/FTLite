@@ -19,7 +19,7 @@ export function pickSpawnType(roll: number): 'fire' | 'breach' | 'power' | 'debr
   return roll < w.fire + w.breach + w.power ? 'power' : 'debris';
 }
 
-/** Stand-in for the director until increment 4: a jittered timer spawning a fire, a breach, a power failure or an inbound debris object up to SPAWN_CAP (spec §7). */
+/** Stand-in for the director until increment 4: a jittered timer spawning a fire, a breach, a power failure or an inbound debris object up to SPAWN_CAP (spec section 7). */
 export function spawner(state: SimState): void {
   if (state.tick < state.spawner.nextSpawnTick) return;
   const jitter = 1 + SPAWN_JITTER * (2 * nextFloat(state.rng.director) - 1);
