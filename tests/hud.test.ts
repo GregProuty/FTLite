@@ -8,7 +8,8 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
-import { failStation } from '../src/renderer/src/sim/power';
+import { failStation, shiftBar } from '../src/renderer/src/sim/power';
+import { HEAT_MAX, COOLANT_POOL } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { makeState, room, run, teleport, placeDebris, seconds } from './helpers/sim';
 
@@ -79,7 +80,7 @@ describe('buildHudModel', () => {
     const m0 = buildHudModel(s, slots(1), 'running', '');
     expect(m0.power).toEqual({ capacity: 10, used: 9 });
     expect(m0.stations.map((st) => st.kind)).toEqual([0, 6, 1, 2, 5, 4, 3]);
-    expect(m0.stations.find((st) => st.kind === StationKind.LifeSupport)).toEqual({ kind: 4, name: 'Life Support', level: 2, max: 3, online: true, occupant: null });
+    expect(m0.stations.find((st) => st.kind === StationKind.LifeSupport)).toEqual({ kind: 4, name: 'Life Support', level: 2, max: 3, online: true, occupant: null, heat: 0, coolant: 0, overdriven: false });
     failStation(s, eng); teleport(s, 0, 18.5, 9.5); s.stations.repair[eng] = 0.4;
     const m = buildHudModel(s, slots(1), 'running', '');
     expect(m.threats).toEqual([{ icon: 'icon.power', text: 'Power: Engineering' }]);
@@ -96,7 +97,8 @@ describe('buildHudModel', () => {
     expect(p.seated).toBe(StationKind.Engineering); expect(p.cancelPrompt).toBe('Stand'); expect(p.confirmPrompt).toBe(''); expect(p.interactPrompt).toBe('');
     const panel = p.console as EngineeringPanel;
     expect(panel.cursor).toBe(StationKind.Weapons); expect(panel.pool).toBe(1);
-    expect(panel.rows[StationKind.Weapons]).toEqual({ kind: 1, name: 'Weapons', level: 2, max: 3, failed: false });
+    expect(panel.rows[StationKind.Weapons]).toEqual({ kind: 1, name: 'Weapons', level: 2, max: 3, failed: false, heat: 0, coolant: 0, overdriven: false });
+    expect(panel.coolantFree).toBe(COOLANT_POOL);
     expect(panel.rows).toHaveLength(7);
   });
   it('shows the Doors panel with the selected door, or No doors on a doorless ship', () => {
@@ -146,5 +148,18 @@ describe('buildHudModel', () => {
     const sciPanel = m.players[0]!.console as SciencePanel, navPanel = m.players[1]!.console as NavigationPanel;
     expect(sciPanel.kind).toBe('science'); expect(sciPanel.leadSeconds).toBeCloseTo(18); expect(sciPanel.warnedCount).toBe(1);
     expect(navPanel.kind).toBe('navigation'); expect(navPanel.evadeChance).toBeCloseTo(0.35);
+  });
+  it('reports heat fraction, coolant and overdrive per Engineering row and per station, and the free coolant', () => {
+    const s = makeState(1);
+    const eng = s.derived.stationOfKind[StationKind.Engineering]!, nav = s.derived.stationOfKind[StationKind.Navigation]!;
+    s.power.capacity = 20; shiftBar(s, nav, 1); shiftBar(s, nav, 1);
+    s.stations.heat[nav] = HEAT_MAX / 2; s.stations.coolant[nav] = 2; s.stations.coolant[s.derived.stationOfKind[StationKind.Science]!] = 1;
+    sitDown(s, 0, eng);
+    const m = buildHudModel(s, slots(1), 'running', '');
+    const panel = m.players[0]!.console as EngineeringPanel;
+    expect(panel.rows[StationKind.Navigation]).toEqual({ kind: 0, name: 'Navigation', level: 3, max: 2, failed: false, heat: 0.5, coolant: 2, overdriven: true });
+    expect(panel.coolantFree).toBe(COOLANT_POOL - 3);
+    const st = m.stations.find((x) => x.kind === StationKind.Navigation)!;
+    expect(st.level).toBe(3); expect(st.max).toBe(2); expect(st.heat).toBe(0.5); expect(st.coolant).toBe(2); expect(st.overdriven).toBe(true);
   });
 });

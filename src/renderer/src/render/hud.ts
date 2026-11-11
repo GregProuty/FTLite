@@ -4,7 +4,7 @@ import type { GameAssets } from './assets';
 import { glyphName, type HudModel, type HudPlayer } from './hudModel';
 import { featureReady } from './fallback';
 import { STATION_NAMES } from '../sim/stationKinds';
-import { STATION_MAX } from '../sim/tuning';
+import { STATION_MAX, COOLANT_POOL } from '../sim/tuning';
 
 const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, WARN = 0xff6b5a;
 const LINE = 18;                 // px per text line at 16 px m5x7
@@ -27,19 +27,26 @@ export function createHud(parent: Container, assets: GameAssets) {
     return { root, set(frac) { fill.width = Math.max(0, Math.min(1, frac)) * w; fill.visible = frac > 0; } };
   };
 
-  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX);   // cells per row: the largest station maximum
-  const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean }): void } => {
+  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX) + 1;   // cells per row: the largest station maximum plus the overdrive cell
+  const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean; heat?: number; coolant?: number }): void } => {
     const root = new Container();
     const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
     const name = text(); name.position.set(12, 1); root.addChild(name);
     const cells = Array.from({ length: MAX_CELLS }, (_, c) => { const sp = new Sprite(assets.texture('ui.bar.bg')); sp.width = CELL; sp.height = CELL; sp.position.set(112 + c * (CELL + 2), 4); root.addChild(sp); return sp; });
+    const heatBg = new Sprite(assets.texture('ui.bar.bg')); heatBg.position.set(112, 14); heatBg.width = MAX_CELLS * (CELL + 2) - 2; heatBg.height = 2; heatBg.visible = false; root.addChild(heatBg);
+    const heatFill = new Sprite(assets.texture('ui.bar.fill')); heatFill.position.set(112, 14); heatFill.height = 2; heatFill.tint = WARN; heatFill.visible = false; root.addChild(heatFill);
     const status = text(16, WARN); status.position.set(150, 1); root.addChild(status);
+    const coolant = text(16, DIM); coolant.position.set(196, 1); root.addChild(coolant);
     return {
       root,
       set(o) {
         mark.visible = o.cursor; name.text = o.name; name.tint = o.tint;
-        cells.forEach((sp, c) => { sp.visible = c < o.max; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; sp.tint = o.failed ? WARN : 0xffffff; });   // failed stations tint their bar cells; reset otherwise
+        const shown = Math.max(o.max, o.level);
+        cells.forEach((sp, c) => { sp.visible = c < shown; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; sp.tint = o.failed || c >= o.max ? WARN : 0xffffff; });   // failed stations and the overdrive cell tint their cells
+        const heat = o.heat ?? 0;
+        heatBg.visible = heat > 0; heatFill.visible = heat > 0; heatFill.width = Math.max(0, Math.min(1, heat)) * heatBg.width;
         status.text = o.status; status.tint = o.status === 'OFF' || o.status === 'FAIL' ? WARN : DIM;   // occupant tags are informational, not warnings
+        coolant.text = o.coolant ? `C${o.coolant}` : '';
       }
     };
   };
@@ -113,9 +120,9 @@ export function createHud(parent: Container, assets: GameAssets) {
     ui.consoleBar.root.visible = false;
     if (p.console && 'rows' in p.console) {
       const c = p.console;
-      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }));
+      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
       ui.consoleRows.forEach((r) => { r.root.visible = true; });
-      fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}`, tint: DIM }]);
+      fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}   coolant ${c.coolantFree}/${COOLANT_POOL}`, tint: DIM }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'weapons') {
       const c = p.console;
       ui.consoleRows.forEach((r, k) => {
@@ -143,7 +150,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
       for (let k = 0; k < 7; k++) {
         const st = m.stations.find((s) => s.kind === k);
-        if (st) powerRows[k]!.set({ name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN });
+        if (st) powerRows[k]!.set({ name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN, heat: st.heat, coolant: st.coolant });
         powerRows[k]!.root.visible = !!st;
       }
       banner.text = m.message;
