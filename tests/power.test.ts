@@ -149,21 +149,26 @@ describe('bonus bars and shedding', () => {
     const arbDir = fc.constantFrom({}, { moveY: -1 }, { moveY: 1 }, { moveX: -1 }, { moveX: 1 });
     const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean(), stand: fc.boolean(), down: fc.boolean() }), { minLength: 20, maxLength: 200 });
     fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), fc.constantFrom(3, 4, 7, 8), arbScript, (seed, level, script) => {
-      const s = makeState(1, seed), eng = idx(s, StationKind.Engineering), eid = s.crew[0]!;
+      const s = makeState(2, seed), eng = idx(s, StationKind.Engineering), eid = s.crew[0]!;   // a second, idle crew member keeps the run alive through downings
       s.spawner.nextSpawnTick = 1e9; setSkill(s, 0, Skill.Engineering, level); sitDown(s, 0, eng);
+      const fill = () => { for (const kind of [StationKind.Science, StationKind.Medbay, StationKind.Navigation, StationKind.Weapons]) while (shiftBar(s, idx(s, kind), 1)) { /* spend the whole pool, bonus bars included */ } };
+      let usedAboveBase = false, ticks = 0;
       for (const e of script) {
         for (let t = 0; t < 5; t++) {
           if (Life.state[eid] === LifeState.Downed) reviveCrew(s, eid);                      // bring them back so the run keeps using the seat
-          if (Seated.station[eid]! < 0 && !e.stand) sitDown(s, 0, eng);
+          if (Seated.station[eid]! < 0 && !e.stand) { sitDown(s, 0, eng); fill(); }         // re-seat and allocate everything the bonus bars allow
           if (e.down && t === 2 && Seated.station[eid]! >= 0) Health.cur[eid] = 0;          // crewSystem downs them this tick: a forced stand through downCrew
-          run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm, cancelPressed: e.stand && t === 0 }));
+          run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm, cancelPressed: e.stand && t === 0 }, {}));
+          ticks++;
+          if (s.ended) return false;                                                        // the run must stay alive for the whole script
+          if (powerUsed(s) > s.power.capacity) usedAboveBase = true;
           if (powerUsed(s) > powerCapacity(s)) return false;
           let coolant = 0;
           for (let i = 0; i < s.stations.level.length; i++) { coolant += s.stations.coolant[i]!; if (s.stations.level[i]! > maxLevel(s.derived.stationKind[i]!)) return false; }
           if (coolant > COOLANT_POOL) return false;
         }
       }
-      return true;
+      return ticks === script.length * 5 && (level < 4 || usedAboveBase);                   // every tick ran; eligible engineers actually used bonus bars
     }), { numRuns: 25 });
   });
 });
