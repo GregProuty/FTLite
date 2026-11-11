@@ -12,7 +12,7 @@ Make the four crew members different people. Each player slot has a fixed, pre-m
 
 | Question | Decision |
 |---|---|
-| Who plays whom | Fixed by slot: player 1 is character 0, and so on. No state is needed; `characterOf(pid)`. |
+| Who plays whom | By default player 1 is character 0, and so on. The assignment is **stored** per crew member (`state.crewCharacter`, flattened and hashed) and set by `createSimState`, which takes an optional `characters` list; the default is `[0, 1, 2, 3]` (by slot). A fifth, trait-free, head-start-free **Recruit** character (index 4) exists so tests can opt out of traits: the test helper `makeState` assigns Recruit to everyone unless a test passes explicit characters. A lobby selector later only has to pass a different list. |
 | Trait mechanics | One Asset and one Complication per character, each a named effect implemented as a multiplier read by an existing formula. No trait touches RNG, hit chances or the HUD threat list. |
 | Names | Four original surnames, no reference to any franchise: **Okoro, Lindqvist, Reyes, Dubois**. |
 | Head starts | Set at `createSimState` as XP equal to a level threshold, so the HUD and formulas see them as ordinary levels; game-over gains are measured from them. |
@@ -28,14 +28,17 @@ Make the four crew members different people. Each player slot has a fixed, pre-m
 | 2 | Reyes | **Iron Lungs**: suffocation damage taken × 0.5 | **Slow Learner**: XP gained × 0.75 | Science 2, Navigation 1 |
 | 3 | Dubois | **Sprinter**: movement speed × 1.2 | **Frail**: bleed-out time × 0.6 | Weapons 3 |
 
-Each character's Asset and Complication are different mechanics, so no character cancels itself out. Every multiplier is a constant in `tuning.ts`.
+| 4 | Recruit | none | none | none |
+
+Each playable character's Asset and Complication are different mechanics, so no character cancels itself out. Every multiplier is a constant in `tuning.ts`. Recruit is the neutral baseline: it is never assigned by default in the game and exists for tests and as the fallback for a slot beyond the list.
 
 ## 4. Architecture
 
 | Module | Responsibility |
 |---|---|
-| `sim/characters.ts` (new) | `Asset`, `Complication` constants; `CHARACTERS: readonly Character[]` (`{ name, asset, complication, headStart: { skill, level }[] }`); `characterOf(pid)` (`CHARACTERS[pid % CHARACTERS.length]`); the trait readers `repairTraitMult(pid)`, `speedMult(pid)`, `fireDamageMult(pid)`, `o2DamageMult(pid)`, `xpMult(pid)`, `coolingTraitBonus(pid)`, `bleedoutMult(pid)`, each a pure function of the character (1 or 0 when the trait is absent); `applyHeadStarts(state)`. |
-| `sim/state.ts` | `createSimState` calls `applyHeadStarts` after the crew spawn. |
+| `sim/characters.ts` (new) | `Asset`, `Complication` constants; `CHARACTERS: readonly Character[]` (`{ name, asset, complication, headStart: { skill, level }[] }`, five entries, Recruit last as `RECRUIT = 4`); `DEFAULT_CHARACTERS = [0, 1, 2, 3]`; `characterOf(state, pid)` (`CHARACTERS[state.crewCharacter[pid]]`); the trait readers `repairTraitMult(state, pid)`, `speedMult(state, pid)`, `fireDamageMult(state, pid)`, `o2DamageMult(state, pid)`, `xpMult(state, pid)`, `coolingTraitBonus(state, pid)`, `bleedoutMult(state, pid)`, each a pure function of the crew member's character (1 or 0 when the trait is absent); `applyHeadStarts(state)`. |
+| `sim/state.ts` | `SimState.crewCharacter: Uint8Array` (per crew, a `CHARACTERS` index); `createSimState(layout, playerCount, seed, characters = DEFAULT_CHARACTERS)` fills it (`characters[pid] ?? RECRUIT`) and calls `applyHeadStarts` after the crew spawn. |
+| `sim/flatten.ts` | `crewCharacter` flattened in a new `characters` manifest section after `skills` (one field per crew), snapshotted and hashed. |
 | `sim/skills.ts` | `addXp` multiplies `amount` by `xpMult(pid)` (the one place all XP flows through). |
 | `sim/interact.ts` | repair progress multiplied by `repairTraitMult(pid)` as well as `repairMult(level)`. |
 | `sim/movement.ts` | per-player speed `CREW_SPEED × speedMult(pid)`. |
@@ -44,7 +47,7 @@ Each character's Asset and Complication are different mechanics, so no character
 | `sim/tuning.ts` | `SIM_VERSION = 7`; the seven trait constants. |
 | `render/hudModel.ts`, `hud.ts` | `HudPlayer.character { name, asset, complication }`; lobby lines; skills line with the name; `HudModel.summary: string[] | null` for the game-over screen. |
 
-No new authoritative state: traits and head starts are functions of `pid`, which is already part of the state (crew order), and head-start XP lives in `skills.xp`. Nothing new to flatten. `SIM_VERSION` 7 rejects version-6 snapshots.
+The only new authoritative state is `crewCharacter` (one byte per crew member); head-start XP lives in `skills.xp`. `SIM_VERSION` 7 rejects version-6 snapshots. The app's session creates its state with the default list, so players 1 to 4 are Okoro, Lindqvist, Reyes and Dubois; `tests/helpers/sim.ts`'s `makeState(players, seed, characters?)` defaults to Recruit for every crew member so the existing suites keep their trait-free, level-0 assumptions, and character tests pass `[0, 1, 2, 3]` explicitly. The survival gate passes the default list so the bot crew is Okoro and Lindqvist.
 
 ## 5. Trait semantics
 
@@ -57,7 +60,7 @@ No new authoritative state: traits and head starts are functions of `pid`, which
 - **Head starts**: `applyHeadStarts` writes `state.skills.xp[xpIndex(pid, skill)] = XP_THRESHOLDS[level]` for each entry of each spawned crew member (Science 2 and Navigation 1 for Reyes), once, at creation. Everything else starts at 0.
 - **Lookup guards**: every trait reader takes a crew `pid` (a non-negative integer); callers that may hold `-1` (an empty seat) guard first, so `coolingPerUnit` keeps its existing online check and adds `occ >= 0 ? coolingTraitBonus(occ) : 0`.
 
-Every reader takes `pid` so a future selector only has to change `characterOf`.
+Every reader takes `(state, pid)` and resolves the character through `state.crewCharacter`, so a future selector only has to pass a different list to `createSimState`.
 
 ## 6. Tuning
 
@@ -75,21 +78,21 @@ TRAIT_BLEEDOUT = 0.6            // Frail
 
 ## 7. HUD
 
-- **Model:** `HudPlayer.character: { name: string; asset: string; complication: string }` (display names such as `Quick Hands`), present for every slot including unjoined ones (the slot's character is fixed) and when there is no state. `HudModel.summary: string[] | null`: in the `gameover` phase, one line per crew member `Okoro: Repair 3 -> 4, Science 0 -> 1` listing only skills whose level rose above the head start (a crew member with no gain reads `Okoro: no skill gains`), else `null`. Levels are compared as `levelFor(xp)` now versus the head-start level (0 where none).
+- **Model:** `HudPlayer.character: { name: string; asset: string; complication: string }` (display names such as `Quick Hands`, empty strings for Recruit's traits). With a state it comes from `crewCharacter`; without one (the lobby) or for a slot beyond the crew it comes from `DEFAULT_CHARACTERS[pid]`, which is what the session will create. `HudModel.summary: string[] | null`: in the `gameover` phase, one line per crew member `Okoro: Repair 3 -> 4, Science 0 -> 1` listing only skills whose level rose above the head start (a crew member with no gain reads `Okoro: no skill gains`), else `null`. Levels are compared as `levelFor(xp)` now versus the head-start level (0 where none).
 - **Pixi:** lobby panels for an empty slot keep `P1: press Interact to join`; a joined slot in the lobby shows line 2 `Okoro` and line 3 `Quick Hands / Heavy Boots`. In a run, line 4 becomes `Okoro  N0 E0 W0 S0 C0 R3`. Game over: up to four `DIM` text rows under the banner glyphs (at `y = 88 + k × LINE`, centred like the banner) showing `summary`, hidden in every other phase.
 
 ## 8. Testing
 
 All under node, no pixi. New: `tests/characters.test.ts`. Extended: `tests/skills.test.ts`, `tests/interact.test.ts`, `tests/movement.test.ts`, `tests/crew.test.ts`, `tests/heat.test.ts`, `tests/snapshot.test.ts`, `tests/hud.test.ts`.
 
-- **Data:** four characters with distinct names, an Asset and a Complication each, no character whose Asset and Complication touch the same mechanic; `characterOf(4)` wraps to character 0; every trait reader returns the neutral value for characters without that trait.
+- **Data:** four playable characters with distinct names, an Asset and a Complication each, no character whose Asset and Complication touch the same mechanic; Recruit has neither and no head start; `createSimState` with no list assigns `[0, 1, 2, 3]` and a list shorter than the crew falls back to Recruit; `crewCharacter` round-trips through a snapshot and changes the hash; every trait reader returns the neutral value for Recruit.
 - **Head starts:** the complete fresh XP matrix of a four-player state equals exactly `XP_THRESHOLDS[3]` for Okoro's Repair, Lindqvist's Engineering and Dubois's Weapons, `XP_THRESHOLDS[2]` for Reyes's Science and `XP_THRESHOLDS[1]` for Reyes's Navigation (unscaled by Slow Learner), and 0 in every other entry; the HUD skills show the levels; `stationOutput` for Dubois seated at Weapons uses level 3.
 - **Effects:** Okoro (Quick Hands and Repair 3, combined multiplier `1.25 × repairMult(3) = 1.475`) completes a fire or power repair in `6 / 1.475 ≈ 4.07 s` and a breach in `8 / 1.475 ≈ 5.42 s`, each asserted incomplete two ticks before the computed completion tick and complete two ticks after; two Okoros cannot exist, so the cooperative case pairs Okoro with Lindqvist (Repair 0, no trait) and asserts the sum of their rates; revive time is unchanged for Okoro; Okoro's speed is 0.85 × and Dubois's 1.2 × of `CREW_SPEED` over a one-second straight run on open floor, and the existing `movement.test.ts` expectations for player 0 are updated to Okoro's 0.85 (or use a neutral character); Lindqvist seated at Engineering gives `coolingPerUnit = HEAT_COOL_UNIT + 1 + floor(0.2 × 3)` and Okoro gives `HEAT_COOL_UNIT + 0`; Lindqvist in a burning room loses `FIRE_DAMAGE × 1.5 × DT` per tick and Okoro `FIRE_DAMAGE × DT`; Reyes in a suffocating room loses `O2_DAMAGE × 0.5 × DT`; Slow Learner scales every XP path: Reyes gains `0.75 × XP_RATE × DT` per productive Navigation tick, `0.75 × XP_PER_EVADE_ROLL` per roll, `0.75 × XP_PER_SHOT` per shot when seated at Weapons, `0.75 × XP_RATE × HAZARD_DT` per Life Support delivery and `0.75 × XP_RATE × DT` per repair tick, while Okoro gains the full amounts, and `addXp(state, 2, skill, 100)` adds 75 against 100 for `pid 0`; Dubois downed through `downCrew` starts at `0.6 × BLEEDOUT_TIME = 18 s` and, with a Conscious teammate present, dies after 18 s on clean floor and after 9 s in fire or low oxygen, while Okoro starts at `BLEEDOUT_TIME`; a debris impact hurts Lindqvist by exactly `DEBRIS_CREW_DAMAGE` (Flammable does not apply).
-- **Existing tests touched by the characters:** `movement.test.ts` (player 0 speed is now Okoro's 0.85 ×), `hud.test.ts` (Lindqvist's skills vector starts `[0, 3, 0, 0, 0, 0]`, so the mixed-levels expectation becomes `[0, 3, 10, 0, 0, 0]`), and any interact or crew test that assumed a level-0, trait-free player 0 or 1; each is updated to the character's values rather than weakened.
+- **Existing tests:** unchanged, because `makeState` assigns Recruit; the character tests build their states with `makeState(n, seed, [0, 1, 2, 3])`. The golden replay and the survival gate use the default (playable) list.
 - **Snapshot:** version-6 snapshots rejected; round trip unchanged in shape; same-seed determinism with the four characters.
 - **HUD model:** `character` fields for slots 0 to 3 with and without state; the game-over `summary` lists gained skills with head-start baselines (`Reyes: Science 2 -> 3` after XP, `Okoro: no skill gains`); with the same completed state passed under the `lobby`, `paused` and `running` phases (the session keeps the finished state when it returns to the lobby) the summary is `null`, and under `gameover` it is the exact list.
-- **Survival gate:** seeds 1 to 3 pass; the bot crew now has Okoro and Lindqvist (two players), so repair and movement speeds differ per crew member.
-- **Golden replay:** re-blessed once (version 7, head starts, traits) with the cause recorded.
+- **Survival gate:** seeds 1 to 3 pass with the default list (the bot crew is Okoro and Lindqvist, so repair and movement speeds differ per crew member).
+- **Golden replay:** re-blessed once (version 7, the `crewCharacter` field, head starts and traits for the default crew) with the cause recorded.
 
 ## 9. Gate
 
