@@ -9,6 +9,7 @@ import { intentFor } from './step';
 import { stationOnline, sitDown } from './stations';
 import { repairStation } from './power';
 import { Skill, skillLevelOf, repairMult, addXp } from './skills';
+import { repairTraitMult } from './characters';
 import { XP_RATE, DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME } from './tuning';
 
 export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3, Power: 4 } as const;
@@ -121,20 +122,20 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
   }
   // Repair: every holder adds progress.
   for (let pid = 0; pid < state.playerCount; pid++) {
-    const t = targets[pid]!, level = skillLevelOf(state, pid, Skill.Repair);
+    const t = targets[pid]!, level = skillLevelOf(state, pid, Skill.Repair), trait = repairTraitMult(state, pid);
     if (t.kind === TargetKind.Fire) {
       if (!(state.rooms.fire[t.index]! > 0)) continue;                             // an earlier holder this tick already put it out
-      state.rooms.fireRepair[t.index]! += DT * repairMult(level) / REPAIR_TIME_FIRE;
+      state.rooms.fireRepair[t.index]! += DT * repairMult(level) * trait / REPAIR_TIME_FIRE;
       addXp(state, pid, Skill.Repair, XP_RATE * DT);
       if (state.rooms.fireRepair[t.index]! >= 1) extinguishRoom(state, t.index);
     } else if (t.kind === TargetKind.Breach) {
       if (!state.breaches.active[t.index]) continue;                                // an earlier holder this tick already repaired it
-      state.breaches.repair[t.index]! += DT * repairMult(level) / REPAIR_TIME_BREACH;
+      state.breaches.repair[t.index]! += DT * repairMult(level) * trait / REPAIR_TIME_BREACH;
       addXp(state, pid, Skill.Repair, XP_RATE * DT);
       if (state.breaches.repair[t.index]! >= 1) repairBreach(state, t.index);
     } else if (t.kind === TargetKind.Power) {
       if (!state.stations.failed[t.index]) continue;                                // an earlier holder this tick already completed it
-      state.stations.repair[t.index]! += DT * repairMult(level) / REPAIR_TIME_POWER;
+      state.stations.repair[t.index]! += DT * repairMult(level) * trait / REPAIR_TIME_POWER;
       addXp(state, pid, Skill.Repair, XP_RATE * DT);
       if (state.stations.repair[t.index]! >= 1) repairStation(state, t.index);
     }

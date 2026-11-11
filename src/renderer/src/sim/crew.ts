@@ -1,6 +1,7 @@
 import type { SimState } from './state';
 import { Position, Health, Life, LifeState } from './components';
 import { conditionRoomAt } from './grid';
+import { fireDamageMult, o2DamageMult, bleedoutMult } from './characters';
 import { standUp } from './stations';
 import { shedPower } from './power';
 import { DT, FIRE_DAMAGE, O2_DAMAGE, SUFFOCATE_FRAC, BLEEDOUT_TIME, BLEED_HAZARD_MULT, HEALTH_MAX, REVIVE_HEALTH_FRAC } from './tuning';
@@ -29,7 +30,7 @@ export function crewSystem(state: SimState): void {
     const inFire = r >= 0 && state.rooms.fire[r]! > 0;
     const lowO2 = r >= 0 && state.rooms.o2[r]! / state.derived.volume[r]! < SUFFOCATE_FRAC;
     if (Life.state[eid] === LifeState.Conscious) {
-      const dmg = (inFire ? FIRE_DAMAGE : 0) + (lowO2 ? O2_DAMAGE : 0);
+      const dmg = (inFire ? FIRE_DAMAGE * fireDamageMult(state, pid) : 0) + (lowO2 ? O2_DAMAGE * o2DamageMult(state, pid) : 0);
       if (dmg > 0) Health.cur[eid] = Math.max(0, Health.cur[eid]! - dmg * DT);
       if (Health.cur[eid] === 0) downCrew(state, pid);
     } else {
@@ -44,6 +45,6 @@ export function crewSystem(state: SimState): void {
 /** Downed transition, shared by environmental damage and debris impacts: stands the player and starts the bleed-out. */
 export function downCrew(state: SimState, pid: number): void {
   const eid = state.crew[pid]!;
-  Life.state[eid] = LifeState.Downed; standUp(state, pid); shedPower(state); Life.bleed[eid] = BLEEDOUT_TIME;
+  Life.state[eid] = LifeState.Downed; standUp(state, pid); shedPower(state); Life.bleed[eid] = BLEEDOUT_TIME * bleedoutMult(state, pid);
   Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1;
 }

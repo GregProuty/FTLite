@@ -3,6 +3,7 @@ import type { SimState } from './state';
 import { Position, Life, LifeState, Seated } from './components';
 import { solidAt } from './grid';
 import { intentFor } from './step';
+import { speedMult } from './characters';
 import { CREW_SPEED, CREW_HALF, DT, MOVE_EPS } from './tuning';
 
 type Solid = (tx: number, ty: number) => boolean;
@@ -37,7 +38,7 @@ export function movementSystem(state: SimState, intents: readonly Intent[]): voi
     if (Seated.station[eid]! >= 0 || state.scratch.stoodThisTick[pid]) continue;
     const it = intentFor(intents, pid);
     if (it.moveX === 0 && it.moveY === 0) continue;
-    const p = moveAABB(solid, Position.x[eid]!, Position.y[eid]!, it.moveX * CREW_SPEED * DT, it.moveY * CREW_SPEED * DT, CREW_HALF);
+    const p = moveAABB(solid, Position.x[eid]!, Position.y[eid]!, it.moveX * CREW_SPEED * speedMult(state, pid) * DT, it.moveY * CREW_SPEED * speedMult(state, pid) * DT, CREW_HALF);
     Position.x[eid] = p.x; Position.y[eid] = p.y;
   }
 }
