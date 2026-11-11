@@ -19,7 +19,8 @@
 - Every test runs under node; no test imports pixi, and no file a test imports does.
 - Determinism: frequency from `rng.hazards` at spawn (third draw, after room and flight); every shot is exactly one `rng.combat` draw; scanning, loading and regeneration draw nothing. All new per-run state (`debris.frequency/scanned/scan`, `weapons.selector/torpedoStock/torpedoLoaded/torpedoLoad/torpedoRegen`, `science.scanning`) is in `SimState`, flattened, snapshotted and hashed. `SIM_VERSION` becomes `5`; version-4 snapshots are rejected.
 - Tuning (exact): `FREQ_COUNT = 3`; `SCAN_TIME = 6`; `BEAM_MATCH_BASE = 0.65`, `BEAM_MATCH_SCALE = 0.30`; `BEAM_MISS_BASE = 0.15`, `BEAM_MISS_SCALE = 0.10`; `TORP_HIT_BASE = 0.85`, `TORP_HIT_SCALE = 0.10`; `TORP_START = 3`, `TORP_CAP = 6`; `TORP_LOAD_TIME = 10`; `TORP_REGEN_TIME = 90`. `BEAM_HIT_BASE` and `BEAM_HIT_SCALE` are deleted.
-- Outputs at skill 0: Weapons level 1 → 0.5, level 2 → 0.75, level 4 (overdrive) → 1.0; Science level 1 → 0.375, level 2 → 0.75, level 3 → 1.125. Thresholds: match 0.80 / 0.875 / 0.95, mismatch 0.20 / 0.225 / 0.25, torpedo 0.90 / 0.925 / 0.95 at Weapons outputs 0.5 / 0.75 / 1.0. Scan 16 s / 8 s / 5.33 s at Science levels 1 / 2 / 3. Load 20 s / 13.33 s / 10 s at Weapons levels 1 / 2 / 4.
+- Outputs at skill 0 (`level / STATION_MAX × 0.75`; Weapons max 3, Science max 2): Weapons level 1 → 0.25, level 2 (starter) → 0.5, level 3 → 0.75, level 4 (overdrive) → 1.0; Science level 1 (starter) → 0.375, level 2 → 0.75, level 3 → 1.125. Thresholds: match 0.80 / 0.875 / 0.95, mismatch 0.20 / 0.225 / 0.25, torpedo 0.90 / 0.925 / 0.95 at Weapons outputs 0.5 / 0.75 / 1.0. Scan 16 s / 8 s / 5.33 s at Science levels 1 / 2 / 3. Beam charge 12 s at Weapons level 2. Load 40 s / 20 s / 13.33 s / 10 s at Weapons levels 1 / 2 / 3 / 4.
+- Input order within a seated tick: stand edge consumes the tick; else stick edge first, then Confirm on the resulting cursor and selector.
 - `consoleSystem` per-tick order before the player loop: `chargeBeam`, `regenTorpedo`, `loadTorpedo`, `scanStep`. Step order otherwise unchanged.
 - Selector: Left `(sel + 3) % 4`, Right `(sel + 1) % 4`; starts at 0; persists across sits. Firing: beam needs `charge >= 1`, torpedo needs `torpedoLoaded`; one draw; reset charge or loaded either way; hit removes the object. Unready or no valid target: no draw.
 - Scanning: Confirm on an active, warned, unscanned cursor target sets `science.scanning = 1`; `scanStep` progresses only while `scanning`, Science online and occupied, and the cursor active, warned, unscanned; at 1 → `scanned = 1`, `scanning = 0`. `standUp` from Science clears `scanning`.
@@ -69,7 +70,7 @@ export function placeDebris(state: SimState, room: number, ticksOut: number, war
 }
 ```
 
-Append to `tests/debris.test.ts` (imports to add: `spawnDebris, removeDebris` from `../src/renderer/src/sim/debris` if missing, `sitDown, standUp` from stations, `cycleTarget` from debrisTargets, `Dir` from `../src/renderer/src/sim/dir`, `FREQ_COUNT` from tuning, `createRng, nextFloat` from `../src/shared/rng`, `run` from the helpers; `StationKind`, `makeState`, `placeDebris`, `room` are present):
+Append to `tests/debris.test.ts` (imports to add: `spawnDebris, removeDebris` from `../src/renderer/src/sim/debris` if missing, `sitDown, standUp` from stations, `cycleTarget` from debrisTargets, `Dir` from `../src/renderer/src/sim/dir`, `FREQ_COUNT, TORP_START` from tuning, `createRng, nextFloat` from `../src/shared/rng`, `run` from the helpers; `StationKind`, `makeState`, `placeDebris`, `room` are present):
 
 ```ts
 describe('frequency and shared cursors (2b-ii)', () => {
@@ -83,6 +84,14 @@ describe('frequency and shared cursors (2b-ii)', () => {
       expect(s.rng.hazards.s).toBe(three.s);                                 // room, flight, frequency: exactly three draws
     }
     expect(FREQ_COUNT).toBe(3);
+  });
+  it('a fresh state starts with selector 0, TORP_START stock and every other new field at 0', () => {
+    const s = makeState(2);
+    expect(s.weapons).toEqual({ charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 });
+    expect(s.science).toEqual({ scanning: 0 });
+    expect(Array.from(s.debris.frequency).every((v) => v === 0)).toBe(true);
+    expect(Array.from(s.debris.scanned).every((v) => v === 0)).toBe(true);
+    expect(Array.from(s.debris.scan).every((v) => v === 0)).toBe(true);
   });
   it('removeDebris clears frequency, scanned and scan, and retargets the Science cursor like the Weapons cursor', () => {
     const s = makeState(2), A = room(s, 'A'), wpn = s.derived.stationOfKind[StationKind.Weapons]!, sci = s.derived.stationOfKind[StationKind.Science]!;
@@ -273,10 +282,19 @@ describe('scanning', () => {
     expect(s.science.scanning).toBe(1); expect(s.debris.scan[0]).toBe(0);     // starts this tick, progresses from the next
     run(s, 1);
     expect(s.debris.scan[0]).toBeCloseTo(DT * 0.375 / SCAN_TIME);
+    run(s, 1, () => intents(confirm));
+    expect(s.science.scanning).toBe(1);                                        // Confirm while scanning never stops it
     run(s, seconds(16) + 1);
     expect(s.debris.scanned[0]).toBe(1); expect(s.debris.scan[0]).toBe(1); expect(s.science.scanning).toBe(0);
     run(s, 1, () => intents(confirm));
     expect(s.science.scanning).toBe(0);                                        // Confirm on a scanned object does nothing
+    placeDebris(s, A, 1e6, 1, undefined, 1);                                   // slot 1, unscanned
+    s.stations.cursor[i] = 1; run(s, 1, () => intents(confirm)); run(s, 30);
+    const p1 = s.debris.scan[1]!; expect(p1).toBeGreaterThan(0);
+    s.stations.cursor[i] = 0; run(s, 30);                                      // a scanned object is selected while scanning: nothing progresses
+    expect(s.science.scanning).toBe(1); expect(s.debris.scan[1]).toBe(p1); expect(s.debris.scan[0]).toBe(1);
+    run(s, 1, () => intents(cancel)); failStation(s, i);                       // revealed information survives a stand and a failure
+    expect(s.debris.scanned[0]).toBe(1); expect(s.debris.frequency[0]).toBe(2);
   });
   it('level 2 scans within 8 s; overdriven within 5.4 s; unmanned or offline never progresses', () => {
     const a = makeState(1), ia = sci(a), A = room(a, 'A');
@@ -398,13 +416,14 @@ In `tests/weapons.test.ts`: change the import to `beamHits, torpedoHits, chargeB
 describe('selector', () => {
   it('Left/Right cycle F1, F2, F3, Torpedo with wrap and survive standing; Up/Down still cycle targets', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
-    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1); sitDown(s, 0, i);
+    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 600, 1); sitDown(s, 0, i); s.weapons.charge = 1;
     expect(s.weapons.selector).toBe(Weapon.BeamF1);
     const edge = (p: { moveX?: number; moveY?: number }) => { run(s, 1, () => intents(p)); run(s, 1, () => intents({})); };
     edge(right); expect(s.weapons.selector).toBe(Weapon.BeamF2);
     edge(right); edge(right); expect(s.weapons.selector).toBe(Weapon.Torpedo);
     edge(right); expect(s.weapons.selector).toBe(Weapon.BeamF1);                 // wraps
     edge(left); expect(s.weapons.selector).toBe(Weapon.Torpedo);                 // wraps backwards
+    expect(s.weapons.charge).toBe(1);                                            // cycling never touches the charge
     edge(down); expect(s.weapons.selector).toBe(Weapon.Torpedo); expect(s.stations.cursor[i]).toBe(0);
     run(s, 1, () => intents({ cancelPressed: true })); sitDown(s, 0, i);
     expect(s.weapons.selector).toBe(Weapon.Torpedo);                             // persists across sits
@@ -420,10 +439,10 @@ describe('firing', () => {
     return { s, i, one };
   };
   it('a matched beam hits on 0.627 and a mismatched one misses on the same draw; charge resets and the torpedo is untouched either way', () => {
-    const hit = armed(Weapon.BeamF2, 2, 1);                                      // level 2: match threshold 0.875
+    const hit = armed(Weapon.BeamF2, 2, 1);                                      // starter level 2 (output 0.5): match threshold 0.80
     expect(fireWeapon(hit.s)).toBe(true);
     expect(hit.s.debris.active[0]).toBe(0); expect(hit.s.weapons.charge).toBe(0); expect(hit.s.weapons.torpedoLoaded).toBe(1); expect(hit.s.rng.combat.s).toBe(hit.one.s);
-    const miss = armed(Weapon.BeamF1, 2, 1);                                     // mismatch threshold 0.225
+    const miss = armed(Weapon.BeamF1, 2, 1);                                     // mismatch threshold 0.20
     expect(fireWeapon(miss.s)).toBe(false);
     expect(miss.s.debris.active[0]).toBe(1); expect(miss.s.weapons.charge).toBe(0); expect(miss.s.weapons.torpedoLoaded).toBe(1); expect(miss.s.rng.combat.s).toBe(miss.one.s);
     const unscanned = armed(Weapon.BeamF3, 3, 1);                                // the true frequency decides, scanned or not
@@ -450,6 +469,9 @@ describe('firing', () => {
     s.weapons.selector = Weapon.BeamF1; s.weapons.charge = 0.5; s.weapons.torpedoLoaded = 1;
     run(s, 1, () => intents(confirm));
     expect(s.debris.active[0]).toBe(1); expect(s.weapons.torpedoLoaded).toBe(1); expect(s.rng.combat.s).toBe(c0);
+    const unwarned = placeDebris(s, A, 600, 0); s.stations.cursor[i] = unwarned; s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoStock = 2;
+    run(s, 1, () => intents(confirm));                                           // loaded torpedo, unwarned target: nothing
+    expect(s.debris.active[unwarned]).toBe(1); expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(2); expect(s.rng.combat.s).toBe(c0);
   });
   it('beamHits and torpedoHits thresholds at outputs 0.5, 0.75, 1.0, probed clear of float boundaries; a match never loses to a mismatch', () => {
     expect(beamHits(0.78, 0.5, true)).toBe(true); expect(beamHits(0.82, 0.5, true)).toBe(false);       // 0.80
@@ -486,10 +508,10 @@ describe('torpedo loading', () => {
     expect(s.weapons.torpedoStock).toBe(TORP_START);
     run(s, 60);
     expect(s.weapons.torpedoLoad).toBe(0);                                      // nobody seated
-    sitDown(s, 0, i);                                                           // level 2: output 0.75
+    sitDown(s, 0, i);                                                           // starter level 2: output 0.5
     run(s, 1);
-    expect(s.weapons.torpedoLoad).toBeCloseTo(DT * 0.75 / TORP_LOAD_TIME);
-    run(s, Math.ceil(seconds(TORP_LOAD_TIME / 0.75)) + 2);
+    expect(s.weapons.torpedoLoad).toBeCloseTo(DT * 0.5 / TORP_LOAD_TIME);
+    run(s, seconds(TORP_LOAD_TIME / 0.5) + 2);                                  // 20 s
     expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(TORP_START - 1); expect(s.weapons.torpedoLoad).toBe(0);
     run(s, 60);
     expect(s.weapons.torpedoLoad).toBe(0);                                      // tube full: no second load
@@ -497,7 +519,7 @@ describe('torpedo loading', () => {
     run(s, 60);
     expect(s.weapons.torpedoLoad).toBe(0);                                      // no stock
   });
-  it('standing or failing mid-load keeps progress and stock; a loaded torpedo survives both; level 1 and overdrive load in 20 s and 10 s', () => {
+  it('standing or failing mid-load keeps progress and stock; a loaded torpedo survives both; level 1 and overdrive load in 40 s and 10 s', () => {
     const s = makeState(2), i = wpn(s);
     s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, i);
     run(s, seconds(5));
@@ -511,10 +533,11 @@ describe('torpedo loading', () => {
     run(s, 1, () => intents({ cancelPressed: true }, {})); failStation(s, i);
     expect(s.weapons.torpedoLoaded).toBe(1);
     const a = makeState(1), ia = wpn(a); a.spawner.nextSpawnTick = 1e9; a.stations.level[ia] = 1; sitDown(a, 0, ia);
-    run(a, seconds(20) + 2); expect(a.weapons.torpedoLoaded).toBe(1);
+    run(a, seconds(40) - 2); expect(a.weapons.torpedoLoaded).toBe(0);           // level 1 (output 0.25): 40 s
+    run(a, 4); expect(a.weapons.torpedoLoaded).toBe(1);
     const b = makeState(1), ib = overdrive(b, StationKind.Weapons); b.spawner.nextSpawnTick = 1e9; sitDown(b, 0, ib);
     run(b, seconds(10) + 2); expect(b.weapons.torpedoLoaded).toBe(1);
-    run(a, seconds(19)); expect(a.weapons.torpedoLoaded).toBe(1); expect(a.weapons.torpedoLoad).toBe(0);   // tube full: nothing loads until it is fired
+    run(a, seconds(39)); expect(a.weapons.torpedoLoaded).toBe(1); expect(a.weapons.torpedoLoad).toBe(0);   // tube full: nothing loads until it is fired
   });
 });
 
@@ -680,8 +703,8 @@ In `tests/console.test.ts`, replace the body of the test `Weapons: sit, charge t
     placeDebris(s, A, seconds(30), 1, undefined, 1);
     run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
     expect(s.weapons.selector).toBe(Weapon.Torpedo);
-    run(s, seconds(14));                                                         // the tube has loaded since the sit (13.3 s at level 2); about 12 s have passed, so wait out the rest
-    expect(s.weapons.torpedoLoaded).toBe(1);
+    run(s, seconds(21));                                                         // the tube has been loading since the sit (20 s at level 2); about 12 s have passed, so wait out the rest with margin
+    expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(TORP_START - 1);
     s.rng.combat.s = 7;
     run(s, 1, () => intents({}, confirm));
     expect(s.debris.active[1]).toBe(0); expect(s.weapons.torpedoLoaded).toBe(0); expect(s.weapons.torpedoStock).toBe(TORP_START - 1);
@@ -702,9 +725,9 @@ describe('properties', () => {
       const s = makeState(1, seed), i = wpn(s), A = room(s, 'A');
       s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, i); s.weapons.selector = selector;
       for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3));
-      s.weapons.torpedoLoad = 0.99;                                               // the first load completes almost at once
+      s.weapons.charge = 1; s.weapons.torpedoLoaded = 1; s.weapons.torpedoLoad = 0.99;   // ready on every selector; the first reload completes almost at once
       let draws = 0, shots = 0, prevStock = s.weapons.torpedoStock, prevLoaded = s.weapons.torpedoLoaded;
-      for (const e of script) {
+      for (const e of [{ dir: {}, confirm: true }, ...script]) {                   // a forced first Confirm: every run fires at least once
         for (let t = 0; t < 5; t++) {
           const before = s.rng.combat.s, w = s.weapons, c = s.stations.cursor[i]!;
           const ready = w.selector === Weapon.Torpedo ? w.torpedoLoaded === 1 : w.charge >= 1;
@@ -718,7 +741,7 @@ describe('properties', () => {
           if (s.debris.active.every((a) => !a)) for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3));
         }
       }
-      return draws === shots;
+      return draws === shots && shots >= 1;
     }), { numRuns: 25 });
   });
 });
