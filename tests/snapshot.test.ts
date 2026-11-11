@@ -40,11 +40,33 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-3 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-4 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 3 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 3;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 4 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 4;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
+  });
+  it('round-trips frequency, scan state, the weapon selector, torpedo state and scanning; each new field alone changes the hash', () => {
+    const s = makeState(2, 5);
+    placeDebris(s, 3, 900, 1, undefined, 3); s.debris.scanned[0] = 1; s.debris.scan[0] = 1; placeDebris(s, 4, 1200, 1, undefined, 2); s.debris.scan[1] = 0.4;
+    s.weapons.selector = 3; s.weapons.torpedoStock = 5; s.weapons.torpedoLoaded = 1; s.weapons.torpedoLoad = 0.25; s.weapons.torpedoRegen = 0.5; s.science.scanning = 1;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(hashState(t)).toBe(hashState(s));
+    expect(Array.from(t.debris.frequency)).toEqual(Array.from(s.debris.frequency));
+    expect(Array.from(t.debris.scanned)).toEqual(Array.from(s.debris.scanned));
+    expect(Array.from(t.debris.scan)).toEqual(Array.from(s.debris.scan));
+    expect(t.weapons).toEqual(s.weapons); expect(t.science).toEqual(s.science);
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
+    expect(mutate((u) => { u.debris.frequency[2] = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.debris.scanned[2] = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.debris.scan[2] = 0.5; })).not.toBe(base);
+    expect(mutate((u) => { u.weapons.selector = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.weapons.torpedoStock = 2; })).not.toBe(base);
+    expect(mutate((u) => { u.weapons.torpedoLoaded = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.weapons.torpedoLoad = 0.5; })).not.toBe(base);
+    expect(mutate((u) => { u.weapons.torpedoRegen = 0.5; })).not.toBe(base);
+    expect(mutate((u) => { u.science.scanning = 1; })).not.toBe(base);
   });
   it('weapons charge and fire script is deterministic and survives a mid-charge save/load', () => {
     const mk = () => {

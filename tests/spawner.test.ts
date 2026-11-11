@@ -57,7 +57,7 @@ describe('timer spawner', () => {
     sitDown(s, 0, nav);
     // Force a spawn every tick, clearing the other hazards so the cap never blocks, until the seeded spawner fails Navigation.
     for (let n = 0; n < 2000 && !s.stations.failed[nav]; n++) {
-      s.spawner.nextSpawnTick = s.tick; s.rooms.fire.fill(0); s.breaches.active.fill(0);
+      s.spawner.nextSpawnTick = s.tick; s.rooms.fire.fill(0); s.breaches.active.fill(0); s.debris.active.fill(0);
       for (let i = 0; i < s.stations.failed.length; i++) if (i !== nav) s.stations.failed[i] = 0;
       run(s, 1);
     }

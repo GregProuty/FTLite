@@ -8,7 +8,7 @@ import { igniteRoom } from './hazards/fire';
 import { activateBreach } from './hazards/breach';
 import { downCrew } from './crew';
 import { nextTarget } from './debrisTargets';
-import { TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE } from './tuning';
+import { TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT } from './tuning';
 
 export function activeDebrisCount(state: SimState): number {
   let n = 0; for (const a of state.debris.active) if (a) n++; return n;
@@ -22,16 +22,23 @@ export function spawnDebris(state: SimState): number {
   if (slot < 0) return -1;
   const room = nextInt(state.rng.hazards, state.derived.volume.length);
   const flight = DEBRIS_FLIGHT + (2 * nextFloat(state.rng.hazards) - 1) * DEBRIS_FLIGHT_JITTER;
+  const frequency = 1 + nextInt(state.rng.hazards, FREQ_COUNT);
+  db.frequency[slot] = frequency; db.scanned[slot] = 0; db.scan[slot] = 0;
   db.active[slot] = 1; db.stableId[slot] = state.nextStableId++; db.room[slot] = room;
   db.impactTick[slot] = state.tick + Math.round(flight * TICK_HZ); db.warned[slot] = 0;
   return slot;
 }
 
-/** Free a slot. The Weapons cursor is retargeted by StableId before the identity is cleared, so the target order survives removal. */
+const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
+
+/** Free a slot. Every targeting console's cursor is retargeted by StableId before the identity is cleared, so the target order survives removal. */
 export function removeDebris(state: SimState, slot: number): void {
-  const db = state.debris, wpn = state.derived.stationOfKind[StationKind.Weapons]!;
-  if (wpn >= 0 && state.stations.cursor[wpn] === slot) state.stations.cursor[wpn] = nextTarget(state, db.stableId[slot]!, slot);
-  db.active[slot] = 0; db.warned[slot] = 0; db.stableId[slot] = 0;
+  const db = state.debris;
+  for (const kind of TARGETING_KINDS) {
+    const i = state.derived.stationOfKind[kind]!;
+    if (i >= 0 && state.stations.cursor[i] === slot) state.stations.cursor[i] = nextTarget(state, db.stableId[slot]!, slot);
+  }
+  db.active[slot] = 0; db.warned[slot] = 0; db.stableId[slot] = 0; db.frequency[slot] = 0; db.scanned[slot] = 0; db.scan[slot] = 0;
 }
 
 /** Detection lead in seconds: the unmanned value unless Science is online and occupied. */
@@ -74,12 +81,15 @@ function resolveImpact(state: SimState, slot: number): void {
 
 /** Step: detection for every active object, then impacts for every object due this tick, ascending slot (spec 2a-ii section 4). */
 export function debrisSystem(state: SimState): void {
-  const db = state.debris, lead = scienceLead(state), wpn = state.derived.stationOfKind[StationKind.Weapons]!;
+  const db = state.debris, lead = scienceLead(state);
   for (let k = 0; k < db.active.length; k++) {
     if (!db.active[k] || db.warned[k]) continue;
     if (db.impactTick[k]! - state.tick <= lead * TICK_HZ) {   // compare in ticks: lead x 60 is exact for the tuning values, remaining x DT is not
       db.warned[k] = 1;
-      if (wpn >= 0 && state.stations.occupant[wpn]! >= 0 && state.stations.cursor[wpn]! < 0) state.stations.cursor[wpn] = k;   // first warning auto-selects
+      for (const kind of TARGETING_KINDS) {   // first warning auto-selects
+        const i = state.derived.stationOfKind[kind]!;
+        if (i >= 0 && state.stations.occupant[i]! >= 0 && state.stations.cursor[i]! < 0) state.stations.cursor[i] = k;
+      }
     }
   }
   for (let k = 0; k < db.active.length; k++) if (db.active[k] && db.impactTick[k]! <= state.tick) resolveImpact(state, k);

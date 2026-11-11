@@ -30,13 +30,14 @@ export function seconds(n: number): number { return Math.round(n * TICK_HZ); }
 
 export function room(state: SimState, id: string): number { return state.derived.roomIndex.get(id)!; }
 
-/** Place a debris object directly (no RNG draw): target room, ticks until impact, warned flag and an optional explicit StableId. */
-export function placeDebris(state: SimState, room: number, ticksOut: number, warned = 0, stableId?: number): number {
+/** Place a debris object directly (no RNG draw): target room, ticks until impact, warned flag, optional explicit StableId and frequency (default 1). */
+export function placeDebris(state: SimState, room: number, ticksOut: number, warned = 0, stableId?: number, frequency = 1): number {
   const db = state.debris;
   let slot = -1;
   for (let i = 0; i < db.active.length; i++) if (!db.active[i]) { slot = i; break; }
   if (slot < 0) throw new Error('no free debris slot');
   db.active[slot] = 1; db.room[slot] = room; db.impactTick[slot] = state.tick + ticksOut; db.warned[slot] = warned;
+  db.frequency[slot] = frequency; db.scanned[slot] = 0; db.scan[slot] = 0;
   db.stableId[slot] = stableId ?? state.nextStableId++;
   if (stableId !== undefined && stableId >= state.nextStableId) state.nextStableId = stableId + 1;
   return slot;

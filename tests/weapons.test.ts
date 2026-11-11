@@ -63,13 +63,13 @@ describe('targeting', () => {
 describe('firing', () => {
   it('a hit destroys the target and resets charge; a miss keeps it and resets charge; one combat draw per shot', () => {
     const s = makeState(1), i = wpn(s), A = room(s, 'A');
-    placeDebris(s, A, 600, 1); sitDown(s, 0, i); s.weapons.charge = 1; s.rng.combat.s = 7;        // first draw 0.012 < 0.70: hit
+    placeDebris(s, A, 600, 1); sitDown(s, 0, i); s.weapons.charge = 1; s.rng.combat.s = 7;        // first draw below 0.80: hit
     const oneDraw = createRng(7); nextFloat(oneDraw);
     expect(fireBeam(s)).toBe(true);
     expect(s.debris.active[0]).toBe(0); expect(s.weapons.charge).toBe(0); expect(s.stations.cursor[i]).toBe(-1); expect(s.rng.combat.s).toBe(oneDraw.s);
     const t = makeState(1), j = wpn(t);
-    placeDebris(t, A, 600, 1); sitDown(t, 0, j); t.weapons.charge = 1; t.rng.combat.s = 4;        // first draw 0.924 >= 0.70: miss
-    const oneDrawMiss = createRng(4); nextFloat(oneDrawMiss);
+    placeDebris(t, A, 600, 1); sitDown(t, 0, j); t.weapons.charge = 1; t.rng.combat.s = 36;       // first draw above 0.80: miss
+    const oneDrawMiss = createRng(36); nextFloat(oneDrawMiss);
     expect(fireBeam(t)).toBe(false);
     expect(t.debris.active[0]).toBe(1); expect(t.weapons.charge).toBe(0); expect(t.stations.cursor[j]).toBe(0); expect(t.rng.combat.s).toBe(oneDrawMiss.s);
   });
@@ -86,10 +86,10 @@ describe('firing', () => {
     expect(s.weapons.charge).toBeGreaterThan(0.5);                                 // charging continued that tick
   });
   it('beamHits thresholds at Weapons levels 1, 2 and 3 and is monotonic in output', () => {
-    // Values sit clear of the float boundary (0.55 + 0.30 x 0.25 is not exactly 0.625 in floats).
-    expect(beamHits(0.61, 0.25)).toBe(true); expect(beamHits(0.64, 0.25)).toBe(false);     // level 1 threshold 0.625
-    expect(beamHits(0.69, 0.5)).toBe(true); expect(beamHits(0.71, 0.5)).toBe(false);       // level 2 threshold 0.70
-    expect(beamHits(0.76, 0.75)).toBe(true); expect(beamHits(0.79, 0.75)).toBe(false);     // level 3 threshold 0.775
+    // Values sit clear of the float boundary. Matched-beam thresholds at outputs 0.5 / 0.75 / 1.0.
+    expect(beamHits(0.78, 0.5)).toBe(true); expect(beamHits(0.82, 0.5)).toBe(false);       // threshold 0.80
+    expect(beamHits(0.86, 0.75)).toBe(true); expect(beamHits(0.89, 0.75)).toBe(false);     // threshold 0.875
+    expect(beamHits(0.94, 1.0)).toBe(true); expect(beamHits(0.96, 1.0)).toBe(false);       // threshold 0.95
     for (const u of [0.1, 0.6, 0.7, 0.9]) expect(Number(beamHits(u, 0.75))).toBeGreaterThanOrEqual(Number(beamHits(u, 0.25)));
   });
 });

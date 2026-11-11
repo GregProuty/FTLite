@@ -32,7 +32,7 @@ export function sitDown(state: SimState, pid: number, i: number): void {
   const kind = d.stationKind[i]!;
   state.stations.cursor[i] = kind === StationKind.Engineering ? StationKind.Engineering
     : kind === StationKind.Doors ? (d.doorEdges.length ? 0 : -1)
-    : kind === StationKind.Weapons ? (warnedTargets(state)[0] ?? -1)
+    : kind === StationKind.Weapons || kind === StationKind.Science ? (warnedTargets(state)[0] ?? -1)
     : 0;
 }
 
@@ -42,4 +42,5 @@ export function standUp(state: SimState, pid: number): void {
   if (i < 0) return;
   Seated.station[eid] = -1; state.stations.occupant[i] = -1;
   state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0;
+  if (state.derived.stationKind[i] === StationKind.Science) state.science.scanning = 0;   // spec 2b-ii section 4: any stand pauses the scan
 }

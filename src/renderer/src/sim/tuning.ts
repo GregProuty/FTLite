@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 4;
+export const SIM_VERSION = 5;
 export const HULL_MAX = 100;
 export const HEALTH_MAX = 100;
 export const CREW_SPEED = 4;      // tiles per second
@@ -63,7 +63,6 @@ export const DEBRIS_FLIGHT = 30, DEBRIS_FLIGHT_JITTER = 6;             // second
 export const SCIENCE_LEAD_UNMANNED = 4;               // seconds of warning with Science unoccupied or offline
 export const SCIENCE_LEAD_BASE = 12, SCIENCE_LEAD_SCALE = 16;          // seated lead = base + scale x output (18 s at level 1, 24 s at level 2, skill 0)
 export const BEAM_CHARGE_TIME = 6;                    // seconds at output 1 (24 / 12 / 8 s at levels 1 / 2 / 3, skill 0)
-export const BEAM_HIT_BASE = 0.55, BEAM_HIT_SCALE = 0.30;              // hit chance = base + scale x output
 export const EVADE_BASE = 0.20, EVADE_SCALE = 0.40;                    // evasion chance = base + scale x output
 export const DEBRIS_HULL_DAMAGE = 8;                  // of HULL_MAX per impact
 export const DEBRIS_CREW_DAMAGE = 20;                 // of HEALTH_MAX per Conscious crew member in the hit room
@@ -77,3 +76,13 @@ export const HEAT_COOL_IDLE = 4;                      // per hazard tick while n
 export const COOLANT_POOL = 4;                        // shared units, never consumed
 export const COOLANT_MAX_PER_STATION = 2;
 export const OVERHEAT_FIRE_CHANCE = 0.5;              // rng.hazards, one draw per overheat
+
+// Scanning, frequencies and torpedoes (increment 2b-ii)
+export const FREQ_COUNT = 3;
+export const SCAN_TIME = 6;                           // seconds at output 1 (16 / 8 / 5.3 s at Science levels 1 / 2 / 3)
+export const BEAM_MATCH_BASE = 0.65, BEAM_MATCH_SCALE = 0.30;   // beam tuned to the object's frequency
+export const BEAM_MISS_BASE = 0.15, BEAM_MISS_SCALE = 0.10;     // beam on any other frequency
+export const TORP_HIT_BASE = 0.85, TORP_HIT_SCALE = 0.10;       // homing: frequency does not matter
+export const TORP_START = 3, TORP_CAP = 6;
+export const TORP_LOAD_TIME = 10;                     // seconds at output 1 to move one from stock into the tube
+export const TORP_REGEN_TIME = 90;                    // seconds per stock unit while Weapons is online

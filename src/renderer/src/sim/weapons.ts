@@ -5,11 +5,11 @@ import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
 import { warnedTargets } from './debrisTargets';
 import { Dir } from './dir';
-import { DT, BEAM_CHARGE_TIME, BEAM_HIT_BASE, BEAM_HIT_SCALE } from './tuning';
+import { DT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE } from './tuning';
 
 /** Pure hit threshold: a roll u in [0, 1) hits when below base + scale x Weapons output. */
 export function beamHits(u: number, output: number): boolean {
-  return u < BEAM_HIT_BASE + BEAM_HIT_SCALE * output;
+  return u < BEAM_MATCH_BASE + BEAM_MATCH_SCALE * output;   // matched-beam threshold; Task 3 adds the mismatch branch
 }
 
 /** Once per tick: the beam charges while Weapons is online and occupied; the charge is kept otherwise (spec 2a-ii section 5). */

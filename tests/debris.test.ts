@@ -1,13 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { warnedTargets, nextTarget } from '../src/renderer/src/sim/debrisTargets';
 import { spawnDebris, removeDebris, scienceLead, evades, debrisSystem, activeDebrisCount } from '../src/renderer/src/sim/debris';
-import { sitDown } from '../src/renderer/src/sim/stations';
+import { sitDown, standUp } from '../src/renderer/src/sim/stations';
+import { cycleTarget } from '../src/renderer/src/sim/debrisTargets';
+import { Dir } from '../src/renderer/src/sim/dir';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { failStation } from '../src/renderer/src/sim/power';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { EndReason } from '../src/renderer/src/sim/crew';
-import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ } from '../src/renderer/src/sim/tuning';
+import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ, FREQ_COUNT, TORP_START } from '../src/renderer/src/sim/tuning';
 import { makeState, placeDebris, room, run, teleport, seconds, intents } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
 
@@ -217,5 +219,61 @@ describe('evasion', () => {
     const v = makeState(1); sitDown(v, 0, nav(v)); failStation(v, nav(v)); const c2 = v.rng.combat.s;   // offline: stood, no roll
     placeDebris(v, A, 0); debrisSystem(v);
     expect(v.rng.combat.s).toBe(c2);
+  });
+});
+
+describe('frequency and shared cursors (2b-ii)', () => {
+  it('spawn draws a frequency in 1..FREQ_COUNT as the third hazards draw; pinned seeds give each value', () => {
+    for (const [seed, freq, rm] of [[2, 1, 6], [1, 2, 5], [7, 3, 0]] as const) {
+      const s = makeState(1); s.rng.hazards.s = seed;
+      const three = createRng(seed); nextFloat(three); nextFloat(three); nextFloat(three);
+      const slot = spawnDebris(s);
+      expect(s.debris.frequency[slot]).toBe(freq); expect(s.debris.room[slot]).toBe(rm);
+      expect(s.debris.scanned[slot]).toBe(0); expect(s.debris.scan[slot]).toBe(0);
+      expect(s.rng.hazards.s).toBe(three.s);                                 // room, flight, frequency: exactly three draws
+    }
+    expect(FREQ_COUNT).toBe(3);
+  });
+  it('a fresh state starts with selector 0, TORP_START stock and every other new field at 0', () => {
+    const s = makeState(2);
+    expect(s.weapons).toEqual({ charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 });
+    expect(s.science).toEqual({ scanning: 0 });
+    expect(Array.from(s.debris.frequency).every((v) => v === 0)).toBe(true);
+    expect(Array.from(s.debris.scanned).every((v) => v === 0)).toBe(true);
+    expect(Array.from(s.debris.scan).every((v) => v === 0)).toBe(true);
+  });
+  it('removeDebris clears frequency, scanned and scan, and retargets the Science cursor like the Weapons cursor', () => {
+    const s = makeState(2), A = room(s, 'A'), wpn = s.derived.stationOfKind[StationKind.Weapons]!, sci = s.derived.stationOfKind[StationKind.Science]!;
+    placeDebris(s, A, 600, 1, 10, 2); placeDebris(s, A, 600, 1, 20, 3); placeDebris(s, A, 600, 1, 30, 1);   // slots 0, 1, 2
+    s.debris.scanned[1] = 1; s.debris.scan[1] = 1;
+    sitDown(s, 0, wpn); sitDown(s, 1, sci);
+    expect(s.stations.cursor[wpn]).toBe(0); expect(s.stations.cursor[sci]).toBe(0);         // smallest StableId on sit, both consoles
+    s.stations.cursor[wpn] = 1; s.stations.cursor[sci] = 1;
+    removeDebris(s, 1);
+    expect(s.stations.cursor[wpn]).toBe(2); expect(s.stations.cursor[sci]).toBe(2);         // next StableId (30) for both
+    expect(s.debris.frequency[1]).toBe(0); expect(s.debris.scanned[1]).toBe(0); expect(s.debris.scan[1]).toBe(0);
+  });
+  it('the first warning auto-selects for a seated Science operator at -1; cycleTarget cycles and wraps for either console', () => {
+    const s = makeState(1), A = room(s, 'A'), sci = s.derived.stationOfKind[StationKind.Science]!;
+    s.spawner.nextSpawnTick = 1e9;
+    sitDown(s, 0, sci);
+    expect(s.stations.cursor[sci]).toBe(-1);
+    placeDebris(s, A, 60, 0);                                                                // inside the seated lead: warned next tick
+    run(s, 1);
+    expect(s.debris.warned[0]).toBe(1); expect(s.stations.cursor[sci]).toBe(0);
+    placeDebris(s, A, 600, 1, 50); placeDebris(s, A, 600, 1, 40);                           // slots 1 (id 50), 2 (id 40)
+    cycleTarget(s, sci, Dir.Down); expect(s.stations.cursor[sci]).toBe(2);
+    cycleTarget(s, sci, Dir.Down); expect(s.stations.cursor[sci]).toBe(1);
+    cycleTarget(s, sci, Dir.Down); expect(s.stations.cursor[sci]).toBe(0);                  // wraps
+    cycleTarget(s, sci, Dir.Up); expect(s.stations.cursor[sci]).toBe(1);                    // wraps backwards
+    cycleTarget(s, sci, Dir.Left); expect(s.stations.cursor[sci]).toBe(1);                  // left/right do not move the target
+  });
+  it('standUp from Science clears scanning; from any other seat it does not', () => {
+    const s = makeState(2), sci = s.derived.stationOfKind[StationKind.Science]!, nav = s.derived.stationOfKind[StationKind.Navigation]!;
+    sitDown(s, 0, sci); sitDown(s, 1, nav); s.science.scanning = 1;
+    standUp(s, 1);
+    expect(s.science.scanning).toBe(1);
+    standUp(s, 0);
+    expect(s.science.scanning).toBe(0);
   });
 });
