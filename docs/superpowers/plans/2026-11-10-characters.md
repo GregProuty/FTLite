@@ -55,11 +55,13 @@ Create `tests/characters.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import { CHARACTERS, RECRUIT, DEFAULT_CHARACTERS, Asset, Complication, characterOf, repairTraitMult, speedMult, fireDamageMult, o2DamageMult, xpMult, coolingTraitBonus, bleedoutMult } from '../src/renderer/src/sim/characters';
-import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
+import { Skill, xpIndex, skillCurve } from '../src/renderer/src/sim/skills';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { SKILL_COUNT, XP_THRESHOLDS } from '../src/renderer/src/sim/tuning';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
+import { SKILL_COUNT, XP_THRESHOLDS, STATION_MAX } from '../src/renderer/src/sim/tuning';
 import { LAYOUT, makeState, RECRUITS } from './helpers/sim';
 
 describe('character data', () => {
@@ -100,12 +102,17 @@ describe('assignment and head starts', () => {
     expect(Array.from(neutral.crewCharacter)).toEqual([RECRUIT, RECRUIT]); expect(Array.from(neutral.skills.xp).every((v) => v === 0)).toBe(true);
     expect(RECRUITS).toEqual([4, 4, 4, 4]);
   });
-  it('crewCharacter round-trips through a snapshot and changes the hash', () => {
-    const s = makeState(2, 5, DEFAULT_CHARACTERS);
+  it('crewCharacter round-trips through a snapshot (a non-default assignment, which the loader cannot recreate) and alone changes the hash', () => {
+    const s = makeState(2, 5, [3, 2]);
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect(Array.from(t.crewCharacter)).toEqual([0, 1]); expect(hashState(t)).toBe(hashState(s));
-    expect(hashState(makeState(2, 5, [1, 0]))).not.toBe(hashState(s));
-    expect(hashState(makeState(2, 5))).not.toBe(hashState(s));
+    expect(Array.from(t.crewCharacter)).toEqual([3, 2]); expect(hashState(t)).toBe(hashState(s));
+    const u = makeState(2, 5, [3, 2]); u.crewCharacter[1] = RECRUIT;                                      // only the assignment byte differs: XP was written at creation for [3, 2]
+    expect(Array.from(u.skills.xp)).toEqual(Array.from(s.skills.xp)); expect(hashState(u)).not.toBe(hashState(s));
+  });
+  it('Dubois seated at Weapons runs it at level 3 output', () => {
+    const s = createSimState(LAYOUT, 4, 1), wpn = s.derived.stationOfKind[StationKind.Weapons]!;
+    sitDown(s, 3, wpn);
+    expect(stationOutput(s, wpn)).toBeCloseTo((2 / STATION_MAX[StationKind.Weapons]!) * skillCurve(3));
   });
 });
 ```
@@ -241,7 +248,7 @@ Golden re-blessed: SIM_VERSION 7, the crewCharacter field, and head-start XP for
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `tests/characters.test.ts` (imports to add: `Health, Life, LifeState, Position` from components; `sitDown` from stations; `coolingPerUnit` from heat; `igniteRoom` from hazards/fire; `activateBreach` from hazards/breach; `failStation` from power; `downCrew, reviveCrew` from crew; `Weapon` from weapons; `repairMult, addXp` from skills; `DT, HAZARD_DT, HAZARD_EVERY, CREW_SPEED, FIRE_DAMAGE, O2_DAMAGE, BLEEDOUT_TIME, HEALTH_MAX, HEAT_COOL_UNIT, HEAT_COOL_SKILL, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, XP_RATE, XP_PER_SHOT, XP_PER_EVADE_ROLL, DEBRIS_CREW_DAMAGE, TRAIT_REPAIR_MULT, TRAIT_SLOW_SPEED, TRAIT_FAST_SPEED, TRAIT_FIRE_DAMAGE, TRAIT_O2_DAMAGE, TRAIT_XP_MULT, TRAIT_BLEEDOUT` from tuning; `intents, run, teleport, room, seconds, placeDebris` from the helpers; `StationKind`):
+Append to `tests/characters.test.ts` (imports to add: `Health, Life, LifeState, Position` from components; `coolingPerUnit` from heat; `debrisSystem` from debris; `igniteRoom` from hazards/fire; `activateBreach` from hazards/breach; `failStation` from power; `downCrew, reviveCrew` from crew; `Weapon` from weapons; `repairMult, addXp` from skills; `DT, HAZARD_DT, HAZARD_EVERY, CREW_SPEED, FIRE_DAMAGE, O2_DAMAGE, BLEEDOUT_TIME, HEALTH_MAX, HEAT_COOL_UNIT, HEAT_COOL_SKILL, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, XP_RATE, XP_PER_SHOT, XP_PER_EVADE_ROLL, DEBRIS_CREW_DAMAGE, TRAIT_REPAIR_MULT, TRAIT_SLOW_SPEED, TRAIT_FAST_SPEED, TRAIT_FIRE_DAMAGE, TRAIT_O2_DAMAGE, TRAIT_XP_MULT, TRAIT_BLEEDOUT` from tuning; `intents, run, teleport, room, seconds, placeDebris` from the helpers; `StationKind`):
 
 ```ts
 const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.stationOfKind[kind]!;
@@ -265,9 +272,9 @@ describe('trait effects', () => {
     const nP = ticksFor(REPAIR_TIME_POWER, m);
     run(pw, nP - 2, () => intents({ interactHeld: true })); expect(pw.stations.failed[eng]).toBe(1);
     run(pw, 4, () => intents({ interactHeld: true })); expect(pw.stations.failed[eng]).toBe(0);
-    const two = makeState(2, 1, [0, RECRUIT]), G2 = room(two, 'G'); two.spawner.nextSpawnTick = 1e9; igniteRoom(two, G2); teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5);
+    const two = makeState(2, 1, DEFAULT_CHARACTERS), G2 = room(two, 'G'); two.spawner.nextSpawnTick = 1e9; igniteRoom(two, G2); teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5);
     run(two, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
-    expect(two.rooms.fireRepair[G2]).toBeCloseTo(DT * (m + 1) / REPAIR_TIME_FIRE, 12);                   // Okoro's 1.475 plus the Recruit's 1
+    expect(two.rooms.fireRepair[G2]).toBeCloseTo(DT * (m + 1) / REPAIR_TIME_FIRE, 12);                   // Okoro's 1.475 plus Lindqvist's 1 (Repair 0, no repair trait)
     const rv = makeState(2, 1, DEFAULT_CHARACTERS); rv.spawner.nextSpawnTick = 1e9;
     Life.state[rv.crew[1]!] = LifeState.Downed; Life.bleed[rv.crew[1]!] = 30; teleport(rv, 0, 2.5, 9.5); teleport(rv, 1, 3.0, 9.5);
     run(rv, seconds(REVIVE_TIME) - 2, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Downed);
@@ -307,7 +314,7 @@ describe('trait effects', () => {
     expect(HEALTH_MAX - Health.cur[t.crew[2]!]!).toBeCloseTo(O2_DAMAGE * TRAIT_O2_DAMAGE * DT, 9);
     const d = makeState(2, 1, DEFAULT_CHARACTERS), A = room(d, 'A');
     d.spawner.nextSpawnTick = 1e9; teleport(d, 1, 2.5, 2.5); d.rng.combat.s = 36;
-    placeDebris(d, A, 0, 1); run(d, 1);
+    placeDebris(d, A, 0, 1); debrisSystem(d);                                                             // the impact alone: through step() the fire it may start would add environmental damage this tick
     expect(HEALTH_MAX - Health.cur[d.crew[1]!]!).toBeCloseTo(DEBRIS_CREW_DAMAGE, 9);                      // Lindqvist in the hit room: no fire multiplier on impacts
   });
   it('Slow Learner scales every XP path by 0.75 while Okoro earns the full amounts', () => {
@@ -343,7 +350,7 @@ describe('trait effects', () => {
     const b = mk(); downCrew(b, 3); igniteRoom(b, room(b, 'G'));
     run(b, seconds(BLEEDOUT_TIME * TRAIT_BLEEDOUT / 2) - 1); expect(Life.state[b.crew[3]!]).toBe(LifeState.Downed);
     run(b, 2); expect(Life.state[b.crew[3]!]).toBe(LifeState.Dead);
-    const c = mk(); downCrew(c, 3); c.rooms.o2[room(c, 'G')] = 0; c.doors.state.fill(2);
+    const c = mk(); downCrew(c, 3); c.rooms.o2[room(c, 'G')] = 0; c.doors.state.fill(2); c.stations.level[idx(c, StationKind.LifeSupport)] = 0;   // Life Support off, or injection refills G within nine seconds
     run(c, seconds(BLEEDOUT_TIME * TRAIT_BLEEDOUT / 2) - 1); expect(Life.state[c.crew[3]!]).toBe(LifeState.Downed);
     run(c, 2); expect(Life.state[c.crew[3]!]).toBe(LifeState.Dead);
   });
