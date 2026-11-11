@@ -146,3 +146,10 @@ Added to `docs/gates.md` as "Boarders-i":
 - Boarders breaking sealed doors, taking fire or oxygen damage, or being affected by Medbay rooms: Boarders-ii, if the playtest asks.
 - Boarders tied to the enemy ship (teleport-ins during an encounter) and a crew sidearm: later.
 - Carrying or dragging a Downed crew member out of a fight: deferred since the foundation.
+
+## 12. Amendments from the plan
+- `TargetKind.Fight = 5` is appended after `Power`; the sentinels `ALONE_IDLE = -1` and `ALONE_SABOTAGED = -2` are exported from `sim/boarders.ts`.
+- The telemetry `repairs` array length in `state.ts` is the literal 3 again (a Combat-ii polish had used `ENEMY_SYSTEM_COUNT`, same value, wrong meaning).
+- No survival-gate lever was needed: every seed passed at the first-pass tuning, but all three now bottom out below 5 crew health (seed 1 at 0.0, down from 14.9); recorded in `docs/gates.md` as a tuning item for the next feature. The solo acceptance row is overrun by the 4:00 party.
+- `repairStation` leaves a station at level 0, which `stationOnline` treats as offline, so the sabotage fixture that repairs Navigation also restores its level before expecting a second sabotage.
+- The world markers are drawn by `render/boarderLayer.ts`, covered by a node test for positions and removal; the renderer wiring and the look remain with the manual gate.
