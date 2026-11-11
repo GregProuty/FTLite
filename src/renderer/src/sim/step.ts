@@ -15,6 +15,7 @@ import { debrisSystem } from './debris';
 import { directorSystem } from './director';
 import { medbayStep } from './medbay';
 import { xpSystem } from './xp';
+import { telemetrySystem } from './telemetry';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
@@ -24,7 +25,7 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
 export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const hazardTick = state.tick % HAZARD_EVERY === 0;
-  state.scratch.doorToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0);
+  state.scratch.doorToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0); state.scratch.activeThisTick.fill(0);
   // (1) input, arbitration
   interactSystem(state, intents);
   // (2) control mode: seated input and the tick's door toggles
@@ -47,5 +48,6 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   medbayStep(state);
   // (7) crew lifecycle, run end
   crewSystem(state);
+  telemetrySystem(state);   // (8) telemetry: final-state samples and life edges, on the ending tick too
   state.tick++;
 }

@@ -8,6 +8,7 @@ import { reviveCrew } from './crew';
 import { intentFor } from './step';
 import { stationOnline, sitDown } from './stations';
 import { repairStation } from './power';
+import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER } from './telemetry';
 import { Skill, skillLevelOf, repairMult, addXp } from './skills';
 import { repairTraitMult } from './characters';
 import { XP_RATE, DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME } from './tuning';
@@ -114,6 +115,7 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
     const reviver = trying.includes(current) ? current : (trying[0] ?? -1);
     Life.reviverPid[o] = reviver;
     if (reviver >= 0) {
+      state.scratch.activeThisTick[reviver] = 1;
       Life.reviveProgress[o] = Math.min(1, Life.reviveProgress[o]! + DT / REVIVE_TIME);
       if (Life.reviveProgress[o] >= 1) reviveCrew(state, o);
     } else {
@@ -126,18 +128,18 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
     if (t.kind === TargetKind.Fire) {
       if (!(state.rooms.fire[t.index]! > 0)) continue;                             // an earlier holder this tick already put it out
       state.rooms.fireRepair[t.index]! += DT * repairMult(level) * trait / REPAIR_TIME_FIRE;
-      addXp(state, pid, Skill.Repair, XP_RATE * DT);
-      if (state.rooms.fireRepair[t.index]! >= 1) extinguishRoom(state, t.index);
+      state.scratch.activeThisTick[pid] = 1; addXp(state, pid, Skill.Repair, XP_RATE * DT);
+      if (state.rooms.fireRepair[t.index]! >= 1) { extinguishRoom(state, t.index); state.telemetry.repairs[REPAIR_FIRE]!++; }
     } else if (t.kind === TargetKind.Breach) {
       if (!state.breaches.active[t.index]) continue;                                // an earlier holder this tick already repaired it
       state.breaches.repair[t.index]! += DT * repairMult(level) * trait / REPAIR_TIME_BREACH;
-      addXp(state, pid, Skill.Repair, XP_RATE * DT);
-      if (state.breaches.repair[t.index]! >= 1) repairBreach(state, t.index);
+      state.scratch.activeThisTick[pid] = 1; addXp(state, pid, Skill.Repair, XP_RATE * DT);
+      if (state.breaches.repair[t.index]! >= 1) { repairBreach(state, t.index); state.telemetry.repairs[REPAIR_BREACH]!++; }
     } else if (t.kind === TargetKind.Power) {
       if (!state.stations.failed[t.index]) continue;                                // an earlier holder this tick already completed it
       state.stations.repair[t.index]! += DT * repairMult(level) * trait / REPAIR_TIME_POWER;
-      addXp(state, pid, Skill.Repair, XP_RATE * DT);
-      if (state.stations.repair[t.index]! >= 1) repairStation(state, t.index);
+      state.scratch.activeThisTick[pid] = 1; addXp(state, pid, Skill.Repair, XP_RATE * DT);
+      if (state.stations.repair[t.index]! >= 1) { repairStation(state, t.index); state.telemetry.repairs[REPAIR_POWER]!++; }
     }
   }
 }

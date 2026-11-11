@@ -98,6 +98,7 @@ export function updateStress(state: SimState): void {
   const d = state.director, raw = rawStress(state);
   const k = raw > d.stress ? STRESS_RISE : (anyUnattended(state) ? STRESS_FALL * 0.5 : STRESS_FALL);
   d.stress = Math.max(0, Math.min(1, d.stress + (raw - d.stress) * k));
+  if (d.stress > state.telemetry.maxStress) state.telemetry.maxStress = d.stress;
 }
 
 function idleOf(state: SimState, kind: number): number {
@@ -167,13 +168,13 @@ function attemptSpawn(state: SimState): boolean {
   if (activeHazardCount(state) >= spawnCap(minutesOf(state), state.playerCount)) return false;
   const type = chooseType(typeWeights(state), nextFloat(state.rng.director));
   if (!spawnOfType(state, type)) return false;
-  d.lastSpawnTick = state.tick; d.lastType = type; d.budgetLeft -= 1;
+  d.lastSpawnTick = state.tick; d.lastType = type; d.budgetLeft -= 1; state.telemetry.spawns[type]!++;
   return true;
 }
 
 export function enterPhase(state: SimState, phase: number): void {
   const d = state.director;
-  d.phase = phase; d.phaseTick = state.tick;
+  d.phase = phase; d.phaseTick = state.tick; state.telemetry.phaseEntries[phase]!++;
   if (phase === Phase.BuildUp) { d.budgetLeft = cycleBudget(minutesOf(state), state.playerCount); rearm(state); }
 }
 

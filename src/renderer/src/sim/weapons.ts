@@ -46,8 +46,8 @@ export function fireWeapon(state: SimState): boolean {
     hit = beamHits(nextFloat(state.rng.combat), output, w.selector + 1 === db.frequency[c]);   // the true frequency decides, scanned or not
     w.charge = 0;
   }
-  state.skills.lastShotTick = state.tick; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
-  if (hit) removeDebris(state, c);
+  state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
+  if (hit) { state.telemetry.hits++; removeDebris(state, c); }
   return hit;
 }
 

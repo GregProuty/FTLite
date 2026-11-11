@@ -4,8 +4,9 @@ import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { flatten } from '../src/renderer/src/sim/flatten';
 import { step } from '../src/renderer/src/sim/step';
-import { Position, Seated } from '../src/renderer/src/sim/components';
+import { Position, Seated, Life, LifeState } from '../src/renderer/src/sim/components';
 import { sitDown } from '../src/renderer/src/sim/stations';
+import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
@@ -42,10 +43,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-7 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-8 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 7 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 7;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 8 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 8;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -232,6 +233,42 @@ describe('snapshot', () => {
     expect(first.director.phase).toBe(Phase.BuildUp);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
     expect(transitions(resumed, 4500)).toBeGreaterThanOrEqual(2);
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+  it('a fresh telemetry block has the initial values; every telemetry field round-trips and each alone changes the hash', () => {
+    const s = makeState(2, 5), t = s.telemetry;
+    t.firstDownTick = 11; t.firstDownPid = 1; t.firstDeathTick = 22; t.firstDeathPid = 0; t.impacts = 3; t.evadeRolls = 4; t.evasions = 2; t.shots = 9; t.hits = 5; t.maxStress = 0.61;
+    for (let k = 0; k < STATION_COUNT; k++) t.mannedTicks[k] = 100 + k;
+    t.idleRun[0] = 7; t.idleRun[1] = 8; t.longestIdle[0] = 70; t.longestIdle[1] = 80; t.prevLife[0] = 1; t.prevLife[1] = 2;
+    t.spawns.set([1, 2, 3, 4]); t.repairs.set([5, 6, 7]); t.phaseEntries.set([3, 2, 2, 1]);
+    const u = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s)))).telemetry;
+    expect([u.firstDownTick, u.firstDownPid, u.firstDeathTick, u.firstDeathPid, u.impacts, u.evadeRolls, u.evasions, u.shots, u.hits, u.maxStress]).toEqual([11, 1, 22, 0, 3, 4, 2, 9, 5, 0.61]);
+    for (const k of ['mannedTicks', 'idleRun', 'longestIdle', 'prevLife', 'spawns', 'repairs', 'phaseEntries'] as const) expect(Array.from(u[k])).toEqual(Array.from(t[k]));
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (x: ReturnType<typeof makeState>['telemetry']) => void) => { const x = makeState(2, 5); f(x.telemetry); return hashState(x); };
+    expect(mutate((x) => { x.firstDownTick = 1; })).not.toBe(base); expect(mutate((x) => { x.firstDownPid = 1; })).not.toBe(base);
+    expect(mutate((x) => { x.firstDeathTick = 1; })).not.toBe(base); expect(mutate((x) => { x.firstDeathPid = 1; })).not.toBe(base);
+    expect(mutate((x) => { x.impacts = 1; })).not.toBe(base); expect(mutate((x) => { x.evadeRolls = 1; })).not.toBe(base);
+    expect(mutate((x) => { x.evasions = 1; })).not.toBe(base); expect(mutate((x) => { x.shots = 1; })).not.toBe(base);
+    expect(mutate((x) => { x.hits = 1; })).not.toBe(base); expect(mutate((x) => { x.maxStress = 0.5; })).not.toBe(base);
+    for (let k = 0; k < STATION_COUNT; k++) expect(mutate((x) => { x.mannedTicks[k] = 1; })).not.toBe(base);
+    for (let p = 0; p < 2; p++) { expect(mutate((x) => { x.idleRun[p] = 1; })).not.toBe(base); expect(mutate((x) => { x.longestIdle[p] = 1; })).not.toBe(base); expect(mutate((x) => { x.prevLife[p] = 1; })).not.toBe(base); }
+    for (let k = 0; k < 4; k++) expect(mutate((x) => { x.spawns[k] = 1; })).not.toBe(base);
+    for (let k = 0; k < 3; k++) expect(mutate((x) => { x.repairs[k] = 1; })).not.toBe(base);
+    for (let k = 0; k < 4; k++) expect(mutate((x) => { x.phaseEntries[k] = 7; })).not.toBe(base);
+  });
+  it('a run saved with an idle streak in progress and a Downed crew member continues through a new longest streak and the bleed-out like an uninterrupted run', () => {
+    const script = (s: ReturnType<typeof makeState>, ticks: number) => { for (let i = 0; i < ticks; i++) step(s, [NEUTRAL_INTENT, NEUTRAL_INTENT]); };
+    const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9;
+    const part = makeState(2, 31); part.director.nextSpawnTick = 1e9;
+    for (const s of [whole, part]) { script(s, 100); downCrew(s, 1); script(s, 50); }
+    expect(part.telemetry.idleRun[0]).toBeGreaterThan(0); expect(Life.state[part.crew[1]!]).toBe(LifeState.Downed); expect(part.telemetry.firstDeathTick).toBe(-1);
+    const savedLongest = part.telemetry.longestIdle[0]!;
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    script(whole, 2400); script(resumed, 2400);                      // 40 s: past the 30 s bleed-out
+    expect(resumed.telemetry.longestIdle[0]).toBeGreaterThan(savedLongest); expect(resumed.telemetry.firstDeathTick).toBeGreaterThan(150); expect(resumed.telemetry.firstDeathPid).toBe(1);
+    const fields = (s: ReturnType<typeof makeState>) => JSON.stringify(s.telemetry, (_k, v) => (ArrayBuffer.isView(v) ? Array.from(v as Int32Array) : v));
+    expect(fields(resumed)).toBe(fields(whole));
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 });
