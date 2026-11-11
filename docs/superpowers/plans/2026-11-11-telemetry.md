@@ -129,9 +129,13 @@ describe('telemetry: manned ticks and idle streaks', () => {
     downCrew(third, 2); teleport(third, 0, 2.5, 9.5); teleport(third, 1, 2.5, 9.5); teleport(third, 2, 2.5, 9.5);
     run(third, 5, () => intents(hold, hold, {}));
     expect(third.telemetry.idleRun[0]).toBe(0); expect(third.telemetry.idleRun[1]).toBe(5);   // pid 1 also holds Interact but is not the arbitrated reviver
-    const d = makeState(1); quiet(d); downCrew(d, 0); Life.bleed[d.crew[0]!] = 100; d.playerCount = 1;
-    telemetrySystem(d); telemetrySystem(d);
-    expect(d.telemetry.idleRun[0]).toBe(2);
+    const d = makeState(2); quiet(d); run(d, 3);
+    downCrew(d, 1); run(d, 2);                                       // Downed ticks are idle
+    expect(d.telemetry.idleRun[1]).toBe(5);
+    Life.bleed[d.crew[1]!] = DT / 2; run(d, 1);                        // bleeds out this tick
+    expect(Life.state[d.crew[1]!]).toBe(LifeState.Dead); expect(d.telemetry.idleRun[1]).toBe(6);
+    run(d, 4);                                                       // Dead ticks keep counting
+    expect(d.telemetry.idleRun[1]).toBe(10); expect(d.telemetry.longestIdle[1]).toBe(10);
   });
   it('the revive completion tick counts as active for the reviver', () => {
     const s = makeState(2); quiet(s);
@@ -172,6 +176,16 @@ describe('telemetry: first down and first death', () => {
     const tie = makeState(3); quiet(tie); run(tie, 4);
     downCrew(tie, 2); downCrew(tie, 1); run(tie, 1);
     expect([tie.telemetry.firstDownTick, tie.telemetry.firstDownPid]).toEqual([4, 1]);
+    Life.bleed[tie.crew[1]!] = DT / 2; Life.bleed[tie.crew[2]!] = DT / 2; run(tie, 1);   // both bleed out on tick 5; pid 0 stays Conscious
+    expect(Life.state[tie.crew[0]!]).toBe(LifeState.Conscious); expect(tie.ended).toBe(0);
+    expect([tie.telemetry.firstDeathTick, tie.telemetry.firstDeathPid]).toEqual([5, 1]);
+  });
+  it('a Conscious -> Dead jump in one tick sets both the down and the death edge', () => {
+    const s = makeState(2); quiet(s); run(s, 6);
+    Life.state[s.crew[1]!] = LifeState.Downed; Life.bleed[s.crew[1]!] = DT / 2;   // set directly, so telemetry last saw Conscious
+    run(s, 1);
+    expect(Life.state[s.crew[1]!]).toBe(LifeState.Dead);
+    expect([s.telemetry.firstDownTick, s.telemetry.firstDownPid, s.telemetry.firstDeathTick, s.telemetry.firstDeathPid]).toEqual([6, 1, 6, 1]);
   });
   it('ending-tick capture through step(): a solo downing ends the run on that tick and later steps leave every field unchanged', () => {
     const s = makeState(1); quiet(s); run(s, 7);
@@ -202,12 +216,17 @@ describe('telemetry: first down and first death', () => {
 
 describe('telemetry: event counters', () => {
   it('spawns per type through a pinned director roll; phaseEntries counts each enterPhase; maxStress follows the highest smoothed value', () => {
-    const s = makeState(2); armSpawn(s);
-    const before = Array.from(s.telemetry.spawns);
-    directorSystem(s);
-    const after = Array.from(s.telemetry.spawns);
-    expect(after.reduce((a, b) => a + b, 0) - before.reduce((a, b) => a + b, 0)).toBe(1);   // exactly one type incremented
-    expect(after[s.director.lastType]).toBe(before[s.director.lastType]! + 1);
+    const typesSeen = new Set<number>();
+    for (let seed = 1; seed <= 24; seed++) {                           // director seeds cover every type; each spawn increments exactly its own counter
+      const s = makeState(2); armSpawn(s); s.rng.director.s = seed;
+      directorSystem(s);
+      if (s.director.lastType < 0) continue;                          // a skipped attempt (no target) increments nothing
+      typesSeen.add(s.director.lastType);
+      const expected = [0, 0, 0, 0]; expected[s.director.lastType] = 1;
+      expect(Array.from(s.telemetry.spawns)).toEqual(expected);
+    }
+    expect([...typesSeen].sort()).toEqual([HazardType.Fire, HazardType.Breach, HazardType.Power, HazardType.Debris]);
+    const s = makeState(2);
     enterPhase(s, Phase.SustainPeak); enterPhase(s, Phase.PeakFade); enterPhase(s, Phase.Relax); enterPhase(s, Phase.BuildUp);
     expect(Array.from(s.telemetry.phaseEntries)).toEqual([2, 1, 1, 1]);
     const t = makeState(2); quiet(t);
@@ -358,7 +377,8 @@ export function telemetrySystem(state: SimState): void {
     if (active) t.idleRun[pid] = 0;
     else { t.idleRun[pid]!++; if (t.idleRun[pid]! > t.longestIdle[pid]!) t.longestIdle[pid] = t.idleRun[pid]!; }
     const life = Life.state[eid]!, prev = t.prevLife[pid]!;
-    if (prev !== LifeState.Downed && life === LifeState.Downed && t.firstDownTick < 0) { t.firstDownTick = state.tick; t.firstDownPid = pid; }
+    // Leaving Conscious is the "down" edge (a Conscious -> Dead jump in one tick sets both); reaching Dead is the "death" edge.
+    if (prev === LifeState.Conscious && life !== LifeState.Conscious && t.firstDownTick < 0) { t.firstDownTick = state.tick; t.firstDownPid = pid; }
     if (prev !== LifeState.Dead && life === LifeState.Dead && t.firstDeathTick < 0) { t.firstDeathTick = state.tick; t.firstDeathPid = pid; }
     t.prevLife[pid] = life;
   }
@@ -416,7 +436,7 @@ describe('telemetryRecord', () => {
   it('maps a crafted state to the exact record', () => {
     const s = makeState(2, 9, DEFAULT_CHARACTERS); quiet(s); const t = s.telemetry;
     s.tick = 1200; s.ended = 1; s.endReason = 1;                      // 20 s, hull loss
-    t.firstDownTick = 599; t.firstDownPid = 1; t.firstDeathTick = -1; t.firstDeathPid = -1;
+    t.firstDownTick = 599; t.firstDownPid = 1; t.firstDeathTick = 1199; t.firstDeathPid = 0;   // Okoro dies on the ending tick: reads as the duration
     t.mannedTicks[StationKind.Navigation] = 600; t.mannedTicks[StationKind.Doors] = 30;
     t.longestIdle[0] = 300; t.longestIdle[1] = 1200;
     t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]);
@@ -425,7 +445,7 @@ describe('telemetryRecord', () => {
     expect(r).toEqual({
       version: 1, simVersion: SIM_VERSION, seed: 9, playerCount: 2, characters: ['Okoro', 'Lindqvist'],
       endReason: 'hull', durationSeconds: 20,
-      firstDown: { who: 'Lindqvist', seconds: 10 }, firstDeath: null,
+      firstDown: { who: 'Lindqvist', seconds: 10 }, firstDeath: { who: 'Okoro', seconds: 20 },
       stationsNeverManned: ['Weapons', 'Science', 'Engineering', 'Life Support', 'Medbay'],
       mannedSeconds: { Navigation: 10, Weapons: 0, Science: 0, Engineering: 0, 'Life Support': 0, Medbay: 0, Doors: 0.5 },
       longestIdleSeconds: [5, 20],
@@ -436,6 +456,7 @@ describe('telemetryRecord', () => {
     expect(JSON.parse(JSON.stringify(r))).toEqual(r);
     s.ended = 1; s.endReason = 2; expect(telemetryRecord(s, 9).endReason).toBe('crew');
     s.ended = 0; expect(telemetryRecord(s, 9).endReason).toBe('running');
+    t.firstDeathTick = -1; t.firstDeathPid = -1; expect(telemetryRecord(s, 9).firstDeath).toBeNull();
   });
   it('lists only station kinds present on the ship, is pure, and returns fresh arrays', () => {
     const s = makeState(1); quiet(s); s.derived.stationOfKind[StationKind.Medbay] = -1;   // a layout without a Medbay console
@@ -450,7 +471,7 @@ describe('telemetryRecord', () => {
 });
 ```
 
-Check the skills row for Okoro and Lindqvist against `CHARACTERS` in `characters.ts` before running: Lindqvist's head start is Weapons 3 (`[0, 3, 0, 0, 0, 0]`, the HUD test uses it); Okoro's is Repair 3, raised to 4 by `setSkill`. If Okoro's head start includes another skill, put its level into the expected row.
+Check the skills row for Okoro and Lindqvist against `CHARACTERS` in `characters.ts` before running: the skill index order is Navigation, Engineering, Weapons, Science, Combat, Repair; Lindqvist's head start is Engineering 3 (`[0, 3, 0, 0, 0, 0]`, the HUD test uses it); Okoro's is Repair 3, raised to 4 by `setSkill`. If Okoro's head start includes another skill, put its level into the expected row.
 
 Create `tests/acceptance.test.ts`:
 
@@ -516,6 +537,9 @@ describe('acceptanceTable and runAcceptanceCli', () => {
     calls.length = 0; out.length = 0;
     runAcceptanceCli(['1', '5', '--json'], run, (s) => out.push(s));
     expect(calls.map((c) => c.seed)).toEqual([5, 5, 5]); expect(out).toHaveLength(4); expect(JSON.parse(out[1]!).seed).toBe(5);
+    calls.length = 0; out.length = 0;
+    runAcceptanceCli(['1', '5', '5', '2', '5'], run, (s) => out.push(s));             // duplicate seeds collapse, order kept
+    expect(calls.map((c) => [c.players, c.seed])).toEqual([[1, 5], [1, 2], [2, 5], [2, 2], [4, 5], [4, 2]]);
     calls.length = 0; out.length = 0;
     runAcceptanceCli(['abc'], run, (s) => out.push(s));
     expect(calls).toEqual([]); expect(out).toHaveLength(1); expect(out[0]).toMatch(/^usage:/);
@@ -634,7 +658,7 @@ const USAGE = 'usage: npm run acceptance [minutes] [seeds...] [--json]   (defaul
 export function runAcceptanceCli(argv: readonly string[], run: (a: AcceptanceArgs) => TelemetryRecord = runAcceptance, print: (line: string) => void = console.log): void {
   const json = argv.includes('--json'), nums = argv.filter((a) => a !== '--json');
   const minutes = nums.length ? Number(nums[0]) : ACCEPTANCE_MINUTES;
-  const seeds = nums.length > 1 ? nums.slice(1).map(Number) : [...DEFAULT_SEEDS];
+  const seeds = nums.length > 1 ? [...new Set(nums.slice(1).map(Number))] : [...DEFAULT_SEEDS];   // no duplicate combinations (spec section 8)
   if (!Number.isFinite(minutes) || minutes <= 0 || seeds.some((s) => !Number.isInteger(s))) { print(USAGE); return; }
   const records: TelemetryRecord[] = [];
   for (const players of PLAYER_COUNTS) for (const seed of seeds) records.push(run({ players, seed, minutes }));
@@ -713,8 +737,8 @@ describe('appendTelemetry', () => {
   it('a throwing getItem or setItem is swallowed', () => {
     let writes = 0;
     expect(() => appendTelemetry({ getItem: () => { throw new Error('denied'); }, setItem: () => { writes++; } }, rec(1))).not.toThrow();
+    expect(writes).toBe(0);                                          // a denied read never writes (it is not malformed data)
     expect(() => appendTelemetry({ getItem: () => null, setItem: () => { throw new Error('quota'); } }, rec(1))).not.toThrow();
-    expect(writes).toBe(0);
   });
 });
 ```
@@ -785,7 +809,7 @@ with `import type { TelemetryRecord } from '../src/renderer/src/sim/telemetry';`
     setSkill(s, 2, Skill.Science, 3); setSkill(s, 0, Skill.Repair, 4); setSkill(s, 0, Skill.Navigation, 1);
     const over = buildHudModel(s, slots(3), 'gameover', 'HULL LOST');
     expect(over.summary).toEqual([
-      'Survived 7:32  HULL LOST', 'First down: Okoro 3:10   First death: none', 'Never manned: Doors, Medbay', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s',
+      'Survived 7:32  HULL LOST', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s',   // StationKind order, as in the record
       'Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
@@ -793,7 +817,10 @@ with `import type { TelemetryRecord } from '../src/renderer/src/sim/telemetry';`
     const crew = buildHudModel(s, slots(3), 'gameover', 'CREW LOST').summary!;
     expect(crew[0]).toBe('Survived 7:32  CREW LOST'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
     const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = 1;
-    expect(buildHudModel(four, slots(4), 'gameover', '').summary).toHaveLength(8);
+    expect(buildHudModel(four, slots(4), 'gameover', '').summary).toEqual([
+      'Survived 0:00  HULL LOST', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
+      'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s',
+      'Okoro: no skill gains', 'Lindqvist: no skill gains', 'Reyes: no skill gains', 'Dubois: no skill gains']);
   });
 ```
 
@@ -815,8 +842,9 @@ export interface RecordStorage { getItem(key: string): string | null; setItem(ke
 /** Append one record to the capped history. A missing key, unparsable JSON or a non-array root counts as an empty history; storage failures are swallowed (spec 4-ii section 7). */
 export function appendTelemetry(storage: RecordStorage, record: TelemetryRecord, keep = TELEMETRY_KEEP): void {
   try {
+    const raw = storage.getItem(TELEMETRY_KEY);                      // an access failure throws to the outer catch: nothing is written
     let history: unknown = null;
-    try { history = JSON.parse(storage.getItem(TELEMETRY_KEY) ?? 'null'); } catch { history = null; }
+    try { history = JSON.parse(raw ?? 'null'); } catch { history = null; }   // malformed data is replaced
     const list = Array.isArray(history) ? history : [];
     list.push(record);
     storage.setItem(TELEMETRY_KEY, JSON.stringify(list.slice(-keep)));
@@ -835,7 +863,7 @@ export function appendTelemetry(storage: RecordStorage, record: TelemetryRecord,
             }
 ```
 
-`main.ts`: import `appendTelemetry` from `./app/telemetryStore`; add to the `createSession` deps after `saveCrash`: `saveTelemetry: (record) => appendTelemetry(localStorage, record)`.
+`main.ts`: import `appendTelemetry` from `./app/telemetryStore`; add to the `createSession` deps after `saveCrash`: `saveTelemetry: (record) => { try { appendTelemetry(localStorage, record); } catch { /* storage denied: evaluating localStorage itself can throw, and the callback runs inside the session's sim-fault try */ } }`.
 
 - [ ] **Step 4: HUD model and rows**
 
@@ -906,6 +934,10 @@ Append to the spec:
 - The telemetry block has ten scalars (`firstDownTick, firstDownPid, firstDeathTick, firstDeathPid, impacts, evadeRolls, evasions, shots, hits, maxStress`), then `mannedTicks, idleRun, longestIdle, prevLife, spawns, repairs, phaseEntries`; section 4 said nine.
 - The "layout missing a station kind" fixture sets `derived.stationOfKind[kind] = -1` on a starter state, since `parseShip` requires one station per kind.
 - The acceptance table renders `ended-at` as `m:ss` with a tenth when the duration is fractional, `never-manned` as a comma list or `none`, `longest-idle` as per-player seconds joined by `/`, `spawns` as `fire/breach/power/debris`.
+- The HUD's `Never manned` line lists stations in `StationKind` order, the same order as the record (section 7's `Doors, Medbay` example was illustrative; the starter ship reads `Medbay, Doors`).
+- The "down" edge is leaving Conscious (so a Conscious -> Dead jump in one tick sets both first-down and first-death), as section 5 intended.
+- The CLI de-duplicates repeated seeds, keeping the first occurrence's position.
+- `main.ts` wraps the storage call in its own try so a denied `localStorage` cannot turn a game over into a sim fault.
 ```
 
 `docs/roadmap.md`: item 4 → `merged 2026-11-11` (set after the merge, as the previous items were), item 5 → `next`.
