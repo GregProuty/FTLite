@@ -7,8 +7,9 @@ import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { Weapon } from '../src/renderer/src/sim/weapons';
-import { DT, HAZARD_DT, HAZARD_EVERY, XP_RATE, XP_PER_SHOT, XP_PER_EVADE_ROLL, HEALTH_MAX, REPAIR_TIME_FIRE } from '../src/renderer/src/sim/tuning';
-import { makeState, intents, run, placeDebris, room, seconds, teleport } from './helpers/sim';
+import { xpSystem } from '../src/renderer/src/sim/xp';
+import { DT, HAZARD_DT, HAZARD_EVERY, XP_RATE, XP_PER_SHOT, XP_PER_EVADE_ROLL, HEALTH_MAX, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, HULL_MAX, DEBRIS_HULL_DAMAGE, XP_THRESHOLDS } from '../src/renderer/src/sim/tuning';
+import { makeState, intents, run, placeDebris, room, seconds, teleport, overdrive } from './helpers/sim';
 
 const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.stationOfKind[kind]!;
 const xp = (s: ReturnType<typeof makeState>, pid: number, skill: number) => s.skills.xp[xpIndex(pid, skill)]!;
@@ -61,7 +62,9 @@ describe('event XP', () => {
     run(s, HAZARD_EVERY);                                                            // unmanned delivery on tick 0
     expect(s.skills.lsDeliveredTick).toBe(0); expect(xp(s, 0, Skill.Engineering)).toBe(0);
     sitDown(s, 0, ls);
-    run(s, HAZARD_EVERY);                                                            // hazard tick 5 delivers with the operator seated
+    run(s, 1);                                                                       // hazard tick 5 delivers with the operator seated: the whole award lands on that one tick
+    expect(xp(s, 0, Skill.Engineering)).toBeCloseTo(XP_RATE * HAZARD_DT);
+    run(s, HAZARD_EVERY - 1);                                                        // the four non-hazard ticks add nothing (event XP, not continuous)
     expect(xp(s, 0, Skill.Engineering)).toBeCloseTo(XP_RATE * HAZARD_DT);
     const t = makeState(1), lsT = idx(t, StationKind.LifeSupport);
     t.spawner.nextSpawnTick = 1e9; sitDown(t, 0, lsT);
@@ -83,5 +86,61 @@ describe('event XP', () => {
     Life.state[s.crew[1]!] = LifeState.Downed; Life.bleed[s.crew[1]!] = 30;
     run(s, seconds(1), () => intents({ interactHeld: true }, {}));
     expect(xp(s, 0, Skill.Repair)).toBeCloseTo(2 * XP_RATE * DT);                   // reviving is not repairing
+  });
+  it('breach and power repairs earn Repair XP per tick of progress too, and a later holder earns nothing once it is done', () => {
+    const b = makeState(2); b.spawner.nextSpawnTick = 1e9; activateBreach(b, 6); teleport(b, 0, 2.5, 10.5); teleport(b, 1, 2.5, 10.5);
+    run(b, 1, () => intents({ interactHeld: true }, {}));
+    expect(xp(b, 0, Skill.Repair)).toBeCloseTo(XP_RATE * DT); expect(xp(b, 1, Skill.Repair)).toBe(0);
+    b.breaches.repair[6] = 1 - 0.5 * DT / REPAIR_TIME_BREACH;
+    run(b, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
+    expect(b.breaches.active[6]).toBe(0); expect(xp(b, 0, Skill.Repair)).toBeCloseTo(2 * XP_RATE * DT); expect(xp(b, 1, Skill.Repair)).toBe(0);
+    const p = makeState(2), eng = idx(p, StationKind.Engineering); p.spawner.nextSpawnTick = 1e9; failStation(p, eng); teleport(p, 0, 18.5, 9.5); teleport(p, 1, 18.5, 9.5);
+    run(p, 1, () => intents({ interactHeld: true }, {}));
+    expect(xp(p, 0, Skill.Repair)).toBeCloseTo(XP_RATE * DT); expect(xp(p, 1, Skill.Repair)).toBe(0);
+    p.stations.repair[eng] = 1 - 0.5 * DT / REPAIR_TIME_POWER;
+    run(p, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
+    expect(p.stations.failed[eng]).toBe(0); expect(xp(p, 0, Skill.Repair)).toBeCloseTo(2 * XP_RATE * DT); expect(xp(p, 1, Skill.Repair)).toBe(0);
+  });
+  it('torpedo shots earn XP_PER_SHOT on a hit and a miss, a refused one nothing; a successful evasion earns XP_PER_EVADE_ROLL', () => {
+    const s = makeState(1), wpn = idx(s, StationKind.Weapons), A = room(s, 'A');
+    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 1e6, 1); sitDown(s, 0, wpn);
+    s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 1; s.rng.combat.s = 36;   // 0.956: miss
+    run(s, 1, () => intents(confirm));
+    expect(xp(s, 0, Skill.Weapons)).toBe(XP_PER_SHOT); expect(s.skills.lastShotTick).toBe(0); expect(s.debris.active[0]).toBe(1);
+    run(s, 1, () => intents(confirm));                                              // tube empty, nothing loaded yet: refused
+    expect(xp(s, 0, Skill.Weapons)).toBe(XP_PER_SHOT);
+    s.weapons.torpedoLoaded = 1; s.rng.combat.s = 7;                                 // 0.012: hit
+    run(s, 1, () => intents(confirm));
+    expect(xp(s, 0, Skill.Weapons)).toBe(2 * XP_PER_SHOT); expect(s.debris.active[0]).toBe(0); expect(s.skills.lastShotTick).toBe(2);
+    const n = makeState(1), nav = idx(n, StationKind.Navigation);
+    n.spawner.nextSpawnTick = 1e9; sitDown(n, 0, nav); n.rng.combat.s = 7;           // 0.012 < 0.35: evades
+    placeDebris(n, A, 0, 1);
+    run(n, 1);
+    expect(n.hull).toBe(HULL_MAX); expect(n.debris.active[0]).toBe(0); expect(xp(n, 0, Skill.Navigation)).toBeCloseTo(XP_RATE * DT + XP_PER_EVADE_ROLL);
+  });
+  it('the evasion roll uses the output from before its own XP award: a Navigator one point short of level 10 does not evade on a draw between the two thresholds', () => {
+    const s = makeState(1), nav = overdrive(s, StationKind.Navigation), A = room(s, 'A');
+    s.spawner.nextSpawnTick = 1e9; s.stations.coolant[nav] = 2; sitDown(s, 0, nav);
+    s.skills.xp[xpIndex(0, Skill.Navigation)] = XP_THRESHOLDS[10]! - 1;             // level 9 now; the roll's lump XP would make it level 10
+    s.rng.combat.s = 141;                                                            // 0.7906: above the level-9 threshold 0.785, below the level-10 threshold 0.80
+    placeDebris(s, A, 0, 1);
+    run(s, 1);
+    expect(s.hull).toBe(HULL_MAX - DEBRIS_HULL_DAMAGE);                              // not evaded: level 9 output applied
+    expect(xp(s, 0, Skill.Navigation)).toBe(XP_THRESHOLDS[10]);                      // the award still landed (capped at the top threshold)
+  });
+});
+
+describe('xpSystem guards', () => {
+  it('no continuous XP for an offline station with an occupant, an online station without one, or a non-Conscious occupant', () => {
+    const s = makeState(1), nav = idx(s, StationKind.Navigation), A = room(s, 'A');
+    s.spawner.nextSpawnTick = 1e9; placeDebris(s, A, 1e6, 1);
+    s.stations.occupant[nav] = 0; s.stations.failed[nav] = 1; xpSystem(s);          // occupant recorded but the station is offline
+    expect(xp(s, 0, Skill.Navigation)).toBe(0);
+    s.stations.failed[nav] = 0; s.stations.occupant[nav] = -1; xpSystem(s);         // online, nobody seated
+    expect(xp(s, 0, Skill.Navigation)).toBe(0);
+    s.stations.occupant[nav] = 0; Life.state[s.crew[0]!] = LifeState.Downed; xpSystem(s);   // seated record but not Conscious
+    expect(xp(s, 0, Skill.Navigation)).toBe(0);
+    Life.state[s.crew[0]!] = LifeState.Conscious; xpSystem(s);
+    expect(xp(s, 0, Skill.Navigation)).toBeCloseTo(XP_RATE * DT);                    // the same fixture with every guard satisfied earns
   });
 });

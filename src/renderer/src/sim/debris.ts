@@ -58,8 +58,10 @@ function resolveImpact(state: SimState, slot: number): void {
   const d = state.derived, db = state.debris, room = db.room[slot]!;
   const nav = d.stationOfKind[StationKind.Navigation]!;
   if (nav >= 0 && stationOnline(state, nav) && state.stations.occupant[nav]! >= 0) {
-    addXp(state, state.stations.occupant[nav]!, Skill.Navigation, XP_PER_EVADE_ROLL);   // the roll itself is the productive act
-    if (evades(nextFloat(state.rng.combat), stationOutput(state, nav))) { removeDebris(state, slot); return; }
+    const output = stationOutput(state, nav);                                            // read before the award: the XP a roll earns must not improve that same roll
+    const evaded = evades(nextFloat(state.rng.combat), output);
+    addXp(state, state.stations.occupant[nav]!, Skill.Navigation, XP_PER_EVADE_ROLL);   // the roll itself is the productive act, evaded or not
+    if (evaded) { removeDebris(state, slot); return; }
   }
   state.hull = Math.max(0, state.hull - DEBRIS_HULL_DAMAGE);
   const breachFirst = nextFloat(state.rng.hazards) < 0.5;

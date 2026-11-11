@@ -1,0 +1,11 @@
+# Codex review: 3-i implementation (2026-11-10)
+
+1. **Important — [debris.ts:61](/C:/Users/djuar/FTLite/src/renderer/src/sim/debris.ts:61): Evasion XP improves the roll that earns it.** `addXp` runs before `stationOutput`. Crossing a Navigation threshold therefore increases the current roll’s evasion chance, whereas Weapons evaluates the shot before awarding XP. Capture output before adding XP, resolve the roll, then award XP regardless of outcome. Add a threshold-crossing regression.
+
+2. **Important — [xp.test.ts:63](/C:/Users/djuar/FTLite/tests/xp.test.ts:63): The Life Support test cannot distinguish event XP from continuous XP.** After seating, it advances exactly `HAZARD_EVERY` ticks: continuous `XP_RATE * DT` accrual totals the same amount as one delivery award. An implementation incorrectly rewarding recent, unmanned delivery could pass. Seat immediately after an unmanned delivery, assert zero XP on each intervening tick, then assert the full award on the next delivering hazard tick.
+
+3. **Minor — [xp.test.ts:73](/C:/Users/djuar/FTLite/tests/xp.test.ts:73): Breach and power repair XP have no assertions.** Only fire repair verifies XP and the already-completed-target exclusion. The breach and power speed fixtures start at level 10, where XP is capped, so missing awards would remain invisible. Add uncapped repairers for both targets and assert exact XP during progress and zero XP for a later holder after completion.
+
+4. **Minor — [xp.test.ts:25](/C:/Users/djuar/FTLite/tests/xp.test.ts:25): The offline-station check is masked by clearing its occupant.** `failStation` simultaneously makes Navigation offline and stands its operator. This test still passes if `xpSystem` loses its online guard. Add separate productive fixtures for an offline occupied station, an online unoccupied station, and a non-Conscious occupant; assert no XP independently.
+
+5. **Minor — [xp.test.ts:46](/C:/Users/djuar/FTLite/tests/xp.test.ts:46): Event XP coverage omits torpedoes and successful evasion.** The shot test exercises only beams; the Navigation award is checked only on a failed evasion in the observation-point test. Removing torpedo XP or awarding Navigation XP only on failed rolls would pass these assertions. Add torpedo hit/miss/refusal cases and a successful evasion, checking exact XP and shot-stamp behavior.
