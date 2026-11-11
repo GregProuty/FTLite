@@ -700,45 +700,63 @@ In `tests/console.test.ts`, replace the body of the test `Weapons: sit, charge t
     s.rng.combat.s = 7; const one = createRng(7); nextFloat(one);
     run(s, 1, () => intents({}, confirm));
     expect(s.debris.active[0]).toBe(0); expect(s.rng.combat.s).toBe(one.s); expect(s.weapons.charge).toBe(0);
-    placeDebris(s, A, seconds(30), 1, undefined, 1);
+    const second = placeDebris(s, A, seconds(30), 1, undefined, 1);            // reuses slot 0; already warned, so nothing auto-selects it
+    expect(s.stations.cursor[wpn]).toBe(-1);
+    run(s, 1, () => intents({}, down)); run(s, 1, () => intents({}, {}));       // Down with cursor -1 selects the first warned target
+    expect(s.stations.cursor[wpn]).toBe(second);
     run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
     expect(s.weapons.selector).toBe(Weapon.Torpedo);
     run(s, seconds(21));                                                         // the tube has been loading since the sit (20 s at level 2); about 12 s have passed, so wait out the rest with margin
-    expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(TORP_START - 1);
-    s.rng.combat.s = 7;
+    expect(s.weapons.torpedoLoaded).toBe(1); expect(s.weapons.torpedoStock).toBe(TORP_START - 1); expect(s.debris.active[second]).toBe(1);
+    s.rng.combat.s = 7; const oneT = createRng(7); nextFloat(oneT);
     run(s, 1, () => intents({}, confirm));
-    expect(s.debris.active[1]).toBe(0); expect(s.weapons.torpedoLoaded).toBe(0); expect(s.weapons.torpedoStock).toBe(TORP_START - 1);
+    expect(s.debris.active[second]).toBe(0); expect(s.rng.combat.s).toBe(oneT.s); expect(s.weapons.torpedoLoaded).toBe(0); expect(s.weapons.torpedoStock).toBe(TORP_START - 1);
     run(s, 1, () => intents({ cancelPressed: true }, { cancelPressed: true }));
     expect(Seated.station[s.crew[0]!]).toBe(-1); expect(Seated.station[s.crew[1]!]).toBe(-1);
 ```
 
 (`buildHudModel` from `../src/renderer/src/render/hudModel`; `tests/console.test.ts` may import it since it is pixi-free. If `slots` typing needs `SlotInfo`, cast the array `as any`-free by importing `type SlotInfo` from `../src/renderer/src/input/deviceManager` and typing the literal.)
 
-Append to `tests/weapons.test.ts` (import `fc from 'fast-check'`, `TORP_CAP` from tuning):
+Append to `tests/weapons.test.ts` (import `fc from 'fast-check'`, `TORP_CAP, TORP_LOAD_TIME` from tuning; `DT`, `BEAM_CHARGE_TIME`, `seconds`, `room`, `up`, `down` are already imported or defined in that file):
 
 ```ts
 describe('properties', () => {
   it('stock stays in 0..TORP_CAP, loaded is 0 or 1, stock only falls by one at a load completion, and draws equal shots', () => {
     const arbDir = fc.constantFrom({}, up, down);                                // no selector edges: the shot prediction below reads the selector before the tick
     const arbScript = fc.array(fc.record({ dir: arbDir, confirm: fc.boolean() }), { minLength: 1, maxLength: 240 });
+    const refill = (s: ReturnType<typeof makeState>, A: number) => { if (s.debris.active.every((a) => !a)) for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3)); };
     fc.assert(fc.property(fc.integer({ min: 1, max: 1e6 }), fc.constantFrom(0, 1, 2, 3), arbScript, (seed, selector, script) => {
       const s = makeState(1, seed), i = wpn(s), A = room(s, 'A');
-      s.spawner.nextSpawnTick = 1e9; sitDown(s, 0, i); s.weapons.selector = selector;
+      s.spawner.nextSpawnTick = 1e9;
       for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3));
-      s.weapons.charge = 1; s.weapons.torpedoLoaded = 1; s.weapons.torpedoLoad = 0.99;   // ready on every selector; the first reload completes almost at once
-      let draws = 0, shots = 0, prevStock = s.weapons.torpedoStock, prevLoaded = s.weapons.torpedoLoaded;
-      for (const e of [{ dir: {}, confirm: true }, ...script]) {                   // a forced first Confirm: every run fires at least once
+      sitDown(s, 0, i);                                                           // after the placements, so the sit selects a target
+      if (s.stations.cursor[i]! < 0) return false;
+      // Deterministic prelude: fire the loaded tube once and reload it, so every run completes at least one load.
+      s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 1; s.weapons.charge = 1;
+      run(s, 1, () => intents({ confirmPressed: true }));
+      if (s.weapons.torpedoLoaded !== 0) return false;
+      const stockBefore = s.weapons.torpedoStock;
+      run(s, seconds(20) + 2); refill(s, A);
+      if (s.weapons.torpedoLoaded !== 1 || s.weapons.torpedoStock !== stockBefore - 1) return false;   // one load completed: stock moved into the tube
+      s.weapons.selector = selector;
+      const output = 0.5;                                                         // starter Weapons level 2, online throughout (spawner off, nobody fails it)
+      let draws = 0, shots = 0, prevStock = s.weapons.torpedoStock;
+      for (const e of [{ dir: {}, confirm: true }, ...script]) {                   // a forced first Confirm: charge is 1 and the tube is loaded, so it fires on every selector
         for (let t = 0; t < 5; t++) {
           const before = s.rng.combat.s, w = s.weapons, c = s.stations.cursor[i]!;
-          const ready = w.selector === Weapon.Torpedo ? w.torpedoLoaded === 1 : w.charge >= 1;
+          // Readiness after this tick's increments, computed with the sim's own arithmetic (charging and loading precede input).
+          const chargeAfter = Math.min(1, w.charge + DT * output / BEAM_CHARGE_TIME);
+          const loadedAfter = w.torpedoLoaded === 1 || (w.torpedoStock > 0 && Math.min(1, w.torpedoLoad + DT * output / TORP_LOAD_TIME) >= 1);
+          const ready = w.selector === Weapon.Torpedo ? loadedAfter : chargeAfter >= 1;
           const target = c >= 0 && s.debris.active[c] === 1 && s.debris.warned[c] === 1;
-          const willShoot = e.confirm && ready && target && s.stations.occupant[i] === 0;
+          const willShoot = e.confirm && ready && target;
           run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm }));
-          if (s.rng.combat.s !== before) draws++; if (willShoot) shots++;
+          const drew = s.rng.combat.s !== before;
+          if (drew) draws++; if (willShoot) shots++;
           if (w.torpedoStock < 0 || w.torpedoStock > TORP_CAP || (w.torpedoLoaded !== 0 && w.torpedoLoaded !== 1)) return false;
-          if (w.torpedoStock < prevStock && !(w.torpedoStock === prevStock - 1 && w.torpedoLoaded === 1 && prevLoaded === 0)) return false;   // stock falls only by one, into the tube
-          prevStock = w.torpedoStock; prevLoaded = w.torpedoLoaded;
-          if (s.debris.active.every((a) => !a)) for (let k = 0; k < 3; k++) placeDebris(s, A, 1e6, 1, undefined, 1 + (k % 3));
+          if (w.torpedoStock < prevStock && !(w.torpedoStock === prevStock - 1 && (w.torpedoLoaded === 1 || (drew && w.selector === Weapon.Torpedo)))) return false;   // stock falls only by one, into the tube (which may fire the same tick)
+          prevStock = w.torpedoStock;
+          refill(s, A);
         }
       }
       return draws === shots && shots >= 1;
@@ -788,7 +806,7 @@ git commit -m "test: Science-to-Weapons handoff gate, torpedo and draw-count pro
 
 - [ ] **Step 1: Write the failing tests**
 
-In `tests/hud.test.ts` (import `TORP_START, TORP_CAP` from tuning): change the `m.weapons` expectation to `toEqual({ charge: 1, ready: true, torpedoLoaded: false, torpedoStock: TORP_START })`; in the Weapons panel test change the targets expectation to include `frequency: null` on each and add `expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0 });`; replace the Science panel assertions (`leadSeconds`, `warnedCount`) with `expect(sciPanel.leadSeconds).toBeCloseTo(18); expect(sciPanel.targets).toHaveLength(1); expect(sciPanel.cursor).toBe(0); expect(sciPanel.scanning).toBe(false);` (the fixture seats Science with one warned object, so the sit selects it). Add:
+In `tests/hud.test.ts` (import `TORP_START, TORP_CAP` from tuning): change the `m.weapons` expectation to `toEqual({ charge: 1, ready: true, torpedoLoaded: false, torpedoStock: TORP_START })`; in the Weapons panel test change the targets expectation to include `frequency: null` on each and add `expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0 });`; replace the Science panel assertions (`leadSeconds`, `warnedCount`) with `expect(sciPanel.leadSeconds).toBeCloseTo(18); expect(sciPanel.targets).toHaveLength(1); expect(sciPanel.cursor).toBe(0); expect(sciPanel.scanning).toBe(false);` and move that fixture's `placeDebris` call **before** its `sitDown` at Science, so the sit selects the warned object (with the current order the cursor would stay −1, since an already-warned placement triggers no auto-select). Add:
 
 ```ts
   it('shows a scanned frequency in the threat text and on both panels, with scan progress and the selector and torpedo state', () => {
