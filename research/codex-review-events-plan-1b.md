@@ -1,0 +1,11 @@
+# Codex review: Run-ii plan half 1b, tests (2026-11-11)
+
+1. **High — `docs/superpowers/plans/2026-11-11-events-shops.md`, Task 1 Step 1, `mapM` helper and shop fixtures.** `mapM` gives column 1 node 0 mask `1`, so it reaches only node 0 in column 2. The shop test therefore has 10 rows and only `Node 3a`; cursor index 10 and `Node 3b` cannot occur. **Fix:** for fixtures expecting both destinations, set mask `1:0` to `0b11`. Then the list has 11 rows, `Node 3a` at row 9, and `Node 3b` at row 10.
+
+2. **Medium — Task 1 Step 1, `tests/events.test.ts` shop upgrade test.** The plan’s initial `w` expression imports and uses `SHOP_ITEMS`, but the plan defines no such export and later explicitly says to remove that import. Its own proposed replacement is correct: **set `w = 2 + UPGRADE_KINDS.indexOf(StationKind.Weapons)`, which is item index 3** (navigation row 4). Remove `SHOP_ITEMS` from the import and use that index.
+
+3. **Medium — Task 1 Step 1, `tests/gate-run.test.ts` script and explanatory note.** The script sends the same `moveY` direction every tick; `stickEdge` repeats after `STICK_REPEAT_TICKS` while held. The note says to alternate neutral ticks, but the code listing has no `holdOff` logic, so the documented script and script to implement disagree. **Fix:** add the stated `holdOff` flag and alternate movement with a neutral tick, or remove that requirement and verify the script against the actual repeat behavior.
+
+4. **Low — Task 1 Step 1, `tests/snapshot.test.ts` node-type round-trip fixture.** Setting `nodeType[4] = 2` may leave the generated value unchanged, so the round-trip assertion alone may not demonstrate that the field was serialized. **Fix:** assert the generated value differs before setting it, or choose a value guaranteed to differ from the fixture’s existing value; retain an independent hash mutation that changes the field.
+
+The other checked arithmetic and fixture details are consistent with the plan listings: `{ s: rng.loot.s }` is a detached valid `RngState`; the pending Supply cache adds 40 to the directly assigned initial scrap of 0; the event scrap totals, hull change, breach free-site selection, failed-station skip, and Downed crew health handling match the proposed effects. The gate-run totals are 145 earned, 30 spent, 115 remaining, and hull 100.

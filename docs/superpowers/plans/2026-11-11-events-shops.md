@@ -189,10 +189,10 @@ describe('shops', () => {
   const shop = (scrap = 100) => { const s = calm(); at(s, 1, 0); setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, scrap); return s; };
   it('lists the header, eight items in order and the destinations; enabled per item', () => {
     const s = shop(); const rows = navRows(s);
-    expect(rows).toHaveLength(11); expect(rows[0]).toEqual({ text: 'Shop   scrap 100', select: 'none', index: 0, enabled: false });
+    expect(rows).toHaveLength(10); expect(rows[0]).toEqual({ text: 'Shop   scrap 100', select: 'none', index: 0, enabled: false });   // mask 1:0 = 1: one destination (Node 3a)
     expect(rows.slice(1, 9).map((r) => r.text)).toEqual(['Hull +25 (30 scrap)', 'Torpedoes +2 (20 scrap)', ...UPGRADE_KINDS.map((k) => `${STATION_NAMES[k]} +1 bar (50 scrap)`)]);
     expect(UPGRADE_KINDS).toEqual([StationKind.Navigation, StationKind.Weapons, StationKind.Science, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors]);
-    expect(rows.slice(9).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a', 'jump', 0], ['Node 3b', 'jump', 1]]);
+    expect(rows.slice(9).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a', 'jump', 0]]);
     expect(rows[1]!.enabled).toBe(false); s.hull = 90; expect(navRows(s)[1]!.enabled).toBe(true);
     expect(rows[2]!.enabled).toBe(true); s.weapons.torpedoStock = TORP_CAP; expect(navRows(s)[2]!.enabled).toBe(false);
     expect(rows.slice(3, 9).every((r) => r.enabled)).toBe(true);
@@ -202,7 +202,7 @@ describe('shops', () => {
   it('buys: hull capped, torpedoes capped, the upgrade raises baseMax and maxLevel for its kind only and shows (owned)', () => {
     const s = shop(); s.hull = 90; buy(s, 0); expect([s.hull, s.run.scrap, s.telemetry.scrapSpent, s.telemetry.purchases]).toEqual([HULL_MAX, 70, 30, 1]);
     s.weapons.torpedoStock = TORP_CAP - 1; buy(s, 1); expect([s.weapons.torpedoStock, s.run.scrap]).toEqual([TORP_CAP, 50]);
-    const w = SHOP_ITEMS.indexOf('upgrade:1' as never) >= 0 ? 0 : 3 + UPGRADE_KINDS.indexOf(StationKind.Weapons);   // the Weapons upgrade row index among items
+    const w = 2 + UPGRADE_KINDS.indexOf(StationKind.Weapons);   // item index 3 (navRows row 4)
     buy(s, w); expect(s.run.upgrades[StationKind.Weapons]).toBe(1); expect(s.run.scrap).toBe(0); expect(s.telemetry.purchases).toBe(3);
     expect(baseMax(s, StationKind.Weapons)).toBe(STATION_MAX[StationKind.Weapons]! + 1); expect(maxLevel(s, StationKind.Weapons)).toBe(STATION_MAX[StationKind.Weapons]! + 1 + STATION_OVERDRIVE);
     for (const k of [StationKind.Navigation, StationKind.Science, StationKind.Engineering, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors]) expect(maxLevel(s, k)).toBe(STATION_MAX[k]! + (k === StationKind.Engineering ? 0 : STATION_OVERDRIVE));
@@ -217,13 +217,13 @@ describe('shops', () => {
   it('cursor rules: a buy keeps the cursor on its (now disabled) row, the header is skipped, wrap crosses the ends, a shrink moves to the first selectable row', () => {
     const s = shop(); s.hull = 90; const n = seatNavigator(s, 0); run(s, 1);
     run(s, 1, () => intents({}, {})); expect(s.stations.cursor[n]).toBe(1);                                   // header skipped
-    run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(10);                      // Up from row 1 wraps to the last destination
+    run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(9);                       // Up from row 1 wraps to the last row (the single destination)
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(1);   // Down from the last wraps to row 1
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.hull).toBe(HULL_MAX); expect(s.stations.cursor[n]).toBe(1); expect(navRows(s)[1]!.enabled).toBe(false);
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.scrap).toBe(70);   // disabled: nothing
     const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); e.stations.cursor[m] = 3; run(e, 1, () => intents({ confirmPressed: true }, {}));
     expect(e.run.eventChoice).toBe(1); expect(e.stations.cursor[m]).toBe(3);                                  // row 3 exists in the shop list (an item): kept
-    expect(navRows(e)).toHaveLength(11);
+    expect(navRows(e)).toHaveLength(10);
   });
 });
 
@@ -237,7 +237,7 @@ describe('scrap sources', () => {
 });
 ```
 
-(Fix the clumsy `w` line: `const w = 1 + 2 + UPGRADE_KINDS.indexOf(StationKind.Weapons) - 1;` is wrong too; the item index of the Weapons upgrade is `2 + UPGRADE_KINDS.indexOf(StationKind.Weapons)` = 3, and the row index in `navRows` is one more. Use `const w = 2 + UPGRADE_KINDS.indexOf(StationKind.Weapons);` and drop the `SHOP_ITEMS.indexOf` expression. Delete the unused `lootCopy`/`lootDraws` helpers rather than `void`-ing them.)
+(Remove `SHOP_ITEMS` from the shop import (there is no such export; the tests use `UPGRADE_KINDS`). Delete the unused `lootCopy`/`lootDraws` helpers and the `void` lines rather than keeping them.)
 
 Create `tests/gate-run.test.ts` (the Run-i gate script with the event and shop rules; same imports plus `NodeType`, `navRows`, `mapM`, `setNodeTypes`, `HULL_MAX`, `SCRAP_PER_JUMP`):
 
@@ -247,15 +247,16 @@ describe('run gate: a scripted navigator resolves an event, buys a hull repair a
     const s = makeState(2, 1, RECRUITS); quiet(s); const silence = () => { s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; }; silence();
     mapM(s); setNodeTypes(s, { '1:0': NodeType.Event, '2:0': NodeType.Shop }); s.hull = 90;
     const nav = s.derived.stationOfKind[StationKind.Navigation]!, A = room(s, 'A'), eid = s.crew[0]!;
-    let lastJumps = 0, bought = false;
+    let lastJumps = 0, bought = false, holdOff = false;
+    const move = (dy: number) => { holdOff = !holdOff; return holdOff ? { ...NEUTRAL_INTENT, moveY: dy } : { ...NEUTRAL_INTENT }; };   // one stick edge per two ticks: a release between presses
     for (let t = 0; t < 8 * (JUMP_CHARGE_TIME + 10) * TICK_HZ && !s.ended; t++) {
       let p0 = { ...NEUTRAL_INTENT };
       if (Seated.station[eid] === nav) {
-        const rows = navRows(s), cur = s.stations.cursor[nav]!;
-        if (s.run.event >= 0 && s.run.eventChoice < 0) p0 = rows[cur]?.select === 'choice' && rows[cur]!.index === 0 ? { ...NEUTRAL_INTENT, confirmPressed: true } : { ...NEUTRAL_INTENT, moveY: -1 };
-        else if (s.run.column === 2 && !bought) { if (rows[cur]?.select === 'buy' && rows[cur]!.index === 0) { p0 = { ...NEUTRAL_INTENT, confirmPressed: true }; bought = true; } else p0 = { ...NEUTRAL_INTENT, moveY: cur > 1 ? -1 : 1 }; }
-        else if (rows[cur]?.select === 'jump' && rows[cur]!.index === 0) p0 = { ...NEUTRAL_INTENT, confirmPressed: true };
-        else p0 = { ...NEUTRAL_INTENT, moveY: 1 };
+        const rows = navRows(s), cur = s.stations.cursor[nav]!, row = rows[cur];
+        if (s.run.event >= 0 && s.run.eventChoice < 0) p0 = row?.select === 'choice' && row.index === 0 ? { ...NEUTRAL_INTENT, confirmPressed: true } : move(-1);
+        else if (s.run.column === 2 && !bought) { if (row?.select === 'buy' && row.index === 0) { p0 = { ...NEUTRAL_INTENT, confirmPressed: true }; bought = true; } else p0 = move(cur > 1 ? -1 : 1); }
+        else if (row?.select === 'jump' && row.index === 0) p0 = { ...NEUTRAL_INTENT, confirmPressed: true };
+        else p0 = move(1);
       } else { const c = confirmTarget(s, 0); const atConsole = roomAt(s, Position.x[eid]!, Position.y[eid]!) === A && c.kind === ConfirmKind.Console && c.index === nav; p0 = atConsole ? { ...NEUTRAL_INTENT, confirmPressed: true } : { ...NEUTRAL_INTENT, moveY: -1 }; }
       step(s, [p0, botIntent(s, 1)]);
       if (s.telemetry.jumps !== lastJumps) { lastJumps = s.telemetry.jumps; silence(); if (s.run.column === 1) s.run.event = 4; }   // the arrival drew an id; pin the Supply cache
@@ -267,11 +268,11 @@ describe('run gate: a scripted navigator resolves an event, buys a hull repair a
 });
 ```
 
-(The stick is an edge-then-repeat input: moving the cursor one row per tick needs a release between presses, so the movement branches alternate a neutral tick: keep a `let holdOff = false` flag that sends a neutral intent on alternate ticks while seated and moving. Also the jump to column 1 lands at node 0 because the cursor starts on `Node 2a`.)
+(The `move` helper alternates a press and a release so each press is one stick edge; a held stick would repeat only every `STICK_REPEAT_TICKS`. Confirm is an edge too, but the Confirm branches re-evaluate the row each tick and the sim only acts on `confirmPressed`, which the gate sets freshly every tick as the jump gate does. The jump to column 1 lands at node 0 because the cursor starts on `Node 2a`; the hull repair at column 2 is bought once (`bought`), then the script moves down to the destination row.)
 
 `tests/gate-jump.test.ts`: add `allHazard(s)` after `quiet(s)`, and `expect(s.tick).toBe(25200)` beside the budget assertion.
 
-`tests/snapshot.test.ts`: version test 12 → 13; the round-trip test sets `s.run.nodeType[4] = 2; s.run.scrap = 45; s.run.event = 3; s.run.eventChoice = 1; s.run.upgrades[1] = 1; s.telemetry.scrapEarned = 60; s.telemetry.scrapSpent = 15; s.telemetry.eventsResolved = 2; s.telemetry.purchases = 1;` and asserts each back; the hash loop adds each of those fields alone. Add: "a run saved with a pending event resumes with the same rows and cursor": `mapM`, `at(1, 2)`, `setEvent(4)`, seat, `run 1`, cursor 3 → save/load → `navRows` deep-equal and cursor 3.
+`tests/snapshot.test.ts`: version test 12 → 13; the round-trip test sets `s.run.nodeType[4] = s.run.nodeType[4] === 2 ? 1 : 2` (a value that differs from the generated one, asserted with `expect(before).not.toBe(after)`), `s.run.scrap = 45; s.run.event = 3; s.run.eventChoice = 1; s.run.upgrades[1] = 1; s.telemetry.scrapEarned = 60; s.telemetry.scrapSpent = 15; s.telemetry.eventsResolved = 2; s.telemetry.purchases = 1;` and asserts each back; the hash loop adds each of those fields alone. Add: "a run saved with a pending event resumes with the same rows and cursor": `mapM`, `at(1, 2)`, `setEvent(4)`, seat, `run 1`, cursor 3 → save/load → `navRows` deep-equal and cursor 3.
 
 `tests/heat.test.ts:20` and `tests/power.test.ts:44,46` and `tests/console.test.ts:158`, `tests/power.test.ts:164`: `maxLevel(k)` → `maxLevel(s, k)`.
 
@@ -486,7 +487,7 @@ git commit -m "feat: node types from the map stream, scrap, six events and eight
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/hud.test.ts`: the Run-i Navigation test replaces `p.destinations`/`p.cursor` with `p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])` → `[['Node 2a', true, true, false], ['Node 2b', true, true, true]]` (cursor 1) and `p.scrap` → 0; the three footer expectations gain `   Scrap 0`. Add:
+`tests/hud.test.ts`: the Run-i Navigation test (lines ~340–352) replaces every `destinations`/`cursor` read: `p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])` → `[['Node 2a', true, true, false], ['Node 2b', true, true, true]]` (cursor 1), `p.scrap` → 0, and the final-column panel `f.destinations` → `expect(f.rows).toEqual([])`; the three footer expectations gain `   Scrap 0`. There is no HUD render test today (none of `hud.ts` is covered by a test); the Navigation window, dim/disabled/cursor styling and the `MAX_CELLS` growth stay covered by the model tests and the manual gate, as in Run-i (note this in the report). Add:
 
 ```ts
   it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows first, and baseMax on the power rows', () => {
@@ -498,7 +499,7 @@ git commit -m "feat: node types from the map stream, scrap, six events and eight
     igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.text).toBe('Event: Supply cache'); expect(t[1]!.icon).toBe('icon.weapons'); expect(t[2]!.text).toBe('Fire: Bridge');
     setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.slice(0, 2).map((x) => x.text)).toEqual(['Event: Supply cache', 'Shop here']);
     resolveEvent(s, 0); const q = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
-    expect(q.rows).toHaveLength(11); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Node 3a');
+    expect(q.rows).toHaveLength(10); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Node 3a');   // mask 1:2 = 1: one destination
     expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Shop here');
     s.run.upgrades[StationKind.Weapons] = 1; const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 1, eng);
     const m2 = buildHudModel(s, slots(2), 'running', ''); expect(m2.stations.find((x) => x.kind === StationKind.Weapons)!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1);
