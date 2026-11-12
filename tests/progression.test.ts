@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { loadProgress, saveProgress, PROGRESS_KEY } from '../src/renderer/src/app/progressStore';
 import { runScore } from '../src/renderer/src/sim/score';
 import { EMPTY_PROGRESS, UNLOCKS, applyRun, veteranRepairXp, type Progress } from '../src/renderer/src/sim/progress';
 import { QUIRKS, QUIRK_NAMES, quirkPassageMult, quirkHeatRise, quirkDoorDelayMult, quirkDebrisHullOffset, quirkLeadOffset, quirkChargeMult } from '../src/renderer/src/sim/quirks';
@@ -115,5 +116,19 @@ describe('quirk', () => {
     const snap = saveSnapshot(s); expect(snap.header.rngStates['quirk']).toBe(s.rng.quirk.s);
     const base = hashState(makeState(2, 5)); const m1 = makeState(2, 5); m1.run.quirk = (m1.run.quirk + 1) % QUIRK_COUNT; const m2 = makeState(2, 5); m2.run.startBonus = 1;
     expect(hashState(m1)).not.toBe(base); expect(hashState(m2)).not.toBe(base);
+  });
+});
+
+describe('progress store', () => {
+  const mem = (init: Record<string, string> = {}, throwOn: 'get' | 'set' | null = null) => { const m = new Map(Object.entries(init)); return { getItem: (k: string) => { if (throwOn === 'get') throw new Error('denied'); return m.get(k) ?? null; }, setItem: (k: string, v: string) => { if (throwOn === 'set') throw new Error('full'); m.set(k, v); }, map: m }; };
+  it('round-trips, defaults and sanitizes', () => {
+    const p: Progress = { version: 1, runs: 4, victories: 1, bestScore: 900, bestNodes: 6, unlocked: ['scrap-reserve', 'torpedo-rack', 'veteran-crew'] };
+    const st = mem(); saveProgress(st, p); expect(JSON.parse(st.map.get(PROGRESS_KEY)!)).toEqual(p); expect(loadProgress(st)).toEqual(p);
+    expect(loadProgress(mem())).toEqual(EMPTY_PROGRESS);
+    for (const raw of ['{', '[]', JSON.stringify({ version: 2, runs: 3 })]) expect(loadProgress(mem({ [PROGRESS_KEY]: raw }))).toEqual(EMPTY_PROGRESS);
+    expect(loadProgress(mem({ [PROGRESS_KEY]: JSON.stringify({ version: 1, runs: '3', victories: -1, bestScore: 12.5, bestNodes: NaN, unlocked: ['torpedo-rack', 'bogus', 'scrap-reserve', 'torpedo-rack'] }) }))).toEqual({ version: 1, runs: 0, victories: 0, bestScore: 12.5, bestNodes: 0, unlocked: ['scrap-reserve', 'torpedo-rack'] });
+    expect(loadProgress(mem({ [PROGRESS_KEY]: JSON.stringify({ version: 1, unlocked: 'x' }) })).unlocked).toEqual([]);
+    expect(loadProgress(mem({}, 'get'))).toEqual(EMPTY_PROGRESS);
+    expect(() => saveProgress(mem({}, 'set'), p)).not.toThrow();
   });
 });

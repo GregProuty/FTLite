@@ -3,6 +3,9 @@ import { createSession, DEFAULT_SEED } from '../src/renderer/src/app/session';
 import type { TelemetryRecord } from '../src/renderer/src/sim/telemetry';
 import { downCrew, EndReason } from '../src/renderer/src/sim/crew';
 import type { SourceSample } from '../src/renderer/src/input/deviceManager';
+import { loadProgress, saveProgress } from '../src/renderer/src/app/progressStore';
+import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
+import type { Progress } from '../src/renderer/src/sim/progress';
 import { LAYOUT, seatNavigator, chargeJump } from './helpers/sim';
 import { loadSnapshot, type Snapshot } from '../src/renderer/src/sim/snapshot';
 import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay';
@@ -11,7 +14,9 @@ import { step } from '../src/renderer/src/sim/step';
 
 import type { HudModel } from '../src/renderer/src/render/hudModel';
 
-function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C'], withTelemetry = true) {
+function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C'], withTelemetry = true, initialProgress?: Progress) {
+  const storage = (() => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); } }; })();
+  if (initialProgress) saveProgress(storage, initialProgress);
   let samples: SourceSample[] = [];
   let t = 0;
   const crashes: unknown[] = [];
@@ -19,17 +24,40 @@ function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', '
   const records: TelemetryRecord[] = [];
   const session = createSession({
     layout: LAYOUT, sampleDevices: () => samples, renderer: null, hud: { update(m) { last = m; } },
-    now: () => t, canResume, saveCrash: (p) => { crashes.push(p); }, credits,
+    now: () => t, canResume, loadProgress: () => loadProgress(storage), saveProgress: (p) => saveProgress(storage, p), saveCrash: (p) => { crashes.push(p); }, credits,
     ...(withTelemetry ? { saveTelemetry: (r: TelemetryRecord) => { records.push(r); } } : {})
   });
   const sample = (key: string, o: Partial<SourceSample>): SourceSample => ({ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o });
   const press = (key: string, o: Partial<SourceSample>) => { samples = [sample(key, o)]; };
   const pressMany = (...s: SourceSample[]) => { samples = s; };
   const frames = (n: number, ms = 1000 / 60) => { for (let i = 0; i < n; i++) { t += ms; session.frame(); } };
-  return { session, press, pressMany, sample, frames, crashes, records, release: () => press('a', {}), last: () => last! };
+  return { session, press, pressMany, sample, frames, crashes, records, storage, release: () => press('a', {}), last: () => last! };
 }
 
 describe('session', () => {
+  it('progress: the lobby shows runs and best; a lost run saves progress and unlocks the scrap reserve; the next run starts with it', () => {
+    const h = harness(); h.frames(1);
+    expect(h.last().message).toBe('Press Interact to join. Confirm: start. Cancel: credits   Runs 0  Best 0');
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
+    const st = h.session.state!; const quirk = st.run.quirk; downCrew(st, 0); h.frames(2);
+    expect(h.session.phase).toBe('gameover'); expect(h.records).toHaveLength(1);
+    const saved = loadProgress(h.storage); expect(saved).toMatchObject({ runs: 1, victories: 0, bestNodes: 0, unlocked: ['scrap-reserve'] }); expect(saved.bestScore).toBe(h.records[0]!.score);
+    const sum = h.last().summary!; expect(sum[0]).toMatch(/^Survived 0:0\d  CREW LOST  Reached node 1 of 8  Score \d+$/); expect(sum[4]).toBe(`Ship: ${QUIRK_NAMES[quirk]}`); expect(sum[5]).toBe(`Best ${saved.bestScore}   Runs 1   Victories 0`); expect(sum[6]).toBe('Unlocked: Scrap reserve'); expect(sum[7]).toMatch(/^Okoro: /);
+    h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
+    expect(h.last().message).toBe('New seed. Press Interact to join. Confirm: start. Cancel: credits   Runs 1  Best ' + saved.bestScore + '  Unlocked: Scrap reserve');
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
+    expect([h.session.state!.run.scrap, h.session.state!.run.startBonus]).toEqual([30, 1]);
+  });
+  it('progress: a saved progress shows in the lobby and all three bonuses apply', () => {
+    const h = harness(undefined, undefined, true, { version: 1, runs: 4, victories: 1, bestScore: 900, bestNodes: 6, unlocked: ['scrap-reserve', 'torpedo-rack', 'veteran-crew'] }); h.frames(1);
+    expect(h.last().message).toMatch(/Runs 4  Best 900  Unlocked: Scrap reserve, Torpedo rack, Veteran crew$/);
+    h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
+    expect(h.session.state!.run.startBonus).toBe(0b111); expect(h.session.state!.run.scrap).toBe(30);
+  });
+  it('progress: a throwing loader falls back to an empty progress', () => {
+    const sess = createSession({ layout: LAYOUT, sampleDevices: () => [], renderer: null, hud: { update() { /* none */ } }, now: () => 0, saveCrash: () => { /* none */ }, loadProgress: () => { throw new Error('boom'); } });
+    expect(() => sess.frame()).not.toThrow();
+  });
   it('joins in the lobby and starts on Confirm', () => {
     const h = harness();
     h.frames(1);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
+import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
 import { buildHudModel, clockLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
@@ -301,17 +302,17 @@ describe('buildHudModel', () => {
     setSkill(s, 2, Skill.Science, 3); setSkill(s, 0, Skill.Repair, 4); setSkill(s, 0, Skill.Navigation, 1);
     const over = buildHudModel(s, slots(3), 'gameover', 'HULL LOST');
     expect(over.summary).toEqual([
-      'Survived 7:32  HULL LOST  Reached node 1 of 8', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s',   // StationKind order, as in the record
+      'Survived 7:32  HULL LOST  Reached node 1 of 8  Score 0', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s', `Ship: ${QUIRK_NAMES[s.run.quirk]}`,   // StationKind order, as in the record
       'Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
     s.endReason = EndReason.Crew; t.mannedTicks.fill(1); t.firstDeathTick = 452 * 60 - 1; t.firstDeathPid = 2;
     const crew = buildHudModel(s, slots(3), 'gameover', 'CREW LOST').summary!;
-    expect(crew[0]).toBe('Survived 7:32  CREW LOST  Reached node 1 of 8'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
+    expect(crew[0]).toBe('Survived 7:32  CREW LOST  Reached node 1 of 8  Score 0'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
     const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = EndReason.Hull;
     expect(buildHudModel(four, slots(4), 'gameover', '').summary).toEqual([
-      'Survived 0:00  HULL LOST  Reached node 1 of 8', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
-      'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s',
+      'Survived 0:00  HULL LOST  Reached node 1 of 8  Score 0', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
+      'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s', `Ship: ${QUIRK_NAMES[four.run.quirk]}`,
       'Okoro: no skill gains', 'Lindqvist: no skill gains', 'Reyes: no skill gains', 'Dubois: no skill gains']);
   });
   it('reports the director phase name and stress', () => {
@@ -340,8 +341,8 @@ describe('buildHudModel', () => {
   });
   it('the clock line carries the node ordinal; the Navigation panel lists destinations, cursor, jump state and final; the footer formats', () => {
     const s = makeState(2); quiet(s);
-    expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe('HULL 100   TIME 0s   node 1/8'); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toMatch(/node 1\/8$/);
-    s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(/node 4\/8$/);
+    expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe(`HULL 100   TIME 0s   node 1/8   ${QUIRK_NAMES[s.run.quirk]}`); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toBe('HULL 0   TIME 0s   node 1/8');
+    s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(new RegExp(`node 4/8   ${QUIRK_NAMES[s.run.quirk]}$`));
     s.run.column = 0; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 });
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
@@ -375,10 +376,17 @@ describe('buildHudModel', () => {
     expect((m2.players[1]!.console as EngineeringPanel).rows[StationKind.Weapons]!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1); expect((m2.players[1]!.console as EngineeringPanel).rows[StationKind.Science]!.max).toBe(STATION_MAX[StationKind.Science]!);
     void n;
   });
+  it('the summary carries the ship line, then the optional progress lines, then the gains', () => {
+    const s = makeState(2, 1, DEFAULT_CHARACTERS); s.ended = 1; s.endReason = EndReason.Hull;
+    const ship = `Ship: ${QUIRK_NAMES[s.run.quirk]}`, gain = 'Okoro: no skill gains';
+    const a = buildHudModel(s, slots(2), 'gameover', '').summary!; expect(a[4]).toBe(ship); expect(a[5]).toBe(gain);
+    const b = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: [] }).summary!; expect(b[4]).toBe(ship); expect(b[5]).toBe('Best 10   Runs 2   Victories 0'); expect(b[6]).toBe(gain);
+    const c = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: ['Scrap reserve'] }).summary!; expect(c[6]).toBe('Unlocked: Scrap reserve'); expect(c[7]).toBe(gain);
+  });
   it('the game-over headline counts the node and names a victory', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS); s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;
-    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  HULL LOST  Reached node 1 of 8');
-    s.endReason = EndReason.Victory; s.run.column = 7; s.run.nodesReached = 7;
-    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  VICTORY  Reached node 8 of 8');
+    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  HULL LOST  Reached node 1 of 8  Score 0');
+    s.endReason = EndReason.Victory; s.run.column = 7; s.run.nodesReached = 7; s.telemetry.scrapEarned = 145;
+    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  VICTORY  Reached node 8 of 8  Score 1345');
   });
 });
