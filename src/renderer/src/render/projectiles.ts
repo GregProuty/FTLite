@@ -62,8 +62,8 @@ export function createProjectileLayer(): ProjectileLayer {
     const at = (u: number): Pt => ({ x: b.from.x + (b.to.x - b.from.x) * u, y: b.from.y + (b.to.y - b.from.y) * u });
     const draw = (u: number, alpha: number): void => {
       const head = at(u);
-      if (b.kind === 1) { const tail = at(Math.max(0, u - 0.06)); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: TORP, width: 3, alpha: alpha * 0.6 }); g.circle(head.x, head.y, 3).fill({ color: TORP, alpha }); g.circle(head.x, head.y, 1.5).fill({ color: 0xffffff, alpha }); }
-      else { const tail = at(Math.max(0, u - 0.25)); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: BEAM, width: 4, alpha: alpha * 0.5 }); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: BEAM_CORE, width: 1.5, alpha }); }
+      if (b.kind === 1) { const tail = at(Math.max(0, u - 0.08)); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: TORP, width: 4, alpha: alpha * 0.6 }); g.circle(head.x, head.y, 4.5).fill({ color: TORP, alpha }); g.circle(head.x, head.y, 2).fill({ color: 0xffffff, alpha }); }
+      else { const tail = at(Math.max(0, u - 0.25)); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: BEAM, width: 7, alpha: alpha * 0.45 }); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: BEAM, width: 3, alpha }); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: BEAM_CORE, width: 1, alpha }); g.circle(head.x, head.y, 3).fill({ color: BEAM_CORE, alpha }); }
     };
     if (t < 1) { draw(t, 1); return; }
     if (b.result === 0) { draw(t, Math.max(0, 1 - (t - 1) * 2)); return; }   // a miss passes the target and fades

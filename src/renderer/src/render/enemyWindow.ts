@@ -60,6 +60,8 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
     g.poly([wr.x - 4, wr.y + 6, wr.x + wr.w / 2, sr.y - 8, wr.x + wr.w + 4, wr.y + 6]).fill(HULL).stroke({ width: 2, color: HULL_EDGE });
     for (const x of [er.x + 8, er.x + er.w - 20]) { g.rect(x, er.y + er.h + 2, 12, 6).fill(HULL_EDGE); g.rect(x + 2, er.y + er.h + 8, 8, 3 + Math.round(2 * Math.abs(Math.sin(clock * 9)))).fill({ color: FLAME, alpha: 0.85 }); }
     for (const r of view.rooms) g.rect(r.rect.x - 4, r.rect.y - 4, r.rect.w + 8, r.rect.h + 8).fill(HULL);
+    const sh = view.rooms[EnemyRoom.Shields]!.rect, ho = view.rooms[EnemyRoom.Hold]!.rect;
+    g.rect(sh.x + sh.w, sh.y - 4, ho.x - sh.x - sh.w, sh.h + 8).fill(HULL);   // the keel between Shields and the Hold: no see-through slot
     view.rooms.forEach((r, k) => {
       const rect = r.rect, flash = hitFlash && (hitFlash.room === k || hitFlash.room === 'hull') ? hitFlash.alpha : 0;
       g.rect(rect.x, rect.y, rect.w, rect.h).fill(r.tint === 'down' ? FLOOR_DOWN : r.tint === 'damaged' ? FLOOR_DAMAGED : FLOOR).stroke({ width: 2, color: WALL });

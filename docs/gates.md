@@ -264,3 +264,22 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
 - [x] Visual check by Claude, 2026-11-12 (Playwright on the built app, two keyboard players): P1 seated at Door Control (20,5), two Up presses put the cursor on the Engines airlock (card: `Airlock  Engines` / `Airlock closed` / `Confirm: Open airlock`); Confirm opened it: the card read `AIRLOCK OPEN` in red with the footer `Open airlocks: 1`, the threat panel `Airlock open: Engines`, a dark gap in the hull with specks streaming out to the left and Engines tinted red as its oxygen fell. Nothing overlaps; every line reads. Found and fixed: the selection outline was invisible on the amber airlock leaves (now drawn just outside the tile); asteroids from the top started over the notice lines (now just outside the band). An asteroid was captured flying in from the top at 118 s and over Weapons at 123 s (threat `Debris: Weapons 1s`); the burst frame was not captured, and no enemy shot came inside the window (the first enemy for a pair arrives later). Earlier run: a Doors failure stood P1 up and the fail-safe closed the open airlock, as designed.
 - [ ] Manual, two players: venting feels like a deliberate tactical choice; the asteroids read as the cause of breaches and fires; a room with three or more doors cannot be routed out through a held door (amendment 12): judge whether that needs a design change.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Demo-viii: asteroid fields and the enemy window (2026-11-12)
+- [x] `npm test` passes (810 tests). The new tests cover:
+  - Node types: the thresholds; the map draw count is unchanged; the guaranteed shop; the `Asteroid field` Navigation rows; the map's asteroid marks.
+  - The field: start at +8 s, the draw order, the re-arm, a full table, spawns over 60 s, the clear at +72 s with the reward, the director doubling, the early jump, its notices, the save and resume.
+  - Field rocks: the `Rock` kind, its damage and the same draws, breach first at 0.75, the threat and row text, the smaller shape.
+  - The last-shot fields for every outcome and a refused fire.
+  - The enemy interior: room choice and draw order, fire and breach thresholds, burn and drain rates, a system taken down, the repair delay, timers, the surrender kept, a kill by fire with no shot, the `leave` guard, the arrays cleared, the round trip and hash.
+  - The window model: rooms inside the frame, tints, the countdown, pips, the frequency, the charge, shields, every status line, the problem line, the reticle, the crew, the bolt, the slide-in, the break-up, the fly-out, a jump closing it, the shot origin.
+  - The right column in every combination of enemy, navigator and phase; the layer makes no new display objects over 60 frames.
+- [x] Gates before -> after (min health, seeds 1/2/3):
+  - `gate-survival`: 63.3 / 23.7 / 47.0, unchanged.
+  - `gate-duo`: 28.8 / 28.9 / 81.5 -> 28.8 / 62.6 / 75.1 (min hull 80 / 52 / 84 -> 80 / 44 / 60).
+  - `gate-boarding`: 29.1 / 24.8 / 48.7, unchanged.
+  - `gate-cutter`: 73.2 / 51.7 / 52.8, unchanged.
+  - `gate-jump` and `gate-run` pass.
+  - `npm run acceptance 5 1`: identical rows.
+- [x] Cause: the node types shift and the duo bots now cross asteroid fields; no floor lowered. At the spec's first values, fields sank the duo ship (15 rocks x 8 hull: seeds 2 and 3 to hull 0), so field rocks became a weaker, breach-first `Rock` with `FIELD_INTERVAL` 6 (amendments A1, A2, A4). At a 50/50 breach-or-fire draw, seed 3 still fell to 4.5 health from the fires the rocks started.
+- [x] Golden re-blessed once (SIM_VERSION 20): final hash 1aff2aad.
