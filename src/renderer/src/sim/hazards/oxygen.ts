@@ -5,7 +5,7 @@ import { StationKind } from '../stationKinds';
 import { Skill, addXp, skillLevelOf } from '../skills';
 import { stationOnline } from '../stations';
 import { quirkPassageMult } from '../quirks';
-import { XP_RATE, HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, SEAL_SKILL, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
+import { XP_RATE, HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, AIRLOCK_PASSAGE, SEAL_SKILL, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
 
 export function passageFor(state: SimState, edge: number): number {
   if (!state.derived.edgeIsDoor[edge]) return PASSAGE_OPEN;
@@ -21,6 +21,14 @@ export function passageFor(state: SimState, edge: number): number {
 export function roomBreached(state: SimState, room: number): boolean {
   const d = state.derived;
   for (let s = 0; s < d.siteRoom.length; s++) if (state.breaches.active[s] && d.siteRoom[s] === room) return true;
+  return false;
+}
+
+/** True while a room loses air to space: an active breach or an open airlock (spec Demo-vii amendment 7). Life support skips it. */
+export function roomVenting(state: SimState, room: number): boolean {
+  if (roomBreached(state, room)) return true;
+  const d = state.derived;
+  for (let a = 0; a < d.airlockRoom.length; a++) if (state.airlocks.open[a] && d.airlockRoom[a] === room) return true;
   return false;
 }
 
@@ -56,6 +64,14 @@ export function oxygenStep(state: SimState, injection: Float64Array): void {
     vent[s] = k * d.siteWidth[s]! * PASSAGE_BREACH * frac[r]! * dt;
     demand[r]! += vent[s]!;
   }
+  // Venting through open airlocks: a separate pass after the breach sites, ascending index, the same demand (spec Demo-vii amendment 7).
+  const A = d.airlockRoom.length, ventA = new Float64Array(A);
+  for (let a = 0; a < A; a++) {
+    if (!state.airlocks.open[a]) continue;
+    const r = d.airlockRoom[a]!;
+    ventA[a] = k * AIRLOCK_PASSAGE * frac[r]! * dt;
+    demand[r]! += ventA[a]!;
+  }
   // Sinks.
   const breath = new Float64Array(R), burn = new Float64Array(R);
   for (let pid = 0; pid < state.playerCount; pid++) {
@@ -82,15 +98,20 @@ export function oxygenStep(state: SimState, injection: Float64Array): void {
     const r = d.siteRoom[s]!, amt = vent[s]! * scale[r]!;
     o2[r]! -= amt; c.vented += amt;
   }
+  for (let a = 0; a < A; a++) {
+    if (ventA[a] === 0) continue;
+    const r = d.airlockRoom[a]!, amt = ventA[a]! * scale[r]!;
+    o2[r]! -= amt; c.vented += amt;
+  }
   for (let r = 0; r < R; r++) {
     const b = breath[r]! * scale[r]!, f = burn[r]! * scale[r]!;
     o2[r]! -= b + f; c.breathed += b; c.burned += f;
   }
-  // Injection, clamped to the free volume, none into breached rooms.
+  // Injection, clamped to the free volume, none into breached or venting rooms.
   let delivered = 0;
   for (let r = 0; r < R; r++) {
     const want = injection[r] ?? 0;
-    if (want <= 0 || roomBreached(state, r)) continue;
+    if (want <= 0 || roomVenting(state, r)) continue;
     const inj = Math.min(want, Math.max(0, V[r]! - o2[r]!));
     if (inj > 0) { o2[r]! += inj; c.injected += inj; delivered += inj; }
   }

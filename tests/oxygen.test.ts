@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { oxygenStep, totalO2, roomBreached, passageFor } from '../src/renderer/src/sim/hazards/oxygen';
+import { oxygenStep, totalO2, roomBreached, roomVenting, passageFor } from '../src/renderer/src/sim/hazards/oxygen';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { O2_K, O2_SNAP_EPS, PASSAGE_SEALED, PASSAGE_CLOSED, PASSAGE_OPEN, SEAL_SKILL } from '../src/renderer/src/sim/tuning';
-import { makeState, room, teleport, setSkill, quirkState } from './helpers/sim';
+import { createSimState } from '../src/renderer/src/sim/state';
+import { makeState, room, teleport, setSkill, quirkState, cutterState, CUTTER, RECRUITS, quiet, run, seconds } from './helpers/sim';
+import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
+import { FIRE_SHRINK_FRAC } from '../src/renderer/src/sim/tuning';
+import { solidAt } from '../src/renderer/src/sim/grid';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { Skill } from '../src/renderer/src/sim/skills';
@@ -130,5 +134,64 @@ describe('held-open doors in the oxygen step (spec Demo-vii section 1)', () => {
     };
     expect(run1(DoorState.HeldOpen, 1)).toBe(run1(DoorState.Open, 1));
     expect(run1(DoorState.HeldOpen, 0)).toBe(run1(DoorState.Open, 1));     // quirk 0 is Leaky Seals: closed doors only
+  });
+});
+
+describe('venting through open airlocks (spec Demo-vii section 1, amendment 7)', () => {
+  const ENGINES_AIRLOCK = 2;
+  const calm = (seed = 1) => {
+    const s = cutterState(seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9;
+    return s;
+  };
+  it('an open Engines airlock with its doors closed drains Engines below FIRE_SHRINK_FRAC within 30 s and a fire there goes out', () => {
+    const s = calm(), E = room(s, 'E');
+    igniteRoom(s, E);
+    s.airlocks.open[ENGINES_AIRLOCK] = 1;
+    let below = -1;
+    for (let t = 0; t < seconds(30) && below < 0; t++) { run(s, 1); if (s.rooms.o2[E]! / s.derived.volume[E]! < FIRE_SHRINK_FRAC) below = t; }
+    expect(below).toBeGreaterThanOrEqual(0);
+    run(s, seconds(60));
+    expect(s.rooms.fire[E]).toBe(0);
+  });
+  it('the fire goes out under Leaky Seals too, and in Oxygen routed through a held-open door to the Engines airlock (amendment 12)', () => {
+    for (const [burn, quirk, hold] of [['E', 0, -1], ['O', 1, 0]] as const) {
+      const s = createSimState(CUTTER, 2, 1, RECRUITS, { quirk }); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9;
+      const B = room(s, burn); igniteRoom(s, B); s.airlocks.open[ENGINES_AIRLOCK] = 1;
+      if (hold >= 0) s.doors.state[hold] = DoorState.HeldOpen;   // edge 0 is Oxygen <-> Engines
+      run(s, seconds(30));
+      expect(s.rooms.fire[B], burn).toBe(0);
+    }
+  });
+  it('conserves oxygen: injected - breathed - burned - vented - residual accounts for every change', () => {
+    const s = calm(2), E = room(s, 'E');
+    igniteRoom(s, E); s.airlocks.open[ENGINES_AIRLOCK] = 1; s.airlocks.open[0] = 1;
+    const before = totalO2(s), c0 = { ...s.o2Counters };
+    run(s, seconds(20));
+    expect(s.o2Counters.vented - c0.vented).toBeGreaterThan(0);
+    balance(before, s, c0);
+  });
+  it('a closed airlock vents nothing over 600 ticks', () => {
+    const s = calm();
+    const v0 = s.o2Counters.vented;
+    run(s, 600);
+    expect(s.o2Counters.vented).toBe(v0);
+  });
+  it('life support injects nothing into a room with an open airlock', () => {
+    const s = calm(), E = room(s, 'E');
+    s.airlocks.open[ENGINES_AIRLOCK] = 1; s.rooms.o2[E] = 0;
+    const only = new Float64Array(s.rooms.o2.length); only[E] = 1;
+    const before = s.o2Counters.injected;
+    oxygenStep(s, only);
+    expect(s.o2Counters.injected).toBe(before);
+    expect(roomVenting(s, E)).toBe(true);
+    s.airlocks.open[ENGINES_AIRLOCK] = 0;
+    oxygenStep(s, only);
+    expect(s.o2Counters.injected).toBeGreaterThan(before);
+  });
+  it('the airlock tile is solid, open or closed', () => {
+    const s = calm(), w = s.derived.width, t = s.derived.airlockTile[ENGINES_AIRLOCK]!;
+    expect(solidAt(s, t % w, Math.floor(t / w))).toBe(true);
+    s.airlocks.open[ENGINES_AIRLOCK] = 1;
+    expect(solidAt(s, t % w, Math.floor(t / w))).toBe(true);
   });
 });
