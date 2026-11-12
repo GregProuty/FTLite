@@ -4,7 +4,7 @@ import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
 import { cycleTarget, isTarget, isEnemySlot } from './debrisTargets';
-import { enemyBeamThreshold, damageEnemy, EnemySystem } from './enemy';
+import { enemyBeamThreshold, damageEnemy, EnemySystem, startEnemyProblem } from './enemy';
 import { Dir } from './dir';
 import { Skill, addXp } from './skills';
 import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE } from './tuning';
@@ -56,7 +56,7 @@ export function fireWeapon(state: SimState): boolean {
   if (stripped) { state.enemy.shieldLayers--; state.enemy.lastHitTick = state.tick; state.enemy.shieldRecharge = 0; state.telemetry.shieldHits++; state.telemetry.hits++; }   // an untuned hit strips a layer and nothing else
   else if (hit) {
     state.telemetry.hits++;
-    if (enemy) damageEnemy(state, c, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); else removeDebris(state, c);
+    if (enemy) { startEnemyProblem(state, c); damageEnemy(state, c, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); } else removeDebris(state, c);
   }
   return hit;
 }

@@ -17,6 +17,11 @@ import { rawStress, anyUnattended, activeHazardCount } from '../src/renderer/src
 import { Health } from '../src/renderer/src/sim/components';
 import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
+import { interiorStep, enemyRoomOfHit, EnemyRoom, arrive as enemyArrive } from '../src/renderer/src/sim/enemy';
+import { ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SCRAP_ENEMY } from '../src/renderer/src/sim/tuning';
+import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import { hashState } from '../src/renderer/src/sim/hash';
+import { LAYOUT } from './helpers/sim';
 
 const T = TICK_HZ;
 const wpn = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[StationKind.Weapons]!;
@@ -211,8 +216,8 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
     expect(0.84 < enemyBeamThreshold(s, 0.5)).toBe(true); expect(0.86 < enemyBeamThreshold(s, 0.5)).toBe(false); expect(0.999 < enemyBeamThreshold(s, 1)).toBe(true);
     expect(enemyBeamThreshold(s, 0.5) - 0.70).toBeCloseTo(ENEMY_EVADE, 12);
   });
-  it('a beam hit takes 15 hull, counts the shot and hit, resets the charge, stamps the shot and draws once; a miss takes nothing', () => {
-    const { s } = armed(); s.rng.combat.s = 7; const one = createRng(7); nextFloat(one);
+  it('a beam hit takes 15 hull, counts the shot and hit, resets the charge, stamps the shot and draws the hit, the hull room and the problem (Demo-viii amendment I1); a miss takes nothing', () => {
+    const { s } = armed(); s.rng.combat.s = 7; const one = createRng(7); nextFloat(one); nextInt(one, 2); nextFloat(one);
     expect(fireWeapon(s)).toBe(true);
     expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE); expect([s.telemetry.shots, s.telemetry.hits]).toEqual([1, 1]); expect(s.weapons.charge).toBe(0); expect(s.skills.lastShotTick).toBe(s.tick); expect(s.rng.combat.s).toBe(one.s);
     expect(s.skills.xp[xpIndex(0, Skill.Weapons)]).toBe(XP_PER_SHOT);
@@ -221,7 +226,7 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
     // seed 6: first combat float 0.526 (checked below) hits the enemy at 0.70 (BASE + SCALE * 0.5) but would miss a mismatched debris beam at 0.20
     expect(nextFloat(createRng(6))).toBeCloseTo(0.526, 3); expect(enemyBeamThreshold(armed().s, 0.5)).toBeCloseTo(0.7, 10);
     for (const selector of [Weapon.BeamF1, Weapon.BeamF2, Weapon.BeamF3]) {   // shields up, one layer: every selector rolls; the matched one pierces, the others strip the layer (spec Demo-i section 11.3)
-      const { s } = armed(ENEMY_HULL, 1); s.weapons.selector = selector; s.rng.combat.s = 6; const c0 = createRng(6); nextFloat(c0);
+      const { s } = armed(ENEMY_HULL, 1); s.weapons.selector = selector; s.rng.combat.s = 6; const c0 = createRng(6); nextFloat(c0); if (selector === Weapon.BeamF1) { nextInt(c0, 2); nextFloat(c0); }   // a hull hit adds the room and problem draws (Demo-viii amendment I1)
       const hit = fireWeapon(s);
       expect(hit).toBe(true); expect(s.rng.combat.s).toBe(c0.s); expect([s.telemetry.shots, s.telemetry.hits]).toEqual([1, 1]); expect(s.weapons.charge).toBe(0);
       if (selector === Weapon.BeamF1) { expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE); expect([s.enemy.shieldLayers, s.telemetry.shieldHits]).toEqual([1, 0]); }
@@ -314,7 +319,7 @@ describe('enemy: shot impacts and guards', () => {
 });
 
 describe('combat gate: a level-2 Weapons operator strips the shield layer with one untuned beam, then lands seven hits, inside the window', () => {
-  it('eight shots, eight hits (one strip, seven hull hits), destroyed before departTick', () => {
+  it('seven shots, seven hits (one strip, six hull hits and the fires they start), destroyed before departTick', () => {
     const s = makeState(2, 1); quiet(s); const w = wpn(s); sitDown(s, 0, w); placeEnemy(s, ENEMY_HULL, 2); s.enemy.sysHp[EnemySystem.Engines] = 0; s.enemy.nextShotTick = 1e9;   // engines down with no repair armed: no flee starts at 25% hull, this gate is the kill path (the flee has its own tests in combat.test.ts)
     s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 0; s.weapons.selector = Weapon.BeamF1;
     const depart = s.enemy.departTick; let shots = 0;
@@ -323,7 +328,7 @@ describe('combat gate: a level-2 Weapons operator strips the shield layer with o
       run(s, 1, () => intents(fire ? { confirmPressed: true } : {}, {}));
       if (fire && shots === 1) expect([s.telemetry.shots, s.telemetry.hits, s.telemetry.shieldHits, s.enemy.shieldLayers, s.enemy.hull]).toEqual([1, 1, 1, 0, ENEMY_HULL]), expect(s.rng.combat.s).not.toBe(7);   // the untuned first beam rolled and stripped the layer
     }
-    expect(shots).toBe(8); expect([s.telemetry.shots, s.telemetry.hits, s.telemetry.shieldHits, s.telemetry.enemiesDestroyed]).toEqual([8, 8, 1, 1]); expect(s.enemy.present).toBe(0); expect(s.tick).toBeLessThan(depart);
+    expect(shots).toBe(7); expect([s.telemetry.shots, s.telemetry.hits, s.telemetry.shieldHits, s.telemetry.enemiesDestroyed]).toEqual([7, 7, 1, 1]);   // Demo-viii: each seed-7 hit also starts a fire aboard, whose burn saves one hull hit expect(s.enemy.present).toBe(0); expect(s.tick).toBeLessThan(depart);
   });
 });
 
@@ -410,7 +415,8 @@ describe('enemy systems: shields in the fire path, subsystem rows, the scan', ()
     const { s } = armedAt(ENEMY_WEAPONS_SLOT); s.weapons.selector = Weapon.Torpedo; s.weapons.torpedoLoaded = 1; s.rng.combat.s = 7;
     disableSystem(s, EnemySystem.Weapons); s.enemy.sysRepairTick[EnemySystem.Weapons] = s.tick; const tick = s.tick;
     run(s, 1, () => intents({ confirmPressed: true }, {}));
-    expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_TORP_DAMAGE); expect(s.enemy.hull).toBe(65); expect(s.enemy.sysHp[EnemySystem.Weapons]).toBe(ENEMY_SYS_HP); expect(s.telemetry.enemyDisables).toBe(0);
+    expect(s.enemy.roomFire[EnemyRoom.Weapons]).toBeGreaterThan(0); expect(s.enemy.hull).toBeCloseTo(ENEMY_HULL - ENEMY_TORP_DAMAGE - ENEMY_FIRE_HULL_DPS * DT, 9);   // the hit started a fire in the Weapons room (Demo-viii section 2b): its first tick of burn, and a down system does not burn
+    expect(s.enemy.sysHp[EnemySystem.Weapons]).toBe(ENEMY_SYS_HP); expect(s.telemetry.enemyDisables).toBe(0);
     expect(s.enemy.nextShotTick).toBe(tick + ENEMY_FIRST_SHOT * T);
   });
   it('the enemy scan: Confirm on the hull row starts it, scanStep advances and completes it, subsystem rows neither start nor progress it, leave clears it', () => {
@@ -488,5 +494,88 @@ describe('encounters (spec Demo-vi section 2)', () => {
     expect([s.enemy.present, s.run.encounter]).toEqual([0, Encounter.Over]);
     run(s, 600 * T);
     expect([s.enemy.present, s.telemetry.encounters, s.enemy.nextArrivalTick]).toEqual([0, 1, NEVER]);
+  });
+});
+
+describe('the enemy interior: fires, breaches (spec Demo-viii section 2b, amendments I1-I4)', () => {
+  const seedFor = (ok: (r: { s: number }) => boolean): number => { for (let seed = 1; seed <= 5000; seed++) if (ok(createRng(seed))) return seed; throw new Error('no seed'); };
+  const sat = () => { const s = makeState(2); quiet(s); placeEnemy(s, ENEMY_HULL, 1); s.enemy.nextShotTick = 1e9; s.enemy.departTick = 1e9; s.run.encounter = Encounter.Fighting; const w = wpn(s); sitDown(s, 0, w); s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1; return { s, w }; };
+  const fire = (slot: number, seed: number) => { const { s, w } = sat(); s.stations.cursor[w] = slot; s.rng.combat.s = seed; fireWeapon(s); return s; };
+  it('the constants and rooms', () => {
+    expect([ENEMY_ROOMS, EnemyRoom.Weapons, EnemyRoom.Engines, EnemyRoom.Shields, EnemyRoom.Bridge, EnemyRoom.Hold]).toEqual([5, 0, 1, 2, 3, 4]);
+    expect([ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS]).toEqual([0.35, 0.15, 15, 20, 0.3, 1.5, 0.2]);
+    const s = makeState(2); expect([s.enemy.roomFire.length, s.enemy.roomBreach.length, ...s.enemy.roomFire, ...s.enemy.roomBreach].every((v, i) => (i < 2 ? v === 5 : v === 0))).toBe(true);
+  });
+  it('a system hit lands in its room: the hit draw then one problem draw (fire below 0.35, breach from 0.85, else nothing)', () => {
+    for (const [want, ok] of [['fire', (u: number) => u < 0.35], ['breach', (u: number) => u >= 0.85], ['none', (u: number) => u >= 0.35 && u < 0.85]] as const) {
+      const seed = seedFor((r) => nextFloat(r) < 0.3 && ok(nextFloat(r)));
+      const s = fire(ENEMY_ENGINES_SLOT, seed), ref = createRng(seed); nextFloat(ref); nextFloat(ref);
+      expect(s.rng.combat.s).toBe(ref.s);
+      expect([s.enemy.roomFire[EnemyRoom.Engines], s.enemy.roomBreach[EnemyRoom.Engines]]).toEqual(want === 'fire' ? [ENEMY_FIRE_SECONDS, 0] : want === 'breach' ? [0, ENEMY_BREACH_SECONDS] : [0, 0]);
+      expect(Array.from(s.enemy.roomFire).filter((v) => v > 0).length + Array.from(s.enemy.roomBreach).filter((v) => v > 0).length).toBe(want === 'none' ? 0 : 1);
+    }
+  });
+  it('a hull hit lands in the Bridge or the Hold by one combat draw, before the problem draw; an existing fire resets to 15', () => {
+    for (const room of [EnemyRoom.Bridge, EnemyRoom.Hold]) {
+      const seed = seedFor((r) => nextFloat(r) < 0.3 && 3 + nextInt(r, 2) === room && nextFloat(r) < 0.35);
+      const { s, w } = sat(); s.stations.cursor[w] = ENEMY_SLOT; s.rng.combat.s = seed; s.enemy.roomFire[room] = 2; fireWeapon(s);
+      const ref = createRng(seed); nextFloat(ref); nextInt(ref, 2); nextFloat(ref);
+      expect(s.rng.combat.s).toBe(ref.s); expect(s.enemy.roomFire[room]).toBe(ENEMY_FIRE_SECONDS);
+    }
+    const s = makeState(2); const seed = seedFor((r) => nextInt(r, 2) === 1); s.rng.combat.s = seed;
+    expect(enemyRoomOfHit(s, ENEMY_SLOT)).toBe(EnemyRoom.Hold); expect(enemyRoomOfHit(s, ENEMY_SHIELDS_SLOT)).toBe(EnemyRoom.Shields); expect(enemyRoomOfHit(s, ENEMY_WEAPONS_SLOT)).toBe(EnemyRoom.Weapons);
+  });
+  it('a miss and a stripped layer make no draw beyond the hit draw', () => {
+    const miss = seedFor((r) => nextFloat(r) > 0.97), s = fire(ENEMY_SLOT, miss), ref = createRng(miss); nextFloat(ref); expect(s.rng.combat.s).toBe(ref.s);
+    const hit = seedFor((r) => nextFloat(r) < 0.3), { s: t, w } = sat(); t.weapons.selector = Weapon.BeamF2; t.stations.cursor[w] = ENEMY_SLOT; t.rng.combat.s = hit; fireWeapon(t);
+    const r2 = createRng(hit); nextFloat(r2); expect(t.rng.combat.s).toBe(r2.s); expect(t.enemy.shieldLayers).toBe(0);
+    for (const x of [s, t]) expect([...x.enemy.roomFire, ...x.enemy.roomBreach].every((v) => v === 0)).toBe(true);
+  });
+  it('a fire burns 0.3 hull and 1.5 system health per second and can take the system down with the shield rule; a plain room has no system', () => {
+    const { s } = sat(); s.enemy.roomFire[EnemyRoom.Shields] = ENEMY_FIRE_SECONDS; const hull0 = s.enemy.hull;
+    run(s, T); expect(s.enemy.hull).toBeCloseTo(hull0 - 0.3, 9); expect(s.enemy.sysHp[EnemySystem.Shields]).toBeCloseTo(ENEMY_SYS_HP - 1.5, 9);
+    const d = sat().s; d.enemy.sysHp[EnemySystem.Shields] = 1; d.enemy.roomFire[EnemyRoom.Shields] = ENEMY_FIRE_SECONDS; const dis0 = d.telemetry.enemyDisables;
+    run(d, T); expect(d.enemy.sysHp[EnemySystem.Shields]).toBe(0); expect(d.enemy.shieldLayers).toBe(0); expect(d.enemy.sysRepairTick[EnemySystem.Shields]).toBeGreaterThan(d.tick); expect(d.telemetry.enemyDisables).toBe(dis0 + 1);
+    const h = sat().s; h.enemy.roomFire[EnemyRoom.Hold] = 5; run(h, T); expect(Array.from(h.enemy.sysHp)).toEqual([ENEMY_SYS_HP, ENEMY_SYS_HP, ENEMY_SYS_HP]);
+  });
+  it('a breach drains 0.2 hull per second and delays its system self-repair one tick per tick', () => {
+    const { s } = sat(); disableSystem(s, EnemySystem.Engines); const due = s.enemy.sysRepairTick[EnemySystem.Engines]!; s.enemy.roomBreach[EnemyRoom.Engines] = ENEMY_BREACH_SECONDS; const hull0 = s.enemy.hull;
+    run(s, T); expect(s.enemy.hull).toBeCloseTo(hull0 - 0.2, 9); expect(s.enemy.sysRepairTick[EnemySystem.Engines]).toBe(due + T);
+  });
+  it('timers count down and expire: fire after 15 s, breach after 20 s', () => {
+    const { s } = sat(); s.enemy.roomFire[EnemyRoom.Hold] = ENEMY_FIRE_SECONDS; s.enemy.roomBreach[EnemyRoom.Bridge] = ENEMY_BREACH_SECONDS;
+    run(s, ENEMY_FIRE_SECONDS * T - 1); expect(s.enemy.roomFire[EnemyRoom.Hold]).toBeGreaterThan(0);
+    run(s, 1); expect(s.enemy.roomFire[EnemyRoom.Hold]).toBe(0);
+    run(s, (ENEMY_BREACH_SECONDS - ENEMY_FIRE_SECONDS) * T); expect(s.enemy.roomBreach[EnemyRoom.Bridge]).toBe(0);
+  });
+  it('interior damage never voids a surrender and sets no hit flash', () => {
+    const { s } = sat(); s.enemy.fleeing = 1; s.enemy.surrenderIntact = 1; s.enemy.roomFire[EnemyRoom.Bridge] = 10;
+    run(s, T); expect([s.enemy.surrenderIntact, s.enemy.lastHitTick]).toEqual([1, -1]);
+  });
+  it('interior damage to 0 hull is a kill with the win reward, once, and no shot fires that tick', () => {
+    const { s } = sat(); s.enemy.hull = 0.001; s.enemy.roomFire[EnemyRoom.Weapons] = 5; s.enemy.roomFire[EnemyRoom.Bridge] = 5; s.enemy.nextShotTick = s.tick; const scrap0 = s.run.scrap;
+    expect(interiorStep(s)).toBe(true);
+    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.run.scrap - scrap0, s.run.encounter, s.telemetry.encountersWon, shotsInFlight(s)]).toEqual([0, 1, SCRAP_ENEMY, Encounter.Won, 1, 0]);
+    leave(s, true); expect([s.telemetry.enemiesDestroyed, s.run.scrap - scrap0, s.telemetry.encountersWon]).toEqual([1, SCRAP_ENEMY, 1]);
+    const t = sat().s; t.enemy.hull = 0.001; t.enemy.roomFire[EnemyRoom.Hold] = 5; t.enemy.nextShotTick = t.tick; run(t, 1);
+    expect([t.enemy.present, shotsInFlight(t), t.telemetry.enemiesDestroyed]).toEqual([0, 0, 1]);
+    const q = sat().s; expect(interiorStep(q)).toBe(false);
+  });
+  it('a fire that drops Weapons to 0 blocks the shot due that tick', () => {
+    const { s } = sat(); s.enemy.sysHp[EnemySystem.Weapons] = 0.01; s.enemy.roomFire[EnemyRoom.Weapons] = 5; s.enemy.nextShotTick = s.tick; run(s, 1);
+    expect([s.enemy.sysHp[EnemySystem.Weapons], shotsInFlight(s)]).toEqual([0, 0]);
+  });
+  it('both arrays are cleared on arrival and on leave', () => {
+    const { s } = sat(); s.enemy.roomFire.fill(3); s.enemy.roomBreach.fill(4); leave(s, false);
+    expect([...s.enemy.roomFire, ...s.enemy.roomBreach].every((v) => v === 0)).toBe(true);
+    s.enemy.roomFire.fill(3); s.enemy.roomBreach.fill(4); enemyArrive(s);
+    expect([...s.enemy.roomFire, ...s.enemy.roomBreach].every((v) => v === 0)).toBe(true);
+  });
+  it('the snapshot round-trips both arrays; each alone changes the hash', () => {
+    const { s } = sat(); s.enemy.roomFire[2] = 7.5; s.enemy.roomBreach[4] = 3.25;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(Array.from(t.enemy.roomFire)).toEqual([0, 0, 7.5, 0, 0]); expect(Array.from(t.enemy.roomBreach)).toEqual([0, 0, 0, 0, 3.25]); expect(hashState(t)).toBe(hashState(s));
+    const a = sat().s, base = hashState(a); a.enemy.roomFire[0] = 1; expect(hashState(a)).not.toBe(base);
+    const b = sat().s; b.enemy.roomBreach[0] = 1; expect(hashState(b)).not.toBe(base);
   });
 });

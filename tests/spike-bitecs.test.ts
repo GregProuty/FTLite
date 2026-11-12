@@ -26,7 +26,7 @@ describe('bitecs 0.4.0 behaviour (spike)', () => {
     for (let i = 0; i < 1000; i++) hashState(s);
     const perHashMs = (performance.now() - t0) / 1000;
     console.log(`snapshot ${bytes} bytes, hashState ${perHashMs.toFixed(4)} ms`);
-    expect(bytes).toBeLessThan(4096);
+    expect(bytes).toBeLessThan(8192);   // 4096 until Demo-viii, whose interior and last-shot fields made the 4-player snapshot exactly 4096 bytes (amendment A7)
     expect(perHashMs).toBeLessThan(1);   // well under a 16 ms frame
   });
 });
