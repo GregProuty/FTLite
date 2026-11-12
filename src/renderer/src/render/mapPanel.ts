@@ -4,6 +4,15 @@ import { mapTitle, type HudModel } from './hudModel';
 const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a;
 const nodeX = (c: number): number => 18 + 29 * c;
 const nodeY = (k: number, n: number): number => 128 + (k - (n - 1) / 2) * 44;
+/** Three small irregular rocks (original glyph, spec Demo-viii section 1), offsets from the node centre. */
+const ROCKS: readonly (readonly number[])[] = [
+  [-4.5, -1.5, -2.5, -3.5, -0.5, -2, -1, 0.5, -3.5, 1],
+  [1, -4, 3, -4.5, 4.5, -2.5, 3.5, -0.5, 1.5, -1.5],
+  [-0.5, 1.5, 2, 0.5, 4, 2.5, 2.5, 4.5, 0, 4],
+];
+function drawRocks(g: Graphics, x: number, y: number, color: number): void {
+  for (const r of ROCKS) g.poly(r.map((v, i) => v + (i % 2 === 0 ? x : y))).fill(color);
+}
 
 /** The sector map panel (spec Ship-and-map section 5): 240 x 236, redrawn per update; the caller places `root` at (1032, 220). */
 export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(map: HudModel['map']): void } {
@@ -31,6 +40,7 @@ export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(m
         else if (nd.selected) { g.circle(x, y, 6).fill(WARN); g.circle(x, y, 10).stroke({ width: 2, color: WARN }); }
         else if (nd.past) g.circle(x, y, 6).fill(FAINT);
         else g.circle(x, y, 6).fill(0x101420).stroke({ width: 1, color: nd.reachable ? TEXT : DIM });
+        if (nd.type === 'asteroid') drawRocks(g, x, y, nd.current || nd.selected ? 0x101420 : nd.past ? DIM : nd.reachable ? TEXT : DIM);
         const label = c === last ? 'EXIT' : nd.type === 'shop' ? '$' : nd.type === 'event' ? '?' : '';
         if (label && mi < marks.length) { const t = marks[mi++]!; t.text = label; t.position.set(x, y + 14); t.visible = true; }
       }));

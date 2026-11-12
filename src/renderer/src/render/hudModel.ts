@@ -76,10 +76,10 @@ export function clockLine(m: HudModel): string { return `HULL ${Math.round(m.hul
 /** The jump text shared by the Navigation footer and the map title. */
 export function jumpText(final: boolean, jump: { charge: number; ready: boolean }): string { return final ? '-' : jump.ready ? 'READY' : `${Math.floor(jump.charge * 100)}%`; }
 export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%   Jump ${jumpText(p.final, p.jump)}   Scrap ${p.scrap}`; }
-export interface MapNode { type: 'hazard' | 'event' | 'shop'; current: boolean; reachable: boolean; selected: boolean; past: boolean }
+export interface MapNode { type: 'hazard' | 'event' | 'shop' | 'asteroid'; current: boolean; reachable: boolean; selected: boolean; past: boolean }
 export interface MapModel { columns: { nodes: MapNode[] }[]; edges: { from: [number, number]; to: [number, number] }[]; column: number; jump: string }   // spec section 5; column and jump feed the title
 export function mapTitle(m: MapModel): string { return `SECTOR MAP   node ${m.column + 1}/${m.columns.length}   Jump ${m.jump}`; }
-const NODE_TYPES = ['hazard', 'event', 'shop'] as const;
+const NODE_TYPES = ['hazard', 'event', 'shop', 'asteroid'] as const;
 function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | null {
   if (!state || phase !== 'running') return null;
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;

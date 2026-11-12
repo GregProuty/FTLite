@@ -164,7 +164,7 @@ export const JUMP_CHARGE_TIME = 60;                                             
 export const BOARDING_AFTER_JUMP = 120;                                             // seconds after a jump before a party can arrive (no draw); the enemy follows the node type (ENCOUNTER_START, spec Demo-vi section 2)
 
 // Events and shops (Run-ii)
-export const SHOP_CHANCE = 0.25, EVENT_CHANCE = 0.35;                               // node type draw thresholds (map stream, after the edges)
+export const SHOP_CHANCE = 0.25, EVENT_CHANCE = 0.25, ASTEROID_CHANCE = 0.15;       // node type draw thresholds (map stream, after the edges); Event 0.35 -> 0.25 for asteroid fields (spec Demo-viii section 1)
 export const SCRAP_PER_JUMP = 15, SCRAP_ENEMY = 30, SCRAP_BOARDER = 10;
 export const EVENT_COUNT = 6;
 export const SHOP_HULL = 25, SHOP_HULL_COST = 30, SHOP_TORPEDOES = 2, SHOP_TORPEDOES_COST = 20, SHOP_UPGRADE_COST = 50;

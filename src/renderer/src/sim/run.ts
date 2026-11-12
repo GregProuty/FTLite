@@ -10,18 +10,18 @@ import { EndReason } from './crew';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from './tuning';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from './tuning';
 import { quirkChargeMult } from './quirks';
 
 /** Longest Navigation panel text: the console panel is 234 px wide, row text starts at x=20 and the bitmap font averages about 5.5 px per glyph, so 36 glyphs fit. */
 export const NAV_TEXT_MAX = 36;
-export const NodeType = { Hazard: 0, Event: 1, Shop: 2 } as const;
+export const NodeType = { Hazard: 0, Event: 1, Shop: 2, Asteroid: 3 } as const;
 export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump'; index: number; enabled: boolean }
 
-/** Node types (spec Run-ii section 3): one draw per middle node after every edge draw; a shop is guaranteed without a draw. */
+/** Node types (spec Run-ii section 3, Demo-viii section 1): one draw per middle node after every edge draw; a shop is guaranteed without a draw. */
 export function assignNodeTypes(rng: RngState, colNodes: Uint8Array, nodeType: Uint8Array, draw: (rng: RngState) => number = nextFloat): void {
   const columns = colNodes.length; nodeType.fill(NodeType.Hazard);
-  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = draw(rng); nodeType[c * 3 + n] = u < SHOP_CHANCE ? NodeType.Shop : u < SHOP_CHANCE + EVENT_CHANCE ? NodeType.Event : NodeType.Hazard; }
+  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = draw(rng); nodeType[c * 3 + n] = u < SHOP_CHANCE ? NodeType.Shop : u < SHOP_CHANCE + EVENT_CHANCE ? NodeType.Event : u < SHOP_CHANCE + EVENT_CHANCE + ASTEROID_CHANCE ? NodeType.Asteroid : NodeType.Hazard; }
   for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * 3 + n] === NodeType.Shop) return;
   nodeType[Math.floor(columns / 2) * 3] = NodeType.Shop;
 }
@@ -50,6 +50,8 @@ export function generateMap(rng: RngState, columns: number): { colNodes: Uint8Ar
 }
 
 export function nodeLabel(column: number, node: number): string { return `Node ${column + 1}${String.fromCharCode(97 + node)}`; }
+/** A destination row: the node label, naming an asteroid field (spec Demo-viii amendment R5). */
+export function destinationLabel(state: SimState, column: number, node: number): string { return state.run.nodeType[column * 3 + node] === NodeType.Asteroid ? `${nodeLabel(column, node)}  Asteroid field` : nodeLabel(column, node); }
 
 /** Destination node indices in the next column, ascending; empty in the last column. */
 export function reachable(state: SimState): number[] {
@@ -82,7 +84,7 @@ export function navRows(state: SimState): NavRow[] {
     rows.push({ text: `Shop   scrap ${r.scrap}`, select: 'none', index: 0, enabled: false });
     for (let i = 0; i < SHOP_ITEM_COUNT; i++) rows.push({ text: itemLabel(state, i), select: 'buy', index: i, enabled: itemEnabled(state, i) });
   }
-  for (const d of reachable(state)) rows.push({ text: nodeLabel(r.column + 1, d), select: 'jump', index: d, enabled: true });
+  for (const d of reachable(state)) rows.push({ text: destinationLabel(state, r.column + 1, d), select: 'jump', index: d, enabled: true });
   return rows;
 }
 

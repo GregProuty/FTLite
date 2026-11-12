@@ -396,7 +396,7 @@ describe('buildHudModel', () => {
     const s = makeState(2); quiet(s);
     expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe('HULL 100   TIME 0s   node 1/8'); expect(buildHudModel(s, slots(2), 'running', '').run.quirk).toBe(QUIRK_NAMES[s.run.quirk]); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toBe('HULL 0   TIME 0s   node 1/8');
     s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(/node 4.8$/);
-    s.run.column = 0; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 });
+    s.run.column = 0; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 }); setNodeTypes(s, {});   // all Hazard: the labels are plain node labels
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;

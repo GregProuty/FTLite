@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType } from '../src/renderer/src/sim/run';
+import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX } from '../src/renderer/src/sim/run';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { deriveStreams } from '../src/renderer/src/sim/state';
 import { Phase } from '../src/renderer/src/sim/director';
@@ -11,7 +11,7 @@ import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { failStation } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard, mapM, setNodeTypes } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 
@@ -29,7 +29,7 @@ function replayMap(rng: { s: number }, columns: number) {
     for (let d = 0; d < next; d++) { let incoming = false; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * 3 + n]! & (1 << d)) incoming = true; if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[c * 3 + n] = edgeMask[c * 3 + n]! | (1 << d); } }
   }
   const nodeType = new Uint8Array(columns * 3);
-  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * 3 + n] = u < SHOP_CHANCE ? 2 : u < SHOP_CHANCE + EVENT_CHANCE ? 1 : 0; }
+  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * 3 + n] = u < SHOP_CHANCE ? 2 : u < SHOP_CHANCE + EVENT_CHANCE ? 1 : u < SHOP_CHANCE + EVENT_CHANCE + ASTEROID_CHANCE ? 3 : 0; }
   let shop = false; for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * 3 + n] === 2) shop = true;
   if (!shop) nodeType[Math.floor(columns / 2) * 3] = 2;
   return { colNodes, edgeMask, nodeType };
@@ -70,7 +70,7 @@ describe('run: map generation', () => {
       const t = g.nodeType; let shops = 0;
       for (let c = 0; c < RUN_COLUMNS; c++) for (let n = 0; n < 3; n++) {
         const v = t[c * 3 + n]!;
-        if (n >= g.colNodes[c]! || c === 0 || c === RUN_COLUMNS - 1) expect(v).toBe(NodeType.Hazard); else { expect([0, 1, 2]).toContain(v); if (v === NodeType.Shop) shops++; }
+        if (n >= g.colNodes[c]! || c === 0 || c === RUN_COLUMNS - 1) expect(v).toBe(NodeType.Hazard); else { expect([0, 1, 2, 3]).toContain(v); if (v === NodeType.Shop) shops++; }
       }
       expect(shops).toBeGreaterThanOrEqual(1);
     }
@@ -78,6 +78,27 @@ describe('run: map generation', () => {
     for (let c = 0; c < RUN_COLUMNS; c++) for (let n = 0; n < 3; n++) expect(t[c * 3 + n]).toBe(c * 3 + n === 4 * 3 ? NodeType.Shop : NodeType.Hazard);
     const all = makeState(2, 1); assignNodeTypes(createRng(1), all.run.colNodes, t, () => 0.1);
     for (let c = 1; c < RUN_COLUMNS - 1; c++) for (let n = 0; n < all.run.colNodes[c]!; n++) expect(t[c * 3 + n]).toBe(NodeType.Shop);
+  });
+  it('node type thresholds (spec Demo-viii section 1): Shop below 0.25, Event below 0.5, Asteroid below 0.65, else Hazard; one draw per middle node', () => {
+    expect([SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE]).toEqual([0.25, 0.25, 0.15]);
+    const cn = makeState(2, 1).run.colNodes, middle = Array.from(cn).slice(1, -1).reduce((a, b) => a + b, 0);
+    for (const [u, want] of [[0.24, NodeType.Shop], [0.26, NodeType.Event], [0.49, NodeType.Event], [0.5, NodeType.Asteroid], [0.64, NodeType.Asteroid], [0.65, NodeType.Hazard], [0.99, NodeType.Hazard]] as const) {
+      const t = new Uint8Array(24); let draws = 0;
+      assignNodeTypes(createRng(1), cn, t, () => { draws++; return draws === 1 ? 0.1 : u; });   // the first node a shop, so no fallback
+      expect(draws).toBe(middle);
+      expect(t[1 * 3 + 0]).toBe(NodeType.Shop);
+      for (let c = 2; c < RUN_COLUMNS - 1; c++) for (let n = 0; n < cn[c]!; n++) expect(t[c * 3 + n]).toBe(want);
+      for (let c = 1; c < 2; c++) for (let n = 1; n < cn[c]!; n++) expect(t[c * 3 + n]).toBe(want);
+    }
+  });
+  it('the map draw count is unchanged by the asteroid type: the map stream ends where the Run-ii replay ends for seeds 1-3', () => {
+    for (const seed of [1, 2, 3]) { const r = deriveStreams(seed).map, g = generateMap(r, RUN_COLUMNS), old = oldReplay(deriveStreams(seed).map, RUN_COLUMNS); expect(Array.from(g.edgeMask)).toEqual(Array.from(old.edgeMask)); expect(Array.from(g.colNodes)).toEqual(Array.from(old.colNodes)); const ref = deriveStreams(seed).map; replayMap(ref, RUN_COLUMNS); expect(r.s).toBe(ref.s); }
+  });
+  it('the Navigation row of an Asteroid destination names the field; other destinations keep the node label', () => {
+    const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid });
+    const rows = navRows(s).filter((r) => r.select === 'jump');
+    expect(rows.map((r) => r.text)).toEqual(reachable(s).map((d) => d === 0 ? 'Node 2a  Asteroid field' : nodeLabel(1, d)));
+    for (const r of rows) expect(r.text.length).toBeLessThanOrEqual(NAV_TEXT_MAX);
   });
   it('createSimState draws the map from the map stream exactly as the section 5 replay does, leaves the other streams as before, and is seed-deterministic', () => {
     for (const seed of [1, 23]) { const r = deriveStreams(seed).map; replayMap(r, RUN_COLUMNS); expect(makeState(2, seed).rng.map.s).toBe(r.s); }

@@ -60,4 +60,10 @@ describe('sector map model', () => {
     const sel = build(s)!.columns.flatMap((c, ci) => c.nodes.map((x, k) => ({ ci, k, x }))).filter((e) => e.x.selected);
     expect(sel.length).toBe(1); expect(sel[0]!.ci).toBe(1);
   });
+  it('marks each node with its type, asteroid fields included', () => {
+    const s = makeState(2); quiet(s); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid, '1:1': NodeType.Shop, '2:0': NodeType.Event }); seatNavigator(s, 0);
+    const m = build(s)!;
+    expect(m.columns[1]!.nodes.map((x) => x.type)).toEqual(['asteroid', 'shop', 'hazard']);
+    expect(m.columns[2]!.nodes[0]!.type).toBe('event');
+  });
 });
