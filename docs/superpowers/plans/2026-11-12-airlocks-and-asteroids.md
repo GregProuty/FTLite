@@ -35,16 +35,18 @@
 describe('airlocks (spec Demo-vii section 1)', () => {
   const base = () => structuredClone(starterJson);   // the starter's JSON, imported as the existing tests do
   it('defaults to none and the starter has none', () => { expect(parseShip(base()).airlocks).toEqual([]); });
-  it('accepts a hull wall tile next to its room with space beyond', () => {
-    const s = base(); s.airlocks = [{ room: 'G', tile: [2, 10] }];   // pick a real outer-wall tile of a starter room; adjust to the rows
-    expect(() => parseShip(s)).not.toThrow();
+  it('keeps a valid airlock: an outer hull wall tile next to exactly one room, space or out of bounds beyond', () => {
+    // Pick the tile from the starter rows: an outer-boundary '#' (row 0, the last row, column 0 or the last column) whose single
+    // inward neighbour is a room tile. Do NOT use (2,10): it is interior and touches several rooms (Codex plan review 1).
+    const s = base(); s.airlocks = [{ room: ROOM, tile: [TX, TY] }];
+    expect(parseShip(s).airlocks).toEqual([{ room: ROOM, tile: [TX, TY] }]);   // fails today: zod strips the unknown key
   });
   it('rejects a tile that is not a wall, not next to its room, interior, or duplicated', () => { /* four parseShip throws with /airlock/ messages */ });
 });
 ```
 
   and in `tests/cutter.test.ts`: the cutter parses with four airlocks in rooms T, X, E, F; `deriveLayout(cutter).kEff` equals the value without airlocks (4.390243902439026).
-- [ ] **Step 3: Run, expect FAIL** (`airlocks` unknown).
+- [ ] **Step 3: Run, expect FAIL**: the preservation test fails because zod strips the unknown `airlocks` key today, and the rejection tests fail because nothing validates it. (The default-to-empty test may already pass; that is fine.)
 - [ ] **Step 4: Implement.** Schema: `airlocks: z.array(z.object({ room: z.string().length(1), tile })).default([])`; in `superRefine`: unknown room; `at(tile) === '#'`; exactly one orthogonal neighbour is a tile of `room`; the neighbour opposite that room tile is out of bounds or `' '` (spec amendment 4); no duplicate tile and no tile shared with a breach site. Record the verified orientation of each cutter airlock (amendment 5) in a code comment beside the JSON loader test. Derived: fill the three arrays; push `airlockRoom, airlockTile` into the layout-hash codes (after the sites) and the count into the header codes; add `AIRLOCK_PASSAGE` per airlock to `maxCond` of its room. Cutter: add the four entries.
 - [ ] **Step 5: Run, expect PASS**; also `npx vitest run tests/golden.test.ts` (unchanged: starter hash untouched).
 - [ ] **Step 6: Commit** `feat: airlocks in the ship schema and four on the cutter`.
@@ -63,7 +65,7 @@ describe('airlocks (spec Demo-vii section 1)', () => {
 
 ### Task 3: Door rules for HeldOpen
 
-**Files:** `sim/doors.ts`, `sim/hazards/oxygen.ts`, `sim/hazards/fire.ts` (via `passageFor`), `sim/bot.ts`, `sim/boarders.ts`; Test: `tests/doors.test.ts`, `tests/oxygen.test.ts`, `tests/fire.test.ts`
+**Files:** `sim/doors.ts`, `sim/grid.ts` (`solidAt`, line 16, if Task 2 has not already switched it), `sim/hazards/oxygen.ts`, `sim/hazards/fire.ts` (via `passageFor`), `sim/bot.ts`, `sim/boarders.ts`, `render/doorAnim.ts` (`doorTarget`, line 5), `render/tiles.ts` (the open-jamb branch, line 43); Test: `tests/doors.test.ts`, `tests/oxygen.test.ts`, `tests/fire.test.ts`, `tests/movement.test.ts` (a crew member walks through a HeldOpen door), `tests/doorAnim.test.ts` (HeldOpen animates and draws as open)
 
 - [ ] **Step 1: Failing tests:** a HeldOpen door with nobody near stays HeldOpen for 600 ticks; `passageFor` gives `PASSAGE_OPEN`; fire spreads across it at the open rate; local Interact (`toggleSeal`) on HeldOpen seals it, deferred while a crew member stands on the tile (the deferred request must still complete: `doorSystem` processes `sealRequested` before skipping HeldOpen); the Leaky Seals quirk multiplier does not apply to HeldOpen.
 - [ ] **Step 2: Run, expect FAIL.**
@@ -75,7 +77,7 @@ describe('airlocks (spec Demo-vii section 1)', () => {
 
 **Files:** `sim/hazards/oxygen.ts`; Test: `tests/oxygen.test.ts`
 
-- [ ] **Step 1: Failing tests** (cutter state, quiet): open the Engines airlock with its doors closed: Engines' oxygen fraction falls below `FIRE_SHRINK_FRAC` within 30 s and a fire started there goes out; `injected − breathed − burned − vented` conservation holds to the existing epsilon; a closed airlock vents nothing over 600 ticks; life support injects nothing into a room with an open airlock (as for a breached room); the airlock tile is solid open or closed (`solidAt`).
+- [ ] **Step 1: Failing tests** (cutter state, quiet): open the Engines airlock with its doors closed: Engines' oxygen fraction falls below `FIRE_SHRINK_FRAC` within 30 s, and a fire started there reaches exactly 0 intensity (`state.rooms.fire[room] === 0`) after continued hazard steps (Codex plan review 6); `injected − breathed − burned − vented` conservation holds to the existing epsilon; a closed airlock vents nothing over 600 ticks; life support injects nothing into a room with an open airlock (as for a breached room); the airlock tile is solid open or closed (`solidAt`).
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement** a separate vent pass after the breach-site pass, in ascending airlock index (spec amendment 7): for each open airlock, `vent = k * AIRLOCK_PASSAGE * frac[room] * dt` into the same `demand` and, after scaling, `c.vented`. `roomBreached` (or a new `roomVenting`) covers open airlocks for the injection rule.
 - [ ] **Step 4: Run oxygen, lifeSupport, fire: PASS.**
@@ -85,7 +87,7 @@ describe('airlocks (spec Demo-vii section 1)', () => {
 
 **Files:** `sim/console.ts`, `sim/stations.ts` (cursor init), `sim/doors.ts`, `sim/state.ts` (scratch); Test: `tests/console.test.ts`
 
-**Interfaces — Produces:** in `sim/doors.ts`: `doorsCursorCount(state): number` (= `doorEdges.length + airlockCount`) and `doorsCursorTarget(state, c): { kind: 'door'; edge: number } | { kind: 'airlock'; index: number } | null` (spec amendment 3); scratch sets `doorCycles: Set<number>` (remote, interior door edges) and `airlockToggles: Set<number>`, applied at the end of `consoleSystem` in ascending order: local `doorToggles`, then `doorCycles`, then `airlockToggles` (amendment 2). Holds and airlock commands are queued only while the Doors station is online; today's remote seal (Confirm while the door is Sealed or on the Sealed step of the cycle) keeps no online check. The fail-safe is the first thing `doorSystem` does.
+**Interfaces — Produces:** in `sim/doors.ts`: `doorsCursorCount(state): number` (= `doorEdges.length + airlockCount`) and `doorsCursorTarget(state, c): { kind: 'door'; edge: number } | { kind: 'airlock'; index: number } | null` (spec amendment 3); scratch sets `doorCycles: Set<number>` (remote, interior door edges) and `airlockToggles: Set<number>`, applied at the end of `consoleSystem` in ascending order: local `doorToggles`, then `doorCycles`, then `airlockToggles` (amendment 2). Routing of Confirm on an interior door (Codex plan review 3): while the Doors station is **offline**, Confirm keeps today's exact path (`doorToggles` → `toggleSeal`: Auto ↔ Sealed), so a sealed door can still be unsealed and an open one sealed with no power. While **online**, Confirm queues the door in `doorCycles`: Auto → HeldOpen → Sealed → Auto. Airlock commands are queued only while online. The fail-safe is the first thing `doorSystem` does. Add tests: offline Confirm unseals a sealed door and seals an auto door (today's behaviour); offline Confirm never produces HeldOpen.
 
 - [ ] **Step 1: Failing tests:** the cursor walks every door, then every airlock, then wraps (both directions); Confirm on a door cycles Closed/Open → HeldOpen → Sealed → Closed; Confirm on an airlock toggles it; with the Doors station offline Confirm on an airlock or a hold does nothing; when the station goes offline (power to 0, or failed) every airlock closes and every HeldOpen door becomes Closed on that tick; the remote seal of today keeps its behaviour; `lastDoorToggleTick` updates on every command; starter (no airlocks) behaves exactly as before.
 - [ ] **Step 2: Run, expect FAIL.**
@@ -117,7 +119,11 @@ describe('airlocks (spec Demo-vii section 1)', () => {
 
 ### Task 8: Visible asteroids and shots (render only)
 
-**Files:** Create `render/projectileModel.ts`, `render/projectiles.ts`; modify `render/renderer.ts`; Test: create `tests/projectileModel.test.ts`
+**Files:** Create `render/projectileModel.ts`, `render/projectiles.ts`; modify `render/renderer.ts` and the place that loads snapshots into the running game (find it: `grep -rn "fromSnapshot\|loadSnapshot\|restore" src/renderer/src`); Test: create `tests/projectileModel.test.ts`; extend `tests/debris.test.ts`
+
+Snapshot reset (Codex plan review 4): `Renderer` gains `reset(): void`, which clears the projectile map and any shake; the snapshot-load path calls it. `shouldReset` stays as the fallback for jumps and new runs. If the app has no snapshot-load path at runtime, say so in the amendments and keep `reset()` for the run-restart path.
+
+Sim facts first (Codex plan review 5): before writing the layer, add two tests to `tests/debris.test.ts`: a Shot that hits sets `rooms.impactTick[room]` to the tick; a Debris object that is evaded (seat a navigator, force the evade roll) leaves `rooms.impactTick[room]` unchanged. If either fails, stop and report: the outcome rule depends on them.
 
 **Interfaces — Produces:** `projectilePath(stableId, kind, roomCentre: {x,y}, band): { from: {x,y}; to: {x,y} }`; `projectilePos(path, impactTick, tick, showSeconds): {x,y} | null`; `outcomeOf(tickNow, impactTick, roomImpactTick): 'hit' | 'destroyed' | 'evaded'` judged on the first frame the object is absent: `tickNow < impactTick` → destroyed (shot down); else `roomImpactTick >= impactTick` → hit; else evaded (spec amendments 8 and 9; no hull-drop inference). `evadePos(path, impactTick, tick)` continues at the arrival velocity, with alpha `1 − (tick − impactTick) / 36` until 0 (amendment 10). `shouldReset(prevTick, tick, prevNode, node)`: true when the node changes, the tick goes backwards, or it jumps forward by more than 120 ticks.
 
