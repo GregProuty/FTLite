@@ -51,14 +51,14 @@ describe('the captain bot (spec Demo-i section 6)', () => {
       expect(s.rooms.fire.some((f) => f > 0)).toBe(false);
     }
   });
-  it('(3) never buys at a shop: jumps on, scrap is 100 + 15 at the next arrival', () => {
+  it('(3) never buys at a shop: jumps on, scrap is 100 + scrapPerJump(2) = 118 at the next arrival', () => {
     const s = calm(); setNodeTypes(s, { '1:0': NodeType.Shop }); chargeJump(s);
     let granted = false;
     for (let t = 0; t < 12000 && s.telemetry.jumps < 2; t++) {
       tick(s);
       if (!granted && s.telemetry.jumps === 1) { granted = true; grantScrap(s, 100); }
     }
-    expect(s.telemetry.jumps).toBe(2); expect(s.telemetry.purchases).toBe(0); expect(s.run.scrap).toBe(115);
+    expect(s.telemetry.jumps).toBe(2); expect(s.telemetry.purchases).toBe(0); expect(s.run.scrap).toBe(118);   // grantScrap sets the total; the arrival at column 2 pays 18 (spec Demo-ix section 2)
   });
   it('(4) revives a Downed pid 1 before sitting, then jumps', () => {
     const s = calm(); chargeJump(s);

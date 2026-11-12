@@ -6,27 +6,27 @@ import { UPGRADE_KINDS, itemLabel, itemEnabled, buy } from '../src/renderer/src/
 import { baseMax, maxLevel, shiftBar, failStation } from '../src/renderer/src/sim/power';
 import { isOverdriven, heatStep } from '../src/renderer/src/sim/heat';
 import { leave } from '../src/renderer/src/sim/enemy';
-import { damageBoarder } from '../src/renderer/src/sim/boarders';
+import { damageBoarder, killBoarderByHazard } from '../src/renderer/src/sim/boarders';
 import { downCrew } from '../src/renderer/src/sim/crew';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { StationKind, STATION_NAMES } from '../src/renderer/src/sim/stationKinds';
 import { freeSites } from '../src/renderer/src/sim/hazards/breach';
 import { nextInt } from '../src/shared/rng';
-import { HULL_MAX, HEALTH_MAX, TORP_CAP, TORP_START, STATION_MAX, STATION_OVERDRIVE, SCRAP_PER_JUMP, SCRAP_ENEMY, SCRAP_BOARDER, EVENT_COUNT } from '../src/renderer/src/sim/tuning';
+import { HULL_MAX, HEALTH_MAX, TORP_CAP, TORP_START, STATION_MAX, STATION_OVERDRIVE, EVENT_COUNT, scrapPerJump, scrapEnemy, scrapBoarder, scrapSurrender, scrapField } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, intents, placeEnemy, placeBoarder, chargeJump, seatNavigator, mapM, setNodeTypes, grantScrap, setEvent, room } from './helpers/sim';
 
 const calm = (seed = 1) => { const s = makeState(2, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); return s; };
 const at = (s: ReturnType<typeof makeState>, column: number, node: number) => { s.run.column = column; s.run.node = node; s.run.nodesReached = column; s.telemetry.jumps = column; };
 
 describe('arrival', () => {
-  it('a Hazard arrival awards SCRAP_PER_JUMP and never touches the loot stream; an Event arrival draws the id with exactly one loot draw', () => {
+  it('a Hazard arrival awards scrapPerJump of the new column and never touches the loot stream; an Event arrival draws the id with exactly one loot draw', () => {
     const s = calm(); const before = { s: s.rng.loot.s };
     jumpShip(s, 0);
-    expect([s.run.scrap, s.telemetry.scrapEarned, s.run.event, s.run.eventChoice]).toEqual([SCRAP_PER_JUMP, SCRAP_PER_JUMP, -1, -1]);
+    expect([s.run.scrap, s.telemetry.scrapEarned, s.run.event, s.run.eventChoice]).toEqual([scrapPerJump(1), scrapPerJump(1), -1, -1]);
     expect(s.rng.loot.s).toBe(before.s); expect(nextInt(s.rng.loot, 1000)).toBe(nextInt(before, 1000));
     const e = calm(); setNodeTypes(e, { '1:2': NodeType.Event }); const ref = { s: e.rng.loot.s }; const id = nextInt(ref, EVENT_COUNT);
     jumpShip(e, 2);
-    expect(e.run.event).toBe(id); expect(e.rng.loot.s).toBe(ref.s); expect(e.run.scrap).toBe(SCRAP_PER_JUMP);
+    expect(e.run.event).toBe(id); expect(e.rng.loot.s).toBe(ref.s); expect(e.run.scrap).toBe(scrapPerJump(1));
     const v = calm(); at(v, 6, 0); jumpShip(v, 0); expect(v.ended).toBe(1); expect(v.run.event).toBe(-1);   // the last column is Hazard
     const bad = calm(); const h = JSON.stringify([bad.run.column, bad.run.scrap, bad.rng.loot.s, bad.rng.director.s]); jumpShip(bad, 1); expect(JSON.stringify([bad.run.column, bad.run.scrap, bad.rng.loot.s, bad.rng.director.s])).toBe(h);   // node 1 is not reachable from the start: no-op
   });
@@ -138,10 +138,10 @@ describe('shops', () => {
 });
 
 describe('scrap sources', () => {
-  it('a destroyed enemy pays SCRAP_ENEMY, a withdrawal pays nothing, a boarder kill pays SCRAP_BOARDER, and the counters reconcile', () => {
-    const s = calm(); placeEnemy(s); leave(s, true); expect([s.run.scrap, s.telemetry.scrapEarned]).toEqual([SCRAP_ENEMY, SCRAP_ENEMY]);
-    placeEnemy(s); leave(s, false); expect(s.run.scrap).toBe(SCRAP_ENEMY);
-    const b = placeBoarder(s, room(s, 'G'), 5); damageBoarder(s, b, 5, 0); expect(s.run.scrap).toBe(SCRAP_ENEMY + SCRAP_BOARDER);
+  it('at column 0 a destroyed enemy pays scrapEnemy(0), a withdrawal pays nothing, a boarder kill pays scrapBoarder(0), and the counters reconcile', () => {
+    const s = calm(); placeEnemy(s); leave(s, true); expect([s.run.scrap, s.telemetry.scrapEarned]).toEqual([scrapEnemy(0), scrapEnemy(0)]);
+    placeEnemy(s); leave(s, false); expect(s.run.scrap).toBe(scrapEnemy(0));
+    const b = placeBoarder(s, room(s, 'G'), 5); damageBoarder(s, b, 5, 0); expect(s.run.scrap).toBe(scrapEnemy(0) + scrapBoarder(0));
     spendScrap(s, 10); addScrap(s, 3); expect(s.run.scrap).toBe(s.telemetry.scrapEarned - s.telemetry.scrapSpent);
   });
 });
@@ -160,5 +160,27 @@ describe('Navigation text budget', () => {
     const s = calm(); at(s, 7, 0); expect(reachable(s)).toEqual([]);
     const snap = () => JSON.stringify([s.run.column, s.run.node, s.run.nodesReached, s.run.jumpCharge, s.run.scrap, s.run.event, s.telemetry.jumps, s.rng.loot.s, s.rng.director.s]);
     const before = snap(); jumpShip(s, 0); expect(snap()).toBe(before);
+  });
+});
+
+describe('scrap by column (spec Demo-ix section 2, amendment B8)', () => {
+  it('each helper at columns 0, 3 and 7', () => {
+    const at = (f: (c: number) => number) => [0, 3, 7].map(f);
+    expect(at(scrapPerJump)).toEqual([10, 22, 38]);
+    expect(at(scrapEnemy)).toEqual([20, 38, 62]);
+    expect(at(scrapSurrender)).toEqual([15, 27, 43]);
+    expect(at(scrapBoarder)).toEqual([8, 14, 22]);
+    expect(at(scrapField)).toEqual([15, 30, 50]);
+  });
+  it('arrival pays the column the jump advanced to: 0 -> 1 pays 14, 3 -> 4 pays 26', () => {
+    const s = calm(); jumpShip(s, 0); expect(s.run.scrap).toBe(14);
+    const t = calm(); at(t, 3, 0); const reach = reachable(t); expect(reach.length).toBeGreaterThan(0);
+    jumpShip(t, reach[0]!); expect([t.run.column, t.run.scrap]).toEqual([4, scrapPerJump(4)]); expect(t.run.scrap).toBe(26);
+  });
+  it('at column 3: a kill pays 38, a surrender 27, a melee boarder kill 14, a hazard boarder kill 14', () => {
+    const k = calm(); at(k, 3, 0); placeEnemy(k); leave(k, true); expect(k.run.scrap).toBe(38);
+    const f = calm(); at(f, 3, 0); placeEnemy(f); f.enemy.fleeing = 1; f.enemy.surrenderIntact = 1; leave(f, false); expect([f.run.scrap, f.telemetry.surrenders]).toEqual([27, 1]);
+    const b = calm(); at(b, 3, 0); const k1 = placeBoarder(b, room(b, 'G'), 5); damageBoarder(b, k1, 5, 0); expect(b.run.scrap).toBe(14);
+    const v = calm(); at(v, 3, 0); const k2 = placeBoarder(v, room(v, 'G')); killBoarderByHazard(v, k2); expect([v.run.scrap, v.telemetry.boardersVented]).toEqual([14, 1]);
   });
 });

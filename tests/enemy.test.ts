@@ -18,7 +18,7 @@ import { Health } from '../src/renderer/src/sim/components';
 import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { interiorStep, enemyRoomOfHit, EnemyRoom, arrive as enemyArrive } from '../src/renderer/src/sim/enemy';
-import { ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SCRAP_ENEMY } from '../src/renderer/src/sim/tuning';
+import { ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, scrapEnemy } from '../src/renderer/src/sim/tuning';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { LAYOUT } from './helpers/sim';
@@ -555,8 +555,8 @@ describe('the enemy interior: fires, breaches (spec Demo-viii section 2b, amendm
   it('interior damage to 0 hull is a kill with the win reward, once, and no shot fires that tick', () => {
     const { s } = sat(); s.enemy.hull = 0.001; s.enemy.roomFire[EnemyRoom.Weapons] = 5; s.enemy.roomFire[EnemyRoom.Bridge] = 5; s.enemy.nextShotTick = s.tick; const scrap0 = s.run.scrap;
     expect(interiorStep(s)).toBe(true);
-    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.run.scrap - scrap0, s.run.encounter, s.telemetry.encountersWon, shotsInFlight(s)]).toEqual([0, 1, SCRAP_ENEMY, Encounter.Won, 1, 0]);
-    leave(s, true); expect([s.telemetry.enemiesDestroyed, s.run.scrap - scrap0, s.telemetry.encountersWon]).toEqual([1, SCRAP_ENEMY, 1]);
+    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.run.scrap - scrap0, s.run.encounter, s.telemetry.encountersWon, shotsInFlight(s)]).toEqual([0, 1, scrapEnemy(s.run.column), Encounter.Won, 1, 0]);
+    leave(s, true); expect([s.telemetry.enemiesDestroyed, s.run.scrap - scrap0, s.telemetry.encountersWon]).toEqual([1, scrapEnemy(s.run.column), 1]);
     const t = sat().s; t.enemy.hull = 0.001; t.enemy.roomFire[EnemyRoom.Hold] = 5; t.enemy.nextShotTick = t.tick; run(t, 1);
     expect([t.enemy.present, shotsInFlight(t), t.telemetry.enemiesDestroyed]).toEqual([0, 0, 1]);
     const q = sat().s; expect(interiorStep(q)).toBe(false);

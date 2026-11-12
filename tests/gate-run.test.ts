@@ -8,7 +8,7 @@ import { Position, Life, LifeState, Seated } from '../src/renderer/src/sim/compo
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { NodeType, navRows } from '../src/renderer/src/sim/run';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
-import { TICK_HZ, RUN_COLUMNS, JUMP_CHARGE_TIME, HULL_MAX, SCRAP_PER_JUMP } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, RUN_COLUMNS, JUMP_CHARGE_TIME, HULL_MAX, scrapPerJump } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, room, RECRUITS, mapM, setNodeTypes } from './helpers/sim';
 
 describe('run gate: a scripted navigator resolves an event, buys a hull repair and wins', () => {
@@ -32,7 +32,8 @@ describe('run gate: a scripted navigator resolves an event, buys a hull repair a
       if (s.telemetry.jumps !== lastJumps) { lastJumps = s.telemetry.jumps; silence(); if (s.run.column === 1) s.run.event = 4; }   // the arrival drew an id; pin the Supply cache
     }
     expect([s.endReason, s.telemetry.jumps, s.run.column]).toEqual([EndReason.Victory, RUN_COLUMNS - 1, RUN_COLUMNS - 1]);
-    expect([s.telemetry.scrapEarned, s.telemetry.scrapSpent, s.run.scrap, s.telemetry.eventsResolved, s.telemetry.purchases, s.hull]).toEqual([7 * SCRAP_PER_JUMP + 40, 30, 7 * SCRAP_PER_JUMP + 40 - 30, 1, 1, HULL_MAX]);
+    let jumpScrap = 0; for (let c = 1; c < RUN_COLUMNS; c++) jumpScrap += scrapPerJump(c);   // each arrival pays its new column (spec Demo-ix amendment B8)
+    expect([s.telemetry.scrapEarned, s.telemetry.scrapSpent, s.run.scrap, s.telemetry.eventsResolved, s.telemetry.purchases, s.hull]).toEqual([jumpScrap + 40, 30, jumpScrap + 40 - 30, 1, 1, HULL_MAX]);
     expect(s.crew.filter((e) => Life.state[e] === LifeState.Conscious).length).toBe(2);
   });
 });

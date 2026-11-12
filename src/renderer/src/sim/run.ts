@@ -10,7 +10,7 @@ import { EndReason } from './crew';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, FIELD_REWARD_SCRAP } from './tuning';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField } from './tuning';
 import { quirkChargeMult } from './quirks';
 
 /** Longest Navigation panel text: the console panel is 234 px wide, row text starts at x=20 and the bitmap font averages about 5.5 px per glyph, so 36 glyphs fit. */
@@ -67,7 +67,7 @@ export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.mi
 
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
 function arrive(state: SimState): void {
-  const r = state.run; r.event = -1; r.eventChoice = -1; addScrap(state, SCRAP_PER_JUMP);
+  const r = state.run; r.event = -1; r.eventChoice = -1; addScrap(state, scrapPerJump(r.column));
   if (r.nodeType[r.column * 3 + r.node] === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
 }
 
@@ -142,7 +142,7 @@ export function fieldSystem(state: SimState): void {
   if (r.encounter !== Encounter.Fighting) return;
   const start = r.encounterTick;
   if (state.tick >= start + (FIELD_SECONDS + FIELD_CLEAR_EXTRA) * TICK_HZ) {
-    r.encounter = Encounter.Won; r.encounterTick = state.tick; r.fieldNextTick = -1; r.driveBoost = 1; state.telemetry.encountersWon++; addScrap(state, FIELD_REWARD_SCRAP);
+    r.encounter = Encounter.Won; r.encounterTick = state.tick; r.fieldNextTick = -1; r.driveBoost = 1; state.telemetry.encountersWon++; addScrap(state, scrapField(r.column));
     return;
   }
   if (r.fieldNextTick < 0 || state.tick < r.fieldNextTick) return;

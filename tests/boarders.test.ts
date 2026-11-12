@@ -13,7 +13,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
 import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, BOARDING_FIRST, BOARDING_FIRST_SMALL, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDING_PARTY, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, XP_RATE, HEALTH_MAX, MEDBAY_HEAL, STRESS_WEIGHTS, BOARDER_SLOTS, TRAIT_XP_MULT, BOARDER_O2_DPS, BOARDER_FIRE_DPS, O2_DAMAGE, FIRE_DAMAGE, SUFFOCATE_FRAC, SCRAP_BOARDER } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, DT, BOARDING_FIRST, BOARDING_FIRST_SMALL, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDING_PARTY, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, XP_RATE, HEALTH_MAX, MEDBAY_HEAL, STRESS_WEIGHTS, BOARDER_SLOTS, TRAIT_XP_MULT, BOARDER_O2_DPS, BOARDER_FIRE_DPS, O2_DAMAGE, FIRE_DAMAGE, SUFFOCATE_FRAC, scrapBoarder } from '../src/renderer/src/sim/tuning';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { makeState, run, quiet, placeBoarder, room, intents, teleport, setSkill, cutterState, seconds } from './helpers/sim';
 import { stationOnline } from '../src/renderer/src/sim/stations';
@@ -256,7 +256,7 @@ describe('boarders: vacuum and fire (spec Demo-ix section 1, amendments B6 and B
     s.tick = 500; s.rng.director.s = 7; const dr = createRng(7), u = nextFloat(dr), hz = s.rng.hazards.s, cb = s.rng.combat.s;
     boarderSystem(s);
     expect([s.boarders.active[k], s.boarders.stableId[k], s.boarders.health[k]]).toEqual([0, 0, 0]);
-    expect([s.telemetry.boardersKilled, s.telemetry.boardersVented, s.run.scrap - scrap0]).toEqual([1, 1, SCRAP_BOARDER]);
+    expect([s.telemetry.boardersKilled, s.telemetry.boardersVented, s.run.scrap - scrap0]).toEqual([1, 1, scrapBoarder(s.run.column)]);
     expect(xpOf(s)).toEqual(xp0);
     expect([s.rng.director.s, s.rng.hazards.s, s.rng.combat.s]).toEqual([dr.s, hz, cb]);
     expect(s.boarders.nextArrivalTick).toBe(500 + Math.round(BOARDING_COOLDOWN * T * (1 + BOARDING_JITTER * (2 * u - 1))));

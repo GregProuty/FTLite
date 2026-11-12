@@ -9,7 +9,7 @@ import { failStation } from '../src/renderer/src/sim/power';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { jumpShip, reachable } from '../src/renderer/src/sim/run';
 import { createRng, nextFloat, nextInt, type RngState } from '../src/shared/rng';
-import { TICK_HZ, ENEMY_FIRST_SHOT, ENEMY_HULL, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, ENEMY_SYS_HP, ENEMY_FLEE_DELAY, SCRAP_SURRENDER, SCRAP_ENEMY, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, SHOT_BREACH_FIRST } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENEMY_FIRST_SHOT, ENEMY_HULL, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, ENEMY_SYS_HP, ENEMY_FLEE_DELAY, scrapSurrender, scrapEnemy, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, SHOT_BREACH_FIRST } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, placeEnemy, placeShot, placeDebris, run, disableSystem } from './helpers/sim';
 
 const T = TICK_HZ;
@@ -134,7 +134,7 @@ describe('combat: flee and surrender', () => {
     expect(s.enemy.departTick).toBe(t0 + 480); expect(fleeSecondsLeft(s)).toBe(8);
     while (s.enemy.present && s.tick < t0 + 600) step(s, []);
     expect(s.enemy.present).toBe(0); expect(s.tick).toBe(t0 + 481);
-    expect([s.telemetry.surrenders, s.telemetry.enemyFled, s.telemetry.enemiesDestroyed, s.run.scrap - scrap0]).toEqual([1, 0, 0, SCRAP_SURRENDER]);
+    expect([s.telemetry.surrenders, s.telemetry.enemyFled, s.telemetry.enemiesDestroyed, s.run.scrap - scrap0]).toEqual([1, 0, 0, scrapSurrender(s.run.column)]);
     expect([s.enemy.maxHull, s.enemy.shieldLayers, s.enemy.shieldRecharge, s.enemy.shotArmTick, s.enemy.fleeing, s.enemy.surrenderIntact]).toEqual([0, 0, 0, -1, 0, 0]);
   });
   it('a damaging hit during the flee voids the surrender: the departure counts a flee and pays nothing', () => {
@@ -146,7 +146,7 @@ describe('combat: flee and surrender', () => {
   it('a kill during the flee pays the kill, not the surrender', () => {
     const { s } = fleer(25); step(s, []); s.enemy.hull = 15; const scrap0 = s.run.scrap;
     expect(shoot(s)).toBe(true);
-    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.telemetry.surrenders, s.telemetry.enemyFled, s.run.scrap - scrap0]).toEqual([0, 1, 0, 0, SCRAP_ENEMY]);
+    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.telemetry.surrenders, s.telemetry.enemyFled, s.run.scrap - scrap0]).toEqual([0, 1, 0, 0, scrapEnemy(s.run.column)]);
   });
   it('a jump during an intact flee counts a flee and pays no surrender scrap; downed engines stop the clock', () => {
     const j = fleer(25); step(j.s, []); expect(j.s.enemy.fleeing).toBe(1);

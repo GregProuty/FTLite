@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildHudModel, runNotice } from '../src/renderer/src/render/hudModel';
 import { EVENTS, resolveEvent } from '../src/renderer/src/sim/events';
 import { NodeType } from '../src/renderer/src/sim/run';
-import { NOTICE_LINE_MAX, SCRAP_SURRENDER, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_START, NEVER } from '../src/renderer/src/sim/tuning';
+import { NOTICE_LINE_MAX, scrapSurrender, scrapField, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_START, NEVER } from '../src/renderer/src/sim/tuning';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump, seatNavigator, placeEnemy } from './helpers/sim';
 
@@ -31,16 +31,16 @@ describe('runNotice', () => {
   it('priority: event, surrender, shop, ready-unseated, ready-seated', () => {
     const s = fresh(); shopAt(s); chargeJump(s); surrender(s); setEvent(s, 4);
     expect(runNotice(s)[0]).toBe('EVENT: Supply cache');
-    s.run.eventChoice = 0; expect(runNotice(s)).toEqual([`ENEMY SURRENDERS   hold fire 8s for +${SCRAP_SURRENDER} scrap`]);   // beats the shop and the ready drive
+    s.run.eventChoice = 0; expect(runNotice(s)).toEqual([`ENEMY SURRENDERS   hold fire 8s for +${scrapSurrender(s.run.column)} scrap`]);   // beats the shop and the ready drive
     s.enemy.surrenderIntact = 0; expect(runNotice(s)).toEqual(SHOP);                                                           // a voided surrender shows nothing from rule 1b
     s.enemy.present = 0; expect(runNotice(s)).toEqual(SHOP);
     setNodeTypes(s, {}); expect(runNotice(s)).toEqual(['JUMP READY   someone take Navigation']);
   });
   it('the surrender line: exact string at 8 s, within NOTICE_LINE_MAX, counting down; not without a flee', () => {
     const s = fresh(); surrender(s);
-    const line = 'ENEMY SURRENDERS   hold fire 8s for +20 scrap';
+    const line = 'ENEMY SURRENDERS   hold fire 8s for +15 scrap';   // column 0 (spec Demo-ix section 2)
     expect(runNotice(s)).toEqual([line]); expect(line.length).toBe(45); expect(line.length).toBeLessThanOrEqual(NOTICE_LINE_MAX);
-    s.enemy.departTick = s.tick + 7 * 60; expect(runNotice(s)).toEqual(['ENEMY SURRENDERS   hold fire 7s for +20 scrap']);
+    s.enemy.departTick = s.tick + 7 * 60; expect(runNotice(s)).toEqual(['ENEMY SURRENDERS   hold fire 7s for +15 scrap']);
     s.enemy.fleeing = 0; expect(runNotice(s)).toEqual([]);
   });
   it('the model: the notice is [] outside running, even with a ready drive', () => {
@@ -107,5 +107,14 @@ describe('runNotice: asteroid fields (spec Demo-viii section 1)', () => {
     w.tick += ENCOUNTER_NOTICE_SECONDS * 60; expect(runNotice(w)).toEqual([]);
     const o = field(Encounter.Over); expect(runNotice(o)).toEqual([]);
     for (const l of ['Asteroid field ahead', 'FIELD CLEARED   +20 scrap']) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[ -~]+$/.test(l)).toBe(true); }
+  });
+});
+
+describe('runNotice: rewards quote what they pay (spec Demo-ix amendment B8)', () => {
+  it('at column 3 the surrender line offers +27 and the field-cleared line shows +30', () => {
+    const s = fresh(); s.run.column = 3; s.run.node = 0; surrender(s);
+    expect(runNotice(s)).toEqual(['ENEMY SURRENDERS   hold fire 8s for +27 scrap']); expect(scrapSurrender(3)).toBe(27);
+    const w = fresh(); w.run.column = 3; w.run.node = 0; setNodeTypes(w, { '3:0': NodeType.Asteroid }); w.tick = 3000; w.run.encounter = Encounter.Won; w.run.encounterTick = w.tick; w.enemy.nextArrivalTick = NEVER;
+    expect(runNotice(w)).toEqual(['FIELD CLEARED   +30 scrap', 'Drive charging fast']); expect(scrapField(3)).toBe(30);
   });
 });

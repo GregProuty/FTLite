@@ -17,7 +17,7 @@ import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, place
 import { Skill } from '../src/renderer/src/sim/skills';
 import { fieldSystem, endField } from '../src/renderer/src/sim/run';
 import { spawnFieldRock, ObjectKind, activeDebrisCount } from '../src/renderer/src/sim/debris';
-import { FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, FIELD_REWARD_SCRAP, SCRAP_PER_JUMP, FREQ_COUNT } from '../src/renderer/src/sim/tuning';
+import { FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, scrapField, scrapPerJump, FREQ_COUNT } from '../src/renderer/src/sim/tuning';
 
 const T = TICK_HZ;
 const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; return s; };
@@ -261,7 +261,7 @@ describe('asteroid fields (spec Demo-viii section 1)', () => {
   /** Step with the ship and crew kept whole, so a minute of rocks never ends the run. */
   const steady = (s: ReturnType<typeof calm>, ticks: number, each: () => void = () => {}) => { for (let i = 0; i < ticks; i++) { step(s, []); s.hull = HULL_MAX; for (const eid of s.crew) Health.cur[eid] = 100; each(); } };
   it('the constants', () => {
-    expect([FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, FIELD_REWARD_SCRAP]).toEqual([6, 10, 60, 20]);
+    expect([FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, scrapField(1)]).toEqual([6, 10, 60, 20]);
   });
   it('a jump to an Asteroid node: pending with no enemy arrival; the field starts at +8 s with a rock on the start tick; no enemy ever', () => {
     const s = at(), t0 = s.tick;
@@ -304,7 +304,7 @@ describe('asteroid fields (spec Demo-viii section 1)', () => {
     expect(s.run.fieldNextTick).toBe(-1);
     expect(activeDebrisCount(s)).toBe(0);
     steady(s, 1);
-    expect([s.run.encounter, s.run.encounterTick, s.run.scrap - scrap0, s.run.driveBoost, s.telemetry.encountersWon, s.run.fieldNextTick]).toEqual([Encounter.Won, start + (FIELD_SECONDS + 12) * T, FIELD_REWARD_SCRAP, 1, 1, -1]);
+    expect([s.run.encounter, s.run.encounterTick, s.run.scrap - scrap0, s.run.driveBoost, s.telemetry.encountersWon, s.run.fieldNextTick]).toEqual([Encounter.Won, start + (FIELD_SECONDS + 12) * T, scrapField(1), 1, 1, -1]);
     steady(s, 60 * T); expect([s.run.encounter, s.telemetry.encountersWon, activeDebrisCount(s)]).toEqual([Encounter.Won, 1, 0]);
   });
   it('the director interval doubles while the field is fighting', () => {
@@ -316,7 +316,7 @@ describe('asteroid fields (spec Demo-viii section 1)', () => {
   it('an early jump: no reward, the rocks left behind, the field clock stopped; endField sets the encounter over', () => {
     const s = at(); steady(s, (ENCOUNTER_START + 30) * T);
     const scrap0 = s.run.scrap; chargeJump(s); jumpShip(s, 0);
-    expect([s.run.scrap - scrap0, s.run.driveBoost, s.telemetry.encountersWon, s.run.fieldNextTick, activeDebrisCount(s)]).toEqual([SCRAP_PER_JUMP, 0, 0, -1, 0]);
+    expect([s.run.scrap - scrap0, s.run.driveBoost, s.telemetry.encountersWon, s.run.fieldNextTick, activeDebrisCount(s)]).toEqual([scrapPerJump(2), 0, 0, -1, 0]);
     const f = at(); steady(f, (ENCOUNTER_START + 5) * T); endField(f);
     expect([f.run.encounter, f.run.encounterTick, f.run.fieldNextTick, f.telemetry.encountersWon]).toEqual([Encounter.Over, f.tick, -1, 0]);
     steady(f, 80 * T); expect([f.run.encounter, f.telemetry.encountersWon]).toEqual([Encounter.Over, 0]);

@@ -144,7 +144,7 @@ export const ENEMY_BEAM_DAMAGE = 15, ENEMY_TORP_DAMAGE = 35;
 /** FTL-style ship combat (spec Demo-i section 11.2): shield layers by column, recharge seconds per layer, hull per column, aim and console-failure chances, the flee at a hull fraction with its delay, the surrender bounty. */
 export const ENEMY_SHIELD_LAYERS: readonly number[] = [1, 1, 1, 2, 2, 2, 2, 2], SHIELD_RECHARGE_TIME = 6, ENEMY_HULL_PER_COLUMN = 10, ENEMY_AIM_CHANCE = 0.6, ENEMY_SHOT_SYSTEM_CHANCE = 0.5;
 export const ENEMY_SHOT_CREW_DAMAGE = 12;                // of HEALTH_MAX per Conscious crew member in the room a shot hits (survival-gate lever 2 after aimed shots, Demo-i gate (spec section 12); debris stays 20)
-export const ENEMY_FLEE_FRAC = 0.25, ENEMY_FLEE_DELAY = 8, SCRAP_SURRENDER = 20;
+export const ENEMY_FLEE_FRAC = 0.25, ENEMY_FLEE_DELAY = 8;
 /** The enemy interior (spec Demo-viii section 2b): rooms (0 Weapons, 1 Engines, 2 Shields, 3 Bridge, 4 Hold), the problem-draw thresholds after a hit, timer seconds, damage per second. */
 export const ENEMY_ROOMS = 5, ENEMY_HIT_FIRE = 0.35, ENEMY_HIT_BREACH = 0.15, ENEMY_FIRE_SECONDS = 15, ENEMY_BREACH_SECONDS = 20, ENEMY_FIRE_HULL_DPS = 0.3, ENEMY_FIRE_SYS_DPS = 1.5, ENEMY_BREACH_HULL_DPS = 0.2;
 export const ENEMY_SYS_HP = 30, ENEMY_SYS_REPAIR = 45, ENEMY_EVADE = 0.15;   // subsystem health, seconds to self-repair, beam threshold penalty while the engines are up (spec Combat-ii section 8)
@@ -169,11 +169,16 @@ export const BOARDING_AFTER_JUMP = 120;                                         
 // Events and shops (Run-ii)
 export const SHOP_CHANCE = 0.25, EVENT_CHANCE = 0.25, ASTEROID_CHANCE = 0.15;       // node type draw thresholds (map stream, after the edges); Event 0.35 -> 0.25 for asteroid fields (spec Demo-viii section 1)
 /** Asteroid fields (spec Demo-viii section 1): seconds between field rocks (one hazards draw per re-arm, +/- jitter), the rock flight, how long the field spawns, the extra seconds before it clears (every rock has landed), the reward. */
-export const FIELD_INTERVAL = 6, FIELD_JITTER = 0.2, FIELD_FLIGHT = 10, FIELD_FLIGHT_JITTER = 2, FIELD_SECONDS = 60, FIELD_CLEAR_EXTRA = 12, FIELD_REWARD_SCRAP = 20;   // FIELD_INTERVAL 4 -> 6 (amendment A2)
+export const FIELD_INTERVAL = 6, FIELD_JITTER = 0.2, FIELD_FLIGHT = 10, FIELD_FLIGHT_JITTER = 2, FIELD_SECONDS = 60, FIELD_CLEAR_EXTRA = 12;   // FIELD_INTERVAL 4 -> 6 (amendment A2)
 /** A field rock hits weaker than debris (spec Demo-viii amendment A1: 15 rocks x 8 hull sank the duo gate's ship): hull, and half the debris crew damage. */
 export const ROCK_BREACH_FIRST = 0.75;   // a rock impact tries a breach first below this roll (amendment A4; debris 0.5)
 export const FIELD_ROCK_HULL = 3, FIELD_ROCK_CREW = Math.floor(DEBRIS_CREW_DAMAGE / 2);
-export const SCRAP_PER_JUMP = 15, SCRAP_ENEMY = 30, SCRAP_BOARDER = 10;
+/** Scrap rewards grow with the column at the moment they are paid (spec Demo-ix section 2): a base plus a per-column step. */
+export const scrapPerJump = (column: number): number => 10 + 4 * column;     // paid on arrival, after the jump advanced the column (amendment B8)
+export const scrapEnemy = (column: number): number => 20 + 6 * column;
+export const scrapSurrender = (column: number): number => 15 + 4 * column;
+export const scrapBoarder = (column: number): number => 8 + 2 * column;
+export const scrapField = (column: number): number => 15 + 5 * column;       // an asteroid field cleared (Demo-viii)
 export const EVENT_COUNT = 6;
 export const SHOP_HULL = 25, SHOP_HULL_COST = 30, SHOP_TORPEDOES = 2, SHOP_TORPEDOES_COST = 20, SHOP_UPGRADE_COST = 50;
 // Progression and permadeath (Run-iii)
