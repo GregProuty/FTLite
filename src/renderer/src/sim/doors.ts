@@ -53,13 +53,16 @@ export function doorsCursorTarget(state: SimState, c: number): DoorsCursorTarget
   return c < edges.length ? { kind: 'door', edge: edges[c]! } : { kind: 'airlock', index: c - edges.length };
 }
 
-/** The Doors console's remote cycle on an interior door: Auto (Closed/Open) -> Held open -> Sealed -> Auto. A pending seal counts as Sealed. */
+/**
+ * The Doors console's remote cycle on an interior door: Auto (Closed/Open) -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19:
+ * sealing stays one press, as before Demo-vii; venting a room needs its other doors sealed, so sealing is the common command). A pending seal counts as Sealed.
+ */
 export function cycleDoor(state: SimState, edge: number): void {
   if (!state.derived.edgeIsDoor[edge]) return;
   const st = state.doors.state[edge]!;
-  if (st === DoorState.Sealed || state.doors.sealRequested[edge]) { state.doors.sealRequested[edge] = 0; state.doors.state[edge] = st === DoorState.Sealed || st === DoorState.HeldOpen ? DoorState.Closed : st; state.doors.closeTimer[edge] = 0; return; }
-  if (st === DoorState.HeldOpen) { toggleSeal(state, edge); return; }             // seal now, or once the doorway clears (stays held until then)
-  state.doors.state[edge] = DoorState.HeldOpen; state.doors.closeTimer[edge] = 0;
+  if (st === DoorState.Sealed || state.doors.sealRequested[edge]) { state.doors.sealRequested[edge] = 0; state.doors.state[edge] = DoorState.HeldOpen; state.doors.closeTimer[edge] = 0; return; }
+  if (st === DoorState.HeldOpen) { state.doors.state[edge] = DoorState.Closed; state.doors.closeTimer[edge] = 0; return; }
+  toggleSeal(state, edge);   // Auto: seal now, or once the doorway clears
 }
 
 /** True when the Doors station is online (powered, not failed). Remote holds and airlocks depend on it. */

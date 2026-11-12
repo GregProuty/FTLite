@@ -188,12 +188,12 @@ describe('Doors console', () => {
     run(s, 1, () => intents({})); run(s, 1, () => intents(down));
     expect(s.derived.doorEdges[s.stations.cursor[doors]!]).toBe(first);
     run(s, 1, () => intents(confirm));
-    expect(s.doors.state[first]).toBe(DoorState.HeldOpen);          // online: Auto -> Held open (spec Demo-vii section 1)
+    expect(s.doors.state[first]).toBe(DoorState.Sealed);            // online: Auto -> Sealed, one press as before Demo-vii (spec Demo-vii amendment 19)
     run(s, 1, () => intents({})); run(s, 1, () => intents(confirm));
-    expect(s.doors.state[first]).toBe(DoorState.Sealed);
+    expect(s.doors.state[first]).toBe(DoorState.HeldOpen);
     // Player 1 stands in the corridor below that door (edge 0 is the A/I door at (2,4): no console within reach there, and 1.4 tiles from the
-    // door centre keeps it outside DOOR_ZONE so it will not auto-open) and presses Confirm on the same tick as the remote press: one toggle, so
-    // the door is unsealed to Closed by the local toggle, then the remote cycle moves Auto to Held open (applied after local toggles, spec Demo-vii amendment 2).
+    // door centre keeps it outside DOOR_ZONE so it will not auto-open) and presses Confirm on the same tick as the remote press: the local
+    // toggle seals the held door, then the remote cycle moves Sealed to Held open (applied after local toggles, spec Demo-vii amendment 2).
     const t = s.derived.edgeTile[first]!, w = s.derived.width;
     teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 1.9);
     expect(confirmTarget(s, 1)).toEqual({ kind: ConfirmKind.Door, index: first });
@@ -207,9 +207,7 @@ describe('Doors console', () => {
     sitDown(s, 0, doors);
     const first = s.derived.doorEdges[0]!, t = s.derived.edgeTile[first]!, w = s.derived.width;
     teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 0.5);          // player 1 stands on the door tile
-    run(s, 1, () => intents(confirm, {})); run(s, 1, () => intents({}, {}));   // Auto -> Held open
-    expect(s.doors.state[first]).toBe(DoorState.HeldOpen);
-    run(s, 1, () => intents(confirm, {}));                             // Held open -> Sealed, deferred
+    run(s, 1, () => intents(confirm, {}));                             // Auto -> Sealed, deferred while player 1 stands in the doorway
     expect(s.doors.state[first]).not.toBe(DoorState.Sealed); expect(s.doors.sealRequested[first]).toBe(1);
     teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 2.5);          // step off
     run(s, 1, () => intents({}, {}));
@@ -235,11 +233,11 @@ describe('Doors console: held doors, airlocks and the fail-safe (spec Demo-vii s
     expect(s.stations.cursor[i]).toBe(n - 1);
     expect(doorsCursorTarget(s, n - 1)).toEqual({ kind: 'airlock', index: 3 });
   });
-  it('Confirm on a door cycles Auto -> Held open -> Sealed -> Auto', () => {
+  it('Confirm on a door cycles Auto -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19)', () => {
     const { s, i } = seated(), e = s.derived.doorEdges[0]!;
     expect(s.stations.cursor[i]).toBe(0);
-    press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.HeldOpen);
     press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Sealed);
+    press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.HeldOpen);
     press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Closed);
   });
   it('Confirm on an airlock toggles it and stamps the Doors productivity tick', () => {

@@ -213,8 +213,9 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
       return { kind: 'doors', item: `Airlock  ${names[d.airlockRoom[t.index]!]!.name}`, status: open ? 'AIRLOCK OPEN' : 'Airlock closed', action: online ? (open ? 'Close airlock' : 'Open airlock') : '', openAirlocks };
     }
     const e = t.edge, st = state.doors.state[e]!, sealed = st === DoorState.Sealed, held = st === DoorState.HeldOpen;
-    // Online the remote cycle is Auto -> Held open -> Sealed -> Auto (a pending seal releases); offline it is the plain seal toggle (spec Demo-vii amendment 2).
-    const action = sealed || state.doors.sealRequested[e] ? 'Release' : online ? (held ? 'Seal' : 'Hold open') : 'Seal';
+    // Online the remote cycle is Auto -> Sealed -> Held open -> Auto (a pending seal counts as sealed); offline it is the plain seal toggle (spec Demo-vii amendments 2 and 19).
+    const pendingOrSealed = sealed || state.doors.sealRequested[e] === 1;
+    const action = online ? (pendingOrSealed ? 'Hold open' : held ? 'Release' : 'Seal') : (pendingOrSealed ? 'Release' : 'Seal');
     return { kind: 'doors', item: `Door  ${names[d.edgeA[e]!]!.name} / ${names[d.edgeB[e]!]!.name}`, status: sealed ? 'Sealed' : held ? 'Held open' : 'Auto', action, openAirlocks };
   }
   if (kind === StationKind.Weapons) {

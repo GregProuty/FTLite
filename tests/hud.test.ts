@@ -36,10 +36,10 @@ describe('the Doors card (spec Demo-vii section 1)', () => {
     const { s, i } = seated(), e = s.derived.doorEdges[3]!;   // edge 3: Aft Passage <-> Weapons
     s.stations.cursor[i] = 3;
     const row = (st: number) => { s.doors.state[e] = st; const c = card(s); return c.item === null ? null : [c.item, c.status, c.action]; };
-    expect(row(DoorState.Closed)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Hold open']);
-    expect(row(DoorState.Open)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Hold open']);
-    expect(row(DoorState.HeldOpen)).toEqual(['Door  Aft Passage / Weapons', 'Held open', 'Seal']);
-    expect(row(DoorState.Sealed)).toEqual(['Door  Aft Passage / Weapons', 'Sealed', 'Release']);
+    expect(row(DoorState.Closed)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
+    expect(row(DoorState.Open)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
+    expect(row(DoorState.HeldOpen)).toEqual(['Door  Aft Passage / Weapons', 'Held open', 'Release']);
+    expect(row(DoorState.Sealed)).toEqual(['Door  Aft Passage / Weapons', 'Sealed', 'Hold open']);   // the online cycle: Auto -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19)
     s.stations.cursor[i] = s.derived.doorEdges.length + 2;
     expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Airlock  Engines', 'Airlock closed', 'Open airlock']);
     s.airlocks.open[2] = 1; s.airlocks.open[0] = 1;
@@ -170,7 +170,7 @@ describe('buildHudModel', () => {
     sitDown(s, 0, doors);
     const p = buildHudModel(s, slots(1), 'running', '').players[0]!;
     const e = s.derived.doorEdges[0]!;
-    expect(p.console).toEqual({ kind: 'doors', item: `Door  ${s.layout.rooms[s.derived.edgeA[e]!]!.name} / ${s.layout.rooms[s.derived.edgeB[e]!]!.name}`, status: 'Auto', action: 'Hold open', openAirlocks: 0 });
+    expect(p.console).toEqual({ kind: 'doors', item: `Door  ${s.layout.rooms[s.derived.edgeA[e]!]!.name} / ${s.layout.rooms[s.derived.edgeB[e]!]!.name}`, status: 'Auto', action: 'Seal', openAirlocks: 0 });
     const noDoors = JSON.parse(JSON.stringify(starter)) as typeof starter;
     for (const edge of noDoors.edges) (edge as { kind: string }).kind = 'opening';
     const t = createSimState(parseShip(noDoors), 1, 1);
