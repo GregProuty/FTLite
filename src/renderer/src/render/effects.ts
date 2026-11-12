@@ -7,7 +7,6 @@ import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
 import { fireTiles, breachOrientation, ventRotation, breachDamagedTiles } from './hazardTiles';
 import { featureReady } from './fallback';
-import { pickVariant } from './tilePick';
 import { syncCache } from './cache';
 
 export const LOW_O2_THRESHOLD = 0.98;
@@ -20,11 +19,10 @@ export interface EffectsLayer { below: Container; above: Container; draw(state: 
 
 export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): EffectsLayer {
   const missing = new Set(assets.missing);
-  const art = { fire: featureReady(missing, 'fire'), breach: featureReady(missing, 'breach'), vent: featureReady(missing, 'vent'), damaged: featureReady(missing, 'damagedFloor'), arc: featureReady(missing, 'arc') };
+  const art = { fire: featureReady(missing, 'fire'), breach: featureReady(missing, 'breach'), vent: featureReady(missing, 'vent'), arc: featureReady(missing, 'arc') };
   const below = new Container(), above = new Container();
-  const damagedLayer = new Container(), o2Layer = new Graphics(), fireLayer = new Container(), breachLayer = new Container(), fallback = new Graphics();
-  below.addChild(damagedLayer, o2Layer, fireLayer, breachLayer, fallback);
-  const damagedSprites = new Map<number, Sprite>();
+  const o2Layer = new Graphics(), fireLayer = new Container(), breachLayer = new Container(), fallback = new Graphics();
+  below.addChild(o2Layer, fireLayer, breachLayer, fallback);
   const fires = new Map<number, AnimatedSprite>();
   const outline = new Graphics(); above.addChild(outline);
   const impactLayer = new Graphics(); above.addChild(impactLayer);
@@ -38,13 +36,6 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
     below, above,
     draw(state) {
       const d = state.derived, w = d.width;
-      // Damaged floors (render-only memory, cleared by reset()); sprites follow the set.
-      if (art.damaged) {
-        syncCache(damagedSprites, [...memory.damaged], (t) => {
-          const s = new Sprite(assets.texture(`floor.damaged.${pickVariant(t, 2)}`)); s.scale.set(SCALE);
-          const [tx, ty] = tileXY(w, t); s.position.set(tx * TILE_PX, ty * TILE_PX); damagedLayer.addChild(s); return s;
-        }, (s) => s.destroy());
-      }
       // Low oxygen tint: nothing drawn at frac >= 0.98.
       o2Layer.clear();
       for (let r = 0; r < d.volume.length; r++) {
