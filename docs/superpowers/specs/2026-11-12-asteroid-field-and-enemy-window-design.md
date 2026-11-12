@@ -95,3 +95,11 @@ The draw comes after the hit draw and the hull-room draw, so the draw order is f
 - **I5. Versions.** Demo-viii sets SIM_VERSION 20. Demo-ix depends on it and sets 21.
 
 (Implementation amendments follow.)
+
+### Codex reviews of the sim and render halves (research/codex-review-demo-viii-sim.md, research/codex-review-demo-viii-render.md), 2026-11-12
+
+- **R1. Navigation shows the map instead.** While any player sits at Navigation, the enemy window is hidden and the map panel shows. Otherwise the window shows whenever an enemy is present or animating, and the map is hidden while it does. They never draw at the same time.
+- **R2. Layer order.** The stage order is world, enemy window, projectiles, HUD. The window sits below the HUD panels, whose only neighbour in the right column (the threats panel, y 8..108) does not overlap it. Projectiles draw above the window so enemy shots are seen leaving it. Our bolts are drawn by the projectile layer as well, from our Weapons room to the target room centre given by the window model.
+- **R3. Shot origin.** `projectilePath` gains an optional origin. For Shots the renderer passes the window's Weapons-room centre in internal pixels; without one it keeps today's right-edge start.
+- **R4. Window bounds.** 240 × 342 at (1032, 114) is the outer frame, panel style like the others. The ship is drawn inside an 8 px margin. The slide-in starts off-screen to the right, and the break-up pieces are clipped to the frame with a mask.
+- **R5. Navigation labels.** Destination rows become type-aware: `Node 3B  Asteroid field`. `jumpShip` gains the Asteroid branch (Pending, no enemy arrival).

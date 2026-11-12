@@ -26,7 +26,7 @@
 - [ ] **Step 1:** Record the gate figures (survival, duo, boarding, cutter, jump, run, `npm run acceptance 5 1`) to `.superpowers/sdd/demo-viii-gates-before.md`, then restore any temporary edits.
 - [ ] **Step 2: Failing tests:** `assignNodeTypes` with a stub draw returns Shop below 0.25, Event below 0.5, Asteroid below 0.65, else Hazard; the map draw count for a seed is unchanged (same `edgeMask` and `colNodes` as before for seeds 1–3); the guaranteed shop still holds; the Navigation row for an asteroid node reads `Asteroid field`; the map model marks each node's type.
 - [ ] **Step 3:** Run, expect FAIL.
-- [ ] **Step 4: Implement**; map glyph: three small irregular rocks (original) inside the node circle for Asteroid nodes; Event and Shop keep today's look.
+- [ ] **Step 4: Implement.** Destination rows in `navRows` today read only `nodeLabel` (`Node 3B`, run.ts:52, 72–86): make them type-aware, `Node 3B  Asteroid field` for Asteroid destinations and unchanged otherwise (Codex sim review 3). `jumpShip` today starts an encounter only for Hazard nodes (run.ts:111–124): Task 2 adds the Asteroid branch, Pending with `enemy.nextArrivalTick = NEVER` (Codex sim review 2). Map glyph: three small irregular rocks (original) inside the node circle for Asteroid nodes; Event and Shop keep today's look.
 - [ ] **Step 5:** Run, PASS. Commit `feat: asteroid field nodes on the map`.
 
 ### Task 2: The field encounter
@@ -64,7 +64,7 @@ Note: the spec names an enemy system index for the target; recording the cursor 
 
 ### Task 5: The enemy window model
 
-**Files:** Create `render/enemyShipLayout.ts`, `render/enemyWindowModel.ts`; modify `render/projectileModel.ts` (the Shot origin); Test: create `tests/enemyWindowModel.test.ts`; extend `tests/projectileModel.test.ts`
+**Files:** Create `render/enemyShipLayout.ts`, `render/enemyWindowModel.ts`; modify `render/projectileModel.ts` (`projectilePath` gains an optional `origin` used for Shots, amendment R3); Test: create `tests/enemyWindowModel.test.ts`; extend `tests/projectileModel.test.ts`
 
 **Interfaces — Produces:**
 - `ENEMY_LAYOUT`: tile rows (about 7 × 11, bow up) and five room rectangles indexed as `ENEMY_ROOMS`, doors, the three console tiles.
@@ -72,12 +72,12 @@ Note: the spec names an enemy system index for the target; recording the cursor 
 - `windowRoomCentre(room): { x; y }` in internal (screen) pixels, used by `projectilePath` for Shots (from the Weapons room).
 - Status lines: `ENEMY`, `ENGINES DOWN`, `SURRENDERING 8s  hold fire` (a fleeing enemy with `surrenderIntact`), `FLEEING 8s`; problem line `FIRE: Shields` / `BREACH: Engines`, most recent first.
 
-- [ ] **Step 1: Failing tests:** every room inside 240 × 342; tints and the repair countdown; pips at 0, 35%, 100% hull; each status line; the problem line; the reticle for a system slot and the hull slot while Weapons is seated, null otherwise; crew at their consoles, and the nearest one in a burning room; the bolt from our Weapons room to the target room (or the rock's position for a debris slot) with `t` over 0.4 s after `lastShotTick`, null after; a Shot's projectile origin equals the window's Weapons room centre.
+- [ ] **Step 1: Failing tests:** every room inside the 240 × 342 frame less an 8 px margin (amendment R4); tints and the repair countdown; pips at 0, 35%, 100% hull; each status line; the problem line; the reticle for a system slot and the hull slot while Weapons is seated, null otherwise; crew at their consoles, and the nearest one in a burning room; the bolt from our Weapons room to the target room (or the rock's position for a debris slot) with `t` over 0.4 s after `lastShotTick`, null after; a Shot's projectile origin equals the window's Weapons room centre.
 - [ ] **Step 2–4:** FAIL, implement, PASS. Commit `feat: the enemy window model (pure)`.
 
 ### Task 6: The enemy window layer and the HUD
 
-**Files:** Create `render/enemyWindow.ts`; modify `render/renderer.ts` (layer above the HUD, fed by state each frame, cleared by `reset()`), `render/hud.ts` (remove the enemy panel; the map panel visible only when no enemy window is shown or a player sits at Navigation), `render/hudModel.ts` (drop `HudEnemy` and `enemyBlock` if unused; keep the threat line); delete `render/enemyPanel.ts`; Test: `tests/hud.test.ts`, `tests/render.test.ts` (or the existing render-pure tests)
+**Files:** Create `render/enemyWindow.ts`; modify `render/renderer.ts` (stage order world, enemy window, projectiles, HUD per spec amendment R2; fed by state each frame; cleared by `reset()`; the projectile layer also draws our bolts), `render/hud.ts` (remove the enemy panel; amendment R1: Navigation seated shows the map and hides the window, otherwise the window hides the map while it shows), `render/hudModel.ts` (drop `HudEnemy` and `enemyBlock` if unused; keep the threat line); delete `render/enemyPanel.ts`; Test: `tests/hud.test.ts` (map and window visibility in every combination), `tests/render.test.ts` (exists; the layer adds no new Graphics per frame after the first)
 
 - [ ] **Step 1: Failing tests:** the HUD hides the map while the enemy window shows and no one is at Navigation, and shows it otherwise; the enemy panel is gone; the layer's draw makes no new Graphics per frame after the first (count children across 60 frames).
 - [ ] **Step 2–4:** FAIL, implement the drawing (walls, floors, glyphs, the fire animation, breach holes, crew figures in an original enemy colour, shield ellipses, pips, charge bar, status and problem lines, the reticle, bolts and bursts, slide-in, break-up into 4–6 drifting pieces, fly-out), PASS; `npm run build`.

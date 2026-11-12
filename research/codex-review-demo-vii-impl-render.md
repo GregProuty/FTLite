@@ -1,0 +1,5 @@
+1. **Important — [`tiles.ts:48–50`](/C:/Users/djuar/FTLite/src/renderer/src/render/tiles.ts:48).** Held-open doors draw amber lines along both jambs, rather than the small amber bar across the frame required by the spec. Players can see the door is open but may miss the visual cue that it is being held open. Draw a short amber crossbar across the frame.
+
+2. **Minor — [`hudModel.ts:217–219`](/C:/Users/djuar/FTLite/src/renderer/src/render/hudModel.ts:217).** A door with a pending seal displays status `Auto`, even though the pending seal counts as Sealed and the action correctly reads `Hold open` online or `Release` offline. Show the pending-seal state as `Sealed` so the card’s state and action agree.
+
+I found no correctness issue in the projectile tracking and outcome classification, reset and stale-entry handling, Pixi `Graphics` reuse, or shake decay and container placement. The Doors selection resolver handles an empty cursor and airlock selection.

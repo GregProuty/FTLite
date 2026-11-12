@@ -1,0 +1,1 @@
+No actionable correctness findings in the requested sim areas. The diff appears to preserve the stated flatten order and size, initialize and hash airlocks, handle `HeldOpen` in sim door reads, apply the fail-safe before oxygen moves, and validate the amended airlock geometry. I also found no out-of-range cursor path in the console, HUD model, or selection outline.
