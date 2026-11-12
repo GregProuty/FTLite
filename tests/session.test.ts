@@ -6,7 +6,8 @@ import type { SourceSample } from '../src/renderer/src/input/deviceManager';
 import { loadProgress, saveProgress } from '../src/renderer/src/app/progressStore';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
 import type { Progress } from '../src/renderer/src/sim/progress';
-import { LAYOUT, seatNavigator, chargeJump } from './helpers/sim';
+import { LAYOUT, seatNavigator, chargeJump, armSpawn } from './helpers/sim';
+import type { Cue } from '../src/renderer/src/app/audioCues';
 import { loadSnapshot, type Snapshot } from '../src/renderer/src/sim/snapshot';
 import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay';
 import { hashState } from '../src/renderer/src/sim/hash';
@@ -22,16 +23,17 @@ function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', '
   const crashes: unknown[] = [];
   let last: HudModel | null = null;
   const records: TelemetryRecord[] = [];
+  const cues: Cue[] = [];
   const session = createSession({
     layout: LAYOUT, sampleDevices: () => samples, renderer: null, hud: { update(m) { last = m; } },
-    now: () => t, canResume, loadProgress: () => loadProgress(storage), saveProgress: (p) => saveProgress(storage, p), saveCrash: (p) => { crashes.push(p); }, credits,
+    now: () => t, canResume, loadProgress: () => loadProgress(storage), saveProgress: (p) => saveProgress(storage, p), saveCrash: (p) => { crashes.push(p); }, credits, playCue: (c) => { cues.push(c); },
     ...(withTelemetry ? { saveTelemetry: (r: TelemetryRecord) => { records.push(r); } } : {})
   });
   const sample = (key: string, o: Partial<SourceSample>): SourceSample => ({ key, moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: false, ...o });
   const press = (key: string, o: Partial<SourceSample>) => { samples = [sample(key, o)]; };
   const pressMany = (...s: SourceSample[]) => { samples = s; };
   const frames = (n: number, ms = 1000 / 60) => { for (let i = 0; i < n; i++) { t += ms; session.frame(); } };
-  return { session, press, pressMany, sample, frames, crashes, records, storage, release: () => press('a', {}), last: () => last! };
+  return { session, press, pressMany, sample, frames, crashes, records, cues, storage, release: () => press('a', {}), last: () => last! };
 }
 
 describe('session', () => {
@@ -292,5 +294,36 @@ describe('session', () => {
     expect(h.session.phase).toBe('gameover'); expect(st.endReason).toBe(EndReason.Victory);
     expect(h.last().message).toMatch(/^VICTORY after \d+s\./);
     expect(h.records).toHaveLength(1); expect(h.records[0]).toMatchObject({ endReason: 'victory', run: { nodesReached: 7, jumps: 7, columns: 8 } });
+  });
+
+  describe('audio cues (spec Demo-ii section 7)', () => {
+    const started = () => { const h = harness(); h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); return h; };
+    it('no cues over ten lobby frames', () => { const h = harness(); h.frames(10); expect(h.cues).toEqual([]); });
+    it('ready once when the charge completes, then none', () => {
+      const h = started(); h.cues.length = 0; chargeJump(h.session.state!); h.frames(1);
+      expect(h.cues.filter((c) => c === 'ready')).toHaveLength(1); h.cues.length = 0; h.frames(1); expect(h.cues).toEqual([]);
+    });
+    it('a navigator jump cues jump', () => {
+      const h = started(); const st = h.session.state!; seatNavigator(st, 0); h.frames(2); chargeJump(st); h.cues.length = 0;
+      h.press('a', { confirm: true }); h.frames(2); h.release(); expect(h.cues).toContain('jump');
+    });
+    it('a crew-down ending ends with defeat once; game-over frames add nothing', () => {
+      const h = started(); h.cues.length = 0; downCrew(h.session.state!, 0); h.frames(1);
+      expect(h.session.phase).toBe('gameover'); expect(h.cues[h.cues.length - 1]).toBe('defeat'); expect(h.cues.filter((c) => c === 'defeat')).toHaveLength(1);
+      const n = h.cues.length; h.frames(10); expect(h.cues).toHaveLength(n);
+    });
+    it('a victory ending cues victory exactly once', () => {
+      const h = started(); const st = h.session.state!; st.run.column = 6; st.run.node = 0; st.run.nodesReached = 6; st.telemetry.jumps = 6; seatNavigator(st, 0); h.frames(2); chargeJump(st);
+      h.press('a', { confirm: true }); h.frames(2); h.release(); h.frames(2);
+      expect(st.endReason).toBe(EndReason.Victory); expect(h.cues.filter((c) => c === 'victory')).toHaveLength(1); expect(h.cues).not.toContain('defeat');
+    });
+    it('pause then ten frames cues nothing', () => {
+      const h = started(); h.frames(1); h.cues.length = 0; h.session.pause(); h.frames(10); expect(h.cues).toEqual([]);
+    });
+    it('two alarm sources in one frame cue alarm once', () => {
+      const h = started(); h.frames(1); const st = h.session.state!; h.cues.length = 0;
+      armSpawn(st); st.boarders.nextArrivalTick = st.tick + 1; h.frames(1, 100);   // one frame of several ticks: both sources land in it
+      expect(h.cues.filter((c) => c === 'alarm')).toHaveLength(1);
+    });
   });
 });

@@ -12,6 +12,7 @@ import { EndReason } from '../sim/crew';
 import { telemetryRecord, type TelemetryRecord } from '../sim/telemetry';
 import { EMPTY_PROGRESS, applyRun, unlockNames, type Progress } from '../sim/progress';
 import { DEFAULT_CHARACTERS } from '../sim/characters';
+import { cueCounters, audioCues, type Cue, type CueCounters } from './audioCues';
 
 export const DEFAULT_SEED = 2026;
 const CRASH_HISTORY = 300;
@@ -32,6 +33,8 @@ export interface SessionDeps {
   /** Progress across runs (spec Run-iii section 6): read once at creation, written when a run ends. */
   loadProgress?: () => Progress;
   saveProgress?: (p: Progress) => void;
+  /** Plays one audio cue (spec Demo-ii section 5); optional so tests and headless runs need no audio. */
+  playCue?: (cue: Cue) => void;
 }
 
 export function createSession(deps: SessionDeps) {
@@ -49,6 +52,7 @@ export function createSession(deps: SessionDeps) {
   let accumulator = 0, lastNow: number | null = null;
   let baseline: Snapshot | null = null;
   let intentsSinceBaseline: CompactIntent[][] = [];
+  let prevCounters: CueCounters | null = null;
   let creditsOpen = false, creditsScroll = 0, scrollHold = 0, scrollDir = 0;
 
   function start(): void {
@@ -57,6 +61,7 @@ export function createSession(deps: SessionDeps) {
     state = createSimState(deps.layout, playerCount, seed, DEFAULT_CHARACTERS, { unlocked: progress.unlocked }); newUnlocks = [];
     feed = createIntentFeed(playerCount);
     accumulator = 0; baseline = null; intentsSinceBaseline = [];
+    prevCounters = cueCounters(state);
     phase = 'running'; message = '';
   }
 
@@ -119,6 +124,10 @@ export function createSession(deps: SessionDeps) {
               break;
             }
           }
+          // Once per frame, after the tick loop (also on the ending frame, so it carries its terminal cue): spec Demo-ii section 5.
+          const nextCounters = cueCounters(state);
+          if (prevCounters) for (const c of audioCues(prevCounters, nextCounters)) deps.playCue?.(c);
+          prevCounters = nextCounters;
         } catch (err) {
           phase = 'error';
           message = `Sim fault: ${(err as Error).message}. Crash data saved.`;

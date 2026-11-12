@@ -7,6 +7,7 @@ import { createKeyboardSources, sampleGamepads } from './input/sources';
 import { createSession } from './app/session';
 import { appendTelemetry } from './app/telemetryStore';
 import { loadProgress, saveProgress } from './app/progressStore';
+import { createAudio } from './app/audio';
 import { EMPTY_PROGRESS } from './sim/progress';
 import { CREDITS } from './render/credits.generated';
 
@@ -28,6 +29,7 @@ async function start(): Promise<void> {
   const renderer = await createRenderer(assets);
   const hud = createHud(renderer.hud, assets);
   const keyboard = createKeyboardSources(window);
+  const audio = createAudio();
   const session = createSession({
     layout,
     sampleDevices: () => [...keyboard.sample(), ...sampleGamepads()],
@@ -35,6 +37,7 @@ async function start(): Promise<void> {
     now: () => performance.now(),
     canResume: () => !document.hidden && document.hasFocus(),
     credits: CREDITS,
+    playCue: audio.play,
     saveCrash: (payload) => { try { localStorage.setItem('ftlite-crash', JSON.stringify(payload)); } catch { /* storage unavailable */ } },
     saveTelemetry: (record) => { try { appendTelemetry(localStorage, record); } catch { /* storage denied: evaluating localStorage itself can throw, and the callback runs inside the session's sim-fault try */ } },
     loadProgress: () => { try { return loadProgress(localStorage); } catch { return EMPTY_PROGRESS; } },
@@ -42,6 +45,8 @@ async function start(): Promise<void> {
   });
   const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
   window.addEventListener('resize', resize); resize();
+  const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
+  window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
   document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause(); else session.resume(); });
   window.addEventListener('focus', () => session.resume());

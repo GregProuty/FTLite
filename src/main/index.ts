@@ -14,7 +14,8 @@ function createWindow(): void {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      devTools: !packaged
+      devTools: !packaged,
+      autoplayPolicy: 'no-user-gesture-required'
     }
   });
   powerMonitor.on('suspend', () => win.webContents.send('app:suspend'));
