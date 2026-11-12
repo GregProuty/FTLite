@@ -4,13 +4,14 @@ import { DoorState, conditionRoomAt } from '../grid';
 import { StationKind } from '../stationKinds';
 import { Skill, addXp, skillLevelOf } from '../skills';
 import { stationOnline } from '../stations';
+import { quirkPassageMult } from '../quirks';
 import { XP_RATE, HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSAGE_BREACH, SEAL_SKILL, BREATH_RATE, FIRE_O2_RATE, O2_SNAP_EPS } from '../tuning';
 
 export function passageFor(state: SimState, edge: number): number {
   if (!state.derived.edgeIsDoor[edge]) return PASSAGE_OPEN;
   const st = state.doors.state[edge];
   if (st === DoorState.Open) return PASSAGE_OPEN;
-  if (st !== DoorState.Sealed) return PASSAGE_CLOSED;
+  if (st !== DoorState.Sealed) return PASSAGE_CLOSED * quirkPassageMult(state);
   const doors = state.derived.stationOfKind[StationKind.Doors]!;
   const occ = doors >= 0 && stationOnline(state, doors) ? state.stations.occupant[doors]! : -1;
   const level = occ >= 0 ? skillLevelOf(state, occ, Skill.Engineering) : 0;

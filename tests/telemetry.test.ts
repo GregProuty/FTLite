@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
+import { runScore } from '../src/renderer/src/sim/score';
 import { telemetrySystem, telemetryRecord, eventSeconds, durationSeconds } from '../src/renderer/src/sim/telemetry';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -282,10 +284,10 @@ describe('telemetryRecord', () => {
       longestIdleSeconds: [5, 20],
       spawns: { fire: 2, breach: 1, power: 0, debris: 3 }, impacts: 2, evadeRolls: 3, evasions: 1, shots: 4, hits: 2,
       repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.55, phaseEntries: { buildUp: 2, sustainPeak: 1, peakFade: 1, relax: 1 },
-      enemy: { met: 2, destroyed: 1, disables: 3 }, boarders: { parties: 1, killed: 2 }, run: { nodesReached: 3, jumps: 3, columns: 8, scrap: { earned: 60, spent: 15 }, events: 2, purchases: 1, upgrades: ['Weapons'] },
-      skills: [[0, 0, 0, 0, 0, 4], [0, 3, 0, 0, 0, 0]]
+      enemy: { met: 2, destroyed: 1, disables: 3 }, boarders: { parties: 1, killed: 2 }, run: { nodesReached: 3, jumps: 3, columns: 8, scrap: { earned: 60, spent: 15 }, events: 2, purchases: 1, upgrades: ['Weapons'], quirk: QUIRK_NAMES[s.run.quirk]!, unlocks: [] },
+      score: 390, skills: [[0, 0, 0, 0, 0, 4], [0, 3, 0, 0, 0, 0]]
     });
-    expect(JSON.parse(JSON.stringify(r))).toEqual(r);
+    expect(JSON.parse(JSON.stringify(r))).toEqual(r); expect(telemetryRecord(s, 9).score).toBe(runScore(telemetryRecord(s, 9)));
     s.ended = 1; s.endReason = 2; expect(telemetryRecord(s, 9).endReason).toBe('crew');
     s.ended = 1; s.endReason = EndReason.Victory; expect(telemetryRecord(s, 9).endReason).toBe('victory');
     s.ended = 0; expect(telemetryRecord(s, 9).endReason).toBe('running');

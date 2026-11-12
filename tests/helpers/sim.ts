@@ -1,7 +1,7 @@
 import { Phase } from '../../src/renderer/src/sim/director';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
-import { createSimState, type SimState } from '../../src/renderer/src/sim/state';
+import { createSimState, type SimState, type SimOptions } from '../../src/renderer/src/sim/state';
 import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
@@ -17,9 +17,12 @@ import { StationKind } from '../../src/renderer/src/sim/stationKinds';
 export const LAYOUT = parseShip(starter);
 export const RECRUITS: readonly number[] = [RECRUIT, RECRUIT, RECRUIT, RECRUIT];
 
-export function makeState(players = 2, seed = 1, characters: readonly number[] = RECRUITS): SimState {
-  return createSimState(LAYOUT, players, seed, characters);
+export function makeState(players = 2, seed = 1, characters: readonly number[] = RECRUITS, options: SimOptions = {}): SimState {
+  return createSimState(LAYOUT, players, seed, characters, options);
 }
+
+/** A two-Recruit state with the ship quirk forced to k (spec Run-iii section 5); the quirk draw is still made. */
+export function quirkState(k: number, seed = 1): SimState { return makeState(2, seed, RECRUITS, { quirk: k }); }
 
 export function intents(...per: Partial<Intent>[]): Intent[] {
   return per.map((p) => ({ ...NEUTRAL_INTENT, ...p }));

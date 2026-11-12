@@ -1,6 +1,7 @@
 import type { SimState } from './state';
 import { Position, Life, LifeState } from './components';
 import { DoorState } from './grid';
+import { quirkDoorDelayMult } from './quirks';
 import { CREW_HALF, DOOR_ZONE, DOOR_CLOSE_DELAY, DT } from './tuning';
 
 function tileCentre(state: SimState, tileIdx: number): [number, number] {
@@ -48,7 +49,7 @@ export function doorSystem(state: SimState): void {
       continue;
     }
     if (crewInZone(state, e)) {
-      state.doors.state[e] = DoorState.Open; state.doors.closeTimer[e] = DOOR_CLOSE_DELAY;
+      state.doors.state[e] = DoorState.Open; state.doors.closeTimer[e] = DOOR_CLOSE_DELAY * quirkDoorDelayMult(state);
     } else if (state.doors.state[e] === DoorState.Open) {
       state.doors.closeTimer[e] = Math.max(0, state.doors.closeTimer[e]! - DT);
       if (state.doors.closeTimer[e] === 0 && !crewOnTile(state, d.edgeTile[e]!)) state.doors.state[e] = DoorState.Closed;

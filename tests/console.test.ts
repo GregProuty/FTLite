@@ -17,7 +17,9 @@ import { Weapon } from '../src/renderer/src/sim/weapons';
 import { buildHudModel } from '../src/renderer/src/render/hudModel';
 import type { SlotInfo } from '../src/renderer/src/input/deviceManager';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { makeState, intents, run, teleport, seconds, placeDebris, overdrive, room } from './helpers/sim';
+import { makeState as makeAnyState, intents, run, teleport, seconds, placeDebris, overdrive, room } from './helpers/sim';
+// Heat is the subject here: pin a quirk that leaves it alone (Old Drive), so the seed's natural Hot Reactor draw does not shift every figure (spec Run-iii section 5).
+const makeState = (players = 2, seed = 1) => makeAnyState(players, seed, undefined, { quirk: 5 });
 
 const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.stationOfKind[kind]!;
 const at = (s: ReturnType<typeof makeState>, pid: number, i: number) => { const t = s.derived.stationTile[i]!, w = s.derived.width; teleport(s, pid, (t % w) + 0.5, Math.floor(t / w) + 0.5); };

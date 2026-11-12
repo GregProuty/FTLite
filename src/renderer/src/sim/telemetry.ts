@@ -7,6 +7,9 @@ import { EndReason } from './crew';
 import { characterOf } from './characters';
 import { skillLevelOf } from './skills';
 import { HazardType, Phase } from './director';
+import { QUIRK_NAMES } from './quirks';
+import { UNLOCKS } from './progress';
+import { runScore } from './score';
 
 /** Indices into telemetry.repairs (spec 4-ii section 5). */
 
@@ -36,7 +39,8 @@ export interface TelemetryRecord {
   spawns: { fire: number; breach: number; power: number; debris: number };
   impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number;
   repairs: { fire: number; breach: number; power: number };
-  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number }; boarders: { parties: number; killed: number }; run: { nodesReached: number; jumps: number; columns: number; scrap: { earned: number; spent: number }; events: number; purchases: number; upgrades: string[] };
+  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number }; boarders: { parties: number; killed: number }; run: { nodesReached: number; jumps: number; columns: number; scrap: { earned: number; spent: number }; events: number; purchases: number; upgrades: string[]; quirk: string; unlocks: string[] };
+  score: number;
   skills: number[][];
 }
 
@@ -54,7 +58,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
   const mannedSeconds: Record<string, number> = {};
   for (const k of present) mannedSeconds[STATION_NAMES[k]!] = durationSeconds(t.mannedTicks[k]!);
   const event = (tick: number, pid: number) => (tick < 0 ? null : { who: characters[pid]!, seconds: eventSeconds(tick) });
-  return {
+  const record: Omit<TelemetryRecord, 'score'> = {
     version: 1, simVersion: SIM_VERSION, seed, playerCount: state.playerCount, characters,
     endReason: state.ended ? (state.endReason === EndReason.Hull ? 'hull' : state.endReason === EndReason.Victory ? 'victory' : 'crew') : 'running',
     durationSeconds: durationSeconds(state.tick),
@@ -69,7 +73,8 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
     phaseEntries: { buildUp: t.phaseEntries[Phase.BuildUp]!, sustainPeak: t.phaseEntries[Phase.SustainPeak]!, peakFade: t.phaseEntries[Phase.PeakFade]!, relax: t.phaseEntries[Phase.Relax]! },
     enemy: { met: t.encounters, destroyed: t.enemiesDestroyed, disables: t.enemyDisables },
     boarders: { parties: t.boardings, killed: t.boardersKilled },
-    run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS, scrap: { earned: t.scrapEarned, spent: t.scrapSpent }, events: t.eventsResolved, purchases: t.purchases, upgrades: STATION_NAMES.filter((_, k) => state.run.upgrades[k] === 1) },
+    run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS, scrap: { earned: t.scrapEarned, spent: t.scrapSpent }, events: t.eventsResolved, purchases: t.purchases, upgrades: STATION_NAMES.filter((_, k) => state.run.upgrades[k] === 1), quirk: QUIRK_NAMES[state.run.quirk]!, unlocks: UNLOCKS.filter((_, i) => state.run.startBonus & (1 << i)).map((u) => u.id) },
     skills: state.crew.map((_, pid) => Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k)))
   };
+  return { ...record, score: runScore(record) };
 }

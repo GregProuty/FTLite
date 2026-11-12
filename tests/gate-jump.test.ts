@@ -12,7 +12,8 @@ import { makeState, quiet, room, RECRUITS, allHazard } from './helpers/sim';
 
 describe('jump gate: a scripted navigator jumps the quiet ship through every column', () => {
   it('seed 1, two Recruits: seven jumps, victory, both alive, within 8 x (charge + 10) seconds', () => {
-    const s = makeState(2, 1, RECRUITS); quiet(s); allHazard(s); const silence = () => { s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; }; silence();
+    const s = makeState(2, 1, RECRUITS, { quirk: 3 }); quiet(s);   // Lucky Hull: no debris flies in this gate, so the quirk is inert and the end tick stays 25200 (spec Run-iii section 8)
+    allHazard(s); const silence = () => { s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; }; silence();
     const nav = s.derived.stationOfKind[StationKind.Navigation]!, A = room(s, 'A'), eid = s.crew[0]!;
     let seatedOnce = false, lastJumps = 0;
     for (let t = 0; t < 8 * (JUMP_CHARGE_TIME + 10) * TICK_HZ && !s.ended; t++) {

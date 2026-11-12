@@ -8,7 +8,9 @@ import { Seated, Health } from '../src/renderer/src/sim/components';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { activeHazardCount } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { makeState, overdrive, run, room, seconds, teleport, placeDebris, intents, setSkill } from './helpers/sim';
+import { makeState as makeAnyState, overdrive, run, room, seconds, teleport, placeDebris, intents, setSkill } from './helpers/sim';
+// Heat is the subject here: pin a quirk that leaves it alone (Old Drive), so the seed's natural Hot Reactor draw does not shift every figure (spec Run-iii section 5).
+const makeState = (players = 2, seed = 1) => makeAnyState(players, seed, undefined, { quirk: 5 });
 import { Skill } from '../src/renderer/src/sim/skills';
 
 const down = { moveY: 1 };

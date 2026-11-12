@@ -49,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-13 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-14 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 13 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 13;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 14 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 14;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -185,7 +185,7 @@ describe('snapshot', () => {
     const c = makeState(2, 5); c.stations.coolant[2] = 1; expect(hashState(c)).not.toBe(base);       // coolant alone changes the hash
   });
   it('an overdrive with one unit saved ten ticks before its overheat continues through the failure and fire roll like an uninterrupted run', () => {
-    const mk = () => { const s = makeState(1, 9); s.director.nextSpawnTick = 1e9; const d = overdrive(s, StationKind.Doors); s.stations.coolant[d] = 1; return s; };
+    const mk = () => { const s = makeState(1, 9, undefined, { quirk: 5 }); s.director.nextSpawnTick = 1e9; const d = overdrive(s, StationKind.Doors); s.stations.coolant[d] = 1; return s; };
     const whole = mk(); run(whole, 1260);
     expect(whole.stations.failed[whole.derived.stationOfKind[StationKind.Doors]!]).toBe(1);      // net +1 per hazard tick: the overheat lands on tick 1195
     const first = mk(); run(first, 1185);
@@ -368,12 +368,13 @@ describe('snapshot', () => {
   it('round-trips the run block, the map stream and telemetry.jumps; each alone changes the hash', () => {
     const s = makeState(2, 5); s.run.column = 3; s.run.node = 2; s.run.nodesReached = 3; s.run.jumpCharge = 0.42; s.run.colNodes.set([1, 3, 2, 3, 2, 2, 3, 1]); s.run.edgeMask[4] = 5; s.telemetry.jumps = 3; s.rng.map.s = 123456;
     const before = s.run.nodeType[4]!; s.run.nodeType[4] = before === 2 ? 1 : 2; expect(before).not.toBe(s.run.nodeType[4]);
-    s.run.scrap = 45; s.run.event = 3; s.run.eventChoice = 1; s.run.upgrades[1] = 1; s.telemetry.scrapEarned = 60; s.telemetry.scrapSpent = 15; s.telemetry.eventsResolved = 2; s.telemetry.purchases = 1;
+    s.run.scrap = 45; s.run.event = 3; s.run.eventChoice = 1; s.run.upgrades[1] = 1; s.run.quirk = 4; s.run.startBonus = 5; s.telemetry.scrapEarned = 60; s.telemetry.scrapSpent = 15; s.telemetry.eventsResolved = 2; s.telemetry.purchases = 1;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect([t.run.column, t.run.node, t.run.nodesReached, t.run.jumpCharge, t.telemetry.jumps, t.rng.map.s]).toEqual([3, 2, 3, 0.42, 3, 123456]);
     expect(Array.from(t.run.colNodes)).toEqual(Array.from(s.run.colNodes)); expect(Array.from(t.run.edgeMask)).toEqual(Array.from(s.run.edgeMask));
     expect([t.run.nodeType[4], t.run.scrap, t.run.event, t.run.eventChoice, t.run.upgrades[1], t.telemetry.scrapEarned, t.telemetry.scrapSpent, t.telemetry.eventsResolved, t.telemetry.purchases]).toEqual([s.run.nodeType[4], 45, 3, 1, 1, 60, 15, 2, 1]);
     expect(saveSnapshot(s).header.rngStates['map']).toBe(123456);
+    expect([t.run.quirk, t.run.startBonus, t.rng.quirk.s]).toEqual([4, 5, s.rng.quirk.s]);
     const base = hashState(makeState(2, 5));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
     for (const k of ['column', 'node', 'nodesReached', 'jumpCharge'] as const) expect(mutate((u) => { u.run[k] = 0.5; })).not.toBe(base);

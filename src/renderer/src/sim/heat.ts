@@ -6,6 +6,7 @@ import { failStation, baseMax } from './power';
 import { Skill, skillLevelOf } from './skills';
 import { coolingTraitBonus } from './characters';
 import { igniteRoom } from './hazards/fire';
+import { quirkHeatRise } from './quirks';
 import { HEAT_COOL_UNIT, HEAT_COOL_SKILL, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE } from './tuning';
 
 /** A station is overdriven while online above its base max (STATION_MAX plus a bought bar). A failed station has level 0 and is never overdriven. */
@@ -43,7 +44,7 @@ function overheat(state: SimState, i: number): void {
 export function heatStep(state: SimState): void {
   const st = state.stations, cool = coolingPerUnit(state);
   for (let i = 0; i < st.level.length; i++) {
-    if (isOverdriven(state, i)) st.heat[i] = Math.max(0, Math.min(HEAT_MAX, st.heat[i]! + HEAT_RISE - st.coolant[i]! * cool));
+    if (isOverdriven(state, i)) st.heat[i] = Math.max(0, Math.min(HEAT_MAX, st.heat[i]! + HEAT_RISE + quirkHeatRise(state) - st.coolant[i]! * cool));
     else st.heat[i] = Math.max(0, st.heat[i]! - HEAT_COOL_IDLE);
     if (st.heat[i]! >= HEAT_MAX) overheat(state, i);
   }

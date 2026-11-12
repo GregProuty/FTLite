@@ -13,7 +13,8 @@ import { makeState, quiet, room, RECRUITS, mapM, setNodeTypes } from './helpers/
 
 describe('run gate: a scripted navigator resolves an event, buys a hull repair and wins', () => {
   it('seed 1, two Recruits: victory with 145 earned, 30 spent, hull full', () => {
-    const s = makeState(2, 1, RECRUITS); quiet(s); const silence = () => { s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; }; silence();
+    const s = makeState(2, 1, RECRUITS, { quirk: 3 }); quiet(s);   // Lucky Hull: no debris flies in this gate, so the quirk is inert and the end tick stays 25200 (spec Run-iii section 8)
+    const silence = () => { s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; }; silence();
     mapM(s); setNodeTypes(s, { '1:0': NodeType.Event, '2:0': NodeType.Shop }); s.hull = 90;
     const nav = s.derived.stationOfKind[StationKind.Navigation]!, A = room(s, 'A'), eid = s.crew[0]!;
     let lastJumps = 0, bought = false, holdOff = false;

@@ -8,6 +8,7 @@ import { igniteRoom } from './hazards/fire';
 import { activateBreach } from './hazards/breach';
 import { downCrew } from './crew';
 import { nextTarget } from './debrisTargets';
+import { quirkDebrisHullOffset, quirkLeadOffset } from './quirks';
 import { Skill, addXp } from './skills';
 import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE } from './tuning';
 
@@ -57,8 +58,9 @@ export function clearObjects(state: SimState): void { for (let k = 0; k < state.
 /** Detection lead in seconds: the unmanned value unless Science is online and occupied. */
 export function scienceLead(state: SimState): number {
   const sci = state.derived.stationOfKind[StationKind.Science]!;
-  if (sci < 0 || !stationOnline(state, sci) || state.stations.occupant[sci]! < 0) return SCIENCE_LEAD_UNMANNED;
-  return SCIENCE_LEAD_BASE + SCIENCE_LEAD_SCALE * stationOutput(state, sci);
+  const q = quirkLeadOffset(state);
+  if (sci < 0 || !stationOnline(state, sci) || state.stations.occupant[sci]! < 0) return SCIENCE_LEAD_UNMANNED + q;
+  return SCIENCE_LEAD_BASE + SCIENCE_LEAD_SCALE * stationOutput(state, sci) + q;
 }
 
 /** Pure evasion threshold: a roll u in [0, 1) evades when below base + scale x Navigation output. */
@@ -76,7 +78,7 @@ function resolveImpact(state: SimState, slot: number): void {
     addXp(state, state.stations.occupant[nav]!, Skill.Navigation, XP_PER_EVADE_ROLL);   // the roll itself is the productive act, evaded or not
     if (evaded) { state.telemetry.evasions++; removeDebris(state, slot); return; }
   }
-  state.hull = Math.max(0, state.hull - (db.kind[slot] === ObjectKind.Shot ? ENEMY_SHOT_HULL_DAMAGE : DEBRIS_HULL_DAMAGE));
+  state.hull = Math.max(0, state.hull - (db.kind[slot] === ObjectKind.Shot ? ENEMY_SHOT_HULL_DAMAGE : DEBRIS_HULL_DAMAGE + quirkDebrisHullOffset(state)));
   state.telemetry.impacts++;
   const breachFirst = nextFloat(state.rng.hazards) < 0.5;
   const tryBreach = (): boolean => {

@@ -1,18 +1,19 @@
 import { createWorld, createEntityIndex, addEntity, addComponent } from 'bitecs';
 import type { World } from 'bitecs';
-import { createRng, nextU32, type RngState } from '../../../shared/rng';
+import { createRng, nextU32, nextInt, type RngState } from '../../../shared/rng';
 import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
 import { DEFAULT_CHARACTERS, RECRUIT, applyHeadStarts } from './characters';
-import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, BOARDER_SLOTS, BOARDING_FIRST, RUN_COLUMNS } from './tuning';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, BOARDER_SLOTS, BOARDING_FIRST, RUN_COLUMNS, QUIRK_COUNT } from './tuning';
 import { generateMap } from './run';
+import { applyStartBonuses } from './progress';
 import { cycleBudget } from './director';
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
-export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState; map: RngState }
-export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic', 'map'] as const;
+export interface RngStreams { hazards: RngState; director: RngState; combat: RngState; loot: RngState; cosmetic: RngState; map: RngState; quirk: RngState }
+export const STREAM_NAMES = ['hazards', 'director', 'combat', 'loot', 'cosmetic', 'map', 'quirk'] as const;
 
 export interface SimState {
   tick: number;
@@ -47,7 +48,7 @@ export interface SimState {
   /** Boarders (spec Boarders-i section 4): a room-level party, one at a time; aloneSince is -1 idle, a tick while running, -2 once this visit sabotaged. */
   boarders: { active: Uint8Array; stableId: Int32Array; room: Int16Array; health: Float64Array; nextMoveTick: Int32Array; aloneSince: Int32Array; nextArrivalTick: number };
   /** The run (spec Run-i section 4): position on the node map, the score, the drive charge, and the map itself. */
-  run: { column: number; node: number; nodesReached: number; jumpCharge: number; colNodes: Uint8Array; edgeMask: Uint8Array; nodeType: Uint8Array; scrap: number; event: number; eventChoice: number; upgrades: Uint8Array };
+  run: { column: number; node: number; nodesReached: number; jumpCharge: number; colNodes: Uint8Array; edgeMask: Uint8Array; nodeType: Uint8Array; scrap: number; event: number; eventChoice: number; upgrades: Uint8Array; quirk: number; startBonus: number };
   crewCharacter: Uint8Array;   // CHARACTERS index per crew member (spec 3-ii section 4)
   /** Per-crew skill XP (pid x SKILL_COUNT + skill) and the productivity stamps (spec 3-i section 4); stamps are -1 until set. */
   skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
@@ -69,7 +70,10 @@ export function deriveStreams(seed: number): RngStreams {
 // withVersioning() misbehaves under recycling (docs/spikes.md).
 const SHARED_ENTITY_INDEX = createEntityIndex();
 
-export function createSimState(layout: ShipLayout, playerCount: number, seed: number, characters: readonly number[] = DEFAULT_CHARACTERS): SimState {
+/** Creation options (spec Run-iii section 5): the unlocked start bonuses, and a forced ship quirk (tests and gates; the draw is still made). */
+export interface SimOptions { unlocked?: readonly string[]; quirk?: number }
+
+export function createSimState(layout: ShipLayout, playerCount: number, seed: number, characters: readonly number[] = DEFAULT_CHARACTERS, options: SimOptions = {}): SimState {
   const derived = deriveLayout(layout);
   const world = createWorld(SHARED_ENTITY_INDEX);
   const R = derived.volume.length, E = layout.edges.length, S = layout.breachSites.length;
@@ -91,15 +95,18 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS), frequency: new Uint8Array(DEBRIS_SLOTS), scanned: new Uint8Array(DEBRIS_SLOTS), scan: new Float64Array(DEBRIS_SLOTS), kind: new Uint8Array(DEBRIS_SLOTS) },
     weapons: { charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 },
     boarders: { active: new Uint8Array(BOARDER_SLOTS), stableId: new Int32Array(BOARDER_SLOTS), room: new Int16Array(BOARDER_SLOTS), health: new Float64Array(BOARDER_SLOTS), nextMoveTick: new Int32Array(BOARDER_SLOTS), aloneSince: new Int32Array(BOARDER_SLOTS).fill(-1), nextArrivalTick: BOARDING_FIRST * TICK_HZ },
-    run: { column: 0, node: 0, nodesReached: 0, jumpCharge: 0, scrap: 0, event: -1, eventChoice: -1, upgrades: new Uint8Array(STATION_COUNT), ...generateMap(rng.map, RUN_COLUMNS) },
+    run: { column: 0, node: 0, nodesReached: 0, jumpCharge: 0, scrap: 0, event: -1, eventChoice: -1, upgrades: new Uint8Array(STATION_COUNT), quirk: 0, startBonus: 0, ...generateMap(rng.map, RUN_COLUMNS) },
     enemy: { present: 0, hull: 0, stableId: 0, nextArrivalTick: ENCOUNTER_FIRST * TICK_HZ, nextShotTick: -1, departTick: -1, sysHp: new Int32Array(ENEMY_SYSTEM_COUNT), sysRepairTick: new Int32Array(ENEMY_SYSTEM_COUNT).fill(-1), shieldFreq: 0, scanned: 0, scan: 0 },
     science: { scanning: 0 },
     crewCharacter: Uint8Array.from({ length: playerCount }, (_, pid) => characters[pid] ?? RECRUIT),
     skills: { xp: new Float64Array(playerCount * SKILL_COUNT), lastEngChangeTick: -1, lastDoorToggleTick: -1, lsDeliveredTick: -1, lastShotTick: -1 },
     scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount) }
   };
+  state.run.quirk = nextInt(rng.quirk, QUIRK_COUNT);   // the one draw from the seventh stream, before any override
+  if (options.quirk !== undefined) state.run.quirk = options.quirk;
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));
   applyHeadStarts(state);
+  applyStartBonuses(state, options.unlocked ?? []);
   return state;
 }
 
