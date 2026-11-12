@@ -23,9 +23,10 @@ export function hash01(id: number, salt: number): number {
 
 export function showSecondsOf(kind: number): number { return kind === ObjectKind.Shot ? SHOT_SHOW_SECONDS : ASTEROID_SHOW_SECONDS; }
 
-/** Entry point and target: debris from the top, the bottom or the front (right), never from behind (left); shots from the right edge. */
-export function projectilePath(stableId: number, kind: number, roomCentre: Pt, band: Band): Path {
+/** Entry point and target: debris from the top, the bottom or the front (right), never from behind (left); shots from the given origin (the enemy window's Weapons room, spec Demo-viii amendment R3), else the right edge. */
+export function projectilePath(stableId: number, kind: number, roomCentre: Pt, band: Band, origin?: Pt): Path {
   const to = { x: roomCentre.x, y: roomCentre.y }, m = 32, u = hash01(stableId, 2);
+  if (kind === ObjectKind.Shot && origin) return { from: { x: origin.x, y: origin.y }, to };
   if (kind === ObjectKind.Shot) return { from: { x: band.x + band.w + m, y: roomCentre.y + (u - 0.5) * band.h * 0.4 }, to };
   const side = Math.floor(hash01(stableId, 1) * 3);
   const x = band.x + band.w * (0.3 + 0.8 * u);                         // top and bottom entries lie over the front two thirds and beyond
