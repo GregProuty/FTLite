@@ -20,7 +20,7 @@
 
 **Files:** `src/renderer/src/main.ts`, `tests/ship.test.ts` (or a new `tests/cutter.test.ts`), `tests/gate-cutter.test.ts` (new); any code reading `room.system` that needs the new `"doors"` value.
 
-- [ ] Tests (RED): the §6 "Ship" cases and `gate-cutter` (two bots, `DEFAULT_CHARACTERS`, seeds 1-3, five minutes, `jumpCharge = 0` every tick, assert `ended === 0` and two Conscious, figures in the message).
+- [ ] Tests (RED): the spec §6 first bullet ("Ship": parse, 17 rooms, 22 edges, 17 breach sites, 7 stations in their §3 rooms, a 600-tick two-bot smoke run without throwing) and `gate-cutter` (a ship-only survival soak, not evidence of full-run survival) (two bots, `DEFAULT_CHARACTERS`, seeds 1-3, five minutes, `jumpCharge = 0` every tick, assert `ended === 0` and two Conscious, figures in the message).
 - [ ] Implement: `main.ts` imports `cutter.json`; grep `\.system` across `src/` and make each reader accept `"doors"` (or ignore unknown systems) with a test where behaviour changes.
 - [ ] Run `gate-cutter`. If a seed fails, diagnose with a temporary per-second log (crew health and room, fires, breaches, failed consoles), then fix the layout or the bot (never a global tuning value), record it in spec §9, and re-run every gate. Record the figures in the report.
 - [ ] Verify (golden untouched) and commit `feat: the app flies the FTL-style cutter (17 rooms, bow to the right); the starter stays the test ship; a two-bot survival gate on the cutter`.
@@ -30,7 +30,7 @@
 **Files:** `render/roomIconModel.ts` (pure, new), `render/roomIcons.ts` (Pixi, new), `render/renderer.ts` (add the icon layer), `render/hud.ts` + `render/hudModel.ts` (power-row glyph kind and tint), `tests/roomIcons.test.ts` (new), `tests/hud.test.ts`.
 
 - [ ] Tests (RED): §6 "Icons" (both ships, the three tint cases, reactor never tinted); `HudStation` gains `iconTint` or the power rows reuse the same tint function (test it).
-- [ ] Implement per spec §4: `ICON_KINDS`, `drawIcon`, `roomIcons(state)`, the world layer (built once per layout, tint updated per frame, inserted between `effects.below` and the crew), the 12 px glyph left of each power row (name shifted 14 px).
+- [ ] Implement per spec §4: `ICON_KINDS`, `drawIcon`, `roomIcons(state)`, the world layer (built once per layout, tint updated per frame, inserted in `world.addChild(...)` between `effects.below` and `crew.container`), the 12 px glyph left of each power row (name shifted 14 px).
 - [ ] Verify and commit `feat: original system glyphs on every system room (red when failed, faint when unpowered) and beside the power rows`.
 
 ### Task 3: Sector map
@@ -38,7 +38,7 @@
 **Files:** `render/hudModel.ts` (`MapModel`, `map` block), `render/mapPanel.ts` (new), `render/hud.ts`, `tests/hud.test.ts` (or `tests/map.test.ts`).
 
 - [ ] Tests (RED): §6 "Map" on fixture map M (helpers `mapM`, `setNodeTypes`, `seatNavigator`, `chargeJump` in `tests/helpers/sim.ts`); the title string exact (`SECTOR MAP   node 2/8   Jump READY` and the `n%` form via the existing `navigationFooter` rule).
-- [ ] Implement per spec §5: the model (pure), the panel (`createMapPanel()` added by `createHud` at `(240, 170)`, `update(m.map)` per frame, visible only with a map), the title helper exported and tested.
+- [ ] Implement per spec §5: the model (pure), the panel (`createMapPanel()` added by `createHud` at `(236, 64)`, `update(m.map)` per frame, visible only with a map), the title helper exported and tested.
 - [ ] Verify and commit `feat: a sector map opens while anyone sits at Navigation: columns, routes, the current node, reachable nodes, the cursor's destination, shop and event marks, the exit`.
 
 ### Task 4: Docs
