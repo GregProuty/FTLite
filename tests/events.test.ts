@@ -79,10 +79,10 @@ describe('events: every choice', () => {
     resolveEvent(s, 0); expect([Health.cur[s.crew[0]!], Health.cur[s.crew[1]!], Life.state[s.crew[1]!], s.run.scrap, s.telemetry.scrapSpent]).toEqual([HEALTH_MAX, h1, LifeState.Downed, 85, 15]);
     const p = setup(5, 14); expect(choiceEnabled(p, 5, 0)).toBe(false); expect(choiceEnabled(p, 5, 1)).toBe(true);
     const t = setup(5); Health.cur[t.crew[0]!] = 20; resolveEvent(t, 1); expect([Health.cur[t.crew[0]!], t.run.scrap]).toEqual([20, 100]);
+  });
   it('5 Medical freighter: a Dead member is untouched too', () => {
     const s = setup(5); const dead = s.crew[1]!; Life.state[dead] = LifeState.Dead; Health.cur[dead] = 0; Health.cur[s.crew[0]!] = 20;
     resolveEvent(s, 0); expect([Health.cur[s.crew[0]!], Health.cur[dead], Life.state[dead], s.run.scrap]).toEqual([HEALTH_MAX, 0, LifeState.Dead, 85]);
-  });
   });
   it('a disabled choice under Confirm changes nothing; resolveEvent on a resolved or absent event is a no-op', () => {
     const s = setup(5, 14); const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); clampNavCursor(s); expect(s.stations.cursor[n]).toBe(2);
