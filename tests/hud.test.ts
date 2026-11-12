@@ -20,6 +20,7 @@ import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src
 import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
 import { resolveEvent } from '../src/renderer/src/sim/events';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
+import { LOBBY_LINE_MAX } from '../src/renderer/src/sim/tuning';
 import { boarderMarkers } from '../src/renderer/src/sim/boarders';
 import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder, setMap, seatNavigator, chargeJump, mapM, setEvent, setNodeTypes, grantScrap } from './helpers/sim';
 
@@ -143,7 +144,7 @@ describe('buildHudModel', () => {
     expect(p.seated).toBe(StationKind.Weapons);
     const panel = p.console as WeaponsPanel;
     expect(panel.kind).toBe('weapons'); expect(panel.charge).toBe(0.25);
-    expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null }]);
+    expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }]);
     expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0 });
     expect(panel.cursor).toBe(0);                                                  // sitDown selected id 10 (slot 1), which is targets[0]
     s.stations.cursor[wpn] = 0;                                                    // slot 0 is id 30: targets[1]
@@ -175,7 +176,7 @@ describe('buildHudModel', () => {
     expect(w.selector).toBe(3); expect(w.torpedo).toEqual({ stock: 2, cap: TORP_CAP, loaded: true, load: 0 });
     expect(w.targets.map((t) => t.frequency)).toEqual([2, null]);
     const p = m.players[1]!.console as SciencePanel;
-    expect(p.targets).toEqual([{ stableId: 10, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, room: 'Bridge', eta: 5, frequency: 2, scan: 1 }, { stableId: 20, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, room: 'Weapons Bay', eta: 10, frequency: null, scan: 0.4 }]);
+    expect(p.targets).toEqual([{ stableId: 10, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null, room: 'Bridge', eta: 5, frequency: 2, scan: 1 }, { stableId: 20, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null, room: 'Weapons Bay', eta: 10, frequency: null, scan: 0.4 }]);
     expect(p.cursor).toBe(1); expect(p.scanning).toBe(true);
   });
   it('threat rows: the enemy first with its hull percent, shots with and without a scanned frequency; none when absent', () => {
@@ -184,7 +185,7 @@ describe('buildHudModel', () => {
     placeEnemy(s); s.enemy.hull = 64;
     placeShot(s, A, 7 * 60, 1); const k2 = placeShot(s, A, 7 * 60, 1, undefined, 2); s.debris.scanned[k2] = 1;
     const th = buildHudModel(s, slots(1), 'running', '').threats;
-    expect(th[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64%' });
+    expect(th[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64% shields 1/1' });
     const shotRows = th.filter((t) => t.text.startsWith('Shot'));
     expect(shotRows).toEqual([{ icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s` }, { icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s F2` }]);
   });
@@ -195,9 +196,9 @@ describe('buildHudModel', () => {
     s.stations.cursor[w] = ENEMY_SLOT;                                   // Science stays on the object
     const m = buildHudModel(s, slots(2), 'running', '');
     const wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
-    expect(wp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true });
+    expect(wp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0 });
     expect(wp.cursor).toBe(1); expect(wp.first).toBe(0);
-    expect(sp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, scan: 0 });
+    expect(sp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0, scan: 0 });
     expect(sp.targets[0]!.kind).toBe('debris'); expect(sp.cursor).toBe(0);
     for (const panel of [wp, sp]) expect(panel.targets.find((t) => t.stableId === s.debris.stableId[k])).toMatchObject({ kind: 'shot', frequency: 2, eta: 7, hull: null });
   });
@@ -215,18 +216,18 @@ describe('buildHudModel', () => {
     s.stations.cursor[c] = ENEMY_SHIELDS_SLOT; const sp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel; expect(sp2.cursor).toBe(11); expect(sp2.first).toBe(5);
   });
   it('targetRowText renders the exact row strings for debris, shots and the enemy on both panels', () => {
-    const debris = { stableId: 1, kind: 'debris' as const, room: 'Engine', eta: 7, frequency: null, hull: null, system: null, status: null, shieldsUp: null };
+    const debris = { stableId: 1, kind: 'debris' as const, room: 'Engine', eta: 7, frequency: null, hull: null, system: null, status: null, shieldsUp: null, layers: null as number | null, layersMax: null as number | null, weaponCharge: null as number | null, fleeSeconds: null as number | null };
     expect(targetRowText(debris)).toBe('Engine 7s F?'); expect(targetRowText({ ...debris, frequency: 2 })).toBe('Engine 7s F2'); expect(targetRowText(debris, 0.4)).toBe('Engine 7s F? 40%');
     const shot = { ...debris, kind: 'shot' as const };
     expect(targetRowText(shot)).toBe('Shot Engine 7s F?'); expect(targetRowText({ ...shot, frequency: 2 })).toBe('Shot Engine 7s F2'); expect(targetRowText(shot, 0.4)).toBe('Shot Engine 7s F? 40%'); expect(targetRowText({ ...shot, frequency: 2 }, 0.4)).toBe('Shot Engine 7s F2');
-    const enemy = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true };
-    expect(targetRowText(enemy)).toBe('Enemy 64% 87s S?'); expect(targetRowText(enemy, 0.4)).toBe('Enemy 64% 87s S? 40%');   // marker, then the scan suffix
+    const enemy = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0 };
+    expect(targetRowText(enemy)).toBe('Enemy 64% 87s S? [#] W0%'); expect(targetRowText(enemy, 0.4)).toBe('Enemy 64% 87s S? [#] W0% 40%');   // marker, then the scan suffix
   });
   it('targetRowText: the hull row markers and scan suffix, the subsystem rows intact and down', () => {
-    const hull = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null as number | null, hull: 0.64, system: null, status: null, shieldsUp: true as boolean | null };
-    expect(targetRowText(hull)).toBe('Enemy 64% 87s S?'); expect(targetRowText({ ...hull, frequency: 2 })).toBe('Enemy 64% 87s S2');
-    expect(targetRowText({ ...hull, frequency: 2, shieldsUp: false })).toBe('Enemy 64% 87s S-'); expect(targetRowText({ ...hull, shieldsUp: false }, 0.4)).toBe('Enemy 64% 87s S- 40%');
-    expect(targetRowText(hull, 0.4)).toBe('Enemy 64% 87s S? 40%'); expect(targetRowText({ ...hull, frequency: 2 }, 1)).toBe('Enemy 64% 87s S2');
+    const hull = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null as number | null, hull: 0.64, system: null, status: null, shieldsUp: true as boolean | null, layers: 1 as number | null, layersMax: 1 as number | null, weaponCharge: 0 as number | null, fleeSeconds: 0 as number | null };
+    expect(targetRowText(hull)).toBe('Enemy 64% 87s S? [#] W0%'); expect(targetRowText({ ...hull, frequency: 2 })).toBe('Enemy 64% 87s S2 [#] W0%');
+    expect(targetRowText({ ...hull, frequency: 2, shieldsUp: false })).toBe('Enemy 64% 87s S- W0%'); expect(targetRowText({ ...hull, shieldsUp: false }, 0.4)).toBe('Enemy 64% 87s S- W0% 40%');
+    expect(targetRowText(hull, 0.4)).toBe('Enemy 64% 87s S? [#] W0% 40%'); expect(targetRowText({ ...hull, frequency: 2 }, 1)).toBe('Enemy 64% 87s S2 [#] W0%');
     const sys = (system: number, hp: number, repairIn: number | null) => ({ ...hull, hull: null, system, status: { hp, repairIn } });
     expect(targetRowText(sys(0, 30, null))).toBe('Enemy weapons 100%'); expect(targetRowText(sys(0, 15, null))).toBe('Enemy weapons 50%');
     expect(targetRowText(sys(0, 0, 31))).toBe('Enemy weapons DOWN 31s'); expect(targetRowText(sys(1, 0, 1))).toBe('Enemy engines DOWN 1s'); expect(targetRowText(sys(2, 30, null), 0.4)).toBe('Enemy shields 100%');
@@ -238,11 +239,11 @@ describe('buildHudModel', () => {
     expect(wp.targets.slice(1).map((t) => [t.kind, t.system, t.status, t.shieldsUp, t.frequency, t.hull])).toEqual([
       ['enemy', null, null, true, null, 0.64], ['enemy', 0, { hp: 30, repairIn: null }, true, null, null], ['enemy', 1, { hp: 30, repairIn: null }, true, null, null], ['enemy', 2, { hp: 30, repairIn: null }, true, null, null]]);
     expect(sp.targets.slice(1).map((t) => t.scan)).toEqual([0.4, 0, 0, 0]);
-    expect(m.threats[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64%' });
+    expect(m.threats[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64% shields 1/1' });
     s.enemy.scanned = 1;
     expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as WeaponsPanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: true });   // revealed, shields still up
     disableSystem(s, EnemySystem.Weapons);
-    expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Enemy ship: hull 64% weapons DOWN');
+    expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Enemy ship: hull 64% shields 1/1 weapons DOWN');
     disableSystem(s, EnemySystem.Shields);
     m = buildHudModel(s, slots(2), 'running', ''); wp = m.players[0]!.console as WeaponsPanel;
     expect(wp.targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[4]!.status).toEqual({ hp: 0, repairIn: 45 });
@@ -360,17 +361,17 @@ describe('buildHudModel', () => {
     s.stations.cursor[n] = 10; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(11); expect(p.first).toBe(4);
     s.stations.cursor[n] = 1; expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel).first).toBe(0);
   });
-  it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows first, and baseMax on the power rows', () => {
+  it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows last, and baseMax on the power rows', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); clampNavCursor(s);
     const m = buildHudModel(s, slots(2), 'running', ''); const p = m.players[0]!.console as NavigationPanel;
     expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['A cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60, a station fails)', true, true, false]]);
     expect(p.scrap).toBe(45); s.run.jumpCharge = 0.64; expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toMatch(/^Evade \d+%   Jump 64%   Scrap 45$/);
-    expect(m.threats[0]).toEqual({ icon: 'icon.sensors', text: 'Event: Supply cache' });
-    igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.text).toBe('Event: Supply cache'); expect(t[1]!.icon).toBe('icon.weapons'); expect(t[2]!.text).toBe('Fire: Bridge');
-    setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.slice(0, 2).map((x) => x.text)).toEqual(['Event: Supply cache', 'Shop here']);
+    expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Event: Supply cache' }]);   // spec Demo-i section 4: the run rows trail the hazards
+    igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.icon).toBe('icon.weapons'); expect(t[1]!.text).toBe('Fire: Bridge'); expect(t[2]!.text).toBe('Event: Supply cache');
+    setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.map((x) => x.text).slice(-2)).toEqual(['Event: Supply cache', 'Shop here']); expect(sh.map((x) => x.text).slice(0, 2)).toEqual([expect.stringMatching(/^Enemy ship/), 'Fire: Bridge']);
     resolveEvent(s, 0); const q = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     expect(q.rows).toHaveLength(10); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Node 3a');   // mask 1:2 = 1: one destination
-    expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Shop here');
+    expect(buildHudModel(s, slots(2), 'running', '').threats.map((x) => x.text).slice(-1)).toEqual(['Shop here']);
     s.run.upgrades[StationKind.Weapons] = 1; const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 1, eng);
     const m2 = buildHudModel(s, slots(2), 'running', ''); expect(m2.stations.find((x) => x.kind === StationKind.Weapons)!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1);
     expect((m2.players[1]!.console as EngineeringPanel).rows[StationKind.Weapons]!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1); expect((m2.players[1]!.console as EngineeringPanel).rows[StationKind.Science]!.max).toBe(STATION_MAX[StationKind.Science]!);
@@ -388,5 +389,52 @@ describe('buildHudModel', () => {
     expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  HULL LOST  Reached node 1 of 8  Score 0');
     s.endReason = EndReason.Victory; s.run.column = 7; s.run.nodesReached = 7; s.telemetry.scrapEarned = 145;
     expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  VICTORY  Reached node 8 of 8  Score 1345');
+  });
+});
+
+describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (spec sections 3, 4, 8, 11.4, 11.5)', () => {
+  const CARD = [
+    'Move: WASD or left stick      Interact: E / A      Confirm: F / X      Cancel: Q / B',
+    'Keyboard 2: arrows, Enter (Interact), Right Shift (Confirm), Backspace (Cancel)',
+    'Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands',
+    'Hold Interact next to a fire, a breach, a failed console or a downed friend',
+    'Navigation jumps when the drive reads READY. Events and shops are chosen there',
+    'Jump before the ship falls apart. Reach node 8 to win'
+  ];
+  it('the lobby card is the six exact ASCII lines within LOBBY_LINE_MAX; every other phase gives none', () => {
+    expect(buildHudModel(null, slots(1), 'lobby', '').lobbyLines).toEqual(CARD);
+    const s = makeState(1); quiet(s);
+    for (const phase of ['running', 'gameover', 'paused', 'error'] as const) expect(buildHudModel(s, slots(1), phase, '').lobbyLines).toEqual([]);
+    for (const l of CARD) { expect(l.length).toBeLessThanOrEqual(LOBBY_LINE_MAX); expect(/^[\x20-\x7e]+$/.test(l)).toBe(true); }
+  });
+  /** The hull row of the Weapons panel for an enemy placed with the given fields. */
+  const hullRow = (s: ReturnType<typeof makeState>) => { sitDown(s, 0, s.derived.stationOfKind[StationKind.Weapons]!); const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; const t = wp.targets.find((x) => x.kind === 'enemy' && x.system === null)!; return { t, text: targetRowText(t) }; };
+  const charge = (s: ReturnType<typeof makeState>, frac: number) => { s.enemy.shotArmTick = s.tick - Math.round(frac * 100); s.enemy.nextShotTick = s.tick + Math.round((1 - frac) * 100); };
+  it('the enemy hull row in four states: full at column 0, a stripped layer at column 5 scanned, shields down, fleeing', () => {
+    const a = makeState(1); quiet(a); placeEnemy(a);
+    expect(hullRow(a).text).toBe('Enemy 100% 120s S? [#] W0%'); expect(hullRow(a).t).toMatchObject({ layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0 });
+    const b = makeState(1); quiet(b); b.run.column = 5; placeEnemy(b, 150, 2); b.enemy.shieldLayers = 1; b.enemy.scanned = 1; charge(b, 0.5);
+    expect(hullRow(b).text).toBe('Enemy 100% 120s S2 [#.] W50%'); expect(hullRow(b).t).toMatchObject({ layers: 1, layersMax: 2, weaponCharge: 0.5, hull: 1 });
+    const c = makeState(1); quiet(c); placeEnemy(c, 64); disableSystem(c, EnemySystem.Shields); c.enemy.departTick = c.tick + 90 * 60; charge(c, 0.7);
+    expect(hullRow(c).text).toBe('Enemy 64% 90s S- W70%');
+    const d = makeState(1); quiet(d); placeEnemy(d, 20); disableSystem(d, EnemySystem.Shields); d.enemy.fleeing = 1; d.enemy.surrenderIntact = 1; d.enemy.departTick = d.tick + 7 * 60; charge(d, 0.3);
+    expect(hullRow(d).text).toBe('Enemy 20% FLEE 7s S- W30%'); expect(hullRow(d).t.fleeSeconds).toBe(7);
+  });
+  it('subsystem rows carry no layer fields; the hull is a fraction of maxHull', () => {
+    const s = makeState(1); quiet(s); s.run.column = 5; placeEnemy(s, 75); sitDown(s, 0, s.derived.stationOfKind[StationKind.Weapons]!);
+    const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
+    expect(wp.targets.find((t) => t.system === null)!.hull).toBe(0.5); expect(wp.targets.filter((t) => t.system !== null).map((t) => [t.layers, t.layersMax, t.weaponCharge, t.fleeSeconds])).toEqual([[null, null, null, null], [null, null, null, null], [null, null, null, null]]);
+  });
+  it('the threat row: shields n/m while up, DOWN suffixes in order, FLEEING; the percentage uses maxHull', () => {
+    const s = makeState(1); quiet(s); placeEnemy(s);
+    const row = () => buildHudModel(s, slots(1), 'running', '').threats.find((t) => t.text.startsWith('Enemy ship'))!.text;
+    expect(row()).toBe('Enemy ship: hull 100% shields 1/1');
+    s.enemy.hull = 64; disableSystem(s, EnemySystem.Weapons); disableSystem(s, EnemySystem.Shields); expect(row()).toBe('Enemy ship: hull 64% weapons DOWN shields DOWN');
+    s.enemy.hull = 20; s.enemy.fleeing = 1; disableSystem(s, EnemySystem.Engines); expect(row()).toBe('Enemy ship: hull 20% weapons DOWN engines DOWN shields DOWN FLEEING');
+    const t = makeState(1); quiet(t); t.run.column = 5; placeEnemy(t, 75); t.enemy.shieldLayers = 1; expect(buildHudModel(t, slots(1), 'running', '').threats[0]!.text).toBe('Enemy ship: hull 50% shields 1/2');
+  });
+  it('threat order: an enemy, a fire, then Event, then Shop here (hazards before the run rows)', () => {
+    const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 2); placeEnemy(s); igniteRoom(s, room(s, 'A'));
+    expect(buildHudModel(s, slots(2), 'running', '').threats.map((t) => t.text)).toEqual([expect.stringMatching(/^Enemy ship/), 'Fire: Bridge', 'Event: Smugglers', 'Shop here']);
   });
 });

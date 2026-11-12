@@ -2,7 +2,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_HULL, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS } from '../sim/tuning';
+import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, SCRAP_SURRENDER } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType } from '../sim/run';
 import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
@@ -11,7 +11,7 @@ import { StationKind, STATION_NAMES } from '../sim/stationKinds';
 import { stationOnline, stationOutput } from '../sim/stations';
 import { scienceLead, ObjectKind } from '../sim/debris';
 import { warnedTargets, ENEMY_SLOT, isEnemySlot, enemySystemOf } from '../sim/debrisTargets';
-import { EnemySystem, ENEMY_SYSTEM_NAMES } from '../sim/enemy';
+import { EnemySystem, ENEMY_SYSTEM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft } from '../sim/enemy';
 import { powerUsed, powerPool, powerCapacity, baseMax } from '../sim/power';
 import { isOverdriven, coolantUsed } from '../sim/heat';
 import type { SlotInfo, SlotStatus } from '../input/deviceManager';
@@ -39,7 +39,7 @@ function thermal(state: SimState, i: number): { heat: number; coolant: number; o
 export interface EngineeringPanel { rows: { kind: number; name: string; level: number; max: number; failed: boolean; heat: number; coolant: number; overdriven: boolean }[]; cursor: number; pool: number; coolantFree: number }
 export type DoorsPanel = { doorIndex: number; rooms: [string, string] } | { doorIndex: -1 };
 export type TargetKindName = 'debris' | 'shot' | 'enemy';
-export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null }
+export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null; layers: number | null; layersMax: number | null; weaponCharge: number | null; fleeSeconds: number | null }   // the last four: the enemy hull row only (spec Demo-i section 11.4)
 export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number }; targets: DebrisTarget[]; cursor: number; first: number }
 export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean }
 export interface NavigationPanel { kind: 'navigation'; evadeChance: number; jump: { charge: number; ready: boolean }; here: string; final: boolean; rows: { text: string; selectable: boolean; enabled: boolean; cursor: boolean }[]; first: number; scrap: number }
@@ -53,6 +53,7 @@ export interface HudModel {
   director: { phase: string; stress: number };
   run: { column: number; columns: number; quirk: string };
   progressLine: string;
+  lobbyLines: string[]; notice: string[];   // the lobby controls card (spec Demo-i section 3) and the run notice (section 4)
 }
 export function clockLine(m: HudModel): string { return `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s   node ${m.run.column + 1}/${m.run.columns}`; }
 export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%   Jump ${p.final ? '-' : p.jump.ready ? 'READY' : `${Math.floor(p.jump.charge * 100)}%`}   Scrap ${p.scrap}`; }
@@ -113,22 +114,43 @@ export function targetWindow(cursor: number, length: number, rows: number): numb
 function target(state: SimState, k: number): DebrisTarget {
   if (isEnemySlot(k)) {
     const e = state.enemy, shieldsUp = e.sysHp[EnemySystem.Shields]! > 0;
-    const base = { stableId: e.stableId, kind: 'enemy' as const, room: 'Enemy ship', eta: Math.ceil((e.departTick - state.tick) * DT), frequency: null as number | null, hull: null as number | null, system: null as number | null, status: null as DebrisTarget['status'], shieldsUp };
-    if (k === ENEMY_SLOT) return { ...base, hull: e.hull / ENEMY_HULL, frequency: e.scanned ? e.shieldFreq : null };
+    const base = { stableId: e.stableId, kind: 'enemy' as const, room: 'Enemy ship', eta: Math.ceil((e.departTick - state.tick) * DT), frequency: null as number | null, hull: null as number | null, system: null as number | null, status: null as DebrisTarget['status'], shieldsUp, layers: null as number | null, layersMax: null as number | null, weaponCharge: null as number | null, fleeSeconds: null as number | null };
+    if (k === ENEMY_SLOT) return { ...base, hull: e.hull / e.maxHull, frequency: e.scanned ? e.shieldFreq : null, layers: e.shieldLayers, layersMax: enemyShieldMax(state.run.column), weaponCharge: enemyWeaponCharge(state), fleeSeconds: fleeSecondsLeft(state) };
     const sys = enemySystemOf(k), hp = e.sysHp[sys]!;
     return { ...base, system: sys, status: { hp, repairIn: hp > 0 ? null : Math.ceil((e.sysRepairTick[sys]! - state.tick) / TICK_HZ) } };
   }
   const db = state.debris;
-  return { stableId: db.stableId[k]!, kind: db.kind[k] === ObjectKind.Shot ? 'shot' : 'debris', room: state.layout.rooms[db.room[k]!]!.name, eta: etaSeconds(state, k), frequency: db.scanned[k] ? db.frequency[k]! : null, hull: null, system: null, status: null, shieldsUp: null };
+  return { stableId: db.stableId[k]!, kind: db.kind[k] === ObjectKind.Shot ? 'shot' : 'debris', room: state.layout.rooms[db.room[k]!]!.name, eta: etaSeconds(state, k), frequency: db.scanned[k] ? db.frequency[k]! : null, hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null };
 }
 /** Exact target-row strings for the Weapons and Science panels (spec Combat-i section 7). */
 export function targetRowText(t: DebrisTarget, scan = 0): string {
   if (t.kind === 'enemy') {                                              // spec Combat-ii section 7
     if (t.system !== null && t.status) return t.status.hp > 0 ? `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} ${Math.round(t.status.hp / ENEMY_SYS_HP * 100)}%` : `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} DOWN ${t.status.repairIn}s`;
     const marker = t.shieldsUp === false ? 'S-' : t.frequency !== null ? `S${t.frequency}` : 'S?';
-    return `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${t.eta}s ${marker}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
+    const layers = t.layers ?? 0, bracket = t.shieldsUp === false ? '' : ` [${'#'.repeat(layers)}${'.'.repeat(Math.max(0, (t.layersMax ?? 0) - layers))}]`, fleeing = (t.fleeSeconds ?? 0) > 0;   // spec Demo-i section 11.4: the layers while shields are up, the weapon charge always, the flee countdown in place of the eta
+    return `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${fleeing ? `FLEE ${t.fleeSeconds}s` : `${t.eta}s`} ${marker}${bracket} W${Math.round((t.weaponCharge ?? 0) * 100)}%${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
   }
   return `${t.kind === 'shot' ? 'Shot ' : ''}${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
+}
+
+/** The lobby controls card (spec Demo-i section 3): ASCII, the real bindings of input/sources.ts. */
+export const LOBBY_LINES: readonly string[] = [
+  'Move: WASD or left stick      Interact: E / A      Confirm: F / X      Cancel: Q / B',
+  'Keyboard 2: arrows, Enter (Interact), Right Shift (Confirm), Backspace (Cancel)',
+  'Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands',
+  'Hold Interact next to a fire, a breach, a failed console or a downed friend',
+  'Navigation jumps when the drive reads READY. Events and shops are chosen there',
+  'Jump before the ship falls apart. Reach node 8 to win'
+];
+
+/** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b): a pending event, a surrender offer, a shop node, then the ready drive. */
+export function runNotice(state: SimState): string[] {
+  const r = state.run, e = state.enemy;
+  if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
+  if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${SCRAP_SURRENDER} scrap`];
+  if (r.nodeType[r.column * 3 + r.node] === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, 'Hull +25 (30)   Torpedoes +2 (20)   Upgrade +1 bar (50)'];
+  if (r.jumpCharge >= 1) { const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation']; }
+  return [];
 }
 
 function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | null {
@@ -204,16 +226,16 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   });
   const threats: HudThreat[] = [];
   if (state) {
-    if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}` });   // spec Run-ii 9: event and shop rows lead
-    if (state.run.nodeType[state.run.column * 3 + state.run.node] === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here' });
-    if (state.enemy.present) threats.push({ icon: 'icon.weapons', text: `Enemy ship: hull ${Math.round(state.enemy.hull / ENEMY_HULL * 100)}%${ENEMY_SYSTEM_NAMES.map((name, sys) => (state.enemy.sysHp[sys] === 0 ? ` ${name} DOWN` : '')).join('')}` });
+    if (state.enemy.present) { const e = state.enemy; threats.push({ icon: 'icon.weapons', text: `Enemy ship: hull ${Math.round(e.hull / e.maxHull * 100)}%${e.sysHp[EnemySystem.Shields]! > 0 ? ` shields ${e.shieldLayers}/${enemyShieldMax(state.run.column)}` : ''}${ENEMY_SYSTEM_NAMES.map((name, sys) => (e.sysHp[sys] === 0 ? ` ${name} DOWN` : '')).join('')}${e.fleeing ? ' FLEEING' : ''}` }); }
     for (let r = 0; r < state.layout.rooms.length; r++) { const n = boardersInRoom(state, r).length; if (n) threats.push({ icon: 'icon.sensors', text: `Boarders: ${state.layout.rooms[r]!.name} x${n}` }); }
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) threats.push({ icon: 'icon.fire', text: `Fire: ${state.layout.rooms[r]!.name}` });
     for (let s = 0; s < state.breaches.active.length; s++) if (state.breaches.active[s]) threats.push({ icon: 'icon.breach', text: `Breach: ${state.layout.rooms[state.derived.siteRoom[s]!]!.name}` });
     for (let i = 0; i < state.stations.failed.length; i++) if (state.stations.failed[i]) threats.push({ icon: 'icon.power', text: `Power: ${STATION_NAMES[state.derived.stationKind[i]!]}` });
     for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : 'Debris'; threats.push({ icon: 'icon.sensors', text: `${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` }); }
+    if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}` });   // spec Demo-i section 4: the run rows trail the hazards (the notice carries them)
+    if (state.run.nodeType[state.run.column * 3 + state.run.node] === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here' });
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: RUN_COLUMNS, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' } };
+  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: RUN_COLUMNS, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], notice: state && phase === 'running' ? runNotice(state) : [] };
 }

@@ -63,6 +63,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
   const banner = text(16); banner.scale.set(2); banner.anchor.set(0.5, 0); banner.position.set(INTERNAL_W / 2, 24); parent.addChild(banner);
   const progressLine = text(16, DIM); progressLine.anchor.set(0.5, 0); progressLine.position.set(INTERNAL_W / 2, 64 + 2 * LINE - 12); parent.addChild(progressLine);   // under the banner and its glyph row
+  const noticeRows = [0, 1].map((k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(480, 24 + k * LINE); t.visible = false; parent.addChild(t); return t; });   // spec Demo-i section 4: two lines top-centre between the clock and threat panels, running only
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
   const summaryRows = Array.from({ length: 11 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 88 + k * LINE); t.visible = false; parent.addChild(t); return t; });
 
@@ -183,13 +184,15 @@ export function createHud(parent: Container, assets: GameAssets) {
         if (st) powerRows[k]!.set({ name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN, heat: st.heat, coolant: st.coolant });
         powerRows[k]!.root.visible = !!st;
       }
-      banner.text = m.message; progressLine.text = m.progressLine; progressLine.visible = !!m.progressLine;
+      banner.text = m.message; banner.visible = m.phase !== 'running'; noticeRows.forEach((t, k) => { const line = m.phase === 'running' ? m.notice[k] : undefined; t.visible = !!line; t.text = line ?? ''; });
+      progressLine.text = m.progressLine; progressLine.visible = !!m.progressLine;
       // Cancel (and Confirm) glyphs appear only with the lobby and game-over banners, for the first joined player's device.
       const first = m.players.find((p) => p.status === 'active');
       const showBannerGlyphs = (m.phase === 'lobby' || m.phase === 'gameover') && !!first?.deviceKind;
       fillRow(bannerGlyphs, showBannerGlyphs ? [{ glyph: glyphName('confirm', first!.deviceKind), text: 'Confirm' }, { glyph: glyphName('cancel', first!.deviceKind), text: 'Cancel' }] : []);
       bannerGlyphs.position.x = INTERNAL_W / 2 - bannerGlyphs.width / 2;
-      summaryRows.forEach((t, k) => { const line = m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; });
+      // The lobby card takes rows 2-7 (rows 0-1 and 8-10 hidden); the game-over summary keeps rows 0-10 (spec Demo-i section 3).
+      summaryRows.forEach((t, k) => { const line = m.phase === 'lobby' ? m.lobbyLines[k - 2] : m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; });
       m.players.forEach((p, i) => updatePlayer(players[i]!, p, i, m.phase));
       overlay.visible = m.credits !== null;
       if (m.credits) creditLines.forEach((t, i) => { t.text = m.credits![m.creditsScroll + i] ?? ''; });
