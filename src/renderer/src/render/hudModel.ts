@@ -2,8 +2,9 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { TICK_HZ, STATION_MAX, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_HULL, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS } from '../sim/tuning';
-import { reachable, nodeLabel } from '../sim/run';
+import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_HULL, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS } from '../sim/tuning';
+import { navRows, nodeLabel, NodeType } from '../sim/run';
+import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
 import { CHARACTERS, DEFAULT_CHARACTERS, RECRUIT, characterOf, ASSET_NAMES, COMPLICATION_NAMES, type Character } from '../sim/characters';
 import { StationKind, STATION_NAMES } from '../sim/stationKinds';
@@ -11,7 +12,7 @@ import { stationOnline, stationOutput } from '../sim/stations';
 import { scienceLead, ObjectKind } from '../sim/debris';
 import { warnedTargets, ENEMY_SLOT, isEnemySlot, enemySystemOf } from '../sim/debrisTargets';
 import { EnemySystem, ENEMY_SYSTEM_NAMES } from '../sim/enemy';
-import { powerUsed, powerPool, powerCapacity } from '../sim/power';
+import { powerUsed, powerPool, powerCapacity, baseMax } from '../sim/power';
 import { isOverdriven, coolantUsed } from '../sim/heat';
 import type { SlotInfo, SlotStatus } from '../input/deviceManager';
 import { PHASE_NAMES } from '../sim/director';
@@ -40,7 +41,7 @@ export type TargetKindName = 'debris' | 'shot' | 'enemy';
 export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null }
 export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number }; targets: DebrisTarget[]; cursor: number; first: number }
 export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean }
-export interface NavigationPanel { kind: 'navigation'; evadeChance: number; jump: { charge: number; ready: boolean }; here: string; destinations: string[]; cursor: number; final: boolean }
+export interface NavigationPanel { kind: 'navigation'; evadeChance: number; jump: { charge: number; ready: boolean }; here: string; final: boolean; rows: { text: string; selectable: boolean; enabled: boolean; cursor: boolean }[]; scrap: number }
 export type ConsolePanel = EngineeringPanel | DoorsPanel | WeaponsPanel | SciencePanel | NavigationPanel;
 export interface HudStation { kind: number; name: string; level: number; max: number; online: boolean; occupant: number | null; heat: number; coolant: number; overdriven: boolean }
 export interface HudThreat { icon: 'icon.fire' | 'icon.breach' | 'icon.power' | 'icon.sensors' | 'icon.weapons'; text: string }
@@ -52,7 +53,7 @@ export interface HudModel {
   run: { column: number; columns: number };
 }
 export function clockLine(m: HudModel): string { return `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s   node ${m.run.column + 1}/${m.run.columns}`; }
-export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%   Jump ${p.final ? '-' : p.jump.ready ? 'READY' : `${Math.floor(p.jump.charge * 100)}%`}`; }
+export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%   Jump ${p.final ? '-' : p.jump.ready ? 'READY' : `${Math.floor(p.jump.charge * 100)}%`}   Scrap ${p.scrap}`; }
 
 /** A player's room is "low" on the HUD below this oxygen fraction (a warning, well above SUFFOCATE_FRAC). */
 export const HUD_LOW_O2_FRAC = 0.5;
@@ -131,7 +132,7 @@ export function targetRowText(t: DebrisTarget, scan = 0): string {
 function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | null {
   const d = state.derived;
   if (kind === StationKind.Engineering) {
-    const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: STATION_MAX[k]!, failed: si >= 0 && state.stations.failed[si] === 1, ...thermal(state, si) }; });
+    const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: baseMax(state, k), failed: si >= 0 && state.stations.failed[si] === 1, ...thermal(state, si) }; });
     return { rows, cursor: state.stations.cursor[i]!, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state) };
   }
   if (kind === StationKind.Doors) {
@@ -149,8 +150,8 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
     return { kind: 'science', leadSeconds: scienceLead(state), targets: slots.map((k) => ({ ...target(state, k), scan: k === ENEMY_SLOT ? state.enemy.scan : isEnemySlot(k) ? 0 : state.debris.scan[k]! })), cursor, first: targetWindow(cursor, slots.length, SCIENCE_ROWS), scanning: state.science.scanning === 1 };
   }
   if (kind === StationKind.Navigation) {
-    const r = state.run, list = reachable(state);   // spec 7: the destinations, the cursor clamped, the jump state
-    return { kind: 'navigation', evadeChance: EVADE_BASE + EVADE_SCALE * stationOutput(state, i), jump: { charge: r.jumpCharge, ready: r.jumpCharge >= 1 }, here: nodeLabel(r.column, r.node), destinations: list.map((d) => nodeLabel(r.column + 1, d)), cursor: Math.min(state.stations.cursor[i]!, Math.max(0, list.length - 1)), final: r.column === RUN_COLUMNS - 1 };
+    const r = state.run, rows = navRows(state), c = state.stations.cursor[i]!;   // spec Run-ii 9: the event, shop or destination rows, the cursor row, the jump state and scrap
+    return { kind: 'navigation', evadeChance: EVADE_BASE + EVADE_SCALE * stationOutput(state, i), jump: { charge: r.jumpCharge, ready: r.jumpCharge >= 1 }, here: nodeLabel(r.column, r.node), final: r.column === RUN_COLUMNS - 1, rows: rows.map((row, k) => ({ text: row.text, selectable: row.select !== 'none', enabled: row.enabled, cursor: k === c })), scrap: r.scrap };
   }
   return null;
 }
@@ -190,6 +191,8 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   });
   const threats: HudThreat[] = [];
   if (state) {
+    if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}` });   // spec Run-ii 9: event and shop rows lead
+    if (state.run.nodeType[state.run.column * 3 + state.run.node] === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here' });
     if (state.enemy.present) threats.push({ icon: 'icon.weapons', text: `Enemy ship: hull ${Math.round(state.enemy.hull / ENEMY_HULL * 100)}%${ENEMY_SYSTEM_NAMES.map((name, sys) => (state.enemy.sysHp[sys] === 0 ? ` ${name} DOWN` : '')).join('')}` });
     for (let r = 0; r < state.layout.rooms.length; r++) { const n = boardersInRoom(state, r).length; if (n) threats.push({ icon: 'icon.sensors', text: `Boarders: ${state.layout.rooms[r]!.name} x${n}` }); }
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) threats.push({ icon: 'icon.fire', text: `Fire: ${state.layout.rooms[r]!.name}` });
@@ -197,7 +200,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
     for (let i = 0; i < state.stations.failed.length; i++) if (state.stations.failed[i]) threats.push({ icon: 'icon.power', text: `Power: ${STATION_NAMES[state.derived.stationKind[i]!]}` });
     for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : 'Debris'; threats.push({ icon: 'icon.sensors', text: `${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` }); }
   }
-  const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: STATION_MAX[kind]!, online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, ...thermal(state, i) })) : [];
+  const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
   return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], players, summary: state && phase === 'gameover' ? [...headlineSummary(state), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: RUN_COLUMNS } };
 }

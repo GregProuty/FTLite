@@ -1,7 +1,7 @@
 import { Container, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, clockLine, navigationFooter, targetRowText, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, navigationFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { featureReady } from './fallback';
 import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
@@ -28,7 +28,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     return { root, set(frac) { fill.width = Math.max(0, Math.min(1, frac)) * w; fill.visible = frac > 0; } };
   };
 
-  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX) + 1;   // cells per row: the largest station maximum plus the overdrive cell
+  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX) + 2;   // cells per row: the largest station maximum plus the overdrive cell
   const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean; heat?: number; coolant?: number }): void } => {
     const root = new Container();
     const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
@@ -130,7 +130,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     fillRow(ui.line4, [{ text: `${p.character.name}  ${SKILL_NAMES.map((n, k) => `${n[0]}${p.skills[k]}`).join(' ')}`, tint: DIM }]);
     ui.consoleRoot.visible = p.console !== null;
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
-    if (p.console && 'rows' in p.console) {
+    if (p.console && 'rows' in p.console && !('kind' in p.console)) {   // the Navigation panel now has rows too
       const c = p.console;
       c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
       ui.consoleRows.forEach((r) => { r.root.visible = true; });
@@ -161,8 +161,9 @@ export function createHud(parent: Container, assets: GameAssets) {
       });
       fillRow(ui.consoleFooter, [{ text: `Lead ${Math.round(c.leadSeconds)}s${c.scanning ? '   Scanning' : ''}`, tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'navigation') {
-      const c = p.console;   // spec 7: one row per destination, the cursor row lit, the footer carries evade and the jump state
-      ui.consoleRows.forEach((r, k) => { const d = c.destinations[k]; r.root.visible = !!d; if (d) r.set({ name: d, level: 0, max: 0, status: '', cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM }); });
+      const c = p.console;   // spec 7: event, shop or destination rows in a seven-row window, the cursor row lit, the footer carries evade and the jump state
+      const first = targetWindow(c.rows.findIndex((r) => r.cursor), c.rows.length, 7);
+      ui.consoleRows.forEach((r, k) => { const row = c.rows[first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: row.selectable && !row.enabled ? '-' : '', cursor: row.cursor, tint: row.cursor ? TEXT : DIM }); });
       fillRow(ui.consoleFooter, [{ text: navigationFooter(c), tint: TEXT }]);
     } else if (p.console) {
       ui.consoleRows.forEach((r) => { r.root.visible = false; });

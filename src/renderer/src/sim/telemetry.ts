@@ -36,7 +36,7 @@ export interface TelemetryRecord {
   spawns: { fire: number; breach: number; power: number; debris: number };
   impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number;
   repairs: { fire: number; breach: number; power: number };
-  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number }; boarders: { parties: number; killed: number }; run: { nodesReached: number; jumps: number; columns: number };
+  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number }; boarders: { parties: number; killed: number }; run: { nodesReached: number; jumps: number; columns: number; scrap: { earned: number; spent: number }; events: number; purchases: number; upgrades: string[] };
   skills: number[][];
 }
 
@@ -69,7 +69,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
     phaseEntries: { buildUp: t.phaseEntries[Phase.BuildUp]!, sustainPeak: t.phaseEntries[Phase.SustainPeak]!, peakFade: t.phaseEntries[Phase.PeakFade]!, relax: t.phaseEntries[Phase.Relax]! },
     enemy: { met: t.encounters, destroyed: t.enemiesDestroyed, disables: t.enemyDisables },
     boarders: { parties: t.boardings, killed: t.boardersKilled },
-    run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS },
+    run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS, scrap: { earned: t.scrapEarned, spent: t.scrapSpent }, events: t.eventsResolved, purchases: t.purchases, upgrades: STATION_NAMES.filter((_, k) => state.run.upgrades[k] === 1) },
     skills: state.crew.map((_, pid) => Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k)))
   };
 }

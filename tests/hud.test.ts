@@ -16,10 +16,13 @@ import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
+import { resolveEvent } from '../src/renderer/src/sim/events';
+import { STATION_MAX } from '../src/renderer/src/sim/tuning';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
 import { boarderMarkers } from '../src/renderer/src/sim/boarders';
 import { BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
-import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder, setMap, seatNavigator, chargeJump } from './helpers/sim';
+import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder, setMap, seatNavigator, chargeJump, mapM, setEvent, setNodeTypes, grantScrap } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
 
@@ -345,11 +348,27 @@ describe('buildHudModel', () => {
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;
-    expect(p.here).toBe('Node 1a'); expect(p.destinations).toEqual(['Node 2a', 'Node 2b']); expect(p.cursor).toBe(1); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect(p.final).toBe(false);
-    expect(navigationFooter(p)).toBe(`${evade}   Jump 64%`);
-    chargeJump(s); expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toBe(`${evade}   Jump READY`);
+    expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a', true, true, false], ['Node 2b', true, true, true]]); expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect(p.final).toBe(false);
+    expect(navigationFooter(p)).toBe(`${evade}   Jump 64%   Scrap 0`);
+    chargeJump(s); expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toBe(`${evade}   Jump READY   Scrap 0`);
     s.run.column = RUN_COLUMNS - 1; const f = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
-    expect(f.final).toBe(true); expect(f.destinations).toEqual([]); expect(navigationFooter(f)).toBe(`${evade}   Jump -`);
+    expect(f.final).toBe(true); expect(f.rows).toEqual([]); expect(navigationFooter(f)).toBe(`${evade}   Jump -   Scrap 0`);
+  });
+  it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows first, and baseMax on the power rows', () => {
+    const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); clampNavCursor(s);
+    const m = buildHudModel(s, slots(2), 'running', ''); const p = m.players[0]!.console as NavigationPanel;
+    expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['An unmarked cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60 scrap, a station fails)', true, true, false]]);
+    expect(p.scrap).toBe(45); s.run.jumpCharge = 0.64; expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toMatch(/^Evade \d+%   Jump 64%   Scrap 45$/);
+    expect(m.threats[0]).toEqual({ icon: 'icon.sensors', text: 'Event: Supply cache' });
+    igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.text).toBe('Event: Supply cache'); expect(t[1]!.icon).toBe('icon.weapons'); expect(t[2]!.text).toBe('Fire: Bridge');
+    setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.slice(0, 2).map((x) => x.text)).toEqual(['Event: Supply cache', 'Shop here']);
+    resolveEvent(s, 0); const q = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
+    expect(q.rows).toHaveLength(10); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Node 3a');   // mask 1:2 = 1: one destination
+    expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Shop here');
+    s.run.upgrades[StationKind.Weapons] = 1; const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 1, eng);
+    const m2 = buildHudModel(s, slots(2), 'running', ''); expect(m2.stations.find((x) => x.kind === StationKind.Weapons)!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1);
+    expect((m2.players[1]!.console as EngineeringPanel).rows[StationKind.Weapons]!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1); expect((m2.players[1]!.console as EngineeringPanel).rows[StationKind.Science]!.max).toBe(STATION_MAX[StationKind.Science]!);
+    void n;
   });
   it('the game-over headline counts the node and names a victory', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS); s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;
