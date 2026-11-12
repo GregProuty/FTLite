@@ -58,3 +58,11 @@ New fields: `enemy.shieldRotateTick`, `enemy.lockUntilTick`, `telemetry.lockedSh
 ## 8. Amendments
 
 (Filled during review and implementation.)
+
+### Codex spec review (research/codex-review-coop-i-spec.md), 2026-11-12: all five findings resolved; these rules override sections 1 and 2.
+
+- **C1. When tuning matters.** As today (weapons.ts:50), a beam is tuned whenever the shields system is down or no layer is up, whatever the selector or lock says. The lock and the selector match only matter while a layer is up. Rotation runs only while the shields system is up.
+- **C2. Draws.** Each fired beam makes exactly one `rng.combat` draw, as today. The lock changes only the tuning decision and the hit threshold, never the number or order of draws. Rotation makes its own one draw at its own tick.
+- **C3. Shared revive.** Today revive arbitration keeps a single reviver (interact.ts:110–123). Coop-i makes revive shared like the other targets: every Conscious crew member holding Interact on the same downed pid adds progress, with `TEAM_MULT` once two or more are on it. "Same target" is the exact `(kind, index)` from `interactTarget`.
+- **C4. Solo and bots.** One player keeps the selector-match path (scan, walk, pick the frequency within 20 s), and torpedoes ignore shields as today. Bots get the team bonus whenever two bots hold Interact on the same target, which they already do when chasing the same fire. Bots never lock.
+- **C5. The 2.5× claim.** `TEAM_MULT` multiplies each person's own skill- and trait-adjusted rate. Two equally skilled crew do 2.5 times one person's work; unequal crew do 1.25 × (rate A + rate B).
