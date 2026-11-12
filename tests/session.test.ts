@@ -37,26 +37,27 @@ function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', '
 describe('session', () => {
   it('progress: the lobby shows runs and best; a lost run saves progress and unlocks the scrap reserve; the next run starts with it', () => {
     const h = harness(); h.frames(1);
-    expect(h.last().message).toBe('Press Interact to join. Confirm: start. Cancel: credits   Runs 0  Best 0');
+    expect(h.last().message).toBe('Press Interact to join. Confirm: start. Cancel: credits'); expect(h.last().progressLine).toBe('Runs 0  Best 0');
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
     const st = h.session.state!; const quirk = st.run.quirk; downCrew(st, 0); h.frames(2);
     expect(h.session.phase).toBe('gameover'); expect(h.records).toHaveLength(1);
     const saved = loadProgress(h.storage); expect(saved).toMatchObject({ runs: 1, victories: 0, bestNodes: 0, unlocked: ['scrap-reserve'] }); expect(saved.bestScore).toBe(h.records[0]!.score);
     const sum = h.last().summary!; expect(sum[0]).toMatch(/^Survived 0:0\d  CREW LOST  Reached node 1 of 8  Score \d+$/); expect(sum[4]).toBe(`Ship: ${QUIRK_NAMES[quirk]}`); expect(sum[5]).toBe(`Best ${saved.bestScore}   Runs 1   Victories 0`); expect(sum[6]).toBe('Unlocked: Scrap reserve'); expect(sum[7]).toMatch(/^Okoro: /);
     h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
-    expect(h.last().message).toBe('New seed. Press Interact to join. Confirm: start. Cancel: credits   Runs 1  Best ' + saved.bestScore + '  Unlocked: Scrap reserve');
+    expect(h.last().message).toBe('New seed. Press Interact to join. Confirm: start. Cancel: credits'); expect(h.last().progressLine).toBe('Runs 1  Best ' + saved.bestScore + '  Unlocked: Scrap reserve');
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
     expect([h.session.state!.run.scrap, h.session.state!.run.startBonus]).toEqual([30, 1]);
   });
   it('progress: a saved progress shows in the lobby and all three bonuses apply', () => {
     const h = harness(undefined, undefined, true, { version: 1, runs: 4, victories: 1, bestScore: 900, bestNodes: 6, unlocked: ['scrap-reserve', 'torpedo-rack', 'veteran-crew'] }); h.frames(1);
-    expect(h.last().message).toMatch(/Runs 4  Best 900  Unlocked: Scrap reserve, Torpedo rack, Veteran crew$/);
+    expect(h.last().progressLine).toBe('Runs 4  Best 900  Unlocked: Scrap reserve, Torpedo rack, Veteran crew');
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
     expect(h.session.state!.run.startBonus).toBe(0b111); expect(h.session.state!.run.scrap).toBe(30);
   });
   it('progress: a throwing loader falls back to an empty progress', () => {
     const sess = createSession({ layout: LAYOUT, sampleDevices: () => [], renderer: null, hud: { update() { /* none */ } }, now: () => 0, saveCrash: () => { /* none */ }, loadProgress: () => { throw new Error('boom'); } });
-    expect(() => sess.frame()).not.toThrow();
+    const seen: string[] = []; const sess2 = createSession({ layout: LAYOUT, sampleDevices: () => [], renderer: null, hud: { update(m) { seen.push(m.progressLine); } }, now: () => 0, saveCrash: () => { /* none */ }, loadProgress: () => { throw new Error('boom'); } });
+    sess2.frame(); expect(seen[seen.length - 1]).toBe('Runs 0  Best 0');
   });
   it('joins in the lobby and starts on Confirm', () => {
     const h = harness();

@@ -40,9 +40,8 @@ export function createSession(deps: SessionDeps) {
   const LOBBY_MSG = 'Press Interact to join. Confirm: start. Cancel: credits';
   let progress: Progress = EMPTY_PROGRESS; try { progress = deps.loadProgress?.() ?? EMPTY_PROGRESS; } catch { progress = EMPTY_PROGRESS; }   // a throwing loader must not stop the session
   let newUnlocks: string[] = [];
-  const lobbyMessage = () => `${LOBBY_MSG}   Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${unlockNames(progress.unlocked).join(', ')}` : ''}`;
   let phase: HudModel['phase'] = 'lobby';
-  let message = lobbyMessage();
+  let message = LOBBY_MSG;
   let seed = DEFAULT_SEED;
   let state: SimState | null = null;
   let feed: ReturnType<typeof createIntentFeed> | null = null;
@@ -128,12 +127,12 @@ export function createSession(deps: SessionDeps) {
           deps.saveCrash({ tick: state.tick, seed, error: String(err), baseline, intentsSinceBaseline, snapshotAfterFault });
         }
       } else if (phase === 'gameover') {
-        if (anyPress(frames, 'cancelPresses')) { seed += 1; phase = 'lobby'; message = `New seed. ${lobbyMessage()}`; }
-        else if (anyPress(frames, 'confirmPresses')) { phase = 'lobby'; message = `Same seed. ${lobbyMessage()}`; }
+        if (anyPress(frames, 'cancelPresses')) { seed += 1; phase = 'lobby'; message = `New seed. ${LOBBY_MSG}`; }
+        else if (anyPress(frames, 'confirmPresses')) { phase = 'lobby'; message = `Same seed. ${LOBBY_MSG}`; }
       }
       // In the error phase the state may be corrupt: never read it again (the draw and HUD are outside the try).
       if (state && deps.renderer && phase !== 'error') deps.renderer.draw(state, phase === 'running' ? accumulator / DT : 1);
-      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks) } : null));
+      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null));
     }
   };
 }

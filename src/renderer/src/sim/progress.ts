@@ -6,7 +6,7 @@ import { addScrap } from './scrap';
 import { XP_THRESHOLDS, SKILL_MAX, TORP_CAP, UNLOCK_SCRAP, UNLOCK_TORPEDOES } from './tuning';
 
 export interface Progress { version: 1; runs: number; victories: number; bestScore: number; bestNodes: number; unlocked: string[] }
-export const EMPTY_PROGRESS: Progress = { version: 1, runs: 0, victories: 0, bestScore: 0, bestNodes: 0, unlocked: [] };
+export const EMPTY_PROGRESS: Progress = Object.freeze({ version: 1, runs: 0, victories: 0, bestScore: 0, bestNodes: 0, unlocked: Object.freeze([]) as unknown as string[] }) as Progress;
 /** Unlocks in display and application order (spec Run-iii section 4). */
 export const UNLOCKS: readonly { id: string; name: string; earned: (p: Progress) => boolean }[] = [
   { id: 'scrap-reserve', name: 'Scrap reserve', earned: (p) => p.runs >= 1 },

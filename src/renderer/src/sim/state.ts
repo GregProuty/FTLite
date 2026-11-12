@@ -103,7 +103,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount) }
   };
   state.run.quirk = nextInt(rng.quirk, QUIRK_COUNT);   // the one draw from the seventh stream, before any override
-  if (options.quirk !== undefined) state.run.quirk = options.quirk;
+  if (options.quirk !== undefined) { const q = options.quirk; if (!Number.isInteger(q) || q < 0 || q >= QUIRK_COUNT) throw new Error(`quirk out of range: ${q}`); state.run.quirk = q; }
   for (let pid = 0; pid < playerCount; pid++) state.crew.push(spawnCrew(state, pid));
   applyHeadStarts(state);
   applyStartBonuses(state, options.unlocked ?? []);

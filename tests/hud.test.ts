@@ -293,7 +293,7 @@ describe('buildHudModel', () => {
     expect(buildHudModel(makeState(1), slots(1), 'running', '').players[0]!.character).toEqual({ name: 'Recruit', asset: '', complication: '' });
     expect(m.players[1]!.skills).toEqual([0, 3, 0, 0, 0, 0]);                                              // Lindqvist's head start shows as a level
   });
-  it('the game-over summary has four headline lines then one skill line per crew member, and is null in every other phase', () => {
+  it('the game-over summary has five headline lines then one skill line per crew member, and is null in every other phase', () => {
     const s = makeState(3, 1, DEFAULT_CHARACTERS); const t = s.telemetry;
     s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;
     t.firstDownTick = 190 * 60 - 1; t.firstDownPid = 0;                       // Okoro at 3:10
@@ -341,8 +341,8 @@ describe('buildHudModel', () => {
   });
   it('the clock line carries the node ordinal; the Navigation panel lists destinations, cursor, jump state and final; the footer formats', () => {
     const s = makeState(2); quiet(s);
-    expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe(`HULL 100   TIME 0s   node 1/8   ${QUIRK_NAMES[s.run.quirk]}`); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toBe('HULL 0   TIME 0s   node 1/8');
-    s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(new RegExp(`node 4/8   ${QUIRK_NAMES[s.run.quirk]}$`));
+    expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe('HULL 100   TIME 0s   node 1/8'); expect(buildHudModel(s, slots(2), 'running', '').run.quirk).toBe(QUIRK_NAMES[s.run.quirk]); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toBe('HULL 0   TIME 0s   node 1/8');
+    s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(/node 4.8$/);
     s.run.column = 0; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 });
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
@@ -380,8 +380,8 @@ describe('buildHudModel', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS); s.ended = 1; s.endReason = EndReason.Hull;
     const ship = `Ship: ${QUIRK_NAMES[s.run.quirk]}`, gain = 'Okoro: no skill gains';
     const a = buildHudModel(s, slots(2), 'gameover', '').summary!; expect(a[4]).toBe(ship); expect(a[5]).toBe(gain);
-    const b = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: [] }).summary!; expect(b[4]).toBe(ship); expect(b[5]).toBe('Best 10   Runs 2   Victories 0'); expect(b[6]).toBe(gain);
-    const c = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: ['Scrap reserve'] }).summary!; expect(c[6]).toBe('Unlocked: Scrap reserve'); expect(c[7]).toBe(gain);
+    const b = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: [], unlocked: [] }).summary!; expect(b[4]).toBe(ship); expect(b[5]).toBe('Best 10   Runs 2   Victories 0'); expect(b[6]).toBe(gain);
+    const c = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: ['Scrap reserve'], unlocked: ['Scrap reserve'] }).summary!; expect(c[6]).toBe('Unlocked: Scrap reserve'); expect(c[7]).toBe(gain);
   });
   it('the game-over headline counts the node and names a victory', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS); s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;

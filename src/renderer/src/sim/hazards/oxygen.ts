@@ -11,7 +11,7 @@ export function passageFor(state: SimState, edge: number): number {
   if (!state.derived.edgeIsDoor[edge]) return PASSAGE_OPEN;
   const st = state.doors.state[edge];
   if (st === DoorState.Open) return PASSAGE_OPEN;
-  if (st !== DoorState.Sealed) return PASSAGE_CLOSED * quirkPassageMult(state);
+  if (st !== DoorState.Sealed) return PASSAGE_CLOSED;
   const doors = state.derived.stationOfKind[StationKind.Doors]!;
   const occ = doors >= 0 && stationOnline(state, doors) ? state.stations.occupant[doors]! : -1;
   const level = occ >= 0 ? skillLevelOf(state, occ, Skill.Engineering) : 0;
@@ -43,7 +43,8 @@ export function oxygenStep(state: SimState, injection: Float64Array): void {
   const flow = new Float64Array(E);
   for (let e = 0; e < E; e++) {
     const a = d.edgeA[e]!, b = d.edgeB[e]!;
-    const f = k * d.edgeWidth[e]! * passageFor(state, e) * (frac[a]! - frac[b]!) * dt;
+    const pass = passageFor(state, e) * (d.edgeIsDoor[e] && state.doors.state[e] === DoorState.Closed ? quirkPassageMult(state) : 1);   // Leaky Seals: closed doors only, oxygen flow only (fire spread reads passageFor unchanged)
+    const f = k * d.edgeWidth[e]! * pass * (frac[a]! - frac[b]!) * dt;
     flow[e] = f;
     if (f > 0) demand[a]! += f; else demand[b]! -= f;
   }

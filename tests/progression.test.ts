@@ -15,9 +15,9 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Skill } from '../src/renderer/src/sim/skillIds';
 import { skillLevelOf } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
-import { createRng, nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, HULL_MAX, HEAT_RISE, DOOR_CLOSE_DELAY, PASSAGE_CLOSED, DEBRIS_HULL_DAMAGE, ENEMY_SHOT_HULL_DAMAGE, SCIENCE_LEAD_UNMANNED, JUMP_CHARGE_TIME, QUIRK_COUNT, TORP_START, TORP_CAP, SKILL_MAX, XP_THRESHOLDS, UNLOCK_SCRAP } from '../src/renderer/src/sim/tuning';
-import { makeState, quirkState, run, quiet, intents, teleport, placeDebris, placeShot, room, overdrive, seatNavigator, chargeJump } from './helpers/sim';
+import { nextInt } from '../src/shared/rng';
+import { TICK_HZ, DT, FIRE_SPREAD_P, HULL_MAX, HEAT_RISE, DOOR_CLOSE_DELAY, PASSAGE_CLOSED, DEBRIS_HULL_DAMAGE, ENEMY_SHOT_HULL_DAMAGE, SCIENCE_LEAD_UNMANNED, JUMP_CHARGE_TIME, QUIRK_COUNT, TORP_START, TORP_CAP, SKILL_MAX, XP_THRESHOLDS, UNLOCK_SCRAP } from '../src/renderer/src/sim/tuning';
+import { makeState, quirkState, run, quiet, intents, teleport, placeDebris, placeShot, room, overdrive, seatNavigator } from './helpers/sim';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { RECRUITS } from './helpers/sim';
 
@@ -43,7 +43,7 @@ describe('score', () => {
 describe('progress', () => {
   const clone = (p: Progress) => JSON.parse(JSON.stringify(p)) as Progress;
   it('counts runs, victories and bests and unlocks in UNLOCKS order without mutating its input', () => {
-    const p0 = EMPTY_PROGRESS; const copy = clone(p0);
+    expect(Object.isFrozen(EMPTY_PROGRESS) && Object.isFrozen(EMPTY_PROGRESS.unlocked)).toBe(true); const p0 = EMPTY_PROGRESS; const copy = clone(p0);
     const p1 = applyRun(p0, { ...rec({ endReason: 'hull', run: runOver({ nodesReached: 2, scrap: { earned: 30, spent: 0 } }) }), score: 230 });
     expect(p1).toEqual({ version: 1, runs: 1, victories: 0, bestScore: 230, bestNodes: 2, unlocked: ['scrap-reserve'] }); expect(p0).toEqual(copy);
     const p2 = applyRun(p1, { ...rec({ endReason: 'crew', run: runOver({ nodesReached: 5 }) }), score: 500 });
@@ -77,6 +77,7 @@ describe('quirk', () => {
     const s = makeState(2, 7); expect(s.run.quirk).toBe(expected); expect(s.rng.quirk.s).toBe(ref.quirk.s);
     const one = deriveStreams(1); expect([one.hazards.s, one.director.s, one.combat.s]).toEqual([2693262067, 11749833, 2265367787]);
     expect(makeState(2, 1).rng.map.s).toBe(3031319865);
+    expect(() => makeState(2, 7, RECRUITS, { quirk: 6 })).toThrow('quirk out of range: 6'); expect(() => makeState(2, 7, RECRUITS, { quirk: -1 })).toThrow(); expect(() => makeState(2, 7, RECRUITS, { quirk: 1.5 })).toThrow();
     const o = makeState(2, 7, RECRUITS, { quirk: 5 }); expect(o.run.quirk).toBe(5); expect(o.rng.quirk.s).toBe(ref.quirk.s);
     expect(QUIRKS).toHaveLength(QUIRK_COUNT); expect(QUIRK_NAMES).toEqual(['Leaky Seals', 'Hot Reactor', 'Sticky Doors', 'Lucky Hull', 'Twitchy Sensors', 'Old Drive']);
     expect(telemetryRecord(o, 1).run.quirk).toBe('Old Drive');
@@ -84,8 +85,9 @@ describe('quirk', () => {
     for (let k = 0; k < QUIRK_COUNT; k++) for (let h = 0; h < 6; h++) expect(hooks[h]!(quirkState(k))).toBe(h === k ? values[h] : neutral[h]);
   });
   it('0 Leaky Seals: a closed door passes twice the oxygen', () => {
-    const flow = (k: number) => { const s = quirkState(k); const A = room(s, 'A'), I = room(s, 'I'); s.rooms.o2.fill(0); s.rooms.o2[A] = s.derived.volume[A]!; s.doors.state[0] = DoorState.Closed; expect(passageFor(s, 0)).toBe(k === 0 ? PASSAGE_CLOSED * 2 : PASSAGE_CLOSED); oxygenStep(s, new Float64Array(s.rooms.o2.length)); return s.rooms.o2[I]!; };
+    const flow = (k: number) => { const s = quirkState(k); const A = room(s, 'A'), I = room(s, 'I'); s.rooms.o2.fill(0); s.rooms.o2[A] = s.derived.volume[A]!; s.doors.state[0] = DoorState.Closed; expect(passageFor(s, 0)).toBe(PASSAGE_CLOSED); oxygenStep(s, new Float64Array(s.rooms.o2.length)); return s.rooms.o2[I]!; };
     const quirky = flow(0), control = flow(5); expect(control).toBeGreaterThan(0); expect(quirky).toBeCloseTo(2 * control, 9);
+    const spread = (k: number) => { const s = quirkState(k); s.doors.state[0] = DoorState.Closed; return FIRE_SPREAD_P * passageFor(s, 0); }; expect(spread(0)).toBe(spread(5));   // fire spread is unchanged
   });
   it('1 Hot Reactor: one more heat per hazard tick while overdriven', () => {
     const heat = (k: number) => { const s = quirkState(k); const i = overdrive(s, StationKind.Weapons); heatStep(s); return s.stations.heat[i]!; };
@@ -109,7 +111,6 @@ describe('quirk', () => {
     const c = quirkState(0); quiet(c); c.enemy.nextArrivalTick = 1e9; c.boarders.nextArrivalTick = 1e9; run(c, 1); expect(c.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
     const ready = (k: number) => { const s = quirkState(k); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; seatNavigator(s, 0); run(s, 1); let n = 1; while (s.telemetry.jumps === 0 && n < 6000) { run(s, 1, () => intents({ confirmPressed: true }, {})); n++; } return s.tick; };
     expect(ready(5)).toBe(4500); expect(ready(0)).toBe(3600);
-    void chargeJump;
   });
   it('snapshot: quirk and startBonus round trip and hash; the header carries the quirk stream', () => {
     const s = makeState(2, 5, DEFAULT_CHARACTERS, { unlocked: ['scrap-reserve'] }); s.run.quirk = 4;
