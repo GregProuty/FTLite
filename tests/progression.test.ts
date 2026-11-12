@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadProgress, saveProgress, PROGRESS_KEY } from '../src/renderer/src/app/progressStore';
 import { runScore } from '../src/renderer/src/sim/score';
-import { EMPTY_PROGRESS, UNLOCKS, applyRun, veteranRepairXp, type Progress } from '../src/renderer/src/sim/progress';
+import { EMPTY_PROGRESS, UNLOCKS, applyRun, veteranRepairXp, applyStartBonuses, type Progress } from '../src/renderer/src/sim/progress';
 import { QUIRKS, QUIRK_NAMES, quirkPassageMult, quirkHeatRise, quirkDoorDelayMult, quirkDebrisHullOffset, quirkLeadOffset, quirkChargeMult } from '../src/renderer/src/sim/quirks';
 import { deriveStreams } from '../src/renderer/src/sim/state';
 import { telemetryRecord, type TelemetryRecord } from '../src/renderer/src/sim/telemetry';
@@ -60,6 +60,9 @@ describe('progress', () => {
 });
 
 describe('start bonuses', () => {
+  it('torpedo-rack caps at TORP_CAP when the stock is already near it (applied directly)', () => {
+    const s = makeState(2, 1, RECRUITS); s.weapons.torpedoStock = TORP_CAP - 1; applyStartBonuses(s, ['torpedo-rack']); expect([s.weapons.torpedoStock, s.run.startBonus]).toEqual([TORP_CAP, 0b010]);
+  });
   it('apply all three, ignore unknown ids, cap torpedoes', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS, { unlocked: ['scrap-reserve', 'torpedo-rack', 'veteran-crew'] });
     expect([s.run.scrap, s.telemetry.scrapEarned, s.weapons.torpedoStock, s.run.startBonus]).toEqual([UNLOCK_SCRAP, UNLOCK_SCRAP, TORP_START + 2, 0b111]);
