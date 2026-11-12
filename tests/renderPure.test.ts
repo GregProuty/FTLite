@@ -2,11 +2,42 @@ import { describe, it, expect } from 'vitest';
 import { sliceGrid } from '../src/renderer/src/render/sheet';
 import { pickVariant, wallKind, floorVariant, wallVariant } from '../src/renderer/src/render/tilePick';
 import { facingFromDelta } from '../src/renderer/src/render/facing';
-import { fireTiles, breachFloorNeighbour, breachOrientation, ventRotation, breachDamagedTiles } from '../src/renderer/src/render/hazardTiles';
+import { fireTiles, breachFloorNeighbour, breachOrientation, ventRotation, breachDamagedTiles, airlockDraw, airlockOutward, doorsCursorTile, ventParticles } from '../src/renderer/src/render/hazardTiles';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { featureReady, FEATURE_NAMES } from '../src/renderer/src/render/fallback';
 import { FACINGS } from '../src/renderer/src/render/assetNames';
 import { FIRE_CAP } from '../src/renderer/src/sim/tuning';
-import { makeState } from './helpers/sim';
+import { makeState, cutterState, room } from './helpers/sim';
+
+describe('airlocks and the Doors selection (spec Demo-vii section 1)', () => {
+  it('airlockDraw: open follows the state, venting while the room holds more than 1% oxygen', () => {
+    const s = cutterState(), E = room(s, 'E');
+    expect(airlockDraw(s, 2)).toEqual({ open: false, venting: false });
+    s.airlocks.open[2] = 1;
+    expect(airlockDraw(s, 2)).toEqual({ open: true, venting: true });
+    s.rooms.o2[E] = 0.01 * s.derived.volume[E]!;
+    expect(airlockDraw(s, 2)).toEqual({ open: true, venting: false });
+  });
+  it('airlockOutward points away from the room: up for Dorsal, down for Ventral, left for Engines, up for the Forward Corridor', () => {
+    const d = cutterState().derived;
+    expect([0, 1, 2, 3].map((k) => airlockOutward(d, k))).toEqual([{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 0, dy: -1 }]);
+  });
+  it('ventParticles: a fixed count, each beyond the hull tile on the outward side, alpha in (0, 1]', () => {
+    const ps = ventParticles({ dx: -1, dy: 0 }, 0, 120);
+    expect(ps.length).toBeGreaterThanOrEqual(4);
+    for (const p of ps) { expect(p.along).toBeGreaterThanOrEqual(0); expect(p.alpha).toBeGreaterThan(0); expect(p.alpha).toBeLessThanOrEqual(1); }
+    expect(ventParticles({ dx: -1, dy: 0 }, 0, 120)).toEqual(ps);
+  });
+  it('doorsCursorTile: -1 with nobody seated; the selected door tile, then an airlock tile', () => {
+    const s = cutterState(), i = s.derived.stationOfKind[StationKind.Doors]!;
+    expect(doorsCursorTile(s)).toBe(-1);
+    sitDown(s, 0, i);
+    expect(doorsCursorTile(s)).toBe(s.derived.edgeTile[s.derived.doorEdges[0]!]);
+    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    expect(doorsCursorTile(s)).toBe(s.derived.airlockTile[2]);
+  });
+});
 
 describe('sliceGrid', () => {
   it('returns row-major frames covering the image', () => {

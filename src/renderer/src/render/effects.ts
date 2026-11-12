@@ -2,10 +2,9 @@ import { AnimatedSprite, Container, Graphics, Sprite } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { FIRE_CAP } from '../sim/tuning';
-import { StationKind } from '../sim/stationKinds';
 import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
-import { fireTiles, breachOrientation, ventRotation, breachDamagedTiles } from './hazardTiles';
+import { fireTiles, breachOrientation, ventRotation, breachDamagedTiles, airlockDraw, airlockOutward, ventParticles, doorsCursorTile } from './hazardTiles';
 import { featureReady } from './fallback';
 import { syncCache } from './cache';
 
@@ -25,6 +24,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
   below.addChild(o2Layer, fireLayer, breachLayer, fallback);
   const fires = new Map<number, AnimatedSprite>();
   const outline = new Graphics(); above.addChild(outline);
+  const ventLayer = new Graphics(); above.addChild(ventLayer);
   const impactLayer = new Graphics(); above.addChild(impactLayer);
   const failLayer = new Container(); below.addChild(failLayer); const fails = new Map<number, AnimatedSprite>();
   const decals: Sprite[] = [], puffs: AnimatedSprite[] = [];
@@ -85,12 +85,22 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
           puffs[s]!.visible = active;
         }
       }
-      // Doors console selection: outline the selected door tile while someone is seated there.
+      // Doors console selection: a pulsing outline on the selected door or airlock tile while someone is seated there (spec Demo-vii amendment 3).
       outline.clear();
-      const doorsIdx = d.stationOfKind[StationKind.Doors]!;
-      if (doorsIdx >= 0 && state.stations.occupant[doorsIdx]! >= 0 && state.stations.cursor[doorsIdx]! >= 0) {
-        const [tx, ty] = tileXY(w, d.edgeTile[d.doorEdges[state.stations.cursor[doorsIdx]!]!]!);
-        outline.rect(tx * TILE_PX + 1, ty * TILE_PX + 1, TILE_PX - 2, TILE_PX - 2).stroke({ color: 0x4fc3f7, width: 2 });
+      const sel = doorsCursorTile(state);
+      if (sel >= 0) {
+        const [tx, ty] = tileXY(w, sel), pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(state.tick * 0.2));
+        outline.rect(tx * TILE_PX + 1, ty * TILE_PX + 1, TILE_PX - 2, TILE_PX - 2).stroke({ color: 0x4fc3f7, width: 2, alpha: pulse });
+      }
+      // Open airlocks: oxygen specks streaming outward while the room still holds air.
+      ventLayer.clear();
+      for (let k = 0; k < d.airlockTile.length; k++) {
+        if (!airlockDraw(state, k).venting) continue;
+        const out = airlockOutward(d, k), [tx, ty] = tileXY(w, d.airlockTile[k]!);
+        for (const p of ventParticles(out, k, state.tick)) {
+          const cx = (tx + 0.5 + out.dx * (0.5 + p.along) + (out.dx === 0 ? p.side : 0)) * TILE_PX, cy = (ty + 0.5 + out.dy * (0.5 + p.along) + (out.dy === 0 ? p.side : 0)) * TILE_PX;
+          ventLayer.rect(cx - 2, cy - 2, 4, 4).fill({ color: 0xd8ecff, alpha: p.alpha });
+        }
       }
       // Failed stations: arc animation on the console tile, or a yellow square.
       const failedTiles: number[] = [];
