@@ -176,9 +176,15 @@ export function createHud(parent: Container, assets: GameAssets) {
       const c = p.console;   // spec 7: event, shop or destination rows in a seven-row window, the cursor row lit, the footer carries evade and the jump state
       ui.consoleRows.forEach((r, k) => { const row = c.rows[c.first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: '', cursor: row.cursor, tint: !row.selectable ? DIM : !row.enabled ? FAINT : row.cursor ? TEXT : DIM }); });
       fillRow(ui.consoleFooter, [{ text: navigationFooter(c), tint: TEXT }]);
+    } else if (p.console && 'kind' in p.console && p.console.kind === 'doors') {
+      const c = p.console;   // spec Demo-vii section 1: the selection, its state (WARN while an airlock is open) and the Confirm action on three rows; the footer counts open airlocks
+      const lines = c.item === null ? [{ text: 'No doors', tint: DIM }]
+        : [{ text: c.item, tint: TEXT }, { text: c.status, tint: c.status === 'AIRLOCK OPEN' ? WARN : DIM }, { text: c.action ? `Confirm: ${c.action}` : 'Doors offline', tint: c.action ? TEXT : WARN }];
+      ui.consoleRows.forEach((r, k) => { const l = lines[k]; r.root.visible = !!l; if (l) r.set({ name: l.text, level: 0, max: 0, status: '', cursor: false, tint: l.tint }); });
+      fillRow(ui.consoleFooter, [{ text: c.item !== null && c.openAirlocks > 0 ? `Open airlocks: ${c.openAirlocks}` : '', tint: WARN }]);
     } else if (p.console) {
       ui.consoleRows.forEach((r) => { r.root.visible = false; });
-      fillRow(ui.consoleFooter, [{ text: 'rooms' in p.console ? `Door ${p.console.rooms[0]} - ${p.console.rooms[1]}` : 'No doors', tint: TEXT }]);
+      fillRow(ui.consoleFooter, []);
     }
     ui.progress.root.visible = p.progress > 0; ui.progress.set(p.progress);
   }

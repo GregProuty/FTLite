@@ -20,11 +20,62 @@ import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src
 import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
 import { resolveEvent } from '../src/renderer/src/sim/events';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
-import { LOBBY_LINE_MAX } from '../src/renderer/src/sim/tuning';
+import { LOBBY_LINE_MAX, CONSOLE_LINE_MAX } from '../src/renderer/src/sim/tuning';
+import { DoorState } from '../src/renderer/src/sim/grid';
+import type { DoorsPanel } from '../src/renderer/src/render/hudModel';
+import { confirmTarget, ConfirmKind } from '../src/renderer/src/sim/interact';
 import { boarderMarkers } from '../src/renderer/src/sim/boarders';
-import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder, setMap, seatNavigator, chargeJump, mapM, setEvent, setNodeTypes, grantScrap } from './helpers/sim';
+import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder, setMap, seatNavigator, chargeJump, mapM, setEvent, setNodeTypes, grantScrap, cutterState } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
+
+describe('the Doors card (spec Demo-vii section 1)', () => {
+  const seated = () => { const s = cutterState(); const i = s.derived.stationOfKind[StationKind.Doors]!; sitDown(s, 0, i); return { s, i }; };
+  const card = (s: ReturnType<typeof cutterState>) => buildHudModel(s, slots(2), 'running', '').players[0]!.console as DoorsPanel;
+  it('names the selected door or airlock, its state and the Confirm action, for every state', () => {
+    const { s, i } = seated(), e = s.derived.doorEdges[3]!;   // edge 3: Aft Passage <-> Weapons
+    s.stations.cursor[i] = 3;
+    const row = (st: number) => { s.doors.state[e] = st; const c = card(s); return c.item === null ? null : [c.item, c.status, c.action]; };
+    expect(row(DoorState.Closed)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Hold open']);
+    expect(row(DoorState.Open)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Hold open']);
+    expect(row(DoorState.HeldOpen)).toEqual(['Door  Aft Passage / Weapons', 'Held open', 'Seal']);
+    expect(row(DoorState.Sealed)).toEqual(['Door  Aft Passage / Weapons', 'Sealed', 'Release']);
+    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Airlock  Engines', 'Airlock closed', 'Open airlock']);
+    s.airlocks.open[2] = 1; s.airlocks.open[0] = 1;
+    expect(card(s)).toEqual({ kind: 'doors', item: 'Airlock  Engines', status: 'AIRLOCK OPEN', action: 'Close airlock', openAirlocks: 2 });
+  });
+  it('offline: a door shows the plain seal toggle and an airlock no action', () => {
+    const { s, i } = seated();
+    s.stations.level[i] = 0;
+    s.stations.cursor[i] = 0;
+    expect((card(s) as { action: string }).action).toBe('Seal');
+    s.doors.state[s.derived.doorEdges[0]!] = DoorState.Sealed;
+    expect((card(s) as { action: string }).action).toBe('Release');
+    s.stations.cursor[i] = s.derived.doorEdges.length;
+    expect((card(s) as { action: string }).action).toBe('');
+  });
+  it('every card line fits CONSOLE_LINE_MAX, for every door and airlock on the cutter', () => {
+    const { s, i } = seated();
+    s.airlocks.open.fill(1);
+    for (let c = 0; c < s.derived.doorEdges.length + s.airlocks.open.length; c++) {
+      s.stations.cursor[i] = c;
+      const p = card(s) as Exclude<DoorsPanel, { item: null }>;
+      for (const line of [p.item, p.status, `Confirm: ${p.action}`, `Open airlocks: ${p.openAirlocks}`]) expect(line.length, line).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+    }
+  });
+  it('lists each open airlock as a threat', () => {
+    const s = cutterState(); s.airlocks.open[2] = 1; s.airlocks.open[3] = 1;
+    expect(buildHudModel(s, slots(2), 'running', '').threats).toEqual([{ icon: 'icon.breach', text: 'Airlock open: Engines' }, { icon: 'icon.breach', text: 'Airlock open: Forward Corridor' }]);
+  });
+  it('the local confirm prompt on a held-open door is Seal door', () => {
+    const s = makeState(1), e = 5, t = s.derived.edgeTile[e]!, w = s.derived.width;
+    s.doors.state[e] = DoorState.HeldOpen;
+    teleport(s, 0, (t % w) + 0.5, Math.floor(t / w) + 1.9);
+    expect(confirmTarget(s, 0)).toEqual({ kind: ConfirmKind.Door, index: e });
+    expect(buildHudModel(s, slots(1), 'running', '').players[0]!.confirmPrompt).toBe('Seal door');
+  });
+});
 
 describe('deviceKindOf and glyphName', () => {
   it('maps slot keys to device kinds', () => {
@@ -119,12 +170,12 @@ describe('buildHudModel', () => {
     sitDown(s, 0, doors);
     const p = buildHudModel(s, slots(1), 'running', '').players[0]!;
     const e = s.derived.doorEdges[0]!;
-    expect(p.console).toEqual({ doorIndex: 0, rooms: [s.layout.rooms[s.derived.edgeA[e]!]!.name, s.layout.rooms[s.derived.edgeB[e]!]!.name] });
+    expect(p.console).toEqual({ kind: 'doors', item: `Door  ${s.layout.rooms[s.derived.edgeA[e]!]!.name} / ${s.layout.rooms[s.derived.edgeB[e]!]!.name}`, status: 'Auto', action: 'Hold open', openAirlocks: 0 });
     const noDoors = JSON.parse(JSON.stringify(starter)) as typeof starter;
     for (const edge of noDoors.edges) (edge as { kind: string }).kind = 'opening';
     const t = createSimState(parseShip(noDoors), 1, 1);
     sitDown(t, 0, t.derived.stationOfKind[StationKind.Doors]!);
-    expect(buildHudModel(t, slots(1), 'running', '').players[0]!.console).toEqual({ doorIndex: -1 });
+    expect(buildHudModel(t, slots(1), 'running', '').players[0]!.console).toEqual({ kind: 'doors', item: null });
   });
   it('lists warned debris as threats in StableId order with the ETA, hides unwarned ones, and exposes tick, charge and impact ticks', () => {
     const s = makeState(1), A = room(s, 'A'), B = room(s, 'B');

@@ -21,6 +21,7 @@ import { durationSeconds, eventSeconds, telemetryRecord } from '../sim/telemetry
 import { EndReason } from '../sim/crew';
 import { boarderMarkers, boardersInRoom } from '../sim/boarders';
 import { QUIRK_NAMES } from '../sim/quirks';
+import { doorsCursorTarget } from '../sim/doors';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -38,7 +39,8 @@ function thermal(state: SimState, i: number): { heat: number; coolant: number; o
   return i < 0 ? { heat: 0, coolant: 0, overdriven: false } : { heat: state.stations.heat[i]! / HEAT_MAX, coolant: state.stations.coolant[i]!, overdriven: isOverdriven(state, i) };
 }
 export interface EngineeringPanel { rows: { kind: number; name: string; level: number; max: number; failed: boolean; heat: number; coolant: number; overdriven: boolean; unpowered: boolean }[]; cursor: number; pool: number; coolantFree: number }
-export type DoorsPanel = { doorIndex: number; rooms: [string, string] } | { doorIndex: -1 };
+/** The Doors card (spec Demo-vii section 1): the selection, its state and what Confirm does; item null when the ship has neither doors nor airlocks. */
+export type DoorsPanel = { kind: 'doors'; item: string; status: string; action: string; openAirlocks: number } | { kind: 'doors'; item: null };
 export type TargetKindName = 'debris' | 'shot' | 'enemy';
 export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null; layers: number | null; layersMax: number | null; weaponCharge: number | null; fleeSeconds: number | null }   // the last four: the enemy hull row only (spec Demo-i section 11.4)
 export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number }; targets: DebrisTarget[]; cursor: number; first: number }
@@ -203,10 +205,17 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
     return { rows, cursor: state.stations.cursor[i]!, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state) };
   }
   if (kind === StationKind.Doors) {
-    const c = state.stations.cursor[i]!;
-    if (c < 0) return { doorIndex: -1 };
-    const e = d.doorEdges[c]!;
-    return { doorIndex: c, rooms: [state.layout.rooms[d.edgeA[e]!]!.name, state.layout.rooms[d.edgeB[e]!]!.name] };
+    const t = doorsCursorTarget(state, state.stations.cursor[i]!);
+    if (!t) return { kind: 'doors', item: null };
+    const online = stationOnline(state, i), openAirlocks = state.airlocks.open.reduce((n, v) => n + v, 0), names = state.layout.rooms;
+    if (t.kind === 'airlock') {
+      const open = state.airlocks.open[t.index] === 1;
+      return { kind: 'doors', item: `Airlock  ${names[d.airlockRoom[t.index]!]!.name}`, status: open ? 'AIRLOCK OPEN' : 'Airlock closed', action: online ? (open ? 'Close airlock' : 'Open airlock') : '', openAirlocks };
+    }
+    const e = t.edge, st = state.doors.state[e]!, sealed = st === DoorState.Sealed, held = st === DoorState.HeldOpen;
+    // Online the remote cycle is Auto -> Held open -> Sealed -> Auto (a pending seal releases); offline it is the plain seal toggle (spec Demo-vii amendment 2).
+    const action = sealed || state.doors.sealRequested[e] ? 'Release' : online ? (held ? 'Seal' : 'Hold open') : 'Seal';
+    return { kind: 'doors', item: `Door  ${names[d.edgeA[e]!]!.name} / ${names[d.edgeB[e]!]!.name}`, status: sealed ? 'Sealed' : held ? 'Held open' : 'Auto', action, openAirlocks };
   }
   if (kind === StationKind.Weapons) {
     const slots = warnedTargets(state), c = state.stations.cursor[i]!, w = state.weapons, cursor = slots.indexOf(c);
@@ -273,6 +282,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
     for (let r = 0; r < state.layout.rooms.length; r++) { const n = boardersInRoom(state, r).length; if (n) threats.push({ icon: 'icon.sensors', text: `Boarders: ${state.layout.rooms[r]!.name} x${n}` }); }
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) threats.push({ icon: 'icon.fire', text: `Fire: ${state.layout.rooms[r]!.name}` });
     for (let s = 0; s < state.breaches.active.length; s++) if (state.breaches.active[s]) threats.push({ icon: 'icon.breach', text: `Breach: ${state.layout.rooms[state.derived.siteRoom[s]!]!.name}` });
+    for (let a = 0; a < state.airlocks.open.length; a++) if (state.airlocks.open[a]) threats.push({ icon: 'icon.breach', text: `Airlock open: ${state.layout.rooms[state.derived.airlockRoom[a]!]!.name}` });
     for (let i = 0; i < state.stations.failed.length; i++) if (state.stations.failed[i]) threats.push({ icon: 'icon.power', text: `Power: ${STATION_NAMES[state.derived.stationKind[i]!]}` });
     for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : 'Debris'; threats.push({ icon: 'icon.sensors', text: `${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` }); }
     if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}` });   // spec Demo-i section 4: the run rows trail the hazards (the notice carries them)
