@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, clockLine, navigationFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, navigationFooter, scienceFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { drawIcon, tintColor } from './roomIcons';
 import { createMapPanel } from './mapPanel';
 import { featureReady } from './fallback';
@@ -158,7 +158,8 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.consoleFooter, [
         { text: c.charge >= 1 ? 'Beam READY' : `Beam ${Math.floor(c.charge * 100)}%`, tint: c.charge >= 1 ? TEXT : DIM },
         { text: c.torpedo.loaded ? 'Torp LOADED' : c.torpedo.stock > 0 ? `Torp ${Math.floor(c.torpedo.load * 100)}%` : 'Torp EMPTY', tint: c.torpedo.loaded ? TEXT : DIM },
-        { text: `Stock ${c.torpedo.stock}/${c.torpedo.cap}`, tint: DIM }
+        { text: `Stock ${c.torpedo.stock}/${c.torpedo.cap}`, tint: DIM },
+        { text: c.locked ? 'LOCKED' : '', tint: TEXT }   // a Science lock runs: any beam is tuned (spec Coop-i section 1)
       ]);
       ui.consoleBar.root.visible = true; ui.consoleBar.set(c.charge);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'science') {
@@ -169,7 +170,7 @@ export function createHud(parent: Container, assets: GameAssets) {
         r.root.visible = !!t;
         if (t) r.set({ name: targetRowText(t, t.scan), level: 0, max: 0, status: '', cursor: k === c.cursor - c.first, tint: k === c.cursor - c.first ? TEXT : DIM });
       });
-      fillRow(ui.consoleFooter, [{ text: `Lead ${Math.round(c.leadSeconds)}s${c.scanning ? '   Scanning' : ''}`, tint: TEXT }]);
+      fillRow(ui.consoleFooter, [{ text: scienceFooter(c), tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'navigation') {
       const c = p.console;   // spec 7: event, shop or destination rows in a seven-row window, the cursor row lit, the footer carries evade and the jump state
       ui.consoleRows.forEach((r, k) => { const row = c.rows[c.first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: '', cursor: row.cursor, tint: !row.selectable ? DIM : !row.enabled ? FAINT : row.cursor ? TEXT : DIM }); });

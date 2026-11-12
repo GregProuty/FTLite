@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { SHIELD_ROTATE, LOCK_SECONDS } from '../src/renderer/src/sim/tuning';
 import { enemySystem, fireInterval, leave, EnemySystem, enemyBeamThreshold, damageEnemy, Encounter } from '../src/renderer/src/sim/enemy';
 import { ObjectKind, shotsInFlight, debrisSystem, spawnDebris } from '../src/renderer/src/sim/debris';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, isEnemySlot, enemySystemOf, targetStableId, isTarget, warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
@@ -324,7 +325,7 @@ describe('combat gate: a level-2 Weapons operator strips the shield layer with o
     s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 0; s.weapons.selector = Weapon.BeamF1;
     const depart = s.enemy.departTick; let shots = 0;
     while (s.enemy.present && s.tick < depart) {
-      const fire = s.weapons.charge >= 1; if (fire) { if (shots > 0) s.weapons.selector = Weapon.BeamF2; s.rng.combat.s = 7; shots++; }
+      const fire = s.weapons.charge >= 1; if (fire) { if (shots > 0) s.weapons.selector = s.enemy.shieldFreq - 1; s.rng.combat.s = 7; shots++; }   // after the strip the gunner keeps the selector on the current frequency (the solo path: the shields re-tune every 20 s, spec Coop-i section 1)
       run(s, 1, () => intents(fire ? { confirmPressed: true } : {}, {}));
       if (fire && shots === 1) expect([s.telemetry.shots, s.telemetry.hits, s.telemetry.shieldHits, s.enemy.shieldLayers, s.enemy.hull]).toEqual([1, 1, 1, 0, ENEMY_HULL]), expect(s.rng.combat.s).not.toBe(7);   // the untuned first beam rolled and stripped the layer
     }
@@ -577,5 +578,45 @@ describe('the enemy interior: fires, breaches (spec Demo-viii section 2b, amendm
     expect(Array.from(t.enemy.roomFire)).toEqual([0, 0, 7.5, 0, 0]); expect(Array.from(t.enemy.roomBreach)).toEqual([0, 0, 0, 0, 3.25]); expect(hashState(t)).toBe(hashState(s));
     const a = sat().s, base = hashState(a); a.enemy.roomFire[0] = 1; expect(hashState(a)).not.toBe(base);
     const b = sat().s; b.enemy.roomBreach[0] = 1; expect(hashState(b)).not.toBe(base);
+  });
+});
+
+describe('rotating shields (spec Coop-i section 1, amendments C1 and C2)', () => {
+  const at = (freq = 2) => { const s = makeState(2); quiet(s); s.tick = 6000; placeEnemy(s, ENEMY_HULL, freq); s.enemy.nextShotTick = 1e9; return s; };
+  it('a fresh state reads no rotation and no lock; arrival arms the rotation SHIELD_ROTATE s ahead; leave clears both', () => {
+    const s = makeState(2); expect([s.enemy.shieldRotateTick, s.enemy.lockUntilTick, s.telemetry.lockedShots]).toEqual([-1, -1, 0]);
+    s.tick = 100; enemyArrive(s); expect([s.enemy.shieldRotateTick, s.enemy.lockUntilTick]).toEqual([100 + SHIELD_ROTATE * T, -1]);
+    s.enemy.lockUntilTick = 500; leave(s, false); expect([s.enemy.shieldRotateTick, s.enemy.lockUntilTick]).toEqual([-1, -1]);
+  });
+  it('on the due tick: one combat draw picks a different frequency, the scan resets, the lock ends, the clock re-arms', () => {
+    const s = at(2), e = s.enemy; e.scanned = 1; e.scan = 1; e.lockUntilTick = e.shieldRotateTick + 100;
+    const due = e.shieldRotateTick; expect(due).toBe(6000 + SHIELD_ROTATE * T);
+    s.tick = due - 1; const c0 = s.rng.combat.s, h0 = s.rng.hazards.s, d0 = s.rng.director.s; enemySystem(s);
+    expect([s.rng.combat.s, e.shieldFreq, e.scanned, e.scan]).toEqual([c0, 2, 1, 1]);
+    const r = createRng(c0), k = nextInt(r, FREQ_COUNT - 1);
+    s.tick = due; enemySystem(s);
+    expect(s.rng.combat.s).toBe(r.s); expect([s.rng.hazards.s, s.rng.director.s]).toEqual([h0, d0]);
+    expect(e.shieldFreq).toBe(((2 - 1 + 1 + k) % FREQ_COUNT) + 1); expect(e.shieldFreq).not.toBe(2);
+    expect([e.scanned, e.scan, e.lockUntilTick, e.shieldRotateTick]).toEqual([0, 0, -1, due + SHIELD_ROTATE * T]);
+  });
+  it('never to the same frequency, and every frequency comes up', () => {
+    const s = at(1), e = s.enemy, seen = new Set<number>();
+    for (let n = 0; n < 40; n++) { const prev = e.shieldFreq; s.tick = e.shieldRotateTick; e.departTick = s.tick + 1e6; enemySystem(s); expect(e.shieldFreq).not.toBe(prev); seen.add(e.shieldFreq); }
+    expect([...seen].sort()).toEqual([1, 2, 3]);
+  });
+  it('no rotation while the shields system is down and nothing is drawn; the repair re-arms the clock a full SHIELD_ROTATE ahead (amendment C6)', () => {
+    const s = at(2), e = s.enemy; e.scanned = 1;
+    disableSystem(s, EnemySystem.Shields); e.departTick = 1e9;
+    const c0 = s.rng.combat.s, repairAt = e.sysRepairTick[EnemySystem.Shields]!;
+    for (s.tick = 6001; s.tick < repairAt; s.tick++) enemySystem(s);
+    expect([s.rng.combat.s, e.shieldFreq, e.scanned]).toEqual([c0, 2, 1]);
+    enemySystem(s); expect(e.sysHp[EnemySystem.Shields]).toBe(ENEMY_SYS_HP); expect(e.shieldRotateTick).toBe(repairAt + SHIELD_ROTATE * T); expect(s.rng.combat.s).toBe(c0);
+    s.tick = e.shieldRotateTick - 1; enemySystem(s); expect(e.shieldFreq).toBe(2);
+    s.tick = e.shieldRotateTick; enemySystem(s); expect(e.shieldFreq).not.toBe(2); expect(s.rng.combat.s).not.toBe(c0);
+  });
+  it('a lock runs out after LOCK_SECONDS: active while tick < lockUntilTick, cleared to -1 on the expiry tick', () => {
+    const s = at(2), e = s.enemy; e.lockUntilTick = s.tick + LOCK_SECONDS * T;
+    s.tick = e.lockUntilTick - 1; enemySystem(s); expect(e.lockUntilTick).toBe(6000 + LOCK_SECONDS * T);
+    s.tick++; enemySystem(s); expect(e.lockUntilTick).toBe(-1);
   });
 });

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { LOCK_SECONDS, LOCK_HIT_BONUS, ENEMY_SYS_HP } from '../src/renderer/src/sim/tuning';
+import { enemyBeamThreshold, EnemySystem } from '../src/renderer/src/sim/enemy';
+import { buildHudModel, type WeaponsPanel } from '../src/renderer/src/render/hudModel';
 import fc from 'fast-check';
 import { beamHits, torpedoHits, chargeBeam, fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { sitDown } from '../src/renderer/src/sim/stations';
@@ -225,5 +228,54 @@ describe('the last shot, recorded for the renderer (spec Demo-viii section 2)', 
     const s = atEnemy(ENEMY_SLOT, Weapon.BeamF1, HIT); s.weapons.charge = 0.5; fireWeapon(s); expect(rec(s)).toEqual([-1, -1, 0, 0]);
     const t = atEnemy(ENEMY_SLOT, Weapon.Torpedo, HIT); t.weapons.torpedoLoaded = 0; fireWeapon(t); expect(rec(t)).toEqual([-1, -1, 0, 0]);
     const u = atEnemy(-1, Weapon.BeamF1, HIT); fireWeapon(u); expect(rec(u)).toEqual([-1, -1, 0, 0]);
+  });
+});
+
+describe('beams under the Science lock (spec Coop-i section 1, amendments C1 and C2)', () => {
+  const seedWhere = (ok: (u: number) => boolean): number => { for (let seed = 1; seed <= 2000; seed++) if (ok(nextFloat(createRng(seed)))) return seed; throw new Error('no seed'); };
+  const LOW = seedWhere((u) => u < 0.3), MID = seedWhere((u) => u >= 0.72 && u < 0.83), MISS = seedWhere((u) => u > 0.97);
+  const atEnemy = (selector: number, seed: number, locked: boolean, freq = 1) => {
+    const s = makeState(2); s.director.nextSpawnTick = 1e9; placeEnemy(s, ENEMY_HULL, freq); s.enemy.nextShotTick = 1e9; s.tick = 6000;
+    const i = wpn(s); sitDown(s, 0, i); s.stations.cursor[i] = ENEMY_SLOT; s.weapons.charge = 1; s.weapons.torpedoLoaded = 1; s.weapons.selector = selector; s.rng.combat.s = seed;
+    if (locked) s.enemy.lockUntilTick = s.tick + LOCK_SECONDS * 60;
+    return s;
+  };
+  it('the threshold the seeds straddle: 0.70 unlocked, 0.85 locked', () => {
+    const s = atEnemy(Weapon.BeamF1, MID, true); expect(enemyBeamThreshold(s, 0.5)).toBeCloseTo(0.70); expect(LOCK_HIT_BONUS).toBe(0.15);
+  });
+  it('a locked beam is tuned for any selector: a hull hit, no strip; lockedShots counts', () => {
+    for (const sel of [Weapon.BeamF1, Weapon.BeamF2, Weapon.BeamF3]) {
+      const s = atEnemy(sel, LOW, true, 2);
+      expect(fireWeapon(s)).toBe(true);
+      expect([s.weapons.lastShotResult, s.enemy.shieldLayers, s.enemy.hull, s.telemetry.lockedShots, s.telemetry.shieldHits]).toEqual([2, 1, ENEMY_HULL - 15, 1, 0]);
+    }
+  });
+  it('the lock adds 0.15 to the hit threshold while a layer is up: u in [0.72, 0.83) misses unlocked and hits locked', () => {
+    const a = atEnemy(Weapon.BeamF1, MID, false); expect(fireWeapon(a)).toBe(false);
+    const b = atEnemy(Weapon.BeamF1, MID, true); expect(fireWeapon(b)).toBe(true); expect(b.weapons.lastShotResult).toBe(2);
+  });
+  it('the solo path: a matching selector without a lock still fires tuned; a mismatch strips', () => {
+    const a = atEnemy(Weapon.BeamF2, LOW, false, 2); fireWeapon(a); expect([a.weapons.lastShotResult, a.enemy.shieldLayers, a.telemetry.lockedShots]).toEqual([2, 1, 0]);
+    const b = atEnemy(Weapon.BeamF1, LOW, false, 2); fireWeapon(b); expect([b.weapons.lastShotResult, b.enemy.shieldLayers]).toEqual([1, 0]);
+  });
+  it('with the shields system down or no layer up every beam is tuned as today, and the lock adds nothing', () => {
+    const a = atEnemy(Weapon.BeamF1, MID, true, 2); a.enemy.sysHp[EnemySystem.Shields] = 0; a.enemy.shieldLayers = 0; expect(fireWeapon(a)).toBe(false);
+    const b = atEnemy(Weapon.BeamF1, MID, true, 2); b.enemy.shieldLayers = 0; expect(fireWeapon(b)).toBe(false);
+    const c = atEnemy(Weapon.BeamF1, LOW, false, 2); c.enemy.shieldLayers = 0; fireWeapon(c); expect(c.weapons.lastShotResult).toBe(2);
+    expect(a.enemy.sysHp[EnemySystem.Shields]).toBe(0); expect(ENEMY_SYS_HP).toBeGreaterThan(0);
+  });
+  it('each fired beam makes exactly one combat draw, locked or not; a locked hit draws what a matched hit draws', () => {
+    for (const locked of [false, true]) { const s = atEnemy(Weapon.BeamF1, MISS, locked); fireWeapon(s); const r = createRng(MISS); nextFloat(r); expect(s.rng.combat.s).toBe(r.s); }
+    const l = atEnemy(Weapon.BeamF1, LOW, true, 2), m = atEnemy(Weapon.BeamF2, LOW, false, 2); fireWeapon(l); fireWeapon(m);
+    expect(l.rng.combat.s).toBe(m.rng.combat.s); expect(l.enemy.hull).toBe(m.enemy.hull);
+  });
+  it('a torpedo under the lock is not a locked shot; an expired lock does nothing', () => {
+    const t = atEnemy(Weapon.Torpedo, LOW, true); fireWeapon(t); expect(t.telemetry.lockedShots).toBe(0);
+    const e = atEnemy(Weapon.BeamF1, MID, true); e.tick = e.enemy.lockUntilTick; expect(fireWeapon(e)).toBe(false); expect(e.telemetry.lockedShots).toBe(0);
+  });
+  it('the Weapons card reads locked while a lock runs', () => {
+    const s = atEnemy(Weapon.BeamF1, LOW, true);
+    const card = () => buildHudModel(s, [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }], 'running', '').players[0]!.console as WeaponsPanel;
+    expect(card().locked).toBe(true); s.enemy.lockUntilTick = -1; expect(card().locked).toBe(false);
   });
 });

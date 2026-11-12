@@ -49,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-20 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-21 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 20 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 20;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 21 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 21;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips airlocks.open and a HeldOpen door on the cutter; one airlock alone changes the hash (spec Demo-vii section 1)', () => {
@@ -473,5 +473,15 @@ describe('snapshot: encounters (spec Demo-vi section 2)', () => {
     run(whole, 1000, () => intents({}, { confirmPressed: true })); run(resumed, 1000, () => intents({}, { confirmPressed: true }));
     expect(resumed.telemetry.jumps).toBe(1); expect(resumed.run.driveBoost).toBe(0);
     expect(hashState(resumed)).toBe(hashState(whole));
+  });
+});
+
+describe('snapshot: the Coop-i fields (spec Coop-i section 5)', () => {
+  it('round-trips shieldRotateTick, lockUntilTick and lockedShots; each alone changes the hash', () => {
+    const s = makeState(2, 5); run(s, 30); placeEnemy(s); s.enemy.shieldRotateTick = 4321; s.enemy.lockUntilTick = 777; s.telemetry.lockedShots = 3;
+    const snap = JSON.parse(JSON.stringify(saveSnapshot(s))), t = loadSnapshot(LAYOUT, snap);
+    expect([t.enemy.shieldRotateTick, t.enemy.lockUntilTick, t.telemetry.lockedShots]).toEqual([4321, 777, 3]);
+    expect(hashState(t)).toBe(hashState(s));
+    for (const poke of [() => { s.enemy.shieldRotateTick++; }, () => { s.enemy.lockUntilTick++; }, () => { s.telemetry.lockedShots++; }]) { const h = hashState(s); poke(); expect(hashState(s)).not.toBe(h); }
   });
 });

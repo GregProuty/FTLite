@@ -51,7 +51,7 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     const s = present(); expect(view(s).hullPips).toEqual({ lit: 10, total: 10 });
     s.enemy.hull = 0.35 * s.enemy.maxHull; expect(view(s).hullPips).toEqual({ lit: 4, total: 10 });
     s.enemy.hull = 0; expect(view(s).hullPips.lit).toBe(0);
-    expect(view(s).frequency).toBeNull(); s.enemy.scanned = 1; s.enemy.shieldFreq = 3; expect(view(s).frequency).toBe('F3');
+    expect(view(s).frequency).toBeNull(); s.enemy.scanned = 1; s.enemy.shieldFreq = 3; expect(view(s).frequency).toBe('F3 20s');
     s.tick = s.enemy.shotArmTick + 300; expect(view(s).charge).toBeCloseTo(0.5, 9);
     disableSystem(s, EnemySystem.Weapons); expect(view(s).charge).toBeNull();
   });
@@ -128,5 +128,15 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     expect(projectilePath(5, ObjectKind.Shot, { x: 600, y: 260 }, WORLD_BAND, o).from).toEqual(o);
     expect(projectilePath(5, ObjectKind.Shot, { x: 600, y: 260 }, WORLD_BAND).from.x).toBeGreaterThan(WORLD_BAND.x + WORLD_BAND.w);
     expect(projectilePath(5, ObjectKind.Debris, { x: 600, y: 260 }, WORLD_BAND, o)).toEqual(projectilePath(5, ObjectKind.Debris, { x: 600, y: 260 }, WORLD_BAND));
+  });
+});
+
+describe('the window frequency and its rotate countdown (spec Coop-i section 1)', () => {
+  it('shows the frequency only while it is current, with the seconds to the next rotation; no countdown while the shields system is down', () => {
+    const s = present(); s.enemy.scanned = 1; s.enemy.shieldFreq = 2;
+    expect(view(s).frequency).toBe('F2 20s');
+    s.tick += 5.5 * T; expect(view(s).frequency).toBe('F2 15s');
+    disableSystem(s, EnemySystem.Shields); expect(view(s).frequency).toBe('F2');
+    s.enemy.sysHp[EnemySystem.Shields] = ENEMY_SYS_HP; s.enemy.scanned = 0; expect(view(s).frequency).toBeNull();   // a rotation clears the scan: the old frequency is never shown
   });
 });

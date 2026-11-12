@@ -1,5 +1,5 @@
 import type { SimState } from '../sim/state';
-import { EnemySystem, EnemyRoom, ENEMY_ROOM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft } from '../sim/enemy';
+import { EnemySystem, EnemyRoom, ENEMY_ROOM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, rotateSecondsLeft } from '../sim/enemy';
 import { isEnemySlot, enemySystemOf, ENEMY_SLOT } from '../sim/debrisTargets';
 import { StationKind } from '../sim/stationKinds';
 import { TICK_HZ, ENEMY_SYS_HP, ENEMY_ROOMS, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS } from '../sim/tuning';
@@ -115,7 +115,7 @@ function presentView(state: SimState, nowTick: number, anim: WindowAnim): EnemyW
     rooms,
     shield: { layers: e.shieldLayers, max: enemyShieldMax(state.run.column), down: e.sysHp[EnemySystem.Shields] === 0, flash: w.lastShotResult === 1 && w.lastShotTick >= 0 && shotAge >= 0 && shotAge < FLASH_TICKS },
     hullPips: { lit: e.maxHull > 0 ? Math.max(0, Math.ceil(e.hull / e.maxHull * 10 - 1e-9)) : 0, total: 10 },
-    frequency: e.scanned ? `F${e.shieldFreq}` : null,
+    frequency: e.scanned ? (() => { const r = rotateSecondsLeft(state); return r === null ? `F${e.shieldFreq}` : `F${e.shieldFreq} ${r}s`; })() : null,   // spec Coop-i section 1: only while current (a re-tune clears the scan), with the re-tune countdown
     charge: e.sysHp[EnemySystem.Weapons] === 0 ? null : enemyWeaponCharge(state),
     status, problem: first ? `${first.kind}: ${ENEMY_ROOM_NAMES[first.room]}` : null,
     reticle, crew: crewOf(state), bolt,

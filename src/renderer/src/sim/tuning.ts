@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 21;
+export const SIM_VERSION = 22;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -190,4 +190,10 @@ export const QUIRK_PASSAGE_MULT = 2, QUIRK_HEAT_RISE = 1, QUIRK_DOOR_DELAY_MULT 
 // HUD budgets (spec Demo-i sections 3 and 4): characters per card and notice line, pixels at 16 px m5x7 (measured from the TTF advance table)
 export const CONSOLE_LINE_MAX = 40;   // characters per console-card line (308 px card at about 6.25 px per character, spec Demo-vii section 1)
 export const LOBBY_LINE_MAX = 90, NOTICE_LINE_MAX = 64, LOBBY_PX_MAX = 560, NOTICE_PX_MAX = 400;
+// Working together (spec Coop-i sections 1 and 2)
+export const SHIELD_ROTATE = 20;      // seconds between enemy shield re-tunes while its shields system is up
+export const LOCK_SECONDS = 8;        // a Science lock on the shield frequency
+export const LOCK_HIT_BONUS = 0.15;   // added to the beam hit threshold under a lock while a layer is up
+export const TEAM_MULT = 1.25;        // each holder's rate when two or more hold Interact on one target
+
 export const HIT_FLASH_TICKS = 12;   // ticks the HUD enemy silhouette flashes after our last hit (spec Demo-ii section 4); read only by the HUD model, not hashed

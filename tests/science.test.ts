@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest';
+import { LOCK_SECONDS, TICK_HZ as HZ, ENEMY_HULL } from '../src/renderer/src/sim/tuning';
+import { scienceInput } from '../src/renderer/src/sim/science';
+import { ENEMY_SLOT, ENEMY_WEAPONS_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { lockActive } from '../src/renderer/src/sim/enemy';
+import { Dir } from '../src/renderer/src/sim/dir';
+import { placeEnemy, quiet, teleport } from './helpers/sim';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation } from '../src/renderer/src/sim/power';
 import { scanStep } from '../src/renderer/src/sim/science';
 import { Seated } from '../src/renderer/src/sim/components';
 import { DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
-import { buildHudModel } from '../src/renderer/src/render/hudModel';
+import { buildHudModel, scienceFooter, type SciencePanel } from '../src/renderer/src/render/hudModel';
 import { makeState, intents, run, placeDebris, room, seconds, overdrive } from './helpers/sim';
 
 const sci = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[StationKind.Science]!;
@@ -111,5 +117,43 @@ describe('scanning', () => {
     expect(s.science.scanning).toBe(1);                                          // still scanning: now the retargeted object
     scanStep(s);
     expect(s.debris.scan[1]).toBeGreaterThan(0);
+  });
+});
+
+describe('the Science lock (spec Coop-i section 1)', () => {
+  const seated = (scanned = 1) => { const s = makeState(2); quiet(s); s.tick = 6000; placeEnemy(s, ENEMY_HULL, 2); s.enemy.nextShotTick = 1e9; s.enemy.scanned = scanned; s.enemy.scan = scanned; const i = sci(s); sitDown(s, 0, i); s.stations.cursor[i] = ENEMY_SLOT; return { s, i }; };
+  it('Confirm on the scanned hull row locks for LOCK_SECONDS; unscanned it starts the scan instead', () => {
+    const { s, i } = seated(1);
+    scienceInput(s, i, Dir.None, true);
+    expect(s.enemy.lockUntilTick).toBe(6000 + LOCK_SECONDS * HZ); expect(lockActive(s)).toBe(true); expect(s.science.scanning).toBe(0);
+    const t = seated(0);
+    scienceInput(t.s, t.i, Dir.None, true);
+    expect(t.s.enemy.lockUntilTick).toBe(-1); expect(t.s.science.scanning).toBe(1); expect(lockActive(t.s)).toBe(false);
+  });
+  it('no lock from a subsystem row, without an enemy, without Confirm, or while a lock already runs', () => {
+    const a = seated(1); a.s.stations.cursor[a.i] = ENEMY_WEAPONS_SLOT; scienceInput(a.s, a.i, Dir.None, true); expect(a.s.enemy.lockUntilTick).toBe(-1);
+    const b = seated(1); scienceInput(b.s, b.i, Dir.None, false); expect(b.s.enemy.lockUntilTick).toBe(-1);
+    const c = seated(1); c.s.enemy.present = 0; scienceInput(c.s, c.i, Dir.None, true); expect(c.s.enemy.lockUntilTick).toBe(-1);
+    const d = seated(1); d.s.enemy.lockUntilTick = 6100; scienceInput(d.s, d.i, Dir.None, true); expect(d.s.enemy.lockUntilTick).toBe(6100);
+  });
+  it('through step: a seated Science officer locks, the lock holds 8 s and ends; the Confirm that seats the officer does not lock', () => {
+    const { s } = seated(1);
+    run(s, 1, () => intents(confirm));
+    expect(s.enemy.lockUntilTick).toBe(6000 + LOCK_SECONDS * HZ);
+    run(s, LOCK_SECONDS * HZ - 2); expect(lockActive(s)).toBe(true);
+    run(s, 1); expect(lockActive(s)).toBe(false);
+    run(s, 1); expect(s.enemy.lockUntilTick).toBe(-1);
+    const u = seated(1); run(u.s, 1, () => intents(cancel)); run(u.s, 1); u.s.stations.cursor[u.i] = ENEMY_SLOT;
+    const tile = u.s.derived.stationTile[u.i]!, w = u.s.derived.width; teleport(u.s, 0, tile % w + 0.5, Math.floor(tile / w) + 0.5);
+    run(u.s, 1, () => intents(confirm)); expect(Seated.station[u.s.crew[0]!]).toBe(u.i); expect(u.s.enemy.lockUntilTick).toBe(-1);   // that Confirm sat the player down: no lock on the seating tick
+  });
+  it('the Science footer: LOCK: Confirm when possible, LOCKED 6s while one runs, nothing on a subsystem row or before the scan', () => {
+    const { s, i } = seated(1);
+    const footer = () => scienceFooter(buildHudModel(s, [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }], 'running', '').players[0]!.console as SciencePanel);
+    expect(footer()).toBe('Lead 18s   LOCK: Confirm');
+    s.enemy.lockUntilTick = s.tick + 6 * HZ; expect(footer()).toBe('Lead 18s   LOCKED 6s');
+    s.tick += 1; expect(footer()).toBe('Lead 18s   LOCKED 6s');   // whole seconds rounded up
+    s.enemy.lockUntilTick = -1; s.stations.cursor[i] = ENEMY_WEAPONS_SLOT; expect(footer()).toBe('Lead 18s');
+    s.stations.cursor[i] = ENEMY_SLOT; s.enemy.scanned = 0; s.science.scanning = 1; expect(footer()).toBe('Lead 18s   Scanning');
   });
 });

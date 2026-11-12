@@ -4,10 +4,10 @@ import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
 import { cycleTarget, isTarget, isEnemySlot } from './debrisTargets';
-import { enemyBeamThreshold, damageEnemy, EnemySystem, startEnemyProblem } from './enemy';
+import { enemyBeamThreshold, damageEnemy, EnemySystem, startEnemyProblem, lockActive } from './enemy';
 import { Dir } from './dir';
 import { Skill, addXp } from './skills';
-import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE } from './tuning';
+import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, LOCK_HIT_BONUS } from './tuning';
 
 /** The four-slot weapon selector (spec 2b-ii section 5): beams tuned to frequency selector + 1, then the torpedo. */
 export const Weapon = { BeamF1: 0, BeamF2: 1, BeamF3: 2, Torpedo: 3 } as const;
@@ -47,8 +47,10 @@ export function fireWeapon(state: SimState): boolean {
     w.charge = 0;
     const u = nextFloat(state.rng.combat);                                         // one combat draw for every beam (spec Demo-i section 11.3: the absorbed-without-a-roll rule is gone)
     if (enemy) {
-      const e = state.enemy, tuned = e.sysHp[EnemySystem.Shields] === 0 || e.shieldLayers === 0 || w.selector + 1 === e.shieldFreq;
-      hit = u < enemyBeamThreshold(state, output); stripped = hit && !tuned;
+      const e = state.enemy, layerUp = e.sysHp[EnemySystem.Shields]! > 0 && e.shieldLayers > 0, locked = lockActive(state);
+      const tuned = !layerUp || locked || w.selector + 1 === e.shieldFreq;            // spec Coop-i amendment C1: the lock and the selector matter only while a layer is up
+      hit = u < enemyBeamThreshold(state, output) + (locked && layerUp ? LOCK_HIT_BONUS : 0); stripped = hit && !tuned;
+      if (locked) state.telemetry.lockedShots++;
     } else hit = beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides against debris, scanned or not
   }
   w.lastShotTick = state.tick; w.lastShotTarget = c; w.lastShotResult = stripped ? 1 : hit ? 2 : 0; w.lastShotKind = w.selector === Weapon.Torpedo ? 1 : 0;   // for the renderer's bolt, before a kill retargets the cursor (spec Demo-viii section 2, amendment A5)
