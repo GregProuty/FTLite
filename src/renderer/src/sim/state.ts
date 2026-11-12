@@ -29,6 +29,8 @@ export interface SimState {
   endReason: number;
   rooms: { o2: Float64Array; fire: Float64Array; fireRepair: Float64Array; impactTick: Int32Array };   // impactTick: tick of the last debris impact per room, -1 until one
   doors: { state: Uint8Array; closeTimer: Float64Array; sealRequested: Uint8Array };
+  /** Hull doors to space (spec Demo-vii section 1): 1 while open; an open airlock vents its room. */
+  airlocks: { open: Uint8Array };
   breaches: { active: Uint8Array; repair: Float64Array };
   o2Counters: { injected: number; breathed: number; burned: number; vented: number; residual: number };
   /** Pacing director (spec 4-i section 4): phase machine, smoothed stress, spawn timing and budget, per-kind idle counters. */
@@ -84,6 +86,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     hull: HULL_MAX, ended: 0, endReason: 0,
     rooms: { o2: Float64Array.from(derived.volume), fire: new Float64Array(R), fireRepair: new Float64Array(R), impactTick: new Int32Array(R).fill(-1) },
     doors: { state: new Uint8Array(E), closeTimer: new Float64Array(E), sealRequested: new Uint8Array(E) },
+    airlocks: { open: new Uint8Array(derived.airlockRoom.length) },
     breaches: { active: new Uint8Array(S), repair: new Float64Array(S) },
     o2Counters: { injected: 0, breathed: 0, burned: 0, vented: 0, residual: 0 },
     director: { phase: 0, phaseTick: 0, stress: 0, nextStressTick: STRESS_PERIOD * TICK_HZ, nextSpawnTick: SPAWN_FIRST * TICK_HZ, budgetLeft: cycleBudget(0, playerCount), lastSpawnTick: -1, lastType: -1, sinceProductive: new Int32Array(STATION_COUNT) },

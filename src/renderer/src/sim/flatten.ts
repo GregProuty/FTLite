@@ -5,7 +5,7 @@ import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, RUN_COLUMNS } fr
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
-export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
+export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'airlocks', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
 const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 7, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 6, SCIENCE_FIELDS = 1, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 22, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
 const RUN_FIELDS = 4 + 7 * RUN_COLUMNS + 3 + STATION_COUNT + 2 + 3;
 const TELEMETRY_SCALARS = 25, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
@@ -15,7 +15,7 @@ export function layoutHashNumber(s: SimState): number { return parseInt(s.derive
 export function layoutIdNumber(s: SimState): number { return parseInt(s.derived.idHash, 16); }
 
 function size(s: SimState): number {
-  return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3
+  return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3 + s.airlocks.open.length
     + s.breaches.active.length * 2 + COUNTER_FIELDS + DIRECTOR_FIELDS + TELEMETRY_SCALARS + TELEMETRY_FIXED + 3 * s.playerCount
     + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + s.playerCount * STICK_FIELDS
     + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + ENEMY_FIELDS + BOARDERS_FIELDS + RUN_FIELDS + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length + s.crew.length * CREW_FIELDS;
@@ -31,6 +31,7 @@ export function flatten(s: SimState): Float64Array {
   for (const v of s.rooms.o2) put(v); for (const v of s.rooms.fire) put(v); for (const v of s.rooms.fireRepair) put(v);
   for (const v of s.rooms.impactTick) put(v);
   for (const v of s.doors.state) put(v); for (const v of s.doors.closeTimer) put(v); for (const v of s.doors.sealRequested) put(v);
+  for (const v of s.airlocks.open) put(v);
   for (const v of s.breaches.active) put(v); for (const v of s.breaches.repair) put(v);
   const c = s.o2Counters; put(c.injected); put(c.breathed); put(c.burned); put(c.vented); put(c.residual);
   const dr = s.director; put(dr.phase); put(dr.phaseTick); put(dr.stress); put(dr.nextStressTick); put(dr.nextSpawnTick); put(dr.budgetLeft); put(dr.lastSpawnTick); put(dr.lastType); for (const v of dr.sinceProductive) put(v);
@@ -78,6 +79,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (let d = 0; d < s.doors.state.length; d++) s.doors.state[d] = get();
   for (let d = 0; d < s.doors.closeTimer.length; d++) s.doors.closeTimer[d] = get();
   for (let d = 0; d < s.doors.sealRequested.length; d++) s.doors.sealRequested[d] = get();
+  for (let a = 0; a < s.airlocks.open.length; a++) s.airlocks.open[a] = get();
   for (let b = 0; b < s.breaches.active.length; b++) s.breaches.active[b] = get();
   for (let b = 0; b < s.breaches.repair.length; b++) s.breaches.repair[b] = get();
   s.o2Counters.injected = get(); s.o2Counters.breathed = get(); s.o2Counters.burned = get(); s.o2Counters.vented = get(); s.o2Counters.residual = get();

@@ -10,7 +10,7 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent } from './helpers/sim';
+import { LAYOUT, CUTTER, cutterState, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST_SMALL, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
@@ -49,11 +49,23 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-17 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-18 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 17 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 17;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 18 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 18;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
+  });
+  it('round-trips airlocks.open and a HeldOpen door on the cutter; one airlock alone changes the hash (spec Demo-vii section 1)', () => {
+    const s = cutterState(3);
+    run(s, 30);
+    s.airlocks.open[2] = 1; s.doors.state[3] = DoorState.HeldOpen;
+    const snap = JSON.parse(JSON.stringify(saveSnapshot(s)));
+    const t = loadSnapshot(CUTTER, snap);
+    expect(Array.from(t.airlocks.open)).toEqual([0, 0, 1, 0]);
+    expect(t.doors.state[3]).toBe(DoorState.HeldOpen);
+    expect(hashState(t)).toBe(hashState(s));
+    const h = hashState(s); s.airlocks.open[0] = 1;
+    expect(hashState(s)).not.toBe(h);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
     const s = makeState(2, 5);

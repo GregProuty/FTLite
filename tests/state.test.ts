@@ -7,6 +7,8 @@ import { hashState } from '../src/renderer/src/sim/hash';
 import { flatten, unflatten } from '../src/renderer/src/sim/flatten';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { Position, Stable } from '../src/renderer/src/sim/components';
+import { DoorState, doorIsOpen, solidAt } from '../src/renderer/src/sim/grid';
+import { cutterState } from './helpers/sim';
 
 const layout = parseShip(starter);
 
@@ -51,5 +53,25 @@ describe('SimState', () => {
     unflatten(b, flatten(a));
     expect(hashState(b)).toBe(hashState(a));
     expect(b.tick).toBe(a.tick);
+  });
+});
+
+describe('airlock state and the held-open door (spec Demo-vii section 1)', () => {
+  it('a cutter state starts with four closed airlocks; the starter has none', () => {
+    expect(Array.from(cutterState().airlocks.open)).toEqual([0, 0, 0, 0]);
+    expect(createSimState(parseShip(starter), 2, 1).airlocks.open).toHaveLength(0);
+  });
+  it('doorIsOpen is true for Open and HeldOpen only', () => {
+    expect(DoorState.HeldOpen).toBe(3);
+    expect([DoorState.Closed, DoorState.Open, DoorState.Sealed, DoorState.HeldOpen].map(doorIsOpen)).toEqual([false, true, false, true]);
+  });
+  it('a HeldOpen door tile is passable; an airlock tile is solid open or closed', () => {
+    const s = cutterState(), e = 2, t = s.derived.edgeTile[e]!, w = s.derived.width;
+    s.doors.state[e] = DoorState.HeldOpen;
+    expect(solidAt(s, t % w, Math.floor(t / w))).toBe(false);
+    const a = s.derived.airlockTile[2]!;
+    expect(solidAt(s, a % w, Math.floor(a / w))).toBe(true);
+    s.airlocks.open[2] = 1;
+    expect(solidAt(s, a % w, Math.floor(a / w))).toBe(true);
   });
 });

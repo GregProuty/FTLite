@@ -1,6 +1,10 @@
 import type { SimState } from './state';
 
-export const DoorState = { Closed: 0, Open: 1, Sealed: 2 } as const;
+/** HeldOpen: an interior door the Doors console holds open (spec Demo-vii section 1); it counts as open everywhere. */
+export const DoorState = { Closed: 0, Open: 1, Sealed: 2, HeldOpen: 3 } as const;
+
+/** True for Open and HeldOpen: the door passes crew, oxygen and fire like an open door. */
+export function doorIsOpen(st: number): boolean { return st === DoorState.Open || st === DoorState.HeldOpen; }
 
 export function tileIndex(state: SimState, x: number, y: number): number {
   return Math.floor(y) * state.derived.width + Math.floor(x);
@@ -13,7 +17,7 @@ export function solidAt(state: SimState, tx: number, ty: number): boolean {
   const i = ty * d.width + tx;
   if (d.wallTile[i]) return true;
   const edge = d.doorTileToEdge[i]!;
-  if (edge >= 0) return state.doors.state[edge] !== DoorState.Open;
+  if (edge >= 0) return !doorIsOpen(state.doors.state[edge]!);
   return false;
 }
 

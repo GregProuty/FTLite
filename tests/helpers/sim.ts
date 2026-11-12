@@ -1,5 +1,6 @@
 import { Phase } from '../../src/renderer/src/sim/director';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
+import cutter from '../../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { createSimState, type SimState, type SimOptions } from '../../src/renderer/src/sim/state';
 import { step } from '../../src/renderer/src/sim/step';
@@ -16,6 +17,10 @@ import { sitDown } from '../../src/renderer/src/sim/stations';
 import { StationKind } from '../../src/renderer/src/sim/stationKinds';
 
 export const LAYOUT = parseShip(starter);
+export const CUTTER = parseShip(cutter);
+
+/** A two-Recruit cutter state (the ship with airlocks, spec Demo-vii). */
+export function cutterState(seed = 1, players = 2): SimState { return createSimState(CUTTER, players, seed, RECRUITS); }
 export const RECRUITS: readonly number[] = [RECRUIT, RECRUIT, RECRUIT, RECRUIT];
 
 export function makeState(players = 2, seed = 1, characters: readonly number[] = RECRUITS, options: SimOptions = {}): SimState {
