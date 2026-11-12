@@ -49,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-19 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-20 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 19 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 19;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 20 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 20;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips airlocks.open and a HeldOpen door on the cutter; one airlock alone changes the hash (spec Demo-vii section 1)', () => {
@@ -363,16 +363,16 @@ describe('snapshot', () => {
   it('round-trips the boarders block and counters (incl. an aloneSince of -2); each field alone changes the hash', () => {
     const s = makeState(2, 5), b = s.boarders;
     b.active.set([1, 0, 1, 0]); b.stableId.set([41, 0, 43, 0]); b.room.set([3, 0, 6, 0]); b.health.set([12.5, 0, 60, 0]); b.nextMoveTick.set([900, 0, 1200, 0]); b.aloneSince.set([-2, -1, 777, -1]); b.nextArrivalTick = 9999;
-    s.telemetry.boardings = 2; s.telemetry.boardersKilled = 3;
+    s.telemetry.boardings = 2; s.telemetry.boardersKilled = 3; s.telemetry.boardersVented = 1;
     const loaded = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s)))), t = loaded.boarders;
     for (const k of ['active', 'stableId', 'room', 'health', 'nextMoveTick', 'aloneSince'] as const) expect(Array.from(t[k])).toEqual(Array.from(b[k]));
-    expect(t.nextArrivalTick).toBe(9999); expect([loaded.telemetry.boardings, loaded.telemetry.boardersKilled]).toEqual([2, 3]);
+    expect(t.nextArrivalTick).toBe(9999); expect([loaded.telemetry.boardings, loaded.telemetry.boardersKilled, loaded.telemetry.boardersVented]).toEqual([2, 3, 1]);
     const base = hashState(makeState(2, 5));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
     expect(mutate((u) => { u.boarders.nextArrivalTick = 1; })).not.toBe(base);
     for (let k = 0; k < BOARDER_SLOTS; k++) for (const key of ['active', 'stableId', 'room', 'health', 'nextMoveTick'] as const) expect(mutate((u) => { u.boarders[key][k] = 1; })).not.toBe(base);
     for (let k = 0; k < BOARDER_SLOTS; k++) expect(mutate((u) => { u.boarders.aloneSince[k] = -2; })).not.toBe(base);
-    expect(mutate((u) => { u.telemetry.boardings = 1; })).not.toBe(base); expect(mutate((u) => { u.telemetry.boardersKilled = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.telemetry.boardings = 1; })).not.toBe(base); expect(mutate((u) => { u.telemetry.boardersKilled = 1; })).not.toBe(base); expect(mutate((u) => { u.telemetry.boardersVented = 1; })).not.toBe(base);
   });
   it('a run saved mid-fight (after 60 ticks of melee) continues to the kill and the cooldown re-arm like the uninterrupted run', () => {
     const drive = (s: ReturnType<typeof makeState>, n: number) => { for (let i = 0; i < n; i++) step(s, [botIntent(s, 0), botIntent(s, 1)]); };

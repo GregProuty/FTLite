@@ -39,7 +39,7 @@ export interface TelemetryRecord {
   spawns: { fire: number; breach: number; power: number; debris: number };
   impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number;
   repairs: { fire: number; breach: number; power: number };
-  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number; fled: number; surrenders: number; shieldHits: number }; boarders: { parties: number; killed: number }; run: { nodesReached: number; jumps: number; columns: number; scrap: { earned: number; spent: number }; events: number; purchases: number; upgrades: string[]; quirk: string; unlocks: string[] };
+  maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number; fled: number; surrenders: number; shieldHits: number }; boarders: { parties: number; killed: number; vented: number }; run: { nodesReached: number; jumps: number; columns: number; scrap: { earned: number; spent: number }; events: number; purchases: number; upgrades: string[]; quirk: string; unlocks: string[] };
   score: number;
   skills: number[][];
 }
@@ -72,7 +72,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
     maxStress: t.maxStress,
     phaseEntries: { buildUp: t.phaseEntries[Phase.BuildUp]!, sustainPeak: t.phaseEntries[Phase.SustainPeak]!, peakFade: t.phaseEntries[Phase.PeakFade]!, relax: t.phaseEntries[Phase.Relax]! },
     enemy: { met: t.encounters, destroyed: t.enemiesDestroyed, disables: t.enemyDisables, fled: t.enemyFled, surrenders: t.surrenders, shieldHits: t.shieldHits },
-    boarders: { parties: t.boardings, killed: t.boardersKilled },
+    boarders: { parties: t.boardings, killed: t.boardersKilled, vented: t.boardersVented },
     run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS, scrap: { earned: t.scrapEarned, spent: t.scrapSpent }, events: t.eventsResolved, purchases: t.purchases, upgrades: STATION_NAMES.filter((_, k) => state.run.upgrades[k] === 1), quirk: QUIRK_NAMES[state.run.quirk]!, unlocks: UNLOCKS.filter((_, i) => state.run.startBonus & (1 << i)).map((u) => u.id) },
     skills: state.crew.map((_, pid) => Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k)))
   };

@@ -7,7 +7,7 @@ import { failStation } from './power';
 import { downCrew } from './crew';
 import { addScrap } from './scrap';
 import { Skill, skillLevelOf, addXp } from './skills';
-import { TICK_HZ, DT, BOARDING_PARTY, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, HEALTH_EPS, SCRAP_BOARDER } from './tuning';
+import { TICK_HZ, DT, BOARDING_PARTY, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, HEALTH_EPS, SCRAP_BOARDER, BOARDER_O2_DPS, BOARDER_FIRE_DPS, SUFFOCATE_FRAC } from './tuning';
 
 /** aloneSince sentinels (spec Boarders-i section 4). */
 export const ALONE_IDLE = -1, ALONE_SABOTAGED = -2;
@@ -90,22 +90,49 @@ function moveBoarder(state: SimState, slot: number): void {
   if (dest !== cur) { b.room[slot] = dest; b.aloneSince[slot] = ALONE_IDLE; }
 }
 
-/** A crew blow. At 0 the boarder dies: kill XP to the striker; the last death arms the next boarding with one director draw. */
-export function damageBoarder(state: SimState, slot: number, amount: number, pid: number): void {
+/** Shared death bookkeeping: deactivate, scrap, the kill count; the last death arms the next boarding with one director draw. */
+function killBoarder(state: SimState, slot: number): void {
   const b = state.boarders;
-  b.health[slot] = snap(Math.max(0, b.health[slot]! - amount));
-  if (b.health[slot]! > 0) return;
   b.active[slot] = 0; b.stableId[slot] = 0; state.telemetry.boardersKilled++; addScrap(state, SCRAP_BOARDER);
-  addXp(state, pid, Skill.Combat, XP_PER_KILL);
   if (activeBoarderCount(state) === 0) {
     const u = nextFloat(state.rng.director);
     b.nextArrivalTick = state.tick + Math.round(BOARDING_COOLDOWN * TICK_HZ * (1 + BOARDING_JITTER * (2 * u - 1)));
   }
 }
 
-/** After the debris step, before the Medbay: arrival, then per boarder fight / sabotage clock / due move (spec section 5). */
+/** A crew blow. At 0 the boarder dies: kill XP to the striker. */
+export function damageBoarder(state: SimState, slot: number, amount: number, pid: number): void {
+  const b = state.boarders;
+  b.health[slot] = snap(Math.max(0, b.health[slot]! - amount));
+  if (b.health[slot]! > 0) return;
+  addXp(state, pid, Skill.Combat, XP_PER_KILL);
+  killBoarder(state, slot);
+}
+
+/** A death by vacuum or fire: the usual scrap and kill count, plus boardersVented; no XP (spec Demo-ix amendment B6). */
+export function killBoarderByHazard(state: SimState, slot: number): void {
+  if (!state.boarders.active[slot]) return;
+  state.telemetry.boardersVented++;
+  killBoarder(state, slot);
+}
+
+/** Vacuum and fire at the start of boarderSystem, ascending slot, from each boarder's room (amendment B7). No draws. */
+function boarderHazards(state: SimState): void {
+  const b = state.boarders;
+  for (let k = 0; k < b.active.length; k++) {
+    if (!b.active[k]) continue;
+    const r = b.room[k]!;
+    const dps = (state.rooms.fire[r]! > 0 ? BOARDER_FIRE_DPS : 0) + (state.rooms.o2[r]! / state.derived.volume[r]! < SUFFOCATE_FRAC ? BOARDER_O2_DPS : 0);
+    if (dps === 0) continue;
+    b.health[k] = snap(Math.max(0, b.health[k]! - dps * DT));
+    if (b.health[k] === 0) killBoarderByHazard(state, k);
+  }
+}
+
+/** After the debris step, before the Medbay: vacuum and fire, arrival, then per boarder fight / sabotage clock / due move (spec section 5). */
 export function boarderSystem(state: SimState): void {
   const b = state.boarders;
+  boarderHazards(state);   // a slot killed here is inactive, so the loop below skips it (amendment B6)
   if (activeBoarderCount(state) === 0 && state.tick >= b.nextArrivalTick) arriveParty(state);
   for (let k = 0; k < b.active.length; k++) {
     if (!b.active[k]) continue;

@@ -25,7 +25,7 @@ const rec = (over: Partial<TelemetryRecord> = {}): Omit<TelemetryRecord, 'score'
   version: 1, simVersion: 15, seed: 1, playerCount: 2, characters: ['Recruit', 'Recruit'], endReason: 'running', durationSeconds: 0,
   firstDown: null, firstDeath: null, stationsNeverManned: [], mannedSeconds: {}, longestIdleSeconds: [0, 0],
   spawns: { fire: 0, breach: 0, power: 0, debris: 0 }, impacts: 0, evadeRolls: 0, evasions: 0, shots: 0, hits: 0,
-  repairs: { fire: 0, breach: 0, power: 0 }, maxStress: 0, phaseEntries: { buildUp: 0, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0, disables: 0, fled: 0, surrenders: 0, shieldHits: 0 }, boarders: { parties: 0, killed: 0 },
+  repairs: { fire: 0, breach: 0, power: 0 }, maxStress: 0, phaseEntries: { buildUp: 0, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0, disables: 0, fled: 0, surrenders: 0, shieldHits: 0 }, boarders: { parties: 0, killed: 0, vented: 0 },
   run: { nodesReached: 0, jumps: 0, columns: 8, scrap: { earned: 0, spent: 0 }, events: 0, purchases: 0, upgrades: [], quirk: 'Leaky Seals', unlocks: [] }, skills: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ...over
 });
 const runOver = (o: Partial<TelemetryRecord['run']>) => ({ ...rec().run, ...o });
@@ -33,7 +33,7 @@ const runOver = (o: Partial<TelemetryRecord['run']>) => ({ ...rec().run, ...o })
 describe('score', () => {
   it('weights nodes, victory, scrap and kills; zero for a fresh record; the record carries it', () => {
     expect(runScore(rec({ endReason: 'victory', run: runOver({ nodesReached: 7, scrap: { earned: 145, spent: 30 } }) }))).toBe(1345);
-    expect(runScore(rec({ endReason: 'hull', run: runOver({ nodesReached: 3, scrap: { earned: 45, spent: 0 } }), boarders: { parties: 1, killed: 2 } }))).toBe(355);
+    expect(runScore(rec({ endReason: 'hull', run: runOver({ nodesReached: 3, scrap: { earned: 45, spent: 0 } }), boarders: { parties: 1, killed: 2, vented: 0 } }))).toBe(355);
     expect(runScore(rec())).toBe(0);
     const s = makeState(2); s.run.nodesReached = 2; s.telemetry.scrapEarned = 30; s.telemetry.boardersKilled = 1;
     const r = telemetryRecord(s, 1); expect(r.score).toBe(235); expect(r.score).toBe(runScore(r));

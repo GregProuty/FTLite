@@ -50,3 +50,10 @@ Helpers live in `tuning.ts`, for example `scrapPerJump(column)`. Shop prices are
 - **B9. Telemetry.** boardersVented is both flattened and exposed in the telemetry record next to boardersKilled.
 
 (Implementation amendments follow.)
+
+### Implementation, 2026-11-12
+
+- **B10. Cutter integration timing.** "Every boarder dead within 10 s" cannot hold with the spec's values: a boarder has `BOARDER_HEALTH` 60 and loses 6 per second, so it needs exactly 10 s once its room is below 10 %, and the vented Engines (doors sealed) falls below 10 % about 1.75 s (105 ticks) after the airlock opens. The test asserts both boarders die more than 10 s and at most 12 s after the Confirm. No value changed. The fixture seals the Engines doors directly (boarders pass Closed doors) and opens the airlock through the Doors console.
+- **B11. The fire-immunity assertion.** The Boarders-i Medbay-ordering test pinned "boarders are immune to fire"; it now expects 120 ticks in a burning room to cost `BOARDER_FIRE_DPS` per second.
+- **B12. Plumbing.** `TELEMETRY_SCALARS` 25 -> 26 for `boardersVented`; the version-rejection snapshot test now uses 20. The telemetry record's `boarders` block is `{ parties, killed, vented }`; the acceptance and progression fixtures carry `vented: 0`; the acceptance table's boarders column stays `parties/killed`. In `damageBoarder` the kill XP is now awarded before the shared bookkeeping (`killBoarder`); neither touches an rng stream, so the result is the same.
+- **B13. Arrival order.** The hazard pass runs before the arrival check in `boarderSystem`, so a party never takes damage on the tick it arrives, and a hazard kill of the last boarder re-arms the cooldown before arrival is checked.

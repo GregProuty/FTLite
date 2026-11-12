@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 20;
+export const SIM_VERSION = 21;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -154,6 +154,7 @@ export const BOARDER_SLOTS = 4;
 export const BOARDING_FIRST_SMALL = 330, ENCOUNTER_FIRST_SMALL = 270;   // seconds: first party / first encounter for crews of two or fewer (spec Demo-i section 5)
 export const BOARDING_FIRST = 240, BOARDING_COOLDOWN = 180, BOARDING_JITTER = 0.2;   // seconds: first party, gap after the last kill (x jitter)
 export const BOARDING_PARTY = 2;
+export const BOARDER_O2_DPS = O2_DAMAGE, BOARDER_FIRE_DPS = FIRE_DAMAGE;                   // boarders suffocate and burn like the crew, below SUFFOCATE_FRAC (spec Demo-ix section 1)
 export const BOARDER_HEALTH = 60, BOARDER_DPS = 6;                                   // health; damage per second to the focused crew member before Combat defence
 export const CREW_MELEE_DPS = 8, COMBAT_GAIN = 0.06, COMBAT_DEFENCE = 0.04;          // crew damage per second at level 0; x(1 + gain x level); damage taken x(1 - defence x level)
 export const BOARDER_MOVE = 8, BOARDER_SABOTAGE = 15;                                // seconds between moves while alone; seconds alone with an online console before it fails

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { boarderSystem, damageBoarder, boarderTarget, boardersInRoom, activeBoarderCount, combatDps, combatDefence, roomCentre, boarderMarkers, ALONE_IDLE, ALONE_SABOTAGED } from '../src/renderer/src/sim/boarders';
+import { boarderSystem, damageBoarder, killBoarderByHazard, boarderTarget, boardersInRoom, activeBoarderCount, combatDps, combatDefence, roomCentre, boarderMarkers, ALONE_IDLE, ALONE_SABOTAGED } from '../src/renderer/src/sim/boarders';
 import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { rawStress, anyUnattended, activeHazardCount } from '../src/renderer/src/sim/director';
 import { botIntent } from '../src/renderer/src/sim/bot';
@@ -13,9 +13,10 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
 import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, BOARDING_FIRST, BOARDING_FIRST_SMALL, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDING_PARTY, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, XP_RATE, HEALTH_MAX, MEDBAY_HEAL, STRESS_WEIGHTS, BOARDER_SLOTS, TRAIT_XP_MULT } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, DT, BOARDING_FIRST, BOARDING_FIRST_SMALL, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDING_PARTY, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, XP_RATE, HEALTH_MAX, MEDBAY_HEAL, STRESS_WEIGHTS, BOARDER_SLOTS, TRAIT_XP_MULT, BOARDER_O2_DPS, BOARDER_FIRE_DPS, O2_DAMAGE, FIRE_DAMAGE, SUFFOCATE_FRAC, SCRAP_BOARDER } from '../src/renderer/src/sim/tuning';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
-import { makeState, run, quiet, placeBoarder, room, intents, teleport, setSkill } from './helpers/sim';
+import { makeState, run, quiet, placeBoarder, room, intents, teleport, setSkill, cutterState, seconds } from './helpers/sim';
+import { stationOnline } from '../src/renderer/src/sim/stations';
 
 const T = TICK_HZ;
 const hold = { interactHeld: true };
@@ -133,11 +134,11 @@ describe('boarders: melee (through step)', () => {
     const solo = calm(1); teleport(solo, 0, 2.5, 9.5); Health.cur[solo.crew[0]!] = 0.05; placeBoarder(solo, room(solo, 'G'));
     run(solo, 1); expect(solo.ended).toBe(1); expect(solo.endReason).toBe(EndReason.Crew);
   });
-  it('Medbay ordering: the survivor heals the same tick as the blow; boarders are immune to fire and never healed; a Downed crew member alone is ignored', () => {
+  it('Medbay ordering: the survivor heals the same tick as the blow; boarders burn (Demo-ix) and are never healed; a Downed crew member alone is ignored', () => {
     const s = calm(1); const F = room(s, 'F'), mb = s.derived.stationOfKind[StationKind.Medbay]!; teleport(s, 0, 17.5, 3.5); placeBoarder(s, F);
     run(s, 1, () => intents(hold));
     expect(Health.cur[s.crew[0]!]).toBeCloseTo(HEALTH_MAX - BOARDER_DPS * DT + MEDBAY_HEAL * stationOutput(s, mb) * DT, 9);
-    const fire = calm(1); const G = room(fire, 'G'); igniteRoom(fire, G); const k = placeBoarder(fire, G); run(fire, 120); expect(fire.boarders.health[k]).toBe(BOARDER_HEALTH);
+    const fire = calm(1); const G = room(fire, 'G'); igniteRoom(fire, G); const k = placeBoarder(fire, G); run(fire, 120); expect(fire.boarders.health[k]).toBeCloseTo(BOARDER_HEALTH - 120 * BOARDER_FIRE_DPS * DT, 9);   // Demo-ix: fire burns boarders
     const heal = calm(1); const k2 = placeBoarder(heal, room(heal, 'F'), 30); run(heal, 120); expect(heal.boarders.health[k2]).toBe(30);
     const down = calm(1); teleport(down, 0, 2.5, 9.5); downCrew(down, 0); Life.bleed[down.crew[0]!] = 1e9; const k3 = placeBoarder(down, room(down, 'G'));
     const h0 = Health.cur[down.crew[0]!]; const due = down.boarders.nextMoveTick[k3]!;
@@ -226,5 +227,75 @@ describe('combat gate: two Recruits clear a party of two in room G', () => {
     // pid 0 takes both boarders for pair - 1 ticks, one boarder on the first kill tick, one for pair - 1 more ticks, none on the second kill tick: (3 pair - 2) hits.
     expect(Health.cur[s.crew[0]!]).toBeCloseTo(HEALTH_MAX - (3 * pair - 2) * BOARDER_DPS * DT, 6);   // 32.7 with the first-pass values
     expect(Health.cur[s.crew[1]!]).toBe(HEALTH_MAX);
+  });
+});
+
+describe('boarders: vacuum and fire (spec Demo-ix section 1, amendments B6 and B7; boarderSystem called directly)', () => {
+  /** Crew 0 in G; a boarder in A (no crew there); A's oxygen set to the given fraction, optionally burning. */
+  const inA = (frac: number, burn: boolean, health = BOARDER_HEALTH) => {
+    const s = calm(1); teleport(s, 0, 2.5, 9.5); const A = room(s, 'A');
+    s.rooms.o2[A] = frac * s.derived.volume[A]!; if (burn) igniteRoom(s, A);
+    const k = placeBoarder(s, A, health); return { s, A, k };
+  };
+  const xpOf = (s: ReturnType<typeof makeState>) => Array.from(s.skills.xp);
+  it('the values are the crew\'s: 6 per second below 10 % oxygen, 3 per second in a fire', () => {
+    expect([BOARDER_O2_DPS, BOARDER_FIRE_DPS, SUFFOCATE_FRAC]).toEqual([O2_DAMAGE, FIRE_DAMAGE, 0.1]);
+    expect([BOARDER_O2_DPS, BOARDER_FIRE_DPS]).toEqual([6, 3]);
+  });
+  it('below 10 % oxygen a boarder loses 6 per second; in a fire 3; both add to 9; a normal room (and exactly 10 %) costs nothing', () => {
+    const cases: [number, boolean, number][] = [[0.05, false, 6], [1, true, 3], [0.05, true, 9], [1, false, 0], [0.1, false, 0]];
+    for (const [frac, burn, dps] of cases) {
+      const { s, k } = inA(frac, burn); const rs = streams(s);
+      boarderSystem(s);
+      expect(s.boarders.health[k], `${frac} ${burn}`).toBeCloseTo(BOARDER_HEALTH - dps * DT, 12);
+      expect(streams(s)).toEqual(rs);                                                                 // no draws
+    }
+  });
+  it('at 0 the boarder is removed: scrap, boardersKilled + 1, boardersVented + 1, no XP; the last one re-arms the cooldown with one director draw', () => {
+    const { s, k } = inA(0.05, true, 0.1); const scrap0 = s.run.scrap, xp0 = xpOf(s);
+    s.tick = 500; s.rng.director.s = 7; const dr = createRng(7), u = nextFloat(dr), hz = s.rng.hazards.s, cb = s.rng.combat.s;
+    boarderSystem(s);
+    expect([s.boarders.active[k], s.boarders.stableId[k], s.boarders.health[k]]).toEqual([0, 0, 0]);
+    expect([s.telemetry.boardersKilled, s.telemetry.boardersVented, s.run.scrap - scrap0]).toEqual([1, 1, SCRAP_BOARDER]);
+    expect(xpOf(s)).toEqual(xp0);
+    expect([s.rng.director.s, s.rng.hazards.s, s.rng.combat.s]).toEqual([dr.s, hz, cb]);
+    expect(s.boarders.nextArrivalTick).toBe(500 + Math.round(BOARDING_COOLDOWN * T * (1 + BOARDING_JITTER * (2 * u - 1))));
+  });
+  it('a hazard death that is not the last draws nothing and leaves the arrival tick alone; killBoarderByHazard ignores an inactive slot', () => {
+    const { s, A, k } = inA(0.05, false, 0.05); const k2 = placeBoarder(s, A); const d0 = s.rng.director.s, arr = s.boarders.nextArrivalTick;
+    boarderSystem(s);
+    expect([s.boarders.active[k], s.boarders.active[k2]]).toEqual([0, 1]); expect(s.rng.director.s).toBe(d0); expect(s.boarders.nextArrivalTick).toBe(arr);
+    expect(s.boarders.health[k2]).toBeCloseTo(BOARDER_HEALTH - BOARDER_O2_DPS * DT, 12);
+    const killed = s.telemetry.boardersKilled, vented = s.telemetry.boardersVented, scrap = s.run.scrap;
+    killBoarderByHazard(s, k);
+    expect([s.telemetry.boardersKilled, s.telemetry.boardersVented, s.run.scrap, s.rng.director.s]).toEqual([killed, vented, scrap, d0]);
+  });
+  it('a slot killed by hazard is not processed further that tick: no blow on the crew in its room, no sabotage, no move', () => {
+    const melee = calm(1); const G = room(melee, 'G'); teleport(melee, 0, 2.5, 9.5); melee.rooms.o2[G] = 0;
+    const km = placeBoarder(melee, G, 0.05); const h0 = Health.cur[melee.crew[0]!];
+    boarderSystem(melee);
+    expect(melee.boarders.active[km]).toBe(0); expect(Health.cur[melee.crew[0]!]).toBe(h0);
+    const { s, A, k } = inA(0.05, false, 0.05); s.tick = 2000;
+    s.boarders.aloneSince[k] = s.tick - BOARDER_SABOTAGE * T; s.boarders.nextMoveTick[k] = s.tick;          // sabotage and a move both due this tick
+    const online = Array.from({ length: s.derived.stationRoom.length }, (_, i) => stationOnline(s, i)), hz = s.rng.hazards.s;
+    boarderSystem(s);
+    expect(s.boarders.active[k]).toBe(0); expect(s.boarders.room[k]).toBe(A); expect(s.rng.hazards.s).toBe(hz);
+    expect(Array.from({ length: s.derived.stationRoom.length }, (_, i) => stationOnline(s, i))).toEqual(online);
+  });
+  it('the cutter: two boarders in the sealed Engines die once the Engines airlock is opened through the Doors console', () => {
+    const s = cutterState(); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9;
+    const E = room(s, 'E'), d = s.derived, doors = d.stationOfKind[StationKind.Doors]!;
+    sitDown(s, 0, doors); teleport(s, 1, 16.5, 3.5);                                                 // player 1 waits in the Medbay
+    for (let e = 0; e < d.edgeA.length; e++) if (d.edgeIsDoor[e] && (d.edgeA[e] === E || d.edgeB[e] === E)) s.doors.state[e] = DoorState.Sealed;
+    const k0 = placeBoarder(s, E), k1 = placeBoarder(s, E);
+    s.stations.cursor[doors] = d.doorEdges.length + 2;                                               // the Engines airlock
+    run(s, 1, () => intents({ confirmPressed: true }, {})); run(s, 1, () => intents({}, {}));
+    expect(s.airlocks.open[2]).toBe(1);
+    const opened = s.tick - 2;
+    let deadAt = -1;
+    for (let t = 0; t < seconds(12) && deadAt < 0; t++) { run(s, 1); if (!s.boarders.active[k0] && !s.boarders.active[k1]) deadAt = s.tick; }
+    expect(deadAt).toBeGreaterThan(opened + seconds(10));                                           // 60 health at 6 per second, after the room drains (amendment B10)
+    expect(deadAt).toBeLessThanOrEqual(opened + seconds(12));
+    expect([s.telemetry.boardersKilled, s.telemetry.boardersVented]).toEqual([2, 2]);
   });
 });
