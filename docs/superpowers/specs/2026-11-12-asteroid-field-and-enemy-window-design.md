@@ -121,3 +121,12 @@ The draw comes after the hit draw and the hull-room draw, so the draw order is f
   - `stepWindowAnim` keeps the last live picture, so the break-up and the fly-out redraw the ship after `leave` has cleared the sim fields. The status reads `DESTROYED` during the break-up.
   - Crew walk to a problem room over 1.5 s from the problem's start (render only).
   - Enemy room glyphs are Weapons, Engines and Shields. Weapons and Engines reuse the `weapons` and `engineering` icon drawings; Shields gets an original shield drawing.
+
+### Codex implementation review, render half (research/codex-review-demo-viii-impl-render.md), 2026-11-12: both findings kept by choice
+
+- **1. The shot origin while the window is hidden.** With a player at Navigation, the window is hidden and the map shows in its place, so enemy shots start from the right edge of the world band. Starting them at the hidden window's Weapons room would make them appear out of the map panel. Kept.
+- **2. The old enemy after a jump.** `jumpShip` calls `leave` on the same tick it changes the node (run.ts), so the sim never reports the old enemy present on the new node, and the node-change reset has nothing to suppress. No change.
+
+### Codex implementation review, sim half (research/codex-review-demo-viii-impl-sim.md), 2026-11-12: one finding, kept by choice
+
+- **1. The first rock spawns as the field starts.** This gives the field a visible start: the first rock lands 10 ± 2 s after the notice, then every 6 s ± 20%. With 60 s of spawning that is about 11 rocks rather than 10. Kept.

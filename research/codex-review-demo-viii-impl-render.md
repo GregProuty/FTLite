@@ -1,0 +1,3 @@
+1. **High — `src/renderer/src/render/renderer.ts:67`** — If an enemy shot is first tracked while a player is seated at Navigation, `shown` is false, so `shotOrigin` is null and the shot uses the old right-edge world origin. It visibly comes from the wrong place. Pass the enemy Weapons-room origin whenever the enemy is present, even when the window is hidden.
+
+2. **Medium — `src/renderer/src/render/enemyWindowModel.ts:374`** — After a jump, `stepWindowAnim` clears animation state when the node changes, but the leaving ship can remain visible for a frame if the sim still reports it present; a later departure may then animate against the new node. Resetting on the node change should also suppress the old enemy view until the new node’s enemy arrives.
