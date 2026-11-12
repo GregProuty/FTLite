@@ -1,0 +1,25 @@
+# Codex review: Demo-i spec half 1 (2026-11-11)
+
+1. **High — §3, line 36:** “Interact … sit” and “press Interact to sit” assign sitting to the wrong action. Interact repairs, revives, or fights; sitting is triggered by Confirm when `confirmTarget` finds a console in reach. **Fix:** change both references to Confirm, and distinguish holding Interact for repair/revive/fighting.
+
+2. **Medium — §3, lines 29–34:** The six lines are drawn at rows 0–5, but row 0 starts at y=88 and the game-over summary shares those rows. The spec does not say how they coexist with the lobby’s progress line at y=100, or with the lobby banner and glyphs above. **Fix:** specify visibility and vertical placement for the lobby banner, progress line, and six card lines; confirm the lowest line clears the player blocks beginning at y=446.
+
+3. **Medium — §3, lines 29–34:** The width claim is inconsistent with its own budget: the longest line is 74 characters and the spec allows about 420 px, but the summary text is centered in a 960 px canvas with no clipping or wrapping. At 16 px, font advance varies by glyph, so the estimate alone does not guarantee fit. **Fix:** measure actual rendered widths for all six strings and set an explicit max width or font size if needed.
+
+4. **High — §4, lines 40–45:** The proposed 460 px notice does not fit the stated gap: the clock panel ends at x=204 and the threat panel starts at x=728, leaving 524 px. But a centered 460 px notice spans x=250–710, leaving only 46 px from either panel edge; glyph width and variable text width make overlap plausible. **Fix:** specify measured maximum rendered width and clipping/truncation behavior, and test the longest notice against both panels.
+
+5. **Medium — §4, lines 40–45:** Keeping the 2x banner object empty while introducing a separate 1x notice object leaves unclear which visibility rules apply during running and whether the existing banner’s text or glyph row can still occupy the same area. **Fix:** define mutually exclusive visibility for `banner`, `noticeText`, and `bannerGlyphs` by phase, including lobby, pause, and game over.
+
+6. **High — §4, lines 42–43, 48:** `SHOP at … - scrap N` only communicates that the ship is at a shop; it does not expose the items or their costs. The lobby card says “events and shops appear there,” but the notice is intended to surface run decisions to both players. **Fix:** specify the exact shop information both players need, or state that the notice is a location cue and Navigation remains necessary to see options.
+
+7. **Medium — §4, lines 42–45:** The event notice interpolates both choices, but does not state how to render an event after a choice is made (`eventChoice >= 0`), when the event is no longer pending. **Fix:** define whether the notice disappears immediately or shows the resolved choice until the next jump.
+
+8. **High — §5, line 49:** `nextArrivalTick` is initialized in `createSimState` in `state.ts` from `BOARDING_FIRST` and `ENCOUNTER_FIRST`. Neither boarders nor enemy initializes its first arrival at creation, so a change “at creation” inside those systems has no access to `playerCount`. **Fix:** specify that `createSimState` selects the initial delay from `playerCount <= 2`, and separately define whether post-jump/re-entry timers remain unchanged.
+
+9. **High — §5, lines 51–53:** The target says the minimum Conscious health over the run must be at least 25, while the existing gate measures `minHealth` only when members are Conscious and the cited “0.0/0.1/0.1” values are not identified as that metric; they look like the gate’s `health at 4:00` output. It also does not say what to record if a crew member is never Conscious or whether the metric is sampled before or after each step. **Fix:** define the exact statistic and sampling order, and label the baseline values with their metric and seeds.
+
+10. **Medium — §5, lines 49–53:** The order of levers is listed, but there is no pass criterion for deciding when to stop taking them beyond the proposed gate. A global debris damage reduction could improve duo health while changing the four-player experience; the spec only says to re-bless the golden replay. **Fix:** require re-running and recording both duo and four-player survival acceptance after each lever, and specify what four-player outcome is acceptable.
+
+11. **Medium — §5, lines 49, 53:** The “later first boarding” adjustment only moves the first party; later parties use `BOARDING_COOLDOWN`. The spec says no other formula changes, but does not state whether the small-crew delay applies only to initial creation or after a jump resets the arrival timer. **Fix:** explicitly scope `BOARDING_FIRST_SMALL` and `ENEMY_FIRST_SMALL` to the initial run arrival, and say jump-reset timers stay governed by `BOARDING_AFTER_JUMP` / `ENCOUNTER_AFTER_JUMP`.
+
+12. **Low — §4, lines 42–45:** The quoted event, shop, and ready-drive examples in the spec contain corrupted dash characters, while later text says the implementation uses ASCII `  -  `. **Fix:** write the exact ASCII strings in the spec so implementers and string tests have one unambiguous source.

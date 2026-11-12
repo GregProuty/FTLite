@@ -1,6 +1,6 @@
 # Demo Ready (Demo-i) Design
 
-Status: drafted 2026-11-11 at the user's request after the ten-feature loop (`docs/roadmap.md` items 1-10 merged, master a2a27f2). Parent: `2026-11-09-foundation-design.md` §7 (session flow, HUD), §10 (acceptance). Builds on everything merged through Run-iii. This is the first feature whose acceptance is a human two-player session, not only the test suite.
+Status: drafted 2026-11-11 at the user's request after the ten-feature loop (`docs/roadmap.md` items 1-10 merged, master a2a27f2); amended the same day from the Codex spec reviews (`research/codex-review-demo-spec-1.md`, `-2.md`, 24 findings). Parent: `2026-11-09-foundation-design.md` §7 (session flow, HUD), §10 (acceptance). Builds on everything merged through Run-iii. This is the first feature whose acceptance is a human two-player session, not only the test suite.
 
 ## 1. Goal
 
@@ -11,78 +11,95 @@ A two-player couch session that a newcomer can start, read and finish without th
 ## 2. Options considered
 
 - **Where the controls live:** (a) a block of lines in the lobby's summary area **(recommended, chosen)**: pure model text, no new UI element, visible exactly when needed; (b) a page in the credits overlay: hidden behind Cancel; (c) a printed card: not in the build.
-- **How the second player sees a run decision:** (a) a one-line run notice in the centre banner slot during play **(chosen)**: the banner is empty while running, both players look there already; (b) duplicate the Navigation panel on every player's block: crowds the blocks; (c) let any seated player resolve events: a new input rule, more than a demo needs.
-- **Two-player balance:** (a) a crew-size scale on the director's spawn interval and a later first boarding for crews of two or fewer, tuned until a new two-bot health gate passes **(chosen)**: one lever family, measurable; (b) retune global damage numbers: changes the four-player game; (c) heal faster: hides the problem.
+- **How the second player sees a run decision:** (a) a two-line run notice in the centre banner slot during play **(chosen)**: the banner is empty while running, both players look there already; (b) duplicate the Navigation panel on every player's block: crowds the blocks; (c) let any seated player resolve events: a new input rule, more than a demo needs.
+- **Two-player balance:** (a) a crew-size scale on the director's spawn interval and a later first boarding and first encounter for crews of two or fewer, tuned until a new two-bot health gate passes **(chosen)**: one lever family, measurable; (b) retune global damage numbers: changes the four-player game; (c) heal faster: hides the problem.
 - **Covering the run in the soak:** (a) teach the bot to jump when the drive is ready and no one is seated at Navigation, and to resolve events with the safe choice **(chosen)**; (b) a separate scripted soak: two harnesses to maintain; (c) leave it: the run stays untested at length.
 
 ## 3. Controls card (lobby)
 
-`HudModel.lobbyLines: string[]` (`[]` outside the lobby). In the lobby, exactly these six lines, drawn in the summary rows (which are otherwise unused in the lobby) under the progress line:
+The real bindings (`src/renderer/src/input/sources.ts`): keyboard 1 is WASD, E Interact, F Confirm, Q Cancel; keyboard 2 is the arrows, Enter Interact, Right Shift Confirm, Backspace Cancel; gamepad left stick, A Interact, X Confirm, B Cancel (the glyph names already used by the HUD). **Interact** (held) repairs, revives and fights; **Confirm** (pressed) sits at a console or toggles a door when `confirmTarget` finds one in reach, and acts on a console while seated; **Cancel** stands.
+
+`HudModel.lobbyLines: string[]` (`[]` outside the lobby). In the lobby, exactly these six ASCII lines:
 
 ```
-Move: WASD / Left stick        Interact (repair, revive, sit): E / A
-Confirm (console action): F / X    Cancel (stand, menu): Q / B
-Keyboard 2: Arrows, Enter, Right Shift, Backspace
-Walk to a console and press Interact to sit; Up/Down pick, Confirm acts
-Fires, breaches and failed consoles: stand next to them and hold Interact
-Navigation jumps when the drive reads READY; events and shops appear there
+Move: WASD or left stick      Interact: E / A      Confirm: F / X      Cancel: Q / B
+Keyboard 2: arrows, Enter (Interact), Right Shift (Confirm), Backspace (Cancel)
+Stand by a console and press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands
+Hold Interact next to a fire, a breach, a failed console or a downed friend
+Navigation jumps when the drive reads READY. Events and shops are chosen there
+Jump before the ship falls apart. Reach node 8 to win
 ```
 
-`hud.ts` draws `lobbyLines` through the existing eleven summary rows (rows 0-5) when `phase === 'lobby'`; the game-over summary keeps its use of the same rows. No new Pixi objects. The strings are exact and tested; each is at most 76 characters (about 420 px at 1x, centred on 960 px).
+Layout: the lobby banner (2x, y 24-56) and its glyph row (y 64) stay; the progress line stays at y 88 (the position of summary row 0). The card uses summary rows **2-7** (y 124 to 214), leaving row 1 blank as a gap; the player blocks begin at y 446. `hud.ts` sets rows 2-7 from `lobbyLines` when `phase === 'lobby'` and hides rows 0-1 and 8-10; the game-over summary keeps its use of rows 0-10 and `lobbyLines` is `[]` then. No new Pixi objects.
+
+Width: the longest line is 84 characters. The 16 px bitmap font averages about 5.5 px per glyph (measured in the Run-ii and Run-iii reviews from the TTF advance table), so about 460 px centred on 960: ample. The implementer measures each of the six strings with the font's advance widths once (a scratch script, as those reviews did) and records the widest in the gate; a model test pins each line to at most `LOBBY_LINE_MAX = 90` characters.
 
 ## 4. Run notice (centre banner while running)
 
-`HudModel.notice: string` (`''` unless running). While `phase === 'running'`, `hud.ts` shows `notice` in the banner's position at **1x** scale (a new `noticeText` object, `DIM` tint, centred at y = 24; the 2x `banner` stays for lobby/pause/gameover messages and is empty while running). Pure `runNotice(state): string` in `hudModel.ts`, first match wins:
+`HudModel.notice: string[]` (0 to 2 lines; `[]` unless `phase === 'running'`). Pure `runNotice(state): string[]` in `hudModel.ts`, first match wins, exact ASCII strings:
 
-1. Event pending: `` `EVENT: ${title}  —  ${choices[0]}  /  ${choices[1]}` `` (the Navigation operator chooses; the text is for everyone).
-2. Shop node and no event pending: `` `SHOP at ${nodeLabel(column, node)}  —  scrap ${scrap}` ``.
-3. `jumpCharge >= 1` and no one seated at Navigation: `` `JUMP READY  —  someone take Navigation` ``.
-4. `jumpCharge >= 1` and Navigation seated: `` `JUMP READY` ``.
-5. Otherwise `''`.
+1. Event pending (`run.event >= 0 && run.eventChoice < 0`): `[ \`EVENT: ${title}\`, \`${choices[0]}  /  ${choices[1]}\` ]`. Once a choice is made the event no longer matches; rules 2-4 apply.
+2. Shop node (no pending event): `[ \`SHOP at ${nodeLabel(column, node)}   scrap ${scrap}\`, 'Hull +25 (30)   Torpedoes +2 (20)   Station +1 bar (50)   see Navigation' ]`. The notice is a location cue with the price list; the items are bought from Navigation.
+3. `jumpCharge >= 1` and nobody seated at Navigation: `['JUMP READY   someone take Navigation']`.
+4. `jumpCharge >= 1` and Navigation seated: `['JUMP READY']`.
+5. Otherwise `[]`.
 
-The dash is the ASCII sequence `  -  ` in code (the spec's typographic dash is illustrative); the longest string (event 4) is 83 characters, about 460 px at 1x, so it fits between the clock panel (200 px) and the threat panel (starts at 728 px) with room to spare: the banner centre is 480 px, half-width 230 px → 250 to 710 px.
+Each line is at most `NOTICE_LINE_MAX = 64` characters (the longest today is event 4's choice line, 62: `Take the scrap (+40)  /  Strip it bare (+60, a station fails)`), about 340 px at 5.5 px per glyph. The gap between the clock panel (ends x 204) and the threat panel (starts x 728) is 524 px, so a 340 px line centred at 480 spans 310 to 650 and clears both by at least 100 px. A model test pins every possible notice line (all six events' two lines, the shop lines, the two ready lines) to `<= 64` characters, and the implementer measures the widest once.
 
-Threats: the `Event:` and `Shop here` rows move to the **end** of the threat list (after objects), so real hazards keep the four visible slots; with the notice carrying the same information their loss off the bottom is acceptable. The Run-ii HUD tests that pinned them first are updated to pin them last.
+`hud.ts`: a new `noticeRows` pair of 16 px `DIM` texts, anchored top-centre at (480, 24) and (480, 42), set from `notice`. Visibility by phase, mutually exclusive: `banner` (2x `message`) in lobby, paused, gameover and error; `noticeRows` in running only; `bannerGlyphs` in lobby and gameover only (as today). `message` is `''` while running, as today.
+
+Threats: the `Event:` and `Shop here` rows move to the **end** of the threat list (after objects), so real hazards keep the four visible slots; the notice carries the same information. The Run-ii HUD tests that pinned them first are updated to pin them last.
 
 ## 5. Two-player balance
 
-New tuning: `CREW_INTERVAL_MULT = [1.5, 1.25, 1, 1]` indexed by `playerCount − 1` (replaces the single `SOLO_INTERVAL_MULT 1.5`: the solo value is unchanged, two players get 1.25, three and four 1); `BOARDING_FIRST_SMALL = 330` seconds for `playerCount <= 2` (four-player stays `BOARDING_FIRST 240`); `ENEMY_FIRST_SMALL = 270` for `playerCount <= 2` (four-player `ENCOUNTER_FIRST 210`). `spawnInterval(minutes, players)` multiplies by `CREW_INTERVAL_MULT[players − 1]`; the boarders' and enemy's first-arrival ticks read the small-crew value at creation. No other formula changes.
+Tuning: `CREW_INTERVAL_MULT = [1.5, 1.25, 1, 1]` indexed by `playerCount − 1` replaces `SOLO_INTERVAL_MULT` in `spawnInterval(minutes, players)` (solo unchanged at 1.5; two players 1.25; three and four 1). `BOARDING_FIRST_SMALL = 330` and `ENCOUNTER_FIRST_SMALL = 270` seconds: `createSimState` initialises `boarders.nextArrivalTick` and `enemy.nextArrivalTick` from the small-crew values when `playerCount <= 2`, else from `BOARDING_FIRST`/`ENCOUNTER_FIRST` as today. **Scope:** these affect only the first arrival of a run; the post-jump re-arms (`BOARDING_AFTER_JUMP`, `ENCOUNTER_AFTER_JUMP`) and the cooldowns (`BOARDING_COOLDOWN`, `ENCOUNTER_COOLDOWN`) are unchanged for every crew size. No other formula changes.
 
-**Target (the new `tests/gate-duo.test.ts`):** two bots with `DEFAULT_CHARACTERS` (Okoro and Lindqvist) on seeds 1-3 for five minutes: the run does not end, both are Conscious at the end, and **the minimum health of any Conscious crew member over the whole run is at least 25** (today's figures are 0.0/0.1/0.1). The existing `gate-survival` keeps its assertions and figures are re-recorded (it is a two-bot gate too, so it will move; the four-player acceptance soak must still show `running` at 5:00 for seed 1).
+**The duo gate** (`tests/gate-duo.test.ts`): two bots with `DEFAULT_CHARACTERS` (Okoro, Lindqvist) on seeds 1-3 for five minutes, stepping with `botIntent` for both. Metric, exactly the existing survival gate's: after every `step`, for each crew member whose `Life.state` is Conscious at that moment, `minHealth = min(minHealth, Health.cur)`; the baseline is that same statistic from `gate-survival` on 2026-11-11: **0.0 / 0.1 / 0.1** for seeds 1 / 2 / 3 (the "health at 4:00" figures 69.2/47.3 etc. are a different sample). Pass: the run does not end, both are Conscious at the end, and `minHealth >= 25` on every seed. `gate-survival` keeps its assertions and re-records its figures.
 
-**Levers, in order, only if the gate fails after the three changes above:** (1) `CREW_INTERVAL_MULT[1]` 1.25 → 1.4; (2) `BOARDING_FIRST_SMALL` 330 → 400; (3) `DEBRIS_CREW_DAMAGE` 20 → 15 (global; recorded as such). The golden replay is four-player (seed 2026), so the small-crew changes do not touch it; a global lever would, and is re-blessed once if taken.
+**Levers, in order, each taken only if the duo gate still fails, stopping at the first that passes:** (1) `CREW_INTERVAL_MULT[1]` 1.25 → 1.4; (2) `BOARDING_FIRST_SMALL` 330 → 400; (3) `DEBRIS_CREW_DAMAGE` 20 → 15 (global). After every lever, re-run `gate-survival`, `gate-boarding` and `npm run acceptance 5 1`, and record all figures; the four-player acceptance row for seed 1 must stay `running` at 5:00 with no first death, or the lever is reverted and the next tried. The golden replay is four-player (seed 2026): the small-crew changes do not touch it; a global lever would, and it is then re-blessed once with the cause recorded.
 
 ## 6. The bot runs the ship
 
-`botIntent` gains two behaviours, both for **pid 0 only** (the "captain"), evaluated before its hazard goals:
+`botIntent(state, pid)` is pure per tick; the behaviours below derive everything from the state (tick parity stands in for memory). Order of precedence inside `botIntent`:
 
-- **Jump:** when `run.jumpCharge >= 1`, no pending event, and nobody is seated at Navigation: the Navigation console tile is the bot's goal; on arrival (the Confirm target is the console) it presses Confirm to sit; while seated with a ready drive it presses Confirm (the cursor's first row is the first destination on a Hazard node). After the jump (`jumps` changed) it stands (Cancel) and resumes its hazard goals. While the drive is not ready it does not sit.
-- **Events and shops:** while seated with an event pending, it moves the cursor to the event's safe choice and confirms: `EVENTS[id].safeChoice`, a new field, `1` for events 0, 1, 2, 3 and 5 (leave, ignore, refuse, go around, decline) and `0` for event 4 (take the scrap; stripping it fails a station). It never buys at a shop.
+1. **As today:** a Conscious bot with an `interactTarget` (a boarder in the room, then a Downed teammate in reach, then a repair) holds Interact. Revive therefore outranks every run behaviour; a boarder in the room outranks revive, as the sim already rules.
+2. **Run behaviour, pid 0 only:**
+   - **Standing, drive ready, no event pending, nobody seated at Navigation:** the Navigation console tile is the sole goal (replacing the hazard goals); when `confirmTarget(state, 0)` is the Navigation console the bot returns `confirmPressed: true` (the sim seats it in `interactSystem`; it acts from the next tick).
+   - **Seated at Navigation:** let `rows = navRows(state)`, `c` the cursor, and the target row `t` = the `choice` row with `index === EVENTS[run.event].safeChoice` while an event is pending, else the first `jump` row (destination `reachable(state)[0]`), else none. If `t` exists and `c !== t`: on even ticks return `moveY = t > c ? 1 : −1`, on odd ticks neutral (one stick edge per two ticks). If `c === t`: return `confirmPressed: true` when the row is a `choice`, or when it is a `jump` row and `jumpCharge >= 1`. If no target row (a Shop node with the drive not ready, or the last column) return neutral.
+   - **Seated at Navigation with `jumpCharge < 1` and no event pending:** return `cancelPressed: true` (stand). This is the state right after a jump (charge 0), so the bot stands within a tick of arriving, and it never sits while the drive is charging because the standing rule above requires a ready drive.
+   - The bot never moves the cursor to a `buy` row, so it never buys.
+3. **Hazard goals as today** (walk to fires, breaches, failed consoles and Downed teammates).
 
-Hazard goals keep priority when a crew member is Downed (revive first). The acceptance soak's `nodes` column then reads `n/8` with `n >= 3` for every seed-1 row at five minutes (a jump a minute after arrival, less the walk and the events), and the seed-1 four-player row must still be `running`.
+`EVENTS[i].safeChoice: 0 | 1` is a new field on the event data: `[1, 1, 1, 1, 0, 1]` (leave, ignore, refuse, go around, take the scrap, decline). Other bots (pid > 0) are unchanged and never sit.
+
+Expected soak effect: with the drive ready at 1:00 and a walk of about 1.5 s from the spawn, the first jump lands at about 1:02 and later ones a minute plus the walk after each arrival (events add a few ticks), so a five-minute soak reaches node 4 or 5 when the bot is free; `nodes >= 3/8` is the floor the gate asks for the two- and four-player rows.
 
 ## 7. The playtest gate
 
-A human two-player session is the acceptance criterion. `docs/playtest.md` (new) is the script: lobby and controls card; join two keyboards; start; sit at a console each; survive a fire and a debris warning; jump once; resolve an event; visit a shop and buy hull; keep going until a game over or a victory; read the summary; restart with the same seed. Each step has a "what you should see" line taken from this spec and its parents, and a box for notes.
+A human two-player session is the acceptance criterion. `docs/playtest.md` (new) is the script. It has a header block `Date:`, `Players:`, `Seed:`, `Build (commit):`, and twelve steps, each a `- [ ]` line followed by an indented `See:` line (what the screen should show, taken from this spec and its parents) and a `Notes:` line:
 
-**Triage rule for what the session finds:** a visual overlap, a wrong or missing string, a control that does not do what the card says, or a crash is fixed on the same branch before merge (as "Demo-i fixes", each with a test where one can exist). A balance observation is recorded with the figures and left for a follow-up unless the run ended before the first jump, in which case the §5 levers are re-authorised. A design wish is recorded in §10.
+1. Lobby: banner, controls card, `Runs N  Best N` line. 2. Join two keyboards (two blocks light up). 3. Start; the clock, threats and power panels fill; the director line shows the ship's quirk. 4. One player sits at Engineering (rows, pool, coolant); the other at Weapons or Science. 5. A fire: hold Interact in the room until it is out. 6. A debris warning: Science scans, Weapons shoots or Navigation evades. 7. `JUMP READY   someone take Navigation`; sit, pick `Node 2a`/`2b`, Confirm; the threats clear, the clock reads `node 2/8`. 8. An event: both see the notice; the operator picks; the effect lands. 9. A shop: the price line; buy hull from Navigation; `Scrap` drops in the footer. 10. A boarding: fight it in the room. 11. Game over or victory: summary lines (score, ship, best, unlocks), gains. 12. Confirm restarts with the same seed; the lobby shows the new `Runs`/`Best`.
+
+**Triage rule for what the session finds:** a visual overlap, a wrong or missing string, a control that does not do what the card says, or a crash is fixed on the same branch before merge (as "Demo-i fixes", each with a test where one can exist). A balance observation is recorded with the figures and left for a follow-up, unless the run ended before the first jump, in which case the §5 levers are re-authorised. A design wish is recorded in §10.
+
+**Gate entry format** (`docs/gates.md`, the manual row): `- [x] Playtest YYYY-MM-DD, 2 players, seed N, build <commit>: steps 1-12 <seen | notes per failed step>; fixes: <commit list>.`
 
 ## 8. Tests (vitest, node)
 
-- Controls card: `buildHudModel(null, slots, 'lobby', '')` has the six exact lines; `'running'` and `'gameover'` give `[]`; each line `<= 76` characters.
-- Notice: `runNotice` on fixture states (map M, `setEvent(4)` → the exact event string; a Shop node without an event → the shop string with the scrap; `chargeJump` with nobody seated → `JUMP READY  -  someone take Navigation`; seated → `JUMP READY`; otherwise `''`); the model's `notice` is `''` in the lobby even with a ready drive; the pending event beats the shop beats the ready drive. Threat order: with a fire, an enemy and a pending event at a Shop node the rows are enemy, fire, `Event:`, `Shop here`.
-- Balance: `spawnInterval` at each player count; `boarders.nextArrivalTick` and `enemy.nextArrivalTick` at creation for 1, 2, 3 and 4 players; `tests/gate-duo.test.ts` as §5 with the figures logged in the gate section; `gate-survival`, `gate-boarding`, `gate-jump`, `gate-run` re-run and re-recorded (jump and run are unaffected: they silence arrivals).
-- Bot: on a quiet two-player state with `chargeJump`, pid 0 walks to Navigation, sits, jumps; `jumps` is 1 within `(60 + 20)` seconds of sim time; after the jump it is standing within 2 seconds; with an event pending it resolves `safeChoice` (events 4 and 0 asserted); it never buys at a Shop node (scrap unchanged after 30 s seated); with a Downed teammate and a ready drive it revives first. `EVENTS[i].safeChoice` is `[1, 1, 1, 1, 0, 1]`.
-- Acceptance: `npm run acceptance 5 1` rows show `nodes` `>= 3/8` for the three seed-1 rows and `running` for the four-player row (asserted by a new test that runs `runAcceptance` for seed 1, 2 players, 5 minutes and checks `nodesReached >= 3`).
-- Playtest: `docs/playtest.md` exists with the twelve steps (a test counts the `- [ ]` steps).
+- Controls card: `buildHudModel(null, slots, 'lobby', '').lobbyLines` equals the six exact lines; `'running'` and `'gameover'` give `[]`; every line `<= LOBBY_LINE_MAX`.
+- Notice: `runNotice` on fixture states (map M): `setEvent(s, 4)` → the two exact event lines; after `resolveEvent(s, 0)` at a Shop node → the two shop lines with `scrap 45` from `grantScrap(45)`; `chargeJump` with nobody seated → the single ready line; seated → `['JUMP READY']`; a fresh quiet state → `[]`; an event pending at a Shop node with a ready drive → the event lines (priority). The model's `notice` is `[]` in the lobby even with a ready drive. Every line of every possible notice (six events' two lines, the shop lines, both ready lines) `<= NOTICE_LINE_MAX`. Threat order: with a fire, an enemy and a pending event at a Shop node the rows are enemy, fire, `Event:`, `Shop here`.
+- Balance: `spawnInterval(m, players)` at players 1-4 equals `base × [1.5, 1.25, 1, 1]`; `boarders.nextArrivalTick` is `330 × 60` and `enemy.nextArrivalTick` `270 × 60` for 1 and 2 players, `240 × 60` and `210 × 60` for 3 and 4; after a jump the re-arms are `BOARDING_AFTER_JUMP`/`ENCOUNTER_AFTER_JUMP` for both crew sizes. `gate-duo` as §5 with the figures logged in the gate section; `gate-survival`, `gate-boarding`, `gate-jump`, `gate-run` re-run and re-recorded (jump and run silence arrivals and use `quirk 3`; they must still end at 25200).
+- Bot (quiet two-player states, enemy and boarders silenced, Recruits, map M all-Hazard unless stated): (1) `chargeJump` at tick 0: pid 0 is seated at Navigation by tick `20 × 60`, `jumps === 1` by tick `25 × 60`, and standing (`Seated.station === −1`) within `2 × 60` ticks of the jump; pid 1 is never seated at any tick. (2) `setNodeTypes({'1:0': Event})`, `chargeJump`, override `run.event = 4` after the arrival, then run: `eventChoice === EVENTS[4].safeChoice (0)`, scrap `+40`, no station failed; the same with event 0 → `eventChoice 1`, no fire, scrap unchanged by the event. (3) `setNodeTypes({'1:0': Shop})`, `grantScrap(100)` after the arrival, drive ready: the bot jumps on; `purchases === 0`; scrap equals `100 + 15` at the next arrival. (4) pid 1 Downed within `REACH` of pid 0 at tick 0 with `chargeJump`: `Life.reviveProgress[crew[1]]` rises before pid 0 is ever seated, `jumps === 0` until pid 1 is Conscious, then the jump follows. (5) a boarder in pid 0's room with a ready drive: the bot fights (`interactHeld`) and does not sit until the boarder is dead. (6) `EVENTS.map((e) => e.safeChoice)` equals `[1, 1, 1, 1, 0, 1]`.
+- Acceptance: a test runs `runAcceptance` for seed 1 at 1, 2 and 4 players for 5 minutes and asserts `nodesReached >= 3` for the 2- and 4-player records, `endReason === 'running'` and `firstDeath === null` for the 4-player record; the 1-player record is only logged (the solo bot leaves the ship to jump and its end is recorded, not asserted).
+- Playtest doc: `docs/playtest.md` has the four header fields, exactly twelve `- [ ]` steps, each followed by a `See:` and a `Notes:` line (a test parses it).
 
 ## 9. Gate (`docs/gates.md`, entries start unchecked)
 
-- [ ] `npm test` passes with the §8 tests; golden unchanged unless a global lever was taken (then re-blessed once, recorded).
-- [ ] `gate-duo` passes on seeds 1-3 with the minimum Conscious health recorded per seed; the levers taken, if any, in order.
-- [ ] `gate-survival`, `gate-boarding`, `gate-jump`, `gate-run` pass; new figures recorded.
-- [ ] `npm run acceptance 5 1`: three rows; `nodes >= 3/8` on each; the four-player row `running`.
-- [ ] **Playtest (two players, `npm run dev`), dated, with `docs/playtest.md` filled in:** every step seen; the fixes made from it listed with their commits.
+- [ ] `npm test` passes with the §8 tests (card, notice, threat order, balance constants and arrivals, the six bot cases, the acceptance assertions, the playtest doc); golden unchanged unless a global lever was taken (then re-blessed once, recorded).
+- [ ] `gate-duo` passes on seeds 1-3 with `minHealth` recorded per seed and the baseline 0.0/0.1/0.1 beside it; the levers taken, if any, in order, with the four-player acceptance row after each.
+- [ ] `gate-survival`, `gate-boarding`, `gate-jump` (25200), `gate-run` (25200) pass; new figures recorded.
+- [ ] `npm run acceptance 5 1`: three rows; `nodes >= 3/8` on the 2- and 4-player rows; the four-player row `running` with no first death; the widest card and notice lines measured and recorded.
+- [ ] Playtest, in the §7 entry format, with `docs/playtest.md` filled in and the fixes listed.
 - [ ] `npm run typecheck`, `npm test`, `npm run build` pass on the final commit.
 
 ## 10. Follow-ups recorded, not built
