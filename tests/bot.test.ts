@@ -118,12 +118,15 @@ describe('bot self-preservation (spec Demo-ii section 10)', () => {
   });
   it('(f) trapped at health 20 in a burning room with the corridor burning too, it fights or walks and never idles', () => {
     const s = calm(); teleport(s, 1, 7.5, 2.5); teleport(s, 0, 2.5, 9.5); burn(s, 1); burn(s, 5); hurt(s, 1, 20);
-    const start = roomOf(s, 1);
-    for (let t = 0; t < 60; t++) {
-      const i = botIntent(s, 1);
-      expect(roomOf(s, 1) !== start || i.interactHeld || i.moveX !== 0 || i.moveY !== 0).toBe(true);
+    let fought = 0, safe = false;
+    for (let t = 0; t < 600 && !safe; t++) {
+      const i = botIntent(s, 1), r = roomOf(s, 1);
+      if (r >= 0 && s.rooms.fire[r]! <= 0) { safe = true; break; }   // reached a room that is not burning
+      expect(i.interactHeld || i.moveX !== 0 || i.moveY !== 0).toBe(true);   // never idles while it burns
+      if (i.interactHeld) fought++;
       step(s, [botIntent(s, 0), i]); hurt(s, 1, 20); s.rooms.fire[1] = 1e6; s.rooms.fire[5] = 1e6;
     }
+    expect(safe || fought > 0).toBe(true);   // the fallback either walked it out to a fire-free room or it fought the fire it stood in
   });
   it('(g) the captain at 20 health with a ready drive and the Medbay offline never walks into a burning corridor', () => {
     const s = calm(); failStation(s, s.derived.stationOfKind[StationKind.Medbay]!); chargeJump(s); burn(s, 5); hurt(s, 0, 20); hurt(s, 1, 100);
