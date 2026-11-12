@@ -1,0 +1,25 @@
+# Codex review: Run-iii spec half 2 (2026-11-11)
+
+1. **High — §6, session flow.** The specified progress flow has no place in the current `createSession` API: `SessionDeps` has no `loadProgress` or `saveProgress`, `start()` calls `createSimState` without options, and `main.ts` wires only telemetry storage. **Fix:** add optional progress dependencies, load progress during session creation, pass unlocked IDs at start, and wire `loadProgress`/`saveProgress` in `main.ts`.
+
+2. **High — §6, ending-tick order and summary path.** The ending tick currently calls `saveTelemetry`, then sets game-over state and banner; `buildHudModel` is called afterward with no progress argument. The spec’s proposed summary therefore cannot receive the post-run progress or `newUnlocks`. **Fix:** apply and save progress on the ending tick, retain the summary data in the session, and pass it through the existing `buildHudModel` call site.
+
+3. **Medium — §6, summary line assignments.** The spec assigns progress to line five, then assigns `Ship: <quirk>` to line five too. **Fix:** give the quirk and progress separate, ordered lines, and define the resulting summary order explicitly.
+
+4. **Medium — §6, HUD row count.** The current HUD allocates eight summary rows. The spec says raise that to ten, but up to seven pre-gains lines plus the existing per-player gains can exceed ten: the existing four-player summary already uses eight lines. **Fix:** calculate the maximum from the full summary composition and allocate enough rows (or specify a bounded summary layout).
+
+5. **Medium — §6, clock and record fields.** The spec names `QUIRK_NAMES`, while §5 defines `QUIRKS` with names but does not define that export. It also says `run.unlocks` contains IDs from `startBonus`, but the start bonus is a bitmask and does not itself carry IDs. **Fix:** specify the exported name lookup and derive record unlock IDs from the earned unlock definitions represented by the mask.
+
+6. **High — §8, score examples.** The hull-loss example’s arithmetic is inconsistent: `300 + 45 + 10` is 355 only if the two kills mean two boarder kills and no enemy kills; the example does not identify the kill types or specify the record’s scrap and node values clearly enough to validate the score. **Fix:** state the exact record fields, including enemy and boarder kill counts, scrap, nodes, and end reason, then give the computed score.
+
+7. **Medium — §8, progress store tests.** “Unknown ids and non-numeric fields → sanitized” does not say which fields are defaulted, whether invalid entries are filtered or reject the document, or the expected result for malformed `unlocked` values. **Fix:** list exact input/output cases for every field, including arrays, numbers, and unknown IDs.
+
+8. **Medium — §8, behavioral quirk fixtures.** The per-quirk test descriptions do not specify fixtures for the relevant systems or the required control outcomes. Existing helpers expose general state setup and a fixture map, but the spec does not establish that they can create the full/empty oxygen pair, cleared-zone door timer, debris impact, or science lead/charge conditions as described. **Fix:** name the fixture setup/helper and assert both the quirk result and neutral-control result for each rule.
+
+9. **Medium — §8, gate criteria.** Survival and boarding gates are required to “pass,” but no pass thresholds or required observables are defined. Existing gate conventions report concrete per-seed figures, and the current survival baseline includes near-zero crew health. **Fix:** define pass criteria for each gate (including survival margin and boarding outcomes), and require recording the relevant metrics per seed.
+
+10. **Medium — §8, “identical figures” tradition.** The spec says to compare new natural-quirk gate figures against the Run-ii baseline and attribute drift, but it does not explicitly say that differences are expected or that figures need not remain identical. Run-i and Run-ii specifically document identical figures. **Fix:** state that quirk-driven drift is expected, record per-seed deltas and quirk names, and reserve “identical” only for gates using an override.
+
+11. **Medium — §8, acceptance record and table.** The spec requests `score` after `scrap`, but does not say whether the three checked-in acceptance rows must be regenerated or how the existing row assertions/regexes should be updated. **Fix:** require updating the sample table and assertions to match the appended column, with exact row count and field position.
+
+12. **Low — §9, gate convention.** The checklist asks for “the A8 tests” without identifying them, while `docs/gates.md` records the concrete test coverage and results in each increment entry. **Fix:** replace the shorthand with a concise list of the score/progress/store, bonus, quirk, snapshot, session/HUD, acceptance, and gate coverage expected before checking the gate.

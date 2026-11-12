@@ -1,0 +1,19 @@
+# Codex review: Run-iii spec half 1 (2026-11-11)
+
+1. **High — §3, line 3:** `TelemetryRecord` is said to gain `score`, computed by running `runScore` “of the record so far.” That leaves it unclear whether scoring accepts a record with no score or recursively depends on `score`. **Fix:** Define `runScore` over the record’s existing fields, assemble the record without `score`, then return `{ ...record, score: runScore(record) }`.
+
+2. **Medium — §4, line 34:** The veteran bonus’s `XP_THRESHOLDS[level + 1]` is out of bounds when `level === SKILL_MAX`; “never above `SKILL_MAX`” does not specify how to handle that lookup. **Fix:** Define `nextLevel = min(level + 1, SKILL_MAX)` and use `XP_THRESHOLDS[nextLevel]`.
+
+3. **Medium — §4, line 34:** The spec does not say whether a Slow Learner’s veteran head start is reduced by `TRAIT_XP_MULT`. Current XP gain applies that trait multiplier in `addXp`, while `applyHeadStarts` assigns threshold XP directly. **Fix:** State explicitly that the veteran bonus assigns threshold XP directly and is not multiplied by Slow Learner.
+
+4. **High — §5, lines 42–43:** `createSimState` currently has no `options` parameter, and line 40 appends it after `characters`, but the gate instructions do not define how callers that currently omit `characters` pass options. **Fix:** Specify the call form for options-only callers (for example, pass `undefined` for `characters`) or define an options position that preserves existing calls.
+
+5. **High — §5, lines 49–50:** In current oxygen flow, `PASSAGE_CLOSED` is returned by `passageFor` and multiplied into `oxygenStep`’s flow calculation; the spec’s reference to `doors.ts`/oxygen leaves the hook’s placement unclear. **Fix:** Apply the multiplier to the closed-door result in `passageFor`, and confirm no derived conductance caches that value.
+
+6. **Medium — §5, lines 49–54:** The table gives rule values but does not define their arithmetic precisely. For example, a factor of `1.25` could multiply charge time or charge rate, and an offset of `−2` could be subtracted from damage or added to the negative hull delta. **Fix:** State each resulting expression explicitly: closed conductance `PASSAGE_CLOSED * 2`; heat increment `HEAT_RISE + 1`; close delay `DOOR_CLOSE_DELAY * 2`; debris damage `DEBRIS_HULL_DAMAGE - 2`; lead `baseLead + 4`; charge time `JUMP_CHARGE_TIME / 1.25` (or explicitly specify 75 seconds).
+
+7. **Medium — §5, lines 45–56:** The single-use-site constraint is not equally concrete for all hooks: `scienceLead` is named as a function, but `debrisSystem` and `heatStep` name broader routines, and the spec does not require preserving shot damage or other quirks at those sites. **Fix:** Name the exact expressions to modify and state that each hook is neutral for other quirk indices; retain the existing shot-versus-debris damage branch.
+
+8. **Medium — §5, lines 43, 56:** The spec requires one quirk draw and adds the stream last, but does not pin the draw’s place relative to map generation and other state initialization. Since map generation consumes its own stream, an unambiguous creation order would help preserve determinism. **Fix:** Specify that streams are derived in existing order plus `quirk` last, map generation remains on `rng.map`, and exactly one `nextInt(rng.quirk, QUIRK_COUNT)` occurs in `createSimState` before any override.
+
+9. **Low — §5, line 56:** `RUN_FIELDS += 2` is correct for the current run layout, and `STREAM_NAMES` already drives flatten/unflatten and snapshot RNG serialization. But “the snapshot header grow by the quirk stream” could be read as adding a separate header field; the current header’s fixed fields are distinct from the RNG section. **Fix:** Say the serialized RNG section gains one entry and the header’s `rngStates` map gains `quirk`; keep `HEADER_FIELDS` unchanged.
