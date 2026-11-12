@@ -16,6 +16,7 @@ describe('increment 1 gate: two bots survive five minutes', () => {
       const s = makeState(2, seed, DEFAULT_CHARACTERS);
       let minHull = s.hull, impacts = 0, lastImpact = -1, maxHazards = 0, minHealth = HEALTH_MAX, encounterImpacts = 0, lastTelemetryImpacts = 0, repairsSeen = false, fireRepairOutsideRoom = 0, healthAt4 = '';
       for (let t = 0; t < FIVE_MINUTES && !s.ended; t++) {
+        s.run.jumpCharge = 0;   // hazard gate: the captain bot (spec Demo-i section 6) must not leave for Navigation, so the drive never reads ready
         const intents = [botIntent(s, 0), botIntent(s, 1)];
         // Every fire-repair attempt must happen with the repairer inside the burning room.
         for (let p = 0; p < 2; p++) {

@@ -321,6 +321,7 @@ describe('soak', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS);
     const seen = [0, 0, 0, 0]; let last = s.director.phase; seen[last]!++;
     for (let t = 0; t < 72_000; t++) {
+      s.run.jumpCharge = 0;   // the director soak stays on one node: the captain bot must not jump (spec Demo-i section 6)
       step(s, [botIntent(s, 0), botIntent(s, 1)]);
       s.hull = HULL_MAX; for (const eid of s.crew) if (Life.state[eid] === LifeState.Conscious) Health.cur[eid] = HEALTH_MAX;   // harness cheat: the run must not end
       const d = s.director;

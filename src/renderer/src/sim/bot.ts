@@ -1,8 +1,11 @@
 import type { Intent } from '../../../shared/intent';
 import { NEUTRAL_INTENT } from '../../../shared/intent';
 import type { SimState } from './state';
-import { Position, Life, LifeState } from './components';
-import { interactTarget, TargetKind } from './interact';
+import { Position, Life, LifeState, Seated } from './components';
+import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from './interact';
+import { navRows } from './run';
+import { EVENTS } from './events';
+import { StationKind } from './stationKinds';
 import { DoorState } from './grid';
 
 /** Passable for pathing: not a wall, and not a sealed door (closed doors open on approach). */
@@ -59,18 +62,44 @@ function goalTiles(state: SimState, pid: number, here: number): Set<number> {
   return goals;
 }
 
+/** Run behaviour for pid 0 (spec Demo-i section 6): walk to Navigation when the drive is ready, sit, take the event's safe choice or the first jump row, stand after the jump. Null when the run behaviour is not active. */
+function runIntent(state: SimState, pid: number, eid: number, here: number): Intent | null {
+  const nav = state.derived.stationOfKind[StationKind.Navigation]!;
+  if (pid !== 0 || nav < 0) return null;
+  const r = state.run, pending = r.event >= 0 && r.eventChoice < 0, seated = Seated.station[eid] === nav;
+  if (seated) {
+    if (r.jumpCharge < 1 && !pending) return { ...NEUTRAL_INTENT, cancelPressed: true };
+    const rows = navRows(state), c = state.stations.cursor[nav]!;
+    const t = pending ? rows.findIndex((row) => row.select === 'choice' && row.index === EVENTS[r.event]!.safeChoice) : rows.findIndex((row) => row.select === 'jump');
+    if (t < 0) return NEUTRAL_INTENT;
+    if (c !== t) return state.tick % 2 === 0 ? { ...NEUTRAL_INTENT, moveY: t > c ? 1 : -1 } : NEUTRAL_INTENT;   // one stick edge per two ticks
+    return rows[t]!.select === 'choice' || r.jumpCharge >= 1 ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;
+  }
+  if (r.jumpCharge < 1 || pending || state.stations.occupant[nav]! >= 0) return null;
+  const c = confirmTarget(state, 0);
+  if (c.kind === ConfirmKind.Console && c.index === nav) return { ...NEUTRAL_INTENT, confirmPressed: true };
+  const next = firstStep(state, here, new Set([state.derived.stationTile[nav]!]));
+  return next < 0 ? NEUTRAL_INTENT : walkTo(state, eid, next);
+}
+
+function walkTo(state: SimState, eid: number, next: number): Intent {
+  const w = state.derived.width, x = Position.x[eid]!, y = Position.y[eid]!;
+  const nx = next % w + 0.5, ny = (next - next % w) / w + 0.5;
+  const dx = nx - x, dy = ny - y, len = Math.sqrt(dx * dx + dy * dy) || 1;
+  return { ...NEUTRAL_INTENT, moveX: dx / len, moveY: dy / len };
+}
+
 export function botIntent(state: SimState, pid: number): Intent {
   const eid = state.crew[pid]!;
   if (Life.state[eid] !== LifeState.Conscious) return NEUTRAL_INTENT;
-  const x = Position.x[eid]!, y = Position.y[eid]!, w = state.derived.width;
-  const here = Math.floor(y) * w + Math.floor(x);
+  const here = Math.floor(Position.y[eid]!) * state.derived.width + Math.floor(Position.x[eid]!);
   const target = interactTarget(state, pid);
+  if (target.kind === TargetKind.Fight || target.kind === TargetKind.Revive) return { ...NEUTRAL_INTENT, interactHeld: true };   // urgent: outranks every run behaviour
+  const run = runIntent(state, pid, eid, here); if (run) return run;
   const goals = goalTiles(state, pid, here);
   if (target.kind !== TargetKind.None) return { ...NEUTRAL_INTENT, interactHeld: true };
   if (!goals.size) return NEUTRAL_INTENT;
   const next = firstStep(state, here, goals);
   if (next < 0) return NEUTRAL_INTENT;
-  const nx = next % w + 0.5, ny = (next - next % w) / w + 0.5;
-  const dx = nx - x, dy = ny - y, len = Math.sqrt(dx * dx + dy * dy) || 1;
-  return { ...NEUTRAL_INTENT, moveX: dx / len, moveY: dy / len };
+  return walkTo(state, eid, next);
 }
