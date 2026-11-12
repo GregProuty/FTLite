@@ -19,6 +19,7 @@ Written 2026-11-10 when the owner asked for an autonomous run through the featur
 | 13 | **Demo-iii Ship and map:** an FTL-style cutter ship for the app, original system glyphs in rooms and power rows, a sector map at Navigation | sub-project 4 | merged (manual gate pending) |
 | 14 | **Demo-iv Visual cleanup:** a 1280 x 720 screen in non-overlapping bands, the ship scaled to fit, flat floors, walls and doors | sub-project 4 | merged (manual gate pending) |
 | 15 | **Demo-v Bot fire handling:** a hurt bot recognises a burning doorway as fire and never dithers between retreat and duty; lifts duo seed 3 from 0.02 to 16.8 (floor locked at 15; a debris dodge is the next lever toward 25) | sub-project 4 | merged |
+| 16 | **Demo-vi Encounters and fire retune:** each hazard node is one fight with a contact notice, a win that repairs 8 hull and fast-charges the drive; quiet event and shop nodes; slower fire spread, an ambient fire cap of two, enemy hits start the fires | sub-project 4 | merged (manual two-player check open) |
 
 Deferred beyond this list: networking (sub-project 5), a solo drone, the shared luck resource, procedural ships.
 

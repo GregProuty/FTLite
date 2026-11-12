@@ -44,7 +44,7 @@ In every case `encounterTick = tick` and `enemy.nextArrivalTick = NEVER`: **one 
 
 - [x] §4 tests; golden re-blessed once.
 - [x] Every gate re-recorded with the cause; duo seed 3 floor outcome recorded.
-- [ ] Visual check by Claude: an encounter's approach notice, the fight, the win notice and the fast drive.
+- [x] Visual check by Claude (2026-11-12, two idle players, cutter): "Contact: enemy ship approaching" at 265 s, the enemy panel and threat line at 290 s. The win notice and the fast drive are covered by tests only (winning needs a gunner).
 - [ ] Manual, two players: each hazard node feels like a fight with a start and an end; fires are a problem, not the game.
 
 ## 6. Amendments
