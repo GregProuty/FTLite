@@ -12,6 +12,8 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import type { ShipLayout } from '../src/renderer/src/sim/ship/schema';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { createRng, nextFloat } from '../src/shared/rng';
+import { Encounter } from '../src/renderer/src/sim/enemy';
+import { FIRE_SPREAD_P, SPAWN_WEIGHTS, FIRE_SPAWN_CAP, ENCOUNTER_SPAWN_MULT } from '../src/renderer/src/sim/tuning';
 import { TICK_HZ, SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_INTERVAL_MIN, SPAWN_CAP_MAX, STRESS_WEIGHTS, STRESS_PERIOD, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SINCE_CAP, HULL_MAX, HEALTH_MAX, PRODUCTIVE_WINDOW_TICKS, HAZARD_EVERY } from '../src/renderer/src/sim/tuning';
 import { botIntent } from './helpers/bot';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -41,13 +43,13 @@ describe('escalation helpers', () => {
     expect(cycleBudget(0, 1)).toBe(1); expect(cycleBudget(0, 2)).toBe(3); expect(cycleBudget(0, 3)).toBe(4); expect(cycleBudget(0, 4)).toBe(6);
     expect(cycleBudget(4, 1)).toBe(2); expect(cycleBudget(4, 2)).toBe(5); expect(cycleBudget(4, 3)).toBe(7); expect(cycleBudget(4, 4)).toBe(10);
   });
-  it('typeWeights: base [4,2,2,4], demanding types grow every 4 minutes, the last type is halved to a minimum of 1', () => {
+  it('typeWeights: base [2,2,2,4] (fire weight 1 since Demo-vi), demanding types grow every 4 minutes, the last type is halved to a minimum of 1', () => {
     const s = makeState(2);
-    expect(typeWeights(s)).toEqual([4, 2, 2, 4]);
-    s.tick = 4 * 60 * T; expect(typeWeights(s)).toEqual([4, 2, 4, 6]);
-    s.tick = 10 * 60 * T; expect(typeWeights(s)).toEqual([4, 2, 6, 8]);
-    s.tick = 0; s.director.lastType = HazardType.Fire; expect(typeWeights(s)).toEqual([2, 2, 2, 4]);
-    s.director.lastType = HazardType.Breach; expect(typeWeights(s)).toEqual([4, 1, 2, 4]);
+    expect(typeWeights(s)).toEqual([2, 2, 2, 4]);
+    s.tick = 4 * 60 * T; expect(typeWeights(s)).toEqual([2, 2, 4, 6]);
+    s.tick = 10 * 60 * T; expect(typeWeights(s)).toEqual([2, 2, 6, 8]);
+    s.tick = 0; s.director.lastType = HazardType.Fire; expect(typeWeights(s)).toEqual([1, 2, 2, 4]);
+    s.director.lastType = HazardType.Breach; expect(typeWeights(s)).toEqual([2, 1, 2, 4]);
   });
   it('chooseType maps a unit roll onto the weight intervals in type order', () => {
     const w = [4, 2, 2, 4];
@@ -215,25 +217,25 @@ describe('spawning', () => {
     expect(s.director.nextSpawnTick).toBeGreaterThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * T * (1 - SPAWN_JITTER)));
     expect(s.director.nextSpawnTick).toBeLessThanOrEqual(s.tick + Math.round(SPAWN_INTERVAL * T * (1 + SPAWN_JITTER)));
   });
-  it('explicit director states select fire, breach, power and debris (second draw 0.325, 0.425, 0.625, 0.773 of the unit interval)', () => {
+  it('explicit director states select fire, breach, power and debris (second draw 0.144, 0.325, 0.426, 0.625 against the weights [2, 2, 2, 4] since Demo-vi)', () => {
     const spawn = (directorState: number) => {
       const s = makeState(0); armSpawn(s); s.rng.director.s = directorState;
       const two = createRng(directorState); nextFloat(two); nextFloat(two);                          // jitter, then one type roll
       directorSystem(s); expect(s.rng.director.s).toBe(two.s); return s;
     };
     const counts = (s: ReturnType<typeof makeState>) => [burningRoomCount(s), activeBreachCount(s), failedStationCount(s), activeDebrisCount(s)];
-    const f = spawn(2), b = spawn(14), p = spawn(8), d = spawn(5);
+    const f = spawn(16), b = spawn(2), p = spawn(14), d = spawn(8);
     expect(counts(f)).toEqual([1, 0, 0, 0]); expect(f.director.lastType).toBe(HazardType.Fire);
     expect(counts(b)).toEqual([0, 1, 0, 0]); expect(b.director.lastType).toBe(HazardType.Breach);
     expect(counts(p)).toEqual([0, 0, 1, 0]); expect(p.director.lastType).toBe(HazardType.Power);
     expect(counts(d)).toEqual([0, 0, 0, 1]); expect(d.debris.warned[0]).toBe(0); expect(d.debris.stableId[0]).toBeGreaterThan(0);
-    expect(typeWeights(f)).toEqual([2, 2, 2, 4]); expect(typeWeights(b)).toEqual([4, 1, 2, 4]);         // the last type is halved for the next roll
+    expect(typeWeights(f)).toEqual([1, 2, 2, 4]); expect(typeWeights(b)).toEqual([2, 1, 2, 4]);         // the last type is halved for the next roll
     expect(f.director.budgetLeft).toBe(98); expect(f.director.lastSpawnTick).toBe(f.tick);
   });
   it('a type with no valid target skips: director advanced twice, hazards untouched, timer re-armed', () => {
     const noSites = JSON.parse(JSON.stringify(starter)) as typeof starter; noSites.breachSites = [];
-    const s = createSimState(parseShip(noSites), 0, 1); armSpawn(s); s.rng.director.s = 14;
-    const two = createRng(14); nextFloat(two); nextFloat(two); const h = s.rng.hazards.s;
+    const s = createSimState(parseShip(noSites), 0, 1); armSpawn(s); s.rng.director.s = 2;
+    const two = createRng(2); nextFloat(two); nextFloat(two); const h = s.rng.hazards.s;
     directorSystem(s);
     expect(activeHazardCount(s)).toBe(0); expect(s.rng.director.s).toBe(two.s); expect(s.rng.hazards.s).toBe(h); expect(s.director.nextSpawnTick).toBeGreaterThan(s.tick);
   });
@@ -241,7 +243,7 @@ describe('spawning', () => {
     const s = makeState(2), nav = idx(s, StationKind.Navigation);
     sitDown(s, 0, nav);
     expect(nav).toBe(0);                                                                                    // Navigation is station index 0 on the starter ship
-    armSpawn(s); s.rng.director.s = 8; s.rng.hazards.s = 7;                                                // director rolls power; the hazards target draw 0.012 x 7 candidates picks index 0
+    armSpawn(s); s.rng.director.s = 14; s.rng.hazards.s = 7;                                               // director rolls power; the hazards target draw 0.012 x 7 candidates picks index 0
     run(s, 1);
     expect(s.stations.failed[nav]).toBe(1); expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[nav]).toBe(-1);
   });
@@ -291,28 +293,28 @@ describe('routing (3 or 4 players)', () => {
   it('the longest-idle responding console gets the bonus; fire and breach tie when Life Support is at least as idle as Doors', () => {
     const s = makeState(3); quiet(s);
     idle(s, StationKind.Doors, 61);
-    expect(typeWeights(s)).toEqual([8, 2, 2, 4]);                                 // breach's idle is min(Doors 61, Life Support 0) = 0
+    expect(typeWeights(s)).toEqual([6, 2, 2, 4]);                                 // breach's idle is min(Doors 61, Life Support 0) = 0
     idle(s, StationKind.LifeSupport, 90);
-    expect(typeWeights(s)).toEqual([8, 6, 2, 4]);                                 // both at 61: both routed
+    expect(typeWeights(s)).toEqual([6, 6, 2, 4]);                                 // both at 61: both routed
     s.director.sinceProductive.fill(0); idle(s, StationKind.Engineering, 61);
-    expect(typeWeights(s)).toEqual([4, 2, 6, 4]);
+    expect(typeWeights(s)).toEqual([2, 2, 6, 4]);
     s.director.sinceProductive.fill(0); for (const k of [StationKind.Science, StationKind.Weapons, StationKind.Navigation]) idle(s, k, 61);
-    expect(typeWeights(s)).toEqual([4, 2, 2, 8]);
+    expect(typeWeights(s)).toEqual([2, 2, 2, 8]);
     s.director.sinceProductive.fill(0); idle(s, StationKind.Science, 61);
-    expect(typeWeights(s)).toEqual([4, 2, 2, 4]);                                 // Weapons and Navigation at 0: the minimum governs
+    expect(typeWeights(s)).toEqual([2, 2, 2, 4]);                                 // Weapons and Navigation at 0: the minimum governs
   });
   it('exactly 60 s gives no bonus, 61 s does; two players never route; halving precedes the bonus', () => {
     const s = makeState(3); quiet(s);
-    idle(s, StationKind.Engineering, 60); expect(typeWeights(s)).toEqual([4, 2, 2, 4]);
-    idle(s, StationKind.Engineering, 61); expect(typeWeights(s)).toEqual([4, 2, 6, 4]);
-    s.director.lastType = HazardType.Power; expect(typeWeights(s)).toEqual([4, 2, 5, 4]);   // 2 halved to 1, then +4
+    idle(s, StationKind.Engineering, 60); expect(typeWeights(s)).toEqual([2, 2, 2, 4]);
+    idle(s, StationKind.Engineering, 61); expect(typeWeights(s)).toEqual([2, 2, 6, 4]);
+    s.director.lastType = HazardType.Power; expect(typeWeights(s)).toEqual([2, 2, 5, 4]);   // 2 halved to 1, then +4
     const two = makeState(2); quiet(two); idle(two, StationKind.Engineering, 300);
-    expect(typeWeights(two)).toEqual([4, 2, 2, 4]);
+    expect(typeWeights(two)).toEqual([2, 2, 2, 4]);
   });
   it('a console not on the ship has idle 0 and never attracts routing', () => {
     const s = createSimState(withoutDoors(), 3, 1); quiet(s);
     s.director.sinceProductive[StationKind.Doors] = 1000 * T;                      // stale value for a missing console
-    expect(typeWeights(s)).toEqual([4, 2, 2, 4]);
+    expect(typeWeights(s)).toEqual([2, 2, 2, 4]);
   });
 });
 
@@ -332,5 +334,34 @@ describe('soak', () => {
     }
     expect(s.tick).toBe(72_000); expect(s.ended).toBe(0);
     for (const n of seen) expect(n).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('fire retune (spec Demo-vi section 3)', () => {
+  it('the spread probability and the fire weight', () => {
+    expect(FIRE_SPREAD_P).toBe(0.0012); expect(SPAWN_WEIGHTS.fire).toBe(1);
+    const s = makeState(2); expect(typeWeights(s)).toEqual([2, 2, 2, 4]);
+  });
+  it('the ambient cap: with FIRE_SPAWN_CAP rooms burning the fire weight is 0, a roll that would pick fire picks the next type, and the director never spawns a fire', () => {
+    expect(FIRE_SPAWN_CAP).toBe(2);
+    const one = makeState(2); igniteRoom(one, room(one, 'A')); expect(typeWeights(one)[HazardType.Fire]).toBe(2);
+    const s = makeState(2); igniteRoom(s, room(s, 'A')); igniteRoom(s, room(s, 'G'));
+    const w = typeWeights(s); expect(w).toEqual([0, 2, 2, 4]); expect(chooseType(w, 0)).toBe(HazardType.Breach);
+    for (let seed = 1; seed <= 60; seed++) {
+      const t = makeState(2); quiet(t); armSpawn(t); igniteRoom(t, room(t, 'A')); igniteRoom(t, room(t, 'G')); t.rng.director.s = seed;
+      const d = createRng(seed); nextFloat(d); const u = nextFloat(d);   // the re-arm draw, then the one type roll
+      directorSystem(t);
+      expect(t.telemetry.spawns[HazardType.Fire], `seed ${seed}`).toBe(0);
+      expect(t.telemetry.spawns.reduce((a, b) => a + b, 0), `seed ${seed}`).toBe(1); expect(t.director.lastType).toBe(chooseType([0, 2, 2, 4], u));
+    }
+  });
+  it('the spawn interval is doubled while an encounter is fighting', () => {
+    for (const [encounter, mult] of [[Encounter.Pending, 1], [Encounter.Fighting, ENCOUNTER_SPAWN_MULT], [Encounter.Won, 1]] as const) {
+      const s = makeState(2); s.tick = 600; armSpawn(s); s.run.encounter = encounter;
+      const d = createRng(s.rng.director.s), u = nextFloat(d);
+      directorSystem(s);
+      expect(s.director.nextSpawnTick, `encounter ${encounter}`).toBe(s.tick + Math.round(spawnInterval(s.tick / 3600, 2) * mult * T * (1 + SPAWN_JITTER * (2 * u - 1))));
+    }
+    expect(ENCOUNTER_SPAWN_MULT).toBe(2);
   });
 });

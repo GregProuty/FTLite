@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType } from '../src/renderer/src/sim/run';
+import { Encounter } from '../src/renderer/src/sim/enemy';
 import { deriveStreams } from '../src/renderer/src/sim/state';
 import { Phase } from '../src/renderer/src/sim/director';
 import { EndReason, downCrew } from '../src/renderer/src/sim/crew';
@@ -10,8 +11,8 @@ import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { failStation } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, JUMP_CHARGE_TIME, ENCOUNTER_AFTER_JUMP, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX } from '../src/renderer/src/sim/tuning';
-import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard } from './helpers/sim';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from '../src/renderer/src/sim/tuning';
+import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard, mapM, setNodeTypes } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 
 const T = TICK_HZ;
@@ -144,15 +145,15 @@ describe('run: the jump', () => {
     const nav = seatNavigator(s, 0); s.run.jumpCharge = 1; s.director.stress = 0.42;
     return { s, nav, sci, A, G };
   };
-  it('clears the encounter and keeps the ship: objects gone, cursors -1, scanning 0, enemy withdrawn (not destroyed) and re-armed, boarder kept, director in Build Up with stress kept, everything else untouched; two director draws with the enemy present, one without', () => {
+  it('clears the encounter and keeps the ship: objects gone, cursors -1, scanning 0, enemy withdrawn (not destroyed) and the next node armed, boarder kept, director in Build Up with stress kept, everything else untouched; one director draw with or without the enemy (Demo-vi: the withdrawal no longer draws a cooldown)', () => {
     const { s, nav, sci, A } = loaded();
     const tick = s.tick, before = { stress: s.director.stress, boarderRoom: s.boarders.room[0], boarderHealth: s.boarders.health[0], boarderMove: s.boarders.nextMoveTick[0], boardArrival: s.boarders.nextArrivalTick, xp: s.skills.xp[Skill.Repair], hull: s.hull, h1: Health.cur[s.crew[1]!], charge: s.weapons.charge, loaded: s.weapons.torpedoLoaded, selector: s.weapons.selector, fire: s.rooms.fire[A], breach: s.breaches.active[6], failed: s.stations.failed[s.derived.stationOfKind[StationKind.Doors]!] };
-    const dr = createRng(s.rng.director.s); nextFloat(dr); nextFloat(dr); const h0 = s.rng.hazards.s, c0 = s.rng.combat.s, m0 = s.rng.map.s;
+    const dr = createRng(s.rng.director.s); nextFloat(dr); const h0 = s.rng.hazards.s, c0 = s.rng.combat.s, m0 = s.rng.map.s;
     const reachableBefore = reachable(s);
     jumpShip(s, reachable(s)[0]!);
     expect([s.run.column, s.run.nodesReached, s.run.jumpCharge, s.telemetry.jumps]).toEqual([1, 1, 0, 1]); expect(s.run.node).toBe(reachableBefore[0]); expect(s.stations.cursor[nav]).toBe(0);
     expect(Array.from(s.debris.active)).toEqual(new Array(DEBRIS_SLOTS).fill(0)); expect(s.stations.cursor[s.derived.stationOfKind[StationKind.Weapons]!]).toBe(-1); expect(s.stations.cursor[sci]).toBe(-1); expect(s.science.scanning).toBe(0);
-    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.enemy.nextArrivalTick]).toEqual([0, 0, tick + ENCOUNTER_AFTER_JUMP * T]);
+    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.enemy.nextArrivalTick]).toEqual([0, 0, s.run.nodeType[3 + s.run.node] === NodeType.Hazard ? tick + ENCOUNTER_START * T : NEVER]);
     expect([s.boarders.active[0], s.boarders.room[0], s.boarders.health[0], s.boarders.nextMoveTick[0], s.boarders.nextArrivalTick]).toEqual([1, before.boarderRoom, before.boarderHealth, before.boarderMove, before.boardArrival]);
     expect([s.director.phase, s.director.phaseTick, s.director.stress]).toEqual([Phase.BuildUp, tick, before.stress]);
     expect([s.hull, Health.cur[s.crew[1]!], s.skills.xp[Skill.Repair], s.weapons.charge, s.weapons.torpedoLoaded, s.weapons.selector, s.rooms.fire[A], s.breaches.active[6], s.stations.failed[s.derived.stationOfKind[StationKind.Doors]!]]).toEqual([before.hull, before.h1, before.xp, before.charge, before.loaded, before.selector, before.fire, before.breach, before.failed]);
@@ -189,8 +190,43 @@ describe('run: the jump', () => {
   });
   it('post-jump re-arms are the same for crews of two and four (spec Demo-i section 5: only the first arrival differs)', () => {
     for (const p of [2, 4]) {
-      const q = calm(p); q.run.jumpCharge = 1; q.tick = 1000; jumpShip(q, reachable(q)[0]!);
-      expect([q.enemy.nextArrivalTick, q.boarders.nextArrivalTick]).toEqual([q.tick + ENCOUNTER_AFTER_JUMP * T, q.tick + BOARDING_AFTER_JUMP * T]);
+      const q = calm(p); allHazard(q); q.run.jumpCharge = 1; q.tick = 1000; jumpShip(q, reachable(q)[0]!);
+      expect([q.enemy.nextArrivalTick, q.boarders.nextArrivalTick]).toEqual([q.tick + ENCOUNTER_START * T, q.tick + BOARDING_AFTER_JUMP * T]);
     }
+  });
+});
+
+describe('encounters at nodes (spec Demo-vi section 2)', () => {
+  const at = (type: number) => { const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': type }); chargeJump(s); s.tick = 1000; jumpShip(s, 0); s.boarders.nextArrivalTick = 1e9; return s; };
+  it('a jump to a Hazard node: encounter pending, the enemy at +8 s exactly, the fight starts on arrival', () => {
+    const s = at(NodeType.Hazard), t0 = s.tick;
+    expect([s.run.encounter, s.run.encounterTick, s.enemy.nextArrivalTick]).toEqual([Encounter.Pending, t0, t0 + ENCOUNTER_START * T]);
+    expect(ENCOUNTER_START).toBe(8);
+    run(s, ENCOUNTER_START * T); expect(s.enemy.present).toBe(0);
+    run(s, 1); expect([s.enemy.present, s.run.encounter, s.run.encounterTick]).toEqual([1, Encounter.Fighting, t0 + ENCOUNTER_START * T]);
+  });
+  for (const [name, type] of [['Event', NodeType.Event], ['Shop', NodeType.Shop]] as const) {
+    it(`a jump to an ${name} node is quiet: encounter 0, NEVER, no enemy over 600 s`, () => {
+      const s = at(type);
+      expect([s.run.encounter, s.enemy.nextArrivalTick]).toEqual([Encounter.None, NEVER]);
+      run(s, 600 * T);
+      expect([s.enemy.present, s.telemetry.encounters]).toEqual([0, 0]);
+    });
+  }
+  it('a jump with the enemy present ends its encounter without reward and arms the next node', () => {
+    const s = calm(2); mapM(s); placeEnemy(s); s.run.encounter = Encounter.Fighting; s.hull = 60; chargeJump(s); jumpShip(s, 0);
+    expect([s.enemy.present, s.hull, s.run.driveBoost, s.telemetry.encountersWon, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([0, 60, 0, 0, Encounter.Pending, s.tick + ENCOUNTER_START * T]);
+  });
+  it('the last column is not an encounter', () => {
+    const s = calm(2); s.run.column = 6; s.run.node = 0; chargeJump(s); jumpShip(s, reachable(s)[0]!);
+    expect([s.ended, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([1, Encounter.None, NEVER]);
+  });
+  it('the drive boost charges ENCOUNTER_BOOST times as fast and the jump clears it', () => {
+    const s = calm(2); mapM(s); s.run.quirk = 0; s.run.driveBoost = 1; run(s, 1);   // quirk 0 leaves the charge rate alone
+    expect(s.run.jumpCharge).toBeCloseTo(ENCOUNTER_BOOST * DT / JUMP_CHARGE_TIME, 12);
+    expect(ENCOUNTER_BOOST).toBe(4);
+    run(s, (JUMP_CHARGE_TIME / ENCOUNTER_BOOST) * T + 1); expect(s.run.jumpCharge).toBe(1);
+    jumpShip(s, 0); expect([s.run.driveBoost, s.run.jumpCharge]).toEqual([0, 0]);
+    run(s, 1); expect(s.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
   });
 });

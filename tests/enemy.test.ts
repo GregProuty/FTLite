@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enemySystem, fireInterval, leave, EnemySystem, enemyBeamThreshold, damageEnemy } from '../src/renderer/src/sim/enemy';
+import { enemySystem, fireInterval, leave, EnemySystem, enemyBeamThreshold, damageEnemy, Encounter } from '../src/renderer/src/sim/enemy';
 import { ObjectKind, shotsInFlight, debrisSystem, spawnDebris } from '../src/renderer/src/sim/debris';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, isEnemySlot, enemySystemOf, targetStableId, isTarget, warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
 import { sitDown, standUp, stationOutput } from '../src/renderer/src/sim/stations';
@@ -7,7 +7,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, ENEMY_AIM_CHANCE, CREW_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, ENEMY_SHOT_CREW_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, ENCOUNTER_MAX, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, ENEMY_AIM_CHANCE, CREW_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, ENEMY_SHOT_CREW_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME, ENCOUNTER_REWARD_HULL, NEVER } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, armSpawn, placeEnemy, disableSystem, guardDebris, placeShot, placeDebris, room, intents, teleport, seconds } from './helpers/sim';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
@@ -90,30 +90,30 @@ describe('enemy: schedule (enemySystem called directly)', () => {
     expect(f.rng.director.s).toBe(d2.s); expect(f.rng.hazards.s).toBe(h2); expect(shotsInFlight(f)).toBe(0);
     expect(f.enemy.nextShotTick).toBe(f.tick + Math.round(fireInterval(minutesOf(f), 2) * T * jitter(u2)));
   });
-  it('withdraws exactly at departTick with one director draw, leaving shots in flight and arming the cooldown; a tick with both clocks due fires nothing', () => {
+  it('withdraws exactly at departTick with no draw (Demo-vi: no cooldown, NEVER), leaving shots in flight; a tick with both clocks due fires nothing', () => {
     const s = makeState(2); quiet(s); placeEnemy(s); const A = room(s, 'A'); placeShot(s, A, 600);
     s.tick = s.enemy.departTick - 1; s.enemy.nextShotTick = 1e9; enemySystem(s);
     expect(s.enemy.present).toBe(1);
-    s.tick = s.enemy.departTick; s.rng.director.s = 7; const dr = createRng(7), u = nextFloat(dr); const h = s.rng.hazards.s;
+    s.tick = s.enemy.departTick; s.rng.director.s = 7; const dr = createRng(7); const h = s.rng.hazards.s;
     enemySystem(s);
     const e = s.enemy;
     expect([e.present, e.hull, e.stableId, e.nextShotTick, e.departTick]).toEqual([0, 0, 0, -1, -1]);
-    expect(e.nextArrivalTick).toBe(s.tick + Math.round(ENCOUNTER_COOLDOWN * T * jitter(u)));
+    expect(e.nextArrivalTick).toBe(NEVER);
     expect(s.rng.director.s).toBe(dr.s); expect(s.rng.hazards.s).toBe(h); expect(s.telemetry.enemiesDestroyed).toBe(0);
     expect(s.debris.active[0]).toBe(1); expect(s.debris.kind[0]).toBe(ObjectKind.Shot);
     const both = makeState(2); quiet(both); placeEnemy(both);
     both.tick = both.enemy.departTick; both.enemy.nextShotTick = both.tick;
-    const d3 = createRng(both.rng.director.s); nextFloat(d3); const h3 = both.rng.hazards.s;
+    const d3 = createRng(both.rng.director.s); const h3 = both.rng.hazards.s;
     enemySystem(both);
     expect(both.enemy.present).toBe(0); expect(shotsInFlight(both)).toBe(0); expect(both.rng.director.s).toBe(d3.s); expect(both.rng.hazards.s).toBe(h3);
   });
-  it('a second encounter arrives after the cooldown with a new StableId and encounters 2', () => {
+  it('no second encounter at the node: after the departure the arrival clock reads NEVER (Demo-vi; the cooldown is retired)', () => {
     const s = makeState(2); quiet(s);
-    s.tick = s.enemy.nextArrivalTick; enemySystem(s); const first = s.enemy.stableId;
+    s.tick = s.enemy.nextArrivalTick; enemySystem(s);
     expect(s.telemetry.encounters).toBe(1);
     s.tick = s.enemy.departTick; enemySystem(s);
-    s.tick = s.enemy.nextArrivalTick; enemySystem(s);
-    expect(s.enemy.present).toBe(1); expect(s.enemy.stableId).toBeGreaterThan(first); expect(s.telemetry.encounters).toBe(2);
+    expect(s.enemy.nextArrivalTick).toBe(NEVER); s.tick += 600 * T; enemySystem(s);
+    expect(s.enemy.present).toBe(0); expect(s.telemetry.encounters).toBe(1);
   });
   it('through step(): arrival at ENCOUNTER_FIRST, a shot warned on its spawn tick when Science is seated', () => {
     const s = makeState(2); quiet(s); s.enemy.nextArrivalTick = ENCOUNTER_FIRST * T;
@@ -238,13 +238,13 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
     const m = armed(); m.s.weapons.selector = Weapon.Torpedo; m.s.weapons.torpedoLoaded = 1; m.s.rng.combat.s = 4;
     expect(fireWeapon(m.s)).toBe(false); expect(m.s.enemy.hull).toBe(ENEMY_HULL);
   });
-  it('the kill: hull 15 and a beam hit destroys the enemy, retargets, draws the cooldown once, and leaves a shot in flight', () => {
+  it('the kill: hull 15 and a beam hit destroys the enemy, retargets, makes no director draw (Demo-vi: NEVER), and leaves a shot in flight', () => {
     const { s, w } = armed(15); const A = room(s, 'A'); const k = placeShot(s, A, 600, 1); const b = placeDebris(s, A, 600, 1);
-    s.stations.cursor[w] = ENEMY_SLOT; s.rng.combat.s = 7; s.rng.director.s = 7; const dr = createRng(7), u = nextFloat(dr);
+    s.stations.cursor[w] = ENEMY_SLOT; s.rng.combat.s = 7; s.rng.director.s = 7; const dr = createRng(7);
     expect(fireWeapon(s)).toBe(true);
     expect([s.enemy.present, s.enemy.hull, s.telemetry.enemiesDestroyed, s.telemetry.shots, s.telemetry.hits]).toEqual([0, 0, 1, 1, 1]);
     expect(s.stations.cursor[w]).toBe(k);   // the next StableId after the enemy's: the shot (placed after placeEnemy) sorts first
-    expect(s.rng.director.s).toBe(dr.s); expect(s.enemy.nextArrivalTick).toBe(s.tick + Math.round(ENCOUNTER_COOLDOWN * T * jitter(u)));
+    expect(s.rng.director.s).toBe(dr.s); expect(s.enemy.nextArrivalTick).toBe(NEVER);
     expect(s.debris.active[k]).toBe(1); expect(s.debris.kind[k]).toBe(ObjectKind.Shot);
   });
   it('readiness rejections against the enemy: absent, offline, unoccupied, uncharged, unloaded (no draw, no shot)', () => {
@@ -259,7 +259,7 @@ describe('enemy: shooting the ship (combat 7 -> 0.012 hits, combat 4 -> 0.924 mi
   });
   it('a kill on a due-shot tick fires nothing: destroyed in the Weapons step, enemySystem finds it absent', () => {
     const s = makeState(2); quiet(s); placeEnemy(s, 15); const w = wpn(s); sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 1;
-    s.enemy.nextShotTick = s.tick; s.rng.combat.s = 7; const d1 = createRng(s.rng.director.s); nextFloat(d1); const h = s.rng.hazards.s;
+    s.enemy.nextShotTick = s.tick; s.rng.combat.s = 7; const d1 = createRng(s.rng.director.s); const h = s.rng.hazards.s;   // no director draw: since Demo-vi a kill arms no cooldown
     run(s, 1, () => intents({ confirmPressed: true }, {}));
     expect(s.enemy.present).toBe(0); expect(s.telemetry.enemiesDestroyed).toBe(1); expect(shotsInFlight(s)).toBe(0); expect(s.rng.director.s).toBe(d1.s); expect(s.rng.hazards.s).toBe(h);
   });
@@ -450,5 +450,43 @@ describe('enemy systems: shields in the fire path, subsystem rows, the scan', ()
       g.stations.cursor[cg] = slot; g.stations.cursor[wg] = slot; g.science.scanning = 1;
       expect(() => { scienceInput(g, cg, -1, true); scanStep(g); isProductive(g, cg); g.rng.combat.s = 7; fireWeapon(g); g.weapons.charge = 1; }).not.toThrow();
     }
+  });
+});
+
+describe('encounters (spec Demo-vi section 2)', () => {
+  const fighting = (hull = ENEMY_HULL) => { const s = makeState(2); quiet(s); s.boarders.nextArrivalTick = 1e9; s.tick = s.enemy.nextArrivalTick; enemySystem(s); s.enemy.hull = hull; s.enemy.nextShotTick = 1e9; return s; };
+  it('creation: encounter pending, encounterTick -1, no boost, no wins; the start node first arrival is unchanged', () => {
+    const s = makeState(2);
+    expect([s.run.encounter, s.run.encounterTick, s.run.driveBoost, s.telemetry.encountersWon]).toEqual([Encounter.Pending, -1, 0, 0]);
+    for (const [p, first] of [[1, ENCOUNTER_FIRST_SMALL], [2, ENCOUNTER_FIRST_SMALL], [3, ENCOUNTER_FIRST], [4, ENCOUNTER_FIRST]] as const) expect(makeState(p, 1).enemy.nextArrivalTick).toBe(first * T);
+  });
+  it('arrival starts the fight: encounter 2 at the arrival tick', () => {
+    const s = fighting();
+    expect([s.enemy.present, s.run.encounter, s.run.encounterTick]).toEqual([1, Encounter.Fighting, s.tick]);
+  });
+  it('destroyed: won, +8 hull (capped at HULL_MAX), the drive boost, one win, NEVER, and no director draw', () => {
+    for (const [hull0, hull1] of [[50, 50 + ENCOUNTER_REWARD_HULL], [95, HULL_MAX]] as const) {
+      const s = fighting(10); s.hull = hull0; s.tick += 100; const d0 = s.rng.director.s;
+      damageEnemy(s, ENEMY_SLOT, 50);
+      expect([s.enemy.present, s.run.encounter, s.run.encounterTick, s.hull, s.run.driveBoost, s.telemetry.encountersWon, s.enemy.nextArrivalTick]).toEqual([0, Encounter.Won, s.tick, hull1, 1, 1, NEVER]);
+      expect(s.rng.director.s).toBe(d0);
+    }
+    expect(ENCOUNTER_REWARD_HULL).toBe(8); expect(NEVER).toBe(2 ** 31 - 1);
+  });
+  it('a paid surrender is a win; a voided flee, a withdrawal and a jump end the encounter without reward', () => {
+    const p = fighting(20); p.enemy.fleeing = 1; p.enemy.surrenderIntact = 1; p.enemy.departTick = p.tick + 1; p.hull = 60; p.tick += 1; enemySystem(p);
+    expect([p.enemy.present, p.run.encounter, p.hull, p.run.driveBoost, p.telemetry.encountersWon, p.telemetry.surrenders, p.enemy.nextArrivalTick]).toEqual([0, Encounter.Won, 68, 1, 1, 1, NEVER]);
+    const f = fighting(20); f.enemy.fleeing = 1; f.enemy.surrenderIntact = 0; f.enemy.departTick = f.tick + 1; f.hull = 60; f.tick += 1; enemySystem(f);
+    expect([f.run.encounter, f.run.encounterTick, f.hull, f.run.driveBoost, f.telemetry.encountersWon, f.telemetry.enemyFled, f.enemy.nextArrivalTick]).toEqual([Encounter.Over, f.tick, 60, 0, 0, 1, NEVER]);
+    const w = fighting(); w.hull = 60; w.tick = w.enemy.departTick; enemySystem(w);
+    expect([w.enemy.present, w.run.encounter, w.run.encounterTick, w.hull, w.run.driveBoost, w.telemetry.encountersWon, w.enemy.nextArrivalTick]).toEqual([0, Encounter.Over, w.tick, 60, 0, 0, NEVER]);
+    const j = fighting(); j.hull = 60; j.enemy.surrenderIntact = 0; leave(j, false);   // what jumpShip does with the enemy present
+    expect([j.run.encounter, j.hull, j.run.driveBoost, j.telemetry.encountersWon, j.enemy.nextArrivalTick]).toEqual([Encounter.Over, 60, 0, 0, NEVER]);   // over, no reward; the jump then sets the next node's encounter (run.test)
+  });
+  it('one enemy per node: after the enemy withdraws nothing arrives for 600 s', () => {
+    const s = fighting(); run(s, s.enemy.departTick - s.tick + 1);
+    expect([s.enemy.present, s.run.encounter]).toEqual([0, Encounter.Over]);
+    run(s, 600 * T);
+    expect([s.enemy.present, s.telemetry.encounters, s.enemy.nextArrivalTick]).toEqual([0, 1, NEVER]);
   });
 });

@@ -3,14 +3,14 @@ import { nextFloat, nextInt, type RngState } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
 import { Dir } from './dir';
 import { clearObjects } from './debris';
-import { leave } from './enemy';
+import { leave, Encounter } from './enemy';
 import { activeBoarderCount } from './boarders';
 import { enterPhase, Phase } from './director';
 import { EndReason } from './crew';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, ENCOUNTER_AFTER_JUMP, BOARDING_AFTER_JUMP } from './tuning';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from './tuning';
 import { quirkChargeMult } from './quirks';
 
 /** Longest Navigation panel text: the console panel is 234 px wide, row text starts at x=20 and the bitmap font averages about 5.5 px per glyph, so 36 glyphs fit. */
@@ -60,8 +60,8 @@ export function reachable(state: SimState): number[] {
   return out;
 }
 
-/** First system of the tick: the drive charges from arrival, whatever else happens (spec section 6). */
-export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.min(1, state.run.jumpCharge + DT / (JUMP_CHARGE_TIME * quirkChargeMult(state))); }
+/** First system of the tick: the drive charges from arrival, whatever else happens (spec section 6); ENCOUNTER_BOOST times as fast after a won encounter (spec Demo-vi section 2). */
+export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.min(1, state.run.jumpCharge + (state.run.driveBoost === 1 ? ENCOUNTER_BOOST : 1) * DT / (JUMP_CHARGE_TIME * quirkChargeMult(state))); }
 
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
 function arrive(state: SimState): void {
@@ -108,17 +108,19 @@ export function navigationInput(state: SimState, i: number, dir: number, confirm
   else if (row.select === 'jump' && state.run.jumpCharge >= 1) jumpShip(state, row.index);
 }
 
-/** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. */
+/** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. A Hazard node short of the last column is an encounter with contact in ENCOUNTER_START seconds; Event and Shop nodes are quiet (spec Demo-vi section 2). */
 export function jumpShip(state: SimState, destination: number): void {
   const r = state.run, list = reachable(state), nav = state.derived.stationOfKind[StationKind.Navigation]!;
   if (!list.includes(destination)) return;
-  r.node = destination; r.column += 1; r.nodesReached += 1; r.jumpCharge = 0;
+  r.node = destination; r.column += 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0;
   if (nav >= 0) state.stations.cursor[nav] = 0;
   state.telemetry.jumps++;
   arrive(state);
   clearObjects(state);
   if (state.enemy.present) { state.enemy.surrenderIntact = 0; leave(state, false); }   // the ship left, not the enemy: a flee in progress counts as a flight, no surrender bounty (spec Demo-i section 11.3)
-  state.enemy.nextArrivalTick = state.tick + ENCOUNTER_AFTER_JUMP * TICK_HZ;
+  const encounter = r.column < RUN_COLUMNS - 1 && r.nodeType[r.column * 3 + r.node] === NodeType.Hazard;
+  r.encounter = encounter ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick;
+  state.enemy.nextArrivalTick = encounter ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);
   if (r.column === RUN_COLUMNS - 1) { state.ended = 1; state.endReason = EndReason.Victory; }

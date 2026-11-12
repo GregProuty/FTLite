@@ -42,11 +42,18 @@ In every case `encounterTick = tick` and `enemy.nextArrivalTick = NEVER`: **one 
 
 ## 5. Gate
 
-- [ ] §4 tests; golden re-blessed once.
-- [ ] Every gate re-recorded with the cause; duo seed 3 floor outcome recorded.
+- [x] §4 tests; golden re-blessed once.
+- [x] Every gate re-recorded with the cause; duo seed 3 floor outcome recorded.
 - [ ] Visual check by Claude: an encounter's approach notice, the fight, the win notice and the fast drive.
 - [ ] Manual, two players: each hazard node feels like a fight with a start and an end; fires are a problem, not the game.
 
 ## 6. Amendments
 
-(Filled during implementation.)
+- **Shot impact mapping.** Section 3 gives `breachFirst = u < 0.25` for Shots; section 4's "fire-first at u < 0.75" names the same 75 % from the other end of the interval. Implemented as section 3 states (`SHOT_BREACH_FIRST = 0.25`: a Shot tries a breach first when u < 0.25, a fire first otherwise); the test pins u < 0.25 -> breach, u >= 0.25 -> fire, debris still 50/50, one draw either way.
+- **Draw accounting.** `leave` no longer draws from `rng.director` (the `ENCOUNTER_COOLDOWN` jitter is gone with the constant). A kill, a withdrawal or a flight makes no director draw; a jump with the enemy present makes one director draw (the Build Up re-arm), not two. Shots keep their jittered re-arm draw. Tests updated for this reason: enemy.test (withdrawal, kill, kill on a due-shot tick, and the old "second encounter after the cooldown" test, now "no second encounter at the node") and run.test (the jump's draw count and the post-jump enemy clock).
+- **Where the end is recorded.** `leave` sets `encounterTick = tick` and `nextArrivalTick = NEVER` on every departure; the won/over transition happens only while `encounter === 2` (an enemy placed by a test with `encounter 1` leaves without a reward). A jump with the enemy present passes through "over" and the jump then sets the new node's state, so "Enemy gone" never shows after a jump.
+- **Jump state.** Every jump sets `encounterTick = tick` with the new `encounter` (1 at a Hazard node short of the last column, 0 otherwise, the final column included) and clears `driveBoost`.
+- **Ambient cap placement.** The cap is applied in `typeWeights` after the halving and the routing bonus (fire weight set to 0), so the weights tests read are the ones the roll uses. `ENCOUNTER_SPAWN_MULT` multiplies the interval in the director re-arm; `spawnInterval` itself is unchanged.
+- **Telemetry.** `encountersWon` is flattened after `surrenders`; it is not added to the telemetry record or the acceptance table (not asked for).
+- **Tests updated for the retune.** director.test: every `typeWeights` expectation now has fire base 2 instead of 4; the explicit-director-state test uses seeds 16/2/14/8 (second draws 0.144/0.325/0.426/0.625 against [2, 2, 2, 4]); the no-target and failure-in-step tests use seeds 2 (breach) and 14 (power). snapshot.test rejects version 17. No existing test pinned the spread constant or the 50/50 shot impact.
+- **Gates.** All pass with no lever taken; figures in docs/gates.md (Demo-vi). `gate-duo` seed 3 rose from 16.8 to 81.5 (its bots jump through quiet nodes and meet no enemy in the window), so its exception at 15 is removed and every seed is on 25. Seeds 1 and 2 fell from 63.4/60.9 to 28.8/28.9, and `gate-survival` seed 2 from 73.7 to 23.7 (that gate has no health floor): the margin is thinner where the bots fight under fire-first hits.

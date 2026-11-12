@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { buildHudModel, runNotice } from '../src/renderer/src/render/hudModel';
 import { EVENTS, resolveEvent } from '../src/renderer/src/sim/events';
 import { NodeType } from '../src/renderer/src/sim/run';
-import { NOTICE_LINE_MAX, SCRAP_SURRENDER } from '../src/renderer/src/sim/tuning';
+import { NOTICE_LINE_MAX, SCRAP_SURRENDER, ENCOUNTER_NOTICE_SECONDS } from '../src/renderer/src/sim/tuning';
+import { Encounter } from '../src/renderer/src/sim/enemy';
 import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump, seatNavigator, placeEnemy } from './helpers/sim';
 
 // Spec Demo-i sections 4, 8 and 11.4 rule 1b: the two-line run notice both players read.
@@ -57,5 +58,39 @@ describe('runNotice', () => {
     const f = fresh(); surrender(f); lines.push(...runNotice(f));
     expect(lines.length).toBeGreaterThanOrEqual(12 + 2 + 2 + 1);
     for (const l of lines) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[\x20-\x7e]+$/.test(l)).toBe(true); }
+  });
+});
+
+describe('runNotice: encounters (spec Demo-vi section 2)', () => {
+  const WON = ['ENEMY DEFEATED   +8 hull', 'Drive charging fast'];
+  const ended = (enc: number) => { const s = fresh(); s.tick = 3000; s.run.encounter = enc; s.run.encounterTick = s.tick; return s; };
+  it('won: the defeat line and the fast drive for ENCOUNTER_NOTICE_SECONDS after the end; over: Enemy gone; then nothing', () => {
+    expect(ENCOUNTER_NOTICE_SECONDS).toBe(8);
+    const w = ended(Encounter.Won); expect(runNotice(w)).toEqual(WON);
+    w.tick += ENCOUNTER_NOTICE_SECONDS * 60 - 1; expect(runNotice(w)).toEqual(WON);
+    w.tick += 1; expect(runNotice(w)).toEqual([]);
+    const o = ended(Encounter.Over); expect(runNotice(o)).toEqual(['Enemy gone']);
+    o.tick += ENCOUNTER_NOTICE_SECONDS * 60; expect(runNotice(o)).toEqual([]);
+  });
+  it('contact: while pending and the arrival is due within 8 s', () => {
+    const s = fresh(); s.tick = 3000; s.run.encounter = Encounter.Pending; s.enemy.nextArrivalTick = s.tick + 8 * 60 + 1; expect(runNotice(s)).toEqual([]);
+    s.enemy.nextArrivalTick = s.tick + 8 * 60; expect(runNotice(s)).toEqual(['Contact: enemy ship approaching']);
+    s.enemy.nextArrivalTick = s.tick + 1; expect(runNotice(s)).toEqual(['Contact: enemy ship approaching']);
+    s.run.encounter = Encounter.None; expect(runNotice(s)).toEqual([]);
+    s.run.encounter = Encounter.Fighting; expect(runNotice(s)).toEqual([]);
+  });
+  it('priority: the pending event first, then the encounter rule, then the surrender, the shop and the ready drive', () => {
+    const s = ended(Encounter.Won); shopAt(s); chargeJump(s); setEvent(s, 4);
+    expect(runNotice(s)[0]).toBe('EVENT: Supply cache');
+    s.run.eventChoice = 0; expect(runNotice(s)).toEqual(WON);
+    surrender(s); expect(runNotice(s)).toEqual(WON);                                                       // the rule sits before the surrender line
+    s.run.encounter = Encounter.Fighting; expect(runNotice(s)[0]).toMatch(/^ENEMY SURRENDERS/);
+    s.enemy.present = 0; expect(runNotice(s)).toEqual(SHOP);
+    const r = ended(Encounter.Over); chargeJump(r); expect(runNotice(r)).toEqual(['Enemy gone']);
+  });
+  it('every encounter line is ASCII and within NOTICE_LINE_MAX', () => {
+    const lines = [...WON, 'Enemy gone', 'Contact: enemy ship approaching'];
+    for (const l of lines) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[ -~]+$/.test(l)).toBe(true); }
+    const c = fresh(); c.enemy.nextArrivalTick = c.tick + 60; expect(runNotice(c)).toEqual([lines[3]]);
   });
 });

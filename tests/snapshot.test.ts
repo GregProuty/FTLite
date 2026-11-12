@@ -14,7 +14,7 @@ import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, di
 import { Skill } from '../src/renderer/src/sim/skills';
 import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST_SMALL, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
-import { EnemySystem } from '../src/renderer/src/sim/enemy';
+import { EnemySystem, damageEnemy } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { failStation } from '../src/renderer/src/sim/power';
@@ -49,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-16 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-17 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 16 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 16;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 17 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 17;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -416,6 +416,28 @@ describe('snapshot', () => {
     const drive = (s: ReturnType<typeof makeState>) => run(s, 0.1 * JUMP_CHARGE_TIME * TICK_HZ + 600, () => intents({ confirmPressed: true }, {}));
     drive(whole); drive(resumed);
     expect([resumed.run.column, resumed.run.node, resumed.run.nodesReached]).toEqual([1, 1, 1]);
+    expect(hashState(resumed)).toBe(hashState(whole));
+  });
+});
+
+describe('snapshot: encounters (spec Demo-vi section 2)', () => {
+  it('encounter, encounterTick, driveBoost and encountersWon round-trip and each alone changes the hash', () => {
+    const s = makeState(2, 5); s.run.encounter = 3; s.run.encounterTick = 4321; s.run.driveBoost = 1; s.telemetry.encountersWon = 2;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect([t.run.encounter, t.run.encounterTick, t.run.driveBoost, t.telemetry.encountersWon]).toEqual([3, 4321, 1, 2]);
+    expect(hashState(t)).toBe(hashState(s));
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
+    for (const k of ['encounter', 'encounterTick', 'driveBoost'] as const) expect(mutate((u) => { u.run[k] = 2; }), k).not.toBe(base);
+    expect(mutate((u) => { u.telemetry.encountersWon = 1; })).not.toBe(base);
+  });
+  it('a run saved after a won encounter with the drive boosted continues like the uninterrupted run through the jump', () => {
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); s.tick = s.enemy.nextArrivalTick; run(s, 1); damageEnemy(s, ENEMY_SLOT, 999); seatNavigator(s, 1); run(s, 30); return s; };
+    const whole = setup(makeState(2, 7)), part = setup(makeState(2, 7));
+    expect([part.run.encounter, part.run.driveBoost]).toEqual([3, 1]);
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    run(whole, 1000, () => intents({}, { confirmPressed: true })); run(resumed, 1000, () => intents({}, { confirmPressed: true }));
+    expect(resumed.telemetry.jumps).toBe(1); expect(resumed.run.driveBoost).toBe(0);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
 });

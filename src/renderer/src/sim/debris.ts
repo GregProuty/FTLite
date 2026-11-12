@@ -11,7 +11,7 @@ import { nextTarget } from './debrisTargets';
 import { failStation } from './power';
 import { quirkDebrisHullOffset, quirkLeadOffset } from './quirks';
 import { Skill, addXp } from './skills';
-import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE, ENEMY_AIM_CHANCE, ENEMY_SHOT_SYSTEM_CHANCE, ENEMY_SHOT_CREW_DAMAGE } from './tuning';
+import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE, ENEMY_AIM_CHANCE, ENEMY_SHOT_SYSTEM_CHANCE, ENEMY_SHOT_CREW_DAMAGE, SHOT_BREACH_FIRST } from './tuning';
 
 export function activeDebrisCount(state: SimState): number {
   let n = 0; for (const a of state.debris.active) if (a) n++; return n;
@@ -92,7 +92,7 @@ function resolveImpact(state: SimState, slot: number): void {
   state.hull = Math.max(0, state.hull - (db.kind[slot] === ObjectKind.Shot ? ENEMY_SHOT_HULL_DAMAGE : DEBRIS_HULL_DAMAGE + quirkDebrisHullOffset(state)));
   state.telemetry.impacts++;
   if (db.kind[slot] === ObjectKind.Shot) for (let i = 0; i < state.stations.level.length; i++) if (stationOnline(state, i) && d.roomOfTile[d.stationTile[i]!] === room && nextFloat(state.rng.hazards) < ENEMY_SHOT_SYSTEM_CHANCE) failStation(state, i);   // a shot can fail each online console in the room, one hazards draw each (spec Demo-i section 11.3)
-  const breachFirst = nextFloat(state.rng.hazards) < 0.5;
+  const breachFirst = nextFloat(state.rng.hazards) < (db.kind[slot] === ObjectKind.Shot ? SHOT_BREACH_FIRST : 0.5);   // hits make fires: a shot tries a fire first three times in four, debris half the time (spec Demo-vi section 3)
   const tryBreach = (): boolean => {
     for (let s = 0; s < d.siteRoom.length; s++) if (d.siteRoom[s] === room && !state.breaches.active[s]) return activateBreach(state, s);
     return false;

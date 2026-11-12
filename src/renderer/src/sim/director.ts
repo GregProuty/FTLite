@@ -4,12 +4,13 @@ import { Position, Life, LifeState } from './components';
 import { roomAt } from './grid';
 import { StationKind } from './stationKinds';
 import { activeBoarderCount } from './boarders';
+import { Encounter } from './enemy';
 import { igniteRoom, burningRoomCount } from './hazards/fire';
 import { activateBreach, activeBreachCount, freeSites } from './hazards/breach';
 import { failStation } from './power';
 import { failedStationCount } from './stations';
 import { activeDebrisCount, spawnDebris } from './debris';
-import { TICK_HZ, REACH, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_WEIGHTS, STRESS_PERIOD, STRESS_WEIGHTS, STRESS_RISE, STRESS_FALL, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SPAWN_INTERVAL_MIN, ESCALATION_RATE, CREW_INTERVAL_MULT, SPAWN_CAP_MAX, CAP_MINUTES, BUDGET_BASE, BUDGET_GROWTH, WEIGHT_MINUTES, ROUTE_BONUS, ROUTE_IDLE_SECONDS } from './tuning';
+import { TICK_HZ, REACH, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_WEIGHTS, STRESS_PERIOD, STRESS_WEIGHTS, STRESS_RISE, STRESS_FALL, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SPAWN_INTERVAL_MIN, ESCALATION_RATE, CREW_INTERVAL_MULT, SPAWN_CAP_MAX, CAP_MINUTES, BUDGET_BASE, BUDGET_GROWTH, WEIGHT_MINUTES, ROUTE_BONUS, ROUTE_IDLE_SECONDS, FIRE_SPAWN_CAP, ENCOUNTER_SPAWN_MULT } from './tuning';
 
 export const Phase = { BuildUp: 0, SustainPeak: 1, PeakFade: 2, Relax: 3 } as const;
 export const PHASE_NAMES = ['Build Up', 'Sustain Peak', 'Peak Fade', 'Relax'] as const;
@@ -115,7 +116,7 @@ export function routeIdle(state: SimState): number[] {
   return [doors, Math.min(doors, ls), eng, handoff];
 }
 
-/** Doubled base weights, escalation on the demanding types, the last type halved, then the routing bonus on every type tied for the longest idle. */
+/** Doubled base weights, escalation on the demanding types, the last type halved, then the routing bonus on every type tied for the longest idle; fire is 0 while FIRE_SPAWN_CAP rooms burn (the ambient cap, spec Demo-vi section 3). */
 export function typeWeights(state: SimState): number[] {
   const m = minutesOf(state), grow = 2 * Math.floor(m / WEIGHT_MINUTES);
   const w = [2 * SPAWN_WEIGHTS.fire, 2 * SPAWN_WEIGHTS.breach, 2 * SPAWN_WEIGHTS.power + grow, 2 * SPAWN_WEIGHTS.debris + grow];
@@ -123,6 +124,7 @@ export function typeWeights(state: SimState): number[] {
   if (last >= 0) w[last] = Math.max(1, Math.floor(w[last]! / 2));
   const idle = routeIdle(state), top = Math.max(...idle);
   if (top > ROUTE_IDLE_SECONDS) for (let t = 0; t < TYPE_COUNT; t++) if (idle[t] === top) w[t]! += 2 * ROUTE_BONUS;
+  if (burningRoomCount(state) >= FIRE_SPAWN_CAP) w[HazardType.Fire] = 0;
   return w;
 }
 
@@ -158,8 +160,8 @@ function spawnOfType(state: SimState, type: number): boolean {
 
 function rearm(state: SimState): void {
   const d = state.director, u = nextFloat(state.rng.director);
-  const jitter = 1 + SPAWN_JITTER * (2 * u - 1);
-  d.nextSpawnTick = Math.max(d.nextSpawnTick, state.tick + Math.round(spawnInterval(minutesOf(state), state.playerCount) * TICK_HZ * jitter));   // never pulls a later timer earlier
+  const jitter = 1 + SPAWN_JITTER * (2 * u - 1), fighting = state.run.encounter === Encounter.Fighting ? ENCOUNTER_SPAWN_MULT : 1;   // the enemy is the pressure: a slower director while fighting (spec Demo-vi section 3)
+  d.nextSpawnTick = Math.max(d.nextSpawnTick, state.tick + Math.round(spawnInterval(minutesOf(state), state.playerCount) * fighting * TICK_HZ * jitter));   // never pulls a later timer earlier
 }
 
 /** A due Build Up attempt: re-arm first, then the cap, then one type roll and the target draw. Returns whether a hazard was spawned. */

@@ -3,7 +3,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, SCRAP_SURRENDER, HIT_FLASH_TICKS } from '../sim/tuning';
+import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, SCRAP_SURRENDER, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType, reachable } from '../sim/run';
 import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
@@ -12,7 +12,7 @@ import { StationKind, STATION_NAMES } from '../sim/stationKinds';
 import { stationOnline, stationOutput } from '../sim/stations';
 import { scienceLead, ObjectKind } from '../sim/debris';
 import { warnedTargets, ENEMY_SLOT, isEnemySlot, enemySystemOf } from '../sim/debrisTargets';
-import { EnemySystem, ENEMY_SYSTEM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft } from '../sim/enemy';
+import { EnemySystem, ENEMY_SYSTEM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, Encounter } from '../sim/enemy';
 import { powerUsed, powerPool, powerCapacity, baseMax } from '../sim/power';
 import { isOverdriven, coolantUsed } from '../sim/heat';
 import type { SlotInfo, SlotStatus } from '../input/deviceManager';
@@ -182,10 +182,14 @@ export const LOBBY_LINES: readonly string[] = [
   'Jump before the ship falls apart. Reach node 8 to win'
 ];
 
-/** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b): a pending event, a surrender offer, a shop node, then the ready drive. */
+/** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b, Demo-vi section 2): a pending event, the encounter (won, over, contact), a surrender offer, a shop node, then the ready drive. */
 export function runNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
+  const window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
+  if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, 'Drive charging fast'];
+  if (r.encounter === Encounter.Over && state.tick - r.encounterTick < window) return ['Enemy gone'];
+  if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return ['Contact: enemy ship approaching'];
   if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${SCRAP_SURRENDER} scrap`];
   if (r.nodeType[r.column * 3 + r.node] === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, 'Hull +25 (30)   Torpedoes +2 (20)   Upgrade +1 bar (50)'];
   if (r.jumpCharge >= 1) { const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation']; }

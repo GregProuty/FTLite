@@ -5,7 +5,7 @@ import { spawnShot, shotsInFlight } from './debris';
 import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from './debrisTargets';
 import { minutesOf } from './director';
 import { addScrap } from './scrap';
-import { TICK_HZ, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, SCRAP_ENEMY, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, SCRAP_SURRENDER } from './tuning';
+import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, SCRAP_ENEMY, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, SCRAP_SURRENDER } from './tuning';
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 
@@ -13,6 +13,9 @@ const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 export function fireInterval(minutes: number, players: number): number {
   return Math.max(ENEMY_FIRE_MIN, ENEMY_FIRE_INTERVAL / (1 + ESCALATION_RATE * minutes)) * (CREW_INTERVAL_MULT[players - 1] ?? 1);
 }
+
+/** The node encounter (spec Demo-vi section 2), in run.encounter. */
+export const Encounter = { None: 0, Pending: 1, Fighting: 2, Won: 3, Over: 4 } as const;
 
 export const EnemySystem = { Weapons: 0, Engines: 1, Shields: 2 } as const;
 export const ENEMY_SYSTEM_NAMES = ['weapons', 'engines', 'shields'] as const;
@@ -41,7 +44,7 @@ function jitteredTicks(state: SimState, seconds: number): number {
   return Math.round(seconds * TICK_HZ * (1 + ENEMY_FIRE_JITTER * (2 * u - 1)));
 }
 
-/** Arrival: no draw; the enemy takes a StableId and the first-warning auto-select applies to it. */
+/** Arrival: no draw; the enemy takes a StableId and the first-warning auto-select applies to it; the encounter starts (spec Demo-vi section 2). */
 export function arrive(state: SimState): void {
   const e = state.enemy;
   e.present = 1; e.maxHull = enemyMaxHull(state.run.column); e.hull = e.maxHull; e.stableId = state.nextStableId++;
@@ -49,15 +52,17 @@ export function arrive(state: SimState): void {
   e.sysHp.fill(ENEMY_SYS_HP); e.sysRepairTick.fill(-1); e.shieldFreq = 1 + nextInt(state.rng.hazards, FREQ_COUNT); e.scanned = 0; e.scan = 0;   // the one hazards draw (spec Combat-ii section 4)
   e.shieldLayers = enemyShieldMax(state.run.column); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1;   // spec Demo-i section 11.3, Demo-ii section 4
   state.telemetry.encounters++;
+  state.run.encounter = Encounter.Fighting; state.run.encounterTick = state.tick;
   for (const kind of TARGETING_KINDS) {
     const i = state.derived.stationOfKind[kind]!;
     if (i >= 0 && state.stations.occupant[i]! >= 0 && state.stations.cursor[i]! < 0) state.stations.cursor[i] = ENEMY_SLOT;
   }
 }
 
-/** Departure (destroyed or withdrawn): retarget cursors by StableId before clearing it, then one director draw arms the cooldown. */
+/** Departure (destroyed or withdrawn): retarget cursors by StableId before clearing it, then the encounter ends (spec Demo-vi section 2): a kill or a paid surrender is a win (+hull, the drive boost), anything else is over; no draw, and no further enemy at this node. */
 export function leave(state: SimState, destroyed: boolean): void {
   const e = state.enemy, sci = state.derived.stationOfKind[StationKind.Science]!;
+  const won = destroyed || (e.fleeing === 1 && e.surrenderIntact === 1);   // read before the flee fields are cleared
   const scanningEnemy = sci >= 0 && isEnemySlot(state.stations.cursor[sci]!);
   for (const kind of TARGETING_KINDS) {
     const i = state.derived.stationOfKind[kind]!;
@@ -69,7 +74,12 @@ export function leave(state: SimState, destroyed: boolean): void {
   if (!destroyed && e.fleeing) { if (e.surrenderIntact) { addScrap(state, SCRAP_SURRENDER); state.telemetry.surrenders++; } else state.telemetry.enemyFled++; }   // spec Demo-i section 11.3: a flee ends in a surrender bounty or a flight
   e.maxHull = 0; e.shieldLayers = 0; e.shieldRecharge = 0; e.shotArmTick = -1; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1;
   if (destroyed) { state.telemetry.enemiesDestroyed++; addScrap(state, SCRAP_ENEMY); }
-  e.nextArrivalTick = state.tick + jitteredTicks(state, ENCOUNTER_COOLDOWN);
+  const r = state.run;
+  if (r.encounter === Encounter.Fighting) {
+    if (won) { r.encounter = Encounter.Won; state.telemetry.encountersWon++; state.hull = Math.min(HULL_MAX, state.hull + ENCOUNTER_REWARD_HULL); r.driveBoost = 1; }
+    else r.encounter = Encounter.Over;
+  }
+  r.encounterTick = state.tick; e.nextArrivalTick = NEVER;   // one enemy per node
 }
 
 /** Hull damage always; a subsystem row also damages that system, arming its repair when it reaches 0 (spec Combat-ii section 5). */

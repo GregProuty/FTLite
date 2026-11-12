@@ -9,7 +9,7 @@ import { failStation } from '../src/renderer/src/sim/power';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { jumpShip, reachable } from '../src/renderer/src/sim/run';
 import { createRng, nextFloat, nextInt, type RngState } from '../src/shared/rng';
-import { TICK_HZ, ENEMY_FIRST_SHOT, ENEMY_HULL, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, ENEMY_SYS_HP, ENEMY_FLEE_DELAY, SCRAP_SURRENDER, SCRAP_ENEMY, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENEMY_FIRST_SHOT, ENEMY_HULL, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, ENEMY_SYS_HP, ENEMY_FLEE_DELAY, SCRAP_SURRENDER, SCRAP_ENEMY, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, SHOT_BREACH_FIRST } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, placeEnemy, placeShot, placeDebris, run, disableSystem } from './helpers/sim';
 
 const T = TICK_HZ;
@@ -173,5 +173,21 @@ describe('combat: the hit stamp (spec Demo-ii section 4)', () => {
     expect(fireWeapon(t.s)).toBe(true); expect(t.s.enemy.lastHitTick).toBe(200);
     leave(t.s, false); expect(t.s.enemy.lastHitTick).toBe(-1);
     const a = makeState(2); quiet(a); a.run.column = 0; a.enemy.nextArrivalTick = a.tick; step(a, []); expect(a.enemy.lastHitTick).toBe(-1);
+  });
+});
+
+describe('combat: hits make fires (spec Demo-vi section 3)', () => {
+  const G = (s: ReturnType<typeof makeState>) => s.derived.roomIndex.get('G')!;   // no console in Crew Quarters: the impact roll is the first hazards draw
+  const site = (s: ReturnType<typeof makeState>) => Array.from(s.derived.siteRoom).indexOf(G(s));
+  const impact = (kind: 'shot' | 'debris', seed: number) => { const s = makeState(0); quiet(s); s.rng.hazards.s = seed; if (kind === 'shot') placeShot(s, G(s), 0); else placeDebris(s, G(s), 0); debrisSystem(s); return { fire: s.rooms.fire[G(s)]! > 0, breach: s.breaches.active[site(s)] === 1 }; };
+  it('a shot tries a fire first unless u < SHOT_BREACH_FIRST (0.25); debris keeps 50/50; the draw is made either way', () => {
+    expect(SHOT_BREACH_FIRST).toBe(0.25);
+    const low = seedWhere((u) => u < 0.25), mid = seedWhere((u) => u >= 0.25 && u < 0.5), high = seedWhere((u) => u >= 0.5);
+    expect(impact('shot', low)).toEqual({ fire: false, breach: true });
+    expect(impact('shot', mid)).toEqual({ fire: true, breach: false });
+    expect(impact('shot', high)).toEqual({ fire: true, breach: false });
+    expect(impact('debris', mid)).toEqual({ fire: false, breach: true });
+    expect(impact('debris', high)).toEqual({ fire: true, breach: false });
+    const s = makeState(0); quiet(s); s.rng.hazards.s = mid; const hz = createRng(mid); nextFloat(hz); placeShot(s, G(s), 0); debrisSystem(s); expect(s.rng.hazards.s).toBe(hz.s);
   });
 });

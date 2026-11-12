@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 17;
+export const SIM_VERSION = 18;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -28,7 +28,7 @@ export const FIRE_GROW_RATE = 0.5;     // intensity per second
 export const FIRE_SHRINK_RATE = 1.0;   // intensity per second
 export const FIRE_CAP = 16;
 export const FIRE_START = 1;
-export const FIRE_SPREAD_P = 0.0027;   // per hazard tick per burning edge at passage 1 (~15% per 5 s)
+export const FIRE_SPREAD_P = 0.0012;   // per hazard tick per burning edge at passage 1 (~7% per 5 s; spec Demo-vi section 3, was 0.0027)
 export const FIRE_DAMAGE = 3;           // health per second while in a burning room (the Medbay heals, increment 2a-i)
 export const O2_DAMAGE = 6;             // health per second below SUFFOCATE_FRAC
 export const SUFFOCATE_FRAC = 0.1;
@@ -58,7 +58,8 @@ export const INJECT_FRAC = 0.06;          // per second of room volume at full o
 export const LS_SEATED_BONUS = 0.5;
 export const MEDBAY_HEAL = 4;             // health per second at full output
 export const MEDBAY_SEATED_BONUS = 0.5;
-export const SPAWN_WEIGHTS = { fire: 2, breach: 1, power: 1, debris: 2 } as const;   // intervals in this order (total 6)
+export const SPAWN_WEIGHTS = { fire: 1, breach: 1, power: 1, debris: 2 } as const;   // intervals in this order (total 5; fire 2 -> 1, spec Demo-vi section 3)
+export const FIRE_SPAWN_CAP = 2;        // the director picks no fire while this many rooms burn; spread, overheats and impacts are not capped (spec Demo-vi section 3)
 
 // Debris (increment 2a-ii)
 export const DEBRIS_SLOTS = 8;                        // never reached: SPAWN_CAP counts in-flight debris
@@ -128,7 +129,10 @@ export const ROUTE_BONUS = 2, ROUTE_IDLE_SECONDS = 60;  // routing toward consol
 export const SINCE_CAP = 36000;                        // ticks: sinceProductive counters stop at 10 minutes
 
 // Enemy ship (Combat-i)
-export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120, ENCOUNTER_COOLDOWN = 150;   // seconds: first arrival, stay, gap (x jitter) (survival-gate fallback, spec Combat-i section 13; first pass 180)
+export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120;   // seconds: first arrival, stay (survival-gate fallback, spec Combat-i section 13; first pass 180); one enemy per node, no cooldown (spec Demo-vi section 2)
+export const NEVER = 2 ** 31 - 1;                      // a tick that never comes: no further arrival at this node
+export const ENCOUNTER_START = 8, ENCOUNTER_REWARD_HULL = 8, ENCOUNTER_BOOST = 4, ENCOUNTER_NOTICE_SECONDS = 8, ENCOUNTER_SPAWN_MULT = 2;   // spec Demo-vi: seconds from a Hazard-node arrival to contact, hull for a win, drive charge multiplier after a win, notice seconds, director interval multiplier while fighting
+export const SHOT_BREACH_FIRST = 0.25;                 // a Shot impact tries a breach first below this roll, else a fire first (debris 0.5; spec Demo-vi section 3)
 export const ENEMY_HULL = 100, ENEMY_FIRST_SHOT = 5;
 export const ENEMY_FIRE_INTERVAL = 20, ENEMY_FIRE_MIN = 6, ENEMY_FIRE_JITTER = 0.2;   // escalation shares ESCALATION_RATE and CREW_INTERVAL_MULT (survival-gate fallback, spec Combat-ii section 13; first pass 15)
 export const ENEMY_SHOTS_MAX = 1;                      // shots in flight at once (survival-gate fallback, spec Combat-i section 13; first pass 2)
@@ -156,7 +160,7 @@ export const HEALTH_EPS = 1e-9;                                                 
 // Sector map and jumps (Run-i)
 export const RUN_COLUMNS = 8, EDGE_CHANCE = 0.5;                                   // node columns; chance of each candidate edge
 export const JUMP_CHARGE_TIME = 60;                                                 // seconds from arrival to a ready drive
-export const ENCOUNTER_AFTER_JUMP = 30, BOARDING_AFTER_JUMP = 120;                  // seconds after a jump before the enemy / a party can arrive (no draw); 30 so a jump on the first ready tick (60 s after arrival) still meets the next enemy (spec Demo-i section 12)
+export const BOARDING_AFTER_JUMP = 120;                                             // seconds after a jump before a party can arrive (no draw); the enemy follows the node type (ENCOUNTER_START, spec Demo-vi section 2)
 
 // Events and shops (Run-ii)
 export const SHOP_CHANCE = 0.25, EVENT_CHANCE = 0.35;                               // node type draw thresholds (map stream, after the edges)
