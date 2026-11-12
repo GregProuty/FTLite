@@ -29,7 +29,7 @@ export function sitDown(state: SimState, pid: number, i: number): void {
   state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0;
   const kind = d.stationKind[i]!;
   state.stations.cursor[i] = kind === StationKind.Engineering ? StationKind.Engineering
-    : kind === StationKind.Doors ? (d.doorEdges.length ? 0 : -1)
+    : kind === StationKind.Doors ? (d.doorEdges.length + d.airlockRoom.length ? 0 : -1)
     : kind === StationKind.Weapons || kind === StationKind.Science ? (warnedTargets(state)[0] ?? -1)
     : 0;
 }

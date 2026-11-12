@@ -6,7 +6,8 @@ import { intentFor } from './step';
 import { standUp } from './stations';
 import { shiftBar, shedPower } from './power';
 import { cycleCoolant } from './heat';
-import { toggleSeal } from './doors';
+import { toggleSeal, cycleDoor, doorsCursorCount, doorsCursorTarget } from './doors';
+import { stationOnline } from './stations';
 import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 
 import { Dir } from './dir';
@@ -42,14 +43,21 @@ function engineeringInput(state: SimState, i: number, dir: number, confirm: bool
 }
 
 function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): void {
-  const edges = state.derived.doorEdges, n = edges.length, c = state.stations.cursor;
-  if (c[i]! < 0) return;                                              // a ship without doors
+  const n = doorsCursorCount(state), c = state.stations.cursor;
+  if (c[i]! < 0 || n === 0) return;                                   // a ship without doors or airlocks
   if (dir === Dir.Up || dir === Dir.Left) c[i] = (c[i]! + n - 1) % n;
   else if (dir === Dir.Down || dir === Dir.Right) c[i] = (c[i]! + 1) % n;
-  if (confirm) { state.scratch.doorToggles.add(edges[c[i]!]!); state.skills.lastDoorToggleTick = state.tick; }
+  if (!confirm) return;
+  const t = doorsCursorTarget(state, c[i]!), online = stationOnline(state, i);
+  if (!t) return;
+  // Online: a door cycles Auto -> Held open -> Sealed -> Auto and an airlock toggles. Offline: today's seal toggle on doors only (spec Demo-vii amendment 2).
+  if (t.kind === 'door') (online ? state.scratch.doorCycles : state.scratch.doorToggles).add(t.edge);
+  else if (online) state.scratch.airlockToggles.add(t.index);
+  else return;
+  state.skills.lastDoorToggleTick = state.tick;
 }
 
-/** Step 2: seated players' input, then the tick's door toggles (local and remote) once per door, ascending (spec sections 4, 6). */
+/** Step 2: seated players' input, then the tick's door commands once each, ascending: local toggles, remote cycles, airlocks (spec sections 4, 6; Demo-vii amendment 2). */
 export function consoleSystem(state: SimState, intents: readonly Intent[]): void {
   chargeBeam(state);
   regenTorpedo(state);
@@ -69,5 +77,8 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     else if (kind === StationKind.Navigation) navigationInput(state, i, dir, it.confirmPressed);
     // Life Support, Medbay: no seated controls.
   }
-  for (const e of [...state.scratch.doorToggles].sort((a, b) => a - b)) toggleSeal(state, e);
+  const asc = (set: Set<number>): number[] => [...set].sort((a, b) => a - b);
+  for (const e of asc(state.scratch.doorToggles)) toggleSeal(state, e);          // local Interact and offline console presses
+  for (const e of asc(state.scratch.doorCycles)) cycleDoor(state, e);
+  for (const a of asc(state.scratch.airlockToggles)) state.airlocks.open[a] = state.airlocks.open[a] ? 0 : 1;
 }

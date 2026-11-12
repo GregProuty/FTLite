@@ -17,7 +17,9 @@ import { Weapon } from '../src/renderer/src/sim/weapons';
 import { buildHudModel } from '../src/renderer/src/render/hudModel';
 import type { SlotInfo } from '../src/renderer/src/input/deviceManager';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { makeState as makeAnyState, intents, run, teleport, seconds, placeDebris, overdrive, room } from './helpers/sim';
+import { makeState as makeAnyState, intents, run, teleport, seconds, placeDebris, overdrive, room, cutterState, quiet } from './helpers/sim';
+import { doorsCursorCount, doorsCursorTarget } from '../src/renderer/src/sim/doors';
+import { stationOnline } from '../src/renderer/src/sim/stations';
 // Heat is the subject here: pin a quirk that leaves it alone (Old Drive), so the seed's natural Hot Reactor draw does not shift every figure (spec Run-iii section 5).
 const makeState = (players = 2, seed = 1) => makeAnyState(players, seed, undefined, { quirk: 5 });
 
@@ -186,28 +188,113 @@ describe('Doors console', () => {
     run(s, 1, () => intents({})); run(s, 1, () => intents(down));
     expect(s.derived.doorEdges[s.stations.cursor[doors]!]).toBe(first);
     run(s, 1, () => intents(confirm));
+    expect(s.doors.state[first]).toBe(DoorState.HeldOpen);          // online: Auto -> Held open (spec Demo-vii section 1)
+    run(s, 1, () => intents({})); run(s, 1, () => intents(confirm));
     expect(s.doors.state[first]).toBe(DoorState.Sealed);
     // Player 1 stands in the corridor below that door (edge 0 is the A/I door at (2,4): no console within reach there, and 1.4 tiles from the
     // door centre keeps it outside DOOR_ZONE so it will not auto-open) and presses Confirm on the same tick as the remote press: one toggle, so
-    // the door is unsealed to Closed, not re-sealed.
+    // the door is unsealed to Closed by the local toggle, then the remote cycle moves Auto to Held open (applied after local toggles, spec Demo-vii amendment 2).
     const t = s.derived.edgeTile[first]!, w = s.derived.width;
     teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 1.9);
     expect(confirmTarget(s, 1)).toEqual({ kind: ConfirmKind.Door, index: first });
     run(s, 1, () => intents(confirm, confirm));
-    expect(s.doors.state[first]).toBe(DoorState.Closed);
+    expect(s.doors.state[first]).toBe(DoorState.HeldOpen);
     run(s, 1, () => intents({}, {}));
-    expect(s.doors.state[first]).toBe(DoorState.Closed);
+    expect(s.doors.state[first]).toBe(DoorState.HeldOpen);
   });
   it('a remote seal on an occupied door is deferred until the tile is clear', () => {
     const s = makeState(2), doors = idx(s, StationKind.Doors);
     sitDown(s, 0, doors);
     const first = s.derived.doorEdges[0]!, t = s.derived.edgeTile[first]!, w = s.derived.width;
     teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 0.5);          // player 1 stands on the door tile
-    run(s, 1, () => intents(confirm, {}));
+    run(s, 1, () => intents(confirm, {})); run(s, 1, () => intents({}, {}));   // Auto -> Held open
+    expect(s.doors.state[first]).toBe(DoorState.HeldOpen);
+    run(s, 1, () => intents(confirm, {}));                             // Held open -> Sealed, deferred
     expect(s.doors.state[first]).not.toBe(DoorState.Sealed); expect(s.doors.sealRequested[first]).toBe(1);
     teleport(s, 1, (t % w) + 0.5, Math.floor(t / w) + 2.5);          // step off
     run(s, 1, () => intents({}, {}));
     expect(s.doors.state[first]).toBe(DoorState.Sealed);
+  });
+});
+
+describe('Doors console: held doors, airlocks and the fail-safe (spec Demo-vii section 1, amendments 2 and 3)', () => {
+  const doorsOf = (s: ReturnType<typeof cutterState>) => s.derived.stationOfKind[StationKind.Doors]!;
+  const seated = () => { const s = cutterState(); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; const i = doorsOf(s); sitDown(s, 0, i); teleport(s, 1, 16.5, 3.5); return { s, i }; };   // player 1 waits in the Medbay, away from every door
+  const press = (s: ReturnType<typeof cutterState>, p: Partial<Intent>) => { run(s, 1, () => intents(p, {})); run(s, 1, () => intents({}, {})); };
+  it('the cursor walks every door, then every airlock, then wraps, in both directions', () => {
+    const { s, i } = seated(), D = s.derived.doorEdges.length, n = doorsCursorCount(s);
+    expect(n).toBe(D + 4);
+    expect(s.stations.cursor[i]).toBe(0);
+    const seen: number[] = [];
+    for (let k = 0; k < n; k++) { press(s, down); seen.push(s.stations.cursor[i]!); }
+    expect(seen).toEqual([...Array.from({ length: n - 1 }, (_, k) => k + 1), 0]);
+    expect(doorsCursorTarget(s, D - 1)).toEqual({ kind: 'door', edge: s.derived.doorEdges[D - 1] });
+    expect(doorsCursorTarget(s, D)).toEqual({ kind: 'airlock', index: 0 });
+    expect(doorsCursorTarget(s, n)).toBeNull();
+    press(s, up);
+    expect(s.stations.cursor[i]).toBe(n - 1);
+    expect(doorsCursorTarget(s, n - 1)).toEqual({ kind: 'airlock', index: 3 });
+  });
+  it('Confirm on a door cycles Auto -> Held open -> Sealed -> Auto', () => {
+    const { s, i } = seated(), e = s.derived.doorEdges[0]!;
+    expect(s.stations.cursor[i]).toBe(0);
+    press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.HeldOpen);
+    press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Sealed);
+    press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Closed);
+  });
+  it('Confirm on an airlock toggles it and stamps the Doors productivity tick', () => {
+    const { s, i } = seated();
+    s.stations.cursor[i] = s.derived.doorEdges.length + 2;               // the Engines airlock
+    press(s, confirm);
+    expect(Array.from(s.airlocks.open)).toEqual([0, 0, 1, 0]);
+    expect(s.skills.lastDoorToggleTick).toBe(s.tick - 2);
+    press(s, confirm);
+    expect(Array.from(s.airlocks.open)).toEqual([0, 0, 0, 0]);
+  });
+  it('offline, Confirm on an airlock does nothing; on a door it keeps the old path (seal, unseal) and never holds', () => {
+    const { s, i } = seated(), e = s.derived.doorEdges[0]!;
+    s.stations.level[i] = 0;
+    expect(stationOnline(s, i)).toBe(false);
+    press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Sealed);
+    press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Closed);
+    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    const stamp = s.skills.lastDoorToggleTick;
+    press(s, confirm);
+    expect(Array.from(s.airlocks.open)).toEqual([0, 0, 0, 0]);
+    expect(s.skills.lastDoorToggleTick).toBe(stamp);
+    expect(Array.from(s.doors.state).includes(DoorState.HeldOpen)).toBe(false);
+  });
+  it('the fail-safe: unpowered or failed, every airlock closes and every held door returns to Closed that tick', () => {
+    for (const how of ['power', 'fail'] as const) {
+      const { s, i } = seated();
+      s.airlocks.open.fill(1); s.doors.state[3] = DoorState.HeldOpen; s.doors.state[5] = DoorState.HeldOpen; s.doors.state[7] = DoorState.Sealed;
+      run(s, 1, () => intents({}, {}));
+      expect(Array.from(s.airlocks.open)).toEqual([1, 1, 1, 1]);
+      if (how === 'power') s.stations.level[i] = 0; else failStation(s, i);
+      run(s, 1, () => intents({}, {}));
+      expect(Array.from(s.airlocks.open), how).toEqual([0, 0, 0, 0]);
+      expect([s.doors.state[3], s.doors.state[5], s.doors.state[7]], how).toEqual([DoorState.Closed, DoorState.Closed, DoorState.Sealed]);
+      expect(s.doors.closeTimer[3]).toBe(0);
+    }
+  });
+  it('a command on the tick the station goes offline is undone that tick, before any oxygen moves', () => {
+    // Player 0 at Doors opens the Engines airlock (accepted: online when read); player 1 at Engineering pulls the Doors bar on the same tick.
+    const { s, i } = seated(), eng = s.derived.stationOfKind[StationKind.Engineering]!, E = room(s, 'E');
+    sitDown(s, 1, eng); s.stations.cursor[eng] = StationKind.Doors;
+    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    while (s.tick % HAZARD_EVERY !== 0) run(s, 1, () => intents({}, {}));   // this tick runs the oxygen step
+    const before = s.rooms.o2[E]!, vented = s.o2Counters.vented;
+    run(s, 1, () => intents(confirm, left));
+    expect(s.stations.level[i]).toBe(0);
+    expect(Array.from(s.airlocks.open)).toEqual([0, 0, 0, 0]);
+    expect(s.o2Counters.vented).toBe(vented);
+    expect(s.rooms.o2[E]).toBeGreaterThanOrEqual(before);
+  });
+  it('the starter (no airlocks) keeps a cursor over its doors only', () => {
+    const s = makeState(1), i = idx(s, StationKind.Doors);
+    sitDown(s, 0, i);
+    expect(doorsCursorCount(s)).toBe(s.derived.doorEdges.length);
+    expect(s.airlocks.open).toHaveLength(0);
   });
 });
 

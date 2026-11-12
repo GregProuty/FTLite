@@ -56,7 +56,7 @@ export interface SimState {
   skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
   science: { scanning: number };                        // 1 while a scan is running (spec 2b-ii section 4)
   /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */
-  scratch: { doorToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array; activeThisTick: Uint8Array };
+  scratch: { doorToggles: Set<number>; doorCycles: Set<number>; airlockToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array; activeThisTick: Uint8Array };
 }
 
 export function deriveStreams(seed: number): RngStreams {
@@ -103,7 +103,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     science: { scanning: 0 },
     crewCharacter: Uint8Array.from({ length: playerCount }, (_, pid) => characters[pid] ?? RECRUIT),
     skills: { xp: new Float64Array(playerCount * SKILL_COUNT), lastEngChangeTick: -1, lastDoorToggleTick: -1, lsDeliveredTick: -1, lastShotTick: -1 },
-    scratch: { doorToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount) }
+    scratch: { doorToggles: new Set<number>(), doorCycles: new Set<number>(), airlockToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount) }
   };
   state.run.quirk = nextInt(rng.quirk, QUIRK_COUNT);   // the one draw from the seventh stream, before any override
   if (options.quirk !== undefined) { const q = options.quirk; if (!Number.isInteger(q) || q < 0 || q >= QUIRK_COUNT) throw new Error(`quirk out of range: ${q}`); state.run.quirk = q; }
