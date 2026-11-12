@@ -4,6 +4,7 @@ import type { GameAssets } from './assets';
 import { glyphName, clockLine, navigationFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { drawIcon, tintColor } from './roomIcons';
 import { createEnemyPanel } from './enemyPanel';
+import { createMapPanel } from './mapPanel';
 import { featureReady } from './fallback';
 import type { IconKind, IconTint } from './roomIconModel';
 import { STATION_NAMES } from '../sim/stationKinds';
@@ -63,6 +64,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   const top = text(); top.position.set(12, 14); parent.addChild(top);
   const directorLine = text(16, DIM); directorLine.position.set(12, 14 + LINE); parent.addChild(directorLine);
   const enemyPanel = createEnemyPanel(assets.fontFamily); enemyPanel.root.position.set(INTERNAL_W - 360, 64); parent.addChild(enemyPanel.root);   // spec Demo-ii section 4: left of the threat panel, below the two notice lines (which end at y 60)
+  const mapPanel = createMapPanel(assets.fontFamily); mapPanel.root.position.set(236, 64); parent.addChild(mapPanel.root);   // spec Ship-and-map section 5: the band above the ship, between the clock and enemy panels
   parent.addChild(panel(INTERNAL_W - 232, 4, 228, 100));
   const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 224, 12 + i * LINE); parent.addChild(row); return row; });
   parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
@@ -184,6 +186,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     update(m: HudModel): void {
       top.text = clockLine(m);
       enemyPanel.update(m.phase === 'running' ? m.enemy : null);
+      mapPanel.update(m.phase === 'running' ? m.map : null);
       directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%${m.run.quirk ? `   Ship: ${m.run.quirk}` : ''}`;
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
