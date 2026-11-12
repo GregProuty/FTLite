@@ -7,7 +7,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, ENEMY_AIM_CHANCE, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, ENEMY_SHOT_CREW_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, ENEMY_AIM_CHANCE, CREW_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, ENEMY_SHOT_CREW_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, armSpawn, placeEnemy, disableSystem, guardDebris, placeShot, placeDebris, room, intents, teleport, seconds } from './helpers/sim';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
@@ -36,7 +36,7 @@ describe('enemy: initial values and fireInterval', () => {
     expect(Array.from(e.sysHp)).toEqual([0, 0, 0]); expect(Array.from(e.sysRepairTick)).toEqual([-1, -1, -1]); expect([e.shieldFreq, e.scanned, e.scan]).toEqual([0, 0, 0]); expect(s.telemetry.enemyDisables).toBe(0);
   });
   it('fireInterval escalates to the floor and solo is 1.5x', () => {
-    expect(fireInterval(0, 3)).toBe(20); expect(fireInterval(3, 3)).toBeCloseTo(200 / 13, 12); expect(fireInterval(10, 3)).toBe(10); expect(fireInterval(30, 3)).toBe(6); expect(fireInterval(0, 1)).toBe(20 * SOLO_INTERVAL_MULT);
+    expect(fireInterval(0, 3)).toBe(20); expect(fireInterval(3, 3)).toBeCloseTo(200 / 13, 12); expect(fireInterval(10, 3)).toBe(10); expect(fireInterval(30, 3)).toBe(6); expect(fireInterval(0, 1)).toBe(20 * CREW_INTERVAL_MULT[0]!);
     for (const [p, m] of [[1, 1.5], [2, 1.25], [3, 1], [4, 1]] as const) expect(fireInterval(7, p)).toBeCloseTo(fireInterval(7, 3) * m, 12);   // spec Demo-i section 5: crews of two fire 1.25x slower too
   });
 });

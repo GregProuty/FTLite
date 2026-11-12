@@ -120,7 +120,6 @@ export const PEAK_LEVEL = 0.7, RELAX_LEVEL = 0.25;
 export const SUSTAIN_SECONDS = 10, FADE_TIMEOUT = 30, RELAX_MIN = 30, RELAX_MAX = 60, STALL_SECONDS = 60;
 export const SPAWN_INTERVAL_MIN = 10;                  // seconds; the escalated interval never goes below this
 export const ESCALATION_RATE = 0.1;                    // per minute: interval = SPAWN_INTERVAL / (1 + rate x minutes)
-export const SOLO_INTERVAL_MULT = 1.5;
 export const CREW_INTERVAL_MULT = [1.5, 1.25, 1, 1] as const;   // spawn and fire interval multiplier by crew size, indexed players - 1 (spec Demo-i section 5)
 export const SPAWN_CAP_MAX = 6, CAP_MINUTES = 4;        // +1 cap per 4 minutes up to the max
 export const BUDGET_BASE = 3, BUDGET_GROWTH = 0.5;      // spawns per Build Up cycle: (base + growth x minutes) x playerScale
@@ -131,7 +130,7 @@ export const SINCE_CAP = 36000;                        // ticks: sinceProductive
 // Enemy ship (Combat-i)
 export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120, ENCOUNTER_COOLDOWN = 150;   // seconds: first arrival, stay, gap (x jitter) (survival-gate fallback, spec Combat-i section 13; first pass 180)
 export const ENEMY_HULL = 100, ENEMY_FIRST_SHOT = 5;
-export const ENEMY_FIRE_INTERVAL = 20, ENEMY_FIRE_MIN = 6, ENEMY_FIRE_JITTER = 0.2;   // escalation shares ESCALATION_RATE and SOLO_INTERVAL_MULT (survival-gate fallback, spec Combat-ii section 13; first pass 15)
+export const ENEMY_FIRE_INTERVAL = 20, ENEMY_FIRE_MIN = 6, ENEMY_FIRE_JITTER = 0.2;   // escalation shares ESCALATION_RATE and CREW_INTERVAL_MULT (survival-gate fallback, spec Combat-ii section 13; first pass 15)
 export const ENEMY_SHOTS_MAX = 1;                      // shots in flight at once (survival-gate fallback, spec Combat-i section 13; first pass 2)
 export const ENEMY_SHOT_FLIGHT = 10, ENEMY_SHOT_JITTER = 2;   // seconds (debris is 30 +/- 6)
 export const ENEMY_SHOT_HULL_DAMAGE = 4;               // debris is 8; crew damage shared (survival-gate fallback, spec Combat-i section 13; first pass 6)

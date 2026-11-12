@@ -5,7 +5,7 @@ import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { makeState, seconds } from './helpers/sim';
 import { botIntent } from './helpers/bot';
-import { HEALTH_MAX, BOARDING_FIRST_SMALL } from '../src/renderer/src/sim/tuning';
+import { HEALTH_MAX } from '../src/renderer/src/sim/tuning';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 
 const FIVE_MINUTES = seconds(300);
@@ -43,7 +43,7 @@ describe('increment 1 gate: two bots survive five minutes', () => {
       expect(s.ended, `run ended at ${Math.floor(s.tick / 60)}s, reason ${s.endReason}`).toBe(0);
       expect(fireRepairOutsideRoom).toBe(0);
       expect(s.telemetry.encounters, 'the first encounter must fall inside the gate').toBeGreaterThanOrEqual(1);
-      if (BOARDING_FIRST_SMALL < 300) expect(s.telemetry.boardings, figures).toBeGreaterThanOrEqual(1);
+      expect(s.telemetry.boardings, figures).toBe(0);   // pairs board first at BOARDING_FIRST_SMALL (330 s), after this five-minute window: pair boarding coverage lives in gate-boarding and gate-duo proves the pre-boarding margin (spec Demo-i section 5)
       expect(impacts, figures).toBeGreaterThan(0);
       expect(maxHazards).toBeGreaterThan(0);
       expect(repairsSeen).toBe(true);
