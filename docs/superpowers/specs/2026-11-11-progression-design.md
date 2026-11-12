@@ -98,3 +98,13 @@ Helpers (`tests/helpers/sim.ts`): `makeState(players, seed, characters = RECRUIT
 ## 10. Known limitations
 
 Every earned unlock applies with no choice; three unlocks and six quirks are a first authoring pass; progress is per machine and per browser profile (localStorage); clearing site data resets it.
+
+## 11. Amendments from the plan
+- `applyStartBonuses(state, unlocked)` and `veteranRepairXp(level)` live in `sim/progress.ts`; `state.ts` imports them. `applyRun` also drops unknown ids already present in `unlocked` (it rebuilds the list from `UNLOCKS`), which is harmless because the store sanitizes first.
+- The headline's score is `telemetryRecord(state, 0).score` (the seed does not affect the score). The quirk draw happens right after the state literal, before `spawnCrew`; head starts and bonuses follow.
+- The session guards a throwing `loadProgress` with `EMPTY_PROGRESS` as well as the store.
+- Sticky Doors closes after 121 ticks, not 120: `2 - 120 x DT` leaves a float residual, so the timer needs one more tick (the control is exactly 60). The test pins 121 with a comment; the door timer itself is unchanged (an epsilon there would shift every door and the golden).
+- A debris object placed with one tick to impact resolves on the second `step` (the impact tick is checked by the step that runs at that tick), so the Lucky Hull fixture runs two ticks.
+- Seeds 1 and 9 draw Hot Reactor, which shifted exact heat figures in `tests/heat.test.ts`, `tests/console.test.ts` and one snapshot overdrive test; those tests pin `{ quirk: 5 }` (Old Drive, heat-neutral).
+- Natural-quirk gate figures for seeds 1-3 did not drift (section 8 allowed drift); the gate records the quirk names anyway.
+- `telemetryRecord` types its intermediate as `Omit<TelemetryRecord, 'score'>` before adding the score.

@@ -177,3 +177,19 @@ players  seed  ended-at  reason   first-down    first-death  never-manned       
 
 - [ ] Manual, two players (`npm run dev`): an Event node shows its title, text and two choices on the Navigation panel and `Event: <title>` in the threats; a choice applies and the destinations return; a Shop node lists eight items and the destinations with `Scrap N` in the footer and `Shop here` in the threats; a bought upgrade adds a cell to that station's power row. Date and notes: pending human playtest.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Run-iii: progression and permadeath
+- [x] `npm test` passes (2026-11-11, 588 tests): the score examples and the record's `score`; `applyRun` sequences and the store's sanitization cases; the three start bonuses and a bogus id; the single quirk draw, the unchanged stream pins (hazards, director, combat, map), the override and the six behavioural quirk tests with controls (Leaky Seals twice the closed-door flow, Hot Reactor one more heat, Sticky Doors 121 vs 60 close ticks, Lucky Hull 6 vs 8 hull with shots unchanged, Twitchy Sensors 8/22 vs 4/18 s, Old Drive ready at tick 4500 vs 3600); snapshot round trip, hash and header; the session's progress save, lobby line, summary lines and restart with the bonuses; the HUD strings; the acceptance column. Golden re-blessed once (version 15, final 285ca576; the golden's seed 2026 draws Lucky Hull).
+- [x] Survival and boarding gates pass on seeds 1-3 with the natural quirks seed 1 Hot Reactor, seed 2 Sticky Doors, seed 3 Leaky Seals; every figure is identical to the Run-ii baseline (survival min hull 52/60/68, min health 0.0/0.1/0.1, boardings 1, killed 2; boarding min health 32.5/34.3/36.5): none of those three quirks touched a rule the bots exercise in five minutes (no overdrive, no door timing margin, no decisive oxygen flow). Drift remains expected for other seeds. No lever taken.
+- [x] `gate-jump` and `gate-run` pass at tick 25200 with `{ quirk: 3 }` (Lucky Hull; no debris flies in those gates, so the rule is inert); `gate-run` still earns 145 and spends 30.
+- [x] `npm run acceptance 5 1`, 2026-11-11, three rows with the `score` column (the bots never jump; the two- and four-player crews score 30 from two boarder kills and 20 scrap):
+
+```
+players  seed  ended-at  reason   first-down    first-death  never-manned                                                      longest-idle         spawns   impacts  hits/shots  enemy  boarders  nodes  scrap  score
+1        1     4:13.1    crew     Okoro 4:13.1  -            Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  77.4                 1/2/1/0  2        0/0         1/0/0  1/0       0/8    0/0    0
+2        1     5:00      running  Okoro 4:34.5  -            Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  86.1/85.5            1/1/2/3  9        0/0         1/0/0  1/2       0/8    20/0   30
+4        1     5:00      running  -             -            Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  64.5/64.5/64.5/64.5  2/1/1/4  10       0/0         1/0/0  1/2       0/8    20/0   30
+```
+
+- [ ] Manual, two players (`npm run dev`): the lobby shows `Runs 0  Best 0`; the clock shows the quirk name; a lost run shows `Score`, `Ship: <quirk>`, the `Best / Runs / Victories` line and `Unlocked: Scrap reserve`; the next run starts with 30 scrap on the Navigation footer. Date and notes: pending human playtest.
+- [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
