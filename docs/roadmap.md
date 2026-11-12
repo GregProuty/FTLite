@@ -19,4 +19,4 @@ Deferred beyond this list: networking (sub-project 5), a solo drone, the shared 
 
 Each feature's spec and plan live in `docs/superpowers/specs/` and `docs/superpowers/plans/` with the date prefix; gates are appended to `docs/gates.md`; the execution ledger is `.superpowers/sdd/progress.md`.
 | 11 | **Demo-i Demo ready:** controls card, a run notice both players can read, two-player balance with a duo health gate, a bot that jumps and resolves events so the soak covers the run, a scripted two-player playtest as the acceptance gate | sub-project 4 | in review |
-| 12 | **Demo-ii Visible combat and sound:** repaired consoles return powered (pool permitting) and read OFF otherwise, a drawn enemy with shield ring and weapon bar, seven synthesized audio cues | sub-project 4 | in review |
+| 12 | **Demo-ii Visible combat and sound:** repaired consoles return powered (pool permitting) and read OFF otherwise, a drawn enemy with shield ring and weapon bar, seven synthesized audio cues | sub-project 4 | merged (manual gate pending) |
