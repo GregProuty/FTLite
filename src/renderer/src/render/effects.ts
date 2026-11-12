@@ -90,7 +90,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
       const sel = doorsCursorTile(state);
       if (sel >= 0) {
         const [tx, ty] = tileXY(w, sel), pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(state.tick * 0.2));
-        outline.rect(tx * TILE_PX + 1, ty * TILE_PX + 1, TILE_PX - 2, TILE_PX - 2).stroke({ color: 0x4fc3f7, width: 2, alpha: pulse });
+        outline.rect(tx * TILE_PX - 2, ty * TILE_PX - 2, TILE_PX + 4, TILE_PX + 4).stroke({ color: 0x4fc3f7, width: 3, alpha: pulse });   // drawn just outside the tile: it stays visible on amber airlock leaves
       }
       // Open airlocks: oxygen specks streaming outward while the room still holds air.
       ventLayer.clear();

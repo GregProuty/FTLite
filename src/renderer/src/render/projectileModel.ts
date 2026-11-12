@@ -29,8 +29,9 @@ export function projectilePath(stableId: number, kind: number, roomCentre: Pt, b
   if (kind === ObjectKind.Shot) return { from: { x: band.x + band.w + m, y: roomCentre.y + (u - 0.5) * band.h * 0.4 }, to };
   const side = Math.floor(hash01(stableId, 1) * 3);
   const x = band.x + band.w * (0.3 + 0.8 * u);                         // top and bottom entries lie over the front two thirds and beyond
-  if (side === 0) return { from: { x, y: band.y - m }, to };
-  if (side === 1) return { from: { x, y: band.y + band.h + m }, to };
+  const edge = 12;                                                     // top and bottom entries start just outside the band: further out they would cross the notice lines and the console cards
+  if (side === 0) return { from: { x, y: band.y - edge }, to };
+  if (side === 1) return { from: { x, y: band.y + band.h + edge }, to };
   return { from: { x: band.x + band.w + m, y: band.y - m + (band.h + 2 * m) * u }, to };
 }
 
