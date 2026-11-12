@@ -80,7 +80,7 @@ function arriveParty(state: SimState): void {
 function moveBoarder(state: SimState, slot: number): void {
   const b = state.boarders, d = state.derived, cur = b.room[slot]!, cands: number[] = [];
   for (let e = 0; e < d.edgeA.length; e++) {
-    if (!d.edgeIsDoor[e] || state.doors.state[e] === DoorState.Sealed) continue;
+    if (!d.edgeIsDoor[e] || state.doors.state[e] === DoorState.Sealed) continue;   // HeldOpen counts as unsealed (spec Demo-vii section 1)
     const other = d.edgeA[e] === cur ? d.edgeB[e]! : d.edgeB[e] === cur ? d.edgeA[e]! : -1;
     if (other >= 0 && !cands.includes(other)) cands.push(other);
   }

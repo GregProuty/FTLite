@@ -1,6 +1,6 @@
 import type { SimState } from '../state';
 import { Life, LifeState, Position } from '../components';
-import { DoorState, conditionRoomAt } from '../grid';
+import { DoorState, doorIsOpen, conditionRoomAt } from '../grid';
 import { StationKind } from '../stationKinds';
 import { Skill, addXp, skillLevelOf } from '../skills';
 import { stationOnline } from '../stations';
@@ -10,7 +10,7 @@ import { XP_RATE, HAZARD_DT, PASSAGE_OPEN, PASSAGE_CLOSED, PASSAGE_SEALED, PASSA
 export function passageFor(state: SimState, edge: number): number {
   if (!state.derived.edgeIsDoor[edge]) return PASSAGE_OPEN;
   const st = state.doors.state[edge];
-  if (st === DoorState.Open) return PASSAGE_OPEN;
+  if (doorIsOpen(st!)) return PASSAGE_OPEN;   // Open and HeldOpen (spec Demo-vii section 1)
   if (st !== DoorState.Sealed) return PASSAGE_CLOSED;
   const doors = state.derived.stationOfKind[StationKind.Doors]!;
   const occ = doors >= 0 && stationOnline(state, doors) ? state.stations.occupant[doors]! : -1;

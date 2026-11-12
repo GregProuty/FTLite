@@ -61,3 +61,43 @@ describe('doors', () => {
     expect(s.doors.sealRequested[G_DOOR]).toBe(0);
   });
 });
+
+describe('held-open doors (spec Demo-vii section 1, amendment 1)', () => {
+  it('a HeldOpen door with nobody near stays HeldOpen for 600 ticks', () => {
+    const s = makeState(1);
+    teleport(s, 0, 12.5, 9.5);
+    s.doors.state[G_DOOR] = DoorState.HeldOpen;
+    run(s, 600);
+    expect(s.doors.state[G_DOOR]).toBe(DoorState.HeldOpen);
+    expect(s.doors.closeTimer[G_DOOR]).toBe(0);
+  });
+  it('crew walking through and away never rewrite it to Open or Closed', () => {
+    const s = makeState(1);
+    teleport(s, 0, 2.5, 9.2);
+    s.doors.state[G_DOOR] = DoorState.HeldOpen;
+    run(s, seconds(1.5), () => intents({ moveY: -1 }));
+    expect(Position.y[s.crew[0]!]).toBeLessThan(7);                 // walked through the held door
+    expect(s.doors.state[G_DOOR]).toBe(DoorState.HeldOpen);
+    run(s, seconds(DOOR_CLOSE_DELAY) * 3, () => intents({ moveX: 1 }));
+    expect(s.doors.state[G_DOOR]).toBe(DoorState.HeldOpen);
+  });
+  it('local Interact (toggleSeal) on a HeldOpen door seals it at once', () => {
+    const s = makeState(1);
+    teleport(s, 0, 12.5, 9.5);
+    s.doors.state[G_DOOR] = DoorState.HeldOpen;
+    toggleSeal(s, G_DOOR);
+    expect(s.doors.state[G_DOOR]).toBe(DoorState.Sealed);
+  });
+  it('the seal is deferred while someone stands in the doorway, the door stays HeldOpen, and it lands when the tile clears', () => {
+    const s = makeState(1);
+    teleport(s, 0, 2.5, 7.5);
+    s.doors.state[G_DOOR] = DoorState.HeldOpen;
+    toggleSeal(s, G_DOOR);
+    run(s, 1);
+    expect(s.doors.state[G_DOOR]).toBe(DoorState.HeldOpen);
+    expect(s.doors.sealRequested[G_DOOR]).toBe(1);
+    run(s, seconds(1), () => intents({ moveY: 1 }));
+    expect(s.doors.state[G_DOOR]).toBe(DoorState.Sealed);
+    expect(s.doors.sealRequested[G_DOOR]).toBe(0);
+  });
+});

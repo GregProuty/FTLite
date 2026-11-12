@@ -20,7 +20,7 @@ function passable(state: SimState, tx: number, ty: number): boolean {
   const i = ty * d.width + tx;
   if (d.wallTile[i]) return false;
   const e = d.doorTileToEdge[i]!;
-  return e < 0 || state.doors.state[e] !== DoorState.Sealed;
+  return e < 0 || state.doors.state[e] !== DoorState.Sealed;   // only Sealed blocks a path: Closed, Open and HeldOpen all pass (spec Demo-vii section 1)
 }
 
 /** BFS from the crew tile to the nearest goal tile; returns the first step's tile index, or -1. */

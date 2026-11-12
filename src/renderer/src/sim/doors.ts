@@ -48,6 +48,7 @@ export function doorSystem(state: SimState): void {
       state.doors.state[e] = DoorState.Sealed; state.doors.sealRequested[e] = 0; state.doors.closeTimer[e] = 0;
       continue;
     }
+    if (state.doors.state[e] === DoorState.HeldOpen) continue;   // held open from the Doors console: crew never rewrite it, no close timer (spec Demo-vii amendment 1)
     if (crewInZone(state, e)) {
       state.doors.state[e] = DoorState.Open; state.doors.closeTimer[e] = DOOR_CLOSE_DELAY * quirkDoorDelayMult(state);
     } else if (state.doors.state[e] === DoorState.Open) {

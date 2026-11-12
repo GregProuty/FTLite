@@ -3,7 +3,7 @@ import fc from 'fast-check';
 import { oxygenStep, totalO2, roomBreached, passageFor } from '../src/renderer/src/sim/hazards/oxygen';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { O2_K, O2_SNAP_EPS, PASSAGE_SEALED, PASSAGE_CLOSED, PASSAGE_OPEN, SEAL_SKILL } from '../src/renderer/src/sim/tuning';
-import { makeState, room, teleport, setSkill } from './helpers/sim';
+import { makeState, room, teleport, setSkill, quirkState } from './helpers/sim';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { Skill } from '../src/renderer/src/sim/skills';
@@ -111,5 +111,24 @@ describe('sealed doors and the Doors operator', () => {
     expect(passageFor(s, e)).toBeCloseTo(PASSAGE_SEALED * (1 - 10 * SEAL_SKILL), 12); expect(1 - 10 * SEAL_SKILL).toBeCloseTo(0.5);
     s.doors.state[e] = DoorState.Closed; expect(passageFor(s, e)).toBe(PASSAGE_CLOSED);
     s.doors.state[e] = DoorState.Open; expect(passageFor(s, e)).toBe(PASSAGE_OPEN);
+  });
+});
+
+describe('held-open doors in the oxygen step (spec Demo-vii section 1)', () => {
+  it('passageFor gives PASSAGE_OPEN for a HeldOpen door', () => {
+    const s = makeState(0);
+    s.doors.state[0] = DoorState.HeldOpen;
+    expect(passageFor(s, 0)).toBe(PASSAGE_OPEN);
+  });
+  it('a HeldOpen door moves exactly as much oxygen as an Open one, and Leaky Seals does not multiply it', () => {
+    const run1 = (st: number, quirk: number): number => {
+      const s = quirkState(quirk); const A = room(s, 'A');
+      for (const eid of s.crew) teleport(s, s.crew.indexOf(eid), 12.5, 9.5);
+      s.rooms.o2[A] = 0; s.doors.state[0] = st;
+      oxygenStep(s, new Float64Array(s.rooms.o2.length));
+      return s.rooms.o2[A]!;
+    };
+    expect(run1(DoorState.HeldOpen, 1)).toBe(run1(DoorState.Open, 1));
+    expect(run1(DoorState.HeldOpen, 0)).toBe(run1(DoorState.Open, 1));     // quirk 0 is Leaky Seals: closed doors only
   });
 });

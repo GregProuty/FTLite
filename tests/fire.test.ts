@@ -56,4 +56,14 @@ describe('fire', () => {
     extinguishRoom(s, A);
     expect(s.rooms.fire[A]).toBe(0); expect(s.rooms.fireRepair[A]).toBe(0);
   });
+  it('spreads through a HeldOpen door at the open rate: the same rolls as an Open door', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const o = makeState(0, seed), h = makeState(0, seed);
+      const A = room(o, 'A');
+      igniteRoom(o, A); igniteRoom(h, A);
+      o.doors.state[0] = DoorState.Open; h.doors.state[0] = DoorState.HeldOpen;
+      for (let i = 0; i < 600; i++) { fireStep(o); fireStep(h); }
+      expect(Array.from(h.rooms.fire)).toEqual(Array.from(o.rooms.fire));
+    }
+  });
 });

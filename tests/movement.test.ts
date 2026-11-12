@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { moveAABB } from '../src/renderer/src/sim/movement';
-import { solidAt, roomAt } from '../src/renderer/src/sim/grid';
+import { solidAt, roomAt, DoorState } from '../src/renderer/src/sim/grid';
 import { Position, Life, LifeState } from '../src/renderer/src/sim/components';
 import { CREW_SPEED, DT, CREW_HALF } from '../src/renderer/src/sim/tuning';
 import { makeState, intents, run, teleport, room } from './helpers/sim';
@@ -102,5 +102,16 @@ describe('movementSystem', () => {
     Life.state[s.crew[0]!] = LifeState.Downed;
     run(s, 30, () => intents({ moveX: 1 }));
     expect(Position.x[s.crew[0]!]).toBe(2.5);
+  });
+});
+
+describe('held-open doors and movement (spec Demo-vii amendment 6)', () => {
+  it('a crew member walks through a HeldOpen door', () => {
+    const s = makeState(1);
+    s.doors.state[5] = DoorState.HeldOpen;                  // G<->I at (2,7)
+    expect(solidAt(s, 2, 7)).toBe(false);
+    teleport(s, 0, 2.5, 8.5);
+    run(s, 30, () => intents({ moveY: -1 }));
+    expect(Position.y[s.crew[0]!]).toBeLessThan(7);
   });
 });

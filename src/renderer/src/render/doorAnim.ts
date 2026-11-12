@@ -1,8 +1,8 @@
-import { DoorState } from '../sim/grid';
+import { DoorState, doorIsOpen } from '../sim/grid';
 
 export const DOOR_ANIM_SECONDS = 0.25;
 
-export function doorTarget(state: number): 0 | 1 { return state === DoorState.Open ? 1 : 0; }
+export function doorTarget(state: number): 0 | 1 { return doorIsOpen(state) ? 1 : 0; }   // Open and HeldOpen
 export function initialDoorProgress(state: number): number { return doorTarget(state); }
 
 /** Move progress towards target by dt / animSeconds, clamped to [0, 1]. Pure; called once per rendered frame per door. */

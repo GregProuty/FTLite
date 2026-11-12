@@ -1,6 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
-import { DoorState } from '../sim/grid';
+import { DoorState, doorIsOpen } from '../sim/grid';
 import type { SimState } from '../sim/state';
 import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
@@ -40,7 +40,7 @@ export function createTileLayer(_assets: GameAssets, _memory: RenderMemory): Til
         const t = d.edgeTile[e]!, tx = t % d.width, ty = (t - tx) / d.width, x = tx * TILE_PX, y = ty * TILE_PX;
         const st = state.doors.state[e]!;
         const wallsSideways = isWall(tx - 1, ty) && isWall(tx + 1, ty);          // walls left and right: passage runs vertically
-        if (st === DoorState.Open) {
+        if (doorIsOpen(st)) {
           if (wallsSideways) { doors.rect(x, y, JAMB, TILE_PX).fill(DOOR); doors.rect(x + TILE_PX - JAMB, y, JAMB, TILE_PX).fill(DOOR); }
           else { doors.rect(x, y, TILE_PX, JAMB).fill(DOOR); doors.rect(x, y + TILE_PX - JAMB, TILE_PX, JAMB).fill(DOOR); }
         } else {

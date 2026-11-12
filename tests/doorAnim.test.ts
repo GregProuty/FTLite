@@ -46,4 +46,9 @@ describe('door animation (spec §4 reconciled doors)', () => {
     // Unsealed while closed shows frame 0 at once.
     expect(doorFrame(DoorState.Closed, 0, 4)).toEqual({ kind: 'open', frame: 0 });
   });
+  it('HeldOpen animates to open and draws an open frame (spec Demo-vii section 1)', () => {
+    expect(doorTarget(DoorState.HeldOpen)).toBe(1);
+    expect(initialDoorProgress(DoorState.HeldOpen)).toBe(1);
+    expect(doorFrame(DoorState.HeldOpen, 1, 4)).toEqual({ kind: 'open', frame: 3 });
+  });
 });
