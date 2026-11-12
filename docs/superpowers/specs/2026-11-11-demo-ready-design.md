@@ -181,3 +181,15 @@ Fixtures use `placeEnemy` extended as the plan says (it fills the new fields lik
 
 - [ ] The §11.5 tests pass; `gate-survival`, `gate-boarding`, `gate-jump` and `gate-run` re-recorded, each with its before/after figures per seed and the combat change named as the cause of the drift.
 - [ ] Playtest step 6 becomes: a debris warning **and** an enemy encounter: see the enemy row with its shield bracket and weapon charge, strip a layer with an untuned beam, scan, pierce with a tuned beam, see the flee and the surrender notice, hold fire for the scrap once and kill once across the session. `docs/playtest.md` carries these as step 6's `See:` line.
+
+
+## 12. Amendments from the plan and the implementation
+- `CREW_INTERVAL_MULT` replaces the solo multiplier in both `spawnInterval` and `fireInterval`; `SOLO_INTERVAL_MULT` is removed.
+- A survival lever not in §5 was taken in Task 1 when the aimed shots killed seed 2's crew at 291 s: `ENEMY_SHOT_CREW_DAMAGE = 12` for shot impacts only (the Run-i lever 2; lever 1, `DEBRIS_CREW_DAMAGE 15`, broke the debris Medbay fixture and was reverted). Debris keeps 20.
+- The duo gate sees no boarding: the first pair boarding is at 330 s and the gate runs 300 s. It proves the pre-boarding margin; `gate-boarding` covers pair boarding. Lever (2) of §5 cannot affect the gate as written.
+- `gate-survival` and the director's twenty-minute soak pin `run.jumpCharge = 0` every tick so the captain bot never jumps; they are ship-only soaks. `gate-survival` asserts `boardings === 0` for pairs instead of the old guard.
+- The captain bot's jump a minute after arrival coincides with `ENCOUNTER_AFTER_JUMP` (60 s), so the acceptance soak records no impacts: jump-dodging is a balance follow-up (§10), not a defect of this feature.
+- `placeEnemy` fills the six new enemy fields as `arrive` does, with `maxHull = max(hull, column max)`; the shield layer lands at `shieldRecharge >= 1 − 1e-9` (360 additions of `DT / 6` fall just short of 1); `jumpShip` voids `surrenderIntact` before `leave` so a jump during a flee counts as a flee; `spawnObject` takes an `aimed` flag set only by `spawnShot`.
+- Card line 3 is `Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands` (the §3 text was 92 characters; the limit is 90). The §4 counts were off by one (event 3's choice line is 63, the surrender line 45); both within budget. The budgets `LOBBY_LINE_MAX`, `NOTICE_LINE_MAX`, `LOBBY_PX_MAX`, `NOTICE_PX_MAX` live in `tuning.ts`; the pixel budgets are enforced by the one-off measurement (478 and 333 px), not by a test.
+- The threat row prints `shields n/m` before the `DOWN` suffixes, as §11.4's formula orders them.
+- Codex could not finish a review of §11.3 (three timeouts); the task reviewer and the final whole-branch review checked those rules instead.
