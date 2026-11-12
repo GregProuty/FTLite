@@ -14,7 +14,7 @@ Run `npm run dev` with two keyboard players. Tick each step as seen and write wh
   See: pressing each keyboard's join key (`E` on keyboard 1, `Enter` on keyboard 2; the banner calls them Interact) lights a second block; two blocks are lit and both are named.
   Notes:
 - [ ] Start: start the run; the panels fill.
-  See: the clock, threats and power panels fill; the director line shows the ship's quirk.
+  See: the clock, threats and power panels fill; the director line shows the ship's quirk. The ship is the cutter: bow to the right, every system room marked with a glyph.
   Notes:
 - [ ] Sit: one player at Engineering, the other at Weapons or Science.
   See: Engineering shows its rows, the pool and coolant; the other console shows its own list; the seated players are marked at their consoles. A repaired console comes back with one bar, or reads OFF on the Engineering panel until Engineering gives it one.
@@ -26,7 +26,7 @@ Run `npm run dev` with two keyboard players. Tick each step as seen and write wh
   See: the enemy row with its shield bracket and weapon charge; strip a layer with an untuned beam, scan, pierce with a tuned beam; see the flee and the surrender notice; hold fire for the scrap once and kill once across the session; for debris, Science scans, Weapons shoots or Navigation evades. Do not jump while the enemy is present. The shield layer regrows in 6 s, so scan for the frequency (or fire a torpedo) to reach the hull. Also: the enemy panel (left of the threat panel, below the notice) appears on arrival with its shield ring and weapon bar, flashes on a hit and shows FLEE Ns; hazards, impacts, shots, the ready drive, the jump and the end each make a sound.
   Notes:
 - [ ] Jump: the drive is ready; take Navigation and jump.
-  See: the notice `JUMP READY   someone take Navigation`; sit, pick `Node 2a` or `2b`, Confirm; the threats clear and the clock reads `node 2/8`.
+  See: the notice `JUMP READY   someone take Navigation`; sit, pick `Node 2a` or `2b`, Confirm; the threats clear and the clock reads `node 2/8`. Sitting at Navigation opens the sector map above the ship.
   Notes:
 - [ ] Event: an event node.
   See: both players see the event notice; the operator picks a choice and the effect lands (scrap, hull or a hazard).

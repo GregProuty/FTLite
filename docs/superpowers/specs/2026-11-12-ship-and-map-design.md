@@ -99,4 +99,9 @@ Shields as a system; ship selection between the starter and the cutter; ship spr
 
 ## 9. Amendments
 
-(Filled during implementation.)
+- No change to `cutter.json` was needed; `gate-cutter` passed first time.
+- The only `.system` reader in `src/` labels enemy targets, so the room systems `"doors"` and `"reactor"` needed no code change.
+- The `O2` glyph is drawn with strokes, not text, so `drawIcon` stays Graphics-only.
+- Engineering is never tinted unpowered, matching the HUD `OFF` rule; the bolt polygon has six vertices.
+- `MapModel` also carries `column` and `jump` so the title can be built; a shared `jumpText` helper feeds both the Navigation footer and `mapTitle`.
+- The map panel sits at (236, 64), 360 × 116, alpha 0.6 (moved from the first draft after review so it does not cover the middle of the ship).
