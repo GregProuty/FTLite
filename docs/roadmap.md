@@ -17,6 +17,7 @@ Written 2026-11-10 when the owner asked for an autonomous run through the featur
 | 11 | **Demo-i Demo ready:** controls card, a run notice both players can read, two-player balance with a duo health gate, a bot that jumps and resolves events so the soak covers the run, a scripted two-player playtest as the acceptance gate | sub-project 4 | in review |
 | 12 | **Demo-ii Visible combat and sound:** repaired consoles return powered (pool permitting) and read OFF otherwise, a drawn enemy with shield ring and weapon bar, seven synthesized audio cues | sub-project 4 | merged (manual gate pending) |
 | 13 | **Demo-iii Ship and map:** an FTL-style cutter ship for the app, original system glyphs in rooms and power rows, a sector map at Navigation | sub-project 4 | merged (manual gate pending) |
+| 14 | **Demo-iv Visual cleanup:** a 1280 x 720 screen in non-overlapping bands, the ship scaled to fit, flat floors, walls and doors | sub-project 4 | merged (manual gate pending) |
 
 Deferred beyond this list: networking (sub-project 5), a solo drone, the shared luck resource, procedural ships.
 
