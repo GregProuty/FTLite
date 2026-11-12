@@ -1,0 +1,551 @@
+{
+  "id": "cutter",
+  "version": 1,
+  "width": 29,
+  "height": 13,
+  "rows": [
+    "          #####              ",
+    "          #TTT#              ",
+    "######### ##+######          ",
+    "#OOO+SSS# #UUU#DDD#          ",
+    "##+##+#####UUU+DDD###########",
+    "#EEE#a#WWW+UUU#DDD+CCC+FFF#B#",
+    "#EEE+a+WWW##+###+###+##FFF+B#",
+    "#EEE#a#WWW+VVV#RRR+NNN+FFF#B#",
+    "##+##+#####VVV+RRR###########",
+    "#LLL+MMM# #VVV#RRR#          ",
+    "######### ##+######          ",
+    "          #XXX#              ",
+    "          #####              "
+  ],
+  "rooms": [
+    {
+      "id": "O",
+      "name": "Oxygen",
+      "system": "lifeSupport"
+    },
+    {
+      "id": "S",
+      "name": "Upper Hold",
+      "system": null
+    },
+    {
+      "id": "E",
+      "name": "Engines",
+      "system": "engineering"
+    },
+    {
+      "id": "a",
+      "name": "Aft Passage",
+      "system": null
+    },
+    {
+      "id": "W",
+      "name": "Weapons",
+      "system": "weapons"
+    },
+    {
+      "id": "L",
+      "name": "Aft Store",
+      "system": null
+    },
+    {
+      "id": "M",
+      "name": "Lower Hold",
+      "system": null
+    },
+    {
+      "id": "T",
+      "name": "Dorsal Airlock",
+      "system": null
+    },
+    {
+      "id": "U",
+      "name": "Crew Quarters",
+      "system": null
+    },
+    {
+      "id": "V",
+      "name": "Galley",
+      "system": null
+    },
+    {
+      "id": "X",
+      "name": "Ventral Airlock",
+      "system": null
+    },
+    {
+      "id": "D",
+      "name": "Medbay",
+      "system": "medbay"
+    },
+    {
+      "id": "R",
+      "name": "Reactor",
+      "system": "reactor"
+    },
+    {
+      "id": "C",
+      "name": "Door Control",
+      "system": "doors"
+    },
+    {
+      "id": "N",
+      "name": "Sensors",
+      "system": "science"
+    },
+    {
+      "id": "F",
+      "name": "Forward Corridor",
+      "system": null
+    },
+    {
+      "id": "B",
+      "name": "Bridge",
+      "system": "navigation"
+    }
+  ],
+  "edges": [
+    {
+      "a": "O",
+      "b": "E",
+      "kind": "door",
+      "tile": [
+        2,
+        4
+      ],
+      "width": 1
+    },
+    {
+      "a": "O",
+      "b": "S",
+      "kind": "door",
+      "tile": [
+        4,
+        3
+      ],
+      "width": 1
+    },
+    {
+      "a": "E",
+      "b": "a",
+      "kind": "door",
+      "tile": [
+        4,
+        6
+      ],
+      "width": 1
+    },
+    {
+      "a": "a",
+      "b": "W",
+      "kind": "door",
+      "tile": [
+        6,
+        6
+      ],
+      "width": 1
+    },
+    {
+      "a": "S",
+      "b": "a",
+      "kind": "door",
+      "tile": [
+        5,
+        4
+      ],
+      "width": 1
+    },
+    {
+      "a": "M",
+      "b": "a",
+      "kind": "door",
+      "tile": [
+        5,
+        8
+      ],
+      "width": 1
+    },
+    {
+      "a": "E",
+      "b": "L",
+      "kind": "door",
+      "tile": [
+        2,
+        8
+      ],
+      "width": 1
+    },
+    {
+      "a": "L",
+      "b": "M",
+      "kind": "door",
+      "tile": [
+        4,
+        9
+      ],
+      "width": 1
+    },
+    {
+      "a": "W",
+      "b": "U",
+      "kind": "door",
+      "tile": [
+        10,
+        5
+      ],
+      "width": 1
+    },
+    {
+      "a": "W",
+      "b": "V",
+      "kind": "door",
+      "tile": [
+        10,
+        7
+      ],
+      "width": 1
+    },
+    {
+      "a": "T",
+      "b": "U",
+      "kind": "door",
+      "tile": [
+        12,
+        2
+      ],
+      "width": 1
+    },
+    {
+      "a": "U",
+      "b": "V",
+      "kind": "door",
+      "tile": [
+        12,
+        6
+      ],
+      "width": 1
+    },
+    {
+      "a": "V",
+      "b": "X",
+      "kind": "door",
+      "tile": [
+        12,
+        10
+      ],
+      "width": 1
+    },
+    {
+      "a": "U",
+      "b": "D",
+      "kind": "door",
+      "tile": [
+        14,
+        4
+      ],
+      "width": 1
+    },
+    {
+      "a": "V",
+      "b": "R",
+      "kind": "door",
+      "tile": [
+        14,
+        8
+      ],
+      "width": 1
+    },
+    {
+      "a": "D",
+      "b": "R",
+      "kind": "door",
+      "tile": [
+        16,
+        6
+      ],
+      "width": 1
+    },
+    {
+      "a": "D",
+      "b": "C",
+      "kind": "door",
+      "tile": [
+        18,
+        5
+      ],
+      "width": 1
+    },
+    {
+      "a": "R",
+      "b": "N",
+      "kind": "door",
+      "tile": [
+        18,
+        7
+      ],
+      "width": 1
+    },
+    {
+      "a": "C",
+      "b": "N",
+      "kind": "door",
+      "tile": [
+        20,
+        6
+      ],
+      "width": 1
+    },
+    {
+      "a": "C",
+      "b": "F",
+      "kind": "door",
+      "tile": [
+        22,
+        5
+      ],
+      "width": 1
+    },
+    {
+      "a": "N",
+      "b": "F",
+      "kind": "door",
+      "tile": [
+        22,
+        7
+      ],
+      "width": 1
+    },
+    {
+      "a": "F",
+      "b": "B",
+      "kind": "door",
+      "tile": [
+        26,
+        6
+      ],
+      "width": 1
+    }
+  ],
+  "breachSites": [
+    {
+      "room": "O",
+      "tile": [
+        1,
+        2
+      ],
+      "width": 1
+    },
+    {
+      "room": "S",
+      "tile": [
+        5,
+        2
+      ],
+      "width": 1
+    },
+    {
+      "room": "E",
+      "tile": [
+        0,
+        5
+      ],
+      "width": 1
+    },
+    {
+      "room": "a",
+      "tile": [
+        4,
+        5
+      ],
+      "width": 1
+    },
+    {
+      "room": "W",
+      "tile": [
+        9,
+        4
+      ],
+      "width": 1
+    },
+    {
+      "room": "L",
+      "tile": [
+        1,
+        10
+      ],
+      "width": 1
+    },
+    {
+      "room": "M",
+      "tile": [
+        5,
+        10
+      ],
+      "width": 1
+    },
+    {
+      "room": "T",
+      "tile": [
+        11,
+        0
+      ],
+      "width": 1
+    },
+    {
+      "room": "U",
+      "tile": [
+        10,
+        3
+      ],
+      "width": 1
+    },
+    {
+      "room": "V",
+      "tile": [
+        10,
+        9
+      ],
+      "width": 1
+    },
+    {
+      "room": "X",
+      "tile": [
+        11,
+        12
+      ],
+      "width": 1
+    },
+    {
+      "room": "D",
+      "tile": [
+        15,
+        2
+      ],
+      "width": 1
+    },
+    {
+      "room": "R",
+      "tile": [
+        15,
+        10
+      ],
+      "width": 1
+    },
+    {
+      "room": "C",
+      "tile": [
+        19,
+        4
+      ],
+      "width": 1
+    },
+    {
+      "room": "N",
+      "tile": [
+        19,
+        8
+      ],
+      "width": 1
+    },
+    {
+      "room": "F",
+      "tile": [
+        23,
+        4
+      ],
+      "width": 1
+    },
+    {
+      "room": "B",
+      "tile": [
+        27,
+        4
+      ],
+      "width": 1
+    }
+  ],
+  "stations": [
+    {
+      "id": "navigation",
+      "room": "B",
+      "tile": [
+        27,
+        6
+      ],
+      "allocation": 1
+    },
+    {
+      "id": "doors",
+      "room": "C",
+      "tile": [
+        20,
+        5
+      ],
+      "allocation": 1
+    },
+    {
+      "id": "weapons",
+      "room": "W",
+      "tile": [
+        8,
+        6
+      ],
+      "allocation": 2
+    },
+    {
+      "id": "science",
+      "room": "N",
+      "tile": [
+        20,
+        7
+      ],
+      "allocation": 1
+    },
+    {
+      "id": "medbay",
+      "room": "D",
+      "tile": [
+        16,
+        4
+      ],
+      "allocation": 1
+    },
+    {
+      "id": "lifeSupport",
+      "room": "O",
+      "tile": [
+        2,
+        3
+      ],
+      "allocation": 2
+    },
+    {
+      "id": "engineering",
+      "room": "E",
+      "tile": [
+        2,
+        6
+      ],
+      "allocation": 1
+    }
+  ],
+  "spawns": [
+    [
+      11,
+      4
+    ],
+    [
+      12,
+      4
+    ],
+    [
+      13,
+      4
+    ],
+    [
+      11,
+      5
+    ]
+  ]
+}
