@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateMap, reachable, jumpShip, nodeLabel } from '../src/renderer/src/sim/run';
+import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType } from '../src/renderer/src/sim/run';
 import { deriveStreams } from '../src/renderer/src/sim/state';
 import { Phase } from '../src/renderer/src/sim/director';
 import { EndReason, downCrew } from '../src/renderer/src/sim/crew';
@@ -10,8 +10,8 @@ import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { failStation } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, JUMP_CHARGE_TIME, ENCOUNTER_AFTER_JUMP, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX } from '../src/renderer/src/sim/tuning';
-import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill } from './helpers/sim';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, JUMP_CHARGE_TIME, ENCOUNTER_AFTER_JUMP, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX } from '../src/renderer/src/sim/tuning';
+import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 
 const T = TICK_HZ;
@@ -19,6 +19,23 @@ const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); qu
 
 /** The spec section 5 procedure, replayed on a reference stream. */
 function replayMap(rng: { s: number }, columns: number) {
+  const colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * 3);
+  colNodes[0] = 1; colNodes[columns - 1] = 1;
+  for (let c = 1; c < columns - 1; c++) colNodes[c] = 2 + nextInt(rng, 2);
+  for (let c = 0; c < columns - 1; c++) {
+    const next = colNodes[c + 1]!;
+    for (let n = 0; n < colNodes[c]!; n++) { let mask = 0; for (let d = 0; d < next; d++) if (nextFloat(rng) < EDGE_CHANCE) mask |= 1 << d; if (mask === 0) mask = 1 << nextInt(rng, next); edgeMask[c * 3 + n] = mask; }
+    for (let d = 0; d < next; d++) { let incoming = false; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * 3 + n]! & (1 << d)) incoming = true; if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[c * 3 + n] = edgeMask[c * 3 + n]! | (1 << d); } }
+  }
+  const nodeType = new Uint8Array(columns * 3);
+  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * 3 + n] = u < SHOP_CHANCE ? 2 : u < SHOP_CHANCE + EVENT_CHANCE ? 1 : 0; }
+  let shop = false; for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * 3 + n] === 2) shop = true;
+  if (!shop) nodeType[Math.floor(columns / 2) * 3] = 2;
+  return { colNodes, edgeMask, nodeType };
+}
+
+/** The Run-i replay: edges only, no node types. */
+function oldReplay(rng: { s: number }, columns: number) {
   const colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * 3);
   colNodes[0] = 1; colNodes[columns - 1] = 1;
   for (let c = 1; c < columns - 1; c++) colNodes[c] = 2 + nextInt(rng, 2);
@@ -43,6 +60,23 @@ describe('run: map generation', () => {
       }
       for (let n = 0; n < 3; n++) expect(edgeMask[(RUN_COLUMNS - 1) * 3 + n]).toBe(0);
     }
+  });
+  it('node types: equal to the replay for seeds 7, 1 and 23; Run-i colNodes/edgeMask unchanged for seeds 1-50; well-formed; the shop fallback', () => {
+    for (const seed of [7, 1, 23]) { const s = makeState(2, seed); expect(Array.from(s.run.nodeType)).toEqual(Array.from(replayMap(deriveStreams(seed).map, RUN_COLUMNS).nodeType)); }
+    for (let seed = 1; seed <= 50; seed++) {
+      const old = oldReplay(createRng(seed), RUN_COLUMNS), g = generateMap(createRng(seed), RUN_COLUMNS);
+      expect(Array.from(g.colNodes)).toEqual(Array.from(old.colNodes)); expect(Array.from(g.edgeMask)).toEqual(Array.from(old.edgeMask));
+      const t = g.nodeType; let shops = 0;
+      for (let c = 0; c < RUN_COLUMNS; c++) for (let n = 0; n < 3; n++) {
+        const v = t[c * 3 + n]!;
+        if (n >= g.colNodes[c]! || c === 0 || c === RUN_COLUMNS - 1) expect(v).toBe(NodeType.Hazard); else { expect([0, 1, 2]).toContain(v); if (v === NodeType.Shop) shops++; }
+      }
+      expect(shops).toBeGreaterThanOrEqual(1);
+    }
+    const t = new Uint8Array(24); assignNodeTypes(createRng(1), makeState(2, 1).run.colNodes, t, () => 0.99);
+    for (let c = 0; c < RUN_COLUMNS; c++) for (let n = 0; n < 3; n++) expect(t[c * 3 + n]).toBe(c * 3 + n === 4 * 3 ? NodeType.Shop : NodeType.Hazard);
+    const all = makeState(2, 1); assignNodeTypes(createRng(1), all.run.colNodes, t, () => 0.1);
+    for (let c = 1; c < RUN_COLUMNS - 1; c++) for (let n = 0; n < all.run.colNodes[c]!; n++) expect(t[c * 3 + n]).toBe(NodeType.Shop);
   });
   it('createSimState draws the map from the map stream exactly as the section 5 replay does, leaves the other streams as before, and is seed-deterministic', () => {
     const ref = deriveStreams(7).map; const expected = replayMap(ref, RUN_COLUMNS);
@@ -114,7 +148,7 @@ describe('run: the jump', () => {
     const tick = s.tick, before = { stress: s.director.stress, boarderRoom: s.boarders.room[0], boarderHealth: s.boarders.health[0], boarderMove: s.boarders.nextMoveTick[0], boardArrival: s.boarders.nextArrivalTick, xp: s.skills.xp[Skill.Repair], hull: s.hull, h1: Health.cur[s.crew[1]!], charge: s.weapons.charge, loaded: s.weapons.torpedoLoaded, selector: s.weapons.selector, fire: s.rooms.fire[A], breach: s.breaches.active[6], failed: s.stations.failed[s.derived.stationOfKind[StationKind.Doors]!] };
     const dr = createRng(s.rng.director.s); nextFloat(dr); nextFloat(dr); const h0 = s.rng.hazards.s, c0 = s.rng.combat.s, m0 = s.rng.map.s;
     const reachableBefore = reachable(s);
-    jumpShip(s);
+    jumpShip(s, reachable(s)[0]!);
     expect([s.run.column, s.run.nodesReached, s.run.jumpCharge, s.telemetry.jumps]).toEqual([1, 1, 0, 1]); expect(s.run.node).toBe(reachableBefore[0]); expect(s.stations.cursor[nav]).toBe(0);
     expect(Array.from(s.debris.active)).toEqual(new Array(DEBRIS_SLOTS).fill(0)); expect(s.stations.cursor[s.derived.stationOfKind[StationKind.Weapons]!]).toBe(-1); expect(s.stations.cursor[sci]).toBe(-1); expect(s.science.scanning).toBe(0);
     expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.enemy.nextArrivalTick]).toEqual([0, 0, tick + ENCOUNTER_AFTER_JUMP * T]);
@@ -124,9 +158,9 @@ describe('run: the jump', () => {
     expect(Seated.station[s.crew[0]!]).toBe(nav); expect(Seated.station[s.crew[1]!]).toBe(sci);
     expect(s.rng.director.s).toBe(dr.s); expect([s.rng.hazards.s, s.rng.combat.s, s.rng.map.s]).toEqual([h0, c0, m0]);
     const q = calm(2); const d1 = createRng(q.rng.director.s); nextFloat(d1); q.run.jumpCharge = 1; const t1 = q.tick;
-    jumpShip(q); expect(q.rng.director.s).toBe(d1.s); expect(q.boarders.nextArrivalTick).toBe(t1 + BOARDING_AFTER_JUMP * T);
+    jumpShip(q, reachable(q)[0]!); expect(q.rng.director.s).toBe(d1.s); expect(q.boarders.nextArrivalTick).toBe(t1 + BOARDING_AFTER_JUMP * T);
     const sc = calm(2); const k = placeDebris(sc, room(sc, 'A'), 600, 1); const c2 = sc.derived.stationOfKind[StationKind.Science]!; sitDown(sc, 1, c2); sc.stations.cursor[c2] = k; sc.science.scanning = 1; sc.run.jumpCharge = 1;
-    jumpShip(sc); expect(sc.science.scanning).toBe(0);                                  // no enemy: scanning still cleared
+    jumpShip(sc, reachable(sc)[0]!); expect(sc.science.scanning).toBe(0);                                  // no enemy: scanning still cleared
   });
   it('persistence of the finer state: life, bleed and revive, stamps, oxygen and repair progress, doors, heat and coolant, torpedo loading and regeneration, boarder clocks', () => {
     const s = calm(2); const A = room(s, 'A'); downCrew(s, 1); Life.bleed[s.crew[1]!] = 12.5; Life.reviveProgress[s.crew[1]!] = 0.3; Life.reviverPid[s.crew[1]!] = 0;
@@ -137,17 +171,17 @@ describe('run: the jump', () => {
     s.weapons.torpedoStock = 4; s.weapons.torpedoLoad = 0.3; s.weapons.torpedoRegen = 0.4;
     const b = placeBoarder(s, room(s, 'G'), 33); s.boarders.nextMoveTick[b] = 777; s.boarders.aloneSince[b] = -2;
     const snap = () => JSON.stringify([Life.state[s.crew[1]!], Life.bleed[s.crew[1]!], Life.reviveProgress[s.crew[1]!], Life.reviverPid[s.crew[1]!], s.skills.lastEngChangeTick, s.skills.lastDoorToggleTick, s.skills.lsDeliveredTick, s.skills.lastShotTick, s.rooms.o2[A], s.rooms.fire[A], s.rooms.fireRepair[A], s.breaches.repair[6], s.stations.repair[doors], s.stations.heat[wpn], s.stations.coolant[wpn], s.doors.state[0], s.doors.closeTimer[0], s.doors.sealRequested[0], s.weapons.torpedoStock, s.weapons.torpedoLoad, s.weapons.torpedoRegen, s.boarders.nextMoveTick[b], s.boarders.aloneSince[b]]);
-    const before = snap(); s.run.jumpCharge = 1; jumpShip(s); expect(snap()).toBe(before);
+    const before = snap(); s.run.jumpCharge = 1; jumpShip(s, reachable(s)[0]!); expect(snap()).toBe(before);
   });
   it('victory: from column 6 (nodesReached 6, jumps 6) a jump gives column 7, both counters 7, ended, Victory; crewSystem does not overwrite it; the next step is a no-op', () => {
     const s = calm(2); s.run.column = 6; s.run.node = 0; s.run.nodesReached = 6; s.telemetry.jumps = 6; s.run.jumpCharge = 1;
-    jumpShip(s);
+    jumpShip(s, reachable(s)[0]!);
     expect([s.run.column, s.run.nodesReached, s.telemetry.jumps, s.ended, s.endReason]).toEqual([7, 7, 7, 1, EndReason.Victory]);
-    const p = calm(2); p.run.column = 6; p.run.node = 0; p.run.nodesReached = 6; p.telemetry.jumps = 6; chargeJump(p);
+    const p = calm(2); allHazard(p); p.run.column = 6; p.run.node = 0; p.run.nodesReached = 6; p.telemetry.jumps = 6; chargeJump(p);
     seatNavigator(p, 0); run(p, 1); teleport(p, 1, 2.5, 2.5); Health.cur[p.crew[0]!] = 0.05; placeBoarder(p, room(p, 'A'));   // a boarder in A will down the navigator later this tick
     run(p, 1, () => intents({ confirmPressed: true }, {}));
     expect(p.endReason).toBe(EndReason.Victory); expect(p.ended).toBe(1); expect(Life.state[p.crew[0]!]).toBe(LifeState.Downed); expect(p.telemetry.firstDownTick).toBe(p.tick - 1);
-    const h = calm(2); h.run.column = 6; h.run.nodesReached = 6; h.telemetry.jumps = 6; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
+    const h = calm(2); allHazard(h); h.run.column = 6; h.run.nodesReached = 6; h.telemetry.jumps = 6; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
     run(h, 1, () => intents({ confirmPressed: true }, {})); expect(h.endReason).toBe(EndReason.Victory);
     const t = h.tick; run(h, 3); expect(h.tick).toBe(t);
     void HULL_MAX;

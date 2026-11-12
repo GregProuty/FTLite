@@ -41,9 +41,9 @@ describe('power model', () => {
   });
   it('refuses a bar at maxLevel even with spare power, and below it when the pool is empty', () => {
     const s = makeState(1), nav = idx(s, StationKind.Navigation), wpn = idx(s, StationKind.Weapons);
-    s.stations.level[nav] = maxLevel(StationKind.Navigation); s.stations.level[wpn] = 0;
+    s.stations.level[nav] = maxLevel(s, StationKind.Navigation); s.stations.level[wpn] = 0;
     expect(powerPool(s)).toBeGreaterThan(0);
-    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(maxLevel(StationKind.Navigation));
+    expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(maxLevel(s, StationKind.Navigation));
     s.stations.level[nav] = 0; s.stations.level[wpn] += powerPool(s);    // drain the pool while Navigation is below its ceiling
     expect(powerPool(s)).toBe(0);
     expect(shiftBar(s, nav, 1)).toBe(false); expect(s.stations.level[nav]).toBe(0);
@@ -161,7 +161,7 @@ describe('bonus bars and shedding', () => {
           if (powerUsed(s) > s.power.capacity) usedAboveBase = true;
           if (powerUsed(s) > powerCapacity(s)) return false;
           let coolant = 0;
-          for (let i = 0; i < s.stations.level.length; i++) { coolant += s.stations.coolant[i]!; if (s.stations.level[i]! > maxLevel(s.derived.stationKind[i]!)) return false; }
+          for (let i = 0; i < s.stations.level.length; i++) { coolant += s.stations.coolant[i]!; if (s.stations.level[i]! > maxLevel(s, s.derived.stationKind[i]!)) return false; }
           if (coolant > COOLANT_POOL) return false;
         }
       }

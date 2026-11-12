@@ -5,8 +5,9 @@ import { roomAt, DoorState } from './grid';
 import { stationOnline } from './stations';
 import { failStation } from './power';
 import { downCrew } from './crew';
+import { addScrap } from './scrap';
 import { Skill, skillLevelOf, addXp } from './skills';
-import { TICK_HZ, DT, BOARDING_PARTY, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, HEALTH_EPS } from './tuning';
+import { TICK_HZ, DT, BOARDING_PARTY, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, HEALTH_EPS, SCRAP_BOARDER } from './tuning';
 
 /** aloneSince sentinels (spec Boarders-i section 4). */
 export const ALONE_IDLE = -1, ALONE_SABOTAGED = -2;
@@ -94,7 +95,7 @@ export function damageBoarder(state: SimState, slot: number, amount: number, pid
   const b = state.boarders;
   b.health[slot] = snap(Math.max(0, b.health[slot]! - amount));
   if (b.health[slot]! > 0) return;
-  b.active[slot] = 0; b.stableId[slot] = 0; state.telemetry.boardersKilled++;
+  b.active[slot] = 0; b.stableId[slot] = 0; state.telemetry.boardersKilled++; addScrap(state, SCRAP_BOARDER);
   addXp(state, pid, Skill.Combat, XP_PER_KILL);
   if (activeBoarderCount(state) === 0) {
     const u = nextFloat(state.rng.director);

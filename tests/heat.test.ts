@@ -17,7 +17,8 @@ const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.station
 
 describe('overdrive ceiling', () => {
   it('every kind but Engineering may hold one bar above STATION_MAX', () => {
-    for (let k = 0; k < STATION_MAX.length; k++) expect(maxLevel(k)).toBe(STATION_MAX[k]! + (k === StationKind.Engineering ? 0 : STATION_OVERDRIVE));
+    const base = makeState(1);
+    for (let k = 0; k < STATION_MAX.length; k++) expect(maxLevel(base, k)).toBe(STATION_MAX[k]! + (k === StationKind.Engineering ? 0 : STATION_OVERDRIVE));
     const s = makeState(1), nav = idx(s, StationKind.Navigation), eng = idx(s, StationKind.Engineering);
     s.power.capacity = 20;
     expect(shiftBar(s, nav, 1)).toBe(true); expect(shiftBar(s, nav, 1)).toBe(true);   // 1 -> 2 -> 3

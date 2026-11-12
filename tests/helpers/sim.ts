@@ -5,6 +5,7 @@ import { createSimState, type SimState } from '../../src/renderer/src/sim/state'
 import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
+import { NodeType } from '../../src/renderer/src/sim/run';
 import { TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, BOARDER_HEALTH, BOARDER_MOVE } from '../../src/renderer/src/sim/tuning';
 import { ObjectKind } from '../../src/renderer/src/sim/debris';
 import { ENEMY_SLOTS } from '../../src/renderer/src/sim/debrisTargets';
@@ -54,7 +55,7 @@ export function placeDebris(state: SimState, room: number, ticksOut: number, war
 export function overdrive(state: SimState, kind: number): number {
   const i = state.derived.stationOfKind[kind]!;
   state.power.capacity = 20;
-  while (state.stations.level[i]! < maxLevel(kind)) if (!shiftBar(state, i, 1)) throw new Error('shiftBar refused');
+  while (state.stations.level[i]! < maxLevel(state, kind)) if (!shiftBar(state, i, 1)) throw new Error('shiftBar refused');
   return i;
 }
 
@@ -115,4 +116,17 @@ export function seatNavigator(state: SimState, pid: number): number { const i = 
 export function setMap(state: SimState, colNodes: number[], masks: Record<string, number>): void {
   state.run.colNodes.set(colNodes); state.run.edgeMask.fill(0);
   for (const [key, mask] of Object.entries(masks)) { const [c, n] = key.split(':').map(Number); state.run.edgeMask[c! * 3 + n!] = mask; }
+}
+
+export function setNodeTypes(state: SimState, types: Record<string, number>): void {
+  state.run.nodeType.fill(NodeType.Hazard);
+  for (const [key, t] of Object.entries(types)) { const [c, n] = key.split(':').map(Number); state.run.nodeType[c! * 3 + n!] = t; }
+}
+export function allHazard(state: SimState): void { setNodeTypes(state, {}); }
+export function grantScrap(state: SimState, n: number): void { state.run.scrap = n; }
+export function setEvent(state: SimState, id: number): void { state.run.event = id; state.run.eventChoice = -1; }
+/** The spec's fixture map M: three nodes in column 1, reachable [0, 2] from the start, every other mask 1; all nodes Hazard. */
+export function mapM(state: SimState): void {
+  setMap(state, [1, 3, 2, 2, 2, 2, 2, 1], { '0:0': 0b101, '1:0': 1, '1:1': 1, '1:2': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 });
+  allHazard(state);
 }

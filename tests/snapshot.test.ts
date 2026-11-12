@@ -10,7 +10,7 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator } from './helpers/sim';
+import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
@@ -19,6 +19,7 @@ import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { failStation } from '../src/renderer/src/sim/power';
 import { Phase, cycleBudget } from '../src/renderer/src/sim/director';
+import { navRows } from '../src/renderer/src/sim/run';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {
@@ -48,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-12 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-13 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 12 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 12;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 13 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 13;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -366,15 +367,29 @@ describe('snapshot', () => {
   });
   it('round-trips the run block, the map stream and telemetry.jumps; each alone changes the hash', () => {
     const s = makeState(2, 5); s.run.column = 3; s.run.node = 2; s.run.nodesReached = 3; s.run.jumpCharge = 0.42; s.run.colNodes.set([1, 3, 2, 3, 2, 2, 3, 1]); s.run.edgeMask[4] = 5; s.telemetry.jumps = 3; s.rng.map.s = 123456;
+    const before = s.run.nodeType[4]!; s.run.nodeType[4] = before === 2 ? 1 : 2; expect(before).not.toBe(s.run.nodeType[4]);
+    s.run.scrap = 45; s.run.event = 3; s.run.eventChoice = 1; s.run.upgrades[1] = 1; s.telemetry.scrapEarned = 60; s.telemetry.scrapSpent = 15; s.telemetry.eventsResolved = 2; s.telemetry.purchases = 1;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect([t.run.column, t.run.node, t.run.nodesReached, t.run.jumpCharge, t.telemetry.jumps, t.rng.map.s]).toEqual([3, 2, 3, 0.42, 3, 123456]);
     expect(Array.from(t.run.colNodes)).toEqual(Array.from(s.run.colNodes)); expect(Array.from(t.run.edgeMask)).toEqual(Array.from(s.run.edgeMask));
+    expect([t.run.nodeType[4], t.run.scrap, t.run.event, t.run.eventChoice, t.run.upgrades[1], t.telemetry.scrapEarned, t.telemetry.scrapSpent, t.telemetry.eventsResolved, t.telemetry.purchases]).toEqual([s.run.nodeType[4], 45, 3, 1, 1, 60, 15, 2, 1]);
     expect(saveSnapshot(s).header.rngStates['map']).toBe(123456);
     const base = hashState(makeState(2, 5));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
     for (const k of ['column', 'node', 'nodesReached', 'jumpCharge'] as const) expect(mutate((u) => { u.run[k] = 0.5; })).not.toBe(base);
     expect(mutate((u) => { u.run.colNodes[1] = 1; })).not.toBe(base); expect(mutate((u) => { u.run.edgeMask[0] = u.run.edgeMask[0]! ^ 1; })).not.toBe(base);
     expect(mutate((u) => { u.telemetry.jumps = 1; })).not.toBe(base); expect(mutate((u) => { u.rng.map.s = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.run.nodeType[4] = u.run.nodeType[4] === 2 ? 1 : 2; })).not.toBe(base);
+    for (const k of ['scrap', 'event', 'eventChoice'] as const) expect(mutate((u) => { u.run[k] = 7; })).not.toBe(base);
+    expect(mutate((u) => { u.run.upgrades[1] = 1; })).not.toBe(base);
+    for (const k of ['scrapEarned', 'scrapSpent', 'eventsResolved', 'purchases'] as const) expect(mutate((u) => { u.telemetry[k] = 7; })).not.toBe(base);
+  });
+  it('a run saved with a pending event resumes with the same rows and cursor', () => {
+    const s = makeState(2, 5); s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s);
+    s.run.column = 1; s.run.node = 2; s.run.nodesReached = 1; s.telemetry.jumps = 1; setEvent(s, 4);
+    const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 3;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(navRows(t)).toEqual(navRows(s)); expect(t.stations.cursor[n]).toBe(3);
   });
   it('a run saved mid-charge with the cursor on the second destination continues to the same jump as the uninterrupted run', () => {
     const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.9; return n; };

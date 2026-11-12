@@ -2,15 +2,15 @@ import type { SimState } from './state';
 import { StationKind } from './stationKinds';
 import { stationOnline } from './stations';
 import { nextFloat } from '../../../shared/rng';
-import { failStation } from './power';
+import { failStation, baseMax } from './power';
 import { Skill, skillLevelOf } from './skills';
 import { coolingTraitBonus } from './characters';
 import { igniteRoom } from './hazards/fire';
-import { STATION_MAX, HEAT_COOL_UNIT, HEAT_COOL_SKILL, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE } from './tuning';
+import { HEAT_COOL_UNIT, HEAT_COOL_SKILL, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE } from './tuning';
 
-/** A station is overdriven while online above its STATION_MAX. A failed station has level 0 and is never overdriven. */
+/** A station is overdriven while online above its base max (STATION_MAX plus a bought bar). A failed station has level 0 and is never overdriven. */
 export function isOverdriven(state: SimState, i: number): boolean {
-  return stationOnline(state, i) && state.stations.level[i]! > STATION_MAX[state.derived.stationKind[i]!]!;
+  return stationOnline(state, i) && state.stations.level[i]! > baseMax(state, state.derived.stationKind[i]!);
 }
 
 /** Heat removed per coolant unit per hazard tick: the baseline plus a floor-rounded term from the seated Engineering operator's Engineering level (spec 3-i section 7). */

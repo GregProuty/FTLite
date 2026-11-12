@@ -155,7 +155,7 @@ describe('Engineering console', () => {
       let used = 0, levels = 0;
       for (let i = 0; i < s.stations.level.length; i++) {
         used += s.stations.coolant[i]!; levels += s.stations.level[i]!;
-        if (s.stations.coolant[i]! > 2 || s.stations.heat[i]! < 0 || s.stations.heat[i]! > HEAT_MAX || s.stations.level[i]! > maxLevel(s.derived.stationKind[i]!)) return false;
+        if (s.stations.coolant[i]! > 2 || s.stations.heat[i]! < 0 || s.stations.heat[i]! > HEAT_MAX || s.stations.level[i]! > maxLevel(s, s.derived.stationKind[i]!)) return false;
       }
       return used <= COOLANT_POOL && levels <= s.power.capacity;
     };

@@ -4,7 +4,8 @@ import { StationKind } from './stationKinds';
 import { spawnShot, shotsInFlight } from './debris';
 import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from './debrisTargets';
 import { minutesOf } from './director';
-import { TICK_HZ, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, SOLO_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE } from './tuning';
+import { addScrap } from './scrap';
+import { TICK_HZ, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, SOLO_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, SCRAP_ENEMY } from './tuning';
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 
@@ -56,7 +57,7 @@ export function leave(state: SimState, destroyed: boolean): void {
   e.present = 0; e.hull = 0; e.stableId = 0; e.nextShotTick = -1; e.departTick = -1;
   e.sysHp.fill(0); e.sysRepairTick.fill(-1); e.shieldFreq = 0; e.scanned = 0; e.scan = 0;
   if (scanningEnemy) state.science.scanning = 0;
-  if (destroyed) state.telemetry.enemiesDestroyed++;
+  if (destroyed) { state.telemetry.enemiesDestroyed++; addScrap(state, SCRAP_ENEMY); }
   e.nextArrivalTick = state.tick + jitteredTicks(state, ENCOUNTER_COOLDOWN);
 }
 

@@ -23,10 +23,10 @@ export function repairStation(state: SimState, i: number): void {
   state.stations.failed[i] = 0; state.stations.repair[i] = 0;
 }
 
-/** Highest level a station may hold: STATION_MAX plus the overdrive bar for every kind except Engineering (spec 2b-i section 4). */
-export function maxLevel(kind: number): number {
-  return STATION_MAX[kind]! + (kind === StationKind.Engineering ? 0 : STATION_OVERDRIVE);
-}
+/** Base bars a station kind may hold: STATION_MAX plus a bought upgrade bar (spec Run-ii section 8). */
+export function baseMax(state: SimState, kind: number): number { return STATION_MAX[kind]! + state.run.upgrades[kind]!; }
+/** Highest level a station may hold: the base plus the overdrive bar for every kind except Engineering (spec 2b-i section 4). */
+export function maxLevel(state: SimState, kind: number): number { return baseMax(state, kind) + (kind === StationKind.Engineering ? 0 : STATION_OVERDRIVE); }
 
 /** Engineering operator moves one bar to (+1) or from (-1) station i. Returns whether the allocation changed. */
 export function shiftBar(state: SimState, i: number, delta: 1 | -1): boolean {
@@ -35,7 +35,7 @@ export function shiftBar(state: SimState, i: number, delta: 1 | -1): boolean {
   if (state.stations.failed[i]) return false;
   const kind = d.stationKind[i]!, level = state.stations.level[i]!;
   if (delta > 0) {
-    if (level >= maxLevel(kind) || powerPool(state) <= 0) return false;
+    if (level >= maxLevel(state, kind) || powerPool(state) <= 0) return false;
     state.stations.level[i] = level + 1; return true;
   }
   const floor = kind === StationKind.Engineering ? 1 : 0;
