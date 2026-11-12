@@ -27,6 +27,46 @@ describe('moveAABB', () => {
   });
 });
 
+describe('moveAABB corner sliding into one-tile doorways', () => {
+  // A wall column at x = 5 with a single open gap at row 5 (a doorway): rows 4 and 6 are wall.
+  const gapX = (tx: number, ty: number): boolean => wallsOutside(tx, ty) || (tx === 5 && ty !== 5);
+  // A wall row at y = 5 with a single open gap at column 5.
+  const gapY = (tx: number, ty: number): boolean => wallsOutside(tx, ty) || (ty === 5 && tx !== 5);
+  const step = 4 * DT;
+  const walk = (solid: (x: number, y: number) => boolean, x: number, y: number, dx: number, dy: number, ticks: number) => {
+    let p = { x, y };
+    for (let t = 0; t < ticks; t++) p = moveAABB(solid, p.x, p.y, dx, dy, CREW_HALF);
+    return p;
+  };
+  it('a crew member holding right while up to half a tile off the doorway row is slid into it and passes through', () => {
+    for (const y of [5.5, 5.3, 5.7, 5.05, 5.95, 5.0, 6.0, 4.99]) {
+      const p = walk(gapX, 3.5, y, step, 0, 120);
+      expect(p.x, `start y ${y}`).toBeGreaterThan(6.5);
+      expect(p.y, `start y ${y}`).toBeGreaterThanOrEqual(5.3); expect(p.y).toBeLessThanOrEqual(5.7);
+    }
+  });
+  it('the same holds for vertical moves through a doorway in a wall row', () => {
+    for (const x of [5.5, 5.3, 5.7, 5.05, 5.95]) {
+      const p = walk(gapY, x, 3.5, 0, step, 120);
+      expect(p.y, `start x ${x}`).toBeGreaterThan(6.5);
+      expect(p.x).toBeGreaterThanOrEqual(5.3); expect(p.x).toBeLessThanOrEqual(5.7);
+    }
+  });
+  it('a crew member fully beside the doorway (no part of the hitbox over the gap) is not pulled and stays flush', () => {
+    const p = walk(gapX, 3.5, 3.5, step, 0, 120);
+    expect(p.x).toBeCloseTo(5 - CREW_HALF, 5); expect(p.y).toBeCloseTo(3.5, 9);
+  });
+  it('a solid wall with no gap does not move the crew sideways', () => {
+    const wall = (tx: number, ty: number) => wallsOutside(tx, ty) || tx === 5;
+    const p = walk(wall, 3.5, 5.3, step, 0, 60);
+    expect(p.x).toBeCloseTo(5 - CREW_HALF, 5); expect(p.y).toBeCloseTo(5.3, 9);
+  });
+  it('the nudge never exceeds the step length and never pushes into a wall', () => {
+    const p = moveAABB(gapX, 5 - CREW_HALF - 1e-6, 5.9, step, 0, CREW_HALF);
+    expect(Math.abs(p.y - 5.9)).toBeLessThanOrEqual(step + 1e-12); expect(p.y).toBeLessThan(5.9);
+  });
+});
+
 describe('grid', () => {
   it('walls and outside are solid, floors are not, closed doors are solid', () => {
     const s = makeState();

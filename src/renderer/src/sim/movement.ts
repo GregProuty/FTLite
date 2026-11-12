@@ -15,17 +15,41 @@ function overlaps(solid: Solid, x: number, y: number, half: number): boolean {
   return false;
 }
 
-/** Per-axis AABB move against solid tiles: X first, then Y, snapping flush to the blocking tile. */
+/**
+ * Corner sliding (doorways): a blocked move whose hitbox spans two lanes at the blocking face, exactly one of them open,
+ * slides the crew toward that open lane's centre by at most the move's own length (never into a wall). `lane` is the
+ * crew's position across the move, `face` the tile index of the blocking face along the move.
+ */
+function slideToward(open: (laneTile: number) => boolean, lane: number, half: number, speed: number): number {
+  const a = Math.floor(lane - half), b = Math.floor(lane + half - MOVE_EPS);
+  if (a === b) return lane;                                                   // the hitbox sits in one lane: a plain wall, no slide
+  const openA = open(a), openB = open(b);
+  if (openA === openB) return lane;                                           // both open (not blocked by this face) or both solid
+  const target = (openA ? a : b) + 0.5;
+  return lane + Math.max(-speed, Math.min(speed, target - lane));
+}
+
+/** Per-axis AABB move against solid tiles: X first, then Y, snapping flush to the blocking tile; a blocked move slides into a one-tile doorway the hitbox partly covers. */
 export function moveAABB(solid: Solid, x: number, y: number, dx: number, dy: number, half: number): { x: number; y: number } {
   if (dx !== 0) {
     const nx = x + dx;
     if (!overlaps(solid, nx, y, half)) x = nx;
-    else x = dx > 0 ? Math.floor(nx + half) - half - MOVE_EPS : Math.floor(nx - half) + 1 + half + MOVE_EPS;
+    else {
+      const fx = dx > 0 ? Math.floor(nx + half - MOVE_EPS) : Math.floor(nx - half);
+      const sy = slideToward((ty) => !solid(fx, ty), y, half, Math.abs(dx));
+      if (sy !== y && !overlaps(solid, x, sy, half)) y = sy;
+      x = dx > 0 ? Math.floor(nx + half) - half - MOVE_EPS : Math.floor(nx - half) + 1 + half + MOVE_EPS;
+    }
   }
   if (dy !== 0) {
     const ny = y + dy;
     if (!overlaps(solid, x, ny, half)) y = ny;
-    else y = dy > 0 ? Math.floor(ny + half) - half - MOVE_EPS : Math.floor(ny - half) + 1 + half + MOVE_EPS;
+    else {
+      const fy = dy > 0 ? Math.floor(ny + half - MOVE_EPS) : Math.floor(ny - half);
+      const sx = slideToward((tx) => !solid(tx, fy), x, half, Math.abs(dy));
+      if (sx !== x && !overlaps(solid, sx, y, half)) x = sx;
+      y = dy > 0 ? Math.floor(ny + half) - half - MOVE_EPS : Math.floor(ny - half) + 1 + half + MOVE_EPS;
+    }
   }
   return { x, y };
 }
