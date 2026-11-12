@@ -105,3 +105,54 @@ A human two-player session is the acceptance criterion. `docs/playtest.md` (new)
 ## 10. Follow-ups recorded, not built
 
 A drawn sector map (Navigation panel or game-over); audio cues (alarm, fire, impact, jump, victory); a second ship layout; more events and a second unlock tier; any seated player resolving events; integer tick door timers at the next version bump; whatever the playtest adds here.
+
+## 11. Ship combat, FTL style (added 2026-11-11 evening at the user's request)
+
+The user wants the demo's ship combat to match FTL's mechanics as far as the existing model allows. What exists (Combat-i/ii): one enemy at a time with hull and three systems (weapons, engines, shields) that repair themselves; its shots fly at random rooms; our beam (tuned to one of three frequencies) is absorbed outright by raised shields unless tuned to the scanned shield frequency, and our torpedoes bypass shields; the enemy evades while its engines are up; it withdraws after a fixed stay; a kill pays scrap. The FTL mechanics added here, each mapped onto that model:
+
+| FTL | FTLite (this section) |
+|---|---|
+| Shield **layers** that absorb laser hits one at a time and recharge | `enemy.shieldLayers` 0..max, `shieldRecharge` 0..1; an untuned beam hit strips one layer; a tuned beam pierces; torpedoes bypass; layers recharge while the shield system is up |
+| Enemy weapon charge visible, firing at your systems | `enemy.shotArmTick` exposes the charge; shots are **aimed** at rooms with an online console and can fail that console on impact |
+| Enemies get tougher deeper in the sector | hull and shield layers scale with the column |
+| Enemies flee by jumping at low hull, and offer **surrender** | at 25% hull with engines up the enemy starts an 8 s flee; holding fire during it pays surrender scrap; damaging it voids the offer; killing it pays the kill |
+| Missiles ignore shields and are limited | torpedoes, as today |
+
+### 11.1 State and version
+
+```ts
+enemy.maxHull: number;          // hull on arrival for this encounter (scaled by column); 0 while absent
+enemy.shieldLayers: number;     // 0..enemyShieldMax(column); 0 while absent or shields down
+enemy.shieldRecharge: number;   // 0..1 progress to the next layer
+enemy.shotArmTick: number;      // tick the current nextShotTick was armed (-1 while absent): the weapon charge is (tick - shotArmTick) / (nextShotTick - shotArmTick)
+enemy.fleeing: number;          // 0/1: the flee countdown is running (departTick re-armed)
+enemy.surrenderIntact: number;  // 0/1: no damaging hit since the flee began
+telemetry.shieldHits, telemetry.enemyFled, telemetry.surrenderOffers, telemetry.surrenders: number;
+```
+
+Flattened in the `enemy` section after `scan`, in the order above (`ENEMY_FIELDS = 15 + 6 = 21`); the four telemetry scalars after `purchases` (`TELEMETRY_SCALARS = 24`). `SIM_VERSION = 16`; version-15 snapshots are rejected. Initial values all 0 except `shotArmTick −1`.
+
+### 11.2 Tuning (first pass)
+
+`ENEMY_SHIELD_LAYERS = [1, 1, 1, 2, 2, 2, 2, 2]` by column (`enemyShieldMax(column)`), `SHIELD_RECHARGE_TIME = 6` s per layer, `ENEMY_HULL_PER_COLUMN = 10` (`enemyMaxHull(column) = ENEMY_HULL + 10 × column`), `ENEMY_AIM_CHANCE = 0.6`, `ENEMY_SHOT_SYSTEM_CHANCE = 0.5`, `ENEMY_FLEE_FRAC = 0.25`, `ENEMY_FLEE_DELAY = 8` s, `SCRAP_SURRENDER = 20`. `ENEMY_BEAM_DAMAGE 15`, `ENEMY_TORP_DAMAGE 35`, `ENCOUNTER_MAX 120`, `SCRAP_ENEMY 30` unchanged.
+
+### 11.3 Rules (exact; draws named)
+
+**Arrival** (`arrive`): as today plus `maxHull = enemyMaxHull(run.column)`, `hull = maxHull`, `shieldLayers = enemyShieldMax(run.column)`, `shieldRecharge = 0`, `shotArmTick = tick`, `fleeing = 0`, `surrenderIntact = 0`. Still one hazards draw (the shield frequency).
+
+**Per tick** (`enemySystem`), in this order, replacing Combat-ii's list: (1) absent → arrive if due, return. (2) Repairs as today; a repaired Shields system starts with `shieldLayers 0, shieldRecharge 0`; a repaired Weapons system sets `nextShotTick = tick + ENEMY_FIRST_SHOT × TICK_HZ` and `shotArmTick = tick`. (3) **Shield recharge:** if `sysHp[Shields] > 0 && shieldLayers < enemyShieldMax(column)`: `shieldRecharge = min(1, shieldRecharge + DT / SHIELD_RECHARGE_TIME)`; at 1 → `shieldLayers += 1`, `shieldRecharge = 0`. No draw. (4) **Flee start:** if `!fleeing && hull <= ENEMY_FLEE_FRAC × maxHull && sysHp[Engines] > 0`: `fleeing = 1`, `surrenderIntact = 1`, `departTick = tick + ENEMY_FLEE_DELAY × TICK_HZ`, `telemetry.surrenderOffers += 1`. No draw. (5) Engines pause as today (`departTick += 1` while engines are down, fleeing or not). (6) Withdrawal if `tick >= departTick`: `leave(state, false)`. (7) Fire as today (re-arm with one director draw, `shotArmTick = tick`; spawn only with weapons up and under the cap).
+
+**Shots are aimed** (`spawnShot` → `spawnObject` for `ObjectKind.Shot` only): the room choice becomes two hazards draws: `u = nextFloat`; `rooms = ` the rooms of online stations (`stationOnline`), in station-index order, de-duplicated; if `u < ENEMY_AIM_CHANCE && rooms.length > 0` → `room = rooms[nextInt(rooms.length)]`, else `room = nextInt(volume.length)` (uniform, as today). Then the flight and frequency draws as today: **four** hazards draws per shot (debris keeps three). **Shot impact on a console** (`resolveImpact`, Shot kind only, after the hull damage and before the breach/fire attempt): for each online station whose tile is in the hit room, in station-index order: one hazards draw `v`; if `v < ENEMY_SHOT_SYSTEM_CHANCE` → `failStation(state, i)`. Debris impacts are unchanged.
+
+**Beams against shields** (`fireWeapon`, enemy slot `c`, replacing `beamAbsorbed`): let `tuned = sysHp[Shields] === 0 || shieldLayers === 0 || selector + 1 === shieldFreq`. One combat draw `u` always (the absorbed-without-a-roll rule is gone); `hit = u < enemyBeamThreshold(state, output)`. If `hit`: when `tuned` → `damageEnemy(state, c, ENEMY_BEAM_DAMAGE)` as today; otherwise → `shieldLayers −= 1`, `shieldRecharge = 0`, `telemetry.shieldHits += 1`, `telemetry.hits += 1`, no hull or system damage. A miss does nothing either way. Torpedoes are unchanged (homing, bypass). `beamAbsorbed` is deleted; its tests become shield-layer tests.
+
+**Damage voids surrender** (`damageEnemy`): any call while `fleeing` sets `surrenderIntact = 0`. When `sysHp[Shields]` reaches 0: `shieldLayers = 0`, `shieldRecharge = 0`. A kill (`hull 0`) → `leave(state, true)` as today (kill scrap, even while fleeing).
+
+**Leave** (`leave(state, destroyed)`): before clearing, if `!destroyed && fleeing`: `surrenderIntact ? (addScrap(SCRAP_SURRENDER), telemetry.surrenders += 1) : telemetry.enemyFled += 1`. Then clear the six new fields (`maxHull 0`, layers 0, recharge 0, `shotArmTick −1`, `fleeing 0`, `surrenderIntact 0`) along with today's. The cooldown draw as today. The jump's `leave(state, false)` while fleeing counts as a flee (no surrender scrap: the ship left, not the enemy).
+
+Pure helpers in `enemy.ts`: `enemyMaxHull(column)`, `enemyShieldMax(column)`, `enemyWeaponCharge(state): number` (0 when absent or weapons down; else `clamp((tick − shotArmTick) / max(1, nextShotTick − shotArmTick), 0, 1)`), `fleeSecondsLeft(state)` (`ceil((departTick − tick) / TICK_HZ)` while fleeing, else 0).
+
+### 11.4 HUD and record
+
+- Enemy hull row (`targetRowText`, exact): `` `Enemy ${round(hull / maxHull × 100)}% ${fleeing ? `FLEE ${fleeSecondsLeft}s` : `${eta}s`} ${marker} [${'#'.repeat(layers)}${'.'.repeat(max − layers)}] W${round(weaponCharge × 100)}%` `` where `marker` is `S-` with shields down, `S${freq}` when scanned, else `S?` (as today), and the bracket is omitted when shields are down (`S-` alone). Examples: `Enemy 64% 90s S2 [#.] W70%`, `Enemy 20% FLEE 7s S- W30%`. `DebrisTarget` gains `layers: number | null`, `layersMax: number | null`, `weaponCharge: number | null`, `fleeSeconds: number | null`; subsystem rows are unchanged.
+- Threat row (exact): `` `Enemy ship: hull ${pct}%${shields up ? ` shields ${layers}/${max}` : ''}${...DOWN suffixes as today}${fleeing ? ' FLEEING' : ''
