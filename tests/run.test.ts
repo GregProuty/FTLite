@@ -79,6 +79,7 @@ describe('run: map generation', () => {
     for (let c = 1; c < RUN_COLUMNS - 1; c++) for (let n = 0; n < all.run.colNodes[c]!; n++) expect(t[c * 3 + n]).toBe(NodeType.Shop);
   });
   it('createSimState draws the map from the map stream exactly as the section 5 replay does, leaves the other streams as before, and is seed-deterministic', () => {
+    for (const seed of [1, 23]) { const r = deriveStreams(seed).map; replayMap(r, RUN_COLUMNS); expect(makeState(2, seed).rng.map.s).toBe(r.s); }
     const ref = deriveStreams(7).map; const expected = replayMap(ref, RUN_COLUMNS);
     const s = makeState(2, 7);
     expect(Array.from(s.run.colNodes)).toEqual(Array.from(expected.colNodes)); expect(Array.from(s.run.edgeMask)).toEqual(Array.from(expected.edgeMask)); expect(s.rng.map.s).toBe(ref.s);

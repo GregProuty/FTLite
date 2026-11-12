@@ -57,10 +57,10 @@ Flattened in the existing `run` section after `edgeMask`: `nodeType` (`3 × RUN_
 | id | title | text | choice 0 | choice 1 |
 |---|---|---|---|---|
 | 0 | Derelict hulk | A drifting hulk, still warm inside. | `Salvage it (+25 scrap, fire risk)`: `addScrap 25`; one draw picks a room; `igniteRoom(state, room)` (a no-op if it already burns, the draw is still made) | `Leave it`: nothing |
-| 1 | Distress call | A venting freighter offers a reward for help. | `Help them (hull -10, +30 scrap)`: enabled while `hull > 10`; `hull −= 10`; `addScrap 30` | `Ignore it`: nothing |
-| 2 | Smugglers | Smugglers offer torpedoes, no questions asked. | `Buy 2 torpedoes (20 scrap)`: enabled while `scrap >= 20 && torpedoStock < TORP_CAP`; `spendScrap 20`; `torpedoStock = min(TORP_CAP, stock + 2)` | `Refuse`: nothing |
-| 3 | Micrometeoroid field | A debris field lies across the lane. | `Push through (+20 scrap, breach risk)`: `addScrap 20`; if `freeSites` is non-empty, one draw picks a site and `activateBreach(state, site)`; no draw when none is free | `Go around (drive recharges)`: `jumpCharge = 0` |
-| 4 | Supply cache | An unmarked cache, hard-wired to something. | `Take the scrap (+40)`: `addScrap 40` | `Strip it bare (+60 scrap, a station fails)`: `addScrap 60`; one draw `nextInt(rng.loot, stations.level.length)` over **all** station indices; `failStation(state, i)` unless `stations.failed[i]` is already 1, in which case nothing more happens (the choice may have no failure effect; the draw is always made) |
+| 1 | Distress call | A venting freighter offers a reward. | `Help them (hull -10, +30 scrap)`: enabled while `hull > 10`; `hull −= 10`; `addScrap 30` | `Ignore it`: nothing |
+| 2 | Smugglers | Smugglers offer cheap torpedoes. | `Buy 2 torpedoes (20 scrap)`: enabled while `scrap >= 20 && torpedoStock < TORP_CAP`; `spendScrap 20`; `torpedoStock = min(TORP_CAP, stock + 2)` | `Refuse`: nothing |
+| 3 | Micrometeoroid field | A debris field lies across the lane. | `Push through (+20, breach risk)`: `addScrap 20`; if `freeSites` is non-empty, one draw picks a site and `activateBreach(state, site)`; no draw when none is free | `Go around (drive recharges)`: `jumpCharge = 0` |
+| 4 | Supply cache | A cache, hard-wired to something. | `Take the scrap (+40)`: `addScrap 40` | `Strip it bare (+60, a station fails)`: `addScrap 60`; one draw `nextInt(rng.loot, stations.level.length)` over **all** station indices; `failStation(state, i)` unless `stations.failed[i]` is already 1, in which case nothing more happens (the choice may have no failure effect; the draw is always made) |
 | 5 | Medical freighter | A hospital ship offers treatment. | `Treat the crew (15 scrap)`: enabled while `scrap >= 15`; `spendScrap 15`; for every crew member with `Life.state[eid] === LifeState.Conscious` at effect time (a member at zero health not yet downed by `crewSystem` counts), `Health.cur[eid] = HEALTH_MAX`; Downed and Dead members are untouched | `Decline`: nothing |
 
 Choices not listed with a condition are always enabled. A disabled choice is listed (so the operator sees it) and Confirm on it does nothing. Row text for a choice is the label above verbatim.
@@ -118,7 +118,9 @@ Events do not address a crew member or chain across nodes; shop stock is unlimit
 
 ## 14. Amendments from the plan
 - `addScrap`/`spendScrap` live in `sim/scrap.ts` (imported by `run.ts`, `events.ts`, `shop.ts`, `enemy.ts` and `boarders.ts`) to avoid an import cycle through `run.ts`.
-- `clampNavCursor` is exported from `run.ts` and runs at the start of every `navigationInput` call; on arrival the cursor is 0 (the header or title row) for one tick until the seated navigator's next tick clamps it. The disabled-row status `-` is produced in `hud.ts`.
+- `clampNavCursor` is exported from `run.ts` and runs at the start of every `navigationInput` call; on arrival the sim cursor still sits on 0 (the header or title row) for one tick until the seated navigator's next tick clamps it, but the panel highlights the first selectable row meanwhile (`hudModel.ts`: the console cursor if that row is selectable, else the first selectable one; `rows[].cursor` and `first` use it). `NavigationPanel.first` = `targetWindow(highlighted, rows.length, 7)` comes from the model.
+- A disabled selectable row is a faint tint (`FAINT`, cursor or not), replacing section 9's status `-`; the cursor stays visible through its cursor mark.
+- Every Navigation text (event title, text, choices, item labels, the shop header) is at most `NAV_TEXT_MAX = 36` characters (234 px panel, text from x=20, about 5.5 px per glyph; the font does not wrap).
 - There is no `SHOP_ITEMS` export; the item order is `hull, torpedoes, UPGRADE_KINDS...` with `SHOP_ITEM_COUNT = 8`.
 - The fixture map M reaches one node from column 1, so shop lists there have ten rows.
 - The acceptance soak's scrap column reads `20/0` for crews that kill two boarders, not `0/0` as section 12 first said.

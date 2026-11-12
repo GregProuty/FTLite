@@ -10,10 +10,10 @@ import { HEALTH_MAX, TORP_CAP } from './tuning';
 /** The six events (spec Run-ii section 7). Text is data; the effects live in resolveEvent. */
 export const EVENTS: readonly { title: string; text: string; choices: readonly [string, string] }[] = [
   { title: 'Derelict hulk', text: 'A drifting hulk, still warm inside.', choices: ['Salvage it (+25 scrap, fire risk)', 'Leave it'] },
-  { title: 'Distress call', text: 'A venting freighter offers a reward for help.', choices: ['Help them (hull -10, +30 scrap)', 'Ignore it'] },
-  { title: 'Smugglers', text: 'Smugglers offer torpedoes, no questions asked.', choices: ['Buy 2 torpedoes (20 scrap)', 'Refuse'] },
-  { title: 'Micrometeoroid field', text: 'A debris field lies across the lane.', choices: ['Push through (+20 scrap, breach risk)', 'Go around (drive recharges)'] },
-  { title: 'Supply cache', text: 'An unmarked cache, hard-wired to something.', choices: ['Take the scrap (+40)', 'Strip it bare (+60 scrap, a station fails)'] },
+  { title: 'Distress call', text: 'A venting freighter offers a reward.', choices: ['Help them (hull -10, +30 scrap)', 'Ignore it'] },
+  { title: 'Smugglers', text: 'Smugglers offer cheap torpedoes.', choices: ['Buy 2 torpedoes (20 scrap)', 'Refuse'] },
+  { title: 'Micrometeoroid field', text: 'A debris field lies across the lane.', choices: ['Push through (+20, breach risk)', 'Go around (drive recharges)'] },
+  { title: 'Supply cache', text: 'A cache, hard-wired to something.', choices: ['Take the scrap (+40)', 'Strip it bare (+60, a station fails)'] },
   { title: 'Medical freighter', text: 'A hospital ship offers treatment.', choices: ['Treat the crew (15 scrap)', 'Decline'] },
 ];
 

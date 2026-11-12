@@ -7,7 +7,7 @@ import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
 import { STATION_MAX, COOLANT_POOL } from '../sim/tuning';
 
-const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, WARN = 0xff6b5a;
+const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a;
 const LINE = 18;                 // px per text line at 16 px m5x7
 const CREDITS_LINES = 22;
 
@@ -28,7 +28,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     return { root, set(frac) { fill.width = Math.max(0, Math.min(1, frac)) * w; fill.visible = frac > 0; } };
   };
 
-  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX) + 2;   // cells per row: the largest station maximum plus the overdrive cell
+  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX) + 2;   // cells per row: the largest station maximum plus the upgrade cell and the overdrive cell
   const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean; heat?: number; coolant?: number }): void } => {
     const root = new Container();
     const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
@@ -162,8 +162,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.consoleFooter, [{ text: `Lead ${Math.round(c.leadSeconds)}s${c.scanning ? '   Scanning' : ''}`, tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'navigation') {
       const c = p.console;   // spec 7: event, shop or destination rows in a seven-row window, the cursor row lit, the footer carries evade and the jump state
-      const first = targetWindow(c.rows.findIndex((r) => r.cursor), c.rows.length, 7);
-      ui.consoleRows.forEach((r, k) => { const row = c.rows[first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: row.selectable && !row.enabled ? '-' : '', cursor: row.cursor, tint: row.cursor ? TEXT : DIM }); });
+      ui.consoleRows.forEach((r, k) => { const row = c.rows[c.first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: '', cursor: row.cursor, tint: !row.selectable ? DIM : !row.enabled ? FAINT : row.cursor ? TEXT : DIM }); });
       fillRow(ui.consoleFooter, [{ text: navigationFooter(c), tint: TEXT }]);
     } else if (p.console) {
       ui.consoleRows.forEach((r) => { r.root.visible = false; });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NodeType, navRows, clampNavCursor, jumpShip } from '../src/renderer/src/sim/run';
+import { NodeType, NAV_TEXT_MAX, reachable, navRows, clampNavCursor, jumpShip } from '../src/renderer/src/sim/run';
 import { addScrap, spendScrap } from '../src/renderer/src/sim/scrap';
 import { EVENTS, choiceEnabled, resolveEvent } from '../src/renderer/src/sim/events';
 import { UPGRADE_KINDS, itemLabel, itemEnabled, buy } from '../src/renderer/src/sim/shop';
@@ -136,5 +136,22 @@ describe('scrap sources', () => {
     placeEnemy(s); leave(s, false); expect(s.run.scrap).toBe(SCRAP_ENEMY);
     const b = placeBoarder(s, room(s, 'G'), 5); damageBoarder(s, b, 5, 0); expect(s.run.scrap).toBe(SCRAP_ENEMY + SCRAP_BOARDER);
     spendScrap(s, 10); addScrap(s, 3); expect(s.run.scrap).toBe(s.telemetry.scrapEarned - s.telemetry.scrapSpent);
+  });
+});
+
+describe('Navigation text budget', () => {
+  it('every event title, text, choice, shop item label (priced and owned) and the shop header fit NAV_TEXT_MAX', () => {
+    const texts: string[] = [];
+    for (const e of EVENTS) texts.push(e.title, e.text, e.choices[0], e.choices[1]);
+    const s = calm(); for (let i = 0; i < 8; i++) texts.push(itemLabel(s, i));
+    for (const k of UPGRADE_KINDS) s.run.upgrades[k] = 1;
+    for (let i = 0; i < 8; i++) texts.push(itemLabel(s, i));
+    texts.push('Shop   scrap 100');
+    for (const t of texts) expect(t.length, t).toBeLessThanOrEqual(NAV_TEXT_MAX);
+  });
+  it('jumpShip at the last column is a no-op', () => {
+    const s = calm(); at(s, 7, 0); expect(reachable(s)).toEqual([]);
+    const snap = () => JSON.stringify([s.run.column, s.run.node, s.run.nodesReached, s.run.jumpCharge, s.run.scrap, s.run.event, s.telemetry.jumps, s.rng.loot.s, s.rng.director.s]);
+    const before = snap(); jumpShip(s, 0); expect(snap()).toBe(before);
   });
 });

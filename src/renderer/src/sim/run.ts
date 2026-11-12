@@ -12,6 +12,8 @@ import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
 import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, ENCOUNTER_AFTER_JUMP, BOARDING_AFTER_JUMP } from './tuning';
 
+/** Longest Navigation panel text: the console panel is 234 px wide, row text starts at x=20 and the bitmap font averages about 5.5 px per glyph, so 36 glyphs fit. */
+export const NAV_TEXT_MAX = 36;
 export const NodeType = { Hazard: 0, Event: 1, Shop: 2 } as const;
 export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump'; index: number; enabled: boolean }
 

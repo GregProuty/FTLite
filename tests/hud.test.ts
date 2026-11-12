@@ -10,7 +10,7 @@ import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';
-import { RUN_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX } from '../src/renderer/src/sim/tuning';
+import { RUN_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX, STATION_MAX, BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -18,10 +18,8 @@ import { EndReason } from '../src/renderer/src/sim/crew';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
 import { resolveEvent } from '../src/renderer/src/sim/events';
-import { STATION_MAX } from '../src/renderer/src/sim/tuning';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
 import { boarderMarkers } from '../src/renderer/src/sim/boarders';
-import { BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
 import { makeState, room, run, teleport, placeDebris, seconds, setSkill, intents, placeEnemy, placeShot, quiet, disableSystem, guardDebris, placeBoarder, setMap, seatNavigator, chargeJump, mapM, setEvent, setNodeTypes, grantScrap } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : i === 1 ? 'kb:1' : `gp:${i}` }));
@@ -354,10 +352,17 @@ describe('buildHudModel', () => {
     s.run.column = RUN_COLUMNS - 1; const f = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     expect(f.final).toBe(true); expect(f.rows).toEqual([]); expect(navigationFooter(f)).toBe(`${evade}   Jump -   Scrap 0`);
   });
+  it('the panel window and the highlighted row come from the model: the first selectable row while the sim cursor is still 0, the cursor row scrolls the window', () => {
+    const e = makeState(2); quiet(e); mapM(e); e.run.column = 1; e.run.node = 2; setEvent(e, 4); seatNavigator(e, 0);
+    const ep = buildHudModel(e, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect([ep.rows[0]!.cursor, ep.rows[2]!.cursor, ep.first]).toEqual([false, true, 0]);
+    const s = makeState(2); quiet(s); setMap(s, [1, 3, 2, 2, 2, 2, 2, 1], { '0:0': 0b101, '1:0': 0b11 }); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); const n = seatNavigator(s, 0);
+    s.stations.cursor[n] = 10; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(11); expect(p.first).toBe(4);
+    s.stations.cursor[n] = 1; expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel).first).toBe(0);
+  });
   it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows first, and baseMax on the power rows', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); clampNavCursor(s);
     const m = buildHudModel(s, slots(2), 'running', ''); const p = m.players[0]!.console as NavigationPanel;
-    expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['An unmarked cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60 scrap, a station fails)', true, true, false]]);
+    expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['A cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60, a station fails)', true, true, false]]);
     expect(p.scrap).toBe(45); s.run.jumpCharge = 0.64; expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toMatch(/^Evade \d+%   Jump 64%   Scrap 45$/);
     expect(m.threats[0]).toEqual({ icon: 'icon.sensors', text: 'Event: Supply cache' });
     igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.text).toBe('Event: Supply cache'); expect(t[1]!.icon).toBe('icon.weapons'); expect(t[2]!.text).toBe('Fire: Bridge');
