@@ -41,6 +41,31 @@ Foundation spec section 12 still applies: no FTL art. The enemy ship, its rooms 
 
 **Model and view.** All layout and state-to-picture logic lives in a pure `render/enemyWindowModel.ts` (unit tested, no Pixi): room rectangles, which glyph and tint each room gets, pip count, the status line, the reticle target, the shot bolt endpoints and phase for a given tick. `render/enemyWindow.ts` draws it, reusing Graphics objects (no per-frame allocation that is never destroyed).
 
+## 2b. The enemy ship's interior: fires, breaches and crew (added 2026-11-12)
+
+The user, after reading the FTL postmortem: their combat works like Tetris between two ships. Each crew fixes its own cascading problems and now and then throws bricks at the other. They also found that seeing the enemy ship on fire, and its crew "typing furiously away to destroy you", made the fight. Our hits therefore start problems aboard the enemy, and the window shows them.
+
+**Rooms.** The enemy layout's five rooms are indexed 0 Weapons, 1 Engines, 2 Shields, 3 Bridge, 4 Hold (`ENEMY_ROOMS = 5`; the three system rooms share the `EnemySystem` indices). A hit on a system row lands in that system's room. A hit on the hull row lands in the Bridge or the Hold, chosen by one `rng.combat` draw made only for hull-row hits.
+
+**State** (enemy block, flattened after `lastHitTick`; part of SIM_VERSION 20): `roomFire: Float64Array(5)`, the seconds a fire has left (0 = none); `roomBreach: Float64Array(5)`, the seconds a breach has left. Both are cleared on arrival and on leave.
+
+**Starting problems.** After a hull or system hit (not a miss, not a stripped shield layer), one `rng.combat` draw `u`:
+- `u < ENEMY_HIT_FIRE` (0.35): fire in that room for `ENEMY_FIRE_SECONDS` (15), or reset to 15 if one already burns;
+- `u >= 1 − ENEMY_HIT_BREACH` (0.15): a breach for `ENEMY_BREACH_SECONDS` (20);
+- otherwise nothing.
+
+The draw comes after the hit draw and the hull-room draw, so the draw order is fixed.
+
+**Effects, per tick while present:**
+- A burning room deals `ENEMY_FIRE_HULL_DPS` (0.3) hull per second, and its system loses `ENEMY_FIRE_SYS_DPS` (1.5) health per second. A fire can therefore take a system down, with the existing self-repair and shield rules on reaching 0.
+- A breached room deals `ENEMY_BREACH_HULL_DPS` (0.2) hull per second, and its system's self-repair waits (`sysRepairTick` moves one tick later per tick).
+- Timers count down by `DT` and stop at 0: the enemy crew put the fire out and patch the breach.
+- This damage does not void a surrender (it is not our shot). It can destroy the ship, which counts as `leave(state, true)`, a kill.
+
+**Crew (render only).** Three enemy crew are drawn as small figures in an enemy colour. Normally one sits at each system console. When a room burns or is breached, the nearest crew member is drawn walking to it and working there, leaving their console empty, which the player can see. Positions come from state each frame; nothing is simulated.
+
+**Window additions.** Fires are drawn with the existing fire animation scaled to the window's tiles, and breaches as a dark hole on the room's outer wall. The status line adds `FIRE: Shields` or `BREACH: Engines` (most recent first, one at a time) under the main status.
+
 ## 3. Tests
 
 - Node types: the thresholds; the draw count is unchanged (same map edges for a seed as before); the guaranteed shop still holds.
@@ -48,6 +73,8 @@ Foundation spec section 12 still applies: no FTL art. The enemy ship, its rooms 
 - Notices for the field states.
 - Snapshot round trip and hash for `fieldNextTick` and the three weapons fields; version 19 rejected.
 - `fireWeapon` writes the three fields for a miss, a stripped layer and a hit, for the beam and the torpedo.
+- Enemy interior: a system hit lands in its room and a hull hit in the Bridge or Hold by one draw; the fire and breach thresholds and the draw order; fire deals hull and system damage per second and can disable a system; a breach delays self-repair; timers expire; interior damage never voids a surrender; interior damage reaching 0 hull is a kill with the win reward; both arrays are cleared on arrival and leave; the snapshot round trip covers both.
+- `enemyWindowModel`: crew at their consoles, and one moving to a burning room; the fire and breach status line;
 - `enemyWindowModel`: the five rooms inside the window; the destroyed-system tint and countdown; pips for a hull fraction; each status line; the reticle for a system row and the hull row; bolt endpoints and phases; the enemy-shot origin at the window's Weapons room.
 - Gates re-recorded (node types shift): survival, duo, boarding, cutter, jump, run and `npm run acceptance 5 1`; no floor lowered; the golden re-blessed once (SIM_VERSION 20).
 
