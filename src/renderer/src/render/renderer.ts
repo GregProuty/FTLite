@@ -7,6 +7,7 @@ import type { GameAssets } from './assets';
 import { createRenderMemory } from './memory';
 import { createTileLayer } from './tiles';
 import { createEffectsLayer } from './effects';
+import { createIconLayer } from './roomIcons';
 import { createCrewLayer } from './crewSprites';
 import { createBoarderLayer } from './boarderLayer';
 
@@ -29,9 +30,10 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory);
   const effects = createEffectsLayer(assets, memory);
+  const icons = createIconLayer();
   const crew = createCrewLayer(assets, memory);
   const boarders = createBoarderLayer();
-  world.addChild(tiles.container, effects.below, crew.container, boarders.container, effects.above);
+  world.addChild(tiles.container, effects.below, icons.container, crew.container, boarders.container, effects.above);
   let lastDraw: number | null = null;
 
   return {
@@ -51,6 +53,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
       world.position.set(Math.floor((INTERNAL_W - d.width * TILE_PX) / 2), Math.floor((INTERNAL_H - d.height * TILE_PX) / 2));
       tiles.update(state, dt);
+      icons.update(state);
       effects.draw(state);
       crew.draw(state, alpha);
       boarders.draw(state);

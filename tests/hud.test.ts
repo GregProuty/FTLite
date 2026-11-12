@@ -92,7 +92,7 @@ describe('buildHudModel', () => {
     const m0 = buildHudModel(s, slots(1), 'running', '');
     expect(m0.power).toEqual({ capacity: 10, used: 9 });
     expect(m0.stations.map((st) => st.kind)).toEqual([0, 6, 1, 2, 5, 4, 3]);
-    expect(m0.stations.find((st) => st.kind === StationKind.LifeSupport)).toEqual({ kind: 4, name: 'Life Support', level: 2, max: 3, online: true, occupant: null, heat: 0, coolant: 0, overdriven: false, unpowered: false });
+    expect(m0.stations.find((st) => st.kind === StationKind.LifeSupport)).toEqual({ kind: 4, name: 'Life Support', level: 2, max: 3, online: true, occupant: null, heat: 0, coolant: 0, overdriven: false, unpowered: false, icon: 'lifeSupport', iconTint: 'normal' });
     failStation(s, eng); teleport(s, 0, 18.5, 9.5); s.stations.repair[eng] = 0.4;
     const m = buildHudModel(s, slots(1), 'running', '');
     expect(m.threats).toEqual([{ icon: 'icon.power', text: 'Power: Engineering' }]);

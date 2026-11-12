@@ -1,9 +1,11 @@
-import { Container, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
+import { Container, Graphics, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
 import { glyphName, clockLine, navigationFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { drawIcon, tintColor } from './roomIcons';
 import { createEnemyPanel } from './enemyPanel';
 import { featureReady } from './fallback';
+import type { IconKind, IconTint } from './roomIconModel';
 import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
 import { STATION_MAX, COOLANT_POOL } from '../sim/tuning';
@@ -30,10 +32,11 @@ export function createHud(parent: Container, assets: GameAssets) {
   };
 
   const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX) + 2;   // cells per row: the largest station maximum plus the upgrade cell and the overdrive cell
-  const cellRow = (): { root: Container; set(o: { name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean; heat?: number; coolant?: number }): void } => {
+  const cellRow = (withGlyph = false): { root: Container; set(o: { icon?: IconKind; iconTint?: IconTint; name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean; heat?: number; coolant?: number }): void } => {
     const root = new Container();
     const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
-    const name = text(); name.position.set(12, 1); root.addChild(name);
+    const name = text(); name.position.set(withGlyph ? 26 : 12, 1); root.addChild(name);
+    const glyph = new Graphics(); glyph.position.set(12 + 6, 10); root.addChild(glyph); let glyphKey = '';
     const cells = Array.from({ length: MAX_CELLS }, (_, c) => { const sp = new Sprite(assets.texture('ui.bar.bg')); sp.width = CELL; sp.height = CELL; sp.position.set(112 + c * (CELL + 2), 4); root.addChild(sp); return sp; });
     const heatBg = new Sprite(assets.texture('ui.bar.bg')); heatBg.position.set(112, 14); heatBg.width = MAX_CELLS * (CELL + 2) - 2; heatBg.height = 2; heatBg.visible = false; root.addChild(heatBg);
     const heatFill = new Sprite(assets.texture('ui.bar.fill')); heatFill.position.set(112, 14); heatFill.height = 2; heatFill.tint = WARN; heatFill.visible = false; root.addChild(heatFill);
@@ -43,6 +46,8 @@ export function createHud(parent: Container, assets: GameAssets) {
       root,
       set(o) {
         mark.visible = o.cursor; name.text = o.name; name.tint = o.tint;
+        const gk = o.icon ?? ''; if (gk !== glyphKey) { glyphKey = gk; glyph.clear(); if (o.icon) drawIcon(glyph, o.icon, 0, 0, 12, 0xffffff); }
+        glyph.tint = tintColor(o.iconTint ?? 'normal'); glyph.visible = !!o.icon;
         const shown = Math.max(o.max, o.level);
         cells.forEach((sp, c) => { sp.visible = c < shown; sp.texture = assets.texture(c < o.level ? 'ui.bar.fill' : 'ui.bar.bg'); sp.width = CELL; sp.height = CELL; sp.tint = o.failed || c >= o.max ? WARN : 0xffffff; });   // failed stations and the overdrive cell tint their cells
         const heat = o.heat ?? 0;
@@ -62,7 +67,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 224, 12 + i * LINE); parent.addChild(row); return row; });
   parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
   const powerTitle = text(); powerTitle.position.set(INTERNAL_W - 224, 114); parent.addChild(powerTitle);
-  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
+  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(true); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
   const banner = text(16); banner.scale.set(2); banner.anchor.set(0.5, 0); banner.position.set(INTERNAL_W / 2, 24); parent.addChild(banner);
   const progressLine = text(16, DIM); progressLine.anchor.set(0.5, 0); progressLine.position.set(INTERNAL_W / 2, 64 + 2 * LINE - 12); parent.addChild(progressLine);   // under the banner and its glyph row
   const noticeRows = [0, 1].map((k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(480, 24 + k * LINE); t.visible = false; parent.addChild(t); return t; });   // spec Demo-i section 4: two lines top-centre between the clock and threat panels, running only
@@ -184,7 +189,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
       for (let k = 0; k < 7; k++) {
         const st = m.stations.find((s) => s.kind === k);
-        if (st) powerRows[k]!.set({ name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN, heat: st.heat, coolant: st.coolant });
+        if (st) powerRows[k]!.set({ icon: st.icon, iconTint: st.iconTint, name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN, heat: st.heat, coolant: st.coolant });
         powerRows[k]!.root.visible = !!st;
       }
       banner.text = m.message; banner.visible = m.phase !== 'running'; noticeRows.forEach((t, k) => { const line = m.phase === 'running' ? m.notice[k] : undefined; t.visible = !!line; t.text = line ?? ''; });
