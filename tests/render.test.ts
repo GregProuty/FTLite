@@ -3,10 +3,11 @@ import { computeLetterbox } from '../src/renderer/src/render/letterbox';
 import { syncCache } from '../src/renderer/src/render/cache';
 
 describe('letterbox', () => {
-  it('picks the largest integer scale that fits and centres', () => {
-    expect(computeLetterbox(1920, 1080, 960, 540)).toEqual({ scale: 2, offsetX: 0, offsetY: 0 });
-    expect(computeLetterbox(2000, 1200, 960, 540)).toEqual({ scale: 2, offsetX: 40, offsetY: 60 });
-    expect(computeLetterbox(900, 500, 960, 540)).toEqual({ scale: 1, offsetX: -30, offsetY: -20 });
+  it('picks the largest half-step scale that fits and centres', () => {
+    expect(computeLetterbox(1280, 720, 1280, 720)).toEqual({ scale: 1, offsetX: 0, offsetY: 0 });
+    expect(computeLetterbox(1920, 1080, 1280, 720)).toEqual({ scale: 1.5, offsetX: 0, offsetY: 0 });
+    expect(computeLetterbox(2560, 1440, 1280, 720)).toEqual({ scale: 2, offsetX: 0, offsetY: 0 });
+    expect(computeLetterbox(1366, 768, 1280, 720)).toEqual({ scale: 1, offsetX: 43, offsetY: 24 });
   });
 });
 

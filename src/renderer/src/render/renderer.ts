@@ -1,4 +1,5 @@
 import { Application, Container } from 'pixi.js';
+import { worldFit } from './worldFit';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { Position, Stable } from '../sim/components';
@@ -51,7 +52,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
-      world.position.set(Math.floor((INTERNAL_W - d.width * TILE_PX) / 2), Math.floor((INTERNAL_H - d.height * TILE_PX) / 2));
+      const fit = worldFit(d.width, d.height); world.scale.set(fit.scale); world.position.set(fit.x, fit.y);
       tiles.update(state, dt);
       icons.update(state);
       effects.draw(state);

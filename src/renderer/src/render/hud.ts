@@ -60,25 +60,25 @@ export function createHud(parent: Container, assets: GameAssets) {
   };
 
   // Top-left: hull and clock. Top-right: threats. Centre: banner. Bottom: four player blocks. Overlay: credits.
-  parent.addChild(panel(4, 4, 200, 58));
-  const top = text(); top.position.set(12, 14); parent.addChild(top);
-  const directorLine = text(16, DIM); directorLine.position.set(12, 14 + LINE); parent.addChild(directorLine);
-  const enemyPanel = createEnemyPanel(assets.fontFamily); enemyPanel.root.position.set(INTERNAL_W - 360, 64); parent.addChild(enemyPanel.root);   // spec Demo-ii section 4: left of the threat panel, below the two notice lines (which end at y 60)
-  const mapPanel = createMapPanel(assets.fontFamily); mapPanel.root.position.set(236, 64); parent.addChild(mapPanel.root);   // spec Ship-and-map section 5: the band above the ship, between the clock and enemy panels
-  parent.addChild(panel(INTERNAL_W - 232, 4, 228, 100));
-  const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 224, 12 + i * LINE); parent.addChild(row); return row; });
-  parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
-  const powerTitle = text(); powerTitle.position.set(INTERNAL_W - 224, 114); parent.addChild(powerTitle);
-  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(true); r.root.position.set(INTERNAL_W - 224, 114 + (i + 1) * LINE); parent.addChild(r.root); return r; });
+  parent.addChild(panel(8, 8, 240, 60));
+  const top = text(); top.position.set(16, 18); parent.addChild(top);
+  const directorLine = text(16, DIM); directorLine.position.set(16, 36); parent.addChild(directorLine);
+  const enemyPanel = createEnemyPanel(assets.fontFamily); enemyPanel.root.position.set(INTERNAL_W - 248, 114); parent.addChild(enemyPanel.root);   // spec Demo-ii section 4: left of the threat panel, below the two notice lines (which end at y 60)
+  const mapPanel = createMapPanel(assets.fontFamily); mapPanel.root.position.set(INTERNAL_W - 248, 220); parent.addChild(mapPanel.root);   // spec Ship-and-map section 5: the band above the ship, between the clock and enemy panels
+  parent.addChild(panel(INTERNAL_W - 248, 8, 240, 100));
+  const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 240, 16 + i * LINE); parent.addChild(row); return row; });
+  parent.addChild(panel(8, 74, 240, 8 * LINE + 12));
+  const powerTitle = text(); powerTitle.position.set(16, 80); parent.addChild(powerTitle);
+  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(true); r.root.position.set(16, 80 + (i + 1) * LINE); parent.addChild(r.root); return r; });
   const banner = text(16); banner.scale.set(2); banner.anchor.set(0.5, 0); banner.position.set(INTERNAL_W / 2, 24); parent.addChild(banner);
-  const progressLine = text(16, DIM); progressLine.anchor.set(0.5, 0); progressLine.position.set(INTERNAL_W / 2, 64 + 2 * LINE - 12); parent.addChild(progressLine);   // under the banner and its glyph row
-  const noticeRows = [0, 1].map((k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(480, 24 + k * LINE); t.visible = false; parent.addChild(t); return t; });   // spec Demo-i section 4: two lines top-centre between the clock and threat panels, running only
+  const progressLine = text(16, DIM); progressLine.anchor.set(0.5, 0); progressLine.position.set(INTERNAL_W / 2, 84); parent.addChild(progressLine);   // under the banner and its glyph row
+  const noticeRows = [0, 1].map((k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 14 + k * LINE); t.visible = false; parent.addChild(t); return t; });   // spec Demo-i section 4: two lines top-centre between the clock and threat panels, running only
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
-  const summaryRows = Array.from({ length: 11 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 88 + k * LINE); t.visible = false; parent.addChild(t); return t; });
+  const summaryRows = Array.from({ length: 11 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 104 + k * LINE); t.visible = false; parent.addChild(t); return t; });
 
   const players = [0, 1, 2, 3].map((i) => {
-    const x = 4 + i * 238, y = INTERNAL_H - 94;
-    parent.addChild(panel(x, y, 234, 90));
+    const x = 8 + i * 316, y = 626;
+    parent.addChild(panel(x, y, 308, 90));
     const root = new Container(); root.position.set(x + 8, y + 8); parent.addChild(root);
     const name = text(); const hp = bar(96); hp.root.position.set(110, 2);
     const oxygen = icon('icon.oxygen'); if (oxygen) { oxygen.position.set(210, 0); oxygen.visible = false; root.addChild(oxygen); }
@@ -88,7 +88,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     const progress = bar(216); progress.root.position.set(0, LINE * 4 - 6); progress.root.visible = false;
     root.addChild(name, hp.root, line2, line3, line4, progress.root);
     const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
-    consoleRoot.addChild(panel(0, 0, 234, 8 * LINE + 12));
+    consoleRoot.addChild(panel(0, 0, 308, 8 * LINE + 12));
     const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
     const consoleSelector = new Container(); consoleSelector.position.set(8, 6); consoleSelector.visible = false; consoleRoot.addChild(consoleSelector);
     const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
