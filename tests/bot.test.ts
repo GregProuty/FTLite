@@ -4,12 +4,13 @@ import { botIntent, BOT_RECOVER_HEALTH } from '../src/renderer/src/sim/bot';
 import { EVENTS } from '../src/renderer/src/sim/events';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { failStation } from '../src/renderer/src/sim/power';
-import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
+import { igniteRoom, extinguishRoom } from '../src/renderer/src/sim/hazards/fire';
 import { downCrew } from '../src/renderer/src/sim/crew';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { Life, LifeState, Seated, Position, Health } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import type { SimState } from '../src/renderer/src/sim/state';
+import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { makeState, quiet, mapM, setNodeTypes, setEvent, grantScrap, chargeJump, placeBoarder, teleport } from './helpers/sim';
 
 /** A quiet two-Recruit state on map M, all Hazard, enemy and boarders silenced (spec Demo-i section 8). */
@@ -102,10 +103,31 @@ describe('bot self-preservation (spec Demo-ii section 10)', () => {
   const roomOf = (s: SimState, pid: number): number => roomAt(s, Position.x[s.crew[pid]!]!, Position.y[s.crew[pid]!]!);
   const hurt = (s: SimState, pid: number, hp: number): void => { Health.cur[s.crew[pid]!] = hp; };
   const burn = (s: SimState, r: number): void => { igniteRoom(s, r); s.rooms.fire[r] = 1e6; };
-  it('(a) at health 20 it never enters a burning room that lies on its path to a hazard goal', () => {
+  it('(a) at health 20 it never enters a burning corridor on its route to a hazard goal, and reaches the goal once the fire is out', () => {
     const s = calm(); failStation(s, s.derived.stationOfKind[StationKind.Medbay]!);   // no Medbay to retreat to: ordinary duty
-    failStation(s, 3); burn(s, 1); hurt(s, 1, 20); hurt(s, 0, 100);
-    for (let t = 0; t < 600; t++) { tick(s); hurt(s, 1, 20); s.rooms.fire[1] = 1e6; expect(roomOf(s, 1)).not.toBe(1); }
+    failStation(s, 2); teleport(s, 1, 3.5, 9.5);   // room 6, below the corridor (room 5); Weapons (room 1) lies beyond it
+    const lone = (): void => step(s, [NEUTRAL_INTENT, botIntent(s, 1)]);   // pid 0 stands still so only pid 1 can reach the console
+    expect(roomOf(s, 1)).toBe(6); expect(s.derived.stationRoom[2]).toBe(1);
+    burn(s, 5); hurt(s, 1, 20); hurt(s, 0, 100);
+    for (let t = 0; t < 600; t++) { lone(); hurt(s, 1, 20); s.rooms.fire[5] = 1e6; expect(roomOf(s, 1)).not.toBe(5); }
+    expect(s.stations.failed[2]).toBe(1);
+    extinguishRoom(s, 5);
+    let fixed = false;
+    for (let t = 0; t < 3000 && !fixed; t++) { lone(); hurt(s, 1, 20); if (!s.stations.failed[2]) fixed = true; }
+    expect(fixed).toBe(true);
+  });
+  it('(f) trapped at health 20 in a burning room with the corridor burning too, it fights or walks and never idles', () => {
+    const s = calm(); teleport(s, 1, 7.5, 2.5); teleport(s, 0, 2.5, 9.5); burn(s, 1); burn(s, 5); hurt(s, 1, 20);
+    const start = roomOf(s, 1);
+    for (let t = 0; t < 60; t++) {
+      const i = botIntent(s, 1);
+      expect(roomOf(s, 1) !== start || i.interactHeld || i.moveX !== 0 || i.moveY !== 0).toBe(true);
+      step(s, [botIntent(s, 0), i]); hurt(s, 1, 20); s.rooms.fire[1] = 1e6; s.rooms.fire[5] = 1e6;
+    }
+  });
+  it('(g) the captain at 20 health with a ready drive and the Medbay offline never walks into a burning corridor', () => {
+    const s = calm(); failStation(s, s.derived.stationOfKind[StationKind.Medbay]!); chargeJump(s); burn(s, 5); hurt(s, 0, 20); hurt(s, 1, 100);
+    for (let t = 0; t < 600; t++) { tick(s); hurt(s, 0, 20); s.rooms.fire[5] = 1e6; expect(roomOf(s, 0)).not.toBe(5); }
   });
   it('(b) at health 20 inside a burning room it leaves within 120 ticks', () => {
     const s = calm(); burn(s, 1); teleport(s, 1, 7.5, 2.5); hurt(s, 1, 20);

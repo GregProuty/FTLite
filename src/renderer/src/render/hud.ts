@@ -57,7 +57,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   parent.addChild(panel(4, 4, 200, 58));
   const top = text(); top.position.set(12, 14); parent.addChild(top);
   const directorLine = text(16, DIM); directorLine.position.set(12, 14 + LINE); parent.addChild(directorLine);
-  const enemyPanel = createEnemyPanel(assets.fontFamily); enemyPanel.root.position.set(INTERNAL_W - 360, 4); parent.addChild(enemyPanel.root);   // spec Demo-ii section 4: 8 px left of the threat panel, same top
+  const enemyPanel = createEnemyPanel(assets.fontFamily); enemyPanel.root.position.set(INTERNAL_W - 360, 64); parent.addChild(enemyPanel.root);   // spec Demo-ii section 4: left of the threat panel, below the two notice lines (which end at y 60)
   parent.addChild(panel(INTERNAL_W - 232, 4, 228, 100));
   const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 224, 12 + i * LINE); parent.addChild(row); return row; });
   parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
@@ -178,7 +178,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   return {
     update(m: HudModel): void {
       top.text = clockLine(m);
-      enemyPanel.update(m.enemy);
+      enemyPanel.update(m.phase === 'running' ? m.enemy : null);
       directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%${m.run.quirk ? `   Ship: ${m.run.quirk}` : ''}`;
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;

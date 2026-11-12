@@ -23,7 +23,7 @@ Run `npm run dev` with two keyboard players. Tick each step as seen and write wh
   See: a fire shows in the threats panel and in its room; holding Interact in the room puts it out and the row clears.
   Notes:
 - [ ] Debris: a debris warning and an enemy encounter.
-  See: the enemy row with its shield bracket and weapon charge; strip a layer with an untuned beam, scan, pierce with a tuned beam; see the flee and the surrender notice; hold fire for the scrap once and kill once across the session; for debris, Science scans, Weapons shoots or Navigation evades. Do not jump while the enemy is present. The shield layer regrows in 6 s, so scan for the frequency (or fire a torpedo) to reach the hull.
+  See: the enemy row with its shield bracket and weapon charge; strip a layer with an untuned beam, scan, pierce with a tuned beam; see the flee and the surrender notice; hold fire for the scrap once and kill once across the session; for debris, Science scans, Weapons shoots or Navigation evades. Do not jump while the enemy is present. The shield layer regrows in 6 s, so scan for the frequency (or fire a torpedo) to reach the hull. Also: the enemy panel (left of the threat panel, below the notice) appears on arrival with its shield ring and weapon bar, flashes on a hit and shows FLEE Ns; hazards, impacts, shots, the ready drive, the jump and the end each make a sound.
   Notes:
 - [ ] Jump: the drive is ready; take Navigation and jump.
   See: the notice `JUMP READY   someone take Navigation`; sit, pick `Node 2a` or `2b`, Confirm; the threats clear and the clock reads `node 2/8`.

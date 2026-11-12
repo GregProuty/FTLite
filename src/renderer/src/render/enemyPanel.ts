@@ -12,12 +12,12 @@ export function createEnemyPanel(fontFamily = 'm5x7'): { root: Container; update
   return {
     root,
     update(e) {
-      root.visible = !!e; if (!e) return;
+      if (!e) { root.visible = false; return; }
       g.clear();
       g.rect(0, 0, 120, 100).fill({ color: PANEL, alpha: 0.85 }).stroke({ width: 1, color: FAINT });
-      // a 7-point hull silhouette, 56 x 24, centred (60, 40)
-      g.poly([32, 40, 42, 28, 70, 28, 88, 34, 88, 46, 70, 52, 42, 52]).fill(e.hitFlash ? WARN : DIM);
-      if (!e.shieldsDown) for (let k = 0; k < e.layersMax; k++) g.ellipse(60, 40, 30 + 6 * k, 24 + 6 * k).stroke({ width: 2, color: k < e.layers ? TEXT : FAINT });
+      // a 7-point hull silhouette, 56 x 24, centred (60, 44)
+      g.poly([32, 44, 42, 32, 70, 32, 88, 38, 88, 50, 70, 56, 42, 56]).fill(e.hitFlash ? WARN : DIM);
+      if (!e.shieldsDown) for (let k = 0; k < e.layersMax; k++) g.ellipse(60, 44, 30 + 6 * k, 24 + 6 * k).stroke({ width: 2, color: k < e.layers ? TEXT : FAINT });
       g.rect(10, 80, 100, 6).fill(FAINT); if (!e.weaponsDown) g.rect(10, 80, 100 * Math.max(0, Math.min(1, e.weaponCharge)), 6).fill(e.weaponCharge >= 0.8 ? WARN : TEXT);
       g.rect(10, 90, 100, 4).fill(FAINT); g.rect(10, 90, 100 * Math.max(0, Math.min(1, e.hull)), 4).fill(DIM);
       label.text = enemyLabel(e);

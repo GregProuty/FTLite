@@ -56,7 +56,7 @@ export interface HudModel {
   progressLine: string;
   lobbyLines: string[]; notice: string[];   // the lobby controls card (spec Demo-i section 3) and the run notice (section 4)
 }
-/** A repaired console still at level 0 (spec Demo-ii section 3): not failed, not Engineering, station present. */
+/** True for any level-0 non-Engineering console that is present and not failed (spec Demo-ii section 3): a repaired console awaiting a bar. */
 function unpoweredAt(state: SimState, kind: number, si: number): boolean { return si >= 0 && kind !== StationKind.Engineering && state.stations.failed[si] !== 1 && state.stations.level[si] === 0; }
 
 /** The enemy panel block, built straight from the state (spec Demo-ii section 4); null while absent. */

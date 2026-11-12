@@ -15,7 +15,7 @@ Written 2026-11-10 when the owner asked for an autonomous run through the featur
 | 9 | **Run-ii Events and shops:** text events with choices at nodes, scrap as a resource, repairs and upgrades (station max levels, torpedo stock, hull) at shops | sub-project 4 | merged |
 | 10 | **Run-iii Progression and permadeath:** run end and scoring, unlocks across runs kept on disk, a ship quirk per run ("the ship as a character"), restart flow | sub-project 4, §14 | merged |
 
-Deferred beyond this list: networking (sub-project 5), audio, a solo drone, the shared luck resource, procedural ships.
+Deferred beyond this list: networking (sub-project 5), a solo drone, the shared luck resource, procedural ships.
 
 Each feature's spec and plan live in `docs/superpowers/specs/` and `docs/superpowers/plans/` with the date prefix; gates are appended to `docs/gates.md`; the execution ledger is `.superpowers/sdd/progress.md`.
 | 11 | **Demo-i Demo ready:** controls card, a run notice both players can read, two-player balance with a duo health gate, a bot that jumps and resolves events so the soak covers the run, a scripted two-player playtest as the acceptance gate | sub-project 4 | in review |

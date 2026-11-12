@@ -69,7 +69,7 @@ function goalTiles(state: SimState, pid: number, here: number): Set<number> {
 }
 
 /** Run behaviour for pid 0 (spec Demo-i section 6): walk to Navigation when the drive is ready, sit, take the event's safe choice or the first jump row, stand after the jump. Null when the run behaviour is not active (pid > 0, no Navigation, or its console failed or offline: the hazard goals repair it). */
-function runIntent(state: SimState, pid: number, eid: number, here: number): Intent | null {
+function runIntent(state: SimState, pid: number, eid: number, here: number, blocked?: Set<number>): Intent | null {
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;
   if (pid !== 0 || nav < 0 || !stationOnline(state, nav)) return null;
   const r = state.run, pending = r.event >= 0 && r.eventChoice < 0, seated = Seated.station[eid] === nav;
@@ -84,8 +84,9 @@ function runIntent(state: SimState, pid: number, eid: number, here: number): Int
   if (r.jumpCharge < 1 || pending || state.stations.occupant[nav]! >= 0) return null;
   const c = confirmTarget(state, 0);
   if (c.kind === ConfirmKind.Console && c.index === nav) return { ...NEUTRAL_INTENT, confirmPressed: true };
-  const next = firstStep(state, here, new Set([state.derived.stationTile[nav]!]));
-  return next < 0 ? NEUTRAL_INTENT : walkTo(state, eid, next);
+  const next = firstStep(state, here, new Set([state.derived.stationTile[nav]!]), blocked);
+  if (next < 0) return blocked ? null : NEUTRAL_INTENT;   // a hurt bot with no fire-free way yields to self-preservation
+  return walkTo(state, eid, next);
 }
 
 function walkTo(state: SimState, eid: number, next: number): Intent {
@@ -95,8 +96,16 @@ function walkTo(state: SimState, eid: number, next: number): Intent {
   return { ...NEUTRAL_INTENT, moveX: dx / len, moveY: dy / len };
 }
 
+/** The room of an online, non-burning Medbay while `hp` is below BOT_RECOVER_HEALTH, else -1. */
+function recoveryRoom(state: SimState, hp: number): number {
+  const mb = state.derived.stationOfKind[StationKind.Medbay]!;
+  if (mb < 0 || hp >= BOT_RECOVER_HEALTH || !stationOnline(state, mb)) return -1;
+  const mr = state.derived.stationRoom[mb]!;
+  return state.rooms.fire[mr]! > 0 ? -1 : mr;
+}
+
 /** Self-preservation for a hurt bot. Returns the intent to act on, or null to carry on with ordinary duty (using `blocked` as the burning-room tiles to avoid). */
-function retreatIntent(state: SimState, eid: number, here: number, blocked: Set<number>): Intent | null {
+function retreatIntent(state: SimState, eid: number, here: number, blocked: Set<number>, target: { kind: number }): Intent | null {
   const d = state.derived, hp = Health.cur[eid]!, myRoom = roomAt(state, Position.x[eid]!, Position.y[eid]!);
   const burning = (r: number): boolean => r >= 0 && state.rooms.fire[r]! > 0;
   if (burning(myRoom)) {
@@ -104,11 +113,13 @@ function retreatIntent(state: SimState, eid: number, here: number, blocked: Set<
     for (let r = 0; r < state.rooms.fire.length; r++) if (!burning(r)) for (const t of d.roomTiles[r]!) goals.add(t);
     for (const t of d.roomTiles[myRoom]!) blocked.delete(t);   // the way out starts inside this room
     const next = firstStep(state, here, goals, blocked);
-    return next < 0 ? NEUTRAL_INTENT : walkTo(state, eid, next);
+    if (next >= 0) return walkTo(state, eid, next);
+    if (target.kind === TargetKind.Fire) return { ...NEUTRAL_INTENT, interactHeld: true };   // trapped: fight the fire it stands in
+    const out = firstStep(state, here, goals);   // else the shortest way out through the fire
+    return out < 0 ? NEUTRAL_INTENT : walkTo(state, eid, out);
   }
-  const mb = d.stationOfKind[StationKind.Medbay]!;
-  if (mb >= 0 && stationOnline(state, mb) && !burning(d.stationRoom[mb]!) && hp < BOT_RECOVER_HEALTH) {
-    const mr = d.stationRoom[mb]!;
+  const mr = recoveryRoom(state, hp);
+  if (mr >= 0) {
     if (myRoom === mr) return NEUTRAL_INTENT;
     const next = firstStep(state, here, new Set(d.roomTiles[mr]!), blocked);
     if (next >= 0) return walkTo(state, eid, next);
@@ -124,15 +135,13 @@ export function botIntent(state: SimState, pid: number): Intent {
   if (target.kind === TargetKind.Fight || target.kind === TargetKind.Revive) return { ...NEUTRAL_INTENT, interactHeld: true };   // urgent: outranks every run behaviour
   let blocked: Set<number> | undefined;
   const hp = Health.cur[eid]!;
-  const mbs = state.derived.stationOfKind[StationKind.Medbay]!;
-  const mbRoom = mbs >= 0 ? state.derived.stationRoom[mbs]! : -1;
-  const recovering = hp < BOT_RECOVER_HEALTH && mbRoom >= 0 && roomAt(state, Position.x[eid]!, Position.y[eid]!) === mbRoom && stationOnline(state, mbs) && !(state.rooms.fire[mbRoom]! > 0);   // position is the memory: a bot already in the online Medbay stays until BOT_RECOVER_HEALTH
+  const rr = recoveryRoom(state, hp), recovering = rr >= 0 && rr === roomAt(state, Position.x[eid]!, Position.y[eid]!);   // position is the memory: a bot already in the online Medbay stays until BOT_RECOVER_HEALTH
   if ((hp < BOT_RETREAT_HEALTH || recovering) && Seated.station[eid] === -1) {   // self-preservation: after the urgent interactions, before the run behaviour and hazard goals
     blocked = new Set<number>();
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) for (const t of state.derived.roomTiles[r]!) blocked.add(t);
-    const retreat = retreatIntent(state, eid, here, blocked); if (retreat) return retreat;
+    const retreat = retreatIntent(state, eid, here, blocked, target); if (retreat) return retreat;
   }
-  const run = runIntent(state, pid, eid, here); if (run) return run;
+  const run = runIntent(state, pid, eid, here, blocked); if (run) return run;
   const goals = goalTiles(state, pid, here);
   if (target.kind !== TargetKind.None) return { ...NEUTRAL_INTENT, interactHeld: true };
   if (!goals.size) return NEUTRAL_INTENT;
