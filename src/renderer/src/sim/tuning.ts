@@ -19,6 +19,7 @@ export const PASSAGE_OPEN = 1;
 export const PASSAGE_CLOSED = 0.05;
 export const PASSAGE_SEALED = 0.01;       // lowered further by Doors skill in increment 3
 export const PASSAGE_BREACH = 0.1;        // a breach is a hole, not an open door (12-tile room half-life ~14 s)
+export const AIRLOCK_PASSAGE = PASSAGE_OPEN;     // an open airlock vents like an open door to space (spec Demo-vii section 1)
 export const BREATH_RATE = 0.01;          // oxygen units per second per living crew member
 export const FIRE_O2_RATE = 0.02;         // oxygen units per second per unit of fire intensity
 export const O2_SNAP_EPS = 1e-9;

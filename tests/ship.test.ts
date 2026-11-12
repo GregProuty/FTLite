@@ -110,3 +110,23 @@ describe('derived tables', () => {
     expect(deriveLayout(parseShip(t)).idHash).not.toBe(a.idHash);
   });
 });
+
+describe('airlocks (spec Demo-vii section 1)', () => {
+  // (3,0) is an outer-boundary '#' on row 0 whose only inward neighbour (3,1) is Bridge 'A'; out of bounds above.
+  const withAirlock = (room: string, tile: [number, number]): ReturnType<typeof clone> & { airlocks: unknown[] } => {
+    const s = clone() as ReturnType<typeof clone> & { airlocks: unknown[] }; s.airlocks = [{ room, tile }]; return s;
+  };
+  it('defaults to none and the starter has none', () => { expect(parseShip(clone()).airlocks).toEqual([]); });
+  it('keeps a valid airlock: an outer hull wall tile next to exactly one room, space or out of bounds beyond', () => {
+    expect(parseShip(withAirlock('A', [3, 0])).airlocks).toEqual([{ room: 'A', tile: [3, 0] }]);
+  });
+  it('rejects a tile that is not a wall, not next to its room, interior, duplicated or on a breach site', () => {
+    expect(() => parseShip(withAirlock('Z', [3, 0]))).toThrow(/airlock 0: unknown room/);
+    expect(() => parseShip(withAirlock('A', [3, 1]))).toThrow(/airlock 0: must be a wall/);
+    expect(() => parseShip(withAirlock('B', [3, 0]))).toThrow(/airlock 0: .*adjacent to room B/);
+    expect(() => parseShip(withAirlock('A', [5, 2]))).toThrow(/airlock 0: .*outer hull/);       // between Bridge and Weapons Bay: interior
+    const dup = withAirlock('A', [3, 0]); dup.airlocks.push({ room: 'A', tile: [3, 0] });
+    expect(() => parseShip(dup)).toThrow(/airlock: two airlocks on one tile/);
+    expect(() => parseShip(withAirlock('A', [2, 0]))).toThrow(/airlock 0: .*breach site/);
+  });
+});

@@ -21,7 +21,8 @@ const shipSchema = z.object({
     room: z.string().length(1), tile,
     allocation: z.number().int('station allocation must be an integer').min(0, 'station allocation must be >= 0')
   })),
-  spawns: z.array(tile).min(4)
+  spawns: z.array(tile).min(4),
+  airlocks: z.array(z.object({ room: z.string().length(1), tile })).default([])   // hull doors to space (spec Demo-vii section 1)
 }).superRefine((s, ctx) => {
   const fail = (message: string): void => { ctx.addIssue({ code: z.ZodIssueCode.custom, message }); };
   if (s.rows.length !== s.height) return fail(`rows: expected ${s.height} rows (height)`);
@@ -73,6 +74,19 @@ const shipSchema = z.object({
     const b = s.breachSites[i]!;
     if (!roomIds.has(b.room)) return fail(`breach site ${i}: unknown room`);
     if (at(b.tile[0], b.tile[1]) !== '#' || !neighbours(b.tile[0], b.tile[1]).includes(b.room)) return fail(`breach site ${i}: must be a wall tile adjacent to room ${b.room}`);
+  }
+  if (new Set(s.airlocks.map((a) => `${a.tile[0]},${a.tile[1]}`)).size !== s.airlocks.length) return fail('airlock: two airlocks on one tile');
+  const outside = (tx: number, ty: number): boolean => tx < 0 || ty < 0 || tx >= s.width || ty >= s.height || s.rows[ty]!.charAt(tx) === ' ';
+  for (let i = 0; i < s.airlocks.length; i++) {
+    const a = s.airlocks[i]!, [tx, ty] = a.tile;
+    if (!roomIds.has(a.room)) return fail(`airlock ${i}: unknown room`);
+    if (tx >= s.width || ty >= s.height || at(tx, ty) !== '#') return fail(`airlock ${i}: must be a wall tile`);
+    const steps = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+    const inward = steps.filter(([dx, dy]) => at(tx + dx, ty + dy) === a.room);
+    if (inward.length !== 1) return fail(`airlock ${i}: must be adjacent to room ${a.room} on exactly one side`);
+    const [dx, dy] = inward[0]!;
+    if (!outside(tx - dx, ty - dy)) return fail(`airlock ${i}: must be on the outer hull (space or out of bounds opposite room ${a.room})`);
+    if (s.breachSites.some((b) => b.tile[0] === tx && b.tile[1] === ty)) return fail(`airlock ${i}: tile is a breach site`);
   }
   for (let i = 0; i < s.stations.length; i++) {
     const st = s.stations[i]!;

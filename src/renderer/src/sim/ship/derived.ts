@@ -1,7 +1,7 @@
 import type { ShipLayout } from './schema';
 import { hashF64 } from '../../../../shared/hash';
 import { STATION_COUNT, kindOfStationId } from '../stationKinds';
-import { O2_K, HAZARD_DT, PASSAGE_OPEN, PASSAGE_BREACH } from '../tuning';
+import { O2_K, HAZARD_DT, PASSAGE_OPEN, PASSAGE_BREACH, AIRLOCK_PASSAGE } from '../tuning';
 
 export interface Derived {
   width: number; height: number;
@@ -13,11 +13,13 @@ export interface Derived {
   roomTiles: number[][];
   edgeA: Int16Array; edgeB: Int16Array; edgeWidth: Float64Array; edgeIsDoor: Uint8Array; edgeTile: Int32Array;
   siteRoom: Int16Array; siteWidth: Float64Array; siteTile: Int32Array;
+  airlockRoom: Int16Array; airlockTile: Int32Array;   // hull doors to space (spec Demo-vii section 1)
+  airlockOfTile: Int16Array;  // tile -> airlock index, -1
   kEff: number;
   stationKind: Uint8Array; stationRoom: Int16Array; stationTile: Int32Array;
   stationOfKind: Int8Array;   // kind -> station index
   doorEdges: number[];        // edge indices that are doors, ascending
-  layoutHash: string;   // content hash: rows, room order, edges, sites, stations, spawns
+  layoutHash: string;   // content hash: rows, room order, edges, sites, airlocks, stations, spawns
   idHash: string;       // hash of layout.id
 }
 
@@ -49,6 +51,9 @@ export function deriveLayout(layout: ShipLayout): Derived {
   const S = layout.breachSites.length;
   const siteRoom = new Int16Array(S), siteWidth = new Float64Array(S), siteTile = new Int32Array(S);
   layout.breachSites.forEach((b, i) => { siteRoom[i] = roomIndex.get(b.room)!; siteWidth[i] = b.width; siteTile[i] = b.tile[1] * width + b.tile[0]; });
+  const A = layout.airlocks.length;
+  const airlockRoom = new Int16Array(A), airlockTile = new Int32Array(A), airlockOfTile = new Int16Array(n).fill(-1);
+  layout.airlocks.forEach((a, i) => { airlockRoom[i] = roomIndex.get(a.room)!; airlockTile[i] = a.tile[1] * width + a.tile[0]; airlockOfTile[airlockTile[i]!] = i; });
   const N = layout.stations.length;
   const stationKind = new Uint8Array(N), stationRoom = new Int16Array(N), stationTile = new Int32Array(N), stationOfKind = new Int8Array(STATION_COUNT).fill(-1);
   layout.stations.forEach((st, i) => {
@@ -64,6 +69,8 @@ export function deriveLayout(layout: ShipLayout): Derived {
   for (const r of layout.rooms) codes.push(r.id.charCodeAt(0));
   for (let i = 0; i < E; i++) codes.push(edgeA[i]!, edgeB[i]!, edgeTile[i]!, edgeWidth[i]!, edgeIsDoor[i]!);
   for (let i = 0; i < S; i++) codes.push(siteRoom[i]!, siteTile[i]!, siteWidth[i]!);
+  // Airlocks (count, then room and tile each) only when there are any, so a layout without them keeps its hash (spec Demo-vii amendment 11).
+  if (A > 0) { codes.push(A); for (let i = 0; i < A; i++) codes.push(airlockRoom[i]!, airlockTile[i]!); }
   for (const st of layout.stations) codes.push(roomIndex.get(st.room)!, st.tile[1] * width + st.tile[0], kindOfStationId(st.id), st.allocation);
   for (const sp of layout.spawns) codes.push(sp[1] * width + sp[0]);
   const idCodes: number[] = []; for (let i = 0; i < layout.id.length; i++) idCodes.push(layout.id.charCodeAt(i));
@@ -71,11 +78,12 @@ export function deriveLayout(layout: ShipLayout): Derived {
   const maxCond = new Float64Array(layout.rooms.length);
   for (let e = 0; e < E; e++) { maxCond[edgeA[e]!]! += edgeWidth[e]! * PASSAGE_OPEN; maxCond[edgeB[e]!]! += edgeWidth[e]! * PASSAGE_OPEN; }
   for (let s = 0; s < S; s++) maxCond[siteRoom[s]!]! += siteWidth[s]! * PASSAGE_BREACH;
+  for (let a = 0; a < A; a++) maxCond[airlockRoom[a]!]! += AIRLOCK_PASSAGE;
   let kEff = O2_K;
   for (let r = 0; r < maxCond.length; r++) if (maxCond[r]! > 0) kEff = Math.min(kEff, 0.5 * volume[r]! / maxCond[r]! / HAZARD_DT);
   return {
     width, height, roomIndex, roomOfTile, wallTile, doorTileToEdge, volume, roomTiles,
-    edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile,
+    edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile, airlockRoom, airlockTile, airlockOfTile,
     stationKind, stationRoom, stationTile, stationOfKind, doorEdges,
     kEff,
     layoutHash: hashF64(Float64Array.from(codes)),
