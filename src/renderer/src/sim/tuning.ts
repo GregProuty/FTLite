@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 19;
+export const SIM_VERSION = 20;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -165,6 +165,11 @@ export const BOARDING_AFTER_JUMP = 120;                                         
 
 // Events and shops (Run-ii)
 export const SHOP_CHANCE = 0.25, EVENT_CHANCE = 0.25, ASTEROID_CHANCE = 0.15;       // node type draw thresholds (map stream, after the edges); Event 0.35 -> 0.25 for asteroid fields (spec Demo-viii section 1)
+/** Asteroid fields (spec Demo-viii section 1): seconds between field rocks (one hazards draw per re-arm, +/- jitter), the rock flight, how long the field spawns, the extra seconds before it clears (every rock has landed), the reward. */
+export const FIELD_INTERVAL = 6, FIELD_JITTER = 0.2, FIELD_FLIGHT = 10, FIELD_FLIGHT_JITTER = 2, FIELD_SECONDS = 60, FIELD_CLEAR_EXTRA = 12, FIELD_REWARD_SCRAP = 20;   // FIELD_INTERVAL 4 -> 6 (amendment A2)
+/** A field rock hits weaker than debris (spec Demo-viii amendment A1: 15 rocks x 8 hull sank the duo gate's ship): hull, and half the debris crew damage. */
+export const ROCK_BREACH_FIRST = 0.75;   // a rock impact tries a breach first below this roll (amendment A4; debris 0.5)
+export const FIELD_ROCK_HULL = 3, FIELD_ROCK_CREW = Math.floor(DEBRIS_CREW_DAMAGE / 2);
 export const SCRAP_PER_JUMP = 15, SCRAP_ENEMY = 30, SCRAP_BOARDER = 10;
 export const EVENT_COUNT = 6;
 export const SHOP_HULL = 25, SHOP_HULL_COST = 30, SHOP_TORPEDOES = 2, SHOP_TORPEDOES_COST = 20, SHOP_UPGRADE_COST = 50;

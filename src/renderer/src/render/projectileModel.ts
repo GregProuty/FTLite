@@ -71,9 +71,9 @@ export function roomCentrePx(d: Derived, room: number, fit: { scale: number; x: 
   return { x: fit.x + (sx / n) * TILE_PX * fit.scale, y: fit.y + (sy / n) * TILE_PX * fit.scale };
 }
 
-/** An irregular polygon about 14 to 22 px across, shaped from the StableId (seven to nine vertices round a centre at 0, 0). */
-export function asteroidShape(stableId: number): Pt[] {
-  const n = 7 + Math.floor(hash01(stableId, 3) * 3), radius = 7 + hash01(stableId, 4) * 4, pts: Pt[] = [];
+/** An irregular polygon about 14 to 22 px across (a field rock: 8 to 12 px, spec Demo-viii amendment A1), shaped from the StableId (seven to nine vertices round a centre at 0, 0). */
+export function asteroidShape(stableId: number, small = false): Pt[] {
+  const n = 7 + Math.floor(hash01(stableId, 3) * 3), radius = small ? 4 + hash01(stableId, 4) * 2 : 7 + hash01(stableId, 4) * 4, pts: Pt[] = [];
   for (let k = 0; k < n; k++) {
     const a = (k / n) * Math.PI * 2, r = radius * (0.75 + 0.25 * hash01(stableId, 10 + k));
     pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });

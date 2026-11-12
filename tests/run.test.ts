@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX } from '../src/renderer/src/sim/run';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { deriveStreams } from '../src/renderer/src/sim/state';
-import { Phase } from '../src/renderer/src/sim/director';
+import { Phase, enterPhase } from '../src/renderer/src/sim/director';
+import { step } from '../src/renderer/src/sim/step';
 import { EndReason, downCrew } from '../src/renderer/src/sim/crew';
 import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -14,6 +15,9 @@ import { createRng, nextFloat, nextInt } from '../src/shared/rng';
 import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard, mapM, setNodeTypes } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
+import { fieldSystem, endField } from '../src/renderer/src/sim/run';
+import { spawnFieldRock, ObjectKind, activeDebrisCount } from '../src/renderer/src/sim/debris';
+import { FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, FIELD_REWARD_SCRAP, SCRAP_PER_JUMP, FREQ_COUNT } from '../src/renderer/src/sim/tuning';
 
 const T = TICK_HZ;
 const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; return s; };
@@ -249,5 +253,72 @@ describe('encounters at nodes (spec Demo-vi section 2)', () => {
     run(s, (JUMP_CHARGE_TIME / ENCOUNTER_BOOST) * T + 1); expect(s.run.jumpCharge).toBe(1);
     jumpShip(s, 0); expect([s.run.driveBoost, s.run.jumpCharge]).toEqual([0, 0]);
     run(s, 1); expect(s.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
+  });
+});
+
+describe('asteroid fields (spec Demo-viii section 1)', () => {
+  const at = () => { const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); chargeJump(s); s.tick = 1000; jumpShip(s, 0); s.boarders.nextArrivalTick = 1e9; return s; };
+  /** Step with the ship and crew kept whole, so a minute of rocks never ends the run. */
+  const steady = (s: ReturnType<typeof calm>, ticks: number, each: () => void = () => {}) => { for (let i = 0; i < ticks; i++) { step(s, []); s.hull = HULL_MAX; for (const eid of s.crew) Health.cur[eid] = 100; each(); } };
+  it('the constants', () => {
+    expect([FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, FIELD_REWARD_SCRAP]).toEqual([6, 10, 60, 20]);
+  });
+  it('a jump to an Asteroid node: pending with no enemy arrival; the field starts at +8 s with a rock on the start tick; no enemy ever', () => {
+    const s = at(), t0 = s.tick;
+    expect([s.run.encounter, s.run.encounterTick, s.enemy.nextArrivalTick, s.run.fieldNextTick]).toEqual([Encounter.Pending, t0, NEVER, -1]);
+    steady(s, ENCOUNTER_START * T); expect([s.run.encounter, activeDebrisCount(s)]).toEqual([Encounter.Pending, 0]);
+    steady(s, 1); expect([s.run.encounter, s.run.encounterTick, activeDebrisCount(s), s.enemy.present]).toEqual([Encounter.Fighting, t0 + ENCOUNTER_START * T, 1, 0]);
+    steady(s, 90 * T); expect([s.enemy.present, s.telemetry.encounters]).toEqual([0, 0]);
+  });
+  it('one spawn: the three spawn draws (room, flight 10 +/- 2 s, frequency) then one hazards draw re-arms 6 s +/- 20%', () => {
+    const s = at(); s.run.encounter = Encounter.Fighting; s.run.encounterTick = s.tick; s.run.fieldNextTick = s.tick;
+    const ref = { s: s.rng.hazards.s }, t = s.tick;
+    fieldSystem(s);
+    const roomU = nextInt(ref, s.derived.volume.length), flight = FIELD_FLIGHT + (2 * nextFloat(ref) - 1) * 2, freq = 1 + nextInt(ref, FREQ_COUNT), u = nextFloat(ref);
+    const k = s.debris.active.indexOf(1);
+    expect([s.debris.kind[k], s.debris.room[k], s.debris.impactTick[k], s.debris.frequency[k]]).toEqual([ObjectKind.Rock, roomU, t + Math.round(flight * T), freq]);
+    expect(s.run.fieldNextTick).toBe(t + Math.round(FIELD_INTERVAL * T * (1 + 0.2 * (2 * u - 1))));
+    expect(s.rng.hazards.s).toBe(ref.s);
+  });
+  it('spawnFieldRock uses the field flight, always within 8..12 s', () => {
+    const s = calm(2);
+    for (let i = 0; i < 8; i++) { const k = spawnFieldRock(s); expect(k).toBeGreaterThanOrEqual(0); const f = (s.debris.impactTick[k]! - s.tick) / T; expect(f).toBeGreaterThanOrEqual(8); expect(f).toBeLessThanOrEqual(12); }
+    expect(spawnFieldRock(s)).toBe(-1);
+  });
+  it('a full debris table skips the spawn (no spawn draws) and the re-arm still makes its one draw', () => {
+    const s = at(); s.run.encounter = Encounter.Fighting; s.run.encounterTick = s.tick; s.run.fieldNextTick = s.tick;
+    for (let i = 0; i < DEBRIS_SLOTS; i++) placeDebris(s, 0, 10000);
+    const ref = { s: s.rng.hazards.s }, t = s.tick; fieldSystem(s);
+    const u = nextFloat(ref); expect(s.rng.hazards.s).toBe(ref.s);
+    expect(s.run.fieldNextTick).toBe(t + Math.round(FIELD_INTERVAL * T * (1 + 0.2 * (2 * u - 1))));
+  });
+  it('spawns every 6 s +/- 20% for 60 s, then stops; clears at +72 s with +20 scrap, the drive boost and a win', () => {
+    const s = at(); steady(s, ENCOUNTER_START * T + 1);
+    const start = s.run.encounterTick, spawns: number[] = [start], seen = new Set<number>(Array.from(s.debris.stableId).filter((x) => x > 0));
+    const scrap0 = s.run.scrap;
+    steady(s, (FIELD_SECONDS + 12) * T - 1, () => { for (let k = 0; k < DEBRIS_SLOTS; k++) { const id = s.debris.stableId[k]!; if (id > 0 && !seen.has(id)) { seen.add(id); spawns.push(s.tick - 1); } } });
+    expect(s.run.encounter).toBe(Encounter.Fighting);
+    for (let i = 1; i < spawns.length; i++) { const gap = spawns[i]! - spawns[i - 1]!; expect(gap).toBeGreaterThanOrEqual(Math.round(FIELD_INTERVAL * T * 0.8)); expect(gap).toBeLessThanOrEqual(Math.round(FIELD_INTERVAL * T * 1.2)); }
+    expect(spawns.length).toBeGreaterThanOrEqual(9); expect(spawns.length).toBeLessThanOrEqual(13);
+    expect(spawns[spawns.length - 1]!).toBeLessThan(start + FIELD_SECONDS * T);
+    expect(s.run.fieldNextTick).toBe(-1);
+    expect(activeDebrisCount(s)).toBe(0);
+    steady(s, 1);
+    expect([s.run.encounter, s.run.encounterTick, s.run.scrap - scrap0, s.run.driveBoost, s.telemetry.encountersWon, s.run.fieldNextTick]).toEqual([Encounter.Won, start + (FIELD_SECONDS + 12) * T, FIELD_REWARD_SCRAP, 1, 1, -1]);
+    steady(s, 60 * T); expect([s.run.encounter, s.telemetry.encountersWon, activeDebrisCount(s)]).toEqual([Encounter.Won, 1, 0]);
+  });
+  it('the director interval doubles while the field is fighting', () => {
+    const a = at(), b = at(); steady(a, ENCOUNTER_START * T + 1); steady(b, ENCOUNTER_START * T + 1); expect(a.run.encounter).toBe(Encounter.Fighting);
+    b.run.encounter = Encounter.None;
+    for (const x of [a, b]) { x.director.nextSpawnTick = 0; enterPhase(x, Phase.BuildUp); }
+    expect((a.director.nextSpawnTick - a.tick) / (b.director.nextSpawnTick - b.tick)).toBeCloseTo(2, 2);
+  });
+  it('an early jump: no reward, the rocks left behind, the field clock stopped; endField sets the encounter over', () => {
+    const s = at(); steady(s, (ENCOUNTER_START + 30) * T);
+    const scrap0 = s.run.scrap; chargeJump(s); jumpShip(s, 0);
+    expect([s.run.scrap - scrap0, s.run.driveBoost, s.telemetry.encountersWon, s.run.fieldNextTick, activeDebrisCount(s)]).toEqual([SCRAP_PER_JUMP, 0, 0, -1, 0]);
+    const f = at(); steady(f, (ENCOUNTER_START + 5) * T); endField(f);
+    expect([f.run.encounter, f.run.encounterTick, f.run.fieldNextTick, f.telemetry.encountersWon]).toEqual([Encounter.Over, f.tick, -1, 0]);
+    steady(f, 80 * T); expect([f.run.encounter, f.telemetry.encountersWon]).toEqual([Encounter.Over, 0]);
   });
 });

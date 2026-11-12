@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildHudModel, runNotice } from '../src/renderer/src/render/hudModel';
 import { EVENTS, resolveEvent } from '../src/renderer/src/sim/events';
 import { NodeType } from '../src/renderer/src/sim/run';
-import { NOTICE_LINE_MAX, SCRAP_SURRENDER, ENCOUNTER_NOTICE_SECONDS } from '../src/renderer/src/sim/tuning';
+import { NOTICE_LINE_MAX, SCRAP_SURRENDER, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_START, NEVER } from '../src/renderer/src/sim/tuning';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump, seatNavigator, placeEnemy } from './helpers/sim';
 
@@ -92,5 +92,20 @@ describe('runNotice: encounters (spec Demo-vi section 2)', () => {
     const lines = [...WON, 'Enemy gone', 'Contact: enemy ship approaching'];
     for (const l of lines) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[ -~]+$/.test(l)).toBe(true); }
     const c = fresh(); c.enemy.nextArrivalTick = c.tick + 60; expect(runNotice(c)).toEqual([lines[3]]);
+  });
+});
+
+describe('runNotice: asteroid fields (spec Demo-viii section 1)', () => {
+  const field = (enc: number) => { const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Asteroid }); s.tick = 3000; s.run.encounter = enc; s.run.encounterTick = s.tick; s.enemy.nextArrivalTick = NEVER; return s; };
+  it('pending: Asteroid field ahead for the 8 s before the start', () => {
+    const s = field(Encounter.Pending); expect(runNotice(s)).toEqual(['Asteroid field ahead']);
+    s.tick += ENCOUNTER_START * 60 - 1; expect(runNotice(s)).toEqual(['Asteroid field ahead']);
+  });
+  it('fighting: nothing extra', () => { expect(runNotice(field(Encounter.Fighting))).toEqual([]); });
+  it('won: FIELD CLEARED with the scrap and the fast drive for 8 s; over: no line (amendment A3: the jump re-arms the encounter at once)', () => {
+    const w = field(Encounter.Won); expect(runNotice(w)).toEqual(['FIELD CLEARED   +20 scrap', 'Drive charging fast']);
+    w.tick += ENCOUNTER_NOTICE_SECONDS * 60; expect(runNotice(w)).toEqual([]);
+    const o = field(Encounter.Over); expect(runNotice(o)).toEqual([]);
+    for (const l of ['Asteroid field ahead', 'FIELD CLEARED   +20 scrap']) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[ -~]+$/.test(l)).toBe(true); }
   });
 });

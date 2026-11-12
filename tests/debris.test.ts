@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
-import { spawnDebris, removeDebris, scienceLead, evades, debrisSystem, activeDebrisCount } from '../src/renderer/src/sim/debris';
+import { spawnDebris, removeDebris, scienceLead, evades, debrisSystem, activeDebrisCount, spawnFieldRock, ObjectKind } from '../src/renderer/src/sim/debris';
+import { isTarget } from '../src/renderer/src/sim/debrisTargets';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -8,7 +9,7 @@ import { failStation } from '../src/renderer/src/sim/power';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { EndReason } from '../src/renderer/src/sim/crew';
-import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ, TORP_START } from '../src/renderer/src/sim/tuning';
+import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ, TORP_START, FIELD_ROCK_HULL, FIELD_ROCK_CREW, ROCK_BREACH_FIRST } from '../src/renderer/src/sim/tuning';
 import { makeState, placeDebris, placeShot, room, run, teleport, seconds, intents } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
 
@@ -294,5 +295,32 @@ describe('frequency and shared cursors (2b-ii)', () => {
     expect(s.science.scanning).toBe(1);
     standUp(s, 0);
     expect(s.science.scanning).toBe(0);
+  });
+});
+
+describe('field rocks (spec Demo-viii amendment A1)', () => {
+  it('spawnFieldRock makes a Rock with the debris draws; Rock is a weaker debris impact with the same draws', () => {
+    expect([ObjectKind.Rock, FIELD_ROCK_HULL, FIELD_ROCK_CREW]).toEqual([2, 3, Math.floor(DEBRIS_CREW_DAMAGE / 2)]);
+    const a = makeState(0), b = makeState(0); const ka = spawnFieldRock(a), kb = spawnDebris(b);
+    expect(a.debris.kind[ka]).toBe(ObjectKind.Rock); expect(a.rng.hazards.s).toBe(b.rng.hazards.s); expect(a.debris.room[ka]).toBe(b.debris.room[kb]);
+    expect(ROCK_BREACH_FIRST).toBe(0.75);
+    const rb = makeState(0), RA = room(rb, 'A'); rb.rng.hazards.s = 1;   // first draw 0.627: fire first for debris, breach first for a rock
+    const kr = placeDebris(rb, RA, 0); rb.debris.kind[kr] = ObjectKind.Rock; debrisSystem(rb);
+    expect(Array.from(rb.breaches.active).some(Boolean)).toBe(true); expect(rb.rooms.fire[RA]).toBe(0);
+    for (const seed of [7]) {
+      const r = makeState(0), d = makeState(0), A = room(r, 'A');
+      r.rng.hazards.s = seed; d.rng.hazards.s = seed;
+      const k = placeDebris(r, A, 0); r.debris.kind[k] = ObjectKind.Rock; placeDebris(d, A, 0);
+      debrisSystem(r); debrisSystem(d);
+      expect(r.hull).toBe(100 - FIELD_ROCK_HULL);
+      expect([Array.from(r.breaches.active), r.rooms.fire[A]! > 0, r.rng.hazards.s, r.rooms.impactTick[A]]).toEqual([Array.from(d.breaches.active), d.rooms.fire[A]! > 0, d.rng.hazards.s, d.rooms.impactTick[A]]);
+    }
+  });
+  it('a Rock deals half the debris crew damage, and is a target once warned', () => {
+    const s = makeState(2), A = room(s, 'A'); const eid = s.crew[0]!;
+    const tile = s.derived.roomTiles[A]![0]!, w = s.derived.width; teleport(s, 0, (tile % w) + 0.5, Math.floor(tile / w) + 0.5);
+    const k = placeDebris(s, A, 0, 1); s.debris.kind[k] = ObjectKind.Rock;
+    expect(isTarget(s, k)).toBe(true);
+    debrisSystem(s); expect(Health.cur[eid]).toBe(100 - FIELD_ROCK_CREW);
   });
 });

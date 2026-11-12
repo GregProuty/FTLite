@@ -187,6 +187,13 @@ describe('buildHudModel', () => {
     expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Debris: Weapons Bay 3s' }, { icon: 'icon.sensors', text: 'Debris: Bridge 11s' }]);
     expect(m.tick).toBe(0); expect(m.weapons).toEqual({ charge: 1, ready: true, torpedoLoaded: false, torpedoStock: TORP_START }); expect(m.impactTick[B]).toBe(5); expect(m.impactTick[A]).toBe(-1);
   });
+  it('a warned field rock reads Rock in the threats and its target row (spec Demo-viii amendment A1)', () => {
+    const s = makeState(1), B = room(s, 'B'); quiet(s);
+    const k = placeDebris(s, B, seconds(3), 1, 10); s.debris.kind[k] = 2;
+    const m = buildHudModel(s, slots(1), 'running', '');
+    expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Rock: Weapons Bay 3s' }]);
+    expect(targetRowText({ stableId: 10, kind: 'rock', room: 'Weapons Bay', eta: 3, frequency: null, hull: null, system: null, status: null, shieldsUp: null } as never)).toBe('Rock Weapons Bay 3s F?');
+  });
   it('shows the Weapons panel with charge, targets by StableId and the cursor index', () => {
     const s = makeState(1), A = room(s, 'A'), B = room(s, 'B');
     const wpn = s.derived.stationOfKind[StationKind.Weapons]!;

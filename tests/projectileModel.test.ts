@@ -46,6 +46,9 @@ describe('projectile model (spec Demo-vii section 2)', () => {
       expect(fragmentCount(id)).toBeGreaterThanOrEqual(8); expect(fragmentCount(id)).toBeLessThanOrEqual(12);
     }
   });
+  it('field rocks are drawn smaller: 8 to 12 px wide', () => {
+    for (let id = 1; id <= 100; id++) { const xs = asteroidShape(id, true).map((p) => p.x), w = Math.max(...xs) - Math.min(...xs); expect(w).toBeGreaterThanOrEqual(8 * 0.75); expect(w).toBeLessThanOrEqual(12); }
+  });
   it('an evaded object keeps its arrival velocity past the centre and fades over 0.6 s', () => {
     const path = projectilePath(3, ObjectKind.Debris, centre, WORLD_BAND), win = ASTEROID_SHOW_SECONDS * TICK_HZ;
     const v = { x: (path.to.x - path.from.x) / win, y: (path.to.y - path.from.y) / win };

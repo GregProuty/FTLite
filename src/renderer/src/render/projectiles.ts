@@ -52,7 +52,7 @@ export function createProjectileLayer(): ProjectileLayer {
         const id = db.stableId[k]!; present.add(id);
         if (!tracked.has(id)) {
           const kind = db.kind[k]!, room = db.room[k]!;
-          tracked.set(id, { id, kind, room, impactTick: db.impactTick[k]!, path: projectilePath(id, kind, roomCentrePx(state.derived, room, fit), WORLD_BAND), last: null, shape: asteroidShape(id), spin: hash01(id, 6) * Math.PI * 2 });
+          tracked.set(id, { id, kind, room, impactTick: db.impactTick[k]!, path: projectilePath(id, kind, roomCentrePx(state.derived, room, fit), WORLD_BAND), last: null, shape: asteroidShape(id, kind === ObjectKind.Rock), spin: hash01(id, 6) * Math.PI * 2 });
         }
       }
       for (const [id, t] of tracked) {

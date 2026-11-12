@@ -2,7 +2,7 @@ import type { SimState } from './state';
 import { nextFloat, nextInt, type RngState } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
 import { Dir } from './dir';
-import { clearObjects } from './debris';
+import { clearObjects, spawnFieldRock } from './debris';
 import { leave, Encounter } from './enemy';
 import { activeBoarderCount } from './boarders';
 import { enterPhase, Phase } from './director';
@@ -10,7 +10,7 @@ import { EndReason } from './crew';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from './tuning';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, SCRAP_PER_JUMP, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, FIELD_REWARD_SCRAP } from './tuning';
 import { quirkChargeMult } from './quirks';
 
 /** Longest Navigation panel text: the console panel is 234 px wide, row text starts at x=20 and the bitmap font averages about 5.5 px per glyph, so 36 glyphs fit. */
@@ -110,7 +110,7 @@ export function navigationInput(state: SimState, i: number, dir: number, confirm
   else if (row.select === 'jump' && state.run.jumpCharge >= 1) jumpShip(state, row.index);
 }
 
-/** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. A Hazard node short of the last column is an encounter with contact in ENCOUNTER_START seconds; Event and Shop nodes are quiet (spec Demo-vi section 2). */
+/** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. A Hazard node short of the last column is an encounter with contact in ENCOUNTER_START seconds; an Asteroid node a field starting then (spec Demo-viii section 1); Event and Shop nodes are quiet (spec Demo-vi section 2). */
 export function jumpShip(state: SimState, destination: number): void {
   const r = state.run, list = reachable(state), nav = state.derived.stationOfKind[StationKind.Navigation]!;
   if (!list.includes(destination)) return;
@@ -120,10 +120,34 @@ export function jumpShip(state: SimState, destination: number): void {
   arrive(state);
   clearObjects(state);
   if (state.enemy.present) { state.enemy.surrenderIntact = 0; leave(state, false); }   // the ship left, not the enemy: a flee in progress counts as a flight, no surrender bounty (spec Demo-i section 11.3)
-  const encounter = r.column < RUN_COLUMNS - 1 && r.nodeType[r.column * 3 + r.node] === NodeType.Hazard;
-  r.encounter = encounter ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick;
-  state.enemy.nextArrivalTick = encounter ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;
+  else if (r.encounter === Encounter.Fighting || r.encounter === Encounter.Pending) endField(state);   // no enemy: leaving a field (or its approach) early, no reward (spec Demo-viii section 1)
+  const type = r.column < RUN_COLUMNS - 1 ? r.nodeType[r.column * 3 + r.node]! : -1, hazard = type === NodeType.Hazard;
+  r.encounter = hazard || type === NodeType.Asteroid ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick; r.fieldNextTick = -1;
+  state.enemy.nextArrivalTick = hazard ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;   // an asteroid field has no enemy: it starts in fieldSystem
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);
   if (r.column === RUN_COLUMNS - 1) { state.ended = 1; state.endReason = EndReason.Victory; }
+}
+
+/** Leaving a field early (spec Demo-viii section 1): the encounter is over with no reward and the field clock stops. */
+export function endField(state: SimState): void {
+  const r = state.run; r.encounter = Encounter.Over; r.encounterTick = state.tick; r.fieldNextTick = -1;
+}
+
+/** The asteroid field (spec Demo-viii section 1), right after the director: at an Asteroid node the field starts ENCOUNTER_START seconds after the jump (Pending -> Fighting); while fighting one rock is due every FIELD_INTERVAL seconds (re-armed with one hazards draw) until FIELD_SECONDS after the start; FIELD_CLEAR_EXTRA seconds later every rock is down and the field is cleared: a win with scrap and the drive boost. A full debris table skips a rock without its spawn draws. */
+export function fieldSystem(state: SimState): void {
+  const r = state.run;
+  if (r.column >= RUN_COLUMNS - 1 || r.nodeType[r.column * 3 + r.node] !== NodeType.Asteroid || state.enemy.present) return;
+  if (r.encounter === Encounter.Pending && state.tick >= r.encounterTick + ENCOUNTER_START * TICK_HZ) { r.encounter = Encounter.Fighting; r.encounterTick = state.tick; r.fieldNextTick = state.tick; }
+  if (r.encounter !== Encounter.Fighting) return;
+  const start = r.encounterTick;
+  if (state.tick >= start + (FIELD_SECONDS + FIELD_CLEAR_EXTRA) * TICK_HZ) {
+    r.encounter = Encounter.Won; r.encounterTick = state.tick; r.fieldNextTick = -1; r.driveBoost = 1; state.telemetry.encountersWon++; addScrap(state, FIELD_REWARD_SCRAP);
+    return;
+  }
+  if (r.fieldNextTick < 0 || state.tick < r.fieldNextTick) return;
+  if (state.tick >= start + FIELD_SECONDS * TICK_HZ) { r.fieldNextTick = -1; return; }   // spawning has stopped: no draw
+  spawnFieldRock(state);                                                                 // -1 with a full table, and no draw
+  const u = nextFloat(state.rng.hazards);
+  r.fieldNextTick = state.tick + Math.round(FIELD_INTERVAL * TICK_HZ * (1 + FIELD_JITTER * (2 * u - 1)));
 }

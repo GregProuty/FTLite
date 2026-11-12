@@ -3,7 +3,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, SCRAP_SURRENDER, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL } from '../sim/tuning';
+import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, SCRAP_SURRENDER, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, FIELD_REWARD_SCRAP } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType, reachable } from '../sim/run';
 import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
@@ -41,7 +41,7 @@ function thermal(state: SimState, i: number): { heat: number; coolant: number; o
 export interface EngineeringPanel { rows: { kind: number; name: string; level: number; max: number; failed: boolean; heat: number; coolant: number; overdriven: boolean; unpowered: boolean }[]; cursor: number; pool: number; coolantFree: number }
 /** The Doors card (spec Demo-vii section 1): the selection, its state and what Confirm does; item null when the ship has neither doors nor airlocks. */
 export type DoorsPanel = { kind: 'doors'; item: string; status: string; action: string; openAirlocks: number } | { kind: 'doors'; item: null };
-export type TargetKindName = 'debris' | 'shot' | 'enemy';
+export type TargetKindName = 'debris' | 'shot' | 'rock' | 'enemy';
 export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null; layers: number | null; layersMax: number | null; weaponCharge: number | null; fleeSeconds: number | null }   // the last four: the enemy hull row only (spec Demo-i section 11.4)
 export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number }; targets: DebrisTarget[]; cursor: number; first: number }
 export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean }
@@ -161,7 +161,7 @@ function target(state: SimState, k: number): DebrisTarget {
     return { ...base, system: sys, status: { hp, repairIn: hp > 0 ? null : Math.ceil((e.sysRepairTick[sys]! - state.tick) / TICK_HZ) } };
   }
   const db = state.debris;
-  return { stableId: db.stableId[k]!, kind: db.kind[k] === ObjectKind.Shot ? 'shot' : 'debris', room: state.layout.rooms[db.room[k]!]!.name, eta: etaSeconds(state, k), frequency: db.scanned[k] ? db.frequency[k]! : null, hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null };
+  return { stableId: db.stableId[k]!, kind: db.kind[k] === ObjectKind.Shot ? 'shot' : db.kind[k] === ObjectKind.Rock ? 'rock' : 'debris', room: state.layout.rooms[db.room[k]!]!.name, eta: etaSeconds(state, k), frequency: db.scanned[k] ? db.frequency[k]! : null, hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null };
 }
 /** Exact target-row strings for the Weapons and Science panels (spec Combat-i section 7). */
 export function targetRowText(t: DebrisTarget, scan = 0): string {
@@ -171,7 +171,7 @@ export function targetRowText(t: DebrisTarget, scan = 0): string {
     const layers = t.layers ?? 0, bracket = t.shieldsUp === false ? '' : ` [${'#'.repeat(layers)}${'.'.repeat(Math.max(0, (t.layersMax ?? 0) - layers))}]`, fleeing = (t.fleeSeconds ?? 0) > 0;   // spec Demo-i section 11.4: the layers while shields are up, the weapon charge always, the flee countdown in place of the eta
     return `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${fleeing ? `FLEE ${t.fleeSeconds}s` : `${t.eta}s`} ${marker}${bracket} W${Math.round((t.weaponCharge ?? 0) * 100)}%${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
   }
-  return `${t.kind === 'shot' ? 'Shot ' : ''}${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
+  return `${t.kind === 'shot' ? 'Shot ' : t.kind === 'rock' ? 'Rock ' : ''}${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
 }
 
 /** The lobby controls card (spec Demo-i section 3): ASCII, the real bindings of input/sources.ts. */
@@ -189,8 +189,10 @@ export function runNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
   const window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
-  if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, 'Drive charging fast'];
-  if (r.encounter === Encounter.Over && state.tick - r.encounterTick < window) return ['Enemy gone'];
+  const field = r.nodeType[r.column * 3 + r.node] === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
+  if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return field ? [`FIELD CLEARED   +${FIELD_REWARD_SCRAP} scrap`, 'Drive charging fast'] : [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, 'Drive charging fast'];
+  if (r.encounter === Encounter.Over && state.tick - r.encounterTick < window) return field ? [] : ['Enemy gone'];   // a field is only left by a jump, which re-arms the encounter at once (amendment A3)
+  if (r.encounter === Encounter.Pending && field && r.encounterTick + ENCOUNTER_START * TICK_HZ - state.tick <= window) return ['Asteroid field ahead'];
   if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return ['Contact: enemy ship approaching'];
   if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${SCRAP_SURRENDER} scrap`];
   if (r.nodeType[r.column * 3 + r.node] === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, 'Hull +25 (30)   Torpedoes +2 (20)   Upgrade +1 bar (50)'];
@@ -285,7 +287,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
     for (let s = 0; s < state.breaches.active.length; s++) if (state.breaches.active[s]) threats.push({ icon: 'icon.breach', text: `Breach: ${state.layout.rooms[state.derived.siteRoom[s]!]!.name}` });
     for (let a = 0; a < state.airlocks.open.length; a++) if (state.airlocks.open[a]) threats.push({ icon: 'icon.breach', text: `Airlock open: ${state.layout.rooms[state.derived.airlockRoom[a]!]!.name}` });
     for (let i = 0; i < state.stations.failed.length; i++) if (state.stations.failed[i]) threats.push({ icon: 'icon.power', text: `Power: ${STATION_NAMES[state.derived.stationKind[i]!]}` });
-    for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : 'Debris'; threats.push({ icon: 'icon.sensors', text: `${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` }); }
+    for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : state.debris.kind[k] === ObjectKind.Rock ? 'Rock' : 'Debris'; threats.push({ icon: 'icon.sensors', text: `${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` }); }
     if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}` });   // spec Demo-i section 4: the run rows trail the hazards (the notice carries them)
     if (state.run.nodeType[state.run.column * 3 + state.run.node] === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here' });
   }

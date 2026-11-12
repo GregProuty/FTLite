@@ -10,7 +10,7 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, CUTTER, cutterState, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent } from './helpers/sim';
+import { LAYOUT, CUTTER, cutterState, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent, setNodeTypes } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST_SMALL, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
@@ -19,7 +19,7 @@ import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { failStation } from '../src/renderer/src/sim/power';
 import { Phase, cycleBudget } from '../src/renderer/src/sim/director';
-import { navRows } from '../src/renderer/src/sim/run';
+import { navRows, jumpShip, NodeType } from '../src/renderer/src/sim/run';
 
 /** A 2-player state advanced 1500 ticks with the bot, so fires and breaches have spawned and been repaired. */
 function advanced(seed: number, players = 2) {
@@ -49,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-18 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-19 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 18 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 18;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 19 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 19;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips airlocks.open and a HeldOpen door on the cutter; one airlock alone changes the hash (spec Demo-vii section 1)', () => {
@@ -442,6 +442,21 @@ describe('snapshot: encounters (spec Demo-vi section 2)', () => {
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
     for (const k of ['encounter', 'encounterTick', 'driveBoost'] as const) expect(mutate((u) => { u.run[k] = 2; }), k).not.toBe(base);
     expect(mutate((u) => { u.telemetry.encountersWon = 1; })).not.toBe(base);
+  });
+  it('fieldNextTick round-trips, starts at -1 and alone changes the hash (spec Demo-viii section 1)', () => {
+    expect(makeState(2, 5).run.fieldNextTick).toBe(-1);
+    const s = makeState(2, 5); s.run.fieldNextTick = 9876;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(t.run.fieldNextTick).toBe(9876); expect(hashState(t)).toBe(hashState(s));
+    expect(hashState(s)).not.toBe(hashState(makeState(2, 5)));
+  });
+  it('a run saved during an asteroid field continues like the uninterrupted run', () => {
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.boarders.nextArrivalTick = 1e9; s.enemy.nextArrivalTick = 1e9; mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); s.run.jumpCharge = 1; jumpShip(s, 0); run(s, 15 * 60); return s; };
+    const whole = setup(makeState(2, 7)), part = setup(makeState(2, 7));
+    expect(part.run.fieldNextTick).toBeGreaterThan(part.tick);
+    const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
+    run(whole, 1200); run(resumed, 1200);
+    expect(hashState(resumed)).toBe(hashState(whole));
   });
   it('a run saved after a won encounter with the drive boosted continues like the uninterrupted run through the jump', () => {
     const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); s.tick = s.enemy.nextArrivalTick; run(s, 1); damageEnemy(s, ENEMY_SLOT, 999); seatNavigator(s, 1); run(s, 30); return s; };

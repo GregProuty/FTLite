@@ -11,14 +11,14 @@ import { nextTarget } from './debrisTargets';
 import { failStation } from './power';
 import { quirkDebrisHullOffset, quirkLeadOffset } from './quirks';
 import { Skill, addXp } from './skills';
-import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE, ENEMY_AIM_CHANCE, ENEMY_SHOT_SYSTEM_CHANCE, ENEMY_SHOT_CREW_DAMAGE, SHOT_BREACH_FIRST } from './tuning';
+import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE, ENEMY_AIM_CHANCE, ENEMY_SHOT_SYSTEM_CHANCE, ENEMY_SHOT_CREW_DAMAGE, SHOT_BREACH_FIRST, FIELD_FLIGHT, FIELD_FLIGHT_JITTER, FIELD_ROCK_HULL, FIELD_ROCK_CREW, ROCK_BREACH_FIRST } from './tuning';
 
 export function activeDebrisCount(state: SimState): number {
   let n = 0; for (const a of state.debris.active) if (a) n++; return n;
 }
 
 /** Object kinds in the debris table (spec Combat-i section 4). */
-export const ObjectKind = { Debris: 0, Shot: 1 } as const;
+export const ObjectKind = { Debris: 0, Shot: 1, Rock: 2 } as const;   // Rock: a field rock, a weaker debris (spec Demo-viii amendment A1)
 
 /** Rooms holding an online console, de-duplicated, in station-index order (spec Demo-i section 11.3). */
 function consoleRooms(state: SimState): number[] {
@@ -45,6 +45,8 @@ function spawnObject(state: SimState, kind: number, flightBase: number, flightJi
   return slot;
 }
 export function spawnDebris(state: SimState): number { return spawnObject(state, ObjectKind.Debris, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, false); }
+/** A field rock (spec Demo-viii section 1, amendment A1): kind Rock, the field's shorter flight, the same three draws. */
+export function spawnFieldRock(state: SimState): number { return spawnObject(state, ObjectKind.Rock, FIELD_FLIGHT, FIELD_FLIGHT_JITTER, false); }
 /** An enemy shot: a short-flight object the enemy fires at us (spec Combat-i section 5). */
 export function spawnShot(state: SimState): number { return spawnObject(state, ObjectKind.Shot, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, true); }
 export function shotsInFlight(state: SimState): number {
@@ -89,10 +91,11 @@ function resolveImpact(state: SimState, slot: number): void {
     addXp(state, state.stations.occupant[nav]!, Skill.Navigation, XP_PER_EVADE_ROLL);   // the roll itself is the productive act, evaded or not
     if (evaded) { state.telemetry.evasions++; removeDebris(state, slot); return; }
   }
-  state.hull = Math.max(0, state.hull - (db.kind[slot] === ObjectKind.Shot ? ENEMY_SHOT_HULL_DAMAGE : DEBRIS_HULL_DAMAGE + quirkDebrisHullOffset(state)));
+  const kind = db.kind[slot]!;
+  state.hull = Math.max(0, state.hull - (kind === ObjectKind.Shot ? ENEMY_SHOT_HULL_DAMAGE : kind === ObjectKind.Rock ? FIELD_ROCK_HULL : DEBRIS_HULL_DAMAGE + quirkDebrisHullOffset(state)));
   state.telemetry.impacts++;
   if (db.kind[slot] === ObjectKind.Shot) for (let i = 0; i < state.stations.level.length; i++) if (stationOnline(state, i) && d.roomOfTile[d.stationTile[i]!] === room && nextFloat(state.rng.hazards) < ENEMY_SHOT_SYSTEM_CHANCE) failStation(state, i);   // a shot can fail each online console in the room, one hazards draw each (spec Demo-i section 11.3)
-  const breachFirst = nextFloat(state.rng.hazards) < (db.kind[slot] === ObjectKind.Shot ? SHOT_BREACH_FIRST : 0.5);   // hits make fires: a shot tries a fire first three times in four, debris half the time (spec Demo-vi section 3)
+  const breachFirst = nextFloat(state.rng.hazards) < (kind === ObjectKind.Shot ? SHOT_BREACH_FIRST : kind === ObjectKind.Rock ? ROCK_BREACH_FIRST : 0.5);   // hits make fires: a shot tries a fire first three times in four, debris half the time (spec Demo-vi section 3)
   const tryBreach = (): boolean => {
     for (let s = 0; s < d.siteRoom.length; s++) if (d.siteRoom[s] === room && !state.breaches.active[s]) return activateBreach(state, s);
     return false;
@@ -103,7 +106,7 @@ function resolveImpact(state: SimState, slot: number): void {
     const eid = state.crew[pid]!;
     if (Life.state[eid] !== LifeState.Conscious) continue;
     if (roomAt(state, Position.x[eid]!, Position.y[eid]!) !== room) continue;
-    Health.cur[eid] = Math.max(0, Health.cur[eid]! - (db.kind[slot] === ObjectKind.Shot ? ENEMY_SHOT_CREW_DAMAGE : DEBRIS_CREW_DAMAGE));
+    Health.cur[eid] = Math.max(0, Health.cur[eid]! - (kind === ObjectKind.Shot ? ENEMY_SHOT_CREW_DAMAGE : kind === ObjectKind.Rock ? FIELD_ROCK_CREW : DEBRIS_CREW_DAMAGE));
     if (Health.cur[eid] === 0) downCrew(state, pid);
   }
   state.rooms.impactTick[room] = state.tick;
