@@ -28,7 +28,7 @@ const who = (e: { who: string; seconds: number } | null): string => (e ? `${e.wh
 function row(r: TelemetryRecord): string[] {
   return [String(r.playerCount), String(r.seed), clock(r.durationSeconds), r.endReason, who(r.firstDown), who(r.firstDeath),
     r.stationsNeverManned.length ? r.stationsNeverManned.join(',') : 'none', r.longestIdleSeconds.join('/'),
-    `${r.spawns.fire}/${r.spawns.breach}/${r.spawns.power}/${r.spawns.debris}`, String(r.impacts), `${r.hits}/${r.shots}`, `${r.enemy.met}/${r.enemy.destroyed}/${r.enemy.disables}`, `${r.boarders.parties}/${r.boarders.killed}`, `${r.run.nodesReached}/${r.run.columns}`, `${r.run.scrap.earned}/${r.run.scrap.spent}`, String(r.score)];
+    `${r.spawns.fire}/${r.spawns.breach}/${r.spawns.power}/${r.spawns.debris}`, String(r.impacts), `${r.hits}/${r.shots}`, `${r.enemy.met}/${r.enemy.destroyed}/${r.enemy.fled}/${r.enemy.disables}`, `${r.boarders.parties}/${r.boarders.killed}`, `${r.run.nodesReached}/${r.run.columns}`, `${r.run.scrap.earned}/${r.run.scrap.spent}`, String(r.score)];
 }
 
 /** One header line and one line per record, columns padded to the widest cell (spec 4-ii section 8). */

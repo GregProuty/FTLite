@@ -117,7 +117,7 @@ export function jumpShip(state: SimState, destination: number): void {
   state.telemetry.jumps++;
   arrive(state);
   clearObjects(state);
-  if (state.enemy.present) leave(state, false);
+  if (state.enemy.present) { state.enemy.surrenderIntact = 0; leave(state, false); }   // the ship left, not the enemy: a flee in progress counts as a flight, no surrender bounty (spec Demo-i section 11.3)
   state.enemy.nextArrivalTick = state.tick + ENCOUNTER_AFTER_JUMP * TICK_HZ;
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);

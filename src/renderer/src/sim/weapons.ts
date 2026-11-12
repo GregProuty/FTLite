@@ -4,7 +4,7 @@ import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
 import { cycleTarget, isTarget, isEnemySlot } from './debrisTargets';
-import { enemyBeamThreshold, beamAbsorbed, damageEnemy } from './enemy';
+import { enemyBeamThreshold, damageEnemy, EnemySystem } from './enemy';
 import { Dir } from './dir';
 import { Skill, addXp } from './skills';
 import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE } from './tuning';
@@ -30,14 +30,14 @@ export function chargeBeam(state: SimState): void {
   state.weapons.charge = Math.min(1, state.weapons.charge + DT * stationOutput(state, wpn) / BEAM_CHARGE_TIME);
 }
 
-/** Fire the selected weapon at the cursor's object. Beam needs a full charge, torpedo a loaded tube; one rng.combat draw unless the enemy's shields absorb the beam; the readiness resets either way. */
+/** Fire the selected weapon at the cursor's object. Beam needs a full charge, torpedo a loaded tube; one rng.combat draw; an untuned beam hit on a shielded enemy strips a layer instead of damaging; the readiness resets either way. */
 export function fireWeapon(state: SimState): boolean {
   const wpn = state.derived.stationOfKind[StationKind.Weapons]!, db = state.debris, w = state.weapons;
   if (wpn < 0 || !stationOnline(state, wpn) || state.stations.occupant[wpn]! < 0) return false;
   const c = state.stations.cursor[wpn]!;
   if (c < 0 || !isTarget(state, c)) return false;
   const enemy = isEnemySlot(c), output = stationOutput(state, wpn);
-  let hit = false;
+  let hit = false, stripped = false;
   if (w.selector === Weapon.Torpedo) {
     if (!w.torpedoLoaded) return false;
     hit = torpedoHits(nextFloat(state.rng.combat), output);                      // homing: no shield, no evasion
@@ -45,13 +45,15 @@ export function fireWeapon(state: SimState): boolean {
   } else {
     if (w.charge < 1) return false;
     w.charge = 0;
-    if (!(enemy && beamAbsorbed(state, w.selector))) {                             // an absorbed beam is a shot taken with no roll (spec Combat-ii section 5)
-      const u = nextFloat(state.rng.combat);
-      hit = enemy ? u < enemyBeamThreshold(state, output) : beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides against debris, scanned or not
-    }
+    const u = nextFloat(state.rng.combat);                                         // one combat draw for every beam (spec Demo-i section 11.3: the absorbed-without-a-roll rule is gone)
+    if (enemy) {
+      const e = state.enemy, tuned = e.sysHp[EnemySystem.Shields] === 0 || e.shieldLayers === 0 || w.selector + 1 === e.shieldFreq;
+      hit = u < enemyBeamThreshold(state, output); stripped = hit && !tuned;
+    } else hit = beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides against debris, scanned or not
   }
   state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
-  if (hit) {
+  if (stripped) { state.enemy.shieldLayers--; state.enemy.shieldRecharge = 0; state.telemetry.shieldHits++; state.telemetry.hits++; }   // an untuned hit strips a layer and nothing else
+  else if (hit) {
     state.telemetry.hits++;
     if (enemy) damageEnemy(state, c, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); else removeDebris(state, c);
   }

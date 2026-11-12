@@ -25,7 +25,7 @@ const rec = (over: Partial<TelemetryRecord> = {}): Omit<TelemetryRecord, 'score'
   version: 1, simVersion: 15, seed: 1, playerCount: 2, characters: ['Recruit', 'Recruit'], endReason: 'running', durationSeconds: 0,
   firstDown: null, firstDeath: null, stationsNeverManned: [], mannedSeconds: {}, longestIdleSeconds: [0, 0],
   spawns: { fire: 0, breach: 0, power: 0, debris: 0 }, impacts: 0, evadeRolls: 0, evasions: 0, shots: 0, hits: 0,
-  repairs: { fire: 0, breach: 0, power: 0 }, maxStress: 0, phaseEntries: { buildUp: 0, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0, disables: 0 }, boarders: { parties: 0, killed: 0 },
+  repairs: { fire: 0, breach: 0, power: 0 }, maxStress: 0, phaseEntries: { buildUp: 0, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0, disables: 0, fled: 0, surrenders: 0, shieldHits: 0 }, boarders: { parties: 0, killed: 0 },
   run: { nodesReached: 0, jumps: 0, columns: 8, scrap: { earned: 0, spent: 0 }, events: 0, purchases: 0, upgrades: [], quirk: 'Leaky Seals', unlocks: [] }, skills: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ...over
 });
 const runOver = (o: Partial<TelemetryRecord['run']>) => ({ ...rec().run, ...o });

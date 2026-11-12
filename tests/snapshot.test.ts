@@ -49,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-14 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-15 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 14 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 14;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 15 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 15;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -296,6 +296,16 @@ describe('snapshot', () => {
     for (let k = 0; k < 3; k++) { expect(mutate((u) => { u.enemy.sysHp[k] = 1; })).not.toBe(base); expect(mutate((u) => { u.enemy.sysRepairTick[k] = 1; })).not.toBe(base); }
     expect(mutate((u) => { u.enemy.shieldFreq = 1; })).not.toBe(base); expect(mutate((u) => { u.enemy.scanned = 1; })).not.toBe(base); expect(mutate((u) => { u.enemy.scan = 0.5; })).not.toBe(base); expect(mutate((u) => { u.telemetry.enemyDisables = 1; })).not.toBe(base);
     expect(mutate((u) => { u.telemetry.encounters = 1; })).not.toBe(base); expect(mutate((u) => { u.telemetry.enemiesDestroyed = 1; })).not.toBe(base);
+  });
+  it('the six combat enemy fields and four combat telemetry scalars round-trip and each alone changes the hash (spec Demo-i section 11.1)', () => {
+    const f = makeState(2).enemy; expect([f.maxHull, f.shieldLayers, f.shieldRecharge, f.shotArmTick, f.fleeing, f.surrenderIntact]).toEqual([0, 0, 0, -1, 0, 0]);
+    const s = makeState(2, 5); Object.assign(s.enemy, { maxHull: 130, shieldLayers: 2, shieldRecharge: 0.25, shotArmTick: 777, fleeing: 1, surrenderIntact: 1 }); Object.assign(s.telemetry, { shieldHits: 4, enemyFled: 2, surrenderOffers: 3, surrenders: 1 });
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect([t.enemy.maxHull, t.enemy.shieldLayers, t.enemy.shieldRecharge, t.enemy.shotArmTick, t.enemy.fleeing, t.enemy.surrenderIntact]).toEqual([130, 2, 0.25, 777, 1, 1]);
+    expect([t.telemetry.shieldHits, t.telemetry.enemyFled, t.telemetry.surrenderOffers, t.telemetry.surrenders]).toEqual([4, 2, 3, 1]);
+    const base = hashState(makeState(2, 5)), mutate = (fn: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); fn(u); return hashState(u); };
+    for (const k of ['maxHull', 'shieldLayers', 'shieldRecharge', 'shotArmTick', 'fleeing', 'surrenderIntact'] as const) expect(mutate((u) => { u.enemy[k] = 1; }), k).not.toBe(base);
+    for (const k of ['shieldHits', 'enemyFled', 'surrenderOffers', 'surrenders'] as const) expect(mutate((u) => { u.telemetry[k] = 1; }), k).not.toBe(base);
   });
   it('a run saved mid-encounter with a shot due in 10 ticks and the withdrawal in 20 continues like the uninterrupted run through both', () => {
     const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9;
