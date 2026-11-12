@@ -1,0 +1,13 @@
+# Codex review: Demo-ii plan Tasks 1-2 (2026-11-12)
+
+1. **High — Plan Global Constraints vs. spec §3; Task 1 Step 2.** The spec says the repair rule leaves `SIM_VERSION` at 16, but the plan requires version 17 because of the new `lastHitTick` field. An implementer following both may choose either. **Fix:** say the repair change alone leaves the version unchanged; version 17 is required for the added field.
+
+2. **High — Task 1 Step 2; spec §4.** The plan says where to flatten `lastHitTick` and increment `ENEMY_FIELDS`, but doesn’t define its exact position in the flattened array; “after `surrenderIntact`” may not identify the same slot to two implementers. It also doesn’t specify the helper’s initial field value, only that `placeEnemy` sets it to `-1`. **Fix:** give the exact flatten index/order and state the helper’s `lastHitTick` value explicitly.
+
+3. **Medium — Task 1 Step 1; `power.ts` `shiftBar`.** Filling the pool by repeatedly shifting bars is feasible: `shiftBar` allocates across stations until `powerPool` reaches zero, and Engineering itself cannot be raised above its floor. But the plan doesn’t say which stations to fill or how to handle layouts/capacities where repeated shifts cannot consume the pool. **Fix:** specify an allocation loop over eligible station kinds, and assert the pool is zero before repair.
+
+4. **Medium — Plan Global Constraints; Task 1 Step 3; spec §3.** The acceptance retry is underspecified: the plan says “four-player floor at 3” and “keep 2 if it fails,” while the spec says retry `nodesReached >= 3` and otherwise retain the existing floor. It doesn’t state explicitly that this concerns the four-player row or how to judge the retry. **Fix:** name the four-player acceptance row and say to change its minimum from 2 to 3 only if it passes; otherwise keep 2 and record its result.
+
+5. **Medium — Task 2 Steps 1–2; spec §4.** The plan calls for model tests, but does not assign a test for the new panel’s drawing or placement; the spec says placement is covered by a manual gate, while the plan’s Task 2 verification mentions no such check. “Created from `createEnemyPanel(parent)`” also leaves attachment and update ownership unclear. **Fix:** specify whether panel drawing/placement is manual-only, and state where it is attached and which `hud.ts` update path drives it.
+
+6. **Low — Task 1 Step 1; spec §§4, 7.** The last-hit tests require a torpedo hit, but neither document identifies how to produce that hit in a test, while the beam case is only described as “tuned.” **Fix:** name the relevant existing test helper or setup for beam, shield-strip, and torpedo cases, or allow a direct `damageEnemy` test for the shared damage stamp.

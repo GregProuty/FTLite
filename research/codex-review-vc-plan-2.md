@@ -1,0 +1,13 @@
+# Codex review: Demo-ii plan Tasks 3-4 (2026-11-12)
+
+1. **High — `session.ts`, post-loop hook placement.** Put cue detection after the tick loop but still inside its `try`, so `break` on `state.ended` still reaches detection and emits the terminal cue on that frame. Keep it out of the `state.ended` branch, which would skip other cues from the same frame. On later game-over frames, no detection should run.
+
+2. **Medium — `tests/session.test.ts`, harness.** Add a `Cue[]` collector, pass `playCue: cue => cues.push(cue)` into `createSession`, and return `cues` from `harness()`. This makes session assertions possible without audio or Electron.
+
+3. **High — Plan Task 3, session cases.** Six cases are realizable with the listed harness and helpers: lobby frames produce no cues; `chargeJump` before a running frame produces one `ready`, then none on the next frame; `seatNavigator` + `chargeJump` + Confirm produces `jump`; `downCrew` produces one terminal `defeat`, with ten game-over frames adding nothing; the column-6 victory setup produces one `victory`; and pausing then framing produces no cues. Assert the relevant cue count/order and unchanged collector length where specified. The two-hazard case is **not** realizable as written: calling `armSpawn` twice before a frame resets the same due-spawn timer; it does not queue two spawns. Adjust the fixture to produce two actual spawn-counter increments across ticks in one frame, or revise the case while preserving the intended one-alarm-per-frame assertion.
+
+4. **Medium — `src/main/index.ts`, main-process change.** Task 3 correctly calls for `webPreferences.autoplayPolicy: 'no-user-gesture-required'`; ensure it is added to the existing `webPreferences` object. The spec’s rationale is to let the first alarm play before a user gesture.
+
+5. **Medium — Plan Task 4, docs scope.** The task names the files and requested updates, but does not define the content of “Amendments from the plan.” Specify which discrepancies to record, including the spec’s SIM_VERSION 16 versus the plan’s version 17 and the corrected two-hazard test fixture. That will make the amendment deliverable reviewable.
+
+6. **Low — Plan Task 4, gate figures.** The required figures depend on Task 1 and are not supplied in Task 4 itself. Keep them as explicit inputs from Task 1: per-seed before/after gate figures, acceptance rows, four-player floor outcome, and golden hash. Include no invented values, and leave the manual row unchecked as specified.
