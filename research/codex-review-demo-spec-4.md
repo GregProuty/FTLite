@@ -1,0 +1,11 @@
+# Codex review: Demo-i spec second pass, half 2 (2026-11-11)
+
+1. **High — Section 6, lines 68–69.** The target `t` is defined as a `navRows` row, but the cursor `c` is an array position; the spec compares them directly and uses `t > c`. Event choice `index` and jump destination `index` are not necessarily their row positions (and shops add buy rows). The bot can move the wrong way or never select its target. **Fix:** define `t` as the position in `rows` of the selectable row matching the desired choice or destination, then compare that position with `c`.
+
+2. **High — Section 6, lines 65–71.** Run behavior is ordered after any `interactTarget`, including nearby fires, breaches, and failed consoles. That contradicts the “sole goal (replacing the hazard goals)” rule: a hazard target can keep the bot from walking to Navigation while the drive is ready. **Fix:** specify which urgent interactions outrank jumping (such as revive and boarder combat), and let the ready-drive goal replace ordinary hazard goals.
+
+3. **Medium — Section 8, line 92.** The seated/jump test allows arrival by tick 60, but the specified spawn-to-Navigation walk is about 92 ticks in `gate-jump`. The test deadline cannot be met from the normal spawn state. **Fix:** set the seating deadline beyond the observed 92 ticks, with a documented margin; keep the jump deadline relative to seating or charge readiness.
+
+4. **Medium — Section 8, line 94.** The playtest parser checks the headers, checkbox count, and presence of `See:`/`Notes:` lines, but does not check that the twelve steps cover the session described in section 7 or that the `See:` lines contain the expected observations. A structurally valid but incomplete script would pass. **Fix:** assert the expected step headings or required content, including the dated `Notes:` field.
+
+**First-pass status:** Findings 1, 3–6, 8–10, and 12 are resolved. Finding 2 is only partially resolved: the pulse cadence is specified, but target selection remains ambiguous (item 1 above). Finding 7 is partially resolved: tick zero is explicit, but its deadline is infeasible (item 3). Finding 11 remains open (item 4).
