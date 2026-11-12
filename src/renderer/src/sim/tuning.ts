@@ -170,5 +170,5 @@ export const QUIRK_COUNT = 6;
 export const QUIRK_PASSAGE_MULT = 2, QUIRK_HEAT_RISE = 1, QUIRK_DOOR_DELAY_MULT = 2, QUIRK_DEBRIS_OFFSET = -2, QUIRK_LEAD_OFFSET = 4, QUIRK_CHARGE_MULT = 1.25;
 
 // HUD budgets (spec Demo-i sections 3 and 4): characters per card and notice line, pixels at 16 px m5x7 (measured from the TTF advance table)
-export const LOBBY_LINE_MAX = 105, NOTICE_LINE_MAX = 64, LOBBY_PX_MAX = 560, NOTICE_PX_MAX = 400;
+export const LOBBY_LINE_MAX = 90, NOTICE_LINE_MAX = 64, LOBBY_PX_MAX = 560, NOTICE_PX_MAX = 400;
 export const HIT_FLASH_TICKS = 12;   // ticks the HUD enemy silhouette flashes after our last hit (spec Demo-ii section 4); read only by the HUD model, not hashed

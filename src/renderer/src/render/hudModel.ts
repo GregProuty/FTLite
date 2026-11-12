@@ -152,7 +152,7 @@ export const LOBBY_LINES: readonly string[] = [
   'Move: WASD or left stick      Interact: E / A      Confirm: F / X      Cancel: Q / B',
   'Keyboard 2: arrows, Enter (Interact), Right Shift (Confirm), Backspace (Cancel)',
   'Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands',
-  'Hold Interact next to a fire, a breach, a failed console or a downed friend. Repaired consoles need a bar',
+  'Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar',
   'Navigation jumps when the drive reads READY. Events and shops are chosen there',
   'Jump before the ship falls apart. Reach node 8 to win'
 ];

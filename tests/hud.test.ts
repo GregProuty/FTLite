@@ -397,7 +397,7 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
     'Move: WASD or left stick      Interact: E / A      Confirm: F / X      Cancel: Q / B',
     'Keyboard 2: arrows, Enter (Interact), Right Shift (Confirm), Backspace (Cancel)',
     'Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands',
-    'Hold Interact next to a fire, a breach, a failed console or a downed friend. Repaired consoles need a bar',
+    'Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar',
     'Navigation jumps when the drive reads READY. Events and shops are chosen there',
     'Jump before the ship falls apart. Reach node 8 to win'
   ];
@@ -457,7 +457,7 @@ describe('Demo-ii HUD: unpowered consoles, card line 4, the enemy block (spec se
   });
   it('card line 4 is exact and at most 90 characters', () => {
     const line = buildHudModel(null, slots(1), 'lobby', '').lobbyLines[3]!;
-    expect(line).toBe('Hold Interact next to a fire, a breach, a failed console or a downed friend. Repaired consoles need a bar');
+    expect(line).toBe('Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar');
     expect(line.length).toBeLessThanOrEqual(LOBBY_LINE_MAX);
   });
   it('enemy is null without an enemy and without a state', () => {
