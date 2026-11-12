@@ -26,11 +26,11 @@ const idx = (s: ReturnType<typeof makeState>, kind: number) => s.derived.station
 const T = TICK_HZ;
 
 describe('escalation helpers', () => {
-  it('spawnInterval shrinks with minutes, floors at 10 s from minute 20, and scales by crew size (1.5, 1.25, 1, 1)', () => {
+  it('spawnInterval shrinks with minutes, floors at 10 s from minute 20, and scales by crew size (1.5, 1.4, 1, 1)', () => {
     expect(spawnInterval(0, 3)).toBe(30); expect(spawnInterval(5, 3)).toBeCloseTo(20); expect(spawnInterval(10, 3)).toBeCloseTo(15);
     expect(spawnInterval(20, 3)).toBe(SPAWN_INTERVAL_MIN); expect(spawnInterval(30, 3)).toBe(SPAWN_INTERVAL_MIN);   // 30 / 4 = 7.5 would be below the floor
     expect(spawnInterval(0, 1)).toBe(45); expect(spawnInterval(0, 4)).toBe(30);
-    for (const [p, m] of [[1, 1.5], [2, 1.25], [3, 1], [4, 1]] as const) expect(spawnInterval(7, p)).toBeCloseTo(spawnInterval(7, 3) * m, 12);   // spec Demo-i section 5: CREW_INTERVAL_MULT by crew size
+    for (const [p, m] of [[1, 1.5], [2, 1.4], [3, 1], [4, 1]] as const) expect(spawnInterval(7, p)).toBeCloseTo(spawnInterval(7, 3) * m, 12);   // spec Demo-i section 5: CREW_INTERVAL_MULT by crew size
   });
   it('spawnCap grows every 4 minutes to 6, adds one at 4 players and drops one for a solo crew, never below 1', () => {
     expect(spawnCap(0, 2)).toBe(SPAWN_CAP); expect(spawnCap(4, 2)).toBe(4); expect(spawnCap(8, 2)).toBe(5); expect(spawnCap(40, 2)).toBe(SPAWN_CAP_MAX);

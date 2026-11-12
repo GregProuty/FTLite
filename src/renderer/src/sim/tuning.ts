@@ -120,7 +120,7 @@ export const PEAK_LEVEL = 0.7, RELAX_LEVEL = 0.25;
 export const SUSTAIN_SECONDS = 10, FADE_TIMEOUT = 30, RELAX_MIN = 30, RELAX_MAX = 60, STALL_SECONDS = 60;
 export const SPAWN_INTERVAL_MIN = 10;                  // seconds; the escalated interval never goes below this
 export const ESCALATION_RATE = 0.1;                    // per minute: interval = SPAWN_INTERVAL / (1 + rate x minutes)
-export const CREW_INTERVAL_MULT = [1.5, 1.25, 1, 1] as const;   // spawn and fire interval multiplier by crew size, indexed players - 1 (spec Demo-i section 5)
+export const CREW_INTERVAL_MULT = [1.5, 1.4, 1, 1] as const;   // spawn and fire interval multiplier by crew size, indexed players - 1 (spec Demo-i section 5)
 export const SPAWN_CAP_MAX = 6, CAP_MINUTES = 4;        // +1 cap per 4 minutes up to the max
 export const BUDGET_BASE = 3, BUDGET_GROWTH = 0.5;      // spawns per Build Up cycle: (base + growth x minutes) x playerScale
 export const WEIGHT_MINUTES = 4;                       // power and debris weights grow every 4 minutes
@@ -138,7 +138,7 @@ export const ENEMY_BEAM_BASE = 0.70, ENEMY_BEAM_SCALE = 0.30;   // engines-up ch
 export const ENEMY_BEAM_DAMAGE = 15, ENEMY_TORP_DAMAGE = 35;
 /** FTL-style ship combat (spec Demo-i section 11.2): shield layers by column, recharge seconds per layer, hull per column, aim and console-failure chances, the flee at a hull fraction with its delay, the surrender bounty. */
 export const ENEMY_SHIELD_LAYERS: readonly number[] = [1, 1, 1, 2, 2, 2, 2, 2], SHIELD_RECHARGE_TIME = 6, ENEMY_HULL_PER_COLUMN = 10, ENEMY_AIM_CHANCE = 0.6, ENEMY_SHOT_SYSTEM_CHANCE = 0.5;
-export const ENEMY_SHOT_CREW_DAMAGE = 12;                // of HEALTH_MAX per Conscious crew member in the room a shot hits (survival-gate lever 2 after aimed shots, spec Demo-i section 11.5; debris stays 20)
+export const ENEMY_SHOT_CREW_DAMAGE = 12;                // of HEALTH_MAX per Conscious crew member in the room a shot hits (survival-gate lever 2 after aimed shots, Demo-i gate (spec section 12); debris stays 20)
 export const ENEMY_FLEE_FRAC = 0.25, ENEMY_FLEE_DELAY = 8, SCRAP_SURRENDER = 20;
 export const ENEMY_SYS_HP = 30, ENEMY_SYS_REPAIR = 45, ENEMY_EVADE = 0.15;   // subsystem health, seconds to self-repair, beam threshold penalty while the engines are up (spec Combat-ii section 8)
 
@@ -156,7 +156,7 @@ export const HEALTH_EPS = 1e-9;                                                 
 // Sector map and jumps (Run-i)
 export const RUN_COLUMNS = 8, EDGE_CHANCE = 0.5;                                   // node columns; chance of each candidate edge
 export const JUMP_CHARGE_TIME = 60;                                                 // seconds from arrival to a ready drive
-export const ENCOUNTER_AFTER_JUMP = 60, BOARDING_AFTER_JUMP = 120;                  // seconds after a jump before the enemy / a party can arrive (no draw)
+export const ENCOUNTER_AFTER_JUMP = 30, BOARDING_AFTER_JUMP = 120;                  // seconds after a jump before the enemy / a party can arrive (no draw); 30 so a jump on the first ready tick (60 s after arrival) still meets the next enemy (spec Demo-i section 12)
 
 // Events and shops (Run-ii)
 export const SHOP_CHANCE = 0.25, EVENT_CHANCE = 0.35;                               // node type draw thresholds (map stream, after the edges)

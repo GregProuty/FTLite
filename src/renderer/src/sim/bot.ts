@@ -7,6 +7,7 @@ import { navRows } from './run';
 import { EVENTS } from './events';
 import { StationKind } from './stationKinds';
 import { DoorState } from './grid';
+import { stationOnline } from './stations';
 
 /** Passable for pathing: not a wall, and not a sealed door (closed doors open on approach). */
 function passable(state: SimState, tx: number, ty: number): boolean {
@@ -62,10 +63,10 @@ function goalTiles(state: SimState, pid: number, here: number): Set<number> {
   return goals;
 }
 
-/** Run behaviour for pid 0 (spec Demo-i section 6): walk to Navigation when the drive is ready, sit, take the event's safe choice or the first jump row, stand after the jump. Null when the run behaviour is not active. */
+/** Run behaviour for pid 0 (spec Demo-i section 6): walk to Navigation when the drive is ready, sit, take the event's safe choice or the first jump row, stand after the jump. Null when the run behaviour is not active (pid > 0, no Navigation, or its console failed or offline: the hazard goals repair it). */
 function runIntent(state: SimState, pid: number, eid: number, here: number): Intent | null {
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;
-  if (pid !== 0 || nav < 0) return null;
+  if (pid !== 0 || nav < 0 || !stationOnline(state, nav)) return null;
   const r = state.run, pending = r.event >= 0 && r.eventChoice < 0, seated = Seated.station[eid] === nav;
   if (seated) {
     if (r.jumpCharge < 1 && !pending) return { ...NEUTRAL_INTENT, cancelPressed: true };

@@ -37,7 +37,7 @@ describe('enemy: initial values and fireInterval', () => {
   });
   it('fireInterval escalates to the floor and solo is 1.5x', () => {
     expect(fireInterval(0, 3)).toBe(20); expect(fireInterval(3, 3)).toBeCloseTo(200 / 13, 12); expect(fireInterval(10, 3)).toBe(10); expect(fireInterval(30, 3)).toBe(6); expect(fireInterval(0, 1)).toBe(20 * CREW_INTERVAL_MULT[0]!);
-    for (const [p, m] of [[1, 1.5], [2, 1.25], [3, 1], [4, 1]] as const) expect(fireInterval(7, p)).toBeCloseTo(fireInterval(7, 3) * m, 12);   // spec Demo-i section 5: crews of two fire 1.25x slower too
+    for (const [p, m] of [[1, 1.5], [2, 1.4], [3, 1], [4, 1]] as const) expect(fireInterval(7, p)).toBeCloseTo(fireInterval(7, 3) * m, 12);   // spec Demo-i section 5: crews of two fire 1.4x slower too
   });
 });
 

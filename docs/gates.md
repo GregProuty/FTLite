@@ -208,5 +208,15 @@ players  seed  ended-at  reason   first-down  first-death  never-manned         
 4        1     5:00      running  -           -            Weapons,Science,Engineering,Life Support,Medbay,Doors  43.7/74.2/74.2/73.6  2/3/2/3  0        0/0         3/0/0/0  0/0       4/8    60/0   460
 ```
 
+- [x] Final-review re-record (2026-11-12): `ENCOUNTER_AFTER_JUMP` 60 -> 30 (jumping on the first ready tick had dodged every encounter) and the bot's run behaviour requires the Navigation console online. Figures above are kept as "before `ENCOUNTER_AFTER_JUMP` 30". `gate-duo` at 30 with `CREW_INTERVAL_MULT[1]` 1.25: min health 33.4 / 66.3 / 4.2 (seed 3 FAILS; min hull 72 / 68 / 68, encounters 4); `gate-boarding` with 1.25 failed seed 2 (min health 0.0, seed 1 25.3, seed 3 25.5). Lever 1 taken (`CREW_INTERVAL_MULT[1]` 1.25 -> 1.4; levers 2 and 3 not needed, golden unchanged): `gate-duo` min health 61.8 / 86.8 / 49.0 (min hull 80 / 80 / 76, boardings 0, encounters 4); `gate-survival` min health 74.5 / 25.9 / 41.4 (min hull 72 / 80 / 84, encounter impacts 1 / 1 / 2, pins the jump charge so only the interval changed it); `gate-boarding` min health 25.3 / 14.1 / 5.0, all pass; `gate-jump` and `gate-run` still 25200.
+- [x] `npm run acceptance 5 1` after the change (lever 1 taken), 2026-11-12: every row `running` at 5:00, no first death; the four-player row now meets the enemy (impacts 13, enemies met 2, boarders 1/2, nodes 2/8) and has a first down, Lindqvist at 4:11.3. Before `ENCOUNTER_AFTER_JUMP` 30 the rows showed impacts 0, enemies met 3, nodes 4/8 and no first down. The two-player row at 1.25 with the new constant: impacts 6, nodes 4/8.
+
+```
+players  seed  ended-at  reason   first-down        first-death  longest-idle         spawns   impacts  hits/shots  enemy    boarders  nodes  scrap  score
+1        1     5:00      running  -                 -            49.3                 1/0/1/1  4        0/0         4/0/0/0  0/0       4/8    60/0   460
+2        1     5:00      running  -                 -            42.4/82.9            1/0/2/2  5        0/0         4/0/0/0  0/0       4/8    60/0   460
+4        1     5:00      running  Lindqvist 4:11.3  -            43.7/74.2/74.2/73.6  1/1/2/3  13       0/0         2/0/0/0  1/2       2/8    50/0   260
+```
+
 - [ ] Playtest YYYY-MM-DD, 2 players, seed N, build <commit>: steps 1-12 <seen | notes per failed step>; fixes: <commit list>. (`docs/playtest.md` is the script; step 6 covers the enemy row, stripping a layer, scanning, piercing, the flee and the surrender.)
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.

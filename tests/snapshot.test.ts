@@ -234,8 +234,8 @@ describe('snapshot', () => {
   });
   it('a run saved mid Build Up continues like an uninterrupted run through at least two phase changes', () => {
     const transitions = (s: ReturnType<typeof makeState>, ticks: number) => { let n = 0, last = s.director.phase; for (let t = 0; t < ticks; t++) { step(s, [NEUTRAL_INTENT, NEUTRAL_INTENT]); if (s.director.phase !== last) { n++; last = s.director.phase; } } return n; };
-    const whole = makeState(2, 22); transitions(whole, 6000);
-    const first = makeState(2, 22); transitions(first, 1500);
+    const whole = makeState(2, 24); transitions(whole, 6000);
+    const first = makeState(2, 24); transitions(first, 1500);
     expect(first.director.phase).toBe(Phase.BuildUp);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
     expect(transitions(resumed, 4500)).toBeGreaterThanOrEqual(2);
