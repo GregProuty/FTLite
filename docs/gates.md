@@ -283,3 +283,22 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
   - `npm run acceptance 5 1`: identical rows.
 - [x] Cause: the node types shift and the duo bots now cross asteroid fields; no floor lowered. At the spec's first values, fields sank the duo ship (15 rocks x 8 hull: seeds 2 and 3 to hull 0), so field rocks became a weaker, breach-first `Rock` with `FIELD_INTERVAL` 6 (amendments A1, A2, A4). At a 50/50 breach-or-fire draw, seed 3 still fell to 4.5 health from the fires the rocks started.
 - [x] Golden re-blessed once (SIM_VERSION 20): final hash 1aff2aad.
+
+## Demo-ix: boarders suffer vacuum and fire; scrap scales by column (2026-11-12)
+- [x] `npm test` passes (820 tests). The new tests cover:
+  - Boarders below 10 % oxygen lose 6 per second, in a fire 3, both 9; a normal room (and exactly 10 %) costs nothing; no draws.
+  - A hazard death: removed with scrap, `boardersKilled` and `boardersVented` + 1, no XP; the last one re-arms the cooldown with one director draw, an earlier one draws nothing; `killBoarderByHazard` ignores an inactive slot; a slot killed by hazard does not strike, sabotage or move that tick.
+  - The cutter: two boarders in the sealed Engines die between 10 s and 12 s after the Engines airlock is opened through the Doors console (amendment B10).
+  - `boardersVented` round-trips, changes the hash and appears in the telemetry record.
+  - The five scrap helpers at columns 0, 3 and 7; arrival pays the new column; kill, surrender, melee and hazard boarder kills at column 3; the surrender and field-cleared notices quote what they pay.
+- [x] Gates before -> after (min health, seeds 1/2/3), all identical:
+  - `gate-survival`: 63.3 / 23.7 / 47.0.
+  - `gate-duo`: 28.8 / 62.6 / 75.1.
+  - `gate-boarding`: 29.1 / 24.8 / 48.7 (boardings 1, killed 2 each).
+  - `gate-cutter`: 73.2 / 51.7 / 52.8.
+  - `gate-jump` and `gate-run` pass (`gate-run`'s expected scrap is now the sum of `scrapPerJump(1..7)` = 182 plus the event's 40).
+  - `npm run acceptance 5 1`: identical rows apart from scrap 60 -> 80 and score 460 -> 480 (four arrivals at columns 1-4 pay 14 + 18 + 22 + 26).
+- [x] Cause: no gate run puts a boarder in a vented or burning room (the boarding gate's party fights in rooms with air and no fire), so the hazard pass never fires there; scrap changes only the totals. No floor lowered.
+- [x] Golden re-blessed once (SIM_VERSION 21): final hash 1aff2aad -> 92a4fc7c.
+- [ ] Manual, the user: venting a room full of boarders feels like a deliberate trick, and late-game scrap lets a struggling run recover.
+- [x] `npm run typecheck`, `npm test`, `npm run build` pass on the final commit.
