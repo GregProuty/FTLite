@@ -2,23 +2,32 @@ import { Container, Graphics } from 'pixi.js';
 import type { SimState } from '../sim/state';
 import { ObjectKind } from '../sim/debris';
 import { WORLD_BAND } from './worldFit';
+import { StationKind } from '../sim/stationKinds';
+import { isEnemySlot } from '../sim/debrisTargets';
+import { BOLT_SECONDS } from './enemyWindowModel';
+import { TICK_HZ } from '../sim/tuning';
 import { projectilePath, projectilePos, evadePos, outcomeOf, shouldReset, roomCentrePx, asteroidShape, fragmentCount, hash01, showSecondsOf, SHAKE_ASTEROID_PX, SHAKE_SHOT_PX, SHAKE_SECONDS, type Path, type Pt } from './projectileModel';
 
 /** Visible asteroids and enemy shots (spec Demo-vii section 2): a render-only layer over the ship, under the HUD, driven by the debris table. */
-export interface ProjectileLayer { container: Container; reset(): void; draw(state: SimState, fit: { scale: number; x: number; y: number }, dt: number): Pt }
+/** What the enemy window lends the layer (spec Demo-viii amendments R2 and R3): the enemy-shot origin and our bolt's target on screen, each null while the window is not shown. */
+export interface WindowLink { shotOrigin: Pt | null; target(slot: number): Pt | null }
+export interface ProjectileLayer { container: Container; reset(): void; draw(state: SimState, fit: { scale: number; x: number; y: number }, dt: number, link?: WindowLink): Pt }
+interface Bolt { id: number; from: Pt; to: Pt; result: number; kind: number; burst: boolean }
 
-interface Tracked { id: number; kind: number; room: number; impactTick: number; path: Path; last: Pt | null; shape: Pt[]; spin: number }
+interface Tracked { id: number; slot: number; kind: number; room: number; impactTick: number; path: Path; last: Pt | null; shape: Pt[]; spin: number }
 interface Burst { x: number; y: number; age: number; parts: { vx: number; vy: number; size: number }[]; color: number; life: number }
 
+const BEAM = 0x6fe8ff, BEAM_CORE = 0xe8fdff, TORP = 0xffe070, HIT_BURST = 0xff9040;
 const ROCK = 0x8a7a68, ROCK_EDGE = 0x5b4f43, DUST = 0xb8a890, BOLT = 0xff5a2a, BOLT_CORE = 0xffd0a0, PUFF = 0x9aa0ad;
 
 export function createProjectileLayer(): ProjectileLayer {
   const container = new Container();
   const g = new Graphics(); container.addChild(g);
   let tracked = new Map<number, Tracked>(), evading: Tracked[] = [], bursts: Burst[] = [];
-  let prevTick = -1, prevNode = -1, shakeAmp = 0, shakeLeft = 0, clock = 0;
+  let prevTick = -1, prevNode = -1, shakeAmp = 0, shakeLeft = 0, clock = 0, bolt: Bolt | null = null;
+  const slotPos = new Map<number, Pt>();   // the last drawn point of each debris slot's object, for a bolt aimed at a rock
 
-  function reset(): void { tracked = new Map(); evading = []; bursts = []; shakeAmp = 0; shakeLeft = 0; prevTick = -1; prevNode = -1; }
+  function reset(): void { tracked = new Map(); evading = []; bursts = []; shakeAmp = 0; shakeLeft = 0; prevTick = -1; prevNode = -1; bolt = null; slotPos.clear(); }
 
   function burst(at: Pt, id: number, count: number, speed: number, color: number, life: number): void {
     const parts = Array.from({ length: count }, (_, k) => { const a = (k / count) * Math.PI * 2 + hash01(id, 20 + k) * 0.6; const v = speed * (0.5 + hash01(id, 40 + k)); return { vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: 2 + Math.floor(hash01(id, 60 + k) * 3) }; });
@@ -39,9 +48,31 @@ export function createProjectileLayer(): ProjectileLayer {
     g.circle(p.x, p.y, 2).fill({ color: BOLT_CORE, alpha });
   }
 
+  /** Our last shot (spec Demo-viii section 2): a beam pulse or a torpedo from our Weapons room to its target over BOLT_SECONDS; a hit bursts there, a miss flies on and fades. Cosmetic only. */
+  function drawOurBolt(state: SimState, fit: { scale: number; x: number; y: number }, link: WindowLink | undefined): void {
+    const w = state.weapons, age = state.tick - w.lastShotTick, dur = BOLT_SECONDS * TICK_HZ;
+    if (w.lastShotTick >= 0 && (!bolt || bolt.id !== w.lastShotTick) && age >= 0 && age < dur) {
+      const wpn = state.derived.stationOfKind[StationKind.Weapons]!, slot = w.lastShotTarget;
+      const to = isEnemySlot(slot) ? link?.target(slot) ?? null : slotPos.get(slot) ?? null;
+      bolt = wpn >= 0 && to ? { id: w.lastShotTick, from: roomCentrePx(state.derived, state.derived.roomOfTile[state.derived.stationTile[wpn]!]!, fit), to, result: w.lastShotResult, kind: w.lastShotKind, burst: false } : null;
+    }
+    if (!bolt) return;
+    const t = (state.tick - bolt.id) / dur, b = bolt;
+    if (t < 0 || t >= 1.5) { bolt = null; return; }
+    const at = (u: number): Pt => ({ x: b.from.x + (b.to.x - b.from.x) * u, y: b.from.y + (b.to.y - b.from.y) * u });
+    const draw = (u: number, alpha: number): void => {
+      const head = at(u);
+      if (b.kind === 1) { const tail = at(Math.max(0, u - 0.06)); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: TORP, width: 3, alpha: alpha * 0.6 }); g.circle(head.x, head.y, 3).fill({ color: TORP, alpha }); g.circle(head.x, head.y, 1.5).fill({ color: 0xffffff, alpha }); }
+      else { const tail = at(Math.max(0, u - 0.25)); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: BEAM, width: 4, alpha: alpha * 0.5 }); g.moveTo(tail.x, tail.y).lineTo(head.x, head.y).stroke({ color: BEAM_CORE, width: 1.5, alpha }); }
+    };
+    if (t < 1) { draw(t, 1); return; }
+    if (b.result === 0) { draw(t, Math.max(0, 1 - (t - 1) * 2)); return; }   // a miss passes the target and fades
+    if (b.result === 2 && !b.burst) { b.burst = true; burst(b.to, b.id, 10, 60, HIT_BURST, 0.5); }
+  }
+
   return {
     container, reset,
-    draw(state, fit, dt) {
+    draw(state, fit, dt, link) {
       clock += dt;
       const node = state.run.column * 3 + state.run.node, tick = state.tick, db = state.debris;
       if (prevTick >= 0 && shouldReset(prevTick, tick, prevNode, node)) reset();
@@ -52,7 +83,7 @@ export function createProjectileLayer(): ProjectileLayer {
         const id = db.stableId[k]!; present.add(id);
         if (!tracked.has(id)) {
           const kind = db.kind[k]!, room = db.room[k]!;
-          tracked.set(id, { id, kind, room, impactTick: db.impactTick[k]!, path: projectilePath(id, kind, roomCentrePx(state.derived, room, fit), WORLD_BAND), last: null, shape: asteroidShape(id, kind === ObjectKind.Rock), spin: hash01(id, 6) * Math.PI * 2 });
+          tracked.set(id, { id, slot: k, kind, room, impactTick: db.impactTick[k]!, path: projectilePath(id, kind, roomCentrePx(state.derived, room, fit), WORLD_BAND, kind === ObjectKind.Shot ? link?.shotOrigin ?? undefined : undefined), last: null, shape: asteroidShape(id, kind === ObjectKind.Rock), spin: hash01(id, 6) * Math.PI * 2 });
         }
       }
       for (const [id, t] of tracked) {
@@ -69,6 +100,7 @@ export function createProjectileLayer(): ProjectileLayer {
       for (const t of tracked.values()) {
         const p = projectilePos(t.path, t.impactTick, tick, showSecondsOf(t.kind));
         t.last = p;
+        if (t.kind !== ObjectKind.Shot) slotPos.set(t.slot, p ?? t.path.from);
         if (!p) continue;
         if (t.kind === ObjectKind.Shot) drawBolt(t, p, 1); else { t.spin += dt * (0.6 + hash01(t.id, 7)); drawRock(t, p, 1); }
       }
@@ -78,6 +110,7 @@ export function createProjectileLayer(): ProjectileLayer {
         if (t.kind === ObjectKind.Shot) drawBolt(t, e, e.alpha); else { t.spin += dt; drawRock(t, e, e.alpha); }
         return true;
       });
+      drawOurBolt(state, fit, link);
       bursts = bursts.filter((b) => {
         b.age += dt;
         if (b.age >= b.life) return false;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
-import { enemyLabel, buildHudModel, clockLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
+import { buildHudModel, clockLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -20,6 +20,7 @@ import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src
 import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
 import { resolveEvent } from '../src/renderer/src/sim/events';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
+import { enemyWindowModel, stepWindowAnim, freshWindowAnim, rightColumn, windowShown } from '../src/renderer/src/render/enemyWindowModel';
 import { LOBBY_LINE_MAX, CONSOLE_LINE_MAX } from '../src/renderer/src/sim/tuning';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import type { DoorsPanel } from '../src/renderer/src/render/hudModel';
@@ -519,23 +520,21 @@ describe('Demo-ii HUD: unpowered consoles, card line 4, the enemy block (spec se
     expect(line).toBe('Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar');
     expect(line.length).toBeLessThanOrEqual(LOBBY_LINE_MAX);
   });
-  it('enemy is null without an enemy and without a state', () => {
-    expect(buildHudModel(null, slots(1), 'lobby', '').enemy).toBeNull();
-    expect(buildHudModel(makeState(2), slots(2), 'running', '').enemy).toBeNull();
+  it('the enemy panel is gone from the HUD model (spec Demo-viii section 2)', () => {
+    const s = makeState(2); quiet(s); placeEnemy(s);
+    expect('enemy' in buildHudModel(s, slots(2), 'running', '')).toBe(false);
   });
-  it('the block after one strip at column 5: hitFlash on the strip tick, off HIT_FLASH_TICKS later', () => {
-    const s = makeState(2); quiet(s); s.run.column = 5; placeEnemy(s); s.enemy.hull = s.enemy.maxHull;
-    s.enemy.shieldLayers--; s.enemy.lastHitTick = s.tick;
-    const m = buildHudModel(s, slots(2), 'running', '');
-    expect(m.enemy).toEqual({ hull: 1, layers: 1, layersMax: 2, weaponCharge: 0, fleeSeconds: 0, weaponsDown: false, enginesDown: false, shieldsDown: false, hitFlash: true });
-    s.tick += HIT_FLASH_TICKS - 1; expect(buildHudModel(s, slots(2), 'running', '').enemy!.hitFlash).toBe(true);
-    s.tick += 1; expect(HIT_FLASH_TICKS).toBe(12); expect(buildHudModel(s, slots(2), 'running', '').enemy!.hitFlash).toBe(false);
-  });
-  it('enemyLabel: ENEMY, FLEE 7s, ENGINES DOWN, and fleeing beats engines down', () => {
-    const e = { hull: 1, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0, weaponsDown: false, enginesDown: false, shieldsDown: false, hitFlash: false };
-    expect(enemyLabel(e)).toBe('ENEMY');
-    expect(enemyLabel({ ...e, fleeSeconds: 7 })).toBe('FLEE 7s');
-    expect(enemyLabel({ ...e, enginesDown: true })).toBe('ENGINES DOWN');
-    expect(enemyLabel({ ...e, enginesDown: true, fleeSeconds: 7 })).toBe('FLEE 7s');
+  it('the right column: the map with a navigator seated, else the enemy window while it shows; never both (amendment R1)', () => {
+    for (const enemy of [false, true]) for (const nav of [false, true]) for (const phase of ['running', 'paused'] as const) {
+      const s = makeState(2); quiet(s); let a = freshWindowAnim();
+      if (enemy) { placeEnemy(s); a = stepWindowAnim(a, s); s.tick += 60; }
+      a = stepWindowAnim(a, s);
+      if (nav) seatNavigator(s, 0);
+      const view = enemyWindowModel(s, s.tick, a), col = rightColumn(s, phase, view), map = buildHudModel(s, slots(2), phase, '').map;
+      const want = nav && phase === 'running' ? 'map' : enemy && !nav ? 'window' : 'none';
+      expect(col, `enemy ${enemy} nav ${nav} ${phase}`).toBe(want);
+      expect(map !== null, `map enemy ${enemy} nav ${nav} ${phase}`).toBe(col === 'map');
+      expect(windowShown(s, view), `window enemy ${enemy} nav ${nav} ${phase}`).toBe(col === 'window');
+    }
   });
 });

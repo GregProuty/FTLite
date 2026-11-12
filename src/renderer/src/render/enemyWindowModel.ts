@@ -85,6 +85,14 @@ function crewOf(state: SimState): EnemyWindowView['crew'] {
   return out;
 }
 
+/** Our last shot while it flies (BOLT_SECONDS): the target room centre (the ship centre for the hull row), null for a debris slot. */
+function boltOf(state: SimState, nowTick: number): EnemyWindowView['bolt'] {
+  const w = state.weapons, age = nowTick - w.lastShotTick;
+  if (w.lastShotTick < 0 || age < 0 || age >= BOLT_SECONDS * TICK_HZ) return null;
+  const slot = w.lastShotTarget, to = !isEnemySlot(slot) ? null : slot === ENEMY_SLOT ? centreOf(SHIP) : centreOf(roomRect(enemySystemOf(slot)));
+  return { to, slot, t: age / (BOLT_SECONDS * TICK_HZ), result: w.lastShotResult, kind: w.lastShotKind };
+}
+
 function presentView(state: SimState, nowTick: number, anim: WindowAnim): EnemyWindowView {
   const e = state.enemy, tick = state.tick;
   const rooms: WindowRoom[] = Array.from({ length: ENEMY_ROOMS }, (_, r) => {
@@ -98,11 +106,7 @@ function presentView(state: SimState, nowTick: number, anim: WindowAnim): EnemyW
   const first = problems(state)[0];
   const wpn = state.derived.stationOfKind[StationKind.Weapons]!, cursor = wpn >= 0 && state.stations.occupant[wpn]! >= 0 ? state.stations.cursor[wpn]! : -1;
   const reticle = cursor >= 0 && isEnemySlot(cursor) ? (cursor === ENEMY_SLOT ? { hull: true as const } : { room: enemySystemOf(cursor) }) : null;
-  let bolt: EnemyWindowView['bolt'] = null;
-  if (w.lastShotTick >= 0 && shotAge >= 0 && shotAge < BOLT_SECONDS * TICK_HZ) {
-    const slot = w.lastShotTarget, to = !isEnemySlot(slot) ? null : slot === ENEMY_SLOT ? centreOf(SHIP) : centreOf(roomRect(enemySystemOf(slot)));
-    bolt = { to, slot, t: shotAge / (BOLT_SECONDS * TICK_HZ), result: w.lastShotResult, kind: w.lastShotKind };
-  }
+  const bolt = boltOf(state, nowTick);
   const age = nowTick - anim.arriveTick, arriving = anim.arriveTick >= 0 && age < ARRIVE_SECONDS * TICK_HZ;
   const t = arriving ? Math.max(0, age) / (ARRIVE_SECONDS * TICK_HZ) : 1;
   const ease = 1 - (1 - t) * (1 - t);
@@ -125,6 +129,24 @@ export function enemyWindowModel(state: SimState, nowTick: number, anim: WindowA
   const secs = anim.gone === 'destroyed' ? BREAK_SECONDS : FLY_SECONDS, age = nowTick - anim.goneTick;
   if (age >= secs * TICK_HZ || age < 0) return HIDDEN;
   const t = age / (secs * TICK_HZ);
-  return { ...anim.last, phase: anim.gone, t, slideX: 0, shipDY: anim.gone === 'leaving' ? -Math.round(t * t * (SHIP.y + SHIP.h + 40)) : 0, reticle: null, bolt: null, status: anim.gone === 'destroyed' ? 'DESTROYED' : anim.last.status, problem: anim.gone === 'destroyed' ? null : anim.last.problem };
+  return { ...anim.last, phase: anim.gone, t, slideX: 0, shipDY: anim.gone === 'leaving' ? -Math.round(t * t * (SHIP.y + SHIP.h + 40)) : 0, reticle: null, bolt: boltOf(state, nowTick), status: anim.gone === 'destroyed' ? 'DESTROYED' : anim.last.status, problem: anim.gone === 'destroyed' ? null : anim.last.problem };
 }
 export { EnemyRoom };
+
+/** Amendment R1: the window shows while it has something to show and no one sits at Navigation (the map shows then instead). */
+export function windowShown(state: SimState, view: EnemyWindowView): boolean {
+  const nav = state.derived.stationOfKind[StationKind.Navigation]!;
+  return view.visible && !(nav >= 0 && state.stations.occupant[nav]! >= 0);
+}
+/** The right column (amendment R1): the map with a navigator seated, else the enemy window when it has something to show, else nothing. Never both. */
+export function rightColumn(state: SimState, phase: string, view: EnemyWindowView): 'map' | 'window' | 'none' {
+  const nav = state.derived.stationOfKind[StationKind.Navigation]!;
+  if (phase === 'running' && nav >= 0 && state.stations.occupant[nav]! >= 0) return 'map';
+  return windowShown(state, view) ? 'window' : 'none';
+}
+/** The red flash on the room our hit landed in, as the bolt arrives: 0.3 s fading (render only). */
+export function hitFlashOf(state: SimState, view: EnemyWindowView): { room: number | 'hull'; alpha: number } | null {
+  const w = state.weapons, age = state.tick - w.lastShotTick - BOLT_SECONDS * TICK_HZ;
+  if (!view.visible || w.lastShotTick < 0 || w.lastShotResult !== 2 || !isEnemySlot(w.lastShotTarget) || age < 0 || age >= 18) return null;
+  return { room: w.lastShotTarget === ENEMY_SLOT ? 'hull' : enemySystemOf(w.lastShotTarget), alpha: 1 - age / 18 };
+}

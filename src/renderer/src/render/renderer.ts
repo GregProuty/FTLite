@@ -12,6 +12,10 @@ import { createIconLayer } from './roomIcons';
 import { createCrewLayer } from './crewSprites';
 import { createBoarderLayer } from './boarderLayer';
 import { createProjectileLayer } from './projectiles';
+import { createEnemyWindowLayer } from './enemyWindow';
+import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf } from './enemyWindowModel';
+import { EnemyRoom } from '../sim/enemy';
+import { NineSliceSprite } from 'pixi.js';
 
 
 export interface Renderer {
@@ -29,7 +33,10 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const world = new Container(); world.isRenderGroup = true;
   const hud = new Container(); hud.isRenderGroup = true;
   const projectiles = createProjectileLayer();   // spec Demo-vii section 2: over the ship (internal pixels), under the HUD
-  app.stage.addChild(world, projectiles.container, hud);
+  const panel = (w: number, h: number) => { const n = assets.nineSlice('ui.panel'); const p = new NineSliceSprite({ texture: n.texture, leftWidth: n.left, topHeight: n.top, rightWidth: n.right, bottomHeight: n.bottom }); p.width = w; p.height = h; return p; };
+  const enemyWindow = createEnemyWindowLayer({ fontFamily: assets.fontFamily, fire: assets.has('fire.loop') ? assets.animation('fire.loop') : null, panel });
+  app.stage.addChild(world, enemyWindow.container, projectiles.container, hud);   // spec Demo-viii amendment R2: world, enemy window, projectiles, HUD
+  let anim = freshWindowAnim();
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory);
   const effects = createEffectsLayer(assets, memory);
@@ -46,7 +53,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       app.renderer.resize(winW, winH);
       app.stage.scale.set(lb.scale); app.stage.position.set(lb.offsetX, lb.offsetY);
     },
-    reset() { memory.reset(); projectiles.reset(); lastDraw = null; },   // session.start (a new run); the app has no runtime snapshot load
+    reset() { memory.reset(); projectiles.reset(); enemyWindow.reset(); anim = freshWindowAnim(); lastDraw = null; },   // session.start (a new run); the app has no runtime snapshot load
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
     },
@@ -55,7 +62,10 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
       const fit = worldFit(d.width, d.height); world.scale.set(fit.scale);
-      const shake = projectiles.draw(state, fit, dt);
+      anim = stepWindowAnim(anim, state);
+      const view = enemyWindowModel(state, state.tick + alpha, anim), shown = windowShown(state, view);
+      enemyWindow.draw(view, shown, dt, hitFlashOf(state, view));
+      const shake = projectiles.draw(state, fit, dt, { shotOrigin: shown ? windowRoomCentre(EnemyRoom.Weapons) : null, target: (slot) => { if (!shown || !view.bolt || view.bolt.slot !== slot || !view.bolt.to) return null; return { x: WINDOW.x + view.slideX + view.bolt.to.x, y: WINDOW.y + view.shipDY + view.bolt.to.y }; } });
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);
       tiles.update(state, dt);
       icons.update(state);
