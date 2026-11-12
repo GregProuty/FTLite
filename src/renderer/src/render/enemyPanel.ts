@@ -13,6 +13,7 @@ export function createEnemyPanel(fontFamily = 'm5x7'): { root: Container; update
     root,
     update(e) {
       if (!e) { root.visible = false; return; }
+      root.visible = true;
       g.clear();
       g.rect(0, 0, 240, 100).fill({ color: PANEL, alpha: 0.85 }).stroke({ width: 1, color: FAINT });
       // a 7-point hull silhouette, 56 x 24, centred (120, 44)

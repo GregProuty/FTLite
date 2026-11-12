@@ -6,7 +6,7 @@ export { ICON_KINDS, roomIcons };
 export type { IconKind };
 
 const TEXT = 0xe8e8e8, FAINT = 0x5a606c, WARN = 0xff6b5a;
-export const ICON_SIZE = 20, ICON_ALPHA = 0.55;
+export const ICON_SIZE = 20, ICON_ALPHA = 0.85;
 const SW = 2;
 
 /** Draws an original glyph centred at (cx, cy) in a size x size box, strokes 2 px (spec Demo-iii section 4). */
@@ -59,6 +59,9 @@ export function drawIcon(g: Graphics, kind: IconKind, cx: number, cy: number, si
 }
 
 export function tintColor(t: IconTint): number { return t === 'failed' ? WARN : t === 'unpowered' ? FAINT : TEXT; }
+/** The same tints for glyphs drawn on the light flat floors (spec visual cleanup section 4): dark normally, washed out when unpowered, strong red when failed. */
+export const FLOOR_GLYPH = { normal: 0x5f6575, unpowered: 0xb4b9c3, failed: 0xd9483b } as const;
+export function floorTintColor(t: IconTint): number { return FLOOR_GLYPH[t]; }
 
 export interface IconLayer { container: Container; build(state: SimState): void; update(state: SimState): void }
 
@@ -75,7 +78,7 @@ export function createIconLayer(): IconLayer {
     container, build,
     update(state) {
       if (builtFor !== state.derived.layoutHash) build(state);
-      roomIcons(state).forEach((ic, k) => { gfx[k]!.tint = tintColor(ic.tint); });
+      roomIcons(state).forEach((ic, k) => { gfx[k]!.tint = floorTintColor(ic.tint); });
     }
   };
 }

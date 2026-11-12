@@ -21,7 +21,7 @@ export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(m
       title.text = mapTitle(map);
       for (const e of map.edges) {
         const cur = map.columns[e.from[0]]!.nodes[e.from[1]]!.current, n = map.columns[e.from[0]]!.nodes.length, m = map.columns[e.to[0]]!.nodes.length;
-        g.moveTo(nodeX(e.from[0]), nodeY(e.from[1], n)).lineTo(nodeX(e.to[0]), nodeY(e.to[1], m)).stroke({ width: 1, color: cur ? DIM : FAINT });
+        g.moveTo(nodeX(e.from[0]), nodeY(e.from[1], n)).lineTo(nodeX(e.to[0]), nodeY(e.to[1], m)).stroke({ width: 2, color: cur ? TEXT : DIM, alpha: cur ? 1 : 0.7 });
       }
       let mi = 0; marks.forEach((t) => { t.visible = false; });
       const last = map.columns.length - 1;

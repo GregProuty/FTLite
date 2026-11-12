@@ -27,7 +27,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   };
   const icon = (name: string | null): Sprite | null => (name && icons && assets.has(name)) ? new Sprite(assets.texture(name)) : null;
   const bar = (w: number): { root: Container; set(frac: number): void } => {
-    const root = new Container(); const bg = new Sprite(assets.texture('ui.bar.bg')); bg.width = w; const fill = new Sprite(assets.texture('ui.bar.fill'));
+    const root = new Container(); const bg = new Sprite(assets.texture('ui.bar.bg')); bg.width = w; bg.height = 6; const fill = new Sprite(assets.texture('ui.bar.fill')); fill.height = 6;
     root.addChild(bg, fill);
     return { root, set(frac) { fill.width = Math.max(0, Math.min(1, frac)) * w; fill.visible = frac > 0; } };
   };
@@ -60,16 +60,17 @@ export function createHud(parent: Container, assets: GameAssets) {
   };
 
   // Top-left: hull and clock. Top-right: threats. Centre: banner. Bottom: four player blocks. Overlay: credits.
-  parent.addChild(panel(8, 8, 240, 60));
+  parent.addChild(panel(8, 8, 240, 78));   // three lines: hull and clock, director, the ship quirk
   const top = text(); top.position.set(16, 18); parent.addChild(top);
   const directorLine = text(16, DIM); directorLine.position.set(16, 36); parent.addChild(directorLine);
+  const quirkLine = text(16, DIM); quirkLine.position.set(16, 54); parent.addChild(quirkLine);
   const enemyPanel = createEnemyPanel(assets.fontFamily); enemyPanel.root.position.set(INTERNAL_W - 248, 114); parent.addChild(enemyPanel.root);   // spec Demo-ii section 4: left of the threat panel, below the two notice lines (which end at y 60)
   const mapPanel = createMapPanel(assets.fontFamily); mapPanel.root.position.set(INTERNAL_W - 248, 220); parent.addChild(mapPanel.root);   // spec Ship-and-map section 5: the band above the ship, between the clock and enemy panels
   parent.addChild(panel(INTERNAL_W - 248, 8, 240, 100));
   const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 240, 16 + i * LINE); parent.addChild(row); return row; });
-  parent.addChild(panel(8, 74, 240, 8 * LINE + 12));
-  const powerTitle = text(); powerTitle.position.set(16, 80); parent.addChild(powerTitle);
-  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(true); r.root.position.set(16, 80 + (i + 1) * LINE); parent.addChild(r.root); return r; });
+  parent.addChild(panel(8, 92, 240, 8 * LINE + 12));
+  const powerTitle = text(); powerTitle.position.set(16, 98); parent.addChild(powerTitle);
+  const powerRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(true); r.root.position.set(16, 98 + (i + 1) * LINE); parent.addChild(r.root); return r; });
   const banner = text(16); banner.scale.set(2); banner.anchor.set(0.5, 0); banner.position.set(INTERNAL_W / 2, 24); parent.addChild(banner);
   const progressLine = text(16, DIM); progressLine.anchor.set(0.5, 0); progressLine.position.set(INTERNAL_W / 2, 84); parent.addChild(progressLine);   // under the banner and its glyph row
   const noticeRows = [0, 1].map((k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 14 + k * LINE); t.visible = false; parent.addChild(t); return t; });   // spec Demo-i section 4: two lines top-centre between the clock and threat panels, running only
@@ -187,7 +188,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       top.text = clockLine(m);
       enemyPanel.update(m.phase === 'running' ? m.enemy : null);
       mapPanel.update(m.phase === 'running' ? m.map : null);
-      directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%${m.run.quirk ? `   Ship: ${m.run.quirk}` : ''}`;
+      directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%`; quirkLine.text = m.run.quirk ? `Ship: ${m.run.quirk}` : '';
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
       for (let k = 0; k < 7; k++) {
