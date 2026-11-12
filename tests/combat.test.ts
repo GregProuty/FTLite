@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { step } from '../src/renderer/src/sim/step';
-import { enemyMaxHull, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, damageEnemy, EnemySystem } from '../src/renderer/src/sim/enemy';
+import { enemyMaxHull, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, damageEnemy, EnemySystem, leave } from '../src/renderer/src/sim/enemy';
 import { spawnShot, debrisSystem, spawnDebris } from '../src/renderer/src/sim/debris';
 import { ENEMY_SLOT, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { failStation } from '../src/renderer/src/sim/power';
-import { leave } from '../src/renderer/src/sim/enemy';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { jumpShip, reachable } from '../src/renderer/src/sim/run';
 import { createRng, nextFloat, nextInt, type RngState } from '../src/shared/rng';

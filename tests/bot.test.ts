@@ -10,7 +10,6 @@ import { roomAt } from '../src/renderer/src/sim/grid';
 import { Life, LifeState, Seated, Position, Health } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import type { SimState } from '../src/renderer/src/sim/state';
-import { MEDBAY_HEAL } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, mapM, setNodeTypes, setEvent, grantScrap, chargeJump, placeBoarder, teleport } from './helpers/sim';
 
 /** A quiet two-Recruit state on map M, all Hazard, enemy and boarders silenced (spec Demo-i section 8). */
@@ -114,17 +113,22 @@ describe('bot self-preservation (spec Demo-ii section 10)', () => {
     for (let t = 0; t < 120 && out < 0; t++) { tick(s); hurt(s, 1, 20); s.rooms.fire[1] = 1e6; if (roomOf(s, 1) !== 1) out = t; }
     expect(out).toBeGreaterThanOrEqual(0);
   });
-  it('(c) at health 20 with the Medbay online it walks there and stays until health 60, then leaves', () => {
+  it('(c) at health 20 with the Medbay online it walks there and stays until health 60 despite a hazard goal, then leaves', () => {
     const s = calm(); hurt(s, 1, 20); hurt(s, 0, 100); teleport(s, 0, 2.5, 3.5);
-    const mr = mbRoom(s); let healedAt = -1, leftAt = -1;
-    for (let t = 0; t < 3000 && leftAt < 0; t++) {
-      tick(s);
-      if (healedAt < 0 && Health.cur[s.crew[1]!]! >= BOT_RECOVER_HEALTH) { healedAt = t; failStation(s, 3); }   // a hazard appears once it is healed
-      if (healedAt < 0 && Health.cur[s.crew[1]!]! > 20) expect(roomOf(s, 1)).toBe(mr);
+    const mr = mbRoom(s);
+    let far = -1; for (let r = 0; r < s.rooms.fire.length && far < 0; r++) if (r !== mr && r !== roomOf(s, 1) && r !== roomOf(s, 0)) far = r;
+    expect(far).toBeGreaterThanOrEqual(0);
+    burn(s, far);   // a hazard goal exists before the bot reaches 30
+    let arrived = false, healedAt = -1, leftAt = -1;
+    for (let t = 0; t < 6000 && leftAt < 0; t++) {
+      tick(s); s.rooms.fire[far] = 1e6;
+      const hp = Health.cur[s.crew[1]!]!;
+      if (roomOf(s, 1) === mr) arrived = true;
+      if (arrived && hp < BOT_RECOVER_HEALTH) expect(roomOf(s, 1)).toBe(mr);
+      if (healedAt < 0 && hp >= BOT_RECOVER_HEALTH) healedAt = t;
       if (healedAt >= 0 && roomOf(s, 1) !== mr) leftAt = t;
     }
-    expect(healedAt).toBeGreaterThan(0); expect(leftAt).toBeGreaterThan(healedAt);
-    expect(MEDBAY_HEAL).toBeGreaterThan(0);
+    expect(arrived).toBe(true); expect(healedAt).toBeGreaterThan(0); expect(leftAt).toBeGreaterThan(healedAt);
   });
   it('(d) at health 20 with a Downed teammate in reach it revives first', () => {
     const s = calm(); teleport(s, 0, Position.x[s.crew[1]!]! + 0.5, Position.y[s.crew[1]!]!); hurt(s, 1, 20); downCrew(s, 0);

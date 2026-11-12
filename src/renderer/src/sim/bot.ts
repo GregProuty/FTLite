@@ -6,13 +6,12 @@ import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from './intera
 import { navRows } from './run';
 import { EVENTS } from './events';
 import { StationKind } from './stationKinds';
-import { DoorState } from './grid';
+import { DoorState, roomAt } from './grid';
+import { stationOnline } from './stations';
 
 /** Bot self-preservation (spec Demo-ii section 10): below this health a bot keeps out of burning rooms; below BOT_RECOVER_HEALTH it stays in an online Medbay. Bot policy, not sim tuning. */
 export const BOT_RETREAT_HEALTH = 30;
 export const BOT_RECOVER_HEALTH = 60;
-import { stationOnline } from './stations';
-import { roomAt } from './grid';
 
 /** Passable for pathing: not a wall, and not a sealed door (closed doors open on approach). */
 function passable(state: SimState, tx: number, ty: number): boolean {
@@ -124,7 +123,11 @@ export function botIntent(state: SimState, pid: number): Intent {
   const target = interactTarget(state, pid);
   if (target.kind === TargetKind.Fight || target.kind === TargetKind.Revive) return { ...NEUTRAL_INTENT, interactHeld: true };   // urgent: outranks every run behaviour
   let blocked: Set<number> | undefined;
-  if (Health.cur[eid]! < BOT_RETREAT_HEALTH && Seated.station[eid] === -1) {   // self-preservation: after the urgent interactions, before the run behaviour and hazard goals
+  const hp = Health.cur[eid]!;
+  const mbs = state.derived.stationOfKind[StationKind.Medbay]!;
+  const mbRoom = mbs >= 0 ? state.derived.stationRoom[mbs]! : -1;
+  const recovering = hp < BOT_RECOVER_HEALTH && mbRoom >= 0 && roomAt(state, Position.x[eid]!, Position.y[eid]!) === mbRoom && stationOnline(state, mbs) && !(state.rooms.fire[mbRoom]! > 0);   // position is the memory: a bot already in the online Medbay stays until BOT_RECOVER_HEALTH
+  if ((hp < BOT_RETREAT_HEALTH || recovering) && Seated.station[eid] === -1) {   // self-preservation: after the urgent interactions, before the run behaviour and hazard goals
     blocked = new Set<number>();
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) for (const t of state.derived.roomTiles[r]!) blocked.add(t);
     const retreat = retreatIntent(state, eid, here, blocked); if (retreat) return retreat;
