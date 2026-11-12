@@ -13,7 +13,7 @@ Written 2026-11-10 when the owner asked for an autonomous run through the featur
 | 7 | **Boarders-i:** boarding parties that arrive in a room, crew-vs-boarder melee using the Combat skill, Doors sealing as a containment tool, Medbay recovery | sub-project 3 | merged 2026-11-11 |
 | 8 | **Run-i Sector map and jumps:** a run becomes a sequence of encounters joined by jumps from a node map; hull and crew persist; survival time becomes nodes reached | sub-project 4 | merged |
 | 9 | **Run-ii Events and shops:** text events with choices at nodes, scrap as a resource, repairs and upgrades (station max levels, torpedo stock, hull) at shops | sub-project 4 | merged |
-| 10 | **Run-iii Progression and permadeath:** run end and scoring, unlocks across runs kept on disk, a ship quirk per run ("the ship as a character"), restart flow | sub-project 4, §14 | in review |
+| 10 | **Run-iii Progression and permadeath:** run end and scoring, unlocks across runs kept on disk, a ship quirk per run ("the ship as a character"), restart flow | sub-project 4, §14 | merged |
 
 Deferred beyond this list: networking (sub-project 5), audio, a solo drone, the shared luck resource, procedural ships.
 
