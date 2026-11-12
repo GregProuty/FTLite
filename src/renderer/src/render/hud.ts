@@ -10,7 +10,7 @@ import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
 import { STATION_MAX, COOLANT_POOL } from '../sim/tuning';
 
-const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a;
+const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a, CALL = 0xffd75a;   // CALL: a row asked for by a Power callout (spec Coop-i section 3)
 const LINE = 18;                 // px per text line at 16 px m5x7
 const CREDITS_LINES = 22;
 
@@ -118,6 +118,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     }
   }
 
+  let flashOn = new Set<number>();   // station kinds lit this frame by a Power callout: blinking at about 3 Hz for its 3 s
   function updatePlayer(ui: (typeof players)[number], p: HudPlayer, i: number, phase: HudModel['phase']): void {
     if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
     if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
@@ -142,7 +143,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
     if (p.console && 'rows' in p.console && !('kind' in p.console)) {   // the Navigation panel now has rows too
       const c = p.console;
-      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : r.unpowered ? 'OFF' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
+      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : r.unpowered ? 'OFF' : '', failed: r.failed, cursor: k === c.cursor, tint: flashOn.has(r.kind) ? CALL : k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
       ui.consoleRows.forEach((r) => { r.root.visible = true; });
       fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}   coolant ${c.coolantFree}/${COOLANT_POOL}`, tint: DIM }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'weapons') {
@@ -195,9 +196,10 @@ export function createHud(parent: Container, assets: GameAssets) {
       directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%`; quirkLine.text = m.run.quirk ? `Ship: ${m.run.quirk}` : '';
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
+      flashOn = new Set(Math.floor(m.tick / 10) % 2 === 0 ? m.calloutFlash : []);
       for (let k = 0; k < 7; k++) {
         const st = m.stations.find((s) => s.kind === k);
-        if (st) powerRows[k]!.set({ icon: st.icon, iconTint: st.iconTint, name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: false, tint: st.online ? TEXT : WARN, heat: st.heat, coolant: st.coolant });
+        if (st) powerRows[k]!.set({ icon: st.icon, iconTint: st.iconTint, name: st.name, level: st.level, max: st.max, status: st.online ? (st.occupant !== null ? `P${st.occupant + 1}` : '') : 'OFF', cursor: flashOn.has(k), tint: flashOn.has(k) ? CALL : st.online ? TEXT : WARN, heat: st.heat, coolant: st.coolant });
         powerRows[k]!.root.visible = !!st;
       }
       banner.text = m.message; banner.visible = m.phase !== 'running'; noticeRows.forEach((t, k) => { const line = m.phase === 'running' ? m.notice[k] : undefined; t.visible = !!line; t.text = line ?? ''; });
@@ -207,7 +209,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       const showBannerGlyphs = (m.phase === 'lobby' || m.phase === 'gameover') && !!first?.deviceKind;
       fillRow(bannerGlyphs, showBannerGlyphs ? [{ glyph: glyphName('confirm', first!.deviceKind), text: 'Confirm' }, { glyph: glyphName('cancel', first!.deviceKind), text: 'Cancel' }] : []);
       bannerGlyphs.position.x = INTERNAL_W / 2 - bannerGlyphs.width / 2;
-      // The lobby card takes rows 2-7 (rows 0-1 and 8-10 hidden); the game-over summary keeps rows 0-10 (spec Demo-i section 3).
+      // The lobby card takes rows 2-8 (rows 0-1 and 9-10 hidden; row 8 is the callout line, spec Coop-i section 3); the game-over summary keeps rows 0-11 (spec Demo-i section 3).
       summaryRows.forEach((t, k) => { const line = m.phase === 'lobby' ? m.lobbyLines[k - 2] : m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; });
       m.players.forEach((p, i) => updatePlayer(players[i]!, p, i, m.phase));
       overlay.visible = m.credits !== null;

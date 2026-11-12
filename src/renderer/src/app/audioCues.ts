@@ -1,8 +1,8 @@
 import type { SimState } from '../sim/state';
 import { EndReason } from '../sim/crew';
 
-/** Spec Demo-ii section 5: the eight cues, in the order `audioCues` emits them. */
-export type Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'victory' | 'defeat';
+/** Spec Demo-ii section 5: the eight cues, in the order `audioCues` emits them; plus the callout, played by the session on a press (spec Coop-i section 3), never by the detector. */
+export type Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'victory' | 'defeat' | 'callout';
 
 /** The run counters the detector compares across a frame (all read from the state, no sim change). */
 export interface CueCounters { spawns: number; boardings: number; encounters: number; impacts: number; shots: number; hits: number; shieldHits: number; jumps: number; ended: number; endReason: number; jumpReady: number }

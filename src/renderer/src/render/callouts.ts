@@ -1,0 +1,45 @@
+import { Container, Graphics, BitmapText, Sprite } from 'pixi.js';
+import { INTERNAL_W } from '../../../shared/resolution';
+import type { SimState } from '../sim/state';
+import type { GameAssets } from './assets';
+import { bubbleAnchor, type Bubble } from './calloutModel';
+import { CREW_COLORS } from './crewSprites';
+
+const PAD = 4, ICON = 16, MAX_BUBBLES = 4, TAIL = 5, BG = 0x10131a, TEXT = 0xffffff;
+
+/** Callout bubbles (spec Coop-i section 3): one per player over the crew member's head, in internal pixels, drawn between the world and the HUD. Display objects are made once and reused. */
+export function createCalloutLayer(assets: GameAssets) {
+  const container = new Container();
+  const pool = Array.from({ length: MAX_BUBBLES }, () => {
+    const root = new Container(); root.visible = false;
+    const g = new Graphics();
+    const label = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: 16 } }); label.tint = TEXT; label.roundPixels = true;
+    const icon = new Sprite(); icon.visible = false;
+    root.addChild(g, icon, label); container.addChild(root);
+    return { root, g, label, icon, key: '', w: 0 };
+  });
+  return {
+    container,
+    draw(state: SimState, list: readonly Bubble[], fit: { scale: number; x: number; y: number }): void {
+      pool.forEach((b, k) => {
+        const item = list[k];
+        b.root.visible = !!item;
+        if (!item) return;
+        const iconOk = !!item.icon && assets.has(item.icon);
+        const key = `${item.pid}|${item.text}|${iconOk ? item.icon : ''}`;
+        if (key !== b.key) {
+          b.key = key; b.label.text = item.text;
+          if (iconOk) { b.icon.texture = assets.texture(item.icon!); b.icon.width = ICON; b.icon.height = ICON; }
+          b.icon.visible = iconOk;
+          const w = Math.ceil(b.label.width) + PAD * 2 + (iconOk ? ICON + 3 : 0), h = 20; b.w = w;
+          b.icon.position.set(PAD, 2); b.label.position.set(PAD + (iconOk ? ICON + 3 : 0), 2);
+          const edge = CREW_COLORS[item.pid % CREW_COLORS.length]!;
+          b.g.clear().roundRect(0, 0, w, h, 4).fill({ color: BG, alpha: 0.92 }).stroke({ width: 2, color: edge })
+            .poly([w / 2 - TAIL, h, w / 2 + TAIL, h, w / 2, h + TAIL]).fill({ color: edge });
+        }
+        const a = bubbleAnchor(state, item.pid, fit), w = b.w;
+        b.root.position.set(Math.round(Math.max(4, Math.min(INTERNAL_W - w - 4, a.x - w / 2))), Math.round(a.y - 20 - TAIL));
+      });
+    }
+  };
+}

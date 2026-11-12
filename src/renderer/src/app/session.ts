@@ -13,6 +13,7 @@ import { telemetryRecord, type TelemetryRecord } from '../sim/telemetry';
 import { EMPTY_PROGRESS, applyRun, unlockNames, type Progress } from '../sim/progress';
 import { DEFAULT_CHARACTERS } from '../sim/characters';
 import { cueCounters, audioCues, type Cue, type CueCounters } from './audioCues';
+import { pressCallouts, bubbles, flashingKinds, type Callout, type Bubble } from '../render/calloutModel';
 
 export const DEFAULT_SEED = 2026;
 const CRASH_HISTORY = 300;
@@ -21,7 +22,7 @@ export const CREDITS_SCROLL_MS = 150;
 export interface SessionDeps {
   layout: ShipLayout;
   sampleDevices(): SourceSample[];
-  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number): void } | null;
+  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[]): void } | null;
   hud: { update(m: HudModel): void } | null;
   now(): number;
   saveCrash(payload: unknown): void;
@@ -54,13 +55,14 @@ export function createSession(deps: SessionDeps) {
   let intentsSinceBaseline: CompactIntent[][] = [];
   let prevCounters: CueCounters | null = null;
   let creditsOpen = false, creditsScroll = 0, scrollHold = 0, scrollDir = 0;
+  let callouts: Callout[] = [];   // spec Coop-i section 3: app state only, never in Intent, replays or snapshots
 
   function start(): void {
     deps.renderer?.reset();
     const playerCount = slots.filter((s) => s.status !== 'empty').length;
     state = createSimState(deps.layout, playerCount, seed, DEFAULT_CHARACTERS, { unlocked: progress.unlocked }); newUnlocks = [];
     feed = createIntentFeed(playerCount);
-    accumulator = 0; baseline = null; intentsSinceBaseline = [];
+    accumulator = 0; baseline = null; intentsSinceBaseline = []; callouts = [];
     prevCounters = cueCounters(state);
     phase = 'running'; message = '';
   }
@@ -86,7 +88,7 @@ export function createSession(deps: SessionDeps) {
   }
 
   return {
-    get phase() { return phase; }, get state() { return state; }, get seed() { return seed; }, get creditsOpen() { return creditsOpen; },
+    get phase() { return phase; }, get state() { return state; }, get seed() { return seed; }, get creditsOpen() { return creditsOpen; }, get callouts(): readonly Callout[] { return callouts; },
     pause() { if (phase === 'running') { phase = 'paused'; message = 'PAUSED'; accumulator = 0; } },
     resume() { doResume(); },
     frame() {
@@ -95,7 +97,7 @@ export function createSession(deps: SessionDeps) {
       const delta = deltaMs / 1000;
       lastNow = now;
       const wasActive = slots.map((s) => s.status === 'active');
-      const { frames: raw, slots: s, joinedCount } = dm.update(deps.sampleDevices(), phase === 'lobby' && !creditsOpen);
+      const { frames: raw, slots: s, joinedCount, callouts: calloutPresses } = dm.update(deps.sampleDevices(), phase === 'lobby' && !creditsOpen);
       // While the credits are open, a slot that became active this frame (a reclaim) gets no say this frame.
       const frames = creditsOpen ? raw.map((f, i) => (wasActive[i] && s[i]!.status === 'active') ? f : { ...NEUTRAL_FRAME }) : raw;
       slots = s;
@@ -128,6 +130,11 @@ export function createSession(deps: SessionDeps) {
           const nextCounters = cueCounters(state);
           if (prevCounters) for (const c of audioCues(prevCounters, nextCounters)) deps.playCue?.(c);
           prevCounters = nextCounters;
+          if (phase === 'running') {   // callouts, after the ticks: the text reads the state the players see this frame
+            const pressed = calloutPresses.flatMap((n, pid) => (n > 0 ? [pid] : []));
+            callouts = pressCallouts(callouts, state, pressed);
+            if (pressed.some((pid) => pid < state!.playerCount)) deps.playCue?.('callout');
+          }
         } catch (err) {
           phase = 'error';
           message = `Sim fault: ${(err as Error).message}. Crash data saved.`;
@@ -140,8 +147,8 @@ export function createSession(deps: SessionDeps) {
         else if (anyPress(frames, 'confirmPresses')) { phase = 'lobby'; message = `Same seed. ${LOBBY_MSG}`; }
       }
       // In the error phase the state may be corrupt: never read it again (the draw and HUD are outside the try).
-      if (state && deps.renderer && phase !== 'error') deps.renderer.draw(state, phase === 'running' ? accumulator / DT : 1);
-      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null));
+      if (state && deps.renderer && phase !== 'error') deps.renderer.draw(state, phase === 'running' ? accumulator / DT : 1, phase === 'running' || phase === 'paused' ? bubbles(state, callouts, state.tick) : []);
+      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null, state && phase === 'running' ? flashingKinds(callouts, state.tick) : []));
     }
   };
 }

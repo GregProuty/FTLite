@@ -4,9 +4,11 @@ import { NEUTRAL_FRAME, type InputFrame } from '../app/intents';
 export interface SourceSample {
   key: string; moveX: number; moveY: number;
   interact: boolean; confirm: boolean; cancel: boolean;
+  /** The callout button (spec Coop-i section 3): reaches the app, never the Intent. */
+  callout?: boolean;
   /** True while ANY button or cluster key is down (used to reclaim a reconnect slot). */
   any: boolean;
-  presses?: { interact: number; confirm: number; cancel: number; any: number };
+  presses?: { interact: number; confirm: number; cancel: number; any: number; callout?: number };
 }
 export type SlotStatus = 'empty' | 'active' | 'reconnect';
 export interface SlotInfo { status: SlotStatus; key: string | null }
@@ -18,14 +20,15 @@ export function createDeviceManager(maxPlayers = MAX_PLAYERS) {
   const reset = (): void => { slots = Array.from({ length: maxPlayers }, () => ({ status: 'empty', key: null })); prev = new Map(); };
   reset();
 
-  const edges = (cur: SourceSample): { interact: number; confirm: number; cancel: number; any: number } => {
-    if (cur.presses) return cur.presses;   // the device counted its own edges (keyboard)
+  const edges = (cur: SourceSample): { interact: number; confirm: number; cancel: number; any: number; callout: number } => {
+    if (cur.presses) return { ...cur.presses, callout: cur.presses.callout ?? 0 };   // the device counted its own edges (keyboard)
     const p = prev.get(cur.key);
     return {
       interact: cur.interact && !(p?.interact ?? false) ? 1 : 0,
       confirm: cur.confirm && !(p?.confirm ?? false) ? 1 : 0,
       cancel: cur.cancel && !(p?.cancel ?? false) ? 1 : 0,
-      any: cur.any && !(p?.any ?? false) ? 1 : 0
+      any: cur.any && !(p?.any ?? false) ? 1 : 0,
+      callout: (cur.callout ?? false) && !(p?.callout ?? false) ? 1 : 0
     };
   };
 
@@ -52,8 +55,9 @@ export function createDeviceManager(maxPlayers = MAX_PLAYERS) {
         const smp = present.get(slot.key!)!, e = edges(smp);
         return { moveX: smp.moveX, moveY: smp.moveY, interactHeld: smp.interact, interactPresses: e.interact, confirmPresses: e.confirm, cancelPresses: e.cancel };
       });
+      const callouts = slots.map((slot) => (slot.status === 'active' ? edges(present.get(slot.key!)!).callout : 0));   // callout presses per slot, outside the frames (spec Coop-i section 3)
       prev = present; // keys that vanished forget their history, so a reconnect emits a fresh edge
-      return { frames, slots: slots.map((x) => ({ ...x })), joinedCount: slots.filter((x) => x.status !== 'empty').length };
+      return { frames, callouts, slots: slots.map((x) => ({ ...x })), joinedCount: slots.filter((x) => x.status !== 'empty').length };
     }
   };
 }

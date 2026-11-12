@@ -15,7 +15,8 @@ const CUES: Record<Cue, Tone[]> = {
   ready: [tone('sine', 523, 523, 0, 0.12), tone('sine', 784, 784, 0.12, 0.12)],
   jump: [tone('sine', 220, 880, 0, 0.4)],
   victory: [tone('sine', 523, 523, 0, 0.15), tone('sine', 659, 659, 0.15, 0.15), tone('sine', 784, 784, 0.3, 0.15)],
-  defeat: [tone('sawtooth', 220, 110, 0, 0.6)]
+  defeat: [tone('sawtooth', 220, 110, 0, 0.6)],
+  callout: [tone('triangle', 988, 988, 0, 0.05, 0.6), tone('triangle', 1319, 1319, 0.07, 0.07, 0.6)]
 };
 
 export function createAudio(): { play(cue: Cue): void; unlock(): void } {
