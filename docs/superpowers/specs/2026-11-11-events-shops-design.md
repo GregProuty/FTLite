@@ -115,3 +115,12 @@ Helpers (`tests/helpers/sim.ts`): `setNodeTypes(state, types: Record<string, num
 ## 13. Known limitations
 
 Events do not address a crew member or chain across nodes; shop stock is unlimited except by caps and the one-upgrade rule; scrap has no use beyond shops and two events until Run-iii.
+
+## 14. Amendments from the plan
+- `addScrap`/`spendScrap` live in `sim/scrap.ts` (imported by `run.ts`, `events.ts`, `shop.ts`, `enemy.ts` and `boarders.ts`) to avoid an import cycle through `run.ts`.
+- `clampNavCursor` is exported from `run.ts` and runs at the start of every `navigationInput` call; on arrival the cursor is 0 (the header or title row) for one tick until the seated navigator's next tick clamps it. The disabled-row status `-` is produced in `hud.ts`.
+- There is no `SHOP_ITEMS` export; the item order is `hull, torpedoes, UPGRADE_KINDS...` with `SHOP_ITEM_COUNT = 8`.
+- The fixture map M reaches one node from column 1, so shop lists there have ten rows.
+- The acceptance soak's scrap column reads `20/0` for crews that kill two boarders, not `0/0` as section 12 first said.
+- `hud.ts`'s Engineering branch now tests `'rows' in console && !('kind' in console)` because the Navigation panel also has `rows`.
+- No HUD render test exists; the Navigation window, styling and `MAX_CELLS` growth are covered by the model tests and the manual gate.

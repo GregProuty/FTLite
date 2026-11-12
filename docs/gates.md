@@ -161,3 +161,19 @@ players  seed  ended-at  reason   first-down    first-death  never-manned       
 
 - [ ] Manual, two players (`npm run dev`): the clock reads `node 1/8`; sitting at Navigation (A(2,2)) lists `Node 2a` / `Node 2b` rows and `Jump 0%` rising to `Jump READY` after a minute; Up/Down moves the cursor; Confirm jumps: the threats list empties of `Debris`/`Shot`/`Enemy` rows, fires and boarders stay, the clock reads `node 2/8`, and the enemy returns about a minute later; after seven jumps the banner reads `VICTORY` and the summary `Reached node 8 of 8`. Date and notes: pending human playtest.
 - [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
+
+## Run-ii: events and shops
+- [x] `npm test` passes (2026-11-11, 563 tests): node types (well-formed for seeds 1-50, the Run-i map unchanged, the section 3 replay on `deriveStreams(seed).map`, the forced fallback), arrival (the award, the single loot draw at an Event node and none at a Hazard node, the pending-event jump block and the re-clamped cursor), every event choice with its exact effect and loot movement, the shop list, each buy with its cap and the `(owned)` row, the upgrade's `baseMax`/`maxLevel`/`isOverdriven`/heat behaviour, the cursor rules, the scrap sources, snapshot round trip and hash per field with a mid-event resume, the HUD rows, footer, threat order and power maxima, the record and the table; the golden replay re-blessed once (version 14, final cb371030).
+- [x] `tests/gate-survival.test.ts`, `tests/gate-boarding.test.ts` and `tests/gate-jump.test.ts` pass with figures **identical** to Run-i's (survival min hull 52/60/68, min health 0.0/0.1/0.1, boardings 1, killed 2; boarding min health 32.5/34.3/36.5; jump gate end tick 25200). No lever taken.
+- [x] `tests/gate-run.test.ts` passes: on the fixture map with an Event node at 2a and a Shop node at 3a, the scripted navigator takes the Supply cache (+40), buys the hull repair (90 to 100 for 30) and reaches `VICTORY` at tick 25200 with scrap earned 145, spent 30, held 115, one event and one purchase, both crew Conscious.
+- [x] `npm run acceptance 5 1`, 2026-11-11, three rows with the `scrap` column. The bots never jump (`nodes 0/8`), but the two- and four-player crews kill two boarders each, so their scrap reads `20/0` (the spec's gate text expected `0/0`; the kill bounty is the correct source):
+
+```
+players  seed  ended-at  reason   first-down    first-death  never-manned                                                      longest-idle         spawns   impacts  hits/shots  enemy  boarders  nodes  scrap
+1        1     4:13.1    crew     Okoro 4:13.1  -            Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  77.4                 1/2/1/0  2        0/0         1/0/0  1/0       0/8    0/0
+2        1     5:00      running  Okoro 4:34.5  -            Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  86.1/85.5            1/1/2/3  9        0/0         1/0/0  1/2       0/8    20/0
+4        1     5:00      running  -             -            Navigation,Weapons,Science,Engineering,Life Support,Medbay,Doors  64.5/64.5/64.5/64.5  2/1/1/4  10       0/0         1/0/0  1/2       0/8    20/0
+```
+
+- [ ] Manual, two players (`npm run dev`): an Event node shows its title, text and two choices on the Navigation panel and `Event: <title>` in the threats; a choice applies and the destinations return; a Shop node lists eight items and the destinations with `Scrap N` in the footer and `Shop here` in the threats; a bought upgrade adds a cell to that station's power row. Date and notes: pending human playtest.
+- [x] `npm run typecheck`, `npm test`, `npm run build` all pass on the final commit.
