@@ -5,9 +5,9 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation } from '../src/renderer/src/sim/power';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Seated } from '../src/renderer/src/sim/components';
-import { BEAM_CHARGE_TIME, DT, TORP_CAP, TORP_LOAD_TIME } from '../src/renderer/src/sim/tuning';
-import { warnedTargets } from '../src/renderer/src/sim/debrisTargets';
-import { makeState, intents, run, placeDebris, room, seconds } from './helpers/sim';
+import { BEAM_CHARGE_TIME, DT, TORP_CAP, TORP_LOAD_TIME, ENEMY_HULL } from '../src/renderer/src/sim/tuning';
+import { warnedTargets, ENEMY_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { makeState, intents, run, placeDebris, room, seconds, placeEnemy } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
 
 const wpn = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[StationKind.Weapons]!;
@@ -195,5 +195,35 @@ describe('properties', () => {
       }
       return shots >= 2 && loadsCompleted >= 1;
     }), { numRuns: 25 });
+  });
+});
+
+describe('the last shot, recorded for the renderer (spec Demo-viii section 2)', () => {
+  const seedWhere = (ok: (u: number) => boolean): number => { for (let seed = 1; seed <= 200; seed++) if (ok(nextFloat(createRng(seed)))) return seed; throw new Error('no seed'); };
+  const HIT = seedWhere((u) => u < 0.3), MISS = seedWhere((u) => u > 0.97);
+  const atEnemy = (slot: number, selector: number, seed: number) => {
+    const s = makeState(2); s.director.nextSpawnTick = 1e9; placeEnemy(s, ENEMY_HULL, 1); s.enemy.nextShotTick = 1e9;
+    const i = wpn(s); sitDown(s, 0, i); s.stations.cursor[i] = slot; s.weapons.charge = 1; s.weapons.torpedoLoaded = 1; s.weapons.selector = selector; s.rng.combat.s = seed; s.tick = 777;
+    return s;
+  };
+  const rec = (s: ReturnType<typeof makeState>) => [s.weapons.lastShotTick, s.weapons.lastShotTarget, s.weapons.lastShotResult, s.weapons.lastShotKind];
+  it('starts empty', () => { expect(rec(makeState(1))).toEqual([-1, -1, 0, 0]); });
+  it('beam miss, strip, system hit, hull hit; torpedo hit and miss at the enemy', () => {
+    expect(rec((() => { const s = atEnemy(ENEMY_SLOT, Weapon.BeamF1, MISS); fireWeapon(s); return s; })())).toEqual([777, ENEMY_SLOT, 0, 0]);
+    expect(rec((() => { const s = atEnemy(ENEMY_SLOT, Weapon.BeamF2, HIT); fireWeapon(s); expect(s.enemy.shieldLayers).toBe(0); return s; })())).toEqual([777, ENEMY_SLOT, 1, 0]);
+    expect(rec((() => { const s = atEnemy(ENEMY_WEAPONS_SLOT, Weapon.BeamF1, HIT); fireWeapon(s); return s; })())).toEqual([777, ENEMY_WEAPONS_SLOT, 2, 0]);
+    expect(rec((() => { const s = atEnemy(ENEMY_SLOT, Weapon.BeamF1, HIT); fireWeapon(s); return s; })())).toEqual([777, ENEMY_SLOT, 2, 0]);
+    expect(rec((() => { const s = atEnemy(ENEMY_SHIELDS_SLOT, Weapon.Torpedo, HIT); fireWeapon(s); return s; })())).toEqual([777, ENEMY_SHIELDS_SLOT, 2, 1]);
+    expect(rec((() => { const s = atEnemy(ENEMY_SLOT, Weapon.Torpedo, MISS); fireWeapon(s); return s; })())).toEqual([777, ENEMY_SLOT, 0, 1]);
+  });
+  it('a beam hit on debris records the debris slot', () => {
+    const s = makeState(1), i = wpn(s), A = room(s, 'A'); s.director.nextSpawnTick = 1e9;
+    const k = placeDebris(s, A, 600, 1, undefined, 1); sitDown(s, 0, i); s.stations.cursor[i] = k; s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1; s.rng.combat.s = HIT; s.tick = 50;
+    expect(fireWeapon(s)).toBe(true); expect(rec(s)).toEqual([50, k, 2, 0]);
+  });
+  it('a refused fire writes nothing', () => {
+    const s = atEnemy(ENEMY_SLOT, Weapon.BeamF1, HIT); s.weapons.charge = 0.5; fireWeapon(s); expect(rec(s)).toEqual([-1, -1, 0, 0]);
+    const t = atEnemy(ENEMY_SLOT, Weapon.Torpedo, HIT); t.weapons.torpedoLoaded = 0; fireWeapon(t); expect(rec(t)).toEqual([-1, -1, 0, 0]);
+    const u = atEnemy(-1, Weapon.BeamF1, HIT); fireWeapon(u); expect(rec(u)).toEqual([-1, -1, 0, 0]);
   });
 });

@@ -6,7 +6,7 @@ import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
 export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'airlocks', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
-const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 7, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 6, SCIENCE_FIELDS = 1, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 22, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
+const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 7, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 10, SCIENCE_FIELDS = 1, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 22, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
 const RUN_FIELDS = 4 + 7 * RUN_COLUMNS + 3 + STATION_COUNT + 2 + 3 + 1;   // + fieldNextTick (spec Demo-viii section 1)
 const TELEMETRY_SCALARS = 25, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
 
@@ -46,7 +46,7 @@ export function flatten(s: SimState): Float64Array {
   const dbf = s.debris;
   for (const v of dbf.active) put(v); for (const v of dbf.stableId) put(v); for (const v of dbf.room) put(v); for (const v of dbf.impactTick) put(v); for (const v of dbf.warned) put(v);
   for (const v of dbf.frequency) put(v); for (const v of dbf.scanned) put(v); for (const v of dbf.scan) put(v); for (const v of dbf.kind) put(v);
-  const w = s.weapons; put(w.charge); put(w.selector); put(w.torpedoStock); put(w.torpedoLoaded); put(w.torpedoLoad); put(w.torpedoRegen);
+  const w = s.weapons; put(w.charge); put(w.selector); put(w.torpedoStock); put(w.torpedoLoaded); put(w.torpedoLoad); put(w.torpedoRegen); put(w.lastShotTick); put(w.lastShotTarget); put(w.lastShotResult); put(w.lastShotKind);
   const en = s.enemy; put(en.present); put(en.hull); put(en.stableId); put(en.nextArrivalTick); put(en.nextShotTick); put(en.departTick); for (const v of en.sysHp) put(v); for (const v of en.sysRepairTick) put(v); put(en.shieldFreq); put(en.scanned); put(en.scan); put(en.maxHull); put(en.shieldLayers); put(en.shieldRecharge); put(en.shotArmTick); put(en.fleeing); put(en.surrenderIntact); put(en.lastHitTick);
   const bd = s.boarders; put(bd.nextArrivalTick); for (const v of bd.active) put(v); for (const v of bd.stableId) put(v); for (const v of bd.room) put(v); for (const v of bd.health) put(v); for (const v of bd.nextMoveTick) put(v); for (const v of bd.aloneSince) put(v);
   const rn = s.run; put(rn.column); put(rn.node); put(rn.nodesReached); put(rn.jumpCharge); for (const v of rn.colNodes) put(v); for (const v of rn.edgeMask) put(v); for (const v of rn.nodeType) put(v); put(rn.scrap); put(rn.event); put(rn.eventChoice); for (const v of rn.upgrades) put(v); put(rn.quirk); put(rn.startBonus); put(rn.encounter); put(rn.encounterTick); put(rn.driveBoost); put(rn.fieldNextTick);
@@ -103,7 +103,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.warned[k] = get();
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.frequency[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.scanned[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.scan[k] = get();
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.kind[k] = get();
-  s.weapons.charge = get(); s.weapons.selector = get(); s.weapons.torpedoStock = get(); s.weapons.torpedoLoaded = get(); s.weapons.torpedoLoad = get(); s.weapons.torpedoRegen = get();
+  s.weapons.charge = get(); s.weapons.selector = get(); s.weapons.torpedoStock = get(); s.weapons.torpedoLoaded = get(); s.weapons.torpedoLoad = get(); s.weapons.torpedoRegen = get(); s.weapons.lastShotTick = get(); s.weapons.lastShotTarget = get(); s.weapons.lastShotResult = get(); s.weapons.lastShotKind = get();
   for (const k of ['present', 'hull', 'stableId', 'nextArrivalTick', 'nextShotTick', 'departTick'] as const) s.enemy[k] = get();
   for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysHp[k] = get(); for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysRepairTick[k] = get(); s.enemy.shieldFreq = get(); s.enemy.scanned = get(); s.enemy.scan = get(); for (const k of ['maxHull', 'shieldLayers', 'shieldRecharge', 'shotArmTick', 'fleeing', 'surrenderIntact', 'lastHitTick'] as const) s.enemy[k] = get();
   s.boarders.nextArrivalTick = get(); for (const arr of [s.boarders.active, s.boarders.stableId, s.boarders.room, s.boarders.health, s.boarders.nextMoveTick, s.boarders.aloneSince]) for (let k = 0; k < BOARDER_SLOTS; k++) arr[k] = get();

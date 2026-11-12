@@ -443,6 +443,13 @@ describe('snapshot: encounters (spec Demo-vi section 2)', () => {
     for (const k of ['encounter', 'encounterTick', 'driveBoost'] as const) expect(mutate((u) => { u.run[k] = 2; }), k).not.toBe(base);
     expect(mutate((u) => { u.telemetry.encountersWon = 1; })).not.toBe(base);
   });
+  it('the last-shot fields round-trip and each alone changes the hash (spec Demo-viii section 2)', () => {
+    const s = makeState(2, 5); s.weapons.lastShotTick = 321; s.weapons.lastShotTarget = 9; s.weapons.lastShotResult = 2; s.weapons.lastShotKind = 1;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect([t.weapons.lastShotTick, t.weapons.lastShotTarget, t.weapons.lastShotResult, t.weapons.lastShotKind]).toEqual([321, 9, 2, 1]); expect(hashState(t)).toBe(hashState(s));
+    const base = hashState(makeState(2, 5));
+    for (const k of ['lastShotTick', 'lastShotTarget', 'lastShotResult', 'lastShotKind'] as const) { const u = makeState(2, 5); u.weapons[k] = 3; expect(hashState(u), k).not.toBe(base); }
+  });
   it('fieldNextTick round-trips, starts at -1 and alone changes the hash (spec Demo-viii section 1)', () => {
     expect(makeState(2, 5).run.fieldNextTick).toBe(-1);
     const s = makeState(2, 5); s.run.fieldNextTick = 9876;

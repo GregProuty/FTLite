@@ -51,6 +51,7 @@ export function fireWeapon(state: SimState): boolean {
       hit = u < enemyBeamThreshold(state, output); stripped = hit && !tuned;
     } else hit = beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides against debris, scanned or not
   }
+  w.lastShotTick = state.tick; w.lastShotTarget = c; w.lastShotResult = stripped ? 1 : hit ? 2 : 0; w.lastShotKind = w.selector === Weapon.Torpedo ? 1 : 0;   // for the renderer's bolt, before a kill retargets the cursor (spec Demo-viii section 2, amendment A5)
   state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
   if (stripped) { state.enemy.shieldLayers--; state.enemy.lastHitTick = state.tick; state.enemy.shieldRecharge = 0; state.telemetry.shieldHits++; state.telemetry.hits++; }   // an untuned hit strips a layer and nothing else
   else if (hit) {

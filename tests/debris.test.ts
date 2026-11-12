@@ -256,7 +256,7 @@ describe('frequency and shared cursors (2b-ii)', () => {
   });
   it('a fresh state starts with selector 0, TORP_START stock and every other new field at 0', () => {
     const s = makeState(2);
-    expect(s.weapons).toEqual({ charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 });
+    expect(s.weapons).toEqual({ charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0, lastShotTick: -1, lastShotTarget: -1, lastShotResult: 0, lastShotKind: 0 });
     expect(s.science).toEqual({ scanning: 0 });
     expect(Array.from(s.debris.frequency).every((v) => v === 0)).toBe(true);
     expect(Array.from(s.debris.scanned).every((v) => v === 0)).toBe(true);
