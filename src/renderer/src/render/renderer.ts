@@ -11,6 +11,7 @@ import { createEffectsLayer } from './effects';
 import { createIconLayer } from './roomIcons';
 import { createCrewLayer } from './crewSprites';
 import { createBoarderLayer } from './boarderLayer';
+import { createProjectileLayer } from './projectiles';
 
 
 export interface Renderer {
@@ -27,7 +28,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   document.body.appendChild(app.canvas);
   const world = new Container(); world.isRenderGroup = true;
   const hud = new Container(); hud.isRenderGroup = true;
-  app.stage.addChild(world, hud);
+  const projectiles = createProjectileLayer();   // spec Demo-vii section 2: over the ship (internal pixels), under the HUD
+  app.stage.addChild(world, projectiles.container, hud);
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory);
   const effects = createEffectsLayer(assets, memory);
@@ -44,7 +46,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       app.renderer.resize(winW, winH);
       app.stage.scale.set(lb.scale); app.stage.position.set(lb.offsetX, lb.offsetY);
     },
-    reset() { memory.reset(); lastDraw = null; },
+    reset() { memory.reset(); projectiles.reset(); lastDraw = null; },   // session.start (a new run); the app has no runtime snapshot load
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
     },
@@ -52,7 +54,9 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
-      const fit = worldFit(d.width, d.height); world.scale.set(fit.scale); world.position.set(fit.x, fit.y);
+      const fit = worldFit(d.width, d.height); world.scale.set(fit.scale);
+      const shake = projectiles.draw(state, fit, dt);
+      world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);
       tiles.update(state, dt);
       icons.update(state);
       effects.draw(state);

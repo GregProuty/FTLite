@@ -9,7 +9,7 @@ import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ, TORP_START } from '../src/renderer/src/sim/tuning';
-import { makeState, placeDebris, room, run, teleport, seconds, intents } from './helpers/sim';
+import { makeState, placeDebris, placeShot, room, run, teleport, seconds, intents } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
 
 describe('debris slots and target order', () => {
@@ -218,6 +218,27 @@ describe('evasion', () => {
     const v = makeState(1); sitDown(v, 0, nav(v)); failStation(v, nav(v)); const c2 = v.rng.combat.s;   // offline: stood, no roll
     placeDebris(v, A, 0); debrisSystem(v);
     expect(v.rng.combat.s).toBe(c2);
+  });
+});
+
+describe('impact markers the projectile layer relies on (spec Demo-vii amendments 8 and 9)', () => {
+  it('a Shot that hits sets rooms.impactTick of its room to the tick', () => {
+    const s = makeState(1), A = room(s, 'A');
+    s.director.nextSpawnTick = 1e9; teleport(s, 0, 12.5, 9.5);
+    placeShot(s, A, 3);
+    const due = s.tick + 3;
+    run(s, 4);
+    expect(s.debris.active.every((v) => v === 0)).toBe(true);
+    expect(s.rooms.impactTick[A]).toBe(due);
+  });
+  it('an evaded Debris object leaves rooms.impactTick unchanged', () => {
+    const s = makeState(1), A = room(s, 'A'), n = s.derived.stationOfKind[StationKind.Navigation]!;
+    s.director.nextSpawnTick = 1e9;
+    sitDown(s, 0, n); s.rng.combat.s = 7;                                // first draw 0.012 < 0.35: evaded
+    placeDebris(s, A, 3);
+    run(s, 4);
+    expect(s.telemetry.evasions).toBe(1);
+    expect(s.rooms.impactTick[A]).toBe(-1);
   });
 });
 
