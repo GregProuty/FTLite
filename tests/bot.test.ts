@@ -6,7 +6,7 @@ import { NodeType } from '../src/renderer/src/sim/run';
 import { failStation } from '../src/renderer/src/sim/power';
 import { igniteRoom, extinguishRoom } from '../src/renderer/src/sim/hazards/fire';
 import { downCrew } from '../src/renderer/src/sim/crew';
-import { roomAt } from '../src/renderer/src/sim/grid';
+import { roomAt, conditionRoomAt, DoorState } from '../src/renderer/src/sim/grid';
 import { Life, LifeState, Seated, Position, Health } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import type { SimState } from '../src/renderer/src/sim/state';
@@ -162,6 +162,38 @@ describe('bot self-preservation (spec Demo-ii section 10)', () => {
     for (let t = 0; t < 600; t++) { tick(s); if (Life.reviveProgress[s.crew[0]!]! > 0) rose = true; }
     expect(rose).toBe(true);
   });
+  // Demo-v (docs/superpowers/specs/2026-11-12-bot-fire-design.md): door (9, 7) joins the corridor (room 5) above to room 7 below; room 7's only way out is the corridor
+  const atDoor = (s: SimState, pid: number): void => { teleport(s, pid, 9.5, 7.5); s.doors.state[s.derived.doorTileToEdge[7 * s.derived.width + 9]!] = DoorState.Open; };   // standing in the open doorway
+  const inFire = (s: SimState, pid: number): boolean => { const r = conditionRoomAt(s, Position.x[s.crew[pid]!]!, Position.y[s.crew[pid]!]!); return r >= 0 && s.rooms.fire[r]! > 0; };
+  it('(h) at health 20 in a doorway beside a burning corridor, with the Medbay cut off and a healthy teammate, it steps out of the doorway within 60 ticks', () => {
+    const s = calm(); atDoor(s, 1); teleport(s, 0, 2.5, 9.5); burn(s, 5); hurt(s, 1, 20); hurt(s, 0, 100);
+    expect(roomOf(s, 1)).toBe(-1); expect(inFire(s, 1)).toBe(true);
+    let out = -1;
+    for (let t = 0; t < 60 && out < 0; t++) { step(s, [NEUTRAL_INTENT, botIntent(s, 1)]); hurt(s, 1, 20); s.rooms.fire[5] = 1e6; if (roomOf(s, 1) >= 0 && !inFire(s, 1)) out = t; }
+    expect(out).toBeGreaterThanOrEqual(0);
+  });
+  for (const mate of [100, 20]) {
+    it(`(i) at health 20 at a burning doorway with no safe Medbay (teammate at ${mate}) it leaves for good or holds Interact on the fire, and never dithers`, () => {
+      const s = calm(); failStation(s, s.derived.stationOfKind[StationKind.Medbay]!);
+      atDoor(s, 1); teleport(s, 0, 2.5, 9.5); burn(s, 5); hurt(s, 1, 20); hurt(s, 0, mate);
+      let reversals = 0, lastX = 0, lastY = 0, outSince = -1, fightSince = -1;
+      for (let t = 0; t < 600; t++) {
+        const i = botIntent(s, 1);
+        const sx = Math.sign(Math.round(i.moveX * 10)), sy = Math.sign(Math.round(i.moveY * 10));
+        if (sx !== 0) { if (lastX !== 0 && sx !== lastX) reversals++; lastX = sx; }
+        if (sy !== 0) { if (lastY !== 0 && sy !== lastY) reversals++; lastY = sy; }
+        step(s, [NEUTRAL_INTENT, i]); hurt(s, 1, 20); hurt(s, 0, mate); s.rooms.fire[5] = 1e6;
+        for (let r = 0; r < s.rooms.fire.length; r++) if (r !== 5 && s.rooms.fire[r]! > 0) extinguishRoom(s, r);   // a fixed state: no spread
+        const out = roomOf(s, 1) >= 0 && !inFire(s, 1), fight = i.interactHeld && roomOf(s, 1) === 5;
+        outSince = out ? (outSince < 0 ? t : outSince) : -1; fightSince = fight ? (fightSince < 0 ? t : fightSince) : -1;
+      }
+      expect(reversals).toBeLessThanOrEqual(2);
+      expect(outSince >= 0 || fightSince >= 0).toBe(true);   // at the end it is out of the fire, or holding Interact in the burning corridor
+      expect(Math.max(outSince, fightSince)).toBeLessThanOrEqual(300);   // and has been for at least the second half
+      if (mate === 100) expect(outSince).toBeGreaterThanOrEqual(0);   // a healthy teammate is the one to fight it: the hurt bot waits outside
+      else expect(fightSince).toBeGreaterThanOrEqual(0);   // nobody healthier: it fights the fire rather than idling while the ship burns
+    });
+  }
   it('(e) at health 80 it still walks into a burning room to fight the fire', () => {
     const s = calm(); burn(s, 1); hurt(s, 1, 80); hurt(s, 0, 80);
     let entered = false;

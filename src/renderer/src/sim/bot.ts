@@ -6,7 +6,7 @@ import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from './intera
 import { navRows } from './run';
 import { EVENTS } from './events';
 import { StationKind } from './stationKinds';
-import { DoorState, roomAt } from './grid';
+import { DoorState, roomAt, conditionRoomAt } from './grid';
 import { stationOnline } from './stations';
 
 /** Bot self-preservation (spec Demo-ii section 10): below this health a bot keeps out of burning rooms; below BOT_RECOVER_HEALTH it stays in an online Medbay. Bot policy, not sim tuning. */
@@ -104,27 +104,57 @@ function recoveryRoom(state: SimState, hp: number): number {
   return state.rooms.fire[mr]! > 0 ? -1 : mr;
 }
 
-/** Self-preservation for a hurt bot. Returns the intent to act on, or null to carry on with ordinary duty (using `blocked` as the burning-room tiles to avoid). */
-function retreatIntent(state: SimState, eid: number, here: number, blocked: Set<number>, target: { kind: number }): Intent | null {
-  const d = state.derived, hp = Health.cur[eid]!, myRoom = roomAt(state, Position.x[eid]!, Position.y[eid]!);
+/** Whether the crew member stands where fire hurts (conditionRoomAt: a doorway counts as the burning room beside it). */
+function inFire(state: SimState, eid: number): boolean {
+  const r = conditionRoomAt(state, Position.x[eid]!, Position.y[eid]!);
+  return r >= 0 && state.rooms.fire[r]! > 0;
+}
+
+/**
+ * Whether another Conscious crew member covers the fires for hurt bot `pid` (spec Demo-v): one at or above BOT_RETREAT_HEALTH (its ordinary
+ * duty fights them) and not healing in the Medbay, or a hurt or healing one that outranks it by (already in fire, then health, then lower pid). Position is the memory: a hurt bot that
+ * has reached a fire keeps the fire fighter's role, so the role does not swap back and forth as its health falls.
+ */
+function covered(state: SimState, pid: number): boolean {
+  const eid = state.crew[pid]!, mine = [inFire(state, eid) ? 1 : 0, Health.cur[eid]!] as const;
+  for (let other = 0; other < state.playerCount; other++) {
+    const o = state.crew[other]!;
+    if (other === pid || Life.state[o] !== LifeState.Conscious) continue;
+    const hp = Health.cur[o]!;
+    const mr = recoveryRoom(state, hp);
+    if (hp >= BOT_RETREAT_HEALTH && !(mr >= 0 && roomAt(state, Position.x[o]!, Position.y[o]!) === mr)) return true;   // one healing in the Medbay is not fighting: it is ranked like a hurt one
+    const f = inFire(state, o) ? 1 : 0;
+    if (f !== mine[0] ? f > mine[0] : hp !== mine[1] ? hp > mine[1] : other < pid) return true;
+  }
+  return false;
+}
+
+/**
+ * Self-preservation for a hurt bot (spec Demo-ii section 10, Demo-v). Returns the intent to act on, or null to carry on with ordinary duty;
+ * `blocked` (the burning-room tiles) is cleared when the bot is to fight the fires itself. "In fire" is judged by conditionRoomAt (a doorway
+ * counts as the burning room beside it); the Medbay stay by roomAt (healing applies only inside the room).
+ */
+function retreatIntent(state: SimState, pid: number, eid: number, here: number, blocked: Set<number>, target: { kind: number }): Intent | null {
+  const d = state.derived, hp = Health.cur[eid]!, x = Position.x[eid]!, y = Position.y[eid]!;
   const burning = (r: number): boolean => r >= 0 && state.rooms.fire[r]! > 0;
-  if (burning(myRoom)) {
+  const mr = recoveryRoom(state, hp);
+  if (mr >= 0 && roomAt(state, x, y) === mr) return NEUTRAL_INTENT;   // in the online, unburning Medbay: stay
+  const toMedbay = mr >= 0 ? firstStep(state, here, new Set(d.roomTiles[mr]!), blocked) : -1;   // a fire-free route (every burning room avoided)
+  if (toMedbay >= 0) return walkTo(state, eid, toMedbay);
+  if (!covered(state, pid)) { blocked.clear(); return null; }   // nobody else to fight the fires: hazard duty, fires included
+  const fireRoom = conditionRoomAt(state, x, y);
+  if (burning(fireRoom)) {   // a teammate covers the fires: get out of the fire and wait
     const goals = new Set<number>();
     for (let r = 0; r < state.rooms.fire.length; r++) if (!burning(r)) for (const t of d.roomTiles[r]!) goals.add(t);
-    for (const t of d.roomTiles[myRoom]!) blocked.delete(t);   // the way out starts inside this room
-    const next = firstStep(state, here, goals, blocked);
+    const free = new Set(blocked);
+    for (const t of d.roomTiles[fireRoom]!) free.delete(t);   // the way out starts inside (or beside) this room
+    const next = firstStep(state, here, goals, free);
     if (next >= 0) return walkTo(state, eid, next);
     if (target.kind === TargetKind.Fire) return { ...NEUTRAL_INTENT, interactHeld: true };   // trapped: fight the fire it stands in
     const out = firstStep(state, here, goals);   // else the shortest way out through the fire
     return out < 0 ? NEUTRAL_INTENT : walkTo(state, eid, out);
   }
-  const mr = recoveryRoom(state, hp);
-  if (mr >= 0) {
-    if (myRoom === mr) return NEUTRAL_INTENT;
-    const next = firstStep(state, here, new Set(d.roomTiles[mr]!), blocked);
-    if (next >= 0) return walkTo(state, eid, next);
-  }
-  return null;
+  return null;   // ordinary duty that avoids every burning room
 }
 
 export function botIntent(state: SimState, pid: number): Intent {
@@ -139,7 +169,8 @@ export function botIntent(state: SimState, pid: number): Intent {
   if ((hp < BOT_RETREAT_HEALTH || recovering) && Seated.station[eid] === -1) {   // self-preservation: after the urgent interactions, before the run behaviour and hazard goals
     blocked = new Set<number>();
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) for (const t of state.derived.roomTiles[r]!) blocked.add(t);
-    const retreat = retreatIntent(state, eid, here, blocked, target); if (retreat) return retreat;
+    const retreat = retreatIntent(state, pid, eid, here, blocked, target); if (retreat) return retreat;
+    if (!blocked.size) blocked = undefined;
   }
   const run = runIntent(state, pid, eid, here, blocked); if (run) return run;
   const goals = goalTiles(state, pid, here);
