@@ -6,6 +6,7 @@ import { ENEMY_SLOT, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTa
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { failStation } from '../src/renderer/src/sim/power';
+import { leave } from '../src/renderer/src/sim/enemy';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { jumpShip, reachable } from '../src/renderer/src/sim/run';
 import { createRng, nextFloat, nextInt, type RngState } from '../src/shared/rng';
@@ -160,5 +161,18 @@ describe('combat: flee and surrender', () => {
     const { s } = armed(); expect(fleeSecondsLeft(s)).toBe(0);
     s.enemy.fleeing = 1; s.enemy.departTick = s.tick + 7 * T; expect(fleeSecondsLeft(s)).toBe(7); s.enemy.departTick = s.tick + 7 * T - 1; expect(fleeSecondsLeft(s)).toBe(7); s.enemy.departTick = s.tick + 6 * T; expect(fleeSecondsLeft(s)).toBe(6);
     s.enemy.present = 0; expect(fleeSecondsLeft(s)).toBe(0);
+  });
+});
+
+describe('combat: the hit stamp (spec Demo-ii section 4)', () => {
+  it('lastHitTick is -1 after placeEnemy and after leave; damageEnemy, a shield strip and a torpedo hit stamp state.tick', () => {
+    const p = makeState(2); placeEnemy(p); expect(p.enemy.lastHitTick).toBe(-1);
+    const d = makeState(2); placeEnemy(d); d.tick = 77; damageEnemy(d, ENEMY_SLOT, 15); expect(d.enemy.lastHitTick).toBe(77);
+    const { s } = armed(ENEMY_HULL, 2); s.tick = 123; s.rng.combat.s = HIT_SEED;   // BeamF1 against frequency 2: an untuned hit strips a layer
+    expect(fireWeapon(s)).toBe(true); expect([s.telemetry.shieldHits, s.enemy.lastHitTick]).toEqual([1, 123]);
+    const t = armed(ENEMY_HULL, 2); t.s.tick = 200; t.s.weapons.selector = Weapon.Torpedo; t.s.weapons.torpedoLoaded = 1; t.s.rng.combat.s = HIT_SEED;
+    expect(fireWeapon(t.s)).toBe(true); expect(t.s.enemy.lastHitTick).toBe(200);
+    leave(t.s, false); expect(t.s.enemy.lastHitTick).toBe(-1);
+    const a = makeState(2); quiet(a); a.run.column = 0; a.enemy.nextArrivalTick = a.tick; step(a, []); expect(a.enemy.lastHitTick).toBe(-1);
   });
 });

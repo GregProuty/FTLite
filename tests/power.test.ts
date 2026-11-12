@@ -56,17 +56,33 @@ describe('power model', () => {
     expect(shiftBar(s, doors, 1)).toBe(false);
     expect(shiftBar(s, doors, -1)).toBe(true); expect(powerPool(s)).toBe(2);
   });
-  it('failure returns bars except for Engineering, repair restores Engineering at its level and others at 0', () => {
+  it('failure returns bars except for Engineering, repair restores Engineering at its level and others at one bar when the pool has one (spec Demo-ii section 3)', () => {
     const s = makeState(1), ls = idx(s, StationKind.LifeSupport), eng = idx(s, StationKind.Engineering);
     const before = powerPool(s);
     failStation(s, ls);
     expect(s.stations.level[ls]).toBe(0); expect(powerPool(s)).toBe(before + 2); expect(stationOnline(s, ls)).toBe(false);
     repairStation(s, ls);
-    expect(s.stations.failed[ls]).toBe(0); expect(s.stations.level[ls]).toBe(0); expect(stationOnline(s, ls)).toBe(false);
+    expect(s.stations.failed[ls]).toBe(0); expect(s.stations.level[ls]).toBe(1); expect(stationOnline(s, ls)).toBe(true);
     failStation(s, eng);
     expect(s.stations.level[eng]).toBe(1); expect(stationOnline(s, eng)).toBe(false);
     repairStation(s, eng);
     expect(stationOnline(s, eng)).toBe(true); expect(s.stations.level[eng]).toBe(1);
+  });
+  it('repair (spec Demo-ii section 3): a free bar returns the console at level 1; an empty pool returns it at level 0; Engineering keeps its level; powerUsed never exceeds capacity', () => {
+    const s = makeState(1), wp = idx(s, StationKind.Weapons), eng = idx(s, StationKind.Engineering);
+    failStation(s, wp); s.stations.repair[wp] = 5; repairStation(s, wp);
+    expect([s.stations.level[wp], s.stations.failed[wp], s.stations.repair[wp]]).toEqual([1, 0, 0]);
+    failStation(s, wp);
+    for (let moved = true; moved;) { moved = false; for (let i = 0; i < s.stations.level.length; i++) if (i !== eng && shiftBar(s, i, 1)) moved = true; }
+    expect(powerPool(s)).toBe(0);
+    repairStation(s, wp); expect([s.stations.level[wp], s.stations.failed[wp]]).toEqual([0, 0]); expect(powerUsed(s)).toBeLessThanOrEqual(powerCapacity(s));
+    failStation(s, eng); const keep = s.stations.level[eng]; repairStation(s, eng); expect(s.stations.level[eng]).toBe(keep);
+    for (const seed of [1, 2, 3]) {
+      const u = makeState(2, seed), n = u.stations.level.length;
+      for (let i = 0; i < n; i++) { failStation(u, i); repairStation(u, i); expect(powerUsed(u)).toBeLessThanOrEqual(powerCapacity(u)); }
+      for (let i = 0; i < n; i++) failStation(u, i);
+      for (let i = 0; i < n; i++) { repairStation(u, i); expect(powerUsed(u)).toBeLessThanOrEqual(powerCapacity(u)); }
+    }
   });
   it('sitDown snaps to the console tile and sets the cursor; standUp and failure clear the seat', () => {
     const s = makeState(2), eng = idx(s, StationKind.Engineering), doors = idx(s, StationKind.Doors);

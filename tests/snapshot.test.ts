@@ -49,10 +49,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-15 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-16 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 15 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 15;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 16 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 16;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips skills and stamps; xp and each stamp alone change the hash', () => {
@@ -306,6 +306,12 @@ describe('snapshot', () => {
     const base = hashState(makeState(2, 5)), mutate = (fn: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); fn(u); return hashState(u); };
     for (const k of ['maxHull', 'shieldLayers', 'shieldRecharge', 'shotArmTick', 'fleeing', 'surrenderIntact'] as const) expect(mutate((u) => { u.enemy[k] = 1; }), k).not.toBe(base);
     for (const k of ['shieldHits', 'enemyFled', 'surrenderOffers', 'surrenders'] as const) expect(mutate((u) => { u.telemetry[k] = 1; }), k).not.toBe(base);
+  });
+  it('lastHitTick round-trips and alone changes the hash (spec Demo-ii section 4)', () => {
+    expect(makeState(2).enemy.lastHitTick).toBe(-1);
+    const s = makeState(2, 5); s.enemy.lastHitTick = 4321;
+    expect(loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s)))).enemy.lastHitTick).toBe(4321);
+    const u = makeState(2, 5); u.enemy.lastHitTick = 0; expect(hashState(u)).not.toBe(hashState(makeState(2, 5)));
   });
   it('a run saved mid-encounter with a shot due in 10 ticks and the withdrawal in 20 continues like the uninterrupted run through both', () => {
     const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9;

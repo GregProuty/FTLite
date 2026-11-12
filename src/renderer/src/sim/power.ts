@@ -18,9 +18,10 @@ export function failStation(state: SimState, i: number): void {
   shedPower(state);                                                   // an Engineering failure drops bonus bars; a no-op elsewhere
 }
 
-/** Repair complete: Engineering comes back at its kept level (>= 1); any other station comes back at level 0. */
+/** Repair complete: Engineering comes back at its kept level (>= 1); any other station comes back at one bar when the pool has one (read after failed clears), else level 0 (spec Demo-ii section 3). */
 export function repairStation(state: SimState, i: number): void {
   state.stations.failed[i] = 0; state.stations.repair[i] = 0;
+  if (state.derived.stationKind[i] !== StationKind.Engineering) state.stations.level[i] = powerPool(state) >= 1 ? 1 : 0;
 }
 
 /** Base bars a station kind may hold: STATION_MAX plus a bought upgrade bar (spec Run-ii section 8). */

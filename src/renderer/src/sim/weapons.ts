@@ -52,7 +52,7 @@ export function fireWeapon(state: SimState): boolean {
     } else hit = beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides against debris, scanned or not
   }
   state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
-  if (stripped) { state.enemy.shieldLayers--; state.enemy.shieldRecharge = 0; state.telemetry.shieldHits++; state.telemetry.hits++; }   // an untuned hit strips a layer and nothing else
+  if (stripped) { state.enemy.shieldLayers--; state.enemy.lastHitTick = state.tick; state.enemy.shieldRecharge = 0; state.telemetry.shieldHits++; state.telemetry.hits++; }   // an untuned hit strips a layer and nothing else
   else if (hit) {
     state.telemetry.hits++;
     if (enemy) damageEnemy(state, c, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); else removeDebris(state, c);

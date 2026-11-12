@@ -33,11 +33,11 @@ describe('runAcceptance', () => {
 });
 
 describe('the live run (spec Demo-i section 8)', () => {
-  it('seed 1, five minutes: the captain bot reaches node 3 at two players and node 2 at four; four players end running with nobody dead', { timeout: 300_000 }, () => {
+  it('seed 1, five minutes: the captain bot reaches node 3 at two players and at four (spec Demo-ii section 3); four players end running with nobody dead', { timeout: 300_000 }, () => {
     const solo = runAcceptance({ players: 1, seed: 1, minutes: 5 });   // recorded, not asserted: the solo bot leaves the ship to jump
     const duo = runAcceptance({ players: 2, seed: 1, minutes: 5 }), quad = runAcceptance({ players: 4, seed: 1, minutes: 5 });
     expect(duo.run.nodesReached, `1 player: ${solo.run.nodesReached}/${solo.endReason}`).toBeGreaterThanOrEqual(3);
-    expect(quad.run.nodesReached, `1 player: ${solo.run.nodesReached}/${solo.endReason}`).toBeGreaterThanOrEqual(2);   // 2, not 3: at ENCOUNTER_AFTER_JUMP 30 an aimed shot fails Navigation, the repair leaves it at level 0 and no bot re-powers it (spec section 12)
+    expect(quad.run.nodesReached, `1 player: ${solo.run.nodesReached}/${solo.endReason}`).toBeGreaterThanOrEqual(3);
     expect(quad.endReason).toBe('running'); expect(quad.firstDeath).toBeNull();
   });
 });

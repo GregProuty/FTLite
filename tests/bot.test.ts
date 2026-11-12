@@ -83,16 +83,16 @@ describe('the captain bot (spec Demo-i section 6)', () => {
   it('(6) EVENTS safeChoice is [1, 1, 1, 1, 0, 1]', () => {
     expect(EVENTS.map((e) => e.safeChoice)).toEqual([1, 1, 1, 1, 0, 1]);
   });
-  it('(7) leaves a failed Navigation console to the repair, and does not sit at the offline console afterwards', () => {
+  it('(7) leaves a failed Navigation console to the repair, and does not sit at it while it is failed; it is repaired powered', () => {
     const s = calm(); chargeJump(s); failStation(s, nav(s));
     let held = false, repairedAt = -1;
     for (let t = 0; t < 3600; t++) {
       const i0 = botIntent(s, 0); if (s.stations.failed[nav(s)] && i0.interactHeld) held = true;
       step(s, [i0, botIntent(s, 1)]);
-      expect(Seated.station[s.crew[0]!]).toBe(-1);
+      if (s.stations.failed[nav(s)]) expect(Seated.station[s.crew[0]!]).toBe(-1);   // no seat while the console is failed (a repaired console returns powered and may be sat at: spec Demo-ii section 3)
       if (repairedAt < 0 && s.stations.failed[nav(s)] === 0) repairedAt = s.tick;
     }
     expect(repairedAt).toBeGreaterThan(0); expect(held).toBe(true);
-    expect(s.stations.level[nav(s)]).toBe(0); expect(s.telemetry.jumps).toBe(0);   // repaired to level 0 (offline): the run behaviour stays off
+    expect(s.stations.level[nav(s)]).toBe(1);   // repaired with a free bar: it returns online at level 1 (spec Demo-ii section 3)
   });
 });

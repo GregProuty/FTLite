@@ -80,7 +80,7 @@ export function armSpawn(state: SimState): void {
 /** Place an enemy as arrive() would (no draw): fresh StableId, full systems, the given shield frequency, the combat fields (maxHull is the column's, never below the hull given: spec Demo-i section 11.5 places hull 40 of 100). */
 export function placeEnemy(state: SimState, hull = ENEMY_HULL, shieldFreq = 1): void {
   const e = state.enemy;
-  e.present = 1; e.maxHull = Math.max(hull, enemyMaxHull(state.run.column)); e.shieldLayers = enemyShieldMax(state.run.column); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0;
+  e.present = 1; e.maxHull = Math.max(hull, enemyMaxHull(state.run.column)); e.shieldLayers = enemyShieldMax(state.run.column); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1;
   e.hull = hull; e.stableId = state.nextStableId++;
   e.departTick = state.tick + ENCOUNTER_MAX * TICK_HZ; e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;
   e.sysHp.fill(ENEMY_SYS_HP); e.sysRepairTick.fill(-1); e.shieldFreq = shieldFreq; e.scanned = 0; e.scan = 0;

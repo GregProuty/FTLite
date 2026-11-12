@@ -182,7 +182,7 @@ describe('boarders: sabotage (A sealed, crew elsewhere)', () => {
     const none = setup(); failStation(none.s, 0); failStation(none.s, 1); for (let n = 0; n < 20 * T; n++) { none.s.tick++; boarderSystem(none.s); } expect(none.s.boarders.aloneSince[none.k]).toBe(ALONE_IDLE);
     const flick = setup(); boarderSystem(flick.s); flick.s.tick += 300; boarderSystem(flick.s); expect(flick.s.boarders.aloneSince[flick.k]).toBeGreaterThanOrEqual(0);
     failStation(flick.s, 0); failStation(flick.s, 1); flick.s.tick += 1; boarderSystem(flick.s); expect(flick.s.boarders.aloneSince[flick.k]).toBe(ALONE_IDLE);   // every console offline: the running clock resets
-    repairStation(flick.s, 0); flick.s.stations.level[0] = 1; flick.s.tick += 1; boarderSystem(flick.s); expect(flick.s.boarders.aloneSince[flick.k]).toBe(flick.s.tick);                       // repaired and re-allocated one bar (repairStation alone returns a station at level 0, still offline): online again: restarts from now
+    repairStation(flick.s, 0); flick.s.stations.level[0] = 1; flick.s.tick += 1; boarderSystem(flick.s); expect(flick.s.boarders.aloneSince[flick.k]).toBe(flick.s.tick);                       // repaired and re-allocated one bar (repairStation now returns a powered console when the pool has a bar; the set is a no-op): online again: restarts from now
   });
   it('crew entering resets a running clock, leaving restarts it; -2 survives a visit; moving out and back allows another sabotage', () => {
     const { s, k } = setup(); boarderSystem(s); s.tick += 300; boarderSystem(s); expect(s.boarders.aloneSince[k]).toBeGreaterThanOrEqual(0);

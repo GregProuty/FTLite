@@ -47,7 +47,7 @@ export function arrive(state: SimState): void {
   e.present = 1; e.maxHull = enemyMaxHull(state.run.column); e.hull = e.maxHull; e.stableId = state.nextStableId++;
   e.departTick = state.tick + ENCOUNTER_MAX * TICK_HZ; e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;
   e.sysHp.fill(ENEMY_SYS_HP); e.sysRepairTick.fill(-1); e.shieldFreq = 1 + nextInt(state.rng.hazards, FREQ_COUNT); e.scanned = 0; e.scan = 0;   // the one hazards draw (spec Combat-ii section 4)
-  e.shieldLayers = enemyShieldMax(state.run.column); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0;   // spec Demo-i section 11.3
+  e.shieldLayers = enemyShieldMax(state.run.column); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1;   // spec Demo-i section 11.3, Demo-ii section 4
   state.telemetry.encounters++;
   for (const kind of TARGETING_KINDS) {
     const i = state.derived.stationOfKind[kind]!;
@@ -67,7 +67,7 @@ export function leave(state: SimState, destroyed: boolean): void {
   e.sysHp.fill(0); e.sysRepairTick.fill(-1); e.shieldFreq = 0; e.scanned = 0; e.scan = 0;
   if (scanningEnemy) state.science.scanning = 0;
   if (!destroyed && e.fleeing) { if (e.surrenderIntact) { addScrap(state, SCRAP_SURRENDER); state.telemetry.surrenders++; } else state.telemetry.enemyFled++; }   // spec Demo-i section 11.3: a flee ends in a surrender bounty or a flight
-  e.maxHull = 0; e.shieldLayers = 0; e.shieldRecharge = 0; e.shotArmTick = -1; e.fleeing = 0; e.surrenderIntact = 0;
+  e.maxHull = 0; e.shieldLayers = 0; e.shieldRecharge = 0; e.shotArmTick = -1; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1;
   if (destroyed) { state.telemetry.enemiesDestroyed++; addScrap(state, SCRAP_ENEMY); }
   e.nextArrivalTick = state.tick + jitteredTicks(state, ENCOUNTER_COOLDOWN);
 }
@@ -75,7 +75,7 @@ export function leave(state: SimState, destroyed: boolean): void {
 /** Hull damage always; a subsystem row also damages that system, arming its repair when it reaches 0 (spec Combat-ii section 5). */
 export function damageEnemy(state: SimState, slot: number, amount: number): void {
   const e = state.enemy, sys = enemySystemOf(slot);
-  e.hull = Math.max(0, e.hull - amount);
+  e.hull = Math.max(0, e.hull - amount); e.lastHitTick = state.tick;                  // the HUD hit flash (spec Demo-ii section 4)
   if (e.fleeing) e.surrenderIntact = 0;                                              // any damage voids the surrender (spec Demo-i section 11.3)
   if (sys >= 0 && e.sysHp[sys]! > 0) {
     e.sysHp[sys] = Math.max(0, e.sysHp[sys]! - amount);
