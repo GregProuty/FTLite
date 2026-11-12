@@ -9,7 +9,7 @@ import { DT, FIRE_DAMAGE, O2_DAMAGE, SUFFOCATE_FRAC, BLEEDOUT_TIME, BLEED_HAZARD
 export const EndReason = { None: 0, Hull: 1, Crew: 2, Victory: 3 } as const;
 
 export function reviveCrew(state: SimState, eid: number): void {
-  void state;
+  state.telemetry.revives++;   // spec Coop-i section 4
   Life.state[eid] = LifeState.Conscious;
   Health.cur[eid] = HEALTH_MAX * REVIVE_HEALTH_FRAC;
   Life.bleed[eid] = 0; Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1;

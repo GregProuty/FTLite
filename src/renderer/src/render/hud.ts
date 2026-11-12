@@ -73,7 +73,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   const progressLine = text(16, DIM); progressLine.anchor.set(0.5, 0); progressLine.position.set(INTERNAL_W / 2, 84); parent.addChild(progressLine);   // under the banner and its glyph row
   const noticeRows = [0, 1].map((k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 14 + k * LINE); t.visible = false; parent.addChild(t); return t; });   // spec Demo-i section 4: two lines top-centre between the clock and threat panels, running only
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
-  const summaryRows = Array.from({ length: 11 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 104 + k * LINE); t.visible = false; parent.addChild(t); return t; });
+  const summaryRows = Array.from({ length: 12 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 104 + k * LINE); t.visible = false; parent.addChild(t); return t; });
 
   const players = [0, 1, 2, 3].map((i) => {
     const x = 8 + i * 316, y = 626;

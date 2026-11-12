@@ -40,6 +40,8 @@ export interface TelemetryRecord {
   impacts: number; evadeRolls: number; evasions: number; shots: number; hits: number;
   repairs: { fire: number; breach: number; power: number };
   maxStress: number; phaseEntries: { buildUp: number; sustainPeak: number; peakFade: number; relax: number }; enemy: { met: number; destroyed: number; disables: number; fled: number; surrenders: number; shieldHits: number }; boarders: { parties: number; killed: number; vented: number }; run: { nodesReached: number; jumps: number; columns: number; scrap: { earned: number; spent: number }; events: number; purchases: number; upgrades: string[]; quirk: string; unlocks: string[] };
+  /** Working together (spec Coop-i section 4): beams fired under a Science lock, seconds of shared repair or revive (one decimal), completed revives. */
+  teamwork: { lockedShots: number; teamSeconds: number; revives: number };
   score: number;
   skills: number[][];
 }
@@ -74,6 +76,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
     enemy: { met: t.encounters, destroyed: t.enemiesDestroyed, disables: t.enemyDisables, fled: t.enemyFled, surrenders: t.surrenders, shieldHits: t.shieldHits },
     boarders: { parties: t.boardings, killed: t.boardersKilled, vented: t.boardersVented },
     run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS, scrap: { earned: t.scrapEarned, spent: t.scrapSpent }, events: t.eventsResolved, purchases: t.purchases, upgrades: STATION_NAMES.filter((_, k) => state.run.upgrades[k] === 1), quirk: QUIRK_NAMES[state.run.quirk]!, unlocks: UNLOCKS.filter((_, i) => state.run.startBonus & (1 << i)).map((u) => u.id) },
+    teamwork: { lockedShots: t.lockedShots, teamSeconds: round1(t.teamSeconds), revives: t.revives },
     skills: state.crew.map((_, pid) => Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k)))
   };
   return { ...record, score: runScore(record) };

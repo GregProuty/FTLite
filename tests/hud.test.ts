@@ -354,7 +354,7 @@ describe('buildHudModel', () => {
     expect(buildHudModel(makeState(1), slots(1), 'running', '').players[0]!.character).toEqual({ name: 'Recruit', asset: '', complication: '' });
     expect(m.players[1]!.skills).toEqual([0, 3, 0, 0, 0, 0]);                                              // Lindqvist's head start shows as a level
   });
-  it('the game-over summary has five headline lines then one skill line per crew member, and is null in every other phase', () => {
+  it('the game-over summary has six headline lines then one skill line per crew member, and is null in every other phase', () => {
     const s = makeState(3, 1, DEFAULT_CHARACTERS); const t = s.telemetry;
     s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;
     t.firstDownTick = 190 * 60 - 1; t.firstDownPid = 0;                       // Okoro at 3:10
@@ -363,7 +363,7 @@ describe('buildHudModel', () => {
     setSkill(s, 2, Skill.Science, 3); setSkill(s, 0, Skill.Repair, 4); setSkill(s, 0, Skill.Navigation, 1);
     const over = buildHudModel(s, slots(3), 'gameover', 'HULL LOST');
     expect(over.summary).toEqual([
-      'Survived 7:32  HULL LOST  Reached node 1 of 8  Score 0', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s', `Ship: ${QUIRK_NAMES[s.run.quirk]}`,   // StationKind order, as in the record
+      'Survived 7:32  HULL LOST  Reached node 1 of 8  Score 0', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s', `Ship: ${QUIRK_NAMES[s.run.quirk]}`, 'Teamwork  locked shots 0  shared repairs 0s  revives 0',   // StationKind order, as in the record
       'Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
@@ -373,7 +373,7 @@ describe('buildHudModel', () => {
     const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = EndReason.Hull;
     expect(buildHudModel(four, slots(4), 'gameover', '').summary).toEqual([
       'Survived 0:00  HULL LOST  Reached node 1 of 8  Score 0', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
-      'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s', `Ship: ${QUIRK_NAMES[four.run.quirk]}`,
+      'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s', `Ship: ${QUIRK_NAMES[four.run.quirk]}`, 'Teamwork  locked shots 0  shared repairs 0s  revives 0',
       'Okoro: no skill gains', 'Lindqvist: no skill gains', 'Reyes: no skill gains', 'Dubois: no skill gains']);
   });
   it('reports the director phase name and stress', () => {
@@ -440,9 +440,14 @@ describe('buildHudModel', () => {
   it('the summary carries the ship line, then the optional progress lines, then the gains', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS); s.ended = 1; s.endReason = EndReason.Hull;
     const ship = `Ship: ${QUIRK_NAMES[s.run.quirk]}`, gain = 'Okoro: no skill gains';
-    const a = buildHudModel(s, slots(2), 'gameover', '').summary!; expect(a[4]).toBe(ship); expect(a[5]).toBe(gain);
-    const b = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: [], unlocked: [] }).summary!; expect(b[4]).toBe(ship); expect(b[5]).toBe('Best 10   Runs 2   Victories 0'); expect(b[6]).toBe(gain);
-    const c = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: ['Scrap reserve'], unlocked: ['Scrap reserve'] }).summary!; expect(c[6]).toBe('Unlocked: Scrap reserve'); expect(c[7]).toBe(gain);
+    const a = buildHudModel(s, slots(2), 'gameover', '').summary!; expect(a[4]).toBe(ship); expect(a[6]).toBe(gain);
+    const b = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: [], unlocked: [] }).summary!; expect(b[4]).toBe(ship); expect(b[6]).toBe('Best 10   Runs 2   Victories 0'); expect(b[7]).toBe(gain);
+    const c = buildHudModel(s, slots(2), 'gameover', '', null, { bestScore: 10, runs: 2, victories: 0, newUnlocks: ['Scrap reserve'], unlocked: ['Scrap reserve'] }).summary!; expect(c[7]).toBe('Unlocked: Scrap reserve'); expect(c[8]).toBe(gain);
+  });
+  it('the teamwork line (spec Coop-i section 4): locked shots, shared repair seconds (rounded), revives', () => {
+    const s = makeState(2, 1, DEFAULT_CHARACTERS); s.ended = 1; s.endReason = EndReason.Hull;
+    s.telemetry.lockedShots = 4; s.telemetry.teamSeconds = 37.6; s.telemetry.revives = 2;
+    expect(buildHudModel(s, slots(2), 'gameover', '').summary![5]).toBe('Teamwork  locked shots 4  shared repairs 38s  revives 2');
   });
   it('the game-over headline counts the node and names a victory', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS); s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;

@@ -231,7 +231,7 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
 
 function clock(seconds: number): string { const whole = Math.floor(seconds); return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`; }
 
-/** The five headline lines of the game-over summary (spec 4-ii section 7, Run-iii section 6). */
+/** The six headline lines of the game-over summary (spec 4-ii section 7, Run-iii section 6, Coop-i section 4). */
 function headlineSummary(state: SimState): string[] {
   const t = state.telemetry, names = state.crew.map((_, pid) => characterOf(state, pid).name);
   const event = (tick: number, pid: number) => (tick < 0 ? 'none' : `${names[pid]} ${clock(eventSeconds(tick))}`);
@@ -242,7 +242,8 @@ function headlineSummary(state: SimState): string[] {
     `First down: ${event(t.firstDownTick, t.firstDownPid)}   First death: ${event(t.firstDeathTick, t.firstDeathPid)}`,
     never.length ? `Never manned: ${never.join(', ')}` : 'Every station manned',
     `Longest idle: ${names.map((n, pid) => `${n} ${Math.round(durationSeconds(t.longestIdle[pid]!))} s`).join(', ')}`,
-    `Ship: ${QUIRK_NAMES[state.run.quirk]}`
+    `Ship: ${QUIRK_NAMES[state.run.quirk]}`,
+    `Teamwork  locked shots ${t.lockedShots}  shared repairs ${Math.round(t.teamSeconds)}s  revives ${t.revives}`
   ];
 }
 

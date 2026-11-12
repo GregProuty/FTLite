@@ -493,5 +493,7 @@ describe('snapshot: teamSeconds (spec Coop-i section 2)', () => {
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect(t.telemetry.teamSeconds).toBe(2.5 * TM2); expect(hashState(t)).toBe(hashState(s));
     const h = hashState(s); s.telemetry.teamSeconds += 1 / 60; expect(hashState(s)).not.toBe(h);
+    s.telemetry.revives = 2; const u = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s)))); expect(u.telemetry.revives).toBe(2);
+    const h2 = hashState(s); s.telemetry.revives++; expect(hashState(s)).not.toBe(h2);
   });
 });
