@@ -1,0 +1,61 @@
+# Visible Combat and Sound (Demo-ii) Design
+
+Status: drafted 2026-11-12 at the user's request ("write a spec, review, plan, review, implement subagent and review") from the three before-the-demo recommendations: a repaired console comes back powered, the enemy is drawn with its shield ring and weapon bar, and the ship makes sound. Parent: `2026-11-09-foundation-design.md` §7 (rendering, HUD), §9 (error handling); builds on Demo-i (`2026-11-11-demo-ready-design.md`), whose combat model (`enemy.maxHull/shieldLayers/shotArmTick/fleeing`, `enemyWeaponCharge`, `fleeSecondsLeft`) and HUD model this draws on.
+
+## 1. Goal
+
+Three things a newcomer hits in the first ten minutes, fixed: a console that was repaired but still does nothing (it came back unpowered and nothing said so); a combat they cannot see (the whole FTL layer is two text rows); and silence. After this feature a repaired console works again when the reactor has a bar to spare and the power panel says `OFF` when it does not, the enemy is a picture with a shield ring that empties layer by layer and a weapon bar that fills, and seven synthesized cues mark hazards, impacts, shots, the ready drive, the jump and the run's end.
+
+**Out of scope (follow-ups):** an Engineering bot that re-powers consoles (the acceptance floor stays as Demo-i left it unless the repair change alone lifts it); beam tracers to a positioned enemy; recorded audio assets or music; a volume menu; a drawn sector map; new enemy templates.
+
+## 2. Options considered
+
+- **Unpowered after repair:** (a) `repairStation` returns a non-Engineering console at level 1 when `powerPool(state) >= 1`, else 0 **(recommended, chosen)**: FTL's behaviour, one line, closes the dead end; (b) only flag it on the HUD: the dead end stays; (c) reserve a bar per console: changes the whole power game.
+- **Drawn enemy:** (a) a Pixi `Graphics` panel beside the threat panel, driven by a pure `HudModel.enemy` block **(chosen)**: no new art, every number already exists, testable model; (b) a sprite sheet: art the project does not have; (c) rows in the threat panel: that is what exists.
+- **Sound:** (a) Web Audio oscillators synthesized in `app/audio.ts`, driven by a pure cue detector over counters the sim already keeps **(chosen)**: no assets, no licences, the detector is unit-tested, the synth is a thin sink; (b) recorded samples: sourcing and licensing work for a demo; (c) a library: a dependency for seven beeps.
+
+## 3. Repaired consoles come back powered
+
+`repairStation(state, i)` (`power.ts`): `failed = 0`, `repair = 0`, and for every kind except Engineering `level = powerPool(state) >= 1 ? 1 : 0` (Engineering keeps its frozen level as today). The pool is read **after** `failed` clears (a failed console holds level 0, so its bar is already in the pool). No draw. `shedPower` and the schema are unchanged. The golden replay includes repairs, so it is re-blessed once (cause recorded); `SIM_VERSION` stays 16 (no state shape change).
+
+HUD: `HudStation` and `EngineeringPanel.rows[]` gain `unpowered: boolean` = `!failed && level === 0 && kind !== Engineering && station present`. The power rows already print `OFF` in `WARN` for an offline console; the Engineering console rows now also print `OFF` (status) for an unpowered one, so the operator who must put the bar back sees it on their own panel. The controls card's line 4 becomes `Hold Interact next to a fire, a breach, a failed console or a downed friend. Repaired consoles need a bar` (85 characters).
+
+Bot: unchanged (Demo-i's rule: no seat at an offline console). With repairs returning powered, the Demo-i acceptance soak's four-player floor is retried at `nodesReached >= 3`; if the row still falls short the floor stays 2 and the figure is recorded.
+
+## 4. The drawn enemy
+
+`HudModel.enemy: { hull: number; layers: number; layersMax: number; weaponCharge: number; fleeSeconds: number; weaponsDown: boolean; enginesDown: boolean; shieldsDown: boolean; hitFlash: boolean } | null` (`null` while absent or without a state). `hull = enemy.hull / enemy.maxHull`; `layers`/`layersMax` from the enemy and `enemyShieldMax(run.column)`; `weaponCharge = enemyWeaponCharge(state)`; `fleeSeconds = fleeSecondsLeft(state)`; the three flags from `sysHp[...] === 0`; `hitFlash` is true for `HIT_FLASH_TICKS = 12` ticks after our last damaging or stripping hit on the enemy: the sim records `enemy.lastHitTick` (a new field, −1 while absent; set in `damageEnemy` and on a shield strip; **flattened** after `surrenderIntact`, `ENEMY_FIELDS = 22`; hashed; `SIM_VERSION = 17`, version-16 snapshots rejected) and the model computes `tick − lastHitTick < HIT_FLASH_TICKS`.
+
+Drawing (`render/enemyPanel.ts`, Pixi `Graphics`, placed by `hud.ts`): a panel of 120 × 100 at `(INTERNAL_W − 232 − 8 − 120, 4)` (left of the threat panel, same top), visible only while `enemy !== null`. Inside: a hull silhouette (a 7-point polygon 56 wide and 28 tall, centred at (60, 44)) filled `DIM`, `WARN` while `hitFlash`; a shield ring of `layersMax` concentric ellipse strokes around the silhouette (radii 38 and 44, 2 px), each drawn `TEXT` when that layer is up and `FAINT` when down, none while `shieldsDown`; a weapon bar 100 × 6 at (10, 82) with fill `weaponCharge`, `WARN` at `>= 0.8`, hidden while `weaponsDown`; a hull bar 100 × 4 at (10, 90) with fill `hull`; a 16 px label at the top-left: `ENEMY`, or `FLEE 7s` while fleeing, or `ENGINES DOWN` while `enginesDown` (fleeing wins). The pure formatter `enemyLabel(e): string` lives in `hudModel.ts` and is tested; the drawing is covered by the manual gate, as every `hud.ts` placement is.
+
+## 5. Sound
+
+**Cue detector** (`app/audioCues.ts`, pure): `CueCounters = { spawns: number (sum of telemetry.spawns), boardings, encounters, impacts, shots, jumps, ended: number, endReason: number, jumpReady: 0 | 1, hits, shieldHits }` read from a state by `cueCounters(state)`; `audioCues(prev: CueCounters, next: CueCounters): Cue[]` returns, in this order and at most one of each per call: `'alarm'` when `spawns`, `boardings` or `encounters` rose; `'impact'` when `impacts` rose; `'shot'` when `shots` rose; `'hit'` when `hits` or `shieldHits` rose; `'ready'` when `jumpReady` went 0 → 1; `'jump'` when `jumps` rose; `'victory'` when `ended` went 0 → 1 with `endReason === Victory`; `'defeat'` when `ended` went 0 → 1 otherwise. `Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'victory' | 'defeat'`.
+
+**Session:** `SessionDeps` gains `playCue?: (cue: Cue) => void`. The session keeps `prevCounters` (reset to `cueCounters(state)` at `start()`), and after the frame's ticks (inside the running branch, after the loop, before the game-over check's `break` has happened... exactly: after the `for` loop over ticks, whether or not the run ended this frame) computes `next = cueCounters(state)`, calls `deps.playCue?.(c)` for each cue of `audioCues(prevCounters, next)`, then `prevCounters = next`. Several ticks in one frame collapse to one cue of each kind (by design). No cues in the lobby, paused or game over.
+
+**Synth** (`app/audio.ts`): `createAudio(): { play(cue: Cue): void; unlock(): void }` over `AudioContext` with a master `GainNode` at `MASTER_GAIN = 0.25`. Each cue is an oscillator (type, frequency, duration, gain envelope) started at `currentTime`: `alarm` square 440 → 660 Hz two 90 ms pips; `impact` sawtooth 110 Hz 180 ms with a fast decay; `shot` square 880 Hz 60 ms; `hit` triangle 1320 Hz 50 ms; `ready` sine 523 then 784 Hz, 120 ms each; `jump` sine sweep 220 → 880 Hz over 400 ms; `victory` three sines 523/659/784 Hz 150 ms each; `defeat` sawtooth 220 → 110 Hz over 600 ms. `unlock()` calls `context.resume()`; `main.ts` wires `playCue: audio.play` and calls `audio.unlock()` on the first `keydown`/`pointerdown` and on `window` focus. `src/main/index.ts` adds `webPreferences.autoplayPolicy: 'no-user-gesture-required'` so the first alarm is not swallowed. Every `AudioContext` call sits in a try/catch; a missing `AudioContext` (tests, headless) makes `createAudio` return no-op functions. The synth is not unit-tested (no `AudioContext` under node); the detector and the session wiring are.
+
+## 6. Tuning
+
+`HIT_FLASH_TICKS 12`, `MASTER_GAIN 0.25`; the cue table in §5.
+
+## 7. Tests (vitest, node)
+
+- Repair: `failStation` then `repairStation` on Weapons with a free bar → `level 1`, `failed 0`; with the pool at 0 (every bar allocated) → `level 0`; Engineering keeps its level as today; `powerUsed` never exceeds `powerCapacity` after a repair (seeds 1-3, scripted failures); the existing power tests that pinned "comes back at level 0" are updated to the pool rule.
+- HUD: `unpowered` true for a repaired console at level 0 and false at level 1, false for a failed one, always false for Engineering; the Engineering console row's `status` is `OFF` for it in `hud.ts` (model-level: the flag; the `OFF` string is the existing power-row rule). Card line 4 exact and `<= 90` characters.
+- Enemy block: `null` without an enemy; with `placeEnemy` at column 5 (`layers 2`) after one strip: `{ hull: 1, layers: 1, layersMax: 2, weaponCharge: 0, fleeSeconds: 0, weaponsDown: false, ..., hitFlash: true }` on the strip tick and `hitFlash false` 12 ticks later; `enemyLabel`: `ENEMY`, `FLEE 7s`, `ENGINES DOWN`, fleeing beats engines; `lastHitTick` set by a tuned hit, a strip and a torpedo hit, −1 after `leave`, round-trips and changes the hash; version-16 rejection.
+- Cues: `audioCues` on hand-built counters for each cue alone, several at once (order as listed), nothing for equal counters, nothing for `ended` staying 1, `ready` only on the rising edge; `cueCounters(state)` sums `spawns` and reads `jumpReady = jumpCharge >= 1`.
+- Session (harness with `playCue` collecting): no cues in the lobby; a run frame with `chargeJump` → `['ready']` once, not again next frame; a jump → `['jump']`; a `downCrew` ending → `['defeat']` and nothing afterwards in game over; a frame that steps several ticks spawning two hazards → one `'alarm'`.
+- Gates: survival, duo, boarding, jump, run re-run (repairs now return powered: figures move; recorded); the acceptance soak re-run and the four-player floor retried at 3; golden re-blessed once (version 17 and the repair rule; cause recorded).
+
+## 8. Gate (`docs/gates.md`, entries start unchecked)
+
+- [ ] `npm test` passes with the §7 tests; golden re-blessed once (cause recorded).
+- [ ] The five gates re-recorded with the repair change named as the cause; `npm run acceptance 5 1` rows recorded; the four-player floor outcome recorded.
+- [ ] Manual, two players: a repaired console comes back at one bar (or reads `OFF` on the Engineering panel when the pool is empty); the enemy panel appears on arrival with the ring and the weapon bar, flashes on a hit, shows `FLEE Ns`; the cues are audible for a hazard, an impact, a shot, the ready drive, the jump and the end. Date and notes: pending.
+- [ ] `npm run typecheck`, `npm test`, `npm run build` pass on the final commit.
+
+## 9. Follow-ups recorded, not built
+
+An Engineering bot that re-powers consoles; beam tracers and a positioned enemy in the world view; volume and mute controls; music; a drawn sector map; enemy templates; the playtest of Demo-i.
