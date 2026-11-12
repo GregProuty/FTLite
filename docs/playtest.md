@@ -17,7 +17,7 @@ Run `npm run dev` with two keyboard players. Tick each step as seen and write wh
   See: the clock, threats and power panels fill; the director line shows the ship's quirk.
   Notes:
 - [ ] Sit: one player at Engineering, the other at Weapons or Science.
-  See: Engineering shows its rows, the pool and coolant; the other console shows its own list; the seated players are marked at their consoles.
+  See: Engineering shows its rows, the pool and coolant; the other console shows its own list; the seated players are marked at their consoles. A repaired console comes back with one bar, or reads OFF on the Engineering panel until Engineering gives it one.
   Notes:
 - [ ] Fire: a fire is put out.
   See: a fire shows in the threats panel and in its room; holding Interact in the room puts it out and the row clears.

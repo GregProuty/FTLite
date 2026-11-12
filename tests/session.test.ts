@@ -322,7 +322,9 @@ describe('session', () => {
     });
     it('two alarm sources in one frame cue alarm once', () => {
       const h = started(); h.frames(1); const st = h.session.state!; h.cues.length = 0;
+      const spawns0 = st.telemetry.spawns.reduce((a, b) => a + b, 0), boardings0 = st.telemetry.boardings;
       armSpawn(st); st.boarders.nextArrivalTick = st.tick + 1; h.frames(1, 100);   // one frame of several ticks: both sources land in it
+      expect(st.telemetry.spawns.reduce((a, b) => a + b, 0)).toBeGreaterThan(spawns0); expect(st.telemetry.boardings).toBeGreaterThan(boardings0);   // both sources really fired
       expect(h.cues.filter((c) => c === 'alarm')).toHaveLength(1);
     });
   });

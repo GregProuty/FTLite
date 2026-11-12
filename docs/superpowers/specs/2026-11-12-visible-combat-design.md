@@ -72,4 +72,14 @@ Rule, evaluated for every bot after the urgent interactions (Fight, Revive in re
 2. if the Medbay room is not burning and the Medbay station is online, its goal is the Medbay room, where it stays (neutral intent) until `Health.cur >= BOT_RECOVER_HEALTH`; the rule is stateless, position being the memory: a bot already in the online, unburning Medbay below 60 keeps staying, while a bot above 30 elsewhere does not seek the Medbay;
 3. otherwise it does ordinary hazard duty subject to rule 1.
 
-`botIntent` stays pure per tick (no memory). Result: gate-duo seed 1 min health rises from 0.1 to 10.0 but not to 25, so the seed-1 floor is relaxed to `>= 5` (locked to the observed value) (two debris-started fires and one impact in 237-257 s); seeds 2 and 3 keep 25.
+`botIntent` stays pure per tick (no memory). Result: with the stateless stay-until-60 rule, gate-duo seed 1 min health rises from 0.1 to 28.8 (it was 10.0 with an earlier one-shot retreat), so every seed keeps the 25 floor (seed 1 was the motivating case: two debris-started fires and one impact in 237-257 s).
+
+
+## 11. Amendments from the plan and the implementation
+- The version bump to 17 is for `enemy.lastHitTick`; the repair rule alone changes no state shape. The enemy flatten order ends `... fleeing, surrenderIntact, lastHitTick` (`ENEMY_FIELDS = 22`).
+- The repair rule broke `gate-duo` seed 1; the bot self-preservation rule of section 10 (not a sim lever) is the fix, after the debris-damage lever was tried and reverted with evidence that fire did most of the damage.
+- Card line 4 is `Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar` (84 characters; the spec's first text was 105 and broke the 90-character budget).
+- `HIT_FLASH_TICKS = 12` lives in `tuning.ts` and is read only by the HUD model (not hashed).
+- `createEnemyPanel(fontFamily = 'm5x7')` is called once by `createHud`, added at `(INTERNAL_W − 360, 4)` and updated every frame; its background is a plain rect, not the nine-slice panel; the weapon track stays visible (faint) while the enemy's weapons are down and only the fill hides. The drawing is a manual gate.
+- The session's `prevCounters` is nullable and guarded until the first `start()`; the two-alarm-sources session test uses one 100 ms frame so both sources land in a single frame.
+- The pool-emptying test loops `shiftBar` over every non-Engineering station until none accepts a bar.
