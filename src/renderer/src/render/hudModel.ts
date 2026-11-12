@@ -2,7 +2,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, SCRAP_SURRENDER } from '../sim/tuning';
+import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, SCRAP_SURRENDER, HIT_FLASH_TICKS } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType } from '../sim/run';
 import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
@@ -36,7 +36,7 @@ export interface HudPlayer {
 function thermal(state: SimState, i: number): { heat: number; coolant: number; overdriven: boolean } {
   return i < 0 ? { heat: 0, coolant: 0, overdriven: false } : { heat: state.stations.heat[i]! / HEAT_MAX, coolant: state.stations.coolant[i]!, overdriven: isOverdriven(state, i) };
 }
-export interface EngineeringPanel { rows: { kind: number; name: string; level: number; max: number; failed: boolean; heat: number; coolant: number; overdriven: boolean }[]; cursor: number; pool: number; coolantFree: number }
+export interface EngineeringPanel { rows: { kind: number; name: string; level: number; max: number; failed: boolean; heat: number; coolant: number; overdriven: boolean; unpowered: boolean }[]; cursor: number; pool: number; coolantFree: number }
 export type DoorsPanel = { doorIndex: number; rooms: [string, string] } | { doorIndex: -1 };
 export type TargetKindName = 'debris' | 'shot' | 'enemy';
 export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null; layers: number | null; layersMax: number | null; weaponCharge: number | null; fleeSeconds: number | null }   // the last four: the enemy hull row only (spec Demo-i section 11.4)
@@ -44,17 +44,31 @@ export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: numbe
 export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean }
 export interface NavigationPanel { kind: 'navigation'; evadeChance: number; jump: { charge: number; ready: boolean }; here: string; final: boolean; rows: { text: string; selectable: boolean; enabled: boolean; cursor: boolean }[]; first: number; scrap: number }
 export type ConsolePanel = EngineeringPanel | DoorsPanel | WeaponsPanel | SciencePanel | NavigationPanel;
-export interface HudStation { kind: number; name: string; level: number; max: number; online: boolean; occupant: number | null; heat: number; coolant: number; overdriven: boolean }
+export interface HudStation { kind: number; name: string; level: number; max: number; online: boolean; occupant: number | null; heat: number; coolant: number; overdriven: boolean; unpowered: boolean }
+export interface HudEnemy { hull: number; layers: number; layersMax: number; weaponCharge: number; fleeSeconds: number; weaponsDown: boolean; enginesDown: boolean; shieldsDown: boolean; hitFlash: boolean }   // spec Demo-ii section 4
 export interface HudThreat { icon: 'icon.fire' | 'icon.breach' | 'icon.power' | 'icon.sensors' | 'icon.weapons'; text: string }
 export interface HudModel {
   phase: 'lobby' | 'running' | 'paused' | 'gameover' | 'error'; message: string; hull: number; simSeconds: number; tick: number;
-  threats: HudThreat[]; boarders: { stableId: number; x: number; y: number; health: number }[]; power: { capacity: number; used: number }; stations: HudStation[]; weapons: { charge: number; ready: boolean; torpedoLoaded: boolean; torpedoStock: number }; impactTick: number[];
+  threats: HudThreat[]; boarders: { stableId: number; x: number; y: number; health: number }[]; power: { capacity: number; used: number }; stations: HudStation[]; weapons: { charge: number; ready: boolean; torpedoLoaded: boolean; torpedoStock: number }; impactTick: number[]; enemy: HudEnemy | null;
   players: HudPlayer[]; summary: string[] | null; credits: string[] | null; creditsScroll: number;
   director: { phase: string; stress: number };
   run: { column: number; columns: number; quirk: string };
   progressLine: string;
   lobbyLines: string[]; notice: string[];   // the lobby controls card (spec Demo-i section 3) and the run notice (section 4)
 }
+/** A repaired console still at level 0 (spec Demo-ii section 3): not failed, not Engineering, station present. */
+function unpoweredAt(state: SimState, kind: number, si: number): boolean { return si >= 0 && kind !== StationKind.Engineering && state.stations.failed[si] !== 1 && state.stations.level[si] === 0; }
+
+/** The enemy panel block, built straight from the state (spec Demo-ii section 4); null while absent. */
+function enemyBlock(state: SimState | null): HudEnemy | null {
+  if (!state || !state.enemy.present) return null;
+  const e = state.enemy;
+  return { hull: e.hull / e.maxHull, layers: e.shieldLayers, layersMax: enemyShieldMax(state.run.column), weaponCharge: enemyWeaponCharge(state), fleeSeconds: fleeSecondsLeft(state), weaponsDown: e.sysHp[EnemySystem.Weapons] === 0, enginesDown: e.sysHp[EnemySystem.Engines] === 0, shieldsDown: e.sysHp[EnemySystem.Shields] === 0, hitFlash: e.lastHitTick >= 0 && state.tick - e.lastHitTick < HIT_FLASH_TICKS };
+}
+
+/** The panel label: fleeing wins over engines down (spec Demo-ii section 4). */
+export function enemyLabel(e: HudEnemy): string { return e.fleeSeconds > 0 ? `FLEE ${e.fleeSeconds}s` : e.enginesDown ? 'ENGINES DOWN' : 'ENEMY'; }
+
 export function clockLine(m: HudModel): string { return `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s   node ${m.run.column + 1}/${m.run.columns}`; }
 export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%   Jump ${p.final ? '-' : p.jump.ready ? 'READY' : `${Math.floor(p.jump.charge * 100)}%`}   Scrap ${p.scrap}`; }
 
@@ -138,7 +152,7 @@ export const LOBBY_LINES: readonly string[] = [
   'Move: WASD or left stick      Interact: E / A      Confirm: F / X      Cancel: Q / B',
   'Keyboard 2: arrows, Enter (Interact), Right Shift (Confirm), Backspace (Cancel)',
   'Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands',
-  'Hold Interact next to a fire, a breach, a failed console or a downed friend',
+  'Hold Interact next to a fire, a breach, a failed console or a downed friend. Repaired consoles need a bar',
   'Navigation jumps when the drive reads READY. Events and shops are chosen there',
   'Jump before the ship falls apart. Reach node 8 to win'
 ];
@@ -156,7 +170,7 @@ export function runNotice(state: SimState): string[] {
 function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | null {
   const d = state.derived;
   if (kind === StationKind.Engineering) {
-    const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: baseMax(state, k), failed: si >= 0 && state.stations.failed[si] === 1, ...thermal(state, si) }; });
+    const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: baseMax(state, k), failed: si >= 0 && state.stations.failed[si] === 1, unpowered: unpoweredAt(state, k, si), ...thermal(state, si) }; });
     return { rows, cursor: state.stations.cursor[i]!, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state) };
   }
   if (kind === StationKind.Doors) {
@@ -235,7 +249,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
     if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}` });   // spec Demo-i section 4: the run rows trail the hazards (the notice carries them)
     if (state.run.nodeType[state.run.column * 3 + state.run.node] === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here' });
   }
-  const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, ...thermal(state, i) })) : [];
+  const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, unpowered: unpoweredAt(state, kind, i), ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: RUN_COLUMNS, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], notice: state && phase === 'running' ? runNotice(state) : [] };
+  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], enemy: enemyBlock(state), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: RUN_COLUMNS, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], notice: state && phase === 'running' ? runNotice(state) : [] };
 }

@@ -2,6 +2,7 @@ import { Container, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
 import { glyphName, clockLine, navigationFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { createEnemyPanel } from './enemyPanel';
 import { featureReady } from './fallback';
 import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
@@ -56,6 +57,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   parent.addChild(panel(4, 4, 200, 58));
   const top = text(); top.position.set(12, 14); parent.addChild(top);
   const directorLine = text(16, DIM); directorLine.position.set(12, 14 + LINE); parent.addChild(directorLine);
+  const enemyPanel = createEnemyPanel(assets.fontFamily); enemyPanel.root.position.set(INTERNAL_W - 360, 4); parent.addChild(enemyPanel.root);   // spec Demo-ii section 4: 8 px left of the threat panel, same top
   parent.addChild(panel(INTERNAL_W - 232, 4, 228, 100));
   const threatRows = Array.from({ length: 4 }, (_, i) => { const row = new Container(); row.position.set(INTERNAL_W - 224, 12 + i * LINE); parent.addChild(row); return row; });
   parent.addChild(panel(INTERNAL_W - 232, 108, 228, 8 * LINE + 12));
@@ -134,7 +136,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
     if (p.console && 'rows' in p.console && !('kind' in p.console)) {   // the Navigation panel now has rows too
       const c = p.console;
-      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
+      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : r.unpowered ? 'OFF' : '', failed: r.failed, cursor: k === c.cursor, tint: k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
       ui.consoleRows.forEach((r) => { r.root.visible = true; });
       fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}   coolant ${c.coolantFree}/${COOLANT_POOL}`, tint: DIM }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'weapons') {
@@ -176,6 +178,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   return {
     update(m: HudModel): void {
       top.text = clockLine(m);
+      enemyPanel.update(m.enemy);
       directorLine.text = `${m.director.phase}  stress ${Math.round(m.director.stress * 100)}%${m.run.quirk ? `   Ship: ${m.run.quirk}` : ''}`;
       threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;

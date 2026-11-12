@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
-import { buildHudModel, clockLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
+import { enemyLabel, buildHudModel, clockLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -10,8 +10,8 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
-import { failStation, shiftBar } from '../src/renderer/src/sim/power';
-import { RUN_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX, STATION_MAX, BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
+import { failStation, repairStation, shiftBar } from '../src/renderer/src/sim/power';
+import { HIT_FLASH_TICKS, RUN_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX, STATION_MAX, BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -92,7 +92,7 @@ describe('buildHudModel', () => {
     const m0 = buildHudModel(s, slots(1), 'running', '');
     expect(m0.power).toEqual({ capacity: 10, used: 9 });
     expect(m0.stations.map((st) => st.kind)).toEqual([0, 6, 1, 2, 5, 4, 3]);
-    expect(m0.stations.find((st) => st.kind === StationKind.LifeSupport)).toEqual({ kind: 4, name: 'Life Support', level: 2, max: 3, online: true, occupant: null, heat: 0, coolant: 0, overdriven: false });
+    expect(m0.stations.find((st) => st.kind === StationKind.LifeSupport)).toEqual({ kind: 4, name: 'Life Support', level: 2, max: 3, online: true, occupant: null, heat: 0, coolant: 0, overdriven: false, unpowered: false });
     failStation(s, eng); teleport(s, 0, 18.5, 9.5); s.stations.repair[eng] = 0.4;
     const m = buildHudModel(s, slots(1), 'running', '');
     expect(m.threats).toEqual([{ icon: 'icon.power', text: 'Power: Engineering' }]);
@@ -109,7 +109,7 @@ describe('buildHudModel', () => {
     expect(p.seated).toBe(StationKind.Engineering); expect(p.cancelPrompt).toBe('Stand'); expect(p.confirmPrompt).toBe(''); expect(p.interactPrompt).toBe('');
     const panel = p.console as EngineeringPanel;
     expect(panel.cursor).toBe(StationKind.Weapons); expect(panel.pool).toBe(1);
-    expect(panel.rows[StationKind.Weapons]).toEqual({ kind: 1, name: 'Weapons', level: 2, max: 3, failed: false, heat: 0, coolant: 0, overdriven: false });
+    expect(panel.rows[StationKind.Weapons]).toEqual({ kind: 1, name: 'Weapons', level: 2, max: 3, failed: false, heat: 0, coolant: 0, overdriven: false, unpowered: false });
     expect(panel.coolantFree).toBe(COOLANT_POOL);
     expect(panel.rows).toHaveLength(7);
   });
@@ -259,7 +259,7 @@ describe('buildHudModel', () => {
     sitDown(s, 0, eng);
     const m = buildHudModel(s, slots(1), 'running', '');
     const panel = m.players[0]!.console as EngineeringPanel;
-    expect(panel.rows[StationKind.Navigation]).toEqual({ kind: 0, name: 'Navigation', level: 3, max: 2, failed: false, heat: 0.5, coolant: 2, overdriven: true });
+    expect(panel.rows[StationKind.Navigation]).toEqual({ kind: 0, name: 'Navigation', level: 3, max: 2, failed: false, heat: 0.5, coolant: 2, overdriven: true, unpowered: false });
     expect(panel.coolantFree).toBe(COOLANT_POOL - 3);
     const st = m.stations.find((x) => x.kind === StationKind.Navigation)!;
     expect(st.level).toBe(3); expect(st.max).toBe(2); expect(st.heat).toBe(0.5); expect(st.coolant).toBe(2); expect(st.overdriven).toBe(true);
@@ -397,7 +397,7 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
     'Move: WASD or left stick      Interact: E / A      Confirm: F / X      Cancel: Q / B',
     'Keyboard 2: arrows, Enter (Interact), Right Shift (Confirm), Backspace (Cancel)',
     'Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands',
-    'Hold Interact next to a fire, a breach, a failed console or a downed friend',
+    'Hold Interact next to a fire, a breach, a failed console or a downed friend. Repaired consoles need a bar',
     'Navigation jumps when the drive reads READY. Events and shops are chosen there',
     'Jump before the ship falls apart. Reach node 8 to win'
   ];
@@ -436,5 +436,47 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
   it('threat order: an enemy, a fire, then Event, then Shop here (hazards before the run rows)', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 2); placeEnemy(s); igniteRoom(s, room(s, 'A'));
     expect(buildHudModel(s, slots(2), 'running', '').threats.map((t) => t.text)).toEqual([expect.stringMatching(/^Enemy ship/), 'Fire: Bridge', 'Event: Smugglers', 'Shop here']);
+  });
+});
+
+describe('Demo-ii HUD: unpowered consoles, card line 4, the enemy block (spec sections 3, 4, 7)', () => {
+  const unp = (s: ReturnType<typeof makeState>, kind: number) => buildHudModel(s, slots(1), 'running', '').stations.find((x) => x.kind === kind)!.unpowered;
+  const rowUnp = (s: ReturnType<typeof makeState>, kind: number) => {
+    const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 0, eng);
+    return (buildHudModel(s, slots(1), 'running', '').players[0]!.console as EngineeringPanel).rows[kind]!.unpowered;
+  };
+  it('unpowered: a repaired console at level 0 is true, at level 1 false, a failed one false, Engineering never', () => {
+    const s = makeState(1); quiet(s); teleport(s, 0, 17.5, 9.5);
+    const w = s.derived.stationOfKind[StationKind.Weapons]!;
+    failStation(s, w); expect(unp(s, StationKind.Weapons)).toBe(false);
+    repairStation(s, w); s.stations.level[w] = 0; expect(unp(s, StationKind.Weapons)).toBe(true); expect(rowUnp(s, StationKind.Weapons)).toBe(true);
+    s.stations.level[w] = 1; expect(unp(s, StationKind.Weapons)).toBe(false); expect(rowUnp(s, StationKind.Weapons)).toBe(false);
+    failStation(s, w); expect(rowUnp(s, StationKind.Weapons)).toBe(false);
+    const eng = s.derived.stationOfKind[StationKind.Engineering]!; s.stations.level[eng] = 0;
+    expect(unp(s, StationKind.Engineering)).toBe(false); expect(rowUnp(s, StationKind.Engineering)).toBe(false);
+  });
+  it('card line 4 is exact and at most 90 characters', () => {
+    const line = buildHudModel(null, slots(1), 'lobby', '').lobbyLines[3]!;
+    expect(line).toBe('Hold Interact next to a fire, a breach, a failed console or a downed friend. Repaired consoles need a bar');
+    expect(line.length).toBeLessThanOrEqual(LOBBY_LINE_MAX);
+  });
+  it('enemy is null without an enemy and without a state', () => {
+    expect(buildHudModel(null, slots(1), 'lobby', '').enemy).toBeNull();
+    expect(buildHudModel(makeState(2), slots(2), 'running', '').enemy).toBeNull();
+  });
+  it('the block after one strip at column 5: hitFlash on the strip tick, off HIT_FLASH_TICKS later', () => {
+    const s = makeState(2); quiet(s); s.run.column = 5; placeEnemy(s); s.enemy.hull = s.enemy.maxHull;
+    s.enemy.shieldLayers--; s.enemy.lastHitTick = s.tick;
+    const m = buildHudModel(s, slots(2), 'running', '');
+    expect(m.enemy).toEqual({ hull: 1, layers: 1, layersMax: 2, weaponCharge: 0, fleeSeconds: 0, weaponsDown: false, enginesDown: false, shieldsDown: false, hitFlash: true });
+    s.tick += HIT_FLASH_TICKS - 1; expect(buildHudModel(s, slots(2), 'running', '').enemy!.hitFlash).toBe(true);
+    s.tick += 1; expect(HIT_FLASH_TICKS).toBe(12); expect(buildHudModel(s, slots(2), 'running', '').enemy!.hitFlash).toBe(false);
+  });
+  it('enemyLabel: ENEMY, FLEE 7s, ENGINES DOWN, and fleeing beats engines down', () => {
+    const e = { hull: 1, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0, weaponsDown: false, enginesDown: false, shieldsDown: false, hitFlash: false };
+    expect(enemyLabel(e)).toBe('ENEMY');
+    expect(enemyLabel({ ...e, fleeSeconds: 7 })).toBe('FLEE 7s');
+    expect(enemyLabel({ ...e, enginesDown: true })).toBe('ENGINES DOWN');
+    expect(enemyLabel({ ...e, enginesDown: true, fleeSeconds: 7 })).toBe('FLEE 7s');
   });
 });
