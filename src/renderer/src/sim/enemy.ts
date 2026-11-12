@@ -5,13 +5,13 @@ import { spawnShot, shotsInFlight } from './debris';
 import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from './debrisTargets';
 import { minutesOf } from './director';
 import { addScrap } from './scrap';
-import { TICK_HZ, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, SOLO_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, SCRAP_ENEMY, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, SCRAP_SURRENDER } from './tuning';
+import { TICK_HZ, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, SCRAP_ENEMY, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, SCRAP_SURRENDER } from './tuning';
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 
 /** Seconds between enemy shots: the foundation's escalation shape with the solo multiplier (spec Combat-i section 5). */
 export function fireInterval(minutes: number, players: number): number {
-  return Math.max(ENEMY_FIRE_MIN, ENEMY_FIRE_INTERVAL / (1 + ESCALATION_RATE * minutes)) * (players === 1 ? SOLO_INTERVAL_MULT : 1);
+  return Math.max(ENEMY_FIRE_MIN, ENEMY_FIRE_INTERVAL / (1 + ESCALATION_RATE * minutes)) * (CREW_INTERVAL_MULT[players - 1] ?? 1);
 }
 
 export const EnemySystem = { Weapons: 0, Engines: 1, Shields: 2 } as const;

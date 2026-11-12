@@ -7,7 +7,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { minutesOf } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, ENEMY_AIM_CHANCE, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, ENEMY_SHOT_CREW_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, ENCOUNTER_MAX, ENCOUNTER_COOLDOWN, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, ENEMY_AIM_CHANCE, SOLO_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, ENEMY_SHOT_CREW_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, armSpawn, placeEnemy, disableSystem, guardDebris, placeShot, placeDebris, room, intents, teleport, seconds } from './helpers/sim';
 import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
@@ -28,19 +28,22 @@ const onlineRooms = (s: ReturnType<typeof makeState>): number[] => { const out: 
 describe('enemy: initial values and fireInterval', () => {
   it('a fresh state has no enemy, the first arrival armed, kind bytes zero and zero counters', () => {
     const s = makeState(2), e = s.enemy;
-    expect([e.present, e.hull, e.stableId, e.nextArrivalTick, e.nextShotTick, e.departTick]).toEqual([0, 0, 0, ENCOUNTER_FIRST * T, -1, -1]);
+    expect([e.present, e.hull, e.stableId, e.nextArrivalTick, e.nextShotTick, e.departTick]).toEqual([0, 0, 0, ENCOUNTER_FIRST_SMALL * T, -1, -1]);
+    for (const [p, first] of [[1, 270], [2, 270], [3, 210], [4, 210]] as const) expect(makeState(p, 1).enemy.nextArrivalTick).toBe(first * T);   // spec Demo-i section 5: later first encounter for crews of two or fewer
+    for (const [p, first] of [[1, 330], [2, 330], [3, 240], [4, 240]] as const) expect(makeState(p, 1).boarders.nextArrivalTick).toBe(first * T);
     expect(Array.from(s.debris.kind)).toEqual(new Array(DEBRIS_SLOTS).fill(0));
     expect([s.telemetry.encounters, s.telemetry.enemiesDestroyed]).toEqual([0, 0]);
     expect(Array.from(e.sysHp)).toEqual([0, 0, 0]); expect(Array.from(e.sysRepairTick)).toEqual([-1, -1, -1]); expect([e.shieldFreq, e.scanned, e.scan]).toEqual([0, 0, 0]); expect(s.telemetry.enemyDisables).toBe(0);
   });
   it('fireInterval escalates to the floor and solo is 1.5x', () => {
-    expect(fireInterval(0, 2)).toBe(20); expect(fireInterval(3, 2)).toBeCloseTo(200 / 13, 12); expect(fireInterval(10, 2)).toBe(10); expect(fireInterval(30, 2)).toBe(6); expect(fireInterval(0, 1)).toBe(20 * SOLO_INTERVAL_MULT);
+    expect(fireInterval(0, 3)).toBe(20); expect(fireInterval(3, 3)).toBeCloseTo(200 / 13, 12); expect(fireInterval(10, 3)).toBe(10); expect(fireInterval(30, 3)).toBe(6); expect(fireInterval(0, 1)).toBe(20 * SOLO_INTERVAL_MULT);
+    for (const [p, m] of [[1, 1.5], [2, 1.25], [3, 1], [4, 1]] as const) expect(fireInterval(7, p)).toBeCloseTo(fireInterval(7, 3) * m, 12);   // spec Demo-i section 5: crews of two fire 1.25x slower too
   });
 });
 
 describe('enemy: schedule (enemySystem called directly)', () => {
   it('arrives exactly at ENCOUNTER_FIRST with no draw, allocating a StableId and arming the shot and departure clocks', () => {
-    const s = makeState(2); s.rng.hazards.s = 7; const d0 = s.rng.director.s, h0 = s.rng.hazards.s, id = s.nextStableId;
+    const s = makeState(2); s.enemy.nextArrivalTick = ENCOUNTER_FIRST * T; s.rng.hazards.s = 7; const d0 = s.rng.director.s, h0 = s.rng.hazards.s, id = s.nextStableId;
     s.tick = ENCOUNTER_FIRST * T - 1; enemySystem(s);
     expect(s.enemy.present).toBe(0); expect(s.rng.hazards.s).toBe(h0);
     const hz = createRng(7); const freq = 1 + nextInt(hz, FREQ_COUNT);
@@ -53,7 +56,7 @@ describe('enemy: schedule (enemySystem called directly)', () => {
     expect(Array.from(s.enemy.sysHp)).toEqual([ENEMY_SYS_HP, ENEMY_SYS_HP, ENEMY_SYS_HP]); expect(Array.from(s.enemy.sysRepairTick)).toEqual([-1, -1, -1]); expect([s.enemy.scanned, s.enemy.scan]).toEqual([0, 0]);
   });
   it('arrival auto-selects the enemy only for a seated targeting console with no selection', () => {
-    const s = makeState(2), w = wpn(s), c = sci(s), A = room(s, 'A');
+    const s = makeState(2), w = wpn(s), c = sci(s), A = room(s, 'A'); s.enemy.nextArrivalTick = ENCOUNTER_FIRST * T;
     sitDown(s, 0, w); placeDebris(s, A, 600, 1); sitDown(s, 1, c);   // Science sits after the warning, so its cursor is on slot 0
     s.stations.cursor[w] = -1;                                      // force Weapons to "nothing selected"
     s.tick = ENCOUNTER_FIRST * T; enemySystem(s);
@@ -113,7 +116,7 @@ describe('enemy: schedule (enemySystem called directly)', () => {
     expect(s.enemy.present).toBe(1); expect(s.enemy.stableId).toBeGreaterThan(first); expect(s.telemetry.encounters).toBe(2);
   });
   it('through step(): arrival at ENCOUNTER_FIRST, a shot warned on its spawn tick when Science is seated', () => {
-    const s = makeState(2); quiet(s);
+    const s = makeState(2); quiet(s); s.enemy.nextArrivalTick = ENCOUNTER_FIRST * T;
     run(s, ENCOUNTER_FIRST * T + 1);
     expect(s.enemy.present).toBe(1); expect(s.telemetry.encounters).toBe(1);
     sitDown(s, 1, sci(s));

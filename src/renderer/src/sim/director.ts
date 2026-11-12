@@ -9,7 +9,7 @@ import { activateBreach, activeBreachCount, freeSites } from './hazards/breach';
 import { failStation } from './power';
 import { failedStationCount } from './stations';
 import { activeDebrisCount, spawnDebris } from './debris';
-import { TICK_HZ, REACH, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_WEIGHTS, STRESS_PERIOD, STRESS_WEIGHTS, STRESS_RISE, STRESS_FALL, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SPAWN_INTERVAL_MIN, ESCALATION_RATE, SOLO_INTERVAL_MULT, SPAWN_CAP_MAX, CAP_MINUTES, BUDGET_BASE, BUDGET_GROWTH, WEIGHT_MINUTES, ROUTE_BONUS, ROUTE_IDLE_SECONDS } from './tuning';
+import { TICK_HZ, REACH, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_WEIGHTS, STRESS_PERIOD, STRESS_WEIGHTS, STRESS_RISE, STRESS_FALL, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SPAWN_INTERVAL_MIN, ESCALATION_RATE, CREW_INTERVAL_MULT, SPAWN_CAP_MAX, CAP_MINUTES, BUDGET_BASE, BUDGET_GROWTH, WEIGHT_MINUTES, ROUTE_BONUS, ROUTE_IDLE_SECONDS } from './tuning';
 
 export const Phase = { BuildUp: 0, SustainPeak: 1, PeakFade: 2, Relax: 3 } as const;
 export const PHASE_NAMES = ['Build Up', 'Sustain Peak', 'Peak Fade', 'Relax'] as const;
@@ -25,7 +25,7 @@ export function minutesOf(state: SimState): number { return state.tick / (60 * T
 /** Escalation (spec 4-i section 7): the interval shrinks toward a floor; solo crews get more time. */
 export function spawnInterval(minutes: number, players: number): number {
   const base = Math.max(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL / (1 + ESCALATION_RATE * minutes));
-  return base * (players === 1 ? SOLO_INTERVAL_MULT : 1);
+  return base * (CREW_INTERVAL_MULT[players - 1] ?? 1);
 }
 
 export function spawnCap(minutes: number, players: number): number {

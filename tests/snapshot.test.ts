@@ -12,7 +12,7 @@ import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
 import { LAYOUT, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
+import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST_SMALL, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
@@ -234,8 +234,8 @@ describe('snapshot', () => {
   });
   it('a run saved mid Build Up continues like an uninterrupted run through at least two phase changes', () => {
     const transitions = (s: ReturnType<typeof makeState>, ticks: number) => { let n = 0, last = s.director.phase; for (let t = 0; t < ticks; t++) { step(s, [NEUTRAL_INTENT, NEUTRAL_INTENT]); if (s.director.phase !== last) { n++; last = s.director.phase; } } return n; };
-    const whole = makeState(2, 21); transitions(whole, 6000);
-    const first = makeState(2, 21); transitions(first, 1500);
+    const whole = makeState(2, 22); transitions(whole, 6000);
+    const first = makeState(2, 22); transitions(first, 1500);
     expect(first.director.phase).toBe(Phase.BuildUp);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
     expect(transitions(resumed, 4500)).toBeGreaterThanOrEqual(2);
@@ -280,7 +280,7 @@ describe('snapshot', () => {
 
   it('round-trips the enemy block, debris kinds and the encounter counters; each alone changes the hash; a fresh state has the initial values', () => {
     const f = makeState(2).enemy;
-    expect([f.present, f.hull, f.stableId, f.nextArrivalTick, f.nextShotTick, f.departTick]).toEqual([0, 0, 0, ENCOUNTER_FIRST * TICK_HZ, -1, -1]);
+    expect([f.present, f.hull, f.stableId, f.nextArrivalTick, f.nextShotTick, f.departTick]).toEqual([0, 0, 0, ENCOUNTER_FIRST_SMALL * TICK_HZ, -1, -1]);
     const s = makeState(2, 5); s.enemy.present = 1; s.enemy.hull = 37; s.enemy.stableId = 41; s.enemy.nextArrivalTick = 9000; s.enemy.nextShotTick = 1234; s.enemy.departTick = 5678;
     s.enemy.sysHp.set([7, 11, 19]); s.enemy.sysRepairTick.set([111, 222, 333]); s.enemy.shieldFreq = 3; s.enemy.scanned = 1; s.enemy.scan = 0.45; s.telemetry.enemyDisables = 4;
     s.debris.kind[2] = 1; s.debris.kind[5] = 1; s.telemetry.encounters = 3; s.telemetry.enemiesDestroyed = 2;

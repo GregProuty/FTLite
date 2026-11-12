@@ -121,6 +121,7 @@ export const SUSTAIN_SECONDS = 10, FADE_TIMEOUT = 30, RELAX_MIN = 30, RELAX_MAX 
 export const SPAWN_INTERVAL_MIN = 10;                  // seconds; the escalated interval never goes below this
 export const ESCALATION_RATE = 0.1;                    // per minute: interval = SPAWN_INTERVAL / (1 + rate x minutes)
 export const SOLO_INTERVAL_MULT = 1.5;
+export const CREW_INTERVAL_MULT = [1.5, 1.25, 1, 1] as const;   // spawn and fire interval multiplier by crew size, indexed players - 1 (spec Demo-i section 5)
 export const SPAWN_CAP_MAX = 6, CAP_MINUTES = 4;        // +1 cap per 4 minutes up to the max
 export const BUDGET_BASE = 3, BUDGET_GROWTH = 0.5;      // spawns per Build Up cycle: (base + growth x minutes) x playerScale
 export const WEIGHT_MINUTES = 4;                       // power and debris weights grow every 4 minutes
@@ -144,6 +145,7 @@ export const ENEMY_SYS_HP = 30, ENEMY_SYS_REPAIR = 45, ENEMY_EVADE = 0.15;   // 
 
 // Boarders (Boarders-i)
 export const BOARDER_SLOTS = 4;
+export const BOARDING_FIRST_SMALL = 330, ENCOUNTER_FIRST_SMALL = 270;   // seconds: first party / first encounter for crews of two or fewer (spec Demo-i section 5)
 export const BOARDING_FIRST = 240, BOARDING_COOLDOWN = 180, BOARDING_JITTER = 0.2;   // seconds: first party, gap after the last kill (x jitter)
 export const BOARDING_PARTY = 2;
 export const BOARDER_HEALTH = 60, BOARDER_DPS = 6;                                   // health; damage per second to the focused crew member before Combat defence

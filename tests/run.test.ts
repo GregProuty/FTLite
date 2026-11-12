@@ -187,4 +187,10 @@ describe('run: the jump', () => {
     const t = h.tick; run(h, 3); expect(h.tick).toBe(t);
     void HULL_MAX;
   });
+  it('post-jump re-arms are the same for crews of two and four (spec Demo-i section 5: only the first arrival differs)', () => {
+    for (const p of [2, 4]) {
+      const q = calm(p); q.run.jumpCharge = 1; q.tick = 1000; jumpShip(q, reachable(q)[0]!);
+      expect([q.enemy.nextArrivalTick, q.boarders.nextArrivalTick]).toEqual([q.tick + ENCOUNTER_AFTER_JUMP * T, q.tick + BOARDING_AFTER_JUMP * T]);
+    }
+  });
 });

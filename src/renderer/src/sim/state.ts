@@ -5,7 +5,7 @@ import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
 import { DEFAULT_CHARACTERS, RECRUIT, applyHeadStarts } from './characters';
-import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, BOARDER_SLOTS, BOARDING_FIRST, RUN_COLUMNS, QUIRK_COUNT } from './tuning';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, BOARDER_SLOTS, BOARDING_FIRST, BOARDING_FIRST_SMALL, RUN_COLUMNS, QUIRK_COUNT } from './tuning';
 import { generateMap } from './run';
 import { applyStartBonuses } from './progress';
 import { cycleBudget } from './director';
@@ -94,9 +94,9 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     stick: { heldDir: new Int8Array(playerCount), repeat: new Int16Array(playerCount) },
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS), frequency: new Uint8Array(DEBRIS_SLOTS), scanned: new Uint8Array(DEBRIS_SLOTS), scan: new Float64Array(DEBRIS_SLOTS), kind: new Uint8Array(DEBRIS_SLOTS) },
     weapons: { charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0 },
-    boarders: { active: new Uint8Array(BOARDER_SLOTS), stableId: new Int32Array(BOARDER_SLOTS), room: new Int16Array(BOARDER_SLOTS), health: new Float64Array(BOARDER_SLOTS), nextMoveTick: new Int32Array(BOARDER_SLOTS), aloneSince: new Int32Array(BOARDER_SLOTS).fill(-1), nextArrivalTick: BOARDING_FIRST * TICK_HZ },
+    boarders: { active: new Uint8Array(BOARDER_SLOTS), stableId: new Int32Array(BOARDER_SLOTS), room: new Int16Array(BOARDER_SLOTS), health: new Float64Array(BOARDER_SLOTS), nextMoveTick: new Int32Array(BOARDER_SLOTS), aloneSince: new Int32Array(BOARDER_SLOTS).fill(-1), nextArrivalTick: (playerCount <= 2 ? BOARDING_FIRST_SMALL : BOARDING_FIRST) * TICK_HZ },
     run: { column: 0, node: 0, nodesReached: 0, jumpCharge: 0, scrap: 0, event: -1, eventChoice: -1, upgrades: new Uint8Array(STATION_COUNT), quirk: 0, startBonus: 0, ...generateMap(rng.map, RUN_COLUMNS) },
-    enemy: { present: 0, hull: 0, stableId: 0, nextArrivalTick: ENCOUNTER_FIRST * TICK_HZ, nextShotTick: -1, departTick: -1, sysHp: new Int32Array(ENEMY_SYSTEM_COUNT), sysRepairTick: new Int32Array(ENEMY_SYSTEM_COUNT).fill(-1), shieldFreq: 0, scanned: 0, scan: 0, maxHull: 0, shieldLayers: 0, shieldRecharge: 0, shotArmTick: -1, fleeing: 0, surrenderIntact: 0 },
+    enemy: { present: 0, hull: 0, stableId: 0, nextArrivalTick: (playerCount <= 2 ? ENCOUNTER_FIRST_SMALL : ENCOUNTER_FIRST) * TICK_HZ, nextShotTick: -1, departTick: -1, sysHp: new Int32Array(ENEMY_SYSTEM_COUNT), sysRepairTick: new Int32Array(ENEMY_SYSTEM_COUNT).fill(-1), shieldFreq: 0, scanned: 0, scan: 0, maxHull: 0, shieldLayers: 0, shieldRecharge: 0, shotArmTick: -1, fleeing: 0, surrenderIntact: 0 },
     science: { scanning: 0 },
     crewCharacter: Uint8Array.from({ length: playerCount }, (_, pid) => characters[pid] ?? RECRUIT),
     skills: { xp: new Float64Array(playerCount * SKILL_COUNT), lastEngChangeTick: -1, lastDoorToggleTick: -1, lsDeliveredTick: -1, lastShotTick: -1 },
