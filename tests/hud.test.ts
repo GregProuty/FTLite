@@ -39,7 +39,8 @@ describe('the Doors card (spec Demo-vii section 1)', () => {
     expect(row(DoorState.Closed)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
     expect(row(DoorState.Open)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
     expect(row(DoorState.HeldOpen)).toEqual(['Door  Aft Passage / Weapons', 'Held open', 'Release']);
-    expect(row(DoorState.Sealed)).toEqual(['Door  Aft Passage / Weapons', 'Sealed', 'Hold open']);   // the online cycle: Auto -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19)
+    expect(row(DoorState.Sealed)).toEqual(['Door  Aft Passage / Weapons', 'Sealed', 'Hold open']);
+    s.doors.state[e] = DoorState.Closed; s.doors.sealRequested[e] = 1; expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Door  Aft Passage / Weapons', 'Sealing', 'Hold open']); s.doors.sealRequested[e] = 0;   // a pending seal (Codex render review 2)   // the online cycle: Auto -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19)
     s.stations.cursor[i] = s.derived.doorEdges.length + 2;
     expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Airlock  Engines', 'Airlock closed', 'Open airlock']);
     s.airlocks.open[2] = 1; s.airlocks.open[0] = 1;
