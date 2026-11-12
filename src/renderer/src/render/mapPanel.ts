@@ -30,7 +30,7 @@ export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(m
         if (nd.current) { g.circle(x, y, 6).fill(TEXT); g.circle(x, y, 10).stroke({ width: 2, color: TEXT }); }
         else if (nd.selected) { g.circle(x, y, 6).fill(WARN); g.circle(x, y, 10).stroke({ width: 2, color: WARN }); }
         else if (nd.past) g.circle(x, y, 6).fill(FAINT);
-        else g.circle(x, y, 6).stroke({ width: 1, color: nd.reachable ? TEXT : DIM });
+        else g.circle(x, y, 6).fill(0x101420).stroke({ width: 1, color: nd.reachable ? TEXT : DIM });
         const label = c === last ? 'EXIT' : nd.type === 'shop' ? '$' : nd.type === 'event' ? '?' : '';
         if (label && mi < marks.length) { const t = marks[mi++]!; t.text = label; t.position.set(x, y + 12); t.visible = true; }
       }));

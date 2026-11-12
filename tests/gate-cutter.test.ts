@@ -13,7 +13,7 @@ import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 
 const FIVE_MINUTES = seconds(300);
 
-describe('increment 1 gate: two bots survive five minutes', () => {
+describe('gate-cutter: two bots survive five minutes on the cutter', () => {
   for (const seed of [1, 2, 3]) {
     it(`seed ${seed}`, () => {
       const s = createSimState(parseShip(cutter), 2, seed, DEFAULT_CHARACTERS);

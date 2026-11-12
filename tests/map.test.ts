@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { buildHudModel, mapTitle } from '../src/renderer/src/render/hudModel';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { RUN_COLUMNS } from '../src/renderer/src/sim/tuning';
-import { makeState, mapM, setNodeTypes, seatNavigator, chargeJump, quiet } from './helpers/sim';
+import { navRows } from '../src/renderer/src/sim/run';
+import { makeState, mapM, setNodeTypes, seatNavigator, chargeJump, quiet, setEvent, grantScrap } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: `kb:${i}` }));
 const build = (s: ReturnType<typeof makeState>, phase: 'running' | 'paused' = 'running') => buildHudModel(s, slots(2), phase, '').map;
@@ -42,5 +43,21 @@ describe('sector map model', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; seatNavigator(s, 0);
     s.run.jumpCharge = 0.64; expect(mapTitle(build(s)!)).toBe('SECTOR MAP   node 2/8   Jump 64%');
     chargeJump(s); expect(mapTitle(build(s)!)).toBe('SECTOR MAP   node 2/8   Jump READY');
+  });
+  it('a pending event selects nothing but the next column stays reachable', () => {
+    const s = makeState(2); quiet(s); mapM(s); const n = seatNavigator(s, 0); s.stations.cursor[n] = 0; setEvent(s, 0);
+    const m = build(s)!, flat = m.columns.flatMap((c) => c.nodes);
+    expect(flat.some((x) => x.selected)).toBe(false);
+    expect(m.columns[1]!.nodes.map((x) => x.reachable)).toEqual([true, false, true]);
+  });
+  it('a shop node selects nothing on a buy row, and exactly the destination on a jump row', () => {
+    const s = makeState(2); quiet(s); mapM(s); setNodeTypes(s, { '0:0': NodeType.Shop }); grantScrap(s, 100);
+    const n = seatNavigator(s, 0); s.stations.cursor[n] = 1;
+    expect(navRows(s)[1]!.select).toBe('buy');
+    expect(build(s)!.columns.flatMap((c) => c.nodes).some((x) => x.selected)).toBe(false);
+    const j = navRows(s).findIndex((r) => r.select === 'jump'); expect(j).toBeGreaterThan(1);
+    s.stations.cursor[n] = j;
+    const sel = build(s)!.columns.flatMap((c, ci) => c.nodes.map((x, k) => ({ ci, k, x }))).filter((e) => e.x.selected);
+    expect(sel.length).toBe(1); expect(sel[0]!.ci).toBe(1);
   });
 });

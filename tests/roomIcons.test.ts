@@ -44,11 +44,28 @@ describe('roomIcons', () => {
     expect(roomName(s, roomIcons(s).find((i) => i.kind === 'reactor')!.room)).toBeTruthy();
   });
 
+  it('Engineering at level 0 and not failed stays normal (never unpowered)', () => {
+    const s = cut(), e = s.derived.stationOfKind[StationKind.Engineering]!;
+    s.stations.level[e] = 0;
+    expect(roomIcons(s).find((i) => i.kind === 'engineering')!.tint).toBe('normal');
+  });
+
+  it('cutter: the Bridge glyph sits at (880, 208), tile (27, 6) centre', () => {
+    const ic = roomIcons(cut()).find((i) => i.kind === 'navigation')!;
+    expect([ic.x, ic.y]).toEqual([880, 208]);
+  });
+
   it('the HUD rows carry the same icon and tint', () => {
     const s = makeState(), w = s.derived.stationOfKind[StationKind.Weapons]!;
     failStation(s, w);
     const m = buildHudModel(s, [], 'running', '');
     const st = m.stations.find((x) => x.kind === StationKind.Weapons)!;
     expect(st.icon).toBe('weapons'); expect(st.iconTint).toBe(stationTint(s, w)); expect(st.iconTint).toBe('failed');
+  });
+
+  it('a HUD power row with Weapons at level 0 (not failed) is unpowered', () => {
+    const s = makeState(), w = s.derived.stationOfKind[StationKind.Weapons]!;
+    s.stations.level[w] = 0;
+    expect(buildHudModel(s, [], 'running', '').stations.find((x) => x.kind === StationKind.Weapons)!.iconTint).toBe('unpowered');
   });
 });

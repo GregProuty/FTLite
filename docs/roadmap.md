@@ -14,10 +14,10 @@ Written 2026-11-10 when the owner asked for an autonomous run through the featur
 | 8 | **Run-i Sector map and jumps:** a run becomes a sequence of encounters joined by jumps from a node map; hull and crew persist; survival time becomes nodes reached | sub-project 4 | merged |
 | 9 | **Run-ii Events and shops:** text events with choices at nodes, scrap as a resource, repairs and upgrades (station max levels, torpedo stock, hull) at shops | sub-project 4 | merged |
 | 10 | **Run-iii Progression and permadeath:** run end and scoring, unlocks across runs kept on disk, a ship quirk per run ("the ship as a character"), restart flow | sub-project 4, §14 | merged |
+| 11 | **Demo-i Demo ready:** controls card, a run notice both players can read, two-player balance with a duo health gate, a bot that jumps and resolves events so the soak covers the run, a scripted two-player playtest as the acceptance gate | sub-project 4 | in review |
+| 12 | **Demo-ii Visible combat and sound:** repaired consoles return powered (pool permitting) and read OFF otherwise, a drawn enemy with shield ring and weapon bar, seven synthesized audio cues | sub-project 4 | merged (manual gate pending) |
+| 13 | **Demo-iii Ship and map:** an FTL-style cutter ship for the app, original system glyphs in rooms and power rows, a sector map at Navigation | sub-project 4 | in review |
 
 Deferred beyond this list: networking (sub-project 5), a solo drone, the shared luck resource, procedural ships.
 
 Each feature's spec and plan live in `docs/superpowers/specs/` and `docs/superpowers/plans/` with the date prefix; gates are appended to `docs/gates.md`; the execution ledger is `.superpowers/sdd/progress.md`.
-| 11 | **Demo-i Demo ready:** controls card, a run notice both players can read, two-player balance with a duo health gate, a bot that jumps and resolves events so the soak covers the run, a scripted two-player playtest as the acceptance gate | sub-project 4 | in review |
-| 12 | **Demo-ii Visible combat and sound:** repaired consoles return powered (pool permitting) and read OFF otherwise, a drawn enemy with shield ring and weapon bar, seven synthesized audio cues | sub-project 4 | merged (manual gate pending) |
-| 13 | **Demo-iii Ship and map:** an FTL-style cutter ship for the app, original system glyphs in rooms and power rows, a sector map at Navigation | sub-project 4 | in review |
