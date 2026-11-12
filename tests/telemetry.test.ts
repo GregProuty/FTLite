@@ -82,7 +82,7 @@ describe('telemetry: manned ticks and idle streaks', () => {
     sitDown(s, 0, n); run(s, 1); run(s, 1, () => intents({ cancelPressed: true })); run(s, 9);
     expect(s.telemetry.longestIdle[0]).toBe(50);                   // a shorter streak does not lower it
   });
-  it('a repair tick is active; a revive tick is active for the reviver only; Downed and Dead ticks are idle', () => {
+  it('a repair tick is active; a revive tick is active for every reviver (shared, spec Coop-i amendment C3); Downed and Dead ticks are idle', () => {
     const s = makeState(2); quiet(s); const G = room(s, 'G');
     igniteRoom(s, G); teleport(s, 0, 2.5, 9.5); teleport(s, 1, 3.5, 9.5);
     run(s, 10, () => intents(hold, {}));
@@ -94,7 +94,7 @@ describe('telemetry: manned ticks and idle streaks', () => {
     const third = makeState(3); quiet(third);
     downCrew(third, 2); teleport(third, 0, 2.5, 9.5); teleport(third, 1, 2.5, 9.5); teleport(third, 2, 2.5, 9.5);
     run(third, 5, () => intents(hold, hold, {}));
-    expect(third.telemetry.idleRun[0]).toBe(0); expect(third.telemetry.idleRun[1]).toBe(5);   // pid 1 also holds Interact but is not the arbitrated reviver
+    expect(third.telemetry.idleRun[0]).toBe(0); expect(third.telemetry.idleRun[1]).toBe(0);   // pid 1 also holds Interact: reviving is shared, so it works too
     const d = makeState(2); quiet(d); run(d, 3);
     downCrew(d, 1); run(d, 2);                                       // Downed ticks are idle
     expect(d.telemetry.idleRun[1]).toBe(5);

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { TEAM_MULT as TM2 } from '../src/renderer/src/sim/tuning';
 import fc from 'fast-check';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
@@ -483,5 +484,14 @@ describe('snapshot: the Coop-i fields (spec Coop-i section 5)', () => {
     expect([t.enemy.shieldRotateTick, t.enemy.lockUntilTick, t.telemetry.lockedShots]).toEqual([4321, 777, 3]);
     expect(hashState(t)).toBe(hashState(s));
     for (const poke of [() => { s.enemy.shieldRotateTick++; }, () => { s.enemy.lockUntilTick++; }, () => { s.telemetry.lockedShots++; }]) { const h = hashState(s); poke(); expect(hashState(s)).not.toBe(h); }
+  });
+});
+
+describe('snapshot: teamSeconds (spec Coop-i section 2)', () => {
+  it('round-trips teamSeconds; it alone changes the hash', () => {
+    const s = makeState(2, 6); run(s, 20); s.telemetry.teamSeconds = 2.5 * TM2;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect(t.telemetry.teamSeconds).toBe(2.5 * TM2); expect(hashState(t)).toBe(hashState(s));
+    const h = hashState(s); s.telemetry.teamSeconds += 1 / 60; expect(hashState(s)).not.toBe(h);
   });
 });

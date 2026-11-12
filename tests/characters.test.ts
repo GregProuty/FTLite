@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { TEAM_MULT } from '../src/renderer/src/sim/tuning';
 import { CHARACTERS, RECRUIT, DEFAULT_CHARACTERS, Asset, Complication, characterOf, repairTraitMult, speedMult, fireDamageMult, o2DamageMult, xpMult, coolingTraitBonus, bleedoutMult } from '../src/renderer/src/sim/characters';
 import { Skill, xpIndex, skillCurve } from '../src/renderer/src/sim/skills';
 import { createSimState } from '../src/renderer/src/sim/state';
@@ -99,7 +100,7 @@ describe('trait effects', () => {
     run(pw, 4, () => intents({ interactHeld: true })); expect(pw.stations.failed[eng]).toBe(0);
     const two = makeState(2, 1, DEFAULT_CHARACTERS), G2 = room(two, 'G'); two.director.nextSpawnTick = 1e9; igniteRoom(two, G2); teleport(two, 0, 2.5, 9.5); teleport(two, 1, 3.5, 9.5);
     run(two, 1, () => intents({ interactHeld: true }, { interactHeld: true }));
-    expect(two.rooms.fireRepair[G2]).toBeCloseTo(DT * (m + 1) / REPAIR_TIME_FIRE, 12);                   // Okoro's 1.475 plus Lindqvist's 1 (Repair 0, no repair trait)
+    expect(two.rooms.fireRepair[G2]).toBeCloseTo(TEAM_MULT * DT * (m + 1) / REPAIR_TIME_FIRE, 12);        // Okoro's 1.475 plus Lindqvist's 1 (Repair 0, no repair trait), both at TEAM_MULT together (spec Coop-i amendment C5)
     const rv = makeState(2, 1, DEFAULT_CHARACTERS); rv.director.nextSpawnTick = 1e9;
     Life.state[rv.crew[1]!] = LifeState.Downed; Life.bleed[rv.crew[1]!] = 30; teleport(rv, 0, 2.5, 9.5); teleport(rv, 1, 3.0, 9.5);
     run(rv, seconds(REVIVE_TIME) - 2, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Downed);

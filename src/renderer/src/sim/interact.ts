@@ -12,7 +12,7 @@ import { repairStation } from './power';
 import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER } from './tuning';
 import { Skill, skillLevelOf, repairMult, addXp } from './skills';
 import { repairTraitMult } from './characters';
-import { XP_RATE, DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME } from './tuning';
+import { XP_RATE, DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, TEAM_MULT } from './tuning';
 
 export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3, Power: 4, Fight: 5 } as const;
 export interface Target { kind: number; index: number }
@@ -107,26 +107,36 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
     sitDown(state, pid, i); state.scratch.satThisTick[pid] = 1;
     targets[pid] = NONE;                                                            // a player who sits this tick repairs or revives nothing this tick
   }
-  // Revive arbitration: keep the current reviver if still trying, else the lowest pid trying.
+  // Hands together (spec Coop-i section 2, amendments C3 and C5): holders per exact (kind, index); two or more each work at TEAM_MULT, and teamSeconds counts once per such target per tick.
+  const holders = new Map<number, number>();
+  const key = (t: Target): number => t.kind * 4096 + t.index;
+  for (const t of targets) if (t.kind !== TargetKind.None && t.kind !== TargetKind.Fight) holders.set(key(t), (holders.get(key(t)) ?? 0) + 1);
+  const teamed = new Set<number>();
+  const mult = (t: Target): number => {
+    if ((holders.get(key(t)) ?? 0) < 2) return 1;
+    if (!teamed.has(key(t))) { teamed.add(key(t)); state.telemetry.teamSeconds += DT; }
+    return TEAM_MULT;
+  };
+  // Revive, shared (amendment C3): every Conscious holder on the downed pid adds progress; reviverPid keeps the current reviver if still trying, else the lowest pid trying (for display).
   for (let other = 0; other < state.playerCount; other++) {
     const o = state.crew[other]!;
     if (Life.state[o] !== LifeState.Downed) continue;
     const trying: number[] = [];
     for (let pid = 0; pid < state.playerCount; pid++) if (targets[pid]!.kind === TargetKind.Revive && targets[pid]!.index === other) trying.push(pid);
     const current = Life.reviverPid[o]!;
-    const reviver = trying.includes(current) ? current : (trying[0] ?? -1);
-    Life.reviverPid[o] = reviver;
-    if (reviver >= 0) {
-      state.scratch.activeThisTick[reviver] = 1;
-      Life.reviveProgress[o] = Math.min(1, Life.reviveProgress[o]! + DT / REVIVE_TIME);
+    Life.reviverPid[o] = trying.includes(current) ? current : (trying[0] ?? -1);
+    if (trying.length) {
+      const m = mult({ kind: TargetKind.Revive, index: other });
+      for (const pid of trying) state.scratch.activeThisTick[pid] = 1;
+      Life.reviveProgress[o] = Math.min(1, Life.reviveProgress[o]! + trying.length * m * DT / REVIVE_TIME);
       if (Life.reviveProgress[o] >= 1) reviveCrew(state, o);
     } else {
       Life.reviveProgress[o] = Math.max(0, Life.reviveProgress[o]! - DT / REVIVE_TIME);
     }
   }
-  // Repair: every holder adds progress.
+  // Repair: every holder adds progress, at TEAM_MULT with company.
   for (let pid = 0; pid < state.playerCount; pid++) {
-    const t = targets[pid]!, level = skillLevelOf(state, pid, Skill.Repair), trait = repairTraitMult(state, pid);
+    const t = targets[pid]!, level = skillLevelOf(state, pid, Skill.Repair), trait = repairTraitMult(state, pid) * (t.kind === TargetKind.Fire || t.kind === TargetKind.Breach || t.kind === TargetKind.Power ? mult(t) : 1);
     if (t.kind === TargetKind.Fight) {
       if (!state.boarders.active[t.index]) continue;                                 // an earlier holder this tick already killed it
       damageBoarder(state, t.index, combatDps(skillLevelOf(state, pid, Skill.Combat)) * DT, pid);

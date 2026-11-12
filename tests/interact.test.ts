@@ -7,7 +7,10 @@ import { DoorState } from '../src/renderer/src/sim/grid';
 import { REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REVIVE_TIME, HEALTH_MAX, REVIVE_HEALTH_FRAC, REPAIR_TIME_POWER, REPAIR_SKILL_GAIN } from '../src/renderer/src/sim/tuning';
 import { makeState, intents, run, teleport, room, seconds, setSkill } from './helpers/sim';
 import { failStation } from '../src/renderer/src/sim/power';
-import { Skill } from '../src/renderer/src/sim/skills';
+import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
+import { TEAM_MULT, DT, XP_RATE } from '../src/renderer/src/sim/tuning';
+import { quiet } from './helpers/sim';
+import type { SimState } from '../src/renderer/src/sim/state';
 
 describe('targets', () => {
   it('fire in own room is a target anywhere in the room; none when nothing is near', () => {
@@ -108,7 +111,7 @@ describe('interactSystem', () => {
     expect(Life.state[downed]).toBe(LifeState.Conscious);
     expect(Health.cur[downed]).toBe(HEALTH_MAX * REVIVE_HEALTH_FRAC);
   });
-  it('only the lowest PlayerId revives when two players try at once', () => {
+  it('two players reviving at once both add progress, each at TEAM_MULT (spec Coop-i amendment C3); reviverPid names the lowest', () => {
     const s = makeState(3);
     const downed = s.crew[2]!;              // spawns at (4.5, 9.5)
     teleport(s, 0, 3.5, 10.5);             // both P1 and P2 within REACH of the casualty
@@ -116,7 +119,8 @@ describe('interactSystem', () => {
     Life.state[downed] = LifeState.Downed; Life.bleed[downed] = 30;
     run(s, 10, () => intents({ interactHeld: true }, { interactHeld: true }));
     expect(Life.reviverPid[downed]).toBe(0);
-    expect(Life.reviveProgress[downed]).toBeCloseTo(10 / 60 / REVIVE_TIME, 5); // not doubled
+    expect(Life.reviveProgress[downed]).toBeCloseTo(10 * 2 * TEAM_MULT / 60 / REVIVE_TIME, 9);
+    expect(s.scratch.activeThisTick[1]).toBe(1);
   });
   it('Confirm at a door toggles its seal', () => {
     const s = makeState(1);
@@ -156,5 +160,57 @@ describe('repair skill', () => {
     Life.state[rv.crew[1]!] = LifeState.Downed; Life.bleed[rv.crew[1]!] = 30; teleport(rv, 0, 2.5, 9.5); teleport(rv, 1, 3.0, 9.5);
     run(rv, seconds(REVIVE_TIME) - 2, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Downed);
     run(rv, 3, () => intents({ interactHeld: true }, {})); expect(Life.state[rv.crew[1]!]).toBe(LifeState.Conscious);
+  });
+});
+
+describe('hands together (spec Coop-i section 2, amendments C3 and C5)', () => {
+  const held = (n: number) => () => intents(...Array.from({ length: n }, () => ({ interactHeld: true })));
+  /** Ticks until done() holds, all n players holding Interact. */
+  const ticksTo = (s: SimState, n: number, done: () => boolean): number => { let k = 0; while (!done() && k < 3000) { run(s, 1, held(n)); k++; } return k; };
+  const fireAt = (n: number) => { const s = makeState(Math.max(n, 1)); quiet(s); const G = room(s, 'G'); igniteRoom(s, G); for (let p = 0; p < n; p++) teleport(s, p, 3.5, 9.5); return { s, G }; };
+  const solo = seconds(REPAIR_TIME_FIRE);
+  it('a fire: two equal crew finish in 1 / 2.5 of the solo time, three in 1 / 3.75 (to the tick)', () => {
+    const one = fireAt(1); const t1 = ticksTo(one.s, 1, () => one.s.rooms.fire[one.G] === 0);
+    const two = fireAt(2); const t2 = ticksTo(two.s, 2, () => two.s.rooms.fire[two.G] === 0);
+    const three = fireAt(3); const t3 = ticksTo(three.s, 3, () => three.s.rooms.fire[three.G] === 0);
+    expect(Math.abs(t1 - solo)).toBeLessThanOrEqual(1);
+    expect(Math.abs(t2 - solo / 2.5)).toBeLessThanOrEqual(1);
+    expect(Math.abs(t3 - solo / 3.75)).toBeLessThanOrEqual(1);
+  });
+  it('per-person XP is unchanged: each holder earns XP_RATE x DT per tick it works; teamSeconds counts once per target per tick', () => {
+    const { s, G } = fireAt(3); run(s, 30, held(3));
+    expect(s.rooms.fire[G]).toBeGreaterThan(0);
+    for (let p = 0; p < 3; p++) expect(s.skills.xp[xpIndex(p, Skill.Repair)]).toBeCloseTo(30 * XP_RATE * DT, 9);
+    expect(s.telemetry.teamSeconds).toBeCloseTo(30 * DT, 9);
+    const one = fireAt(1); ticksTo(one.s, 1, () => one.s.rooms.fire[one.G] === 0); expect(one.s.telemetry.teamSeconds).toBe(0);
+  });
+  it('crew on different targets get nothing: two fires in two rooms each take the solo time', () => {
+    const s = makeState(2); quiet(s); const G = room(s, 'G'), C = room(s, 'C'); igniteRoom(s, G); igniteRoom(s, C);
+    teleport(s, 0, 3.5, 9.5); teleport(s, 1, 18.5, 9.5);
+    const t = ticksTo(s, 2, () => s.rooms.fire[G] === 0 && s.rooms.fire[C] === 0);
+    expect(Math.abs(t - solo)).toBeLessThanOrEqual(1); expect(s.telemetry.teamSeconds).toBe(0);
+  });
+  it('a breach and a failed station the same: 2.5 times one person', () => {
+    const b1 = makeState(1); quiet(b1); activateBreach(b1, 6); teleport(b1, 0, 2.5, 10.5);
+    const b2 = makeState(2); quiet(b2); activateBreach(b2, 6); teleport(b2, 0, 2.5, 10.5); teleport(b2, 1, 2.5, 10.5);
+    const tb1 = ticksTo(b1, 1, () => b1.breaches.active[6] === 0), tb2 = ticksTo(b2, 2, () => b2.breaches.active[6] === 0);
+    expect(Math.abs(tb1 - seconds(REPAIR_TIME_BREACH))).toBeLessThanOrEqual(1); expect(Math.abs(tb2 - seconds(REPAIR_TIME_BREACH) / 2.5)).toBeLessThanOrEqual(1);
+    const p1 = makeState(1), p2 = makeState(2); quiet(p1); quiet(p2); const eng = p1.derived.stationOfKind[3]!;
+    failStation(p1, eng); failStation(p2, eng); teleport(p1, 0, 18.5, 9.5); teleport(p2, 0, 18.5, 9.5); teleport(p2, 1, 18.5, 9.5);
+    const tp1 = ticksTo(p1, 1, () => p1.stations.failed[eng] === 0), tp2 = ticksTo(p2, 2, () => p2.stations.failed[eng] === 0);
+    expect(Math.abs(tp1 - seconds(REPAIR_TIME_POWER))).toBeLessThanOrEqual(1); expect(Math.abs(tp2 - seconds(REPAIR_TIME_POWER) / 2.5)).toBeLessThanOrEqual(1);
+  });
+  it('a revive: one alone takes REVIVE_TIME, two together 1 / 2.5 of it', () => {
+    const one = makeState(2); quiet(one); Life.state[one.crew[1]!] = LifeState.Downed; Life.bleed[one.crew[1]!] = 30;
+    const t1 = ticksTo(one, 1, () => Life.state[one.crew[1]!] === LifeState.Conscious);
+    const two = makeState(3); quiet(two); const d = two.crew[2]!; teleport(two, 0, 3.5, 10.5); teleport(two, 1, 3.5, 9.5); Life.state[d] = LifeState.Downed; Life.bleed[d] = 30;
+    const t2 = ticksTo(two, 2, () => Life.state[d] === LifeState.Conscious);
+    expect(Math.abs(t1 - seconds(REVIVE_TIME))).toBeLessThanOrEqual(1); expect(Math.abs(t2 - seconds(REVIVE_TIME) / 2.5)).toBeLessThanOrEqual(1);
+    expect(two.telemetry.teamSeconds).toBeCloseTo(t2 * DT, 9);
+  });
+  it('unequal crew do 1.25 x (rate A + rate B) (amendment C5)', () => {
+    const s = makeState(2); quiet(s); const G = room(s, 'G'); igniteRoom(s, G); teleport(s, 0, 3.5, 9.5); teleport(s, 1, 3.5, 9.5); setSkill(s, 0, Skill.Repair, 5);
+    run(s, 1, held(2));
+    expect(s.rooms.fireRepair[G]).toBeCloseTo(TEAM_MULT * DT * ((1 + 5 * REPAIR_SKILL_GAIN) + 1) / REPAIR_TIME_FIRE, 12);
   });
 });
