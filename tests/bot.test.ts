@@ -33,7 +33,7 @@ describe('the captain bot (spec Demo-i section 6)', () => {
     }
     expect(seatedAt).toBeGreaterThan(0); expect(seatedAt).toBeLessThanOrEqual(1200);
     expect(jumpAt).toBeGreaterThan(0); expect(jumpAt).toBeLessThanOrEqual(1500);
-    expect(stoodAt - jumpAt).toBeLessThanOrEqual(120);
+    expect(stoodAt).toBeGreaterThanOrEqual(jumpAt); expect(stoodAt - jumpAt).toBeLessThanOrEqual(120);   // the bot really stood, within two seconds of the jump
   });
   it('(2) takes each event\'s safe choice: supply cache takes the scrap (no station fails); derelict hulk leaves it', () => {
     for (const [id, choice] of [[4, 0], [0, 1]] as const) {
