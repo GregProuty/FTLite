@@ -1,4 +1,4 @@
-import starter from './sim/ship/starter.json';
+import cutter from './sim/ship/cutter.json';
 import { parseShip } from './sim/ship/schema';
 import { loadAssets } from './render/assets';
 import { createRenderer } from './render/renderer';
@@ -24,7 +24,7 @@ ${err instanceof Error ? err.message : String(err)}`;
 }
 
 async function start(): Promise<void> {
-  const layout = parseShip(starter);          // throws with a clear message on invalid ship data (spec §9)
+  const layout = parseShip(cutter);          // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   const hud = createHud(renderer.hud, assets);
