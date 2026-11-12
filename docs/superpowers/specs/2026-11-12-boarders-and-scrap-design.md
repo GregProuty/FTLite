@@ -10,7 +10,7 @@ Today `boarders.ts` never reads oxygen or fire: venting a room or letting it bur
 - This damage goes through a variant of `damageBoarder` with no killer (`pid = −1`). A boarder killed this way still pays `SCRAP_BOARDER` and counts in `telemetry.boardersKilled`; no XP is awarded. A new telemetry counter `boardersVented` counts these deaths (flattened after the last telemetry scalar).
 - Boarders do not flee vacuum or fire. Their movement rules are unchanged, which is what makes venting a trap worth setting.
 - Order: hazard damage is applied in `boarderSystem` before boarder movement and melee, ascending slot. There are no new random draws.
-- `SIM_VERSION` +1 (whatever follows Demo-viii); the golden re-blessed once.
+- `SIM_VERSION` 21 (after Demo-viii's 20, amendment B5); the golden re-blessed once.
 
 ## 2. Scrap scales with the column
 
@@ -41,4 +41,12 @@ Helpers live in `tuning.ts`, for example `scrapPerJump(column)`. Shop prices are
 
 ## 5. Amendments
 
-(Filled during review and implementation.)
+### Codex review (research/codex-review-demo-viii-interior-and-ix.md), 2026-11-12: findings 5-9 resolved; these rules override sections 1 and 2.
+
+- **B5. Version.** Demo-ix is built on Demo-viii (SIM_VERSION 20) and sets 21.
+- **B6. Hazard deaths.** A separate killBoarderByHazard(state, slot) handles them. It returns if the slot is not active, then pays scrap, counts boardersKilled and boardersVented, deactivates the slot and awards no XP. damageBoarder is unchanged for melee. A slot killed by hazard is skipped by the rest of boarderSystem that tick.
+- **B7. Sampling.** Hazard damage reads each active boarder's room b.room[k] (boarders live in rooms, not tiles) at the start of boarderSystem. That is after crew movement and the hazard step in step.ts, and before boarder movement and melee, in ascending slot.
+- **B8. Displayed amounts.** Every notice that prints a reward uses the same column helper as the code that pays it: the surrender line in hudModel.ts (today SCRAP_SURRENDER directly), the field-cleared notice and any shop or run text that quotes a reward. Each payout reads run.column at the moment it is paid. The per-jump scrap is paid in arrive after the jump has advanced the column, so it uses the new column.
+- **B9. Telemetry.** boardersVented is both flattened and exposed in the telemetry record next to boardersKilled.
+
+(Implementation amendments follow.)

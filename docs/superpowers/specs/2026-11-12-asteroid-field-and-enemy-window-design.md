@@ -86,4 +86,12 @@ The draw comes after the hit draw and the hull-room draw, so the draw order is f
 
 ## 5. Amendments
 
-(Filled during review and implementation.)
+### Codex review of section 2b (research/codex-review-demo-viii-interior-and-ix.md), 2026-11-12: findings 1-5 resolved; these rules override section 2b.
+
+- **I1. Draw order.** A miss or a stripped shield layer makes no draw beyond today's hit draw. Only a hull or system hit that reaches damageEnemy makes more: first the hull-room draw (hull row only), then the problem draw.
+- **I2. Lethal interior damage.** Interior damage runs inside the interior step while the enemy is present. The first time hull reaches 0, it calls leave(state, true) and the interior step returns at once, so no other room is processed that tick. leave gains a guard: if the enemy is not present it does nothing, so a second call is harmless.
+- **I3. Tick order.** The interior step is the first thing enemySystem does for a present enemy, before repairs, shield recharge, the flee start, withdrawal and the due shot. An enemy destroyed by fire that tick fires no shot and does not withdraw. A fire that drops Weapons to 0 this tick blocks a shot due this tick, by the existing rule that a shot needs weapons up.
+- **I4. Plumbing.** roomFire and roomBreach are created in createSimState (zeroed), cleared in arrive and leave, flattened right after lastHitTick (roomFire then roomBreach, 5 values each), with the field count and unflatten updated. Tests cover the round trip and the hash.
+- **I5. Versions.** Demo-viii sets SIM_VERSION 20. Demo-ix depends on it and sets 21.
+
+(Implementation amendments follow.)
