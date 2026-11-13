@@ -10,6 +10,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { ENEMY_SYS_HP, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, TICK_HZ, ENEMY_ROOMS, SHIELD_ROTATE } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, placeEnemy, disableSystem, placeDebris, room } from './helpers/sim';
+import { textPx } from '../src/renderer/src/render/theme';
 
 const T = TICK_HZ;
 const present = () => { const s = makeState(2); quiet(s); s.tick = 6000; placeEnemy(s); s.enemy.nextShotTick = s.tick + 600; s.enemy.shotArmTick = s.tick; return s; };
@@ -51,7 +52,7 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     const s = present(); expect(view(s).hullPips).toEqual({ lit: 10, total: 10 });
     s.enemy.hull = 0.35 * s.enemy.maxHull; expect(view(s).hullPips).toEqual({ lit: 4, total: 10 });
     s.enemy.hull = 0; expect(view(s).hullPips.lit).toBe(0);
-    expect(view(s).frequency).toBeNull(); s.enemy.scanned = 1; s.enemy.shieldFreq = 3; expect(view(s).frequency).toBe(`F3 ${SHIELD_ROTATE}s`);
+    expect(view(s).frequency).toBeNull(); s.enemy.scanned = 1; s.enemy.shieldFreq = 3; expect(view(s).frequency).toBe(`freq 3  ${SHIELD_ROTATE}s`);
     s.tick = s.enemy.shotArmTick + 300; expect(view(s).charge).toBeCloseTo(0.5, 9);
     disableSystem(s, EnemySystem.Weapons); expect(view(s).charge).toBeNull();
   });
@@ -135,9 +136,9 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
 describe('the window frequency and its rotate countdown (spec Coop-i section 1)', () => {
   it('shows the frequency only while it is current, with the seconds to the next rotation; no countdown while the shields system is down', () => {
     const s = present(); s.enemy.scanned = 1; s.enemy.shieldFreq = 2;
-    expect(view(s).frequency).toBe(`F2 ${SHIELD_ROTATE}s`);
-    s.tick += 5.5 * T; expect(view(s).frequency).toBe(`F2 ${SHIELD_ROTATE - 5}s`);
-    disableSystem(s, EnemySystem.Shields); expect(view(s).frequency).toBe('F2');
+    expect(view(s).frequency).toBe(`freq 2  ${SHIELD_ROTATE}s`);
+    s.tick += 5.5 * T; expect(view(s).frequency).toBe(`freq 2  ${SHIELD_ROTATE - 5}s`);
+    disableSystem(s, EnemySystem.Shields); expect(view(s).frequency).toBe('freq 2');
     s.enemy.sysHp[EnemySystem.Shields] = ENEMY_SYS_HP; s.enemy.scanned = 0; expect(view(s).frequency).toBeNull();   // a rotation clears the scan: the old frequency is never shown
   });
 });
@@ -151,5 +152,19 @@ describe('enemy window: ion-disabled rooms', () => {
     expect(v.rooms.map((r) => r.ionIn)).toEqual([null, null, 8, null, null]); expect(v.rooms[2]!.repairIn).toBeNull();
     disableSystem(s, EnemySystem.Shields); expect(view(s).rooms[2]!.tint).toBe('down');
     s.tick = s.enemy.ionUntil[EnemySystem.Shields]!; s.enemy.sysHp[EnemySystem.Shields] = ENEMY_SYS_HP; expect(view(s).rooms[2]!.tint).toBe('normal');
+  });
+});
+
+describe('the shot-result line under the status (spec Demo-xiv section 2)', () => {
+  it('shows the last shot at an enemy room for three seconds, in place of the problem line; none for a debris shot', () => {
+    const s = present(); s.enemy.scanned = 1; s.enemy.shieldFreq = 2; s.enemy.roomFire[EnemyRoom.Weapons] = 1;
+    Object.assign(s.weapons, { lastShotTick: s.tick, lastShotTarget: ENEMY_SHIELDS_SLOT, lastShotResult: 1, lastShotSelector: 0, lastShotDamage: 0 });
+    expect(view(s).shot).toEqual({ text: 'Shield stripped (freq 1, needs 2)', tone: 'strip' });
+    s.tick += 3 * T; expect(view(s).shot).toBeNull();
+    s.weapons.lastShotTick = s.tick; s.weapons.lastShotTarget = 0; s.weapons.lastShotResult = 2; expect(view(s).shot).toBeNull();
+  });
+  it('the corner reads freq N with the re-tune countdown, within the window beside the hull pips', () => {
+    const s = present(); s.enemy.scanned = 1; s.enemy.shieldFreq = 3;
+    expect(textPx(view(s).frequency!)).toBeLessThanOrEqual(WINDOW.w - 2 * SHIP_MARGIN - 10 * 18);
   });
 });

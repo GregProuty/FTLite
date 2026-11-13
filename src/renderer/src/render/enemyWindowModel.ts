@@ -5,6 +5,7 @@ import { StationKind } from '../sim/stationKinds';
 import { beaconKey } from '../sim/run';
 import { TICK_HZ, ENEMY_SYS_HP, ENEMY_ROOMS, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS } from '../sim/tuning';
 import { ENEMY_LAYOUT, ENEMY_TILE, ENEMY_COLS, ENEMY_ROWS } from './enemyShipLayout';
+import { shotResult, type ShotResult } from './shotResult';
 
 /** The enemy ship window (spec Demo-viii section 2, amendments R1-R4): pure state -> picture data, no Pixi. Every position is in window pixels unless named otherwise. */
 export const WINDOW = { x: 872, y: 114, w: 400, h: 340 } as const;   // the right column under the threats panel (spec Demo-x-c section 3)
@@ -25,6 +26,8 @@ export interface EnemyWindowView {
   shield: { layers: number; max: number; down: boolean; flash: boolean };
   hullPips: { lit: number; total: number };
   frequency: string | null; charge: number | null; status: string; problem: string | null;
+  /** Our last shot at an enemy room while its result shows (spec Demo-xiv section 2); drawn under the status in place of the problem line. */
+  shot: ShotResult | null;
   /** The ship's name over the window: THE WARDEN at the final beacon (spec Loop-iv section 2), else none. */
   title: string | null;
   reticle: { room: number } | null;   // the targeted room (spec Demo-x-c section 4: every target is a room)
@@ -36,7 +39,7 @@ export interface EnemyWindowView {
 export interface WindowAnim { node: number; tick: number; present: boolean; destroyed: number; arriveTick: number; goneTick: number; gone: 'destroyed' | 'leaving' | null; last: EnemyWindowView | null }
 
 const GLYPHS: readonly (RoomGlyph | null)[] = ['weapons', 'engines', 'shields', 'piloting', null];
-const HIDDEN: EnemyWindowView = { visible: false, phase: 'present', t: 0, slideX: 0, shipDY: 0, ship: { ...SHIP }, rooms: [], shield: { layers: 0, max: 0, down: true, flash: false }, hullPips: { lit: 0, total: 10 }, frequency: null, charge: null, status: '', problem: null, title: null, reticle: null, crew: [], bolt: null };
+const HIDDEN: EnemyWindowView = { visible: false, phase: 'present', t: 0, slideX: 0, shipDY: 0, ship: { ...SHIP }, rooms: [], shield: { layers: 0, max: 0, down: true, flash: false }, hullPips: { lit: 0, total: 10 }, frequency: null, charge: null, status: '', problem: null, shot: null, title: null, reticle: null, crew: [], bolt: null };
 
 export function freshWindowAnim(): WindowAnim { return { node: -1, tick: -1, present: false, destroyed: 0, arriveTick: -1, goneTick: -1, gone: null, last: null }; }
 
@@ -119,9 +122,9 @@ function presentView(state: SimState, nowTick: number, anim: WindowAnim): EnemyW
     rooms,
     shield: { layers: e.shieldLayers, max: enemyShieldCap(state), down: e.sysHp[EnemySystem.Shields] === 0, flash: w.lastShotResult === 1 && w.lastShotTick >= 0 && shotAge >= 0 && shotAge < FLASH_TICKS },
     hullPips: { lit: e.maxHull > 0 ? Math.max(0, Math.ceil(e.hull / e.maxHull * 10 - 1e-9)) : 0, total: 10 },
-    frequency: e.scanned ? (() => { const r = rotateSecondsLeft(state); return r === null ? `F${e.shieldFreq}` : `F${e.shieldFreq} ${r}s`; })() : null,   // spec Coop-i section 1: only while current (a re-tune clears the scan), with the re-tune countdown
+    frequency: e.scanned ? (() => { const r = rotateSecondsLeft(state); return r === null ? `freq ${e.shieldFreq}` : `freq ${e.shieldFreq}  ${r}s`; })() : null,   // spec Coop-i section 1: only while current (a re-tune clears the scan), with the re-tune countdown; one notation (spec Demo-xiv section 3)
     charge: e.sysHp[EnemySystem.Weapons] === 0 ? null : enemyWeaponCharge(state),
-    status, title: isWarden(state) ? 'THE WARDEN' : null, problem: first ? `${first.kind}: ${ENEMY_ROOM_NAMES[first.room]}` : null,
+    status, title: isWarden(state) ? 'THE WARDEN' : null, problem: first ? `${first.kind}: ${ENEMY_ROOM_NAMES[first.room]}` : null, shot: isEnemySlot(w.lastShotTarget) ? shotResult(state, nowTick) : null,
     reticle, crew: crewOf(state), bolt,
   };
 }

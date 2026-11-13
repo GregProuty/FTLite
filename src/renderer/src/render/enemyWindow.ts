@@ -8,7 +8,7 @@ import { EnemyRoom } from '../sim/enemy';
 export interface EnemyWindowLayer { container: Container; draw(view: EnemyWindowView, shown: boolean, dt: number, hitFlash: { room: number | 'hull'; alpha: number } | null): void; reset(): void }
 export interface EnemyWindowOptions { fontFamily: string; fire: { textures: Texture[]; fps: number } | null; panel: ((w: number, h: number) => Container) | null }
 
-import { TEXT, DIM, WARN, AMBER, FONT_SIZE, BAR_OFF, CELL_EDGE } from './theme';
+import { TEXT, DIM, WARN, AMBER, GOOD, FONT_SIZE, BAR_OFF, CELL_EDGE } from './theme';
 import { drawPanel } from './panel';
 import { DOOR_FILL, DOOR_OUTLINE } from './doorModel';
 const FAINT = CELL_EDGE;
@@ -151,7 +151,9 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
       // the weapon charge along the bottom, red past 80%; hidden while the enemy weapons are down
       if (view.charge !== null && !destroyed) { const w = WINDOW.w - 2 * SHIP_MARGIN; over.rect(SHIP_MARGIN, CHARGE_Y, w, 4).fill(BAR_OFF); over.rect(SHIP_MARGIN, CHARGE_Y, w * Math.max(0, Math.min(1, view.charge)), 4).fill(view.charge >= 0.8 ? WARN : TEXT); }
       status.text = view.status; status.tint = view.status === 'ENEMY' ? TEXT : WARN;
-      problem.text = view.problem ?? ''; title.text = view.title ?? '';
+      if (view.shot) { problem.text = view.shot.text; problem.tint = view.shot.tone === 'hit' ? GOOD : view.shot.tone === 'strip' ? AMBER : TEXT; }   // the last shot's result for three seconds in place of the problem line (spec Demo-xiv section 2)
+      else { problem.text = view.problem ?? ''; problem.tint = WARN; }
+      title.text = view.title ?? '';
       if (view.reticle) brackets(over, view.rooms[view.reticle.room]!.rect, 3, RETICLE);
     }
   };
