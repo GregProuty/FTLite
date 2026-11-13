@@ -9,6 +9,7 @@ import type { Facing8 } from './assetNames';
 import { facingFromDelta, MOVE_EPS_PX } from './facing';
 import { featureReady } from './fallback';
 import { syncCache } from './cache';
+import { drawTorpedo } from './torpedoLayer';
 
 export const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
 const DEAD_TINT = 0x777777;
@@ -26,6 +27,12 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
   const useSit = featureReady(new Set(assets.missing), 'sit');
   const sprites = new Map<number, CrewSprite>();
   const circles = new Map<number, Graphics>();
+  const carried = new Container(), torps = new Map<number, Graphics>();   // a torpedo in a carrier's arms (spec Coop-ii section 2), drawn over every crew sprite
+  const drawCarried = (state: SimState, eid: number, pid: number, x: number, y: number): void => {
+    const g = torps.get(Stable.id[eid]!)!;
+    g.visible = state.carrying[pid] === 1 && Life.state[eid] === LifeState.Conscious;
+    g.position.set(x * TILE_PX + 2, y * TILE_PX - 6);
+  };
 
   /** Interpolated draw position, and the movement since the last drawn frame (not since the last tick: a paused sim must read as idle). */
   const interpolated = (eid: number, alpha: number): { x: number; y: number; dx: number; dy: number } => {
@@ -47,12 +54,15 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
     container,
     draw(state, alpha) {
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
+      if (carried.parent !== container) container.addChild(carried); else container.setChildIndex(carried, container.children.length - 1);
+      syncCache(torps, liveIds, () => { const g = new Graphics(); drawTorpedo(g, 0, 0, 16); carried.addChild(g); return g; }, (g) => { g.destroy(); });
       if (!useArt) {
         syncCache(circles, liveIds, () => { const g = new Graphics(); container.addChild(g); return g; }, (g, id) => { g.destroy(); memory.prev.delete(id); memory.lastDrawn.delete(id); });
         for (const eid of state.crew) {
           const g = circles.get(Stable.id[eid]!)!, { x, y } = interpolated(eid, alpha), life = Life.state[eid];
           g.clear().circle(0, 0, CREW_HALF * TILE_PX).fill({ color: life === LifeState.Dead ? DEAD_TINT : CREW_COLORS[Owner.pid[eid]! % 4]!, alpha: life === LifeState.Downed ? 0.5 : 1 });
           g.position.set(x * TILE_PX, y * TILE_PX);
+          drawCarried(state, eid, Owner.pid[eid]!, x, y);
         }
         return;
       }
@@ -72,6 +82,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         cs.sprite.tint = life === LifeState.Dead ? DEAD_TINT : CREW_COLORS[Owner.pid[eid]! % 4]!;
         cs.sprite.alpha = life === LifeState.Downed ? 0.85 : 1;
         cs.sprite.position.set(x * TILE_PX, y * TILE_PX);
+        drawCarried(state, eid, Owner.pid[eid]!, x, y);
       }
     }
   };

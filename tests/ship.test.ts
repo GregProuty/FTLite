@@ -130,3 +130,22 @@ describe('airlocks (spec Demo-vii section 1)', () => {
     expect(() => parseShip(withAirlock('A', [2, 0]))).toThrow(/airlock 0: .*breach site/);
   });
 });
+
+describe('the magazine (spec Coop-ii section 2, amendment D4)', () => {
+  it('is optional: the starter has none and its derived tile is -1', () => {
+    expect(parseShip(starter).magazine).toBeUndefined(); expect(deriveLayout(parseShip(starter)).magazineTile).toBe(-1);
+  });
+  it('accepts a floor tile and derives its tile and room; the layout hash changes only when one is present', () => {
+    const s = clone(); (s as Record<string, unknown>).magazine = [1, 1];
+    const d = deriveLayout(parseShip(s));
+    expect(d.magazineTile).toBe(d.width + 1); expect(d.magazineRoom).toBe(d.roomOfTile[d.width + 1]);
+    expect(d.layoutHash).not.toBe(deriveLayout(parseShip(starter)).layoutHash);
+    expect(deriveLayout(parseShip(clone())).layoutHash).toBe(deriveLayout(parseShip(starter)).layoutHash);
+  });
+  it('rejects a wall tile, a door tile and a tile out of bounds', () => {
+    const wall = clone(); (wall as Record<string, unknown>).magazine = [0, 0]; expect(() => parseShip(wall)).toThrow(/magazine/);
+    const off = clone(); (off as Record<string, unknown>).magazine = [99, 2]; expect(() => parseShip(off)).toThrow(/magazine/);
+    const d = deriveLayout(parseShip(starter)), door = d.edgeTile[d.doorEdges[0]!]!;
+    const dr = clone(); (dr as Record<string, unknown>).magazine = [door % d.width, Math.floor(door / d.width)]; expect(() => parseShip(dr)).toThrow(/magazine/);
+  });
+});

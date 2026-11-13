@@ -22,7 +22,8 @@ const shipSchema = z.object({
     allocation: z.number().int('station allocation must be an integer').min(0, 'station allocation must be >= 0')
   })),
   spawns: z.array(tile).min(4),
-  airlocks: z.array(z.object({ room: z.string().length(1), tile })).default([])   // hull doors to space (spec Demo-vii section 1)
+  airlocks: z.array(z.object({ room: z.string().length(1), tile })).default([]),   // hull doors to space (spec Demo-vii section 1)
+  magazine: tile.optional()   // the torpedo magazine, a floor tile (spec Coop-ii section 2); without one the tube loads itself
 }).superRefine((s, ctx) => {
   const fail = (message: string): void => { ctx.addIssue({ code: z.ZodIssueCode.custom, message }); };
   if (s.rows.length !== s.height) return fail(`rows: expected ${s.height} rows (height)`);
@@ -88,6 +89,7 @@ const shipSchema = z.object({
     if (!outside(tx - dx, ty - dy)) return fail(`airlock ${i}: must be on the outer hull (space or out of bounds opposite room ${a.room})`);
     if (s.breachSites.some((b) => b.tile[0] === tx && b.tile[1] === ty)) return fail(`airlock ${i}: tile is a breach site`);
   }
+  if (s.magazine) { const [mx, my] = s.magazine; if (mx >= s.width || my >= s.height || !roomIds.has(at(mx, my))) return fail('magazine: must be a floor tile of a room'); }
   for (let i = 0; i < s.stations.length; i++) {
     const st = s.stations[i]!;
     if (at(st.tile[0], st.tile[1]) !== st.room) return fail(`station ${i}: tile is not in room ${st.room}`);

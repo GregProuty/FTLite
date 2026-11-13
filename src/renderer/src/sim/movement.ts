@@ -4,7 +4,7 @@ import { Position, Life, LifeState, Seated } from './components';
 import { solidAt } from './grid';
 import { intentFor } from './step';
 import { speedMult } from './characters';
-import { CREW_SPEED, CREW_HALF, DT, MOVE_EPS } from './tuning';
+import { CREW_SPEED, CREW_HALF, DT, MOVE_EPS, CARRY_SPEED_MULT } from './tuning';
 
 type Solid = (tx: number, ty: number) => boolean;
 
@@ -62,7 +62,7 @@ export function movementSystem(state: SimState, intents: readonly Intent[]): voi
     if (Seated.station[eid]! >= 0 || state.scratch.stoodThisTick[pid]) continue;
     const it = intentFor(intents, pid);
     if (it.moveX === 0 && it.moveY === 0) continue;
-    const v = CREW_SPEED * speedMult(state, pid) * DT;
+    const v = CREW_SPEED * speedMult(state, pid) * (state.carrying[pid] ? CARRY_SPEED_MULT : 1) * DT;   // a carrier is slower (spec Coop-ii section 2)
     const p = moveAABB(solid, Position.x[eid]!, Position.y[eid]!, it.moveX * v, it.moveY * v, CREW_HALF);
     Position.x[eid] = p.x; Position.y[eid] = p.y;
   }

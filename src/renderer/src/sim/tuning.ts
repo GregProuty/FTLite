@@ -200,3 +200,4 @@ export const HIT_FLASH_TICKS = 12;   // ticks the HUD enemy silhouette flashes a
 export const EVADE_WINDOW = 1.0;     // seconds of an evasive manoeuvre: impacts inside it roll twice the evade chance (spec Coop-ii section 1)
 export const EVADE_COOLDOWN = 6;     // seconds after the manoeuvre before Navigation can start another
 export const EVADE_CAP = 0.8;        // the doubled chance is capped here (amendment D1)
+export const CARRY_SPEED_MULT = 0.8;  // a crew member carrying a torpedo moves at this fraction of their speed (spec Coop-ii section 2)

@@ -507,3 +507,13 @@ describe('snapshot: the evasive manoeuvre (spec Coop-ii section 1)', () => {
     for (const poke of [() => { s.run.evadeUntilTick++; }, () => { s.run.evadeReadyTick++; }, () => { s.telemetry.timedRolls++; }, () => { s.telemetry.timedEvades++; }]) { const h = hashState(s); poke(); expect(hashState(s)).not.toBe(h); }
   });
 });
+
+describe('snapshot: carried torpedoes (spec Coop-ii section 2)', () => {
+  it('round-trips carrying, torpedoFed and torpedoDropTick on the cutter; each alone changes the hash', () => {
+    const s = cutterState(3, 2); run(s, 30); s.carrying[1] = 1; s.weapons.torpedoFed = 1; s.weapons.torpedoDropTick = 17;
+    const snap = JSON.parse(JSON.stringify(saveSnapshot(s))), t = loadSnapshot(CUTTER, snap);
+    expect([t.carrying[0], t.carrying[1], t.weapons.torpedoFed, t.weapons.torpedoDropTick]).toEqual([0, 1, 1, 17]);
+    expect(hashState(t)).toBe(hashState(s));
+    for (const poke of [() => { s.carrying[0] = 1; }, () => { s.weapons.torpedoFed = 0; }, () => { s.weapons.torpedoDropTick++; }]) { const h = hashState(s); poke(); expect(hashState(s)).not.toBe(h); }
+  });
+});

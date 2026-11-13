@@ -53,3 +53,11 @@ describe('the cutter ship', () => {
     expect(deriveLayout(layout).layoutHash).not.toBe(deriveLayout(parseShip({ ...cutter, airlocks: [] })).layoutHash);
   });
 });
+
+describe('the cutter magazine (spec Coop-ii section 2)', () => {
+  it('sits on a floor tile of the Lower Hold (room M)', () => {
+    const layout = parseShip(cutter), d = deriveLayout(layout);
+    expect(layout.magazine).toBeDefined(); expect(d.magazineTile).toBeGreaterThanOrEqual(0);
+    expect(layout.rooms[d.magazineRoom]!.id).toBe('M'); expect(layout.rooms[d.magazineRoom]!.name).toBe('Lower Hold');
+  });
+});

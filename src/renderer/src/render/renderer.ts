@@ -11,6 +11,7 @@ import { createEffectsLayer } from './effects';
 import { createIconLayer } from './roomIcons';
 import { createCrewLayer } from './crewSprites';
 import { createBoarderLayer } from './boarderLayer';
+import { createMagazineLayer } from './torpedoLayer';
 import { createProjectileLayer } from './projectiles';
 import { createEnemyWindowLayer } from './enemyWindow';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf } from './enemyWindowModel';
@@ -46,7 +47,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const icons = createIconLayer();
   const crew = createCrewLayer(assets, memory);
   const boarders = createBoarderLayer();
-  world.addChild(tiles.container, effects.below, icons.container, crew.container, boarders.container, effects.above);
+  const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
+  world.addChild(tiles.container, effects.below, icons.container, magazine.container, crew.container, boarders.container, effects.above);
   let lastDraw: number | null = null;
 
   return {
@@ -72,6 +74,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);
       tiles.update(state, dt);
       icons.update(state);
+      magazine.draw(state);
       effects.draw(state);
       crew.draw(state, alpha);
       boarders.draw(state);

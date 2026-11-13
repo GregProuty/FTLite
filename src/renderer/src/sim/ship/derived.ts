@@ -15,6 +15,7 @@ export interface Derived {
   siteRoom: Int16Array; siteWidth: Float64Array; siteTile: Int32Array;
   airlockRoom: Int16Array; airlockTile: Int32Array;   // hull doors to space (spec Demo-vii section 1)
   airlockOfTile: Int16Array;  // tile -> airlock index, -1
+  magazineTile: number; magazineRoom: number;   // the torpedo magazine (spec Coop-ii section 2), -1 without one
   kEff: number;
   stationKind: Uint8Array; stationRoom: Int16Array; stationTile: Int32Array;
   stationOfKind: Int8Array;   // kind -> station index
@@ -73,6 +74,8 @@ export function deriveLayout(layout: ShipLayout): Derived {
   if (A > 0) { codes.push(A); for (let i = 0; i < A; i++) codes.push(airlockRoom[i]!, airlockTile[i]!); }
   for (const st of layout.stations) codes.push(roomIndex.get(st.room)!, st.tile[1] * width + st.tile[0], kindOfStationId(st.id), st.allocation);
   for (const sp of layout.spawns) codes.push(sp[1] * width + sp[0]);
+  const magazineTile = layout.magazine ? layout.magazine[1] * width + layout.magazine[0] : -1, magazineRoom = magazineTile >= 0 ? roomOfTile[magazineTile]! : -1;
+  if (magazineTile >= 0) codes.push(magazineTile);   // only when present, so a layout without one keeps its hash (spec Coop-ii amendment D4)
   const idCodes: number[] = []; for (let i = 0; i < layout.id.length; i++) idCodes.push(layout.id.charCodeAt(i));
   // Stability bound (spec §5): k·dt·Σ incident conductance / V ≤ 1/2 for every room, at maximum passage.
   const maxCond = new Float64Array(layout.rooms.length);
@@ -83,7 +86,7 @@ export function deriveLayout(layout: ShipLayout): Derived {
   for (let r = 0; r < maxCond.length; r++) if (maxCond[r]! > 0) kEff = Math.min(kEff, 0.5 * volume[r]! / maxCond[r]! / HAZARD_DT);
   return {
     width, height, roomIndex, roomOfTile, wallTile, doorTileToEdge, volume, roomTiles,
-    edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile, airlockRoom, airlockTile, airlockOfTile,
+    edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile, airlockRoom, airlockTile, airlockOfTile, magazineTile, magazineRoom,
     stationKind, stationRoom, stationTile, stationOfKind, doorEdges,
     kEff,
     layoutHash: hashF64(Float64Array.from(codes)),

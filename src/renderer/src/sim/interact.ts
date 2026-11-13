@@ -9,12 +9,14 @@ import { boarderTarget, damageBoarder, combatDps } from './boarders';
 import { intentFor } from './step';
 import { stationOnline, sitDown } from './stations';
 import { repairStation } from './power';
+import { StationKind } from './stationKinds';
+import { canDeliver, pickUpTorpedo, deliverTorpedo } from './torpedoes';
 import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER } from './tuning';
 import { Skill, skillLevelOf, repairMult, addXp } from './skills';
 import { repairTraitMult } from './characters';
 import { XP_RATE, DT, REACH, REPAIR_TIME_FIRE, REPAIR_TIME_BREACH, REPAIR_TIME_POWER, REVIVE_TIME, TEAM_MULT } from './tuning';
 
-export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3, Power: 4, Fight: 5 } as const;
+export const TargetKind = { None: 0, Revive: 1, Fire: 2, Breach: 3, Power: 4, Fight: 5, Pickup: 6, Deliver: 7 } as const;   // Pickup / Deliver: a torpedo at the magazine / the Weapons console (spec Coop-ii section 2)
 export interface Target { kind: number; index: number }
 export const ConfirmKind = { None: 0, Door: 1, Console: 2 } as const;
 export interface ConfirmTarget { kind: number; index: number }
@@ -48,12 +50,16 @@ export function interactTarget(state: SimState, pid: number): Target {
     if (dist <= REACH && dist < bestDist) { best = { kind: TargetKind.Revive, index: other }; bestDist = dist; }
   }
   if (best.kind !== TargetKind.None) return best;
+  const own = roomAt(state, x, y), d = state.derived;
+  // Torpedoes (spec Coop-ii amendment D5): a carrier fights no fires and repairs nothing; it delivers at the Weapons console, from inside Weapons.
+  if (state.carrying[pid]) {
+    const wpn = d.stationOfKind[StationKind.Weapons]!;
+    return wpn >= 0 && own >= 0 && own === d.stationRoom[wpn] && canDeliver(state) && inReachOfTile(state, eid, d.stationTile[wpn]!) ? { kind: TargetKind.Deliver, index: wpn } : NONE;
+  }
   // Fire: only the crew member's own room (a fire is repaired from inside it, never through a wall).
-  const own = roomAt(state, x, y);
   if (own >= 0 && state.rooms.fire[own]! > 0) return { kind: TargetKind.Fire, index: own };
   // Breach: nearest active site tile in reach.
   bestDist = Infinity;
-  const d = state.derived;
   for (let s = 0; s < d.siteTile.length; s++) {
     if (!state.breaches.active[s]) continue;
     const dist = distToTile(state, x, y, d.siteTile[s]!);
@@ -67,6 +73,9 @@ export function interactTarget(state: SimState, pid: number): Target {
     const tile = d.stationTile[i]!, dist = distToTile(state, x, y, tile);
     if (dist <= REACH && (dist < bestDist || (dist === bestDist && tile < bestTile))) { best = { kind: TargetKind.Power, index: i }; bestDist = dist; bestTile = tile; }
   }
+  if (best.kind !== TargetKind.None) return best;
+  // Pickup: the magazine tile in reach, from inside its room, with stock (spec Coop-ii amendment D5).
+  if (d.magazineTile >= 0 && own === d.magazineRoom && state.weapons.torpedoStock > 0 && inReachOfTile(state, eid, d.magazineTile)) return { kind: TargetKind.Pickup, index: d.magazineTile };
   return best;
 }
 
@@ -110,7 +119,7 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
   // Hands together (spec Coop-i section 2, amendments C3 and C5): holders per exact (kind, index); two or more each work at TEAM_MULT, and teamSeconds counts once per such target per tick.
   const holders = new Map<number, number>();
   const key = (t: Target): number => t.kind * 4096 + t.index;
-  for (const t of targets) if (t.kind !== TargetKind.None && t.kind !== TargetKind.Fight) holders.set(key(t), (holders.get(key(t)) ?? 0) + 1);
+  for (const t of targets) if (t.kind !== TargetKind.None && t.kind !== TargetKind.Fight && t.kind !== TargetKind.Pickup && t.kind !== TargetKind.Deliver) holders.set(key(t), (holders.get(key(t)) ?? 0) + 1);
   const teamed = new Set<number>();
   const mult = (t: Target): number => {
     if ((holders.get(key(t)) ?? 0) < 2) return 1;
@@ -137,6 +146,8 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
   // Repair: every holder adds progress, at TEAM_MULT with company.
   for (let pid = 0; pid < state.playerCount; pid++) {
     const t = targets[pid]!, level = skillLevelOf(state, pid, Skill.Repair), trait = repairTraitMult(state, pid) * (t.kind === TargetKind.Fire || t.kind === TargetKind.Breach || t.kind === TargetKind.Power ? mult(t) : 1);
+    if (t.kind === TargetKind.Pickup) { if (pickUpTorpedo(state, pid)) state.scratch.activeThisTick[pid] = 1; continue; }     // instant; ascending pid wins the last torpedo
+    if (t.kind === TargetKind.Deliver) { if (deliverTorpedo(state, pid)) state.scratch.activeThisTick[pid] = 1; continue; }
     if (t.kind === TargetKind.Fight) {
       if (!state.boarders.active[t.index]) continue;                                 // an earlier holder this tick already killed it
       damageBoarder(state, t.index, combatDps(skillLevelOf(state, pid, Skill.Combat)) * DT, pid);

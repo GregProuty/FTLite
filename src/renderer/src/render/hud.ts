@@ -159,7 +159,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       });
       fillRow(ui.consoleFooter, [
         { text: c.charge >= 1 ? 'Beam READY' : `Beam ${Math.floor(c.charge * 100)}%`, tint: c.charge >= 1 ? TEXT : DIM },
-        { text: c.torpedo.loaded ? 'Torp LOADED' : c.torpedo.stock > 0 ? `Torp ${Math.floor(c.torpedo.load * 100)}%` : 'Torp EMPTY', tint: c.torpedo.loaded ? TEXT : DIM },
+        { text: c.torpedo.loaded ? 'Torp LOADED' : c.torpedo.fed ? `Torp ${Math.floor(c.torpedo.load * 100)}%` : c.torpedo.fetch ? (c.torpedo.stock > 0 ? 'Torp FETCH' : 'Torp EMPTY') : c.torpedo.stock > 0 ? `Torp ${Math.floor(c.torpedo.load * 100)}%` : 'Torp EMPTY', tint: c.torpedo.loaded ? TEXT : DIM },
         { text: `Stock ${c.torpedo.stock}/${c.torpedo.cap}`, tint: DIM },
         { text: c.locked ? 'LOCKED' : '', tint: TEXT }   // a Science lock runs: any beam is tuned (spec Coop-i section 1)
       ]);

@@ -161,7 +161,7 @@ export function botIntent(state: SimState, pid: number): Intent {
   const eid = state.crew[pid]!;
   if (Life.state[eid] !== LifeState.Conscious) return NEUTRAL_INTENT;
   const here = Math.floor(Position.y[eid]!) * state.derived.width + Math.floor(Position.x[eid]!);
-  const target = interactTarget(state, pid);
+  const raw = interactTarget(state, pid), target = raw.kind === TargetKind.Pickup || raw.kind === TargetKind.Deliver ? { kind: TargetKind.None, index: -1 } : raw;   // bots never run torpedoes (spec Coop-ii section 2)
   if (target.kind === TargetKind.Fight || target.kind === TargetKind.Revive) return { ...NEUTRAL_INTENT, interactHeld: true };   // urgent: outranks every run behaviour
   let blocked: Set<number> | undefined;
   const hp = Health.cur[eid]!;

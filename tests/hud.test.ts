@@ -205,7 +205,7 @@ describe('buildHudModel', () => {
     const panel = p.console as WeaponsPanel;
     expect(panel.kind).toBe('weapons'); expect(panel.charge).toBe(0.25);
     expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }]);
-    expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0 });
+    expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0, fetch: false, fed: false });
     expect(panel.cursor).toBe(0);                                                  // sitDown selected id 10 (slot 1), which is targets[0]
     s.stations.cursor[wpn] = 0;                                                    // slot 0 is id 30: targets[1]
     expect((buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel).cursor).toBe(1);
@@ -233,7 +233,7 @@ describe('buildHudModel', () => {
     expect(m.threats.map((t) => t.text)).toEqual(['Debris: Bridge 5s F2', 'Debris: Weapons Bay 10s']);
     expect(m.weapons).toEqual({ charge: 0, ready: false, torpedoLoaded: true, torpedoStock: 2 });
     const w = m.players[0]!.console as WeaponsPanel;
-    expect(w.selector).toBe(3); expect(w.torpedo).toEqual({ stock: 2, cap: TORP_CAP, loaded: true, load: 0 });
+    expect(w.selector).toBe(3); expect(w.torpedo).toEqual({ stock: 2, cap: TORP_CAP, loaded: true, load: 0, fetch: false, fed: false });
     expect(w.targets.map((t) => t.frequency)).toEqual([2, null]);
     const p = m.players[1]!.console as SciencePanel;
     expect(p.targets).toEqual([{ stableId: 10, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null, room: 'Bridge', eta: 5, frequency: 2, scan: 1 }, { stableId: 20, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null, room: 'Weapons Bay', eta: 10, frequency: null, scan: 0.4 }]);
@@ -553,5 +553,19 @@ describe('the Navigation evade row (spec Coop-ii section 1)', () => {
     s.run.evadeUntilTick = s.tick + 30; s.run.evadeReadyTick = s.tick + 400; expect([row().text, row().enabled]).toEqual(['EVADING', false]);
     s.run.evadeUntilTick = s.tick; s.run.evadeReadyTick = s.tick + 4 * 60; expect([row().text, row().enabled]).toEqual(['EVADE 4s', false]);
     s.run.evadeReadyTick = s.tick + 4 * 60 - 59; expect(row().text).toBe('EVADE 4s');   // whole seconds, rounded up
+  });
+});
+
+describe('torpedo prompts (spec Coop-ii section 2)', () => {
+  it('Take torpedo at the magazine, Load torpedo at Weapons while carrying; the panel reads FETCH on a magazine ship', () => {
+    const s = cutterState(1, 2); quiet(s); const d = s.derived, w = d.width;
+    teleport(s, 0, d.magazineTile % w + 0.5, Math.floor(d.magazineTile / w) + 0.5);
+    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.interactPrompt).toBe('Take torpedo');
+    const wt = d.stationTile[d.stationOfKind[StationKind.Weapons]!]!; s.carrying[0] = 1; teleport(s, 0, wt % w - 0.5, Math.floor(wt / w) + 0.5);
+    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.interactPrompt).toBe('Load torpedo');
+    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.carrying).toBe(true);
+    sitDown(s, 1, d.stationOfKind[StationKind.Weapons]!);
+    const p = buildHudModel(s, slots(2), 'running', '').players[1]!.console as WeaponsPanel; expect(p.torpedo.fetch).toBe(true);
+    s.weapons.torpedoFed = 1; expect((buildHudModel(s, slots(2), 'running', '').players[1]!.console as WeaponsPanel).torpedo.fetch).toBe(false);
   });
 });

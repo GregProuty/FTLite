@@ -4,6 +4,7 @@ import { conditionRoomAt } from './grid';
 import { fireDamageMult, o2DamageMult, bleedoutMult } from './characters';
 import { standUp } from './stations';
 import { shedPower } from './power';
+import { dropTorpedo } from './torpedoes';
 import { DT, FIRE_DAMAGE, O2_DAMAGE, SUFFOCATE_FRAC, BLEEDOUT_TIME, BLEED_HAZARD_MULT, HEALTH_MAX, REVIVE_HEALTH_FRAC } from './tuning';
 
 export const EndReason = { None: 0, Hull: 1, Crew: 2, Victory: 3 } as const;
@@ -47,4 +48,5 @@ export function downCrew(state: SimState, pid: number): void {
   const eid = state.crew[pid]!;
   Life.state[eid] = LifeState.Downed; standUp(state, pid); shedPower(state); Life.bleed[eid] = BLEEDOUT_TIME * bleedoutMult(state, pid);
   Life.reviveProgress[eid] = 0; Life.reviverPid[eid] = -1;
+  dropTorpedo(state, pid);   // spec Coop-ii amendment D5
 }

@@ -118,3 +118,11 @@ describe('runNotice: rewards quote what they pay (spec Demo-ix amendment B8)', (
     expect(runNotice(w)).toEqual(['FIELD CLEARED   +30 scrap', 'Drive charging fast']); expect(scrapField(3)).toBe(30);
   });
 });
+
+describe('Torpedo dropped (spec Coop-ii amendment D5)', () => {
+  it('shows for a few seconds after a carried torpedo is lost at the cap', () => {
+    const s = fresh(); expect(runNotice(s)).toEqual([]);
+    s.weapons.torpedoDropTick = s.tick; expect(runNotice(s)).toEqual(['Torpedo dropped']);
+    s.tick += 4 * 60; expect(runNotice(s)).toEqual([]);
+  });
+});
