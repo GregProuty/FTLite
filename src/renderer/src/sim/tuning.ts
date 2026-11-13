@@ -191,7 +191,7 @@ export const QUIRK_PASSAGE_MULT = 2, QUIRK_HEAT_RISE = 1, QUIRK_DOOR_DELAY_MULT 
 export const CONSOLE_LINE_MAX = 40;   // characters per console-card line (308 px card at about 6.25 px per character, spec Demo-vii section 1)
 export const LOBBY_LINE_MAX = 90, NOTICE_LINE_MAX = 64, LOBBY_PX_MAX = 560, NOTICE_PX_MAX = 400;
 // Working together (spec Coop-i sections 1 and 2)
-export const SHIELD_ROTATE = 20;      // seconds between enemy shield re-tunes while its shields system is up
+export const SHIELD_ROTATE = 30;      // seconds between enemy shield re-tunes while its shields system is up; 20 -> 30 (amendment C14): a level-1 scan takes 16 s, which left 4 s to lock and fire
 export const LOCK_SECONDS = 8;        // a Science lock on the shield frequency
 export const LOCK_HIT_BONUS = 0.15;   // added to the beam hit threshold under a lock while a layer is up
 export const TEAM_MULT = 1.25;        // each holder's rate when two or more hold Interact on one target

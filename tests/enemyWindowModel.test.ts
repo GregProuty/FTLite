@@ -8,7 +8,7 @@ import { EnemySystem, EnemyRoom, leave } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
-import { ENEMY_SYS_HP, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, TICK_HZ, ENEMY_ROOMS } from '../src/renderer/src/sim/tuning';
+import { ENEMY_SYS_HP, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, TICK_HZ, ENEMY_ROOMS, SHIELD_ROTATE } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, placeEnemy, disableSystem, placeDebris, room } from './helpers/sim';
 
 const T = TICK_HZ;
@@ -51,7 +51,7 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     const s = present(); expect(view(s).hullPips).toEqual({ lit: 10, total: 10 });
     s.enemy.hull = 0.35 * s.enemy.maxHull; expect(view(s).hullPips).toEqual({ lit: 4, total: 10 });
     s.enemy.hull = 0; expect(view(s).hullPips.lit).toBe(0);
-    expect(view(s).frequency).toBeNull(); s.enemy.scanned = 1; s.enemy.shieldFreq = 3; expect(view(s).frequency).toBe('F3 20s');
+    expect(view(s).frequency).toBeNull(); s.enemy.scanned = 1; s.enemy.shieldFreq = 3; expect(view(s).frequency).toBe(`F3 ${SHIELD_ROTATE}s`);
     s.tick = s.enemy.shotArmTick + 300; expect(view(s).charge).toBeCloseTo(0.5, 9);
     disableSystem(s, EnemySystem.Weapons); expect(view(s).charge).toBeNull();
   });
@@ -134,7 +134,7 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
 describe('the window frequency and its rotate countdown (spec Coop-i section 1)', () => {
   it('shows the frequency only while it is current, with the seconds to the next rotation; no countdown while the shields system is down', () => {
     const s = present(); s.enemy.scanned = 1; s.enemy.shieldFreq = 2;
-    expect(view(s).frequency).toBe('F2 20s');
+    expect(view(s).frequency).toBe(`F2 ${SHIELD_ROTATE}s`);
     s.tick += 5.5 * T; expect(view(s).frequency).toBe('F2 15s');
     disableSystem(s, EnemySystem.Shields); expect(view(s).frequency).toBe('F2');
     s.enemy.sysHp[EnemySystem.Shields] = ENEMY_SYS_HP; s.enemy.scanned = 0; expect(view(s).frequency).toBeNull();   // a rotation clears the scan: the old frequency is never shown
