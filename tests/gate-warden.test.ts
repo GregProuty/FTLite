@@ -49,4 +49,4 @@ describe('Warden gate: a scripted gunner destroys the Warden and wins the run', 
     expect([r.shots, r.hits, r.seconds]).toEqual(WITH_HEAVY); expect(r.shots).toBeLessThan(PULSE_ONLY[0]!);
   });
 });
-const PULSE_ONLY = [36, 25, 420], WITH_HEAVY = [31, 21, 255];   // shots, hits (strips included), seconds from the arrival to the kill: re-recorded at WARDEN_HULL_MULT 1.5 (Loop-iv amendment F8; 2.5 gave 56/41/653 and 47/34/383)
+const PULSE_ONLY = [35, 25, 270], WITH_HEAVY = [31, 21, 183];   // Demo-xiii: BEAM_CHARGE_TIME 6 -> 4 (Pulse 8 s at level 2): 36/25/420 -> 35/25/270 and 31/21/255 -> 31/21/183; shots, hits (strips included), seconds from the arrival to the kill: re-recorded at WARDEN_HULL_MULT 1.5 (Loop-iv amendment F8; 2.5 gave 56/41/653 and 47/34/383)

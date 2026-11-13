@@ -13,7 +13,10 @@ import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 // Recorded 2026-11-12: min health 42.8 / 15.0 / 26.1, min hull 60 / 80 / 76, encounters 4 / 2 / 3, boardings 0. The floor 14 sits just under
 // the observed minimum (seed 2), not at gate-duo's 25, which seed 2 misses. Traced: an enemy hit at 208 s sets Ops on fire; the healthier bot
 // (52.6) fights it alone for 12 s down to 15.0 while the hurt one (19.0, below the bots' retreat health) keeps out on the Bridge.
-const SKIFF_FLOOR = 14;
+// Demo-xiii (the bot gunner, the faster Pulse, enemy shots of 10 hull): min health 60.9 / 25.3 / 67.8, min hull 54 / 42 / 90; the floor raised 14 -> 25, just under seed 2's
+// 25.3 (gate-duo's floor too). Seed 2's low point, traced: a Life Support fire (208 s) and an Ops hit (232 s) send both bots to fires and the Medbay, the
+// enemy at 95 of 120 hull with nobody at the guns; at 244 s a shot lands in the Medbay while the captain heals there (42 to 25.3).
+const SKIFF_FLOOR = 25;
 
 describe('gate-skiff: two bots keep both crew alive on the Skiff for five minutes', () => {
   for (const seed of [1, 2, 3]) {

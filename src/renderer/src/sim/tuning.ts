@@ -67,7 +67,7 @@ export const DEBRIS_SLOTS = 8;                        // never reached: SPAWN_CA
 export const DEBRIS_FLIGHT = 30, DEBRIS_FLIGHT_JITTER = 6;             // seconds from spawn to impact, +/- jitter
 export const SCIENCE_LEAD_UNMANNED = 4;               // seconds of warning with Science unoccupied or offline
 export const SCIENCE_LEAD_BASE = 12, SCIENCE_LEAD_SCALE = 16;          // seated lead = base + scale x output (18 s at level 1, 24 s at level 2, skill 0)
-export const BEAM_CHARGE_TIME = 6;                    // seconds at output 1 (24 / 12 / 8 s at levels 1 / 2 / 3, skill 0)
+export const BEAM_CHARGE_TIME = 4;                    // seconds at output 1 (8 s at level 2, skill 0, on the Skiff; spec Demo-xiii section 4: was 6, a 12 s Pulse)
 export const EVADE_BASE = 0.20, EVADE_SCALE = 0.40;                    // evasion chance = base + scale x output
 export const DEBRIS_HULL_DAMAGE = 8;                  // of HULL_MAX per impact
 export const DEBRIS_CREW_DAMAGE = 20;                 // of HEALTH_MAX per Conscious crew member in the hit room
@@ -149,7 +149,7 @@ export const ENEMY_HULL = 100, ENEMY_FIRST_SHOT = 5;
 export const ENEMY_FIRE_INTERVAL = 20, ENEMY_FIRE_MIN = 6, ENEMY_FIRE_JITTER = 0.2;   // escalation shares ESCALATION_RATE and CREW_INTERVAL_MULT (survival-gate fallback, spec Combat-ii section 13; first pass 15)
 export const ENEMY_SHOTS_MAX = 1;                      // shots in flight at once (survival-gate fallback, spec Combat-i section 13; first pass 2)
 export const ENEMY_SHOT_FLIGHT = 10, ENEMY_SHOT_JITTER = 2;   // seconds (debris is 30 +/- 6)
-export const ENEMY_SHOT_HULL_DAMAGE = 4;               // debris is 8; crew damage shared (survival-gate fallback, spec Combat-i section 13; first pass 6)
+export const ENEMY_SHOT_HULL_DAMAGE = 10;              // spec Demo-xiii section 4, amendment 5: 4 -> 10, an ignored first enemy costs 20 hull a minute (the lever, not the interval); debris is 8; crew damage shared (survival-gate fallback, spec Combat-i section 13; first pass 6)
 export const ENEMY_BEAM_BASE = 0.70, ENEMY_BEAM_SCALE = 0.30;   // engines-up chance 0.70 at output 0.5 after ENEMY_EVADE; was 0.55 before Combat-ii
 export const ENEMY_BEAM_DAMAGE = 15, ENEMY_TORP_DAMAGE = 35;
 /** FTL-style ship combat (spec Demo-i section 11.2): shield layers by column, recharge seconds per layer, hull per column, aim and console-failure chances, the flee at a hull fraction with its delay, the surrender bounty. */
