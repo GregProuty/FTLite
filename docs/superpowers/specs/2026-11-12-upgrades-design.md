@@ -51,3 +51,10 @@ Status: 2026-11-12. FTL-loop item 2 of the user's direction ("match their game l
 ## 9. Amendments
 
 (Filled during review and implementation.)
+
+### Claude's review (the Codex spec review timed out), 2026-11-12. These rules override earlier text where they differ.
+
+- **U1. Reactor.** `state.power.capacity` already holds the reactor size (state.ts:97, flattened). A reactor upgrade raises it by 1 and increments `run.reactorBonus`, which only prices the next bar. The ship schema's allocation check against `REACTOR_CAPACITY` (schema.ts:42) is about the starting layout and stays.
+- **U2. The Engineering cursor.** Today the cursor value is the station kind (`0..STATION_COUNT-1`, console.ts:34–43). On the power page the rows become `0..STATION_COUNT` with `STATION_COUNT` meaning `UPGRADES`; Left/Right and coolant do nothing on that row. On the Upgrades page the rows are the station kinds, then `STATION_COUNT` = Reactor, then `STATION_COUNT + 1` = `BACK`. Every reader of the Engineering cursor (the HUD model, the bot if it reads it, the skill productivity checks) must handle the extra rows.
+- **U3. Upgrade flags become levels.** `run.upgrades[k]` is read at power.ts:28 (`baseMax`, already additive), shop.ts:16–31 (removed with the shop rows) and telemetry.ts:78 (becomes levels). Heat and overdrive use `baseMax` and `maxLevel` unchanged, so they follow the new levels automatically.
+- **U4. Purchases.** Only the seated Engineering officer buys, at an online Engineering station. The crew's scrap pays.
