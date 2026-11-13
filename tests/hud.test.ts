@@ -245,7 +245,7 @@ describe('buildHudModel', () => {
     placeEnemy(s); s.enemy.hull = 64;
     placeShot(s, A, 7 * 60, 1); const k2 = placeShot(s, A, 7 * 60, 1, undefined, 2); s.debris.scanned[k2] = 1;
     const th = buildHudModel(s, slots(1), 'running', '').threats;
-    expect(th[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64% shields 1/1' });
+    expect(th[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy 64% shields 1/1' });
     const shotRows = th.filter((t) => t.text.startsWith('Shot'));
     expect(shotRows).toEqual([{ icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s` }, { icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s F2` }]);
   });
@@ -299,15 +299,15 @@ describe('buildHudModel', () => {
     expect(wp.targets.slice(1).map((t) => [t.kind, t.system, t.status, t.shieldsUp, t.frequency, t.hull])).toEqual([
       ['enemy', null, null, true, null, 0.64], ['enemy', 0, { hp: 30, repairIn: null }, true, null, null], ['enemy', 1, { hp: 30, repairIn: null }, true, null, null], ['enemy', 2, { hp: 30, repairIn: null }, true, null, null]]);
     expect(sp.targets.slice(1).map((t) => t.scan)).toEqual([0.4, 0, 0, 0]);
-    expect(m.threats[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy ship: hull 64% shields 1/1' });
+    expect(m.threats[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy 64% shields 1/1' });
     s.enemy.scanned = 1;
     expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as WeaponsPanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: true });   // revealed, shields still up
     disableSystem(s, EnemySystem.Weapons);
-    expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Enemy ship: hull 64% shields 1/1 weapons DOWN');
+    expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toBe('Enemy 64% shields 1/1 weapons DOWN');
     disableSystem(s, EnemySystem.Shields);
     m = buildHudModel(s, slots(2), 'running', ''); wp = m.players[0]!.console as WeaponsPanel;
     expect(wp.targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[4]!.status).toEqual({ hp: 0, repairIn: 45 });
-    expect(m.threats[0]!.text).toBe('Enemy ship: hull 64% weapons DOWN shields DOWN');
+    expect(m.threats[0]!.text).toBe('Enemy 64% weapons DOWN shields DOWN');
     guardDebris(s);                                                                       // a read at slots 8..11 throws: the model must branch before indexing
     expect(() => { for (const slot of ENEMY_SLOTS) { s.stations.cursor[w] = slot; s.stations.cursor[c] = slot; buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
   });
@@ -387,7 +387,7 @@ describe('buildHudModel', () => {
     const k0 = placeBoarder(s, G), k1 = placeBoarder(s, A), k2 = placeBoarder(s, G, 30);
     placeEnemy(s); igniteRoom(s, room(s, 'B'));
     const m = buildHudModel(s, slots(1), 'running', '');
-    expect(m.threats.slice(0, 4).map((t) => t.text)).toEqual([expect.stringMatching(/^Enemy ship/), 'Boarders: Bridge x1', 'Boarders: Crew Quarters x2', 'Fire: Weapons Bay']);
+    expect(m.threats.slice(0, 4).map((t) => t.text)).toEqual([expect.stringMatching(/^Enemy [0-9]/), 'Boarders: Bridge x1', 'Boarders: Crew Quarters x2', 'Fire: Weapons Bay']);
     expect(m.threats[1]!.icon).toBe('icon.sensors');
     expect(m.boarders).toEqual([
       { stableId: s.boarders.stableId[k0], x: 4 - 0.6, y: 9.5, health: 1 },
@@ -433,7 +433,7 @@ describe('buildHudModel', () => {
     expect(p.scrap).toBe(45); s.run.jumpCharge = 0.64; expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toMatch(/^Evade \d+%  Jump 64%  Fuel 8  Scrap 45$/);
     expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Event: Supply cache' }]);   // spec Demo-i section 4: the run rows trail the hazards
     igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.icon).toBe('icon.weapons'); expect(t[1]!.text).toBe('Fire: Bridge'); expect(t[2]!.text).toBe('Event: Supply cache');
-    setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.map((x) => x.text).slice(-2)).toEqual(['Event: Supply cache', 'Shop here']); expect(sh.map((x) => x.text).slice(0, 2)).toEqual([expect.stringMatching(/^Enemy ship/), 'Fire: Bridge']);
+    setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.map((x) => x.text).slice(-2)).toEqual(['Event: Supply cache', 'Shop here']); expect(sh.map((x) => x.text).slice(0, 2)).toEqual([expect.stringMatching(/^Enemy [0-9]/), 'Fire: Bridge']);
     resolveEvent(s, 0); const q = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     expect(q.rows).toHaveLength(7); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[3]!.text).toBe('Fuel +2 (12 scrap)'); expect(q.rows[4]!.text).toBe('Node 3a  ?');   // mask 1:2 = 1: one forward destination, then the sideways Node 2b
     expect(buildHudModel(s, slots(2), 'running', '').threats.map((x) => x.text).slice(-1)).toEqual(['Shop here']);
@@ -501,15 +501,15 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
   });
   it('the threat row: shields n/m while up, DOWN suffixes in order, FLEEING; the percentage uses maxHull', () => {
     const s = makeState(1); quiet(s); placeEnemy(s);
-    const row = () => buildHudModel(s, slots(1), 'running', '').threats.find((t) => t.text.startsWith('Enemy ship'))!.text;
-    expect(row()).toBe('Enemy ship: hull 100% shields 1/1');
-    s.enemy.hull = 64; disableSystem(s, EnemySystem.Weapons); disableSystem(s, EnemySystem.Shields); expect(row()).toBe('Enemy ship: hull 64% weapons DOWN shields DOWN');
-    s.enemy.hull = 20; s.enemy.fleeing = 1; disableSystem(s, EnemySystem.Engines); expect(row()).toBe('Enemy ship: hull 20% weapons DOWN engines DOWN shields DOWN FLEEING');
-    const t = makeState(1); quiet(t); t.run.column = 5; placeEnemy(t, 75); t.enemy.shieldLayers = 1; expect(buildHudModel(t, slots(1), 'running', '').threats[0]!.text).toBe('Enemy ship: hull 50% shields 1/2');
+    const row = () => buildHudModel(s, slots(1), 'running', '').threats.find((t) => /^Enemy [0-9]/.test(t.text))!.text;
+    expect(row()).toBe('Enemy 100% shields 1/1');
+    s.enemy.hull = 64; disableSystem(s, EnemySystem.Weapons); disableSystem(s, EnemySystem.Shields); expect(row()).toBe('Enemy 64% weapons DOWN shields DOWN');
+    s.enemy.hull = 20; s.enemy.fleeing = 1; disableSystem(s, EnemySystem.Engines); expect(row()).toBe('Enemy 20% weapons DOWN engines DOWN shields DOWN FLEEING');
+    const t = makeState(1); quiet(t); t.run.column = 5; placeEnemy(t, 75); t.enemy.shieldLayers = 1; expect(buildHudModel(t, slots(1), 'running', '').threats[0]!.text).toBe('Enemy 50% shields 1/2');
   });
   it('threat order: an enemy, a fire, then Event, then Shop here (hazards before the run rows)', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 2); placeEnemy(s); igniteRoom(s, room(s, 'A'));
-    expect(buildHudModel(s, slots(2), 'running', '').threats.map((t) => t.text)).toEqual([expect.stringMatching(/^Enemy ship/), 'Fire: Bridge', 'Event: Smugglers', 'Shop here']);
+    expect(buildHudModel(s, slots(2), 'running', '').threats.map((t) => t.text)).toEqual([expect.stringMatching(/^Enemy [0-9]/), 'Fire: Bridge', 'Event: Smugglers', 'Shop here']);
   });
 });
 

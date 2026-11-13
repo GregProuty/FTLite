@@ -54,11 +54,11 @@ describe('the final beacon (spec Loop-iv section 1)', () => {
 });
 
 describe('the Warden (spec Loop-iv section 2)', () => {
-  it('its numbers: 2.5 x the final depth\'s hull, one shield layer over the depth\'s maximum (recharged to it), the fire interval x 0.7, no withdrawal clock', () => {
-    expect([WARDEN_HULL_MULT, WARDEN_FIRE_MULT, WARDEN_SHIELD_EXTRA]).toEqual([2.5, 0.7, 1]);
+  it('its numbers: 1.5 x the final depth\'s hull, one shield layer over the depth\'s maximum (recharged to it), the fire interval x 0.7, no withdrawal clock', () => {
+    expect([WARDEN_HULL_MULT, WARDEN_FIRE_MULT, WARDEN_SHIELD_EXTRA]).toEqual([1.5, 0.7, 1]);
     const s = withWarden(), e = s.enemy, depth = depthOf(s);
     expect(depth).toBe(SECTORS * SECTOR_COLUMNS - 1);
-    expect([e.maxHull, e.hull, e.shieldLayers, enemyShieldCap(s), e.departTick]).toEqual([Math.round(enemyMaxHull(depth) * 2.5), Math.round(enemyMaxHull(depth) * 2.5), enemyShieldMax(depth) + 1, enemyShieldMax(depth) + 1, NEVER]);
+    expect([e.maxHull, e.hull, e.shieldLayers, enemyShieldCap(s), e.departTick]).toEqual([Math.round(enemyMaxHull(depth) * WARDEN_HULL_MULT), Math.round(enemyMaxHull(depth) * WARDEN_HULL_MULT), enemyShieldMax(depth) + 1, enemyShieldMax(depth) + 1, NEVER]);
     e.shieldLayers = 0; e.shieldRecharge = 0; e.nextShotTick = 1e9;
     run(s, (enemyShieldMax(depth) + 1) * SHIELD_RECHARGE_TIME * T); expect(e.shieldLayers).toBe(enemyShieldMax(depth) + 1);
     run(s, SHIELD_RECHARGE_TIME * T); expect(e.shieldLayers).toBe(enemyShieldMax(depth) + 1);

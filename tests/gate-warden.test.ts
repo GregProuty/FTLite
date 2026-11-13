@@ -49,4 +49,4 @@ describe('Warden gate: a scripted gunner destroys the Warden and wins the run', 
     expect([r.shots, r.hits, r.seconds]).toEqual(WITH_HEAVY); expect(r.shots).toBeLessThan(PULSE_ONLY[0]!);
   });
 });
-const PULSE_ONLY = [56, 41, 653], WITH_HEAVY = [47, 34, 383];   // shots, hits (strips included), seconds from the arrival to the kill: recorded on the first run (Loop-iv Task 3)
+const PULSE_ONLY = [36, 25, 420], WITH_HEAVY = [31, 21, 255];   // shots, hits (strips included), seconds from the arrival to the kill: re-recorded at WARDEN_HULL_MULT 1.5 (Loop-iv amendment F8; 2.5 gave 56/41/653 and 47/34/383)
