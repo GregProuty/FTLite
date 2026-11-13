@@ -190,6 +190,7 @@ function targetRows(): string[] {
   for (const room of roomNames) for (const kind of ['debris', 'shot', 'rock'] as const) out.push(targetRowText({ ...base, kind, room }, 0.99), targetRowText({ ...base, kind, room, frequency: 3 }));
   const enemy: DebrisTarget = { ...base, kind: 'enemy', room: 'Enemy ship', hull: 1, shieldsUp: true, layers: 4, layersMax: 4, weaponCharge: 1, fleeSeconds: 99, frequency: null };
   out.push(targetRowText(enemy, 0.99), targetRowText({ ...enemy, fleeSeconds: 0, eta: 999 }, 0.99));
+  out.push(targetRowText({ ...enemy, shieldsUp: false }, 0.99), targetRowText({ ...enemy, shieldsUp: false, fleeSeconds: 0, eta: 999 }, 0.99), targetRowText({ ...enemy, frequency: 3, fleeSeconds: 0, eta: 999 }));   // plain words (spec Demo-xii section 3)
   for (let sys = 0; sys < 3; sys++) out.push(targetRowText({ ...enemy, system: sys, status: { hp: 30, repairIn: null, ionIn: 99 } }), targetRowText({ ...enemy, system: sys, status: { hp: 0, repairIn: 99 } }));
   return out;
 }

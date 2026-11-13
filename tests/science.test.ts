@@ -150,10 +150,10 @@ describe('the Science lock (spec Coop-i section 1)', () => {
   it('the Science footer: LOCK: Confirm when possible, LOCKED 6s while one runs, nothing on a subsystem row or before the scan', () => {
     const { s, i } = seated(1);
     const footer = () => scienceFooter(buildHudModel(s, [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }], 'running', '').players[0]!.console as SciencePanel);
-    expect(footer()).toBe('Lead 18s   LOCK: Confirm');
-    s.enemy.lockUntilTick = s.tick + 6 * HZ; expect(footer()).toBe('Lead 18s   LOCKED 6s');
-    s.tick += 1; expect(footer()).toBe('Lead 18s   LOCKED 6s');   // whole seconds rounded up
-    s.enemy.lockUntilTick = -1; s.stations.cursor[i] = ENEMY_WEAPONS_SLOT; expect(footer()).toBe('Lead 18s');
-    s.stations.cursor[i] = ENEMY_SLOT; s.enemy.scanned = 0; s.science.scanning = 1; expect(footer()).toBe('Lead 18s   Scanning');
+    expect(footer()).toBe('Warning 18s   LOCK: Confirm');
+    s.enemy.lockUntilTick = s.tick + 6 * HZ; expect(footer()).toBe('Warning 18s   LOCKED 6s');
+    s.tick += 1; expect(footer()).toBe('Warning 18s   LOCKED 6s');   // whole seconds rounded up
+    s.enemy.lockUntilTick = -1; s.stations.cursor[i] = ENEMY_WEAPONS_SLOT; expect(footer()).toBe('Warning 18s');
+    s.stations.cursor[i] = ENEMY_SLOT; s.enemy.scanned = 0; s.science.scanning = 1; expect(footer()).toBe('Warning 18s   Scanning');
   });
 });

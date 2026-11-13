@@ -47,7 +47,7 @@ describe('the Warden on the HUD and in the enemy window (spec Loop-iv section 2)
   it('the Weapons hull row has no departure seconds (the Warden never leaves) and three layers; the threat line reads shields 3/3', () => {
     const s = withWarden(); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;   // the ship row is Science's since Demo-x-c (Weapons targets rooms)
     const m = buildHudModel(s, slots(2), 'running', ''), panel = m.players[0]!.console as SciencePanel, hull = panel.targets.find((t) => t.kind === 'enemy')!;
-    expect(targetRowText(hull)).toBe('Enemy 100% S? [###]');
+    expect(targetRowText(hull)).toBe('Enemy 100% freq ? [###]');
     expect(m.threats[0]!.text).toBe('Enemy 100% shields 3/3');
   });
   it('the victory screen after it falls', () => {

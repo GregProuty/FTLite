@@ -28,7 +28,7 @@ import { QUIRK_NAMES } from '../sim/quirks';
 import { doorsCursorTarget } from '../sim/doors';
 import { shipLine, shipForCrew } from '../sim/ship/fleet';
 import { textPx } from './theme';
-import { NOTICE } from './hudLayout';
+import { NOTICE, CARD_INNER_W, BLOCK_INNER_W } from './hudLayout';
 import { navigatorAtHelm } from './enemyWindowModel';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
@@ -50,8 +50,16 @@ export interface HudTab { kind: number; name: string; active: boolean; offline: 
 export const TAB_NAMES = ['HELM', 'WEAPONS', 'SCIENCE', 'ENGINEERING', 'LIFE SUPPORT', 'MEDBAY', 'DOORS'] as const;
 /** A tab's text on the bar: its name, with OFFLINE when its station is offline. */
 export function tabText(t: HudTab): string { return t.offline ? `${t.name} OFFLINE` : t.name; }
-/** A player block's last line: the skill levels (`N0 E0 W0 S0 C0 R3`); the name sits on the first line and the health is its bar. */
-export function skillsLine(skills: readonly number[]): string { return SKILL_NAMES.map((n, k) => `${n[0]}${skills[k]}`).join(' '); }
+/** Three-letter skill names for the player block (spec Demo-xii section 3), in SKILL_NAMES order. */
+export const SKILL_SHORT = ['Nav', 'Eng', 'Wpn', 'Sci', 'Cmb', 'Rep'] as const;
+/** A player block's last line: the skills above 0 (`Rep 4 Eng 3`), highest first (ties in skill order), as many as fit the block; `No skills yet` at all zeros (spec Demo-xii section 3 and amendment 4). */
+export function skillsLine(skills: readonly number[]): string {
+  const order = SKILL_SHORT.map((_, k) => k).filter((k) => (skills[k] ?? 0) > 0).sort((a, b) => skills[b]! - skills[a]! || a - b);
+  if (order.length === 0) return 'No skills yet';
+  let line = '';
+  for (const k of order) { const next = `${line ? `${line} ` : ''}${SKILL_SHORT[k]} ${skills[k]}`; if (line && textPx(next) > BLOCK_INNER_W) break; line = next; }
+  return line;
+}
 /** A tab as the card's tab bar draws it at the larger font (spec Demo-x-c section 1): `>` on the active tab while the stick is on the bar, `!` after an offline tab's name (drawn red), so three names fit. */
 export function tabLabel(t: HudTab, focus: boolean): string { return `${t.active && focus ? '>' : ''}${t.name}${t.offline ? '!' : ''}`; }
 /** The tab bar of a seated player's console group, or null outside a group. */
@@ -122,8 +130,8 @@ export function timeLine(m: HudModel): string { return `TIME ${m.simSeconds}s`; 
 export function directorText(m: HudModel): string { return `${m.director.phase}  ${Math.round(m.director.stress * 100)}%`; }
 /** The jump text shared by the Navigation footer and the map title. */
 export function jumpText(jump: { charge: number; ready: boolean }): string { return jump.ready ? 'READY' : `${Math.floor(jump.charge * 100)}%`; }
-/** The Science footer: the lead, then the scan or the lock (spec Coop-i section 1). */
-export function scienceFooter(p: SciencePanel): string { return `Lead ${Math.round(p.leadSeconds)}s${p.scanning ? '   Scanning' : ''}${p.lock ? `   ${p.lock}` : ''}`; }
+/** The Science footer: the warning lead (how early incoming hazards are warned, spec Demo-xii section 3), then the scan or the lock (spec Coop-i section 1). */
+export function scienceFooter(p: SciencePanel): string { return `Warning ${Math.round(p.leadSeconds)}s${p.scanning ? '   Scanning' : ''}${p.lock ? `   ${p.lock}` : ''}`; }
 /** The Navigation footer (spec Loop-i section 2): evade, the drive, the fuel (now > after the highlighted jump) and scrap. */
 export function navigationFooter(p: NavigationPanel): string { return navigationFooterLines(p).join('  '); }
 /** The Navigation footer on the card's two footer lines (spec Demo-x-c section 1): evade and the drive, then fuel and scrap. */
@@ -260,11 +268,15 @@ export function targetRowText(t: DebrisTarget, scan = 0): string {
   }
   if (t.kind === 'enemy') {                                              // spec Combat-ii section 7
     if (t.system !== null && t.status) return t.status.hp > 0 ? `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} ${Math.round(t.status.hp / ENEMY_SYS_HP * 100)}%${t.status.ionIn ? ` ION ${t.status.ionIn}s` : ''}` : `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} DOWN ${t.status.repairIn}s`;
-    const marker = t.shieldsUp === false ? 'S-' : t.frequency !== null ? `S${t.frequency}` : 'S?';
+    const marker = t.shieldsUp === false ? 'shields down' : `freq ${t.frequency ?? '?'}`;   // plain words (spec Demo-xii section 3)
     const layers = t.layers ?? 0, bracket = t.shieldsUp === false ? '' : ` [${'#'.repeat(layers)}${'.'.repeat(Math.max(0, (t.layersMax ?? 0) - layers))}]`, fleeing = (t.fleeSeconds ?? 0) > 0;   // spec Demo-i section 11.4: the layers while shields are up, the weapon charge always, the flee countdown in place of the eta
-    return `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${fleeing ? `FLEE ${t.fleeSeconds}s ` : t.eta >= 0 ? `${t.eta}s ` : ''}${marker}${bracket}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;   // the weapon charge is the enemy window's bar (spec Demo-x-c amendment: the row fits the card at the larger font)
+    const suffix = t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : '';
+    const row = (b: string, leaves: string, sfx: string): string => `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${fleeing ? `FLEE ${t.fleeSeconds}s ` : t.eta >= 0 ? `${leaves} ${t.eta}s ` : ''}${marker}${b}${sfx}`;   // the weapon charge is the enemy window's bar (spec Demo-x-c amendment)
+    // The fit rule (spec Demo-xii section 3 and amendment 3): too wide for the card drops the bracket, then `leaves` becomes `out`, then the scan figure goes; never a smaller font.
+    for (const r of [row(bracket, 'leaves', suffix), row('', 'leaves', suffix), row('', 'out', suffix)]) if (textPx(r) <= CARD_INNER_W) return r;
+    return row('', 'out', '');
   }
-  return `${t.kind === 'shot' ? 'Shot ' : t.kind === 'rock' ? 'Rock ' : ''}${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
+  return `${t.kind === 'shot' ? 'Shot ' : t.kind === 'rock' ? 'Rock ' : ''}${t.room} ${t.eta}s freq ${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
 }
 
 /** The lobby controls card (spec Demo-i section 3): ASCII, the real bindings of input/sources.ts. */

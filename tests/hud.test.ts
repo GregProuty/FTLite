@@ -193,7 +193,7 @@ describe('buildHudModel', () => {
     const k = placeDebris(s, B, seconds(3), 1, 10); s.debris.kind[k] = 2;
     const m = buildHudModel(s, slots(1), 'running', '');
     expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Rock: Weapons Bay 3s' }]);
-    expect(targetRowText({ stableId: 10, kind: 'rock', room: 'Weapons Bay', eta: 3, frequency: null, hull: null, system: null, status: null, shieldsUp: null } as never)).toBe('Rock Weapons Bay 3s F?');
+    expect(targetRowText({ stableId: 10, kind: 'rock', room: 'Weapons Bay', eta: 3, frequency: null, hull: null, system: null, status: null, shieldsUp: null } as never)).toBe('Rock Weapons Bay 3s freq ?');
   });
   it('shows the Weapons panel with charge, targets by StableId and the cursor index', () => {
     const s = makeState(1), A = room(s, 'A'), B = room(s, 'B');
@@ -276,17 +276,17 @@ describe('buildHudModel', () => {
   });
   it('targetRowText renders the exact row strings for debris, shots and the enemy on both panels', () => {
     const debris = { stableId: 1, kind: 'debris' as const, room: 'Engine', eta: 7, frequency: null, hull: null, system: null, status: null, shieldsUp: null, layers: null as number | null, layersMax: null as number | null, weaponCharge: null as number | null, fleeSeconds: null as number | null };
-    expect(targetRowText(debris)).toBe('Engine 7s F?'); expect(targetRowText({ ...debris, frequency: 2 })).toBe('Engine 7s F2'); expect(targetRowText(debris, 0.4)).toBe('Engine 7s F? 40%');
+    expect(targetRowText(debris)).toBe('Engine 7s freq ?'); expect(targetRowText({ ...debris, frequency: 2 })).toBe('Engine 7s freq 2'); expect(targetRowText(debris, 0.4)).toBe('Engine 7s freq ? 40%');
     const shot = { ...debris, kind: 'shot' as const };
-    expect(targetRowText(shot)).toBe('Shot Engine 7s F?'); expect(targetRowText({ ...shot, frequency: 2 })).toBe('Shot Engine 7s F2'); expect(targetRowText(shot, 0.4)).toBe('Shot Engine 7s F? 40%'); expect(targetRowText({ ...shot, frequency: 2 }, 0.4)).toBe('Shot Engine 7s F2');
+    expect(targetRowText(shot)).toBe('Shot Engine 7s freq ?'); expect(targetRowText({ ...shot, frequency: 2 })).toBe('Shot Engine 7s freq 2'); expect(targetRowText(shot, 0.4)).toBe('Shot Engine 7s freq ? 40%'); expect(targetRowText({ ...shot, frequency: 2 }, 0.4)).toBe('Shot Engine 7s freq 2');
     const enemy = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0 };
-    expect(targetRowText(enemy)).toBe('Enemy 64% 87s S? [#]'); expect(targetRowText(enemy, 0.4)).toBe('Enemy 64% 87s S? [#] 40%');   // marker, then the scan suffix
+    expect(targetRowText(enemy)).toBe('Enemy 64% leaves 87s freq ? [#]'); expect(targetRowText(enemy, 0.4)).toBe('Enemy 64% leaves 87s freq ? [#] 40%');   // marker, then the scan suffix
   });
   it('targetRowText: the hull row markers and scan suffix, the subsystem rows intact and down', () => {
     const hull = { stableId: 9, kind: 'enemy' as const, room: 'Enemy ship', eta: 87, frequency: null as number | null, hull: 0.64, system: null, status: null, shieldsUp: true as boolean | null, layers: 1 as number | null, layersMax: 1 as number | null, weaponCharge: 0 as number | null, fleeSeconds: 0 as number | null };
-    expect(targetRowText(hull)).toBe('Enemy 64% 87s S? [#]'); expect(targetRowText({ ...hull, frequency: 2 })).toBe('Enemy 64% 87s S2 [#]');
-    expect(targetRowText({ ...hull, frequency: 2, shieldsUp: false })).toBe('Enemy 64% 87s S-'); expect(targetRowText({ ...hull, shieldsUp: false }, 0.4)).toBe('Enemy 64% 87s S- 40%');
-    expect(targetRowText(hull, 0.4)).toBe('Enemy 64% 87s S? [#] 40%'); expect(targetRowText({ ...hull, frequency: 2 }, 1)).toBe('Enemy 64% 87s S2 [#]');
+    expect(targetRowText(hull)).toBe('Enemy 64% leaves 87s freq ? [#]'); expect(targetRowText({ ...hull, frequency: 2 })).toBe('Enemy 64% leaves 87s freq 2 [#]');
+    expect(targetRowText({ ...hull, frequency: 2, shieldsUp: false })).toBe('Enemy 64% leaves 87s shields down'); expect(targetRowText({ ...hull, shieldsUp: false }, 0.4)).toBe('Enemy 64% out 87s shields down 40%');
+    expect(targetRowText(hull, 0.4)).toBe('Enemy 64% leaves 87s freq ? [#] 40%'); expect(targetRowText({ ...hull, frequency: 2 }, 1)).toBe('Enemy 64% leaves 87s freq 2 [#]');
     const sys = (system: number, hp: number, repairIn: number | null) => ({ ...hull, hull: null, system, status: { hp, repairIn } });
     expect(targetRowText(sys(0, 30, null))).toBe('Enemy weapons 100%'); expect(targetRowText(sys(0, 15, null))).toBe('Enemy weapons 50%');
     expect(targetRowText(sys(0, 0, 31))).toBe('Enemy weapons DOWN 31s'); expect(targetRowText(sys(1, 0, 1))).toBe('Enemy engines DOWN 1s'); expect(targetRowText(sys(2, 30, null), 0.4)).toBe('Enemy shields 100%');
@@ -489,13 +489,13 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
   const charge = (s: ReturnType<typeof makeState>, frac: number) => { s.enemy.shotArmTick = s.tick - Math.round(frac * 100); s.enemy.nextShotTick = s.tick + Math.round((1 - frac) * 100); };
   it('the enemy hull row in four states: full at column 0, a stripped layer at column 5 scanned, shields down, fleeing', () => {
     const a = makeState(1); quiet(a); placeEnemy(a);
-    expect(hullRow(a).text).toBe('Enemy 100% 120s S? [#]'); expect(hullRow(a).t).toMatchObject({ layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0 });
+    expect(hullRow(a).text).toBe('Enemy 100% leaves 120s freq ? [#]'); expect(hullRow(a).t).toMatchObject({ layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0 });
     const b = makeState(1); quiet(b); b.run.column = 5; placeEnemy(b, 150, 2); b.enemy.shieldLayers = 1; b.enemy.scanned = 1; charge(b, 0.5);
-    expect(hullRow(b).text).toBe('Enemy 100% 120s S2 [#.]'); expect(hullRow(b).t).toMatchObject({ layers: 1, layersMax: 2, weaponCharge: 0.5, hull: 1 });
+    expect(hullRow(b).text).toBe('Enemy 100% leaves 120s freq 2 [#.]'); expect(hullRow(b).t).toMatchObject({ layers: 1, layersMax: 2, weaponCharge: 0.5, hull: 1 });
     const c = makeState(1); quiet(c); placeEnemy(c, 64); disableSystem(c, EnemySystem.Shields); c.enemy.departTick = c.tick + 90 * 60; charge(c, 0.7);
-    expect(hullRow(c).text).toBe('Enemy 64% 90s S- '.trimEnd());
+    expect(hullRow(c).text).toBe('Enemy 64% leaves 90s shields down');
     const d = makeState(1); quiet(d); placeEnemy(d, 20); disableSystem(d, EnemySystem.Shields); d.enemy.fleeing = 1; d.enemy.surrenderIntact = 1; d.enemy.departTick = d.tick + 7 * 60; charge(d, 0.3);
-    expect(hullRow(d).text).toBe('Enemy 20% FLEE 7s S-'); expect(hullRow(d).t.fleeSeconds).toBe(7);
+    expect(hullRow(d).text).toBe('Enemy 20% FLEE 7s shields down'); expect(hullRow(d).t.fleeSeconds).toBe(7);
   });
   it('room rows carry no layer fields; the Hold row carries the hull as a fraction of maxHull', () => {
     const s = makeState(1); quiet(s); s.run.column = 5; placeEnemy(s, 75); sitDown(s, 0, s.derived.stationOfKind[StationKind.Weapons]!);
