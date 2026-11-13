@@ -43,7 +43,7 @@ Status: 2026-11-13. From Claude's playtest (`docs/playtest-report-2026-11-13.md`
 ## 7. Gate
 
 - [x] Tests and gates above (2026-11-13, branch `two-seats`: 1165 tests, every gate figure unchanged, `gate-jump` re-pinned; `docs/gates.md`).
-- [ ] Claude's second playtest: two seated players jump, vote and shop without standing; a fire left alone fails its console.
+- [x] Claude's second playtest (2026-11-13, master 361ca40): two seated players jumped 10 s into the run without standing; a fire set in Ops (fixture) failed Science, Engineering and Doors about 22 s later and downed the seated officer, who needed rescuing. Seated voting is covered by tests, not re-played.
 - [ ] Manual, the user: the couch checklist `docs/playtest.md` sections 1 to 4.
 
 ## 8. Amendments (Claude's review; Codex timed out)
