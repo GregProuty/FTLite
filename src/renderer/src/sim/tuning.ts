@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 25;
+export const SIM_VERSION = 26;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -91,6 +91,9 @@ export const TORP_HIT_BASE = 0.85, TORP_HIT_SCALE = 0.10;       // homing: frequ
 export const TORP_START = 3, TORP_CAP = 6;
 export const TORP_LOAD_TIME = 10;                     // seconds at output 1 to move one from stock into the tube
 export const TORP_REGEN_TIME = 90;                    // seconds per stock unit while Weapons is online
+/** Loot weapons (spec Loop-iii sections 1-3): two extra slots, the Weapons level each needs to charge, the ion disable, the kill drop chance (the table is in weaponDefs.ts). */
+export const WEAPON_SLOTS = 2, ION_SECONDS = 10, WEAPON_DROP_CHANCE = 0.25;
+export const SLOT_LEVELS: readonly number[] = [2, 4];
 
 // Skills and XP (increment 3-i)
 export const SKILL_COUNT = 6, SKILL_MAX = 10;

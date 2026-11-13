@@ -279,3 +279,155 @@ describe('beams under the Science lock (spec Coop-i section 1, amendments C1 and
     expect(card().locked).toBe(true); s.enemy.lockUntilTick = -1; expect(card().locked).toBe(false);
   });
 });
+
+// ---- Loop-iii: the loot weapons (spec Loop-iii sections 1 and 2) ----
+import { WEAPON_DEFS, LootWeapon, weaponDef } from '../src/renderer/src/sim/weaponDefs';
+import { selectorList, weaponsInput } from '../src/renderer/src/sim/weapons';
+import { enemySysUp, enemyWeaponCharge, enemySystem } from '../src/renderer/src/sim/enemy';
+import { ION_SECONDS, WEAPON_DROP_CHANCE, SLOT_LEVELS, TORP_HIT_BASE, TORP_HIT_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, ENEMY_EVADE, TICK_HZ, TORP_START } from '../src/renderer/src/sim/tuning';
+import { ENEMY_ENGINES_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { stationOutput } from '../src/renderer/src/sim/stations';
+import { shotsInFlight } from '../src/renderer/src/sim/debris';
+import { quiet, disableSystem } from './helpers/sim';
+import { nextInt, type RngState } from '../src/shared/rng';
+import { Dir } from '../src/renderer/src/sim/dir';
+
+/** The first seed whose draws satisfy the predicate on a fresh stream. */
+const seedFor = (ok: (r: RngState) => boolean): number => { for (let seed = 1; seed <= 20000; seed++) if (ok(createRng(seed))) return seed; throw new Error('no seed'); };
+/** Weapons seated at the given level, an enemy with one layer and no shot due, the cursor on `slot`, the loot weapon `id` charged in extra slot `k` and selected. */
+function lootArmed(id: number, k = 0, slot = ENEMY_SLOT, level = 2) {
+  const s = makeState(2); quiet(s); placeEnemy(s, ENEMY_HULL, 2); s.enemy.nextShotTick = 1e9;
+  const w = wpn(s); s.stations.level[w] = level; sitDown(s, 0, w); s.stations.cursor[w] = slot;
+  s.weapons.slot[k] = id; s.weapons.charge2[k] = 1; s.weapons.selector = Weapon.Slot1 + k;
+  return { s, w, out: stationOutput(s, w) };
+}
+
+describe('loot weapons: the table and the slots', () => {
+  it('the four weapons carry the spec values; ion seconds 10, drop chance 0.25, slot levels 2 and 4', () => {
+    expect(WEAPON_DEFS.slice(1).map((d) => [d.name, d.chargeTime, d.shots, d.damage, d.kind, d.price])).toEqual([
+      ['Burst Laser', 9, 2, 10, 'laser', 60], ['Heavy Laser', 12, 1, 30, 'laser', 70], ['Ion Cannon', 7, 1, 0, 'ion', 55], ['Missile Pod', 8, 1, 25, 'missile', 65]]);
+    expect([ION_SECONDS, WEAPON_DROP_CHANCE, [...SLOT_LEVELS]]).toEqual([10, 0.25, [2, 4]]);
+    const s = makeState(1); expect([Array.from(s.weapons.slot), Array.from(s.weapons.charge2), s.weapons.cargo]).toEqual([[0, 0], [0, 0], 0]);
+    expect(Array.from(s.enemy.ionUntil)).toEqual([-1, -1, -1]);
+  });
+  it('extra slot 1 charges at Weapons level 2 or more, slot 2 at 4 or more, at output / charge time; the beam is unchanged; charge is kept when the level drops', () => {
+    const s = makeState(1), i = wpn(s); quiet(s); s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Heavy; sitDown(s, 0, i);
+    const o2 = stationOutput(s, i); chargeBeam(s);
+    expect(s.weapons.charge2[0]).toBeCloseTo(DT * o2 / 9); expect(s.weapons.charge2[1]).toBe(0); expect(s.weapons.charge).toBeCloseTo(DT * o2 / BEAM_CHARGE_TIME);
+    s.stations.level[i] = 3; chargeBeam(s); expect(s.weapons.charge2[1]).toBe(0);
+    s.stations.level[i] = 4; const o4 = stationOutput(s, i), before = s.weapons.charge2[0]!; chargeBeam(s);
+    expect(s.weapons.charge2[1]).toBeCloseTo(DT * o4 / 12); expect(s.weapons.charge2[0]).toBeCloseTo(before + DT * o4 / 9);
+    s.stations.level[i] = 1; const kept = [s.weapons.charge2[0]!, s.weapons.charge2[1]!]; chargeBeam(s);
+    expect(Array.from(s.weapons.charge2)).toEqual(kept);
+    s.stations.level[i] = 4; s.weapons.charge2[0] = 1 - 1e-6; chargeBeam(s); expect(s.weapons.charge2[0]).toBe(1);   // capped
+    const e = makeState(1), j = wpn(e); quiet(e); sitDown(e, 0, j); chargeBeam(e); expect(Array.from(e.weapons.charge2)).toEqual([0, 0]);   // an empty slot never charges
+  });
+  it('the selector cycles Pulse F1, F2, F3, the filled extra slots, then the Torpedo', () => {
+    const s = makeState(1), i = wpn(s); quiet(s); sitDown(s, 0, i);
+    expect(selectorList(s)).toEqual([Weapon.BeamF1, Weapon.BeamF2, Weapon.BeamF3, Weapon.Torpedo]);
+    s.weapons.slot[1] = LootWeapon.Ion; expect(selectorList(s)).toEqual([0, 1, 2, Weapon.Slot2, Weapon.Torpedo]);
+    s.weapons.slot[0] = LootWeapon.Burst; expect(selectorList(s)).toEqual([0, 1, 2, Weapon.Slot1, Weapon.Slot2, Weapon.Torpedo]);
+    s.weapons.selector = Weapon.BeamF3; weaponsInput(s, i, Dir.Right, false); expect(s.weapons.selector).toBe(Weapon.Slot1);
+    weaponsInput(s, i, Dir.Right, false); expect(s.weapons.selector).toBe(Weapon.Slot2);
+    weaponsInput(s, i, Dir.Right, false); expect(s.weapons.selector).toBe(Weapon.Torpedo);
+    weaponsInput(s, i, Dir.Right, false); expect(s.weapons.selector).toBe(Weapon.BeamF1);
+    weaponsInput(s, i, Dir.Left, false); expect(s.weapons.selector).toBe(Weapon.Torpedo);
+    weaponsInput(s, i, Dir.Left, false); expect(s.weapons.selector).toBe(Weapon.Slot2);
+  });
+  it('an uncharged or empty slot refuses to fire and draws nothing', () => {
+    const { s } = lootArmed(LootWeapon.Heavy); s.weapons.charge2[0] = 0.5; const r0 = s.rng.combat.s;
+    expect(fireWeapon(s)).toBe(false); expect(s.rng.combat.s).toBe(r0); expect(s.telemetry.shots).toBe(0);
+    s.weapons.charge2[0] = 1; s.weapons.slot[0] = 0; expect(fireWeapon(s)).toBe(false); expect(s.rng.combat.s).toBe(r0); expect(s.weapons.charge2[0]).toBe(1);
+  });
+});
+
+describe('loot weapons: firing at the enemy', () => {
+  it('Burst Laser: two shots, one combat draw each; the first strips the layer and the second, now tuned, hits for 10', () => {
+    const probe = lootArmed(LootWeapon.Burst), thr = enemyBeamThreshold(probe.s, probe.out);
+    const seed = seedFor((r) => nextFloat(r) < thr && nextFloat(r) < thr);
+    const { s } = lootArmed(LootWeapon.Burst); s.rng.combat.s = seed;
+    const c = createRng(seed); nextFloat(c); nextFloat(c); nextInt(c, 2); nextFloat(c);   // two rolls, then the hull hit's room and problem draws
+    expect(fireWeapon(s)).toBe(true);
+    expect([s.enemy.shieldLayers, s.enemy.hull, s.telemetry.shots, s.telemetry.hits, s.telemetry.shieldHits, s.weapons.charge2[0]]).toEqual([0, ENEMY_HULL - 10, 2, 2, 1, 0]);
+    expect(s.rng.combat.s).toBe(c.s); expect(s.weapons.charge).toBe(0);   // the beam's charge is its own (never charged here)
+  });
+  it('Burst Laser under a lock: both shots tuned, 20 damage, the layer kept; both misses draw twice and do nothing', () => {
+    const probe = lootArmed(LootWeapon.Burst), thr = enemyBeamThreshold(probe.s, probe.out) + LOCK_HIT_BONUS;
+    const seed = seedFor((r) => nextFloat(r) < thr && (nextInt(r, 2), nextFloat(r), nextFloat(r) < thr));
+    const { s } = lootArmed(LootWeapon.Burst); s.enemy.scanned = 1; s.enemy.lockUntilTick = s.tick + 100; s.rng.combat.s = seed;
+    expect(fireWeapon(s)).toBe(true); expect([s.enemy.hull, s.enemy.shieldLayers, s.telemetry.lockedShots]).toEqual([ENEMY_HULL - 20, 1, 2]);
+    const miss = seedFor((r) => nextFloat(r) > 0.99 && nextFloat(r) > 0.99), m = lootArmed(LootWeapon.Burst); m.s.rng.combat.s = miss;
+    const c = createRng(miss); nextFloat(c); nextFloat(c);
+    expect(fireWeapon(m.s)).toBe(false); expect([m.s.enemy.hull, m.s.enemy.shieldLayers, m.s.telemetry.shots, m.s.weapons.charge2[0]]).toEqual([ENEMY_HULL, 1, 2, 0]); expect(m.s.rng.combat.s).toBe(c.s);
+  });
+  it('Burst Laser: a first shot that destroys the enemy ends the volley without a second draw', () => {
+    const probe = lootArmed(LootWeapon.Burst), thr = enemyBeamThreshold(probe.s, probe.out);
+    const seed = seedFor((r) => nextFloat(r) < thr);
+    const { s } = lootArmed(LootWeapon.Burst); s.enemy.shieldLayers = 0; s.enemy.hull = 10; s.rng.combat.s = seed;
+    const c = createRng(seed); nextFloat(c); nextInt(c, 2); nextFloat(c);
+    fireWeapon(s); expect(s.enemy.present).toBe(0); expect(s.telemetry.shots).toBe(1); expect(s.rng.combat.s).toBe(c.s);
+  });
+  it('Heavy Laser: one roll; untuned against a layer it strips (a strip reads as a hit, as the beam), tuned with the shields down it hits for 30', () => {
+    const probe = lootArmed(LootWeapon.Heavy), thr = enemyBeamThreshold(probe.s, probe.out), seed = seedFor((r) => nextFloat(r) < thr);
+    const a = lootArmed(LootWeapon.Heavy); a.s.rng.combat.s = seed; const c = createRng(seed); nextFloat(c);
+    expect(fireWeapon(a.s)).toBe(true); expect([a.s.enemy.shieldLayers, a.s.enemy.hull, a.s.telemetry.shots]).toEqual([0, ENEMY_HULL, 1]); expect(a.s.rng.combat.s).toBe(c.s);
+    const b = lootArmed(LootWeapon.Heavy); disableSystem(b.s, EnemySystem.Shields); b.s.enemy.shieldLayers = 0; b.s.rng.combat.s = seed;
+    expect(fireWeapon(b.s)).toBe(true); expect(b.s.enemy.hull).toBe(ENEMY_HULL - 30);
+  });
+  it('Ion Cannon: one roll at the torpedo chance; a hit strips a layer and does no damage', () => {
+    const probe = lootArmed(LootWeapon.Ion), thr = TORP_HIT_BASE + TORP_HIT_SCALE * probe.out;
+    const seed = seedFor((r) => { const u = nextFloat(r); return u < thr && u > enemyBeamThreshold(probe.s, probe.out); });   // a hit only at the torpedo's chance
+    const { s } = lootArmed(LootWeapon.Ion); s.rng.combat.s = seed; const c = createRng(seed); nextFloat(c);
+    fireWeapon(s); expect([s.enemy.shieldLayers, s.enemy.hull, s.telemetry.shieldHits, s.weapons.charge2[0]]).toEqual([0, ENEMY_HULL, 1, 0]); expect(s.rng.combat.s).toBe(c.s);
+    expect(Array.from(s.enemy.ionUntil)).toEqual([-1, -1, -1]);
+    const miss = seedFor((r) => nextFloat(r) > thr), m = lootArmed(LootWeapon.Ion); m.s.rng.combat.s = miss;
+    expect(fireWeapon(m.s)).toBe(false); expect(m.s.enemy.shieldLayers).toBe(1);
+  });
+  it('Ion Cannon: with no layer up a hit on a system row disables it for 10 s without losing health; a hull hit does nothing', () => {
+    const probe = lootArmed(LootWeapon.Ion), thr = TORP_HIT_BASE + TORP_HIT_SCALE * probe.out, seed = seedFor((r) => nextFloat(r) < thr);
+    const { s } = lootArmed(LootWeapon.Ion, 0, ENEMY_SHIELDS_SLOT); s.enemy.shieldLayers = 0; s.rng.combat.s = seed;
+    expect(fireWeapon(s)).toBe(true);
+    expect(s.enemy.ionUntil[EnemySystem.Shields]).toBe(s.tick + ION_SECONDS * TICK_HZ); expect(s.enemy.sysHp[EnemySystem.Shields]).toBe(ENEMY_SYS_HP); expect(s.enemy.hull).toBe(ENEMY_HULL);
+    expect(enemySysUp(s, EnemySystem.Shields)).toBe(false); expect(enemySysUp(s, EnemySystem.Weapons)).toBe(true);
+    const rot = s.enemy.shieldRotateTick;
+    for (let t = 0; t < ION_SECONDS * TICK_HZ; t++) { enemySystem(s); s.tick++; }
+    expect([s.enemy.shieldLayers, s.enemy.shieldRecharge]).toEqual([0, 0]); expect(s.enemy.shieldRotateTick).toBe(rot + ION_SECONDS * TICK_HZ);   // no recharge, the re-tune clock stands still
+    expect(enemySysUp(s, EnemySystem.Shields)).toBe(true); enemySystem(s); expect(s.enemy.shieldRecharge).toBeGreaterThan(0);
+    const h = lootArmed(LootWeapon.Ion); h.s.enemy.shieldLayers = 0; h.s.rng.combat.s = seed;
+    expect(fireWeapon(h.s)).toBe(true); expect(Array.from(h.s.enemy.ionUntil)).toEqual([-1, -1, -1]); expect(h.s.enemy.hull).toBe(ENEMY_HULL);
+  });
+  it('Ion Cannon: ionised weapons skip a due shot and read no charge; ionised engines give up their evasion', () => {
+    const { s } = lootArmed(LootWeapon.Ion); s.enemy.ionUntil[EnemySystem.Weapons] = s.tick + 600; s.enemy.nextShotTick = s.tick;
+    expect(enemyWeaponCharge(s)).toBe(0); enemySystem(s); expect(shotsInFlight(s)).toBe(0); expect(s.enemy.nextShotTick).toBeGreaterThan(s.tick);
+    const e = lootArmed(LootWeapon.Ion), before = enemyBeamThreshold(e.s, 0.5); e.s.enemy.ionUntil[EnemySystem.Engines] = e.s.tick + 600;
+    expect(enemyBeamThreshold(e.s, 0.5)).toBeCloseTo(before + ENEMY_EVADE);
+    const d = lootArmed(LootWeapon.Ion, 0, ENEMY_ENGINES_SLOT); d.s.enemy.departTick = d.s.tick + 100; d.s.enemy.ionUntil[EnemySystem.Engines] = d.s.tick + 600; enemySystem(d.s);
+    expect(d.s.enemy.departTick).toBe(d.s.tick + 101);   // the departure clock stands still, as with the engines down
+  });
+  it('Missile Pod: spends one torpedo from stock, ignores the shields, one roll at the torpedo chance, 25 damage; no stock, no fire', () => {
+    const probe = lootArmed(LootWeapon.Missile), thr = TORP_HIT_BASE + TORP_HIT_SCALE * probe.out, seed = seedFor((r) => nextFloat(r) < thr);
+    const { s } = lootArmed(LootWeapon.Missile); s.rng.combat.s = seed; const c = createRng(seed); nextFloat(c); nextInt(c, 2); nextFloat(c);
+    expect(fireWeapon(s)).toBe(true);
+    expect([s.enemy.hull, s.enemy.shieldLayers, s.weapons.torpedoStock, s.weapons.lastShotKind]).toEqual([ENEMY_HULL - 25, 1, TORP_START - 1, 1]); expect(s.rng.combat.s).toBe(c.s);
+    const n = lootArmed(LootWeapon.Missile); n.s.weapons.torpedoStock = 0; const r0 = n.s.rng.combat.s;
+    expect(fireWeapon(n.s)).toBe(false); expect([n.s.weapons.charge2[0], n.s.telemetry.shots]).toEqual([1, 0]); expect(n.s.rng.combat.s).toBe(r0);
+  });
+});
+
+describe('loot weapons: debris', () => {
+  const atDebris = (id: number, freq = 1) => { const s = makeState(1); quiet(s); const w = wpn(s); const k = placeDebris(s, room(s, 'A'), 600, 1, undefined, freq); sitDown(s, 0, w); s.stations.cursor[w] = k; s.weapons.slot[0] = id; s.weapons.charge2[0] = 1; s.weapons.selector = Weapon.Slot1; return { s, k, out: stationOutput(s, w) }; };
+  it('the lasers roll as an untuned beam: a roll between the untuned and tuned chances misses, below the untuned chance it clears the rock', () => {
+    const p = atDebris(LootWeapon.Heavy), lo = BEAM_MISS_BASE + BEAM_MISS_SCALE * p.out, hi = BEAM_MATCH_BASE + BEAM_MATCH_SCALE * p.out;
+    const mid = seedFor((r) => { const u = nextFloat(r); return u > lo && u < hi; }), low = seedFor((r) => nextFloat(r) < lo);
+    const a = atDebris(LootWeapon.Heavy); a.s.rng.combat.s = mid; expect(fireWeapon(a.s)).toBe(false); expect(a.s.debris.active[a.k]).toBe(1);
+    const b = atDebris(LootWeapon.Heavy); b.s.rng.combat.s = low; expect(fireWeapon(b.s)).toBe(true); expect(b.s.debris.active[b.k]).toBe(0);
+    const c = atDebris(LootWeapon.Burst); c.s.rng.combat.s = low; const r = createRng(low); nextFloat(r);
+    expect(fireWeapon(c.s)).toBe(true); expect(c.s.telemetry.shots).toBe(1); expect(c.s.rng.combat.s).toBe(r.s);   // the rock is gone: no second shot
+  });
+  it('the ion cannon cannot target debris; the missile pod hits it like a torpedo', () => {
+    const a = atDebris(LootWeapon.Ion), r0 = a.s.rng.combat.s; expect(fireWeapon(a.s)).toBe(false); expect([a.s.weapons.charge2[0], a.s.rng.combat.s, a.s.debris.active[a.k]]).toEqual([1, r0, 1]);
+    const p = atDebris(LootWeapon.Missile), thr = TORP_HIT_BASE + TORP_HIT_SCALE * p.out, seed = seedFor((r) => { const u = nextFloat(r); return u < thr && u > BEAM_MATCH_BASE + BEAM_MATCH_SCALE * p.out; });
+    const b = atDebris(LootWeapon.Missile); b.s.rng.combat.s = seed; expect(fireWeapon(b.s)).toBe(true); expect([b.s.debris.active[b.k], b.s.weapons.torpedoStock]).toEqual([0, TORP_START - 1]);
+  });
+  it('weaponDef reads the table', () => { expect(weaponDef(LootWeapon.Ion).short).toBe('Ion'); });
+});

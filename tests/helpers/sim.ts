@@ -91,7 +91,7 @@ export function placeEnemy(state: SimState, hull = ENEMY_HULL, shieldFreq = 1): 
   e.hull = hull; e.stableId = state.nextStableId++;
   e.departTick = state.tick + ENCOUNTER_MAX * TICK_HZ; e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;
   e.sysHp.fill(ENEMY_SYS_HP); e.sysRepairTick.fill(-1); e.shieldFreq = shieldFreq; e.scanned = 0; e.scan = 0;
-  e.shieldRotateTick = state.tick + SHIELD_ROTATE * TICK_HZ; e.lockUntilTick = -1;   // spec Coop-i section 1: as arrive() arms them
+  e.shieldRotateTick = state.tick + SHIELD_ROTATE * TICK_HZ; e.lockUntilTick = -1; e.ionUntil.fill(-1);   // spec Coop-i section 1: as arrive() arms them
 }
 /** Knock a subsystem out as damageEnemy would, arming its repair. */
 export function disableSystem(state: SimState, system: number): void {
