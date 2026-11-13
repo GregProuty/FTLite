@@ -421,10 +421,17 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
     return { kind: 'science', leadSeconds: scienceLead(state), targets: slots.map((k) => ({ ...target(state, k), scan: k === ENEMY_SLOT ? state.enemy.scan : isEnemySlot(k) ? 0 : state.debris.scan[k]! })), cursor, first: targetWindow(cursor, slots.length + 1 + system.results.length, SCIENCE_ROWS), scanning: state.science.scanning === 1, lock: lockActive(state) ? `LOCKED ${lockSecondsLeft(state)}s` : canLock(state, i) ? 'LOCK: Confirm' : '', system };
   }
   if (kind === StationKind.Navigation) {
-    const r = state.run, rows = navRows(state), c0 = state.stations.cursor[i]!, c = rows[c0] && rows[c0]!.select !== 'none' ? c0 : rows.findIndex((row) => row.select !== 'none');   // c: the highlighted row, the first selectable one while the sim cursor still sits on a header   // spec Run-ii 9: the event, shop or destination rows, the cursor row, the jump state and scrap
+    const r = state.run, all = navRows(state), c0 = state.stations.cursor[i]!, ca = all[c0] && all[c0]!.select !== 'none' ? c0 : all.findIndex((row) => row.select !== 'none');
+    const kept = all.map((row, k) => k).filter((k) => all[k]!.select !== 'evade' || k === ca || evadeRowShown(state, all[k]!.text)), rows = kept.map((k) => all[k]!), c = kept.indexOf(ca);   // the evade row only when it means something, in the card only (spec Demo-xii section 4 and amendment 5)   // c: the highlighted row, the first selectable one while the sim cursor still sits on a header   // spec Run-ii 9: the event, shop or destination rows, the cursor row, the jump state and scrap
     return { kind: 'navigation', evadeChance: evadeChance(stationOutput(state, i), state.tick < r.evadeUntilTick), jump: { charge: r.jumpCharge, ready: r.jumpCharge >= 1 }, here: nodeLabel(r.column, r.node), fuel: r.fuel, fuelAfter: rows[c] && (rows[c]!.select === 'jump' || rows[c]!.select === 'sector') ? r.fuel - 1 : null, rows: rows.map((row, k) => ({ text: row.text, selectable: row.select !== 'none', enabled: row.enabled, cursor: k === c, blue: row.blue === true })), first: targetWindow(c, rows.length, 7), scrap: r.scrap };
   }
   return null;
+}
+
+/** The Navigation card shows the evade row while an enemy is present or an asteroid field is active, and its EVADING and cooldown states whenever they run (spec Demo-xii section 4). The sim's rows are unchanged. */
+export function evadeRowShown(state: SimState, text: string): boolean {
+  if (text !== 'EVADE: Confirm') return true;
+  return state.enemy.present === 1 || (contentOf(state) === NodeType.Asteroid && state.run.encounter === Encounter.Fighting);
 }
 
 function clock(seconds: number): string { const whole = Math.floor(seconds); return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`; }

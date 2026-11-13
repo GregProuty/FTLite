@@ -409,13 +409,13 @@ describe('buildHudModel', () => {
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const nav = () => model().players[0]!.console as NavigationPanel, p = nav();
     const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;
-    expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a  ?', true, true, false], ['Node 2b  ?', true, true, true], ['EVADE: Confirm', true, true, false]]); expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect([p.fuel, p.fuelAfter]).toEqual([8, 7]);
+    expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a  ?', true, true, false], ['Node 2b  ?', true, true, true]]);   // no evade row at a calm beacon (spec Demo-xii section 4) expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect([p.fuel, p.fuelAfter]).toEqual([8, 7]);
     expect(navigationFooter(p)).toBe(`${evade}  Jump 64%  Fuel 8>7  Scrap 0`);
     s.stations.cursor[n] = 2; expect(navigationFooter(nav())).toBe(`${evade}  Jump 64%  Fuel 8  Scrap 0`);   // the evade row: no jump chosen
     s.stations.cursor[n] = 1; chargeJump(s); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
     s.run.column = SECTOR_COLUMNS - 1; s.stations.cursor[n] = 0; const f = nav();
-    expect(f.rows.map((r) => r.text)).toEqual(['Jump to sector 2', 'EVADE: Confirm']); expect(navigationFooter(f)).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
-    s.run.fuel = 0; expect(nav().rows.map((r) => r.text)).toEqual(['Wait for help', 'EVADE: Confirm']); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 0  Scrap 0`);
+    expect(f.rows.map((r) => r.text)).toEqual(['Jump to sector 2']); expect(navigationFooter(f)).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
+    s.run.fuel = 0; expect(nav().rows.map((r) => r.text)).toEqual(['Wait for help']); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 0  Scrap 0`);
     s.run.fuel = 10; s.run.scrap = 999; s.run.column = 0; s.stations.cursor[n] = 0; const wide = navigationFooter(nav());
     expect(wide).toBe(`${evade}  Jump READY  Fuel 10>9  Scrap 999`); expect(wide.length).toBeLessThanOrEqual(44);   // 44 glyphs at about 6.25 px fit the 308 px card from x = 8 (CONSOLE_LINE_MAX 40 is the card's comfortable budget)
   });
@@ -429,7 +429,7 @@ describe('buildHudModel', () => {
   it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows last, and baseMax on the power rows', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); clampNavCursor(s);
     const m = buildHudModel(s, slots(2), 'running', ''); const p = m.players[0]!.console as NavigationPanel;
-    expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['A cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60, a station fails)', true, true, false], ['EVADE: Confirm', true, true, false]]);
+    expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['A cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60, a station fails)', true, true, false]]);
     expect(p.scrap).toBe(45); s.run.jumpCharge = 0.64; expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toMatch(/^Evade \d+%  Jump 64%  Fuel 8  Scrap 45$/);
     expect(m.threats).toEqual([{ icon: 'icon.sensors', text: 'Event: Supply cache' }]);   // spec Demo-i section 4: the run rows trail the hazards
     igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.icon).toBe('icon.weapons'); expect(t[1]!.text).toBe('Fire: Bridge'); expect(t[2]!.text).toBe('Event: Supply cache');
@@ -558,7 +558,7 @@ describe('Demo-ii HUD: unpowered consoles, card line 4, the enemy block (spec se
 
 describe('the Navigation evade row (spec Coop-ii section 1)', () => {
   it('reads EVADE: Confirm when ready, EVADING inside the window, EVADE 4s on the cooldown, dimmed while not ready', () => {
-    const s = makeState(2); quiet(s); seatNavigator(s, 0);
+    const s = makeState(2); quiet(s); seatNavigator(s, 0); placeEnemy(s);   // the row shows with an enemy present (spec Demo-xii section 4)
     const row = () => { const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; return p.rows[p.rows.length - 1]!; };
     expect([row().text, row().selectable, row().enabled]).toEqual(['EVADE: Confirm', true, true]);
     s.run.evadeUntilTick = s.tick + 30; s.run.evadeReadyTick = s.tick + 400; expect([row().text, row().enabled]).toEqual(['EVADING', false]);

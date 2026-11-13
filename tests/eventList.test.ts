@@ -129,7 +129,7 @@ describe('blue options, dim choices and three-way votes on the HUD (spec Loop-v 
     const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.blue])).toEqual([
       ['Weapons locker', false, false, false], ['A sealed military locker tumbles', false, false, false], ['past, its lock still blinking.', false, false, false],
-      ['Crack it (60%: a weapon, or a fire)', true, true, false], ['[Science 3] Read the lock (a weapon)', true, false, true], ['Leave it spinning', true, true, false], ['EVADE: Confirm', true, true, false]]);
+      ['Crack it (60%: a weapon, or a fire)', true, true, false], ['[Science 3] Read the lock (a weapon)', true, false, true], ['Leave it spinning', true, true, false]]);   // no evade row at a calm event (spec Demo-xii section 4)
     s.run.upgrades[StationKind.Science] = 1; expect(navRows(s)[4]!.enabled).toBe(true);
     expect(navRows(s).every((r) => r.text.length <= NAV_TEXT_MAX)).toBe(true);
   });
