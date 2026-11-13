@@ -137,7 +137,7 @@ export function setNodeTypes(state: SimState, types: Record<string, number>): vo
 }
 export function allHazard(state: SimState): void { setNodeTypes(state, {}); }
 export function grantScrap(state: SimState, n: number): void { state.run.scrap = n; }
-export function setEvent(state: SimState, id: number): void { state.run.event = id; state.run.eventChoice = -1; state.run.eventOpenTick = state.tick; state.run.voteTick = -1; state.run.vote.fill(-1); }   // opens the vote now (spec Coop-ii section 3)
+export function setEvent(state: SimState, id: number): void { state.run.event = id; state.run.eventChoice = -1; state.run.eventOpenTick = -1; state.run.voteTick = -1; state.run.vote.fill(-1); }   // opens the event; its limit starts at the first vote (spec Demo-x-b section 2)
 /** The spec's fixture map M on a six-column sector (spec Loop-i section 1): three nodes in column 1, forward-reachable [0, 2] from the start, every other mask 1; all nodes Hazard. */
 export const MAP_M_NODES = [1, 3, 2, 2, 2, 1];
 export const MAP_M_MASKS: Record<string, number> = { '0:0': 0b101, '1:0': 1, '1:1': 1, '1:2': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 };

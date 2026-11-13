@@ -19,7 +19,7 @@ const surrender = (s: ReturnType<typeof makeState>, secs = 8) => { placeEnemy(s)
 describe('runNotice', () => {
   it('an event pending: its title and both choices, exactly', () => {
     const s = fresh(); setEvent(s, 4);
-    expect(runNotice(s)).toEqual(['EVENT: Supply cache   vote 15s', 'Take the scrap (+40)  /  Strip it bare (+60, a station fails)']);
+    expect(runNotice(s)).toEqual(['EVENT: Supply cache   waiting for a vote', 'Take the scrap (+40)  /  Strip it bare (+60, a station fails)']);
   });
   it('after the choice at a shop node: the shop location cue and price list, exactly', () => {
     const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 4); resolveEvent(s, 0); grantScrap(s, 45);
@@ -33,7 +33,7 @@ describe('runNotice', () => {
   });
   it('priority: event, surrender, shop, ready-unseated, ready-seated', () => {
     const s = fresh(); shopAt(s); chargeJump(s); surrender(s); setEvent(s, 4);
-    expect(runNotice(s)[0]).toBe('EVENT: Supply cache   vote 15s');
+    expect(runNotice(s)[0]).toBe('EVENT: Supply cache   waiting for a vote');
     s.run.eventChoice = 0; expect(runNotice(s)).toEqual([`ENEMY SURRENDERS   hold fire 8s for +${scrapSurrender(s.run.column)} scrap`]);   // beats the shop and the ready drive
     s.enemy.surrenderIntact = 0; expect(runNotice(s)).toEqual(SHOP);                                                           // a voided surrender shows nothing from rule 1b
     s.enemy.present = 0; expect(runNotice(s)).toEqual(SHOP);
@@ -84,7 +84,7 @@ describe('runNotice: encounters (spec Demo-vi section 2)', () => {
   });
   it('priority: the pending event first, then the encounter rule, then the surrender, the shop and the ready drive', () => {
     const s = ended(Encounter.Won); shopAt(s); chargeJump(s); setEvent(s, 4);
-    expect(runNotice(s)[0]).toBe('EVENT: Supply cache   vote 15s');
+    expect(runNotice(s)[0]).toBe('EVENT: Supply cache   waiting for a vote');
     s.run.eventChoice = 0; expect(runNotice(s)).toEqual(WON);
     surrender(s); expect(runNotice(s)).toEqual(WON);                                                       // the rule sits before the surrender line
     s.run.encounter = Encounter.Fighting; expect(runNotice(s)[0]).toMatch(/^ENEMY SURRENDERS/);
@@ -184,7 +184,7 @@ describe('the purchase notice', () => {
   it('priority: a pending jump and an open event come first; the purchase beats the shop and the ready drive', () => {
     const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, 200); chargeJump(s); buyReactor(s);
     expect(runNotice(s)).toEqual(['Reactor +1 (11 bars)']);
-    setEvent(s, 4); expect(runNotice(s)[0]).toBe('EVENT: Supply cache   vote 15s');
+    setEvent(s, 4); expect(runNotice(s)[0]).toBe('EVENT: Supply cache   waiting for a vote');
   });
   it('the purchase lines are ASCII and fit NOTICE_LINE_MAX', () => {
     const s = fresh(); grantScrap(s, 9999); const lines: string[] = [];

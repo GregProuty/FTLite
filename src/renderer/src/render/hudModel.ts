@@ -8,7 +8,7 @@ import { DoorState, conditionRoomAt } from '../sim/grid';
 import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX, WEAPON_SLOTS, SLOT_LEVELS } from '../sim/tuning';
 import { navRows, helmOffline, overrun, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf, EXIT_JUMP, exitText } from '../sim/run';
 import { depthOf, peaceful } from '../sim/depth';
-import { EVENTS, EVENT_DEFS, noticeChoices } from '../sim/events';
+import { EVENTS, EVENT_DEFS, noticeChoices, choiceLabel, choiceEnabled, isBlue } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
 import { CHARACTERS, DEFAULT_CHARACTERS, RECRUIT, characterOf, ASSET_NAMES, COMPLICATION_NAMES, type Character } from '../sim/characters';
 import { StationKind, STATION_NAMES } from '../sim/stationKinds';
@@ -76,6 +76,7 @@ export interface HudModel {
   run: { column: number; columns: number; sector: number; fuel: number; quirk: string };
   progressLine: string;
   lobbyLines: string[]; notice: string[];   // the lobby controls card (spec Demo-i section 3) and the run notice (section 4)
+  eventCard: EventCard | null;   // the open event, centred over the world while running (spec Demo-x-b section 2)
   calloutFlash: number[];   // station kinds whose Engineering row flashes for a Power to ... callout (spec Coop-i section 3)
 }
 /** True for any level-0 non-Engineering console that is present and not failed (spec Demo-ii section 3): a repaired console awaiting a bar. */
@@ -240,6 +241,27 @@ function lootLine(state: SimState): string | null {
   if (w.lootBought) return `Bought: ${d.name}`;
   return `Found: ${d.name} (${w.lootPlace === LootPlace.Cargo ? 'cargo' : `slot ${w.lootPlace + 1}`})`;
 }
+/** Whole seconds left on an open event's vote once the first vote started it (spec Demo-x-b section 2). */
+function voteSecondsLeft(state: SimState): number { const r = state.run; return r.eventOpenTick < 0 ? VOTE_SECONDS : Math.max(0, Math.ceil((r.eventOpenTick + VOTE_SECONDS * TICK_HZ - state.tick) / TICK_HZ)); }
+/** One choice on the event card: its number (`1.`), its label as Navigation shows it, whether it can be taken, blue, and the players voting for it (`P1`). */
+export interface EventCardChoice { number: string; text: string; enabled: boolean; blue: boolean; votes: string[] }
+/** The centred event card (spec Demo-x-b section 2, FTL's event window): the title, the text rows, the numbered choices with the votes beside them, the vote's state and how to vote. */
+export interface EventCard { title: string; text: string[]; choices: EventCardChoice[]; status: string; help: string }
+export const EVENT_CARD_HELP = 'Press Confirm to vote   Navigation officer: pick a row';
+/** The open event's card, or null when no event waits for a choice. */
+export function eventCard(state: SimState): EventCard | null {
+  const r = state.run;
+  if (r.event < 0 || r.eventChoice >= 0) return null;
+  const def = EVENT_DEFS[r.event]!;
+  const voters = (k: number): string[] => { const out: string[] = []; for (let pid = 0; pid < state.playerCount; pid++) if (r.vote[pid] === k && Life.state[state.crew[pid]!] === LifeState.Conscious) out.push(`P${pid + 1}`); return out; };
+  return {
+    title: def.title, text: [...def.text],
+    choices: def.choices.map((_, k) => ({ number: `${k + 1}.`, text: choiceLabel(state, r.event, k), enabled: choiceEnabled(state, r.event, k), blue: isBlue(r.event, k), votes: voters(k) })),
+    status: r.eventOpenTick < 0 ? 'Waiting for the first vote' : `Deciding in ${voteSecondsLeft(state)}s`,
+    help: EVENT_CARD_HELP
+  };
+}
+
 /** The helm-offline line (spec Demo-x-b section 2): first while the Navigation station is failed or unpowered. */
 export const HELM_NOTICE = 'HELM OFFLINE: repair Navigation to jump';
 /** The centre notice: the helm-offline line over the first line of the ordinary notice while Navigation is down (spec Demo-x-b section 2), else the ordinary notice. */
@@ -251,7 +273,7 @@ export function runNotice(state: SimState): string[] {
 function baseNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
   if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
-  if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!, left = r.eventOpenTick < 0 ? VOTE_SECONDS : Math.max(0, Math.ceil((r.eventOpenTick + VOTE_SECONDS * TICK_HZ - state.tick) / TICK_HZ)); return [`EVENT: ${ev.title}   vote ${left}s`, noticeChoices(state, r.event)]; }
+  if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}   ${r.eventOpenTick < 0 ? 'waiting for a vote' : `vote ${voteSecondsLeft(state)}s`}`, noticeChoices(state, r.event)]; }
   if (r.boughtTick >= 0 && state.tick - r.boughtTick < PURCHASE_NOTICE_SECONDS * TICK_HZ) return [r.boughtKind === REACTOR_ROW ? `Reactor +1 (${state.power.capacity} bars)` : `${STATION_NAMES[r.boughtKind]} upgraded to ${baseMax(state, r.boughtKind)}`];   // a purchase at the Engineering console (spec Loop-ii section 2)
   const loot = lootLine(state), window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
   const field = contentOf(state) === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
@@ -370,5 +392,5 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, unpowered: unpoweredAt(state, kind, i), icon: ICON_KINDS[kind]!, iconTint: stationTint(state, i), ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], notice: state && phase === 'running' ? runNotice(state) : [], calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
+  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
 }

@@ -104,6 +104,41 @@ export function createHud(parent: Container, assets: GameAssets) {
     return { name, vote, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar, sizeCard };
   });
 
+  // The event card (spec Demo-x-b section 2, FTL's event window): centred over the world, above the seated console cards; the title and choices at 2x.
+  const CARD_W = 720, CARD_X = (INTERNAL_W - CARD_W) / 2, CARD_Y = 112, BIG = 34, PAD = 20;
+  const card = new Container(); card.visible = false;
+  const cardBack = new Graphics(); card.addChild(cardBack);
+  const cardPanel = panel(CARD_X, CARD_Y, CARD_W, 200); card.addChild(cardPanel);
+  const big = (tint = TEXT): BitmapText => { const t = text(16, tint); t.scale.set(2); return t; };
+  const cardTitle = big(CALL); cardTitle.position.set(CARD_X + PAD, CARD_Y + 14); card.addChild(cardTitle);
+  const cardText = [0, 1].map(() => { const t = big(TEXT); card.addChild(t); return t; });
+  const cardChoices = [0, 1, 2].map(() => { const n = big(); const l = big(); const v = big(CALL); v.anchor.set(1, 0); card.addChild(n, l, v); return { n, l, v }; });
+  const cardStatus = text(16, CALL); card.addChild(cardStatus);
+  const cardHelp = text(16, DIM); card.addChild(cardHelp);
+  parent.addChild(card);
+  function updateCard(m: HudModel): void {
+    const c = m.eventCard; card.visible = !!c;
+    if (!c) return;
+    cardTitle.text = c.title;
+    let y = CARD_Y + 14 + BIG + 6;
+    cardText.forEach((t, k) => { const line = c.text[k]; t.visible = !!line; t.text = line ?? ''; t.position.set(CARD_X + PAD, y); if (line) y += 30; });
+    y += 10;
+    cardChoices.forEach((row, k) => {
+      const ch = c.choices[k]; row.n.visible = row.l.visible = row.v.visible = !!ch;
+      if (!ch) return;
+      const tint = !ch.enabled ? FAINT : ch.blue ? BLUE : TEXT;
+      row.n.text = ch.number; row.n.tint = tint; row.n.position.set(CARD_X + PAD, y);
+      row.l.text = ch.text; row.l.tint = tint; row.l.position.set(CARD_X + PAD + 40, y);
+      row.v.text = ch.votes.length ? `< ${ch.votes.join(' ')}` : ''; row.v.position.set(CARD_X + CARD_W - PAD, y);
+      y += BIG;
+    });
+    y += 8;
+    cardStatus.text = c.status; cardStatus.position.set(CARD_X + PAD, y); y += LINE;
+    cardHelp.text = c.help; cardHelp.position.set(CARD_X + PAD, y); y += LINE + 14;
+    cardPanel.height = y - CARD_Y;
+    cardBack.clear().rect(CARD_X + 4, CARD_Y + 4, CARD_W - 8, y - CARD_Y - 8).fill({ color: 0x05060a, alpha: 0.9 });
+  }
+
   const overlay = new Container(); overlay.visible = false;
   overlay.addChild(panel(40, 40, INTERNAL_W - 80, INTERNAL_H - 80));
   const creditLines = Array.from({ length: CREDITS_LINES }, (_, i) => { const t = text(); t.position.set(56, 56 + i * LINE); overlay.addChild(t); return t; });
@@ -228,6 +263,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       summaryBack.visible = m.phase === 'gameover' && shown.length > 0;
       if (summaryBack.visible) summaryBack.clear().rect(INTERNAL_W / 2 - wide / 2 - 12, 98, wide + 24, m.summary!.length * LINE + 12).fill({ color: 0x05060a, alpha: 0.88 });
       m.players.forEach((p, i) => updatePlayer(players[i]!, p, i, m.phase));
+      updateCard(m);
       overlay.visible = m.credits !== null;
       if (m.credits) creditLines.forEach((t, i) => { t.text = m.credits![m.creditsScroll + i] ?? ''; });
     }

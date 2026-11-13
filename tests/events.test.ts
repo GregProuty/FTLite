@@ -223,7 +223,8 @@ describe('crew votes (spec Coop-ii section 3, amendments D6-D8)', () => {
     const s = open(0, 2); run(s, 1, press(0)); run(s, 1, press(0));   // P1 votes Leave it; P2 never votes
     run(s, VOTE_SECONDS * T - 4); expect(s.run.eventChoice).toBe(-1);
     run(s, 4); expect(s.run.eventChoice).toBe(1);
-    const t = open(4, 2); run(t, VOTE_SECONDS * T + 2); expect(t.run.eventChoice).toBe(EVENTS[4]!.safeChoice);
+    const t = open(4, 2); run(t, VOTE_SECONDS * T + 2); expect(t.run.eventChoice).toBe(-1);   // no vote yet: the event waits for the crew (spec Demo-x-b section 2)
+    run(t, 1, press(0)); downCrew(t, 0); run(t, VOTE_SECONDS * T); expect(t.run.eventChoice).toBe(EVENTS[4]!.safeChoice);   // the vote started the limit, then went with its voter
     expect([t.telemetry.votesUnanimous, t.telemetry.votesSplit]).toEqual([0, 0]);
   });
   it('a downed player leaves the electorate and their vote is discarded; a vote for a disabled option is discarded', () => {

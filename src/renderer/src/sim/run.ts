@@ -103,7 +103,7 @@ export function jumpStep(state: SimState): void { if (state.run.finalBeacon) ret
 
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw by weight, spec Loop-v section 2). */
 function arrive(state: SimState): void {
-  const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1;
+  const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = -1; r.voteTick = -1;   // the event's limit starts at the first vote (spec Demo-x-b section 2)
   if (r.finalBeacon) { r.shopWeapon = 0; return; }   // the final beacon is not on the map: no award, no content (spec Loop-iv amendment F1)
   addScrap(state, scrapPerJump(depthOf(state)));
   if (contentOf(state) === NodeType.Event) r.event = pickEvent(state);
@@ -292,7 +292,7 @@ export function tallyVotes(state: SimState): { choice: number; voters: number; u
   return { choice: ov >= 0 && choiceEnabled(state, r.event, ov) && counts[ov] === top ? ov : counts.indexOf(top), voters, unanimous: false };
 }
 
-/** Step 2a, the single decision point (spec Coop-ii section 3): standing Confirms vote (the first press option 1, then toggling); a vote of a crew member who is not conscious is discarded; the event resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after it opened. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
+/** Step 2a, the single decision point (spec Coop-ii section 3): standing Confirms vote (the first press option 1, then toggling); a vote of a crew member who is not conscious is discarded; the event waits for the first vote (spec Demo-x-b section 2), then resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after the first vote. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
 /** A jump by its row code: a beacon index, or EXIT_JUMP for the sector jump. */
 function doJump(state: SimState, code: number): void { if (code === EXIT_JUMP) sectorJump(state); else jumpShip(state, beaconAt(code)); }
 
@@ -300,14 +300,14 @@ export function decisionSystem(state: SimState): void {
   const r = state.run;
   waitStep(state);   // the wait for help ends (spec Loop-i section 2)
   if (r.event >= 0 && r.eventChoice < 0) {
-    if (r.eventOpenTick < 0) r.eventOpenTick = state.tick;   // an event set without an arrival opens now
     for (let pid = 0; pid < state.playerCount; pid++) {
       if (state.scratch.votePress[pid]) { r.vote[pid] = (r.vote[pid]! + 1) % EVENT_DEFS[r.event]!.choices.length; r.voteTick = state.tick; }   // option 1 first, then round the options (spec Loop-v: two or three)
       if (Life.state[state.crew[pid]!] !== LifeState.Conscious) r.vote[pid] = -1;
     }
+    if (r.eventOpenTick < 0 && r.vote.some((v) => v >= 0)) r.eventOpenTick = state.tick;   // the event waits for the crew: the limit starts at the first vote, a standing press or the officer's row (spec Demo-x-b section 2)
     let all = consciousCount(state) > 0;
     for (let pid = 0; pid < state.playerCount; pid++) if (Life.state[state.crew[pid]!] === LifeState.Conscious && !(r.vote[pid]! >= 0 && choiceEnabled(state, r.event, r.vote[pid]!))) all = false;
-    if ((all && state.tick - r.voteTick >= VOTE_SETTLE * TICK_HZ) || state.tick >= r.eventOpenTick + VOTE_SECONDS * TICK_HZ) {
+    if (r.eventOpenTick >= 0 && ((all && state.tick - r.voteTick >= VOTE_SETTLE * TICK_HZ) || state.tick >= r.eventOpenTick + VOTE_SECONDS * TICK_HZ)) {
       const t = tallyVotes(state);
       if (t.voters >= 2) { if (t.unanimous) state.telemetry.votesUnanimous++; else state.telemetry.votesSplit++; }
       resolveEvent(state, t.choice); r.vote.fill(-1); r.voteTick = -1; clampNavCursor(state);
