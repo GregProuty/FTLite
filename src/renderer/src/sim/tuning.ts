@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 27;
+export const SIM_VERSION = 28;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -189,7 +189,6 @@ export const scrapEnemy = (column: number): number => 20 + 6 * column;
 export const scrapSurrender = (column: number): number => 15 + 4 * column;
 export const scrapBoarder = (column: number): number => 8 + 2 * column;
 export const scrapField = (column: number): number => 15 + 5 * column;       // an asteroid field cleared (Demo-viii)
-export const EVENT_COUNT = 6;
 export const EVENT_SCRAP_SCALE = 0.15;   // event scrap amounts are written for depth 0 and multiplied by 1 + EVENT_SCRAP_SCALE x depth (spec Loop-v section 1)
 export const SHOP_HULL = 25, SHOP_HULL_COST = 30, SHOP_TORPEDOES = 2, SHOP_TORPEDOES_COST = 20;
 // Upgrades from the Engineering console (Loop-ii): the next level costs BASE + STEP x the levels owned

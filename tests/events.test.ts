@@ -4,7 +4,7 @@ import { TICK_HZ, VOTE_SECONDS, VOTE_SETTLE, FUEL_COST, SHOP_FUEL } from '../src
 import { teleport } from './helpers/sim';
 import { NodeType, NAV_TEXT_MAX, reachable, navRows, clampNavCursor, jumpShip } from '../src/renderer/src/sim/run';
 import { addScrap, spendScrap } from '../src/renderer/src/sim/scrap';
-import { EVENTS, choiceEnabled, resolveEvent } from '../src/renderer/src/sim/events';
+import { EVENTS, EVENT_DEFS, choiceEnabled, choiceLabel, resolveEvent } from '../src/renderer/src/sim/events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from '../src/renderer/src/sim/shop';
 import { failStation } from '../src/renderer/src/sim/power';
 import { isOverdriven, heatStep } from '../src/renderer/src/sim/heat';
@@ -14,20 +14,20 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { freeSites } from '../src/renderer/src/sim/hazards/breach';
-import { nextInt } from '../src/shared/rng';
-import { HULL_MAX, HEALTH_MAX, TORP_CAP, TORP_START, STATION_MAX, EVENT_COUNT, scrapPerJump, scrapEnemy, scrapBoarder, scrapSurrender, scrapField } from '../src/renderer/src/sim/tuning';
+import { nextInt, nextFloat } from '../src/shared/rng';
+import { HULL_MAX, HEALTH_MAX, TORP_CAP, TORP_START, STATION_MAX, scrapPerJump, scrapEnemy, scrapBoarder, scrapSurrender, scrapField } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, intents, placeEnemy, placeBoarder, chargeJump, seatNavigator, mapM, setNodeTypes, grantScrap, setEvent, room, ahead } from './helpers/sim';
 
 const calm = (seed = 1) => { const s = makeState(2, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); return s; };
 const at = (s: ReturnType<typeof makeState>, column: number, node: number) => { s.run.column = column; s.run.node = node; s.run.nodesReached = column; s.telemetry.jumps = column; };
 
 describe('arrival', () => {
-  it('a Hazard arrival awards scrapPerJump of the new column and never touches the loot stream; an Event arrival draws the id with exactly one loot draw', () => {
+  it('a Hazard arrival awards scrapPerJump of the new column and never touches the loot stream; an Event arrival draws the id with exactly one loot draw, by weight', () => {
     const s = calm(); const before = { s: s.rng.loot.s };
     jumpShip(s, ahead(s, 0));
     expect([s.run.scrap, s.telemetry.scrapEarned, s.run.event, s.run.eventChoice]).toEqual([scrapPerJump(1), scrapPerJump(1), -1, -1]);
     expect(s.rng.loot.s).toBe(before.s); expect(nextInt(s.rng.loot, 1000)).toBe(nextInt(before, 1000));
-    const e = calm(); setNodeTypes(e, { '1:2': NodeType.Event }); const ref = { s: e.rng.loot.s }; const id = nextInt(ref, EVENT_COUNT);
+    const e = calm(); setNodeTypes(e, { '1:2': NodeType.Event }); const ref = { s: e.rng.loot.s }; const elig = EVENT_DEFS.map((d, i) => [d, i] as const).filter(([d]) => (d.minDepth ?? 0) <= 1); let u = nextFloat(ref) * elig.reduce((a, [d]) => a + d.weight, 0), id = -1; for (const [d, i] of elig) { u -= d.weight; if (u < 0 && id < 0) id = i; }   // one draw by weight over the events open at depth 1 (spec Loop-v section 2)
     jumpShip(e, ahead(e, 2));
     expect(e.run.event).toBe(id); expect(e.rng.loot.s).toBe(ref.s); expect(e.run.scrap).toBe(scrapPerJump(1));
     const v = calm(); at(v, 4, 0); jumpShip(v, ahead(v, 0)); expect(v.ended).toBe(0); expect(v.run.event).toBe(-1);   // the exit is a Hazard: no event, and arriving there wins nothing (spec Loop-i section 1)
@@ -149,7 +149,8 @@ describe('scrap sources', () => {
 describe('Navigation text budget', () => {
   it('every event title, text, choice, shop item label and the shop header fit NAV_TEXT_MAX', () => {
     const texts: string[] = [];
-    for (const e of EVENTS) texts.push(e.title, e.text, e.choices[0], e.choices[1]);
+    const deep = calm(); deep.run.sector = 2; deep.run.column = 5;   // depth 17: the largest scaled amounts (spec Loop-v section 1)
+    for (let id = 0; id < EVENT_DEFS.length; id++) { const e = EVENT_DEFS[id]!; texts.push(e.title, ...e.text); for (let k = 0; k < e.choices.length; k++) texts.push(choiceLabel(calm(), id, k), choiceLabel(deep, id, k)); }
     const s = calm(); for (let i = 0; i < SHOP_ITEM_COUNT; i++) texts.push(itemLabel(s, i));
     texts.push('Shop   scrap 100');
     for (const t of texts) expect(t.length, t).toBeLessThanOrEqual(NAV_TEXT_MAX);

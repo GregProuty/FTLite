@@ -12,7 +12,7 @@ import { depthOf } from './depth';
 import { skillLevelOf, SKILL_NAMES } from './skills';
 import { STATION_NAMES } from './stationKinds';
 import { EVENT_DEFS, type EventDef, type Effect, type Req, type Outcome } from './eventDefs';
-import { HEALTH_MAX, HULL_MAX, TORP_CAP, TICK_HZ, ENCOUNTER_START, EVENT_SCRAP_SCALE } from './tuning';
+import { HEALTH_MAX, HULL_MAX, TORP_CAP, TICK_HZ, ENCOUNTER_START, EVENT_SCRAP_SCALE, NOTICE_LINE_MAX } from './tuning';
 
 export { EVENT_DEFS };
 /** An event's scrap multiplier at the current depth: 1 + EVENT_SCRAP_SCALE x depth, 1 for an unscaled event (spec Loop-v section 1, amendment E1). */
@@ -78,6 +78,27 @@ export function applyEffect(state: SimState, e: Effect, mult: number): void {
     case 'driveReset': r.jumpCharge = 0; break;
     case 'nothing': break;
   }
+}
+
+/** Whether an event may be drawn here (spec Loop-v section 2): at or past its depth gate and, unless ignoreSeen, not yet drawn in this sector. */
+export function eventEligible(state: SimState, id: number, ignoreSeen = false): boolean {
+  return (EVENT_DEFS[id]!.minDepth ?? 0) <= depthOf(state) && (ignoreSeen || ((state.run.eventsSeen >>> id) & 1) === 0);
+}
+/** The event drawn on arrival at an Event beacon (spec Loop-v section 2): one rng.loot draw over the eligible events by weight; with every eligible event already seen in this sector, the seen ones count again. Marks the event seen. */
+export function pickEvent(state: SimState): number {
+  let ids = EVENT_DEFS.map((_, i) => i).filter((i) => eventEligible(state, i));
+  if (ids.length === 0) ids = EVENT_DEFS.map((_, i) => i).filter((i) => eventEligible(state, i, true));
+  const total = ids.reduce((a, i) => a + EVENT_DEFS[i]!.weight, 0);
+  let u = nextFloat(state.rng.loot) * total, id = ids[ids.length - 1]!;
+  for (const i of ids) { u -= EVENT_DEFS[i]!.weight; if (u < 0) { id = i; break; } }
+  state.run.eventsSeen |= 1 << id;
+  return id;
+}
+
+/** The notice's second line for an open event (spec Coop-ii section 3, Loop-v section 1): the labels, or numbered short labels when the labels do not fit NOTICE_LINE_MAX. */
+export function noticeChoices(state: SimState, id: number): string {
+  const def = EVENT_DEFS[id]!, mult = eventScale(state, def), full = def.choices.map((_, k) => choiceLabel(state, id, k)).join('  /  ');
+  return full.length <= NOTICE_LINE_MAX ? full : def.choices.map((c, k) => `${k + 1} ${fillLabel(c.short ?? c.label, mult)}`).join('  /  ');
 }
 
 /** Apply choice k of the pending event; a no-op without a pending event or with a disabled choice (spec Loop-v section 1). A chance outcome draws rng.loot once, before its effects. */

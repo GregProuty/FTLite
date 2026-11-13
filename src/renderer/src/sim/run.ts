@@ -8,12 +8,12 @@ import { activeBoarderCount } from './boarders';
 import { enterPhase, Phase } from './director';
 import { consciousCount } from './crew';
 import { Life, LifeState } from './components';
-import { EVENTS, choiceEnabled, resolveEvent } from './events';
+import { EVENT_DEFS, choiceEnabled, resolveEvent, pickEvent, choiceLabel, isBlue } from './events';
 import { SHOP_ITEM_COUNT, WEAPON_ITEM, itemLabel, itemEnabled, buy } from './shop';
 import { LOOT_WEAPON_TYPES } from './weaponDefs';
 import { addScrap } from './scrap';
 import { depthOf, peaceful } from './depth';
-import { TICK_HZ, DT, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
+import { TICK_HZ, DT, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
 import { stationOnline } from './stations';
 import { quirkChargeMult } from './quirks';
 
@@ -27,7 +27,7 @@ export const beaconIndex = (column: number, node: number): number => column * NO
 export const beaconAt = (index: number): Beacon => ({ column: Math.floor(index / NODE_STRIDE), node: index % NODE_STRIDE });
 /** The pending-jump code and row index of the exit's sector jump (spec Loop-i amendment S1): one past every beacon index. */
 export const EXIT_JUMP = SECTOR_COLUMNS * NODE_STRIDE;
-export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump' | 'sector' | 'wait' | 'evade'; index: number; enabled: boolean }
+export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump' | 'sector' | 'wait' | 'evade'; index: number; enabled: boolean; blue?: boolean }   // blue: an event choice with a station or crew skill requirement (spec Loop-v section 1)
 
 /** Node types (spec Run-ii section 3, Demo-viii section 1, Loop-i section 4): one draw per middle node after every edge draw (Shop, Event, Asteroid, Empty, else Hazard); a shop is guaranteed without a draw. */
 export function assignNodeTypes(rng: RngState, colNodes: Uint8Array, nodeType: Uint8Array, draw: (rng: RngState) => number = nextFloat): void {
@@ -101,12 +101,12 @@ export const exitText = (state: SimState): string => state.run.sector >= SECTORS
 export function jumpStep(state: SimState): void { if (state.run.finalBeacon) return;   // no escape: the drive does not charge at the final beacon (spec Loop-iv section 1)
   state.run.jumpCharge = Math.min(1, state.run.jumpCharge + (state.run.driveBoost === 1 ? ENCOUNTER_BOOST : 1) * DT / (JUMP_CHARGE_TIME * quirkChargeMult(state))); }
 
-/** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
+/** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw by weight, spec Loop-v section 2). */
 function arrive(state: SimState): void {
   const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1;
   if (r.finalBeacon) { r.shopWeapon = 0; return; }   // the final beacon is not on the map: no award, no content (spec Loop-iv amendment F1)
   addScrap(state, scrapPerJump(depthOf(state)));
-  if (contentOf(state) === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
+  if (contentOf(state) === NodeType.Event) r.event = pickEvent(state);
   r.shopWeapon = contentOf(state) === NodeType.Shop ? 1 + nextInt(state.rng.loot, LOOT_WEAPON_TYPES) : 0;   // a shop's offered weapon, one loot draw (spec Loop-iii section 3)
 }
 
@@ -132,9 +132,10 @@ export function startEvade(state: SimState): boolean {
 export function navRows(state: SimState): NavRow[] {
   const r = state.run, rows: NavRow[] = [];
   if (r.event >= 0 && r.eventChoice < 0) {
-    const ev = EVENTS[r.event]!;
-    rows.push({ text: ev.title, select: 'none', index: 0, enabled: false }, { text: ev.text, select: 'none', index: 0, enabled: false });
-    for (let k = 0; k < 2; k++) rows.push({ text: ev.choices[k]!, select: 'choice', index: k, enabled: choiceEnabled(state, r.event, k) });
+    const ev = EVENT_DEFS[r.event]!;   // the title, one or two text rows, two or three choices (spec Loop-v section 1)
+    rows.push({ text: ev.title, select: 'none', index: 0, enabled: false });
+    for (const line of ev.text) rows.push({ text: line, select: 'none', index: 0, enabled: false });
+    for (let k = 0; k < ev.choices.length; k++) rows.push({ text: choiceLabel(state, r.event, k), select: 'choice', index: k, enabled: choiceEnabled(state, r.event, k), blue: isBlue(r.event, k) });
     rows.push(evadeRow(state));
     return rows;
   }
@@ -223,7 +224,7 @@ export function sectorJump(state: SimState): void {
   if (r.fuel < 1 || !atExit(state)) return;
   if (r.sector >= SECTORS - 1) { r.finalBeacon = 1; afterJump(state); return; }   // engage the Warden: the jump to the final beacon (spec Loop-iv section 1)
   const map = generateMap(state.rng.map, r.colNodes.length);
-  r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType); r.visited.fill(0);
+  r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType); r.visited.fill(0); r.eventsSeen = 0;   // a new sector may draw any event again (spec Loop-v section 2)
   r.sector += 1; r.column = 0; r.node = 0; r.pursuit = PURSUIT_START;
   afterJump(state);
 }
@@ -274,16 +275,16 @@ export function requestJump(state: SimState, destination: number): void {
   r.jumpPending = destination; r.jumpPendingTick = state.tick;
 }
 
-/** The event's choice from the votes (spec Coop-ii amendments D6 and D8): votes of conscious players for enabled options; the majority, ties to the seated Navigation officer's vote, else the lowest tied index; none at all: the safe choice. */
+/** The event's choice from the votes (spec Coop-ii amendments D6 and D8, for two or three options since Loop-v): votes of conscious players for enabled options; the majority, ties to the seated Navigation officer's vote when it is among the tied, else the lowest tied index; none at all: the safe choice. */
 export function tallyVotes(state: SimState): { choice: number; voters: number; unanimous: boolean } {
-  const r = state.run, counts = [0, 0];
+  const r = state.run, counts = EVENT_DEFS[r.event]!.choices.map(() => 0);
   for (let pid = 0; pid < state.playerCount; pid++) { const v = r.vote[pid]!; if (v >= 0 && Life.state[state.crew[pid]!] === LifeState.Conscious && choiceEnabled(state, r.event, v)) counts[v]!++; }
-  const voters = counts[0]! + counts[1]!;
-  if (voters === 0) return { choice: EVENTS[r.event]!.safeChoice, voters, unanimous: false };
-  if (counts[0] !== counts[1]) return { choice: counts[0]! > counts[1]! ? 0 : 1, voters, unanimous: counts[0] === 0 || counts[1] === 0 };
+  const voters = counts.reduce((a, b) => a + b, 0), top = Math.max(...counts), tied = counts.filter((c) => c === top).length;
+  if (voters === 0) return { choice: EVENT_DEFS[r.event]!.safeChoice, voters, unanimous: false };
+  if (tied === 1) return { choice: counts.indexOf(top), voters, unanimous: top === voters };
   const nav = state.derived.stationOfKind[StationKind.Navigation]!, officer = nav >= 0 ? state.stations.occupant[nav]! : -1;
   const ov = officer >= 0 && Life.state[state.crew[officer]!] === LifeState.Conscious ? r.vote[officer]! : -1;
-  return { choice: ov >= 0 && choiceEnabled(state, r.event, ov) ? ov : 0, voters, unanimous: false };
+  return { choice: ov >= 0 && choiceEnabled(state, r.event, ov) && counts[ov] === top ? ov : counts.indexOf(top), voters, unanimous: false };
 }
 
 /** Step 2a, the single decision point (spec Coop-ii section 3): standing Confirms vote (the first press option 1, then toggling); a vote of a crew member who is not conscious is discarded; the event resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after it opened. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
@@ -296,7 +297,7 @@ export function decisionSystem(state: SimState): void {
   if (r.event >= 0 && r.eventChoice < 0) {
     if (r.eventOpenTick < 0) r.eventOpenTick = state.tick;   // an event set without an arrival opens now
     for (let pid = 0; pid < state.playerCount; pid++) {
-      if (state.scratch.votePress[pid]) { r.vote[pid] = r.vote[pid]! < 0 ? 0 : 1 - r.vote[pid]!; r.voteTick = state.tick; }
+      if (state.scratch.votePress[pid]) { r.vote[pid] = (r.vote[pid]! + 1) % EVENT_DEFS[r.event]!.choices.length; r.voteTick = state.tick; }   // option 1 first, then round the options (spec Loop-v: two or three)
       if (Life.state[state.crew[pid]!] !== LifeState.Conscious) r.vote[pid] = -1;
     }
     let all = consciousCount(state) > 0;

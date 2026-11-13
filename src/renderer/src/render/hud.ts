@@ -10,7 +10,7 @@ import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
 import { STATION_MAX, STATION_OVERDRIVE, UPGRADE_MAX } from '../sim/tuning';
 
-const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a, CALL = 0xffd75a;   // CALL: a row asked for by a Power callout (spec Coop-i section 3)
+const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a, CALL = 0xffd75a, BLUE = 0x7cc4ff, BLUE_LIT = 0xbfe3ff;   // BLUE: an event's blue option (spec Loop-v section 1), BLUE_LIT under the cursor   // CALL: a row asked for by a Power callout (spec Coop-i section 3)
 const LINE = 18;                 // px per text line at 16 px m5x7
 const CREDITS_LINES = 22;
 
@@ -186,7 +186,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.consoleFooter, [{ text: scienceFooter(c), tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'navigation') {
       const c = p.console;   // spec 7: event, shop or destination rows in a seven-row window, the cursor row lit, the footer carries evade and the jump state
-      ui.consoleRows.forEach((r, k) => { const row = c.rows[c.first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: '', cursor: row.cursor, tint: row.text === 'EVADING' ? CALL : !row.selectable ? DIM : !row.enabled ? (row.text.startsWith('EVADE ') ? DIM : FAINT) : row.cursor ? TEXT : DIM }); });
+      ui.consoleRows.forEach((r, k) => { const row = c.rows[c.first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: '', cursor: row.cursor, tint: row.text === 'EVADING' ? CALL : !row.selectable ? DIM : !row.enabled ? (row.text.startsWith('EVADE ') ? DIM : FAINT) : row.blue ? (row.cursor ? BLUE_LIT : BLUE) : row.cursor ? TEXT : DIM }); });
       fillRow(ui.consoleFooter, [{ text: navigationFooter(c), tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'doors') {
       const c = p.console;   // spec Demo-vii section 1: the selection, its state (WARN while an airlock is open) and the Confirm action on three rows; the footer counts open airlocks

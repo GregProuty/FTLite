@@ -85,7 +85,7 @@ describe('the captain bot (spec Demo-i section 6)', () => {
     expect(s.telemetry.jumps).toBe(1);
   });
   it('(6) EVENTS safeChoice is [1, 1, 1, 1, 0, 1]', () => {
-    expect(EVENTS.map((e) => e.safeChoice)).toEqual([1, 1, 1, 1, 0, 1]);
+    expect(EVENTS.slice(0, 6).map((e) => e.safeChoice)).toEqual([1, 1, 1, 1, 0, 1]);   // the six Run-ii events (spec Loop-v section 2)
   });
   it('(7) leaves a failed Navigation console to the repair, and does not sit at it while it is failed; it is repaired powered', () => {
     const s = calm(); chargeJump(s); failStation(s, nav(s));
