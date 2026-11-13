@@ -9,6 +9,7 @@ import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
 import { NodeType } from '../../src/renderer/src/sim/run';
 import { ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, BOARDING_FIRST, BOARDING_FIRST_SMALL } from '../../src/renderer/src/sim/tuning';
 import { Encounter } from '../../src/renderer/src/sim/enemy';
+import { JUMP_CHARGE_TIME } from '../../src/renderer/src/sim/tuning';
 import { NODE_STRIDE, SHIELD_ROTATE, TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, BOARDER_HEALTH, BOARDER_MOVE } from '../../src/renderer/src/sim/tuning';
 import { ObjectKind } from '../../src/renderer/src/sim/debris';
 import { ENEMY_SLOTS } from '../../src/renderer/src/sim/debrisTargets';
@@ -123,7 +124,8 @@ export function placeBoarder(state: SimState, room: number, health = BOARDER_HEA
   return slot;
 }
 
-export function chargeJump(state: SimState): void { state.run.jumpCharge = 1; }
+/** The drive ready: charged, and the captain bot's calm-beacon wait already spent (spec Demo-xi amendment 10). */
+export function chargeJump(state: SimState): void { state.run.jumpCharge = 1; state.run.arrivalTick = Math.min(state.run.arrivalTick, state.tick - 2 * JUMP_CHARGE_TIME * TICK_HZ); }
 export function seatNavigator(state: SimState, pid: number): number { const i = state.derived.stationOfKind[StationKind.Navigation]!; sitDown(state, pid, i); return i; }
 /** Overwrite the generated map: nodes per column and `"c:n"` -> mask entries (unlisted masks become 0). */
 export function setMap(state: SimState, colNodes: number[], masks: Record<string, number>): void {
@@ -150,7 +152,8 @@ export const at = (column: number, node: number): { column: number; node: number
 /** The forward destination `node` in the next column. */
 export const ahead = (state: SimState, node: number): { column: number; node: number } => ({ column: state.run.column + 1, node });
 /** Leave the peace of the start beacon without a jump (spec Loop-i section 4b): the director, the enemy and boarders act at column 0, with the clocks counted from tick 0 as before Loop-i. Hazard tests and gates use it. */
-export function wake(state: SimState): void { state.run.calm = 0; state.run.wakeTick = 0; }
+/** An awake start beacon (not calm). P1: the calm start beacon begins with a full drive; an awake one starts empty, as at any other arrival (spec Demo-xi section 4). */
+export function wake(state: SimState): void { state.run.calm = 0; state.run.wakeTick = 0; state.run.jumpCharge = 0; }
 /** The pre-Loop-i hazard schedule at the start beacon (the hazard gates): awake from tick 0, the first enemy and boarding party at the old crew-size times. */
 export function hazardStart(state: SimState): void {
   wake(state);

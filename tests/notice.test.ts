@@ -156,7 +156,7 @@ describe('runNotice: the Pursuit (spec Loop-i section 3)', () => {
 
 describe('runNotice: a peaceful start (spec Loop-i section 4b)', () => {
   it('at a peaceful beacon: Safe here. Jump when ready, with the ready drive on the second line; gone after the jump', () => {
-    const s = makeState(2); quiet(s); mapM(s); expect(runNotice(s)).toEqual(['Safe here. Jump when ready']);
+    const s = makeState(2); quiet(s); mapM(s); s.run.jumpCharge = 0; expect(runNotice(s)).toEqual(['Safe here. Jump when ready']);   // P1: the calm start beacon begins with a full drive
     chargeJump(s); expect(runNotice(s)).toEqual(['Safe here. Jump when ready', 'JUMP READY   someone take Navigation']);
     seatNavigator(s, 0); expect(runNotice(s)).toEqual(['Safe here. Jump when ready', 'JUMP READY']);
     expect(buildHudModel(s, slots(2), 'running', '').threats).toEqual([]);

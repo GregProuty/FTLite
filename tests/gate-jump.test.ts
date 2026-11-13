@@ -37,4 +37,4 @@ describe('jump gate: a scripted navigator jumps the quiet ship through every sec
     expect([s.tick, waits]).toEqual([GATE_END_TICK, GATE_WAITS]);   // recorded on the first run (Loop-i Task 5)
   });
 });
-const GATE_END_TICK = 65298, GATE_WAITS = 6;   // 18 charges of 3600 ticks and one tick each for the second Confirm; the six waits ran while the drive charged; Loop-iv: 64818 -> 65298, the run no longer ends on the last jump but ENCOUNTER_START seconds later (480 ticks), when the Warden arrives
+const GATE_END_TICK = 56995, GATE_WAITS = 6;   // Demo-xi P1: 65298 -> 56995, the drive is full at the three calm arrivals (the start and two sector arrivals), so the navigator leaves them without the charge wait; 18 charges of 3600 ticks and one tick each for the second Confirm; the six waits ran while the drive charged; Loop-iv: 64818 -> 65298, the run no longer ends on the last jump but ENCOUNTER_START seconds later (480 ticks), when the Warden arrives

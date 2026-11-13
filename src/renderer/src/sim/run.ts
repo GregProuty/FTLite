@@ -230,6 +230,8 @@ function afterJump(state: SimState): void {
   r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1; r.waitUntilTick = -1; r.pursuitFought = 0;
   if (r.wakeTick < 0) r.wakeTick = state.tick;   // the director wakes on the first jump (spec Loop-i section 4b)
   r.calm = r.column === 0 ? 1 : 0; r.visited[hereIndex(state)] = 1;
+  r.arrivalTick = state.tick;
+  if (r.calm) r.jumpCharge = 1;   // the drive is full at a sector's calm arrival beacon (spec Demo-xi section 4)
   if (nav >= 0) state.stations.cursor[nav] = 0;
   r.navSig = -1;   // a new beacon: row 0, no relocation by the old row (spec Demo-xi section 3)
   state.telemetry.jumps++;

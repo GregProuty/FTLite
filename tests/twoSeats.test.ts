@@ -3,7 +3,7 @@ import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { step } from '../src/renderer/src/sim/step';
-import { reachable, beaconIndex } from '../src/renderer/src/sim/run';
+import { reachable, beaconIndex, jumpShip, sectorJump } from '../src/renderer/src/sim/run';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown, selectTab } from '../src/renderer/src/sim/stations';
 import { Seated } from '../src/renderer/src/sim/components';
@@ -12,7 +12,7 @@ import { botIntent } from '../src/renderer/src/sim/bot';
 import { makeState, run, quiet, intents, chargeJump, seatNavigator, allHazard, setEvent, setNodeTypes, mapM, grantScrap, RECRUITS } from './helpers/sim';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { WEAPON_ITEM } from '../src/renderer/src/sim/shop';
-import { VOTE_SETTLE, TICK_HZ } from '../src/renderer/src/sim/tuning';
+import { VOTE_SETTLE, TICK_HZ, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { EVENT_DEFS, EVENTS } from '../src/renderer/src/sim/events';
 import { navRows } from '../src/renderer/src/sim/run';
 
@@ -148,5 +148,39 @@ describe('B2: the Navigation cursor never lands on a jump row by itself (spec De
   });
   it('the Navigation officer\'s own moves are kept', () => {
     const { s, n } = shop(); run(s, 1, () => intents({ moveY: 1 })); const c = s.stations.cursor[n]!; run(s, 3); expect(s.stations.cursor[n]).toBe(c);
+  });
+});
+
+describe('P1: leave the first beacon at once (spec Demo-xi section 4)', () => {
+  it('the run starts at the calm beacon with the drive full', () => {
+    for (const s of [makeState(1), makeState(2, 7), createSimState(SKIFF, 2, 3, RECRUITS)]) expect([s.run.calm, s.run.jumpCharge]).toEqual([1, 1]);
+  });
+  it('every sector arrival has the drive full; an ordinary jump empties it', () => {
+    const s = makeState(1); quiet(s); mapM(s);
+    jumpShip(s, { column: 1, node: 0 }); expect([s.run.calm, s.run.jumpCharge]).toEqual([0, 0]);
+    for (const sector of [0, 1]) {
+      s.run.sector = sector; s.run.column = s.run.colNodes.length - 1; s.run.node = 0; s.run.fuel = 5;
+      sectorJump(s); expect([s.run.sector, s.run.column, s.run.calm, s.run.jumpCharge]).toEqual([sector + 1, 0, 1, 1]);
+    }
+    s.run.sector = 2; s.run.column = s.run.colNodes.length - 1; s.run.node = 0; sectorJump(s);   // the final beacon is no sector arrival
+    expect([s.run.finalBeacon, s.run.calm, s.run.jumpCharge]).toEqual([1, 0, 0]);
+  });
+});
+
+describe('P1: the captain bot keeps the old charge wait at a calm beacon (spec Demo-xi amendment 10)', () => {
+  it('with a full drive at the start the captain bot does not leave before JUMP_CHARGE_TIME seconds, then does', () => {
+    const s = makeState(1, 3); quiet(s); expect(s.run.jumpCharge).toBe(1);
+    const wait = JUMP_CHARGE_TIME * TICK_HZ;
+    while (s.tick < wait - 1) { step(s, [botIntent(s, 0)]); if (s.run.nodesReached) break; }
+    expect(s.run.nodesReached).toBe(0);
+    for (let t = 0; t < 30 * TICK_HZ && !s.run.nodesReached; t++) step(s, [botIntent(s, 0)]);
+    expect(s.run.nodesReached).toBe(1);
+  });
+  it('the wait counts from a sector arrival too', () => {
+    const s = makeState(1, 3); quiet(s); mapM(s); s.run.column = s.run.colNodes.length - 1; s.run.node = 0;
+    for (let t = 0; t < 4; t++) step(s, [NEUTRAL_INTENT]);
+    sectorJump(s); const at = s.tick; expect([s.run.sector, s.run.calm, s.run.jumpCharge, s.run.arrivalTick]).toEqual([1, 1, 1, at]);
+    for (let t = 0; t < 10 * TICK_HZ; t++) step(s, [botIntent(s, 0)]);
+    expect(s.run.nodesReached).toBe(1);
   });
 });

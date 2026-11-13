@@ -8,6 +8,8 @@ import { EVENTS } from './events';
 import { StationKind } from './stationKinds';
 import { DoorState, roomAt, conditionRoomAt } from './grid';
 import { stationOnline } from './stations';
+import { quirkChargeMult } from './quirks';
+import { JUMP_CHARGE_TIME, TICK_HZ } from './tuning';
 
 /** Bot self-preservation (spec Demo-ii section 10): below this health a bot keeps out of burning rooms; below BOT_RECOVER_HEALTH it stays in an online Medbay. Bot policy, not sim tuning. */
 export const BOT_RETREAT_HEALTH = 30;
@@ -68,21 +70,27 @@ function goalTiles(state: SimState, pid: number, here: number): Set<number> {
   return goals;
 }
 
+/** The captain's drive is ready: charged, and at a calm beacon (full on arrival, spec Demo-xi section 4) only after the old charge wait from the arrival, JUMP_CHARGE_TIME seconds times the ship's charge quirk, so the bot gates keep their scenario (spec Demo-xi amendment 10). */
+function driveReady(state: SimState): boolean {
+  const r = state.run;
+  return r.jumpCharge >= 1 && !(r.calm && state.tick < r.arrivalTick + Math.round(JUMP_CHARGE_TIME * quirkChargeMult(state) * TICK_HZ));
+}
+
 /** Run behaviour for pid 0 (spec Demo-i section 6): walk to Navigation when the drive is ready, sit, take the event's safe choice or the first jump row, stand after the jump. Null when the run behaviour is not active (pid > 0, no Navigation, or its console failed or offline: the hazard goals repair it). */
 function runIntent(state: SimState, pid: number, eid: number, here: number, blocked?: Set<number>): Intent | null {
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;
   if (pid !== 0 || nav < 0 || !stationOnline(state, nav)) return null;
-  const r = state.run, pending = r.event >= 0 && r.eventChoice < 0, seated = Seated.station[eid] === nav;
+  const r = state.run, pending = r.event >= 0 && r.eventChoice < 0, seated = Seated.station[eid] === nav, ready = driveReady(state);
   if (seated) {
-    if (r.jumpCharge < 1 && !pending) return { ...NEUTRAL_INTENT, cancelPressed: true };
+    if (!ready && !pending) return { ...NEUTRAL_INTENT, cancelPressed: true };
     const rows = navRows(state), c = state.stations.cursor[nav]!;
     const t = pending ? rows.findIndex((row) => row.select === 'choice' && row.index === EVENTS[r.event]!.safeChoice) : wayOnRow(state, rows);
     if (t < 0) return NEUTRAL_INTENT;
     if (c !== t) return state.tick % 2 === 0 ? { ...NEUTRAL_INTENT, moveY: t > c ? 1 : -1 } : NEUTRAL_INTENT;   // one stick edge per two ticks
     if (rows[t]!.select === 'wait') return rows[t]!.enabled ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;   // a wait under way: stay seated
-    return rows[t]!.select === 'choice' || r.jumpCharge >= 1 ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;
+    return rows[t]!.select === 'choice' || ready ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;
   }
-  if (r.jumpCharge < 1 || pending || state.stations.occupant[nav]! >= 0) return null;
+  if (!ready || pending || state.stations.occupant[nav]! >= 0) return null;
   const c = confirmTarget(state, 0);
   if (c.kind === ConfirmKind.Console && c.index === nav) return { ...NEUTRAL_INTENT, confirmPressed: true };
   const next = firstStep(state, here, new Set([state.derived.stationTile[nav]!]), blocked);

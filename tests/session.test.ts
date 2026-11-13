@@ -303,7 +303,7 @@ describe('session', () => {
     const started = () => { const h = harness(); h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); return h; };
     it('no cues over ten lobby frames', () => { const h = harness(); h.frames(10); expect(h.cues).toEqual([]); });
     it('ready once when the charge completes, then none', () => {
-      const h = started(); h.cues.length = 0; chargeJump(h.session.state!); h.frames(1);
+      const h = started(); h.session.state!.run.jumpCharge = 0; h.frames(1); h.cues.length = 0; chargeJump(h.session.state!); h.frames(1);   // P1: the calm start beacon begins with a full drive
       expect(h.cues.filter((c) => c === 'ready')).toHaveLength(1); h.cues.length = 0; h.frames(1); expect(h.cues).toEqual([]);
     });
     it('a navigator jump cues jump', () => {

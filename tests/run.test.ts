@@ -27,7 +27,7 @@ import { EVADE_WINDOW, EVADE_COOLDOWN } from '../src/renderer/src/sim/tuning';
 import { botIntent } from '../src/renderer/src/sim/bot';
 
 const T = TICK_HZ;
-const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; return s; };
+const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; s.run.jumpCharge = 0; return s; };   // P1: the calm start beacon begins with a full drive
 
 /** The spec Loop-i section 1 procedure for one sector, replayed on a reference stream: column counts, forward edges, then node types (Empty included) and the shop fallback. */
 function replayMap(rng: { s: number }) {
@@ -115,7 +115,7 @@ describe('run: the sector map (spec Loop-i sections 1 and 4)', () => {
     const ref = deriveStreams(7).map; const expected = replayMap(ref);
     const s = makeState(2, 7);
     expect(Array.from(s.run.colNodes)).toEqual(Array.from(expected.colNodes)); expect(Array.from(s.run.edgeMask)).toEqual(Array.from(expected.edgeMask)); expect(s.rng.map.s).toBe(ref.s);
-    expect([s.run.column, s.run.node, s.run.nodesReached, s.run.jumpCharge]).toEqual([0, 0, 0, 0]);
+    expect([s.run.column, s.run.node, s.run.nodesReached, s.run.jumpCharge]).toEqual([0, 0, 0, 1]);   // P1: the calm start beacon begins with a full drive (spec Demo-xi section 4)
     const one = deriveStreams(1);
     expect([one.hazards.s, one.director.s, one.combat.s]).toEqual([2693262067, 11749833, 2265367787]);   // the pre-feature values (Step 0): the five old streams keep their seeds
     expect(Array.from(makeState(2, 1).run.edgeMask)).toEqual(Array.from(makeState(3, 1).run.edgeMask));
@@ -436,7 +436,7 @@ describe('sectors, fuel and waiting (spec Loop-i sections 1 and 2, amendments S1
     sectorJump(s);
     expect([Array.from(s.run.colNodes), Array.from(s.run.edgeMask), Array.from(s.run.nodeType)]).toEqual([Array.from(expected.colNodes), Array.from(expected.edgeMask), Array.from(expected.nodeType)]);
     expect(s.rng.map.s).toBe(ref.s); expect(s.rng.loot.s).toBe(loot);
-    expect([s.run.sector, s.run.column, s.run.node, s.run.pursuit, s.run.nodesReached, s.telemetry.jumps, s.run.jumpCharge, s.run.encounter, s.enemy.present, s.enemy.nextArrivalTick, activeDebrisCount(s)]).toEqual([1, 0, 0, PURSUIT_START, 1, 1, 0, Encounter.None, 0, NEVER, 0]);
+    expect([s.run.sector, s.run.column, s.run.node, s.run.pursuit, s.run.nodesReached, s.telemetry.jumps, s.run.jumpCharge, s.run.encounter, s.enemy.present, s.enemy.nextArrivalTick, activeDebrisCount(s)]).toEqual([1, 0, 0, PURSUIT_START, 1, 1, 1, Encounter.None, 0, NEVER, 0]);   // P1: the drive is full at the sector's calm arrival (spec Demo-xi section 4)
     expect(s.run.scrap - scrap).toBe(scrapPerJump(SECTOR_COLUMNS));   // depth 6: sector 2, column 0
     expect(s.boarders.nextArrivalTick).toBe(t + BOARDING_AFTER_JUMP * T);
   });

@@ -377,7 +377,7 @@ describe('a peaceful start (spec Loop-i section 4b)', () => {
       expect([Array.from(s.telemetry.spawns), s.telemetry.encounters, s.telemetry.boardings, s.enemy.present, activeHazardCount(s), s.telemetry.impacts]).toEqual([[0, 0, 0, 0], 0, 0, 0, 0, 0]);
       expect(s.ended).toBe(0);
     }
-    const c = makeState(2); run(c, seconds(30)); expect(c.run.jumpCharge).toBeCloseTo(0.5, 6);
+    const c = makeState(2); c.run.jumpCharge = 0; run(c, seconds(30)); expect(c.run.jumpCharge).toBeCloseTo(0.5, 6);   // P1: the calm start beacon begins with a full drive
   });
   it('a hazard already burning at a peaceful beacon runs its course', () => {
     const s = makeState(2); quiet(s); const A = room(s, 'A'); igniteRoom(s, A); run(s, seconds(5)); expect(s.rooms.fire[A]!).toBeGreaterThan(1);

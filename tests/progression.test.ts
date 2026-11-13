@@ -112,9 +112,9 @@ describe('quirk', () => {
     expect(lead(4, false)).toBe(SCIENCE_LEAD_UNMANNED + 4); expect(lead(0, false)).toBe(SCIENCE_LEAD_UNMANNED); expect(lead(4, true)).toBeCloseTo(22); expect(lead(0, true)).toBeCloseTo(18);
   });
   it('5 Old Drive: the charge takes 75 s; the ready tick is 4500', () => {
-    const q = quirkState(5); quiet(q); q.enemy.nextArrivalTick = 1e9; q.boarders.nextArrivalTick = 1e9; run(q, 1); expect(q.run.jumpCharge).toBeCloseTo(DT / (JUMP_CHARGE_TIME * 1.25), 12);
-    const c = quirkState(0); quiet(c); c.enemy.nextArrivalTick = 1e9; c.boarders.nextArrivalTick = 1e9; run(c, 1); expect(c.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
-    const ready = (k: number) => { const s = quirkState(k); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; seatNavigator(s, 0); downCrew(s, 1); run(s, 1); let n = 1; while (s.telemetry.jumps === 0 && n < 6000) { run(s, 1, () => intents({ confirmPressed: true }, {})); n++; } return s.tick; };
+    const q = quirkState(5); quiet(q); q.enemy.nextArrivalTick = 1e9; q.boarders.nextArrivalTick = 1e9; q.run.jumpCharge = 0; run(q, 1); expect(q.run.jumpCharge).toBeCloseTo(DT / (JUMP_CHARGE_TIME * 1.25), 12);   // P1: the calm start beacon begins with a full drive
+    const c = quirkState(0); quiet(c); c.enemy.nextArrivalTick = 1e9; c.boarders.nextArrivalTick = 1e9; c.run.jumpCharge = 0; run(c, 1); expect(c.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
+    const ready = (k: number) => { const s = quirkState(k); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; s.run.jumpCharge = 0; seatNavigator(s, 0); downCrew(s, 1); run(s, 1); let n = 1; while (s.telemetry.jumps === 0 && n < 6000) { run(s, 1, () => intents({ confirmPressed: true }, {})); n++; } return s.tick; };
     expect(ready(5)).toBe(4500); expect(ready(0)).toBe(3600);
   });
   it('snapshot: quirk and startBonus round trip and hash; the header carries the quirk stream', () => {
