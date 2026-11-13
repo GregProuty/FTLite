@@ -38,7 +38,7 @@ Status: 2026-11-13. From Claude's playtest (`docs/playtest-report-2026-11-13.md`
 - Threat row colour for events.
 - Full suite and typecheck clean; gates untouched (render only).
 - [x] Tests above (branch `consoles`: 1182 tests, typecheck clean, no golden change).
-- [ ] Visual check by Claude: consoles visible on the Skiff and the cutter (free, occupied, failed), the new strings on screen.
+- [x] Visual check by Claude (2026-11-13, master 1263024, the Skiff): free amber desks against their walls, a failed Ops desk red (fixture), the evade row hidden at the calm beacon, `Rep 4` / `Eng 3 Rep 1` skill lines. The occupied desk is under its sprite; the cutter is not checked (needs three players) and stays for the couch playtest.
 
 ## 7. Amendments (implementation, 2026-11-13)
 
