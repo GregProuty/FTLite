@@ -3,7 +3,7 @@ import { NEUTRAL_INTENT } from '../../../shared/intent';
 import type { SimState } from './state';
 import { Position, Life, LifeState, Seated, Health } from './components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from './interact';
-import { navRows } from './run';
+import { navRows, beaconAt, overrun, type NavRow } from './run';
 import { EVENTS } from './events';
 import { StationKind } from './stationKinds';
 import { DoorState, roomAt, conditionRoomAt } from './grid';
@@ -76,9 +76,10 @@ function runIntent(state: SimState, pid: number, eid: number, here: number, bloc
   if (seated) {
     if (r.jumpCharge < 1 && !pending) return { ...NEUTRAL_INTENT, cancelPressed: true };
     const rows = navRows(state), c = state.stations.cursor[nav]!;
-    const t = pending ? rows.findIndex((row) => row.select === 'choice' && row.index === EVENTS[r.event]!.safeChoice) : rows.findIndex((row) => row.select === 'jump');
+    const t = pending ? rows.findIndex((row) => row.select === 'choice' && row.index === EVENTS[r.event]!.safeChoice) : wayOnRow(state, rows);
     if (t < 0) return NEUTRAL_INTENT;
     if (c !== t) return state.tick % 2 === 0 ? { ...NEUTRAL_INTENT, moveY: t > c ? 1 : -1 } : NEUTRAL_INTENT;   // one stick edge per two ticks
+    if (rows[t]!.select === 'wait') return rows[t]!.enabled ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;   // a wait under way: stay seated
     return rows[t]!.select === 'choice' || r.jumpCharge >= 1 ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;
   }
   if (r.jumpCharge < 1 || pending || state.stations.occupant[nav]! >= 0) return null;
@@ -87,6 +88,16 @@ function runIntent(state: SimState, pid: number, eid: number, here: number, bloc
   const next = firstStep(state, here, new Set([state.derived.stationTile[nav]!]), blocked);
   if (next < 0) return blocked ? null : NEUTRAL_INTENT;   // a hurt bot with no fire-free way yields to self-preservation
   return walkTo(state, eid, next);
+}
+
+/** The captain's way on (spec Loop-i section 5): the exit's sector jump; else the lowest forward destination, an overrun one only as a last resort, never sideways; else Wait for help (the only row with no fuel). -1 when none. */
+function wayOnRow(state: SimState, rows: NavRow[]): number {
+  const sector = rows.findIndex((row) => row.select === 'sector');
+  if (sector >= 0) return sector;
+  const forward = rows.map((row, k) => ({ row, k })).filter(({ row }) => row.select === 'jump' && beaconAt(row.index).column === state.run.column + 1);
+  const free = forward.find(({ row }) => !overrun(state, beaconAt(row.index).column)) ?? forward[0];
+  if (free) return free.k;
+  return rows.findIndex((row) => row.select === 'wait');
 }
 
 function walkTo(state: SimState, eid: number, next: number): Intent {

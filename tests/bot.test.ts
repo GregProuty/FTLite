@@ -11,7 +11,10 @@ import { Life, LifeState, Seated, Position, Health } from '../src/renderer/src/s
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import type { SimState } from '../src/renderer/src/sim/state';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
-import { makeState, quiet, mapM, setNodeTypes, setEvent, grantScrap, chargeJump, placeBoarder, teleport } from './helpers/sim';
+import { makeState, quiet, mapM, setNodeTypes, setEvent, grantScrap, chargeJump, placeBoarder, teleport, setMap, MAP_M_NODES, MAP_M_MASKS } from './helpers/sim';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import { EndReason } from '../src/renderer/src/sim/crew';
+import { SECTORS, SECTOR_COLUMNS } from '../src/renderer/src/sim/tuning';
 
 /** A quiet two-Recruit state on map M, all Hazard, enemy and boarders silenced (spec Demo-i section 8). */
 function calm(): SimState {
@@ -217,5 +220,35 @@ describe('bots and crew votes (spec Coop-ii amendment D6)', () => {
     let resolved = false;
     for (let t = 0; t < 120 * 60 && s.run.column < 2; t++) { step(s, [botIntent(s, 0), botIntent(s, 1)]); if (s.run.eventChoice >= 0) resolved = true; }
     expect(resolved).toBe(true); expect(s.telemetry.eventsResolved).toBe(1); expect(s.run.column).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('the captain bot on the sector map (spec Loop-i section 5)', () => {
+  const seated = (setup: (s: SimState) => void) => { const s = calm(); setup(s); chargeJump(s); const n = nav(s); sitDown(s, 0, n); step(s, [NEUTRAL_INTENT, NEUTRAL_INTENT]); return s; };
+  const fly = (s: SimState, until: (s: SimState) => boolean, ticks = 600) => { for (let t = 0; t < ticks && !until(s); t++) { s.run.jumpCharge = 1; step(s, [botIntent(s, 0), botIntent(s, 1)]);   // the second bot confirms the jump (spec Coop-ii section 3)
+    s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; } };
+  it('takes the lowest forward destination and never a sideways one', () => {
+    const s = seated((x) => { x.run.column = 1; x.run.node = 1; });   // forward 2a; sideways 2a and 2c come after it
+    fly(s, (x) => x.telemetry.jumps > 0); expect([s.run.column, s.run.node]).toEqual([2, 0]);
+    const t = seated((x) => { x.run.column = 0; }); fly(t, (x) => x.telemetry.jumps > 0); expect([t.run.column, t.run.node]).toEqual([1, 0]);
+  });
+  it('treats an overrun destination as a last resort', () => {
+    const s = seated((x) => { setMap(x, MAP_M_NODES, { ...MAP_M_MASKS, '1:1': 0b11 }); x.run.column = 1; x.run.node = 1; x.run.pursuit = 0; });
+    fly(s, (x) => x.telemetry.jumps > 0); expect([s.run.column, s.run.node]).toEqual([2, 0]);   // both forward beacons free: the lowest
+    const o = seated((x) => { x.run.column = 1; x.run.node = 1; x.run.pursuit = 2.25; });   // every destination overrun (FLEET): it still goes forward
+    fly(o, (x) => x.telemetry.jumps > 0); expect([o.run.column, o.run.node]).toEqual([2, 0]);
+  });
+  it('takes the sector jump at the exit, and the escape in the last sector', () => {
+    const s = seated((x) => { x.run.column = SECTOR_COLUMNS - 1; x.run.node = 0; });
+    fly(s, (x) => x.run.sector > 0); expect([s.run.sector, s.run.column]).toEqual([1, 0]);
+    const e = seated((x) => { x.run.sector = SECTORS - 1; x.run.column = SECTOR_COLUMNS - 1; x.run.node = 0; });
+    fly(e, (x) => x.ended === 1); expect(e.endReason).toBe(EndReason.Victory);
+  });
+  it('waits for help only when out of fuel, and then always waits', () => {
+    const s = seated((x) => { x.run.column = 1; x.run.node = 1; x.run.fuel = 0; });
+    fly(s, (x) => x.run.waitUntilTick >= 0); expect(s.run.waitUntilTick).toBeGreaterThan(0);
+    fly(s, (x) => x.run.fuel > 0, 60 * 60 * 5); expect(s.run.fuel).toBe(2);
+    fly(s, (x) => x.telemetry.jumps > 0); expect(s.telemetry.jumps).toBe(1);
+    const f = seated((x) => { x.run.column = 1; x.run.node = 1; }); fly(f, (x) => x.telemetry.jumps > 0); expect(f.run.waitUntilTick).toBe(-1);
   });
 });

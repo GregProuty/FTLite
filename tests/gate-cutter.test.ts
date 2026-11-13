@@ -3,7 +3,7 @@ import { step } from '../src/renderer/src/sim/step';
 import { Life, LifeState, Position, Health } from '../src/renderer/src/sim/components';
 import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
-import { seconds } from './helpers/sim';
+import { seconds, hazardStart } from './helpers/sim';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
@@ -16,7 +16,7 @@ const FIVE_MINUTES = seconds(300);
 describe('gate-cutter: two bots survive five minutes on the cutter', () => {
   for (const seed of [1, 2, 3]) {
     it(`seed ${seed}`, () => {
-      const s = createSimState(parseShip(cutter), 2, seed, DEFAULT_CHARACTERS);
+      const s = createSimState(parseShip(cutter), 2, seed, DEFAULT_CHARACTERS); hazardStart(s);   // the old hazard schedule at the (now peaceful) start beacon, as gate-survival (spec Loop-i section 4b)
       let minHull = s.hull, impacts = 0, lastImpact = -1, maxHazards = 0, minHealth = HEALTH_MAX, encounterImpacts = 0, lastTelemetryImpacts = 0, repairsSeen = false, fireRepairOutsideRoom = 0, healthAt4 = '';
       for (let t = 0; t < FIVE_MINUTES && !s.ended; t++) {
         s.run.jumpCharge = 0;   // hazard gate: the captain bot (spec Demo-i section 6) must not leave for Navigation, so the drive never reads ready

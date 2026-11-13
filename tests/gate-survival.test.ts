@@ -3,7 +3,7 @@ import { step } from '../src/renderer/src/sim/step';
 import { Life, LifeState, Position, Health } from '../src/renderer/src/sim/components';
 import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
-import { makeState, seconds } from './helpers/sim';
+import { makeState, seconds, hazardStart } from './helpers/sim';
 import { botIntent } from './helpers/bot';
 import { HEALTH_MAX } from '../src/renderer/src/sim/tuning';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -13,7 +13,7 @@ const FIVE_MINUTES = seconds(300);
 describe('increment 1 gate: two bots survive five minutes', () => {
   for (const seed of [1, 2, 3]) {
     it(`seed ${seed}`, () => {
-      const s = makeState(2, seed, DEFAULT_CHARACTERS);
+      const s = makeState(2, seed, DEFAULT_CHARACTERS); hazardStart(s);   // the start beacon is peaceful since Loop-i (spec section 4b): this hazard soak keeps the old schedule there, awake from tick 0 with the first enemy at 270 s and boarders at 330 s
       let minHull = s.hull, impacts = 0, lastImpact = -1, maxHazards = 0, minHealth = HEALTH_MAX, encounterImpacts = 0, lastTelemetryImpacts = 0, repairsSeen = false, fireRepairOutsideRoom = 0, healthAt4 = '';
       for (let t = 0; t < FIVE_MINUTES && !s.ended; t++) {
         s.run.jumpCharge = 0;   // hazard gate: the captain bot (spec Demo-i section 6) must not leave for Navigation, so the drive never reads ready
