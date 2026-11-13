@@ -476,7 +476,10 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
   'Events: everyone votes with Confirm. Jumps need a second Confirm'
   ];
   it('the lobby card is the ten exact ASCII lines (the callout line, spec Coop-i section 3; three co-op lines, Coop-ii) within LOBBY_LINE_MAX; every other phase gives none', () => {
-    expect(buildHudModel(null, slots(1), 'lobby', '').lobbyLines).toEqual(CARD);
+    expect(buildHudModel(null, slots(3), 'lobby', '').lobbyLines).toEqual(CARD);
+    const skiffCard = CARD.map((l, k) => (k === 8 ? 'Helm: evade as a hit lands. Up from the top row, Left/Right: tabs' : l));   // the Skiff loads its own torpedoes and has console tabs (spec Demo-x-a amendment)
+    expect(buildHudModel(null, slots(1), 'lobby', '').lobbyLines).toEqual(skiffCard); expect(buildHudModel(null, slots(2), 'lobby', '').lobbyLines).toEqual(skiffCard);
+    expect(skiffCard[8]!.length).toBeLessThanOrEqual(LOBBY_LINE_MAX);
     const s = makeState(1); quiet(s);
     for (const phase of ['running', 'gameover', 'paused', 'error'] as const) expect(buildHudModel(s, slots(1), phase, '').lobbyLines).toEqual([]);
     for (const l of CARD) { expect(l.length).toBeLessThanOrEqual(LOBBY_LINE_MAX); expect(/^[\x20-\x7e]+$/.test(l)).toBe(true); }

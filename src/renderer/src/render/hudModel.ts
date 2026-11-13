@@ -26,7 +26,7 @@ import { EndReason } from '../sim/crew';
 import { boarderMarkers, boardersInRoom } from '../sim/boarders';
 import { QUIRK_NAMES } from '../sim/quirks';
 import { doorsCursorTarget } from '../sim/doors';
-import { shipLine } from '../sim/ship/fleet';
+import { shipLine, shipForCrew } from '../sim/ship/fleet';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -251,6 +251,11 @@ export const LOBBY_LINES: readonly string[] = [
   'Events: everyone votes with Confirm. Jumps need a second Confirm'
 ];
 
+/** The Skiff's helm line in place of the torpedo-carrying one: its tube loads itself, and its consoles have tabs (spec Demo-x-a sections 1 and 2). */
+export const SKIFF_HELM_LINE = 'Helm: evade as a hit lands. Up from the top row, Left/Right: tabs';
+/** The lobby card for the players joined so far: the cutter's card, or the Skiff's with its helm line. */
+export function lobbyLines(players: number): string[] { return shipForCrew(Math.max(1, players)) === 'skiff' ? LOBBY_LINES.map((l, k) => (k === 8 ? SKIFF_HELM_LINE : l)) : [...LOBBY_LINES]; }
+
 /** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b, Demo-vi section 2, Loop-ii section 2): a pending jump, a pending event, a purchase for 3 s, the encounter (won, over, contact), a surrender offer, a shop node, then the ready drive. */
 export const DROP_NOTICE_SECONDS = 4, PURCHASE_NOTICE_SECONDS = 3, LOOT_NOTICE_SECONDS = 4;
 /** The last weapon found, bought or sold for LOOT_NOTICE_SECONDS (spec Loop-iii section 4), else null. */
@@ -441,5 +446,5 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, unpowered: unpoweredAt(state, kind, i), icon: ICON_KINDS[kind]!, iconTint: stationTint(state, i), ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], lobbyShip: phase === 'lobby' ? shipLine(slots.filter((sl) => sl.status !== 'empty').length) : '', notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
+  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? lobbyLines(slots.filter((sl) => sl.status !== 'empty').length) : [], lobbyShip: phase === 'lobby' ? shipLine(slots.filter((sl) => sl.status !== 'empty').length) : '', notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
 }
