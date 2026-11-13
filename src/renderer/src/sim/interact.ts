@@ -102,7 +102,10 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
   const sitRequests = new Map<number, number[]>();
   for (let pid = 0; pid < state.playerCount; pid++) {
     const it = intentFor(intents, pid);
-    if (it.confirmPressed) {
+    const eid = state.crew[pid]!, standing = Life.state[eid] === LifeState.Conscious && Seated.station[eid]! < 0;
+    if (it.confirmPressed && standing && state.run.event >= 0 && state.run.eventChoice < 0) state.scratch.votePress[pid] = 1;   // an open event: a standing Confirm is a vote, never a door or a seat (spec Coop-ii amendment D7)
+    else if (it.confirmPressed && standing && state.run.jumpPending >= 0) state.scratch.jumpConfirm[pid] = 1;                // a pending jump: the second confirmation
+    else if (it.confirmPressed) {
       const c = confirmTarget(state, pid);
       if (c.kind === ConfirmKind.Door) state.scratch.doorToggles.add(c.index);       // applied once per door at the end of consoleSystem
       else if (c.kind === ConfirmKind.Console) sitRequests.set(c.index, [...(sitRequests.get(c.index) ?? []), pid]);

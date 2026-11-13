@@ -278,7 +278,7 @@ describe('telemetryRecord', () => {
     t.firstDownTick = 599; t.firstDownPid = 1; t.firstDeathTick = 1199; t.firstDeathPid = 0;   // Okoro dies on the ending tick: reads as the duration
     t.mannedTicks[StationKind.Navigation] = 600; t.mannedTicks[StationKind.Doors] = 30;
     t.longestIdle[0] = 300; t.longestIdle[1] = 1200;
-    t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]); t.encounters = 2; t.enemiesDestroyed = 1; t.enemyDisables = 3; t.enemyFled = 2; t.surrenders = 1; t.shieldHits = 4; t.boardings = 1; t.boardersKilled = 2; t.boardersVented = 1; t.lockedShots = 5; t.teamSeconds = 12.345; t.revives = 3; s.run.nodesReached = 3; t.jumps = 3; t.scrapEarned = 60; t.scrapSpent = 15; t.eventsResolved = 2; t.purchases = 1; s.run.upgrades[StationKind.Weapons] = 1;
+    t.spawns.set([2, 1, 0, 3]); t.impacts = 2; t.evadeRolls = 3; t.evasions = 1; t.shots = 4; t.hits = 2; t.repairs.set([1, 0, 0]); t.maxStress = 0.55; t.phaseEntries.set([2, 1, 1, 1]); t.encounters = 2; t.enemiesDestroyed = 1; t.enemyDisables = 3; t.enemyFled = 2; t.surrenders = 1; t.shieldHits = 4; t.boardings = 1; t.boardersKilled = 2; t.boardersVented = 1; t.lockedShots = 5; t.teamSeconds = 12.345; t.revives = 3; t.timedEvades = 2; t.votesUnanimous = 1; t.votesSplit = 4; s.run.nodesReached = 3; t.jumps = 3; t.scrapEarned = 60; t.scrapSpent = 15; t.eventsResolved = 2; t.purchases = 1; s.run.upgrades[StationKind.Weapons] = 1;
     setSkill(s, 0, Skill.Repair, 4);
     const r = telemetryRecord(s, 9);
     expect(r).toEqual({
@@ -291,7 +291,7 @@ describe('telemetryRecord', () => {
       spawns: { fire: 2, breach: 1, power: 0, debris: 3 }, impacts: 2, evadeRolls: 3, evasions: 1, shots: 4, hits: 2,
       repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.55, phaseEntries: { buildUp: 2, sustainPeak: 1, peakFade: 1, relax: 1 },
       enemy: { met: 2, destroyed: 1, disables: 3, fled: 2, surrenders: 1, shieldHits: 4 }, boarders: { parties: 1, killed: 2, vented: 1 }, run: { nodesReached: 3, jumps: 3, columns: 8, scrap: { earned: 60, spent: 15 }, events: 2, purchases: 1, upgrades: ['Weapons'], quirk: QUIRK_NAMES[s.run.quirk]!, unlocks: [] },
-      teamwork: { lockedShots: 5, teamSeconds: 12.3, revives: 3 },
+      teamwork: { lockedShots: 5, teamSeconds: 12.3, revives: 3, timedEvades: 2, votesUnanimous: 1, votesSplit: 4 },
       score: 390, skills: [[0, 0, 0, 0, 0, 4], [0, 3, 0, 0, 0, 0]]
     });
     expect(JSON.parse(JSON.stringify(r))).toEqual(r); expect(telemetryRecord(s, 9).score).toBe(runScore(telemetryRecord(s, 9)));

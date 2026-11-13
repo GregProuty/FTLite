@@ -426,7 +426,7 @@ describe('snapshot', () => {
     const whole = makeState(2, 31), part = makeState(2, 31); const n = setup(whole); setup(part);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
     expect(resumed.stations.cursor[n]).toBe(1); expect(resumed.run.jumpCharge).toBe(0.9);
-    const drive = (s: ReturnType<typeof makeState>) => run(s, 0.1 * JUMP_CHARGE_TIME * TICK_HZ + 600, () => intents({ confirmPressed: true }, {}));
+    const drive = (s: ReturnType<typeof makeState>) => run(s, 0.1 * JUMP_CHARGE_TIME * TICK_HZ + 600, () => intents({ confirmPressed: true }, { confirmPressed: true }));   // P2 confirms the jump (spec Coop-ii section 3)
     drive(whole); drive(resumed);
     expect([resumed.run.column, resumed.run.node, resumed.run.nodesReached]).toEqual([1, 1, 1]);
     expect(hashState(resumed)).toBe(hashState(whole));
@@ -471,7 +471,7 @@ describe('snapshot: encounters (spec Demo-vi section 2)', () => {
     const whole = setup(makeState(2, 7)), part = setup(makeState(2, 7));
     expect([part.run.encounter, part.run.driveBoost]).toEqual([3, 1]);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
-    run(whole, 1000, () => intents({}, { confirmPressed: true })); run(resumed, 1000, () => intents({}, { confirmPressed: true }));
+    run(whole, 1000, () => intents({ confirmPressed: true }, { confirmPressed: true })); run(resumed, 1000, () => intents({ confirmPressed: true }, { confirmPressed: true }));   // P1 confirms the jump (spec Coop-ii section 3)
     expect(resumed.telemetry.jumps).toBe(1); expect(resumed.run.driveBoost).toBe(0);
     expect(hashState(resumed)).toBe(hashState(whole));
   });
@@ -515,5 +515,15 @@ describe('snapshot: carried torpedoes (spec Coop-ii section 2)', () => {
     expect([t.carrying[0], t.carrying[1], t.weapons.torpedoFed, t.weapons.torpedoDropTick]).toEqual([0, 1, 1, 17]);
     expect(hashState(t)).toBe(hashState(s));
     for (const poke of [() => { s.carrying[0] = 1; }, () => { s.weapons.torpedoFed = 0; }, () => { s.weapons.torpedoDropTick++; }]) { const h = hashState(s); poke(); expect(hashState(s)).not.toBe(h); }
+  });
+});
+
+describe('snapshot: votes and the jump confirmation (spec Coop-ii section 3)', () => {
+  it('round-trips the votes, the open and settle ticks, the pending jump and the vote counters; each alone changes the hash', () => {
+    const s = makeState(2, 5); run(s, 30); s.run.vote[1] = 1; s.run.eventOpenTick = 12; s.run.voteTick = 20; s.run.jumpPending = 2; s.run.jumpPendingTick = 25; s.telemetry.votesUnanimous = 3; s.telemetry.votesSplit = 1;
+    const snap = JSON.parse(JSON.stringify(saveSnapshot(s))), t = loadSnapshot(LAYOUT, snap);
+    expect([t.run.vote[0], t.run.vote[1], t.run.eventOpenTick, t.run.voteTick, t.run.jumpPending, t.run.jumpPendingTick, t.telemetry.votesUnanimous, t.telemetry.votesSplit]).toEqual([-1, 1, 12, 20, 2, 25, 3, 1]);
+    expect(hashState(t)).toBe(hashState(s));
+    for (const poke of [() => { s.run.vote[0] = 0; }, () => { s.run.eventOpenTick++; }, () => { s.run.voteTick++; }, () => { s.run.jumpPending = 1; }, () => { s.run.jumpPendingTick++; }, () => { s.telemetry.votesUnanimous++; }, () => { s.telemetry.votesSplit++; }]) { const h = hashState(s); poke(); expect(hashState(s)).not.toBe(h); }
   });
 });

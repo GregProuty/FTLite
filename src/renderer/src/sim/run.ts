@@ -6,11 +6,12 @@ import { clearObjects, spawnFieldRock } from './debris';
 import { leave, Encounter } from './enemy';
 import { activeBoarderCount } from './boarders';
 import { enterPhase, Phase } from './director';
-import { EndReason } from './crew';
+import { EndReason, consciousCount } from './crew';
+import { Life, LifeState } from './components';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN } from './tuning';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
 import { stationOnline } from './stations';
 import { quirkChargeMult } from './quirks';
 
@@ -68,7 +69,7 @@ export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.mi
 
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
 function arrive(state: SimState): void {
-  const r = state.run; r.event = -1; r.eventChoice = -1; addScrap(state, scrapPerJump(r.column));
+  const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1; addScrap(state, scrapPerJump(r.column));
   if (r.nodeType[r.column * 3 + r.node] === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
 }
 
@@ -126,9 +127,9 @@ export function navigationInput(state: SimState, i: number, dir: number, confirm
   if (dir === Dir.Up) stepTo(-1); else if (dir === Dir.Down) stepTo(1);
   if (!confirm) return;
   const row = rows[c[i]!]!;
-  if (row.select === 'choice' && row.enabled) { resolveEvent(state, row.index); clampNavCursor(state); }
+  if (row.select === 'choice' && row.enabled) { const pid = state.stations.occupant[i]!; if (pid >= 0 && state.run.vote[pid] !== row.index) { state.run.vote[pid] = row.index; state.run.voteTick = state.tick; } }   // the officer's vote (spec Coop-ii amendment D7)
   else if (row.select === 'buy' && row.enabled) { buy(state, row.index); clampNavCursor(state); }
-  else if (row.select === 'jump' && state.run.jumpCharge >= 1) jumpShip(state, row.index);
+  else if (row.select === 'jump' && state.run.jumpCharge >= 1) requestJump(state, row.index);
   else if (row.select === 'evade') startEvade(state);
 }
 
@@ -136,7 +137,7 @@ export function navigationInput(state: SimState, i: number, dir: number, confirm
 export function jumpShip(state: SimState, destination: number): void {
   const r = state.run, list = reachable(state), nav = state.derived.stationOfKind[StationKind.Navigation]!;
   if (!list.includes(destination)) return;
-  r.node = destination; r.column += 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0;
+  r.node = destination; r.column += 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1;
   if (nav >= 0) state.stations.cursor[nav] = 0;
   state.telemetry.jumps++;
   arrive(state);
@@ -172,4 +173,47 @@ export function fieldSystem(state: SimState): void {
   spawnFieldRock(state);                                                                 // -1 with a full table, and no draw
   const u = nextFloat(state.rng.hazards);
   r.fieldNextTick = state.tick + Math.round(FIELD_INTERVAL * TICK_HZ * (1 + FIELD_JITTER * (2 * u - 1)));
+}
+
+/** The pilot's jump (spec Coop-ii section 3): alone (one conscious crew member) it jumps at once; otherwise it waits CONFIRM_SECONDS for a standing crew member's Confirm. A pilot's Confirm while one waits changes nothing. */
+export function requestJump(state: SimState, destination: number): void {
+  const r = state.run;
+  if (consciousCount(state) <= 1) { jumpShip(state, destination); return; }
+  if (r.jumpPending >= 0 || !reachable(state).includes(destination)) return;
+  r.jumpPending = destination; r.jumpPendingTick = state.tick;
+}
+
+/** The event's choice from the votes (spec Coop-ii amendments D6 and D8): votes of conscious players for enabled options; the majority, ties to the seated Navigation officer's vote, else the lowest tied index; none at all: the safe choice. */
+export function tallyVotes(state: SimState): { choice: number; voters: number; unanimous: boolean } {
+  const r = state.run, counts = [0, 0];
+  for (let pid = 0; pid < state.playerCount; pid++) { const v = r.vote[pid]!; if (v >= 0 && Life.state[state.crew[pid]!] === LifeState.Conscious && choiceEnabled(state, r.event, v)) counts[v]!++; }
+  const voters = counts[0]! + counts[1]!;
+  if (voters === 0) return { choice: EVENTS[r.event]!.safeChoice, voters, unanimous: false };
+  if (counts[0] !== counts[1]) return { choice: counts[0]! > counts[1]! ? 0 : 1, voters, unanimous: counts[0] === 0 || counts[1] === 0 };
+  const nav = state.derived.stationOfKind[StationKind.Navigation]!, officer = nav >= 0 ? state.stations.occupant[nav]! : -1;
+  const ov = officer >= 0 && Life.state[state.crew[officer]!] === LifeState.Conscious ? r.vote[officer]! : -1;
+  return { choice: ov >= 0 && choiceEnabled(state, r.event, ov) ? ov : 0, voters, unanimous: false };
+}
+
+/** Step 2a, the single decision point (spec Coop-ii section 3): standing Confirms vote (the first press option 1, then toggling); a vote of a crew member who is not conscious is discarded; the event resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after it opened. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
+export function decisionSystem(state: SimState): void {
+  const r = state.run;
+  if (r.event >= 0 && r.eventChoice < 0) {
+    if (r.eventOpenTick < 0) r.eventOpenTick = state.tick;   // an event set without an arrival opens now
+    for (let pid = 0; pid < state.playerCount; pid++) {
+      if (state.scratch.votePress[pid]) { r.vote[pid] = r.vote[pid]! < 0 ? 0 : 1 - r.vote[pid]!; r.voteTick = state.tick; }
+      if (Life.state[state.crew[pid]!] !== LifeState.Conscious) r.vote[pid] = -1;
+    }
+    let all = consciousCount(state) > 0;
+    for (let pid = 0; pid < state.playerCount; pid++) if (Life.state[state.crew[pid]!] === LifeState.Conscious && !(r.vote[pid]! >= 0 && choiceEnabled(state, r.event, r.vote[pid]!))) all = false;
+    if ((all && state.tick - r.voteTick >= VOTE_SETTLE * TICK_HZ) || state.tick >= r.eventOpenTick + VOTE_SECONDS * TICK_HZ) {
+      const t = tallyVotes(state);
+      if (t.voters >= 2) { if (t.unanimous) state.telemetry.votesUnanimous++; else state.telemetry.votesSplit++; }
+      resolveEvent(state, t.choice); r.vote.fill(-1); r.voteTick = -1; clampNavCursor(state);
+    }
+  }
+  if (r.jumpPending >= 0) {
+    if (state.scratch.jumpConfirm.some((v) => v === 1) || consciousCount(state) <= 1) { if (r.jumpCharge >= 1) jumpShip(state, r.jumpPending); else { r.jumpPending = -1; r.jumpPendingTick = -1; } }
+    else if (state.tick >= r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ) { r.jumpPending = -1; r.jumpPendingTick = -1; }
+  }
 }

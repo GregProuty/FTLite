@@ -135,7 +135,7 @@ export function setNodeTypes(state: SimState, types: Record<string, number>): vo
 }
 export function allHazard(state: SimState): void { setNodeTypes(state, {}); }
 export function grantScrap(state: SimState, n: number): void { state.run.scrap = n; }
-export function setEvent(state: SimState, id: number): void { state.run.event = id; state.run.eventChoice = -1; }
+export function setEvent(state: SimState, id: number): void { state.run.event = id; state.run.eventChoice = -1; state.run.eventOpenTick = state.tick; state.run.voteTick = -1; state.run.vote.fill(-1); }   // opens the vote now (spec Coop-ii section 3)
 /** The spec's fixture map M: three nodes in column 1, reachable [0, 2] from the start, every other mask 1; all nodes Hazard. */
 export function mapM(state: SimState): void {
   setMap(state, [1, 3, 2, 2, 2, 2, 2, 1], { '0:0': 0b101, '1:0': 1, '1:1': 1, '1:2': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 });

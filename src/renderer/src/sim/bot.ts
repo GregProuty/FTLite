@@ -160,6 +160,15 @@ function retreatIntent(state: SimState, pid: number, eid: number, here: number, 
 export function botIntent(state: SimState, pid: number): Intent {
   const eid = state.crew[pid]!;
   if (Life.state[eid] !== LifeState.Conscious) return NEUTRAL_INTENT;
+  const it = dutyIntent(state, pid, eid), r = state.run;
+  if (Seated.station[eid] !== -1) return it;
+  // Crew decisions (spec Coop-ii amendments D6 and D7): standing, a bot presses Confirm until its vote is the safe choice, and confirms a pending jump.
+  if (r.event >= 0 && r.eventChoice < 0 && r.vote[pid] !== EVENTS[r.event]!.safeChoice) return { ...it, confirmPressed: true };
+  if (r.jumpPending >= 0) return { ...it, confirmPressed: true };
+  return it;
+}
+
+function dutyIntent(state: SimState, pid: number, eid: number): Intent {
   const here = Math.floor(Position.y[eid]!) * state.derived.width + Math.floor(Position.x[eid]!);
   const raw = interactTarget(state, pid), target = raw.kind === TargetKind.Pickup || raw.kind === TargetKind.Deliver ? { kind: TargetKind.None, index: -1 } : raw;   // bots never run torpedoes (spec Coop-ii section 2)
   if (target.kind === TargetKind.Fight || target.kind === TargetKind.Revive) return { ...NEUTRAL_INTENT, interactHeld: true };   // urgent: outranks every run behaviour

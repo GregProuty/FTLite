@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { DoorState } from '../src/renderer/src/sim/grid';
+import { CONFIRM_SECONDS } from '../src/renderer/src/sim/tuning';
+import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX } from '../src/renderer/src/sim/run';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { deriveStreams } from '../src/renderer/src/sim/state';
@@ -126,7 +129,7 @@ describe('run: charge and Navigation input', () => {
     run(s, JUMP_CHARGE_TIME * T - 2); expect(s.run.jumpCharge).toBeLessThan(1);
     seatNavigator(s, 0); run(s, 1);                                                      // the seating tick (sat this tick: no action)
     expect(s.run.jumpCharge).toBeCloseTo(1, 12); run(s, 5); expect(s.run.jumpCharge).toBe(1);
-    const r = calm(); seatNavigator(r, 0); run(r, 1); run(r, JUMP_CHARGE_TIME * T - 2, () => intents({}, {}));   // 1 + 3598 = 3599 ticks so far: charge just under 1
+    const r = calm(1); seatNavigator(r, 0); run(r, 1); run(r, JUMP_CHARGE_TIME * T - 2, () => intents({}, {}));   // a lone pilot jumps on the Confirm itself (spec Coop-ii section 3)   // 1 + 3598 = 3599 ticks so far: charge just under 1
     expect(r.run.jumpCharge).toBeLessThan(1);
     run(r, 1, () => intents({ confirmPressed: true }, {}));                              // tick 3600 reaches 1 (jumpStep runs first) and the edge jumps
     expect(r.run.nodesReached).toBe(1); expect(r.run.jumpCharge).toBe(0);
@@ -134,7 +137,7 @@ describe('run: charge and Navigation input', () => {
   });
   it('reachable, cycling with wrap, Left/Right ignored, Confirm before ready does nothing, a held Confirm does not jump at readiness, stick edge before Confirm, the seating Confirm never jumps', () => {
     const MAP = { '0:0': 0b101, '1:0': 1, '1:1': 1, '1:2': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 };
-    const s = calm(); setMap(s, [1, 3, 2, 2, 2, 2, 2, 1], MAP);
+    const s = calm(1); setMap(s, [1, 3, 2, 2, 2, 2, 2, 1], MAP);   // one player: the pilot's Confirm jumps (spec Coop-ii section 3)
     expect(reachable(s)).toEqual([0, 2]);
     const reachableBefore = reachable(s);
     const n = seatNavigator(s, 0); run(s, 1);
@@ -148,12 +151,12 @@ describe('run: charge and Navigation input', () => {
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.nodesReached).toBe(0); expect(s.rng.director.s).toBe(d0);   // not ready
     chargeJump(s); run(s, 1, () => intents({ confirmPressed: true }, {}));
     expect(s.run.nodesReached).toBe(1); expect(s.run.column).toBe(1); expect(s.run.node).toBe(reachableBefore[1]); expect(s.run.node).toBe(2); expect(s.stations.cursor[n]).toBe(0);   // cursor 1 -> destination 2
-    const h = calm(); setMap(h, [1, 3, 2, 2, 2, 2, 2, 1], MAP);
+    const h = calm(1); setMap(h, [1, 3, 2, 2, 2, 2, 2, 1], MAP);
     seatNavigator(h, 0); run(h, 1); h.run.jumpCharge = 1 - 1.5 * DT / JUMP_CHARGE_TIME;
     run(h, 3, () => intents({}, {}));                                                    // neutral intents: the dispatch only sends Confirm edges, and none is sent while the charge becomes ready
     expect(h.run.nodesReached).toBe(0); expect(h.run.jumpCharge).toBe(1);
     run(h, 1, () => intents({ confirmPressed: true }, {})); expect(h.run.nodesReached).toBe(1);
-    const e = calm(); setMap(e, [1, 3, 2, 2, 2, 2, 2, 1], MAP);
+    const e = calm(1); setMap(e, [1, 3, 2, 2, 2, 2, 2, 1], MAP);
     seatNavigator(e, 0); run(e, 1); chargeJump(e);
     run(e, 1, () => intents({ moveY: 1, confirmPressed: true }, {})); expect(e.run.node).toBe(2);   // Down applied first, then Confirm: destination 2
     const seat = calm(); teleport(seat, 0, 2.5, 2.5); chargeJump(seat);
@@ -209,10 +212,10 @@ describe('run: the jump', () => {
     jumpShip(s, reachable(s)[0]!);
     expect([s.run.column, s.run.nodesReached, s.telemetry.jumps, s.ended, s.endReason]).toEqual([7, 7, 7, 1, EndReason.Victory]);
     const p = calm(2); allHazard(p); p.run.column = 6; p.run.node = 0; p.run.nodesReached = 6; p.telemetry.jumps = 6; chargeJump(p);
-    seatNavigator(p, 0); run(p, 1); teleport(p, 1, 2.5, 2.5); Health.cur[p.crew[0]!] = 0.05; placeBoarder(p, room(p, 'A'));   // a boarder in A will down the navigator later this tick
+    seatNavigator(p, 0); run(p, 1); teleport(p, 1, 2.5, 2.5); downCrew(p, 1); Health.cur[p.crew[0]!] = 0.05; placeBoarder(p, room(p, 'A'));   // P2 down: the pilot jumps alone (spec Coop-ii section 3); a boarder in A will down the navigator later this tick
     run(p, 1, () => intents({ confirmPressed: true }, {}));
     expect(p.endReason).toBe(EndReason.Victory); expect(p.ended).toBe(1); expect(Life.state[p.crew[0]!]).toBe(LifeState.Downed); expect(p.telemetry.firstDownTick).toBe(p.tick - 1);
-    const h = calm(2); allHazard(h); h.run.column = 6; h.run.nodesReached = 6; h.telemetry.jumps = 6; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
+    const h = calm(1); allHazard(h); h.run.column = 6; h.run.nodesReached = 6; h.telemetry.jumps = 6; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
     run(h, 1, () => intents({ confirmPressed: true }, {})); expect(h.endReason).toBe(EndReason.Victory);
     const t = h.tick; run(h, 3); expect(h.tick).toBe(t);
     void HULL_MAX;
@@ -359,5 +362,34 @@ describe('the evasive manoeuvre (spec Coop-ii section 1, amendments D1-D3)', () 
     const s = makeState(2, 3); quiet(s); chargeJump(s);
     for (let t = 0; t < 120 * TICK_HZ && !s.ended; t++) step(s, [botIntent(s, 0), botIntent(s, 1)]);
     expect(s.run.evadeUntilTick).toBe(-1);
+  });
+});
+
+describe('the jump confirmation (spec Coop-ii section 3, amendment D7)', () => {
+  const ready = (players = 2) => { const s = makeState(players); quiet(s); allHazard(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); s.stations.cursor[n] = 0; return { s, n }; };
+  it('with two conscious players the pilot\'s Confirm opens a 5 s confirmation; a standing Confirm jumps', () => {
+    const { s } = ready(); const dest = reachable(s)[0]!;
+    run(s, 1, () => intents({ confirmPressed: true }, {}));
+    expect([s.run.column, s.run.jumpPending]).toEqual([0, dest]);
+    run(s, 1, () => intents({}, { confirmPressed: true }));
+    expect([s.run.column, s.run.node, s.run.jumpPending]).toEqual([1, dest, -1]);
+  });
+  it('without a second Confirm within CONFIRM_SECONDS it is cancelled, the drive stays charged; a standing Confirm meanwhile seals no door', () => {
+    const { s } = ready(); const d = s.derived, e = d.doorEdges[0]!, t = d.edgeTile[e]!;
+    run(s, 1, () => intents({ confirmPressed: true }, {}));
+    run(s, CONFIRM_SECONDS * TICK_HZ - 2); expect(s.run.jumpPending).toBeGreaterThanOrEqual(0);
+    run(s, 2); expect([s.run.jumpPending, s.run.column, s.run.jumpCharge]).toEqual([-1, 0, 1]);
+    run(s, 1, () => intents({ confirmPressed: true }, {})); teleport(s, 1, t % d.width + 0.5, Math.floor(t / d.width) + 0.5);
+    run(s, 1, () => intents({}, { confirmPressed: true }));
+    expect(s.doors.sealRequested[e]).toBe(0); expect(s.doors.state[e]).not.toBe(DoorState.Sealed); expect(s.scratch.doorToggles.size + s.scratch.doorCycles.size).toBe(0); expect(s.run.column).toBe(1);
+  });
+  it('alone, or with the others downed, the pilot jumps at once', () => {
+    const a = ready(1).s; run(a, 1, () => intents({ confirmPressed: true })); expect([a.run.column, a.run.jumpPending]).toEqual([1, -1]);
+    const b = ready(2).s; downCrew(b, 1); run(b, 1, () => intents({ confirmPressed: true }, {})); expect(b.run.column).toBe(1);
+    const c = ready(2).s; run(c, 1, () => intents({ confirmPressed: true }, {})); expect(c.run.column).toBe(0); downCrew(c, 1); run(c, 1); expect(c.run.column).toBe(1);   // the second officer went down while it waited
+  });
+  it('bots other than the pilot confirm a pending jump', () => {
+    const { s } = ready(); run(s, 1, () => intents({ confirmPressed: true }, {}));
+    step(s, [NEUTRAL_INTENT, botIntent(s, 1)]); expect(s.run.column).toBe(1);
   });
 });

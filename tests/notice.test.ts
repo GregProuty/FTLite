@@ -16,7 +16,7 @@ const surrender = (s: ReturnType<typeof makeState>, secs = 8) => { placeEnemy(s)
 describe('runNotice', () => {
   it('an event pending: its title and both choices, exactly', () => {
     const s = fresh(); setEvent(s, 4);
-    expect(runNotice(s)).toEqual(['EVENT: Supply cache', 'Take the scrap (+40)  /  Strip it bare (+60, a station fails)']);
+    expect(runNotice(s)).toEqual(['EVENT: Supply cache   vote 15s', 'Take the scrap (+40)  /  Strip it bare (+60, a station fails)']);
   });
   it('after the choice at a shop node: the shop location cue and price list, exactly', () => {
     const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 4); resolveEvent(s, 0); grantScrap(s, 45);
@@ -30,7 +30,7 @@ describe('runNotice', () => {
   });
   it('priority: event, surrender, shop, ready-unseated, ready-seated', () => {
     const s = fresh(); shopAt(s); chargeJump(s); surrender(s); setEvent(s, 4);
-    expect(runNotice(s)[0]).toBe('EVENT: Supply cache');
+    expect(runNotice(s)[0]).toBe('EVENT: Supply cache   vote 15s');
     s.run.eventChoice = 0; expect(runNotice(s)).toEqual([`ENEMY SURRENDERS   hold fire 8s for +${scrapSurrender(s.run.column)} scrap`]);   // beats the shop and the ready drive
     s.enemy.surrenderIntact = 0; expect(runNotice(s)).toEqual(SHOP);                                                           // a voided surrender shows nothing from rule 1b
     s.enemy.present = 0; expect(runNotice(s)).toEqual(SHOP);
@@ -81,7 +81,7 @@ describe('runNotice: encounters (spec Demo-vi section 2)', () => {
   });
   it('priority: the pending event first, then the encounter rule, then the surrender, the shop and the ready drive', () => {
     const s = ended(Encounter.Won); shopAt(s); chargeJump(s); setEvent(s, 4);
-    expect(runNotice(s)[0]).toBe('EVENT: Supply cache');
+    expect(runNotice(s)[0]).toBe('EVENT: Supply cache   vote 15s');
     s.run.eventChoice = 0; expect(runNotice(s)).toEqual(WON);
     surrender(s); expect(runNotice(s)).toEqual(WON);                                                       // the rule sits before the surrender line
     s.run.encounter = Encounter.Fighting; expect(runNotice(s)[0]).toMatch(/^ENEMY SURRENDERS/);
@@ -124,5 +124,19 @@ describe('Torpedo dropped (spec Coop-ii amendment D5)', () => {
     const s = fresh(); expect(runNotice(s)).toEqual([]);
     s.weapons.torpedoDropTick = s.tick; expect(runNotice(s)).toEqual(['Torpedo dropped']);
     s.tick += 4 * 60; expect(runNotice(s)).toEqual([]);
+  });
+});
+
+describe('votes and the jump confirmation on the HUD (spec Coop-ii section 3)', () => {
+  it('the event notice counts the vote down; each player shows their vote beside their name', () => {
+    const s = fresh(); setEvent(s, 4); s.run.eventOpenTick = s.tick; s.tick += 3 * 60;
+    expect(runNotice(s)).toEqual(['EVENT: Supply cache   vote 12s', 'Take the scrap (+40)  /  Strip it bare (+60, a station fails)']);
+    s.run.vote[1] = 1; const m = buildHudModel(s, slots(2), 'running', '');
+    expect([m.players[0]!.vote, m.players[1]!.vote]).toEqual(['', 'VOTE 2']);
+    for (const ev of EVENTS) { setEvent(s, EVENTS.indexOf(ev)); s.run.eventOpenTick = s.tick; for (const l of runNotice(s)) expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); }
+  });
+  it('a pending jump: Jump to Node 2a? (1/2), and who can agree, counting down', () => {
+    const s = fresh(); chargeJump(s); seatNavigator(s, 0); s.run.jumpPending = 0; s.run.jumpPendingTick = s.tick;
+    expect(runNotice(s)).toEqual(['Jump to Node 2a? (1/2)', 'Anyone standing: press Confirm to agree   5s']);
   });
 });

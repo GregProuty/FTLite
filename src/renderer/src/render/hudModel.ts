@@ -3,7 +3,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField } from '../sim/tuning';
+import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, RUN_COLUMNS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType, reachable } from '../sim/run';
 import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
@@ -29,7 +29,7 @@ export type HudAction = 'interact' | 'confirm' | 'cancel';
 export interface HudCharacter { name: string; asset: string; complication: string }
 export interface HudPlayer {
   pid: number; status: SlotStatus; deviceKind: DeviceKind;
-  health: number; life: number; bleed: number; lowOxygen: boolean; carrying: boolean;   // carrying: a torpedo in hand (spec Coop-ii section 2)
+  health: number; life: number; bleed: number; lowOxygen: boolean; carrying: boolean; vote: string;   // vote: 'VOTE 1' or 'VOTE 2' while an event is open (spec Coop-ii section 3)   // carrying: a torpedo in hand (spec Coop-ii section 2)
   lifeText: string; skills: number[]; character: HudCharacter;
   interactPrompt: string; interactIcon: string | null;
   confirmPrompt: string; confirmIcon: string | null;
@@ -109,12 +109,12 @@ export function glyphName(action: HudAction, kind: DeviceKind): string | null { 
 
 const describe = (c: Character): HudCharacter => ({ name: c.name, asset: ASSET_NAMES[c.asset]!, complication: COMPLICATION_NAMES[c.complication]! });
 
-const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { health: 0, life: 0, bleed: 0, lowOxygen: false, carrying: false, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '', skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[RECRUIT]!) };
+const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { health: 0, life: 0, bleed: 0, lowOxygen: false, carrying: false, vote: '', lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '', skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[RECRUIT]!) };
 
 function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> {
   const eid = state.crew[pid]!;
   const skills = Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k));
-  const base = { health: Health.cur[eid]!, life: Life.state[eid]!, bleed: Life.bleed[eid]!, carrying: state.carrying[pid] === 1, skills, character: describe(characterOf(state, pid)) };
+  const base = { health: Health.cur[eid]!, life: Life.state[eid]!, bleed: Life.bleed[eid]!, carrying: state.carrying[pid] === 1, vote: state.run.event >= 0 && state.run.eventChoice < 0 && state.run.vote[pid]! >= 0 ? `VOTE ${state.run.vote[pid]! + 1}` : '', skills, character: describe(characterOf(state, pid)) };
   const r = conditionRoomAt(state, Position.x[eid]!, Position.y[eid]!);
   const lowOxygen = r >= 0 && state.rooms.o2[r]! / state.derived.volume[r]! < HUD_LOW_O2_FRAC;
   if (Life.state[eid] === LifeState.Downed) return { ...EMPTY, ...base, lowOxygen, lifeText: `DOWNED ${Math.ceil(Life.bleed[eid]!)}s`, progress: Life.reviveProgress[eid]! };
@@ -184,7 +184,8 @@ export const LOBBY_LINES: readonly string[] = [
 export const DROP_NOTICE_SECONDS = 4;
 export function runNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
-  if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
+  if (r.jumpPending >= 0) return [`Jump to ${nodeLabel(r.column + 1, r.jumpPending)}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
+  if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!, left = r.eventOpenTick < 0 ? VOTE_SECONDS : Math.max(0, Math.ceil((r.eventOpenTick + VOTE_SECONDS * TICK_HZ - state.tick) / TICK_HZ)); return [`EVENT: ${ev.title}   vote ${left}s`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
   const window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
   const field = r.nodeType[r.column * 3 + r.node] === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
   if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return field ? [`FIELD CLEARED   +${scrapField(r.column)} scrap`, 'Drive charging fast'] : [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, 'Drive charging fast'];

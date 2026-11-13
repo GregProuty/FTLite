@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { DoorState } from '../src/renderer/src/sim/grid';
+import { TICK_HZ, VOTE_SECONDS, VOTE_SETTLE } from '../src/renderer/src/sim/tuning';
+import { teleport } from './helpers/sim';
 import { NodeType, NAV_TEXT_MAX, reachable, navRows, clampNavCursor, jumpShip } from '../src/renderer/src/sim/run';
 import { addScrap, spendScrap } from '../src/renderer/src/sim/scrap';
 import { EVENTS, choiceEnabled, resolveEvent } from '../src/renderer/src/sim/events';
@@ -35,10 +38,11 @@ describe('arrival', () => {
     const rows = navRows(s);
     expect(rows.map((r) => [r.text, r.select, r.index, r.enabled])).toEqual([[EVENTS[4]!.title, 'none', 0, false], [EVENTS[4]!.text, 'none', 0, false], [EVENTS[4]!.choices[0], 'choice', 0, true], [EVENTS[4]!.choices[1], 'choice', 1, true], ['EVADE: Confirm', 'evade', 0, true]]);   // the evade row last (spec Coop-ii section 1)
     expect(s.stations.cursor[n]).toBe(2); clampNavCursor(s); expect(s.stations.cursor[n]).toBe(2);   // the console's own clamp already ran in the seated tick (spec section 6)
-    run(s, 1, () => intents({ confirmPressed: true }, {}));
+    run(s, 1, () => intents({ confirmPressed: true }, {})); expect([s.run.vote[0], s.run.eventChoice]).toEqual([0, -1]);   // the officer's vote (spec Coop-ii amendment D7)
+    run(s, 1, () => intents({}, { confirmPressed: true })); run(s, VOTE_SETTLE * TICK_HZ);                                    // P2 votes option 1 too; it resolves once the votes settle
     expect([s.run.column, s.telemetry.jumps, s.run.jumpCharge, s.run.eventChoice, s.run.scrap, s.telemetry.eventsResolved]).toEqual([1, 1, 1, 0, 40, 1]);
     expect(navRows(s).map((r) => r.select)).toEqual(['jump', 'evade']); expect(s.stations.cursor[n]).toBe(0);   // cursor 2 does not exist in the new list: first selectable
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {}));
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {})); run(s, 1, () => intents({}, { confirmPressed: true }));   // the pilot, then the second officer (spec Coop-ii section 3)
     expect([s.run.column, s.run.node]).toEqual([2, 0]);
   });
 });
@@ -131,7 +135,7 @@ describe('shops', () => {
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(1);   // Down from the last wraps to row 1
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.hull).toBe(HULL_MAX); expect(s.stations.cursor[n]).toBe(1); expect(navRows(s)[1]!.enabled).toBe(false);
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.scrap).toBe(70);   // disabled: nothing
-    const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); e.stations.cursor[m] = 3; run(e, 1, () => intents({ confirmPressed: true }, {}));
+    const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); e.stations.cursor[m] = 3; run(e, 1, () => intents({ confirmPressed: true }, {})); run(e, 2, () => intents({}, { confirmPressed: true })); run(e, VOTE_SETTLE * TICK_HZ);   // P2 votes 1, then 2: both for option 2
     expect(e.run.eventChoice).toBe(1); expect(e.stations.cursor[m]).toBe(3);                                  // row 3 exists in the shop list (an item): kept
     expect(navRows(e)).toHaveLength(11);
   });
@@ -182,5 +186,61 @@ describe('scrap by column (spec Demo-ix section 2, amendment B8)', () => {
     const f = calm(); at(f, 3, 0); placeEnemy(f); f.enemy.fleeing = 1; f.enemy.surrenderIntact = 1; leave(f, false); expect([f.run.scrap, f.telemetry.surrenders]).toEqual([27, 1]);
     const b = calm(); at(b, 3, 0); const k1 = placeBoarder(b, room(b, 'G'), 5); damageBoarder(b, k1, 5, 0); expect(b.run.scrap).toBe(14);
     const v = calm(); at(v, 3, 0); const k2 = placeBoarder(v, room(v, 'G')); killBoarderByHazard(v, k2); expect([v.run.scrap, v.telemetry.boardersVented]).toEqual([14, 1]);
+  });
+});
+
+describe('crew votes (spec Coop-ii section 3, amendments D6-D8)', () => {
+  const T = TICK_HZ, SETTLE = VOTE_SETTLE * TICK_HZ;
+  /** A quiet state at node 2c with event `id` open and the crew standing in the corridor (no door or console in reach). */
+  const open = (id = 4, players = 2) => { const s = makeState(players, 1); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); at(s, 1, 2); setEvent(s, id); return s; };
+  const press = (...pids: number[]) => (tick: number) => intents(...[0, 1, 2, 3].map((p) => ({ confirmPressed: pids.includes(p) && tick >= 0 })));
+  it('a standing Confirm votes option 1, then toggles; it never seals a door or sits while an event is open', () => {
+    const s = open(); const d = s.derived, e = d.doorEdges[0]!, t = d.edgeTile[e]!; teleport(s, 0, t % d.width + 0.5, Math.floor(t / d.width) + 0.5);
+    run(s, 1, press(0)); expect([s.run.vote[0], s.doors.sealRequested[e], s.scratch.doorToggles.size, s.scratch.doorCycles.size]).toEqual([0, 0, 0, 0]); expect(s.doors.state[e]).not.toBe(DoorState.Sealed);
+    run(s, 1, press(0)); expect(s.run.vote[0]).toBe(1);
+    run(s, 1, press(0)); expect(s.run.vote[0]).toBe(0);
+    const n = s.derived.stationOfKind[StationKind.Navigation]!, nt = d.stationTile[n]!; teleport(s, 1, nt % d.width + 0.5, Math.floor(nt / d.width) + 0.5);
+    run(s, 1, press(1)); expect([s.run.vote[1], s.stations.occupant[n]]).toEqual([0, -1]);
+  });
+  it('the seated Navigation officer votes with the rows', () => {
+    const s = open(); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 3;
+    run(s, 1, press(0)); expect(s.run.vote[0]).toBe(1); expect(s.run.eventChoice).toBe(-1);
+  });
+  it('resolves once every conscious player has an enabled vote (settled for VOTE_SETTLE), the majority wins', () => {
+    const s = open(4, 3); run(s, 1, press(0, 1, 2)); run(s, 1, press(2));   // votes 0, 0, 1
+    expect(s.run.eventChoice).toBe(-1);
+    run(s, SETTLE); expect(s.run.eventChoice).toBe(0); expect(s.telemetry.eventsResolved).toBe(1);
+    expect([s.telemetry.votesUnanimous, s.telemetry.votesSplit]).toEqual([0, 1]);
+    expect(Array.from(s.run.vote).slice(0, 3)).toEqual([-1, -1, -1]);
+  });
+  it('a change of vote restarts the settle; the last voter can still switch to option 2', () => {
+    const s = open(4, 2); run(s, 1, press(0, 1));                // both 0
+    run(s, SETTLE - 5); run(s, 1, press(1));                       // 1 switches to 1 before the settle ends
+    expect(s.run.eventChoice).toBe(-1);
+    run(s, SETTLE - 2); expect(s.run.eventChoice).toBe(-1); run(s, 3); expect(s.run.eventChoice).toBeGreaterThanOrEqual(0);
+  });
+  it('a tie goes to the seated Navigation officer, else to the lowest option', () => {
+    const s = open(4, 2); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 3;
+    run(s, 1, press(0, 1)); run(s, SETTLE + 1); expect(s.run.eventChoice).toBe(1);   // officer 1, the other 0
+    const t = open(4, 2); run(t, 1, press(0, 1)); run(t, 1, press(1)); run(t, SETTLE + 1); expect(t.run.eventChoice).toBe(0);
+  });
+  it('at VOTE_SECONDS missing votes are ignored; with no valid votes the safe choice applies', () => {
+    const s = open(0, 2); run(s, 1, press(0)); run(s, 1, press(0));   // P1 votes Leave it; P2 never votes
+    run(s, VOTE_SECONDS * T - 4); expect(s.run.eventChoice).toBe(-1);
+    run(s, 4); expect(s.run.eventChoice).toBe(1);
+    const t = open(4, 2); run(t, VOTE_SECONDS * T + 2); expect(t.run.eventChoice).toBe(EVENTS[4]!.safeChoice);
+    expect([t.telemetry.votesUnanimous, t.telemetry.votesSplit]).toEqual([0, 0]);
+  });
+  it('a downed player leaves the electorate and their vote is discarded; a vote for a disabled option is discarded', () => {
+    const s = open(4, 2); run(s, 1, press(0)); run(s, 1, press(1)); run(s, 1, press(1)); downCrew(s, 1);   // P2's vote 1 is discarded
+    run(s, SETTLE + 2); expect(s.run.eventChoice).toBe(0);
+    const d = open(1, 2); run(d, 1, press(0, 1)); d.hull = 10;   // both vote Help them, which becomes disabled (hull 10)
+    run(d, SETTLE + 2); expect(d.run.eventChoice).toBe(-1);
+    run(d, VOTE_SECONDS * TICK_HZ); expect(d.run.eventChoice).toBe(EVENTS[1]!.safeChoice);
+  });
+  it('one player decides alone; two who agree are unanimous', () => {
+    const s = open(4, 1); run(s, 1, press(0)); run(s, SETTLE + 1); expect(s.run.eventChoice).toBe(0);
+    expect([s.telemetry.votesUnanimous, s.telemetry.votesSplit]).toEqual([0, 0]);
+    const u = open(4, 2); run(u, 1, press(0, 1)); run(u, SETTLE + 1); expect([u.run.eventChoice, u.telemetry.votesUnanimous]).toEqual([0, 1]);
   });
 });

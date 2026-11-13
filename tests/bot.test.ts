@@ -201,3 +201,21 @@ describe('bot self-preservation (spec Demo-ii section 10)', () => {
     expect(entered).toBe(true);
   });
 });
+
+describe('bots and crew votes (spec Coop-ii amendment D6)', () => {
+  it('a standing bot votes the safe choice from the first tick the event is open, and holds it', () => {
+    for (const id of [0, 4]) {
+      const s = calm(); s.run.column = 1; s.run.node = 2; setEvent(s, id);
+      for (let k = 0; k < 3; k++) step(s, [NEUTRAL_INTENT, botIntent(s, 1)]);
+      expect(s.run.vote[1]).toBe(EVENTS[id]!.safeChoice);
+      for (let k = 0; k < 10; k++) step(s, [NEUTRAL_INTENT, botIntent(s, 1)]);
+      expect(s.run.vote[1]).toBe(EVENTS[id]!.safeChoice);
+    }
+  });
+  it('two bots resolve an event by votes and jump on with the second confirmation', () => {
+    const s = calm(); setNodeTypes(s, { '1:0': NodeType.Event, '1:2': NodeType.Event }); chargeJump(s);
+    let resolved = false;
+    for (let t = 0; t < 120 * 60 && s.run.column < 2; t++) { step(s, [botIntent(s, 0), botIntent(s, 1)]); if (s.run.eventChoice >= 0) resolved = true; }
+    expect(resolved).toBe(true); expect(s.telemetry.eventsResolved).toBe(1); expect(s.run.column).toBeGreaterThanOrEqual(1);
+  });
+});

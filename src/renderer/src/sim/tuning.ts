@@ -201,3 +201,6 @@ export const EVADE_WINDOW = 1.0;     // seconds of an evasive manoeuvre: impacts
 export const EVADE_COOLDOWN = 6;     // seconds after the manoeuvre before Navigation can start another
 export const EVADE_CAP = 0.8;        // the doubled chance is capped here (amendment D1)
 export const CARRY_SPEED_MULT = 0.8;  // a crew member carrying a torpedo moves at this fraction of their speed (spec Coop-ii section 2)
+export const VOTE_SECONDS = 15;      // an open event resolves by this time at the latest (spec Coop-ii section 3)
+export const VOTE_SETTLE = 1;        // once every conscious player has a valid vote, it resolves after this long without a change, so the last voter can still switch (spec Coop-ii amendment D11)
+export const CONFIRM_SECONDS = 5;    // a second officer's Confirm must come this soon after the pilot's jump (spec Coop-ii section 3)

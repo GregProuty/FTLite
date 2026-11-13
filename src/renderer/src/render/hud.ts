@@ -124,11 +124,11 @@ export function createHud(parent: Container, assets: GameAssets) {
     if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
     if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
     if (phase === 'lobby') {
-      ui.name.text = `P${i + 1}  ${p.character.name}`; ui.name.tint = TEXT; ui.hp.root.visible = false;
+      ui.name.text = `P${i + 1}  ${p.character.name}${p.vote ? `   ${p.vote}` : ''}`; ui.name.tint = TEXT; ui.hp.root.visible = false;
       fillRow(ui.line2, [{ text: p.character.asset && p.character.complication ? `${p.character.asset} / ${p.character.complication}` : '', tint: DIM }]); fillRow(ui.line3, []); fillRow(ui.line4, []);
       ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return;
     }
-    ui.name.text = `P${i + 1}  HP ${Math.ceil(p.health)}`; ui.name.tint = TEXT;
+    ui.name.text = `P${i + 1}  HP ${Math.ceil(p.health)}${p.vote ? `   ${p.vote}` : ''}`; ui.name.tint = TEXT;
     ui.hp.root.visible = true; ui.hp.set(p.health / 100);
     if (ui.oxygen) ui.oxygen.visible = p.lowOxygen;
     if (p.lifeText) { fillRow(ui.line2, [{ text: p.lifeText, tint: WARN }]); fillRow(ui.line3, []); }

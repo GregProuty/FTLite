@@ -3,7 +3,7 @@ import { NEUTRAL_INTENT, clampIntent } from '../../../shared/intent';
 import type { SimState } from './state';
 import { HAZARD_EVERY } from './tuning';
 import { interactSystem } from './interact';
-import { jumpStep, fieldSystem } from './run';
+import { jumpStep, fieldSystem, decisionSystem } from './run';
 import { consoleSystem } from './console';
 import { movementSystem } from './movement';
 import { doorSystem } from './doors';
@@ -28,12 +28,13 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
 export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const hazardTick = state.tick % HAZARD_EVERY === 0;
-  state.scratch.doorToggles.clear(); state.scratch.doorCycles.clear(); state.scratch.airlockToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0); state.scratch.activeThisTick.fill(0);
+  state.scratch.doorToggles.clear(); state.scratch.doorCycles.clear(); state.scratch.airlockToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0); state.scratch.activeThisTick.fill(0); state.scratch.votePress.fill(0); state.scratch.jumpConfirm.fill(0);
   jumpStep(state);   // (0) the jump drive charges first, so a Confirm on the ready tick jumps (spec Run-i section 6)
   // (1) input, arbitration
   interactSystem(state, intents);
   // (2) control mode: seated input and the tick's door toggles
   consoleSystem(state, intents);
+  decisionSystem(state);   // (2a) crew decisions: event votes resolve and a pending jump is confirmed or lapses (spec Coop-ii section 3)
   xpSystem(state);   // (2b) XP at the observation point: operators are seated and this tick's conditions still stand
   // (3) movement, doors
   movementSystem(state, intents);

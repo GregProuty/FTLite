@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { downCrew } from '../src/renderer/src/sim/crew';
 import { loadProgress, saveProgress, PROGRESS_KEY } from '../src/renderer/src/app/progressStore';
 import { runScore } from '../src/renderer/src/sim/score';
 import { EMPTY_PROGRESS, UNLOCKS, applyRun, veteranRepairXp, applyStartBonuses, type Progress } from '../src/renderer/src/sim/progress';
@@ -26,7 +27,7 @@ const rec = (over: Partial<TelemetryRecord> = {}): Omit<TelemetryRecord, 'score'
   firstDown: null, firstDeath: null, stationsNeverManned: [], mannedSeconds: {}, longestIdleSeconds: [0, 0],
   spawns: { fire: 0, breach: 0, power: 0, debris: 0 }, impacts: 0, evadeRolls: 0, evasions: 0, shots: 0, hits: 0,
   repairs: { fire: 0, breach: 0, power: 0 }, maxStress: 0, phaseEntries: { buildUp: 0, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0, disables: 0, fled: 0, surrenders: 0, shieldHits: 0 }, boarders: { parties: 0, killed: 0, vented: 0 },
-  run: { nodesReached: 0, jumps: 0, columns: 8, scrap: { earned: 0, spent: 0 }, events: 0, purchases: 0, upgrades: [], quirk: 'Leaky Seals', unlocks: [] }, teamwork: { lockedShots: 0, teamSeconds: 0, revives: 0 }, skills: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ...over
+  run: { nodesReached: 0, jumps: 0, columns: 8, scrap: { earned: 0, spent: 0 }, events: 0, purchases: 0, upgrades: [], quirk: 'Leaky Seals', unlocks: [] }, teamwork: { lockedShots: 0, teamSeconds: 0, revives: 0, timedEvades: 0, votesUnanimous: 0, votesSplit: 0 }, skills: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ...over
 });
 const runOver = (o: Partial<TelemetryRecord['run']>) => ({ ...rec().run, ...o });
 
@@ -112,7 +113,7 @@ describe('quirk', () => {
   it('5 Old Drive: the charge takes 75 s; the ready tick is 4500', () => {
     const q = quirkState(5); quiet(q); q.enemy.nextArrivalTick = 1e9; q.boarders.nextArrivalTick = 1e9; run(q, 1); expect(q.run.jumpCharge).toBeCloseTo(DT / (JUMP_CHARGE_TIME * 1.25), 12);
     const c = quirkState(0); quiet(c); c.enemy.nextArrivalTick = 1e9; c.boarders.nextArrivalTick = 1e9; run(c, 1); expect(c.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
-    const ready = (k: number) => { const s = quirkState(k); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; seatNavigator(s, 0); run(s, 1); let n = 1; while (s.telemetry.jumps === 0 && n < 6000) { run(s, 1, () => intents({ confirmPressed: true }, {})); n++; } return s.tick; };
+    const ready = (k: number) => { const s = quirkState(k); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; seatNavigator(s, 0); downCrew(s, 1); run(s, 1); let n = 1; while (s.telemetry.jumps === 0 && n < 6000) { run(s, 1, () => intents({ confirmPressed: true }, {})); n++; } return s.tick; };
     expect(ready(5)).toBe(4500); expect(ready(0)).toBe(3600);
   });
   it('snapshot: quirk and startBonus round trip and hash; the header carries the quirk stream', () => {

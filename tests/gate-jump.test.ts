@@ -27,6 +27,6 @@ describe('jump gate: a scripted navigator jumps the quiet ship through every col
     expect([s.telemetry.jumps, s.run.column, s.endReason]).toEqual([RUN_COLUMNS - 1, RUN_COLUMNS - 1, EndReason.Victory]);
     expect(s.crew.filter((e) => Life.state[e] === LifeState.Conscious).length).toBe(2);
     expect(s.tick).toBeLessThan(8 * (JUMP_CHARGE_TIME + 10) * TICK_HZ);
-    expect(s.tick).toBe(25200);
+    expect(s.tick).toBe(25207);   // each of the seven jumps waits one tick for the second officer's Confirm (spec Coop-ii section 3)
   });
 });
