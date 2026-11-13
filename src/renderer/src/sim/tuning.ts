@@ -190,6 +190,7 @@ export const scrapSurrender = (column: number): number => 15 + 4 * column;
 export const scrapBoarder = (column: number): number => 8 + 2 * column;
 export const scrapField = (column: number): number => 15 + 5 * column;       // an asteroid field cleared (Demo-viii)
 export const EVENT_COUNT = 6;
+export const EVENT_SCRAP_SCALE = 0.15;   // event scrap amounts are written for depth 0 and multiplied by 1 + EVENT_SCRAP_SCALE x depth (spec Loop-v section 1)
 export const SHOP_HULL = 25, SHOP_HULL_COST = 30, SHOP_TORPEDOES = 2, SHOP_TORPEDOES_COST = 20;
 // Upgrades from the Engineering console (Loop-ii): the next level costs BASE + STEP x the levels owned
 export const UPGRADE_MAX = 3, UPGRADE_BASE = 30, UPGRADE_STEP = 15;           // levels above STATION_MAX per kind: 30, 45, 60 scrap
