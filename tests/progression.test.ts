@@ -17,7 +17,7 @@ import { Skill } from '../src/renderer/src/sim/skillIds';
 import { skillLevelOf } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, FIRE_SPREAD_P, HULL_MAX, HEAT_RISE, DOOR_CLOSE_DELAY, PASSAGE_CLOSED, DEBRIS_HULL_DAMAGE, ENEMY_SHOT_HULL_DAMAGE, SCIENCE_LEAD_UNMANNED, JUMP_CHARGE_TIME, QUIRK_COUNT, TORP_START, TORP_CAP, SKILL_MAX, XP_THRESHOLDS, UNLOCK_SCRAP } from '../src/renderer/src/sim/tuning';
+import { TICK_HZ, DT, FIRE_SPREAD_P, HULL_MAX, HEAT_RISE, DOOR_CLOSE_DELAY, PASSAGE_CLOSED, DEBRIS_HULL_DAMAGE, ENEMY_SHOT_HULL_DAMAGE, SCIENCE_LEAD_UNMANNED, JUMP_CHARGE_TIME, QUIRK_COUNT, TORP_START, TORP_CAP, SKILL_MAX, XP_THRESHOLDS, UNLOCK_SCRAP, REACTOR_CAPACITY } from '../src/renderer/src/sim/tuning';
 import { makeState, quirkState, run, quiet, intents, teleport, placeDebris, placeShot, room, overdrive, seatNavigator } from './helpers/sim';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { RECRUITS } from './helpers/sim';
@@ -27,7 +27,7 @@ const rec = (over: Partial<TelemetryRecord> = {}): Omit<TelemetryRecord, 'score'
   firstDown: null, firstDeath: null, stationsNeverManned: [], mannedSeconds: {}, longestIdleSeconds: [0, 0],
   spawns: { fire: 0, breach: 0, power: 0, debris: 0 }, impacts: 0, evadeRolls: 0, evasions: 0, shots: 0, hits: 0,
   repairs: { fire: 0, breach: 0, power: 0 }, maxStress: 0, phaseEntries: { buildUp: 0, sustainPeak: 0, peakFade: 0, relax: 0 }, enemy: { met: 0, destroyed: 0, disables: 0, fled: 0, surrenders: 0, shieldHits: 0 }, boarders: { parties: 0, killed: 0, vented: 0 },
-  run: { nodesReached: 0, jumps: 0, columns: 8, scrap: { earned: 0, spent: 0 }, events: 0, purchases: 0, upgrades: [], quirk: 'Leaky Seals', unlocks: [] }, teamwork: { lockedShots: 0, teamSeconds: 0, revives: 0, timedEvades: 0, votesUnanimous: 0, votesSplit: 0 }, skills: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ...over
+  run: { nodesReached: 0, jumps: 0, columns: 8, scrap: { earned: 0, spent: 0 }, events: 0, purchases: 0, upgrades: {}, reactorBonus: 0, quirk: 'Leaky Seals', unlocks: [] }, teamwork: { lockedShots: 0, teamSeconds: 0, revives: 0, timedEvades: 0, votesUnanimous: 0, votesSplit: 0 }, skills: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ...over
 });
 const runOver = (o: Partial<TelemetryRecord['run']>) => ({ ...rec().run, ...o });
 
@@ -72,6 +72,7 @@ describe('start bonuses', () => {
     expect(bogus.run.startBonus).toBe(0); expect(hashState(bogus)).toBe(hashState(plain));
     const t = makeState(2, 1, RECRUITS, { unlocked: ['torpedo-rack'] }); expect(t.weapons.torpedoStock).toBe(Math.min(TORP_CAP, TORP_START + 2)); expect(t.run.startBonus).toBe(0b010);
     expect(telemetryRecord(s, 1).run.unlocks).toEqual(['scrap-reserve', 'torpedo-rack', 'veteran-crew']); expect(telemetryRecord(t, 1).run.unlocks).toEqual(['torpedo-rack']);
+    expect([Array.from(s.run.upgrades), s.run.reactorBonus, s.power.capacity]).toEqual([[0, 0, 0, 0, 0, 0, 0], 0, REACTOR_CAPACITY]);   // no unlock grants a level or a reactor bar (spec Loop-ii section 4: none to convert)
   });
 });
 

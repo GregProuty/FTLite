@@ -1,6 +1,7 @@
 import type { SimState } from './state';
-import { StationKind } from './stationKinds';
-import { STATION_MAX, STATION_OVERDRIVE, BONUS_BAR_LEVELS } from './tuning';
+import { StationKind, STATION_COUNT } from './stationKinds';
+import { STATION_MAX, STATION_OVERDRIVE, BONUS_BAR_LEVELS, UPGRADE_MAX, UPGRADE_BASE, UPGRADE_STEP, REACTOR_BONUS_MAX, REACTOR_BASE, REACTOR_STEP } from './tuning';
+import { spendScrap } from './scrap';
 import { standUp, stationOnline } from './stations';
 import { Life, LifeState } from './components';
 import { Skill, skillLevelOf } from './skills';
@@ -24,7 +25,7 @@ export function repairStation(state: SimState, i: number): void {
   if (state.derived.stationKind[i] !== StationKind.Engineering) state.stations.level[i] = powerPool(state) >= 1 ? 1 : 0;
 }
 
-/** Base bars a station kind may hold: STATION_MAX plus a bought upgrade bar (spec Run-ii section 8). */
+/** Base bars a station kind may hold: STATION_MAX plus the bought levels (spec Run-ii section 8, Loop-ii section 1). */
 export function baseMax(state: SimState, kind: number): number { return STATION_MAX[kind]! + state.run.upgrades[kind]!; }
 /** Highest level a station may hold: the base plus the overdrive bar for every kind except Engineering (spec 2b-i section 4). */
 export function maxLevel(state: SimState, kind: number): number { return baseMax(state, kind) + (kind === StationKind.Engineering ? 0 : STATION_OVERDRIVE); }
@@ -74,4 +75,31 @@ export function shedPower(state: SimState): void {
     }
     if (!shed) return;                                                // nothing above its floor: the reserved Engineering bar stays
   }
+}
+
+/** run.boughtKind (and the Upgrades page row) for a reactor bar; a station kind otherwise (spec Loop-ii rule U2). */
+export const REACTOR_ROW = STATION_COUNT;
+/** Upgradeable kinds in StationKind order, Engineering excluded: its level drives no output (spec Run-ii section 8, Loop-ii amendment A1). */
+export const UPGRADE_KINDS = [StationKind.Navigation, StationKind.Weapons, StationKind.Science, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors] as const;
+/** The next level's price with `owned` levels bought (spec Loop-ii section 1): 30, 45, 60. */
+export function upgradePrice(owned: number): number { return UPGRADE_BASE + UPGRADE_STEP * owned; }
+/** The next reactor bar's price with `owned` bars bought: 25 to 65. */
+export function reactorPrice(owned: number): number { return REACTOR_BASE + REACTOR_STEP * owned; }
+/** A kind can be raised when it is upgradeable, on the ship, below UPGRADE_MAX and the crew has the scrap. */
+export function canUpgrade(state: SimState, kind: number): boolean {
+  if (!(UPGRADE_KINDS as readonly number[]).includes(kind) || state.derived.stationOfKind[kind]! < 0) return false;
+  const owned = state.run.upgrades[kind]!; return owned < UPGRADE_MAX && state.run.scrap >= upgradePrice(owned);
+}
+export function canBuyReactor(state: SimState): boolean { const owned = state.run.reactorBonus; return owned < REACTOR_BONUS_MAX && state.run.scrap >= reactorPrice(owned); }
+/** Buy the next level of a kind: it takes effect at once (spec Loop-ii section 1). No draws. Returns whether it was bought. */
+export function buyUpgrade(state: SimState, kind: number): boolean {
+  if (!canUpgrade(state, kind)) return false;
+  spendScrap(state, upgradePrice(state.run.upgrades[kind]!)); state.run.upgrades[kind] = state.run.upgrades[kind]! + 1;
+  state.telemetry.purchases++; state.run.boughtTick = state.tick; state.run.boughtKind = kind; return true;
+}
+/** Buy a reactor bar: capacity + 1, the bar arrives unpowered in the pool (spec Loop-ii rule U1). No draws. */
+export function buyReactor(state: SimState): boolean {
+  if (!canBuyReactor(state)) return false;
+  spendScrap(state, reactorPrice(state.run.reactorBonus)); state.run.reactorBonus++; state.power.capacity++;
+  state.telemetry.purchases++; state.run.boughtTick = state.tick; state.run.boughtKind = REACTOR_ROW; return true;
 }

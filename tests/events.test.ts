@@ -5,17 +5,17 @@ import { teleport } from './helpers/sim';
 import { NodeType, NAV_TEXT_MAX, reachable, navRows, clampNavCursor, jumpShip } from '../src/renderer/src/sim/run';
 import { addScrap, spendScrap } from '../src/renderer/src/sim/scrap';
 import { EVENTS, choiceEnabled, resolveEvent } from '../src/renderer/src/sim/events';
-import { UPGRADE_KINDS, SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from '../src/renderer/src/sim/shop';
-import { baseMax, maxLevel, shiftBar, failStation } from '../src/renderer/src/sim/power';
+import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from '../src/renderer/src/sim/shop';
+import { failStation } from '../src/renderer/src/sim/power';
 import { isOverdriven, heatStep } from '../src/renderer/src/sim/heat';
 import { leave } from '../src/renderer/src/sim/enemy';
 import { damageBoarder, killBoarderByHazard } from '../src/renderer/src/sim/boarders';
 import { downCrew } from '../src/renderer/src/sim/crew';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
-import { StationKind, STATION_NAMES } from '../src/renderer/src/sim/stationKinds';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { freeSites } from '../src/renderer/src/sim/hazards/breach';
 import { nextInt } from '../src/shared/rng';
-import { HULL_MAX, HEALTH_MAX, TORP_CAP, TORP_START, STATION_MAX, STATION_OVERDRIVE, EVENT_COUNT, scrapPerJump, scrapEnemy, scrapBoarder, scrapSurrender, scrapField } from '../src/renderer/src/sim/tuning';
+import { HULL_MAX, HEALTH_MAX, TORP_CAP, TORP_START, STATION_MAX, EVENT_COUNT, scrapPerJump, scrapEnemy, scrapBoarder, scrapSurrender, scrapField } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, intents, placeEnemy, placeBoarder, chargeJump, seatNavigator, mapM, setNodeTypes, grantScrap, setEvent, room, ahead } from './helpers/sim';
 
 const calm = (seed = 1) => { const s = makeState(2, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); return s; };
@@ -99,46 +99,41 @@ describe('events: every choice', () => {
 
 describe('shops', () => {
   const shop = (scrap = 100) => { const s = calm(); at(s, 1, 0); setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, scrap); return s; };
-  it('lists the header, nine items in order (Fuel last, spec Loop-i section 2) and the destinations; enabled per item', () => {
+  it('lists the header, three items in order (hull, torpedoes, fuel: upgrades moved to Engineering, spec Loop-ii section 3) and the destinations; enabled per item', () => {
     const s = shop(); const rows = navRows(s);
-    expect(rows).toHaveLength(13); expect(rows[0]).toEqual({ text: 'Shop   scrap 100', select: 'none', index: 0, enabled: false });   // mask 1:0 = 1: one forward destination (Node 3a) and the sideways Node 2b
-    expect(rows.slice(1, 10).map((r) => r.text)).toEqual(['Hull +25 (30 scrap)', 'Torpedoes +2 (20 scrap)', ...UPGRADE_KINDS.map((k) => `${STATION_NAMES[k]} +1 bar (50 scrap)`), 'Fuel +2 (12 scrap)']);
-    expect(UPGRADE_KINDS).toEqual([StationKind.Navigation, StationKind.Weapons, StationKind.Science, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors]);
-    expect(rows.slice(10).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a  ?', 'jump', 8], ['Node 2b  ?', 'jump', 5], ['EVADE: Confirm', 'evade', 0]]);   // unvisited beacons read ? (spec Loop-i section 4b)   // row indices are beacon indices (column x 4 + node)
+    expect(SHOP_ITEM_COUNT).toBe(3);
+    expect(rows).toHaveLength(7); expect(rows[0]).toEqual({ text: 'Shop   scrap 100', select: 'none', index: 0, enabled: false });   // mask 1:0 = 1: one forward destination (Node 3a) and the sideways Node 2b
+    expect(rows.slice(1, 4).map((r) => [r.text, r.select, r.index])).toEqual([['Hull +25 (30 scrap)', 'buy', 0], ['Torpedoes +2 (20 scrap)', 'buy', 1], ['Fuel +2 (12 scrap)', 'buy', 2]]);
+    expect(rows.some((r) => r.text.includes('bar'))).toBe(false);
+    expect(rows.slice(4).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a  ?', 'jump', 8], ['Node 2b  ?', 'jump', 5], ['EVADE: Confirm', 'evade', 0]]);   // unvisited beacons read ? (spec Loop-i section 4b)   // row indices are beacon indices (column x 4 + node)
     expect(rows[1]!.enabled).toBe(false); s.hull = 90; expect(navRows(s)[1]!.enabled).toBe(true);
     expect(rows[2]!.enabled).toBe(true); s.weapons.torpedoStock = TORP_CAP; expect(navRows(s)[2]!.enabled).toBe(false);
-    expect(rows.slice(3, 9).every((r) => r.enabled)).toBe(true);
-    const poor = shop(29); expect(navRows(poor).slice(1, 10).map((r) => r.enabled)).toEqual([false, true, false, false, false, false, false, false, true]);
-    const broke = shop(11); expect(navRows(broke)[9]!.enabled).toBe(false);
+    expect(rows[3]!.enabled).toBe(true);
+    const poor = shop(29); expect(navRows(poor).slice(1, 4).map((r) => r.enabled)).toEqual([false, true, true]);
+    const broke = shop(11); expect(navRows(broke)[3]!.enabled).toBe(false);
     const h = calm(); at(h, 1, 0); expect(navRows(h).map((r) => r.select)).toEqual(['jump', 'jump', 'evade']);
   });
   it('listing and buying never touch the loot stream', () => {
-    const s = shop(); s.hull = 90; const l = s.rng.loot.s; navRows(s); buy(s, 0); buy(s, 1); buy(s, 2 + UPGRADE_KINDS.indexOf(StationKind.Weapons)); expect(s.telemetry.purchases).toBe(3); expect(s.rng.loot.s).toBe(l);
+    const s = shop(); s.hull = 90; const l = s.rng.loot.s; navRows(s); buy(s, 0); buy(s, 1); buy(s, 2); expect(s.telemetry.purchases).toBe(3); expect(s.rng.loot.s).toBe(l);
   });
-  it('buys: hull capped, torpedoes capped, the upgrade raises baseMax and maxLevel for its kind only and shows (owned)', () => {
+  it('buys: hull capped, torpedoes capped; a bought level is no overdrive (heat follows baseMax, spec Loop-ii rule U3)', () => {
     const s = shop(); s.hull = 90; buy(s, 0); expect([s.hull, s.run.scrap, s.telemetry.scrapSpent, s.telemetry.purchases]).toEqual([HULL_MAX, 70, 30, 1]);
     s.weapons.torpedoStock = TORP_CAP - 1; buy(s, 1); expect([s.weapons.torpedoStock, s.run.scrap]).toEqual([TORP_CAP, 50]);
-    const w = 2 + UPGRADE_KINDS.indexOf(StationKind.Weapons);   // item index 3 (navRows row 4)
-    buy(s, w); expect(s.run.upgrades[StationKind.Weapons]).toBe(1); expect(s.run.scrap).toBe(0); expect(s.telemetry.purchases).toBe(3);
-    expect(baseMax(s, StationKind.Weapons)).toBe(STATION_MAX[StationKind.Weapons]! + 1); expect(maxLevel(s, StationKind.Weapons)).toBe(STATION_MAX[StationKind.Weapons]! + 1 + STATION_OVERDRIVE);
-    for (const k of [StationKind.Navigation, StationKind.Science, StationKind.Engineering, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors]) expect(maxLevel(s, k)).toBe(STATION_MAX[k]! + (k === StationKind.Engineering ? 0 : STATION_OVERDRIVE));
-    expect(itemLabel(s, w)).toBe('Weapons +1 bar (owned)'); expect(itemEnabled(s, w)).toBe(false); grantScrap(s, 100); expect(itemEnabled(s, w)).toBe(false);
-    const before = [s.run.scrap, s.telemetry.purchases]; buy(s, w); expect([s.run.scrap, s.telemetry.purchases]).toEqual(before);
-    const wpn = s.derived.stationOfKind[StationKind.Weapons]!; s.stations.level.fill(0); s.stations.level[s.derived.stationOfKind[StationKind.Engineering]!] = 1;
-    while (shiftBar(s, wpn, 1)) { /* fill */ } expect(s.stations.level[wpn]).toBe(STATION_MAX[StationKind.Weapons]! + 1 + STATION_OVERDRIVE);
-    s.stations.level[wpn] = STATION_MAX[StationKind.Weapons]! + 1; expect(isOverdriven(s, wpn)).toBe(false); for (let k = 0; k < 5; k++) heatStep(s); expect(s.stations.heat[wpn]).toBe(0);
-    s.stations.level[wpn] = STATION_MAX[StationKind.Weapons]! + 2; expect(isOverdriven(s, wpn)).toBe(true);
+    const before = [s.run.scrap, s.telemetry.purchases]; buy(s, 1); expect([s.run.scrap, s.telemetry.purchases]).toEqual(before);   // capped: disabled
+    s.run.upgrades[StationKind.Weapons] = 2; const wpn = s.derived.stationOfKind[StationKind.Weapons]!;
+    s.stations.level[wpn] = STATION_MAX[StationKind.Weapons]! + 2; expect(isOverdriven(s, wpn)).toBe(false); for (let k = 0; k < 5; k++) heatStep(s); expect(s.stations.heat[wpn]).toBe(0);
+    s.stations.level[wpn] = STATION_MAX[StationKind.Weapons]! + 3; expect(isOverdriven(s, wpn)).toBe(true);
   });
   it('cursor rules: a buy keeps the cursor on its (now disabled) row, the header is skipped, wrap crosses the ends, a shrink moves to the first selectable row', () => {
     const s = shop(); s.hull = 90; const n = seatNavigator(s, 0); run(s, 1);
     run(s, 1, () => intents({}, {})); expect(s.stations.cursor[n]).toBe(1);                                   // header skipped
-    run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(12);                      // Up from row 1 wraps to the last row (the evade row, spec Coop-ii section 1)
+    run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(6);                       // Up from row 1 wraps to the last row (the evade row, spec Coop-ii section 1)
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(1);   // Down from the last wraps to row 1
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.hull).toBe(HULL_MAX); expect(s.stations.cursor[n]).toBe(1); expect(navRows(s)[1]!.enabled).toBe(false);
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.scrap).toBe(70);   // disabled: nothing
     const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); e.stations.cursor[m] = 3; run(e, 1, () => intents({ confirmPressed: true }, {})); run(e, 2, () => intents({}, { confirmPressed: true })); run(e, VOTE_SETTLE * TICK_HZ);   // P2 votes 1, then 2: both for option 2
     expect(e.run.eventChoice).toBe(1); expect(e.stations.cursor[m]).toBe(3);                                  // row 3 exists in the shop list (an item): kept
-    expect(navRows(e)).toHaveLength(13);
+    expect(navRows(e)).toHaveLength(7);
   });
 });
 
@@ -152,12 +147,10 @@ describe('scrap sources', () => {
 });
 
 describe('Navigation text budget', () => {
-  it('every event title, text, choice, shop item label (priced and owned) and the shop header fit NAV_TEXT_MAX', () => {
+  it('every event title, text, choice, shop item label and the shop header fit NAV_TEXT_MAX', () => {
     const texts: string[] = [];
     for (const e of EVENTS) texts.push(e.title, e.text, e.choices[0], e.choices[1]);
-    const s = calm(); for (let i = 0; i < 8; i++) texts.push(itemLabel(s, i));
-    for (const k of UPGRADE_KINDS) s.run.upgrades[k] = 1;
-    for (let i = 0; i < 8; i++) texts.push(itemLabel(s, i));
+    const s = calm(); for (let i = 0; i < SHOP_ITEM_COUNT; i++) texts.push(itemLabel(s, i));
     texts.push('Shop   scrap 100');
     for (const t of texts) expect(t.length, t).toBeLessThanOrEqual(NAV_TEXT_MAX);
   });
@@ -248,7 +241,7 @@ describe('crew votes (spec Coop-ii section 3, amendments D6-D8)', () => {
 
 describe('the fuel row (spec Loop-i section 2)', () => {
   it('Fuel +2 for 12 scrap: adds two fuel, spends the scrap, counts a purchase; disabled below 12 scrap', () => {
-    expect([FUEL_COST, SHOP_FUEL, SHOP_ITEM_COUNT]).toEqual([12, 2, 9]);
+    expect([FUEL_COST, SHOP_FUEL, SHOP_ITEM_COUNT]).toEqual([12, 2, 3]);
     const s = makeState(2); quiet(s); grantScrap(s, 30); const i = SHOP_ITEM_COUNT - 1;
     expect([itemLabel(s, i), itemEnabled(s, i)]).toEqual(['Fuel +2 (12 scrap)', true]);
     buy(s, i); expect([s.run.fuel, s.run.scrap, s.telemetry.scrapSpent, s.telemetry.purchases]).toEqual([10, 18, 12, 1]);

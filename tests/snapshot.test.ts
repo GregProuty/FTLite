@@ -50,10 +50,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-23 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-24 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 23 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 23;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 24 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 24;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips airlocks.open and a HeldOpen door on the cutter; one airlock alone changes the hash (spec Demo-vii section 1)', () => {
@@ -421,7 +421,18 @@ describe('snapshot', () => {
     expect(mutate((u) => { u.run.nodeType[4] = u.run.nodeType[4] === 2 ? 1 : 2; })).not.toBe(base);
     for (const k of ['scrap', 'event', 'eventChoice'] as const) expect(mutate((u) => { u.run[k] = 7; })).not.toBe(base);
     expect(mutate((u) => { u.run.upgrades[1] = 1; })).not.toBe(base);
+    expect(mutate((u) => { u.run.upgrades[1] = 3; })).not.toBe(mutate((u) => { u.run.upgrades[1] = 2; }));
     for (const k of ['scrapEarned', 'scrapSpent', 'eventsResolved', 'purchases'] as const) expect(mutate((u) => { u.telemetry[k] = 7; })).not.toBe(base);
+  });
+  it('round-trips the upgrade levels, run.reactorBonus, the reactor capacity, stations.page and the last purchase; each alone changes the hash (spec Loop-ii section 6)', () => {
+    const s = makeState(2, 5); s.run.upgrades.set([2, 3, 1, 0, 0, 2, 1]); s.run.reactorBonus = 4; s.power.capacity = 14; s.stations.page[3] = 1; s.run.boughtTick = 321; s.run.boughtKind = 7;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.power.capacity, Array.from(t.stations.page), t.run.boughtTick, t.run.boughtKind]).toEqual([[2, 3, 1, 0, 0, 2, 1], 4, 14, [0, 0, 0, 1, 0, 0, 0], 321, 7]);
+    expect(hashState(t)).toBe(hashState(s));
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
+    expect(mutate((u) => { u.run.reactorBonus = 1; })).not.toBe(base); expect(mutate((u) => { u.stations.page[3] = 1; })).not.toBe(base); expect(mutate((u) => { u.power.capacity = 11; })).not.toBe(base);
+    for (const k of ['boughtTick', 'boughtKind'] as const) expect(mutate((u) => { u.run[k] = 3; })).not.toBe(base);   // the purchase notice's tick and row (spec Loop-ii amendment A3)
   });
   it('a run saved with a pending event resumes with the same rows and cursor', () => {
     const s = makeState(2, 5); s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s);

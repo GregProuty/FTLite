@@ -8,7 +8,7 @@ import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump,
 
 // Spec Demo-i sections 4, 8 and 11.4 rule 1b: the two-line run notice both players read.
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : 'kb:1' }));
-const SHOP = ['SHOP at Node 2a   scrap 45', 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)  Upgrade (50)'];   // the fuel price joins the list (spec Loop-i section 2)
+const SHOP = ['SHOP at Node 2a   scrap 45', 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)'];   // upgrades left the shop for the Engineering console (spec Loop-ii section 3)
 const fresh = (players = 2) => { const s = makeState(players); quiet(s); mapM(s); wake(s); return s; };   // awake: the peaceful start's own notice has its test below (spec Loop-i section 4b)
 const shopAt = (s: ReturnType<typeof makeState>) => { s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, 45); };
 const surrender = (s: ReturnType<typeof makeState>, secs = 8) => { placeEnemy(s); s.enemy.fleeing = 1; s.enemy.surrenderIntact = 1; s.enemy.departTick = s.tick + secs * 60; };
@@ -21,7 +21,7 @@ describe('runNotice', () => {
   it('after the choice at a shop node: the shop location cue and price list, exactly', () => {
     const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 4); resolveEvent(s, 0); grantScrap(s, 45);
     expect(runNotice(s)).toEqual(SHOP);
-    expect(SHOP[1]!.length).toBe(60);
+    expect(SHOP[1]!.length).toBe(46);
   });
   it('the ready drive: someone take Navigation, or just JUMP READY when seated; a quiet state is empty', () => {
     const s = fresh(); expect(runNotice(s)).toEqual([]);

@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { Seated, Position } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { stationOnline, stationOutput, sitDown, standUp } from '../src/renderer/src/sim/stations';
-import { powerPool, powerUsed, failStation, repairStation, shiftBar, maxLevel, bonusBars, powerCapacity, shedPower, SHED_ORDER } from '../src/renderer/src/sim/power';
-import { REACTOR_CAPACITY, STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST, COOLANT_POOL } from '../src/renderer/src/sim/tuning';
-import { makeState, setSkill, run, intents } from './helpers/sim';
+import { powerPool, powerUsed, failStation, repairStation, shiftBar, maxLevel, bonusBars, powerCapacity, shedPower, SHED_ORDER, baseMax, UPGRADE_KINDS, upgradePrice, reactorPrice, canUpgrade, canBuyReactor, buyUpgrade, buyReactor } from '../src/renderer/src/sim/power';
+import { REACTOR_CAPACITY, STATION_MAX, OUTPUT_SLOW, OUTPUT_FAST, COOLANT_POOL, STATION_OVERDRIVE, UPGRADE_MAX, UPGRADE_BASE, UPGRADE_STEP, REACTOR_BONUS_MAX, REACTOR_BASE, REACTOR_STEP } from '../src/renderer/src/sim/tuning';
+import { makeState, setSkill, run, intents, grantScrap } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { reviveCrew } from '../src/renderer/src/sim/crew';
@@ -183,5 +183,53 @@ describe('bonus bars and shedding', () => {
       }
       return ticks === script.length * 5 && (level < 4 || usedAboveBase);                   // every tick ran; eligible engineers actually used bonus bars
     }), { numRuns: 25 });
+  });
+});
+
+// Spec Loop-ii sections 1 and 4, rules U1 and U3: system levels and reactor bars bought with scrap, prices rising per level.
+describe('upgrades and the reactor', () => {
+  it('the constants and the prices: a level 30, 45, 60; a reactor bar 25, 35, 45, 55, 65', () => {
+    expect([UPGRADE_MAX, UPGRADE_BASE, UPGRADE_STEP, REACTOR_BONUS_MAX, REACTOR_BASE, REACTOR_STEP]).toEqual([3, 30, 15, 5, 25, 10]);
+    expect([0, 1, 2].map(upgradePrice)).toEqual([30, 45, 60]);
+    expect([0, 1, 2, 3, 4].map(reactorPrice)).toEqual([25, 35, 45, 55, 65]);
+    expect(UPGRADE_KINDS).toEqual([StationKind.Navigation, StationKind.Weapons, StationKind.Science, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors]);   // Engineering holds no output to raise (spec Run-ii section 8, Loop-ii amendment)
+  });
+  it('a level spends its price, counts a purchase and raises baseMax and maxLevel for its kind only, three times, then nothing', () => {
+    const s = makeState(2); grantScrap(s, 200); const w = StationKind.Weapons, before = [0, 1, 2, 3, 4, 5, 6].map((k) => maxLevel(s, k));
+    for (let n = 1; n <= UPGRADE_MAX; n++) {
+      const price = upgradePrice(n - 1), scrap = s.run.scrap;
+      expect(canUpgrade(s, w)).toBe(true); expect(buyUpgrade(s, w)).toBe(true);
+      expect([s.run.upgrades[w], s.run.scrap, baseMax(s, w), maxLevel(s, w)]).toEqual([n, scrap - price, STATION_MAX[w]! + n, STATION_MAX[w]! + n + STATION_OVERDRIVE]);
+    }
+    expect([s.run.scrap, s.telemetry.scrapSpent, s.telemetry.purchases]).toEqual([200 - 135, 135, 3]);
+    expect(canUpgrade(s, w)).toBe(false); expect(buyUpgrade(s, w)).toBe(false); expect([s.run.upgrades[w], s.run.scrap, s.telemetry.purchases]).toEqual([3, 65, 3]);   // maxed
+    for (const k of [0, 2, 3, 4, 5, 6]) expect(maxLevel(s, k)).toBe(before[k]);
+    const wpn = idx(s, w); s.stations.level.fill(0); s.stations.level[idx(s, StationKind.Engineering)] = 1; s.power.capacity = 20;
+    while (shiftBar(s, wpn, 1)) { /* fill */ } expect(s.stations.level[wpn]).toBe(STATION_MAX[w]! + UPGRADE_MAX + STATION_OVERDRIVE);
+  });
+  it('not enough scrap does nothing; Engineering cannot be raised; nor a kind the ship lacks', () => {
+    const s = makeState(2); grantScrap(s, 29); const snap = [s.run.scrap, s.telemetry.purchases, s.telemetry.scrapSpent];
+    expect(canUpgrade(s, StationKind.Weapons)).toBe(false); expect(buyUpgrade(s, StationKind.Weapons)).toBe(false);
+    expect([s.run.scrap, s.telemetry.purchases, s.telemetry.scrapSpent, s.run.upgrades[StationKind.Weapons]]).toEqual([...snap, 0]);
+    grantScrap(s, 30); expect(canUpgrade(s, StationKind.Weapons)).toBe(true);
+    grantScrap(s, 999); expect(canUpgrade(s, StationKind.Engineering)).toBe(false); expect(buyUpgrade(s, StationKind.Engineering)).toBe(false); expect(s.run.upgrades[StationKind.Engineering]).toBe(0);
+    s.derived.stationOfKind[StationKind.Doors] = -1; expect(canUpgrade(s, StationKind.Doors)).toBe(false); expect(buyUpgrade(s, StationKind.Doors)).toBe(false);
+  });
+  it('a reactor bar raises state.power.capacity by one and arrives unpowered in the pool; five at most; not enough scrap does nothing', () => {
+    const s = makeState(2); grantScrap(s, 24); const used = powerUsed(s), pool = powerPool(s);
+    expect(canBuyReactor(s)).toBe(false); expect(buyReactor(s)).toBe(false); expect([s.power.capacity, s.run.reactorBonus, s.run.scrap]).toEqual([REACTOR_CAPACITY, 0, 24]);
+    grantScrap(s, 300);
+    for (let n = 1; n <= REACTOR_BONUS_MAX; n++) {
+      const scrap = s.run.scrap; expect(buyReactor(s)).toBe(true);
+      expect([s.power.capacity, s.run.reactorBonus, s.run.scrap, powerUsed(s), powerPool(s), powerCapacity(s)]).toEqual([REACTOR_CAPACITY + n, n, scrap - reactorPrice(n - 1), used, pool + n, REACTOR_CAPACITY + n]);
+    }
+    expect([s.run.scrap, s.telemetry.purchases]).toEqual([300 - 225, 5]);
+    expect(canBuyReactor(s)).toBe(false); expect(buyReactor(s)).toBe(false); expect([s.power.capacity, s.run.reactorBonus, s.run.scrap]).toEqual([REACTOR_CAPACITY + 5, 5, 75]);
+    expect(Array.from(s.stations.level).reduce((a, b) => a + b, 0)).toBe(used);   // no station gained a bar: the officer routes it
+  });
+  it('buying never draws from any stream', () => {
+    const s = makeState(2); grantScrap(s, 500); const before = JSON.stringify(Object.fromEntries(Object.entries(s.rng).map(([k, v]) => [k, (v as { s: number }).s])));
+    buyUpgrade(s, StationKind.Science); buyReactor(s);
+    expect(JSON.stringify(Object.fromEntries(Object.entries(s.rng).map(([k, v]) => [k, (v as { s: number }).s])))).toBe(before);
   });
 });

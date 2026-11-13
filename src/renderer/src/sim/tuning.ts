@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 24;
+export const SIM_VERSION = 25;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -186,7 +186,10 @@ export const scrapSurrender = (column: number): number => 15 + 4 * column;
 export const scrapBoarder = (column: number): number => 8 + 2 * column;
 export const scrapField = (column: number): number => 15 + 5 * column;       // an asteroid field cleared (Demo-viii)
 export const EVENT_COUNT = 6;
-export const SHOP_HULL = 25, SHOP_HULL_COST = 30, SHOP_TORPEDOES = 2, SHOP_TORPEDOES_COST = 20, SHOP_UPGRADE_COST = 50;
+export const SHOP_HULL = 25, SHOP_HULL_COST = 30, SHOP_TORPEDOES = 2, SHOP_TORPEDOES_COST = 20;
+// Upgrades from the Engineering console (Loop-ii): the next level costs BASE + STEP x the levels owned
+export const UPGRADE_MAX = 3, UPGRADE_BASE = 30, UPGRADE_STEP = 15;           // levels above STATION_MAX per kind: 30, 45, 60 scrap
+export const REACTOR_BONUS_MAX = 5, REACTOR_BASE = 25, REACTOR_STEP = 10;     // reactor bars above REACTOR_CAPACITY: 25, 35, 45, 55, 65 scrap
 // Progression and permadeath (Run-iii)
 export const SCORE_NODE = 100, SCORE_VICTORY = 500, SCORE_ENEMY = 20, SCORE_BOARDER = 5;
 export const UNLOCK_SCRAP = 30, UNLOCK_TORPEDOES = 2;
