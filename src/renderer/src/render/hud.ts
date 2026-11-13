@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, BitmapText } from 'pixi.js';
 import { INTERNAL_W } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, clockLine, sectorLine, timeLine, directorText, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, weaponsStrip, weaponsFooterLines, weaponsLootLine, weaponsRowTexts, tabLabel, skillsLine, SCIENCE_ROWS, STATION_SHORT, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, sectorLine, timeLine, directorText, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, weaponsStrip, weaponsFooterLines, weaponsLootLine, weaponsRowTexts, tabLabel, skillsLine, threatTint, SCIENCE_ROWS, STATION_SHORT, type HudModel, type HudPlayer } from './hudModel';
 import { drawIcon, tintColor } from './roomIcons';
 import { createMapPanel } from './mapPanel';
 import { featureReady } from './fallback';
@@ -254,7 +254,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       side.visible = m.phase !== 'lobby' && m.phase !== 'gameover';
       [clockLine(m), sectorLine(m), timeLine(m), directorText(m), m.run.quirk].forEach((s, k) => { clockRows[k]!.text = s; });
       mapPanel.update(m.phase === 'running' ? m.map : null);
-      threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: WARN }] : []); });
+      threatRows.forEach((row, i) => { const t = m.threats[i]; fillRow(row, t ? [{ icon: t.icon, text: t.text, tint: threatTint(t) }] : []); });
       powerTitle.text = `POWER ${m.power.used}/${m.power.capacity}`;
       flashOn = new Set(Math.floor(m.tick / 10) % 2 === 0 ? m.calloutFlash : []);
       for (let k = 0; k < 7; k++) {
