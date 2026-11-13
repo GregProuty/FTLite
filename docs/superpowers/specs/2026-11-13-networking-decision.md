@@ -1,6 +1,6 @@
 # Networking Decision Record (Net-0)
 
-Status: 2026-11-13, proposed for the owner's approval. Not an implementation plan.
+Status: approved 2026-11-13. Not an implementation plan. Net-1 is split into Net-1a (the boundary) and Net-1b (durability) by the accepted Net-1 review.
 
 Evidence:
 - `research/networking-2/measurements.md`: measured in the real code (sizes, CPU, determinism, inputs, headless).
@@ -47,7 +47,8 @@ Evidence:
 
 | # | Milestone | Proves |
 |---|---|---|
-| Net-1 | **Foundations, offline.** Extract the headless authority behind the `Session`/`Link` interface with an in-process loopback. Move the clock off `requestAnimationFrame` (catch up, never slow down). Add semantic commands with IDs and rebuild the card inputs on them. Add a per-viewer HUD (`buildHudModel(viewer)`). Fix entity-ID recycling for long-lived authorities. Add a cross-engine hash test. | Couch play still works, through the new boundary. |
+| Net-1a | **The boundary, offline.** Commands with IDs, loopback Session/Link, independent clock, client-owned menu state, host-side bots consuming published state, and couch cutover. Add the small AST Math guard early. Clients decide tick T from end-of-T−1 state; authority never waits inside a tick. | Couch play works through the same authority boundary that online play will use. |
+| Net-1b | **Durability, offline.** Entity disposal/reuse, per-viewer HUD model, replay/checkpoint v2 and real-browser cross-engine hashes. | The boundary supports long-lived runs and reproducible recovery before Net-3. |
 | Net-2 | **FTL-style keyboard and mouse, offline.** Click to move (pathfinding in the sim as `moveTo`), clickable console cards while seated, hotkeys, and a per-player screen layout (your console large, the others as status pills). | The new controls are fun before any network exists. |
 | Net-3 | **Two machines over the internet, no prediction.** WebRTC with Cloudflare signalling and TURN, join codes, seat tokens, deltas at 20–30 Hz with interpolation, rejoining your own seat, pause and save when the host leaves, and re-hosting from the newest checkpoint. Electron is the host. | The model works end to end on real networks. |
 | Net-4 | **Prediction.** Resimulation from authoritative state for your own avatar and console UI. A latency and loss harness (50–300 ms RTT, jitter, loss, outages). Corrections stay under half a tile in ordinary play. | It feels local at internet latencies. |
