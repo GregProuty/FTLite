@@ -12,7 +12,7 @@ import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 
 import { Dir } from './dir';
 import { chargeBeam, weaponsInput } from './weapons';
-import { scienceInput, scanStep } from './science';
+import { scienceInput, scanStep, systemScanStep } from './science';
 import { navigationInput } from './run';
 import { regenTorpedo, loadTorpedo } from './torpedoes';
 
@@ -80,6 +80,7 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
   regenTorpedo(state);
   loadTorpedo(state);
   scanStep(state);
+  systemScanStep(state);   // the system scan (spec Demo-x-b section 3)
   for (let pid = 0; pid < state.playerCount; pid++) {
     const eid = state.crew[pid]!, i = Seated.station[eid]!;
     if (i < 0 || state.scratch.satThisTick[pid]) continue;              // players who sat this tick act from the next tick

@@ -13,7 +13,7 @@ import { SHOP_ITEM_COUNT, WEAPON_ITEM, itemLabel, itemEnabled, buy } from './sho
 import { LOOT_WEAPON_TYPES } from './weaponDefs';
 import { addScrap } from './scrap';
 import { depthOf, peaceful } from './depth';
-import { TICK_HZ, DT, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
+import { TICK_HZ, DT, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS, AMBUSH_CHANCE, AMBUSH_EVENT_CHANCE, CACHE_CHANCE, AMBUSH_DELAY } from './tuning';
 import { stationOnline } from './stations';
 import { quirkChargeMult } from './quirks';
 
@@ -39,7 +39,7 @@ export function assignNodeTypes(rng: RngState, colNodes: Uint8Array, nodeType: U
 }
 
 /** One sector's map (spec Run-i section 5, Loop-i section 1): nodes per column (MIDDLE_MIN..MIDDLE_MAX in the middle) and, per node, a bitmask of the next column's reachable nodes; the sideways edges between vertical neighbours need no data. Draws only from the given stream, in a fixed order. */
-export function generateMap(rng: RngState, columns: number = SECTOR_COLUMNS): { colNodes: Uint8Array; edgeMask: Uint8Array; nodeType: Uint8Array } {
+export function generateMap(rng: RngState, columns: number = SECTOR_COLUMNS): { colNodes: Uint8Array; edgeMask: Uint8Array; nodeType: Uint8Array; ambush: Uint8Array; cache: Uint8Array } {
   const colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * NODE_STRIDE), nodeType = new Uint8Array(columns * NODE_STRIDE);
   colNodes[0] = 1; colNodes[columns - 1] = 1;
   for (let c = 1; c < columns - 1; c++) colNodes[c] = MIDDLE_MIN + nextInt(rng, MIDDLE_MAX - MIDDLE_MIN + 1);
@@ -58,19 +58,28 @@ export function generateMap(rng: RngState, columns: number = SECTOR_COLUMNS): { 
     }
   }
   assignNodeTypes(rng, colNodes, nodeType);
-  return { colNodes, edgeMask, nodeType };
+  const { ambush, cache } = hideThings(rng, nodeType);
+  return { colNodes, edgeMask, nodeType, ambush, cache };
+}
+
+/** The hidden things (spec Demo-x-b section 3), after the types: one draw per Empty or Event beacon in index order for an ambusher (AMBUSH_CHANCE, AMBUSH_EVENT_CHANCE), then one per Empty beacon for a cache (CACHE_CHANCE). Only middle beacons carry those types. */
+export function hideThings(rng: RngState, nodeType: Uint8Array): { ambush: Uint8Array; cache: Uint8Array } {
+  const ambush = new Uint8Array(nodeType.length), cache = new Uint8Array(nodeType.length);
+  for (let k = 0; k < nodeType.length; k++) { const t = nodeType[k]!; if (t === NodeType.Empty || t === NodeType.Event) ambush[k] = nextFloat(rng) < (t === NodeType.Empty ? AMBUSH_CHANCE : AMBUSH_EVENT_CHANCE) ? 1 : 0; }
+  for (let k = 0; k < nodeType.length; k++) if (nodeType[k] === NodeType.Empty) cache[k] = nextFloat(rng) < CACHE_CHANCE ? 1 : 0;
+  return { ambush, cache };
 }
 
 export function nodeLabel(column: number, node: number): string { return `Node ${column + 1}${String.fromCharCode(97 + node)}`; }
 /** A destination row: the node label, naming an asteroid field (spec Demo-viii amendment R5). */
 export function destinationLabel(state: SimState, column: number, node: number): string { return `${nodeLabel(column, node)}  ${beaconMark(state, column, node)}`; }
-/** What the crew knows of a beacon (spec Loop-i sections 3 and 4b): FLEET once overrun, EXIT, a shop always, a visited beacon's type, else ?. Presentation only: the type is drawn with the map. */
+/** What the crew knows of a beacon (spec Loop-i sections 3 and 4b): FLEET once overrun, EXIT, a shop always, a visited or charted beacon's type, else ?. Presentation only: the type is drawn with the map. */
 export function beaconMark(state: SimState, column: number, node: number): string {
   const r = state.run, k = beaconIndex(column, node), t = r.nodeType[k]!;
   if (overrun(state, column)) return 'FLEET';
   if (column === r.colNodes.length - 1) return 'EXIT';
   if (t === NodeType.Shop) return 'Shop';
-  return r.visited[k] ? BEACON_NAMES[t] ?? '?' : '?';
+  return r.visited[k] || r.revealed[k] ? BEACON_NAMES[t] ?? '?' : '?';   // a beacon charted by a system scan shows its type (spec Demo-x-b section 3)
 }
 const BEACON_NAMES = ['Hostile', 'Event', 'Shop', 'Asteroid field', 'Empty'] as const;
 /** A column at or behind the fleet front is overrun (spec Loop-i section 3): its beacons lose their own content. */
@@ -205,6 +214,11 @@ function afterJump(state: SimState): void {
   const type = r.finalBeacon ? NodeType.Hazard : r.column === 0 || (r.column === last && r.sector >= SECTORS - 1) ? -1 : r.nodeType[hereIndex(state)]!, hazard = type === NodeType.Hazard;   // the final beacon: the Warden's contact in ENCOUNTER_START seconds (spec Loop-iv section 1)
   r.encounter = hazard || type === NodeType.Asteroid ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick; r.fieldNextTick = -1;
   state.enemy.nextArrivalTick = hazard ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;   // an asteroid field has no enemy: it starts in fieldSystem
+  const sc = state.science; sc.system = 0; sc.systemState = 0; sc.systemStartTick = -1; sc.systemTick = -1; sc.systemResult = 0; r.ambushState = 0;   // one system scan per beacon visit (spec Demo-x-b section 3)
+  const k = hereIndex(state);
+  if (!r.finalBeacon && r.ambush[k] && !overrun(state, r.column) && (type === NodeType.Empty || type === NodeType.Event)) {   // a hidden ambusher, spent on arrival: contact AMBUSH_DELAY seconds later (spec Demo-x-b section 3)
+    r.ambush[k] = 0; r.ambushState = 1; r.encounter = Encounter.Pending; r.encounterTick = state.tick; state.enemy.nextArrivalTick = state.tick + AMBUSH_DELAY * TICK_HZ;
+  }
   if (overrun(state, r.column) && !peaceful(state)) startPursuitFight(state);   // the Pursuit replaces the beacon's own encounter (spec Loop-i amendment S5)
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);
@@ -213,7 +227,7 @@ function afterJump(state: SimState): void {
 /** The pursuit fight (spec Loop-i section 3): the normal encounter rules with contact in ENCOUNTER_START seconds; the enemy that arrives is the elite (enemy.ts reads pursuitFought). A field in progress stops with no reward. */
 function startPursuitFight(state: SimState): void {
   const r = state.run;
-  r.pursuitFought = 1; r.encounter = Encounter.Pending; r.encounterTick = state.tick; r.fieldNextTick = -1;
+  r.pursuitFought = 1; r.encounter = Encounter.Pending; r.encounterTick = state.tick; r.fieldNextTick = -1; r.ambushState = 0;   // the elite replaces any ambusher
   state.enemy.nextArrivalTick = state.tick + ENCOUNTER_START * TICK_HZ;
 }
 /** Step 5a (spec Loop-i section 3, amendment S5): once per beacon visit, the Pursuit overrunning the beacon you are at starts its fight, after any enemy already here has gone. */
@@ -229,7 +243,7 @@ export function sectorJump(state: SimState): void {
   if (r.fuel < 1 || !atExit(state)) return;
   if (r.sector >= SECTORS - 1) { r.finalBeacon = 1; afterJump(state); return; }   // engage the Warden: the jump to the final beacon (spec Loop-iv section 1)
   const map = generateMap(state.rng.map, r.colNodes.length);
-  r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType); r.visited.fill(0); r.eventsSeen = 0;   // a new sector may draw any event again (spec Loop-v section 2)
+  r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType); r.ambush.set(map.ambush); r.cache.set(map.cache); r.revealed.fill(0); r.visited.fill(0); r.eventsSeen = 0;   // a new sector may draw any event again (spec Loop-v section 2)
   r.sector += 1; r.column = 0; r.node = 0; r.pursuit = PURSUIT_START;
   afterJump(state);
 }

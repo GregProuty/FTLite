@@ -43,7 +43,10 @@ function replayMap(rng: { s: number }) {
   for (let c = 2; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * S + n] = u < 0.15 ? 2 : u < 0.40 ? 1 : u < 0.55 ? 3 : u < 0.60 && c > 2 ? 4 : 0; }   // column 1 all Hazard without a draw, no Empty in column 2 (spec Demo-x-b section 2)
   let shop = false; for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * S + n] === 2) shop = true;
   if (!shop) nodeType[Math.floor(columns / 2) * S] = 2;
-  return { colNodes, edgeMask, nodeType };
+  const ambush = new Uint8Array(columns * S), cache = new Uint8Array(columns * S);   // the hidden ambushers, then the caches (spec Demo-x-b section 3)
+  for (let k = 0; k < columns * S; k++) if (nodeType[k] === 4 || nodeType[k] === 1) ambush[k] = nextFloat(rng) < (nodeType[k] === 4 ? 0.5 : 0.2) ? 1 : 0;
+  for (let k = 0; k < columns * S; k++) if (nodeType[k] === 4) cache[k] = nextFloat(rng) < 0.4 ? 1 : 0;
+  return { colNodes, edgeMask, nodeType, ambush, cache };
 }
 
 describe('run: the sector map (spec Loop-i sections 1 and 4)', () => {
@@ -66,7 +69,7 @@ describe('run: the sector map (spec Loop-i sections 1 and 4)', () => {
     expect([...sizes].sort()).toEqual([2, 3, 4]);   // four beacons in a column does happen
   });
   it('node types: equal to the replay for seeds 7, 1 and 23; for seeds 1-50 the ends and unused slots are Hazard, the middle any of the five types, at least one shop; the shop fallback lands on column 3 node 0', () => {
-    for (const seed of [7, 1, 23]) { const s = makeState(2, seed); expect(Array.from(s.run.nodeType)).toEqual(Array.from(replayMap(deriveStreams(seed).map).nodeType)); }
+    for (const seed of [7, 1, 23]) { const s = makeState(2, seed), e = replayMap(deriveStreams(seed).map); expect(Array.from(s.run.nodeType)).toEqual(Array.from(e.nodeType)); expect(Array.from(s.run.ambush)).toEqual(Array.from(e.ambush)); expect(Array.from(s.run.cache)).toEqual(Array.from(e.cache)); }
     for (let seed = 1; seed <= 50; seed++) {
       const g = generateMap(createRng(seed)), t = g.nodeType; let shops = 0;
       for (let c = 0; c < SECTOR_COLUMNS; c++) for (let n = 0; n < NODE_STRIDE; n++) {

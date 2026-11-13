@@ -85,6 +85,12 @@ export const OVERHEAT_FIRE_CHANCE = 0.5;              // rng.hazards, one draw p
 // Scanning, frequencies and torpedoes (increment 2b-ii)
 export const FREQ_COUNT = 3;
 export const SCAN_TIME = 6;                           // seconds at output 1 (16 / 8 / 5.3 s at Science levels 1 / 2 / 3)
+/** The Science officer's system scan (spec Demo-x-b section 3): seconds at output 1 (scaled by the output like SCAN_TIME); each finding's chance 0.45 + 0.15 per Science level, capped; the card lists the results for SCAN_RESULT_SECONDS, the notice for SCAN_NOTICE_SECONDS. */
+export const SYSTEM_SCAN_TIME = 8, SCAN_DETECT_BASE = 0.45, SCAN_DETECT_SKILL = 0.15, SCAN_DETECT_MAX = 0.95, SCAN_RESULT_SECONDS = 10, SCAN_NOTICE_SECONDS = 5;
+/** Hidden things drawn with the map (spec Demo-x-b section 3): an ambusher at an Empty (AMBUSH_CHANCE) or Event (AMBUSH_EVENT_CHANCE) beacon arrives AMBUSH_DELAY s after arrival, warned AMBUSH_WARN s ahead when undetected; a detected one arrives with its shields down FIRST_STRIKE_SECONDS. A cache at an Empty beacon (CACHE_CHANCE) holds CACHE_FUEL fuel (one loot draw below CACHE_FUEL_CHANCE) or scrapCache scrap. */
+export const AMBUSH_CHANCE = 0.5, AMBUSH_EVENT_CHANCE = 0.2, AMBUSH_DELAY = 30, AMBUSH_WARN = 3, FIRST_STRIKE_SECONDS = 10, CACHE_CHANCE = 0.4, CACHE_FUEL = 2, CACHE_FUEL_CHANCE = 0.5;
+/** A cache's scrap: 20 at depth 0 to 40 at the last depth (17), rounded. */
+export const scrapCache = (depth: number): number => 20 + Math.round(20 * depth / (SECTORS * SECTOR_COLUMNS - 1));
 export const BEAM_MATCH_BASE = 0.65, BEAM_MATCH_SCALE = 0.30;   // beam tuned to the object's frequency
 export const BEAM_MISS_BASE = 0.15, BEAM_MISS_SCALE = 0.10;     // beam on any other frequency
 export const TORP_HIT_BASE = 0.85, TORP_HIT_SCALE = 0.10;       // homing: frequency does not matter

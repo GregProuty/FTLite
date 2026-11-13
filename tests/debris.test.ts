@@ -258,7 +258,7 @@ describe('frequency and shared cursors (2b-ii)', () => {
   it('a fresh state starts with selector 0, TORP_START stock and every other new field at 0', () => {
     const s = makeState(2);
     expect(s.weapons).toEqual({ charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0, lastShotTick: -1, lastShotTarget: -1, lastShotResult: 0, lastShotKind: 0, torpedoFed: 0, torpedoDropTick: -1, slot: new Uint8Array(2), charge2: new Float64Array(2), cargo: 0, lootTick: -1, lootId: 0, lootPlace: 0, lootBought: 0 });   // Loop-iii adds the extra slots, their charges and the cargo
-    expect(s.science).toEqual({ scanning: 0 });
+    expect(s.science).toEqual({ scanning: 0, system: 0, systemState: 0, systemStartTick: -1, systemTick: -1, systemResult: 0 });   // the system scan ready (spec Demo-x-b section 3)
     expect(Array.from(s.debris.frequency).every((v) => v === 0)).toBe(true);
     expect(Array.from(s.debris.scanned).every((v) => v === 0)).toBe(true);
     expect(Array.from(s.debris.scan).every((v) => v === 0)).toBe(true);

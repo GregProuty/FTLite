@@ -73,7 +73,7 @@ export function applyEffect(state: SimState, e: Effect, mult: number): void {
     case 'breach': { const sites = freeSites(state); if (sites.length) activateBreach(state, sites[nextInt(state.rng.loot, sites.length)]!); break; }
     case 'failStation': { const i = nextInt(state.rng.loot, state.stations.level.length); if (!state.stations.failed[i]) failStation(state, i); break; }
     case 'weapon': grantWeapon(state, 1 + nextInt(state.rng.loot, LOOT_WEAPON_TYPES), false); break;
-    case 'fight': r.encounter = Encounter.Pending; r.encounterTick = state.tick; r.fieldNextTick = -1; if (e.elite) r.pursuitFought = 1; state.enemy.nextArrivalTick = state.tick + ENCOUNTER_START * TICK_HZ; break;
+    case 'fight': r.ambushState = 0; r.encounter = Encounter.Pending; r.encounterTick = state.tick; r.fieldNextTick = -1; if (e.elite) r.pursuitFought = 1; state.enemy.nextArrivalTick = state.tick + ENCOUNTER_START * TICK_HZ; break;
     case 'pursuit': r.pursuit += e.n; break;
     case 'driveReset': r.jumpCharge = 0; break;
     case 'nothing': break;

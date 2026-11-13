@@ -5,7 +5,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX, WEAPON_SLOTS, SLOT_LEVELS } from '../sim/tuning';
+import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX, WEAPON_SLOTS, SLOT_LEVELS, SCAN_RESULT_SECONDS, SCAN_NOTICE_SECONDS, CACHE_FUEL, scrapCache, FIRST_STRIKE_SECONDS, AMBUSH_WARN } from '../sim/tuning';
 import { navRows, helmOffline, overrun, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf, EXIT_JUMP, exitText } from '../sim/run';
 import { depthOf, peaceful } from '../sim/depth';
 import { EVENTS, EVENT_DEFS, noticeChoices, choiceLabel, choiceEnabled, isBlue } from '../sim/events';
@@ -16,7 +16,7 @@ import { stationOnline, stationOutput } from '../sim/stations';
 import { scienceLead, ObjectKind, evadeChance } from '../sim/debris';
 import { warnedTargets, ENEMY_SLOT, isEnemySlot, enemySystemOf } from '../sim/debrisTargets';
 import { EnemySystem, ENEMY_SYSTEM_NAMES, enemyShieldCap, isWarden, enemyWeaponCharge, fleeSecondsLeft, Encounter, lockActive, lockSecondsLeft, ionSecondsLeft } from '../sim/enemy';
-import { canLock } from '../sim/science';
+import { canLock, detectChance, SystemScan, ScanFound } from '../sim/science';
 import { powerUsed, powerPool, powerCapacity, baseMax, upgradeRows, upgradePrice, reactorPrice, canUpgrade, canBuyReactor, REACTOR_ROW, BACK_ROW } from '../sim/power';
 import { isOverdriven, coolantUsed } from '../sim/heat';
 import type { SlotInfo, SlotStatus } from '../input/deviceManager';
@@ -63,7 +63,7 @@ export interface DebrisTarget { stableId: number; kind: TargetKindName; room: st
 export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number; fetch: boolean; fed: boolean }; targets: DebrisTarget[]; cursor: number; first: number; locked: boolean; loot: LootSlotView[]; swap: string | null; rows: number }   // loot: the filled extra slots; swap: the SWAP row's text while it shows (after the targets; cursor = targets.length on it); rows: target rows visible (spec Loop-iii section 4)
 /** A filled extra slot on the Weapons card: its selector value, short name, charge, whether the Weapons level powers it, and for the missile pod whether the stock is empty. */
 export interface LootSlotView { selector: number; short: string; charge: number; powered: boolean; empty: boolean }   // locked: a Science lock runs (spec Coop-i section 1); torpedo.fetch: a magazine ship with nothing in the tube or the loader, fed: a delivered torpedo loading (spec Coop-ii section 2)
-export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean; lock: string }   // lock: '', 'LOCK: Confirm' or 'LOCKED 6s' (spec Coop-i section 1)
+export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean; lock: string; system: { text: string; enabled: boolean; results: string[] } }   // system: the system scan's row after the targets (cursor = targets.length on it) and its results for SCAN_RESULT_SECONDS (spec Demo-x-b section 3)   // lock: '', 'LOCK: Confirm' or 'LOCKED 6s' (spec Coop-i section 1)
 export interface NavigationPanel { kind: 'navigation'; evadeChance: number; jump: { charge: number; ready: boolean }; here: string; fuel: number; fuelAfter: number | null; rows: { text: string; selectable: boolean; enabled: boolean; cursor: boolean; blue: boolean }[]; first: number; scrap: number }
 export type ConsolePanel = EngineeringPanel | DoorsPanel | WeaponsPanel | SciencePanel | NavigationPanel;
 export interface HudStation { kind: number; name: string; level: number; max: number; online: boolean; occupant: number | null; heat: number; coolant: number; overdriven: boolean; unpowered: boolean; icon: IconKind; iconTint: IconTint }
@@ -107,7 +107,7 @@ function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | 
     const nodes: MapNode[] = [];
     for (let n = 0; n < r.colNodes[c]!; n++) {
       const k = beaconIndex(c, n);
-      const t = r.nodeType[k]!, type: MapNode['type'] = c === last ? 'exit' : t === NodeType.Shop ? 'shop' : r.visited[k] ? NODE_TYPES[t] ?? 'hazard' : 'unknown';   // hidden until visited, shops always shown (spec Loop-i section 4b)
+      const t = r.nodeType[k]!, type: MapNode['type'] = c === last ? 'exit' : t === NodeType.Shop ? 'shop' : r.visited[k] || r.revealed[k] ? NODE_TYPES[t] ?? 'hazard' : 'unknown';   // hidden until visited, shops always shown (spec Loop-i section 4b)
       nodes.push({ type, current: c === r.column && n === r.node, reachable: reach.some((b) => b.column === c && b.node === n), selected: k === sel, past: c < r.column });
     }
     columns.push({ nodes });
@@ -262,6 +262,30 @@ export function eventCard(state: SimState): EventCard | null {
   };
 }
 
+/** The system scan's row on the Science card (spec Demo-x-b section 3): ready with the officer's chance, running with its progress, or done; the results for SCAN_RESULT_SECONDS after it finished. */
+function systemRow(state: SimState, i: number): SciencePanel['system'] {
+  const sc = state.science, text = sc.systemState === SystemScan.Ready ? `Scan system  (detect ${Math.round(detectChance(state, i) * 100)}%)` : sc.systemState === SystemScan.Running ? `Scanning system  ${Math.floor(sc.system * 100)}%` : 'System scanned';
+  const fresh = sc.systemState === SystemScan.Done && state.tick - sc.systemTick < SCAN_RESULT_SECONDS * TICK_HZ;
+  return { text, enabled: sc.systemState === SystemScan.Ready && stationOnline(state, i), results: fresh ? scanResultLines(state) : [] };
+}
+function cacheText(state: SimState): string { return state.science.systemResult & ScanFound.Fuel ? `+${CACHE_FUEL} fuel` : `+${scrapCache(depthOf(state))} scrap`; }
+const charted = (state: SimState): number => state.science.systemResult >> 3;
+/** The three result lines of the last system scan. */
+export function scanResultLines(state: SimState): string[] {
+  const r = state.science.systemResult, n = charted(state);
+  return [r & ScanFound.Ship ? `${HIDDEN_SHIP}` : 'No hidden ship found', r & ScanFound.Cache ? `Cache found: ${cacheText(state)}` : 'No cache found', n ? `Charted ${n} beacon${n === 1 ? '' : 's'}` : 'No beacons charted'];
+}
+/** The notice's summary of the last system scan, SCAN_NOTICE_SECONDS after it finished, else null. */
+function scanNotice(state: SimState): string | null {
+  const sc = state.science, r = sc.systemResult, n = charted(state);
+  if (sc.systemState !== SystemScan.Done || state.tick - sc.systemTick >= SCAN_NOTICE_SECONDS * TICK_HZ) return null;
+  const parts = [...(r & ScanFound.Ship ? ['hidden ship detected'] : []), ...(r & ScanFound.Cache ? [`cache ${cacheText(state)}`] : []), ...(n ? [`${n} beacon${n === 1 ? '' : 's'} charted`] : [])];
+  return `SCAN: ${parts.length ? parts.join(', ') : 'nothing found'}`;
+}
+export const HIDDEN_SHIP = 'Hidden ship detected: cloaked raider';
+/** Whole seconds to the ambusher's contact. */
+const contactSeconds = (state: SimState): number => Math.max(0, Math.ceil((state.enemy.nextArrivalTick - state.tick) / TICK_HZ));
+
 /** The helm-offline line (spec Demo-x-b section 2): first while the Navigation station is failed or unpowered. */
 export const HELM_NOTICE = 'HELM OFFLINE: repair Navigation to jump';
 /** The centre notice: the helm-offline line over the first line of the ordinary notice while Navigation is down (spec Demo-x-b section 2), else the ordinary notice. */
@@ -275,13 +299,16 @@ function baseNotice(state: SimState): string[] {
   if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}   ${r.eventOpenTick < 0 ? 'waiting for a vote' : `vote ${voteSecondsLeft(state)}s`}`, noticeChoices(state, r.event)]; }
   if (r.boughtTick >= 0 && state.tick - r.boughtTick < PURCHASE_NOTICE_SECONDS * TICK_HZ) return [r.boughtKind === REACTOR_ROW ? `Reactor +1 (${state.power.capacity} bars)` : `${STATION_NAMES[r.boughtKind]} upgraded to ${baseMax(state, r.boughtKind)}`];   // a purchase at the Engineering console (spec Loop-ii section 2)
+  const scan = scanNotice(state); if (scan) return [scan];   // the system scan's summary (spec Demo-x-b section 3)
+  if (r.encounter === Encounter.Pending && !e.present && r.ambushState === 2) return [`${HIDDEN_SHIP}   contact ${contactSeconds(state)}s`, r.jumpCharge >= 1 ? `Jump away, or strike first: shields down ${FIRST_STRIKE_SECONDS}s` : `Strike first: its shields will be down ${FIRST_STRIKE_SECONDS}s`];
   const loot = lootLine(state), window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
   const field = contentOf(state) === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
   if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return field ? [`FIELD CLEARED   +${scrapField(depthOf(state))} scrap`, 'Drive charging fast'] : [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, loot ?? 'Drive charging fast'];   // a kill's drop replaces the second line (spec Loop-iii section 4)
   if (loot) return [loot];
   if (r.encounter === Encounter.Over && state.tick - r.encounterTick < window) return field ? [] : ['Enemy gone'];   // a field is only left by a jump, which re-arms the encounter at once (amendment A3)
   if (r.encounter === Encounter.Pending && field && r.encounterTick + ENCOUNTER_START * TICK_HZ - state.tick <= window) return ['Asteroid field ahead'];
-  if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return [r.pursuitFought ? (r.event >= 0 && !overrun(state, r.column) ? 'Contact: elite ship approaching' : 'The Pursuit has caught up: elite ship approaching') : r.finalBeacon ? 'The Warden is coming about' : 'Contact: enemy ship approaching'];   // spec Loop-iv section 1: the Warden's own contact line   // spec Loop-i section 3
+  if (r.encounter === Encounter.Pending && r.ambushState === 1) { if (e.nextArrivalTick - state.tick <= AMBUSH_WARN * TICK_HZ) return ['AMBUSH: a hidden ship decloaks!']; }   // an undetected ambusher: only AMBUSH_WARN seconds of warning (spec Demo-x-b section 3)
+  else if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return [r.pursuitFought ? (r.event >= 0 && !overrun(state, r.column) ? 'Contact: elite ship approaching' : 'The Pursuit has caught up: elite ship approaching') : r.finalBeacon ? 'The Warden is coming about' : 'Contact: enemy ship approaching'];   // spec Loop-iv section 1: the Warden's own contact line   // spec Loop-i section 3
   if (state.weapons.torpedoDropTick >= 0 && state.tick - state.weapons.torpedoDropTick < DROP_NOTICE_SECONDS * TICK_HZ) return ['Torpedo dropped'];
   if (peaceful(state)) return ['Safe here. Jump when ready', ...readyLine(state)];   // a peaceful beacon (spec Loop-i section 4b)   // a carried torpedo lost at the cap (spec Coop-ii amendment D5)
   if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${scrapSurrender(depthOf(state))} scrap`];
@@ -322,8 +349,8 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
     return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k)), cursor, first: targetWindow(cursor, slots.length + (swap ? 1 : 0), rows), locked: lockActive(state), loot, swap: swapText, rows };
   }
   if (kind === StationKind.Science) {
-    const slots = warnedTargets(state), c = state.stations.cursor[i]!, cursor = slots.indexOf(c);
-    return { kind: 'science', leadSeconds: scienceLead(state), targets: slots.map((k) => ({ ...target(state, k), scan: k === ENEMY_SLOT ? state.enemy.scan : isEnemySlot(k) ? 0 : state.debris.scan[k]! })), cursor, first: targetWindow(cursor, slots.length, SCIENCE_ROWS), scanning: state.science.scanning === 1, lock: lockActive(state) ? `LOCKED ${lockSecondsLeft(state)}s` : canLock(state, i) ? 'LOCK: Confirm' : '' };
+    const slots = warnedTargets(state), c = state.stations.cursor[i]!, cursor = c < 0 ? slots.length : slots.indexOf(c), system = systemRow(state, i);   // the cursor -1 is the system row (spec Demo-x-b section 3)
+    return { kind: 'science', leadSeconds: scienceLead(state), targets: slots.map((k) => ({ ...target(state, k), scan: k === ENEMY_SLOT ? state.enemy.scan : isEnemySlot(k) ? 0 : state.debris.scan[k]! })), cursor, first: targetWindow(cursor, slots.length + 1 + system.results.length, SCIENCE_ROWS), scanning: state.science.scanning === 1, lock: lockActive(state) ? `LOCKED ${lockSecondsLeft(state)}s` : canLock(state, i) ? 'LOCK: Confirm' : '', system };
   }
   if (kind === StationKind.Navigation) {
     const r = state.run, rows = navRows(state), c0 = state.stations.cursor[i]!, c = rows[c0] && rows[c0]!.select !== 'none' ? c0 : rows.findIndex((row) => row.select !== 'none');   // c: the highlighted row, the first selectable one while the sim cursor still sits on a header   // spec Run-ii 9: the event, shop or destination rows, the cursor row, the jump state and scrap
@@ -380,6 +407,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   const threats: HudThreat[] = [];
   if (state) {
     if (helmOffline(state)) threats.push({ icon: 'icon.power', text: 'Helm offline' });   // first (spec Demo-x-b section 2)
+    if (state.run.ambushState === 2 && state.run.encounter === Encounter.Pending && !state.enemy.present) threats.push({ icon: 'icon.weapons', text: `Hidden ship: contact ${contactSeconds(state)}s` });   // a detected ambusher (spec Demo-x-b section 3)
     if (state.enemy.present) { const e = state.enemy; threats.push({ icon: 'icon.weapons', text: `Enemy ${Math.round(e.hull / e.maxHull * 100)}%${e.sysHp[EnemySystem.Shields]! > 0 ? ` shields ${e.shieldLayers}/${enemyShieldCap(state)}` : ''}${ENEMY_SYSTEM_NAMES.map((name, sys) => (e.sysHp[sys] === 0 ? ` ${name} DOWN` : '')).join('')}${e.fleeing ? ' FLEEING' : ''}` }); }
     for (let r = 0; r < state.layout.rooms.length; r++) { const n = boardersInRoom(state, r).length; if (n) threats.push({ icon: 'icon.sensors', text: `Boarders: ${state.layout.rooms[r]!.name} x${n}` }); }
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) threats.push({ icon: 'icon.fire', text: `Fire: ${state.layout.rooms[r]!.name}` });

@@ -212,11 +212,12 @@ export function createHud(parent: Container, assets: GameAssets) {
       ui.consoleBar.root.visible = true; ui.consoleBar.set(c.charge);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'science') {
       const c = p.console;
-      const vis = c.targets.slice(c.first, c.first + SCIENCE_ROWS);
+      const rows = [...c.targets.map((t) => ({ text: targetRowText(t, t.scan), tint: DIM })), { text: c.system.text, tint: c.system.enabled ? BLUE : DIM }, ...c.system.results.map((text) => ({ text, tint: text.startsWith('Hidden ship') ? WARN : text.startsWith('No ') ? FAINT : CALL }))];   // the targets, the system scan row, its results (spec Demo-x-b section 3)
+      const vis = rows.slice(c.first, c.first + SCIENCE_ROWS);
       ui.consoleRows.forEach((r, k) => {
-        const t = vis[k];
+        const t = vis[k], on = k === c.cursor - c.first;
         r.root.visible = !!t;
-        if (t) r.set({ name: targetRowText(t, t.scan), level: 0, max: 0, status: '', cursor: k === c.cursor - c.first, tint: k === c.cursor - c.first ? TEXT : DIM });
+        if (t) r.set({ name: t.text, level: 0, max: 0, status: '', cursor: on, tint: on ? (k + c.first === c.targets.length && c.system.enabled ? BLUE_LIT : TEXT) : t.tint });
       });
       fillRow(ui.consoleFooter, [{ text: scienceFooter(c), tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'navigation') {
