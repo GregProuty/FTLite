@@ -11,7 +11,7 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { LAYOUT, CUTTER, cutterState, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent, setNodeTypes } from './helpers/sim';
+import { ahead, LAYOUT, CUTTER, cutterState, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent, setNodeTypes } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST_SMALL, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
@@ -395,7 +395,7 @@ describe('snapshot', () => {
     expect(hashState(resumed)).toBe(hashState(whole));
   });
   it('round-trips the run block, the map stream and telemetry.jumps; each alone changes the hash', () => {
-    const s = makeState(2, 5); s.run.column = 3; s.run.node = 2; s.run.nodesReached = 3; s.run.jumpCharge = 0.42; s.run.colNodes.set([1, 3, 2, 3, 2, 2, 3, 1]); s.run.edgeMask[4] = 5; s.telemetry.jumps = 3; s.rng.map.s = 123456;
+    const s = makeState(2, 5); s.run.column = 3; s.run.node = 2; s.run.nodesReached = 3; s.run.jumpCharge = 0.42; s.run.colNodes.set([1, 3, 4, 3, 2, 1]); s.run.edgeMask[4] = 5; s.telemetry.jumps = 3; s.rng.map.s = 123456;
     const before = s.run.nodeType[4]!; s.run.nodeType[4] = before === 2 ? 1 : 2; expect(before).not.toBe(s.run.nodeType[4]);
     s.run.scrap = 45; s.run.event = 3; s.run.eventChoice = 1; s.run.upgrades[1] = 1; s.run.quirk = 4; s.run.startBonus = 5; s.telemetry.scrapEarned = 60; s.telemetry.scrapSpent = 15; s.telemetry.eventsResolved = 2; s.telemetry.purchases = 1;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
@@ -422,7 +422,7 @@ describe('snapshot', () => {
     expect(navRows(t)).toEqual(navRows(s)); expect(t.stations.cursor[n]).toBe(3);
   });
   it('a run saved mid-charge with the cursor on the second destination continues to the same jump as the uninterrupted run', () => {
-    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.9; return n; };
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.9; return n; };
     const whole = makeState(2, 31), part = makeState(2, 31); const n = setup(whole); setup(part);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
     expect(resumed.stations.cursor[n]).toBe(1); expect(resumed.run.jumpCharge).toBe(0.9);
@@ -459,7 +459,7 @@ describe('snapshot: encounters (spec Demo-vi section 2)', () => {
     expect(hashState(s)).not.toBe(hashState(makeState(2, 5)));
   });
   it('a run saved during an asteroid field continues like the uninterrupted run', () => {
-    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.boarders.nextArrivalTick = 1e9; s.enemy.nextArrivalTick = 1e9; mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); s.run.jumpCharge = 1; jumpShip(s, 0); run(s, 15 * 60); return s; };
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.boarders.nextArrivalTick = 1e9; s.enemy.nextArrivalTick = 1e9; mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); s.run.jumpCharge = 1; jumpShip(s, ahead(s, 0)); run(s, 15 * 60); return s; };
     const whole = setup(makeState(2, 7)), part = setup(makeState(2, 7));
     expect(part.run.fieldNextTick).toBeGreaterThan(part.tick);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));

@@ -11,7 +11,7 @@ import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
 import { failStation, repairStation, shiftBar } from '../src/renderer/src/sim/power';
-import { HIT_FLASH_TICKS, RUN_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX, STATION_MAX, BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
+import { HIT_FLASH_TICKS, SECTOR_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX, STATION_MAX, BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -363,16 +363,16 @@ describe('buildHudModel', () => {
     setSkill(s, 2, Skill.Science, 3); setSkill(s, 0, Skill.Repair, 4); setSkill(s, 0, Skill.Navigation, 1);
     const over = buildHudModel(s, slots(3), 'gameover', 'HULL LOST');
     expect(over.summary).toEqual([
-      'Survived 7:32  HULL LOST  Reached node 1 of 8  Score 0', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s', `Ship: ${QUIRK_NAMES[s.run.quirk]}`, 'Teamwork  locked shots 0  shared repairs 0s  revives 0',   // StationKind order, as in the record
+      'Survived 7:32  HULL LOST  Reached node 1 of 6  Score 0', 'First down: Okoro 3:10   First death: none', 'Never manned: Medbay, Doors', 'Longest idle: Okoro 95 s, Lindqvist 40 s, Reyes 7 s', `Ship: ${QUIRK_NAMES[s.run.quirk]}`, 'Teamwork  locked shots 0  shared repairs 0s  revives 0',   // StationKind order, as in the record
       'Okoro: Navigation 0 -> 1, Repair 3 -> 4', 'Lindqvist: no skill gains', 'Reyes: Science 2 -> 3']);
     for (const phase of ['lobby', 'paused', 'running'] as const) expect(buildHudModel(s, slots(3), phase, '').summary).toBeNull();
     expect(buildHudModel(null, slots(1), 'gameover', '').summary).toBeNull();
     s.endReason = EndReason.Crew; t.mannedTicks.fill(1); t.firstDeathTick = 452 * 60 - 1; t.firstDeathPid = 2;
     const crew = buildHudModel(s, slots(3), 'gameover', 'CREW LOST').summary!;
-    expect(crew[0]).toBe('Survived 7:32  CREW LOST  Reached node 1 of 8  Score 0'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
+    expect(crew[0]).toBe('Survived 7:32  CREW LOST  Reached node 1 of 6  Score 0'); expect(crew[1]).toBe('First down: Okoro 3:10   First death: Reyes 7:32'); expect(crew[2]).toBe('Every station manned');
     const four = makeState(4, 1, DEFAULT_CHARACTERS); four.ended = 1; four.endReason = EndReason.Hull;
     expect(buildHudModel(four, slots(4), 'gameover', '').summary).toEqual([
-      'Survived 0:00  HULL LOST  Reached node 1 of 8  Score 0', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
+      'Survived 0:00  HULL LOST  Reached node 1 of 6  Score 0', 'First down: none   First death: none', 'Never manned: Navigation, Weapons, Science, Engineering, Life Support, Medbay, Doors',
       'Longest idle: Okoro 0 s, Lindqvist 0 s, Reyes 0 s, Dubois 0 s', `Ship: ${QUIRK_NAMES[four.run.quirk]}`, 'Teamwork  locked shots 0  shared repairs 0s  revives 0',
       'Okoro: no skill gains', 'Lindqvist: no skill gains', 'Reyes: no skill gains', 'Dubois: no skill gains']);
   });
@@ -402,23 +402,23 @@ describe('buildHudModel', () => {
   });
   it('the clock line carries the node ordinal; the Navigation panel lists destinations, cursor, jump state and final; the footer formats', () => {
     const s = makeState(2); quiet(s);
-    expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe('HULL 100   TIME 0s   node 1/8'); expect(buildHudModel(s, slots(2), 'running', '').run.quirk).toBe(QUIRK_NAMES[s.run.quirk]); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toBe('HULL 0   TIME 0s   node 1/8');
-    s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(/node 4.8$/);
-    s.run.column = 0; setMap(s, [1, 2, 2, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 }); setNodeTypes(s, {});   // all Hazard: the labels are plain node labels
+    expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toBe('HULL 100   TIME 0s   node 1/6'); expect(buildHudModel(s, slots(2), 'running', '').run.quirk).toBe(QUIRK_NAMES[s.run.quirk]); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toBe('HULL 0   TIME 0s   node 1/6');
+    s.run.column = 3; expect(clockLine(buildHudModel(s, slots(2), 'running', ''))).toMatch(/node 4.6$/);
+    s.run.column = 0; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); setNodeTypes(s, {});   // all Hazard: the labels are plain node labels
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;
     expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a', true, true, false], ['Node 2b', true, true, true], ['EVADE: Confirm', true, true, false]]); expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect(p.final).toBe(false);
     expect(navigationFooter(p)).toBe(`${evade}   Jump 64%   Scrap 0`);
     chargeJump(s); expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toBe(`${evade}   Jump READY   Scrap 0`);
-    s.run.column = RUN_COLUMNS - 1; const f = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
+    s.run.column = SECTOR_COLUMNS - 1; const f = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     expect(f.final).toBe(true); expect(f.rows.map((r) => r.text)).toEqual(['EVADE: Confirm']); expect(navigationFooter(f)).toBe(`${evade}   Jump -   Scrap 0`);
   });
   it('the panel window and the highlighted row come from the model: the first selectable row while the sim cursor is still 0, the cursor row scrolls the window', () => {
     const e = makeState(2); quiet(e); mapM(e); e.run.column = 1; e.run.node = 2; setEvent(e, 4); seatNavigator(e, 0);
     const ep = buildHudModel(e, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect([ep.rows[0]!.cursor, ep.rows[2]!.cursor, ep.first]).toEqual([false, true, 0]);
-    const s = makeState(2); quiet(s); setMap(s, [1, 3, 2, 2, 2, 2, 2, 1], { '0:0': 0b101, '1:0': 0b11 }); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); const n = seatNavigator(s, 0);
-    s.stations.cursor[n] = 10; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(12); expect(p.first).toBe(4);
+    const s = makeState(2); quiet(s); setMap(s, [1, 3, 2, 2, 2, 1], { '0:0': 0b101, '1:0': 0b11 }); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); const n = seatNavigator(s, 0);
+    s.stations.cursor[n] = 10; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(13); expect(p.first).toBe(4);
     s.stations.cursor[n] = 1; expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel).first).toBe(0);
   });
   it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows last, and baseMax on the power rows', () => {
@@ -430,7 +430,7 @@ describe('buildHudModel', () => {
     igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.icon).toBe('icon.weapons'); expect(t[1]!.text).toBe('Fire: Bridge'); expect(t[2]!.text).toBe('Event: Supply cache');
     setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.map((x) => x.text).slice(-2)).toEqual(['Event: Supply cache', 'Shop here']); expect(sh.map((x) => x.text).slice(0, 2)).toEqual([expect.stringMatching(/^Enemy ship/), 'Fire: Bridge']);
     resolveEvent(s, 0); const q = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
-    expect(q.rows).toHaveLength(11); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Node 3a');   // mask 1:2 = 1: one destination
+    expect(q.rows).toHaveLength(12); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Node 3a');   // mask 1:2 = 1: one forward destination, then the sideways Node 2b
     expect(buildHudModel(s, slots(2), 'running', '').threats.map((x) => x.text).slice(-1)).toEqual(['Shop here']);
     s.run.upgrades[StationKind.Weapons] = 1; const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 1, eng);
     const m2 = buildHudModel(s, slots(2), 'running', ''); expect(m2.stations.find((x) => x.kind === StationKind.Weapons)!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1);
@@ -451,9 +451,9 @@ describe('buildHudModel', () => {
   });
   it('the game-over headline counts the node and names a victory', () => {
     const s = makeState(2, 1, DEFAULT_CHARACTERS); s.tick = 452 * 60; s.ended = 1; s.endReason = EndReason.Hull;
-    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  HULL LOST  Reached node 1 of 8  Score 0');
-    s.endReason = EndReason.Victory; s.run.column = 7; s.run.nodesReached = 7; s.telemetry.scrapEarned = 145;
-    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  VICTORY  Reached node 8 of 8  Score 1345');
+    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  HULL LOST  Reached node 1 of 6  Score 0');
+    s.endReason = EndReason.Victory; s.run.column = 5; s.run.nodesReached = 5; s.telemetry.scrapEarned = 145;
+    expect(buildHudModel(s, slots(2), 'gameover', '').summary![0]).toBe('Survived 7:32  VICTORY  Reached node 6 of 6  Score 1145');
   });
 });
 

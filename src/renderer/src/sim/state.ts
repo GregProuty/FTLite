@@ -5,7 +5,7 @@ import type { ShipLayout } from './ship/schema';
 import { deriveLayout, type Derived } from './ship/derived';
 import { Position, Health, Life, LifeState, Stable, Owner, Seated } from './components';
 import { DEFAULT_CHARACTERS, RECRUIT, applyHeadStarts } from './characters';
-import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, BOARDER_SLOTS, BOARDING_FIRST, BOARDING_FIRST_SMALL, RUN_COLUMNS, QUIRK_COUNT, ENEMY_ROOMS } from './tuning';
+import { HULL_MAX, HEALTH_MAX, SPAWN_FIRST, TICK_HZ, REACTOR_CAPACITY, DEBRIS_SLOTS, TORP_START, SKILL_COUNT, STRESS_PERIOD, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, BOARDER_SLOTS, BOARDING_FIRST, BOARDING_FIRST_SMALL, QUIRK_COUNT, ENEMY_ROOMS } from './tuning';
 import { generateMap } from './run';
 import { applyStartBonuses } from './progress';
 import { cycleBudget } from './director';
@@ -99,7 +99,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS), frequency: new Uint8Array(DEBRIS_SLOTS), scanned: new Uint8Array(DEBRIS_SLOTS), scan: new Float64Array(DEBRIS_SLOTS), kind: new Uint8Array(DEBRIS_SLOTS) },
     weapons: { charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0, lastShotTick: -1, lastShotTarget: -1, lastShotResult: 0, lastShotKind: 0, torpedoFed: 0, torpedoDropTick: -1 },
     boarders: { active: new Uint8Array(BOARDER_SLOTS), stableId: new Int32Array(BOARDER_SLOTS), room: new Int16Array(BOARDER_SLOTS), health: new Float64Array(BOARDER_SLOTS), nextMoveTick: new Int32Array(BOARDER_SLOTS), aloneSince: new Int32Array(BOARDER_SLOTS).fill(-1), nextArrivalTick: (playerCount <= 2 ? BOARDING_FIRST_SMALL : BOARDING_FIRST) * TICK_HZ },
-    run: { column: 0, node: 0, nodesReached: 0, jumpCharge: 0, scrap: 0, event: -1, eventChoice: -1, upgrades: new Uint8Array(STATION_COUNT), quirk: 0, startBonus: 0, encounter: 1, encounterTick: -1, driveBoost: 0, fieldNextTick: -1, evadeUntilTick: -1, evadeReadyTick: -1, vote: new Int8Array(playerCount).fill(-1), eventOpenTick: -1, voteTick: -1, jumpPending: -1, jumpPendingTick: -1, ...generateMap(rng.map, RUN_COLUMNS) },
+    run: { column: 0, node: 0, nodesReached: 0, jumpCharge: 0, scrap: 0, event: -1, eventChoice: -1, upgrades: new Uint8Array(STATION_COUNT), quirk: 0, startBonus: 0, encounter: 1, encounterTick: -1, driveBoost: 0, fieldNextTick: -1, evadeUntilTick: -1, evadeReadyTick: -1, vote: new Int8Array(playerCount).fill(-1), eventOpenTick: -1, voteTick: -1, jumpPending: -1, jumpPendingTick: -1, ...generateMap(rng.map) },
     enemy: { present: 0, hull: 0, stableId: 0, nextArrivalTick: (playerCount <= 2 ? ENCOUNTER_FIRST_SMALL : ENCOUNTER_FIRST) * TICK_HZ, nextShotTick: -1, departTick: -1, sysHp: new Float64Array(ENEMY_SYSTEM_COUNT), sysRepairTick: new Int32Array(ENEMY_SYSTEM_COUNT).fill(-1), shieldFreq: 0, scanned: 0, scan: 0, maxHull: 0, shieldLayers: 0, shieldRecharge: 0, shotArmTick: -1, fleeing: 0, surrenderIntact: 0, lastHitTick: -1, roomFire: new Float64Array(ENEMY_ROOMS), roomBreach: new Float64Array(ENEMY_ROOMS), shieldRotateTick: -1, lockUntilTick: -1 },
     science: { scanning: 0 },
     carrying: new Uint8Array(playerCount),

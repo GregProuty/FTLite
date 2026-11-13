@@ -11,40 +11,46 @@ import { Life, LifeState } from './components';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
+import { TICK_HZ, DT, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
 import { stationOnline } from './stations';
 import { quirkChargeMult } from './quirks';
 
 /** Longest Navigation panel text: the console panel is 234 px wide, row text starts at x=20 and the bitmap font averages about 5.5 px per glyph, so 36 glyphs fit. */
 export const NAV_TEXT_MAX = 36;
-export const NodeType = { Hazard: 0, Event: 1, Shop: 2, Asteroid: 3 } as const;
+export const NodeType = { Hazard: 0, Event: 1, Shop: 2, Asteroid: 3, Empty: 4 } as const;
+/** A beacon on the sector map: its column and its node in that column (spec Loop-i section 1). */
+export interface Beacon { column: number; node: number }
+/** The map arrays' index of a beacon (stride NODE_STRIDE). */
+export const beaconIndex = (column: number, node: number): number => column * NODE_STRIDE + node;
+export const beaconAt = (index: number): Beacon => ({ column: Math.floor(index / NODE_STRIDE), node: index % NODE_STRIDE });
 export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump' | 'evade'; index: number; enabled: boolean }
 
-/** Node types (spec Run-ii section 3, Demo-viii section 1): one draw per middle node after every edge draw; a shop is guaranteed without a draw. */
+/** Node types (spec Run-ii section 3, Demo-viii section 1, Loop-i section 4): one draw per middle node after every edge draw (Shop, Event, Asteroid, Empty, else Hazard); a shop is guaranteed without a draw. */
 export function assignNodeTypes(rng: RngState, colNodes: Uint8Array, nodeType: Uint8Array, draw: (rng: RngState) => number = nextFloat): void {
-  const columns = colNodes.length; nodeType.fill(NodeType.Hazard);
-  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = draw(rng); nodeType[c * 3 + n] = u < SHOP_CHANCE ? NodeType.Shop : u < SHOP_CHANCE + EVENT_CHANCE ? NodeType.Event : u < SHOP_CHANCE + EVENT_CHANCE + ASTEROID_CHANCE ? NodeType.Asteroid : NodeType.Hazard; }
-  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * 3 + n] === NodeType.Shop) return;
-  nodeType[Math.floor(columns / 2) * 3] = NodeType.Shop;
+  const cut = (x: number): number => Math.round(x * 1e9) / 1e9;   // cumulative thresholds without float drift (0.15 + 0.25 + 0.15 + 0.15 is 0.7000000000000001)
+  const columns = colNodes.length, e = cut(SHOP_CHANCE + EVENT_CHANCE), a = cut(e + ASTEROID_CHANCE), m = cut(a + EMPTY_CHANCE); nodeType.fill(NodeType.Hazard);
+  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = draw(rng); nodeType[beaconIndex(c, n)] = u < SHOP_CHANCE ? NodeType.Shop : u < e ? NodeType.Event : u < a ? NodeType.Asteroid : u < m ? NodeType.Empty : NodeType.Hazard; }
+  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[beaconIndex(c, n)] === NodeType.Shop) return;
+  nodeType[beaconIndex(Math.floor(columns / 2), 0)] = NodeType.Shop;
 }
 
-/** The node map (spec Run-i section 5): nodes per column and, per node, a bitmask of the next column's reachable nodes. Draws only from the given stream, in a fixed order. */
-export function generateMap(rng: RngState, columns: number): { colNodes: Uint8Array; edgeMask: Uint8Array; nodeType: Uint8Array } {
-  const colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * 3), nodeType = new Uint8Array(columns * 3);
+/** One sector's map (spec Run-i section 5, Loop-i section 1): nodes per column (MIDDLE_MIN..MIDDLE_MAX in the middle) and, per node, a bitmask of the next column's reachable nodes; the sideways edges between vertical neighbours need no data. Draws only from the given stream, in a fixed order. */
+export function generateMap(rng: RngState, columns: number = SECTOR_COLUMNS): { colNodes: Uint8Array; edgeMask: Uint8Array; nodeType: Uint8Array } {
+  const colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * NODE_STRIDE), nodeType = new Uint8Array(columns * NODE_STRIDE);
   colNodes[0] = 1; colNodes[columns - 1] = 1;
-  for (let c = 1; c < columns - 1; c++) colNodes[c] = 2 + nextInt(rng, 2);
+  for (let c = 1; c < columns - 1; c++) colNodes[c] = MIDDLE_MIN + nextInt(rng, MIDDLE_MAX - MIDDLE_MIN + 1);
   for (let c = 0; c < columns - 1; c++) {
     const next = colNodes[c + 1]!;
     for (let n = 0; n < colNodes[c]!; n++) {
       let mask = 0;
       for (let d = 0; d < next; d++) if (nextFloat(rng) < EDGE_CHANCE) mask |= 1 << d;
       if (mask === 0) mask = 1 << nextInt(rng, next);
-      edgeMask[c * 3 + n] = mask;
+      edgeMask[beaconIndex(c, n)] = mask;
     }
     for (let d = 0; d < next; d++) {
       let incoming = false;
-      for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * 3 + n]! & (1 << d)) incoming = true;
-      if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[c * 3 + n] = edgeMask[c * 3 + n]! | (1 << d); }
+      for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[beaconIndex(c, n)]! & (1 << d)) incoming = true;
+      if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[beaconIndex(c, n)] = edgeMask[beaconIndex(c, n)]! | (1 << d); }
     }
   }
   assignNodeTypes(rng, colNodes, nodeType);
@@ -53,16 +59,22 @@ export function generateMap(rng: RngState, columns: number): { colNodes: Uint8Ar
 
 export function nodeLabel(column: number, node: number): string { return `Node ${column + 1}${String.fromCharCode(97 + node)}`; }
 /** A destination row: the node label, naming an asteroid field (spec Demo-viii amendment R5). */
-export function destinationLabel(state: SimState, column: number, node: number): string { return state.run.nodeType[column * 3 + node] === NodeType.Asteroid ? `${nodeLabel(column, node)}  Asteroid field` : nodeLabel(column, node); }
+export function destinationLabel(state: SimState, column: number, node: number): string { return state.run.nodeType[beaconIndex(column, node)] === NodeType.Asteroid ? `${nodeLabel(column, node)}  Asteroid field` : nodeLabel(column, node); }
+/** The beacon the ship is at, as a map index. */
+export const hereIndex = (state: SimState): number => beaconIndex(state.run.column, state.run.node);
+/** A key that changes on every jump, sideways ones included (the renderer's reset memory). */
+export const beaconKey = (state: SimState): number => state.run.nodesReached * SECTOR_COLUMNS * NODE_STRIDE + hereIndex(state);
 
-/** Destination node indices in the next column, ascending; empty in the last column. */
-export function reachable(state: SimState): number[] {
-  const r = state.run, out: number[] = [];
-  if (r.column >= RUN_COLUMNS - 1) return out;
-  const mask = r.edgeMask[r.column * 3 + r.node]!, next = r.colNodes[r.column + 1]!;
-  for (let d = 0; d < next; d++) if (mask & (1 << d)) out.push(d);
+/** The destinations (spec Loop-i section 1): the next column's forward edges ascending, then in a middle column the sideways neighbours above and below; none from the exit. */
+export function reachable(state: SimState): Beacon[] {
+  const r = state.run, out: Beacon[] = [], columns = r.colNodes.length;
+  if (r.column >= columns - 1) return out;
+  const mask = r.edgeMask[hereIndex(state)]!, next = r.colNodes[r.column + 1]!;
+  for (let d = 0; d < next; d++) if (mask & (1 << d)) out.push({ column: r.column + 1, node: d });
+  if (r.column > 0) for (const n of [r.node - 1, r.node + 1]) if (n >= 0 && n < r.colNodes[r.column]!) out.push({ column: r.column, node: n });
   return out;
 }
+const canReach = (state: SimState, b: Beacon): boolean => reachable(state).some((x) => x.column === b.column && x.node === b.node);
 
 /** First system of the tick: the drive charges from arrival, whatever else happens (spec section 6); ENCOUNTER_BOOST times as fast after a won encounter (spec Demo-vi section 2). */
 export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.min(1, state.run.jumpCharge + (state.run.driveBoost === 1 ? ENCOUNTER_BOOST : 1) * DT / (JUMP_CHARGE_TIME * quirkChargeMult(state))); }
@@ -70,7 +82,7 @@ export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.mi
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
 function arrive(state: SimState): void {
   const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1; addScrap(state, scrapPerJump(r.column));
-  if (r.nodeType[r.column * 3 + r.node] === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
+  if (r.nodeType[hereIndex(state)] === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
 }
 
 /** Whether a manoeuvre can start now: Navigation present and online, past the cooldown (spec Coop-ii amendment D2; the seat is the caller's check). */
@@ -101,11 +113,11 @@ export function navRows(state: SimState): NavRow[] {
     rows.push(evadeRow(state));
     return rows;
   }
-  if (r.nodeType[r.column * 3 + r.node] === NodeType.Shop) {
+  if (r.nodeType[hereIndex(state)] === NodeType.Shop) {
     rows.push({ text: `Shop   scrap ${r.scrap}`, select: 'none', index: 0, enabled: false });
     for (let i = 0; i < SHOP_ITEM_COUNT; i++) rows.push({ text: itemLabel(state, i), select: 'buy', index: i, enabled: itemEnabled(state, i) });
   }
-  for (const d of reachable(state)) rows.push({ text: destinationLabel(state, r.column + 1, d), select: 'jump', index: d, enabled: true });
+  for (const d of reachable(state)) rows.push({ text: destinationLabel(state, d.column, d.node), select: 'jump', index: beaconIndex(d.column, d.node), enabled: true });
   rows.push(evadeRow(state));
   return rows;
 }
@@ -134,22 +146,22 @@ export function navigationInput(state: SimState, i: number, dir: number, confirm
 }
 
 /** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. A Hazard node short of the last column is an encounter with contact in ENCOUNTER_START seconds; an Asteroid node a field starting then (spec Demo-viii section 1); Event and Shop nodes are quiet (spec Demo-vi section 2). */
-export function jumpShip(state: SimState, destination: number): void {
-  const r = state.run, list = reachable(state), nav = state.derived.stationOfKind[StationKind.Navigation]!;
-  if (!list.includes(destination)) return;
-  r.node = destination; r.column += 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1;
+export function jumpShip(state: SimState, destination: Beacon): void {
+  const r = state.run, nav = state.derived.stationOfKind[StationKind.Navigation]!, last = r.colNodes.length - 1;
+  if (!canReach(state, destination)) return;
+  r.node = destination.node; r.column = destination.column; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1;
   if (nav >= 0) state.stations.cursor[nav] = 0;
   state.telemetry.jumps++;
   arrive(state);
   clearObjects(state);
   if (state.enemy.present) { state.enemy.surrenderIntact = 0; leave(state, false); }   // the ship left, not the enemy: a flee in progress counts as a flight, no surrender bounty (spec Demo-i section 11.3)
   else if (r.encounter === Encounter.Fighting || r.encounter === Encounter.Pending) endField(state);   // no enemy: leaving a field (or its approach) early, no reward (spec Demo-viii section 1)
-  const type = r.column < RUN_COLUMNS - 1 ? r.nodeType[r.column * 3 + r.node]! : -1, hazard = type === NodeType.Hazard;
+  const type = r.column < last ? r.nodeType[hereIndex(state)]! : -1, hazard = type === NodeType.Hazard;
   r.encounter = hazard || type === NodeType.Asteroid ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick; r.fieldNextTick = -1;
   state.enemy.nextArrivalTick = hazard ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;   // an asteroid field has no enemy: it starts in fieldSystem
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);
-  if (r.column === RUN_COLUMNS - 1) { state.ended = 1; state.endReason = EndReason.Victory; }
+  if (r.column === last) { state.ended = 1; state.endReason = EndReason.Victory; }
 }
 
 /** Leaving a field early (spec Demo-viii section 1): the encounter is over with no reward and the field clock stops. */
@@ -160,7 +172,7 @@ export function endField(state: SimState): void {
 /** The asteroid field (spec Demo-viii section 1), right after the director: at an Asteroid node the field starts ENCOUNTER_START seconds after the jump (Pending -> Fighting); while fighting one rock is due every FIELD_INTERVAL seconds (re-armed with one hazards draw) until FIELD_SECONDS after the start; FIELD_CLEAR_EXTRA seconds later every rock is down and the field is cleared: a win with scrap and the drive boost. A full debris table skips a rock without its spawn draws. */
 export function fieldSystem(state: SimState): void {
   const r = state.run;
-  if (r.column >= RUN_COLUMNS - 1 || r.nodeType[r.column * 3 + r.node] !== NodeType.Asteroid || state.enemy.present) return;
+  if (r.column >= r.colNodes.length - 1 || r.nodeType[hereIndex(state)] !== NodeType.Asteroid || state.enemy.present) return;
   if (r.encounter === Encounter.Pending && state.tick >= r.encounterTick + ENCOUNTER_START * TICK_HZ) { r.encounter = Encounter.Fighting; r.encounterTick = state.tick; r.fieldNextTick = state.tick; }
   if (r.encounter !== Encounter.Fighting) return;
   const start = r.encounterTick;
@@ -178,8 +190,8 @@ export function fieldSystem(state: SimState): void {
 /** The pilot's jump (spec Coop-ii section 3): alone (one conscious crew member) it jumps at once; otherwise it waits CONFIRM_SECONDS for a standing crew member's Confirm. A pilot's Confirm while one waits changes nothing. */
 export function requestJump(state: SimState, destination: number): void {
   const r = state.run;
-  if (consciousCount(state) <= 1) { jumpShip(state, destination); return; }
-  if (r.jumpPending >= 0 || !reachable(state).includes(destination)) return;
+  if (consciousCount(state) <= 1) { jumpShip(state, beaconAt(destination)); return; }
+  if (r.jumpPending >= 0 || !canReach(state, beaconAt(destination))) return;
   r.jumpPending = destination; r.jumpPendingTick = state.tick;
 }
 
@@ -213,7 +225,7 @@ export function decisionSystem(state: SimState): void {
     }
   }
   if (r.jumpPending >= 0) {
-    if (state.scratch.jumpConfirm.some((v) => v === 1) || consciousCount(state) <= 1) { if (r.jumpCharge >= 1) jumpShip(state, r.jumpPending); else { r.jumpPending = -1; r.jumpPendingTick = -1; } }
+    if (state.scratch.jumpConfirm.some((v) => v === 1) || consciousCount(state) <= 1) { if (r.jumpCharge >= 1) jumpShip(state, beaconAt(r.jumpPending)); else { r.jumpPending = -1; r.jumpPendingTick = -1; } }
     else if (state.tick >= r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ) { r.jumpPending = -1; r.jumpPendingTick = -1; }
   }
 }

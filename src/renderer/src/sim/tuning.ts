@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 23;
+export const SIM_VERSION = 24;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -162,12 +162,14 @@ export const XP_PER_KILL = 20;                                                  
 export const HEALTH_EPS = 1e-9;                                                      // health below this snaps to 0 (melee arithmetic, spec Boarders-i section 2)
 
 // Sector map and jumps (Run-i)
-export const RUN_COLUMNS = 8, EDGE_CHANCE = 0.5;                                   // node columns; chance of each candidate edge
+export const EDGE_CHANCE = 0.5;                                                     // chance of each candidate forward edge
+/** Sectors (spec Loop-i section 1): sectors per run, columns per sector map (0 the arrival beacon, the last the exit), beacons per middle column, the node index stride (column x 4 + node). */
+export const SECTORS = 3, SECTOR_COLUMNS = 6, MIDDLE_MIN = 2, MIDDLE_MAX = 4, NODE_STRIDE = 4;
 export const JUMP_CHARGE_TIME = 60;                                                 // seconds from arrival to a ready drive
 export const BOARDING_AFTER_JUMP = 120;                                             // seconds after a jump before a party can arrive (no draw); the enemy follows the node type (ENCOUNTER_START, spec Demo-vi section 2)
 
 // Events and shops (Run-ii)
-export const SHOP_CHANCE = 0.25, EVENT_CHANCE = 0.25, ASTEROID_CHANCE = 0.15;       // node type draw thresholds (map stream, after the edges); Event 0.35 -> 0.25 for asteroid fields (spec Demo-viii section 1)
+export const SHOP_CHANCE = 0.15, EVENT_CHANCE = 0.25, ASTEROID_CHANCE = 0.15, EMPTY_CHANCE = 0.15;   // node type draw thresholds (map stream, after the edges), else Hazard (0.30) (spec Loop-i section 4: Shop 0.25 -> 0.15, Empty new)
 /** Asteroid fields (spec Demo-viii section 1): seconds between field rocks (one hazards draw per re-arm, +/- jitter), the rock flight, how long the field spawns, the extra seconds before it clears (every rock has landed), the reward. */
 export const FIELD_INTERVAL = 6, FIELD_JITTER = 0.2, FIELD_FLIGHT = 10, FIELD_FLIGHT_JITTER = 2, FIELD_SECONDS = 60, FIELD_CLEAR_EXTRA = 12;   // FIELD_INTERVAL 4 -> 6 (amendment A2)
 /** A field rock hits weaker than debris (spec Demo-viii amendment A1: 15 rocks x 8 hull sank the duo gate's ship): hull, and half the debris crew damage. */

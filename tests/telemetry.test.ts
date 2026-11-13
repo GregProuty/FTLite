@@ -290,7 +290,7 @@ describe('telemetryRecord', () => {
       longestIdleSeconds: [5, 20],
       spawns: { fire: 2, breach: 1, power: 0, debris: 3 }, impacts: 2, evadeRolls: 3, evasions: 1, shots: 4, hits: 2,
       repairs: { fire: 1, breach: 0, power: 0 }, maxStress: 0.55, phaseEntries: { buildUp: 2, sustainPeak: 1, peakFade: 1, relax: 1 },
-      enemy: { met: 2, destroyed: 1, disables: 3, fled: 2, surrenders: 1, shieldHits: 4 }, boarders: { parties: 1, killed: 2, vented: 1 }, run: { nodesReached: 3, jumps: 3, columns: 8, scrap: { earned: 60, spent: 15 }, events: 2, purchases: 1, upgrades: ['Weapons'], quirk: QUIRK_NAMES[s.run.quirk]!, unlocks: [] },
+      enemy: { met: 2, destroyed: 1, disables: 3, fled: 2, surrenders: 1, shieldHits: 4 }, boarders: { parties: 1, killed: 2, vented: 1 }, run: { nodesReached: 3, jumps: 3, columns: 6, scrap: { earned: 60, spent: 15 }, events: 2, purchases: 1, upgrades: ['Weapons'], quirk: QUIRK_NAMES[s.run.quirk]!, unlocks: [] },
       teamwork: { lockedShots: 5, teamSeconds: 12.3, revives: 3, timedEvades: 2, votesUnanimous: 1, votesSplit: 4 },
       score: 390, skills: [[0, 0, 0, 0, 0, 4], [0, 3, 0, 0, 0, 0]]
     });

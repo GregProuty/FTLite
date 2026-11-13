@@ -1,13 +1,14 @@
 import type { SimState } from './state';
 import { STREAM_NAMES } from './state';
 import { Position, Health, Life, Stable, Seated } from './components';
-import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, RUN_COLUMNS, ENEMY_ROOMS } from './tuning';
+import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, SECTOR_COLUMNS, NODE_STRIDE, ENEMY_ROOMS } from './tuning';
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
 export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'airlocks', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
 const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 7, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 12, SCIENCE_FIELDS = 1, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 24 + 2 * ENEMY_ROOMS, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
-const RUN_FIELDS = 4 + 7 * RUN_COLUMNS + 3 + STATION_COUNT + 2 + 3 + 1 + 2 + 4;   // + fieldNextTick (spec Demo-viii section 1), + the evade ticks (spec Coop-ii section 1), + the vote and jump ticks (section 3); the votes are per player
+const MAP_FIELDS = SECTOR_COLUMNS * (1 + 2 * NODE_STRIDE);   // colNodes, edgeMask, nodeType (spec Loop-i section 6)
+const RUN_FIELDS = 4 + MAP_FIELDS + 3 + STATION_COUNT + 2 + 3 + 1 + 2 + 4;   // + fieldNextTick (spec Demo-viii section 1), + the evade ticks (spec Coop-ii section 1), + the vote and jump ticks (section 3); the votes are per player
 const TELEMETRY_SCALARS = 33, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
 
 /** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec §4). */
@@ -108,7 +109,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (const k of ['present', 'hull', 'stableId', 'nextArrivalTick', 'nextShotTick', 'departTick'] as const) s.enemy[k] = get();
   for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysHp[k] = get(); for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysRepairTick[k] = get(); s.enemy.shieldFreq = get(); s.enemy.scanned = get(); s.enemy.scan = get(); for (const k of ['maxHull', 'shieldLayers', 'shieldRecharge', 'shotArmTick', 'fleeing', 'surrenderIntact', 'lastHitTick', 'shieldRotateTick', 'lockUntilTick'] as const) s.enemy[k] = get(); for (let k = 0; k < ENEMY_ROOMS; k++) s.enemy.roomFire[k] = get(); for (let k = 0; k < ENEMY_ROOMS; k++) s.enemy.roomBreach[k] = get();
   s.boarders.nextArrivalTick = get(); for (const arr of [s.boarders.active, s.boarders.stableId, s.boarders.room, s.boarders.health, s.boarders.nextMoveTick, s.boarders.aloneSince]) for (let k = 0; k < BOARDER_SLOTS; k++) arr[k] = get();
-  s.run.column = get(); s.run.node = get(); s.run.nodesReached = get(); s.run.jumpCharge = get(); for (let k = 0; k < RUN_COLUMNS; k++) s.run.colNodes[k] = get(); for (let k = 0; k < RUN_COLUMNS * 3; k++) s.run.edgeMask[k] = get(); for (let k = 0; k < RUN_COLUMNS * 3; k++) s.run.nodeType[k] = get(); s.run.scrap = get(); s.run.event = get(); s.run.eventChoice = get(); for (let k = 0; k < STATION_COUNT; k++) s.run.upgrades[k] = get(); s.run.quirk = get(); s.run.startBonus = get(); s.run.encounter = get(); s.run.encounterTick = get(); s.run.driveBoost = get(); s.run.fieldNextTick = get(); s.run.evadeUntilTick = get(); s.run.evadeReadyTick = get(); for (let p = 0; p < s.run.vote.length; p++) s.run.vote[p] = get(); s.run.eventOpenTick = get(); s.run.voteTick = get(); s.run.jumpPending = get(); s.run.jumpPendingTick = get();
+  s.run.column = get(); s.run.node = get(); s.run.nodesReached = get(); s.run.jumpCharge = get(); for (let k = 0; k < SECTOR_COLUMNS; k++) s.run.colNodes[k] = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.edgeMask[k] = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.nodeType[k] = get(); s.run.scrap = get(); s.run.event = get(); s.run.eventChoice = get(); for (let k = 0; k < STATION_COUNT; k++) s.run.upgrades[k] = get(); s.run.quirk = get(); s.run.startBonus = get(); s.run.encounter = get(); s.run.encounterTick = get(); s.run.driveBoost = get(); s.run.fieldNextTick = get(); s.run.evadeUntilTick = get(); s.run.evadeReadyTick = get(); for (let p = 0; p < s.run.vote.length; p++) s.run.vote[p] = get(); s.run.eventOpenTick = get(); s.run.voteTick = get(); s.run.jumpPending = get(); s.run.jumpPendingTick = get();
   s.science.scanning = get();
   for (let k = 0; k < s.skills.xp.length; k++) s.skills.xp[k] = get();
   s.skills.lastEngChangeTick = get(); s.skills.lastDoorToggleTick = get(); s.skills.lsDeliveredTick = get(); s.skills.lastShotTick = get();

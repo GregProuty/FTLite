@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { CONFIRM_SECONDS } from '../src/renderer/src/sim/tuning';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
-import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX } from '../src/renderer/src/sim/run';
+import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX, beaconIndex } from '../src/renderer/src/sim/run';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { deriveStreams } from '../src/renderer/src/sim/state';
 import { Phase, enterPhase } from '../src/renderer/src/sim/director';
@@ -15,8 +15,8 @@ import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { failStation } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from '../src/renderer/src/sim/tuning';
-import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard, mapM, setNodeTypes } from './helpers/sim';
+import { TICK_HZ, DT, SECTORS, SECTOR_COLUMNS, NODE_STRIDE, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from '../src/renderer/src/sim/tuning';
+import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard, mapM, setNodeTypes, at, MAP_M_NODES, MAP_M_MASKS } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { fieldSystem, endField } from '../src/renderer/src/sim/run';
 import { spawnFieldRock, ObjectKind, activeDebrisCount } from '../src/renderer/src/sim/debris';
@@ -27,91 +27,98 @@ import { botIntent } from '../src/renderer/src/sim/bot';
 const T = TICK_HZ;
 const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; return s; };
 
-/** The spec section 5 procedure, replayed on a reference stream. */
-function replayMap(rng: { s: number }, columns: number) {
-  const colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * 3);
+/** The spec Loop-i section 1 procedure for one sector, replayed on a reference stream: column counts, forward edges, then node types (Empty included) and the shop fallback. */
+function replayMap(rng: { s: number }) {
+  const columns = SECTOR_COLUMNS, S = NODE_STRIDE, colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * S);
   colNodes[0] = 1; colNodes[columns - 1] = 1;
-  for (let c = 1; c < columns - 1; c++) colNodes[c] = 2 + nextInt(rng, 2);
+  for (let c = 1; c < columns - 1; c++) colNodes[c] = 2 + nextInt(rng, 3);
   for (let c = 0; c < columns - 1; c++) {
     const next = colNodes[c + 1]!;
-    for (let n = 0; n < colNodes[c]!; n++) { let mask = 0; for (let d = 0; d < next; d++) if (nextFloat(rng) < EDGE_CHANCE) mask |= 1 << d; if (mask === 0) mask = 1 << nextInt(rng, next); edgeMask[c * 3 + n] = mask; }
-    for (let d = 0; d < next; d++) { let incoming = false; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * 3 + n]! & (1 << d)) incoming = true; if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[c * 3 + n] = edgeMask[c * 3 + n]! | (1 << d); } }
+    for (let n = 0; n < colNodes[c]!; n++) { let mask = 0; for (let d = 0; d < next; d++) if (nextFloat(rng) < EDGE_CHANCE) mask |= 1 << d; if (mask === 0) mask = 1 << nextInt(rng, next); edgeMask[c * S + n] = mask; }
+    for (let d = 0; d < next; d++) { let incoming = false; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * S + n]! & (1 << d)) incoming = true; if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[c * S + n] = edgeMask[c * S + n]! | (1 << d); } }
   }
-  const nodeType = new Uint8Array(columns * 3);
-  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * 3 + n] = u < SHOP_CHANCE ? 2 : u < SHOP_CHANCE + EVENT_CHANCE ? 1 : u < SHOP_CHANCE + EVENT_CHANCE + ASTEROID_CHANCE ? 3 : 0; }
-  let shop = false; for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * 3 + n] === 2) shop = true;
-  if (!shop) nodeType[Math.floor(columns / 2) * 3] = 2;
+  const nodeType = new Uint8Array(columns * S);
+  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * S + n] = u < 0.15 ? 2 : u < 0.40 ? 1 : u < 0.55 ? 3 : u < 0.70 ? 4 : 0; }
+  let shop = false; for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * S + n] === 2) shop = true;
+  if (!shop) nodeType[Math.floor(columns / 2) * S] = 2;
   return { colNodes, edgeMask, nodeType };
 }
 
-/** The Run-i replay: edges only, no node types. */
-function oldReplay(rng: { s: number }, columns: number) {
-  const colNodes = new Uint8Array(columns), edgeMask = new Uint8Array(columns * 3);
-  colNodes[0] = 1; colNodes[columns - 1] = 1;
-  for (let c = 1; c < columns - 1; c++) colNodes[c] = 2 + nextInt(rng, 2);
-  for (let c = 0; c < columns - 1; c++) {
-    const next = colNodes[c + 1]!;
-    for (let n = 0; n < colNodes[c]!; n++) { let mask = 0; for (let d = 0; d < next; d++) if (nextFloat(rng) < EDGE_CHANCE) mask |= 1 << d; if (mask === 0) mask = 1 << nextInt(rng, next); edgeMask[c * 3 + n] = mask; }
-    for (let d = 0; d < next; d++) { let incoming = false; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * 3 + n]! & (1 << d)) incoming = true; if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[c * 3 + n] = edgeMask[c * 3 + n]! | (1 << d); } }
-  }
-  return { colNodes, edgeMask };
-}
-
-describe('run: map generation', () => {
-  it('is well-formed for seeds 1..50: one node at each end, 2 or 3 in the middle, every node has a way out and a way in, no bit past the next column, last masks 0', () => {
+describe('run: the sector map (spec Loop-i sections 1 and 4)', () => {
+  it('is well-formed for seeds 1..50: six columns, one beacon at each end, 2 to 4 in the middle, stride 4, every beacon has a way forward and a way in, no bit past the next column, the exit has no forward edges', () => {
+    expect([SECTORS, SECTOR_COLUMNS, NODE_STRIDE]).toEqual([3, 6, 4]);
+    const sizes = new Set<number>();
     for (let seed = 1; seed <= 50; seed++) {
-      const { colNodes, edgeMask } = generateMap(createRng(seed), RUN_COLUMNS);
-      expect(colNodes[0]).toBe(1); expect(colNodes[RUN_COLUMNS - 1]).toBe(1);
-      for (let c = 1; c < RUN_COLUMNS - 1; c++) expect([2, 3]).toContain(colNodes[c]);
-      for (let c = 0; c < RUN_COLUMNS - 1; c++) {
+      const { colNodes, edgeMask, nodeType } = generateMap(createRng(seed));
+      expect([colNodes.length, edgeMask.length, nodeType.length]).toEqual([SECTOR_COLUMNS, SECTOR_COLUMNS * NODE_STRIDE, SECTOR_COLUMNS * NODE_STRIDE]);
+      expect(colNodes[0]).toBe(1); expect(colNodes[SECTOR_COLUMNS - 1]).toBe(1);
+      for (let c = 1; c < SECTOR_COLUMNS - 1; c++) { expect([2, 3, 4]).toContain(colNodes[c]); sizes.add(colNodes[c]!); }
+      for (let c = 0; c < SECTOR_COLUMNS - 1; c++) {
         const next = colNodes[c + 1]!;
-        for (let n = 0; n < colNodes[c]!; n++) { const m = edgeMask[c * 3 + n]!; expect(m).toBeGreaterThan(0); expect(m >> next).toBe(0); }
-        for (let d = 0; d < next; d++) { let incoming = 0; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * 3 + n]! & (1 << d)) incoming++; expect(incoming).toBeGreaterThan(0); }
+        for (let n = 0; n < colNodes[c]!; n++) { const m = edgeMask[c * NODE_STRIDE + n]!; expect(m).toBeGreaterThan(0); expect(m >> next).toBe(0); }
+        for (let n = colNodes[c]!; n < NODE_STRIDE; n++) expect(edgeMask[c * NODE_STRIDE + n]).toBe(0);
+        for (let d = 0; d < next; d++) { let incoming = 0; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * NODE_STRIDE + n]! & (1 << d)) incoming++; expect(incoming).toBeGreaterThan(0); }
       }
-      for (let n = 0; n < 3; n++) expect(edgeMask[(RUN_COLUMNS - 1) * 3 + n]).toBe(0);
+      for (let n = 0; n < NODE_STRIDE; n++) expect(edgeMask[(SECTOR_COLUMNS - 1) * NODE_STRIDE + n]).toBe(0);
     }
+    expect([...sizes].sort()).toEqual([2, 3, 4]);   // four beacons in a column does happen
   });
-  it('node types: equal to the replay for seeds 7, 1 and 23; Run-i colNodes/edgeMask unchanged for seeds 1-50; well-formed; the shop fallback', () => {
-    for (const seed of [7, 1, 23]) { const s = makeState(2, seed); expect(Array.from(s.run.nodeType)).toEqual(Array.from(replayMap(deriveStreams(seed).map, RUN_COLUMNS).nodeType)); }
+  it('node types: equal to the replay for seeds 7, 1 and 23; for seeds 1-50 the ends and unused slots are Hazard, the middle any of the five types, at least one shop; the shop fallback lands on column 3 node 0', () => {
+    for (const seed of [7, 1, 23]) { const s = makeState(2, seed); expect(Array.from(s.run.nodeType)).toEqual(Array.from(replayMap(deriveStreams(seed).map).nodeType)); }
     for (let seed = 1; seed <= 50; seed++) {
-      const old = oldReplay(createRng(seed), RUN_COLUMNS), g = generateMap(createRng(seed), RUN_COLUMNS);
-      expect(Array.from(g.colNodes)).toEqual(Array.from(old.colNodes)); expect(Array.from(g.edgeMask)).toEqual(Array.from(old.edgeMask));
-      const t = g.nodeType; let shops = 0;
-      for (let c = 0; c < RUN_COLUMNS; c++) for (let n = 0; n < 3; n++) {
-        const v = t[c * 3 + n]!;
-        if (n >= g.colNodes[c]! || c === 0 || c === RUN_COLUMNS - 1) expect(v).toBe(NodeType.Hazard); else { expect([0, 1, 2, 3]).toContain(v); if (v === NodeType.Shop) shops++; }
+      const g = generateMap(createRng(seed)), t = g.nodeType; let shops = 0;
+      for (let c = 0; c < SECTOR_COLUMNS; c++) for (let n = 0; n < NODE_STRIDE; n++) {
+        const v = t[c * NODE_STRIDE + n]!;
+        if (n >= g.colNodes[c]! || c === 0 || c === SECTOR_COLUMNS - 1) expect(v).toBe(NodeType.Hazard); else { expect([0, 1, 2, 3, 4]).toContain(v); if (v === NodeType.Shop) shops++; }
       }
       expect(shops).toBeGreaterThanOrEqual(1);
     }
-    const t = new Uint8Array(24); assignNodeTypes(createRng(1), makeState(2, 1).run.colNodes, t, () => 0.99);
-    for (let c = 0; c < RUN_COLUMNS; c++) for (let n = 0; n < 3; n++) expect(t[c * 3 + n]).toBe(c * 3 + n === 4 * 3 ? NodeType.Shop : NodeType.Hazard);
+    const t = new Uint8Array(SECTOR_COLUMNS * NODE_STRIDE); assignNodeTypes(createRng(1), makeState(2, 1).run.colNodes, t, () => 0.99);
+    for (let k = 0; k < t.length; k++) expect(t[k]).toBe(k === 3 * NODE_STRIDE ? NodeType.Shop : NodeType.Hazard);
     const all = makeState(2, 1); assignNodeTypes(createRng(1), all.run.colNodes, t, () => 0.1);
-    for (let c = 1; c < RUN_COLUMNS - 1; c++) for (let n = 0; n < all.run.colNodes[c]!; n++) expect(t[c * 3 + n]).toBe(NodeType.Shop);
+    for (let c = 1; c < SECTOR_COLUMNS - 1; c++) for (let n = 0; n < all.run.colNodes[c]!; n++) expect(t[c * NODE_STRIDE + n]).toBe(NodeType.Shop);
   });
-  it('node type thresholds (spec Demo-viii section 1): Shop below 0.25, Event below 0.5, Asteroid below 0.65, else Hazard; one draw per middle node', () => {
-    expect([SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE]).toEqual([0.25, 0.25, 0.15]);
+  it('node type thresholds: Shop below 0.15, Event below 0.40, Asteroid below 0.55, Empty below 0.70, else Hazard; one draw per middle node', () => {
+    expect([SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, NodeType.Empty]).toEqual([0.15, 0.25, 0.15, 0.15, 4]);
     const cn = makeState(2, 1).run.colNodes, middle = Array.from(cn).slice(1, -1).reduce((a, b) => a + b, 0);
-    for (const [u, want] of [[0.24, NodeType.Shop], [0.26, NodeType.Event], [0.49, NodeType.Event], [0.5, NodeType.Asteroid], [0.64, NodeType.Asteroid], [0.65, NodeType.Hazard], [0.99, NodeType.Hazard]] as const) {
-      const t = new Uint8Array(24); let draws = 0;
+    for (const [u, want] of [[0.14, NodeType.Shop], [0.15, NodeType.Event], [0.39, NodeType.Event], [0.4, NodeType.Asteroid], [0.54, NodeType.Asteroid], [0.55, NodeType.Empty], [0.69, NodeType.Empty], [0.7, NodeType.Hazard], [0.99, NodeType.Hazard]] as const) {
+      const t = new Uint8Array(SECTOR_COLUMNS * NODE_STRIDE); let draws = 0;
       assignNodeTypes(createRng(1), cn, t, () => { draws++; return draws === 1 ? 0.1 : u; });   // the first node a shop, so no fallback
       expect(draws).toBe(middle);
-      expect(t[1 * 3 + 0]).toBe(NodeType.Shop);
-      for (let c = 2; c < RUN_COLUMNS - 1; c++) for (let n = 0; n < cn[c]!; n++) expect(t[c * 3 + n]).toBe(want);
-      for (let c = 1; c < 2; c++) for (let n = 1; n < cn[c]!; n++) expect(t[c * 3 + n]).toBe(want);
+      expect(t[1 * NODE_STRIDE + 0]).toBe(NodeType.Shop);
+      for (let c = 2; c < SECTOR_COLUMNS - 1; c++) for (let n = 0; n < cn[c]!; n++) expect(t[c * NODE_STRIDE + n]).toBe(want);
+      for (let n = 1; n < cn[1]!; n++) expect(t[1 * NODE_STRIDE + n]).toBe(want);
     }
   });
-  it('the map draw count is unchanged by the asteroid type: the map stream ends where the Run-ii replay ends for seeds 1-3', () => {
-    for (const seed of [1, 2, 3]) { const r = deriveStreams(seed).map, g = generateMap(r, RUN_COLUMNS), old = oldReplay(deriveStreams(seed).map, RUN_COLUMNS); expect(Array.from(g.edgeMask)).toEqual(Array.from(old.edgeMask)); expect(Array.from(g.colNodes)).toEqual(Array.from(old.colNodes)); const ref = deriveStreams(seed).map; replayMap(ref, RUN_COLUMNS); expect(r.s).toBe(ref.s); }
+  it('the map stream ends where the replay ends for seeds 1-3 (draws only from the given stream, in the fixed order)', () => {
+    for (const seed of [1, 2, 3]) { const r = deriveStreams(seed).map, g = generateMap(r), ref = deriveStreams(seed).map, e = replayMap(ref); expect(Array.from(g.colNodes)).toEqual(Array.from(e.colNodes)); expect(Array.from(g.edgeMask)).toEqual(Array.from(e.edgeMask)); expect(r.s).toBe(ref.s); }
   });
-  it('the Navigation row of an Asteroid destination names the field; other destinations keep the node label', () => {
-    const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid });
+  it('reachable: the forward destinations ascending, then the sideways neighbours above and below in a middle column; none from the exit', () => {
+    const s = calm(2); mapM(s);
+    expect(reachable(s)).toEqual([at(1, 0), at(1, 2)]);
+    s.run.column = 1; s.run.node = 1; expect(reachable(s)).toEqual([at(2, 0), at(1, 0), at(1, 2)]);
+    s.run.node = 0; expect(reachable(s)).toEqual([at(2, 0), at(1, 1)]);
+    s.run.node = 2; expect(reachable(s)).toEqual([at(2, 0), at(1, 1)]);
+    s.run.column = 4; s.run.node = 1; expect(reachable(s)).toEqual([at(5, 0), at(4, 0)]);
+    s.run.column = 5; s.run.node = 0; expect(reachable(s)).toEqual([]);
+    for (let seed = 1; seed <= 20; seed++) {   // every middle beacon of a generated map is joined to its vertical neighbours
+      const g = makeState(2, seed);
+      for (let c = 1; c < SECTOR_COLUMNS - 1; c++) for (let n = 0; n < g.run.colNodes[c]!; n++) {
+        g.run.column = c; g.run.node = n; const side = reachable(g).filter((b) => b.column === c).map((b) => b.node);
+        expect(side).toEqual([n - 1, n + 1].filter((k) => k >= 0 && k < g.run.colNodes[c]!));
+      }
+    }
+  });
+  it('the Navigation rows list every reachable destination, sideways ones included, each within NAV_TEXT_MAX', () => {
+    const s = calm(2); mapM(s); s.run.column = 1; s.run.node = 1;
     const rows = navRows(s).filter((r) => r.select === 'jump');
-    expect(rows.map((r) => r.text)).toEqual(reachable(s).map((d) => d === 0 ? 'Node 2a  Asteroid field' : nodeLabel(1, d)));
+    expect(rows.map((r) => r.index)).toEqual([2 * NODE_STRIDE + 0, 1 * NODE_STRIDE + 0, 1 * NODE_STRIDE + 2]);
+    expect(rows.map((r) => r.text.slice(0, 7))).toEqual(['Node 3a', 'Node 2a', 'Node 2c']);
     for (const r of rows) expect(r.text.length).toBeLessThanOrEqual(NAV_TEXT_MAX);
   });
-  it('createSimState draws the map from the map stream exactly as the section 5 replay does, leaves the other streams as before, and is seed-deterministic', () => {
-    for (const seed of [1, 23]) { const r = deriveStreams(seed).map; replayMap(r, RUN_COLUMNS); expect(makeState(2, seed).rng.map.s).toBe(r.s); }
-    const ref = deriveStreams(7).map; const expected = replayMap(ref, RUN_COLUMNS);
+  it('createSimState draws the first sector map from the map stream exactly as the replay does, leaves the other streams as before, and is seed-deterministic', () => {
+    for (const seed of [1, 23]) { const r = deriveStreams(seed).map; replayMap(r); expect(makeState(2, seed).rng.map.s).toBe(r.s); }
+    const ref = deriveStreams(7).map; const expected = replayMap(ref);
     const s = makeState(2, 7);
     expect(Array.from(s.run.colNodes)).toEqual(Array.from(expected.colNodes)); expect(Array.from(s.run.edgeMask)).toEqual(Array.from(expected.edgeMask)); expect(s.rng.map.s).toBe(ref.s);
     expect([s.run.column, s.run.node, s.run.nodesReached, s.run.jumpCharge]).toEqual([0, 0, 0, 0]);
@@ -119,7 +126,7 @@ describe('run: map generation', () => {
     expect([one.hazards.s, one.director.s, one.combat.s]).toEqual([2693262067, 11749833, 2265367787]);   // the pre-feature values (Step 0): the five old streams keep their seeds
     expect(Array.from(makeState(2, 1).run.edgeMask)).toEqual(Array.from(makeState(3, 1).run.edgeMask));
     expect(Array.from(makeState(2, 1).run.edgeMask)).not.toEqual(Array.from(makeState(2, 2).run.edgeMask));
-    expect(nodeLabel(0, 0)).toBe('Node 1a'); expect(nodeLabel(3, 2)).toBe('Node 4c');
+    expect(nodeLabel(0, 0)).toBe('Node 1a'); expect(nodeLabel(3, 3)).toBe('Node 4d');
   });
 });
 
@@ -136,9 +143,9 @@ describe('run: charge and Navigation input', () => {
     run(r, 1); expect(r.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
   });
   it('reachable, cycling with wrap, Left/Right ignored, Confirm before ready does nothing, a held Confirm does not jump at readiness, stick edge before Confirm, the seating Confirm never jumps', () => {
-    const MAP = { '0:0': 0b101, '1:0': 1, '1:1': 1, '1:2': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1, '5:0': 1, '5:1': 1, '6:0': 1, '6:1': 1 };
-    const s = calm(1); setMap(s, [1, 3, 2, 2, 2, 2, 2, 1], MAP);   // one player: the pilot's Confirm jumps (spec Coop-ii section 3)
-    expect(reachable(s)).toEqual([0, 2]);
+    const MAP = MAP_M_MASKS;
+    const s = calm(1); setMap(s, MAP_M_NODES, MAP);   // one player: the pilot's Confirm jumps (spec Coop-ii section 3)
+    expect(reachable(s)).toEqual([at(1, 0), at(1, 2)]);
     const reachableBefore = reachable(s);
     const n = seatNavigator(s, 0); run(s, 1);
     const d0 = s.rng.director.s;
@@ -150,13 +157,13 @@ describe('run: charge and Navigation input', () => {
     run(s, 1, () => intents({ moveX: 1 }, {})); run(s, 1, () => intents({ moveX: -1 }, {})); expect(s.stations.cursor[n]).toBe(1);
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.nodesReached).toBe(0); expect(s.rng.director.s).toBe(d0);   // not ready
     chargeJump(s); run(s, 1, () => intents({ confirmPressed: true }, {}));
-    expect(s.run.nodesReached).toBe(1); expect(s.run.column).toBe(1); expect(s.run.node).toBe(reachableBefore[1]); expect(s.run.node).toBe(2); expect(s.stations.cursor[n]).toBe(0);   // cursor 1 -> destination 2
-    const h = calm(1); setMap(h, [1, 3, 2, 2, 2, 2, 2, 1], MAP);
+    expect(s.run.nodesReached).toBe(1); expect(s.run.column).toBe(1); expect(s.run.node).toBe(reachableBefore[1]!.node); expect(s.run.node).toBe(2); expect(s.stations.cursor[n]).toBe(0);   // cursor 1 -> destination 2
+    const h = calm(1); setMap(h, MAP_M_NODES, MAP);
     seatNavigator(h, 0); run(h, 1); h.run.jumpCharge = 1 - 1.5 * DT / JUMP_CHARGE_TIME;
     run(h, 3, () => intents({}, {}));                                                    // neutral intents: the dispatch only sends Confirm edges, and none is sent while the charge becomes ready
     expect(h.run.nodesReached).toBe(0); expect(h.run.jumpCharge).toBe(1);
     run(h, 1, () => intents({ confirmPressed: true }, {})); expect(h.run.nodesReached).toBe(1);
-    const e = calm(1); setMap(e, [1, 3, 2, 2, 2, 2, 2, 1], MAP);
+    const e = calm(1); setMap(e, MAP_M_NODES, MAP);
     seatNavigator(e, 0); run(e, 1); chargeJump(e);
     run(e, 1, () => intents({ moveY: 1, confirmPressed: true }, {})); expect(e.run.node).toBe(2);   // Down applied first, then Confirm: destination 2
     const seat = calm(); teleport(seat, 0, 2.5, 2.5); chargeJump(seat);
@@ -183,9 +190,9 @@ describe('run: the jump', () => {
     const dr = createRng(s.rng.director.s); nextFloat(dr); const h0 = s.rng.hazards.s, c0 = s.rng.combat.s, m0 = s.rng.map.s;
     const reachableBefore = reachable(s);
     jumpShip(s, reachable(s)[0]!);
-    expect([s.run.column, s.run.nodesReached, s.run.jumpCharge, s.telemetry.jumps]).toEqual([1, 1, 0, 1]); expect(s.run.node).toBe(reachableBefore[0]); expect(s.stations.cursor[nav]).toBe(0);
+    expect([s.run.column, s.run.nodesReached, s.run.jumpCharge, s.telemetry.jumps]).toEqual([1, 1, 0, 1]); expect(s.run.node).toBe(reachableBefore[0]!.node); expect(s.stations.cursor[nav]).toBe(0);
     expect(Array.from(s.debris.active)).toEqual(new Array(DEBRIS_SLOTS).fill(0)); expect(s.stations.cursor[s.derived.stationOfKind[StationKind.Weapons]!]).toBe(-1); expect(s.stations.cursor[sci]).toBe(-1); expect(s.science.scanning).toBe(0);
-    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.enemy.nextArrivalTick]).toEqual([0, 0, s.run.nodeType[3 + s.run.node] === NodeType.Hazard ? tick + ENCOUNTER_START * T : NEVER]);
+    expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.enemy.nextArrivalTick]).toEqual([0, 0, s.run.nodeType[NODE_STRIDE + s.run.node] === NodeType.Hazard ? tick + ENCOUNTER_START * T : NEVER]);
     expect([s.boarders.active[0], s.boarders.room[0], s.boarders.health[0], s.boarders.nextMoveTick[0], s.boarders.nextArrivalTick]).toEqual([1, before.boarderRoom, before.boarderHealth, before.boarderMove, before.boardArrival]);
     expect([s.director.phase, s.director.phaseTick, s.director.stress]).toEqual([Phase.BuildUp, tick, before.stress]);
     expect([s.hull, Health.cur[s.crew[1]!], s.skills.xp[Skill.Repair], s.weapons.charge, s.weapons.torpedoLoaded, s.weapons.selector, s.rooms.fire[A], s.breaches.active[6], s.stations.failed[s.derived.stationOfKind[StationKind.Doors]!]]).toEqual([before.hull, before.h1, before.xp, before.charge, before.loaded, before.selector, before.fire, before.breach, before.failed]);
@@ -207,15 +214,15 @@ describe('run: the jump', () => {
     const snap = () => JSON.stringify([Life.state[s.crew[1]!], Life.bleed[s.crew[1]!], Life.reviveProgress[s.crew[1]!], Life.reviverPid[s.crew[1]!], s.skills.lastEngChangeTick, s.skills.lastDoorToggleTick, s.skills.lsDeliveredTick, s.skills.lastShotTick, s.rooms.o2[A], s.rooms.fire[A], s.rooms.fireRepair[A], s.breaches.repair[6], s.stations.repair[doors], s.stations.heat[wpn], s.stations.coolant[wpn], s.doors.state[0], s.doors.closeTimer[0], s.doors.sealRequested[0], s.weapons.torpedoStock, s.weapons.torpedoLoad, s.weapons.torpedoRegen, s.boarders.nextMoveTick[b], s.boarders.aloneSince[b]]);
     const before = snap(); s.run.jumpCharge = 1; jumpShip(s, reachable(s)[0]!); expect(snap()).toBe(before);
   });
-  it('victory: from column 6 (nodesReached 6, jumps 6) a jump gives column 7, both counters 7, ended, Victory; crewSystem does not overwrite it; the next step is a no-op', () => {
-    const s = calm(2); s.run.column = 6; s.run.node = 0; s.run.nodesReached = 6; s.telemetry.jumps = 6; s.run.jumpCharge = 1;
+  it('victory: from column 4 (nodesReached 4, jumps 4) a jump gives the last column 5, both counters 5, ended, Victory; crewSystem does not overwrite it; the next step is a no-op', () => {
+    const s = calm(2); s.run.column = 4; s.run.node = 0; s.run.nodesReached = 4; s.telemetry.jumps = 4; s.run.jumpCharge = 1;
     jumpShip(s, reachable(s)[0]!);
-    expect([s.run.column, s.run.nodesReached, s.telemetry.jumps, s.ended, s.endReason]).toEqual([7, 7, 7, 1, EndReason.Victory]);
-    const p = calm(2); allHazard(p); p.run.column = 6; p.run.node = 0; p.run.nodesReached = 6; p.telemetry.jumps = 6; chargeJump(p);
+    expect([s.run.column, s.run.nodesReached, s.telemetry.jumps, s.ended, s.endReason]).toEqual([5, 5, 5, 1, EndReason.Victory]);
+    const p = calm(2); allHazard(p); p.run.column = 4; p.run.node = 0; p.run.nodesReached = 4; p.telemetry.jumps = 4; chargeJump(p);
     seatNavigator(p, 0); run(p, 1); teleport(p, 1, 2.5, 2.5); downCrew(p, 1); Health.cur[p.crew[0]!] = 0.05; placeBoarder(p, room(p, 'A'));   // P2 down: the pilot jumps alone (spec Coop-ii section 3); a boarder in A will down the navigator later this tick
     run(p, 1, () => intents({ confirmPressed: true }, {}));
     expect(p.endReason).toBe(EndReason.Victory); expect(p.ended).toBe(1); expect(Life.state[p.crew[0]!]).toBe(LifeState.Downed); expect(p.telemetry.firstDownTick).toBe(p.tick - 1);
-    const h = calm(1); allHazard(h); h.run.column = 6; h.run.nodesReached = 6; h.telemetry.jumps = 6; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
+    const h = calm(1); allHazard(h); h.run.column = 4; h.run.nodesReached = 4; h.telemetry.jumps = 4; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
     run(h, 1, () => intents({ confirmPressed: true }, {})); expect(h.endReason).toBe(EndReason.Victory);
     const t = h.tick; run(h, 3); expect(h.tick).toBe(t);
     void HULL_MAX;
@@ -229,28 +236,28 @@ describe('run: the jump', () => {
 });
 
 describe('encounters at nodes (spec Demo-vi section 2)', () => {
-  const at = (type: number) => { const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': type }); chargeJump(s); s.tick = 1000; jumpShip(s, 0); s.boarders.nextArrivalTick = 1e9; return s; };
+  const arriveAt = (type: number) => { const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': type }); chargeJump(s); s.tick = 1000; jumpShip(s, at(1, 0)); s.boarders.nextArrivalTick = 1e9; return s; };
   it('a jump to a Hazard node: encounter pending, the enemy at +8 s exactly, the fight starts on arrival', () => {
-    const s = at(NodeType.Hazard), t0 = s.tick;
+    const s = arriveAt(NodeType.Hazard), t0 = s.tick;
     expect([s.run.encounter, s.run.encounterTick, s.enemy.nextArrivalTick]).toEqual([Encounter.Pending, t0, t0 + ENCOUNTER_START * T]);
     expect(ENCOUNTER_START).toBe(8);
     run(s, ENCOUNTER_START * T); expect(s.enemy.present).toBe(0);
     run(s, 1); expect([s.enemy.present, s.run.encounter, s.run.encounterTick]).toEqual([1, Encounter.Fighting, t0 + ENCOUNTER_START * T]);
   });
-  for (const [name, type] of [['Event', NodeType.Event], ['Shop', NodeType.Shop]] as const) {
+  for (const [name, type] of [['Event', NodeType.Event], ['Shop', NodeType.Shop], ['Empty', NodeType.Empty]] as const) {
     it(`a jump to an ${name} node is quiet: encounter 0, NEVER, no enemy over 600 s`, () => {
-      const s = at(type);
+      const s = arriveAt(type);
       expect([s.run.encounter, s.enemy.nextArrivalTick]).toEqual([Encounter.None, NEVER]);
       run(s, 600 * T);
       expect([s.enemy.present, s.telemetry.encounters]).toEqual([0, 0]);
     });
   }
   it('a jump with the enemy present ends its encounter without reward and arms the next node', () => {
-    const s = calm(2); mapM(s); placeEnemy(s); s.run.encounter = Encounter.Fighting; s.hull = 60; chargeJump(s); jumpShip(s, 0);
+    const s = calm(2); mapM(s); placeEnemy(s); s.run.encounter = Encounter.Fighting; s.hull = 60; chargeJump(s); jumpShip(s, at(1, 0));
     expect([s.enemy.present, s.hull, s.run.driveBoost, s.telemetry.encountersWon, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([0, 60, 0, 0, Encounter.Pending, s.tick + ENCOUNTER_START * T]);
   });
   it('the last column is not an encounter', () => {
-    const s = calm(2); s.run.column = 6; s.run.node = 0; chargeJump(s); jumpShip(s, reachable(s)[0]!);
+    const s = calm(2); s.run.column = 4; s.run.node = 0; chargeJump(s); jumpShip(s, reachable(s)[0]!);
     expect([s.ended, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([1, Encounter.None, NEVER]);
   });
   it('the drive boost charges ENCOUNTER_BOOST times as fast and the jump clears it', () => {
@@ -258,27 +265,27 @@ describe('encounters at nodes (spec Demo-vi section 2)', () => {
     expect(s.run.jumpCharge).toBeCloseTo(ENCOUNTER_BOOST * DT / JUMP_CHARGE_TIME, 12);
     expect(ENCOUNTER_BOOST).toBe(4);
     run(s, (JUMP_CHARGE_TIME / ENCOUNTER_BOOST) * T + 1); expect(s.run.jumpCharge).toBe(1);
-    jumpShip(s, 0); expect([s.run.driveBoost, s.run.jumpCharge]).toEqual([0, 0]);
+    jumpShip(s, at(1, 0)); expect([s.run.driveBoost, s.run.jumpCharge]).toEqual([0, 0]);
     run(s, 1); expect(s.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
   });
 });
 
 describe('asteroid fields (spec Demo-viii section 1)', () => {
-  const at = () => { const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); chargeJump(s); s.tick = 1000; jumpShip(s, 0); s.boarders.nextArrivalTick = 1e9; return s; };
+  const arriveField = () => { const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); chargeJump(s); s.tick = 1000; jumpShip(s, at(1, 0)); s.boarders.nextArrivalTick = 1e9; return s; };
   /** Step with the ship and crew kept whole, so a minute of rocks never ends the run. */
   const steady = (s: ReturnType<typeof calm>, ticks: number, each: () => void = () => {}) => { for (let i = 0; i < ticks; i++) { step(s, []); s.hull = HULL_MAX; for (const eid of s.crew) Health.cur[eid] = 100; each(); } };
   it('the constants', () => {
     expect([FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, scrapField(1)]).toEqual([6, 10, 60, 20]);
   });
   it('a jump to an Asteroid node: pending with no enemy arrival; the field starts at +8 s with a rock on the start tick; no enemy ever', () => {
-    const s = at(), t0 = s.tick;
+    const s = arriveField(), t0 = s.tick;
     expect([s.run.encounter, s.run.encounterTick, s.enemy.nextArrivalTick, s.run.fieldNextTick]).toEqual([Encounter.Pending, t0, NEVER, -1]);
     steady(s, ENCOUNTER_START * T); expect([s.run.encounter, activeDebrisCount(s)]).toEqual([Encounter.Pending, 0]);
     steady(s, 1); expect([s.run.encounter, s.run.encounterTick, activeDebrisCount(s), s.enemy.present]).toEqual([Encounter.Fighting, t0 + ENCOUNTER_START * T, 1, 0]);
     steady(s, 90 * T); expect([s.enemy.present, s.telemetry.encounters]).toEqual([0, 0]);
   });
   it('one spawn: the three spawn draws (room, flight 10 +/- 2 s, frequency) then one hazards draw re-arms 6 s +/- 20%', () => {
-    const s = at(); s.run.encounter = Encounter.Fighting; s.run.encounterTick = s.tick; s.run.fieldNextTick = s.tick;
+    const s = arriveField(); s.run.encounter = Encounter.Fighting; s.run.encounterTick = s.tick; s.run.fieldNextTick = s.tick;
     const ref = { s: s.rng.hazards.s }, t = s.tick;
     fieldSystem(s);
     const roomU = nextInt(ref, s.derived.volume.length), flight = FIELD_FLIGHT + (2 * nextFloat(ref) - 1) * 2, freq = 1 + nextInt(ref, FREQ_COUNT), u = nextFloat(ref);
@@ -293,14 +300,14 @@ describe('asteroid fields (spec Demo-viii section 1)', () => {
     expect(spawnFieldRock(s)).toBe(-1);
   });
   it('a full debris table skips the spawn (no spawn draws) and the re-arm still makes its one draw', () => {
-    const s = at(); s.run.encounter = Encounter.Fighting; s.run.encounterTick = s.tick; s.run.fieldNextTick = s.tick;
+    const s = arriveField(); s.run.encounter = Encounter.Fighting; s.run.encounterTick = s.tick; s.run.fieldNextTick = s.tick;
     for (let i = 0; i < DEBRIS_SLOTS; i++) placeDebris(s, 0, 10000);
     const ref = { s: s.rng.hazards.s }, t = s.tick; fieldSystem(s);
     const u = nextFloat(ref); expect(s.rng.hazards.s).toBe(ref.s);
     expect(s.run.fieldNextTick).toBe(t + Math.round(FIELD_INTERVAL * T * (1 + 0.2 * (2 * u - 1))));
   });
   it('spawns every 6 s +/- 20% for 60 s, then stops; clears at +72 s with +20 scrap, the drive boost and a win', () => {
-    const s = at(); steady(s, ENCOUNTER_START * T + 1);
+    const s = arriveField(); steady(s, ENCOUNTER_START * T + 1);
     const start = s.run.encounterTick, spawns: number[] = [start], seen = new Set<number>(Array.from(s.debris.stableId).filter((x) => x > 0));
     const scrap0 = s.run.scrap;
     steady(s, (FIELD_SECONDS + 12) * T - 1, () => { for (let k = 0; k < DEBRIS_SLOTS; k++) { const id = s.debris.stableId[k]!; if (id > 0 && !seen.has(id)) { seen.add(id); spawns.push(s.tick - 1); } } });
@@ -315,16 +322,16 @@ describe('asteroid fields (spec Demo-viii section 1)', () => {
     steady(s, 60 * T); expect([s.run.encounter, s.telemetry.encountersWon, activeDebrisCount(s)]).toEqual([Encounter.Won, 1, 0]);
   });
   it('the director interval doubles while the field is fighting', () => {
-    const a = at(), b = at(); steady(a, ENCOUNTER_START * T + 1); steady(b, ENCOUNTER_START * T + 1); expect(a.run.encounter).toBe(Encounter.Fighting);
+    const a = arriveField(), b = arriveField(); steady(a, ENCOUNTER_START * T + 1); steady(b, ENCOUNTER_START * T + 1); expect(a.run.encounter).toBe(Encounter.Fighting);
     b.run.encounter = Encounter.None;
     for (const x of [a, b]) { x.director.nextSpawnTick = 0; enterPhase(x, Phase.BuildUp); }
     expect((a.director.nextSpawnTick - a.tick) / (b.director.nextSpawnTick - b.tick)).toBeCloseTo(2, 2);
   });
   it('an early jump: no reward, the rocks left behind, the field clock stopped; endField sets the encounter over', () => {
-    const s = at(); steady(s, (ENCOUNTER_START + 30) * T);
-    const scrap0 = s.run.scrap; chargeJump(s); jumpShip(s, 0);
+    const s = arriveField(); steady(s, (ENCOUNTER_START + 30) * T);
+    const scrap0 = s.run.scrap; chargeJump(s); jumpShip(s, at(2, 0));
     expect([s.run.scrap - scrap0, s.run.driveBoost, s.telemetry.encountersWon, s.run.fieldNextTick, activeDebrisCount(s)]).toEqual([scrapPerJump(2), 0, 0, -1, 0]);
-    const f = at(); steady(f, (ENCOUNTER_START + 5) * T); endField(f);
+    const f = arriveField(); steady(f, (ENCOUNTER_START + 5) * T); endField(f);
     expect([f.run.encounter, f.run.encounterTick, f.run.fieldNextTick, f.telemetry.encountersWon]).toEqual([Encounter.Over, f.tick, -1, 0]);
     steady(f, 80 * T); expect([f.run.encounter, f.telemetry.encountersWon]).toEqual([Encounter.Over, 0]);
   });
@@ -370,9 +377,9 @@ describe('the jump confirmation (spec Coop-ii section 3, amendment D7)', () => {
   it('with two conscious players the pilot\'s Confirm opens a 5 s confirmation; a standing Confirm jumps', () => {
     const { s } = ready(); const dest = reachable(s)[0]!;
     run(s, 1, () => intents({ confirmPressed: true }, {}));
-    expect([s.run.column, s.run.jumpPending]).toEqual([0, dest]);
+    expect([s.run.column, s.run.jumpPending]).toEqual([0, beaconIndex(dest.column, dest.node)]);
     run(s, 1, () => intents({}, { confirmPressed: true }));
-    expect([s.run.column, s.run.node, s.run.jumpPending]).toEqual([1, dest, -1]);
+    expect([s.run.column, s.run.node, s.run.jumpPending]).toEqual([1, dest.node, -1]);
   });
   it('without a second Confirm within CONFIRM_SECONDS it is cancelled, the drive stays charged; a standing Confirm meanwhile seals no door', () => {
     const { s } = ready(); const d = s.derived, e = d.doorEdges[0]!, t = d.edgeTile[e]!;

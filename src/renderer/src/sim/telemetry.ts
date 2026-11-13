@@ -1,7 +1,7 @@
 import type { SimState } from './state';
 import { Life, LifeState, Seated } from './components';
 import { stationOnline } from './stations';
-import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER, TICK_HZ, SIM_VERSION, SKILL_COUNT, RUN_COLUMNS } from './tuning';
+import { REPAIR_FIRE, REPAIR_BREACH, REPAIR_POWER, TICK_HZ, SIM_VERSION, SKILL_COUNT, SECTOR_COLUMNS } from './tuning';
 import { STATION_NAMES } from './stationKinds';
 import { EndReason } from './crew';
 import { characterOf } from './characters';
@@ -75,7 +75,7 @@ export function telemetryRecord(state: SimState, seed: number): TelemetryRecord 
     phaseEntries: { buildUp: t.phaseEntries[Phase.BuildUp]!, sustainPeak: t.phaseEntries[Phase.SustainPeak]!, peakFade: t.phaseEntries[Phase.PeakFade]!, relax: t.phaseEntries[Phase.Relax]! },
     enemy: { met: t.encounters, destroyed: t.enemiesDestroyed, disables: t.enemyDisables, fled: t.enemyFled, surrenders: t.surrenders, shieldHits: t.shieldHits },
     boarders: { parties: t.boardings, killed: t.boardersKilled, vented: t.boardersVented },
-    run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: RUN_COLUMNS, scrap: { earned: t.scrapEarned, spent: t.scrapSpent }, events: t.eventsResolved, purchases: t.purchases, upgrades: STATION_NAMES.filter((_, k) => state.run.upgrades[k] === 1), quirk: QUIRK_NAMES[state.run.quirk]!, unlocks: UNLOCKS.filter((_, i) => state.run.startBonus & (1 << i)).map((u) => u.id) },
+    run: { nodesReached: state.run.nodesReached, jumps: t.jumps, columns: SECTOR_COLUMNS, scrap: { earned: t.scrapEarned, spent: t.scrapSpent }, events: t.eventsResolved, purchases: t.purchases, upgrades: STATION_NAMES.filter((_, k) => state.run.upgrades[k] === 1), quirk: QUIRK_NAMES[state.run.quirk]!, unlocks: UNLOCKS.filter((_, i) => state.run.startBonus & (1 << i)).map((u) => u.id) },
     teamwork: { lockedShots: t.lockedShots, teamSeconds: round1(t.teamSeconds), revives: t.revives, timedEvades: t.timedEvades, votesUnanimous: t.votesUnanimous, votesSplit: t.votesSplit },
     skills: state.crew.map((_, pid) => Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k)))
   };

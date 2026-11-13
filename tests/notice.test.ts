@@ -136,7 +136,8 @@ describe('votes and the jump confirmation on the HUD (spec Coop-ii section 3)', 
     for (const ev of EVENTS) { setEvent(s, EVENTS.indexOf(ev)); s.run.eventOpenTick = s.tick; for (const l of runNotice(s)) expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); }
   });
   it('a pending jump: Jump to Node 2a? (1/2), and who can agree, counting down', () => {
-    const s = fresh(); chargeJump(s); seatNavigator(s, 0); s.run.jumpPending = 0; s.run.jumpPendingTick = s.tick;
+    const s = fresh(); chargeJump(s); seatNavigator(s, 0); s.run.jumpPending = 4;   // beacon index of Node 2a (column 1 x 4 + node 0, spec Loop-i section 1)
+    s.run.jumpPendingTick = s.tick;
     expect(runNotice(s)).toEqual(['Jump to Node 2a? (1/2)', 'Anyone standing: press Confirm to agree   5s']);
   });
 });

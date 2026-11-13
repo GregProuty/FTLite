@@ -2,6 +2,7 @@ import type { SimState } from '../sim/state';
 import { EnemySystem, EnemyRoom, ENEMY_ROOM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, rotateSecondsLeft } from '../sim/enemy';
 import { isEnemySlot, enemySystemOf, ENEMY_SLOT } from '../sim/debrisTargets';
 import { StationKind } from '../sim/stationKinds';
+import { beaconKey } from '../sim/run';
 import { TICK_HZ, ENEMY_SYS_HP, ENEMY_ROOMS, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS } from '../sim/tuning';
 import { ENEMY_LAYOUT, ENEMY_TILE, ENEMY_COLS, ENEMY_ROWS } from './enemyShipLayout';
 
@@ -45,7 +46,7 @@ export function windowRoomCentre(room: number): Pt { const c = centreOf(roomRect
 
 /** Advance the animation memory: an arrival, a departure (destroyed when the kill counter rose), a jump or a new run (closed at once). */
 export function stepWindowAnim(prev: WindowAnim, state: SimState): WindowAnim {
-  const node = state.run.column * 3 + state.run.node, present = state.enemy.present === 1, destroyed = state.telemetry.enemiesDestroyed;
+  const node = beaconKey(state), present = state.enemy.present === 1, destroyed = state.telemetry.enemiesDestroyed;
   if (node !== prev.node || state.tick < prev.tick) return { ...freshWindowAnim(), node, tick: state.tick, present, destroyed, arriveTick: present ? state.tick : -1, last: null };
   const a: WindowAnim = { ...prev, tick: state.tick };
   if (present && !prev.present) { a.arriveTick = state.tick; a.gone = null; a.goneTick = -1; }

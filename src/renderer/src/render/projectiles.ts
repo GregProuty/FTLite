@@ -3,6 +3,7 @@ import type { SimState } from '../sim/state';
 import { ObjectKind } from '../sim/debris';
 import { WORLD_BAND } from './worldFit';
 import { StationKind } from '../sim/stationKinds';
+import { beaconKey } from '../sim/run';
 import { isEnemySlot } from '../sim/debrisTargets';
 import { BOLT_SECONDS } from './enemyWindowModel';
 import { TICK_HZ } from '../sim/tuning';
@@ -74,7 +75,7 @@ export function createProjectileLayer(): ProjectileLayer {
     container, reset,
     draw(state, fit, dt, link) {
       clock += dt;
-      const node = state.run.column * 3 + state.run.node, tick = state.tick, db = state.debris;
+      const node = beaconKey(state), tick = state.tick, db = state.debris;
       if (prevTick >= 0 && shouldReset(prevTick, tick, prevNode, node)) reset();
       prevTick = tick; prevNode = node;
       const present = new Set<number>();

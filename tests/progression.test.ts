@@ -80,7 +80,7 @@ describe('quirk', () => {
     const ref = deriveStreams(7); const expected = nextInt(ref.quirk, QUIRK_COUNT);
     const s = makeState(2, 7); expect(s.run.quirk).toBe(expected); expect(s.rng.quirk.s).toBe(ref.quirk.s);
     const one = deriveStreams(1); expect([one.hazards.s, one.director.s, one.combat.s]).toEqual([2693262067, 11749833, 2265367787]);
-    expect(makeState(2, 1).rng.map.s).toBe(3031319865);
+    expect(makeState(2, 1).rng.map.s).toBe(2463425392);   // the six-column sector map's draws (spec Loop-i section 1; was 3031319865 for the eight-column map)
     expect(() => makeState(2, 7, RECRUITS, { quirk: 6 })).toThrow('quirk out of range: 6'); expect(() => makeState(2, 7, RECRUITS, { quirk: -1 })).toThrow(); expect(() => makeState(2, 7, RECRUITS, { quirk: 1.5 })).toThrow();
     const o = makeState(2, 7, RECRUITS, { quirk: 5 }); expect(o.run.quirk).toBe(5); expect(o.rng.quirk.s).toBe(ref.quirk.s);
     expect(QUIRKS).toHaveLength(QUIRK_COUNT); expect(QUIRK_NAMES).toEqual(['Leaky Seals', 'Hot Reactor', 'Sticky Doors', 'Lucky Hull', 'Twitchy Sensors', 'Old Drive']);
