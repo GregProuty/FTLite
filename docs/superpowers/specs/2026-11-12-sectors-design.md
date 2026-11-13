@@ -63,8 +63,8 @@ New run fields: `sector`, `fuel`, `pursuit`, `pursuitFought` (0/1 for the curren
 
 ## 8. Gate
 
-- [ ] Section 7 tests; golden re-blessed once; gate figures recorded.
-- [ ] Visual check by Claude: the sector map with sideways routes, the fleet band, `FUEL`, a sector jump, Wait for help.
+- [x] Section 7 tests; golden re-blessed once; gate figures recorded.
+- [x] Visual check by Claude: the sector map with sideways routes, the fleet band, `FUEL`, a sector jump, Wait for help.
 - [ ] Manual, the user: does the route choice feel like FTL (greed against the clock)?
 
 ## 9. Amendments
@@ -80,3 +80,47 @@ New run fields: `sector`, `fuel`, `pursuit`, `pursuitFought` (0/1 for the curren
 - **S5. One pursuit fight per visit.** `pursuitFought` resets on every jump. A pursuit fight replaces the beacon's own content (no Hazard-node fight on top). Once fought, staying at the beacon brings no second one.
 - **S6. Events still fire** at an Event beacon on arrival even though its type was hidden; hiding is presentation only.
 - **S7. Peaceful beacon and the pursuit.** Column 0 is never overrun while the crew is there for the first time (pursuit starts at −1.5 and needs two jumps to reach 0), so the peace cannot be broken by the fleet on arrival.
+
+### Implementation amendments, 2026-11-12 (Loop-i execution)
+
+- **I1. Peace is a flag, not only column 0.** `peaceful(state)` is `column === 0 && run.calm === 1`. `calm` is 1 at the run start and after every sector jump and 0 after any other jump. The flag lets the hazard gates and unit tests leave the peace at the start beacon without a jump (`wake()` / `hazardStart()` in `tests/helpers/sim.ts`), so their depth-0 scaling and figures stay as before. New run fields beyond section 6: `calm`, `wakeTick` (the first jump's tick, -1 before; `minutesOf` counts from it) and `visited` (one byte per beacon, flattened).
+- **I2. The director at a peaceful beacon** updates stress only: no phase steps and no spawn attempts. The first jump enters Build Up, so its first spawn comes one escalated spawn interval (with the usual jitter draw) after the jump.
+- **I3. No timed first enemy or party.** A new state arms neither (`NEVER`) and starts with no encounter (`Encounter.None`). `ENCOUNTER_FIRST`, `ENCOUNTER_FIRST_SMALL`, `BOARDING_FIRST` and `BOARDING_FIRST_SMALL` stay in `tuning.ts` only as the hazard gates' schedule (`hazardStart`).
+- **I4. The pursuit fight** starts at arrival on an overrun beacon (inside the jump) or, per tick, when the front overruns the beacon you are at (`pursuitSystem`, step 5a, before the field). It waits while another enemy is present and stops a running asteroid field with no reward. The elite is the enemy that arrives while `pursuitFought` is 1: hull `round(maxHull x 1.5)`, fire interval x 0.75, no scrap, no fuel and no surrender bounty. Overrun beacons hold no content (`contentOf`): no event draw, no shop rows, no field.
+- **I5. Row codes.** Jump rows and `jumpPending` carry beacon indices (`column x 4 + node`); the exit's sector row is `EXIT_JUMP` (24). `jumpShip` takes `{ column, node }`; `sectorJump` is the exit's jump. The pending notice names the sector (`Jump to sector 2? (1/2)`, `Escape: win the run? (1/2)`).
+- **I6. Navigation rows.** Destination rows read `Node 3a  ?`, `Node 2b  Shop`, `Node 6a  EXIT`, `Node 2a  FLEET`, or once visited `Hostile`, `Event`, `Asteroid field`, `Empty`. Wait for help replaces the destinations with no fuel; during the wait the row reads `Waiting for help  19s`. Waiting needs no drive charge. The shop's Fuel row is the ninth item (after the upgrades); the shop notice line is `Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)  Upgrade (50)`.
+- **I7. HUD.** The clock card grew a line: `HULL 100   TIME 12s   FUEL 8` then `SECTOR 1/3   node 2/6` (one line did not fit the 240 px card in the visual check); the power panel moved down 18 px. The Navigation footer is `Evade 35%  Jump READY  Fuel 8>7  Scrap 30` (now > after the highlighted jump; plain `Fuel 8` on other rows). The map title is `SECTOR 1/3   node 2/6   Jump 64%`. On the map a beacon's mark (`?`, `$`, `!` for a visited event) sits inside an 8 px node so the vertical sideways edges do not cross it (found in the visual check); EXIT stays below the exit. The game-over headline reads `Reached sector S node C`. The pursuit contact line is `The Pursuit has caught up: elite ship approaching`.
+- **I8. Victory and the exit.** The exit is a Hazard fight on the way out in sectors 1 and 2 and quiet in the last. A sector's column 0 is quiet. Escaping pays no arrival scrap; it counts as a jump and a node reached.
+- **I9. Float thresholds.** The node-type thresholds are cumulated with rounding (0.15 + 0.25 + 0.15 + 0.15 is 0.7000000000000001 in floating point), so a draw of exactly 0.70 is Hazard.
+- **I10. Plan file names.** The plan names `tests/shop.test.ts`; the shop tests live in `tests/events.test.ts`, so the Fuel row's test is there. The elite-enemy tests sit in `tests/run.test.ts` beside the rest of the Pursuit.
+
+#### Changed test files and why
+
+- `tests/helpers/sim.ts`: stride 4 and the six-column fixture map M (`MAP_M_NODES`, `MAP_M_MASKS`); `at` / `ahead` beacons for `jumpShip`; `wake`, `woke`, `hazardStart`; `armSpawn` wakes the state (its spawn is the point).
+- `tests/run.test.ts`: the map-generation tests rewritten for six columns, 2-4 beacons, stride 4, the Empty type and the new thresholds; sideways destinations; victory moved to the last sector's escape; the last sector's exit is quiet; jumps take beacons; Empty joins the quiet arrivals; new sections for sectors, fuel, waiting, depth, field fuel and the Pursuit.
+- `tests/map.test.ts`: six columns, sideways edges in the model, the `SECTOR 1/3` title, types shown once visited; new fleet-front and hidden-beacon tests.
+- `tests/events.test.ts`: jumps take beacons; the last column is 5 and its arrival no longer wins; sideways rows in the shop and event lists; the Fuel row (nine items); destination rows read `?`; a new fuel-row test.
+- `tests/hud.test.ts`: six-column fixtures; row counts with the sideways and Fuel rows; the clock card's two lines; the Navigation footer's fuel; the headline `Reached sector S node C`; `?` rows.
+- `tests/notice.test.ts`: the shop price line with fuel; the pending jump's beacon code; the awake fixture (the peaceful start has its own test); the start is no encounter; new Pursuit, peaceful-start and sector-jump notice tests.
+- `tests/session.test.ts`: the victory setups start at the last sector's exit; the headline text.
+- `tests/snapshot.test.ts`: six-column fixtures; version 23 rejected; the enemy block's initial `NEVER`; awake states for the Build Up and won-encounter continuations; a new round trip for every Loop-i run field.
+- `tests/telemetry.test.ts`: the record's `columns` is 6.
+- `tests/progression.test.ts`: the map stream's state after creation (the six-column map draws differently).
+- `tests/enemy.test.ts`: no timed first enemy (the crew-size first times now checked through `hazardStart`); awake states where an arrival is the point; new kill-fuel and no-timed-enemy tests.
+- `tests/boarders.test.ts`: no first boarding armed (the gate schedule checked through `hazardStart`); awake states for the arrival tests; a new peaceful-beacon test.
+- `tests/director.test.ts`: states awake (`woke`) so the director's own tests run from tick 0 as before; new peaceful-start tests.
+- `tests/combat.test.ts`, `tests/heat.test.ts`, `tests/characters.test.ts`: awake states where an arrival or a spawn is the point.
+- `tests/bot.test.ts`: new captain-route tests (lowest forward, overrun last, sector jump, escape, waiting).
+- `tests/gate-survival.test.ts`, `tests/gate-cutter.test.ts`: the hazard soak keeps the old schedule at the start beacon (`hazardStart`); figures unchanged.
+- `tests/gate-boarding.test.ts`: the start beacon woken; the forced boarding unchanged.
+- `tests/gate-jump.test.ts`, `tests/gate-run.test.ts`: three sectors, 18 jumps, victory on the escape; the quiet ship silenced every tick and later sectors' maps set to Hazard; the run gate's scrap counts every arrival's depth.
+- `tests/golden/basic.json`: re-blessed once (SIM_VERSION 24, a8534c8f -> dca013d4).
+
+#### Gates (min health, seeds 1/2/3), before -> after; no floor lowered
+
+- `gate-survival`: 77.7 / 47.8 / 68.9 -> unchanged (min hull 72 / 68 / 84).
+- `gate-cutter`: 59.1 / 61.5 / 65.6 -> unchanged.
+- `gate-duo`: 28.8 / 28.8 / 47.6 -> 50.9 / 41.8 / 38.6 (min hull 80 / 48 / 60 -> 84 / 92 / 92); floor 25. Cause: the live run now starts with a minute of peace and wakes the director at the first jump.
+- `gate-boarding`: 29.1 / 24.0 / 48.9 -> 32.5 / 49.9 / 48.9 (no health floor). Cause: the captain's jumps land on a different map.
+- `gate-jump`: end tick 25207 (7 jumps) -> 64818 (18 jumps, six waits for help while the drive charged). `gate-run` passes with every arrival paid by depth.
+- `npm run acceptance 5 1`: the bots still reach node 4 in five minutes at every crew size; spawns, impacts and idle streaks shift with the peaceful first minute (`.superpowers/sdd/loop-i-gates-after.md`).

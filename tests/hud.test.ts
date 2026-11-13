@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
-import { buildHudModel, clockLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
+import { buildHudModel, clockLine, sectorLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -400,10 +400,11 @@ describe('buildHudModel', () => {
     expect(p.interactPrompt).toBe('Fight boarder'); expect(p.interactIcon).toBeNull(); expect(p.progress).toBeCloseTo(30 / BOARDER_HEALTH, 12);
     s.boarders.health[k2] = 15; p = buildHudModel(s, slots(1), 'running', '').players[0]!; expect(p.progress).toBeCloseTo(15 / BOARDER_HEALTH, 12);
   });
-  it('the clock line carries the hull, time, FUEL, sector and node (spec Loop-i section 2); the Navigation panel lists destinations, cursor and jump state; the footer shows the fuel left after the highlighted jump', () => {
+  it('the clock card carries the hull, time and FUEL, then the sector and node (spec Loop-i sections 1 and 2); the Navigation panel lists destinations, cursor and jump state; the footer shows the fuel left after the highlighted jump', () => {
     const s = makeState(2); quiet(s); const model = () => buildHudModel(s, slots(2), 'running', '');
-    expect(clockLine(model())).toBe('HULL 100   TIME 0s   FUEL 8   SECTOR 1/3   node 1/6'); expect(model().run.quirk).toBe(QUIRK_NAMES[s.run.quirk]); expect(clockLine(buildHudModel(null, slots(1), 'lobby', ''))).toBe('HULL 0   TIME 0s   FUEL 0   SECTOR 1/3   node 1/6');
-    s.run.column = 3; s.run.sector = 1; s.run.fuel = 6; expect(clockLine(model())).toBe('HULL 100   TIME 0s   FUEL 6   SECTOR 2/3   node 4/6');
+    expect([clockLine(model()), sectorLine(model())]).toEqual(['HULL 100   TIME 0s   FUEL 8', 'SECTOR 1/3   node 1/6']); expect(model().run.quirk).toBe(QUIRK_NAMES[s.run.quirk]); expect([clockLine(buildHudModel(null, slots(1), 'lobby', '')), sectorLine(buildHudModel(null, slots(1), 'lobby', ''))]).toEqual(['HULL 0   TIME 0s   FUEL 0', 'SECTOR 1/3   node 1/6']);
+    s.run.column = 3; s.run.sector = 1; s.run.fuel = 6; expect([clockLine(model()), sectorLine(model())]).toEqual(['HULL 100   TIME 0s   FUEL 6', 'SECTOR 2/3   node 4/6']);
+    s.tick = 999 * 60; expect(clockLine(model()).length).toBeLessThanOrEqual(36); s.tick = 0;   // the 240 px card holds about 36 glyphs
     s.run.column = 0; s.run.sector = 0; s.run.fuel = 8; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); setNodeTypes(s, {});   // all Hazard: the labels are plain node labels
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const nav = () => model().players[0]!.console as NavigationPanel, p = nav();

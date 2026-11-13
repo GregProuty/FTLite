@@ -40,13 +40,15 @@ export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(m
       const last = map.columns.length - 1;
       map.columns.forEach((col, c) => col.nodes.forEach((nd, k) => {
         const x = nodeX(c), y = nodeY(k, col.nodes.length);
-        if (nd.current) { g.circle(x, y, 6).fill(TEXT); g.circle(x, y, 10).stroke({ width: 2, color: TEXT }); }
-        else if (nd.selected) { g.circle(x, y, 6).fill(WARN); g.circle(x, y, 10).stroke({ width: 2, color: WARN }); }
-        else if (nd.past) g.circle(x, y, 6).fill(FAINT);
-        else g.circle(x, y, 6).fill(0x101420).stroke({ width: 1, color: nd.reachable ? TEXT : DIM });
-        if (nd.type === 'asteroid') drawRocks(g, x, y, nd.current || nd.selected ? 0x101420 : nd.past ? DIM : nd.reachable ? TEXT : DIM);
-        const label = c === last ? 'EXIT' : nd.type === 'shop' ? '$' : nd.type === 'event' ? '!' : nd.type === 'unknown' ? '?' : '';   // ? is a beacon not yet visited (spec Loop-i section 4b)
-        if (label && mi < marks.length) { const t = marks[mi++]!; t.text = label; t.position.set(x, y + 14); t.visible = true; }
+        const filled = nd.current || nd.selected || nd.past;   // the beacon's mark sits inside an 8 px node, clear of the sideways edges (spec Loop-i section 4b)
+        if (nd.current) { g.circle(x, y, 8).fill(TEXT); g.circle(x, y, 12).stroke({ width: 2, color: TEXT }); }
+        else if (nd.selected) { g.circle(x, y, 8).fill(WARN); g.circle(x, y, 12).stroke({ width: 2, color: WARN }); }
+        else if (nd.past) g.circle(x, y, 8).fill(FAINT);
+        else g.circle(x, y, 8).fill(0x101420).stroke({ width: 1, color: nd.reachable ? TEXT : DIM });
+        if (nd.type === 'asteroid') drawRocks(g, x, y, filled ? 0x101420 : nd.reachable ? TEXT : DIM);
+        const inside = nd.type === 'shop' ? '$' : nd.type === 'event' ? '!' : nd.type === 'unknown' ? '?' : '';   // ? is a beacon not yet visited
+        if (inside && mi < marks.length) { const t = marks[mi++]!; t.text = inside; t.tint = filled ? 0x101420 : nd.reachable ? TEXT : DIM; t.position.set(x + 0.5, y - 1); t.visible = true; }
+        if (c === last && mi < marks.length) { const t = marks[mi++]!; t.text = 'EXIT'; t.tint = TEXT; t.position.set(x - 4, y + 20); t.visible = true; }
       }));
     }
   };

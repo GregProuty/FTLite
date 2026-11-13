@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildHudModel, runNotice } from '../src/renderer/src/render/hudModel';
 import { EVENTS, resolveEvent } from '../src/renderer/src/sim/events';
-import { NodeType } from '../src/renderer/src/sim/run';
+import { NodeType, EXIT_JUMP } from '../src/renderer/src/sim/run';
 import { NOTICE_LINE_MAX, scrapSurrender, scrapField, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_START, NEVER } from '../src/renderer/src/sim/tuning';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump, seatNavigator, placeEnemy, wake } from './helpers/sim';
@@ -158,5 +158,13 @@ describe('runNotice: a peaceful start (spec Loop-i section 4b)', () => {
     seatNavigator(s, 0); expect(runNotice(s)).toEqual(['Safe here. Jump when ready', 'JUMP READY']);
     expect(buildHudModel(s, slots(2), 'running', '').threats).toEqual([]);
     s.run.calm = 0; expect(runNotice(s)).toEqual(['JUMP READY']);
+  });
+});
+
+describe('runNotice: the sector jump awaiting its second Confirm (spec Loop-i amendment S1)', () => {
+  it('names the next sector, or the escape in the last sector', () => {
+    const s = fresh(); s.run.column = 5; chargeJump(s); s.run.jumpPending = EXIT_JUMP; s.run.jumpPendingTick = s.tick;
+    expect(runNotice(s)[0]).toBe('Jump to sector 2? (1/2)');
+    s.run.sector = 2; expect(runNotice(s)[0]).toBe('Escape: win the run? (1/2)');
   });
 });
