@@ -569,3 +569,15 @@ describe('torpedo prompts (spec Coop-ii section 2)', () => {
     s.weapons.torpedoFed = 1; expect((buildHudModel(s, slots(2), 'running', '').players[1]!.console as WeaponsPanel).torpedo.fetch).toBe(false);
   });
 });
+
+describe('the standing Confirm prompt during votes and a pending jump (spec Coop-ii amendment D7)', () => {
+  it('reads Vote 1, then Vote 2 after a first vote; Agree: jump while a jump waits; the footer shows the doubled evade chance during a manoeuvre', () => {
+    const s = makeState(2); quiet(s); setEvent(s, 4);
+    const p = () => buildHudModel(s, slots(2), 'running', '').players[1]!;
+    expect(p().confirmPrompt).toBe('Vote 1'); s.run.vote[1] = 0; expect(p().confirmPrompt).toBe('Vote 2'); s.run.vote[1] = 1; expect(p().confirmPrompt).toBe('Vote 1');
+    s.run.eventChoice = 0; s.run.jumpPending = 0; s.run.jumpPendingTick = s.tick; expect(p().confirmPrompt).toBe('Agree: jump');
+    const n = seatNavigator(s, 0); s.run.evadeUntilTick = s.tick + 30;
+    const f = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
+    expect(f.evadeChance).toBeCloseTo(Math.min(0.8, 2 * (EVADE_BASE + EVADE_SCALE * stationOutput(s, n))), 12);
+  });
+});

@@ -81,12 +81,13 @@ export function createHud(parent: Container, assets: GameAssets) {
     parent.addChild(panel(x, y, 308, 90));
     const root = new Container(); root.position.set(x + 8, y + 8); parent.addChild(root);
     const name = text(); const hp = bar(96); hp.root.position.set(110, 2);
+    const vote = text(16, CALL); vote.position.set(236, 0);   // spec Coop-ii section 3: the player's vote, right of the health bar and the oxygen icon
     const oxygen = icon('icon.oxygen'); if (oxygen) { oxygen.position.set(210, 0); oxygen.visible = false; root.addChild(oxygen); }
     const line2 = new Container(); line2.position.set(0, LINE);
     const line3 = new Container(); line3.position.set(0, LINE * 2);
     const line4 = new Container(); line4.position.set(0, LINE * 3);
     const progress = bar(216); progress.root.position.set(0, LINE * 4 - 1); progress.root.visible = false;   // under line 4, not across it (Coop-i visual check)
-    root.addChild(name, hp.root, line2, line3, line4, progress.root);
+    root.addChild(name, hp.root, vote, line2, line3, line4, progress.root);
     const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
     consoleRoot.addChild(panel(0, 0, 308, 8 * LINE + 12));
     const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
@@ -94,7 +95,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
     const consoleBar = bar(216); consoleBar.root.position.set(8, 6 + 7 * LINE + 14); consoleBar.root.visible = false; consoleRoot.addChild(consoleBar.root);   // a 2 px strip under the footer text: the Weapons footer now spans the row
     for (const c of consoleBar.root.children) (c as Sprite).height = 2;
-    return { name, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar };
+    return { name, vote, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar };
   });
 
   const overlay = new Container(); overlay.visible = false;
@@ -121,14 +122,14 @@ export function createHud(parent: Container, assets: GameAssets) {
 
   let flashOn = new Set<number>();   // station kinds lit this frame by a Power callout: blinking at about 3 Hz for its 3 s
   function updatePlayer(ui: (typeof players)[number], p: HudPlayer, i: number, phase: HudModel['phase']): void {
-    if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
-    if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
+    if (p.status === 'empty') { ui.name.text = `P${i + 1}: press Interact to join`; ui.name.tint = DIM; ui.vote.text = ''; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
+    if (p.status === 'reconnect') { ui.name.text = `P${i + 1}: RECONNECT`; ui.name.tint = WARN; ui.vote.text = ''; ui.hp.root.visible = false; fillRow(ui.line2, []); fillRow(ui.line3, []); fillRow(ui.line4, []); ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return; }
     if (phase === 'lobby') {
-      ui.name.text = `P${i + 1}  ${p.character.name}${p.vote ? `   ${p.vote}` : ''}`; ui.name.tint = TEXT; ui.hp.root.visible = false;
+      ui.name.text = `P${i + 1}  ${p.character.name}`; ui.vote.text = ''; ui.name.tint = TEXT; ui.hp.root.visible = false;
       fillRow(ui.line2, [{ text: p.character.asset && p.character.complication ? `${p.character.asset} / ${p.character.complication}` : '', tint: DIM }]); fillRow(ui.line3, []); fillRow(ui.line4, []);
       ui.progress.root.visible = false; ui.consoleRoot.visible = false; if (ui.oxygen) ui.oxygen.visible = false; return;
     }
-    ui.name.text = `P${i + 1}  HP ${Math.ceil(p.health)}${p.vote ? `   ${p.vote}` : ''}`; ui.name.tint = TEXT;
+    ui.name.text = `P${i + 1}  HP ${Math.ceil(p.health)}`; ui.name.tint = TEXT; ui.vote.text = p.vote;
     ui.hp.root.visible = true; ui.hp.set(p.health / 100);
     if (ui.oxygen) ui.oxygen.visible = p.lowOxygen;
     if (p.lifeText) { fillRow(ui.line2, [{ text: p.lifeText, tint: WARN }]); fillRow(ui.line3, []); }
@@ -136,7 +137,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.line2, [{ text: STATION_NAMES[p.seated]!, tint: DIM }]);
       fillRow(ui.line3, [{ glyph: glyphName('cancel', p.deviceKind), text: p.cancelPrompt }]);
     } else {
-      fillRow(ui.line2, [{ glyph: p.interactPrompt ? glyphName('interact', p.deviceKind) : null, icon: p.interactIcon, text: p.interactPrompt }]);
+      fillRow(ui.line2, p.interactPrompt || !p.carrying ? [{ glyph: p.interactPrompt ? glyphName('interact', p.deviceKind) : null, icon: p.interactIcon, text: p.interactPrompt }] : [{ text: 'Carrying a torpedo', tint: DIM }]);   // spec Coop-ii section 2
       fillRow(ui.line3, [{ glyph: p.confirmPrompt ? glyphName('confirm', p.deviceKind) : null, icon: p.confirmIcon, text: p.confirmPrompt }]);
     }
     fillRow(ui.line4, [{ text: `${p.character.name}  ${SKILL_NAMES.map((n, k) => `${n[0]}${p.skills[k]}`).join(' ')}`, tint: DIM }]);
@@ -175,7 +176,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.consoleFooter, [{ text: scienceFooter(c), tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'navigation') {
       const c = p.console;   // spec 7: event, shop or destination rows in a seven-row window, the cursor row lit, the footer carries evade and the jump state
-      ui.consoleRows.forEach((r, k) => { const row = c.rows[c.first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: '', cursor: row.cursor, tint: !row.selectable ? DIM : !row.enabled ? FAINT : row.cursor ? TEXT : DIM }); });
+      ui.consoleRows.forEach((r, k) => { const row = c.rows[c.first + k]; r.root.visible = !!row; if (row) r.set({ name: row.text, level: 0, max: 0, status: '', cursor: row.cursor, tint: row.text === 'EVADING' ? CALL : !row.selectable ? DIM : !row.enabled ? (row.text.startsWith('EVADE ') ? DIM : FAINT) : row.cursor ? TEXT : DIM }); });
       fillRow(ui.consoleFooter, [{ text: navigationFooter(c), tint: TEXT }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'doors') {
       const c = p.console;   // spec Demo-vii section 1: the selection, its state (WARN while an airlock is open) and the Confirm action on three rows; the footer counts open airlocks

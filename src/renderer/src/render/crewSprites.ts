@@ -31,7 +31,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
   const drawCarried = (state: SimState, eid: number, pid: number, x: number, y: number): void => {
     const g = torps.get(Stable.id[eid]!)!;
     g.visible = state.carrying[pid] === 1 && Life.state[eid] === LifeState.Conscious;
-    g.position.set(x * TILE_PX + 2, y * TILE_PX - 6);
+    g.position.set(x * TILE_PX, y * TILE_PX - 30);   // held overhead, clear of the sprite
   };
 
   /** Interpolated draw position, and the movement since the last drawn frame (not since the last tick: a paused sim must read as idle). */
@@ -55,7 +55,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
     draw(state, alpha) {
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
       if (carried.parent !== container) container.addChild(carried); else container.setChildIndex(carried, container.children.length - 1);
-      syncCache(torps, liveIds, () => { const g = new Graphics(); drawTorpedo(g, 0, 0, 16); carried.addChild(g); return g; }, (g) => { g.destroy(); });
+      syncCache(torps, liveIds, () => { const g = new Graphics(); drawTorpedo(g, 0, 0, 20); carried.addChild(g); return g; }, (g) => { g.destroy(); });
       if (!useArt) {
         syncCache(circles, liveIds, () => { const g = new Graphics(); container.addChild(g); return g; }, (g, id) => { g.destroy(); memory.prev.delete(id); memory.lastDrawn.delete(id); });
         for (const eid of state.crew) {
