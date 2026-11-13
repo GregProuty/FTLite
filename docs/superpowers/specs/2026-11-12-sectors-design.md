@@ -70,3 +70,13 @@ New run fields: `sector`, `fuel`, `pursuit`, `pursuitFought` (0/1 for the curren
 ## 9. Amendments
 
 (Filled during review and implementation.)
+
+### Claude's review (the Codex spec review timed out, exit 124), 2026-11-12. These rules override earlier text where they differ.
+
+- **S1. Leaving a sector.** The exit beacon has no forward edges. At the exit the Navigation rows offer `Jump to sector 2` (or `Escape: win the run` in the last sector) once the drive is ready, costing 1 fuel. This is the only way out of a sector.
+- **S2. No softlocks.** With 0 fuel anywhere (the exit included), Navigation offers only `Wait for help`. Waiting is always possible, advances the pursuit and has a 0.6 chance of 2 fuel per wait, so a crew can always eventually move. An overrun exit still lets you leave once the drive is ready, after or during the pursuit fight.
+- **S3. Sideways loops** are allowed (FTL lets you backtrack); each costs fuel and pursuit, so the clock limits them.
+- **S4. Draw order.** The first sector's map is generated at run creation, as today. Each later sector's map is generated at the sector jump, in the same fixed draw order from `rng.map`. The wait's fuel draw and the kill's fuel draw use `rng.loot`. No other stream changes.
+- **S5. One pursuit fight per visit.** `pursuitFought` resets on every jump. A pursuit fight replaces the beacon's own content (no Hazard-node fight on top). Once fought, staying at the beacon brings no second one.
+- **S6. Events still fire** at an Event beacon on arrival even though its type was hidden; hiding is presentation only.
+- **S7. Peaceful beacon and the pursuit.** Column 0 is never overrun while the crew is there for the first time (pursuit starts at −1.5 and needs two jumps to reach 0), so the peace cannot be broken by the fleet on arrival.
