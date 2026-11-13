@@ -220,3 +220,11 @@ A mouse player's screen needs clickable targets: room hover highlights and a pat
 - steamworks-ffi-node: https://awesome.ecosyste.ms/projects/github.com%2FArtyProf%2Fsteamworks-ffi-node
 - Cloudflare Realtime TURN pricing: https://developers.cloudflare.com/realtime/turn/faq/ , https://developers.cloudflare.com/realtime/pricing/
 - FTL controls reference: https://ftl.fandom.com/wiki/Controls
+
+## 9. The owner's decisions (2026-11-13)
+
+1. **Internet play from the start**, not LAN first: the first networked version includes prediction and rollback and an internet transport (WebRTC data channels with join codes, the signalling and TURN setup of section 3); LAN discovery may come along but is not the milestone.
+2. **Mouse players must sit at the console** to use it (the presence rule, recommended).
+3. **One player per machine** in the networked mode; couch play stays its own mode.
+4. **Steam not decided:** keep the transport Steam-free; revisit Steam lobbies and relay later.
+5. Taken as recommended (no objection asked for): a dropped player's crew member is bot-driven; sessions and saves need identical versions; anyone can pause, anyone resumes after 3 s.
