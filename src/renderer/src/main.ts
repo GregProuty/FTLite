@@ -1,4 +1,6 @@
 import cutter from './sim/ship/cutter.json';
+import skiff from './sim/ship/skiff.json';
+import { shipForCrew } from './sim/ship/fleet';
 import { parseShip } from './sim/ship/schema';
 import { loadAssets } from './render/assets';
 import { createRenderer } from './render/renderer';
@@ -24,14 +26,14 @@ ${err instanceof Error ? err.message : String(err)}`;
 }
 
 async function start(): Promise<void> {
-  const layout = parseShip(cutter);          // throws with a clear message on invalid ship data (spec §9)
+  const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff) };   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   const hud = createHud(renderer.hud, assets);
   const keyboard = createKeyboardSources(window);
   const audio = createAudio();
   const session = createSession({
-    layout,
+    layout: (players) => ships[shipForCrew(players)],   // the Skiff for one or two, the cutter for three or four (spec Demo-x-a section 3)
     sampleDevices: () => [...keyboard.sample(), ...sampleGamepads()],
     renderer, hud,
     now: () => performance.now(),

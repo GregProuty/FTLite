@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, clockLine, sectorLine, navigationFooter, scienceFooter, engineeringFooter, targetRowText, targetWindow, weaponsStrip, weaponsFooter, weaponsLootLine, weaponsRowTexts, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, sectorLine, navigationFooter, scienceFooter, engineeringFooter, targetRowText, targetWindow, weaponsStrip, weaponsFooter, weaponsLootLine, weaponsRowTexts, tabText, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { drawIcon, tintColor } from './roomIcons';
 import { createMapPanel } from './mapPanel';
 import { featureReady } from './fallback';
@@ -94,14 +94,24 @@ export function createHud(parent: Container, assets: GameAssets) {
     root.addChild(name, hp.root, vote, line2, line3, line4, progress.root);
     const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
     const consolePanel = panel(0, 0, 308, 8 * LINE + 12); consoleRoot.addChild(consolePanel);
-    const consoleRows = Array.from({ length: 8 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });   // seven rows; the Engineering card uses an eighth (UPGRADES, spec Loop-ii section 2)
-    const consoleSelector = new Container(); consoleSelector.position.set(8, 6); consoleSelector.visible = false; consoleRoot.addChild(consoleSelector);
-    const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
-    const consoleBar = bar(216); consoleBar.root.position.set(8, 6 + 7 * LINE + 14); consoleBar.root.visible = false; consoleRoot.addChild(consoleBar.root);   // a 2 px strip under the footer text: the Weapons footer now spans the row
+    const consoleTabs = new Container(); consoleTabs.position.set(8, 6); consoleTabs.visible = false; consoleRoot.addChild(consoleTabs);   // a console group's tab bar on the top row (spec Demo-x-a section 1)
+    const tabRule = new Graphics(); tabRule.visible = false; consoleRoot.addChild(tabRule);
+    const body = new Container(); consoleRoot.addChild(body);   // the card's rows, below the tab bar when there is one
+    const consoleRows = Array.from({ length: 8 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); body.addChild(r.root); return r; });   // seven rows; the Engineering card uses an eighth (UPGRADES, spec Loop-ii section 2)
+    const consoleSelector = new Container(); consoleSelector.position.set(8, 6); consoleSelector.visible = false; body.addChild(consoleSelector);
+    const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); body.addChild(consoleFooter);
+    const consoleBar = bar(216); consoleBar.root.position.set(8, 6 + 7 * LINE + 14); consoleBar.root.visible = false; body.addChild(consoleBar.root);   // a 2 px strip under the footer text: the Weapons footer now spans the row
     for (const c of consoleBar.root.children) (c as Sprite).height = 2;
-    /** Size the card for 7 or 8 rows: it grows upward from the player block, the footer and strip follow the last row. */
-    const sizeCard = (rows: number) => { consolePanel.height = (rows + 1) * LINE + 12; consoleRoot.position.y = y - ((rows + 1) * LINE + 16); consoleFooter.position.y = 6 + rows * LINE; consoleBar.root.position.y = 6 + rows * LINE + 14; };
-    return { name, vote, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar, sizeCard };
+    /** Size the card for 7 or 8 rows, plus the tab bar's row: it grows upward from the player block, the footer and strip follow the last row. */
+    const sizeCard = (rows: number, tabbed: boolean) => {
+      const t = tabbed ? 1 : 0;
+      consolePanel.height = (rows + 1 + t) * LINE + 12; consoleRoot.position.y = y - ((rows + 1 + t) * LINE + 16); body.position.y = t * LINE + (tabbed ? 4 : 0);
+      consolePanel.height += tabbed ? 4 : 0; consoleRoot.position.y -= tabbed ? 4 : 0;
+      consoleFooter.position.y = 6 + rows * LINE; consoleBar.root.position.y = 6 + rows * LINE + 14;
+      consoleTabs.visible = tabbed; tabRule.visible = tabbed;
+      if (tabbed) tabRule.clear().rect(8, 6 + LINE + 1, 292, 1).fill({ color: FAINT });
+    };
+    return { name, vote, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleTabs, consoleRows, consoleSelector, consoleFooter, consoleBar, sizeCard };
   });
 
   // The event card (spec Demo-x-b section 2, FTL's event window): centred over the world, above the seated console cards; the title and choices at 2x.
@@ -185,7 +195,11 @@ export function createHud(parent: Container, assets: GameAssets) {
     ui.consoleRoot.visible = p.console !== null;
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
     const engineering = !!p.console && 'rows' in p.console && !('kind' in p.console);
-    ui.sizeCard(engineering ? 8 : 7);
+    ui.sizeCard(engineering ? 8 : 7, !!p.tabs);
+    if (p.tabs) {   // HELM | WEAPONS: the active tab lit (gold while the stick is on the bar, marked >), an offline tab in red (spec Demo-x-a section 1)
+      const parts = p.tabs.flatMap((t, k) => [...(k ? [{ text: '|', tint: FAINT }] : []), { text: `${t.active && p.tabFocus ? '>' : ''}${tabText(t)}`, tint: t.offline ? WARN : t.active ? (p.tabFocus ? CALL : TEXT) : DIM }]);
+      fillRow(ui.consoleTabs, parts);
+    }
     if (p.console && 'rows' in p.console && !('kind' in p.console)) {   // the Navigation panel now has rows too
       const c = p.console;
       if (c.page === 1) {   // the Upgrades page (spec Loop-ii section 2): kinds, Reactor, BACK; price columns; the scrap footer
@@ -259,7 +273,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(bannerGlyphs, showBannerGlyphs ? [{ glyph: glyphName('confirm', first!.deviceKind), text: 'Confirm' }, { glyph: glyphName('cancel', first!.deviceKind), text: 'Cancel' }] : []);
       bannerGlyphs.position.x = INTERNAL_W / 2 - bannerGlyphs.width / 2;
       // The lobby card takes rows 2-11 (rows 0-1 hidden; row 8 is the callout line, spec Coop-i section 3; rows 9-11 the co-op lines, Coop-ii); the game-over summary keeps rows 0-11 (spec Demo-i section 3).
-      summaryRows.forEach((t, k) => { const line = m.phase === 'lobby' ? m.lobbyLines[k - 2] : m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; });
+      summaryRows.forEach((t, k) => { const line = m.phase === 'lobby' ? (k === 1 ? m.lobbyShip : m.lobbyLines[k - 2]) : m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; t.tint = m.phase === 'lobby' && k === 1 ? TEXT : DIM; });   // row 1 in the lobby: the ship (spec Demo-x-a section 3)
       const shown = summaryRows.filter((t) => t.visible), wide = Math.max(0, ...shown.map((t) => Math.ceil(t.width)));
       summaryBack.visible = m.phase === 'gameover' && shown.length > 0;
       if (summaryBack.visible) summaryBack.clear().rect(INTERNAL_W / 2 - wide / 2 - 12, 98, wide + 24, m.summary!.length * LINE + 12).fill({ color: 0x05060a, alpha: 0.88 });

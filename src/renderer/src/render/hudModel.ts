@@ -26,6 +26,7 @@ import { EndReason } from '../sim/crew';
 import { boarderMarkers, boardersInRoom } from '../sim/boarders';
 import { QUIRK_NAMES } from '../sim/quirks';
 import { doorsCursorTarget } from '../sim/doors';
+import { shipLine } from '../sim/ship/fleet';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -38,6 +39,24 @@ export interface HudPlayer {
   confirmPrompt: string; confirmIcon: string | null;
   progress: number;
   seated: number | null; console: ConsolePanel | null; cancelPrompt: string;
+  tabs: HudTab[] | null; tabFocus: boolean;   // a console group's tab bar while seated there, and whether the stick is on it (spec Demo-x-a section 1)
+}
+/** One tab of a console group's card: `HELM`, `WEAPONS`, ...; offline when its station is failed or has no bars. */
+export interface HudTab { kind: number; name: string; active: boolean; offline: boolean }
+/** Tab names by station kind: Navigation is the Helm (spec Demo-x-a section 1). */
+export const TAB_NAMES = ['HELM', 'WEAPONS', 'SCIENCE', 'ENGINEERING', 'LIFE SUPPORT', 'MEDBAY', 'DOORS'] as const;
+/** A tab's text on the bar: its name, with OFFLINE when its station is offline. */
+export function tabText(t: HudTab): string { return t.offline ? `${t.name} OFFLINE` : t.name; }
+/** The tab bar of a seated player's console group, or null outside a group. */
+export function consoleTabs(state: SimState, i: number): HudTab[] | null {
+  const d = state.derived, g = d.stationGroup[i]!;
+  if (g < 0) return null;
+  return d.groupStations[g]!.map((j, k) => ({ kind: d.stationKind[j]!, name: TAB_NAMES[d.stationKind[j]!]!, active: k === state.groups.tab[g], offline: !stationOnline(state, j) }));
+}
+/** The Sit prompt's console name: a console group joins its members (`Helm + Weapons`). */
+export function seatName(state: SimState, i: number): string {
+  const d = state.derived, g = d.stationGroup[i]!, name = (j: number): string => (d.stationKind[j] === StationKind.Navigation && g >= 0 ? 'Helm' : STATION_NAMES[d.stationKind[j]!]!);
+  return g < 0 ? name(i) : d.groupStations[g]!.map(name).join(' + ');
 }
 function thermal(state: SimState, i: number): { heat: number; coolant: number; overdriven: boolean } {
   return i < 0 ? { heat: 0, coolant: 0, overdriven: false } : { heat: state.stations.heat[i]! / HEAT_MAX, coolant: state.stations.coolant[i]!, overdriven: isOverdriven(state, i) };
@@ -75,7 +94,8 @@ export interface HudModel {
   director: { phase: string; stress: number };
   run: { column: number; columns: number; sector: number; fuel: number; quirk: string };
   progressLine: string;
-  lobbyLines: string[]; notice: string[];   // the lobby controls card (spec Demo-i section 3) and the run notice (section 4)
+  lobbyLines: string[]; notice: string[];
+  lobbyShip: string;   // the lobby line under the title naming the ship (spec Demo-x-a section 3), '' outside the lobby   // the lobby controls card (spec Demo-i section 3) and the run notice (section 4)
   eventCard: EventCard | null;   // the open event, centred over the world while running (spec Demo-x-b section 2)
   calloutFlash: number[];   // station kinds whose Engineering row flashes for a Power to ... callout (spec Coop-i section 3)
 }
@@ -134,7 +154,7 @@ export function glyphName(action: HudAction, kind: DeviceKind): string | null { 
 
 const describe = (c: Character): HudCharacter => ({ name: c.name, asset: ASSET_NAMES[c.asset]!, complication: COMPLICATION_NAMES[c.complication]! });
 
-const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { health: 0, life: 0, bleed: 0, lowOxygen: false, carrying: false, vote: '', lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '', skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[RECRUIT]!) };
+const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { health: 0, life: 0, bleed: 0, lowOxygen: false, carrying: false, vote: '', lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '', tabs: null, tabFocus: false, skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[RECRUIT]!) };
 
 function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> {
   const eid = state.crew[pid]!;
@@ -147,7 +167,8 @@ function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' 
   const seatedAt = Seated.station[eid]!;
   if (seatedAt >= 0) {
     const kind = state.derived.stationKind[seatedAt]!;
-    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind) };
+    const tabs = consoleTabs(state, seatedAt), g = state.derived.stationGroup[seatedAt]!;
+    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind), tabs, tabFocus: g >= 0 && state.groups.bar[g] === 1 };
   }
   let interactPrompt = '', interactIcon: string | null = null, progress = 0;
   const t = interactTarget(state, pid);
@@ -161,11 +182,11 @@ function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' 
   let confirmPrompt = '', confirmIcon: string | null = null;
   const c = confirmTarget(state, pid);
   if (c.kind === ConfirmKind.Door) { confirmPrompt = state.doors.state[c.index] === DoorState.Sealed ? 'Unseal door' : 'Seal door'; confirmIcon = 'icon.door'; }
-  else if (c.kind === ConfirmKind.Console) { confirmPrompt = `Sit: ${STATION_NAMES[state.derived.stationKind[c.index]!]}`; }
+  else if (c.kind === ConfirmKind.Console) { confirmPrompt = `Sit: ${seatName(state, c.index)}`; }
   const rv = state.run;   // a standing Confirm is a vote or the jump's second confirmation while one is open (spec Coop-ii amendment D7)
   if (rv.event >= 0 && rv.eventChoice < 0) { confirmPrompt = `Vote ${(rv.vote[pid]! + 1) % EVENT_DEFS[rv.event]!.choices.length + 1}`; confirmIcon = null; }   // the option the next press votes for, of two or three (spec Loop-v)
   else if (rv.jumpPending >= 0) { confirmPrompt = 'Agree: jump'; confirmIcon = null; }
-  return { ...base, lowOxygen, lifeText: '', interactPrompt, interactIcon, confirmPrompt, confirmIcon, progress, cancelPrompt: '', seated: null, console: null };
+  return { ...base, lowOxygen, lifeText: '', interactPrompt, interactIcon, confirmPrompt, confirmIcon, progress, cancelPrompt: '', seated: null, console: null, tabs: null, tabFocus: false };
 }
 
 function etaSeconds(state: SimState, slot: number): number { return Math.ceil((state.debris.impactTick[slot]! - state.tick) * DT); }
@@ -420,5 +441,5 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, unpowered: unpoweredAt(state, kind, i), icon: ICON_KINDS[kind]!, iconTint: stationTint(state, i), ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
+  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? [...LOBBY_LINES] : [], lobbyShip: phase === 'lobby' ? shipLine(slots.filter((sl) => sl.status !== 'empty').length) : '', notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
 }

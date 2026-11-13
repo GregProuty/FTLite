@@ -20,7 +20,8 @@ const CRASH_HISTORY = 300;
 export const CREDITS_SCROLL_MS = 150;
 
 export interface SessionDeps {
-  layout: ShipLayout;
+  /** The ship, or the ship for the run's player count (spec Demo-x-a section 3). */
+  layout: ShipLayout | ((playerCount: number) => ShipLayout);
   sampleDevices(): SourceSample[];
   renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[]): void } | null;
   hud: { update(m: HudModel): void } | null;
@@ -60,7 +61,8 @@ export function createSession(deps: SessionDeps) {
   function start(): void {
     deps.renderer?.reset();
     const playerCount = slots.filter((s) => s.status !== 'empty').length;
-    state = createSimState(deps.layout, playerCount, seed, DEFAULT_CHARACTERS, { unlocked: progress.unlocked }); newUnlocks = [];
+    const layout = typeof deps.layout === 'function' ? deps.layout(playerCount) : deps.layout;
+    state = createSimState(layout, playerCount, seed, DEFAULT_CHARACTERS, { unlocked: progress.unlocked }); newUnlocks = [];
     feed = createIntentFeed(playerCount);
     accumulator = 0; baseline = null; intentsSinceBaseline = []; callouts = [];
     prevCounters = cueCounters(state);
