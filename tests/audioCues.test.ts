@@ -4,7 +4,7 @@ import { createAudio } from '../src/renderer/src/app/audio';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { makeState } from './helpers/sim';
 
-const Z: CueCounters = { spawns: 0, boardings: 0, encounters: 0, impacts: 0, shots: 0, hits: 0, shieldHits: 0, jumps: 0, ended: 0, endReason: 0, jumpReady: 0 };
+const Z: CueCounters = { spawns: 0, boardings: 0, encounters: 0, impacts: 0, shots: 0, hits: 0, shieldHits: 0, jumps: 0, ended: 0, endReason: 0, jumpReady: 0, upgrades: 0 };
 const at = (over: Partial<CueCounters>): CueCounters => ({ ...Z, ...over });
 
 describe('audioCues (spec Demo-ii section 5)', () => {
@@ -29,7 +29,12 @@ describe('audioCues (spec Demo-ii section 5)', () => {
     expect(audioCues(Z, Z)).toEqual([]);
   });
   it('the full set in order', () => {
-    expect(audioCues(Z, at({ spawns: 2, boardings: 1, impacts: 1, shots: 3, hits: 1, jumpReady: 1, jumps: 1, ended: 1, endReason: EndReason.Victory }))).toEqual(['alarm', 'impact', 'shot', 'hit', 'ready', 'jump', 'victory']);
+    expect(audioCues(Z, at({ spawns: 2, boardings: 1, impacts: 1, shots: 3, hits: 1, jumpReady: 1, jumps: 1, upgrades: 1, ended: 1, endReason: EndReason.Victory }))).toEqual(['alarm', 'impact', 'shot', 'hit', 'ready', 'jump', 'upgrade', 'victory']);
+  });
+  it('a purchase plays the upgrade cue once (spec Loop-ii section 2); the counter sums the levels and the reactor bars', () => {
+    expect(audioCues(Z, at({ upgrades: 1 }))).toEqual(['upgrade']); expect(audioCues(at({ upgrades: 2 }), at({ upgrades: 2 }))).toEqual([]);
+    const s = makeState(2, 1); s.run.upgrades[1] = 2; s.run.upgrades[5] = 1; s.run.reactorBonus = 3; expect(cueCounters(s).upgrades).toBe(6);
+    expect(() => createAudio().play('upgrade')).not.toThrow();
   });
   it('cueCounters reads the state', () => {
     const s = makeState(2, 1); s.telemetry.spawns.set([2, 1, 0, 3]); s.run.jumpCharge = 1;

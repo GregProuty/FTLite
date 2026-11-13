@@ -5,6 +5,9 @@ import { NodeType, EXIT_JUMP } from '../src/renderer/src/sim/run';
 import { NOTICE_LINE_MAX, scrapSurrender, scrapField, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_START, NEVER } from '../src/renderer/src/sim/tuning';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump, seatNavigator, placeEnemy, wake } from './helpers/sim';
+import { buyUpgrade, buyReactor } from '../src/renderer/src/sim/power';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { PURCHASE_NOTICE_SECONDS } from '../src/renderer/src/render/hudModel';
 
 // Spec Demo-i sections 4, 8 and 11.4 rule 1b: the two-line run notice both players read.
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : 'kb:1' }));
@@ -166,5 +169,28 @@ describe('runNotice: the sector jump awaiting its second Confirm (spec Loop-i am
     const s = fresh(); s.run.column = 5; chargeJump(s); s.run.jumpPending = EXIT_JUMP; s.run.jumpPendingTick = s.tick;
     expect(runNotice(s)[0]).toBe('Jump to sector 2? (1/2)');
     s.run.sector = 2; expect(runNotice(s)[0]).toBe('Escape: win the run? (1/2)');
+  });
+});
+
+// Spec Loop-ii section 2: a purchase reads on the notice for 3 s.
+describe('the purchase notice', () => {
+  it('Weapons upgraded to 4 for 3 s, then gone; Reactor +1 (11 bars); none before any purchase', () => {
+    const s = fresh(); expect(runNotice(s)).toEqual([]); grantScrap(s, 200); expect(PURCHASE_NOTICE_SECONDS).toBe(3);
+    buyUpgrade(s, StationKind.Weapons); expect(runNotice(s)).toEqual(['Weapons upgraded to 4']);
+    s.tick += 3 * 60 - 1; expect(runNotice(s)).toEqual(['Weapons upgraded to 4']); s.tick += 1; expect(runNotice(s)).toEqual([]);
+    buyReactor(s); expect(runNotice(s)).toEqual(['Reactor +1 (11 bars)']);
+    buyUpgrade(s, StationKind.LifeSupport); expect(runNotice(s)).toEqual(['Life Support upgraded to 4']);
+  });
+  it('priority: a pending jump and an open event come first; the purchase beats the shop and the ready drive', () => {
+    const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, 200); chargeJump(s); buyReactor(s);
+    expect(runNotice(s)).toEqual(['Reactor +1 (11 bars)']);
+    setEvent(s, 4); expect(runNotice(s)[0]).toBe('EVENT: Supply cache   vote 15s');
+  });
+  it('the purchase lines are ASCII and fit NOTICE_LINE_MAX', () => {
+    const s = fresh(); grantScrap(s, 9999); const lines: string[] = [];
+    for (let k = 0; k < 7; k++) { if (buyUpgrade(s, k)) lines.push(...runNotice(s)); }
+    for (let k = 0; k < 5; k++) { buyReactor(s); lines.push(...runNotice(s)); }
+    expect(lines).toHaveLength(11);
+    for (const l of lines) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[ -~]+$/.test(l)).toBe(true); }
   });
 });

@@ -1,14 +1,14 @@
 import { Container, Graphics, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, clockLine, sectorLine, navigationFooter, scienceFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, sectorLine, navigationFooter, scienceFooter, engineeringFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { drawIcon, tintColor } from './roomIcons';
 import { createMapPanel } from './mapPanel';
 import { featureReady } from './fallback';
 import type { IconKind, IconTint } from './roomIconModel';
 import { STATION_NAMES } from '../sim/stationKinds';
 import { SKILL_NAMES } from '../sim/skills';
-import { STATION_MAX, COOLANT_POOL } from '../sim/tuning';
+import { STATION_MAX, STATION_OVERDRIVE, UPGRADE_MAX } from '../sim/tuning';
 
 const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a, CALL = 0xffd75a;   // CALL: a row asked for by a Power callout (spec Coop-i section 3)
 const LINE = 18;                 // px per text line at 16 px m5x7
@@ -31,17 +31,19 @@ export function createHud(parent: Container, assets: GameAssets) {
     return { root, set(frac) { fill.width = Math.max(0, Math.min(1, frac)) * w; fill.visible = frac > 0; } };
   };
 
-  const CELL = 8, MAX_CELLS = Math.max(...STATION_MAX) + 2;   // cells per row: the largest station maximum plus the upgrade cell and the overdrive cell
-  const cellRow = (withGlyph = false): { root: Container; set(o: { icon?: IconKind; iconTint?: IconTint; name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean; heat?: number; coolant?: number }): void } => {
+  const CELL = 7, CELL_STEP = CELL + 2, MAX_CELLS = Math.max(...STATION_MAX) + UPGRADE_MAX + STATION_OVERDRIVE;   // cells per row: the largest station maximum plus the bought levels and the overdrive cell (spec Loop-ii section 1)
+  const STATUS_X = 112 + MAX_CELLS * CELL_STEP + 4, COOLANT_X = STATUS_X + 34;
+  const cellRow = (withGlyph = false): { root: Container; set(o: { icon?: IconKind; iconTint?: IconTint; name: string; level: number; max: number; status: string; cursor: boolean; tint: number; failed?: boolean; heat?: number; coolant?: number; cols?: [string, string] }): void } => {
     const root = new Container();
     const mark = text(16, TEXT); mark.text = '>'; mark.visible = false; root.addChild(mark);
     const name = text(); name.position.set(withGlyph ? 26 : 12, 1); root.addChild(name);
     const glyph = new Graphics(); glyph.position.set(12 + 6, 10); root.addChild(glyph); let glyphKey = '';
-    const cells = Array.from({ length: MAX_CELLS }, (_, c) => { const sp = new Sprite(assets.texture('ui.bar.bg')); sp.width = CELL; sp.height = CELL; sp.position.set(112 + c * (CELL + 2), 4); root.addChild(sp); return sp; });
-    const heatBg = new Sprite(assets.texture('ui.bar.bg')); heatBg.position.set(112, 14); heatBg.width = MAX_CELLS * (CELL + 2) - 2; heatBg.height = 2; heatBg.visible = false; root.addChild(heatBg);
+    const cells = Array.from({ length: MAX_CELLS }, (_, c) => { const sp = new Sprite(assets.texture('ui.bar.bg')); sp.width = CELL; sp.height = CELL; sp.position.set(112 + c * CELL_STEP, 4); root.addChild(sp); return sp; });
+    const heatBg = new Sprite(assets.texture('ui.bar.bg')); heatBg.position.set(112, 14); heatBg.width = MAX_CELLS * CELL_STEP - 2; heatBg.height = 2; heatBg.visible = false; root.addChild(heatBg);
     const heatFill = new Sprite(assets.texture('ui.bar.fill')); heatFill.position.set(112, 14); heatFill.height = 2; heatFill.tint = WARN; heatFill.visible = false; root.addChild(heatFill);
-    const status = text(16, WARN); status.position.set(150, 1); root.addChild(status);
-    const coolant = text(16, DIM); coolant.position.set(196, 1); root.addChild(coolant);
+    const status = text(16, WARN); status.position.set(STATUS_X, 1); root.addChild(status);
+    const coolant = text(16, DIM); coolant.position.set(COOLANT_X, 1); root.addChild(coolant);
+    const colA = text(); colA.position.set(124, 1); root.addChild(colA); const colB = text(); colB.position.set(212, 1); root.addChild(colB);   // the Upgrades page's level and price columns
     return {
       root,
       set(o) {
@@ -54,6 +56,7 @@ export function createHud(parent: Container, assets: GameAssets) {
         heatBg.visible = heat > 0; heatFill.visible = heat > 0; heatFill.width = Math.max(0, Math.min(1, heat)) * heatBg.width;
         status.text = o.status; status.tint = o.status === 'OFF' || o.status === 'FAIL' ? WARN : DIM;   // occupant tags are informational, not warnings
         coolant.text = o.coolant ? `C${o.coolant}` : '';
+        colA.text = o.cols?.[0] ?? ''; colB.text = o.cols?.[1] ?? ''; colA.tint = o.tint; colB.tint = o.tint;
       }
     };
   };
@@ -90,13 +93,15 @@ export function createHud(parent: Container, assets: GameAssets) {
     const progress = bar(216); progress.root.position.set(0, LINE * 4 - 1); progress.root.visible = false;   // under line 4, not across it (Coop-i visual check)
     root.addChild(name, hp.root, vote, line2, line3, line4, progress.root);
     const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
-    consoleRoot.addChild(panel(0, 0, 308, 8 * LINE + 12));
-    const consoleRows = Array.from({ length: 7 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });
+    const consolePanel = panel(0, 0, 308, 8 * LINE + 12); consoleRoot.addChild(consolePanel);
+    const consoleRows = Array.from({ length: 8 }, (_, i) => { const r = cellRow(); r.root.position.set(8, 6 + i * LINE); consoleRoot.addChild(r.root); return r; });   // seven rows; the Engineering card uses an eighth (UPGRADES, spec Loop-ii section 2)
     const consoleSelector = new Container(); consoleSelector.position.set(8, 6); consoleSelector.visible = false; consoleRoot.addChild(consoleSelector);
     const consoleFooter = new Container(); consoleFooter.position.set(8, 6 + 7 * LINE); consoleRoot.addChild(consoleFooter);
     const consoleBar = bar(216); consoleBar.root.position.set(8, 6 + 7 * LINE + 14); consoleBar.root.visible = false; consoleRoot.addChild(consoleBar.root);   // a 2 px strip under the footer text: the Weapons footer now spans the row
     for (const c of consoleBar.root.children) (c as Sprite).height = 2;
-    return { name, vote, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar };
+    /** Size the card for 7 or 8 rows: it grows upward from the player block, the footer and strip follow the last row. */
+    const sizeCard = (rows: number) => { consolePanel.height = (rows + 1) * LINE + 12; consoleRoot.position.y = y - ((rows + 1) * LINE + 16); consoleFooter.position.y = 6 + rows * LINE; consoleBar.root.position.y = 6 + rows * LINE + 14; };
+    return { name, vote, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleRows, consoleSelector, consoleFooter, consoleBar, sizeCard };
   });
 
   const overlay = new Container(); overlay.visible = false;
@@ -144,11 +149,18 @@ export function createHud(parent: Container, assets: GameAssets) {
     fillRow(ui.line4, [{ text: `${p.character.name}  ${SKILL_NAMES.map((n, k) => `${n[0]}${p.skills[k]}`).join(' ')}`, tint: DIM }]);
     ui.consoleRoot.visible = p.console !== null;
     ui.consoleBar.root.visible = false; ui.consoleSelector.visible = false;
+    const engineering = !!p.console && 'rows' in p.console && !('kind' in p.console);
+    ui.sizeCard(engineering ? 8 : 7);
     if (p.console && 'rows' in p.console && !('kind' in p.console)) {   // the Navigation panel now has rows too
       const c = p.console;
-      c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : r.unpowered ? 'OFF' : '', failed: r.failed, cursor: k === c.cursor, tint: flashOn.has(r.kind) ? CALL : k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
-      ui.consoleRows.forEach((r) => { r.root.visible = true; });
-      fillRow(ui.consoleFooter, [{ text: `pool ${c.pool}   coolant ${c.coolantFree}/${COOLANT_POOL}`, tint: DIM }]);
+      if (c.page === 1) {   // the Upgrades page (spec Loop-ii section 2): kinds, Reactor, BACK; price columns; the scrap footer
+        ui.consoleRows.forEach((r, k) => { const u = c.upgrades[k]; r.root.visible = !!u; if (u) r.set({ name: u.name, level: 0, max: 0, status: '', cursor: u.cursor, tint: u.cursor ? TEXT : u.enabled ? DIM : FAINT, cols: [u.level, u.price] }); });
+      } else {
+        c.rows.forEach((r, k) => ui.consoleRows[k]!.set({ name: r.name, level: r.level, max: r.max, status: r.failed ? 'FAIL' : r.unpowered ? 'OFF' : '', failed: r.failed, cursor: k === c.cursor, tint: flashOn.has(r.kind) ? CALL : k === c.cursor ? TEXT : DIM, heat: r.heat, coolant: r.coolant }));
+        const up = c.cursor === c.rows.length; ui.consoleRows[c.rows.length]!.set({ name: 'UPGRADES', level: 0, max: 0, status: '', cursor: up, tint: up ? TEXT : DIM });
+        ui.consoleRows.forEach((r) => { r.root.visible = true; });
+      }
+      fillRow(ui.consoleFooter, [{ text: engineeringFooter(c), tint: DIM }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'weapons') {
       const c = p.console;
       fillRow(ui.consoleSelector, ['Beam F1', 'F2', 'F3', 'Torp'].map((label, n) => ({ text: label, tint: n === c.selector ? TEXT : DIM })));
@@ -189,6 +201,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       ui.consoleRows.forEach((r) => { r.root.visible = false; });
       fillRow(ui.consoleFooter, []);
     }
+    if (!engineering) ui.consoleRows[7]!.root.visible = false;   // the eighth row is Engineering's alone
     ui.progress.root.visible = p.progress > 0; ui.progress.set(p.progress);
   }
 

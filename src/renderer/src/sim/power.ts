@@ -79,6 +79,8 @@ export function shedPower(state: SimState): void {
 
 /** run.boughtKind (and the Upgrades page row) for a reactor bar; a station kind otherwise (spec Loop-ii rule U2). */
 export const REACTOR_ROW = STATION_COUNT;
+/** The Upgrades page's BACK row, after the reactor. */
+export const BACK_ROW = STATION_COUNT + 1;
 /** Upgradeable kinds in StationKind order, Engineering excluded: its level drives no output (spec Run-ii section 8, Loop-ii amendment A1). */
 export const UPGRADE_KINDS = [StationKind.Navigation, StationKind.Weapons, StationKind.Science, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors] as const;
 /** The next level's price with `owned` levels bought (spec Loop-ii section 1): 30, 45, 60. */
@@ -102,4 +104,5 @@ export function buyReactor(state: SimState): boolean {
   if (!canBuyReactor(state)) return false;
   spendScrap(state, reactorPrice(state.run.reactorBonus)); state.run.reactorBonus++; state.power.capacity++;
   state.telemetry.purchases++; state.run.boughtTick = state.tick; state.run.boughtKind = REACTOR_ROW; return true;
-}
+}/** The Upgrades page's rows as cursor values (spec Loop-ii rule U2): the upgradeable kinds on the ship, then REACTOR_ROW, then BACK_ROW. */
+export function upgradeRows(state: SimState): number[] { return [...UPGRADE_KINDS.filter((k) => state.derived.stationOfKind[k]! >= 0), REACTOR_ROW, BACK_ROW]; }

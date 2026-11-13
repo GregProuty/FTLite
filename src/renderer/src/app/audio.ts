@@ -14,6 +14,7 @@ const CUES: Record<Cue, Tone[]> = {
   hit: [tone('triangle', 1320, 1320, 0, 0.05)],
   ready: [tone('sine', 523, 523, 0, 0.12), tone('sine', 784, 784, 0.12, 0.12)],
   jump: [tone('sine', 220, 880, 0, 0.4)],
+  upgrade: [tone('triangle', 392, 392, 0, 0.08), tone('triangle', 587, 587, 0.09, 0.08), tone('triangle', 784, 784, 0.18, 0.12)],
   victory: [tone('sine', 523, 523, 0, 0.15), tone('sine', 659, 659, 0.15, 0.15), tone('sine', 784, 784, 0.3, 0.15)],
   defeat: [tone('sawtooth', 220, 110, 0, 0.6)],
   callout: [tone('triangle', 988, 988, 0, 0.05, 0.6), tone('triangle', 1319, 1319, 0.07, 0.07, 0.6)]

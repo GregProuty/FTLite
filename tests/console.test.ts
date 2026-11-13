@@ -3,13 +3,13 @@ import fc from 'fast-check';
 import type { Intent } from '../src/shared/intent';
 import { coolantUsed } from '../src/renderer/src/sim/heat';
 import { Seated, Position, Life, LifeState, Health } from '../src/renderer/src/sim/components';
-import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
 import { confirmTarget, ConfirmKind, interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
-import { failStation, powerPool, maxLevel } from '../src/renderer/src/sim/power';
+import { failStation, powerPool, maxLevel, baseMax, REACTOR_ROW } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { TORP_START, REPAIR_TIME_POWER, STICK_REPEAT_TICKS, HEAT_MAX, HEAT_RISE, HEAT_COOL_UNIT, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY } from '../src/renderer/src/sim/tuning';
+import { TORP_START, REPAIR_TIME_POWER, STICK_REPEAT_TICKS, HEAT_MAX, HEAT_RISE, HEAT_COOL_UNIT, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY, REACTOR_CAPACITY, STATION_MAX } from '../src/renderer/src/sim/tuning';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
@@ -17,7 +17,7 @@ import { Weapon } from '../src/renderer/src/sim/weapons';
 import { buildHudModel } from '../src/renderer/src/render/hudModel';
 import type { SlotInfo } from '../src/renderer/src/input/deviceManager';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { makeState as makeAnyState, intents, run, teleport, seconds, placeDebris, overdrive, room, cutterState, quiet } from './helpers/sim';
+import { makeState as makeAnyState, intents, run, teleport, seconds, placeDebris, overdrive, room, cutterState, quiet, grantScrap } from './helpers/sim';
 import { doorsCursorCount, doorsCursorTarget } from '../src/renderer/src/sim/doors';
 import { stationOnline } from '../src/renderer/src/sim/stations';
 // Heat is the subject here: pin a quirk that leaves it alone (Old Drive), so the seed's natural Hot Reactor draw does not shift every figure (spec Run-iii section 5).
@@ -426,5 +426,57 @@ describe('power repair', () => {
     at(a, 0, eng); at(b, 0, eng);
     run(a, 60, script); run(b, 60, script);
     expect(hashState(a)).toBe(hashState(b));
+  });
+});
+
+// Spec Loop-ii section 2 and rules U2, U4: the Engineering card's UPGRADES row and Upgrades page.
+describe('Engineering Upgrades page', () => {
+  const UPGRADES = STATION_COUNT, BACK = STATION_COUNT + 1;
+  const seat = (scrap = 200) => { const s = makeState(2), eng = idx(s, StationKind.Engineering); quiet(s); sitDown(s, 0, eng); grantScrap(s, scrap); return { s, eng }; };
+  const edge = (s: ReturnType<typeof makeState>, i: Partial<Intent>) => { run(s, 1, () => intents(i)); run(s, 1, () => intents({})); };
+  const levels = (s: ReturnType<typeof makeState>) => [Array.from(s.stations.level), Array.from(s.stations.coolant), Array.from(s.run.upgrades), s.run.reactorBonus, s.power.capacity, s.run.scrap];
+  it('the power page gains the UPGRADES row after Doors: Down from Doors and Up from Navigation reach it; Left/Right and coolant are inert on it', () => {
+    const { s, eng } = seat(); s.stations.cursor[eng] = StationKind.Doors;
+    edge(s, down); expect(s.stations.cursor[eng]).toBe(UPGRADES);
+    edge(s, down); expect(s.stations.cursor[eng]).toBe(StationKind.Navigation);
+    edge(s, up); expect(s.stations.cursor[eng]).toBe(UPGRADES);
+    const before = levels(s); edge(s, left); edge(s, right); expect(levels(s)).toEqual(before); expect(s.stations.page[eng]).toBe(0);
+    edge(s, up); expect(s.stations.cursor[eng]).toBe(StationKind.Doors);
+  });
+  it('Confirm on UPGRADES opens the page on its first row without touching coolant; the power page is otherwise unchanged', () => {
+    const { s, eng } = seat(); s.stations.cursor[eng] = UPGRADES; const before = levels(s);
+    run(s, 1, () => intents(confirm)); expect([s.stations.page[eng], s.stations.cursor[eng]]).toEqual([1, StationKind.Navigation]); expect(levels(s)).toEqual(before);
+    const p = seat(); p.s.stations.cursor[p.eng] = StationKind.Weapons; run(p.s, 1, () => intents(confirm)); expect(p.s.stations.coolant[idx(p.s, StationKind.Weapons)]).toBe(1); expect(p.s.stations.page[p.eng]).toBe(0);   // coolant still cycles on a station row
+  });
+  it('Up/Down wrap over the upgradeable kinds (Engineering skipped), Reactor and BACK; Left/Right do nothing', () => {
+    const { s, eng } = seat(); s.stations.cursor[eng] = UPGRADES; run(s, 1, () => intents(confirm)); run(s, 1);
+    const seen: number[] = [s.stations.cursor[eng]!];
+    for (let k = 0; k < 8; k++) { edge(s, down); seen.push(s.stations.cursor[eng]!); }
+    expect(seen).toEqual([0, 1, 2, 4, 5, 6, REACTOR_ROW, BACK, 0]);
+    edge(s, up); expect(s.stations.cursor[eng]).toBe(BACK);
+    const before = levels(s); edge(s, left); edge(s, right); s.stations.cursor[eng] = StationKind.Weapons; edge(s, left); edge(s, right); expect(levels(s)).toEqual(before); expect(s.stations.page[eng]).toBe(1);
+  });
+  it('Confirm buys: a Weapons level for 30 then 45; a reactor bar for 25 arrives unpowered; maxed or unaffordable rows do nothing; BACK returns to UPGRADES on the power page', () => {
+    const { s, eng } = seat(200); s.stations.page[eng] = 1; s.stations.cursor[eng] = StationKind.Weapons; const used = Array.from(s.stations.level);
+    run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap, baseMax(s, StationKind.Weapons)]).toEqual([1, 170, STATION_MAX[StationKind.Weapons]! + 1]);
+    run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap]).toEqual([2, 125]);
+    run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap]).toEqual([3, 65]);
+    run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap, s.telemetry.purchases]).toEqual([3, 65, 3]);   // maxed
+    s.stations.cursor[eng] = REACTOR_ROW; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.power.capacity, s.run.reactorBonus, s.run.scrap, powerPool(s)]).toEqual([REACTOR_CAPACITY + 1, 1, 40, 2]);
+    expect(Array.from(s.stations.level)).toEqual(used);
+    grantScrap(s, 10); s.stations.cursor[eng] = StationKind.Science; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Science], s.run.scrap]).toEqual([0, 10]);   // 30 needed
+    s.stations.cursor[eng] = BACK; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.stations.page[eng], s.stations.cursor[eng]]).toEqual([0, UPGRADES]);
+  });
+  it('standing resets the page; sitting again starts on the power page at Engineering', () => {
+    const { s, eng } = seat(); s.stations.cursor[eng] = UPGRADES; run(s, 1, () => intents(confirm)); expect(s.stations.page[eng]).toBe(1);
+    run(s, 1, () => intents({ cancelPressed: true })); expect([Seated.station[s.crew[0]!], s.stations.page[eng]]).toEqual([-1, 0]);
+    s.stations.page[eng] = 1; sitDown(s, 0, eng); expect([s.stations.page[eng], s.stations.cursor[eng]]).toEqual([0, StationKind.Engineering]);
+    s.stations.page[eng] = 1; failStation(s, eng); expect([Seated.station[s.crew[0]!], s.stations.page[eng]]).toEqual([-1, 0]);   // a failure stands the officer
+  });
+  it('only an online, seated Engineering officer buys: an offline console refuses; a standing Confirm and another console never buy', () => {
+    const { s, eng } = seat(); s.stations.page[eng] = 1; s.stations.cursor[eng] = StationKind.Weapons; s.stations.failed[eng] = 1;   // failed under a seated officer (failStation would stand them)
+    run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap]).toEqual([0, 200]);
+    const t = makeState(2); quiet(t); grantScrap(t, 200); const w = idx(t, StationKind.Weapons); sitDown(t, 1, w); at(t, 0, idx(t, StationKind.Engineering)); t.stations.page[idx(t, StationKind.Engineering)] = 1;
+    run(t, 4, () => intents(confirm, confirm)); expect(Seated.station[t.crew[0]!]).toBe(idx(t, StationKind.Engineering)); expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.run.scrap]).toEqual([[0, 0, 0, 0, 0, 0, 0], 0, 200]);
   });
 });

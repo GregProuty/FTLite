@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
-import { buildHudModel, clockLine, sectorLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText } from '../src/renderer/src/render/hudModel';
+import { buildHudModel, clockLine, sectorLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText, upgradeRowText, engineeringFooter } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -10,7 +10,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
-import { failStation, repairStation, shiftBar } from '../src/renderer/src/sim/power';
+import { failStation, repairStation, shiftBar, buyUpgrade, buyReactor, REACTOR_ROW } from '../src/renderer/src/sim/power';
 import { HIT_FLASH_TICKS, SECTOR_COLUMNS, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_START, TORP_CAP, ENCOUNTER_MAX, STATION_MAX, BOARDER_HEALTH } from '../src/renderer/src/sim/tuning';
 import type { EngineeringPanel, WeaponsPanel, SciencePanel, NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { Skill } from '../src/renderer/src/sim/skills';
@@ -164,7 +164,7 @@ describe('buildHudModel', () => {
     expect(panel.cursor).toBe(StationKind.Weapons); expect(panel.pool).toBe(1);
     expect(panel.rows[StationKind.Weapons]).toEqual({ kind: 1, name: 'Weapons', level: 2, max: 3, failed: false, heat: 0, coolant: 0, overdriven: false, unpowered: false });
     expect(panel.coolantFree).toBe(COOLANT_POOL);
-    expect(panel.rows).toHaveLength(7);
+    expect(panel.rows).toHaveLength(7); expect(panel.page).toBe(0);
   });
   it('shows the Doors panel with the selected door, or No doors on a doorless ship', () => {
     const s = makeState(1);
@@ -587,5 +587,33 @@ describe('the standing Confirm prompt during votes and a pending jump (spec Coop
     const n = seatNavigator(s, 0); s.run.evadeUntilTick = s.tick + 30;
     const f = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
     expect(f.evadeChance).toBeCloseTo(Math.min(0.8, 2 * (EVADE_BASE + EVADE_SCALE * stationOutput(s, n))), 12);
+  });
+});
+
+// Spec Loop-ii section 2: the Engineering card's UPGRADES row, the Upgrades page and its footer.
+describe('the Upgrades page in the HUD model', () => {
+  const seat = (scrap: number) => { const s = makeState(1); quiet(s); const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 0, eng); grantScrap(s, scrap); return { s, eng }; };
+  const panelOf = (s: ReturnType<typeof makeState>) => buildHudModel(s, slots(1), 'running', '').players[0]!.console as EngineeringPanel;
+  it('the power page: the cursor on the UPGRADES row (index 7) and the pool footer', () => {
+    const { s, eng } = seat(120); s.stations.cursor[eng] = 7; const p = panelOf(s);
+    expect([p.page, p.cursor, p.scrap]).toEqual([0, 7, 120]); expect(engineeringFooter(p)).toBe(`pool 1   coolant ${COOLANT_POOL}/${COOLANT_POOL}`);
+  });
+  it('the Upgrades page rows, prices and footer, exactly; the cursor row; disabled rows', () => {
+    const { s, eng } = seat(120); s.stations.page[eng] = 1; s.stations.cursor[eng] = StationKind.Weapons; const p = panelOf(s);
+    expect(p.upgrades.map(upgradeRowText)).toEqual(['Navigation  lvl 2/5  30', 'Weapons  lvl 3/6  30', 'Science  lvl 2/5  30', 'Life Support  lvl 3/6  30', 'Medbay  lvl 2/5  30', 'Doors  lvl 1/4  30', 'Reactor  +1 bar  25', 'BACK']);
+    expect(p.upgrades.map((r) => r.cursor)).toEqual([false, true, false, false, false, false, false, false]);
+    expect(p.upgrades.map((r) => r.row)).toEqual([0, 1, 2, 4, 5, 6, REACTOR_ROW, REACTOR_ROW + 1]);
+    expect(p.upgrades.every((r) => r.enabled)).toBe(true); expect(engineeringFooter(p)).toBe('Scrap 120');
+    buyUpgrade(s, StationKind.Weapons); buyUpgrade(s, StationKind.Weapons); buyReactor(s); grantScrap(s, 40);
+    const q = panelOf(s); expect(upgradeRowText(q.upgrades[1]!)).toBe('Weapons  lvl 5/6  60'); expect(upgradeRowText(q.upgrades[6]!)).toBe('Reactor  +1 bar  35');
+    expect(q.upgrades.map((r) => r.enabled)).toEqual([true, false, true, true, true, true, true, true]);   // 60 needed for Weapons; BACK always
+    s.run.upgrades[StationKind.Weapons] = 3; s.run.reactorBonus = 5; grantScrap(s, 999);
+    const m = panelOf(s); expect(upgradeRowText(m.upgrades[1]!)).toBe('Weapons  lvl 6/6  MAX'); expect(upgradeRowText(m.upgrades[6]!)).toBe('Reactor  MAX'); expect([m.upgrades[1]!.enabled, m.upgrades[6]!.enabled]).toEqual([false, false]);
+    expect(engineeringFooter(m)).toBe('Scrap 999');
+  });
+  it('every Upgrades page line fits CONSOLE_LINE_MAX at any level', () => {
+    const { s, eng } = seat(999); s.stations.page[eng] = 1;
+    for (let lvl = 0; lvl <= 3; lvl++) { s.run.upgrades.fill(lvl); s.run.reactorBonus = Math.min(5, lvl * 2); for (const r of panelOf(s).upgrades) expect(upgradeRowText(r).length, upgradeRowText(r)).toBeLessThanOrEqual(CONSOLE_LINE_MAX); }
+    expect(engineeringFooter(panelOf(s)).length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
   });
 });

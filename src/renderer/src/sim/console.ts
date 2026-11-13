@@ -4,7 +4,7 @@ import { Seated } from './components';
 import { StationKind, STATION_COUNT } from './stationKinds';
 import { intentFor } from './step';
 import { standUp } from './stations';
-import { shiftBar, shedPower } from './power';
+import { shiftBar, shedPower, buyUpgrade, buyReactor, upgradeRows, REACTOR_ROW, BACK_ROW } from './power';
 import { cycleCoolant } from './heat';
 import { toggleSeal, cycleDoor, doorsCursorCount, doorsCursorTarget } from './doors';
 import { stationOnline } from './stations';
@@ -31,15 +31,32 @@ export function stickEdge(state: SimState, pid: number, moveX: number, moveY: nu
   rep[pid] = r; return Dir.None;
 }
 
+/** The power page's UPGRADES row (spec Loop-ii rule U2): after the station kinds. */
+export const UPGRADES_ROW = STATION_COUNT;
+
+/** Engineering input (spec Loop-ii rule U2). Power page: rows 0..STATION_COUNT (the last is UPGRADES); Left/Right route bars and Confirm cycles coolant on a station row, Confirm on UPGRADES opens the Upgrades page. Upgrades page: Up/Down over upgradeRows, Confirm buys or goes BACK, Left/Right inert. */
 function engineeringInput(state: SimState, i: number, dir: number, confirm: boolean): void {
   const c = state.stations.cursor;
-  if (dir === Dir.Up) c[i] = (c[i]! + STATION_COUNT - 1) % STATION_COUNT;
-  else if (dir === Dir.Down) c[i] = (c[i]! + 1) % STATION_COUNT;
-  else if (dir === Dir.Right || dir === Dir.Left) {
+  if (state.stations.page[i] === 1) {
+    const rows = upgradeRows(state), n = rows.length, at = Math.max(0, rows.indexOf(c[i]!));
+    if (dir === Dir.Up) c[i] = rows[(at + n - 1) % n]!;
+    else if (dir === Dir.Down) c[i] = rows[(at + 1) % n]!;
+    if (!confirm) return;
+    const row = c[i]!;
+    if (row === BACK_ROW) { state.stations.page[i] = 0; c[i] = UPGRADES_ROW; }
+    else if (stationOnline(state, i)) { if (row === REACTOR_ROW) buyReactor(state); else buyUpgrade(state, row); }   // spec Loop-ii rule U4: only at an online Engineering
+    return;
+  }
+  const n = STATION_COUNT + 1;
+  if (dir === Dir.Up) c[i] = (c[i]! + n - 1) % n;
+  else if (dir === Dir.Down) c[i] = (c[i]! + 1) % n;
+  else if ((dir === Dir.Right || dir === Dir.Left) && c[i]! < STATION_COUNT) {
     const target = state.derived.stationOfKind[c[i]!]!;
     if (target >= 0 && shiftBar(state, target, dir === Dir.Right ? 1 : -1)) state.skills.lastEngChangeTick = state.tick;
   }
-  if (confirm && cycleCoolant(state, state.derived.stationOfKind[c[i]!]!)) state.skills.lastEngChangeTick = state.tick;   // spec 2b-i section 5: the cursor's station after this tick's stick edge
+  if (!confirm) return;
+  if (c[i] === UPGRADES_ROW) { state.stations.page[i] = 1; c[i] = upgradeRows(state)[0]!; return; }
+  if (cycleCoolant(state, state.derived.stationOfKind[c[i]!]!)) state.skills.lastEngChangeTick = state.tick;   // spec 2b-i section 5: the cursor's station after this tick's stick edge
 }
 
 function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): void {

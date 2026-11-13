@@ -3,7 +3,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField } from '../sim/tuning';
+import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf, EXIT_JUMP, exitText } from '../sim/run';
 import { depthOf, peaceful } from '../sim/depth';
 import { EVENTS } from '../sim/events';
@@ -15,7 +15,7 @@ import { scienceLead, ObjectKind, evadeChance } from '../sim/debris';
 import { warnedTargets, ENEMY_SLOT, isEnemySlot, enemySystemOf } from '../sim/debrisTargets';
 import { EnemySystem, ENEMY_SYSTEM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, Encounter, lockActive, lockSecondsLeft } from '../sim/enemy';
 import { canLock } from '../sim/science';
-import { powerUsed, powerPool, powerCapacity, baseMax } from '../sim/power';
+import { powerUsed, powerPool, powerCapacity, baseMax, upgradeRows, upgradePrice, reactorPrice, canUpgrade, canBuyReactor, REACTOR_ROW, BACK_ROW } from '../sim/power';
 import { isOverdriven, coolantUsed } from '../sim/heat';
 import type { SlotInfo, SlotStatus } from '../input/deviceManager';
 import { PHASE_NAMES } from '../sim/director';
@@ -40,7 +40,20 @@ export interface HudPlayer {
 function thermal(state: SimState, i: number): { heat: number; coolant: number; overdriven: boolean } {
   return i < 0 ? { heat: 0, coolant: 0, overdriven: false } : { heat: state.stations.heat[i]! / HEAT_MAX, coolant: state.stations.coolant[i]!, overdriven: isOverdriven(state, i) };
 }
-export interface EngineeringPanel { rows: { kind: number; name: string; level: number; max: number; failed: boolean; heat: number; coolant: number; overdriven: boolean; unpowered: boolean }[]; cursor: number; pool: number; coolantFree: number }
+export interface EngineeringPanel { rows: { kind: number; name: string; level: number; max: number; failed: boolean; heat: number; coolant: number; overdriven: boolean; unpowered: boolean }[]; cursor: number; pool: number; coolantFree: number; page: number; upgrades: UpgradeRow[]; scrap: number }   // cursor STATION_COUNT: the UPGRADES row; page 1: the Upgrades page (spec Loop-ii section 2)
+/** One Upgrades page row (spec Loop-ii section 2): `Weapons  lvl 3/6  45`, `Reactor  +1 bar  35`, `BACK`; row is the sim cursor value. */
+export interface UpgradeRow { row: number; name: string; level: string; price: string; enabled: boolean; cursor: boolean }
+export function upgradeRowText(r: UpgradeRow): string { return [r.name, r.level, r.price].filter((t) => t).join('  '); }
+/** The Engineering footer: the pool and coolant on the power page, the crew's scrap on the Upgrades page. */
+export function engineeringFooter(p: EngineeringPanel): string { return p.page === 1 ? `Scrap ${p.scrap}` : `pool ${p.pool}   coolant ${p.coolantFree}/${COOLANT_POOL}`; }
+function upgradeRowsOf(state: SimState, cursor: number): UpgradeRow[] {
+  return upgradeRows(state).map((row) => {
+    if (row === BACK_ROW) return { row, name: 'BACK', level: '', price: '', enabled: true, cursor: row === cursor };
+    if (row === REACTOR_ROW) { const maxed = state.run.reactorBonus >= REACTOR_BONUS_MAX; return { row, name: 'Reactor', level: maxed ? '' : '+1 bar', price: maxed ? 'MAX' : `${reactorPrice(state.run.reactorBonus)}`, enabled: canBuyReactor(state), cursor: row === cursor }; }
+    const owned = state.run.upgrades[row]!, maxed = owned >= UPGRADE_MAX;
+    return { row, name: STATION_NAMES[row]!, level: `lvl ${baseMax(state, row)}/${STATION_MAX[row]! + UPGRADE_MAX}`, price: maxed ? 'MAX' : `${upgradePrice(owned)}`, enabled: canUpgrade(state, row), cursor: row === cursor };
+  });
+}
 /** The Doors card (spec Demo-vii section 1): the selection, its state and what Confirm does; item null when the ship has neither doors nor airlocks. */
 export type DoorsPanel = { kind: 'doors'; item: string; status: string; action: string; openAirlocks: number } | { kind: 'doors'; item: null };
 export type TargetKindName = 'debris' | 'shot' | 'rock' | 'enemy';
@@ -193,12 +206,13 @@ export const LOBBY_LINES: readonly string[] = [
   'Events: everyone votes with Confirm. Jumps need a second Confirm'
 ];
 
-/** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b, Demo-vi section 2): a pending event, the encounter (won, over, contact), a surrender offer, a shop node, then the ready drive. */
-export const DROP_NOTICE_SECONDS = 4;
+/** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b, Demo-vi section 2, Loop-ii section 2): a pending jump, a pending event, a purchase for 3 s, the encounter (won, over, contact), a surrender offer, a shop node, then the ready drive. */
+export const DROP_NOTICE_SECONDS = 4, PURCHASE_NOTICE_SECONDS = 3;
 export function runNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
   if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!, left = r.eventOpenTick < 0 ? VOTE_SECONDS : Math.max(0, Math.ceil((r.eventOpenTick + VOTE_SECONDS * TICK_HZ - state.tick) / TICK_HZ)); return [`EVENT: ${ev.title}   vote ${left}s`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
+  if (r.boughtTick >= 0 && state.tick - r.boughtTick < PURCHASE_NOTICE_SECONDS * TICK_HZ) return [r.boughtKind === REACTOR_ROW ? `Reactor +1 (${state.power.capacity} bars)` : `${STATION_NAMES[r.boughtKind]} upgraded to ${baseMax(state, r.boughtKind)}`];   // a purchase at the Engineering console (spec Loop-ii section 2)
   const window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
   const field = contentOf(state) === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
   if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return field ? [`FIELD CLEARED   +${scrapField(depthOf(state))} scrap`, 'Drive charging fast'] : [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, 'Drive charging fast'];
@@ -221,7 +235,8 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
   const d = state.derived;
   if (kind === StationKind.Engineering) {
     const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: baseMax(state, k), failed: si >= 0 && state.stations.failed[si] === 1, unpowered: unpoweredAt(state, k, si), ...thermal(state, si) }; });
-    return { rows, cursor: state.stations.cursor[i]!, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state) };
+    const cursor = state.stations.cursor[i]!;
+    return { rows, cursor, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state), page: state.stations.page[i]!, upgrades: upgradeRowsOf(state, cursor), scrap: state.run.scrap };
   }
   if (kind === StationKind.Doors) {
     const t = doorsCursorTarget(state, state.stations.cursor[i]!);

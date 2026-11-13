@@ -26,7 +26,7 @@ export function sitDown(state: SimState, pid: number, i: number): void {
   Seated.station[eid] = i; state.stations.occupant[i] = pid;
   const t = d.stationTile[i]!, tx = t % d.width;
   Position.x[eid] = tx + 0.5; Position.y[eid] = (t - tx) / d.width + 0.5;
-  state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0;
+  state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0; state.stations.page[i] = 0;   // every seat opens on the power page (spec Loop-ii section 2)
   const kind = d.stationKind[i]!;
   state.stations.cursor[i] = kind === StationKind.Engineering ? StationKind.Engineering
     : kind === StationKind.Doors ? (d.doorEdges.length + d.airlockRoom.length ? 0 : -1)
@@ -38,7 +38,7 @@ export function sitDown(state: SimState, pid: number, i: number): void {
 export function standUp(state: SimState, pid: number): void {
   const eid = state.crew[pid]!, i = Seated.station[eid]!;
   if (i < 0) return;
-  Seated.station[eid] = -1; state.stations.occupant[i] = -1;
+  Seated.station[eid] = -1; state.stations.occupant[i] = -1; state.stations.page[i] = 0;   // standing resets the Engineering page (spec Loop-ii section 2)
   state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0;
   if (state.derived.stationKind[i] === StationKind.Science) state.science.scanning = 0;   // spec 2b-ii section 4: any stand pauses the scan
 }
