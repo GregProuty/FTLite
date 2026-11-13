@@ -55,3 +55,4 @@ Made during implementation (2026-11-12):
 9. **The gate floor.** `gate-skiff` is gate-duo's loop on the Skiff (no jump-charge pin; the captain bot flies from the Helm group). Its floor is 14, just under the observed minimum 15.0 (seed 2), not gate-duo's 25: traced, an enemy hit at 208 s sets Ops on fire and the healthier bot fights it alone from 52.6 to 15.0 while the hurt one (19.0, below the bots' retreat health) keeps out. The bots never switch tabs.
 10. **Known left-overs.** The Doors console's door-selection outline shows whenever the Ops officer is seated, on any tab. The three consoles on the Ops tile each roll separately when an enemy shot lands in Ops.
 
+11. **The door outline follows the tab (Claude).** Amendment 10's left-over fixed: the door-selection outline shows only while the seated officer's active tab is Doors (`Seated.station` equals the Doors station); a test in consoleGroups.test.ts.

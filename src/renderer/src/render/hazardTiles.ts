@@ -2,6 +2,7 @@ import type { Derived } from '../sim/ship/derived';
 import type { SimState } from '../sim/state';
 import { StationKind } from '../sim/stationKinds';
 import { doorsCursorTarget } from '../sim/doors';
+import { Seated } from '../sim/components';
 
 /** Stable order of a room's tiles: a bijective hash of the tile index, so the burning subset grows as a prefix (spec §4). */
 function stableOrder(tiles: readonly number[]): number[] {
@@ -79,7 +80,8 @@ export function ventParticles(_out: { dx: number; dy: number }, k: number, tick:
 /** The tile of the seated Doors operator's selection (door or airlock), or -1 when nobody is seated or nothing is selected. */
 export function doorsCursorTile(state: SimState): number {
   const d = state.derived, i = d.stationOfKind[StationKind.Doors]!;
-  if (i < 0 || state.stations.occupant[i]! < 0) return -1;
+  const occ = i >= 0 ? state.stations.occupant[i]! : -1;
+  if (occ < 0 || Seated.station[state.crew[occ]!] !== i) return -1;   // on a console group, only while the officer's active tab is Doors (Skiff amendment 11)
   const t = doorsCursorTarget(state, state.stations.cursor[i]!);
   if (!t) return -1;
   return t.kind === 'door' ? d.edgeTile[t.edge]! : d.airlockTile[t.index]!;

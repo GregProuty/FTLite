@@ -130,3 +130,14 @@ describe('seating at a console group', () => {
     const h2 = hashState(s); s.groups.bar[0] = 1; expect(hashState(s)).not.toBe(h2);
   });
 });
+
+describe('the door-selection outline on a console group (Skiff amendment 11)', () => {
+  it('shows only while the Ops officer is on the Doors tab', async () => {
+    const { doorsCursorTile } = await import('../src/renderer/src/render/hazardTiles');
+    const s = state(); sitAt(s, 12, 2);
+    expect(doorsCursorTile(s)).toBe(-1);                                   // Science tab
+    edge(s, 0, -1); edge(s, 1, 0); expect(doorsCursorTile(s)).toBe(-1);    // Engineering tab
+    edge(s, 1, 0); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Doors));
+    expect(doorsCursorTile(s)).toBeGreaterThanOrEqual(0);                  // Doors tab: the selected door
+  });
+});
