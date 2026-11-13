@@ -284,7 +284,7 @@ describe('beams under the Science lock (spec Coop-i section 1, amendments C1 and
 import { WEAPON_DEFS, LootWeapon, weaponDef } from '../src/renderer/src/sim/weaponDefs';
 import { selectorList, weaponsInput } from '../src/renderer/src/sim/weapons';
 import { enemySysUp, enemyWeaponCharge, enemySystem } from '../src/renderer/src/sim/enemy';
-import { ION_SECONDS, WEAPON_DROP_CHANCE, SLOT_LEVELS, TORP_HIT_BASE, TORP_HIT_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, ENEMY_EVADE, TICK_HZ, TORP_START } from '../src/renderer/src/sim/tuning';
+import { ION_SECONDS, WEAPON_DROP_CHANCE, SLOT_LEVELS, TORP_HIT_BASE, TORP_HIT_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, ENEMY_EVADE, TICK_HZ, TORP_START, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE } from '../src/renderer/src/sim/tuning';
 import { ENEMY_ENGINES_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { stationOutput } from '../src/renderer/src/sim/stations';
 import { shotsInFlight } from '../src/renderer/src/sim/debris';
@@ -451,5 +451,30 @@ describe('grantWeapon: slot, cargo, or sold for half', () => {
   });
   it('a fresh state has no loot stamp', () => {
     const s = makeState(1); expect([s.weapons.lootTick, s.weapons.lootId, s.weapons.lootPlace, s.weapons.lootBought, s.run.shopWeapon]).toEqual([-1, 0, 0, 0, 0]);
+  });
+});
+
+describe('the last shot names its weapon and its damage (spec Demo-xiv section 2)', () => {
+  const seedWhere = (ok: (u: number) => boolean): number => { for (let seed = 1; seed <= 200; seed++) if (ok(nextFloat(createRng(seed)))) return seed; throw new Error('no seed'); };
+  const HIT = seedWhere((u) => u < 0.3), MISS = seedWhere((u) => u > 0.97);
+  const atEnemy = (slot: number, selector: number, seed: number, freq = 1) => {
+    const s = makeState(2); s.director.nextSpawnTick = 1e9; placeEnemy(s, ENEMY_HULL, freq); s.enemy.nextShotTick = 1e9;
+    const i = wpn(s); sitDown(s, 0, i); s.stations.cursor[i] = slot; s.weapons.charge = 1; s.weapons.torpedoLoaded = 1; s.weapons.selector = selector; s.rng.combat.s = seed; s.tick = 777;
+    return s;
+  };
+  const fired = (s: ReturnType<typeof makeState>) => { fireWeapon(s); return [s.weapons.lastShotSelector, s.weapons.lastShotDamage]; };
+  it('starts at selector 0 and no damage', () => { const s = makeState(1); expect([s.weapons.lastShotSelector, s.weapons.lastShotDamage]).toEqual([0, 0]); });
+  it('the Pulse: the selector fired and its hull damage on a hit; 0 on a miss or a strip', () => {
+    expect(fired(atEnemy(ENEMY_WEAPONS_SLOT, Weapon.BeamF1, HIT))).toEqual([Weapon.BeamF1, ENEMY_BEAM_DAMAGE]);
+    expect(fired(atEnemy(ENEMY_SLOT, Weapon.BeamF3, MISS))).toEqual([Weapon.BeamF3, 0]);
+    expect(fired(atEnemy(ENEMY_SLOT, Weapon.BeamF2, HIT))).toEqual([Weapon.BeamF2, 0]);   // freq 1 shields, F2 strips
+  });
+  it('the torpedo: 35 on a hit', () => { expect(fired(atEnemy(ENEMY_SHIELDS_SLOT, Weapon.Torpedo, HIT))).toEqual([Weapon.Torpedo, ENEMY_TORP_DAMAGE]); });
+  it('a refused fire leaves both alone', () => { const s = atEnemy(ENEMY_SLOT, Weapon.BeamF2, HIT); s.weapons.charge = 0; expect(fired(s)).toEqual([0, 0]); });
+  it('a loot volley: the slot selector and the volley total (the Burst, both shots landing on a lowered shield)', () => {
+    const probe = lootArmed(LootWeapon.Burst), thr = enemyBeamThreshold(probe.s, probe.out);
+    const { s } = lootArmed(LootWeapon.Burst); s.enemy.shieldLayers = 0; s.rng.combat.s = seedFor((r) => nextFloat(r) < thr && nextFloat(r) < thr);
+    expect(fired(s)).toEqual([Weapon.Slot1, 20]);
+    const m = lootArmed(LootWeapon.Missile, 1); m.s.rng.combat.s = seedFor((r) => nextFloat(r) < TORP_HIT_BASE); expect(fired(m.s)).toEqual([Weapon.Slot2, 25]);
   });
 });

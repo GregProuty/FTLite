@@ -71,7 +71,7 @@ function fireLoot(state: SimState, wpn: number, c: number, k: number): boolean {
   if (d.kind === 'missile') { if (w.torpedoStock <= 0) return false; w.torpedoStock -= 1; }
   w.charge2[k] = 0;
   const output = stationOutput(state, wpn), e = state.enemy;
-  let any = false, last = 0;
+  let any = false, last = 0, dealt = 0;
   for (let n = 0; n < d.shots; n++) {
     if (enemy ? !e.present : !state.debris.active[c]) break;   // the first shot destroyed it: no further draw
     const u = nextFloat(state.rng.combat); state.telemetry.shots++;
@@ -90,13 +90,13 @@ function fireLoot(state: SimState, wpn: number, c: number, k: number): boolean {
     else if (result === 2) {
       state.telemetry.hits++;
       if (d.kind === 'ion') { const sys = enemySystemOf(c); if (sys >= 0) e.ionUntil[sys] = state.tick + ION_SECONDS * TICK_HZ; }   // no layer up: a system row is disabled, the hull row takes nothing
-      else if (enemy) { startEnemyProblem(state, c); damageEnemy(state, c, d.damage); }
+      else if (enemy) { startEnemyProblem(state, c); damageEnemy(state, c, d.damage); dealt += d.damage; }
       else removeDebris(state, c);
     }
     if (result) any = true;
     last = result;
   }
-  w.lastShotTick = state.tick; w.lastShotTarget = c; w.lastShotResult = last; w.lastShotKind = d.kind === 'missile' ? 1 : 0;
+  w.lastShotTick = state.tick; w.lastShotTarget = c; w.lastShotResult = last; w.lastShotKind = d.kind === 'missile' ? 1 : 0; w.lastShotSelector = Weapon.Slot1 + k; w.lastShotDamage = dealt;
   state.skills.lastShotTick = state.tick; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
   return any;   // as the beam: true on a hit or a strip
 }
@@ -126,12 +126,12 @@ export function fireWeapon(state: SimState): boolean {
       if (locked) state.telemetry.lockedShots++;
     } else hit = beamHits(u, output, w.selector + 1 === db.frequency[c]);   // the true frequency decides against debris, scanned or not
   }
-  w.lastShotTick = state.tick; w.lastShotTarget = c; w.lastShotResult = stripped ? 1 : hit ? 2 : 0; w.lastShotKind = w.selector === Weapon.Torpedo ? 1 : 0;   // for the renderer's bolt, before a kill retargets the cursor (spec Demo-viii section 2, amendment A5)
+  w.lastShotTick = state.tick; w.lastShotTarget = c; w.lastShotResult = stripped ? 1 : hit ? 2 : 0; w.lastShotKind = w.selector === Weapon.Torpedo ? 1 : 0; w.lastShotSelector = w.selector; w.lastShotDamage = 0;   // for the renderer's bolt, before a kill retargets the cursor (spec Demo-viii section 2, amendment A5)
   state.skills.lastShotTick = state.tick; state.telemetry.shots++; addXp(state, state.stations.occupant[wpn]!, Skill.Weapons, XP_PER_SHOT);
   if (stripped) stripLayer(state);   // an untuned hit strips a layer and nothing else
   else if (hit) {
     state.telemetry.hits++;
-    if (enemy) { startEnemyProblem(state, c); damageEnemy(state, c, w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE); } else removeDebris(state, c);
+    if (enemy) { const dmg = w.selector === Weapon.Torpedo ? ENEMY_TORP_DAMAGE : ENEMY_BEAM_DAMAGE; startEnemyProblem(state, c); damageEnemy(state, c, dmg); w.lastShotDamage = dmg; } else removeDebris(state, c);
   }
   return hit;
 }
