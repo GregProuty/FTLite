@@ -124,3 +124,4 @@ New run fields: `sector`, `fuel`, `pursuit`, `pursuitFought` (0/1 for the curren
 - `gate-boarding`: 29.1 / 24.0 / 48.9 -> 32.5 / 49.9 / 48.9 (no health floor). Cause: the captain's jumps land on a different map.
 - `gate-jump`: end tick 25207 (7 jumps) -> 64818 (18 jumps, six waits for help while the drive charged). `gate-run` passes with every arrival paid by depth.
 - `npm run acceptance 5 1`: the bots still reach node 4 in five minutes at every crew size; spawns, impacts and idle streaks shift with the peaceful first minute (`.superpowers/sdd/loop-i-gates-after.md`).
+- **I11. Codex implementation review (research/codex-review-sectors-impl.md), 2026-11-12:** no findings on the softlock, rng, pursuit, peaceful-start and victory paths.
