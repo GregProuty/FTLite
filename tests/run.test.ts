@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { CONFIRM_SECONDS } from '../src/renderer/src/sim/tuning';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
-import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX, beaconIndex, sectorJump, startWait, EXIT_JUMP } from '../src/renderer/src/sim/run';
-import { Encounter, enemyMaxHull, enemyShieldMax } from '../src/renderer/src/sim/enemy';
+import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX, beaconIndex, sectorJump, startWait, EXIT_JUMP, overrun } from '../src/renderer/src/sim/run';
+import { Encounter, enemyMaxHull, enemyShieldMax, leave, fireInterval } from '../src/renderer/src/sim/enemy';
 import { depthOf } from '../src/renderer/src/sim/depth';
-import { FUEL_START, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL } from '../src/renderer/src/sim/tuning';
+import { FUEL_START, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, PURSUIT_HULL_MULT, PURSUIT_FIRE_MULT } from '../src/renderer/src/sim/tuning';
 import { deriveStreams } from '../src/renderer/src/sim/state';
-import { Phase, enterPhase } from '../src/renderer/src/sim/director';
+import { Phase, enterPhase, minutesOf } from '../src/renderer/src/sim/director';
 import { step } from '../src/renderer/src/sim/step';
 import { EndReason, downCrew } from '../src/renderer/src/sim/crew';
 import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
@@ -487,5 +487,63 @@ describe('sectors, fuel and waiting (spec Loop-i sections 1 and 2, amendments S1
     const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); chargeJump(s); jumpShip(s, at(1, 0)); s.boarders.nextArrivalTick = 1e9;
     const fuel = s.run.fuel; for (let i = 0; i < (ENCOUNTER_START + FIELD_SECONDS + 12) * T + 2; i++) { step(s, []); s.hull = HULL_MAX; for (const eid of s.crew) Health.cur[eid] = 100; }
     expect([s.run.encounter, s.run.fuel - fuel, FIELD_FUEL]).toEqual([Encounter.Won, 1, 1]);
+  });
+});
+
+describe('the Pursuit (spec Loop-i section 3, amendments S5 and S7)', () => {
+  const at2 = (players = 1) => { const s = calm(players); mapM(s); chargeJump(s); return s; };
+  it('overrun by floor: a beacon is overrun when its column is at or behind floor(pursuit)', () => {
+    const s = at2(); expect([PURSUIT_START, PURSUIT_STEP]).toEqual([-1.5, 0.75]);
+    expect([0, 1].map((c) => overrun(s, c))).toEqual([false, false]);   // -1.5: floor -2
+    s.run.pursuit = -0.75; expect(overrun(s, 0)).toBe(false);
+    s.run.pursuit = 0; expect([overrun(s, 0), overrun(s, 1)]).toEqual([true, false]);
+    s.run.pursuit = 1.5; expect([overrun(s, 1), overrun(s, 2)]).toEqual([true, false]);
+    s.run.pursuit = 2.99; expect([overrun(s, 2), overrun(s, 3)]).toEqual([true, false]);
+  });
+  it('S7: column 0 is never overrun on first arrival: at the run start and after a sector jump the front is at -1.5, and two jumps bring it to 0', () => {
+    const s = at2(); expect(overrun(s, 0)).toBe(false);
+    s.run.column = SECTOR_COLUMNS - 1; s.run.pursuit = 4.5; sectorJump(s); expect([s.run.column, s.run.pursuit, overrun(s, 0)]).toEqual([0, PURSUIT_START, false]);
+    chargeJump(s); jumpShip(s, reachable(s)[0]!); expect(overrun(s, 0)).toBe(false); chargeJump(s); jumpShip(s, reachable(s)[0]!); expect([s.run.pursuit, overrun(s, 0)]).toEqual([0, true]);
+  });
+  it('arriving at an overrun beacon starts one pursuit fight: the beacon\'s own content is replaced (no event, shop or field), contact at +8 s, an elite enemy', () => {
+    for (const type of [NodeType.Hazard, NodeType.Event, NodeType.Shop, NodeType.Asteroid, NodeType.Empty]) {
+      const s = at2(2); setNodeTypes(s, { '1:0': type }); s.run.pursuit = 0.25; const loot = s.rng.loot.s;   // the jump steps it to 1: column 1 overrun
+      jumpShip(s, at(1, 0)); step(s, []);
+      const t0 = s.tick - 1;
+      expect([s.run.pursuitFought, s.run.encounter, s.enemy.nextArrivalTick, s.run.event]).toEqual([1, Encounter.Pending, t0 + ENCOUNTER_START * T, -1]);
+      expect(s.rng.loot.s).toBe(loot);                                                       // no event id drawn
+      expect(navRows(s).some((r) => r.select === 'buy')).toBe(false);                       // no shop
+      run(s, ENCOUNTER_START * T); expect(s.enemy.present).toBe(1);
+      expect(s.enemy.maxHull).toBe(Math.round(enemyMaxHull(depthOf(s)) * PURSUIT_HULL_MULT)); expect(s.run.fieldNextTick).toBe(-1);
+    }
+  });
+  it('the pursuit overrunning the beacon where you stand (after a wait) starts the fight; one per visit: once fought, staying brings no second; the next jump resets it', () => {
+    const s = at2(); s.run.column = 1; s.run.node = 0; s.run.pursuit = 0.5; s.run.fuel = 0; s.run.encounter = Encounter.Over; s.enemy.nextArrivalTick = NEVER;
+    startWait(s); run(s, WAIT_SECONDS * T + 1);
+    expect([s.run.pursuit, s.run.pursuitFought, s.run.encounter]).toEqual([1.25, 1, Encounter.Pending]);
+    run(s, ENCOUNTER_START * T); expect(s.enemy.present).toBe(1); leave(s, true); expect(s.enemy.present).toBe(0);
+    s.run.pursuit = 3; run(s, 120 * T); expect([s.enemy.present, s.telemetry.encounters]).toEqual([0, 1]);
+    s.run.fuel = 1; chargeJump(s); s.run.encounter = Encounter.Over; jumpShip(s, at(2, 0));   // column 2 is overrun too: a new visit, a new fight
+    expect([s.run.pursuitFought, s.run.encounter]).toEqual([1, Encounter.Pending]);
+    const n = at2(); jumpShip(n, at(1, 0)); step(n, []); expect([n.run.pursuitFought, n.run.encounter]).toEqual([0, Encounter.Pending]);   // not overrun: the beacon's own Hazard fight
+  });
+  it('the pursuit fight waits for a present enemy to leave, and an overrun field stops at once with no reward', () => {
+    const s = at2(2); s.run.column = 1; s.run.node = 0; placeEnemy(s); s.run.encounter = Encounter.Fighting; s.run.pursuit = 1;
+    step(s, []); expect(s.run.pursuitFought).toBe(0); leave(s, false); step(s, []); expect([s.run.pursuitFought, s.run.encounter]).toEqual([1, Encounter.Pending]);
+    const f = at2(2); setNodeTypes(f, { '1:0': NodeType.Asteroid }); jumpShip(f, at(1, 0)); f.boarders.nextArrivalTick = 1e9; run(f, (ENCOUNTER_START + 10) * T); expect(f.run.encounter).toBe(Encounter.Fighting);
+    const won = f.telemetry.encountersWon; f.run.pursuit = 1; step(f, []); expect([f.run.pursuitFought, f.run.encounter, f.run.fieldNextTick]).toEqual([1, Encounter.Pending, -1]);
+    run(f, 100 * T); expect(f.telemetry.encountersWon).toBe(won);
+  });
+  it('the pursuit enemy: hull x 1.5, fire interval x 0.75, no scrap or fuel for a kill or a surrender', () => {
+    const s = at2(2); s.run.column = 1; s.run.node = 0; s.run.pursuitFought = 1; s.enemy.nextArrivalTick = s.tick; step(s, []);
+    expect([s.enemy.present, s.enemy.maxHull, s.enemy.hull]).toEqual([1, Math.round(enemyMaxHull(1) * 1.5), Math.round(enemyMaxHull(1) * 1.5)]);
+    const scrap = s.run.scrap, fuel = s.run.fuel, loot = s.rng.loot.s; leave(s, true);
+    expect([s.run.scrap, s.run.fuel, s.rng.loot.s, s.telemetry.enemiesDestroyed]).toEqual([scrap, fuel, loot, 1]);
+    const u = at2(2); u.run.column = 1; u.run.pursuitFought = 1; u.enemy.nextArrivalTick = u.tick; step(u, []); u.enemy.fleeing = 1; u.enemy.surrenderIntact = 1; const sc = u.run.scrap; leave(u, false); expect(u.run.scrap).toBe(sc);
+    const a = at2(2), b = at2(2); for (const x of [a, b]) { x.run.column = 1; x.enemy.nextArrivalTick = x.tick; } b.run.pursuitFought = 1; step(a, []); step(b, []);
+    for (const x of [a, b]) { x.enemy.nextShotTick = x.tick; x.rng.director.s = 99; }
+    step(a, []); step(b, []);
+    const gap = (x: typeof a) => x.enemy.nextShotTick - (x.tick - 1);
+    expect(Math.abs(gap(b) - PURSUIT_FIRE_MULT * gap(a))).toBeLessThanOrEqual(1); expect(PURSUIT_FIRE_MULT).toBe(0.75);
   });
 });

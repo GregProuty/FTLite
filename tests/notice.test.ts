@@ -141,3 +141,12 @@ describe('votes and the jump confirmation on the HUD (spec Coop-ii section 3)', 
     expect(runNotice(s)).toEqual(['Jump to Node 2a? (1/2)', 'Anyone standing: press Confirm to agree   5s']);
   });
 });
+
+describe('runNotice: the Pursuit (spec Loop-i section 3)', () => {
+  it('a pursuit fight warns that the Pursuit has caught up, within NOTICE_LINE_MAX', () => {
+    const s = fresh(); s.run.column = 1; s.run.encounter = Encounter.Pending; s.enemy.nextArrivalTick = s.tick + 5 * 60;
+    expect(runNotice(s)).toEqual(['Contact: enemy ship approaching']);
+    s.run.pursuitFought = 1; const line = runNotice(s)[0]!;
+    expect(line).toBe('The Pursuit has caught up: elite ship approaching'); expect(line.length).toBeLessThanOrEqual(NOTICE_LINE_MAX);
+  });
+});

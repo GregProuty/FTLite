@@ -1,7 +1,7 @@
 import { Container, Graphics, BitmapText } from 'pixi.js';
 import { mapTitle, type HudModel } from './hudModel';
 
-const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a;
+const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a, FLEET = 0xd83a3a;
 const nodeX = (c: number): number => 20 + 40 * c;   // six columns across the 240 px panel (spec Loop-i section 1)
 const nodeY = (k: number, n: number): number => 124 + (k - (n - 1) / 2) * 44;   // up to four beacons: 58..190
 /** Three small irregular rocks (original glyph, spec Demo-viii section 1), offsets from the node centre. */
@@ -27,6 +27,10 @@ export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(m
       if (!map) { root.visible = false; return; }
       root.visible = true; g.clear();
       g.rect(0, 0, 240, 236).fill({ color: 0x101420, alpha: 0.6 });
+      if (map.fleet >= 0) {   // the Pursuit's front: a red band across the overrun columns (spec Loop-i section 3)
+        const right = Math.min(240, nodeX(map.fleet) + 20);
+        g.rect(0, 24, right, 204).fill({ color: FLEET, alpha: 0.28 }); g.rect(right - 2, 24, 2, 204).fill({ color: FLEET, alpha: 0.9 });
+      }
       title.text = mapTitle(map);
       for (const e of map.edges) {
         const cur = map.columns[e.from[0]]!.nodes[e.from[1]]!.current, n = map.columns[e.from[0]]!.nodes.length, m = map.columns[e.to[0]]!.nodes.length;

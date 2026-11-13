@@ -6,7 +6,7 @@ import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from 
 import { minutesOf } from './director';
 import { addScrap } from './scrap';
 import { depthOf } from './depth';
-import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE, KILL_FUEL_MIN } from './tuning';
+import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE, KILL_FUEL_MIN, PURSUIT_HULL_MULT, PURSUIT_FIRE_MULT } from './tuning';
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 
@@ -66,7 +66,7 @@ function jitteredTicks(state: SimState, seconds: number): number {
 /** Arrival: no draw; the enemy takes a StableId and the first-warning auto-select applies to it; the encounter starts (spec Demo-vi section 2). */
 export function arrive(state: SimState): void {
   const e = state.enemy;
-  e.present = 1; e.maxHull = enemyMaxHull(depthOf(state)); e.hull = e.maxHull; e.stableId = state.nextStableId++;
+  e.present = 1; e.maxHull = state.run.pursuitFought ? Math.round(enemyMaxHull(depthOf(state)) * PURSUIT_HULL_MULT) : enemyMaxHull(depthOf(state)); e.hull = e.maxHull; e.stableId = state.nextStableId++;   // the Pursuit's elite has 1.5 x hull (spec Loop-i section 3)
   e.departTick = state.tick + ENCOUNTER_MAX * TICK_HZ; e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;
   e.sysHp.fill(ENEMY_SYS_HP); e.sysRepairTick.fill(-1); e.shieldFreq = 1 + nextInt(state.rng.hazards, FREQ_COUNT); e.scanned = 0; e.scan = 0;   // the one hazards draw (spec Combat-ii section 4)
   e.shieldLayers = enemyShieldMax(depthOf(state)); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1; e.roomFire.fill(0); e.roomBreach.fill(0); e.shieldRotateTick = state.tick + SHIELD_ROTATE * TICK_HZ; e.lockUntilTick = -1;   // spec Coop-i section 1: the re-tune clock, no lock; spec Demo-i section 11.3, Demo-ii section 4, Demo-viii section 2b
@@ -91,9 +91,10 @@ export function leave(state: SimState, destroyed: boolean): void {
   e.present = 0; e.hull = 0; e.stableId = 0; e.nextShotTick = -1; e.departTick = -1;
   e.sysHp.fill(0); e.sysRepairTick.fill(-1); e.shieldFreq = 0; e.scanned = 0; e.scan = 0;
   if (scanningEnemy) state.science.scanning = 0;
-  if (!destroyed && e.fleeing) { if (e.surrenderIntact) { addScrap(state, scrapSurrender(depthOf(state))); state.telemetry.surrenders++; } else state.telemetry.enemyFled++; }   // spec Demo-i section 11.3: a flee ends in a surrender bounty or a flight
+  const elite = state.run.pursuitFought === 1;   // the Pursuit's elite pays no scrap or fuel (spec Loop-i section 3)
+  if (!destroyed && e.fleeing) { if (e.surrenderIntact) { if (!elite) addScrap(state, scrapSurrender(depthOf(state))); state.telemetry.surrenders++; } else state.telemetry.enemyFled++; }   // spec Demo-i section 11.3: a flee ends in a surrender bounty or a flight
   e.maxHull = 0; e.shieldLayers = 0; e.shieldRecharge = 0; e.shotArmTick = -1; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1; e.roomFire.fill(0); e.roomBreach.fill(0); e.shieldRotateTick = -1; e.lockUntilTick = -1;
-  if (destroyed) { state.telemetry.enemiesDestroyed++; addScrap(state, scrapEnemy(depthOf(state))); state.run.fuel += KILL_FUEL_MIN + nextInt(state.rng.loot, 2); }   // a kill gives 1 or 2 fuel (spec Loop-i section 2)
+  if (destroyed) { state.telemetry.enemiesDestroyed++; if (!elite) { addScrap(state, scrapEnemy(depthOf(state))); state.run.fuel += KILL_FUEL_MIN + nextInt(state.rng.loot, 2); } }   // a kill gives 1 or 2 fuel (spec Loop-i section 2)
   const r = state.run;
   if (r.encounter === Encounter.Fighting) {
     if (won) { r.encounter = Encounter.Won; state.telemetry.encountersWon++; state.hull = Math.min(HULL_MAX, state.hull + ENCOUNTER_REWARD_HULL); r.driveBoost = 1; }
@@ -180,6 +181,6 @@ export function enemySystem(state: SimState): void {
   if (state.tick >= e.departTick) { leave(state, false); return; }
   if (state.tick < e.nextShotTick) return;
   e.shotArmTick = state.tick;
-  e.nextShotTick = state.tick + jitteredTicks(state, fireInterval(minutesOf(state), state.playerCount));
+  e.nextShotTick = state.tick + jitteredTicks(state, fireInterval(minutesOf(state), state.playerCount) * (state.run.pursuitFought ? PURSUIT_FIRE_MULT : 1));   // the elite fires faster (spec Loop-i section 3)
   if (e.sysHp[EnemySystem.Weapons]! > 0 && shotsInFlight(state) < ENEMY_SHOTS_MAX) spawnShot(state);   // -1 when the table is full: the shot is skipped
 }

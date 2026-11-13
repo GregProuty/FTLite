@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildHudModel, mapTitle } from '../src/renderer/src/render/hudModel';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { SECTOR_COLUMNS, NODE_STRIDE } from '../src/renderer/src/sim/tuning';
-import { navRows } from '../src/renderer/src/sim/run';
+import { navRows, NAV_TEXT_MAX } from '../src/renderer/src/sim/run';
 import { makeState, mapM, setNodeTypes, seatNavigator, chargeJump, quiet, setEvent, grantScrap } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: `kb:${i}` }));
@@ -68,5 +68,16 @@ describe('sector map model', () => {
     const m = build(s)!;
     expect(m.columns[1]!.nodes.map((x) => x.type)).toEqual(['asteroid', 'shop', 'hazard']);
     expect(m.columns[2]!.nodes.map((x) => x.type)).toEqual(['event', 'empty']);
+  });
+});
+
+describe('the fleet front on the map (spec Loop-i section 3)', () => {
+  it('the map model carries floor(pursuit); the Navigation rows mark overrun destinations FLEET', () => {
+    const s = makeState(2); quiet(s); mapM(s); seatNavigator(s, 0);
+    expect(build(s)!.fleet).toBe(-2);
+    s.run.column = 1; s.run.node = 1; s.run.pursuit = 1.5;
+    expect(build(s)!.fleet).toBe(1);
+    expect(navRows(s).filter((r) => r.select === 'jump').map((r) => r.text)).toEqual(['Node 3a', 'Node 2a  FLEET', 'Node 2c  FLEET']);
+    for (const r of navRows(s)) expect(r.text.length).toBeLessThanOrEqual(NAV_TEXT_MAX);
   });
 });

@@ -4,7 +4,7 @@ import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
 import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField } from '../sim/tuning';
-import { navRows, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex } from '../sim/run';
+import { navRows, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf } from '../sim/run';
 import { depthOf } from '../sim/depth';
 import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
@@ -72,7 +72,7 @@ export function scienceFooter(p: SciencePanel): string { return `Lead ${Math.rou
 /** The Navigation footer (spec Loop-i section 2): evade, the drive, the fuel (now > after the highlighted jump) and scrap. */
 export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%  Jump ${jumpText(p.jump)}  Fuel ${p.fuelAfter === null ? p.fuel : `${p.fuel}>${p.fuelAfter}`}  Scrap ${p.scrap}`; }
 export interface MapNode { type: 'hazard' | 'event' | 'shop' | 'asteroid' | 'empty'; current: boolean; reachable: boolean; selected: boolean; past: boolean }
-export interface MapModel { columns: { nodes: MapNode[] }[]; edges: { from: [number, number]; to: [number, number] }[]; column: number; sector: number; jump: string }   // spec section 5; column and jump feed the title
+export interface MapModel { columns: { nodes: MapNode[] }[]; edges: { from: [number, number]; to: [number, number] }[]; column: number; sector: number; fleet: number; jump: string }   // fleet: floor(pursuit), the last overrun column (spec Loop-i section 3)   // spec section 5; column and jump feed the title
 export function mapTitle(m: MapModel): string { return `SECTOR ${m.sector + 1}/${SECTORS}   node ${m.column + 1}/${m.columns.length}   Jump ${m.jump}`; }
 const NODE_TYPES = ['hazard', 'event', 'shop', 'asteroid', 'empty'] as const;
 function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | null {
@@ -92,7 +92,7 @@ function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | 
     if (c > 0 && c < last) for (let n = 0; n + 1 < r.colNodes[c]!; n++) edges.push({ from: [c, n], to: [c, n + 1] });   // the sideways edges between vertical neighbours (spec Loop-i section 1)
     if (c < last) for (let n = 0; n < r.colNodes[c]!; n++) for (let d = 0; d < r.colNodes[c + 1]!; d++) if (r.edgeMask[beaconIndex(c, n)]! & (1 << d)) edges.push({ from: [c, n], to: [c + 1, d] });
   }
-  return { columns, edges, column: r.column, sector: r.sector, jump: jumpText({ charge: r.jumpCharge, ready: r.jumpCharge >= 1 }) };
+  return { columns, edges, column: r.column, sector: r.sector, fleet: Math.floor(r.pursuit), jump: jumpText({ charge: r.jumpCharge, ready: r.jumpCharge >= 1 }) };
 }
 
 /** A player's room is "low" on the HUD below this oxygen fraction (a warning, well above SUFFOCATE_FRAC). */
@@ -196,14 +196,14 @@ export function runNotice(state: SimState): string[] {
   if (r.jumpPending >= 0) return [`Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!, left = r.eventOpenTick < 0 ? VOTE_SECONDS : Math.max(0, Math.ceil((r.eventOpenTick + VOTE_SECONDS * TICK_HZ - state.tick) / TICK_HZ)); return [`EVENT: ${ev.title}   vote ${left}s`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
   const window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
-  const field = r.nodeType[hereIndex(state)] === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
+  const field = contentOf(state) === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
   if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return field ? [`FIELD CLEARED   +${scrapField(depthOf(state))} scrap`, 'Drive charging fast'] : [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, 'Drive charging fast'];
   if (r.encounter === Encounter.Over && state.tick - r.encounterTick < window) return field ? [] : ['Enemy gone'];   // a field is only left by a jump, which re-arms the encounter at once (amendment A3)
   if (r.encounter === Encounter.Pending && field && r.encounterTick + ENCOUNTER_START * TICK_HZ - state.tick <= window) return ['Asteroid field ahead'];
-  if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return ['Contact: enemy ship approaching'];
+  if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return [r.pursuitFought ? 'The Pursuit has caught up: elite ship approaching' : 'Contact: enemy ship approaching'];   // spec Loop-i section 3
   if (state.weapons.torpedoDropTick >= 0 && state.tick - state.weapons.torpedoDropTick < DROP_NOTICE_SECONDS * TICK_HZ) return ['Torpedo dropped'];   // a carried torpedo lost at the cap (spec Coop-ii amendment D5)
   if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${scrapSurrender(depthOf(state))} scrap`];
-  if (r.nodeType[hereIndex(state)] === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)  Upgrade (50)'];
+  if (contentOf(state) === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)  Upgrade (50)'];
   if (r.jumpCharge >= 1) { const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation']; }
   return [];
 }
@@ -298,7 +298,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
     for (let i = 0; i < state.stations.failed.length; i++) if (state.stations.failed[i]) threats.push({ icon: 'icon.power', text: `Power: ${STATION_NAMES[state.derived.stationKind[i]!]}` });
     for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : state.debris.kind[k] === ObjectKind.Rock ? 'Rock' : 'Debris'; threats.push({ icon: 'icon.sensors', text: `${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` }); }
     if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}` });   // spec Demo-i section 4: the run rows trail the hazards (the notice carries them)
-    if (state.run.nodeType[hereIndex(state)] === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here' });
+    if (contentOf(state) === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here' });
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, unpowered: unpoweredAt(state, kind, i), icon: ICON_KINDS[kind]!, iconTint: stationTint(state, i), ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };

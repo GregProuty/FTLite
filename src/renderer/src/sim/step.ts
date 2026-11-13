@@ -3,7 +3,7 @@ import { NEUTRAL_INTENT, clampIntent } from '../../../shared/intent';
 import type { SimState } from './state';
 import { HAZARD_EVERY } from './tuning';
 import { interactSystem } from './interact';
-import { jumpStep, fieldSystem, decisionSystem } from './run';
+import { jumpStep, fieldSystem, decisionSystem, pursuitSystem } from './run';
 import { consoleSystem } from './console';
 import { movementSystem } from './movement';
 import { doorSystem } from './doors';
@@ -48,6 +48,7 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   }
   // (5) director: stress, pacing phases and spawns, then debris detection and impacts
   directorSystem(state);
+  pursuitSystem(state);   // (5a) the Pursuit overruns the beacon you are at (spec Loop-i section 3)
   fieldSystem(state);   // (5a) an asteroid field: its start, rocks and clear (spec Demo-viii section 1)
   enemySystem(state);   // (5b) the enemy: arrival, withdrawal, a due shot (spec Combat-i section 5)
   debrisSystem(state);

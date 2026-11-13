@@ -62,7 +62,14 @@ export function generateMap(rng: RngState, columns: number = SECTOR_COLUMNS): { 
 
 export function nodeLabel(column: number, node: number): string { return `Node ${column + 1}${String.fromCharCode(97 + node)}`; }
 /** A destination row: the node label, naming an asteroid field (spec Demo-viii amendment R5). */
-export function destinationLabel(state: SimState, column: number, node: number): string { return state.run.nodeType[beaconIndex(column, node)] === NodeType.Asteroid ? `${nodeLabel(column, node)}  Asteroid field` : nodeLabel(column, node); }
+export function destinationLabel(state: SimState, column: number, node: number): string {
+  if (overrun(state, column)) return `${nodeLabel(column, node)}  FLEET`;   // the Pursuit is there (spec Loop-i section 3)
+  return state.run.nodeType[beaconIndex(column, node)] === NodeType.Asteroid ? `${nodeLabel(column, node)}  Asteroid field` : nodeLabel(column, node);
+}
+/** A column at or behind the fleet front is overrun (spec Loop-i section 3): its beacons lose their own content. */
+export const overrun = (state: SimState, column: number): boolean => column <= Math.floor(state.run.pursuit);
+/** What the current beacon holds: its type, or -1 once the Pursuit has overrun it (no event, shop or field). */
+export const contentOf = (state: SimState): number => overrun(state, state.run.column) ? -1 : state.run.nodeType[hereIndex(state)]!;
 /** The beacon the ship is at, as a map index. */
 export const hereIndex = (state: SimState): number => beaconIndex(state.run.column, state.run.node);
 /** A key that changes on every jump, sideways ones included (the renderer's reset memory). */
@@ -89,7 +96,7 @@ export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.mi
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
 function arrive(state: SimState): void {
   const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1; addScrap(state, scrapPerJump(depthOf(state)));
-  if (r.nodeType[hereIndex(state)] === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
+  if (contentOf(state) === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
 }
 
 /** Whether a manoeuvre can start now: Navigation present and online, past the cooldown (spec Coop-ii amendment D2; the seat is the caller's check). */
@@ -120,7 +127,7 @@ export function navRows(state: SimState): NavRow[] {
     rows.push(evadeRow(state));
     return rows;
   }
-  if (r.nodeType[hereIndex(state)] === NodeType.Shop) {
+  if (contentOf(state) === NodeType.Shop) {
     rows.push({ text: `Shop   scrap ${r.scrap}`, select: 'none', index: 0, enabled: false });
     for (let i = 0; i < SHOP_ITEM_COUNT; i++) rows.push({ text: itemLabel(state, i), select: 'buy', index: i, enabled: itemEnabled(state, i) });
   }
@@ -167,7 +174,7 @@ export function jumpShip(state: SimState, destination: Beacon): void {
 /** The jump's common steps (spec Run-i section 6, Loop-i section 2): one fuel, the counters, the drive, arrival (scrap, maybe an event), the encounter left behind, the beacon's own encounter, the clocks. The exit is a Hazard on the way out except in the last sector; column 0 is quiet. */
 function afterJump(state: SimState): void {
   const r = state.run, nav = state.derived.stationOfKind[StationKind.Navigation]!, last = r.colNodes.length - 1;
-  r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1; r.waitUntilTick = -1;
+  r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1; r.waitUntilTick = -1; r.pursuitFought = 0;
   if (nav >= 0) state.stations.cursor[nav] = 0;
   state.telemetry.jumps++;
   arrive(state);
@@ -177,8 +184,22 @@ function afterJump(state: SimState): void {
   const type = r.column === 0 || (r.column === last && r.sector >= SECTORS - 1) ? -1 : r.nodeType[hereIndex(state)]!, hazard = type === NodeType.Hazard;
   r.encounter = hazard || type === NodeType.Asteroid ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick; r.fieldNextTick = -1;
   state.enemy.nextArrivalTick = hazard ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;   // an asteroid field has no enemy: it starts in fieldSystem
+  if (overrun(state, r.column)) startPursuitFight(state);   // the Pursuit replaces the beacon's own encounter (spec Loop-i amendment S5)
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);
+}
+
+/** The pursuit fight (spec Loop-i section 3): the normal encounter rules with contact in ENCOUNTER_START seconds; the enemy that arrives is the elite (enemy.ts reads pursuitFought). A field in progress stops with no reward. */
+function startPursuitFight(state: SimState): void {
+  const r = state.run;
+  r.pursuitFought = 1; r.encounter = Encounter.Pending; r.encounterTick = state.tick; r.fieldNextTick = -1;
+  state.enemy.nextArrivalTick = state.tick + ENCOUNTER_START * TICK_HZ;
+}
+/** Step 5a (spec Loop-i section 3, amendment S5): once per beacon visit, the Pursuit overrunning the beacon you are at starts its fight, after any enemy already here has gone. */
+export function pursuitSystem(state: SimState): void {
+  const r = state.run;
+  if (r.pursuitFought || state.enemy.present || !overrun(state, r.column)) return;
+  startPursuitFight(state);
 }
 
 /** The sector jump from the exit (spec Loop-i section 1, amendments S1 and S4): one fuel; from the last sector it wins the run, else the next sector's map is drawn from rng.map in the same order, the pursuit resets and the ship arrives at column 0. A no-op away from the exit or without fuel. */
@@ -215,7 +236,7 @@ export function endField(state: SimState): void {
 /** The asteroid field (spec Demo-viii section 1), right after the director: at an Asteroid node the field starts ENCOUNTER_START seconds after the jump (Pending -> Fighting); while fighting one rock is due every FIELD_INTERVAL seconds (re-armed with one hazards draw) until FIELD_SECONDS after the start; FIELD_CLEAR_EXTRA seconds later every rock is down and the field is cleared: a win with scrap and the drive boost. A full debris table skips a rock without its spawn draws. */
 export function fieldSystem(state: SimState): void {
   const r = state.run;
-  if (r.column >= r.colNodes.length - 1 || r.nodeType[hereIndex(state)] !== NodeType.Asteroid || state.enemy.present) return;
+  if (r.column >= r.colNodes.length - 1 || contentOf(state) !== NodeType.Asteroid || state.enemy.present) return;
   if (r.encounter === Encounter.Pending && state.tick >= r.encounterTick + ENCOUNTER_START * TICK_HZ) { r.encounter = Encounter.Fighting; r.encounterTick = state.tick; r.fieldNextTick = state.tick; }
   if (r.encounter !== Encounter.Fighting) return;
   const start = r.encounterTick;
