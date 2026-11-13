@@ -96,9 +96,9 @@ export function pickEvent(state: SimState): number {
 }
 
 /** The notice's second line for an open event (spec Coop-ii section 3, Loop-v section 1): the labels, or numbered short labels when the labels do not fit NOTICE_LINE_MAX. */
-export function noticeChoices(state: SimState, id: number): string {
+export function noticeChoices(state: SimState, id: number, fits: (line: string) => boolean = (line) => line.length <= NOTICE_LINE_MAX): string {   // fits: the HUD passes its pixel width at the larger font (spec Demo-x-c section 1)
   const def = EVENT_DEFS[id]!, mult = eventScale(state, def), full = def.choices.map((_, k) => choiceLabel(state, id, k)).join('  /  ');
-  return full.length <= NOTICE_LINE_MAX ? full : def.choices.map((c, k) => `${k + 1} ${fillLabel(c.short ?? c.label, mult)}`).join('  /  ');
+  return fits(full) ? full : def.choices.map((c, k) => `${k + 1} ${fillLabel(c.short ?? c.label, mult)}`).join('  /  ');
 }
 
 /** Apply choice k of the pending event; a no-op without a pending event or with a disabled choice (spec Loop-v section 1). A chance outcome draws rng.loot once, before its effects. */

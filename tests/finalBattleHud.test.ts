@@ -47,7 +47,7 @@ describe('the Warden on the HUD and in the enemy window (spec Loop-iv section 2)
   it('the Weapons hull row has no departure seconds (the Warden never leaves) and three layers; the threat line reads shields 3/3', () => {
     const s = withWarden(); const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT;
     const m = buildHudModel(s, slots(2), 'running', ''), panel = m.players[0]!.console as WeaponsPanel, hull = panel.targets.find((t) => t.kind === 'enemy' && t.system === null)!;
-    expect(targetRowText(hull)).toBe('Enemy 100% S? [###] W0%');
+    expect(targetRowText(hull)).toBe('Enemy 100% S? [###]');
     expect(m.threats[0]!.text).toBe('Enemy 100% shields 3/3');
   });
   it('the victory screen after it falls', () => {

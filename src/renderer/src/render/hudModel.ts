@@ -27,6 +27,8 @@ import { boarderMarkers, boardersInRoom } from '../sim/boarders';
 import { QUIRK_NAMES } from '../sim/quirks';
 import { doorsCursorTarget } from '../sim/doors';
 import { shipLine, shipForCrew } from '../sim/ship/fleet';
+import { textPx } from './theme';
+import { NOTICE } from './hudLayout';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -47,6 +49,10 @@ export interface HudTab { kind: number; name: string; active: boolean; offline: 
 export const TAB_NAMES = ['HELM', 'WEAPONS', 'SCIENCE', 'ENGINEERING', 'LIFE SUPPORT', 'MEDBAY', 'DOORS'] as const;
 /** A tab's text on the bar: its name, with OFFLINE when its station is offline. */
 export function tabText(t: HudTab): string { return t.offline ? `${t.name} OFFLINE` : t.name; }
+/** A player block's last line: the skill levels (`N0 E0 W0 S0 C0 R3`); the name sits on the first line and the health is its bar. */
+export function skillsLine(skills: readonly number[]): string { return SKILL_NAMES.map((n, k) => `${n[0]}${skills[k]}`).join(' '); }
+/** A tab as the card's tab bar draws it at the larger font (spec Demo-x-c section 1): `>` on the active tab while the stick is on the bar, `!` after an offline tab's name (drawn red), so three names fit. */
+export function tabLabel(t: HudTab, focus: boolean): string { return `${t.active && focus ? '>' : ''}${t.name}${t.offline ? '!' : ''}`; }
 /** The tab bar of a seated player's console group, or null outside a group. */
 export function consoleTabs(state: SimState, i: number): HudTab[] | null {
   const d = state.derived, g = d.stationGroup[i]!;
@@ -54,8 +60,12 @@ export function consoleTabs(state: SimState, i: number): HudTab[] | null {
   return d.groupStations[g]!.map((j, k) => ({ kind: d.stationKind[j]!, name: TAB_NAMES[d.stationKind[j]!]!, active: k === state.groups.tab[g], offline: !stationOnline(state, j) }));
 }
 /** The Sit prompt's console name: a console group joins its members (`Helm + Weapons`). */
+/** Short station names by kind: the power panel's rows (spec Demo-x-c section 1: they fit the left column at the larger font). */
+export const STATION_SHORT = ['Nav', 'Wpn', 'Sci', 'Eng', 'Life', 'Med', 'Door'] as const;
+/** A console group member's name in its Sit prompt: the Helm, Weapons and Doors in full, the long names short (`Sit: Sci + Eng + Doors`, which fits the player block at the larger font). */
+export const GROUP_SEAT_NAMES = ['Helm', 'Weapons', 'Sci', 'Eng', 'Life', 'Med', 'Doors'] as const;
 export function seatName(state: SimState, i: number): string {
-  const d = state.derived, g = d.stationGroup[i]!, name = (j: number): string => (d.stationKind[j] === StationKind.Navigation && g >= 0 ? 'Helm' : STATION_NAMES[d.stationKind[j]!]!);
+  const d = state.derived, g = d.stationGroup[i]!, name = (j: number): string => (g >= 0 ? GROUP_SEAT_NAMES[d.stationKind[j]!]! : STATION_NAMES[d.stationKind[j]!]!);
   return g < 0 ? name(i) : d.groupStations[g]!.map(name).join(' + ');
 }
 function thermal(state: SimState, i: number): { heat: number; coolant: number; overdriven: boolean } {
@@ -102,15 +112,21 @@ export interface HudModel {
 /** True for any level-0 non-Engineering console that is present and not failed (spec Demo-ii section 3): a repaired console awaiting a bar. */
 function unpoweredAt(state: SimState, kind: number, si: number): boolean { return si >= 0 && kind !== StationKind.Engineering && state.stations.failed[si] !== 1 && state.stations.level[si] === 0; }
 
-export function clockLine(m: HudModel): string { return `HULL ${Math.round(m.hull)}   TIME ${m.simSeconds}s   FUEL ${m.run.fuel}`; }
+/** The clock card's first line: hull and fuel (the time has its own line at the larger font, spec Demo-x-c section 1). */
+export function clockLine(m: HudModel): string { return `HULL ${Math.round(m.hull)}   FUEL ${m.run.fuel}`; }
 /** The clock card's second line (spec Loop-i section 1): where the ship is in the run. */
-export function sectorLine(m: HudModel): string { return `SECTOR ${m.run.sector + 1}/${SECTORS}   node ${m.run.column + 1}/${m.run.columns}`; }
+export function sectorLine(m: HudModel): string { return `SECTOR ${m.run.sector + 1}/${SECTORS}  node ${m.run.column + 1}/${m.run.columns}`; }
+/** The clock card's third and fourth lines: the run time, the director's phase and stress. */
+export function timeLine(m: HudModel): string { return `TIME ${m.simSeconds}s`; }
+export function directorText(m: HudModel): string { return `${m.director.phase}  ${Math.round(m.director.stress * 100)}%`; }
 /** The jump text shared by the Navigation footer and the map title. */
 export function jumpText(jump: { charge: number; ready: boolean }): string { return jump.ready ? 'READY' : `${Math.floor(jump.charge * 100)}%`; }
 /** The Science footer: the lead, then the scan or the lock (spec Coop-i section 1). */
 export function scienceFooter(p: SciencePanel): string { return `Lead ${Math.round(p.leadSeconds)}s${p.scanning ? '   Scanning' : ''}${p.lock ? `   ${p.lock}` : ''}`; }
 /** The Navigation footer (spec Loop-i section 2): evade, the drive, the fuel (now > after the highlighted jump) and scrap. */
-export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%  Jump ${jumpText(p.jump)}  Fuel ${p.fuelAfter === null ? p.fuel : `${p.fuel}>${p.fuelAfter}`}  Scrap ${p.scrap}`; }
+export function navigationFooter(p: NavigationPanel): string { return navigationFooterLines(p).join('  '); }
+/** The Navigation footer on the card's two footer lines (spec Demo-x-c section 1): evade and the drive, then fuel and scrap. */
+export function navigationFooterLines(p: NavigationPanel): [string, string] { return [`Evade ${Math.round(p.evadeChance * 100)}%  Jump ${jumpText(p.jump)}`, `Fuel ${p.fuelAfter === null ? p.fuel : `${p.fuel}>${p.fuelAfter}`}  Scrap ${p.scrap}`]; }
 export interface MapNode { type: 'hazard' | 'event' | 'shop' | 'asteroid' | 'empty' | 'unknown' | 'exit'; current: boolean;   // unknown: not yet visited (spec Loop-i section 4b)
   reachable: boolean; selected: boolean; past: boolean }
 export interface MapModel { columns: { nodes: MapNode[] }[]; edges: { from: [number, number]; to: [number, number] }[]; column: number; sector: number; fleet: number; jump: string }   // fleet: floor(pursuit), the last overrun column (spec Loop-i section 3)   // spec section 5; column and jump feed the title
@@ -200,8 +216,12 @@ export function weaponsStrip(c: WeaponsPanel): { text: string; lit: boolean }[] 
 const pct = (v: number): string => (v >= 1 ? 'READY' : `${Math.floor(v * 100)}%`);
 /** The footer: the Pulse Laser's charge, the tube and the stock, LOCKED under a Science lock. */
 export function weaponsFooter(c: WeaponsPanel): string {
+  return weaponsFooterLines(c).join('  ');
+}
+/** The footer on the card's two footer lines (spec Demo-x-c section 1): the Pulse Laser and the tube, then the stock and the lock. */
+export function weaponsFooterLines(c: WeaponsPanel): [string, string] {
   const t = c.torpedo, torp = t.loaded ? 'LOADED' : t.fed ? `${Math.floor(t.load * 100)}%` : t.fetch ? (t.stock > 0 ? 'FETCH' : 'EMPTY') : t.stock > 0 ? `${Math.floor(t.load * 100)}%` : 'EMPTY';
-  return [`Pulse ${pct(c.charge)}`, `Torp ${torp}`, `Stock ${t.stock}/${t.cap}`, ...(c.locked ? ['LOCKED'] : [])].join('  ');
+  return [`Pulse ${pct(c.charge)}  Torp ${torp}`, [`Stock ${t.stock}/${t.cap}`, ...(c.locked ? ['LOCKED'] : [])].join('  ')];
 }
 /** The loot line above the footer: one figure per filled extra slot (READY, a percentage, OFF below its Weapons level, EMPTY for a missile pod with no torpedo); '' with none. */
 export function weaponsLootLine(c: WeaponsPanel): string {
@@ -232,7 +252,7 @@ export function targetRowText(t: DebrisTarget, scan = 0): string {
     if (t.system !== null && t.status) return t.status.hp > 0 ? `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} ${Math.round(t.status.hp / ENEMY_SYS_HP * 100)}%${t.status.ionIn ? ` ION ${t.status.ionIn}s` : ''}` : `Enemy ${ENEMY_SYSTEM_NAMES[t.system]} DOWN ${t.status.repairIn}s`;
     const marker = t.shieldsUp === false ? 'S-' : t.frequency !== null ? `S${t.frequency}` : 'S?';
     const layers = t.layers ?? 0, bracket = t.shieldsUp === false ? '' : ` [${'#'.repeat(layers)}${'.'.repeat(Math.max(0, (t.layersMax ?? 0) - layers))}]`, fleeing = (t.fleeSeconds ?? 0) > 0;   // spec Demo-i section 11.4: the layers while shields are up, the weapon charge always, the flee countdown in place of the eta
-    return `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${fleeing ? `FLEE ${t.fleeSeconds}s ` : t.eta >= 0 ? `${t.eta}s ` : ''}${marker}${bracket} W${Math.round((t.weaponCharge ?? 0) * 100)}%${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
+    return `Enemy ${Math.round((t.hull ?? 0) * 100)}% ${fleeing ? `FLEE ${t.fleeSeconds}s ` : t.eta >= 0 ? `${t.eta}s ` : ''}${marker}${bracket}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;   // the weapon charge is the enemy window's bar (spec Demo-x-c amendment: the row fits the card at the larger font)
   }
   return `${t.kind === 'shot' ? 'Shot ' : t.kind === 'rock' ? 'Rock ' : ''}${t.room} ${t.eta}s F${t.frequency ?? '?'}${t.frequency === null && scan > 0 ? ` ${Math.floor(scan * 100)}%` : ''}`;
 }
@@ -323,9 +343,9 @@ export function runNotice(state: SimState): string[] {
 function baseNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
   if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
-  if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}   ${r.eventOpenTick < 0 ? 'waiting for a vote' : `vote ${voteSecondsLeft(state)}s`}`, noticeChoices(state, r.event)]; }
+  if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}   ${r.eventOpenTick < 0 ? 'waiting for a vote' : `vote ${voteSecondsLeft(state)}s`}`, noticeChoices(state, r.event, (line) => textPx(line) <= NOTICE.w)]; }
   if (r.boughtTick >= 0 && state.tick - r.boughtTick < PURCHASE_NOTICE_SECONDS * TICK_HZ) return [r.boughtKind === REACTOR_ROW ? `Reactor +1 (${state.power.capacity} bars)` : `${STATION_NAMES[r.boughtKind]} upgraded to ${baseMax(state, r.boughtKind)}`];   // a purchase at the Engineering console (spec Loop-ii section 2)
-  const scan = scanNotice(state); if (scan) return [scan];   // the system scan's summary (spec Demo-x-b section 3)
+  const scan = scanNotice(state); if (scan) { const k = scan.indexOf(', '); return textPx(scan) <= NOTICE.w || k < 0 ? [scan] : [scan.slice(0, k), scan.slice(k + 2)]; }   // too wide at the larger font: the findings over two lines (spec Demo-x-c section 1)   // the system scan's summary (spec Demo-x-b section 3)
   if (r.encounter === Encounter.Pending && !e.present && r.ambushState === 2) return [`${HIDDEN_SHIP}   contact ${contactSeconds(state)}s`, r.jumpCharge >= 1 ? `Jump away, or strike first: shields down ${FIRST_STRIKE_SECONDS}s` : `Strike first: its shields will be down ${FIRST_STRIKE_SECONDS}s`];
   const loot = lootLine(state), window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
   const field = contentOf(state) === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
@@ -338,7 +358,7 @@ function baseNotice(state: SimState): string[] {
   if (state.weapons.torpedoDropTick >= 0 && state.tick - state.weapons.torpedoDropTick < DROP_NOTICE_SECONDS * TICK_HZ) return ['Torpedo dropped'];
   if (peaceful(state)) return ['Safe here. Jump when ready', ...readyLine(state)];   // a peaceful beacon (spec Loop-i section 4b)   // a carried torpedo lost at the cap (spec Coop-ii amendment D5)
   if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${scrapSurrender(depthOf(state))} scrap`];
-  if (contentOf(state) === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, `Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)${r.shopWeapon ? `  ${weaponDef(r.shopWeapon).short} (${weaponDef(r.shopWeapon).price})` : ''}`];
+  if (contentOf(state) === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, `Hull +25 (30)  Torps +2 (20)  Fuel +2 (12)${r.shopWeapon ? `  ${weaponDef(r.shopWeapon).short} (${weaponDef(r.shopWeapon).price})` : ''}`];
   return readyLine(state);
 }
 /** The ready drive's line: someone take Navigation, or just JUMP READY when seated; nothing before it is ready. */
@@ -434,7 +454,11 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   if (state) {
     if (helmOffline(state)) threats.push({ icon: 'icon.power', text: 'Helm offline' });   // first (spec Demo-x-b section 2)
     if (state.run.ambushState === 2 && state.run.encounter === Encounter.Pending && !state.enemy.present) threats.push({ icon: 'icon.weapons', text: `Hidden ship: contact ${contactSeconds(state)}s` });   // a detected ambusher (spec Demo-x-b section 3)
-    if (state.enemy.present) { const e = state.enemy; threats.push({ icon: 'icon.weapons', text: `Enemy ${Math.round(e.hull / e.maxHull * 100)}%${e.sysHp[EnemySystem.Shields]! > 0 ? ` shields ${e.shieldLayers}/${enemyShieldCap(state)}` : ''}${ENEMY_SYSTEM_NAMES.map((name, sys) => (e.sysHp[sys] === 0 ? ` ${name} DOWN` : '')).join('')}${e.fleeing ? ' FLEEING' : ''}` }); }
+    if (state.enemy.present) {   // two rows at the larger font (spec Demo-x-c section 1): the hull, shields and flight; then the other systems that are down
+      const e = state.enemy, down = ENEMY_SYSTEM_NAMES.filter((_, sys) => sys !== EnemySystem.Shields && e.sysHp[sys] === 0);
+      threats.push({ icon: 'icon.weapons', text: `Enemy ${Math.round(e.hull / e.maxHull * 100)}% shields ${e.sysHp[EnemySystem.Shields]! > 0 ? `${e.shieldLayers}/${enemyShieldCap(state)}` : 'DOWN'}${e.fleeing ? ' FLEEING' : ''}` });
+      if (down.length) threats.push({ icon: 'icon.weapons', text: `Down: ${down.join(' ')}` });
+    }
     for (let r = 0; r < state.layout.rooms.length; r++) { const n = boardersInRoom(state, r).length; if (n) threats.push({ icon: 'icon.sensors', text: `Boarders: ${state.layout.rooms[r]!.name} x${n}` }); }
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) threats.push({ icon: 'icon.fire', text: `Fire: ${state.layout.rooms[r]!.name}` });
     for (let s = 0; s < state.breaches.active.length; s++) if (state.breaches.active[s]) threats.push({ icon: 'icon.breach', text: `Breach: ${state.layout.rooms[state.derived.siteRoom[s]!]!.name}` });

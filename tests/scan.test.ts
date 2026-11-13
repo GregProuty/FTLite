@@ -209,7 +209,7 @@ describe('the system scan: results on the card and in a notice (spec Demo-x-b se
     const { s } = arriveAt(1, NodeType.Hazard);
     s.science.systemState = SystemScan.Done; s.science.systemTick = s.tick; s.science.systemResult = ScanFound.Ship | ScanFound.Cache | (2 << 3);
     expect(panel(s).system.results).toEqual(['Hidden ship detected: cloaked raider', `Cache found: +${scrapCache(depthOf(s))} scrap`, 'Charted 2 beacons']);
-    expect(runNotice(s)[0]).toBe(`SCAN: hidden ship detected, cache +${scrapCache(depthOf(s))} scrap, 2 beacons charted`);
+    expect(runNotice(s)).toEqual(['SCAN: hidden ship detected', `cache +${scrapCache(depthOf(s))} scrap, 2 beacons charted`]);   // too wide for one line at the larger font: split at the first comma (spec Demo-x-c section 1)
     s.science.systemResult = 0;
     expect(panel(s).system.results).toEqual(['No hidden ship found', 'No cache found', 'No beacons charted']);
     expect(runNotice(s)[0]).toBe('SCAN: nothing found');

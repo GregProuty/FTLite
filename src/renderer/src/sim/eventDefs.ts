@@ -52,11 +52,11 @@ export const EVENT_DEFS: readonly EventDef[] = [
     { label: 'Buy 2 torpedoes (20 scrap)', req: [{ kind: 'scrap', n: 20 }, { kind: 'torpedoRoom' }], outcome: [{ kind: 'scrap', n: -20 }, { kind: 'torpedoes', n: 2 }] },
     { label: 'Refuse', outcome: NOTHING }] },
   { id: 'micrometeoroids', title: 'Micrometeoroid field', text: ['A debris field lies across the lane.'], safeChoice: 1, weight: 1, scaled: false, choices: [
-    { label: 'Push through (+20, a breach)', outcome: [{ kind: 'scrap', n: 20 }, { kind: 'breach' }] },
-    { label: 'Go around (drive recharges)', outcome: [{ kind: 'driveReset' }] }] },
+    { label: 'Push through (+20, a breach)', short: 'Push through (+20)', outcome: [{ kind: 'scrap', n: 20 }, { kind: 'breach' }] },
+    { label: 'Go around (drive recharges)', short: 'Go around', outcome: [{ kind: 'driveReset' }] }] },
   { id: 'supplyCache', title: 'Supply cache', text: ['A cache, hard-wired to something.'], safeChoice: 0, weight: 1, scaled: false, choices: [
-    { label: 'Take the scrap (+40)', outcome: [{ kind: 'scrap', n: 40 }] },
-    { label: 'Strip it bare (+60, a station fails)', outcome: [{ kind: 'scrap', n: 60 }, { kind: 'failStation' }] }] },
+    { label: 'Take the scrap (+40)', short: 'Take it (+40)', outcome: [{ kind: 'scrap', n: 40 }] },
+    { label: 'Strip it bare (+60, a station fails)', short: 'Strip it (+60)', outcome: [{ kind: 'scrap', n: 60 }, { kind: 'failStation' }] }] },
   { id: 'medicalFreighter', title: 'Medical freighter', text: ['A hospital ship offers treatment.'], safeChoice: 1, weight: 1, scaled: false, choices: [
     { label: 'Treat the crew (15 scrap)', req: [{ kind: 'scrap', n: 15 }], outcome: [{ kind: 'scrap', n: -15 }, { kind: 'heal' }] },
     { label: 'Decline', outcome: NOTHING }] },
@@ -91,8 +91,8 @@ export const EVENT_DEFS: readonly EventDef[] = [
     { label: 'Read the lock (a weapon)', short: 'Read the lock', req: [{ kind: 'station', station: StationKind.Science, n: 3 }], outcome: [{ kind: 'weapon' }] },
     { label: 'Leave it spinning', short: 'Leave it', outcome: NOTHING }] },
   { id: 'armsDealer', title: 'Arms dealer', text: ['A dealer opens a crate of salvaged', 'guns. No refunds, no questions.'], safeChoice: 1, weight: 1, minDepth: 2, choices: [
-    { label: 'Buy one ({45} scrap, a random gun)', req: [{ kind: 'scrap', n: 45 }], outcome: [{ kind: 'scrap', n: -45 }, { kind: 'weapon' }] },
-    { label: 'No questions, no sale', outcome: NOTHING }] },
+    { label: 'Buy one ({45} scrap, a random gun)', short: 'Buy one ({45})', req: [{ kind: 'scrap', n: 45 }], outcome: [{ kind: 'scrap', n: -45 }, { kind: 'weapon' }] },
+    { label: 'No questions, no sale', short: 'No sale', outcome: NOTHING }] },
   { id: 'smugglersRun', title: 'Smugglers\' run', text: ['An old smuggling lane cuts through', 'the nebula. Tight, but fast.'], safeChoice: 2, weight: 1, choices: [
     { label: 'Take it (hull -10, Pursuit back)', short: 'Take it', outcome: [{ kind: 'hull', n: -10 }, { kind: 'pursuit', n: -PURSUIT_STEP }] },
     { label: 'Fly it (Pursuit back)', short: 'Fly it', req: [{ kind: 'station', station: StationKind.Navigation, n: 3 }], outcome: [{ kind: 'pursuit', n: -PURSUIT_STEP }] },
@@ -122,8 +122,8 @@ export const EVENT_DEFS: readonly EventDef[] = [
     { label: 'Dig them out (+3 torps, a breach)', outcome: [{ kind: 'torpedoes', n: 3 }, { kind: 'breach' }] },
     { label: 'Leave the rock be', outcome: NOTHING }] },
   { id: 'sensorGhost', title: 'Sensor ghost', text: ['Something large moves in the dust.', 'It has not seen us yet.'], safeChoice: 1, weight: 1, minDepth: 2, choices: [
-    { label: 'Hunt it (50%: +{50}, or a fight)', outcome: { chance: 0.5, success: [{ kind: 'scrap', n: 50 }], failure: [{ kind: 'fight', elite: false }] } },
-    { label: 'Run silent (drive recharges)', outcome: [{ kind: 'driveReset' }] }] },
+    { label: 'Hunt it (50%: +{50}, or a fight)', short: 'Hunt it (50%)', outcome: { chance: 0.5, success: [{ kind: 'scrap', n: 50 }], failure: [{ kind: 'fight', elite: false }] } },
+    { label: 'Run silent (drive recharges)', short: 'Run silent', outcome: [{ kind: 'driveReset' }] }] },
   { id: 'cleanCall', title: 'Too clean a call', text: ['A distress call read off a manual.', 'Nobody talks like that.'], safeChoice: 2, weight: 1, choices: [
     { label: 'Answer (40%: +{40}, or a fight)', short: 'Answer', outcome: { chance: 0.4, success: [{ kind: 'scrap', n: 40 }], failure: [{ kind: 'fight', elite: false }] } },
     { label: 'Scan the wreck (+{20})', short: 'Scan it', req: [{ kind: 'station', station: StationKind.Science, n: 2 }], outcome: [{ kind: 'scrap', n: 20 }] },

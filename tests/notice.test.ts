@@ -11,7 +11,7 @@ import { PURCHASE_NOTICE_SECONDS } from '../src/renderer/src/render/hudModel';
 
 // Spec Demo-i sections 4, 8 and 11.4 rule 1b: the two-line run notice both players read.
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : 'kb:1' }));
-const SHOP = ['SHOP at Node 2a   scrap 45', 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)'];   // upgrades left the shop for the Engineering console (spec Loop-ii section 3)
+const SHOP = ['SHOP at Node 2a   scrap 45', 'Hull +25 (30)  Torps +2 (20)  Fuel +2 (12)'];   // Torps: the line with a weapon fits the notice at the larger font (spec Demo-x-c section 1)   // upgrades left the shop for the Engineering console (spec Loop-ii section 3)
 const fresh = (players = 2) => { const s = makeState(players); quiet(s); mapM(s); wake(s); return s; };   // awake: the peaceful start's own notice has its test below (spec Loop-i section 4b)
 const shopAt = (s: ReturnType<typeof makeState>) => { s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, 45); };
 const surrender = (s: ReturnType<typeof makeState>, secs = 8) => { placeEnemy(s); s.enemy.fleeing = 1; s.enemy.surrenderIntact = 1; s.enemy.departTick = s.tick + secs * 60; };
@@ -19,12 +19,12 @@ const surrender = (s: ReturnType<typeof makeState>, secs = 8) => { placeEnemy(s)
 describe('runNotice', () => {
   it('an event pending: its title and both choices, exactly', () => {
     const s = fresh(); setEvent(s, 4);
-    expect(runNotice(s)).toEqual(['EVENT: Supply cache   waiting for a vote', 'Take the scrap (+40)  /  Strip it bare (+60, a station fails)']);
+    expect(runNotice(s)).toEqual(['EVENT: Supply cache   waiting for a vote', '1 Take it (+40)  /  2 Strip it (+60)']);   // the full labels run past the notice at the larger font: the short ones (spec Demo-x-c section 1)
   });
   it('after the choice at a shop node: the shop location cue and price list, exactly', () => {
     const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 4); resolveEvent(s, 0); grantScrap(s, 45);
     expect(runNotice(s)).toEqual(SHOP);
-    expect(SHOP[1]!.length).toBe(46);
+    expect(SHOP[1]!.length).toBe(42);   // Torps, spec Demo-x-c section 1
   });
   it('the ready drive: someone take Navigation, or just JUMP READY when seated; a quiet state is empty', () => {
     const s = fresh(); expect(runNotice(s)).toEqual([]);
@@ -133,7 +133,7 @@ describe('Torpedo dropped (spec Coop-ii amendment D5)', () => {
 describe('votes and the jump confirmation on the HUD (spec Coop-ii section 3)', () => {
   it('the event notice counts the vote down; each player shows their vote beside their name', () => {
     const s = fresh(); setEvent(s, 4); s.run.eventOpenTick = s.tick; s.tick += 3 * 60;
-    expect(runNotice(s)).toEqual(['EVENT: Supply cache   vote 12s', 'Take the scrap (+40)  /  Strip it bare (+60, a station fails)']);
+    expect(runNotice(s)).toEqual(['EVENT: Supply cache   vote 12s', '1 Take it (+40)  /  2 Strip it (+60)']);
     s.run.vote[1] = 1; const m = buildHudModel(s, slots(2), 'running', '');
     expect([m.players[0]!.vote, m.players[1]!.vote]).toEqual(['', 'VOTE 2']);
     for (const ev of EVENTS) { setEvent(s, EVENTS.indexOf(ev)); s.run.eventOpenTick = s.tick; for (const l of runNotice(s)) expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); }

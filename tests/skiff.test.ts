@@ -86,7 +86,7 @@ describe('the console card tab bar (spec Demo-x-a section 1)', () => {
   it('shows SCIENCE | ENGINEERING | DOORS at Ops, no tabs at a single console, and the group in the Sit prompt', () => {
     const s = state();
     teleport(s, 0, OPS[0]! + 0.5, OPS[1]! + 1.5);
-    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Science + Engineering + Doors');
+    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Sci + Eng + Doors')   // short member names fit the player block at the larger font (spec Demo-x-c section 1);
     teleport(s, 0, HELM[0]! + 0.5, HELM[1]! + 0.5);
     expect(buildHudModel(s, slots(2), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Helm + Weapons');
     sitAt(s, OPS);

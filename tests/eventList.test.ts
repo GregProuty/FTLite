@@ -7,6 +7,8 @@ import type { Effect, Outcome } from '../src/renderer/src/sim/eventDefs';
 import type { SimState } from '../src/renderer/src/sim/state';
 import { NAV_TEXT_MAX, NodeType, navRows, sectorJump, jumpShip, tallyVotes } from '../src/renderer/src/sim/run';
 import { buildHudModel, runNotice, type NavigationPanel } from '../src/renderer/src/render/hudModel';
+import { textPx } from '../src/renderer/src/render/theme';
+import { NOTICE } from '../src/renderer/src/render/hudLayout';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { Encounter } from '../src/renderer/src/sim/enemy';
@@ -65,7 +67,7 @@ describe('the event list (spec Loop-v section 2)', () => {
   it('the notice lines are ASCII and fit NOTICE_LINE_MAX for every event at depth 0 and 17', () => {
     for (let id = 0; id < EVENT_DEFS.length; id++) for (const s of [calm(), deep()]) {
       setEvent(s, id); const lines = runNotice(s);
-      expect(lines).toHaveLength(2); expect(lines[1]).toBe(noticeChoices(s, id));
+      expect(lines).toHaveLength(2); expect(lines[1]).toBe(noticeChoices(s, id, (l) => textPx(l) <= NOTICE.w));   // the HUD measures the line at the larger font (spec Demo-x-c section 1)
       for (const l of lines) { expect(l.length, l).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[\x20-\x7e]+$/.test(l)).toBe(true); }
     }
     const s = calm(); setEvent(s, EVENT_DEFS.findIndex((d) => d.id === 'pirateToll')); s.run.sector = 0; s.run.column = 2;
