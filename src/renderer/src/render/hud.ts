@@ -9,6 +9,7 @@ import type { IconKind, IconTint } from './roomIconModel';
 import { STATION_NAMES } from '../sim/stationKinds';
 import { STATION_MAX, STATION_OVERDRIVE, UPGRADE_MAX } from '../sim/tuning';
 import { makePanel } from './panel';
+import { WINDOW } from './enemyWindowModel';
 import { TEXT, DIM, AMBER, WARN, GOOD, BLUE, BLUE_LIT, SELECT_BG, BAR_ON, BAR_OFF, CELL_EDGE, BAR_FAIL, RULE, BACKDROP, BACKDROP_ALPHA, FONT_NATIVE, TEXT_SCALE, TITLE_SCALE, LINE, PAD, ROW_GAP, ROW_GLYPH } from './theme';
 import { CLOCK, POWER, THREATS, THREAT_ROWS, blockRect, cardRect, POWER_ROW, CARD_ROW, BLOCK_HP_X, BLOCK_HP_W, BLOCK_O2_X, NOTICE, NOTICE_X, EVENT_CARD, SUMMARY_TOP, SUMMARY_W, BANNER_Y, BANNER_GLYPHS_Y, PROGRESS_Y, CREDITS, CREDITS_LINES, type CellColumns } from './hudLayout';
 
@@ -77,7 +78,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   // The left column: the clock card over the power panel. The right column: the threats panel (the map and the enemy window below it).
   side.addChild(panel(CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h).g);
   const clockRows = [TEXT, TEXT, DIM, DIM, DIM].map((tint, k) => { const t = text(tint); t.position.set(CLOCK.x + PAD, CLOCK.y + k * LINE); side.addChild(t); return t; });
-  const mapPanel = createMapPanel(assets.fontFamily); mapPanel.root.position.set(INTERNAL_W - 248, 220); parent.addChild(mapPanel.root);   // spec Ship-and-map section 5: the band above the ship, between the clock and enemy panels
+  const mapPanel = createMapPanel(assets.fontFamily); mapPanel.root.position.set(WINDOW.x, WINDOW.y); parent.addChild(mapPanel.root);   // the right column's window slot while a navigator sits (spec Demo-viii amendment R1, Demo-x-c section 3)
   side.addChild(panel(THREATS.x, THREATS.y, THREATS.w, THREATS.h).g);
   const threatRows = Array.from({ length: THREAT_ROWS }, (_, i) => { const row = new Container(); row.position.set(THREATS.x + PAD, THREATS.y + i * LINE); side.addChild(row); return row; });
   side.addChild(panel(POWER.x, POWER.y, POWER.w, POWER.h).g);

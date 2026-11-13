@@ -29,6 +29,7 @@ import { doorsCursorTarget } from '../sim/doors';
 import { shipLine, shipForCrew } from '../sim/ship/fleet';
 import { textPx } from './theme';
 import { NOTICE } from './hudLayout';
+import { navigatorAtHelm } from './enemyWindowModel';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -135,7 +136,7 @@ const NODE_TYPES = ['hazard', 'event', 'shop', 'asteroid', 'empty'] as const;
 function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | null {
   if (!state || phase !== 'running') return null;
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;
-  if (nav < 0 || state.stations.occupant[nav]! < 0) return null;
+  if (!navigatorAtHelm(state)) return null;   // a navigator on the Helm tab (a grouped Helm on its Weapons tab shows the enemy window, spec Demo-x-c)
   const r = state.run, reach = reachable(state), row = navRows(state)[state.stations.cursor[nav]!];
   const sel = row && row.select === 'jump' ? row.index : -1;
   const columns: MapModel['columns'] = [], edges: MapModel['edges'] = [], last = r.colNodes.length - 1;

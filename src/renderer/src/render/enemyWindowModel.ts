@@ -7,11 +7,11 @@ import { TICK_HZ, ENEMY_SYS_HP, ENEMY_ROOMS, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SE
 import { ENEMY_LAYOUT, ENEMY_TILE, ENEMY_COLS, ENEMY_ROWS } from './enemyShipLayout';
 
 /** The enemy ship window (spec Demo-viii section 2, amendments R1-R4): pure state -> picture data, no Pixi. Every position is in window pixels unless named otherwise. */
-export const WINDOW = { x: 1032, y: 114, w: 240, h: 342 } as const;
+export const WINDOW = { x: 872, y: 114, w: 400, h: 340 } as const;   // the right column under the threats panel (spec Demo-x-c section 3)
 export const SHIP_MARGIN = 8;
 export const ARRIVE_SECONDS = 0.5, BREAK_SECONDS = 1.2, FLY_SECONDS = 0.8, BOLT_SECONDS = 0.4;
 export const FLASH_TICKS = 30, CREW_WALK_SECONDS = 1.5;
-/** The ship's frame inside the window: centred across, below the pip row, leaving room for two shield layers. */
+/** The ship's frame inside the window: centred across, below the pip row, leaving room for the shield rings above the charge bar and the two status lines. */
 export const SHIP = { x: (WINDOW.w - ENEMY_COLS * ENEMY_TILE) / 2, y: 44, w: ENEMY_COLS * ENEMY_TILE, h: ENEMY_ROWS * ENEMY_TILE } as const;
 
 export interface Pt { x: number; y: number }
@@ -137,15 +137,20 @@ export function enemyWindowModel(state: SimState, nowTick: number, anim: WindowA
 }
 export { EnemyRoom };
 
+/** Someone sits at Navigation with its card showing: a lone console, or a console group on its Helm tab (spec Demo-x-c: on the Skiff the Helm and Weapons share a seat, and the gunner needs the window). */
+export function navigatorAtHelm(state: SimState): boolean {
+  const d = state.derived, nav = d.stationOfKind[StationKind.Navigation]!;
+  if (nav < 0 || state.stations.occupant[nav]! < 0) return false;
+  const g = d.stationGroup[nav]!;
+  return g < 0 || d.groupStations[g]![state.groups.tab[g]!] === nav;
+}
 /** Amendment R1: the window shows while it has something to show and no one sits at Navigation (the map shows then instead). */
 export function windowShown(state: SimState, view: EnemyWindowView): boolean {
-  const nav = state.derived.stationOfKind[StationKind.Navigation]!;
-  return view.visible && !(nav >= 0 && state.stations.occupant[nav]! >= 0);
+  return view.visible && !navigatorAtHelm(state);
 }
 /** The right column (amendment R1): the map with a navigator seated, else the enemy window when it has something to show, else nothing. Never both. */
 export function rightColumn(state: SimState, phase: string, view: EnemyWindowView): 'map' | 'window' | 'none' {
-  const nav = state.derived.stationOfKind[StationKind.Navigation]!;
-  if (phase === 'running' && nav >= 0 && state.stations.occupant[nav]! >= 0) return 'map';
+  if (phase === 'running' && navigatorAtHelm(state)) return 'map';
   return windowShown(state, view) ? 'window' : 'none';
 }
 /** The red flash on the room our hit landed in, as the bolt arrives: 0.3 s fading (render only). */

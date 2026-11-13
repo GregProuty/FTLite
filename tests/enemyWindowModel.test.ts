@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { enemyWindowModel, windowRoomCentre, stepWindowAnim, freshWindowAnim, WINDOW, SHIP_MARGIN, ARRIVE_SECONDS, BREAK_SECONDS, FLY_SECONDS, BOLT_SECONDS, type WindowAnim } from '../src/renderer/src/render/enemyWindowModel';
-import { ENEMY_LAYOUT, ENEMY_TILE, enemyRoomAt } from '../src/renderer/src/render/enemyShipLayout';
+import { ENEMY_LAYOUT, ENEMY_TILE, OLD_ENEMY_TILE, enemyRoomAt } from '../src/renderer/src/render/enemyShipLayout';
 import { projectilePath } from '../src/renderer/src/render/projectileModel';
 import { WORLD_BAND } from '../src/renderer/src/render/worldFit';
 import { ObjectKind } from '../src/renderer/src/sim/debris';
@@ -19,18 +19,18 @@ const view = (s: ReturnType<typeof makeState>, anim = settled(s), now = s.tick) 
 const seatWeapons = (s: ReturnType<typeof makeState>, cursor: number) => { const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w); s.stations.cursor[w] = cursor; };
 
 describe('enemy ship layout', () => {
-  it('five rooms, about 7 x 11 tiles, bow up; doors join two rooms; consoles inside their rooms', () => {
-    expect(ENEMY_LAYOUT.rooms.length).toBe(ENEMY_ROOMS);
-    expect([ENEMY_LAYOUT.tiles.length, ENEMY_LAYOUT.tiles[0]!.length]).toEqual([11, 7]);
-    for (const d of ENEMY_LAYOUT.doors) { const a = enemyRoomAt(d.x, d.y), b = enemyRoomAt(d.x, d.y + 1); expect(a).toBeGreaterThanOrEqual(0); expect(b).toBeGreaterThanOrEqual(0); expect(a).not.toBe(b); }
+  it('five rooms, 11 x 7 tiles of 32 px (1.6x the old 20), bow left towards our ship; doors join two rooms; consoles inside their rooms (spec Demo-x-c section 3)', () => {
+    expect(ENEMY_LAYOUT.rooms.length).toBe(ENEMY_ROOMS); expect(ENEMY_TILE / OLD_ENEMY_TILE).toBe(1.6);
+    expect([ENEMY_LAYOUT.tiles.length, ENEMY_LAYOUT.tiles[0]!.length]).toEqual([7, 11]);
+    for (const d of ENEMY_LAYOUT.doors) { const a = enemyRoomAt(d.x, d.y), b = enemyRoomAt(d.x + 1, d.y); expect(a).toBeGreaterThanOrEqual(0); expect(b).toBeGreaterThanOrEqual(0); expect(a).not.toBe(b); }
     ENEMY_LAYOUT.consoles.forEach((c, sys) => expect(enemyRoomAt(c.x, c.y)).toBe(sys));
-    expect(ENEMY_LAYOUT.rooms[EnemyRoom.Weapons]!.y).toBe(0);   // the bow, at the top
+    expect(ENEMY_LAYOUT.rooms[EnemyRoom.Weapons]!.x).toBe(0);   // the bow, on the left
   });
 });
 
 describe('enemy window model (spec Demo-viii section 2)', () => {
   it('the frame and timings', () => {
-    expect(WINDOW).toEqual({ x: 1032, y: 114, w: 240, h: 342 }); expect(SHIP_MARGIN).toBe(8);
+    expect(WINDOW).toEqual({ x: 872, y: 114, w: 400, h: 340 });   // the right column (spec Demo-x-c section 3) expect(SHIP_MARGIN).toBe(8);
     expect([ARRIVE_SECONDS, BREAK_SECONDS, FLY_SECONDS, BOLT_SECONDS]).toEqual([0.5, 1.2, 0.8, 0.4]);
   });
   it('hidden with no enemy; every room inside the frame less the 8 px margin (amendment R4)', () => {
@@ -87,10 +87,10 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     const s = present(), consoles = ENEMY_LAYOUT.consoles.map((c) => ({ x: (c.x + 0.5) * ENEMY_TILE, y: (c.y + 0.5) * ENEMY_TILE }));
     const v0 = view(s), off = { x: v0.ship.x, y: v0.ship.y };
     expect(v0.crew.map((c) => ({ x: c.x - off.x, y: c.y - off.y }))).toEqual(consoles); expect(v0.crew.every((c) => c.working)).toBe(true);
-    s.enemy.roomFire[EnemyRoom.Bridge] = ENEMY_FIRE_SECONDS;   // just started: the walk begins at the console
-    const moving = view(s); const mover = moving.crew.findIndex((c) => !c.working); expect(mover).toBe(0);   // Weapons is nearest to the Bridge
-    s.enemy.roomFire[EnemyRoom.Bridge] = ENEMY_FIRE_SECONDS - 5;   // five seconds on: arrived, working in the Bridge
-    const there = view(s).crew[0]!, rect = view(s).rooms[EnemyRoom.Bridge]!.rect;
+    s.enemy.roomFire[EnemyRoom.Hold] = ENEMY_FIRE_SECONDS;   // just started: the walk begins at the console
+    const moving = view(s); const mover = moving.crew.findIndex((c) => !c.working); expect(mover).toBe(3);   // the Piloting crew member is nearest to the Hold (every system room has one since Demo-x-c)
+    s.enemy.roomFire[EnemyRoom.Hold] = ENEMY_FIRE_SECONDS - 5;   // five seconds on: arrived, working in the Hold
+    const there = view(s).crew[3]!, rect = view(s).rooms[EnemyRoom.Hold]!.rect;
     expect(there.working).toBe(true); expect(there.x).toBeGreaterThan(rect.x); expect(there.x).toBeLessThan(rect.x + rect.w); expect(there.y).toBeGreaterThan(rect.y); expect(there.y).toBeLessThan(rect.y + rect.h);
     s.enemy.roomFire[EnemyRoom.Engines] = 3; const v = view(s); expect(v.crew[1]!.x - off.x).toBeCloseTo(consoles[1]!.x, 9);   // its own room: Engines crew stay put
   });

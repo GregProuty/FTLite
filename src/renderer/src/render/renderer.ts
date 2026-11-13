@@ -16,7 +16,6 @@ import { createProjectileLayer } from './projectiles';
 import { createEnemyWindowLayer } from './enemyWindow';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf } from './enemyWindowModel';
 import { EnemyRoom } from '../sim/enemy';
-import { NineSliceSprite } from 'pixi.js';
 import { createCalloutLayer } from './callouts';
 import type { Bubble } from './calloutModel';
 
@@ -36,8 +35,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const world = new Container(); world.isRenderGroup = true;
   const hud = new Container(); hud.isRenderGroup = true;
   const projectiles = createProjectileLayer();   // spec Demo-vii section 2: over the ship (internal pixels), under the HUD
-  const panel = (w: number, h: number) => { const n = assets.nineSlice('ui.panel'); const p = new NineSliceSprite({ texture: n.texture, leftWidth: n.left, topHeight: n.top, rightWidth: n.right, bottomHeight: n.bottom }); p.width = w; p.height = h; return p; };
-  const enemyWindow = createEnemyWindowLayer({ fontFamily: assets.fontFamily, fire: assets.has('fire.loop') ? assets.animation('fire.loop') : null, panel });
+  const enemyWindow = createEnemyWindowLayer({ fontFamily: assets.fontFamily, fire: assets.has('fire.loop') ? assets.animation('fire.loop') : null, panel: null });   // the themed panel (spec Demo-x-c section 1)
   const callouts = createCalloutLayer(assets);
   app.stage.addChild(world, enemyWindow.container, projectiles.container, callouts.container, hud);   // spec Demo-viii amendment R2: world, enemy window, projectiles, HUD; the callout bubbles (spec Coop-i section 3) just under the HUD
   let anim = freshWindowAnim();
