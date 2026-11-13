@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { CONFIRM_SECONDS } from '../src/renderer/src/sim/tuning';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
-import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX, beaconIndex } from '../src/renderer/src/sim/run';
-import { Encounter } from '../src/renderer/src/sim/enemy';
+import { generateMap, reachable, jumpShip, nodeLabel, assignNodeTypes, NodeType, navRows, NAV_TEXT_MAX, beaconIndex, sectorJump, startWait, EXIT_JUMP } from '../src/renderer/src/sim/run';
+import { Encounter, enemyMaxHull, enemyShieldMax } from '../src/renderer/src/sim/enemy';
+import { depthOf } from '../src/renderer/src/sim/depth';
+import { FUEL_START, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL } from '../src/renderer/src/sim/tuning';
 import { deriveStreams } from '../src/renderer/src/sim/state';
 import { Phase, enterPhase } from '../src/renderer/src/sim/director';
 import { step } from '../src/renderer/src/sim/step';
@@ -16,7 +18,7 @@ import { failStation } from '../src/renderer/src/sim/power';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
 import { TICK_HZ, DT, SECTORS, SECTOR_COLUMNS, NODE_STRIDE, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, DEBRIS_SLOTS, HULL_MAX, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER } from '../src/renderer/src/sim/tuning';
-import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard, mapM, setNodeTypes, at, MAP_M_NODES, MAP_M_MASKS } from './helpers/sim';
+import { makeState, run, quiet, intents, teleport, placeDebris, placeShot, placeEnemy, placeBoarder, chargeJump, seatNavigator, setMap, room, setSkill, allHazard, mapM, setNodeTypes, at, MAP_M_NODES, MAP_M_MASKS, grantScrap } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { fieldSystem, endField } from '../src/renderer/src/sim/run';
 import { spawnFieldRock, ObjectKind, activeDebrisCount } from '../src/renderer/src/sim/debris';
@@ -214,15 +216,15 @@ describe('run: the jump', () => {
     const snap = () => JSON.stringify([Life.state[s.crew[1]!], Life.bleed[s.crew[1]!], Life.reviveProgress[s.crew[1]!], Life.reviverPid[s.crew[1]!], s.skills.lastEngChangeTick, s.skills.lastDoorToggleTick, s.skills.lsDeliveredTick, s.skills.lastShotTick, s.rooms.o2[A], s.rooms.fire[A], s.rooms.fireRepair[A], s.breaches.repair[6], s.stations.repair[doors], s.stations.heat[wpn], s.stations.coolant[wpn], s.doors.state[0], s.doors.closeTimer[0], s.doors.sealRequested[0], s.weapons.torpedoStock, s.weapons.torpedoLoad, s.weapons.torpedoRegen, s.boarders.nextMoveTick[b], s.boarders.aloneSince[b]]);
     const before = snap(); s.run.jumpCharge = 1; jumpShip(s, reachable(s)[0]!); expect(snap()).toBe(before);
   });
-  it('victory: from column 4 (nodesReached 4, jumps 4) a jump gives the last column 5, both counters 5, ended, Victory; crewSystem does not overwrite it; the next step is a no-op', () => {
-    const s = calm(2); s.run.column = 4; s.run.node = 0; s.run.nodesReached = 4; s.telemetry.jumps = 4; s.run.jumpCharge = 1;
-    jumpShip(s, reachable(s)[0]!);
-    expect([s.run.column, s.run.nodesReached, s.telemetry.jumps, s.ended, s.endReason]).toEqual([5, 5, 5, 1, EndReason.Victory]);
-    const p = calm(2); allHazard(p); p.run.column = 4; p.run.node = 0; p.run.nodesReached = 4; p.telemetry.jumps = 4; chargeJump(p);
+  it('victory (spec Loop-i section 1): from the last sector exit (nodesReached 16, jumps 16) the escape gives both counters 17, ended, Victory; crewSystem does not overwrite it; the next step is a no-op', () => {
+    const s = calm(2); s.run.sector = SECTORS - 1; s.run.column = SECTOR_COLUMNS - 1; s.run.node = 0; s.run.nodesReached = 16; s.telemetry.jumps = 16; s.run.jumpCharge = 1;
+    sectorJump(s);
+    expect([s.run.column, s.run.nodesReached, s.telemetry.jumps, s.ended, s.endReason]).toEqual([SECTOR_COLUMNS - 1, 17, 17, 1, EndReason.Victory]);
+    const p = calm(2); allHazard(p); p.run.sector = SECTORS - 1; p.run.column = SECTOR_COLUMNS - 1; p.run.node = 0; chargeJump(p);
     seatNavigator(p, 0); run(p, 1); teleport(p, 1, 2.5, 2.5); downCrew(p, 1); Health.cur[p.crew[0]!] = 0.05; placeBoarder(p, room(p, 'A'));   // P2 down: the pilot jumps alone (spec Coop-ii section 3); a boarder in A will down the navigator later this tick
     run(p, 1, () => intents({ confirmPressed: true }, {}));
     expect(p.endReason).toBe(EndReason.Victory); expect(p.ended).toBe(1); expect(Life.state[p.crew[0]!]).toBe(LifeState.Downed); expect(p.telemetry.firstDownTick).toBe(p.tick - 1);
-    const h = calm(1); allHazard(h); h.run.column = 4; h.run.nodesReached = 4; h.telemetry.jumps = 4; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
+    const h = calm(1); allHazard(h); h.run.sector = SECTORS - 1; h.run.column = SECTOR_COLUMNS - 1; chargeJump(h); seatNavigator(h, 0); run(h, 1); h.hull = 0;   // hull already 0 when the jump tick runs
     run(h, 1, () => intents({ confirmPressed: true }, {})); expect(h.endReason).toBe(EndReason.Victory);
     const t = h.tick; run(h, 3); expect(h.tick).toBe(t);
     void HULL_MAX;
@@ -256,9 +258,9 @@ describe('encounters at nodes (spec Demo-vi section 2)', () => {
     const s = calm(2); mapM(s); placeEnemy(s); s.run.encounter = Encounter.Fighting; s.hull = 60; chargeJump(s); jumpShip(s, at(1, 0));
     expect([s.enemy.present, s.hull, s.run.driveBoost, s.telemetry.encountersWon, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([0, 60, 0, 0, Encounter.Pending, s.tick + ENCOUNTER_START * T]);
   });
-  it('the last column is not an encounter', () => {
-    const s = calm(2); s.run.column = 4; s.run.node = 0; chargeJump(s); jumpShip(s, reachable(s)[0]!);
-    expect([s.ended, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([1, Encounter.None, NEVER]);
+  it('the last sector exit is not an encounter (spec Loop-i section 4)', () => {
+    const s = calm(2); s.run.sector = SECTORS - 1; s.run.column = 4; s.run.node = 0; chargeJump(s); jumpShip(s, reachable(s)[0]!);
+    expect([s.ended, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([0, Encounter.None, NEVER]);
   });
   it('the drive boost charges ENCOUNTER_BOOST times as fast and the jump clears it', () => {
     const s = calm(2); mapM(s); s.run.quirk = 0; s.run.driveBoost = 1; run(s, 1);   // quirk 0 leaves the charge rate alone
@@ -398,5 +400,92 @@ describe('the jump confirmation (spec Coop-ii section 3, amendment D7)', () => {
   it('bots other than the pilot confirm a pending jump', () => {
     const { s } = ready(); run(s, 1, () => intents({ confirmPressed: true }, {}));
     step(s, [NEUTRAL_INTENT, botIntent(s, 1)]); expect(s.run.column).toBe(1);
+  });
+});
+
+describe('sectors, fuel and waiting (spec Loop-i sections 1 and 2, amendments S1-S3)', () => {
+  const ready = (players = 1) => { const s = calm(players); mapM(s); chargeJump(s); return s; };
+  const exitAt = (s: ReturnType<typeof calm>, sector: number) => { s.run.sector = sector; s.run.column = SECTOR_COLUMNS - 1; s.run.node = 0; chargeJump(s); };
+  it('the run starts in sector 1 with FUEL_START fuel, the pursuit at PURSUIT_START and no wait; every jump costs 1 fuel: forward, sideways and to the next sector', () => {
+    expect([FUEL_START, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL]).toEqual([8, 3, -1.5, 0.75, 20, 0.6, 2]);
+    const s = ready(); expect([s.run.sector, s.run.fuel, s.run.pursuit, s.run.waitUntilTick]).toEqual([0, 8, -1.5, -1]);
+    jumpShip(s, at(1, 0)); expect(s.run.fuel).toBe(7);
+    chargeJump(s); jumpShip(s, at(1, 1)); expect([s.run.column, s.run.node, s.run.fuel]).toEqual([1, 1, 6]);   // sideways
+    exitAt(s, 0); sectorJump(s); expect([s.run.sector, s.run.column, s.run.node, s.run.fuel]).toEqual([1, 0, 0, 5]);
+  });
+  it('with no fuel a jump is a no-op and Navigation offers only Wait for help, the exit included (S2)', () => {
+    const s = ready(); s.run.fuel = 0; const before = JSON.stringify([s.run.column, s.run.node, s.run.nodesReached, s.telemetry.jumps]);
+    jumpShip(s, at(1, 0)); expect(JSON.stringify([s.run.column, s.run.node, s.run.nodesReached, s.telemetry.jumps])).toBe(before);
+    expect(navRows(s).map((r) => [r.text, r.select, r.enabled])).toEqual([['Wait for help', 'wait', true], ['EVADE: Confirm', 'evade', true]]);
+    exitAt(s, 0); expect(navRows(s).map((r) => r.select)).toEqual(['wait', 'evade']); sectorJump(s); expect([s.run.sector, s.run.column]).toEqual([0, SECTOR_COLUMNS - 1]);
+    setNodeTypes(s, { '5:0': NodeType.Shop }); grantScrap(s, 100); expect(navRows(s).map((r) => r.select).slice(-2)).toEqual(['wait', 'evade']);   // a shop's items stay, then Wait
+  });
+  it('the exit rows (S1): Jump to sector 2 and 3, Escape: win the run in the last; only at the exit, never a destination row there', () => {
+    const s = ready();
+    for (const [sector, text] of [[0, 'Jump to sector 2'], [1, 'Jump to sector 3'], [2, 'Escape: win the run']] as const) {
+      exitAt(s, sector); expect(navRows(s).map((r) => [r.text, r.select, r.index, r.enabled])).toEqual([[text, 'sector', EXIT_JUMP, true], ['EVADE: Confirm', 'evade', 0, true]]);
+    }
+    const m = ready(); m.run.column = 4; m.run.node = 1; sectorJump(m); expect([m.run.sector, m.run.column, m.run.fuel]).toEqual([0, 4, 8]);   // not at the exit: no-op
+    expect(navRows(m).some((r) => r.select === 'sector')).toBe(false);
+    for (const r of navRows(s)) expect(r.text.length).toBeLessThanOrEqual(NAV_TEXT_MAX);
+  });
+  it('the exit row through the console: a lone pilot\'s Confirm with a ready drive jumps to the next sector; before the drive is ready nothing', () => {
+    const s = ready(); exitAt(s, 0); s.run.jumpCharge = 0.5; const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 0;
+    run(s, 1, () => intents({ confirmPressed: true })); expect(s.run.sector).toBe(0);
+    chargeJump(s); run(s, 1, () => intents({})); run(s, 1, () => intents({ confirmPressed: true })); expect([s.run.sector, s.run.column]).toEqual([1, 0]);
+    const p = calm(2); mapM(p); exitAt(p, 0); const m = seatNavigator(p, 0); run(p, 1); p.stations.cursor[m] = 0; chargeJump(p);   // two crew: the second Confirm (spec Coop-ii section 3)
+    run(p, 1, () => intents({ confirmPressed: true }, {})); expect([p.run.sector, p.run.jumpPending]).toEqual([0, EXIT_JUMP]);
+    run(p, 1, () => intents({}, { confirmPressed: true })); expect([p.run.sector, p.run.jumpPending]).toEqual([1, -1]);
+  });
+  it('a sector jump (S4): a new map drawn from the map stream in the same order, the pursuit reset, arrival at column 0 with the jump bookkeeping', () => {
+    const s = ready(2); const A = room(s, 'A'); exitAt(s, 0); s.run.pursuit = 3.75; placeEnemy(s); placeDebris(s, A, 600, 1); s.run.encounter = Encounter.Fighting;
+    const ref = { s: s.rng.map.s }, expected = generateMap(ref), loot = s.rng.loot.s, scrap = s.run.scrap, t = s.tick;
+    sectorJump(s);
+    expect([Array.from(s.run.colNodes), Array.from(s.run.edgeMask), Array.from(s.run.nodeType)]).toEqual([Array.from(expected.colNodes), Array.from(expected.edgeMask), Array.from(expected.nodeType)]);
+    expect(s.rng.map.s).toBe(ref.s); expect(s.rng.loot.s).toBe(loot);
+    expect([s.run.sector, s.run.column, s.run.node, s.run.pursuit, s.run.nodesReached, s.telemetry.jumps, s.run.jumpCharge, s.run.encounter, s.enemy.present, s.enemy.nextArrivalTick, activeDebrisCount(s)]).toEqual([1, 0, 0, PURSUIT_START, 1, 1, 0, Encounter.None, 0, NEVER, 0]);
+    expect(s.run.scrap - scrap).toBe(scrapPerJump(SECTOR_COLUMNS));   // depth 6: sector 2, column 0
+    expect(s.boarders.nextArrivalTick).toBe(t + BOARDING_AFTER_JUMP * T);
+  });
+  it('escaping the last sector wins the run; reaching a sector\'s last column does not; the exit is a fight on the way out except in the last sector', () => {
+    const s = ready(); s.run.column = 4; s.run.node = 0; jumpShip(s, at(5, 0));
+    expect([s.ended, s.run.column, s.run.encounter, s.enemy.nextArrivalTick]).toEqual([0, 5, Encounter.Pending, s.tick + ENCOUNTER_START * T]);
+    const l = ready(); l.run.sector = 2; l.run.column = 4; l.run.node = 0; jumpShip(l, at(5, 0));
+    expect([l.ended, l.run.encounter, l.enemy.nextArrivalTick]).toEqual([0, Encounter.None, NEVER]);
+    chargeJump(l); const jumps = l.telemetry.jumps; sectorJump(l);
+    expect([l.ended, l.endReason, l.run.sector, l.run.fuel, l.telemetry.jumps]).toEqual([1, EndReason.Victory, 2, 6, jumps + 1]);
+    const t = l.tick; run(l, 3); expect(l.tick).toBe(t);
+  });
+  it('Wait for help: a seated Confirm starts 20 s; then the pursuit steps once and one loot draw gives 2 fuel below 0.6, else nothing and the crew can wait again', () => {
+    const outcomes = new Set<number>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const s = calm(1, seed); mapM(s); s.run.fuel = 0; const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 0;
+      run(s, 1, () => intents({ confirmPressed: true })); const start = s.tick - 1;
+      expect(s.run.waitUntilTick).toBe(start + WAIT_SECONDS * T);
+      expect(navRows(s).map((r) => [r.text, r.select, r.enabled])).toEqual([['Waiting for help  20s', 'wait', false], ['EVADE: Confirm', 'evade', true]]);
+      run(s, 1, () => intents({ confirmPressed: true })); expect(s.run.waitUntilTick).toBe(start + WAIT_SECONDS * T);   // a Confirm while waiting changes nothing
+      const ref = { s: s.rng.loot.s }; const u = nextFloat(ref);
+      run(s, s.run.waitUntilTick - s.tick); expect([s.run.waitUntilTick, s.run.pursuit, s.run.fuel]).toEqual([start + WAIT_SECONDS * T, PURSUIT_START, 0]);
+      run(s, 1); expect([s.run.waitUntilTick, s.run.pursuit, s.run.fuel]).toEqual([-1, PURSUIT_START + PURSUIT_STEP, u < WAIT_FUEL_CHANCE ? WAIT_FUEL : 0]); expect(s.rng.loot.s).toBe(ref.s);
+      outcomes.add(s.run.fuel);
+      if (s.run.fuel === 0) { expect(navRows(s)[0]!.text).toBe('Wait for help'); run(s, 1, () => intents({ confirmPressed: true })); expect(s.run.waitUntilTick).toBe(s.tick - 1 + WAIT_SECONDS * T); }
+      else expect(navRows(s).filter((r) => r.select === 'jump').length).toBeGreaterThan(0);
+    }
+    expect([...outcomes].sort()).toEqual([0, 2]);
+    const f = calm(1); mapM(f); expect(startWait(f)).toBe(false); expect(f.run.waitUntilTick).toBe(-1);   // with fuel there is no wait
+  });
+  it('the pursuit steps PURSUIT_STEP on every jump, forward or sideways', () => {
+    const s = ready(); jumpShip(s, at(1, 0)); expect(s.run.pursuit).toBe(PURSUIT_START + PURSUIT_STEP);
+    chargeJump(s); jumpShip(s, at(1, 1)); expect(s.run.pursuit).toBe(PURSUIT_START + 2 * PURSUIT_STEP);
+  });
+  it('depth (sector x 6 + column) scales the scrap and the enemy', () => {
+    const s = ready(); s.run.sector = 1; s.run.column = 1; s.run.node = 0; const scrap = s.run.scrap; jumpShip(s, at(2, 0));
+    expect(depthOf(s)).toBe(8); expect(s.run.scrap - scrap).toBe(scrapPerJump(8));
+    run(s, ENCOUNTER_START * T + 1); expect([s.enemy.present, s.enemy.maxHull, s.enemy.shieldLayers]).toEqual([1, enemyMaxHull(8), enemyShieldMax(8)]);
+  });
+  it('fuel sources: a cleared asteroid field gives FIELD_FUEL', () => {
+    const s = calm(2); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid }); chargeJump(s); jumpShip(s, at(1, 0)); s.boarders.nextArrivalTick = 1e9;
+    const fuel = s.run.fuel; for (let i = 0; i < (ENCOUNTER_START + FIELD_SECONDS + 12) * T + 2; i++) { step(s, []); s.hull = HULL_MAX; for (const eid of s.crew) Health.cur[eid] = 100; }
+    expect([s.run.encounter, s.run.fuel - fuel, FIELD_FUEL]).toEqual([Encounter.Won, 1, 1]);
   });
 });

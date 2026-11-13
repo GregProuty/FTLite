@@ -44,7 +44,7 @@ describe('session', () => {
     const st = h.session.state!; const quirk = st.run.quirk; downCrew(st, 0); h.frames(2);
     expect(h.session.phase).toBe('gameover'); expect(h.records).toHaveLength(1);
     const saved = loadProgress(h.storage); expect(saved).toMatchObject({ runs: 1, victories: 0, bestNodes: 0, unlocked: ['scrap-reserve'] }); expect(saved.bestScore).toBe(h.records[0]!.score);
-    const sum = h.last().summary!; expect(sum[0]).toMatch(/^Survived 0:0\d  CREW LOST  Reached node 1 of 6  Score \d+$/); expect(sum[4]).toBe(`Ship: ${QUIRK_NAMES[quirk]}`); expect(sum[5]).toMatch(/^Teamwork  /); expect(sum[6]).toBe(`Best ${saved.bestScore}   Runs 1   Victories 0`); expect(sum[7]).toBe('Unlocked: Scrap reserve'); expect(sum[8]).toMatch(/^Okoro: /);
+    const sum = h.last().summary!; expect(sum[0]).toMatch(/^Survived 0:0\d  CREW LOST  Reached sector 1 node 1  Score \d+$/); expect(sum[4]).toBe(`Ship: ${QUIRK_NAMES[quirk]}`); expect(sum[5]).toMatch(/^Teamwork  /); expect(sum[6]).toBe(`Best ${saved.bestScore}   Runs 1   Victories 0`); expect(sum[7]).toBe('Unlocked: Scrap reserve'); expect(sum[8]).toMatch(/^Okoro: /);
     h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
     expect(h.last().message).toBe('New seed. Press Interact to join. Confirm: start. Cancel: credits'); expect(h.last().progressLine).toBe('Runs 1  Best ' + saved.bestScore + '  Unlocked: Scrap reserve');
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); h.press('a', { confirm: true }); h.frames(1); h.release(); h.frames(1);
@@ -289,7 +289,7 @@ describe('session', () => {
     const h = harness();
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
     h.press('a', { confirm: true }); h.frames(1); h.release();
-    const st = h.session.state!; st.run.column = 4; st.run.node = 0; st.run.nodesReached = 4; st.telemetry.jumps = 4; seatNavigator(st, 0); h.frames(2); chargeJump(st);
+    const st = h.session.state!; st.run.sector = 2; st.run.column = 5; st.run.node = 0; st.run.nodesReached = 4; st.telemetry.jumps = 4; seatNavigator(st, 0); h.frames(2); chargeJump(st);
     h.press('a', { confirm: true }); h.frames(2); h.release(); h.frames(2);
     expect(h.session.phase).toBe('gameover'); expect(st.endReason).toBe(EndReason.Victory);
     expect(h.last().message).toMatch(/^VICTORY after \d+s\./);
@@ -313,7 +313,7 @@ describe('session', () => {
       const n = h.cues.length; h.frames(10); expect(h.cues).toHaveLength(n);
     });
     it('a victory ending cues victory exactly once', () => {
-      const h = started(); const st = h.session.state!; st.run.column = 4; st.run.node = 0; st.run.nodesReached = 4; st.telemetry.jumps = 4; seatNavigator(st, 0); h.frames(2); chargeJump(st);
+      const h = started(); const st = h.session.state!; st.run.sector = 2; st.run.column = 5; st.run.node = 0; st.run.nodesReached = 4; st.telemetry.jumps = 4; seatNavigator(st, 0); h.frames(2); chargeJump(st);
       h.press('a', { confirm: true }); h.frames(2); h.release(); h.frames(2);
       expect(st.endReason).toBe(EndReason.Victory); expect(h.cues.filter((c) => c === 'victory')).toHaveLength(1); expect(h.cues).not.toContain('defeat');
     });

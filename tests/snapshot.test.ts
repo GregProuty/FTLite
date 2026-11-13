@@ -50,10 +50,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-22 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-23 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 22 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 22;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 23 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 23;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips airlocks.open and a HeldOpen door on the cutter; one airlock alone changes the hash (spec Demo-vii section 1)', () => {
@@ -393,6 +393,14 @@ describe('snapshot', () => {
     run(whole, 20 * TICK_HZ); run(resumed, 20 * TICK_HZ);
     expect(resumed.stations.failed[1]).toBe(0); expect(resumed.boarders.aloneSince[0]).toBe(-2);     // Doors stays online: the visit already sabotaged
     expect(hashState(resumed)).toBe(hashState(whole));
+  });
+  it('round-trips the Loop-i run fields (spec Loop-i section 6): sector, fuel, pursuit, the wait; each alone changes the hash', () => {
+    const s = makeState(2, 5); s.run.sector = 2; s.run.fuel = 3; s.run.pursuit = 2.25; s.run.waitUntilTick = 4321;
+    const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
+    expect([t.run.sector, t.run.fuel, t.run.pursuit, t.run.waitUntilTick]).toEqual([2, 3, 2.25, 4321]);
+    const base = hashState(makeState(2, 5));
+    const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
+    for (const k of ['sector', 'fuel', 'pursuit', 'waitUntilTick'] as const) expect(mutate((u) => { u.run[k] = 7; })).not.toBe(base);
   });
   it('round-trips the run block, the map stream and telemetry.jumps; each alone changes the hash', () => {
     const s = makeState(2, 5); s.run.column = 3; s.run.node = 2; s.run.nodesReached = 3; s.run.jumpCharge = 0.42; s.run.colNodes.set([1, 3, 4, 3, 2, 1]); s.run.edgeMask[4] = 5; s.telemetry.jumps = 3; s.rng.map.s = 123456;

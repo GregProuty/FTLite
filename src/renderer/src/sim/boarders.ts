@@ -6,6 +6,7 @@ import { stationOnline } from './stations';
 import { failStation } from './power';
 import { downCrew } from './crew';
 import { addScrap } from './scrap';
+import { depthOf } from './depth';
 import { Skill, skillLevelOf, addXp } from './skills';
 import { TICK_HZ, DT, BOARDING_PARTY, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, HEALTH_EPS, scrapBoarder, BOARDER_O2_DPS, BOARDER_FIRE_DPS, SUFFOCATE_FRAC } from './tuning';
 
@@ -93,7 +94,7 @@ function moveBoarder(state: SimState, slot: number): void {
 /** Shared death bookkeeping: deactivate, scrap, the kill count; the last death arms the next boarding with one director draw. */
 function killBoarder(state: SimState, slot: number): void {
   const b = state.boarders;
-  b.active[slot] = 0; b.stableId[slot] = 0; state.telemetry.boardersKilled++; addScrap(state, scrapBoarder(state.run.column));
+  b.active[slot] = 0; b.stableId[slot] = 0; state.telemetry.boardersKilled++; addScrap(state, scrapBoarder(depthOf(state)));
   if (activeBoarderCount(state) === 0) {
     const u = nextFloat(state.rng.director);
     b.nextArrivalTick = state.tick + Math.round(BOARDING_COOLDOWN * TICK_HZ * (1 + BOARDING_JITTER * (2 * u - 1)));

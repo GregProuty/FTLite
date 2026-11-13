@@ -8,7 +8,7 @@ import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump,
 
 // Spec Demo-i sections 4, 8 and 11.4 rule 1b: the two-line run notice both players read.
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : 'kb:1' }));
-const SHOP = ['SHOP at Node 2a   scrap 45', 'Hull +25 (30)   Torpedoes +2 (20)   Upgrade +1 bar (50)'];
+const SHOP = ['SHOP at Node 2a   scrap 45', 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)  Upgrade (50)'];   // the fuel price joins the list (spec Loop-i section 2)
 const fresh = (players = 2) => { const s = makeState(players); quiet(s); mapM(s); return s; };
 const shopAt = (s: ReturnType<typeof makeState>) => { s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, 45); };
 const surrender = (s: ReturnType<typeof makeState>, secs = 8) => { placeEnemy(s); s.enemy.fleeing = 1; s.enemy.surrenderIntact = 1; s.enemy.departTick = s.tick + secs * 60; };
@@ -21,7 +21,7 @@ describe('runNotice', () => {
   it('after the choice at a shop node: the shop location cue and price list, exactly', () => {
     const s = fresh(); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); setEvent(s, 4); resolveEvent(s, 0); grantScrap(s, 45);
     expect(runNotice(s)).toEqual(SHOP);
-    expect(SHOP[1]!.length).toBe(55);
+    expect(SHOP[1]!.length).toBe(60);
   });
   it('the ready drive: someone take Navigation, or just JUMP READY when seated; a quiet state is empty', () => {
     const s = fresh(); expect(runNotice(s)).toEqual([]);
@@ -53,7 +53,7 @@ describe('runNotice', () => {
     const lines: string[] = [];
     for (let id = 0; id < EVENTS.length; id++) { const s = fresh(); setEvent(s, id); lines.push(...runNotice(s)); }
     const s = fresh(); shopAt(s); lines.push(...runNotice(s));
-    for (const col of [0, 1, 6]) for (const node of [0, 1, 2]) { const t = fresh(); t.run.column = col; t.run.node = node; setNodeTypes(t, { [`${col}:${node}`]: NodeType.Shop }); grantScrap(t, 999); lines.push(...runNotice(t)); }
+    for (const col of [0, 1, 4]) for (const node of [0, 1, 2, 3]) { const t = fresh(); t.run.column = col; t.run.node = node; setNodeTypes(t, { [`${col}:${node}`]: NodeType.Shop }); grantScrap(t, 999); lines.push(...runNotice(t)); }
     const r = fresh(); chargeJump(r); lines.push(...runNotice(r)); seatNavigator(r, 0); lines.push(...runNotice(r));
     const f = fresh(); surrender(f); lines.push(...runNotice(f));
     expect(lines.length).toBeGreaterThanOrEqual(12 + 2 + 2 + 1);

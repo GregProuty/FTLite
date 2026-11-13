@@ -11,7 +11,8 @@ import { Life, LifeState } from './components';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
+import { depthOf } from './depth';
+import { TICK_HZ, DT, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
 import { stationOnline } from './stations';
 import { quirkChargeMult } from './quirks';
 
@@ -23,7 +24,9 @@ export interface Beacon { column: number; node: number }
 /** The map arrays' index of a beacon (stride NODE_STRIDE). */
 export const beaconIndex = (column: number, node: number): number => column * NODE_STRIDE + node;
 export const beaconAt = (index: number): Beacon => ({ column: Math.floor(index / NODE_STRIDE), node: index % NODE_STRIDE });
-export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump' | 'evade'; index: number; enabled: boolean }
+/** The pending-jump code and row index of the exit's sector jump (spec Loop-i amendment S1): one past every beacon index. */
+export const EXIT_JUMP = SECTOR_COLUMNS * NODE_STRIDE;
+export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump' | 'sector' | 'wait' | 'evade'; index: number; enabled: boolean }
 
 /** Node types (spec Run-ii section 3, Demo-viii section 1, Loop-i section 4): one draw per middle node after every edge draw (Shop, Event, Asteroid, Empty, else Hazard); a shop is guaranteed without a draw. */
 export function assignNodeTypes(rng: RngState, colNodes: Uint8Array, nodeType: Uint8Array, draw: (rng: RngState) => number = nextFloat): void {
@@ -75,13 +78,17 @@ export function reachable(state: SimState): Beacon[] {
   return out;
 }
 const canReach = (state: SimState, b: Beacon): boolean => reachable(state).some((x) => x.column === b.column && x.node === b.node);
+/** At the sector's exit beacon, where the only way on is the sector jump (spec Loop-i amendment S1). */
+export const atExit = (state: SimState): boolean => state.run.column === state.run.colNodes.length - 1;
+/** The exit row's text: the next sector, or the escape that wins the run (spec Loop-i amendment S1). */
+export const exitText = (state: SimState): string => state.run.sector >= SECTORS - 1 ? 'Escape: win the run' : `Jump to sector ${state.run.sector + 2}`;
 
 /** First system of the tick: the drive charges from arrival, whatever else happens (spec section 6); ENCOUNTER_BOOST times as fast after a won encounter (spec Demo-vi section 2). */
 export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.min(1, state.run.jumpCharge + (state.run.driveBoost === 1 ? ENCOUNTER_BOOST : 1) * DT / (JUMP_CHARGE_TIME * quirkChargeMult(state))); }
 
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
 function arrive(state: SimState): void {
-  const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1; addScrap(state, scrapPerJump(r.column));
+  const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1; addScrap(state, scrapPerJump(depthOf(state)));
   if (r.nodeType[hereIndex(state)] === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
 }
 
@@ -103,7 +110,7 @@ export function startEvade(state: SimState): boolean {
   return true;
 }
 
-/** The Navigation list (spec Run-ii section 6): a pending event, else a shop's items then the destinations, else the destinations; the evade row always last (spec Coop-ii section 1). */
+/** The Navigation list (spec Run-ii section 6, Loop-i section 2): a pending event, else a shop's items then the way on: Wait for help with no fuel (or the wait's countdown), the exit's sector row at the exit, else the destinations; the evade row always last (spec Coop-ii section 1). */
 export function navRows(state: SimState): NavRow[] {
   const r = state.run, rows: NavRow[] = [];
   if (r.event >= 0 && r.eventChoice < 0) {
@@ -117,7 +124,10 @@ export function navRows(state: SimState): NavRow[] {
     rows.push({ text: `Shop   scrap ${r.scrap}`, select: 'none', index: 0, enabled: false });
     for (let i = 0; i < SHOP_ITEM_COUNT; i++) rows.push({ text: itemLabel(state, i), select: 'buy', index: i, enabled: itemEnabled(state, i) });
   }
-  for (const d of reachable(state)) rows.push({ text: destinationLabel(state, d.column, d.node), select: 'jump', index: beaconIndex(d.column, d.node), enabled: true });
+  if (r.waitUntilTick >= 0) rows.push({ text: `Waiting for help  ${Math.max(0, Math.ceil((r.waitUntilTick - state.tick) / TICK_HZ))}s`, select: 'wait', index: 0, enabled: false });
+  else if (r.fuel < 1) rows.push({ text: 'Wait for help', select: 'wait', index: 0, enabled: true });
+  else if (atExit(state)) rows.push({ text: exitText(state), select: 'sector', index: EXIT_JUMP, enabled: true });
+  else for (const d of reachable(state)) rows.push({ text: destinationLabel(state, d.column, d.node), select: 'jump', index: beaconIndex(d.column, d.node), enabled: true });
   rows.push(evadeRow(state));
   return rows;
 }
@@ -141,27 +151,60 @@ export function navigationInput(state: SimState, i: number, dir: number, confirm
   const row = rows[c[i]!]!;
   if (row.select === 'choice' && row.enabled) { const pid = state.stations.occupant[i]!; if (pid >= 0 && state.run.vote[pid] !== row.index) { state.run.vote[pid] = row.index; state.run.voteTick = state.tick; } }   // the officer's vote (spec Coop-ii amendment D7)
   else if (row.select === 'buy' && row.enabled) { buy(state, row.index); clampNavCursor(state); }
-  else if (row.select === 'jump' && state.run.jumpCharge >= 1) requestJump(state, row.index);
+  else if ((row.select === 'jump' || row.select === 'sector') && state.run.jumpCharge >= 1) requestJump(state, row.index);
+  else if (row.select === 'wait' && row.enabled) startWait(state);
   else if (row.select === 'evade') startEvade(state);
 }
 
 /** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. A Hazard node short of the last column is an encounter with contact in ENCOUNTER_START seconds; an Asteroid node a field starting then (spec Demo-viii section 1); Event and Shop nodes are quiet (spec Demo-vi section 2). */
 export function jumpShip(state: SimState, destination: Beacon): void {
+  const r = state.run;
+  if (r.fuel < 1 || !canReach(state, destination)) return;
+  r.node = destination.node; r.column = destination.column; r.pursuit += PURSUIT_STEP;
+  afterJump(state);
+}
+
+/** The jump's common steps (spec Run-i section 6, Loop-i section 2): one fuel, the counters, the drive, arrival (scrap, maybe an event), the encounter left behind, the beacon's own encounter, the clocks. The exit is a Hazard on the way out except in the last sector; column 0 is quiet. */
+function afterJump(state: SimState): void {
   const r = state.run, nav = state.derived.stationOfKind[StationKind.Navigation]!, last = r.colNodes.length - 1;
-  if (!canReach(state, destination)) return;
-  r.node = destination.node; r.column = destination.column; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1;
+  r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1; r.waitUntilTick = -1;
   if (nav >= 0) state.stations.cursor[nav] = 0;
   state.telemetry.jumps++;
   arrive(state);
   clearObjects(state);
   if (state.enemy.present) { state.enemy.surrenderIntact = 0; leave(state, false); }   // the ship left, not the enemy: a flee in progress counts as a flight, no surrender bounty (spec Demo-i section 11.3)
   else if (r.encounter === Encounter.Fighting || r.encounter === Encounter.Pending) endField(state);   // no enemy: leaving a field (or its approach) early, no reward (spec Demo-viii section 1)
-  const type = r.column < last ? r.nodeType[hereIndex(state)]! : -1, hazard = type === NodeType.Hazard;
+  const type = r.column === 0 || (r.column === last && r.sector >= SECTORS - 1) ? -1 : r.nodeType[hereIndex(state)]!, hazard = type === NodeType.Hazard;
   r.encounter = hazard || type === NodeType.Asteroid ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick; r.fieldNextTick = -1;
   state.enemy.nextArrivalTick = hazard ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;   // an asteroid field has no enemy: it starts in fieldSystem
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);
-  if (r.column === last) { state.ended = 1; state.endReason = EndReason.Victory; }
+}
+
+/** The sector jump from the exit (spec Loop-i section 1, amendments S1 and S4): one fuel; from the last sector it wins the run, else the next sector's map is drawn from rng.map in the same order, the pursuit resets and the ship arrives at column 0. A no-op away from the exit or without fuel. */
+export function sectorJump(state: SimState): void {
+  const r = state.run;
+  if (r.fuel < 1 || !atExit(state)) return;
+  if (r.sector >= SECTORS - 1) { r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.jumpPending = -1; r.jumpPendingTick = -1; state.telemetry.jumps++; state.ended = 1; state.endReason = EndReason.Victory; return; }
+  const map = generateMap(state.rng.map, r.colNodes.length);
+  r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType);
+  r.sector += 1; r.column = 0; r.node = 0; r.pursuit = PURSUIT_START;
+  afterJump(state);
+}
+
+/** Wait for help (spec Loop-i section 2, amendment S2): only with no fuel and no wait running; it ends WAIT_SECONDS later. False when it cannot start. */
+export function startWait(state: SimState): boolean {
+  const r = state.run;
+  if (r.fuel >= 1 || r.waitUntilTick >= 0) return false;
+  r.waitUntilTick = state.tick + WAIT_SECONDS * TICK_HZ; return true;
+}
+/** The wait's end: the pursuit steps once, then one rng.loot draw: below WAIT_FUEL_CHANCE a passing trader gives WAIT_FUEL fuel, else nothing. */
+function waitStep(state: SimState): void {
+  const r = state.run;
+  if (r.waitUntilTick < 0 || state.tick < r.waitUntilTick) return;
+  r.waitUntilTick = -1; r.pursuit += PURSUIT_STEP;
+  if (nextFloat(state.rng.loot) < WAIT_FUEL_CHANCE) r.fuel += WAIT_FUEL;
+  clampNavCursor(state);
 }
 
 /** Leaving a field early (spec Demo-viii section 1): the encounter is over with no reward and the field clock stops. */
@@ -177,7 +220,7 @@ export function fieldSystem(state: SimState): void {
   if (r.encounter !== Encounter.Fighting) return;
   const start = r.encounterTick;
   if (state.tick >= start + (FIELD_SECONDS + FIELD_CLEAR_EXTRA) * TICK_HZ) {
-    r.encounter = Encounter.Won; r.encounterTick = state.tick; r.fieldNextTick = -1; r.driveBoost = 1; state.telemetry.encountersWon++; addScrap(state, scrapField(r.column));
+    r.encounter = Encounter.Won; r.encounterTick = state.tick; r.fieldNextTick = -1; r.driveBoost = 1; state.telemetry.encountersWon++; addScrap(state, scrapField(depthOf(state))); r.fuel += FIELD_FUEL;   // a cleared field gives fuel (spec Loop-i section 2)
     return;
   }
   if (r.fieldNextTick < 0 || state.tick < r.fieldNextTick) return;
@@ -190,8 +233,8 @@ export function fieldSystem(state: SimState): void {
 /** The pilot's jump (spec Coop-ii section 3): alone (one conscious crew member) it jumps at once; otherwise it waits CONFIRM_SECONDS for a standing crew member's Confirm. A pilot's Confirm while one waits changes nothing. */
 export function requestJump(state: SimState, destination: number): void {
   const r = state.run;
-  if (consciousCount(state) <= 1) { jumpShip(state, beaconAt(destination)); return; }
-  if (r.jumpPending >= 0 || !canReach(state, beaconAt(destination))) return;
+  if (consciousCount(state) <= 1) { doJump(state, destination); return; }
+  if (r.jumpPending >= 0 || r.fuel < 1 || (destination === EXIT_JUMP ? !atExit(state) : !canReach(state, beaconAt(destination)))) return;
   r.jumpPending = destination; r.jumpPendingTick = state.tick;
 }
 
@@ -208,8 +251,12 @@ export function tallyVotes(state: SimState): { choice: number; voters: number; u
 }
 
 /** Step 2a, the single decision point (spec Coop-ii section 3): standing Confirms vote (the first press option 1, then toggling); a vote of a crew member who is not conscious is discarded; the event resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after it opened. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
+/** A jump by its row code: a beacon index, or EXIT_JUMP for the sector jump. */
+function doJump(state: SimState, code: number): void { if (code === EXIT_JUMP) sectorJump(state); else jumpShip(state, beaconAt(code)); }
+
 export function decisionSystem(state: SimState): void {
   const r = state.run;
+  waitStep(state);   // the wait for help ends (spec Loop-i section 2)
   if (r.event >= 0 && r.eventChoice < 0) {
     if (r.eventOpenTick < 0) r.eventOpenTick = state.tick;   // an event set without an arrival opens now
     for (let pid = 0; pid < state.playerCount; pid++) {
@@ -225,7 +272,7 @@ export function decisionSystem(state: SimState): void {
     }
   }
   if (r.jumpPending >= 0) {
-    if (state.scratch.jumpConfirm.some((v) => v === 1) || consciousCount(state) <= 1) { if (r.jumpCharge >= 1) jumpShip(state, beaconAt(r.jumpPending)); else { r.jumpPending = -1; r.jumpPendingTick = -1; } }
+    if (state.scratch.jumpConfirm.some((v) => v === 1) || consciousCount(state) <= 1) { if (r.jumpCharge >= 1) doJump(state, r.jumpPending); else { r.jumpPending = -1; r.jumpPendingTick = -1; } }
     else if (state.tick >= r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ) { r.jumpPending = -1; r.jumpPendingTick = -1; }
   }
 }

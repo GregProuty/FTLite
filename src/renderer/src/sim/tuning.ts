@@ -165,6 +165,10 @@ export const HEALTH_EPS = 1e-9;                                                 
 export const EDGE_CHANCE = 0.5;                                                     // chance of each candidate forward edge
 /** Sectors (spec Loop-i section 1): sectors per run, columns per sector map (0 the arrival beacon, the last the exit), beacons per middle column, the node index stride (column x 4 + node). */
 export const SECTORS = 3, SECTOR_COLUMNS = 6, MIDDLE_MIN = 2, MIDDLE_MAX = 4, NODE_STRIDE = 4;
+/** Fuel (spec Loop-i section 2): the start, one per jump; the shop's +2 for 12 scrap; Wait for help's seconds, chance and gift; a kill gives KILL_FUEL_MIN + nextInt(loot, 2), a cleared field FIELD_FUEL. */
+export const FUEL_START = 8, FUEL_COST = 12, SHOP_FUEL = 2, WAIT_SECONDS = 20, WAIT_FUEL_CHANCE = 0.6, WAIT_FUEL = 2, KILL_FUEL_MIN = 1, FIELD_FUEL = 1;
+/** The Pursuit (spec Loop-i section 3): the fleet front's column on arrival in a sector and its step per jump and per wait; the elite pursuit enemy's hull and fire-interval multipliers. */
+export const PURSUIT_START = -1.5, PURSUIT_STEP = 0.75, PURSUIT_HULL_MULT = 1.5, PURSUIT_FIRE_MULT = 0.75;
 export const JUMP_CHARGE_TIME = 60;                                                 // seconds from arrival to a ready drive
 export const BOARDING_AFTER_JUMP = 120;                                             // seconds after a jump before a party can arrive (no draw); the enemy follows the node type (ENCOUNTER_START, spec Demo-vi section 2)
 

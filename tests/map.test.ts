@@ -44,8 +44,8 @@ describe('sector map model', () => {
   });
   it('the title carries the node ordinal and the footer jump text', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; seatNavigator(s, 0);
-    s.run.jumpCharge = 0.64; expect(mapTitle(build(s)!)).toBe('SECTOR MAP   node 2/6   Jump 64%');
-    chargeJump(s); expect(mapTitle(build(s)!)).toBe('SECTOR MAP   node 2/6   Jump READY');
+    s.run.jumpCharge = 0.64; expect(mapTitle(build(s)!)).toBe('SECTOR 1/3   node 2/6   Jump 64%');
+    chargeJump(s); expect(mapTitle(build(s)!)).toBe('SECTOR 1/3   node 2/6   Jump READY'); s.run.sector = 2; expect(mapTitle(build(s)!)).toBe('SECTOR 3/3   node 2/6   Jump READY');
   });
   it('a pending event selects nothing but the next column stays reachable', () => {
     const s = makeState(2); quiet(s); mapM(s); const n = seatNavigator(s, 0); s.stations.cursor[n] = 0; setEvent(s, 0);

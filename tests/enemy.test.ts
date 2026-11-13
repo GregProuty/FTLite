@@ -620,3 +620,16 @@ describe('rotating shields (spec Coop-i section 1, amendments C1 and C2)', () =>
     s.tick++; enemySystem(s); expect(e.lockUntilTick).toBe(-1);
   });
 });
+
+describe('fuel from a kill (spec Loop-i section 2)', () => {
+  it('a destroyed enemy gives 1 + nextInt(loot, 2) fuel (1 or 2); a withdrawal or a surrender gives none', () => {
+    const seen = new Set<number>();
+    for (let seed = 1; seed <= 10; seed++) {
+      const s = makeState(2, seed); quiet(s); placeEnemy(s); const ref = { s: s.rng.loot.s }, want = 1 + nextInt(ref, 2), fuel = s.run.fuel;
+      leave(s, true); expect(s.run.fuel - fuel).toBe(want); expect(s.rng.loot.s).toBe(ref.s); seen.add(want);
+    }
+    expect([...seen].sort()).toEqual([1, 2]);
+    const w = makeState(2); quiet(w); placeEnemy(w); const l = w.rng.loot.s; leave(w, false); expect([w.run.fuel, w.rng.loot.s]).toEqual([8, l]);
+    const u = makeState(2); quiet(u); placeEnemy(u); u.enemy.fleeing = 1; u.enemy.surrenderIntact = 1; leave(u, false); expect(u.run.fuel).toBe(8);
+  });
+});

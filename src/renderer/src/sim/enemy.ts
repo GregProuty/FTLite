@@ -5,7 +5,8 @@ import { spawnShot, shotsInFlight } from './debris';
 import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from './debrisTargets';
 import { minutesOf } from './director';
 import { addScrap } from './scrap';
-import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE } from './tuning';
+import { depthOf } from './depth';
+import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE, KILL_FUEL_MIN } from './tuning';
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 
@@ -28,9 +29,9 @@ export const ENEMY_ROOM_NAMES = ['Weapons', 'Engines', 'Shields', 'Bridge', 'Hol
 export function enemyBeamThreshold(state: SimState, output: number): number {
   return ENEMY_BEAM_BASE + ENEMY_BEAM_SCALE * output - (state.enemy.sysHp[EnemySystem.Engines]! > 0 ? ENEMY_EVADE : 0);
 }
-/** Hull on arrival at a column (spec Demo-i section 11.2). */
+/** Hull on arrival at a depth (spec Demo-i section 11.2; Loop-i section 1: depth replaces the column). */
 export function enemyMaxHull(column: number): number { return ENEMY_HULL + ENEMY_HULL_PER_COLUMN * column; }
-/** Shield layers on arrival at a column (spec Demo-i section 11.2). */
+/** Shield layers on arrival at a depth (spec Demo-i section 11.2; Loop-i section 1). */
 export function enemyShieldMax(column: number): number { return ENEMY_SHIELD_LAYERS[Math.min(column, ENEMY_SHIELD_LAYERS.length - 1)]!; }
 /** The enemy weapon charge 0..1: the share of the arming interval elapsed; 0 when absent or the weapons are down (spec Demo-i section 11.3). */
 export function enemyWeaponCharge(state: SimState): number {
@@ -65,10 +66,10 @@ function jitteredTicks(state: SimState, seconds: number): number {
 /** Arrival: no draw; the enemy takes a StableId and the first-warning auto-select applies to it; the encounter starts (spec Demo-vi section 2). */
 export function arrive(state: SimState): void {
   const e = state.enemy;
-  e.present = 1; e.maxHull = enemyMaxHull(state.run.column); e.hull = e.maxHull; e.stableId = state.nextStableId++;
+  e.present = 1; e.maxHull = enemyMaxHull(depthOf(state)); e.hull = e.maxHull; e.stableId = state.nextStableId++;
   e.departTick = state.tick + ENCOUNTER_MAX * TICK_HZ; e.nextShotTick = state.tick + ENEMY_FIRST_SHOT * TICK_HZ;
   e.sysHp.fill(ENEMY_SYS_HP); e.sysRepairTick.fill(-1); e.shieldFreq = 1 + nextInt(state.rng.hazards, FREQ_COUNT); e.scanned = 0; e.scan = 0;   // the one hazards draw (spec Combat-ii section 4)
-  e.shieldLayers = enemyShieldMax(state.run.column); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1; e.roomFire.fill(0); e.roomBreach.fill(0); e.shieldRotateTick = state.tick + SHIELD_ROTATE * TICK_HZ; e.lockUntilTick = -1;   // spec Coop-i section 1: the re-tune clock, no lock; spec Demo-i section 11.3, Demo-ii section 4, Demo-viii section 2b
+  e.shieldLayers = enemyShieldMax(depthOf(state)); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1; e.roomFire.fill(0); e.roomBreach.fill(0); e.shieldRotateTick = state.tick + SHIELD_ROTATE * TICK_HZ; e.lockUntilTick = -1;   // spec Coop-i section 1: the re-tune clock, no lock; spec Demo-i section 11.3, Demo-ii section 4, Demo-viii section 2b
   state.telemetry.encounters++;
   state.run.encounter = Encounter.Fighting; state.run.encounterTick = state.tick;
   for (const kind of TARGETING_KINDS) {
@@ -90,9 +91,9 @@ export function leave(state: SimState, destroyed: boolean): void {
   e.present = 0; e.hull = 0; e.stableId = 0; e.nextShotTick = -1; e.departTick = -1;
   e.sysHp.fill(0); e.sysRepairTick.fill(-1); e.shieldFreq = 0; e.scanned = 0; e.scan = 0;
   if (scanningEnemy) state.science.scanning = 0;
-  if (!destroyed && e.fleeing) { if (e.surrenderIntact) { addScrap(state, scrapSurrender(state.run.column)); state.telemetry.surrenders++; } else state.telemetry.enemyFled++; }   // spec Demo-i section 11.3: a flee ends in a surrender bounty or a flight
+  if (!destroyed && e.fleeing) { if (e.surrenderIntact) { addScrap(state, scrapSurrender(depthOf(state))); state.telemetry.surrenders++; } else state.telemetry.enemyFled++; }   // spec Demo-i section 11.3: a flee ends in a surrender bounty or a flight
   e.maxHull = 0; e.shieldLayers = 0; e.shieldRecharge = 0; e.shotArmTick = -1; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1; e.roomFire.fill(0); e.roomBreach.fill(0); e.shieldRotateTick = -1; e.lockUntilTick = -1;
-  if (destroyed) { state.telemetry.enemiesDestroyed++; addScrap(state, scrapEnemy(state.run.column)); }
+  if (destroyed) { state.telemetry.enemiesDestroyed++; addScrap(state, scrapEnemy(depthOf(state))); state.run.fuel += KILL_FUEL_MIN + nextInt(state.rng.loot, 2); }   // a kill gives 1 or 2 fuel (spec Loop-i section 2)
   const r = state.run;
   if (r.encounter === Encounter.Fighting) {
     if (won) { r.encounter = Encounter.Won; state.telemetry.encountersWon++; state.hull = Math.min(HULL_MAX, state.hull + ENCOUNTER_REWARD_HULL); r.driveBoost = 1; }
@@ -166,7 +167,7 @@ export function enemySystem(state: SimState): void {
       if (sys === EnemySystem.Shields) { e.shieldLayers = 0; e.shieldRecharge = 0; e.shieldRotateTick = state.tick + SHIELD_ROTATE * TICK_HZ; }   // a repaired shield system starts empty, its re-tune clock a full SHIELD_ROTATE away (spec Coop-i amendment C6)
     }
   }
-  if (e.sysHp[EnemySystem.Shields]! > 0 && e.shieldLayers < enemyShieldMax(state.run.column)) {   // recharge: no draw (spec Demo-i section 11.3)
+  if (e.sysHp[EnemySystem.Shields]! > 0 && e.shieldLayers < enemyShieldMax(depthOf(state))) {   // recharge: no draw (spec Demo-i section 11.3)
     e.shieldRecharge = Math.min(1, e.shieldRecharge + DT / SHIELD_RECHARGE_TIME);
     if (e.shieldRecharge >= 1 - 1e-9) { e.shieldLayers++; e.shieldRecharge = 0; }   // 360 additions of DT / 6 sum to 0.999999999999997: the layer lands on the 360th tick, as the spec's 6 x 60 says
   }
