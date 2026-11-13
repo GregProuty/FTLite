@@ -45,3 +45,10 @@ Status: 2026-11-13. From Claude's playtest (`docs/playtest-report-2026-11-13.md`
 - [ ] Tests and gates above.
 - [ ] Claude's second playtest: two seated players jump, vote and shop without standing; a fire left alone fails its console.
 - [ ] Manual, the user: the couch checklist `docs/playtest.md` sections 1 to 4.
+
+## 8. Amendments (Claude's review; Codex timed out)
+
+1. **Who is "the Navigation occupant".** On a group console the Helm officer occupies Navigation on every tab (Demo-x-a amendment 2 seats the active tab, but `stations.occupant` holds the officer at every member). So the Helm officer's Confirm on the Weapons tab during a pending jump fires the weapon, not an agreement. Use `stations.occupant[navigation station]`, not `Seated.station`.
+2. **Order.** An open, unresolved event takes the press before a pending jump (as today for standing presses). Only conscious players count.
+3. **Fire heat only on online stations.** A failed or unpowered station gains no fire heat, so `overheat()` never re-fails a failed station. Heat from fire is applied in the same hazard tick and order as today's heat, deterministic, no new rng draws beyond `overheat()`'s existing one.
+4. **Bots.** Bots that sit may now agree from their seats; check `bot.ts` still produces the same agreement behaviour and record any gate movement with its cause.
