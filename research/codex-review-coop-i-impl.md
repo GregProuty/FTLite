@@ -1,0 +1,3 @@
+1. **High — `src/renderer/src/sim/enemy.ts:50`** — The rotation formula can select the current frequency. For example, with `FREQ_COUNT = 3`, current frequency 3 and draw 2 produce frequency 3 again, violating the requirement to retune to a different frequency. **Fix:** map the single draw over the frequencies other than the current one, skipping the current index.
+
+The other requested paths look consistent with the spec: each fired beam consumes one combat draw; rotation consumes one draw; the new fields are included in flatten and unflatten; teamwork groups holders by `(kind, index)`; revive progress is shared; and locks start only when eligible, expire, and end on rotation or enemy departure.
