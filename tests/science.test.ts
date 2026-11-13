@@ -42,7 +42,7 @@ describe('scanning', () => {
     expect(s.science.scanning).toBe(1); expect(s.debris.scan[1]).toBe(p1); expect(s.debris.scan[0]).toBe(1);
     run(s, 1, () => intents(cancel)); failStation(s, i);                       // revealed information survives a stand and a failure
     expect(s.debris.scanned[0]).toBe(1); expect(s.debris.frequency[0]).toBe(2);
-    expect(buildHudModel(s, [{ status: 'active', key: 'kb:0' }], 'running', '').threats.map((t) => t.text).filter((x) => /F\d$/.test(x))[0]).toMatch(/F2$/);   // the Power threat precedes debris, so take the first debris one
+    expect(buildHudModel(s, [{ status: 'active', key: 'kb:0' }], 'running', '').threats.map((t) => t.text).filter((x) => / freq \d$/.test(x))[0]).toMatch(/ freq 2$/);   // the Power threat precedes debris, so take the first debris one
   });
   it('Confirm with cursor -1, an inactive slot or an unwarned object starts nothing', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');

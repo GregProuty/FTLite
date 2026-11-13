@@ -230,7 +230,7 @@ describe('buildHudModel', () => {
     sitDown(s, 0, wpn); sitDown(s, 1, sci); s.science.scanning = 1; s.stations.cursor[sci] = 1;
     s.weapons.selector = 3; s.weapons.torpedoLoaded = 1; s.weapons.torpedoStock = 2; s.weapons.torpedoLoad = 0;
     const m = buildHudModel(s, slots(2), 'running', '');
-    expect(m.threats.map((t) => t.text)).toEqual(['Debris: Bridge 5s F2', 'Debris: Weapons Bay 10s']);
+    expect(m.threats.map((t) => t.text)).toEqual(['Debris: Bridge 5s freq 2', 'Debris: Weapons Bay 10s']);
     expect(m.weapons).toEqual({ charge: 0, ready: false, torpedoLoaded: true, torpedoStock: 2 });
     const w = m.players[0]!.console as WeaponsPanel;
     expect(w.selector).toBe(3); expect(w.torpedo).toEqual({ stock: 2, cap: TORP_CAP, loaded: true, load: 0, fetch: false, fed: false });
@@ -247,7 +247,7 @@ describe('buildHudModel', () => {
     const th = buildHudModel(s, slots(1), 'running', '').threats;
     expect(th[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy 64% shields 1/1' });
     const shotRows = th.filter((t) => t.text.startsWith('Shot'));
-    expect(shotRows).toEqual([{ icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s` }, { icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s F2` }]);
+    expect(shotRows).toEqual([{ icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s` }, { icon: 'icon.sensors', text: `Shot: ${s.layout.rooms[A]!.name} 7s freq 2` }]);
   });
   it('target rows: the enemy row on Weapons and Science, nothing throws with the cursor on the enemy or with it unselected', () => {
     const s = makeState(2), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!, c = s.derived.stationOfKind[StationKind.Science]!;
@@ -622,21 +622,24 @@ describe('the Upgrades page in the HUD model', () => {
 });
 
 // ---- Loop-iii: the Weapons card shows every gun (spec Loop-iii sections 3 and 4) ----
-import { weaponsStrip, weaponsLootLine, weaponsFooter, weaponsRowTexts } from '../src/renderer/src/render/hudModel';
+import { weaponsStrip, weaponsLootLine, weaponsFooter, weaponsFooterLines, weaponsFooterTone, weaponsRowTexts, objectThreatText } from '../src/renderer/src/render/hudModel';
 import { Weapon, SWAP_SLOT } from '../src/renderer/src/sim/weapons';
 import { LootWeapon } from '../src/renderer/src/sim/weaponDefs';
+import { ENEMY_SYS_HP as SYS_HP_FULL } from '../src/renderer/src/sim/tuning';
+import { rowPx } from '../src/renderer/src/render/theme';
+import { CARD_INNER_W } from '../src/renderer/src/render/hudLayout';
 
 describe('the Weapons card with loot weapons', () => {
   const seatedW = () => { const s = makeState(1); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w); return { s, w }; };
   const panel = (s: ReturnType<typeof makeState>) => buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
-  it('the strip: Pulse F1 F2 F3, the filled slots by short name, Torp; the selected one lit; the widest strip fits the card', () => {
+  it('the strip: Pulse freq 1 2 3, the filled slots by short name, Torp; the selected one lit; the widest strip fits the card (spec Demo-xiv section 3)', () => {
     const { s } = seatedW();
-    expect(weaponsStrip(panel(s))).toEqual([{ text: 'Pulse F1', lit: true }, { text: 'F2', lit: false }, { text: 'F3', lit: false }, { text: 'Torp', lit: false }]);
+    expect(weaponsStrip(panel(s))).toEqual([{ text: 'Pulse freq 1', lit: true, match: false }, { text: '2', lit: false, match: false }, { text: '3', lit: false, match: false }, { text: 'Torp', lit: false, match: false }]);
     s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Ion; s.weapons.selector = Weapon.Slot2;
-    expect(weaponsStrip(panel(s)).map((p) => (p.lit ? `[${p.text}]` : p.text)).join(' ')).toBe('Pulse F1 F2 F3 Burst [Ion] Torp');
-    s.weapons.slot[1] = 0; expect(weaponsStrip(panel(s)).map((p) => p.text)).toEqual(['Pulse F1', 'F2', 'F3', 'Burst', 'Torp']);
+    expect(weaponsStrip(panel(s)).map((p) => (p.lit ? `<${p.text}>` : p.text)).join(' ')).toBe('Pulse freq 1 2 3 Burst <Ion> Torp');
+    s.weapons.slot[1] = 0; expect(weaponsStrip(panel(s)).map((p) => p.text)).toEqual(['Pulse freq 1', '2', '3', 'Burst', 'Torp']);
     s.weapons.slot[0] = LootWeapon.Missile; s.weapons.slot[1] = LootWeapon.Missile;
-    expect(weaponsStrip(panel(s)).map((p) => p.text).join('  ').length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+    expect(rowPx(weaponsStrip(panel(s)))).toBeLessThanOrEqual(CARD_INNER_W);   // the pixel fit rule (spec Demo-xii section 3) in place of the old glyph count
   });
   it('the footer: Pulse, Torp and the stock; the loot line one figure per extra slot (READY, a percentage, OFF below its Weapons level, EMPTY without a torpedo); all within the card', () => {
     const { s, w } = seatedW(); s.weapons.charge = 0.8; s.weapons.torpedoLoaded = 1;
@@ -650,6 +653,38 @@ describe('the Weapons card with loot weapons', () => {
     expect(weaponsLootLine(panel(s)).length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
     placeEnemy(s); s.enemy.scanned = 1; s.enemy.lockUntilTick = s.tick + 100;
     const locked = weaponsFooter(panel(s)); expect(locked.endsWith('  LOCKED')).toBe(true); expect(locked.length).toBeLessThanOrEqual(44);   // 44 glyphs fit the 308 px card (as the Navigation footer)
+  });
+  it('a threats-panel object row reads freq N; too wide, a debris row drops its label (spec Demo-xiv section 3)', () => {
+    expect(objectThreatText('Shot', 'Bridge', 7, 2)).toBe('Shot: Bridge 7s freq 2'); expect(objectThreatText('Rock', 'Bridge', 7, null)).toBe('Rock: Bridge 7s');
+    expect(objectThreatText('Debris', 'Bridge', 7, 3)).toBe('Debris: Bridge 7s freq 3');
+    expect(objectThreatText('Debris', 'Forward Corridor', 99, 3)).toBe('Forward Corridor 99s freq 3');
+  });
+  it('the strip marks the known enemy frequency in brackets, reads freq ? before the scan, and drops words to fit (spec Demo-xiv section 1)', () => {
+    const { s } = seatedW(); placeEnemy(s, 100, 2);
+    const row = () => weaponsStrip(panel(s)).map((p) => p.text).join(' ');
+    expect(row()).toBe('Pulse freq 1 2 3 Torp freq ?');
+    s.enemy.scanned = 1; expect(row()).toBe('Pulse freq 1 [2] 3 Torp'); expect(weaponsStrip(panel(s)).map((p) => p.match)).toEqual([false, true, false, false]);
+    s.enemy.shieldFreq = 1; expect(row()).toBe('Pulse freq [1] 2 3 Torp');
+    s.enemy.scanned = 0; s.enemy.sysHp[EnemySystem.Shields] = 0; expect(row()).toBe('Pulse freq 1 2 3 Torp');   // shields down: the frequency does not matter
+    s.enemy.sysHp[EnemySystem.Shields] = SYS_HP_FULL; s.weapons.slot[0] = LootWeapon.Missile; s.weapons.slot[1] = LootWeapon.Missile;
+    expect(row()).toBe('Pulse 1 2 3 Missile Missile Torp ?');   // the fit rule: never a smaller font
+    s.enemy.scanned = 1; s.enemy.shieldFreq = 3; expect(row()).toBe('Pulse 1 2 [3] Missile Missile Torp');
+  });
+  it('the footer asks to match the frequency while a Pulse selector is off it and the shields are up, unlocked (spec Demo-xiv section 1)', () => {
+    const { s } = seatedW(); placeEnemy(s, 100, 2); s.enemy.scanned = 1;
+    expect(weaponsFooterLines(panel(s))[1]).toBe(`Stock ${TORP_START}/${TORP_CAP}  Match freq 2`); expect(weaponsFooterTone(panel(s))).toBe('match');
+    s.weapons.selector = Weapon.BeamF2; expect(weaponsFooterLines(panel(s))[1]).toBe(`Stock ${TORP_START}/${TORP_CAP}`); expect(weaponsFooterTone(panel(s))).toBe('plain');
+    s.weapons.selector = Weapon.Torpedo; expect(weaponsFooterLines(panel(s))[1]).not.toContain('Match');
+    s.weapons.selector = Weapon.BeamF3; s.enemy.lockUntilTick = s.tick + 100; expect(weaponsFooterLines(panel(s))[1]).toBe(`Stock ${TORP_START}/${TORP_CAP}  LOCKED`); expect(weaponsFooterTone(panel(s))).toBe('locked');
+    s.enemy.lockUntilTick = -1; s.enemy.sysHp[EnemySystem.Shields] = 0; expect(weaponsFooterLines(panel(s))[1]).not.toContain('Match');
+    s.enemy.sysHp[EnemySystem.Shields] = SYS_HP_FULL; s.enemy.scanned = 0; expect(weaponsFooterLines(panel(s))[1]).not.toContain('Match');
+  });
+  it('the last shot result takes the second footer line for its three seconds (spec Demo-xiv section 2)', () => {
+    const { s } = seatedW(); placeEnemy(s, 100, 2); s.enemy.scanned = 1; s.tick = 900;
+    Object.assign(s.weapons, { lastShotTick: 900, lastShotTarget: ENEMY_SLOT, lastShotResult: 1, lastShotSelector: Weapon.BeamF1, lastShotDamage: 0 });
+    expect(weaponsFooterLines(panel(s))[1]).toBe('Shield stripped (freq 1, needs 2)'); expect(weaponsFooterTone(panel(s))).toBe('strip');
+    s.weapons.lastShotResult = 2; s.weapons.lastShotDamage = 15; expect(weaponsFooterLines(panel(s))[1]).toBe('Hit: Hold -15'); expect(weaponsFooterTone(panel(s))).toBe('hit');
+    s.tick = 900 + 3 * 60; expect(weaponsFooterLines(panel(s))[1]).toBe(`Stock ${TORP_START}/${TORP_CAP}  Match freq 2`);
   });
   it('a filled slot takes the last target row for the loot line: five target rows, else six', () => {
     const { s } = seatedW(); expect(panel(s).rows).toBe(6); s.weapons.slot[1] = LootWeapon.Ion; expect(panel(s).rows).toBe(5);

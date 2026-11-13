@@ -4,7 +4,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState, type SimState } from '../src/renderer/src/sim/state';
 import { textPx, rowPx, TEXT_SCALE, TITLE_SCALE, PAD, contrast, TEXT_PAIRS, FONT_SIZE, FONT_NATIVE, LINE } from '../src/renderer/src/render/theme';
 import { CLOCK, POWER, THREATS, POWER_ROW, CARD_ROW, CARD_INNER_W, BLOCK_INNER_W, BLOCK_HP_X, BLOCK_HP_W, BLOCK_O2_X, NOTICE, EVENT_CARD, SUMMARY_W, CREDITS } from '../src/renderer/src/render/hudLayout';
-import { buildHudModel, clockLine, sectorLine, timeLine, directorText, weaponsStrip, weaponsFooterLines, weaponsLootLine, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, tabLabel, skillsLine, seatName, runNotice, lobbyLines, upgradeRowText, STATION_SHORT, HIDDEN_SHIP, HELM_NOTICE, EVENT_CARD_HELP, type HudModel, type WeaponsPanel, type NavigationPanel, type SciencePanel, type EngineeringPanel, type DebrisTarget, type DoorsPanel } from '../src/renderer/src/render/hudModel';
+import { buildHudModel, clockLine, sectorLine, timeLine, directorText, weaponsStrip, weaponsFooterLines, weaponsLootLine, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, tabLabel, skillsLine, seatName, runNotice, lobbyLines, upgradeRowText, STATION_SHORT, HIDDEN_SHIP, HELM_NOTICE, EVENT_CARD_HELP, objectThreatText, type HudModel, type WeaponsPanel, type NavigationPanel, type SciencePanel, type EngineeringPanel, type DebrisTarget, type DoorsPanel } from '../src/renderer/src/render/hudModel';
 import { STATION_NAMES } from '../src/renderer/src/sim/stationKinds';
 import { PHASE_NAMES } from '../src/renderer/src/sim/director';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
@@ -75,13 +75,14 @@ describe('the console cards at the larger font', () => {
     const loot = WEAPON_DEFS.slice(1);
     for (const a of loot) for (const b of loot) {
       const c = weapons({ loot: [{ selector: 4, short: a.short, charge: 0.99, powered: false, empty: true }, { selector: 5, short: b.short, charge: 0.99, powered: true, empty: false }] });
-      expect(rowPx(weaponsStrip(c)), weaponsStrip(c).map((p) => p.text).join(' ')).toBeLessThanOrEqual(W);
+      for (const f of [{}, { freqUnknown: true, shieldsUp: true }, { enemyFreq: 1, shieldsUp: true }, { enemyFreq: 2 }, { enemyFreq: 3 }]) { const d = { ...c, ...f }; expect(rowPx(weaponsStrip(d)), weaponsStrip(d).map((p) => p.text).join(' ')).toBeLessThanOrEqual(W); }   // the marked selector and freq ? (spec Demo-xiv section 1)
       fits(weaponsLootLine(c), W); fits(`SWAP: cargo ${a.short} for ${b.short}`, W);
     }
     for (const row of targetRows()) fits(row, W);
     for (const loaded of [true, false]) for (const fetch of [true, false]) {
       const c = weapons({ locked: true, charge: 0.99, torpedo: { stock: TORP_CAP, cap: TORP_CAP, loaded, load: 0.99, fetch, fed: false } });
       for (const l of weaponsFooterLines(c)) fits(l, W);
+      for (const freq of [1, 2, 3]) for (const l of weaponsFooterLines({ ...c, locked: false, enemyFreq: freq, shieldsUp: true, selector: freq % 3 })) fits(l, W);   // Match freq N (spec Demo-xiv section 1)
     }
   });
   it('Science: every target row with its scan, the system scan row and results, the footer', () => {
@@ -145,7 +146,7 @@ describe('the notices, threats, event card, lobby, summary and credits at the la
   });
   it('every threat line fits the threats panel after its icon', () => {
     const W = THREATS.w - 2 * PAD - 20;
-    for (const r of roomNames) for (const t of [`Boarders: ${r} x9`, `Fire: ${r}`, `Breach: ${r}`, `Airlock open: ${r}`, `Shot: ${r} 99s F3`, `Debris: ${r} 99s F3`]) fits(t, W);
+    for (const r of roomNames) for (const t of [`Boarders: ${r} x9`, `Fire: ${r}`, `Breach: ${r}`, `Airlock open: ${r}`, ...(['Shot', 'Rock', 'Debris'] as const).flatMap((k) => [objectThreatText(k, r, 99, 3), objectThreatText(k, r, 99, null)])]) fits(t, W);
     for (const n of STATION_NAMES) fits(`Power: ${n}`, W);
     for (const d of EVENT_DEFS) fits(`Event: ${d.title}`, W);
     for (const t of ['Helm offline', 'Hidden ship: contact 99s', 'Shop here']) fits(t, W);
@@ -181,7 +182,7 @@ function upgradeRowsOfState(s: SimState): EngineeringPanel['upgrades'] {
   return [...kinds, { row: 7, name: 'Reactor', level: '+1 bar', price: '999', enabled: true, cursor: false }, { row: 8, name: 'BACK', level: '', price: '', enabled: true, cursor: false }];
 }
 function weapons(o: Partial<WeaponsPanel>): WeaponsPanel {
-  return { kind: 'weapons', charge: 0, selector: 0, torpedo: { stock: 0, cap: TORP_CAP, loaded: false, load: 0, fetch: false, fed: false }, targets: [], cursor: 0, first: 0, locked: false, loot: [], swap: null, rows: 6, ...o };
+  return { kind: 'weapons', charge: 0, selector: 0, torpedo: { stock: 0, cap: TORP_CAP, loaded: false, load: 0, fetch: false, fed: false }, targets: [], cursor: 0, first: 0, locked: false, loot: [], swap: null, rows: 6, enemyFreq: null, freqUnknown: false, shieldsUp: false, shot: null, ...o };
 }
 /** Every target row at its longest: debris, shots and rocks in every room with a scan running, and the enemy's rows. */
 function targetRows(): string[] {

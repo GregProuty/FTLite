@@ -323,7 +323,7 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     run(s, seconds(8) + 2);
     expect(s.debris.scanned[0]).toBe(1);
     const slots: SlotInfo[] = [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }];
-    expect(buildHudModel(s, slots, 'running', '').threats[0]!.text).toMatch(/F3$/);
+    expect(buildHudModel(s, slots, 'running', '').threats[0]!.text).toMatch(/ freq 3$/);
     run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {})); run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
     expect(s.weapons.selector).toBe(Weapon.BeamF3);
     run(s, seconds(12) + 2 - (seconds(8) + 6));                                 // the beam has been charging since the sit: top it up to 12 s + 2 ticks

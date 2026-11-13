@@ -27,9 +27,10 @@ import { boarderMarkers, boardersInRoom } from '../sim/boarders';
 import { QUIRK_NAMES } from '../sim/quirks';
 import { doorsCursorTarget } from '../sim/doors';
 import { shipLine, shipForCrew } from '../sim/ship/fleet';
-import { textPx, TEXT, WARN } from './theme';
-import { NOTICE, CARD_INNER_W, BLOCK_INNER_W } from './hudLayout';
+import { textPx, rowPx, TEXT, WARN, PAD } from './theme';
+import { NOTICE, CARD_INNER_W, BLOCK_INNER_W, THREATS } from './hudLayout';
 import { navigatorAtHelm } from './enemyWindowModel';
+import { shotResult, type ShotResult, type ShotTone } from './shotResult';
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -98,7 +99,7 @@ function upgradeRowsOf(state: SimState, cursor: number): UpgradeRow[] {
 export type DoorsPanel = { kind: 'doors'; item: string; status: string; action: string; openAirlocks: number } | { kind: 'doors'; item: null };
 export type TargetKindName = 'debris' | 'shot' | 'rock' | 'enemy';
 export interface DebrisTarget { enemyRoom?: number; stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null; ionIn?: number } | null; shieldsUp: boolean | null; layers: number | null; layersMax: number | null; weaponCharge: number | null; fleeSeconds: number | null }   // the last four: the enemy hull row only (spec Demo-i section 11.4)
-export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number; fetch: boolean; fed: boolean }; targets: DebrisTarget[]; cursor: number; first: number; locked: boolean; loot: LootSlotView[]; swap: string | null; rows: number }   // loot: the filled extra slots; swap: the SWAP row's text while it shows (after the targets; cursor = targets.length on it); rows: target rows visible (spec Loop-iii section 4)
+export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number; fetch: boolean; fed: boolean }; targets: DebrisTarget[]; cursor: number; first: number; locked: boolean; loot: LootSlotView[]; swap: string | null; rows: number; enemyFreq: number | null; freqUnknown: boolean; shieldsUp: boolean; shot: ShotResult | null }   // enemyFreq: the enemy's frequency once scanned, freqUnknown: an enemy with shields up and no scan, shieldsUp: an enemy whose shield system stands, shot: the last shot's result while it shows (spec Demo-xiv sections 1 and 2); loot: the filled extra slots; swap: the SWAP row's text while it shows (after the targets; cursor = targets.length on it); rows: target rows visible (spec Loop-iii section 4)
 /** A filled extra slot on the Weapons card: its selector value, short name, charge, whether the Weapons level powers it, and for the missile pod whether the stock is empty. */
 export interface LootSlotView { selector: number; short: string; charge: number; powered: boolean; empty: boolean }   // locked: a Science lock runs (spec Coop-i section 1); torpedo.fetch: a magazine ship with nothing in the tube or the loader, fed: a delivered torpedo loading (spec Coop-ii section 2)
 export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean; lock: string; system: { text: string; enabled: boolean; results: string[] } }   // system: the system scan's row after the targets (cursor = targets.length on it) and its results for SCAN_RESULT_SECONDS (spec Demo-x-b section 3)   // lock: '', 'LOCK: Confirm' or 'LOCKED 6s' (spec Coop-i section 1)
@@ -219,21 +220,31 @@ function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' 
 function etaSeconds(state: SimState, slot: number): number { return Math.ceil((state.debris.impactTick[slot]! - state.tick) * DT); }
 
 export const WEAPONS_ROWS = 6, SCIENCE_ROWS = 7;
-/** The selector strip (spec Loop-iii section 4): Pulse F1 F2 F3, each filled slot's short name, Torp; the selected one lit. */
-export function weaponsStrip(c: WeaponsPanel): { text: string; lit: boolean }[] {
-  const items: [string, number][] = [['Pulse F1', Weapon.BeamF1], ['F2', Weapon.BeamF2], ['F3', Weapon.BeamF3], ...c.loot.map((l): [string, number] => [l.short, l.selector]), ['Torp', Weapon.Torpedo]];
-  return items.map(([text, sel]) => ({ text, lit: sel === c.selector }));
+/** The selector strip (spec Loop-iii section 4, Demo-xiv sections 1 and 3): `Pulse freq 1 2 3`, each filled slot's short name, Torp; the selected one lit; the enemy's known frequency in brackets (`[2]`), `freq ?` while an unscanned enemy's shields stand. The fit rule: too wide for the card drops the `freq` word, then `freq ?` becomes `?`; never a smaller font. */
+export function weaponsStrip(c: WeaponsPanel): { text: string; lit: boolean; match: boolean }[] {
+  const beam = (sel: number): string => (c.enemyFreq === sel + 1 ? `[${sel + 1}]` : `${sel + 1}`);
+  const build = (word: boolean, query: string): { text: string; lit: boolean; match: boolean }[] => {
+    const items: [string, number][] = [[`Pulse ${word ? 'freq ' : ''}${beam(Weapon.BeamF1)}`, Weapon.BeamF1], [beam(Weapon.BeamF2), Weapon.BeamF2], [beam(Weapon.BeamF3), Weapon.BeamF3], ...c.loot.map((l): [string, number] => [l.short, l.selector]), ['Torp', Weapon.Torpedo]];
+    const out = items.map(([text, sel]) => ({ text, lit: sel === c.selector, match: sel <= Weapon.BeamF3 && c.enemyFreq === sel + 1 }));
+    return c.freqUnknown ? [...out, { text: query, lit: false, match: false }] : out;
+  };
+  const forms = [build(true, 'freq ?'), build(false, 'freq ?'), build(false, '?')];
+  return forms.find((f) => rowPx(f) <= CARD_INNER_W) ?? forms[forms.length - 1]!;
 }
 const pct = (v: number): string => (v >= 1 ? 'READY' : `${Math.floor(v * 100)}%`);
 /** The footer: the Pulse Laser's charge, the tube and the stock, LOCKED under a Science lock. */
 export function weaponsFooter(c: WeaponsPanel): string {
   return weaponsFooterLines(c).join('  ');
 }
-/** The footer on the card's two footer lines (spec Demo-x-c section 1): the Pulse Laser and the tube, then the stock and the lock. */
+/** The footer on the card's two footer lines (spec Demo-x-c section 1): the Pulse Laser and the tube, then the stock with LOCKED under a Science lock or `Match freq N` while a Pulse selector is off the enemy's known frequency; the last shot's result takes the second line while it shows (spec Demo-xiv sections 1 and 2). */
 export function weaponsFooterLines(c: WeaponsPanel): [string, string] {
   const t = c.torpedo, torp = t.loaded ? 'LOADED' : t.fed ? `${Math.floor(t.load * 100)}%` : t.fetch ? (t.stock > 0 ? 'FETCH' : 'EMPTY') : t.stock > 0 ? `${Math.floor(t.load * 100)}%` : 'EMPTY';
-  return [`Pulse ${pct(c.charge)}  Torp ${torp}`, [`Stock ${t.stock}/${t.cap}`, ...(c.locked ? ['LOCKED'] : [])].join('  ')];
+  return [`Pulse ${pct(c.charge)}  Torp ${torp}`, c.shot ? c.shot.text : [`Stock ${t.stock}/${t.cap}`, ...(c.locked ? ['LOCKED'] : needsMatch(c) ? [`Match freq ${c.enemyFreq}`] : [])].join('  ')];
 }
+/** A Pulse selector off the enemy's known frequency while its shields stand and no lock runs: the shot would only strip a layer (spec Demo-xiv section 1). */
+const needsMatch = (c: WeaponsPanel): boolean => c.enemyFreq !== null && c.shieldsUp && !c.locked && c.selector <= Weapon.BeamF3 && c.selector + 1 !== c.enemyFreq;
+/** The second footer line's tint key: the shot result's tone while it shows, else locked (LOCKED), match (`Match freq N`, amber) or plain. */
+export function weaponsFooterTone(c: WeaponsPanel): ShotTone | 'locked' | 'match' | 'plain' { return c.shot ? c.shot.tone : c.locked ? 'locked' : needsMatch(c) ? 'match' : 'plain'; }
 /** The loot line above the footer: one figure per filled extra slot (READY, a percentage, OFF below its Weapons level, EMPTY for a missile pod with no torpedo); '' with none. */
 export function weaponsLootLine(c: WeaponsPanel): string {
   return c.loot.map((l) => `${l.short} ${l.empty ? 'EMPTY' : !l.powered && l.charge < 1 ? 'OFF' : pct(l.charge)}`).join('  ');
@@ -260,6 +271,14 @@ function target(state: SimState, k: number, rooms = false): DebrisTarget {
   }
   const db = state.debris;
   return { stableId: db.stableId[k]!, kind: db.kind[k] === ObjectKind.Shot ? 'shot' : db.kind[k] === ObjectKind.Rock ? 'rock' : 'debris', room: state.layout.rooms[db.room[k]!]!.name, eta: etaSeconds(state, k), frequency: db.scanned[k] ? db.frequency[k]! : null, hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null };
+}
+/** The threats panel's text width after its icon. */
+export const THREAT_TEXT_W = THREATS.w - 2 * PAD - 20;
+/** A threats-panel object row (spec Demo-xiv section 3): `Shot: Bridge 7s freq 2`. The fit rule: too wide drops the `Debris:` label (the cards' debris rows carry none), then the frequency; never a smaller font. */
+export function objectThreatText(label: 'Shot' | 'Rock' | 'Debris', room: string, eta: number, freq: number | null): string {
+  const f = freq === null ? '' : ` freq ${freq}`;
+  for (const t of [`${label}: ${room} ${eta}s${f}`, ...(label === 'Debris' ? [`${room} ${eta}s${f}`] : [])]) if (textPx(t) <= THREAT_TEXT_W) return t;
+  return `${label}: ${room} ${eta}s`;
 }
 /** Exact target-row strings for the Weapons and Science panels (spec Combat-i section 7). */
 export function targetRowText(t: DebrisTarget, scan = 0): string {
@@ -413,10 +432,11 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
     return { kind: 'doors', item: `Door  ${names[d.edgeA[e]!]!.name} / ${names[d.edgeB[e]!]!.name}`, status: sealed ? 'Sealed' : state.doors.sealRequested[e] === 1 ? 'Sealing' : held ? 'Held open' : 'Auto', action, openAirlocks };   // a pending seal (someone in the doorway) reads Sealing (Codex render review 2)
   }
   if (kind === StationKind.Weapons) {
+    const e = state.enemy, shieldsUp = e.present === 1 && e.sysHp[EnemySystem.Shields]! > 0;
     const slots = warnedTargets(state), c = state.stations.cursor[i]!, w = state.weapons, swap = canSwap(state), cursor = swap && c === SWAP_SLOT ? slots.length : slots.indexOf(c);
     const loot: LootSlotView[] = []; for (let k = 0; k < WEAPON_SLOTS; k++) { const id = w.slot[k]!; if (id) loot.push({ selector: Weapon.Slot1 + k, short: weaponDef(id).short, charge: w.charge2[k]!, powered: state.stations.level[i]! >= SLOT_LEVELS[k]!, empty: weaponDef(id).kind === 'missile' && w.torpedoStock <= 0 }); }
     const rows = loot.length ? WEAPONS_ROWS - 1 : WEAPONS_ROWS, swapText = swap ? `SWAP: cargo ${weaponDef(w.cargo).short} for ${weaponDef(w.slot[swapSlot(state)]!).short}` : null;
-    return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k, true)), cursor, first: targetWindow(cursor, slots.length + (swap ? 1 : 0), rows), locked: lockActive(state), loot, swap: swapText, rows };
+    return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k, true)), cursor, first: targetWindow(cursor, slots.length + (swap ? 1 : 0), rows), locked: lockActive(state), loot, swap: swapText, rows, enemyFreq: e.present && e.scanned ? e.shieldFreq : null, freqUnknown: e.present === 1 && !e.scanned && shieldsUp, shieldsUp, shot: shotResult(state) };
   }
   if (kind === StationKind.Science) {
     const slots = warnedTargets(state, false), c = state.stations.cursor[i]!, cursor = c < 0 ? slots.length : slots.indexOf(c), system = systemRow(state, i);   // the enemy ship as one row (spec Demo-x-c section 4)   // the cursor -1 is the system row (spec Demo-x-b section 3)
@@ -495,7 +515,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
     for (let s = 0; s < state.breaches.active.length; s++) if (state.breaches.active[s]) threats.push({ icon: 'icon.breach', text: `Breach: ${state.layout.rooms[state.derived.siteRoom[s]!]!.name}` });
     for (let a = 0; a < state.airlocks.open.length; a++) if (state.airlocks.open[a]) threats.push({ icon: 'icon.breach', text: `Airlock open: ${state.layout.rooms[state.derived.airlockRoom[a]!]!.name}` });
     for (let i = 0; i < state.stations.failed.length; i++) if (state.stations.failed[i]) threats.push({ icon: 'icon.power', text: `Power: ${STATION_NAMES[state.derived.stationKind[i]!]}` });
-    for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : state.debris.kind[k] === ObjectKind.Rock ? 'Rock' : 'Debris'; threats.push({ icon: 'icon.sensors', text: `${label}: ${state.layout.rooms[state.debris.room[k]!]!.name} ${etaSeconds(state, k)}s${state.debris.scanned[k] ? ` F${state.debris.frequency[k]}` : ''}` }); }
+    for (const k of warnedTargets(state)) { if (isEnemySlot(k)) continue; const label = state.debris.kind[k] === ObjectKind.Shot ? 'Shot' : state.debris.kind[k] === ObjectKind.Rock ? 'Rock' : 'Debris'; threats.push({ icon: 'icon.sensors', text: objectThreatText(label, state.layout.rooms[state.debris.room[k]!]!.name, etaSeconds(state, k), state.debris.scanned[k] ? state.debris.frequency[k]! : null) }); }
     if (state.run.event >= 0 && state.run.eventChoice < 0) threats.push({ icon: 'icon.sensors', text: `Event: ${EVENTS[state.run.event]!.title}`, info: true });   // spec Demo-i section 4: the run rows trail the hazards (the notice carries them)
     if (contentOf(state) === NodeType.Shop) threats.push({ icon: 'icon.sensors', text: 'Shop here', info: true });
   }

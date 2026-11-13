@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, BitmapText } from 'pixi.js';
 import { INTERNAL_W } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, clockLine, sectorLine, timeLine, directorText, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, weaponsStrip, weaponsFooterLines, weaponsLootLine, weaponsRowTexts, tabLabel, skillsLine, threatTint, SCIENCE_ROWS, STATION_SHORT, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, sectorLine, timeLine, directorText, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, weaponsStrip, weaponsFooterLines, weaponsFooterTone, weaponsLootLine, weaponsRowTexts, tabLabel, skillsLine, threatTint, SCIENCE_ROWS, STATION_SHORT, type HudModel, type HudPlayer } from './hudModel';
 import { drawIcon, tintColor } from './roomIcons';
 import { createMapPanel } from './mapPanel';
 import { featureReady } from './fallback';
@@ -207,7 +207,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(footA, []); fillRow(footB, [{ text: engineeringFooter(c), tint: DIM }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'weapons') {
       const c = p.console;
-      fillRow(ui.consoleSelector, weaponsStrip(c).map((p) => ({ text: p.text, tint: p.lit ? AMBER : DIM })));   // spec Loop-iii section 4: Pulse F1 F2 F3, the filled slots, Torp
+      fillRow(ui.consoleSelector, weaponsStrip(c).map((p) => ({ text: p.text, tint: p.lit ? AMBER : p.match ? GOOD : DIM })));   // spec Loop-iii section 4, Demo-xiv section 1: Pulse freq 1 2 3, the filled slots, Torp; the selected one amber, the enemy's frequency [green] when not selected
       ui.consoleSelector.visible = true;
       const texts = weaponsRowTexts(c), vis = texts.slice(c.first, c.first + c.rows), lootLine = weaponsLootLine(c);
       ui.consoleRows.forEach((r, k) => {
@@ -218,7 +218,8 @@ export function createHud(parent: Container, assets: GameAssets) {
         if (t !== undefined) r.set({ name: t, level: 0, max: 0, status: '', cursor: on, tint: on ? AMBER : t.startsWith('SWAP') ? BLUE : TEXT });
       });
       const ready = c.charge >= 1 || c.torpedo.loaded, [a, b] = weaponsFooterLines(c);
-      fillRow(footA, [{ text: a, tint: ready ? GOOD : TEXT }]); fillRow(footB, [{ text: b, tint: c.locked ? AMBER : DIM }]);   // the Pulse Laser and the tube; the stock and LOCKED under a Science lock (spec Coop-i section 1)
+      const tone = weaponsFooterTone(c);
+      fillRow(footA, [{ text: a, tint: ready ? GOOD : TEXT }]); fillRow(footB, [{ text: b, tint: tone === 'hit' ? GOOD : tone === 'miss' ? TEXT : tone === 'plain' ? DIM : AMBER }]);   // the Pulse Laser and the tube; the stock and LOCKED under a Science lock (spec Coop-i section 1)
       ui.consoleBar.root.visible = true; ui.consoleBar.set(c.charge, c.charge >= 1 ? GOOD : BAR_ON);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'science') {
       const c = p.console;
