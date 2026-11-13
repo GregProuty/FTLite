@@ -83,7 +83,7 @@ export function atFirstRow(state: SimState, i: number): boolean {
   switch (state.derived.stationKind[i]) {
     case StationKind.Navigation: { const first = navRows(state).findIndex((row) => row.select !== 'none'); return first < 0 || c <= first; }
     case StationKind.Weapons: { const list = canSwap(state) ? [...warnedTargets(state), SWAP_SLOT] : warnedTargets(state); return list.indexOf(c) <= 0; }
-    case StationKind.Science: return [...warnedTargets(state), -1].indexOf(c < 0 ? -1 : c) <= 0;
+    case StationKind.Science: return [...warnedTargets(state, false), -1].indexOf(c < 0 ? -1 : c) <= 0;
     case StationKind.Engineering: return state.stations.page[i] === 1 ? upgradeRows(state).indexOf(c) <= 0 : c <= 0;
     case StationKind.Doors: return c <= 0;
     default: return true;

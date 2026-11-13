@@ -2,12 +2,18 @@ import type { SimState } from './state';
 import { Dir } from './dir';
 import { DEBRIS_SLOTS } from './tuning';
 
-export const ENEMY_SLOT = DEBRIS_SLOTS, ENEMY_WEAPONS_SLOT = DEBRIS_SLOTS + 1, ENEMY_ENGINES_SLOT = DEBRIS_SLOTS + 2, ENEMY_SHIELDS_SLOT = DEBRIS_SLOTS + 3;
-/** Hull, weapons, engines, shields: four rows of one enemy (spec Combat-ii section 6). Never indices into the debris arrays. */
-export const ENEMY_SLOTS: readonly number[] = [ENEMY_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT];
+/** The enemy's five rooms as target slots (spec Demo-x-c section 4): ENEMY_SLOT is the Hold (the old hull row: hull damage only) and the ship as a whole for Science; then one slot per system room. Never indices into the debris arrays. */
+export const ENEMY_SLOT = DEBRIS_SLOTS, ENEMY_WEAPONS_SLOT = DEBRIS_SLOTS + 1, ENEMY_ENGINES_SLOT = DEBRIS_SLOTS + 2, ENEMY_SHIELDS_SLOT = DEBRIS_SLOTS + 3, ENEMY_PILOTING_SLOT = DEBRIS_SLOTS + 4;
+export const ENEMY_HOLD_SLOT = ENEMY_SLOT;
+/** The enemy's rooms in on-screen order, top to bottom (spec Demo-x-c section 4): Hold, Weapons, Piloting, Engines, Shields. The Hold comes first, so the first enemy slot is always ENEMY_SLOT. */
+export const ENEMY_SLOTS: readonly number[] = [ENEMY_HOLD_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_PILOTING_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT];
 export function isEnemySlot(slot: number): boolean { return slot >= DEBRIS_SLOTS; }
-/** EnemySystem index of a subsystem slot; -1 for the hull row. */
+/** EnemySystem index of a system room's slot; -1 for the Hold. */
 export function enemySystemOf(slot: number): number { return slot - DEBRIS_SLOTS - 1; }
+/** EnemyRoom index of an enemy slot: a system room shares its system's index; the Hold is room 4. */
+export function enemyRoomOfSlot(slot: number): number { const sys = enemySystemOf(slot); return sys >= 0 ? sys : 4; }
+/** The slot targeting an enemy room. */
+export function slotOfEnemyRoom(room: number): number { return room === 4 ? ENEMY_HOLD_SLOT : DEBRIS_SLOTS + 1 + room; }
 export function targetStableId(state: SimState, slot: number): number { return isEnemySlot(slot) ? state.enemy.stableId : state.debris.stableId[slot]!; }
 /** A slot the consoles may act on: a warned active object, or the present enemy. */
 export function isTarget(state: SimState, slot: number): boolean {
@@ -15,12 +21,13 @@ export function isTarget(state: SimState, slot: number): boolean {
   return state.debris.active[slot] === 1 && state.debris.warned[slot] === 1;
 }
 
-/** Warned, active debris slots in ascending StableId: the target order shared by Weapons and Science (spec 2a-ii section 5). Pure over state.debris. */
-export function warnedTargets(state: SimState): number[] {
+/** Warned, active debris slots in ascending StableId: the target order shared by Weapons and Science (spec 2a-ii section 5). A present enemy adds its five rooms in on-screen order for Weapons (spec Demo-x-c section 4), or the ship alone (ENEMY_SLOT) for Science (`rooms` false). Pure over state.debris. */
+export function warnedTargets(state: SimState, rooms = true): number[] {
   const db = state.debris, out: number[] = [];
   for (let k = 0; k < db.active.length; k++) if (db.active[k] && db.warned[k]) out.push(k);
-  if (state.enemy.present) out.push(...ENEMY_SLOTS);
-  return out.sort((a, b) => targetStableId(state, a) - targetStableId(state, b) || a - b);
+  if (state.enemy.present) out.push(...(rooms ? ENEMY_SLOTS : [ENEMY_SLOT]));
+  const rank = (k: number): number => (isEnemySlot(k) ? DEBRIS_SLOTS + ENEMY_SLOTS.indexOf(k) : k);
+  return out.sort((a, b) => targetStableId(state, a) - targetStableId(state, b) || rank(a) - rank(b));
 }
 
 /** The warned slot with the smallest StableId above `afterStableId`, else the smallest overall, else -1. `exclude` slot(s) are ignored (used while removing the enemy). */

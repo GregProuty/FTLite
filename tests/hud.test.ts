@@ -19,7 +19,7 @@ import { EndReason } from '../src/renderer/src/sim/crew';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
 import { resolveEvent } from '../src/renderer/src/sim/events';
-import { EnemySystem } from '../src/renderer/src/sim/enemy';
+import { EnemySystem, EnemyRoom } from '../src/renderer/src/sim/enemy';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim, rightColumn, windowShown } from '../src/renderer/src/render/enemyWindowModel';
 import { LOBBY_LINE_MAX, CONSOLE_LINE_MAX } from '../src/renderer/src/sim/tuning';
 import { DoorState } from '../src/renderer/src/sim/grid';
@@ -256,7 +256,7 @@ describe('buildHudModel', () => {
     s.stations.cursor[w] = ENEMY_SLOT;                                   // Science stays on the object
     const m = buildHudModel(s, slots(2), 'running', '');
     const wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
-    expect(wp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0 });
+    expect(wp.targets[1]).toEqual({ enemyRoom: EnemyRoom.Hold, stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null });   // Weapons: the Hold room (spec Demo-x-c section 4)
     expect(wp.cursor).toBe(1); expect(wp.first).toBe(0);
     expect(sp.targets[1]).toEqual({ stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: 1, layersMax: 1, weaponCharge: 0, fleeSeconds: 0, scan: 0 });
     expect(sp.targets[0]!.kind).toBe('debris'); expect(sp.cursor).toBe(0);
@@ -268,12 +268,11 @@ describe('buildHudModel', () => {
     for (let n = 0; n < 8; n++) placeDebris(s, A, 600, 1); placeEnemy(s);
     sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT;
     const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
-    expect(wp.targets).toHaveLength(12); expect(wp.cursor).toBe(8); expect(wp.first).toBe(3);
-    s.stations.cursor[w] = ENEMY_SHIELDS_SLOT; const wp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; expect(wp2.cursor).toBe(11); expect(wp2.first).toBe(6);
+    expect(wp.targets).toHaveLength(13); expect(wp.cursor).toBe(8); expect(wp.first).toBe(3);   // eight objects and five rooms (spec Demo-x-c section 4)
+    s.stations.cursor[w] = ENEMY_SHIELDS_SLOT; const wp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; expect(wp2.cursor).toBe(12); expect(wp2.first).toBe(7);
     run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
     const sp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel;
-    expect(sp.targets).toHaveLength(12); expect(sp.cursor).toBe(8); expect(sp.first).toBe(2);        // seven Science rows
-    s.stations.cursor[c] = ENEMY_SHIELDS_SLOT; const sp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel; expect(sp2.cursor).toBe(11); expect(sp2.first).toBe(5);
+    expect(sp.targets).toHaveLength(9); expect(sp.cursor).toBe(8); expect(sp.first).toBe(2);        // seven Science rows; the ship is one row there (spec Demo-x-c section 4)
   });
   it('targetRowText renders the exact row strings for debris, shots and the enemy on both panels', () => {
     const debris = { stableId: 1, kind: 'debris' as const, room: 'Engine', eta: 7, frequency: null, hull: null, system: null, status: null, shieldsUp: null, layers: null as number | null, layersMax: null as number | null, weaponCharge: null as number | null, fleeSeconds: null as number | null };
@@ -292,21 +291,22 @@ describe('buildHudModel', () => {
     expect(targetRowText(sys(0, 30, null))).toBe('Enemy weapons 100%'); expect(targetRowText(sys(0, 15, null))).toBe('Enemy weapons 50%');
     expect(targetRowText(sys(0, 0, 31))).toBe('Enemy weapons DOWN 31s'); expect(targetRowText(sys(1, 0, 1))).toBe('Enemy engines DOWN 1s'); expect(targetRowText(sys(2, 30, null), 0.4)).toBe('Enemy shields 100%');
   });
-  it('the model gives four enemy rows with system and status, the Science scan on the hull row only, and threat suffixes per down system', () => {
+  it('the model gives five enemy room rows on Weapons in window order with system and status, the ship row on Science with its scan, and the threat rows (spec Demo-x-c section 4)', () => {
     const s = makeState(2), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!, c = s.derived.stationOfKind[StationKind.Science]!;
     placeDebris(s, A, 600, 1); placeEnemy(s, 64, 2); sitDown(s, 0, w); sitDown(s, 1, c); s.enemy.scan = 0.4;
     let m = buildHudModel(s, slots(2), 'running', ''); let wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
     expect(wp.targets.slice(1).map((t) => [t.kind, t.system, t.status, t.shieldsUp, t.frequency, t.hull])).toEqual([
-      ['enemy', null, null, true, null, 0.64], ['enemy', 0, { hp: 30, repairIn: null }, true, null, null], ['enemy', 1, { hp: 30, repairIn: null }, true, null, null], ['enemy', 2, { hp: 30, repairIn: null }, true, null, null]]);
-    expect(sp.targets.slice(1).map((t) => t.scan)).toEqual([0.4, 0, 0, 0]);
+      ['enemy', null, null, true, null, 0.64], ['enemy', 0, { hp: 30, repairIn: null }, true, null, 0.64], ['enemy', 3, { hp: 30, repairIn: null }, true, null, 0.64], ['enemy', 1, { hp: 30, repairIn: null }, true, null, 0.64], ['enemy', 2, { hp: 30, repairIn: null }, true, null, 0.64]]);
+    expect(wp.targets.slice(1).map((t) => t.enemyRoom)).toEqual([EnemyRoom.Hold, EnemyRoom.Weapons, EnemyRoom.Piloting, EnemyRoom.Engines, EnemyRoom.Shields]);
+    expect(sp.targets.slice(1).map((t) => t.scan)).toEqual([0.4]);
     expect(m.threats[0]).toEqual({ icon: 'icon.weapons', text: 'Enemy 64% shields 1/1' });
     s.enemy.scanned = 1;
-    expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as WeaponsPanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: true });   // revealed, shields still up
+    expect((buildHudModel(s, slots(2), 'running', '').players[1]!.console as SciencePanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: true });   // revealed on the ship row, shields still up
     disableSystem(s, EnemySystem.Weapons);
     expect(buildHudModel(s, slots(2), 'running', '').threats[0]!.text).toEqual('Enemy 64% shields 1/1'); expect(buildHudModel(s, slots(2), 'running', '').threats[1]!.text).toBe('Down: weapons');   // two rows at the larger font (spec Demo-x-c section 1)
     disableSystem(s, EnemySystem.Shields);
     m = buildHudModel(s, slots(2), 'running', ''); wp = m.players[0]!.console as WeaponsPanel;
-    expect(wp.targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[4]!.status).toEqual({ hp: 0, repairIn: 45 });
+    expect((m.players[1]!.console as SciencePanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[5]!.status).toEqual({ hp: 0, repairIn: 45 });
     expect(m.threats[0]!.text).toBe('Enemy 64% shields DOWN'); expect(m.threats[1]!.text).toBe('Down: weapons');
     guardDebris(s);                                                                       // a read at slots 8..11 throws: the model must branch before indexing
     expect(() => { for (const slot of ENEMY_SLOTS) { s.stations.cursor[w] = slot; s.stations.cursor[c] = slot; buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
@@ -485,7 +485,7 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
     for (const l of CARD) { expect(l.length).toBeLessThanOrEqual(LOBBY_LINE_MAX); expect(/^[\x20-\x7e]+$/.test(l)).toBe(true); }
   });
   /** The hull row of the Weapons panel for an enemy placed with the given fields. */
-  const hullRow = (s: ReturnType<typeof makeState>) => { sitDown(s, 0, s.derived.stationOfKind[StationKind.Weapons]!); const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; const t = wp.targets.find((x) => x.kind === 'enemy' && x.system === null)!; return { t, text: targetRowText(t) }; };
+  const hullRow = (s: ReturnType<typeof makeState>) => { sitDown(s, 0, s.derived.stationOfKind[StationKind.Science]!); const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel;  const t = wp.targets.find((x) => x.kind === 'enemy' && x.system === null)!; return { t, text: targetRowText(t) }; };   // the ship row is Science's since Demo-x-c (Weapons targets rooms)
   const charge = (s: ReturnType<typeof makeState>, frac: number) => { s.enemy.shotArmTick = s.tick - Math.round(frac * 100); s.enemy.nextShotTick = s.tick + Math.round((1 - frac) * 100); };
   it('the enemy hull row in four states: full at column 0, a stripped layer at column 5 scanned, shields down, fleeing', () => {
     const a = makeState(1); quiet(a); placeEnemy(a);
@@ -497,10 +497,10 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
     const d = makeState(1); quiet(d); placeEnemy(d, 20); disableSystem(d, EnemySystem.Shields); d.enemy.fleeing = 1; d.enemy.surrenderIntact = 1; d.enemy.departTick = d.tick + 7 * 60; charge(d, 0.3);
     expect(hullRow(d).text).toBe('Enemy 20% FLEE 7s S-'); expect(hullRow(d).t.fleeSeconds).toBe(7);
   });
-  it('subsystem rows carry no layer fields; the hull is a fraction of maxHull', () => {
+  it('room rows carry no layer fields; the Hold row carries the hull as a fraction of maxHull', () => {
     const s = makeState(1); quiet(s); s.run.column = 5; placeEnemy(s, 75); sitDown(s, 0, s.derived.stationOfKind[StationKind.Weapons]!);
     const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
-    expect(wp.targets.find((t) => t.system === null)!.hull).toBe(0.5); expect(wp.targets.filter((t) => t.system !== null).map((t) => [t.layers, t.layersMax, t.weaponCharge, t.fleeSeconds])).toEqual([[null, null, null, null], [null, null, null, null], [null, null, null, null]]);
+    expect(wp.targets.find((t) => t.system === null)!.hull).toBe(0.5); expect(wp.targets.filter((t) => t.system !== null).map((t) => [t.layers, t.layersMax, t.weaponCharge, t.fleeSeconds])).toEqual([[null, null, null, null], [null, null, null, null], [null, null, null, null], [null, null, null, null]]);
   });
   it('the threat rows: shields n/m while up or DOWN, FLEEING; the other systems down on a second row (spec Demo-x-c section 1: two rows fit the panel at the larger font); the percentage uses maxHull', () => {
     const s = makeState(1); quiet(s); placeEnemy(s);
@@ -682,7 +682,8 @@ describe('the Weapons target rows under an ion disable (spec Loop-iii section 1)
   it('an ionised system row reads ION with its whole seconds; a fresh row reads as before', () => {
     const s = makeState(1); quiet(s); placeEnemy(s); const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w);
     const rows = () => (buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel).targets.map((t) => targetRowText(t));
-    expect(rows()[3]).toBe('Enemy shields 100%');
-    s.enemy.ionUntil[EnemySystem.Shields] = s.tick + 9 * 60; expect(rows()[3]).toBe('Enemy shields 100% ION 9s'); expect(rows()[3]!.length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+    expect(rows()).toEqual(['Hold  hull 100%', 'Weapons room  100%', 'Piloting room  100%', 'Engines room  100%', 'Shields room  100%']);   // the rooms in window order (spec Demo-x-c section 4)
+    s.enemy.ionUntil[EnemySystem.Shields] = s.tick + 9 * 60; expect(rows()[4]).toBe('Shields room  100%  ION 9s'); expect(rows()[4]!.length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+    disableSystem(s, EnemySystem.Piloting); expect(rows()[2]).toBe(`Piloting room  DOWN ${45}s`);
   });
 });

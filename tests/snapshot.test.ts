@@ -295,11 +295,11 @@ describe('snapshot', () => {
     const f = makeState(2).enemy;
     expect([f.present, f.hull, f.stableId, f.nextArrivalTick, f.nextShotTick, f.departTick]).toEqual([0, 0, 0, NEVER, -1, -1]);   // no timed first enemy (spec Loop-i section 4b)
     const s = makeState(2, 5); s.enemy.present = 1; s.enemy.hull = 37; s.enemy.stableId = 41; s.enemy.nextArrivalTick = 9000; s.enemy.nextShotTick = 1234; s.enemy.departTick = 5678;
-    s.enemy.sysHp.set([7, 11, 19]); s.enemy.sysRepairTick.set([111, 222, 333]); s.enemy.shieldFreq = 3; s.enemy.scanned = 1; s.enemy.scan = 0.45; s.telemetry.enemyDisables = 4;
+    s.enemy.sysHp.set([7, 11, 19, 23]); s.enemy.sysRepairTick.set([111, 222, 333, 444]); s.enemy.shieldFreq = 3; s.enemy.scanned = 1; s.enemy.scan = 0.45; s.telemetry.enemyDisables = 4;
     s.debris.kind[2] = 1; s.debris.kind[5] = 1; s.telemetry.encounters = 3; s.telemetry.enemiesDestroyed = 2;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect([t.enemy.present, t.enemy.hull, t.enemy.stableId, t.enemy.nextArrivalTick, t.enemy.nextShotTick, t.enemy.departTick]).toEqual([1, 37, 41, 9000, 1234, 5678]);
-    expect(Array.from(t.enemy.sysHp)).toEqual([7, 11, 19]); expect(Array.from(t.enemy.sysRepairTick)).toEqual([111, 222, 333]); expect([t.enemy.shieldFreq, t.enemy.scanned, t.enemy.scan, t.telemetry.enemyDisables]).toEqual([3, 1, 0.45, 4]);
+    expect(Array.from(t.enemy.sysHp)).toEqual([7, 11, 19, 23]); expect(Array.from(t.enemy.sysRepairTick)).toEqual([111, 222, 333, 444]);   // four systems since Demo-x-c (Piloting) expect([t.enemy.shieldFreq, t.enemy.scanned, t.enemy.scan, t.telemetry.enemyDisables]).toEqual([3, 1, 0.45, 4]);
     expect(Array.from(t.debris.kind)).toEqual(Array.from(s.debris.kind)); expect([t.telemetry.encounters, t.telemetry.enemiesDestroyed]).toEqual([3, 2]);
     const base = hashState(makeState(2, 5));
     const mutate = (fn: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); fn(u); return hashState(u); };
@@ -555,7 +555,7 @@ describe('snapshot: the loot weapons (spec Loop-iii section 5)', () => {
     placeEnemy(s); s.enemy.ionUntil[1] = 900;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect(hashState(t)).toBe(hashState(s));
-    expect([Array.from(t.weapons.slot), Array.from(t.weapons.charge2), t.weapons.cargo, Array.from(t.enemy.ionUntil)]).toEqual([[1, 3], [0.25, 0.5], 4, [-1, 900, -1]]);
+    expect([Array.from(t.weapons.slot), Array.from(t.weapons.charge2), t.weapons.cargo, Array.from(t.enemy.ionUntil)]).toEqual([[1, 3], [0.25, 0.5], 4, [-1, 900, -1, -1]]);
     const base = hashState(makeState(2, 7));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 7); f(u); return hashState(u); };
     for (const f of [(u: ReturnType<typeof makeState>) => { u.weapons.slot[1] = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.charge2[0] = 0.1; }, (u: ReturnType<typeof makeState>) => { u.weapons.cargo = 1; }, (u: ReturnType<typeof makeState>) => { u.enemy.ionUntil[2] = 5; }, (u: ReturnType<typeof makeState>) => { u.run.shopWeapon = 3; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootTick = 9; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootId = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootPlace = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootBought = 1; }]) expect(mutate(f)).not.toBe(base);

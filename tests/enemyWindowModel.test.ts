@@ -5,7 +5,7 @@ import { projectilePath } from '../src/renderer/src/render/projectileModel';
 import { WORLD_BAND } from '../src/renderer/src/render/worldFit';
 import { ObjectKind } from '../src/renderer/src/sim/debris';
 import { EnemySystem, EnemyRoom, leave } from '../src/renderer/src/sim/enemy';
-import { ENEMY_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { ENEMY_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_PILOTING_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { ENEMY_SYS_HP, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, TICK_HZ, ENEMY_ROOMS, SHIELD_ROTATE } from '../src/renderer/src/sim/tuning';
@@ -38,13 +38,13 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     const v = view(present());
     expect(v.visible).toBe(true); expect(v.phase).toBe('present'); expect(v.rooms.length).toBe(5);
     for (const r of v.rooms) { expect(r.rect.x).toBeGreaterThanOrEqual(SHIP_MARGIN); expect(r.rect.y).toBeGreaterThanOrEqual(SHIP_MARGIN); expect(r.rect.x + r.rect.w).toBeLessThanOrEqual(WINDOW.w - SHIP_MARGIN); expect(r.rect.y + r.rect.h).toBeLessThanOrEqual(WINDOW.h - SHIP_MARGIN); expect(r.rect.w % ENEMY_TILE).toBe(0); }
-    expect(v.rooms.map((r) => r.glyph)).toEqual(['weapons', 'engines', 'shields', null, null]);
+    expect(v.rooms.map((r) => r.glyph)).toEqual(['weapons', 'engines', 'shields', 'piloting', null]);   // Piloting is a system room (spec Demo-x-c section 4)
   });
   it('tints, health and the repair countdown', () => {
     const s = present(); s.enemy.sysHp[EnemySystem.Engines] = 12; disableSystem(s, EnemySystem.Shields); s.enemy.sysRepairTick[EnemySystem.Shields] = s.tick + 10 * T + 1;
     const v = view(s);
     expect(v.rooms.map((r) => r.tint)).toEqual(['normal', 'damaged', 'down', 'normal', 'normal']);
-    expect(v.rooms.map((r) => r.hp)).toEqual([1, 12 / ENEMY_SYS_HP, 0, null, null]);
+    expect(v.rooms.map((r) => r.hp)).toEqual([1, 12 / ENEMY_SYS_HP, 0, 1, null]);
     expect(v.rooms.map((r) => r.repairIn)).toEqual([null, null, 11, null, null]);
   });
   it('hull pips at 0, 35% and 100%; the frequency once scanned; the charge, hidden while weapons are down', () => {
@@ -76,11 +76,12 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     s.enemy.roomFire[EnemyRoom.Hold] = ENEMY_FIRE_SECONDS; expect(view(s).problem).toBe('FIRE: Hold');
     expect(view(s).rooms.map((r) => [r.fire, r.breach])).toEqual([[false, false], [false, true], [true, false], [false, false], [true, false]]);
   });
-  it('the reticle while Weapons is seated: a system row its room, the hull row the whole ship; null otherwise', () => {
+  it('the reticle while Weapons is seated: the targeted room, the Hold and Piloting included (spec Demo-x-c section 4); null otherwise', () => {
     const s = present(); expect(view(s).reticle).toBeNull();
     seatWeapons(s, ENEMY_ENGINES_SLOT); expect(view(s).reticle).toEqual({ room: EnemyRoom.Engines });
     seatWeapons(s, ENEMY_SHIELDS_SLOT); expect(view(s).reticle).toEqual({ room: EnemyRoom.Shields });
-    seatWeapons(s, ENEMY_SLOT); expect(view(s).reticle).toEqual({ hull: true });
+    seatWeapons(s, ENEMY_SLOT); expect(view(s).reticle).toEqual({ room: EnemyRoom.Hold });
+    seatWeapons(s, ENEMY_PILOTING_SLOT); expect(view(s).reticle).toEqual({ room: EnemyRoom.Piloting });
     const k = placeDebris(s, room(s, 'A'), 600, 1); seatWeapons(s, k); expect(view(s).reticle).toBeNull();
   });
   it('crew sit at their consoles; the nearest one walks to a burning room and works there', () => {
@@ -101,7 +102,7 @@ describe('enemy window model (spec Demo-viii section 2)', () => {
     expect(b).toMatchObject({ t: 0, result: 2, kind: 0, slot: ENEMY_ENGINES_SLOT }); expect(b.to).toEqual({ x: centre.x + centre.w / 2, y: centre.y + centre.h / 2 });
     expect(view(s, settled(s), s.tick + 12).bolt!.t).toBeCloseTo(0.5, 9);
     expect(view(s, settled(s), s.tick + BOLT_SECONDS * T).bolt).toBeNull();
-    s.weapons.lastShotTarget = ENEMY_SLOT; expect(view(s).bolt!.to).toEqual({ x: view(s).ship.x + view(s).ship.w / 2, y: view(s).ship.y + view(s).ship.h / 2 });
+    const hold = view(s).rooms[EnemyRoom.Hold]!.rect; s.weapons.lastShotTarget = ENEMY_SLOT; expect(view(s).bolt!.to).toEqual({ x: hold.x + hold.w / 2, y: hold.y + hold.h / 2 });   // the Hold, a room like the others
     s.weapons.lastShotTarget = 2; expect(view(s).bolt!.to).toBeNull();
   });
   it('slides in over 0.5 s, breaks up over 1.2 s when destroyed, flies out over 0.8 s when it leaves; a jump closes it at once', () => {

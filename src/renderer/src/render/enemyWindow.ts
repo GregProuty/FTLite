@@ -78,6 +78,7 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
       if (r.glyph === 'weapons') drawIcon(g, 'weapons', cx, cy, 24, gc);
       else if (r.glyph === 'engines') drawIcon(g, 'engineering', cx, cy, 24, gc);
       else if (r.glyph === 'shields') shieldGlyph(g, cx, cy, 24, gc);
+      else if (r.glyph === 'piloting') drawIcon(g, 'navigation', cx, cy, 24, gc);
       if (r.hp !== null) { const w = rect.w - 16; g.rect(rect.x + 8, rect.y + rect.h - 10, w, 5).fill(WALL); g.rect(rect.x + 8, rect.y + rect.h - 10, w * Math.max(0, Math.min(1, r.hp)), 5).fill(r.hp > 0.5 ? 0x7ad07a : r.hp > 0 ? 0xe0c040 : WARN); }
       if (r.breach) {   // a dark hole in the outer wall with specks blowing out
         const side = HOLE_SIDE[k]!, hx = side === 'left' ? rect.x : side === 'right' ? rect.x + rect.w : cx, hy = side === 'top' ? rect.y : side === 'bottom' ? rect.y + rect.h : rect.y + rect.h / 2;
@@ -151,7 +152,7 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
       if (view.charge !== null && !destroyed) { const w = WINDOW.w - 2 * SHIP_MARGIN; over.rect(SHIP_MARGIN, CHARGE_Y, w, 4).fill(BAR_OFF); over.rect(SHIP_MARGIN, CHARGE_Y, w * Math.max(0, Math.min(1, view.charge)), 4).fill(view.charge >= 0.8 ? WARN : TEXT); }
       status.text = view.status; status.tint = view.status === 'ENEMY' ? TEXT : WARN;
       problem.text = view.problem ?? ''; title.text = view.title ?? '';
-      if (view.reticle) brackets(over, 'hull' in view.reticle ? { x: view.ship.x - 18, y: view.ship.y - 8, w: view.ship.w + 26, h: view.ship.h + 16 } : view.rooms[view.reticle.room]!.rect, 3, RETICLE);
+      if (view.reticle) brackets(over, view.rooms[view.reticle.room]!.rect, 3, RETICLE);
     }
   };
 }

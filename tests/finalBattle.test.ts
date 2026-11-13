@@ -84,7 +84,7 @@ describe('the Warden (spec Loop-iv section 2)', () => {
     const t = s.tick; run(s, 3); expect(s.tick).toBe(t);
   });
   it('destroyed by its own interior fire it also wins', () => {
-    const s = withWarden(); s.enemy.hull = 0.001; s.enemy.roomFire[EnemyRoom.Bridge] = 5;
+    const s = withWarden(); s.enemy.hull = 0.001; s.enemy.roomFire[EnemyRoom.Piloting] = 5;
     run(s, 1);
     expect([s.ended, s.endReason]).toEqual([1, EndReason.Victory]);
   });

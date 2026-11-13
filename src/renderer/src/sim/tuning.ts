@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 30;
+export const SIM_VERSION = 31;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -154,9 +154,9 @@ export const ENEMY_BEAM_DAMAGE = 15, ENEMY_TORP_DAMAGE = 35;
 export const ENEMY_SHIELD_LAYERS: readonly number[] = [1, 1, 1, 2, 2, 2, 2, 2], SHIELD_RECHARGE_TIME = 6, ENEMY_HULL_PER_COLUMN = 10, ENEMY_AIM_CHANCE = 0.6, ENEMY_SHOT_SYSTEM_CHANCE = 0.5;
 export const ENEMY_SHOT_CREW_DAMAGE = 12;                // of HEALTH_MAX per Conscious crew member in the room a shot hits (survival-gate lever 2 after aimed shots, Demo-i gate (spec section 12); debris stays 20)
 export const ENEMY_FLEE_FRAC = 0.25, ENEMY_FLEE_DELAY = 8;
-/** The enemy interior (spec Demo-viii section 2b): rooms (0 Weapons, 1 Engines, 2 Shields, 3 Bridge, 4 Hold), the problem-draw thresholds after a hit, timer seconds, damage per second. */
+/** The enemy interior (spec Demo-viii section 2b): rooms (0 Weapons, 1 Engines, 2 Shields, 3 Piloting, 4 Hold), the problem-draw thresholds after a hit, timer seconds, damage per second. */
 export const ENEMY_ROOMS = 5, ENEMY_HIT_FIRE = 0.35, ENEMY_HIT_BREACH = 0.15, ENEMY_FIRE_SECONDS = 15, ENEMY_BREACH_SECONDS = 20, ENEMY_FIRE_HULL_DPS = 0.3, ENEMY_FIRE_SYS_DPS = 1.5, ENEMY_BREACH_HULL_DPS = 0.2;
-export const ENEMY_SYS_HP = 30, ENEMY_SYS_REPAIR = 45, ENEMY_EVADE = 0.15;   // subsystem health, seconds to self-repair, beam threshold penalty while the engines are up (spec Combat-ii section 8)
+export const ENEMY_SYS_HP = 30, ENEMY_SYS_REPAIR = 45, ENEMY_EVADE = 0.15;   // subsystem health, seconds to self-repair, beam threshold penalty while its Piloting is up (spec Combat-ii section 8; Demo-x-c section 4: Piloting, not the engines)
 
 // Boarders (Boarders-i)
 export const BOARDER_SLOTS = 4;

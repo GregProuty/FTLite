@@ -24,7 +24,7 @@ export function detectChance(state: SimState, i: number): number { const occ = s
 /** Science's Up/Down (spec 2b-ii section 4, Demo-x-b section 3): the warned targets by StableId, then the system row (cursor -1), with wrap. */
 function scienceCycle(state: SimState, i: number, dir: number): void {
   if (dir !== Dir.Up && dir !== Dir.Down) return;
-  const list = [...warnedTargets(state), -1], c = state.stations.cursor, n = list.length;
+  const list = [...warnedTargets(state, false), -1], c = state.stations.cursor, n = list.length;   // the enemy ship as one row (spec Demo-x-c section 4)
   const k = list.indexOf(c[i]! < 0 ? -1 : c[i]!);
   c[i] = list[k < 0 ? 0 : dir === Dir.Up ? (k + n - 1) % n : (k + 1) % n]!;
 }

@@ -2,7 +2,7 @@ import type { SimState } from './state';
 import { nextFloat, nextInt } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
 import { spawnShot, shotsInFlight } from './debris';
-import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from './debrisTargets';
+import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf, enemyRoomOfSlot } from './debrisTargets';
 import { minutesOf } from './director';
 import { addScrap } from './scrap';
 import { grantWeapon } from './weapons';
@@ -21,21 +21,21 @@ export function fireInterval(minutes: number, players: number): number {
 /** The node encounter (spec Demo-vi section 2), in run.encounter. */
 export const Encounter = { None: 0, Pending: 1, Fighting: 2, Won: 3, Over: 4 } as const;
 
-export const EnemySystem = { Weapons: 0, Engines: 1, Shields: 2 } as const;
-export const ENEMY_SYSTEM_NAMES = ['weapons', 'engines', 'shields'] as const;
+export const EnemySystem = { Weapons: 0, Engines: 1, Shields: 2, Piloting: 3 } as const;   // Piloting: the old Bridge, a system room since Demo-x-c (section 4)
+export const ENEMY_SYSTEM_NAMES = ['weapons', 'engines', 'shields', 'piloting'] as const;
 export const ENEMY_SYSTEM_COUNT = ENEMY_SYSTEM_NAMES.length;
 /** The enemy ship's five rooms (spec Demo-viii section 2b); the three system rooms share the EnemySystem indices. */
-export const EnemyRoom = { Weapons: 0, Engines: 1, Shields: 2, Bridge: 3, Hold: 4 } as const;
-export const ENEMY_ROOM_NAMES = ['Weapons', 'Engines', 'Shields', 'Bridge', 'Hold'] as const;
+export const EnemyRoom = { Weapons: 0, Engines: 1, Shields: 2, Piloting: 3, Hold: 4 } as const;
+export const ENEMY_ROOM_NAMES = ['Weapons', 'Engines', 'Shields', 'Piloting', 'Hold'] as const;
 
 /** An enemy system acts as up: health above 0 and no ion disable running (spec Loop-iii section 1: an ionised system acts as down without losing health). */
 export function enemySysUp(state: SimState, sys: number): boolean { const e = state.enemy; return e.sysHp[sys]! > 0 && !(e.ionUntil[sys]! > state.tick); }
 /** Whole seconds left on a system's ion disable, 0 when none runs. */
 export function ionSecondsLeft(state: SimState, sys: number): number { const t = state.enemy.ionUntil[sys]!; return t > state.tick ? Math.ceil((t - state.tick) / TICK_HZ) : 0; }
 
-/** Beam threshold against the ship: the base and output term minus the evasion the engines provide; not clamped (spec Combat-ii section 5). */
+/** Beam threshold against the ship: the base and output term minus the evasion its Piloting provides while up (spec Demo-x-c section 4; the engines until then); not clamped (spec Combat-ii section 5). */
 export function enemyBeamThreshold(state: SimState, output: number): number {
-  return ENEMY_BEAM_BASE + ENEMY_BEAM_SCALE * output - (enemySysUp(state, EnemySystem.Engines) ? ENEMY_EVADE : 0);
+  return ENEMY_BEAM_BASE + ENEMY_BEAM_SCALE * output - (enemySysUp(state, EnemySystem.Piloting) ? ENEMY_EVADE : 0);
 }
 /** Hull on arrival at a depth (spec Demo-i section 11.2; Loop-i section 1: depth replaces the column). */
 export function enemyMaxHull(column: number): number { return ENEMY_HULL + ENEMY_HULL_PER_COLUMN * column; }
@@ -130,13 +130,10 @@ function disableEnemySystem(state: SimState, sys: number): void {
   if (sys === EnemySystem.Shields) { e.shieldLayers = 0; e.shieldRecharge = 0; }
 }
 
-/** The room a hull or system hit lands in (spec Demo-viii section 2b): a system row's own room; the hull row the Bridge or the Hold by one rng.combat draw. */
-export function enemyRoomOfHit(state: SimState, slot: number): number {
-  const sys = enemySystemOf(slot);
-  return sys >= 0 ? sys : EnemyRoom.Bridge + nextInt(state.rng.combat, 2);
-}
+/** The room a hit lands in: the targeted room (spec Demo-x-c section 4; the old hull row's Bridge-or-Hold draw is gone). */
+export function enemyRoomOfHit(_state: SimState, slot: number): number { return enemyRoomOfSlot(slot); }
 
-/** After a hull or system hit (not a miss, not a strip): the room draw (hull row only), then one problem draw: a fire below ENEMY_HIT_FIRE (reset to full if one burns), a breach from 1 - ENEMY_HIT_BREACH (amendment I1). Called before the damage, so the draws are made even on a killing hit. */
+/** After a hit on a room (not a miss, not a strip): one problem draw in the targeted room: a fire below ENEMY_HIT_FIRE (reset to full if one burns), a breach from 1 - ENEMY_HIT_BREACH (amendment I1). Called before the damage, so the draws are made even on a killing hit. */
 export function startEnemyProblem(state: SimState, slot: number): void {
   const e = state.enemy, room = enemyRoomOfHit(state, slot), u = nextFloat(state.rng.combat);
   if (u < ENEMY_HIT_FIRE) e.roomFire[room] = ENEMY_FIRE_SECONDS;

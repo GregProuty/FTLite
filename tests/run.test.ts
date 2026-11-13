@@ -212,7 +212,7 @@ describe('run: the jump', () => {
     const s = calm(2); s.run.sector = SECTORS - 1; s.run.column = SECTOR_COLUMNS - 1; s.run.node = 0; s.run.nodesReached = 16; s.telemetry.jumps = 16; s.run.jumpCharge = 1;
     sectorJump(s);
     expect([s.run.column, s.run.nodesReached, s.telemetry.jumps, s.ended, s.run.finalBeacon]).toEqual([SECTOR_COLUMNS - 1, 17, 17, 0, 1]);
-    const dying = (q: ReturnType<typeof calm>) => { placeEnemy(q, 0.001); q.enemy.roomFire[EnemyRoom.Bridge] = 5; q.enemy.nextShotTick = 1e9; };   // its own fire destroys the Warden in the enemy step
+    const dying = (q: ReturnType<typeof calm>) => { placeEnemy(q, 0.001); q.enemy.roomFire[EnemyRoom.Piloting] = 5; q.enemy.nextShotTick = 1e9; };   // its own fire destroys the Warden in the enemy step
     const p = calm(2); allHazard(p); p.run.sector = SECTORS - 1; p.run.column = SECTOR_COLUMNS - 1; p.run.node = 0; chargeJump(p); sectorJump(p); p.boarders.nextArrivalTick = 1e9;
     seatNavigator(p, 0); run(p, 1); teleport(p, 1, 2.5, 2.5); downCrew(p, 1); Health.cur[p.crew[0]!] = 0.05; placeBoarder(p, room(p, 'A')); dying(p);   // a boarder in A will down the navigator later this tick
     run(p, 1);
