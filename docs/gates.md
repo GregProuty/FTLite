@@ -302,3 +302,24 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
 - [x] Golden re-blessed once (SIM_VERSION 21): final hash 1aff2aad -> 92a4fc7c.
 - [ ] Manual, the user: venting a room full of boarders feels like a deliberate trick, and late-game scrap lets a struggling run recover.
 - [x] `npm run typecheck`, `npm test`, `npm run build` pass on the final commit.
+
+## Coop-i: working together (2026-11-12)
+- [x] `npm test` passes (857 tests). The new tests cover:
+  - Rotating shields: armed on arrival, one combat draw on the due tick, never the same frequency (every frequency comes up), the scan reset and the lock ended, re-armed; none while the shields system is down, and its repair re-arms the clock a full 20 s ahead (amendment C6).
+  - The lock: Confirm on the scanned hull row locks for 8 s; unscanned it scans; no lock from a subsystem row, without an enemy, without Confirm or while one runs; through `step`; the Science footer `LOCK: Confirm` / `LOCKED 6s`.
+  - Beams under the lock: tuned for any selector, +0.15 to the threshold while a layer is up, nothing extra with the shields down or no layer, one combat draw per beam locked or not, a locked hit draws what a matched hit draws, torpedoes not counted, the Weapons card `locked`; the solo selector path unchanged.
+  - Hands together: two equal crew finish a fire, breach, failed console or revive in 1 / 2.5 of the solo time and three in 1 / 3.75 (within a tick); different targets get nothing; unequal crew do 1.25 x (rate A + rate B); per-person XP unchanged; `teamSeconds` once per target per tick; shared revive.
+  - Callouts: each context string, the Engineering flash kinds, the automatic `Help!`, bubble lifetime and replacement, the device manager's callout edges outside the frames, the Intent's six fields and its replay bytes unchanged.
+  - The teamwork summary line, `telemetry.revives`, the record's `teamwork` block; the new fields round-trip and change the hash; version-21 snapshots rejected.
+- [x] Gates before -> after (min health, seeds 1/2/3); every gate passes and no floor was lowered:
+  - `gate-survival`: 63.3 / 23.7 / 47.0 -> 77.7 / 47.8 / 68.9 (min hull 72 / 72 / 88 -> 72 / 68 / 84).
+  - `gate-duo`: 28.8 / 62.6 / 75.1 -> 28.8 / 28.8 / 68.4 (min hull 80 / 44 / 60 -> 80 / 40 / 57).
+  - `gate-boarding`: 29.1 / 24.8 / 48.7 -> 29.1 / 28.9 / 48.7.
+  - `gate-cutter`: 73.2 / 51.7 / 52.8 -> 59.1 / 61.5 / 65.6 (min hull 72 / 72 / 84 -> 72 / 68 / 88).
+  - `gate-jump` and `gate-run` pass.
+  - `npm run acceptance 5 1`: the same columns apart from the idle streaks (2 players 45.3/65.7 -> 49.4/66.2, 4 players 44.4/67/67/67 -> 55.4/67.3/67.3/67.3) and one more debris spawn for two players (1/2/1/1 -> 1/2/1/2).
+- [x] Cause: team speed. The bots already chase the same fire, so two of them now put it out 2.5 times as fast; the shorter fires change every later fire, debris and enemy timing in the run, which moves the figures both ways (survival and boarding up, cutter seed 1 and duo seed 2 down). The bots never sit at Science, so rotation and the lock play no part in a gate. `gate-duo` seed 2 is now 28.8 against the 25 floor.
+- [x] Golden re-blessed once (SIM_VERSION 22): final hash 92a4fc7c -> fee5b547.
+- [x] Visual check by Claude, 2026-11-12 (Playwright on the built app, two keyboard players; a temporary build-only hook placed the crew at their consoles, brought the enemy early and held its shots, so the screenshots did not wait 270 s; the hook was removed before the commit). P1 at Science scanned the enemy (`Lead 18s   Scanning`, then `Lead 18s   LOCK: Confirm`, the window `F2 2s` counting to the re-tune); Confirm locked it (`LOCKED 7s`); the Weapons footer read `Beam READY  Torp LOADED  Stock 2/6  LOCKED` inside the card; P2 fired Beam F1 at a frequency-2 shield and hit the hull (85 %). R and / put `Power to Science!` and `Power to Weapons!` over the two crew and both POWER rows blinked yellow. Both crew in a burning Galley holding Interact showed both progress bars and put it out together; two `Fire here!` bubbles. The game-over summary carried `Teamwork  locked shots 1  shared repairs 2s  revives 0`. Found and fixed: two bubbles from crew side by side overlapped (the later one now stacks above); the game-over summary was hard to read over the ship (it now has a dark backing); the card's progress bar crossed the skills line (moved under it). Bubble icons are not drawn in this build because the optional icon sheet is absent; the bubbles read without them. Screenshots: `C:\Users\djuar\AppData\Local\Temp\claude\86da55dbee83ee65\b0d62506-f1e2-4b2f-8539-6778ff35b15b\scratchpad\drive\coop2`.
+- [ ] Manual, the user (the real test): do two players talk to each other more than before? Is the lock callout fun?
+- [x] `npm run typecheck`, `npm test`, `npm run build` pass on the final commit.

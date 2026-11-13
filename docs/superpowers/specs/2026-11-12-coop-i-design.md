@@ -51,8 +51,8 @@ New fields: `enemy.shieldRotateTick`, `enemy.lockUntilTick`, `telemetry.lockedSh
 
 ## 7. Gate
 
-- [ ] Section 6 tests; golden re-blessed once; gate figures recorded with the cause.
-- [ ] Visual check by Claude: the lock on the Science and Weapons cards, a callout bubble, the Engineering row flash, two players on one fire.
+- [x] Section 6 tests; golden re-blessed once; gate figures recorded with the cause.
+- [x] Visual check by Claude: the lock on the Science and Weapons cards, a callout bubble, the Engineering row flash, two players on one fire.
 - [ ] Manual, the user (the real test): do two players talk to each other more than before? Is the lock callout fun?
 
 ## 8. Amendments
@@ -75,3 +75,6 @@ New fields: `enemy.shieldRotateTick`, `enemy.lockUntilTick`, `telemetry.lockedSh
 - **C9. Tests that encoded the single reviver** change with amendment C3: `tests/interact.test.ts` (two revivers now both add progress at `TEAM_MULT`), `tests/telemetry.test.ts` (the second reviver is active, not idle) and `tests/characters.test.ts` (two unequal crew on one fire add `TEAM_MULT x (rate A + rate B)`). `reviverPid` stays in the state for display: the current reviver while still trying, else the lowest pid trying.
 - **C10. Callout bindings and plumbing.** Keyboard 1 `R`, keyboard 2 `/` (`Slash`, default prevented so no browser quick-find), gamepads `Y` (button 3, the first face button the mapping leaves free: A interact, B cancel, X confirm). The device manager reports callout presses per slot beside the input frames, never in them; the session keeps the callouts (pid, tick, text fixed at the press) and hands bubbles to the renderer and the flashing kinds to the HUD model. A bubble's text is read at the press; a downed player shows `Help!` from the state every frame with no press; the dead show nothing. The controls card gains a seventh line, `Callout: R / Slash / Y shows what you need over your head`. The flashed row blinks in yellow on both the Engineering console card and the always-visible POWER panel. Context `Fire here!` and the others follow `interactTarget`, so a downed teammate or a boarder in reach (which outrank repairs) gives `Over here!`.
 - **C11. Revives counted.** Telemetry had no revive count, so `telemetry.revives` is new (flattened, counted in `reviveCrew`). The record carries the three as `teamwork: { lockedShots, teamSeconds (one decimal), revives }`. The end-of-run line is the sixth headline line, after `Ship:`; the summary area grows to twelve rows so four crew with both progress lines still fit.
+
+- **C12. Gates (Task 5).** Every gate passes and no floor was lowered; figures before -> after (min health, seeds 1/2/3): survival 63.3 / 23.7 / 47.0 -> 77.7 / 47.8 / 68.9; duo 28.8 / 62.6 / 75.1 -> 28.8 / 28.8 / 68.4; boarding 29.1 / 24.8 / 48.7 -> 29.1 / 28.9 / 48.7; cutter 73.2 / 51.7 / 52.8 -> 59.1 / 61.5 / 65.6; jump and run pass; `npm run acceptance 5 1` changes only the idle streaks and one debris spawn. Cause: team speed (the bots already share fires, which now go out 2.5 times as fast, shifting every later event); bots never sit at Science, so rotation and the lock play no part. Golden re-blessed once: 92a4fc7c -> fee5b547.
+- **C13. Visual-check fixes.** Bubbles from crew side by side stack instead of overlapping; the game-over summary gets a dark backing so it reads over the ship; the player card's progress bar sits under the skills line instead of across it. Bubble icons draw only when the optional icon sheet is present (it is absent in this build).

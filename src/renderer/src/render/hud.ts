@@ -73,6 +73,7 @@ export function createHud(parent: Container, assets: GameAssets) {
   const progressLine = text(16, DIM); progressLine.anchor.set(0.5, 0); progressLine.position.set(INTERNAL_W / 2, 84); parent.addChild(progressLine);   // under the banner and its glyph row
   const noticeRows = [0, 1].map((k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 14 + k * LINE); t.visible = false; parent.addChild(t); return t; });   // spec Demo-i section 4: two lines top-centre between the clock and threat panels, running only
   const bannerGlyphs = new Container(); bannerGlyphs.position.set(INTERNAL_W / 2, 64); parent.addChild(bannerGlyphs);
+  const summaryBack = new Graphics(); summaryBack.visible = false; parent.addChild(summaryBack);   // a dark backing so the game-over summary reads over the ship (Coop-i visual check)
   const summaryRows = Array.from({ length: 12 }, (_, k) => { const t = text(16, DIM); t.anchor.set(0.5, 0); t.position.set(INTERNAL_W / 2, 104 + k * LINE); t.visible = false; parent.addChild(t); return t; });
 
   const players = [0, 1, 2, 3].map((i) => {
@@ -84,7 +85,7 @@ export function createHud(parent: Container, assets: GameAssets) {
     const line2 = new Container(); line2.position.set(0, LINE);
     const line3 = new Container(); line3.position.set(0, LINE * 2);
     const line4 = new Container(); line4.position.set(0, LINE * 3);
-    const progress = bar(216); progress.root.position.set(0, LINE * 4 - 6); progress.root.visible = false;
+    const progress = bar(216); progress.root.position.set(0, LINE * 4 - 1); progress.root.visible = false;   // under line 4, not across it (Coop-i visual check)
     root.addChild(name, hp.root, line2, line3, line4, progress.root);
     const consoleRoot = new Container(); consoleRoot.position.set(x, y - (8 * LINE + 16)); consoleRoot.visible = false; parent.addChild(consoleRoot);
     consoleRoot.addChild(panel(0, 0, 308, 8 * LINE + 12));
@@ -211,6 +212,9 @@ export function createHud(parent: Container, assets: GameAssets) {
       bannerGlyphs.position.x = INTERNAL_W / 2 - bannerGlyphs.width / 2;
       // The lobby card takes rows 2-8 (rows 0-1 and 9-10 hidden; row 8 is the callout line, spec Coop-i section 3); the game-over summary keeps rows 0-11 (spec Demo-i section 3).
       summaryRows.forEach((t, k) => { const line = m.phase === 'lobby' ? m.lobbyLines[k - 2] : m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; });
+      const shown = summaryRows.filter((t) => t.visible), wide = Math.max(0, ...shown.map((t) => Math.ceil(t.width)));
+      summaryBack.visible = m.phase === 'gameover' && shown.length > 0;
+      if (summaryBack.visible) summaryBack.clear().rect(INTERNAL_W / 2 - wide / 2 - 12, 98, wide + 24, m.summary!.length * LINE + 12).fill({ color: 0x05060a, alpha: 0.88 });
       m.players.forEach((p, i) => updatePlayer(players[i]!, p, i, m.phase));
       overlay.visible = m.credits !== null;
       if (m.credits) creditLines.forEach((t, i) => { t.text = m.credits![m.creditsScroll + i] ?? ''; });

@@ -21,6 +21,7 @@ export function createCalloutLayer(assets: GameAssets) {
   return {
     container,
     draw(state: SimState, list: readonly Bubble[], fit: { scale: number; x: number; y: number }): void {
+      const placed: { x: number; y: number; w: number }[] = [];
       pool.forEach((b, k) => {
         const item = list[k];
         b.root.visible = !!item;
@@ -38,7 +39,10 @@ export function createCalloutLayer(assets: GameAssets) {
             .poly([w / 2 - TAIL, h, w / 2 + TAIL, h, w / 2, h + TAIL]).fill({ color: edge });
         }
         const a = bubbleAnchor(state, item.pid, fit), w = b.w;
-        b.root.position.set(Math.round(Math.max(4, Math.min(INTERNAL_W - w - 4, a.x - w / 2))), Math.round(a.y - 20 - TAIL));
+        let x = Math.round(Math.max(4, Math.min(INTERNAL_W - w - 4, a.x - w / 2))), y = Math.round(a.y - 20 - TAIL);
+        const hits = (): boolean => placed.some((p) => x < p.x + p.w + 2 && p.x < x + w + 2 && y < p.y + 22 && p.y < y + 22);
+        while (hits()) y -= 23;                                  // crew close together: stack the later bubble above the earlier one
+        placed.push({ x, y, w }); b.root.position.set(x, y);
       });
     }
   };
