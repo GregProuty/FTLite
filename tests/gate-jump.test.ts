@@ -10,7 +10,7 @@ import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { TICK_HZ, SECTORS, SECTOR_COLUMNS, JUMP_CHARGE_TIME, WAIT_SECONDS } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, room, RECRUITS, allHazard } from './helpers/sim';
 
-// Spec Loop-i sections 1 and 2: the run is three sectors of six columns, five jumps across each and the sector jump out of it (18 jumps, the last to the final beacon: spec Loop-iv section 3); fuel runs out on the way, so the navigator's Confirm on the only row also waits for help. Bots never fire: the gate ends when the Warden arrives.
+// Spec Loop-i sections 1 and 2: the run is three sectors of six columns, five jumps across each and the sector jump out of it (18 jumps, the last to the final beacon: spec Loop-iv section 3); fuel runs out on the way, so the navigator's Confirm on the only row also waits for help. No enemy comes before the final beacon, so the bot gunner (Demo-xiii) never fires here: the gate ends when the Warden arrives.
 const JUMPS = SECTORS * SECTOR_COLUMNS;
 const WAITS_MAX = 12;
 describe('jump gate: a scripted navigator jumps the quiet ship through every sector', () => {

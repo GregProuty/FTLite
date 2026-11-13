@@ -12,7 +12,7 @@ import { TICK_HZ, SECTORS, SECTOR_COLUMNS, JUMP_CHARGE_TIME, WAIT_SECONDS, HULL_
 import { enemyMaxHull } from '../src/renderer/src/sim/enemy';
 import { makeState, quiet, room, RECRUITS, mapM, setNodeTypes, allHazard } from './helpers/sim';
 
-// Spec Loop-i sections 1 and 2, Loop-iv section 3: three sectors, then the last exit's jump to the final beacon, where the Warden arrives. Bots never fire, so the gate ends at its arrival (the scripted gunner in finalBattle.test.ts wins the fight).
+// Spec Loop-i sections 1 and 2, Loop-iv section 3: three sectors, then the last exit's jump to the final beacon, where the Warden arrives. No enemy comes before it, so the bot gunner (Demo-xiii) never fires and the gate ends at its arrival (the scripted gunner in finalBattle.test.ts wins the fight).
 const JUMPS = SECTORS * SECTOR_COLUMNS;
 describe('run gate: a scripted navigator resolves an event, buys a hull repair and reaches the Warden', () => {
   it('seed 1, two Recruits: the final beacon and the Warden arriving, every arrival paid, the event\'s 40, 30 spent, hull full', () => {

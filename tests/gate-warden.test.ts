@@ -10,7 +10,7 @@ import { LootWeapon } from '../src/renderer/src/sim/weaponDefs';
 import { TICK_HZ, SECTORS, SECTOR_COLUMNS } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, mapM, chargeJump, intents } from './helpers/sim';
 
-// Spec Loop-iv section 3: bots never fire, so this scripted gunner proves the Warden can be destroyed and the run won.
+// Spec Loop-iv section 3: this scripted gunner (no return fire, unlike the bot gunner of Demo-xiii) proves the Warden can be destroyed and the run won.
 // The gunner sits at Weapons (the starting level 2) and aims at the shields room, the Pulse Laser tuned to the current
 // frequency (read from the state: the Science scan is left out, as in the combat gate); a hit there also damages the hull,
 // two take the shields down. A loot weapon in slot 1 fires only while no layer is up. No return fire: this is the kill path.

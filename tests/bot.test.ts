@@ -31,7 +31,7 @@ describe('the captain bot (spec Demo-i section 6)', () => {
     let seatedAt = -1, jumpAt = -1, stoodAt = -1;
     for (let t = 0; t < 1700; t++) {
       tick(s);
-      expect(Seated.station[p1]).toBe(-1);
+      if (s.telemetry.encounters === 0) expect(Seated.station[p1]).toBe(-1);   // Demo-xiii: pid 1 takes the guns once the next beacon's enemy arrives (the gunner, spec Demo-xiii section 3); before that it never sits
       if (seatedAt < 0 && Seated.station[s.crew[0]!] === nav(s)) seatedAt = s.tick;
       if (jumpAt < 0 && s.telemetry.jumps === 1) jumpAt = s.tick;
       if (jumpAt >= 0 && stoodAt < 0 && Seated.station[s.crew[0]!] === -1) stoodAt = s.tick;
