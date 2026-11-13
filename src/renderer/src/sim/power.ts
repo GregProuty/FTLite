@@ -2,7 +2,7 @@ import type { SimState } from './state';
 import { StationKind, STATION_COUNT } from './stationKinds';
 import { STATION_MAX, STATION_OVERDRIVE, BONUS_BAR_LEVELS, UPGRADE_MAX, UPGRADE_BASE, UPGRADE_STEP, REACTOR_BONUS_MAX, REACTOR_BASE, REACTOR_STEP } from './tuning';
 import { spendScrap } from './scrap';
-import { standUp, stationOnline } from './stations';
+import { releaseOffline, stationOnline } from './stations';
 import { Life, LifeState } from './components';
 import { Skill, skillLevelOf } from './skills';
 
@@ -14,8 +14,7 @@ export function powerPool(state: SimState): number { return powerCapacity(state)
 export function failStation(state: SimState, i: number): void {
   state.stations.failed[i] = 1; state.stations.repair[i] = 0;
   if (state.derived.stationKind[i] !== StationKind.Engineering) state.stations.level[i] = 0;
-  const occ = state.stations.occupant[i]!;
-  if (occ >= 0) standUp(state, occ);
+  releaseOffline(state, i);   // a console group keeps its officer while another member is online (spec Demo-x-a section 1)
   shedPower(state);                                                   // an Engineering failure drops bonus bars; a no-op elsewhere
 }
 
@@ -43,7 +42,7 @@ export function shiftBar(state: SimState, i: number, delta: 1 | -1): boolean {
   const floor = kind === StationKind.Engineering ? 1 : 0;
   if (level <= floor) return false;
   state.stations.level[i] = level - 1;
-  if (level - 1 === 0) { const occ = state.stations.occupant[i]!; if (occ >= 0) standUp(state, occ); }
+  if (level - 1 === 0) releaseOffline(state, i);
   return true;
 }
 
@@ -70,7 +69,7 @@ export function shedPower(state: SimState): void {
       const floor = kind === StationKind.Engineering ? 1 : 0, level = state.stations.level[i]!;
       if (level <= floor) continue;
       state.stations.level[i] = level - 1;
-      if (level - 1 === 0) { const occ = state.stations.occupant[i]!; if (occ >= 0) standUp(state, occ); }
+      if (level - 1 === 0) releaseOffline(state, i);
       shed = true; break;
     }
     if (!shed) return;                                                // nothing above its floor: the reserved Engineering bar stays

@@ -3,7 +3,7 @@ import type { SimState } from './state';
 import { Seated } from './components';
 import { StationKind, STATION_COUNT } from './stationKinds';
 import { intentFor } from './step';
-import { standUp } from './stations';
+import { standUp, selectTab } from './stations';
 import { shiftBar, shedPower, buyUpgrade, buyReactor, upgradeRows, REACTOR_ROW, BACK_ROW } from './power';
 import { cycleCoolant } from './heat';
 import { toggleSeal, cycleDoor, doorsCursorCount, doorsCursorTarget } from './doors';
@@ -13,7 +13,9 @@ import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from './tuning';
 import { Dir } from './dir';
 import { chargeBeam, weaponsInput } from './weapons';
 import { scienceInput, scanStep, systemScanStep } from './science';
-import { navigationInput } from './run';
+import { navigationInput, navRows } from './run';
+import { canSwap, SWAP_SLOT } from './weapons';
+import { warnedTargets } from './debrisTargets';
 import { regenTorpedo, loadTorpedo } from './torpedoes';
 
 export { Dir };
@@ -74,6 +76,33 @@ function doorsInput(state: SimState, i: number, dir: number, confirm: boolean): 
   state.skills.lastDoorToggleTick = state.tick;
 }
 
+/** Whether a console's cursor is on its first row, so Up leaves for a console group's tab bar (spec Demo-x-a section 1). An offline console counts as on its first row. */
+export function atFirstRow(state: SimState, i: number): boolean {
+  if (!stationOnline(state, i)) return true;
+  const c = state.stations.cursor[i]!;
+  switch (state.derived.stationKind[i]) {
+    case StationKind.Navigation: { const first = navRows(state).findIndex((row) => row.select !== 'none'); return first < 0 || c <= first; }
+    case StationKind.Weapons: { const list = canSwap(state) ? [...warnedTargets(state), SWAP_SLOT] : warnedTargets(state); return list.indexOf(c) <= 0; }
+    case StationKind.Science: return [...warnedTargets(state), -1].indexOf(c < 0 ? -1 : c) <= 0;
+    case StationKind.Engineering: return state.stations.page[i] === 1 ? upgradeRows(state).indexOf(c) <= 0 : c <= 0;
+    case StationKind.Doors: return c <= 0;
+    default: return true;
+  }
+}
+
+/** A seated player's stick at a console group (spec Demo-x-a section 1): on the tab bar Left/Right switch the active tab (wrapping) and Down returns to the rows; Up on the first row enters the bar. Returns whether the tab bar took the input. */
+function tabInput(state: SimState, pid: number, g: number, i: number, dir: number): boolean {
+  const gr = state.groups;
+  if (gr.bar[g]) {
+    const n = state.derived.groupStations[g]!.length;
+    if (dir === Dir.Left || dir === Dir.Right) selectTab(state, pid, g, (gr.tab[g]! + (dir === Dir.Right ? 1 : n - 1)) % n);
+    else if (dir === Dir.Down) gr.bar[g] = 0;
+    return true;
+  }
+  if (dir === Dir.Up && atFirstRow(state, i)) { gr.bar[g] = 1; return true; }
+  return !stationOnline(state, i);   // an offline tab takes no input but the way to the bar
+}
+
 /** Step 2: seated players' input, then the tick's door commands once each, ascending: local toggles, remote cycles, airlocks (spec sections 4, 6; Demo-vii amendment 2). */
 export function consoleSystem(state: SimState, intents: readonly Intent[]): void {
   chargeBeam(state);
@@ -87,6 +116,8 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     const it = intentFor(intents, pid);
     if (it.cancelPressed || it.interactPressed) { standUp(state, pid); shedPower(state); state.scratch.stoodThisTick[pid] = 1; continue; }   // standing consumes the tick's stick input
     const dir = stickEdge(state, pid, it.moveX, it.moveY);
+    const g = state.derived.stationGroup[i]!;
+    if (g >= 0 && tabInput(state, pid, g, i, dir)) continue;   // the tab bar consumes the tick's stick input and Confirm
     const kind = state.derived.stationKind[i]!;
     if (kind === StationKind.Engineering) engineeringInput(state, i, dir, it.confirmPressed);
     else if (kind === StationKind.Doors) doorsInput(state, i, dir, it.confirmPressed);

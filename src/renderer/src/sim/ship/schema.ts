@@ -23,7 +23,8 @@ const shipSchema = z.object({
   })),
   spawns: z.array(tile).min(4),
   airlocks: z.array(z.object({ room: z.string().length(1), tile })).default([]),   // hull doors to space (spec Demo-vii section 1)
-  magazine: tile.optional()   // the torpedo magazine, a floor tile (spec Coop-ii section 2); without one the tube loads itself
+  magazine: tile.optional(),   // the torpedo magazine, a floor tile (spec Coop-ii section 2); without one the tube loads itself
+  consoleGroups: z.array(z.object({ tile, kinds: z.array(z.string()) })).default([])   // combined consoles: every listed kind's station on one tile, one seat, tabs (spec Demo-x-a section 1)
 }).superRefine((s, ctx) => {
   const fail = (message: string): void => { ctx.addIssue({ code: z.ZodIssueCode.custom, message }); };
   if (s.rows.length !== s.height) return fail(`rows: expected ${s.height} rows (height)`);
@@ -40,7 +41,23 @@ const shipSchema = z.object({
     budget += st.allocation;
   }
   if (budget > REACTOR_CAPACITY) return fail(`stations: total allocation ${budget} exceeds reactor capacity ${REACTOR_CAPACITY}`);
-  if (new Set(s.stations.map((st) => `${st.tile[0]},${st.tile[1]}`)).size !== s.stations.length) return fail('stations: two stations on one tile');
+  const grouped = new Map<string, number>();   // station id -> console group index
+  for (let g = 0; g < s.consoleGroups.length; g++) {
+    const cg = s.consoleGroups[g]!;
+    if (cg.kinds.length < 2) return fail(`console group ${g}: needs at least two kinds`);
+    const [gx, gy] = cg.tile;
+    if (gx >= s.width || gy >= s.height || !roomIds.has(s.rows[gy]!.charAt(gx))) return fail(`console group ${g}: tile is not a floor tile of a room`);
+    for (const k of cg.kinds) {
+      if (!(STATION_IDS as readonly string[]).includes(k)) return fail(`console group ${g}: unknown station kind '${k}'`);
+      if (grouped.has(k)) return fail(`console group ${g}: station ${k} is in two console groups`);
+      grouped.set(k, g);
+    }
+  }
+  const tileKey = (t: readonly number[]): string => `${t[0]},${t[1]}`;
+  const ungroupedTiles = s.stations.filter((st) => !grouped.has(st.id)).map((st) => tileKey(st.tile));
+  const groupTiles = s.consoleGroups.map((cg) => tileKey(cg.tile));
+  for (const st of s.stations) { const g = grouped.get(st.id); if (g !== undefined && tileKey(st.tile) !== groupTiles[g]) return fail(`station ${st.id} is not on its console group's tile`); }
+  if (new Set([...ungroupedTiles, ...groupTiles]).size !== ungroupedTiles.length + groupTiles.length) return fail('stations: two stations on one tile');   // relaxed only for the members of one console group
   if (new Set(s.edges.map((e) => `${e.tile[0]},${e.tile[1]}`)).size !== s.edges.length) return fail('edge: two edges on one tile');
   if (new Set(s.breachSites.map((b) => `${b.tile[0]},${b.tile[1]}`)).size !== s.breachSites.length) return fail('breach site: two sites on one tile');
   const at = (tx: number, ty: number): string => (tx < 0 || ty < 0 || tx >= s.width || ty >= s.height) ? '#' : s.rows[ty]!.charAt(tx);

@@ -108,13 +108,14 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
     else if (it.confirmPressed) {
       const c = confirmTarget(state, pid);
       if (c.kind === ConfirmKind.Door) state.scratch.doorToggles.add(c.index);       // applied once per door at the end of consoleSystem
-      else if (c.kind === ConfirmKind.Console) sitRequests.set(c.index, [...(sitRequests.get(c.index) ?? []), pid]);
+      else if (c.kind === ConfirmKind.Console) { const g = state.derived.stationGroup[c.index]!, i = g >= 0 ? state.derived.groupStations[g]![0]! : c.index; sitRequests.set(i, [...(sitRequests.get(i) ?? []), pid]); }   // a console group seats at its first tab (spec Demo-x-a section 1)
     }
     targets.push(it.interactHeld ? interactTarget(state, pid) : NONE);
   }
-  // Seating: online and unoccupied; the lowest pid wins a tie; the seating Confirm is consumed (spec section 4).
+  // Seating: online and unoccupied; the lowest pid wins a tie; the seating Confirm is consumed (spec section 4). A console group needs one member online (spec Demo-x-a section 1).
   for (const i of [...sitRequests.keys()].sort((a, b) => a - b)) {
-    if (!stationOnline(state, i) || state.stations.occupant[i]! >= 0) continue;
+    const g = state.derived.stationGroup[i]!, members = g >= 0 ? state.derived.groupStations[g]! : [i];
+    if (!members.some((j) => stationOnline(state, j)) || state.stations.occupant[i]! >= 0) continue;
     const pid = Math.min(...sitRequests.get(i)!);
     sitDown(state, pid, i); state.scratch.satThisTick[pid] = 1;
     targets[pid] = NONE;                                                            // a player who sits this tick repairs or revives nothing this tick

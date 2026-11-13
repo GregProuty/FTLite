@@ -20,6 +20,8 @@ export interface Derived {
   stationKind: Uint8Array; stationRoom: Int16Array; stationTile: Int32Array;
   stationOfKind: Int8Array;   // kind -> station index
   doorEdges: number[];        // edge indices that are doors, ascending
+  stationGroup: Int8Array;    // station index -> console group index, -1 outside a group (spec Demo-x-a section 1)
+  groupStations: number[][];  // console group -> its station indices in tab order
   layoutHash: string;   // content hash: rows, room order, edges, sites, airlocks, stations, spawns
   idHash: string;       // hash of layout.id
 }
@@ -61,6 +63,8 @@ export function deriveLayout(layout: ShipLayout): Derived {
     const k = kindOfStationId(st.id);
     stationKind[i] = k; stationRoom[i] = roomIndex.get(st.room)!; stationTile[i] = st.tile[1] * width + st.tile[0]; stationOfKind[k] = i;
   });
+  const stationGroup = new Int8Array(N).fill(-1);
+  const groupStations = layout.consoleGroups.map((cg, g) => cg.kinds.map((k) => { const i = stationOfKind[kindOfStationId(k)]!; stationGroup[i] = g; return i; }));
   const doorEdges: number[] = [];
   for (let i = 0; i < E; i++) if (edgeIsDoor[i]) doorEdges.push(i);
   // Layout identity covers everything the derived tables depend on: row text, room order, edge endpoints,
@@ -76,6 +80,7 @@ export function deriveLayout(layout: ShipLayout): Derived {
   for (const sp of layout.spawns) codes.push(sp[1] * width + sp[0]);
   const magazineTile = layout.magazine ? layout.magazine[1] * width + layout.magazine[0] : -1, magazineRoom = magazineTile >= 0 ? roomOfTile[magazineTile]! : -1;
   if (magazineTile >= 0) codes.push(magazineTile);   // only when present, so a layout without one keeps its hash (spec Coop-ii amendment D4)
+  if (groupStations.length) { codes.push(-1, groupStations.length); for (const g of groupStations) codes.push(g.length, ...g); }   // console groups only when present, so a layout without them keeps its hash (spec Demo-x-a section 1)
   const idCodes: number[] = []; for (let i = 0; i < layout.id.length; i++) idCodes.push(layout.id.charCodeAt(i));
   // Stability bound (spec §5): k·dt·Σ incident conductance / V ≤ 1/2 for every room, at maximum passage.
   const maxCond = new Float64Array(layout.rooms.length);
@@ -87,7 +92,7 @@ export function deriveLayout(layout: ShipLayout): Derived {
   return {
     width, height, roomIndex, roomOfTile, wallTile, doorTileToEdge, volume, roomTiles,
     edgeA, edgeB, edgeWidth, edgeIsDoor, edgeTile, siteRoom, siteWidth, siteTile, airlockRoom, airlockTile, airlockOfTile, magazineTile, magazineRoom,
-    stationKind, stationRoom, stationTile, stationOfKind, doorEdges,
+    stationKind, stationRoom, stationTile, stationOfKind, doorEdges, stationGroup, groupStations,
     kEff,
     layoutHash: hashF64(Float64Array.from(codes)),
     idHash: hashF64(Float64Array.from(idCodes))

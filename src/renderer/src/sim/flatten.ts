@@ -18,7 +18,7 @@ export function layoutIdNumber(s: SimState): number { return parseInt(s.derived.
 function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3 + s.airlocks.open.length
     + s.breaches.active.length * 2 + COUNTER_FIELDS + DIRECTOR_FIELDS + TELEMETRY_SCALARS + TELEMETRY_FIXED + 3 * s.playerCount
-    + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + s.playerCount * STICK_FIELDS
+    + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + 2 * s.groups.tab.length + s.playerCount * STICK_FIELDS
     + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + ENEMY_FIELDS + BOARDERS_FIELDS + RUN_FIELDS + s.playerCount + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length + s.crew.length * CREW_FIELDS + s.playerCount;
 }
 
@@ -43,6 +43,7 @@ export function flatten(s: SimState): Float64Array {
   for (const v of s.stations.occupant) put(v); for (const v of s.stations.cursor) put(v);
   for (const v of s.stations.heat) put(v); for (const v of s.stations.coolant) put(v); for (const v of s.stations.page) put(v);
   put(s.power.capacity);
+  for (const v of s.groups.tab) put(v); for (const v of s.groups.bar) put(v);   // none on a ship without console groups (spec Demo-x-a section 1)
   for (let p = 0; p < s.playerCount; p++) put(s.stick.heldDir[p]!); for (let p = 0; p < s.playerCount; p++) put(s.stick.repeat[p]!);
   const dbf = s.debris;
   for (const v of dbf.active) put(v); for (const v of dbf.stableId) put(v); for (const v of dbf.room) put(v); for (const v of dbf.impactTick) put(v); for (const v of dbf.warned) put(v);
@@ -99,6 +100,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (let i = 0; i < s.stations.coolant.length; i++) s.stations.coolant[i] = get();
   for (let i = 0; i < s.stations.page.length; i++) s.stations.page[i] = get();
   s.power.capacity = get();
+  for (let g = 0; g < s.groups.tab.length; g++) s.groups.tab[g] = get(); for (let g = 0; g < s.groups.bar.length; g++) s.groups.bar[g] = get();
   for (let p = 0; p < s.playerCount; p++) s.stick.heldDir[p] = get(); for (let p = 0; p < s.playerCount; p++) s.stick.repeat[p] = get();
   const db = s.debris;
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.active[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.stableId[k] = get();
