@@ -475,3 +475,14 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
 - [x] Golden re-blessed once (SIM_VERSION 32: run.navSig/navSelect/navIndex and run.arrivalTick in the state, the full start drive, fire heat): final hash 6a27bf82 -> 85dc14ae.
 - [ ] Claude's second playtest: two seated players jump, vote and shop without standing; a fire left alone fails its console.
 - [ ] Manual, the user: the couch checklist `docs/playtest.md` sections 1 to 4.
+
+## Demo-xiii: combat tempo (2026-11-13)
+- Step 1, the bot gunner (spec Demo-xiii section 3, amendments 1 and 2). Gates before -> after (min health, seeds 1/2/3); every gate passes, no floor lowered or raised, no gate setup changed:
+  - `gate-survival` 77.7 / 47.8 / 68.9 -> 77.7 / 49.9 / 66.4 (the enemy arrives at 270 s: 2 / 0 / 1 shots, 1 / 0 / 1 hits; no kill).
+  - `gate-cutter` 59.1 / 61.5 / 65.6 -> 60.5 / 58.1 / 60.8 (1 / 0 / 1 shots; no kill).
+  - `gate-duo` (floor 25) 81.8 / 42.5 / 49.3 -> 27.2 / 57.5 / 47.6; min hull 68 / 84 / 68 -> 88 / 92 / 84. Encounters 4 / 2 / 3: kills 1 / 0 / 0, surrenders 1 / 1 / 1, enemy flights 0 / 1 / 0, left by our jump 1 / 0 / 1, present at 300 s 1 / 0 / 1; shots 11 / 10 / 8, hits 10 / 7 / 7.
+  - `gate-skiff` (floor 14) 42.8 / 15.0 / 26.1 -> 38.5 / 35.8 / 63.3; min hull 60 / 80 / 76 -> 84 / 92 / 96. Encounters 4 / 2 / 3: kills 0 / 0 / 0, surrenders 1 / 0 / 1, flights 1 / 1 / 0, left by our jump 1 / 1 / 1, present at 300 s 1 / 0 / 1; shots 19 / 10 / 17, hits 14 / 7 / 14.
+  - `gate-boarding` (no health floor) 22.3 / 24.0 / 29.6 -> 29.1 / 30.9 / 29.1 (its enemies come after the captain's jumps; 2 / 3 / 5 shots); boardings 1, both boarders killed on every seed.
+  - `gate-jump`, `gate-run` and `gate-warden` pass with their pinned figures (no enemy before the final beacon; the Warden gate's scripted gunner is unchanged).
+  - Causes. The gunner takes the guns while an enemy is present, so hull loss falls (fights end sooner by surrender, flight or kill) and the crew is hit less in the Weapons and Helm rooms' fights. The first cut, the gunner leaving only when no one else could take the work (amendment 2's first form), failed `gate-duo` seed 3 at 11.2: traced, the gunner stayed seated while the captain fought three fires alone (98 to 28 between 148 and 180 s), then walked to Weapons at 34 health and took an enemy shot in the Weapons room (34 to 21) at 269 s. The final rule (the gunner stands for any fire, and a hurt gunner below 60 heals in an online Medbay before it sits) gives the figures above. The duo seed 1 low point (27.2) is the captain alone in a fire while the gunner walks back from the guns.
+  - The floors stay: `gate-skiff`'s 14 is now far below its minimum 35.8 but is left for step 2 to set (amendment 4).
