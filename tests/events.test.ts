@@ -41,8 +41,8 @@ describe('arrival', () => {
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect([s.run.vote[0], s.run.eventChoice]).toEqual([0, -1]);   // the officer's vote (spec Coop-ii amendment D7)
     run(s, 1, () => intents({}, { confirmPressed: true })); run(s, VOTE_SETTLE * TICK_HZ);                                    // P2 votes option 1 too; it resolves once the votes settle
     expect([s.run.column, s.telemetry.jumps, s.run.jumpCharge, s.run.eventChoice, s.run.scrap, s.telemetry.eventsResolved]).toEqual([1, 1, 1, 0, 40, 1]);
-    expect(navRows(s).map((r) => r.select)).toEqual(['jump', 'jump', 'evade']); expect(s.stations.cursor[n]).toBe(2);   // forward Node 3a, sideways Node 2b (spec Loop-i section 1); cursor 2 is now the evade row: kept
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); run(s, 1, () => intents({}, {})); expect(s.stations.cursor[n]).toBe(0); run(s, 1, () => intents({ confirmPressed: true }, {})); run(s, 1, () => intents({}, { confirmPressed: true }));   // the pilot, then the second officer (spec Coop-ii section 3)
+    expect(navRows(s).map((r) => r.select)).toEqual(['jump', 'jump', 'evade']); expect(s.stations.cursor[n]).toBe(0);   // forward Node 3a, sideways Node 2b (spec Loop-i section 1); the choice row is gone: the cursor goes to row 0 (spec Demo-xi section 3)
+    run(s, 1, () => intents({}, {})); expect(s.stations.cursor[n]).toBe(0); run(s, 1, () => intents({ confirmPressed: true }, {})); run(s, 1, () => intents({}, { confirmPressed: true }));   // the pilot, then the second officer (spec Coop-ii section 3)
     expect([s.run.column, s.run.node]).toEqual([2, 0]);
   });
 });
@@ -132,7 +132,7 @@ describe('shops', () => {
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.hull).toBe(HULL_MAX); expect(s.stations.cursor[n]).toBe(1); expect(navRows(s)[1]!.enabled).toBe(false);
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.scrap).toBe(70);   // disabled: nothing
     const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); e.stations.cursor[m] = 3; run(e, 1, () => intents({ confirmPressed: true }, {})); run(e, 2, () => intents({}, { confirmPressed: true })); run(e, VOTE_SETTLE * TICK_HZ);   // P2 votes 1, then 2: both for option 2
-    expect(e.run.eventChoice).toBe(1); expect(e.stations.cursor[m]).toBe(3);                                  // row 3 exists in the shop list (an item): kept
+    expect(e.run.eventChoice).toBe(1); expect(e.stations.cursor[m]).toBe(1);                                  // the choice row is gone: row 0, the header, then the first selectable row (spec Demo-xi section 3)
     expect(navRows(e)).toHaveLength(7);
   });
 });

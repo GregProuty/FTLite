@@ -3,7 +3,7 @@ import { NEUTRAL_INTENT, clampIntent } from '../../../shared/intent';
 import type { SimState } from './state';
 import { HAZARD_EVERY } from './tuning';
 import { interactSystem } from './interact';
-import { jumpStep, fieldSystem, decisionSystem, pursuitSystem } from './run';
+import { jumpStep, fieldSystem, decisionSystem, pursuitSystem, trackNavCursor } from './run';
 import { consoleSystem } from './console';
 import { movementSystem } from './movement';
 import { doorSystem } from './doors';
@@ -58,5 +58,6 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   // (7) crew lifecycle, run end
   crewSystem(state);
   telemetrySystem(state);   // (8) telemetry: final-state samples and life edges, on the ending tick too
+  trackNavCursor(state);   // (9) the Navigation cursor follows its row when the list changed this tick (spec Demo-xi section 3)
   state.tick++;
 }

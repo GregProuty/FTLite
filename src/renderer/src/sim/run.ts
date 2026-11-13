@@ -175,13 +175,38 @@ export function clampNavCursor(state: SimState): void {
   const first = rows.findIndex((row) => row.select !== 'none'); state.stations.cursor[nav] = first < 0 ? 0 : first;
 }
 
+const SELECT_CODE: Record<NavRow['select'], number> = { none: 0, choice: 1, buy: 2, jump: 3, sector: 4, wait: 5, evade: 6 };
+/** A signature of the row list's (select, index) sequence (FNV-1a over 32 bits): equal lists, equal signatures; text and enabled do not count. */
+function rowsSignature(rows: readonly NavRow[]): number {
+  let h = 2166136261;
+  for (const row of rows) { h = Math.imul(h ^ SELECT_CODE[row.select], 16777619) >>> 0; h = Math.imul(h ^ row.index, 16777619) >>> 0; }
+  return h;
+}
+/** Remember the row list's signature and the cursor row's (select, index) (spec Demo-xi section 3). */
+function noteNavCursor(state: SimState, nav: number, rows: readonly NavRow[]): void {
+  const r = state.run, row = rows[state.stations.cursor[nav]!];
+  r.navSig = rowsSignature(rows); r.navSelect = row ? SELECT_CODE[row.select] : 0; r.navIndex = row ? row.index : 0;
+}
+/** The cursor follows its row (spec Demo-xi section 3): when the row list changed since the last check, the cursor goes to the row with the remembered (select, index), else to row 0; then onto a selectable row (clampNavCursor's rule). Called at the end of every tick and before the officer's input. */
+export function trackNavCursor(state: SimState): void {
+  const nav = state.derived.stationOfKind[StationKind.Navigation]!; if (nav < 0) return;
+  const r = state.run, rows = navRows(state);
+  if (r.navSig >= 0 && rowsSignature(rows) !== r.navSig) {
+    const k = rows.findIndex((row) => SELECT_CODE[row.select] === r.navSelect && row.index === r.navIndex && row.select !== 'none');
+    state.stations.cursor[nav] = k >= 0 ? k : 0;
+  }
+  clampNavCursor(state);
+  noteNavCursor(state, nav, rows);
+}
+
 /** Seated Navigation input: Up/Down move over the selectable rows, a Confirm edge acts on the row: choose, buy or (with a ready drive) jump (spec Run-ii section 6). */
 export function navigationInput(state: SimState, i: number, dir: number, confirm: boolean): void {
-  clampNavCursor(state);
+  trackNavCursor(state);
   const rows = navRows(state), c = state.stations.cursor, n = rows.length;
   if (!rows.some((row) => row.select !== 'none')) return;
   const stepTo = (delta: number) => { let k = c[i]!; do k = (k + delta + n) % n; while (rows[k]!.select === 'none'); c[i] = k; };
   if (dir === Dir.Up) stepTo(-1); else if (dir === Dir.Down) stepTo(1);
+  noteNavCursor(state, i, rows);   // the officer's own move is the remembered row before any buy or vote this tick
   if (!confirm) return;
   const row = rows[c[i]!]!;
   if (row.select === 'choice' && row.enabled) { const pid = state.stations.occupant[i]!; if (pid >= 0 && state.run.vote[pid] !== row.index) { state.run.vote[pid] = row.index; state.run.voteTick = state.tick; } }   // the officer's vote (spec Coop-ii amendment D7)
@@ -206,6 +231,7 @@ function afterJump(state: SimState): void {
   if (r.wakeTick < 0) r.wakeTick = state.tick;   // the director wakes on the first jump (spec Loop-i section 4b)
   r.calm = r.column === 0 ? 1 : 0; r.visited[hereIndex(state)] = 1;
   if (nav >= 0) state.stations.cursor[nav] = 0;
+  r.navSig = -1;   // a new beacon: row 0, no relocation by the old row (spec Demo-xi section 3)
   state.telemetry.jumps++;
   arrive(state);
   clearObjects(state);
