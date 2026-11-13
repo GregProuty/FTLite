@@ -105,7 +105,7 @@ export function interactSystem(state: SimState, intents: readonly Intent[]): voi
     const it = intentFor(intents, pid);
     const eid = state.crew[pid]!, conscious = Life.state[eid] === LifeState.Conscious, standing = conscious && Seated.station[eid]! < 0;
     const otherSeat = conscious && Seated.station[eid]! >= 0 && pid !== navOfficer;   // seated, and not the Navigation occupant
-    if (it.confirmPressed && standing && state.run.event >= 0 && state.run.eventChoice < 0) state.scratch.votePress[pid] = 1;   // an open event: a standing Confirm is a vote, never a door or a seat (spec Coop-ii amendment D7)
+    if (it.confirmPressed && (standing || otherSeat) && state.run.event >= 0 && state.run.eventChoice < 0) { state.scratch.votePress[pid] = 1; if (otherSeat) state.scratch.confirmUsed[pid] = 1; }   // an open event: a standing or other seated Confirm is a vote, never a door, a seat or the card; before a pending jump (spec Coop-ii amendment D7, Demo-xi section 2 and amendment 2)
     else if (it.confirmPressed && (standing || otherSeat) && state.run.jumpPending >= 0) { state.scratch.jumpConfirm[pid] = 1; if (otherSeat) state.scratch.confirmUsed[pid] = 1; }   // a pending jump: any other conscious player's Confirm agrees, seated or standing; a seated press is consumed (spec Demo-xi section 1)
     else if (it.confirmPressed && standing) {
       const c = confirmTarget(state, pid);

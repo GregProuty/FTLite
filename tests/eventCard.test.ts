@@ -52,7 +52,7 @@ describe('the event card (spec Demo-x-b section 2)', () => {
     expect(card.title).toBe(def.title); expect(card.text).toEqual([...def.text]);
     expect(card.choices.map((c) => c.number)).toEqual(def.choices.map((_, k) => `${k + 1}.`));
     expect(card.choices.map((c) => c.votes)).toEqual(def.choices.map(() => []));
-    expect(card.help).toBe('Press Confirm to vote   Navigation officer: pick a row');
+    expect(card.help).toBe('Confirm to vote   Navigation officer: pick a row');   // spec Demo-xi section 2: seated players vote too
     expect(buildHudModel(s, slots(2), 'running', '').eventCard).toEqual(card);
     expect(buildHudModel(s, slots(2), 'paused', '').eventCard).toBeNull();
     const none = makeState(2, 1); expect(eventCard(none)).toBeNull(); expect(buildHudModel(none, slots(2), 'running', '').eventCard).toBeNull();

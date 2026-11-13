@@ -9,7 +9,9 @@ import { sitDown, selectTab } from '../src/renderer/src/sim/stations';
 import { Seated } from '../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { botIntent } from '../src/renderer/src/sim/bot';
-import { makeState, run, quiet, intents, chargeJump, seatNavigator, allHazard, RECRUITS } from './helpers/sim';
+import { makeState, run, quiet, intents, chargeJump, seatNavigator, allHazard, setEvent, RECRUITS } from './helpers/sim';
+import { EVENT_DEFS, EVENTS } from '../src/renderer/src/sim/events';
+import { navRows } from '../src/renderer/src/sim/run';
 
 const SKIFF = parseShip(skiff);
 /** Two players, a quiet hazard map, the drive charged, P1 (pid 0) seated at Navigation with the cursor on the first jump row. */
@@ -75,5 +77,32 @@ describe('B1: seated bots agree from their seats (spec Demo-xi amendment 4)', ()
     const { s } = ready(); seat(s, 1, StationKind.Engineering); run(s, 1);
     run(s, 1, () => intents({ confirmPressed: true }, {}));
     step(s, [botIntent(s, 0), NEUTRAL_INTENT]); expect(s.run.column).toBe(0);
+  });
+});
+
+describe('B3: every player votes in an event (spec Demo-xi section 2)', () => {
+  /** Event 4 open (three choices or two), P1 at Navigation, P2 seated at Engineering on the Navigation coolant row. */
+  const open = () => { const { s, n } = ready(); setEvent(s, 4); const e = seat(s, 1, StationKind.Engineering); run(s, 1); return { s, n, e }; };
+  it('a seated non-Navigation Confirm cycles that player\'s vote (1, 2, ...) and is consumed', () => {
+    const { s, n } = open(); const coolant = s.stations.coolant[n]!, k = EVENT_DEFS[4]!.choices.length;
+    run(s, 1, () => intents({}, { confirmPressed: true })); expect(s.run.vote[1]).toBe(0);
+    run(s, 1, () => intents({}, { confirmPressed: true })); expect(s.run.vote[1]).toBe(1 % k);
+    expect(s.stations.coolant[n]).toBe(coolant); expect(Seated.station[s.crew[1]!]).toBeGreaterThanOrEqual(0);
+  });
+  it('the Navigation officer still picks with the rows, and its Confirm is not a vote press', () => {
+    const { s, n } = open(); const rows = navRows(s), last = rows.map((r) => r.select).lastIndexOf('choice');
+    s.stations.cursor[n] = last;
+    run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.vote[0]).toBe(rows[last]!.index);
+    run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.vote[0]).toBe(rows[last]!.index);   // a second press on the same row does not cycle it
+  });
+  it('an open event takes the press before a pending jump (amendment 2)', () => {
+    const { s } = open(); const dest = reachable(s)[0]!; s.run.jumpPending = beaconIndex(dest.column, dest.node); s.run.jumpPendingTick = s.tick;
+    run(s, 1, () => intents({}, { confirmPressed: true }));
+    expect(s.run.vote[1]).toBe(0); expect(s.run.column).toBe(0);
+  });
+  it('a seated bot votes for the safe choice and then stops pressing', () => {
+    const { s } = open(); const safe = EVENTS[4]!.safeChoice;
+    for (let t = 0; t < 10; t++) step(s, [NEUTRAL_INTENT, botIntent(s, 1)]);
+    expect(s.run.vote[1]).toBe(safe); expect(botIntent(s, 1).confirmPressed).toBe(false);
   });
 });

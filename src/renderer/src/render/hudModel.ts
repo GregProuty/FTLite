@@ -303,7 +303,7 @@ function voteSecondsLeft(state: SimState): number { const r = state.run; return 
 export interface EventCardChoice { number: string; text: string; enabled: boolean; blue: boolean; votes: string[] }
 /** The centred event card (spec Demo-x-b section 2, FTL's event window): the title, the text rows, the numbered choices with the votes beside them, the vote's state and how to vote. */
 export interface EventCard { title: string; text: string[]; choices: EventCardChoice[]; status: string; help: string }
-export const EVENT_CARD_HELP = 'Press Confirm to vote   Navigation officer: pick a row';
+export const EVENT_CARD_HELP = 'Confirm to vote   Navigation officer: pick a row';   // seated or standing (spec Demo-xi section 2)
 /** The open event's card, or null when no event waits for a choice. */
 export function eventCard(state: SimState): EventCard | null {
   const r = state.run;
