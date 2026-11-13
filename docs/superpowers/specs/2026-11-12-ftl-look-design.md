@@ -40,10 +40,26 @@ Foundation spec section 12 still holds: we copy FTL's layout and colour logic, n
 
 ## 6. Gate
 
-- [ ] Tests as above.
-- [ ] Visual check by Claude: menus readable at a glance, FTL-style doors closed, open and sealed, the bigger enemy window with the reticle on each room.
+- [x] Tests as above (1133 tests).
+- [x] Visual check by Claude (2026-11-12, see `docs/gates.md`): menus readable at a glance, FTL-style doors closed, open and sealed, the bigger enemy window with the reticle on each room.
 - [ ] Manual, the user: readable from the couch; looks closer to FTL.
 
 ## 7. Amendments
 
-(Filled during implementation.)
+1. **One font scale, 2x, everywhere in the HUD.** m5x7 is native at 16 px, so the smallest whole-pixel scale of at least 1.5x is 2 (32 px; `LINE` 24). Every card, block, notice, panel, the lobby, the summary, the credits, the map and the enemy window draw at 2x. The event card's title and choices were already 2x and stay there (3x would not fit a 36-character label in the band); its status and help lines go from 1x to 2x. The lobby and game-over banner goes from 2x to 3x.
+2. **Everything was re-laid out to fit, with no smaller font** (`render/hudLayout.ts`; `tests/hudFit.test.ts` measures every string at its longest with the font's real advances from its hmtx table):
+   - console cards are 420 wide (was 308) in three slots above the blocks (x 8, 430, 852; a fourth player shares the third slot), nine lines plus the tab bar: the Weapons and Navigation footers take two lines (`weaponsFooterLines`, `navigationFooterLines`);
+   - the clock card has five lines (`HULL 100   FUEL 8`, `SECTOR 1/3  node 1/6`, `TIME 300s`, the director, the quirk); the time left the first line;
+   - the power rows use short names (Nav, Wpn, Sci, Eng, Life, Med, Door) next to their glyphs, as FTL's power bars do;
+   - the player block shows `P1 Okoro` and the health bar on line 1, the prompts, and the skills on line 4 (the vote replaces the skills while an event is open; the HP number became the bar alone);
+   - a console group's Sit prompt shortens long member names (`Sit: Sci + Eng + Doors`); an offline tab reads `DOORS!` in red on the tab bar (the model's `tabText` keeps `DOORS OFFLINE`);
+   - the enemy threat is two rows: `Enemy 64% shields 1/1` (or `shields DOWN`, `FLEEING`) and `Down: weapons engines`;
+   - the Science ship row drops the weapon charge (`W80%`): the charge is the enemy window's bar;
+   - the event notice's choice line uses the short labels whenever the full ones pass 608 px (`noticeChoices` takes the HUD's fit test); four events gained short labels; the shop line says `Torps +2 (20)`; a system scan notice too wide for one line splits at its first comma;
+   - the clock, power and threat panels hide behind the lobby and game-over cards, whose 3x banner spans the screen.
+3. **The world band is y 60-356** as well as x 256-864, so the console cards (top at y 360) never cover the ship; every ship still fits (the cutter at 21 px a tile, the starter at 24, the Skiff at 32).
+4. **The enemy ship is redrawn bow-left on 11 x 7 tiles of 32 px** (was bow-up on 7 x 11 of 20): a portrait ship cannot be 1.6x larger in a 340 px tall window, a landscape one can. The rooms keep their neighbours (the layout is the old one turned a quarter), the bow faces our ship, and Piloting gets its own crew member and console. Window order top to bottom, ties left to right: Hold, Weapons, Piloting, Engines, Shields.
+5. **The Hold slot is the old hull row**: `ENEMY_SLOT` now names the Hold (hull damage, its own fires and breaches); the hull row's Bridge-or-Hold room draw is gone, so a Hold hit makes one combat draw fewer. Science keeps one row for the ship (`warnedTargets(state, false)`) with the old hull-row text, scan and lock; the Weapons card's Hold row reads `Hold  hull 64%` (the spec's `Hold` plus the hull it hits).
+6. **A grouped Helm shows the map only on its Helm tab.** On the Skiff the Helm and Weapons share one seat, so before this change the map replaced the enemy window for the whole fight and the gunner never saw the reticle (`navigatorAtHelm`).
+7. **Doors:** the door tile shows floor around the two panels (the doorway is a gap in the wall line); airlock panels carry dark stripes and open onto space. The enemy window's doors use the same amber panels.
+8. **Known limit:** with three or four players seated, the third slot's card (x 852-1272, top y 360) covers the bottom of the enemy window (to y 454). Two-player play, the Skiff's case, is clear.
