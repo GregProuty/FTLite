@@ -12,7 +12,11 @@ import { botIntent } from '../src/renderer/src/sim/bot';
 import { makeState, run, quiet, intents, chargeJump, seatNavigator, allHazard, setEvent, setNodeTypes, mapM, grantScrap, RECRUITS } from './helpers/sim';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { WEAPON_ITEM } from '../src/renderer/src/sim/shop';
-import { VOTE_SETTLE, TICK_HZ, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
+import { VOTE_SETTLE, TICK_HZ, JUMP_CHARGE_TIME, FIRE_HEAT_MAX, FIRE_HEAT_FULL, HEAT_COOL_IDLE } from '../src/renderer/src/sim/tuning';
+import { heatStep } from '../src/renderer/src/sim/heat';
+import { failStation } from '../src/renderer/src/sim/power';
+import { stationOnline } from '../src/renderer/src/sim/stations';
+import { igniteRoom, extinguishRoom } from '../src/renderer/src/sim/hazards/fire';
 import { EVENT_DEFS, EVENTS } from '../src/renderer/src/sim/events';
 import { navRows } from '../src/renderer/src/sim/run';
 
@@ -182,5 +186,35 @@ describe('P1: the captain bot keeps the old charge wait at a calm beacon (spec D
     sectorJump(s); const at = s.tick; expect([s.run.sector, s.run.calm, s.run.jumpCharge, s.run.arrivalTick]).toEqual([1, 1, 1, at]);
     for (let t = 0; t < 10 * TICK_HZ; t++) step(s, [botIntent(s, 0)]);
     expect(s.run.nodesReached).toBe(1);
+  });
+});
+
+describe('P2: fire burns systems (spec Demo-xi section 5, amendment 3)', () => {
+  /** Quiet, awake two-player state with Weapons online; heat and the fire set by hand. */
+  const hot = () => { const s = makeState(2, 1, RECRUITS, { quirk: 5 }); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; const w = s.derived.stationOfKind[StationKind.Weapons]!; return { s, w, room: s.derived.stationRoom[w]! }; };
+  it('tuning: FIRE_HEAT_MAX 6, FIRE_HEAT_FULL 8', () => { expect([FIRE_HEAT_MAX, FIRE_HEAT_FULL]).toEqual([6, 8]); });
+  it('each hazard tick a burning room\'s online stations gain round(6 x min(1, fire / 8)) on top of idle cooling', () => {
+    for (const [fire, gain] of [[8, 6], [16, 6], [4, 3], [2, 2], [1, 1]] as const) {
+      const { s, w, room } = hot(); expect(stationOnline(s, w)).toBe(true);
+      s.rooms.fire[room] = fire; heatStep(s); expect(s.stations.heat[w], `fire ${fire}`).toBe(gain);
+      heatStep(s); expect(s.stations.heat[w], `fire ${fire}`).toBe(Math.max(0, gain - HEAT_COOL_IDLE) + gain);
+    }
+  });
+  it('no heat without fire; no fire heat for a failed or unpowered station', () => {
+    const { s, w, room } = hot(); heatStep(s); expect(s.stations.heat[w]).toBe(0);
+    failStation(s, w); s.rooms.fire[room] = 8; heatStep(s); expect(s.stations.heat[w]).toBe(0);
+    const u = hot(); u.s.stations.level[u.w] = 0; u.s.rooms.fire[u.room] = 8; heatStep(u.s); expect(u.s.stations.heat[u.w]).toBe(0);
+  });
+  it('an untended full fire overheats the station on the 118th hazard tick: it fails and its occupant stands', () => {
+    const { s, w, room } = hot(); sitDown(s, 0, w); s.rooms.fire[room] = 8;
+    for (let k = 1; k < 118; k++) { heatStep(s); expect(s.stations.failed[w], `tick ${k}`).toBe(0); }
+    expect(s.stations.heat[w]).toBe(6 + 2 * 116);
+    heatStep(s); expect(s.stations.failed[w]).toBe(1); expect(s.stations.heat[w]).toBe(0); expect(Seated.station[s.crew[0]!]).toBe(-1);
+  });
+  it('in the running sim an untended fire fails its room\'s console in roughly 20 to 30 s; one put out early does nothing', () => {
+    const { s, w, room } = hot(); igniteRoom(s, room); const start = s.tick;
+    while (!s.stations.failed[w] && s.tick < start + 60 * TICK_HZ) { step(s, []); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; }
+    const secs = (s.tick - start) / TICK_HZ; expect(s.stations.failed[w]).toBe(1); expect(secs).toBeGreaterThan(15); expect(secs).toBeLessThan(35);
+    const e = hot(); igniteRoom(e.s, e.room); run(e.s, 5 * TICK_HZ); extinguishRoom(e.s, e.room); run(e.s, 10 * TICK_HZ); expect([e.s.stations.failed[e.w], e.s.stations.heat[e.w]]).toEqual([0, 0]);
   });
 });

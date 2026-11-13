@@ -7,7 +7,7 @@ import { Skill, skillLevelOf } from './skills';
 import { coolingTraitBonus } from './characters';
 import { igniteRoom } from './hazards/fire';
 import { quirkHeatRise } from './quirks';
-import { HEAT_COOL_UNIT, HEAT_COOL_SKILL, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE } from './tuning';
+import { HEAT_COOL_UNIT, HEAT_COOL_SKILL, COOLANT_POOL, COOLANT_MAX_PER_STATION, HEAT_MAX, HEAT_RISE, HEAT_COOL_IDLE, OVERHEAT_FIRE_CHANCE, FIRE_HEAT_MAX, FIRE_HEAT_FULL } from './tuning';
 
 /** A station is overdriven while online above its base max (STATION_MAX plus a bought bar). A failed station has level 0 and is never overdriven. */
 export function isOverdriven(state: SimState, i: number): boolean {
@@ -46,6 +46,13 @@ export function heatStep(state: SimState): void {
   for (let i = 0; i < st.level.length; i++) {
     if (isOverdriven(state, i)) st.heat[i] = Math.max(0, Math.min(HEAT_MAX, st.heat[i]! + HEAT_RISE + quirkHeatRise(state) - st.coolant[i]! * cool));
     else st.heat[i] = Math.max(0, st.heat[i]! - HEAT_COOL_IDLE);
+    st.heat[i] = Math.min(HEAT_MAX, st.heat[i]! + fireHeat(state, i));   // after today's rules (spec Demo-xi section 5)
     if (st.heat[i]! >= HEAT_MAX) overheat(state, i);
   }
+}
+
+/** Heat a burning room adds to station i this hazard tick: FIRE_HEAT_MAX x min(1, fire / FIRE_HEAT_FULL), rounded; 0 without fire or for a failed or unpowered station (spec Demo-xi section 5, amendment 3). */
+export function fireHeat(state: SimState, i: number): number {
+  const fire = state.rooms.fire[state.derived.stationRoom[i]!]!;
+  return fire > 0 && stationOnline(state, i) ? Math.round(FIRE_HEAT_MAX * Math.min(1, fire / FIRE_HEAT_FULL)) : 0;
 }

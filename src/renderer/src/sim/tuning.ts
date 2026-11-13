@@ -81,6 +81,8 @@ export const HEAT_COOL_IDLE = 4;                      // per hazard tick while n
 export const COOLANT_POOL = 4;                        // shared units, never consumed
 export const COOLANT_MAX_PER_STATION = 2;
 export const OVERHEAT_FIRE_CHANCE = 0.5;              // rng.hazards, one draw per overheat
+export const FIRE_HEAT_MAX = 6;                       // heat per hazard tick a full fire adds to each online station in its room (spec Demo-xi section 5)
+export const FIRE_HEAT_FULL = 8;                      // fire intensity at which the fire heat is full; below it, proportional
 
 // Scanning, frequencies and torpedoes (increment 2b-ii)
 export const FREQ_COUNT = 3;
