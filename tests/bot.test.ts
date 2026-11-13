@@ -238,11 +238,11 @@ describe('the captain bot on the sector map (spec Loop-i section 5)', () => {
     const o = seated((x) => { x.run.column = 1; x.run.node = 1; x.run.pursuit = 2.25; });   // every destination overrun (FLEET): it still goes forward
     fly(o, (x) => x.telemetry.jumps > 0); expect([o.run.column, o.run.node]).toEqual([2, 0]);
   });
-  it('takes the sector jump at the exit, and the escape in the last sector', () => {
+  it('takes the sector jump at the exit, and engages the Warden in the last sector (spec Loop-iv section 3)', () => {
     const s = seated((x) => { x.run.column = SECTOR_COLUMNS - 1; x.run.node = 0; });
     fly(s, (x) => x.run.sector > 0); expect([s.run.sector, s.run.column]).toEqual([1, 0]);
     const e = seated((x) => { x.run.sector = SECTORS - 1; x.run.column = SECTOR_COLUMNS - 1; x.run.node = 0; });
-    fly(e, (x) => x.ended === 1); expect(e.endReason).toBe(EndReason.Victory);
+    fly(e, (x) => x.run.finalBeacon === 1); expect([e.run.finalBeacon, e.ended, e.endReason]).toEqual([1, 0, EndReason.None]);
   });
   it('waits for help only when out of fuel, and then always waits', () => {
     const s = seated((x) => { x.run.column = 1; x.run.node = 1; x.run.fuel = 0; });

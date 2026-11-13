@@ -10,17 +10,17 @@ import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { TICK_HZ, SECTORS, SECTOR_COLUMNS, JUMP_CHARGE_TIME, WAIT_SECONDS } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, room, RECRUITS, allHazard } from './helpers/sim';
 
-// Spec Loop-i sections 1 and 2: the run is three sectors of six columns, five jumps across each and the sector jump out of it (18 jumps); fuel runs out on the way, so the navigator's Confirm on the only row also waits for help.
+// Spec Loop-i sections 1 and 2: the run is three sectors of six columns, five jumps across each and the sector jump out of it (18 jumps, the last to the final beacon: spec Loop-iv section 3); fuel runs out on the way, so the navigator's Confirm on the only row also waits for help. Bots never fire: the gate ends when the Warden arrives.
 const JUMPS = SECTORS * SECTOR_COLUMNS;
 const WAITS_MAX = 12;
 describe('jump gate: a scripted navigator jumps the quiet ship through every sector', () => {
-  it('seed 1, two Recruits: eighteen jumps with waits for fuel, victory on the escape, both alive, within 18 x (charge + 10) + 12 waits seconds', () => {
+  it('seed 1, two Recruits: eighteen jumps with waits for fuel, the final beacon and the Warden arriving, both alive, within 18 x (charge + 10) + 12 waits seconds', () => {
     const s = makeState(2, 1, RECRUITS, { quirk: 3 }); quiet(s);   // Lucky Hull: no debris flies in this gate, so the quirk is inert
-    allHazard(s); const silence = () => { s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; };   // a quiet ship: no enemy (pursuit fights included) and no boarders, every tick
+    allHazard(s); const silence = () => { if (!s.run.finalBeacon) s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; };   // a quiet ship: no enemy (pursuit fights included) before the final beacon and no boarders, every tick
     const nav = s.derived.stationOfKind[StationKind.Navigation]!, A = room(s, 'A'), eid = s.crew[0]!;
     let seatedOnce = false, waits = 0, lastSector = 0, wasWaiting = false;
     const limit = (JUMPS * (JUMP_CHARGE_TIME + 10) + WAITS_MAX * WAIT_SECONDS) * TICK_HZ;
-    for (let t = 0; t < limit && !s.ended; t++) {
+    for (let t = 0; t < limit && !s.ended && !(s.run.finalBeacon && s.enemy.present); t++) {
       silence();
       let p0 = { ...NEUTRAL_INTENT };
       if (Seated.station[eid] === nav) { seatedOnce = true; p0 = { ...NEUTRAL_INTENT, confirmPressed: true }; }
@@ -30,11 +30,11 @@ describe('jump gate: a scripted navigator jumps the quiet ship through every sec
       const waiting = s.run.waitUntilTick >= 0; if (waiting && !wasWaiting) waits++; wasWaiting = waiting;
     }
     expect(seatedOnce).toBe(true);
-    expect([s.telemetry.jumps, s.run.sector, s.run.column, s.endReason]).toEqual([JUMPS, SECTORS - 1, SECTOR_COLUMNS - 1, EndReason.Victory]);
+    expect([s.telemetry.jumps, s.run.sector, s.run.column, s.run.finalBeacon, s.enemy.present, s.ended, s.endReason]).toEqual([JUMPS, SECTORS - 1, SECTOR_COLUMNS - 1, 1, 1, 0, EndReason.None]);   // the Warden has arrived
     expect(waits).toBeGreaterThan(0);   // eight fuel do not cover eighteen jumps (spec section 2)
     expect(s.crew.filter((e) => Life.state[e] === LifeState.Conscious).length).toBe(2);
     expect(s.tick).toBeLessThan(limit);
     expect([s.tick, waits]).toEqual([GATE_END_TICK, GATE_WAITS]);   // recorded on the first run (Loop-i Task 5)
   });
 });
-const GATE_END_TICK = 64818, GATE_WAITS = 6;   // 18 charges of 3600 ticks and one tick each for the second Confirm; the six waits ran while the drive charged
+const GATE_END_TICK = 65298, GATE_WAITS = 6;   // 18 charges of 3600 ticks and one tick each for the second Confirm; the six waits ran while the drive charged; Loop-iv: 64818 -> 65298, the run no longer ends on the last jump but ENCOUNTER_START seconds later (480 ticks), when the Warden arrives

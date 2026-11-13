@@ -6,7 +6,9 @@ import type { SourceSample } from '../src/renderer/src/input/deviceManager';
 import { loadProgress, saveProgress } from '../src/renderer/src/app/progressStore';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
 import type { Progress } from '../src/renderer/src/sim/progress';
-import { LAYOUT, seatNavigator, chargeJump, armSpawn } from './helpers/sim';
+import { LAYOUT, seatNavigator, chargeJump, armSpawn, placeEnemy } from './helpers/sim';
+import { damageEnemy } from '../src/renderer/src/sim/enemy';
+import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import type { Cue } from '../src/renderer/src/app/audioCues';
 import { loadSnapshot, type Snapshot } from '../src/renderer/src/sim/snapshot';
 import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay';
@@ -291,6 +293,7 @@ describe('session', () => {
     h.press('a', { confirm: true }); h.frames(1); h.release();
     const st = h.session.state!; st.run.sector = 2; st.run.column = 5; st.run.node = 0; st.run.nodesReached = 4; st.telemetry.jumps = 4; seatNavigator(st, 0); h.frames(2); chargeJump(st);
     h.press('a', { confirm: true }); h.frames(2); h.release(); h.frames(2);
+    expect([st.run.finalBeacon, st.ended]).toEqual([1, 0]); placeEnemy(st); damageEnemy(st, ENEMY_SLOT, st.enemy.hull); h.frames(2);   // the jump reaches the final beacon; destroying the Warden wins (spec Loop-iv section 1)
     expect(h.session.phase).toBe('gameover'); expect(st.endReason).toBe(EndReason.Victory);
     expect(h.last().message).toMatch(/^VICTORY after \d+s\./);
     expect(h.records).toHaveLength(1); expect(h.records[0]).toMatchObject({ endReason: 'victory', run: { nodesReached: 5, jumps: 5, columns: 6 } });
@@ -314,7 +317,7 @@ describe('session', () => {
     });
     it('a victory ending cues victory exactly once', () => {
       const h = started(); const st = h.session.state!; st.run.sector = 2; st.run.column = 5; st.run.node = 0; st.run.nodesReached = 4; st.telemetry.jumps = 4; seatNavigator(st, 0); h.frames(2); chargeJump(st);
-      h.press('a', { confirm: true }); h.frames(2); h.release(); h.frames(2);
+      h.press('a', { confirm: true }); h.frames(2); h.release(); h.frames(2); placeEnemy(st); damageEnemy(st, ENEMY_SLOT, st.enemy.hull); h.frames(2);   // the Warden destroyed (spec Loop-iv section 1)
       expect(st.endReason).toBe(EndReason.Victory); expect(h.cues.filter((c) => c === 'victory')).toHaveLength(1); expect(h.cues).not.toContain('defeat');
     });
     it('pause then ten frames cues nothing', () => {

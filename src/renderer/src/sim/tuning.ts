@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 26;
+export const SIM_VERSION = 27;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -172,6 +172,7 @@ export const SECTORS = 3, SECTOR_COLUMNS = 6, MIDDLE_MIN = 2, MIDDLE_MAX = 4, NO
 export const FUEL_START = 8, FUEL_COST = 12, SHOP_FUEL = 2, WAIT_SECONDS = 20, WAIT_FUEL_CHANCE = 0.6, WAIT_FUEL = 2, KILL_FUEL_MIN = 1, FIELD_FUEL = 1;
 /** The Pursuit (spec Loop-i section 3): the fleet front's column on arrival in a sector and its step per jump and per wait; the elite pursuit enemy's hull and fire-interval multipliers. */
 export const PURSUIT_START = -1.5, PURSUIT_STEP = 0.75, PURSUIT_HULL_MULT = 1.5, PURSUIT_FIRE_MULT = 0.75;
+export const WARDEN_HULL_MULT = 2.5, WARDEN_FIRE_MULT = 0.7, WARDEN_SHIELD_EXTRA = 1;   // the Warden at the final beacon (spec Loop-iv section 2): x the final depth's hull, x the fire interval, layers over the depth's maximum
 export const JUMP_CHARGE_TIME = 60;                                                 // seconds from arrival to a ready drive
 export const BOARDING_AFTER_JUMP = 120;                                             // seconds after a jump before a party can arrive (no draw); the enemy follows the node type (ENCOUNTER_START, spec Demo-vi section 2)
 

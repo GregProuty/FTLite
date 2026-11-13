@@ -6,7 +6,7 @@ import { clearObjects, spawnFieldRock } from './debris';
 import { leave, Encounter } from './enemy';
 import { activeBoarderCount } from './boarders';
 import { enterPhase, Phase } from './director';
-import { EndReason, consciousCount } from './crew';
+import { consciousCount } from './crew';
 import { Life, LifeState } from './components';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, WEAPON_ITEM, itemLabel, itemEnabled, buy } from './shop';
@@ -74,7 +74,7 @@ export function beaconMark(state: SimState, column: number, node: number): strin
 }
 const BEACON_NAMES = ['Hostile', 'Event', 'Shop', 'Asteroid field', 'Empty'] as const;
 /** A column at or behind the fleet front is overrun (spec Loop-i section 3): its beacons lose their own content. */
-export const overrun = (state: SimState, column: number): boolean => column <= Math.floor(state.run.pursuit);
+export const overrun = (state: SimState, column: number): boolean => state.run.finalBeacon === 0 && column <= Math.floor(state.run.pursuit);   // the final beacon is never overrun (spec Loop-iv section 1)
 /** What the current beacon holds: its type, or -1 once the Pursuit has overrun it (no event, shop or field). */
 export const contentOf = (state: SimState): number => overrun(state, state.run.column) ? -1 : state.run.nodeType[hereIndex(state)]!;
 /** The beacon the ship is at, as a map index. */
@@ -93,16 +93,19 @@ export function reachable(state: SimState): Beacon[] {
 }
 const canReach = (state: SimState, b: Beacon): boolean => reachable(state).some((x) => x.column === b.column && x.node === b.node);
 /** At the sector's exit beacon, where the only way on is the sector jump (spec Loop-i amendment S1). */
-export const atExit = (state: SimState): boolean => state.run.column === state.run.colNodes.length - 1;
+export const atExit = (state: SimState): boolean => state.run.finalBeacon === 0 && state.run.column === state.run.colNodes.length - 1;   // the final beacon is past the exit (spec Loop-iv section 1)
 /** The exit row's text: the next sector, or the escape that wins the run (spec Loop-i amendment S1). */
 export const exitText = (state: SimState): string => state.run.sector >= SECTORS - 1 ? 'Escape: win the run' : `Jump to sector ${state.run.sector + 2}`;
 
 /** First system of the tick: the drive charges from arrival, whatever else happens (spec section 6); ENCOUNTER_BOOST times as fast after a won encounter (spec Demo-vi section 2). */
-export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.min(1, state.run.jumpCharge + (state.run.driveBoost === 1 ? ENCOUNTER_BOOST : 1) * DT / (JUMP_CHARGE_TIME * quirkChargeMult(state))); }
+export function jumpStep(state: SimState): void { if (state.run.finalBeacon) return;   // no escape: the drive does not charge at the final beacon (spec Loop-iv section 1)
+  state.run.jumpCharge = Math.min(1, state.run.jumpCharge + (state.run.driveBoost === 1 ? ENCOUNTER_BOOST : 1) * DT / (JUMP_CHARGE_TIME * quirkChargeMult(state))); }
 
 /** Step 1b of the jump (spec Run-ii section 6): the arrival award and, at an Event node, the event id (one loot draw). */
 function arrive(state: SimState): void {
-  const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1; addScrap(state, scrapPerJump(depthOf(state)));
+  const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1;
+  if (r.finalBeacon) { r.shopWeapon = 0; return; }   // the final beacon is not on the map: no award, no content (spec Loop-iv amendment F1)
+  addScrap(state, scrapPerJump(depthOf(state)));
   if (contentOf(state) === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
   r.shopWeapon = contentOf(state) === NodeType.Shop ? 1 + nextInt(state.rng.loot, LOOT_WEAPON_TYPES) : 0;   // a shop's offered weapon, one loot draw (spec Loop-iii section 3)
 }
@@ -140,6 +143,7 @@ export function navRows(state: SimState): NavRow[] {
     for (let i = 0; i < SHOP_ITEM_COUNT; i++) rows.push({ text: itemLabel(state, i), select: 'buy', index: i, enabled: itemEnabled(state, i) });
     if (r.shopWeapon > 0) rows.push({ text: itemLabel(state, WEAPON_ITEM), select: 'buy', index: WEAPON_ITEM, enabled: itemEnabled(state, WEAPON_ITEM) });   // spec Loop-iii section 3
   }
+  if (r.finalBeacon) { rows.push(evadeRow(state)); return rows; }   // no way on from the final beacon (spec Loop-iv section 1)
   if (r.waitUntilTick >= 0) rows.push({ text: `Waiting for help  ${Math.max(0, Math.ceil((r.waitUntilTick - state.tick) / TICK_HZ))}s`, select: 'wait', index: 0, enabled: false });
   else if (r.fuel < 1) rows.push({ text: 'Wait for help', select: 'wait', index: 0, enabled: true });
   else if (atExit(state)) rows.push({ text: exitText(state), select: 'sector', index: EXIT_JUMP, enabled: true });
@@ -192,7 +196,7 @@ function afterJump(state: SimState): void {
   clearObjects(state);
   if (state.enemy.present) { state.enemy.surrenderIntact = 0; leave(state, false); }   // the ship left, not the enemy: a flee in progress counts as a flight, no surrender bounty (spec Demo-i section 11.3)
   else if (r.encounter === Encounter.Fighting || r.encounter === Encounter.Pending) endField(state);   // no enemy: leaving a field (or its approach) early, no reward (spec Demo-viii section 1)
-  const type = r.column === 0 || (r.column === last && r.sector >= SECTORS - 1) ? -1 : r.nodeType[hereIndex(state)]!, hazard = type === NodeType.Hazard;
+  const type = r.finalBeacon ? NodeType.Hazard : r.column === 0 || (r.column === last && r.sector >= SECTORS - 1) ? -1 : r.nodeType[hereIndex(state)]!, hazard = type === NodeType.Hazard;   // the final beacon: the Warden's contact in ENCOUNTER_START seconds (spec Loop-iv section 1)
   r.encounter = hazard || type === NodeType.Asteroid ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick; r.fieldNextTick = -1;
   state.enemy.nextArrivalTick = hazard ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;   // an asteroid field has no enemy: it starts in fieldSystem
   if (overrun(state, r.column) && !peaceful(state)) startPursuitFight(state);   // the Pursuit replaces the beacon's own encounter (spec Loop-i amendment S5)
@@ -213,11 +217,11 @@ export function pursuitSystem(state: SimState): void {
   startPursuitFight(state);
 }
 
-/** The sector jump from the exit (spec Loop-i section 1, amendments S1 and S4): one fuel; from the last sector it wins the run, else the next sector's map is drawn from rng.map in the same order, the pursuit resets and the ship arrives at column 0. A no-op away from the exit or without fuel. */
+/** The sector jump from the exit (spec Loop-i section 1, amendments S1 and S4): one fuel; from the last sector it goes to the final beacon (spec Loop-iv section 1), else the next sector's map is drawn from rng.map in the same order, the pursuit resets and the ship arrives at column 0. A no-op away from the exit or without fuel. */
 export function sectorJump(state: SimState): void {
   const r = state.run;
   if (r.fuel < 1 || !atExit(state)) return;
-  if (r.sector >= SECTORS - 1) { r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.jumpPending = -1; r.jumpPendingTick = -1; state.telemetry.jumps++; state.ended = 1; state.endReason = EndReason.Victory; return; }
+  if (r.sector >= SECTORS - 1) { r.finalBeacon = 1; afterJump(state); return; }   // engage the Warden: the jump to the final beacon (spec Loop-iv section 1)
   const map = generateMap(state.rng.map, r.colNodes.length);
   r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType); r.visited.fill(0);
   r.sector += 1; r.column = 0; r.node = 0; r.pursuit = PURSUIT_START;
@@ -227,7 +231,7 @@ export function sectorJump(state: SimState): void {
 /** Wait for help (spec Loop-i section 2, amendment S2): only with no fuel and no wait running; it ends WAIT_SECONDS later. False when it cannot start. */
 export function startWait(state: SimState): boolean {
   const r = state.run;
-  if (r.fuel >= 1 || r.waitUntilTick >= 0) return false;
+  if (r.fuel >= 1 || r.waitUntilTick >= 0 || r.finalBeacon) return false;
   r.waitUntilTick = state.tick + WAIT_SECONDS * TICK_HZ; return true;
 }
 /** The wait's end: the pursuit steps once, then one rng.loot draw: below WAIT_FUEL_CHANCE a passing trader gives WAIT_FUEL fuel, else nothing. */
