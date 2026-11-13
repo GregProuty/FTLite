@@ -140,7 +140,7 @@ describe('the player blocks at the larger font', () => {
 describe('the notices, threats, event card, lobby, summary and credits at the larger font', () => {
   it('every event notice at depth 0 and 17, the helm line and the fixed lines fit between the columns', () => {
     for (const st of [calm(), deep()]) for (let id = 0; id < EVENT_DEFS.length; id++) { setEvent(st, id); for (const l of runNotice(st)) fits(l, NOTICE.w); }
-    for (const l of [HELM_NOTICE, `${HIDDEN_SHIP}   contact 99s`, 'Jump away, or strike first: shields down 10s', 'Anyone standing: press Confirm to agree   10s', 'JUMP READY   someone take Navigation', 'The Pursuit has caught up: elite ship approaching', 'ENEMY SURRENDERS   hold fire 99s for +999 scrap', 'SHOP at sector 3 node 8   scrap 9999', 'FIELD CLEARED   +999 scrap', 'ENEMY DEFEATED   +10 hull', 'Found: Missile Pod (cargo)', 'Cargo full: sold for 99', 'SCAN: hidden ship detected', 'cache +40 scrap, 9 beacons charted']) fits(l, NOTICE.w);
+    for (const l of [HELM_NOTICE, `${HIDDEN_SHIP}   contact 99s`, 'Jump away, or strike first: shields down 10s', 'Other crew: press Confirm to agree  10s', 'JUMP READY   someone take Navigation', 'The Pursuit has caught up: elite ship approaching', 'ENEMY SURRENDERS   hold fire 99s for +999 scrap', 'SHOP at sector 3 node 8   scrap 9999', 'FIELD CLEARED   +999 scrap', 'ENEMY DEFEATED   +10 hull', 'Found: Missile Pod (cargo)', 'Cargo full: sold for 99', 'SCAN: hidden ship detected', 'cache +40 scrap, 9 beacons charted']) fits(l, NOTICE.w);
     for (const w of WEAPON_DEFS.slice(1)) fits(`Hull +25 (30)  Torps +2 (20)  Fuel +2 (12)  ${w.short} (${w.price})`, NOTICE.w);
   });
   it('every threat line fits the threats panel after its icon', () => {

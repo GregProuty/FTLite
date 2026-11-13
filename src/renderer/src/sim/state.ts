@@ -59,7 +59,7 @@ export interface SimState {
   skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
   science: { scanning: number; system: number; systemState: number; systemStartTick: number; systemTick: number; systemResult: number };   // scanning: 1 while an object scan is running (spec 2b-ii section 4); system*: the system scan's progress 0..1, SystemScan state, start and finish ticks (-1 none) and ScanFound bits with the charted count from bit 3 (spec Demo-x-b section 3)
   /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */
-  scratch: { doorToggles: Set<number>; doorCycles: Set<number>; airlockToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array; activeThisTick: Uint8Array; votePress: Uint8Array; jumpConfirm: Uint8Array };   // votePress / jumpConfirm: a standing Confirm routed to the vote or the jump confirmation (spec Coop-ii amendment D7)
+  scratch: { doorToggles: Set<number>; doorCycles: Set<number>; airlockToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array; activeThisTick: Uint8Array; votePress: Uint8Array; jumpConfirm: Uint8Array; confirmUsed: Uint8Array };   // confirmUsed: a seated Confirm taken by an agreement or a vote, so the card does not act on it (spec Demo-xi sections 1-2)   // votePress / jumpConfirm: a standing Confirm routed to the vote or the jump confirmation (spec Coop-ii amendment D7)
 }
 
 export function deriveStreams(seed: number): RngStreams {
@@ -108,7 +108,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     carrying: new Uint8Array(playerCount),
     crewCharacter: Uint8Array.from({ length: playerCount }, (_, pid) => characters[pid] ?? RECRUIT),
     skills: { xp: new Float64Array(playerCount * SKILL_COUNT), lastEngChangeTick: -1, lastDoorToggleTick: -1, lsDeliveredTick: -1, lastShotTick: -1 },
-    scratch: { doorToggles: new Set<number>(), doorCycles: new Set<number>(), airlockToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount), votePress: new Uint8Array(playerCount), jumpConfirm: new Uint8Array(playerCount) }
+    scratch: { doorToggles: new Set<number>(), doorCycles: new Set<number>(), airlockToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount), votePress: new Uint8Array(playerCount), jumpConfirm: new Uint8Array(playerCount), confirmUsed: new Uint8Array(playerCount) }
   };
   state.run.quirk = nextInt(rng.quirk, QUIRK_COUNT);   // the one draw from the seventh stream, before any override
   if (options.quirk !== undefined) { const q = options.quirk; if (!Number.isInteger(q) || q < 0 || q >= QUIRK_COUNT) throw new Error(`quirk out of range: ${q}`); state.run.quirk = q; }

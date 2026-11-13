@@ -172,7 +172,11 @@ export function botIntent(state: SimState, pid: number): Intent {
   const eid = state.crew[pid]!;
   if (Life.state[eid] !== LifeState.Conscious) return NEUTRAL_INTENT;
   const it = dutyIntent(state, pid, eid), r = state.run;
-  if (Seated.station[eid] !== -1) return it;
+  if (Seated.station[eid] !== -1) {   // seated (spec Demo-xi amendment 4): a crew member who is not the Navigation occupant agrees to a pending jump from the seat
+    const nav = state.derived.stationOfKind[StationKind.Navigation]!;
+    if (r.jumpPending >= 0 && !(nav >= 0 && state.stations.occupant[nav] === pid)) return { ...it, confirmPressed: true };
+    return it;
+  }
   // Crew decisions (spec Coop-ii amendments D6 and D7): standing, a bot presses Confirm until its vote is the safe choice, and confirms a pending jump.
   if (r.event >= 0 && r.eventChoice < 0 && r.vote[pid] !== EVENTS[r.event]!.safeChoice) return { ...it, confirmPressed: true };
   if (r.jumpPending >= 0) return { ...it, confirmPressed: true };

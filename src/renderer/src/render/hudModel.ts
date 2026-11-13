@@ -352,7 +352,7 @@ export function runNotice(state: SimState): string[] {
 }
 function baseNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
-  if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
+  if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Other crew: press Confirm to agree  ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3, Demo-xi section 1
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!; return [`EVENT: ${ev.title}   ${r.eventOpenTick < 0 ? 'waiting for a vote' : `vote ${voteSecondsLeft(state)}s`}`, noticeChoices(state, r.event, (line) => textPx(line) <= NOTICE.w)]; }
   if (r.boughtTick >= 0 && state.tick - r.boughtTick < PURCHASE_NOTICE_SECONDS * TICK_HZ) return [r.boughtKind === REACTOR_ROW ? `Reactor +1 (${state.power.capacity} bars)` : `${STATION_NAMES[r.boughtKind]} upgraded to ${baseMax(state, r.boughtKind)}`];   // a purchase at the Engineering console (spec Loop-ii section 2)
   const scan = scanNotice(state); if (scan) { const k = scan.indexOf(', '); return textPx(scan) <= NOTICE.w || k < 0 ? [scan] : [scan.slice(0, k), scan.slice(k + 2)]; }   // too wide at the larger font: the findings over two lines (spec Demo-x-c section 1)   // the system scan's summary (spec Demo-x-b section 3)

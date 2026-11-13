@@ -28,7 +28,7 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
 export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const hazardTick = state.tick % HAZARD_EVERY === 0;
-  state.scratch.doorToggles.clear(); state.scratch.doorCycles.clear(); state.scratch.airlockToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0); state.scratch.activeThisTick.fill(0); state.scratch.votePress.fill(0); state.scratch.jumpConfirm.fill(0);
+  state.scratch.doorToggles.clear(); state.scratch.doorCycles.clear(); state.scratch.airlockToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0); state.scratch.activeThisTick.fill(0); state.scratch.votePress.fill(0); state.scratch.jumpConfirm.fill(0); state.scratch.confirmUsed.fill(0);
   jumpStep(state);   // (0) the jump drive charges first, so a Confirm on the ready tick jumps (spec Run-i section 6)
   // (1) input, arbitration
   interactSystem(state, intents);

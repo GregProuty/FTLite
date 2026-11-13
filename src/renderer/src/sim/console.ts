@@ -118,12 +118,12 @@ export function consoleSystem(state: SimState, intents: readonly Intent[]): void
     const dir = stickEdge(state, pid, it.moveX, it.moveY);
     const g = state.derived.stationGroup[i]!;
     if (g >= 0 && tabInput(state, pid, g, i, dir)) continue;   // the tab bar consumes the tick's stick input and Confirm
-    const kind = state.derived.stationKind[i]!;
-    if (kind === StationKind.Engineering) engineeringInput(state, i, dir, it.confirmPressed);
-    else if (kind === StationKind.Doors) doorsInput(state, i, dir, it.confirmPressed);
-    else if (kind === StationKind.Weapons) weaponsInput(state, i, dir, it.confirmPressed);
-    else if (kind === StationKind.Science) scienceInput(state, i, dir, it.confirmPressed);
-    else if (kind === StationKind.Navigation) navigationInput(state, i, dir, it.confirmPressed);
+    const kind = state.derived.stationKind[i]!, confirm = it.confirmPressed && !state.scratch.confirmUsed[pid];   // an agreement or a vote took the press (spec Demo-xi sections 1-2)
+    if (kind === StationKind.Engineering) engineeringInput(state, i, dir, confirm);
+    else if (kind === StationKind.Doors) doorsInput(state, i, dir, confirm);
+    else if (kind === StationKind.Weapons) weaponsInput(state, i, dir, confirm);
+    else if (kind === StationKind.Science) scienceInput(state, i, dir, confirm);
+    else if (kind === StationKind.Navigation) navigationInput(state, i, dir, confirm);
     // Life Support, Medbay: no seated controls.
   }
   const asc = (set: Set<number>): number[] => [...set].sort((a, b) => a - b);
