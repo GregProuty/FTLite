@@ -108,10 +108,10 @@ describe('scaling (spec Loop-v section 1)', () => {
 describe('the six Run-ii events as data (spec Loop-v section 2)', () => {
   it('keep their titles, texts, labels and safe choices', () => {
     expect(EVENTS.slice(0, 6).map((e) => [e.title, e.text, ...e.choices, e.safeChoice])).toEqual([
-      ['Derelict hulk', 'A drifting hulk, still warm inside.', 'Salvage it (+25 scrap, fire risk)', 'Leave it', 1],
+      ['Derelict hulk', 'A drifting hulk, still warm inside.', 'Salvage it (+25 scrap, a fire)', 'Leave it', 1],
       ['Distress call', 'A venting freighter offers a reward.', 'Help them (hull -10, +30 scrap)', 'Ignore it', 1],
       ['Smugglers', 'Smugglers offer cheap torpedoes.', 'Buy 2 torpedoes (20 scrap)', 'Refuse', 1],
-      ['Micrometeoroid field', 'A debris field lies across the lane.', 'Push through (+20, breach risk)', 'Go around (drive recharges)', 1],
+      ['Micrometeoroid field', 'A debris field lies across the lane.', 'Push through (+20, a breach)', 'Go around (drive recharges)', 1],
       ['Supply cache', 'A cache, hard-wired to something.', 'Take the scrap (+40)', 'Strip it bare (+60, a station fails)', 0],
       ['Medical freighter', 'A hospital ship offers treatment.', 'Treat the crew (15 scrap)', 'Decline', 1],
     ]);

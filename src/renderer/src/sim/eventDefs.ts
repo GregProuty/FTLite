@@ -43,7 +43,7 @@ const NOTHING: readonly Effect[] = [{ kind: 'nothing' }];
 /** The event list. The order is stable: the run stores an event as its index here, and the first six are the Run-ii events (spec Loop-v section 2). */
 export const EVENT_DEFS: readonly EventDef[] = [
   { id: 'derelictHulk', title: 'Derelict hulk', text: ['A drifting hulk, still warm inside.'], safeChoice: 1, weight: 1, scaled: false, choices: [
-    { label: 'Salvage it (+25 scrap, fire risk)', outcome: [{ kind: 'scrap', n: 25 }, { kind: 'fire' }] },
+    { label: 'Salvage it (+25 scrap, a fire)', outcome: [{ kind: 'scrap', n: 25 }, { kind: 'fire' }] },
     { label: 'Leave it', outcome: NOTHING }] },
   { id: 'distressCall', title: 'Distress call', text: ['A venting freighter offers a reward.'], safeChoice: 1, weight: 1, scaled: false, choices: [
     { label: 'Help them (hull -10, +30 scrap)', req: [{ kind: 'hull', n: 10 }], outcome: [{ kind: 'hull', n: -10 }, { kind: 'scrap', n: 30 }] },
@@ -52,7 +52,7 @@ export const EVENT_DEFS: readonly EventDef[] = [
     { label: 'Buy 2 torpedoes (20 scrap)', req: [{ kind: 'scrap', n: 20 }, { kind: 'torpedoRoom' }], outcome: [{ kind: 'scrap', n: -20 }, { kind: 'torpedoes', n: 2 }] },
     { label: 'Refuse', outcome: NOTHING }] },
   { id: 'micrometeoroids', title: 'Micrometeoroid field', text: ['A debris field lies across the lane.'], safeChoice: 1, weight: 1, scaled: false, choices: [
-    { label: 'Push through (+20, breach risk)', outcome: [{ kind: 'scrap', n: 20 }, { kind: 'breach' }] },
+    { label: 'Push through (+20, a breach)', outcome: [{ kind: 'scrap', n: 20 }, { kind: 'breach' }] },
     { label: 'Go around (drive recharges)', outcome: [{ kind: 'driveReset' }] }] },
   { id: 'supplyCache', title: 'Supply cache', text: ['A cache, hard-wired to something.'], safeChoice: 0, weight: 1, scaled: false, choices: [
     { label: 'Take the scrap (+40)', outcome: [{ kind: 'scrap', n: 40 }] },

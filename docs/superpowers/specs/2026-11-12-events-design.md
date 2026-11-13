@@ -150,3 +150,4 @@ Scrap amounts are shown at depth 0; the new events multiply them by 1 + 0.15 x d
    - `Treat the crew (20 scrap)`
    - `Give hull plate (hull -10, heal)`
    - `Thank them, no` (the bots' safe choice)
+- **E13. Labels made honest (Claude):** `fire risk` and `breach risk` become `a fire` and `a breach`, since both always happen (E11).
