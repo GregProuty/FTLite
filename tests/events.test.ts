@@ -33,11 +33,11 @@ describe('arrival', () => {
   it('a pending event lists four rows, blocks the jump, resolves on Confirm, and the next Confirm jumps from the re-clamped cursor', () => {
     const s = calm(); at(s, 1, 2); setEvent(s, 4); chargeJump(s); const n = seatNavigator(s, 0); run(s, 1);
     const rows = navRows(s);
-    expect(rows.map((r) => [r.text, r.select, r.index, r.enabled])).toEqual([[EVENTS[4]!.title, 'none', 0, false], [EVENTS[4]!.text, 'none', 0, false], [EVENTS[4]!.choices[0], 'choice', 0, true], [EVENTS[4]!.choices[1], 'choice', 1, true]]);
+    expect(rows.map((r) => [r.text, r.select, r.index, r.enabled])).toEqual([[EVENTS[4]!.title, 'none', 0, false], [EVENTS[4]!.text, 'none', 0, false], [EVENTS[4]!.choices[0], 'choice', 0, true], [EVENTS[4]!.choices[1], 'choice', 1, true], ['EVADE: Confirm', 'evade', 0, true]]);   // the evade row last (spec Coop-ii section 1)
     expect(s.stations.cursor[n]).toBe(2); clampNavCursor(s); expect(s.stations.cursor[n]).toBe(2);   // the console's own clamp already ran in the seated tick (spec section 6)
     run(s, 1, () => intents({ confirmPressed: true }, {}));
     expect([s.run.column, s.telemetry.jumps, s.run.jumpCharge, s.run.eventChoice, s.run.scrap, s.telemetry.eventsResolved]).toEqual([1, 1, 1, 0, 40, 1]);
-    expect(navRows(s).map((r) => r.select)).toEqual(['jump']); expect(s.stations.cursor[n]).toBe(0);   // cursor 2 does not exist in the new list: first selectable
+    expect(navRows(s).map((r) => r.select)).toEqual(['jump', 'evade']); expect(s.stations.cursor[n]).toBe(0);   // cursor 2 does not exist in the new list: first selectable
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {}));
     expect([s.run.column, s.run.node]).toEqual([2, 0]);
   });
@@ -97,15 +97,15 @@ describe('shops', () => {
   const shop = (scrap = 100) => { const s = calm(); at(s, 1, 0); setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, scrap); return s; };
   it('lists the header, eight items in order and the destinations; enabled per item', () => {
     const s = shop(); const rows = navRows(s);
-    expect(rows).toHaveLength(10); expect(rows[0]).toEqual({ text: 'Shop   scrap 100', select: 'none', index: 0, enabled: false });   // mask 1:0 = 1: one destination (Node 3a)
+    expect(rows).toHaveLength(11); expect(rows[0]).toEqual({ text: 'Shop   scrap 100', select: 'none', index: 0, enabled: false });   // mask 1:0 = 1: one destination (Node 3a)
     expect(rows.slice(1, 9).map((r) => r.text)).toEqual(['Hull +25 (30 scrap)', 'Torpedoes +2 (20 scrap)', ...UPGRADE_KINDS.map((k) => `${STATION_NAMES[k]} +1 bar (50 scrap)`)]);
     expect(UPGRADE_KINDS).toEqual([StationKind.Navigation, StationKind.Weapons, StationKind.Science, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors]);
-    expect(rows.slice(9).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a', 'jump', 0]]);
+    expect(rows.slice(9).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a', 'jump', 0], ['EVADE: Confirm', 'evade', 0]]);
     expect(rows[1]!.enabled).toBe(false); s.hull = 90; expect(navRows(s)[1]!.enabled).toBe(true);
     expect(rows[2]!.enabled).toBe(true); s.weapons.torpedoStock = TORP_CAP; expect(navRows(s)[2]!.enabled).toBe(false);
     expect(rows.slice(3, 9).every((r) => r.enabled)).toBe(true);
     const poor = shop(29); expect(navRows(poor).slice(1, 9).map((r) => r.enabled)).toEqual([false, true, false, false, false, false, false, false]);
-    const h = calm(); at(h, 1, 0); expect(navRows(h).map((r) => r.select)).toEqual(['jump']);
+    const h = calm(); at(h, 1, 0); expect(navRows(h).map((r) => r.select)).toEqual(['jump', 'evade']);
   });
   it('listing and buying never touch the loot stream', () => {
     const s = shop(); s.hull = 90; const l = s.rng.loot.s; navRows(s); buy(s, 0); buy(s, 1); buy(s, 2 + UPGRADE_KINDS.indexOf(StationKind.Weapons)); expect(s.telemetry.purchases).toBe(3); expect(s.rng.loot.s).toBe(l);
@@ -127,13 +127,13 @@ describe('shops', () => {
   it('cursor rules: a buy keeps the cursor on its (now disabled) row, the header is skipped, wrap crosses the ends, a shrink moves to the first selectable row', () => {
     const s = shop(); s.hull = 90; const n = seatNavigator(s, 0); run(s, 1);
     run(s, 1, () => intents({}, {})); expect(s.stations.cursor[n]).toBe(1);                                   // header skipped
-    run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(9);                       // Up from row 1 wraps to the last row (the single destination)
+    run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(10);                      // Up from row 1 wraps to the last row (the evade row, spec Coop-ii section 1)
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(1);   // Down from the last wraps to row 1
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.hull).toBe(HULL_MAX); expect(s.stations.cursor[n]).toBe(1); expect(navRows(s)[1]!.enabled).toBe(false);
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.scrap).toBe(70);   // disabled: nothing
     const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); e.stations.cursor[m] = 3; run(e, 1, () => intents({ confirmPressed: true }, {}));
     expect(e.run.eventChoice).toBe(1); expect(e.stations.cursor[m]).toBe(3);                                  // row 3 exists in the shop list (an item): kept
-    expect(navRows(e)).toHaveLength(10);
+    expect(navRows(e)).toHaveLength(11);
   });
 });
 

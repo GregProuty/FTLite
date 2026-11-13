@@ -18,6 +18,8 @@ import { Skill } from '../src/renderer/src/sim/skills';
 import { fieldSystem, endField } from '../src/renderer/src/sim/run';
 import { spawnFieldRock, ObjectKind, activeDebrisCount } from '../src/renderer/src/sim/debris';
 import { FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, scrapField, scrapPerJump, FREQ_COUNT } from '../src/renderer/src/sim/tuning';
+import { EVADE_WINDOW, EVADE_COOLDOWN } from '../src/renderer/src/sim/tuning';
+import { botIntent } from '../src/renderer/src/sim/bot';
 
 const T = TICK_HZ;
 const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; return s; };
@@ -138,8 +140,10 @@ describe('run: charge and Navigation input', () => {
     const n = seatNavigator(s, 0); run(s, 1);
     const d0 = s.rng.director.s;
     run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(1);
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(2);           // the evade row, always last (spec Coop-ii section 1)
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(0);           // wraps
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(1);          // Up wraps the other way
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(2);          // Up wraps the other way
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(1);
     run(s, 1, () => intents({ moveX: 1 }, {})); run(s, 1, () => intents({ moveX: -1 }, {})); expect(s.stations.cursor[n]).toBe(1);
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.nodesReached).toBe(0); expect(s.rng.director.s).toBe(d0);   // not ready
     chargeJump(s); run(s, 1, () => intents({ confirmPressed: true }, {}));
@@ -320,5 +324,40 @@ describe('asteroid fields (spec Demo-viii section 1)', () => {
     const f = at(); steady(f, (ENCOUNTER_START + 5) * T); endField(f);
     expect([f.run.encounter, f.run.encounterTick, f.run.fieldNextTick, f.telemetry.encountersWon]).toEqual([Encounter.Over, f.tick, -1, 0]);
     steady(f, 80 * T); expect([f.run.encounter, f.telemetry.encountersWon]).toEqual([Encounter.Over, 0]);
+  });
+});
+
+describe('the evasive manoeuvre (spec Coop-ii section 1, amendments D1-D3)', () => {
+  const evadeRow = (s: ReturnType<typeof makeState>) => navRows(s).findIndex((r) => r.select === 'evade');
+  const seated = () => { const s = makeState(2); quiet(s); allHazard(s); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = evadeRow(s); return { s, n }; };
+  it('the Navigation rows end with the evade row: EVADE: Confirm while ready', () => {
+    const { s } = seated(); const rows = navRows(s);
+    expect(rows[rows.length - 1]).toEqual({ text: 'EVADE: Confirm', select: 'evade', index: 0, enabled: true });
+  });
+  it('a seated Confirm on the row opens the window [start, start + 60) and the 6 s cooldown after it', () => {
+    const { s } = seated(); const start = s.tick;
+    run(s, 1, () => intents({ confirmPressed: true }, {}));
+    expect([s.run.evadeUntilTick, s.run.evadeReadyTick]).toEqual([start + EVADE_WINDOW * TICK_HZ, start + (EVADE_WINDOW + EVADE_COOLDOWN) * TICK_HZ]);
+    expect(navRows(s)[evadeRow(s)]!).toMatchObject({ text: 'EVADING', enabled: false });
+    run(s, EVADE_WINDOW * TICK_HZ - 1); expect(navRows(s)[evadeRow(s)]!).toMatchObject({ text: `EVADE ${EVADE_COOLDOWN}s`, enabled: false });
+  });
+  it('no start during the cooldown; ready again at evadeReadyTick', () => {
+    const { s } = seated(); run(s, 1, () => intents({ confirmPressed: true }, {}));
+    const until = s.run.evadeUntilTick, ready = s.run.evadeReadyTick;
+    run(s, 100, () => intents({ confirmPressed: true }, {}));
+    expect([s.run.evadeUntilTick, s.run.evadeReadyTick]).toEqual([until, ready]);
+    run(s, ready - s.tick); expect(navRows(s)[evadeRow(s)]!).toMatchObject({ text: 'EVADE: Confirm', enabled: true });
+    const t = s.tick; run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.evadeUntilTick).toBe(t + EVADE_WINDOW * TICK_HZ);
+  });
+  it('an offline Navigation cannot start one; a standing player cannot either', () => {
+    const { s, n } = seated(); s.stations.level[n] = 0;
+    expect(navRows(s)[evadeRow(s)]!.enabled).toBe(false);
+    run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.evadeUntilTick).toBe(-1);
+    const u = makeState(2); quiet(u); run(u, 5, () => intents({ confirmPressed: true }, { confirmPressed: true })); expect(u.run.evadeUntilTick).toBe(-1);
+  });
+  it('the captain bot never starts one', () => {
+    const s = makeState(2, 3); quiet(s); chargeJump(s);
+    for (let t = 0; t < 120 * TICK_HZ && !s.ended; t++) step(s, [botIntent(s, 0), botIntent(s, 1)]);
+    expect(s.run.evadeUntilTick).toBe(-1);
   });
 });

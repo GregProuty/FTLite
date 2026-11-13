@@ -11,7 +11,7 @@ import { nextTarget } from './debrisTargets';
 import { failStation } from './power';
 import { quirkDebrisHullOffset, quirkLeadOffset } from './quirks';
 import { Skill, addXp } from './skills';
-import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE, ENEMY_AIM_CHANCE, ENEMY_SHOT_SYSTEM_CHANCE, ENEMY_SHOT_CREW_DAMAGE, SHOT_BREACH_FIRST, FIELD_FLIGHT, FIELD_FLIGHT_JITTER, FIELD_ROCK_HULL, FIELD_ROCK_CREW, ROCK_BREACH_FIRST } from './tuning';
+import { XP_PER_EVADE_ROLL, TICK_HZ, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, SCIENCE_LEAD_BASE, SCIENCE_LEAD_SCALE, EVADE_BASE, EVADE_SCALE, EVADE_CAP, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, ENEMY_SHOT_HULL_DAMAGE, ENEMY_AIM_CHANCE, ENEMY_SHOT_SYSTEM_CHANCE, ENEMY_SHOT_CREW_DAMAGE, SHOT_BREACH_FIRST, FIELD_FLIGHT, FIELD_FLIGHT_JITTER, FIELD_ROCK_HULL, FIELD_ROCK_CREW, ROCK_BREACH_FIRST } from './tuning';
 
 export function activeDebrisCount(state: SimState): number {
   let n = 0; for (const a of state.debris.active) if (a) n++; return n;
@@ -81,13 +81,21 @@ export function evades(u: number, output: number): boolean {
   return u < EVADE_BASE + EVADE_SCALE * output;   // tests probe values clear of the float boundary (0.2 + 0.4 x 0.375 is 0.35000000000000003)
 }
 
+/** The evade chance at a Navigation output: today's base + scale x output; during a manoeuvre doubled, then capped at EVADE_CAP (spec Coop-ii amendment D1). */
+export function evadeChance(output: number, timed: boolean): number {
+  const c = EVADE_BASE + EVADE_SCALE * output;
+  return timed ? Math.min(EVADE_CAP, 2 * c) : c;
+}
+
 function resolveImpact(state: SimState, slot: number): void {
   const d = state.derived, db = state.debris, room = db.room[slot]!;
   const nav = d.stationOfKind[StationKind.Navigation]!;
   if (nav >= 0 && stationOnline(state, nav) && state.stations.occupant[nav]! >= 0) {
     const output = stationOutput(state, nav);                                            // read before the award: the XP a roll earns must not improve that same roll
-    const evaded = evades(nextFloat(state.rng.combat), output);
+    const timed = state.tick < state.run.evadeUntilTick;                               // the manoeuvre covers ticks [start, start + EVADE_WINDOW x 60) (amendment D2)
+    const u = nextFloat(state.rng.combat), evaded = timed ? u < evadeChance(output, true) : evades(u, output);   // the same single draw either way
     state.telemetry.evadeRolls++;
+    if (timed) { state.telemetry.timedRolls++; if (evaded) state.telemetry.timedEvades++; }
     addXp(state, state.stations.occupant[nav]!, Skill.Navigation, XP_PER_EVADE_ROLL);   // the roll itself is the productive act, evaded or not
     if (evaded) { state.telemetry.evasions++; removeDebris(state, slot); return; }
   }

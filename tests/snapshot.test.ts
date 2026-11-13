@@ -50,10 +50,10 @@ describe('snapshot', () => {
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, layoutHash: 'deadbeef' } })).toThrow(/layout/);
     expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, formatVersion: 99 } })).toThrow(/format/);
   });
-  it('rejects a version-21 snapshot, by header and by the flattened SIM_VERSION', () => {
+  it('rejects a version-22 snapshot, by header and by the flattened SIM_VERSION', () => {
     const snap = saveSnapshot(makeState(2));
-    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 21 } })).toThrow(/sim version/);
-    const values = [...snap.values]; values[0] = 21;
+    expect(() => loadSnapshot(LAYOUT, { ...snap, header: { ...snap.header, simVersion: 22 } })).toThrow(/sim version/);
+    const values = [...snap.values]; values[0] = 22;
     expect(() => loadSnapshot(LAYOUT, { ...snap, values })).toThrow(/sim version/);
   });
   it('round-trips airlocks.open and a HeldOpen door on the cutter; one airlock alone changes the hash (spec Demo-vii section 1)', () => {
@@ -495,5 +495,15 @@ describe('snapshot: teamSeconds (spec Coop-i section 2)', () => {
     const h = hashState(s); s.telemetry.teamSeconds += 1 / 60; expect(hashState(s)).not.toBe(h);
     s.telemetry.revives = 2; const u = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s)))); expect(u.telemetry.revives).toBe(2);
     const h2 = hashState(s); s.telemetry.revives++; expect(hashState(s)).not.toBe(h2);
+  });
+});
+
+describe('snapshot: the evasive manoeuvre (spec Coop-ii section 1)', () => {
+  it('round-trips evadeUntilTick, evadeReadyTick, timedRolls and timedEvades; each alone changes the hash', () => {
+    const s = makeState(2, 5); run(s, 30); s.run.evadeUntilTick = 91; s.run.evadeReadyTick = 451; s.telemetry.timedRolls = 4; s.telemetry.timedEvades = 2;
+    const snap = JSON.parse(JSON.stringify(saveSnapshot(s))), t = loadSnapshot(LAYOUT, snap);
+    expect([t.run.evadeUntilTick, t.run.evadeReadyTick, t.telemetry.timedRolls, t.telemetry.timedEvades]).toEqual([91, 451, 4, 2]);
+    expect(hashState(t)).toBe(hashState(s));
+    for (const poke of [() => { s.run.evadeUntilTick++; }, () => { s.run.evadeReadyTick++; }, () => { s.telemetry.timedRolls++; }, () => { s.telemetry.timedEvades++; }]) { const h = hashState(s); poke(); expect(hashState(s)).not.toBe(h); }
   });
 });

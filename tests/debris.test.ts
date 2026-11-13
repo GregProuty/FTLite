@@ -12,6 +12,7 @@ import { EndReason } from '../src/renderer/src/sim/crew';
 import { DEBRIS_SLOTS, DEBRIS_FLIGHT, DEBRIS_FLIGHT_JITTER, SCIENCE_LEAD_UNMANNED, DEBRIS_HULL_DAMAGE, DEBRIS_CREW_DAMAGE, TICK_HZ, TORP_START, FIELD_ROCK_HULL, FIELD_ROCK_CREW, ROCK_BREACH_FIRST } from '../src/renderer/src/sim/tuning';
 import { makeState, placeDebris, placeShot, room, run, teleport, seconds, intents } from './helpers/sim';
 import { createRng, nextFloat } from '../src/shared/rng';
+import { EVADE_CAP } from '../src/renderer/src/sim/tuning';
 
 describe('debris slots and target order', () => {
   it('a fresh state has empty slots, no impacts and no charge', () => {
@@ -322,5 +323,37 @@ describe('field rocks (spec Demo-viii amendment A1)', () => {
     const k = placeDebris(s, A, 0, 1); s.debris.kind[k] = ObjectKind.Rock;
     expect(isTarget(s, k)).toBe(true);
     debrisSystem(s); expect(Health.cur[eid]).toBe(100 - FIELD_ROCK_CREW);
+  });
+});
+
+describe('the evasive manoeuvre at the impact (spec Coop-ii amendments D1-D3)', () => {
+  /** A combat stream state whose first draw falls in [lo, hi). */
+  const stateFor = (lo: number, hi: number): number => { for (let k = 1; ; k++) { const r = { s: k }; const u = nextFloat(r); if (u >= lo && u < hi) return k; } };
+  const setup = (level: number, inWindow: boolean, u: [number, number]) => {
+    const s = makeState(1), A = room(s, 'A'), n = nav(s); sitDown(s, 0, n); s.stations.level[n] = level;
+    s.run.evadeUntilTick = inWindow ? s.tick + 1 : s.tick;   // the window covers ticks < evadeUntilTick
+    s.rng.combat.s = stateFor(u[0], u[1]); const ref = { s: s.rng.combat.s }; nextFloat(ref);
+    placeDebris(s, A, 0); debrisSystem(s);
+    return { s, ref };
+  };
+  it('inside the window the chance doubles (level 1: 0.35 -> 0.70), with the same single draw', () => {
+    const { s, ref } = setup(1, true, [0.40, 0.65]);
+    expect([s.hull, s.telemetry.evadeRolls, s.telemetry.evasions, s.telemetry.timedRolls, s.telemetry.timedEvades]).toEqual([100, 1, 1, 1, 1]);
+    expect(s.rng.combat.s).toBe(ref.s);
+  });
+  it('outside the window the same draw is today\'s chance', () => {
+    const { s, ref } = setup(1, false, [0.40, 0.65]);
+    expect([s.hull, s.telemetry.evadeRolls, s.telemetry.evasions, s.telemetry.timedRolls, s.telemetry.timedEvades]).toEqual([100 - DEBRIS_HULL_DAMAGE, 1, 0, 0, 0]);
+    expect(s.rng.combat.s).toBe(ref.s);
+  });
+  it('the cap applies after doubling (level 2: 0.50 -> 1.00, capped at 0.80); a timed roll that fails counts only as a roll', () => {
+    const won = setup(2, true, [0.6, 0.79]).s; expect([won.hull, won.telemetry.timedRolls, won.telemetry.timedEvades]).toEqual([100, 1, 1]);
+    const lost = setup(2, true, [0.81, 1]).s; expect([lost.hull, lost.telemetry.timedRolls, lost.telemetry.timedEvades]).toEqual([100 - DEBRIS_HULL_DAMAGE, 1, 0]);
+    expect(EVADE_CAP).toBe(0.8);
+  });
+  it('the window needs Navigation seated and online at the impact, as today: no roll, no timed roll', () => {
+    const s = makeState(1), A = room(s, 'A'); s.run.evadeUntilTick = s.tick + 60; const c = s.rng.combat.s;
+    placeDebris(s, A, 0); debrisSystem(s);
+    expect([s.rng.combat.s, s.telemetry.timedRolls]).toEqual([c, 0]);
   });
 });

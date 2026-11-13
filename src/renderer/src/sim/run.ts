@@ -10,13 +10,14 @@ import { EndReason } from './crew';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField } from './tuning';
+import { TICK_HZ, DT, RUN_COLUMNS, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN } from './tuning';
+import { stationOnline } from './stations';
 import { quirkChargeMult } from './quirks';
 
 /** Longest Navigation panel text: the console panel is 234 px wide, row text starts at x=20 and the bitmap font averages about 5.5 px per glyph, so 36 glyphs fit. */
 export const NAV_TEXT_MAX = 36;
 export const NodeType = { Hazard: 0, Event: 1, Shop: 2, Asteroid: 3 } as const;
-export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump'; index: number; enabled: boolean }
+export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump' | 'evade'; index: number; enabled: boolean }
 
 /** Node types (spec Run-ii section 3, Demo-viii section 1): one draw per middle node after every edge draw; a shop is guaranteed without a draw. */
 export function assignNodeTypes(rng: RngState, colNodes: Uint8Array, nodeType: Uint8Array, draw: (rng: RngState) => number = nextFloat): void {
@@ -71,13 +72,32 @@ function arrive(state: SimState): void {
   if (r.nodeType[r.column * 3 + r.node] === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
 }
 
-/** The Navigation list (spec Run-ii section 6): a pending event, else a shop's items then the destinations, else the destinations. */
+/** Whether a manoeuvre can start now: Navigation present and online, past the cooldown (spec Coop-ii amendment D2; the seat is the caller's check). */
+export function evadeReady(state: SimState): boolean {
+  const nav = state.derived.stationOfKind[StationKind.Navigation]!;
+  return nav >= 0 && stationOnline(state, nav) && state.tick >= state.run.evadeReadyTick;
+}
+/** The evade row (spec Coop-ii section 1): EVADE: Confirm when ready, EVADING during the manoeuvre, EVADE Ns on the cooldown (whole seconds, rounded up). */
+export function evadeRow(state: SimState): NavRow {
+  const r = state.run, t = state.tick;
+  const text = t < r.evadeUntilTick ? 'EVADING' : t < r.evadeReadyTick ? `EVADE ${Math.ceil((r.evadeReadyTick - t) / TICK_HZ)}s` : 'EVADE: Confirm';
+  return { text, select: 'evade', index: 0, enabled: evadeReady(state) };
+}
+/** Start a manoeuvre from this tick: EVADE_WINDOW seconds of manoeuvre, then EVADE_COOLDOWN seconds (spec Coop-ii section 1). False when not ready. */
+export function startEvade(state: SimState): boolean {
+  if (!evadeReady(state)) return false;
+  state.run.evadeUntilTick = state.tick + EVADE_WINDOW * TICK_HZ; state.run.evadeReadyTick = state.run.evadeUntilTick + EVADE_COOLDOWN * TICK_HZ;
+  return true;
+}
+
+/** The Navigation list (spec Run-ii section 6): a pending event, else a shop's items then the destinations, else the destinations; the evade row always last (spec Coop-ii section 1). */
 export function navRows(state: SimState): NavRow[] {
   const r = state.run, rows: NavRow[] = [];
   if (r.event >= 0 && r.eventChoice < 0) {
     const ev = EVENTS[r.event]!;
     rows.push({ text: ev.title, select: 'none', index: 0, enabled: false }, { text: ev.text, select: 'none', index: 0, enabled: false });
     for (let k = 0; k < 2; k++) rows.push({ text: ev.choices[k]!, select: 'choice', index: k, enabled: choiceEnabled(state, r.event, k) });
+    rows.push(evadeRow(state));
     return rows;
   }
   if (r.nodeType[r.column * 3 + r.node] === NodeType.Shop) {
@@ -85,6 +105,7 @@ export function navRows(state: SimState): NavRow[] {
     for (let i = 0; i < SHOP_ITEM_COUNT; i++) rows.push({ text: itemLabel(state, i), select: 'buy', index: i, enabled: itemEnabled(state, i) });
   }
   for (const d of reachable(state)) rows.push({ text: destinationLabel(state, r.column + 1, d), select: 'jump', index: d, enabled: true });
+  rows.push(evadeRow(state));
   return rows;
 }
 
@@ -108,6 +129,7 @@ export function navigationInput(state: SimState, i: number, dir: number, confirm
   if (row.select === 'choice' && row.enabled) { resolveEvent(state, row.index); clampNavCursor(state); }
   else if (row.select === 'buy' && row.enabled) { buy(state, row.index); clampNavCursor(state); }
   else if (row.select === 'jump' && state.run.jumpCharge >= 1) jumpShip(state, row.index);
+  else if (row.select === 'evade') startEvade(state);
 }
 
 /** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. A Hazard node short of the last column is an encounter with contact in ENCOUNTER_START seconds; an Asteroid node a field starting then (spec Demo-viii section 1); Event and Shop nodes are quiet (spec Demo-vi section 2). */

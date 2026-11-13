@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 22;
+export const SIM_VERSION = 23;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -197,3 +197,6 @@ export const LOCK_HIT_BONUS = 0.15;   // added to the beam hit threshold under a
 export const TEAM_MULT = 1.25;        // each holder's rate when two or more hold Interact on one target
 
 export const HIT_FLASH_TICKS = 12;   // ticks the HUD enemy silhouette flashes after our last hit (spec Demo-ii section 4); read only by the HUD model, not hashed
+export const EVADE_WINDOW = 1.0;     // seconds of an evasive manoeuvre: impacts inside it roll twice the evade chance (spec Coop-ii section 1)
+export const EVADE_COOLDOWN = 6;     // seconds after the manoeuvre before Navigation can start another
+export const EVADE_CAP = 0.8;        // the doubled chance is capped here (amendment D1)
