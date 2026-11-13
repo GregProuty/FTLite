@@ -71,3 +71,15 @@ Boarders in a fight (only the figures were checked), buying an upgrade, a sector
 2. P1 and P2 (start beacon, fire burns systems), then re-record the gates.
 3. R1 to R5 (visible consoles, copy).
 4. P3 combat tempo, then a second Claude playtest of a whole run, then the human playtest.
+
+## Addendum: the first fight after Demo-xi to Demo-xiii (master 3b34282)
+
+Played the first fight on the Skiff through the real keys (P1 on the Weapons tab firing the Pulse on F1 every charge, P2 seated at Science, scanning once).
+
+- **Better:** both seated players jumped at once; the enemy now hurts (100 -> 80 hull in a minute, a fire in Engines and a Corridor breach); the Pulse charges in 8 s.
+- **T1. A lone Pulse on the wrong frequency never damages the hull.** Seven hits in 60 s, enemy hull 110 -> 110: each hit strips the single shield layer, which recharges in 6 s, before the next 8 s shot. That is the intended co-op hook (Science finds the frequency, Weapons matches it), but the gunner is never told.
+- **T2. The Weapons card does not show the frequency Science found.** It is on the Science card (`freq 2`, `LOCK: Confirm`) and as `F2 1s` in the enemy window's corner; the gunner's own card shows only `Pulse F1 F2 F3 Torp`.
+- **T3. No reason on a hit that does nothing.** The shot counts as a hit; nothing says "shield absorbed it, wrong frequency".
+- **T4. Two notations:** `freq 2` on Science, `F2` on Weapons, the enemy window and the threats panel.
+
+Proposed fix (small, render-only where possible): the Weapons card shows `Enemy freq 2` once scanned and marks the matching selector; each shot leaves a one-line result on the Weapons card and over the enemy window (`Shield stripped: F1 is not freq 2`, `Hit: Shields room -15`); one notation everywhere (`freq 2`).
