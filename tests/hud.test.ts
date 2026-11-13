@@ -469,7 +469,7 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
     'Stand by a console, press Confirm to sit. Up/Down pick a row, Confirm acts, Cancel stands',
     'Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar',
     'Navigation jumps when the drive reads READY. Events and shops are chosen there',
-    'Jump before the ship falls apart. Reach node 8 to win',
+    'Cross three sectors, then destroy the Warden',
     'Callout: R / Slash / Y shows what you need over your head',
   'Science locks the frequency, Weapons fires. Two on one job are faster',
   'Helm: evade as a hit lands. Torpedoes are carried from the hold',
