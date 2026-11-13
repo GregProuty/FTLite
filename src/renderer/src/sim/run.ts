@@ -29,11 +29,11 @@ export const beaconAt = (index: number): Beacon => ({ column: Math.floor(index /
 export const EXIT_JUMP = SECTOR_COLUMNS * NODE_STRIDE;
 export interface NavRow { text: string; select: 'none' | 'choice' | 'buy' | 'jump' | 'sector' | 'wait' | 'evade'; index: number; enabled: boolean; blue?: boolean }   // blue: an event choice with a station or crew skill requirement (spec Loop-v section 1)
 
-/** Node types (spec Run-ii section 3, Demo-viii section 1, Loop-i section 4): one draw per middle node after every edge draw (Shop, Event, Asteroid, Empty, else Hazard); a shop is guaranteed without a draw. */
+/** Node types (spec Run-ii section 3, Demo-viii section 1, Loop-i section 4, Demo-x-b section 2): column 1 is all Hazard without a draw (the first jump of a sector meets a ship); one draw per node of the later middle columns after every edge draw (Shop, Event, Asteroid, Empty, else Hazard), an Empty draw in column 2 a Hazard; a shop is guaranteed without a draw. */
 export function assignNodeTypes(rng: RngState, colNodes: Uint8Array, nodeType: Uint8Array, draw: (rng: RngState) => number = nextFloat): void {
   const cut = (x: number): number => Math.round(x * 1e9) / 1e9;   // cumulative thresholds without float drift (0.15 + 0.25 + 0.15 + 0.15 is 0.7000000000000001)
   const columns = colNodes.length, e = cut(SHOP_CHANCE + EVENT_CHANCE), a = cut(e + ASTEROID_CHANCE), m = cut(a + EMPTY_CHANCE); nodeType.fill(NodeType.Hazard);
-  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = draw(rng); nodeType[beaconIndex(c, n)] = u < SHOP_CHANCE ? NodeType.Shop : u < e ? NodeType.Event : u < a ? NodeType.Asteroid : u < m ? NodeType.Empty : NodeType.Hazard; }
+  for (let c = 2; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = draw(rng); nodeType[beaconIndex(c, n)] = u < SHOP_CHANCE ? NodeType.Shop : u < e ? NodeType.Event : u < a ? NodeType.Asteroid : u < m && c > 2 ? NodeType.Empty : NodeType.Hazard; }
   for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[beaconIndex(c, n)] === NodeType.Shop) return;
   nodeType[beaconIndex(Math.floor(columns / 2), 0)] = NodeType.Shop;
 }
@@ -110,6 +110,11 @@ function arrive(state: SimState): void {
   r.shopWeapon = contentOf(state) === NodeType.Shop ? 1 + nextInt(state.rng.loot, LOOT_WEAPON_TYPES) : 0;   // a shop's offered weapon, one loot draw (spec Loop-iii section 3)
 }
 
+/** The Navigation station is present but failed or unpowered: no jump can be made (spec Demo-x-b section 2). */
+export function helmOffline(state: SimState): boolean { const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && !stationOnline(state, nav); }
+/** A jump row's text while the helm is offline (spec Demo-x-b section 2). */
+export const HELM_OFFLINE_ROW = 'Helm offline';
+
 /** Whether a manoeuvre can start now: Navigation present and online, past the cooldown (spec Coop-ii amendment D2; the seat is the caller's check). */
 export function evadeReady(state: SimState): boolean {
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;
@@ -130,7 +135,7 @@ export function startEvade(state: SimState): boolean {
 
 /** The Navigation list (spec Run-ii section 6, Loop-i section 2): a pending event, else a shop's items then the way on: Wait for help with no fuel (or the wait's countdown), the exit's sector row at the exit, else the destinations; the evade row always last (spec Coop-ii section 1). */
 export function navRows(state: SimState): NavRow[] {
-  const r = state.run, rows: NavRow[] = [];
+  const r = state.run, rows: NavRow[] = [], helm = helmOffline(state);
   if (r.event >= 0 && r.eventChoice < 0) {
     const ev = EVENT_DEFS[r.event]!;   // the title, one or two text rows, two or three choices (spec Loop-v section 1)
     rows.push({ text: ev.title, select: 'none', index: 0, enabled: false });
@@ -147,8 +152,8 @@ export function navRows(state: SimState): NavRow[] {
   if (r.finalBeacon) { rows.push(evadeRow(state)); return rows; }   // no way on from the final beacon (spec Loop-iv section 1)
   if (r.waitUntilTick >= 0) rows.push({ text: `Waiting for help  ${Math.max(0, Math.ceil((r.waitUntilTick - state.tick) / TICK_HZ))}s`, select: 'wait', index: 0, enabled: false });
   else if (r.fuel < 1) rows.push({ text: 'Wait for help', select: 'wait', index: 0, enabled: true });
-  else if (atExit(state)) rows.push({ text: exitText(state), select: 'sector', index: EXIT_JUMP, enabled: true });
-  else for (const d of reachable(state)) rows.push({ text: destinationLabel(state, d.column, d.node), select: 'jump', index: beaconIndex(d.column, d.node), enabled: true });
+  else if (atExit(state)) rows.push(helm ? { text: HELM_OFFLINE_ROW, select: 'sector', index: EXIT_JUMP, enabled: false } : { text: exitText(state), select: 'sector', index: EXIT_JUMP, enabled: true });
+  else for (const d of reachable(state)) rows.push(helm ? { text: HELM_OFFLINE_ROW, select: 'jump', index: beaconIndex(d.column, d.node), enabled: false } : { text: destinationLabel(state, d.column, d.node), select: 'jump', index: beaconIndex(d.column, d.node), enabled: true });
   rows.push(evadeRow(state));
   return rows;
 }

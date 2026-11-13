@@ -177,7 +177,7 @@ export const JUMP_CHARGE_TIME = 60;                                             
 export const BOARDING_AFTER_JUMP = 120;                                             // seconds after a jump before a party can arrive (no draw); the enemy follows the node type (ENCOUNTER_START, spec Demo-vi section 2)
 
 // Events and shops (Run-ii)
-export const SHOP_CHANCE = 0.15, EVENT_CHANCE = 0.25, ASTEROID_CHANCE = 0.15, EMPTY_CHANCE = 0.15;   // node type draw thresholds (map stream, after the edges), else Hazard (0.30) (spec Loop-i section 4: Shop 0.25 -> 0.15, Empty new)
+export const SHOP_CHANCE = 0.15, EVENT_CHANCE = 0.25, ASTEROID_CHANCE = 0.15, EMPTY_CHANCE = 0.05;   // node type draw thresholds (map stream, after the edges), else Hazard (0.40) (spec Loop-i section 4: Shop 0.25 -> 0.15, Empty new; Demo-x-b section 2: Empty 0.15 -> 0.05; column 1 is all Hazard without a draw, column 2 has no Empty)
 /** Asteroid fields (spec Demo-viii section 1): seconds between field rocks (one hazards draw per re-arm, +/- jitter), the rock flight, how long the field spawns, the extra seconds before it clears (every rock has landed), the reward. */
 export const FIELD_INTERVAL = 6, FIELD_JITTER = 0.2, FIELD_FLIGHT = 10, FIELD_FLIGHT_JITTER = 2, FIELD_SECONDS = 60, FIELD_CLEAR_EXTRA = 12;   // FIELD_INTERVAL 4 -> 6 (amendment A2)
 /** A field rock hits weaker than debris (spec Demo-viii amendment A1: 15 rocks x 8 hull sank the duo gate's ship): hull, and half the debris crew damage. */

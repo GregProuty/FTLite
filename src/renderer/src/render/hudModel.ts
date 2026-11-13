@@ -6,7 +6,7 @@ import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
 import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX, WEAPON_SLOTS, SLOT_LEVELS } from '../sim/tuning';
-import { navRows, overrun, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf, EXIT_JUMP, exitText } from '../sim/run';
+import { navRows, helmOffline, overrun, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf, EXIT_JUMP, exitText } from '../sim/run';
 import { depthOf, peaceful } from '../sim/depth';
 import { EVENTS, EVENT_DEFS, noticeChoices } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
@@ -240,7 +240,15 @@ function lootLine(state: SimState): string | null {
   if (w.lootBought) return `Bought: ${d.name}`;
   return `Found: ${d.name} (${w.lootPlace === LootPlace.Cargo ? 'cargo' : `slot ${w.lootPlace + 1}`})`;
 }
+/** The helm-offline line (spec Demo-x-b section 2): first while the Navigation station is failed or unpowered. */
+export const HELM_NOTICE = 'HELM OFFLINE: repair Navigation to jump';
+/** The centre notice: the helm-offline line over the first line of the ordinary notice while Navigation is down (spec Demo-x-b section 2), else the ordinary notice. */
 export function runNotice(state: SimState): string[] {
+  if (!helmOffline(state)) return baseNotice(state);
+  const rest = baseNotice(state);
+  return rest.length ? [HELM_NOTICE, rest[0]!] : [HELM_NOTICE];
+}
+function baseNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
   if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!, left = r.eventOpenTick < 0 ? VOTE_SECONDS : Math.max(0, Math.ceil((r.eventOpenTick + VOTE_SECONDS * TICK_HZ - state.tick) / TICK_HZ)); return [`EVENT: ${ev.title}   vote ${left}s`, noticeChoices(state, r.event)]; }
@@ -260,7 +268,7 @@ export function runNotice(state: SimState): string[] {
 }
 /** The ready drive's line: someone take Navigation, or just JUMP READY when seated; nothing before it is ready. */
 function readyLine(state: SimState): string[] {
-  if (state.run.jumpCharge < 1) return [];
+  if (state.run.jumpCharge < 1 || helmOffline(state)) return [];   // no ready line while the helm is offline (spec Demo-x-b section 2)
   const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation'];
 }
 
@@ -349,6 +357,7 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   });
   const threats: HudThreat[] = [];
   if (state) {
+    if (helmOffline(state)) threats.push({ icon: 'icon.power', text: 'Helm offline' });   // first (spec Demo-x-b section 2)
     if (state.enemy.present) { const e = state.enemy; threats.push({ icon: 'icon.weapons', text: `Enemy ${Math.round(e.hull / e.maxHull * 100)}%${e.sysHp[EnemySystem.Shields]! > 0 ? ` shields ${e.shieldLayers}/${enemyShieldCap(state)}` : ''}${ENEMY_SYSTEM_NAMES.map((name, sys) => (e.sysHp[sys] === 0 ? ` ${name} DOWN` : '')).join('')}${e.fleeing ? ' FLEEING' : ''}` }); }
     for (let r = 0; r < state.layout.rooms.length; r++) { const n = boardersInRoom(state, r).length; if (n) threats.push({ icon: 'icon.sensors', text: `Boarders: ${state.layout.rooms[r]!.name} x${n}` }); }
     for (let r = 0; r < state.rooms.fire.length; r++) if (state.rooms.fire[r]! > 0) threats.push({ icon: 'icon.fire', text: `Fire: ${state.layout.rooms[r]!.name}` });

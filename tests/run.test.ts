@@ -40,7 +40,7 @@ function replayMap(rng: { s: number }) {
     for (let d = 0; d < next; d++) { let incoming = false; for (let n = 0; n < colNodes[c]!; n++) if (edgeMask[c * S + n]! & (1 << d)) incoming = true; if (!incoming) { const n = nextInt(rng, colNodes[c]!); edgeMask[c * S + n] = edgeMask[c * S + n]! | (1 << d); } }
   }
   const nodeType = new Uint8Array(columns * S);
-  for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * S + n] = u < 0.15 ? 2 : u < 0.40 ? 1 : u < 0.55 ? 3 : u < 0.70 ? 4 : 0; }
+  for (let c = 2; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) { const u = nextFloat(rng); nodeType[c * S + n] = u < 0.15 ? 2 : u < 0.40 ? 1 : u < 0.55 ? 3 : u < 0.60 && c > 2 ? 4 : 0; }   // column 1 all Hazard without a draw, no Empty in column 2 (spec Demo-x-b section 2)
   let shop = false; for (let c = 1; c < columns - 1; c++) for (let n = 0; n < colNodes[c]!; n++) if (nodeType[c * S + n] === 2) shop = true;
   if (!shop) nodeType[Math.floor(columns / 2) * S] = 2;
   return { colNodes, edgeMask, nodeType };
@@ -78,20 +78,9 @@ describe('run: the sector map (spec Loop-i sections 1 and 4)', () => {
     const t = new Uint8Array(SECTOR_COLUMNS * NODE_STRIDE); assignNodeTypes(createRng(1), makeState(2, 1).run.colNodes, t, () => 0.99);
     for (let k = 0; k < t.length; k++) expect(t[k]).toBe(k === 3 * NODE_STRIDE ? NodeType.Shop : NodeType.Hazard);
     const all = makeState(2, 1); assignNodeTypes(createRng(1), all.run.colNodes, t, () => 0.1);
-    for (let c = 1; c < SECTOR_COLUMNS - 1; c++) for (let n = 0; n < all.run.colNodes[c]!; n++) expect(t[c * NODE_STRIDE + n]).toBe(NodeType.Shop);
+    for (let c = 1; c < SECTOR_COLUMNS - 1; c++) for (let n = 0; n < all.run.colNodes[c]!; n++) expect(t[c * NODE_STRIDE + n]).toBe(c === 1 ? NodeType.Hazard : NodeType.Shop);   // column 1 is all Hazard (spec Demo-x-b section 2)
   });
-  it('node type thresholds: Shop below 0.15, Event below 0.40, Asteroid below 0.55, Empty below 0.70, else Hazard; one draw per middle node', () => {
-    expect([SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, NodeType.Empty]).toEqual([0.15, 0.25, 0.15, 0.15, 4]);
-    const cn = makeState(2, 1).run.colNodes, middle = Array.from(cn).slice(1, -1).reduce((a, b) => a + b, 0);
-    for (const [u, want] of [[0.14, NodeType.Shop], [0.15, NodeType.Event], [0.39, NodeType.Event], [0.4, NodeType.Asteroid], [0.54, NodeType.Asteroid], [0.55, NodeType.Empty], [0.69, NodeType.Empty], [0.7, NodeType.Hazard], [0.99, NodeType.Hazard]] as const) {
-      const t = new Uint8Array(SECTOR_COLUMNS * NODE_STRIDE); let draws = 0;
-      assignNodeTypes(createRng(1), cn, t, () => { draws++; return draws === 1 ? 0.1 : u; });   // the first node a shop, so no fallback
-      expect(draws).toBe(middle);
-      expect(t[1 * NODE_STRIDE + 0]).toBe(NodeType.Shop);
-      for (let c = 2; c < SECTOR_COLUMNS - 1; c++) for (let n = 0; n < cn[c]!; n++) expect(t[c * NODE_STRIDE + n]).toBe(want);
-      for (let n = 1; n < cn[1]!; n++) expect(t[1 * NODE_STRIDE + n]).toBe(want);
-    }
-  });
+  // the node type thresholds: tests/pacing.test.ts (spec Demo-x-b section 2)
   it('the map stream ends where the replay ends for seeds 1-3 (draws only from the given stream, in the fixed order)', () => {
     for (const seed of [1, 2, 3]) { const r = deriveStreams(seed).map, g = generateMap(r), ref = deriveStreams(seed).map, e = replayMap(ref); expect(Array.from(g.colNodes)).toEqual(Array.from(e.colNodes)); expect(Array.from(g.edgeMask)).toEqual(Array.from(e.edgeMask)); expect(r.s).toBe(ref.s); }
   });
