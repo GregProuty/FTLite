@@ -1,3 +1,5 @@
+import { weaponDef } from '../sim/weaponDefs';
+import { LootPlace } from '../sim/weapons';
 import { ICON_KINDS, stationTint, type IconKind, type IconTint } from './roomIconModel';
 import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
@@ -207,22 +209,32 @@ export const LOBBY_LINES: readonly string[] = [
 ];
 
 /** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b, Demo-vi section 2, Loop-ii section 2): a pending jump, a pending event, a purchase for 3 s, the encounter (won, over, contact), a surrender offer, a shop node, then the ready drive. */
-export const DROP_NOTICE_SECONDS = 4, PURCHASE_NOTICE_SECONDS = 3;
+export const DROP_NOTICE_SECONDS = 4, PURCHASE_NOTICE_SECONDS = 3, LOOT_NOTICE_SECONDS = 4;
+/** The last weapon found, bought or sold for LOOT_NOTICE_SECONDS (spec Loop-iii section 4), else null. */
+function lootLine(state: SimState): string | null {
+  const w = state.weapons;
+  if (w.lootTick < 0 || state.tick - w.lootTick >= LOOT_NOTICE_SECONDS * TICK_HZ) return null;
+  const d = weaponDef(w.lootId);
+  if (w.lootPlace === LootPlace.Sold) return `Cargo full: sold for ${Math.floor(d.price / 2)}`;
+  if (w.lootBought) return `Bought: ${d.name}`;
+  return `Found: ${d.name} (${w.lootPlace === LootPlace.Cargo ? 'cargo' : `slot ${w.lootPlace + 1}`})`;
+}
 export function runNotice(state: SimState): string[] {
   const r = state.run, e = state.enemy;
   if (r.jumpPending >= 0) return [`${r.jumpPending === EXIT_JUMP ? exitText(state) : `Jump to ${nodeLabel(beaconAt(r.jumpPending).column, beaconAt(r.jumpPending).node)}`}? (1/2)`, `Anyone standing: press Confirm to agree   ${Math.max(0, Math.ceil((r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ - state.tick) / TICK_HZ))}s`];   // spec Coop-ii section 3
   if (r.event >= 0 && r.eventChoice < 0) { const ev = EVENTS[r.event]!, left = r.eventOpenTick < 0 ? VOTE_SECONDS : Math.max(0, Math.ceil((r.eventOpenTick + VOTE_SECONDS * TICK_HZ - state.tick) / TICK_HZ)); return [`EVENT: ${ev.title}   vote ${left}s`, `${ev.choices[0]}  /  ${ev.choices[1]}`]; }
   if (r.boughtTick >= 0 && state.tick - r.boughtTick < PURCHASE_NOTICE_SECONDS * TICK_HZ) return [r.boughtKind === REACTOR_ROW ? `Reactor +1 (${state.power.capacity} bars)` : `${STATION_NAMES[r.boughtKind]} upgraded to ${baseMax(state, r.boughtKind)}`];   // a purchase at the Engineering console (spec Loop-ii section 2)
-  const window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
+  const loot = lootLine(state), window = ENCOUNTER_NOTICE_SECONDS * TICK_HZ;   // the encounter rule (spec Demo-vi section 2): the win or the end for 8 s, the contact warning 8 s ahead
   const field = contentOf(state) === NodeType.Asteroid;   // spec Demo-viii section 1: the field's own lines
-  if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return field ? [`FIELD CLEARED   +${scrapField(depthOf(state))} scrap`, 'Drive charging fast'] : [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, 'Drive charging fast'];
+  if (r.encounter === Encounter.Won && state.tick - r.encounterTick < window) return field ? [`FIELD CLEARED   +${scrapField(depthOf(state))} scrap`, 'Drive charging fast'] : [`ENEMY DEFEATED   +${ENCOUNTER_REWARD_HULL} hull`, loot ?? 'Drive charging fast'];   // a kill's drop replaces the second line (spec Loop-iii section 4)
+  if (loot) return [loot];
   if (r.encounter === Encounter.Over && state.tick - r.encounterTick < window) return field ? [] : ['Enemy gone'];   // a field is only left by a jump, which re-arms the encounter at once (amendment A3)
   if (r.encounter === Encounter.Pending && field && r.encounterTick + ENCOUNTER_START * TICK_HZ - state.tick <= window) return ['Asteroid field ahead'];
   if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return [r.pursuitFought ? 'The Pursuit has caught up: elite ship approaching' : 'Contact: enemy ship approaching'];   // spec Loop-i section 3
   if (state.weapons.torpedoDropTick >= 0 && state.tick - state.weapons.torpedoDropTick < DROP_NOTICE_SECONDS * TICK_HZ) return ['Torpedo dropped'];
   if (peaceful(state)) return ['Safe here. Jump when ready', ...readyLine(state)];   // a peaceful beacon (spec Loop-i section 4b)   // a carried torpedo lost at the cap (spec Coop-ii amendment D5)
   if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${scrapSurrender(depthOf(state))} scrap`];
-  if (contentOf(state) === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)'];
+  if (contentOf(state) === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, `Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)${r.shopWeapon ? `  ${weaponDef(r.shopWeapon).short} (${weaponDef(r.shopWeapon).price})` : ''}`];
   return readyLine(state);
 }
 /** The ready drive's line: someone take Navigation, or just JUMP READY when seated; nothing before it is ready. */

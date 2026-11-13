@@ -194,3 +194,31 @@ describe('the purchase notice', () => {
     for (const l of lines) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[ -~]+$/.test(l)).toBe(true); }
   });
 });
+
+// ---- Loop-iii: the loot notices (spec Loop-iii section 4) ----
+import { grantWeapon } from '../src/renderer/src/sim/weapons';
+import { LootWeapon } from '../src/renderer/src/sim/weaponDefs';
+import { LOOT_NOTICE_SECONDS } from '../src/renderer/src/render/hudModel';
+import { TICK_HZ } from '../src/renderer/src/sim/tuning';
+
+describe('runNotice: weapons found, bought and sold', () => {
+  it('Found: name (slot n) or (cargo), Bought: name, Cargo full: sold for half; each for LOOT_NOTICE_SECONDS, within the line budget', () => {
+    const s = fresh(); s.tick = 100;
+    grantWeapon(s, LootWeapon.Ion, false); expect(runNotice(s)).toEqual(['Found: Ion Cannon (slot 1)']);
+    grantWeapon(s, LootWeapon.Ion, false); expect(runNotice(s)).toEqual(['Found: Ion Cannon (slot 2)']);
+    grantWeapon(s, LootWeapon.Missile, false); expect(runNotice(s)).toEqual(['Found: Missile Pod (cargo)']);
+    grantWeapon(s, LootWeapon.Heavy, true); expect(runNotice(s)).toEqual(['Cargo full: sold for 35']);
+    const b = fresh(); grantWeapon(b, LootWeapon.Heavy, true); expect(runNotice(b)).toEqual(['Bought: Heavy Laser']);
+    b.tick += LOOT_NOTICE_SECONDS * TICK_HZ - 1; expect(runNotice(b)).toEqual(['Bought: Heavy Laser']); b.tick += 1; expect(runNotice(b)).toEqual([]);
+    for (const line of ['Found: Missile Pod (cargo)', 'Cargo full: sold for 35']) expect(line.length).toBeLessThanOrEqual(NOTICE_LINE_MAX);
+  });
+  it('a drop on the killing shot shows under the win line', () => {
+    const s = fresh(); s.run.encounter = Encounter.Won; s.run.encounterTick = s.tick; grantWeapon(s, LootWeapon.Burst, false);
+    expect(runNotice(s)).toEqual(['ENEMY DEFEATED   +8 hull', 'Found: Burst Laser (slot 1)']);
+  });
+  it('the shop line names the offered weapon and its price', () => {
+    const s = fresh(); shopAt(s); s.run.shopWeapon = LootWeapon.Ion;
+    expect(runNotice(s)).toEqual([SHOP[0], `${SHOP[1]}  Ion (55)`]); expect(runNotice(s)[1]!.length).toBeLessThanOrEqual(NOTICE_LINE_MAX);
+    s.run.shopWeapon = LootWeapon.Missile; expect(runNotice(s)[1]!.length).toBeLessThanOrEqual(NOTICE_LINE_MAX);
+  });
+});

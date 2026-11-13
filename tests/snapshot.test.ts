@@ -551,13 +551,13 @@ describe('snapshot: votes and the jump confirmation (spec Coop-ii section 3)', (
 describe('snapshot: the loot weapons (spec Loop-iii section 5)', () => {
   it('round-trips the extra slots, their charges, the cargo and the ion timers; each alone changes the hash', () => {
     const s = makeState(2, 7); run(s, 20);
-    s.weapons.slot[0] = 1; s.weapons.slot[1] = 3; s.weapons.charge2[0] = 0.25; s.weapons.charge2[1] = 0.5; s.weapons.cargo = 4; s.weapons.selector = 5;
+    s.weapons.slot[0] = 1; s.weapons.slot[1] = 3; s.weapons.charge2[0] = 0.25; s.weapons.charge2[1] = 0.5; s.weapons.cargo = 4; s.weapons.selector = 5; s.run.shopWeapon = 2; s.weapons.lootTick = 15; s.weapons.lootId = 3; s.weapons.lootPlace = 1; s.weapons.lootBought = 1;
     placeEnemy(s); s.enemy.ionUntil[1] = 900;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect(hashState(t)).toBe(hashState(s));
     expect([Array.from(t.weapons.slot), Array.from(t.weapons.charge2), t.weapons.cargo, Array.from(t.enemy.ionUntil)]).toEqual([[1, 3], [0.25, 0.5], 4, [-1, 900, -1]]);
     const base = hashState(makeState(2, 7));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 7); f(u); return hashState(u); };
-    for (const f of [(u: ReturnType<typeof makeState>) => { u.weapons.slot[1] = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.charge2[0] = 0.1; }, (u: ReturnType<typeof makeState>) => { u.weapons.cargo = 1; }, (u: ReturnType<typeof makeState>) => { u.enemy.ionUntil[2] = 5; }]) expect(mutate(f)).not.toBe(base);
+    for (const f of [(u: ReturnType<typeof makeState>) => { u.weapons.slot[1] = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.charge2[0] = 0.1; }, (u: ReturnType<typeof makeState>) => { u.weapons.cargo = 1; }, (u: ReturnType<typeof makeState>) => { u.enemy.ionUntil[2] = 5; }, (u: ReturnType<typeof makeState>) => { u.run.shopWeapon = 3; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootTick = 9; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootId = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootPlace = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootBought = 1; }]) expect(mutate(f)).not.toBe(base);
   });
 });

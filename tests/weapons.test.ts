@@ -431,3 +431,24 @@ describe('loot weapons: debris', () => {
   });
   it('weaponDef reads the table', () => { expect(weaponDef(LootWeapon.Ion).short).toBe('Ion'); });
 });
+
+// ---- Loop-iii: finding weapons (spec Loop-iii section 3) ----
+import { grantWeapon, LootPlace } from '../src/renderer/src/sim/weapons';
+
+describe('grantWeapon: slot, cargo, or sold for half', () => {
+  it('fills the first empty extra slot with a fresh charge, then the cargo, then sells for half its price; each stamps the notice fields', () => {
+    const s = makeState(1); quiet(s); s.tick = 50; s.run.scrap = 0;
+    expect(grantWeapon(s, LootWeapon.Ion, false)).toBe(LootPlace.Slot1); expect([Array.from(s.weapons.slot), s.weapons.cargo]).toEqual([[LootWeapon.Ion, 0], 0]);
+    expect([s.weapons.lootTick, s.weapons.lootId, s.weapons.lootPlace, s.weapons.lootBought]).toEqual([50, LootWeapon.Ion, LootPlace.Slot1, 0]);
+    s.weapons.charge2[1] = 0.7; s.weapons.slot[0] = 0;
+    expect(grantWeapon(s, LootWeapon.Heavy, true)).toBe(LootPlace.Slot1); expect(Array.from(s.weapons.slot)).toEqual([LootWeapon.Heavy, 0]); expect(s.weapons.lootBought).toBe(1);
+    expect(grantWeapon(s, LootWeapon.Burst, false)).toBe(LootPlace.Slot2); expect(Array.from(s.weapons.charge2)).toEqual([0, 0]);
+    expect(grantWeapon(s, LootWeapon.Missile, false)).toBe(LootPlace.Cargo); expect(s.weapons.cargo).toBe(LootWeapon.Missile);
+    expect(grantWeapon(s, LootWeapon.Ion, false)).toBe(LootPlace.Sold); expect([s.run.scrap, s.telemetry.scrapEarned]).toEqual([27, 27]);   // 55 / 2, rounded down
+    expect([Array.from(s.weapons.slot), s.weapons.cargo, s.weapons.lootPlace]).toEqual([[LootWeapon.Heavy, LootWeapon.Burst], LootWeapon.Missile, LootPlace.Sold]);
+    const r0 = JSON.stringify([s.rng.loot.s, s.rng.combat.s]); grantWeapon(s, LootWeapon.Burst, false); expect(JSON.stringify([s.rng.loot.s, s.rng.combat.s])).toBe(r0);   // no draws
+  });
+  it('a fresh state has no loot stamp', () => {
+    const s = makeState(1); expect([s.weapons.lootTick, s.weapons.lootId, s.weapons.lootPlace, s.weapons.lootBought, s.run.shopWeapon]).toEqual([-1, 0, 0, 0, 0]);
+  });
+});

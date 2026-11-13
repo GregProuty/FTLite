@@ -7,6 +7,7 @@ import { cycleTarget, isTarget, isEnemySlot } from './debrisTargets';
 import { enemyBeamThreshold, damageEnemy, EnemySystem, startEnemyProblem, lockActive, enemySysUp } from './enemy';
 import { enemySystemOf } from './debrisTargets';
 import { weaponDef } from './weaponDefs';
+import { addScrap } from './scrap';
 import { Dir } from './dir';
 import { Skill, addXp } from './skills';
 import { DT, XP_PER_SHOT, BEAM_CHARGE_TIME, BEAM_MATCH_BASE, BEAM_MATCH_SCALE, BEAM_MISS_BASE, BEAM_MISS_SCALE, TORP_HIT_BASE, TORP_HIT_SCALE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, LOCK_HIT_BONUS, WEAPON_SLOTS, SLOT_LEVELS, ION_SECONDS, TICK_HZ } from './tuning';
@@ -41,6 +42,22 @@ export function chargeBeam(state: SimState): void {
   w.charge = Math.min(1, w.charge + DT * output / BEAM_CHARGE_TIME);
   for (let k = 0; k < WEAPON_SLOTS; k++) if (w.slot[k] && level >= SLOT_LEVELS[k]!) w.charge2[k] = Math.min(1, w.charge2[k]! + DT * output / weaponDef(w.slot[k]!).chargeTime);
 }
+
+/** Where a new weapon went (spec Loop-iii section 3), in weapons.lootPlace. */
+export const LootPlace = { Slot1: 0, Slot2: 1, Cargo: 2, Sold: 3 } as const;
+/** A weapon found or bought (spec Loop-iii section 3): the first empty extra slot (with an empty charge), else the cargo, else sold for half its price in scrap. Stamps the notice fields; no draws. */
+export function grantWeapon(state: SimState, id: number, bought: boolean): number {
+  const w = state.weapons;
+  let place: number = LootPlace.Sold;
+  const k = w.slot.indexOf(0);
+  if (k >= 0) { w.slot[k] = id; w.charge2[k] = 0; place = LootPlace.Slot1 + k; }
+  else if (!w.cargo) { w.cargo = id; place = LootPlace.Cargo; }
+  else addScrap(state, Math.floor(weaponDef(id).price / 2));
+  w.lootTick = state.tick; w.lootId = id; w.lootPlace = place; w.lootBought = bought ? 1 : 0;
+  return place;
+}
+/** Somewhere to put a new weapon: an empty extra slot or the cargo. */
+export const hasRoomForWeapon = (state: SimState): boolean => state.weapons.slot.includes(0) || !state.weapons.cargo;
 
 /** An untuned hit strips a layer and nothing else (spec Demo-i section 11.3). */
 function stripLayer(state: SimState): void { const e = state.enemy; e.shieldLayers--; e.lastHitTick = state.tick; e.shieldRecharge = 0; state.telemetry.shieldHits++; state.telemetry.hits++; }

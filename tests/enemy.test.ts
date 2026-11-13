@@ -625,7 +625,7 @@ describe('fuel from a kill (spec Loop-i section 2)', () => {
   it('a destroyed enemy gives 1 + nextInt(loot, 2) fuel (1 or 2); a withdrawal or a surrender gives none', () => {
     const seen = new Set<number>();
     for (let seed = 1; seed <= 10; seed++) {
-      const s = makeState(2, seed); quiet(s); placeEnemy(s); const ref = { s: s.rng.loot.s }, want = 1 + nextInt(ref, 2), fuel = s.run.fuel;
+      const s = makeState(2, seed); quiet(s); placeEnemy(s); const ref = { s: s.rng.loot.s }, want = 1 + nextInt(ref, 2), fuel = s.run.fuel; if (nextFloat(ref) < WEAPON_DROP_CHANCE) nextInt(ref, LOOT_WEAPON_TYPES);   // Loop-iii: the kill's drop draws follow the fuel draw
       leave(s, true); expect(s.run.fuel - fuel).toBe(want); expect(s.rng.loot.s).toBe(ref.s); seen.add(want);
     }
     expect([...seen].sort()).toEqual([1, 2]);
@@ -639,5 +639,23 @@ describe('no timed first enemy (spec Loop-i section 4b)', () => {
     for (const p of [1, 2, 3, 4]) { const s = makeState(p, 1); expect([s.enemy.nextArrivalTick, s.boarders.nextArrivalTick, s.run.encounter, s.run.calm]).toEqual([NEVER, NEVER, Encounter.None, 1]); }
     const s = makeState(2); s.enemy.nextArrivalTick = 0; run(s, seconds(ENCOUNTER_FIRST_SMALL + 30)); expect([s.enemy.present, s.telemetry.encounters]).toEqual([0, 0]);
     wake(s); run(s, 1); expect(s.enemy.present).toBe(1);   // the same due clock away from peace: it arrives
+  });
+});
+
+// ---- Loop-iii: a kill can drop a weapon (spec Loop-iii section 3) ----
+import { WEAPON_DROP_CHANCE } from '../src/renderer/src/sim/tuning';
+import { LOOT_WEAPON_TYPES } from '../src/renderer/src/sim/weaponDefs';
+
+describe('weapon drops from a kill', () => {
+  it('after the fuel draw, one loot draw for the chance (below 0.25) and one for the type; a withdrawal draws neither', () => {
+    let drops = 0, misses = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const s = makeState(2, seed); quiet(s); placeEnemy(s); const ref = { s: s.rng.loot.s }; nextInt(ref, 2);
+      const dropped = nextFloat(ref) < WEAPON_DROP_CHANCE, id = dropped ? 1 + nextInt(ref, LOOT_WEAPON_TYPES) : 0;
+      leave(s, true); expect(s.rng.loot.s).toBe(ref.s); expect(s.weapons.slot[0]).toBe(id);
+      if (dropped) { drops++; expect([s.weapons.lootTick, s.weapons.lootId, s.weapons.lootBought]).toEqual([s.tick, id, 0]); } else { misses++; expect(s.weapons.lootTick).toBe(-1); }
+    }
+    expect(drops).toBeGreaterThan(0); expect(misses).toBeGreaterThan(drops);
+    const w = makeState(2); quiet(w); placeEnemy(w); const l = w.rng.loot.s; leave(w, false); expect([w.rng.loot.s, w.weapons.slot[0]]).toEqual([l, 0]);
   });
 });

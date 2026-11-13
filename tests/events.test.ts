@@ -248,3 +248,33 @@ describe('the fuel row (spec Loop-i section 2)', () => {
     buy(s, i); expect([s.run.fuel, s.run.scrap]).toEqual([12, 6]); expect(itemEnabled(s, i)).toBe(false); buy(s, i); expect(s.run.fuel).toBe(12);
   });
 });
+
+// ---- Loop-iii: a weapon for sale at every shop (spec Loop-iii section 3) ----
+import { WEAPON_ITEM } from '../src/renderer/src/sim/shop';
+import { WEAPON_DEFS, LootWeapon, LOOT_WEAPON_TYPES } from '../src/renderer/src/sim/weaponDefs';
+
+describe('shops: the offered weapon', () => {
+  it('arrival at a shop draws the offer with exactly one loot draw; the type follows the seed; other arrivals offer nothing', () => {
+    const seen = new Set<number>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const s = calm(seed); setNodeTypes(s, { '1:0': NodeType.Shop }); const ref = { s: s.rng.loot.s }, want = 1 + nextInt(ref, LOOT_WEAPON_TYPES);
+      jumpShip(s, ahead(s, 0)); expect(s.run.shopWeapon).toBe(want); expect(s.rng.loot.s).toBe(ref.s); seen.add(want);
+    }
+    expect([...seen].sort()).toEqual([1, 2, 3, 4]);
+    const h = calm(); h.run.shopWeapon = 2; jumpShip(h, ahead(h, 0)); expect(h.run.shopWeapon).toBe(0);   // a Hazard beacon: the old offer is gone
+  });
+  it('the offer is a buy row after the fuel, at its price; buying fills a slot, spends the scrap and sells out the offer', () => {
+    const s = calm(); at(s, 1, 0); setNodeTypes(s, { '1:0': NodeType.Shop }); s.run.shopWeapon = LootWeapon.Heavy; grantScrap(s, 100);
+    expect([WEAPON_ITEM, WEAPON_DEFS.slice(1).map((d) => d.price)]).toEqual([3, [60, 70, 55, 65]]);
+    const rows = navRows(s); expect(rows.slice(1, 5).map((r) => [r.text, r.select, r.index])).toEqual([['Hull +25 (30 scrap)', 'buy', 0], ['Torpedoes +2 (20 scrap)', 'buy', 1], ['Fuel +2 (12 scrap)', 'buy', 2], ['Heavy Laser (70 scrap)', 'buy', WEAPON_ITEM]]);
+    expect(rows[4]!.enabled).toBe(true); expect(rows.every((r) => r.text.length <= NAV_TEXT_MAX)).toBe(true);
+    buy(s, WEAPON_ITEM);
+    expect([s.run.scrap, s.telemetry.scrapSpent, s.telemetry.purchases, s.weapons.slot[0], s.run.shopWeapon, s.weapons.lootBought]).toEqual([30, 70, 1, LootWeapon.Heavy, 0, 1]);
+    expect(navRows(s).some((r) => r.index === WEAPON_ITEM && r.select === 'buy')).toBe(false);
+    const poor = calm(); at(poor, 1, 0); setNodeTypes(poor, { '1:0': NodeType.Shop }); poor.run.shopWeapon = LootWeapon.Ion; grantScrap(poor, 54);
+    expect(itemEnabled(poor, WEAPON_ITEM)).toBe(false); buy(poor, WEAPON_ITEM); expect([poor.run.scrap, poor.weapons.slot[0]]).toEqual([54, 0]);
+    const full = calm(); full.run.shopWeapon = LootWeapon.Ion; grantScrap(full, 100); full.weapons.slot[0] = 1; full.weapons.slot[1] = 2; full.weapons.cargo = 4;
+    expect(itemEnabled(full, WEAPON_ITEM)).toBe(false);   // nowhere to put it: buying would only sell it back
+    const none = calm(); grantScrap(none, 100); expect(itemEnabled(none, WEAPON_ITEM)).toBe(false);
+  });
+});

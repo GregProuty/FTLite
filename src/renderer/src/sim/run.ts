@@ -9,7 +9,8 @@ import { enterPhase, Phase } from './director';
 import { EndReason, consciousCount } from './crew';
 import { Life, LifeState } from './components';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
-import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
+import { SHOP_ITEM_COUNT, WEAPON_ITEM, itemLabel, itemEnabled, buy } from './shop';
+import { LOOT_WEAPON_TYPES } from './weaponDefs';
 import { addScrap } from './scrap';
 import { depthOf, peaceful } from './depth';
 import { TICK_HZ, DT, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
@@ -103,6 +104,7 @@ export function jumpStep(state: SimState): void { state.run.jumpCharge = Math.mi
 function arrive(state: SimState): void {
   const r = state.run; r.event = -1; r.eventChoice = -1; r.vote.fill(-1); r.eventOpenTick = state.tick; r.voteTick = -1; addScrap(state, scrapPerJump(depthOf(state)));
   if (contentOf(state) === NodeType.Event) r.event = nextInt(state.rng.loot, EVENT_COUNT);
+  r.shopWeapon = contentOf(state) === NodeType.Shop ? 1 + nextInt(state.rng.loot, LOOT_WEAPON_TYPES) : 0;   // a shop's offered weapon, one loot draw (spec Loop-iii section 3)
 }
 
 /** Whether a manoeuvre can start now: Navigation present and online, past the cooldown (spec Coop-ii amendment D2; the seat is the caller's check). */
@@ -136,6 +138,7 @@ export function navRows(state: SimState): NavRow[] {
   if (contentOf(state) === NodeType.Shop) {
     rows.push({ text: `Shop   scrap ${r.scrap}`, select: 'none', index: 0, enabled: false });
     for (let i = 0; i < SHOP_ITEM_COUNT; i++) rows.push({ text: itemLabel(state, i), select: 'buy', index: i, enabled: itemEnabled(state, i) });
+    if (r.shopWeapon > 0) rows.push({ text: itemLabel(state, WEAPON_ITEM), select: 'buy', index: WEAPON_ITEM, enabled: itemEnabled(state, WEAPON_ITEM) });   // spec Loop-iii section 3
   }
   if (r.waitUntilTick >= 0) rows.push({ text: `Waiting for help  ${Math.max(0, Math.ceil((r.waitUntilTick - state.tick) / TICK_HZ))}s`, select: 'wait', index: 0, enabled: false });
   else if (r.fuel < 1) rows.push({ text: 'Wait for help', select: 'wait', index: 0, enabled: true });

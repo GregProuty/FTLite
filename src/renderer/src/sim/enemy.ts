@@ -5,8 +5,10 @@ import { spawnShot, shotsInFlight } from './debris';
 import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from './debrisTargets';
 import { minutesOf } from './director';
 import { addScrap } from './scrap';
+import { grantWeapon } from './weapons';
+import { LOOT_WEAPON_TYPES } from './weaponDefs';
 import { depthOf, peaceful } from './depth';
-import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE, KILL_FUEL_MIN, PURSUIT_HULL_MULT, PURSUIT_FIRE_MULT } from './tuning';
+import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE, KILL_FUEL_MIN, PURSUIT_HULL_MULT, PURSUIT_FIRE_MULT, WEAPON_DROP_CHANCE } from './tuning';
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 
@@ -99,7 +101,7 @@ export function leave(state: SimState, destroyed: boolean): void {
   const elite = state.run.pursuitFought === 1;   // the Pursuit's elite pays no scrap or fuel (spec Loop-i section 3)
   if (!destroyed && e.fleeing) { if (e.surrenderIntact) { if (!elite) addScrap(state, scrapSurrender(depthOf(state))); state.telemetry.surrenders++; } else state.telemetry.enemyFled++; }   // spec Demo-i section 11.3: a flee ends in a surrender bounty or a flight
   e.maxHull = 0; e.shieldLayers = 0; e.shieldRecharge = 0; e.shotArmTick = -1; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1; e.roomFire.fill(0); e.roomBreach.fill(0); e.shieldRotateTick = -1; e.lockUntilTick = -1; e.ionUntil.fill(-1);
-  if (destroyed) { state.telemetry.enemiesDestroyed++; if (!elite) { addScrap(state, scrapEnemy(depthOf(state))); state.run.fuel += KILL_FUEL_MIN + nextInt(state.rng.loot, 2); } }   // a kill gives 1 or 2 fuel (spec Loop-i section 2)
+  if (destroyed) { state.telemetry.enemiesDestroyed++; if (!elite) { addScrap(state, scrapEnemy(depthOf(state))); state.run.fuel += KILL_FUEL_MIN + nextInt(state.rng.loot, 2); if (nextFloat(state.rng.loot) < WEAPON_DROP_CHANCE) grantWeapon(state, 1 + nextInt(state.rng.loot, LOOT_WEAPON_TYPES), false); } }   // a kill gives 1 or 2 fuel (spec Loop-i section 2), then may drop a weapon: one loot draw for the chance, one for the type (spec Loop-iii section 3; the elite pays nothing, amendment W4)
   const r = state.run;
   if (r.encounter === Encounter.Fighting) {
     if (won) { r.encounter = Encounter.Won; state.telemetry.encountersWon++; state.hull = Math.min(HULL_MAX, state.hull + ENCOUNTER_REWARD_HULL); r.driveBoost = 1; }
