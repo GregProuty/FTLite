@@ -1,0 +1,15 @@
+1. **High** — Spec §1, line 8: the window doubles the *usual evade chance*, but `evades` computes `EVADE_BASE + EVADE_SCALE × output`; doubling the whole value differs from doubling only output’s contribution. `debris.ts:79–81, 87–92`. **Fix:** specify the formula explicitly, including cap order.
+
+2. **High** — Spec §1, lines 7–8: only impacts roll evade checks, and only with Navigation online and occupied. A window can expire without any roll; the spec doesn’t say whether this is intended or how tick boundaries count. `debris.ts:84–92, 116–129`. **Fix:** define the eligible-impact condition and inclusive/exclusive window ticks.
+
+3. **Medium** — Spec §1, line 10: `timedEvades` counts successful evades, but doesn’t say whether it increments on every in-window evade or only a successful one. Existing `evasions` and `evadeRolls` distinguish success from attempts. `debris.ts:89–92`. **Fix:** define the counter as successful in-window rolls, or rename it to count attempts.
+
+4. **High** — Spec §2, lines 15–20: “no longer appear … from stock by themselves” conflicts with automatic stock regeneration and loading; the no-magazine fallback retains that behavior. `torpedoes.ts:6–20`. **Fix:** state whether magazine ships disable regeneration, automatic loading, or both, and how starting stock and carried torpedoes interact with the tube/load timer.
+
+5. **High** — Spec §2, lines 16–18: pickup/drop behavior lacks a defined stock pool and destination when the carrier is downed, especially if the magazine tile is unavailable or stock has reached the cap. `torpedoes.ts:6–11` shows stock is capped. **Fix:** define pickup eligibility, drop location, and cap behavior; preserve the carrier’s torpedo without duplicating or losing stock.
+
+6. **High** — Spec §3, line 24: votes are described per conscious player, but “Bots vote `EVENTS.safeChoice`” doesn’t specify whether bots count toward the electorate, when they vote, or whether their vote can resolve an event immediately. `events.ts:28–42` resolves the first valid choice immediately and blocks later choices. **Fix:** define human/bot electorate, vote storage, and the single resolution point; resolve only after unanimity or timeout.
+
+7. **High** — Spec §3, lines 24–25: “any console or own Confirm” and “anywhere” do not define how player identity is mapped to input; current event and jump actions come only from seated Navigation input. `run.ts:99–110`. **Fix:** specify the input owner/player ID and route confirmation handling separately from console occupancy.
+
+8. **Medium** — Spec §3, lines 24–26: timeout behavior is underdefined if a conscious player has not voted, becomes downed, or an option becomes disabled before resolution; tie-breaking depends on whether Navigation’s vote is included. `events.ts:20–25, 28–32`. **Fix:** define electorate updates, missing-vote treatment, and tie-break behavior when Navigation has no vote or is downed.
