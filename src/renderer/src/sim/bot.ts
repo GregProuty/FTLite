@@ -18,6 +18,8 @@ import { warnedTargets, ENEMY_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_WEAPONS_SLOT } fro
 /** Bot self-preservation (spec Demo-ii section 10): below this health a bot keeps out of burning rooms; below BOT_RECOVER_HEALTH it stays in an online Medbay. Bot policy, not sim tuning. */
 export const BOT_RETREAT_HEALTH = 30;
 export const BOT_RECOVER_HEALTH = 60;
+/** The bot gunner (spec Demo-xiii amendment 2): below this health a standing gunner heals in an online Medbay (to BOT_RECOVER_HEALTH) before it takes the guns. Bot policy, not sim tuning. */
+export const BOT_GUN_HEAL_HEALTH = 50;
 
 /** Passable for pathing: not a wall, and not a sealed door (closed doors open on approach). */
 function passable(state: SimState, tx: number, ty: number): boolean {
@@ -264,7 +266,7 @@ function gunnerIntent(state: SimState, pid: number, eid: number, here: number, b
   const nav = d.stationOfKind[StationKind.Navigation]!, helm = members.includes(nav), r = state.run;
   if (pid === 0 && nav >= 0 && stationOnline(state, nav) && (driveReady(state) || (r.event >= 0 && r.eventChoice < 0))) return atGuns && !helm ? CANCEL : null;   // the captain's jump and vote come first (runIntent)
   if (!state.enemy.present || !stationOnline(state, wpn) || gunnerCalled(state, pid, eid, here)) return atGuns ? CANCEL : null;
-  if (seat < 0) { const mr = recoveryRoom(state, Health.cur[eid]!); if (mr >= 0) { if (roomAt(state, Position.x[eid]!, Position.y[eid]!) === mr) return NEUTRAL_INTENT; const step = firstStep(state, here, new Set(d.roomTiles[mr]!), blocked); if (step >= 0) return walkTo(state, eid, step); } }   // a hurt gunner heals first, to BOT_RECOVER_HEALTH in an online Medbay, before it takes the guns (amendment 2)
+  if (seat < 0 && Health.cur[eid]! < BOT_GUN_HEAL_HEALTH) { const mr = recoveryRoom(state, Health.cur[eid]!); if (mr >= 0) { if (roomAt(state, Position.x[eid]!, Position.y[eid]!) === mr) return NEUTRAL_INTENT; const step = firstStep(state, here, new Set(d.roomTiles[mr]!), blocked); if (step >= 0) return walkTo(state, eid, step); } }   // a gunner below BOT_GUN_HEAL_HEALTH heals first, to BOT_RECOVER_HEALTH in an online Medbay, before it takes the guns (amendment 2)
   if (atGuns) return gunnerInput(state, eid, wpn);
   if (seat >= 0 || state.stations.occupant[wpn]! >= 0) return null;
   const c = confirmTarget(state, pid);
