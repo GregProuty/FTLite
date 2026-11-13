@@ -33,10 +33,20 @@ Status: 2026-11-12. The user's two-player playtest: "i didnt have anything to do
 
 ## 5. Gate
 
-- [ ] Tests and gates as above.
-- [ ] Visual check by Claude: the event card with two votes, the helm-offline warning, a system scan detecting a hidden ship.
+- [x] Tests and gates as above (`docs/gates.md`, Demo-x-b).
+- [x] Visual check by Claude: the event card with two votes, the helm-offline warning, a system scan detecting a hidden ship.
 - [ ] Manual, the user: something happens at every jump, and Science has a real job.
 
 ## 6. Amendments
 
-(Filled during implementation.)
+Made during implementation (2026-11-12); none lowers a gate floor.
+
+- **P1 Column 1 draws nothing.** Column 1's beacons are Hazard without a type draw, so the map stream makes one draw per node of columns 2 to 4 only; a draw in column 2 that falls in the Empty band (0.55 to 0.60) is a Hazard. The shop fallback (column 3 node 0) is unchanged.
+- **P2 The helm-offline rows.** Every way-on row (the destinations and the exit's sector row) reads `Helm offline` and is disabled; a wait row is unchanged. A failed or unpowered console stands its officer up, so on this branch the rows are only seen by the model and the map; there is no group console here (that is Demo-x-a), so the Helm-tab wording is not implemented. The notice puts `HELM OFFLINE: repair Navigation to jump` over the first line of the ordinary notice, and drops the `JUMP READY` line while the helm is offline (nobody can take Navigation).
+- **P3 The event's wait.** `eventOpenTick` is now the first vote's tick (-1 until then); it is set in the decision step once any vote stands, whether a standing press or the officer's row. An event nobody votes on stays open. The notice reads `EVENT: <title>   waiting for a vote` until then, then `vote Ns` as before.
+- **P4 The card's words.** The status line reads `Waiting for the first vote`, then `Deciding in Ns`; the help line `Press Confirm to vote   Navigation officer: pick a row`; votes show as `< P1 P2` at the right of the choice in gold. The title, the text rows and the choices are drawn at twice the font size; the card sits 720 px wide from y 112 and ends above the seated console cards.
+- **P5 The scan's row and cursor.** The row is the last row of the Science list. The Science cursor -1 (no target) is the row, so Up/Down cycle the targets and the row, and an officer with nothing warned can press Confirm at once; a new warning still pulls a cursor at -1 onto it. The scan runs while Science is online and occupied, wherever the cursor is; standing pauses it. The row reads `Scan system  (detect 60%)`, `Scanning system  45%`, then `System scanned`.
+- **P6 Draws only for what is there.** The ship draw is made only for an ambusher still on its way; the cache draw only for a cache at this beacon; one draw per unknown reachable beacon in `reachable()` order (not visited, not charted, not a shop, the exit or an overrun column). A scan with nothing to find draws nothing, so it never tells the crew whether something was missed. A found cache takes a second `rng.loot` draw: below 0.5 it is 2 fuel, else scrap `20 + round(20 x depth / 17)`.
+- **P7 The ambusher.** It is armed on arrival at an Empty or Event beacon that holds one (not overrun, not the final beacon) and spent then, so a return finds none; an event's fight or the Pursuit replaces it. Undetected, its first shot fires on the tick after it arrives and the notice `AMBUSH: a hidden ship decloaks!` shows only in the last 3 s. Detected, it arrives at the same tick with the usual first-shot clock, its shield layers at 0 and its shields system ionised for 10 s (the existing ion rule: no recharge, the re-tune clock held). Until it arrives the notice reads `Hidden ship detected: cloaked raider   contact Ns` over `Strike first: its shields will be down 10s` (or `Jump away, or strike first: shields down 10s` with a ready drive) and the threats panel lists `Hidden ship: contact Ns` after the helm line.
+- **P8 The results.** The Science card lists three lines for 10 s (`Hidden ship detected: cloaked raider` or `No hidden ship found`; `Cache found: +28 scrap` / `+2 fuel` or `No cache found`; `Charted 2 beacons` or `No beacons charted`); the notice reads `SCAN: hidden ship detected, cache +28 scrap, 2 beacons charted` (or `SCAN: nothing found`) for 5 s, ranked after a pending jump, an open event and a purchase. `science.systemResult` holds the finding bits with the charted count from bit 3. A charted beacon shows its type on the map and in the Navigation rows; the marks clear at a sector jump.
+- **P9 Gates.** The boarding gate's figure moved with the map, not with any floor: its captain bot's first jump now always meets a ship (see `docs/gates.md`).
