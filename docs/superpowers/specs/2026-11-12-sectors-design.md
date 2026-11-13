@@ -32,6 +32,16 @@ Status: 2026-11-12. From the user's direction after two FTL design transcripts: 
 - Middle-beacon draw thresholds (one draw each, as today): Shop 0.15, Event 0.25, Asteroid 0.15, Empty 0.15, else Hazard (0.30). The guaranteed shop stays.
 - The exit beacon is a Hazard (a fight on the way out) except in the last sector, where it stays quiet until the final battle exists.
 
+## 4b. A peaceful start, and random encounters after each jump (added 2026-11-12)
+
+The user: "lets make the game start with a peaceful zone and then random encounters after each jump".
+
+- **Peaceful arrival beacons.** Column 0 of every sector is peaceful while you are there: no enemy, no pursuit fight, and the director spawns nothing (no fires, breaches, power failures, debris or boarding parties). Hazards already burning when you arrive at a new sector's column 0 still run their course. The drive charges as usual, so players learn the controls, set up power and jump when ready. The first sector's start replaces today's timed first enemy (`ENCOUNTER_FIRST`, `ENCOUNTER_FIRST_SMALL`, `BOARDING_FIRST_SMALL`): nothing arrives until the first jump.
+- **The director wakes on the first jump.** Its clocks (spawn interval, escalation minutes and the boarding clock) start from the tick of the first jump out of a peaceful beacon, not from tick 0, so the first beacon's calm does not count toward escalation.
+- **Random encounters, hidden until you arrive.** A beacon's type is still drawn when the map is made, but the crew does not see it until they jump there, as in FTL. The map and the Navigation rows show only `?` for unvisited beacons, except shops, which are always shown, and the exit, which is marked `EXIT`. Visited beacons show their type. Overrun beacons show `FLEET`. Each arrival is therefore a surprise: a fight, an asteroid field, an event, a shop or nothing.
+- **HUD.** At a peaceful beacon the notice reads `Safe here. Jump when ready`; the threats panel is empty.
+- **Tests.** No spawn, enemy or boarding party at a peaceful beacon over 300 s; the director's first spawn comes its usual interval after the first jump; beacon types hidden on the map and in the Navigation rows except shops, the exit and visited beacons; the notice.
+
 ## 5. Bots
 
 - The captain bot (pid 0) picks destinations as today: the lowest forward destination. It never jumps sideways, never waits unless out of fuel (then always waits), and treats an overrun destination as a last resort. Gates should still win; record their new end ticks.
