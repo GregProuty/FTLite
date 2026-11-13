@@ -83,3 +83,13 @@ Played the first fight on the Skiff through the real keys (P1 on the Weapons tab
 - **T4. Two notations:** `freq 2` on Science, `F2` on Weapons, the enemy window and the threats panel.
 
 Proposed fix (small, render-only where possible): the Weapons card shows `Enemy freq 2` once scanned and marks the matching selector; each shot leaves a one-line result on the Weapons card and over the enemy window (`Shield stripped: F1 is not freq 2`, `Hit: Shields room -15`); one notation everywhere (`freq 2`).
+
+## Addendum 2: the first fight after Demo-xiv (master 600b84e)
+
+Both players seated; P2 scanned the enemy's shield, P1 read `freq N` off the Weapons card and matched it, fired the torpedo when loaded and the Pulse on every charge.
+
+- **The co-op loop works.** The scan found the frequency in about 16 s; the Weapons card marked it (`freq 1 [2] 3`); matched hits did hull damage at once (enemy 90 % to 51 % in about 40 s after the first match). Every 30 s the enemy re-tunes and Science scans again: Ops has a constant job.
+- **Fire burns systems, as designed.** Fires in Life Support and Engines spread while both players stayed seated; Life Support went OFF and the oxygen fell. The stand-up decision now exists.
+- **U1. Human fights run longer than the bot band:** about two minutes, because a level-1 scan takes about 16 s and the re-tune comes every 30 s, so the frequency is unknown about half the time. Levers if couch play agrees it drags: a faster scan with the Science level, or a lock that survives one re-tune.
+- **U2. `Torp freq ?`** at the end of the selector row reads as the torpedo's frequency; it should read `enemy freq ?` or move to its own line.
+- **Not done:** a whole run start to finish through the keys. The first fight, the first jumps, an event and a shop were played through the real controls; sector exits and the Warden only through fixtures and the bot gates. The couch checklist (`docs/playtest.md`) is the place for the full run.
