@@ -465,9 +465,12 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
     'Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar',
     'Navigation jumps when the drive reads READY. Events and shops are chosen there',
     'Jump before the ship falls apart. Reach node 8 to win',
-    'Callout: R / Slash / Y shows what you need over your head'
+    'Callout: R / Slash / Y shows what you need over your head',
+  'Science locks the frequency, Weapons fires. Two on one job are faster',
+  'Helm: evade as a hit lands. Torpedoes are carried from the hold',
+  'Events: everyone votes with Confirm. Jumps need a second Confirm'
   ];
-  it('the lobby card is the seven exact ASCII lines (the callout line, spec Coop-i section 3) within LOBBY_LINE_MAX; every other phase gives none', () => {
+  it('the lobby card is the ten exact ASCII lines (the callout line, spec Coop-i section 3; three co-op lines, Coop-ii) within LOBBY_LINE_MAX; every other phase gives none', () => {
     expect(buildHudModel(null, slots(1), 'lobby', '').lobbyLines).toEqual(CARD);
     const s = makeState(1); quiet(s);
     for (const phase of ['running', 'gameover', 'paused', 'error'] as const) expect(buildHudModel(s, slots(1), phase, '').lobbyLines).toEqual([]);

@@ -211,7 +211,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       const showBannerGlyphs = (m.phase === 'lobby' || m.phase === 'gameover') && !!first?.deviceKind;
       fillRow(bannerGlyphs, showBannerGlyphs ? [{ glyph: glyphName('confirm', first!.deviceKind), text: 'Confirm' }, { glyph: glyphName('cancel', first!.deviceKind), text: 'Cancel' }] : []);
       bannerGlyphs.position.x = INTERNAL_W / 2 - bannerGlyphs.width / 2;
-      // The lobby card takes rows 2-8 (rows 0-1 and 9-10 hidden; row 8 is the callout line, spec Coop-i section 3); the game-over summary keeps rows 0-11 (spec Demo-i section 3).
+      // The lobby card takes rows 2-11 (rows 0-1 hidden; row 8 is the callout line, spec Coop-i section 3; rows 9-11 the co-op lines, Coop-ii); the game-over summary keeps rows 0-11 (spec Demo-i section 3).
       summaryRows.forEach((t, k) => { const line = m.phase === 'lobby' ? m.lobbyLines[k - 2] : m.summary?.[k]; t.visible = !!line; t.text = line ?? ''; });
       const shown = summaryRows.filter((t) => t.visible), wide = Math.max(0, ...shown.map((t) => Math.ceil(t.width)));
       summaryBack.visible = m.phase === 'gameover' && shown.length > 0;

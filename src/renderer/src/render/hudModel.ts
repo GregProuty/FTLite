@@ -180,7 +180,10 @@ export const LOBBY_LINES: readonly string[] = [
   'Hold Interact at a fire, breach, failed console or downed friend. Repairs need a bar',
   'Navigation jumps when the drive reads READY. Events and shops are chosen there',
   'Jump before the ship falls apart. Reach node 8 to win',
-  'Callout: R / Slash / Y shows what you need over your head'
+  'Callout: R / Slash / Y shows what you need over your head',
+  'Science locks the frequency, Weapons fires. Two on one job are faster',
+  'Helm: evade as a hit lands. Torpedoes are carried from the hold',
+  'Events: everyone votes with Confirm. Jumps need a second Confirm'
 ];
 
 /** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b, Demo-vi section 2): a pending event, the encounter (won, over, contact), a surrender offer, a shop node, then the ready drive. */
