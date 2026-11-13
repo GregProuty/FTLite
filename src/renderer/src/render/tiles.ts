@@ -5,6 +5,7 @@ import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
 import { airlockDraw, airlockOutward } from './hazardTiles';
 import { advanceDoor, doorTarget, DOOR_ANIM_SECONDS } from './doorAnim';
+import { wallPicture, type Cell } from './wallModel';
 import { doorPicture, doorLook, HELD_TICK, SPACE_GAP, type DoorPicture, type DoorRect } from './doorModel';
 
 export interface TileLayer { container: Container; build(state: SimState): void; update(state: SimState, dtSeconds: number): void }
@@ -22,10 +23,14 @@ export function createTileLayer(_assets: GameAssets, _memory: RenderMemory): Til
   function build(state: SimState): void {
     const d = state.derived, rows = state.layout.rows;
     base.clear();
+    const cell = (x: number, y: number): Cell => { const c = rows[y]?.charAt(x) ?? ' '; return c === '' || c === ' ' ? 'space' : c === '#' ? 'wall' : c === '+' ? 'door' : 'floor'; };
     for (let ty = 0; ty < d.height; ty++) for (let tx = 0; tx < d.width; tx++) {
-      const c = rows[ty]!.charAt(tx);
-      if (c === ' ') continue;
-      base.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill(c === '#' ? WALL : FLOOR);
+      const c = cell(tx, ty), x = tx * TILE_PX, y = ty * TILE_PX;
+      if (c === 'space') continue;
+      if (c !== 'wall') { base.rect(x, y, TILE_PX, TILE_PX).fill(FLOOR); continue; }
+      const p = wallPicture(cell(tx, ty - 1), cell(tx + 1, ty), cell(tx, ty + 1), cell(tx - 1, ty), cell(tx + 1, ty - 1), cell(tx + 1, ty + 1), cell(tx - 1, ty + 1), cell(tx - 1, ty - 1));   // thin walls, as thick as a door (the user, 2026-11-13)
+      for (const r of p.floor) base.rect(x + r.x, y + r.y, r.w, r.h).fill(FLOOR);
+      for (const r of p.band) base.rect(x + r.x, y + r.y, r.w, r.h).fill(WALL);
     }
     builtFor = d.layoutHash; doorProgress.clear(); lockProgress.clear();
   }

@@ -44,7 +44,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const effects = createEffectsLayer(assets, memory);
   const icons = createIconLayer();
   const crew = createCrewLayer(assets, memory);
-  const boarders = createBoarderLayer();
+  const boarders = createBoarderLayer(assets);
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
   world.addChild(tiles.container, effects.below, icons.container, magazine.container, crew.container, boarders.container, effects.above);
   let lastDraw: number | null = null;
@@ -75,7 +75,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       magazine.draw(state);
       effects.draw(state);
       crew.draw(state, alpha);
-      boarders.draw(state);
+      boarders.draw(state, dt);
       callouts.draw(state, bubbles, { scale: fit.scale, x: fit.x + shake.x, y: fit.y + shake.y });
     }
   };
