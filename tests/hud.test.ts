@@ -674,3 +674,12 @@ describe('the Weapons card with loot weapons', () => {
     run(s, 1, () => intents({ moveY: 1 })); expect(s.stations.cursor[w]).not.toBe(SWAP_SLOT);
   });
 });
+
+describe('the Weapons target rows under an ion disable (spec Loop-iii section 1)', () => {
+  it('an ionised system row reads ION with its whole seconds; a fresh row reads as before', () => {
+    const s = makeState(1); quiet(s); placeEnemy(s); const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w);
+    const rows = () => (buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel).targets.map((t) => targetRowText(t));
+    expect(rows()[3]).toBe('Enemy shields 100%');
+    s.enemy.ionUntil[EnemySystem.Shields] = s.tick + 9 * 60; expect(rows()[3]).toBe('Enemy shields 100% ION 9s'); expect(rows()[3]!.length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+  });
+});
