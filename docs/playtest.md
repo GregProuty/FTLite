@@ -1,45 +1,54 @@
-# Two-player playtest script (Demo-i)
+# Couch playtest checklist (the Skiff, two players)
+
+Replaces the Demo-i script (2026-11-13). Claude's own playtest and its findings: `docs/playtest-report-2026-11-13.md`.
 
 Date:
-Players: 2
-Seed:
+Players (who sat where):
 Build (commit):
+Seed (shown on the summary):
+Screen and distance:
+Devices (keyboard / pads):
 
-Run `npm run dev` with two keyboard players. Tick each step as seen and write what went wrong under `Notes:`. Triage: a visual overlap, a wrong or missing string, a control that does not do what the card says, or a crash is fixed on the branch before merge; a balance observation is recorded with its figures; a design wish goes to the spec's follow-ups.
+Run `npm run dev`. Don't coach during the first fight. Tick each step as seen, and note anything that went wrong next to it. Severity: **crash/stuck** > **didn't understand** > **boring or unfair** > **polish**.
 
-- [ ] Lobby: the banner, the controls card and the `Runs N  Best N` line show.
-  See: the title banner; the six controls-card lines; a `Runs N  Best N` line, each within the screen width.
-  Notes:
-- [ ] Join: two keyboards join.
-  See: pressing each keyboard's join key (`E` on keyboard 1, `Enter` on keyboard 2; the banner calls them Interact) lights a second block; two blocks are lit and both are named.
-  Notes:
-- [ ] Start: start the run; the panels fill.
-  See: the clock, threats and power panels fill; the director line shows the ship's quirk. The ship is the cutter: bow to the right, every system room marked with a glyph.
-  Notes:
-- [ ] Sit: one player at Engineering, the other at Weapons or Science.
-  See: Engineering shows its rows, the pool and coolant; the other console shows its own list; the seated players are marked at their consoles. A repaired console comes back with one bar, or reads OFF on the Engineering panel until Engineering gives it one.
-  Notes:
-- [ ] Fire: a fire is put out.
-  See: a fire shows in the threats panel and in its room; holding Interact in the room puts it out and the row clears.
-  Notes:
-- [ ] Debris: a debris warning and an enemy encounter.
-  See: the enemy row with its shield bracket and weapon charge; strip a layer with an untuned beam, scan, pierce with a tuned beam; see the flee and the surrender notice; hold fire for the scrap once and kill once across the session; for debris, Science scans, Weapons shoots or Navigation evades. Do not jump while the enemy is present. The shield layer regrows in 6 s, so scan for the frequency (or fire a torpedo) to reach the hull. Also: the enemy panel (left of the threat panel, below the notice) appears on arrival with its shield ring and weapon bar, flashes on a hit and shows FLEE Ns; hazards, impacts, shots, the ready drive, the jump and the end each make a sound.
-  Notes:
-- [ ] Jump: the drive is ready; take Navigation and jump.
-  See: the notice `JUMP READY   someone take Navigation`; sit, pick `Node 2a` or `2b`, Confirm; the threats clear and the clock reads `node 2/8`. Sitting at Navigation opens the sector map above the ship.
-  Notes:
-- [ ] Event: an event node.
-  See: both players see the event notice; the operator picks a choice and the effect lands (scrap, hull or a hazard).
-  Notes:
-- [ ] Shop: a shop node.
-  See: the shop price line; buy hull from Navigation; `Scrap` drops in the footer.
-  Notes:
-- [ ] Boarding: boarders arrive.
-  See: the boarding notice and a boarder in a room; fight it from inside that room until it dies.
-  Notes:
-- [ ] Game over: the run ends in defeat or victory.
-  See: the summary lines (score, ship, best, unlocks) and the gains.
-  Notes:
-- [ ] Restart: Confirm restarts.
-  See: the same seed starts again; the lobby shows the new `Runs` and `Best` values.
-  Notes:
+## 1. Start
+- [ ] Both join (E, Enter / A); the lobby says `Ship: Skiff (2 crew)`; Confirm starts.
+- [ ] Each player finds their seat without help: Helm in the Bridge (front), Ops in the room with the eye. Time to sit: ____ s.
+- [ ] Each player switches tabs (Up from the top row, Left/Right).
+
+## 2. First beacon and first jump
+- [ ] The Ops officer runs `Scan system` and reads the result.
+- [ ] Time spent waiting before the first jump: ____ s.
+- [ ] The Helm picks a node and the other player agrees. Did it jump with both seated? (Known blocker B1.)
+
+## 3. First fight
+- [ ] Both know what the enemy is doing (the threat panel, the window).
+- [ ] The gunner targets a room on purpose (which? why?) and fires the Pulse and the torpedo.
+- [ ] The Ops officer scans the shield, the gunner matches the frequency.
+- [ ] Someone leaves their seat for a fire or a breach. Who, and why?
+- [ ] Surrender offered? What did you choose?
+- [ ] Hull lost: ____. Fight length: ____ s.
+
+## 4. Between fights
+- [ ] An event: both players vote. Did the Ops officer get a vote? (Known blocker B3.)
+- [ ] A shop: what did you buy, and who chose? Did the cursor stay on the shop rows? (Known blocker B2.)
+- [ ] Engineering: move a power bar; buy an upgrade from the Upgrades page.
+- [ ] A loot weapon: equip it, fire it.
+- [ ] Boarders: who fought them, did venting or sealing doors help?
+
+## 5. The run
+- [ ] A sector exit; fuel never ran out (or: what happened when it did).
+- [ ] The pursuit: did you notice it closing in?
+- [ ] The Warden: reached? Won? What killed you if not?
+
+## 6. After the run, ask each player (write their exact words)
+1. What killed us?
+2. Which choice mattered most?
+3. Where did you wait with nothing to do?
+4. What would you do differently next run?
+5. Would you play again right now? (yes / no)
+
+## 7. Separately
+- [ ] Swap seats and play the first fight again.
+- [ ] Three or four players on the Cutter: carrying torpedoes, separate stations.
+- [ ] Unplug a pad mid-run; alt-tab out and back.
