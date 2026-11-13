@@ -499,3 +499,10 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
 - [x] `npm test` passes (1203 tests, 1194 after step 1, 1182 before). Golden re-blessed once (SIM_VERSION 33): final hash 85dc14ae -> 0661052e. Typecheck clean on both configs.
 - [ ] Claude's full-run playtest on the Skiff: the first fight feels urgent; a fire or a breach during it forces a choice.
 - [ ] Manual, the user: the couch checklist.
+
+## Demo-xiv: the gunner sees the frequency (2026-11-13)
+- [x] `npm test` passes (1221 tests, 1203 before): the last-shot selector and damage (weapons, snapshot round trip and hash), the shot-result strings for every kind and their fit, the marked selector, `freq ?`, `Match freq N`, the footer result line, the enemy window's shot line and corner, the threats rows' fit rule. Typecheck clean on both configs.
+- [x] Golden re-blessed once (SIM_VERSION 34: `weapons.lastShotSelector`, `weapons.lastShotDamage`): final hash 0661052e -> 0a644af3.
+- [x] Gates re-recorded, unchanged (the new fields are write-only in the sim): `gate-skiff` 60.9 / 25.3 / 67.8 (min hull 54 / 42 / 90), `gate-duo` 27.2 / 57.5 / 57.7 (min hull 20 / 68 / 58); every other gate passes with its pinned figures. No floor moved.
+- [x] Claude's visual check: a stripped shot's reason, a matched hit, the marked selector (spec amendment 12).
+- [ ] Manual, the user: the couch checklist; the gunner reads the frequency and the shot results without being told.
