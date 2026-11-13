@@ -165,10 +165,10 @@ describe('runNotice: a peaceful start (spec Loop-i section 4b)', () => {
 });
 
 describe('runNotice: the sector jump awaiting its second Confirm (spec Loop-i amendment S1)', () => {
-  it('names the next sector, or the escape in the last sector', () => {
+  it('names the next sector, or the Warden in the last sector (spec Loop-iv section 1)', () => {
     const s = fresh(); s.run.column = 5; chargeJump(s); s.run.jumpPending = EXIT_JUMP; s.run.jumpPendingTick = s.tick;
     expect(runNotice(s)[0]).toBe('Jump to sector 2? (1/2)');
-    s.run.sector = 2; expect(runNotice(s)[0]).toBe('Escape: win the run? (1/2)');
+    s.run.sector = 2; expect(runNotice(s)[0]).toBe('Engage the Warden? (1/2)');
   });
 });
 

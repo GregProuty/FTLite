@@ -94,8 +94,8 @@ export function reachable(state: SimState): Beacon[] {
 const canReach = (state: SimState, b: Beacon): boolean => reachable(state).some((x) => x.column === b.column && x.node === b.node);
 /** At the sector's exit beacon, where the only way on is the sector jump (spec Loop-i amendment S1). */
 export const atExit = (state: SimState): boolean => state.run.finalBeacon === 0 && state.run.column === state.run.colNodes.length - 1;   // the final beacon is past the exit (spec Loop-iv section 1)
-/** The exit row's text: the next sector, or the escape that wins the run (spec Loop-i amendment S1). */
-export const exitText = (state: SimState): string => state.run.sector >= SECTORS - 1 ? 'Escape: win the run' : `Jump to sector ${state.run.sector + 2}`;
+/** The exit row's text: the next sector, or the jump to the Warden from the last sector (spec Loop-i amendment S1, Loop-iv section 1). */
+export const exitText = (state: SimState): string => state.run.sector >= SECTORS - 1 ? 'Engage the Warden' : `Jump to sector ${state.run.sector + 2}`;
 
 /** First system of the tick: the drive charges from arrival, whatever else happens (spec section 6); ENCOUNTER_BOOST times as fast after a won encounter (spec Demo-vi section 2). */
 export function jumpStep(state: SimState): void { if (state.run.finalBeacon) return;   // no escape: the drive does not charge at the final beacon (spec Loop-iv section 1)

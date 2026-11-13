@@ -421,9 +421,9 @@ describe('sectors, fuel and waiting (spec Loop-i sections 1 and 2, amendments S1
     exitAt(s, 0); expect(navRows(s).map((r) => r.select)).toEqual(['wait', 'evade']); sectorJump(s); expect([s.run.sector, s.run.column]).toEqual([0, SECTOR_COLUMNS - 1]);
     setNodeTypes(s, { '5:0': NodeType.Shop }); grantScrap(s, 100); expect(navRows(s).map((r) => r.select).slice(-2)).toEqual(['wait', 'evade']);   // a shop's items stay, then Wait
   });
-  it('the exit rows (S1): Jump to sector 2 and 3, Escape: win the run in the last; only at the exit, never a destination row there', () => {
+  it('the exit rows (S1): Jump to sector 2 and 3, Engage the Warden in the last (spec Loop-iv section 1); only at the exit, never a destination row there', () => {
     const s = ready();
-    for (const [sector, text] of [[0, 'Jump to sector 2'], [1, 'Jump to sector 3'], [2, 'Escape: win the run']] as const) {
+    for (const [sector, text] of [[0, 'Jump to sector 2'], [1, 'Jump to sector 3'], [2, 'Engage the Warden']] as const) {
       exitAt(s, sector); expect(navRows(s).map((r) => [r.text, r.select, r.index, r.enabled])).toEqual([[text, 'sector', EXIT_JUMP, true], ['EVADE: Confirm', 'evade', 0, true]]);
     }
     const m = ready(); m.run.column = 4; m.run.node = 1; sectorJump(m); expect([m.run.sector, m.run.column, m.run.fuel]).toEqual([0, 4, 8]);   // not at the exit: no-op

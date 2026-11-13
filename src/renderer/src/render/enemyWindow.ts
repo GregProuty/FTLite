@@ -29,8 +29,9 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
   const freq = mk(DIM); freq.anchor.set(1, 0); freq.position.set(WINDOW.w - SHIP_MARGIN, 4);
   const status = mk(TEXT); status.position.set(SHIP_MARGIN, 298);
   const problem = mk(WARN); problem.position.set(SHIP_MARGIN, 316);
+  const title = mk(RETICLE); title.anchor.set(1, 0); title.position.set(WINDOW.w - SHIP_MARGIN, 298);   // the ship's name, right of the status line (spec Loop-iv section 2)
   const repair = [0, 1, 2].map(() => { const t = mk(WARN); t.anchor.set(0.5, 0.5); ship.addChild(t); return t; });
-  content.addChild(freq, status, problem);
+  content.addChild(freq, status, problem, title);
   const flames: (AnimatedSprite | null)[] = Array.from({ length: ENEMY_LAYOUT.rooms.length * FIRE_PER_ROOM }, () => {
     if (!opts.fire) return null;
     const s = new AnimatedSprite(opts.fire.textures); s.animationSpeed = opts.fire.fps / 60; s.loop = true; s.width = ENEMY_TILE; s.height = ENEMY_TILE; s.visible = false; s.play(); fires.addChild(s); return s;
@@ -144,7 +145,7 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
       // the weapon charge along the bottom, red past 80%; hidden while the enemy weapons are down
       if (view.charge !== null && !destroyed) { const w = WINDOW.w - 2 * SHIP_MARGIN; over.rect(SHIP_MARGIN, 290, w, 4).fill(WALL); over.rect(SHIP_MARGIN, 290, w * Math.max(0, Math.min(1, view.charge)), 4).fill(view.charge >= 0.8 ? WARN : TEXT); }
       status.text = view.status; status.tint = view.status === 'ENEMY' ? TEXT : WARN;
-      problem.text = view.problem ?? '';
+      problem.text = view.problem ?? ''; title.text = view.title ?? '';
       if (view.reticle) brackets(over, 'hull' in view.reticle ? { x: view.ship.x - 6, y: view.ship.y - 12, w: view.ship.w + 12, h: view.ship.h + 24 } : view.rooms[view.reticle.room]!.rect, 3, RETICLE);
     }
   };
