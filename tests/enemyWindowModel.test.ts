@@ -135,7 +135,7 @@ describe('the window frequency and its rotate countdown (spec Coop-i section 1)'
   it('shows the frequency only while it is current, with the seconds to the next rotation; no countdown while the shields system is down', () => {
     const s = present(); s.enemy.scanned = 1; s.enemy.shieldFreq = 2;
     expect(view(s).frequency).toBe(`F2 ${SHIELD_ROTATE}s`);
-    s.tick += 5.5 * T; expect(view(s).frequency).toBe('F2 15s');
+    s.tick += 5.5 * T; expect(view(s).frequency).toBe(`F2 ${SHIELD_ROTATE - 5}s`);
     disableSystem(s, EnemySystem.Shields); expect(view(s).frequency).toBe('F2');
     s.enemy.sysHp[EnemySystem.Shields] = ENEMY_SYS_HP; s.enemy.scanned = 0; expect(view(s).frequency).toBeNull();   // a rotation clears the scan: the old frequency is never shown
   });
