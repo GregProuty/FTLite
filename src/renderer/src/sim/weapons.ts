@@ -3,7 +3,7 @@ import { nextFloat } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
 import { removeDebris } from './debris';
-import { cycleTarget, isTarget, isEnemySlot } from './debrisTargets';
+import { cycleTarget, isTarget, isEnemySlot, warnedTargets } from './debrisTargets';
 import { enemyBeamThreshold, damageEnemy, EnemySystem, startEnemyProblem, lockActive, enemySysUp } from './enemy';
 import { enemySystemOf } from './debrisTargets';
 import { weaponDef } from './weaponDefs';
@@ -136,12 +136,33 @@ export function fireWeapon(state: SimState): boolean {
   return hit;
 }
 
-/** Seated Weapons input: Up/Down cycle warned targets, Left/Right cycle the selector list with wrap, Confirm fires. */
+/** The Weapons cursor on the SWAP row (spec Loop-iii section 3): after the targets, never a debris or enemy slot. */
+export const SWAP_SLOT = -2;
+/** The SWAP row is shown: cargo holds a weapon and no enemy is present. */
+export const canSwap = (state: SimState): boolean => state.weapons.cargo > 0 && state.enemy.present === 0;
+/** The extra slot a swap trades with: the selected one, or slot 1 (index 0) when the selector is elsewhere. */
+export const swapSlot = (state: SimState): number => Math.max(0, slotOfSelector(state.weapons.selector));
+/** Swap the cargo with the swap slot; the incoming weapon starts uncharged. No draws. False when no swap is possible. */
+export function swapCargo(state: SimState): boolean {
+  if (!canSwap(state)) return false;
+  const w = state.weapons, k = swapSlot(state), out = w.slot[k]!;
+  w.slot[k] = w.cargo; w.cargo = out; w.charge2[k] = 0;
+  return true;
+}
+
+/** Seated Weapons input: Up/Down cycle warned targets (and the SWAP row after them while it shows), Left/Right cycle the selector list with wrap, Confirm fires or swaps. */
 export function weaponsInput(state: SimState, i: number, dir: number, confirm: boolean): void {
-  cycleTarget(state, i, dir);
+  const c = state.stations.cursor;
+  if (canSwap(state)) {
+    const list = [...warnedTargets(state), SWAP_SLOT], n = list.length, k = list.indexOf(c[i]!);
+    if (dir === Dir.Up || dir === Dir.Down) c[i] = list[k < 0 ? 0 : dir === Dir.Up ? (k + n - 1) % n : (k + 1) % n]!;
+  } else {
+    if (c[i] === SWAP_SLOT) c[i] = warnedTargets(state)[0] ?? -1;   // the row went away (an enemy arrived, the cargo emptied)
+    cycleTarget(state, i, dir);
+  }
   if (dir === Dir.Left || dir === Dir.Right) {
     const list = selectorList(state), n = list.length, at = list.indexOf(state.weapons.selector);
     state.weapons.selector = list[at < 0 ? 0 : (at + (dir === Dir.Left ? n - 1 : 1)) % n]!;
   }
-  if (confirm) fireWeapon(state);
+  if (confirm) { if (c[i] === SWAP_SLOT) swapCargo(state); else fireWeapon(state); }
 }

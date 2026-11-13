@@ -140,3 +140,15 @@ describe('the window frequency and its rotate countdown (spec Coop-i section 1)'
     s.enemy.sysHp[EnemySystem.Shields] = ENEMY_SYS_HP; s.enemy.scanned = 0; expect(view(s).frequency).toBeNull();   // a rotation clears the scan: the old frequency is never shown
   });
 });
+
+// ---- Loop-iii: an ionised system in the enemy window (spec Loop-iii section 4) ----
+describe('enemy window: ion-disabled rooms', () => {
+  it('an ionised system room is tinted ion with its whole seconds; a system down by damage stays down', () => {
+    const s = present(); s.enemy.ionUntil[EnemySystem.Shields] = s.tick + 7 * T + 1;
+    const v = view(s);
+    expect(v.rooms.map((r) => r.tint)).toEqual(['normal', 'normal', 'ion', 'normal', 'normal']);
+    expect(v.rooms.map((r) => r.ionIn)).toEqual([null, null, 8, null, null]); expect(v.rooms[2]!.repairIn).toBeNull();
+    disableSystem(s, EnemySystem.Shields); expect(view(s).rooms[2]!.tint).toBe('down');
+    s.tick = s.enemy.ionUntil[EnemySystem.Shields]!; s.enemy.sysHp[EnemySystem.Shields] = ENEMY_SYS_HP; expect(view(s).rooms[2]!.tint).toBe('normal');
+  });
+});

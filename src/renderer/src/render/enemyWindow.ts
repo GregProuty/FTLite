@@ -9,7 +9,7 @@ export interface EnemyWindowLayer { container: Container; draw(view: EnemyWindow
 export interface EnemyWindowOptions { fontFamily: string; fire: { textures: Texture[]; fps: number } | null; panel: ((w: number, h: number) => Container) | null }
 
 const TEXT = 0xe8e8e8, DIM = 0x9aa0ad, FAINT = 0x5a606c, WARN = 0xff6b5a;
-const PANEL = 0x10131a, HULL = 0x3b4352, HULL_EDGE = 0x22262f, FLOOR = 0x5d6675, FLOOR_DAMAGED = 0x7a6a52, FLOOR_DOWN = 0x7a2a2a, WALL = 0x14171d;
+const PANEL = 0x10131a, HULL = 0x3b4352, HULL_EDGE = 0x22262f, FLOOR = 0x5d6675, FLOOR_DAMAGED = 0x7a6a52, FLOOR_DOWN = 0x7a2a2a, FLOOR_ION = 0x2f5f9a, ION_TEXT = 0x8fd0ff, WALL = 0x14171d;
 const SHIELD = 0x6fc3ff, RETICLE = 0xffd54a, CREW = 0xc0396b, CREW_HEAD = 0xf0c8a0, FLAME = 0xff8c1a, FLAME_CORE = 0xffd060, HOLE = 0x05060a;
 const FIRE_PER_ROOM = 2, PIECE_COUNT = 5;
 
@@ -64,7 +64,7 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
     g.rect(sh.x + sh.w, sh.y - 4, ho.x - sh.x - sh.w, sh.h + 8).fill(HULL);   // the keel between Shields and the Hold: no see-through slot
     view.rooms.forEach((r, k) => {
       const rect = r.rect, flash = hitFlash && (hitFlash.room === k || hitFlash.room === 'hull') ? hitFlash.alpha : 0;
-      g.rect(rect.x, rect.y, rect.w, rect.h).fill(r.tint === 'down' ? FLOOR_DOWN : r.tint === 'damaged' ? FLOOR_DAMAGED : FLOOR).stroke({ width: 2, color: WALL });
+      g.rect(rect.x, rect.y, rect.w, rect.h).fill(r.tint === 'down' ? FLOOR_DOWN : r.tint === 'ion' ? FLOOR_ION : r.tint === 'damaged' ? FLOOR_DAMAGED : FLOOR).stroke({ width: 2, color: WALL });
       for (let tx = 1; tx < rect.w / ENEMY_TILE; tx++) g.moveTo(rect.x + tx * ENEMY_TILE, rect.y + 1).lineTo(rect.x + tx * ENEMY_TILE, rect.y + rect.h - 1).stroke({ width: 1, color: WALL, alpha: 0.18 });
       for (let ty = 1; ty < rect.h / ENEMY_TILE; ty++) g.moveTo(rect.x + 1, rect.y + ty * ENEMY_TILE).lineTo(rect.x + rect.w - 1, rect.y + ty * ENEMY_TILE).stroke({ width: 1, color: WALL, alpha: 0.18 });
       if (flash > 0) g.rect(rect.x, rect.y, rect.w, rect.h).fill({ color: WARN, alpha: 0.6 * flash });
@@ -121,7 +121,7 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
       for (const tx of repair) tx.visible = false;
       if (!destroyed) {
         drawShip(view, hitFlash); drawFires(view); drawCrew(view);
-        view.rooms.forEach((r, k) => { if (k < 3 && r.repairIn !== null) { const tx = repair[k]!; tx.text = `${r.repairIn}s`; tx.position.set(r.rect.x + r.rect.w / 2, r.rect.y + 9); tx.visible = true; } });
+        view.rooms.forEach((r, k) => { const secs = r.repairIn ?? r.ionIn; if (k < 3 && secs !== null) { const tx = repair[k]!; tx.text = `${secs}s`; tx.tint = r.repairIn !== null ? WARN : ION_TEXT; tx.position.set(r.rect.x + r.rect.w / 2, r.rect.y + 9); tx.visible = true; } });   // the repair countdown, or an ion disable's seconds in blue (spec Loop-iii section 4)
       } else {   // the break-up: five drifting pieces with bursts, fading over BREAK_SECONDS
         for (const f of flames) if (f) f.visible = false;
         const a = Math.max(0, 1 - t * t);

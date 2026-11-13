@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, BitmapText, NineSliceSprite } from 'pixi.js';
 import { INTERNAL_W, INTERNAL_H } from '../../../shared/resolution';
 import type { GameAssets } from './assets';
-import { glyphName, clockLine, sectorLine, navigationFooter, scienceFooter, engineeringFooter, targetRowText, targetWindow, WEAPONS_ROWS, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
+import { glyphName, clockLine, sectorLine, navigationFooter, scienceFooter, engineeringFooter, targetRowText, targetWindow, weaponsStrip, weaponsFooter, weaponsLootLine, weaponsRowTexts, SCIENCE_ROWS, type HudModel, type HudPlayer } from './hudModel';
 import { drawIcon, tintColor } from './roomIcons';
 import { createMapPanel } from './mapPanel';
 import { featureReady } from './fallback';
@@ -163,20 +163,17 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.consoleFooter, [{ text: engineeringFooter(c), tint: DIM }]);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'weapons') {
       const c = p.console;
-      fillRow(ui.consoleSelector, ['Beam F1', 'F2', 'F3', 'Torp'].map((label, n) => ({ text: label, tint: n === c.selector ? TEXT : DIM })));
+      fillRow(ui.consoleSelector, weaponsStrip(c).map((p) => ({ text: p.text, tint: p.lit ? TEXT : DIM })));   // spec Loop-iii section 4: Pulse F1 F2 F3, the filled slots, Torp
       ui.consoleSelector.visible = true;
-      const vis = c.targets.slice(c.first, c.first + WEAPONS_ROWS);
+      const texts = weaponsRowTexts(c), vis = texts.slice(c.first, c.first + c.rows), lootLine = weaponsLootLine(c);
       ui.consoleRows.forEach((r, k) => {
-        const t = k >= 1 ? vis[k - 1] : undefined;
-        r.root.visible = !!t;
-        if (t) r.set({ name: targetRowText(t), level: 0, max: 0, status: '', cursor: k - 1 === c.cursor - c.first, tint: k - 1 === c.cursor - c.first ? TEXT : DIM });
+        if (k === 7) { r.root.visible = false; return; }
+        if (lootLine && k === 6) { r.root.visible = true; r.set({ name: lootLine, level: 0, max: 0, status: '', cursor: false, tint: c.loot.some((l) => l.charge >= 1 && !l.empty) ? TEXT : DIM }); return; }   // the extra slots' charges above the footer
+        const t = k >= 1 ? vis[k - 1] : undefined, on = k - 1 === c.cursor - c.first;
+        r.root.visible = t !== undefined;
+        if (t !== undefined) r.set({ name: t, level: 0, max: 0, status: '', cursor: on, tint: on ? TEXT : t.startsWith('SWAP') ? CALL : DIM });
       });
-      fillRow(ui.consoleFooter, [
-        { text: c.charge >= 1 ? 'Beam READY' : `Beam ${Math.floor(c.charge * 100)}%`, tint: c.charge >= 1 ? TEXT : DIM },
-        { text: c.torpedo.loaded ? 'Torp LOADED' : c.torpedo.fed ? `Torp ${Math.floor(c.torpedo.load * 100)}%` : c.torpedo.fetch ? (c.torpedo.stock > 0 ? 'Torp FETCH' : 'Torp EMPTY') : c.torpedo.stock > 0 ? `Torp ${Math.floor(c.torpedo.load * 100)}%` : 'Torp EMPTY', tint: c.torpedo.loaded ? TEXT : DIM },
-        { text: `Stock ${c.torpedo.stock}/${c.torpedo.cap}`, tint: DIM },
-        { text: c.locked ? 'LOCKED' : '', tint: TEXT }   // a Science lock runs: any beam is tuned (spec Coop-i section 1)
-      ]);
+      fillRow(ui.consoleFooter, [{ text: weaponsFooter(c), tint: c.charge >= 1 || c.torpedo.loaded ? TEXT : DIM }]);   // the Pulse Laser, the tube, the stock and LOCKED under a Science lock (spec Coop-i section 1)
       ui.consoleBar.root.visible = true; ui.consoleBar.set(c.charge);
     } else if (p.console && 'kind' in p.console && p.console.kind === 'science') {
       const c = p.console;

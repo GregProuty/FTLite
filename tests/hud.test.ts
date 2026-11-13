@@ -617,3 +617,60 @@ describe('the Upgrades page in the HUD model', () => {
     expect(engineeringFooter(panelOf(s)).length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
   });
 });
+
+// ---- Loop-iii: the Weapons card shows every gun (spec Loop-iii sections 3 and 4) ----
+import { weaponsStrip, weaponsLootLine, weaponsFooter, weaponsRowTexts } from '../src/renderer/src/render/hudModel';
+import { Weapon, SWAP_SLOT } from '../src/renderer/src/sim/weapons';
+import { LootWeapon } from '../src/renderer/src/sim/weaponDefs';
+
+describe('the Weapons card with loot weapons', () => {
+  const seatedW = () => { const s = makeState(1); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w); return { s, w }; };
+  const panel = (s: ReturnType<typeof makeState>) => buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
+  it('the strip: Pulse F1 F2 F3, the filled slots by short name, Torp; the selected one lit; the widest strip fits the card', () => {
+    const { s } = seatedW();
+    expect(weaponsStrip(panel(s))).toEqual([{ text: 'Pulse F1', lit: true }, { text: 'F2', lit: false }, { text: 'F3', lit: false }, { text: 'Torp', lit: false }]);
+    s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Ion; s.weapons.selector = Weapon.Slot2;
+    expect(weaponsStrip(panel(s)).map((p) => (p.lit ? `[${p.text}]` : p.text)).join(' ')).toBe('Pulse F1 F2 F3 Burst [Ion] Torp');
+    s.weapons.slot[1] = 0; expect(weaponsStrip(panel(s)).map((p) => p.text)).toEqual(['Pulse F1', 'F2', 'F3', 'Burst', 'Torp']);
+    s.weapons.slot[0] = LootWeapon.Missile; s.weapons.slot[1] = LootWeapon.Missile;
+    expect(weaponsStrip(panel(s)).map((p) => p.text).join('  ').length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+  });
+  it('the footer: Pulse, Torp and the stock; the loot line one figure per extra slot (READY, a percentage, OFF below its Weapons level, EMPTY without a torpedo); all within the card', () => {
+    const { s, w } = seatedW(); s.weapons.charge = 0.8; s.weapons.torpedoLoaded = 1;
+    expect(weaponsFooter(panel(s))).toBe(`Pulse 80%  Torp LOADED  Stock ${TORP_START}/${TORP_CAP}`); expect(weaponsLootLine(panel(s))).toBe('');
+    s.weapons.charge = 1; expect(weaponsFooter(panel(s)).startsWith('Pulse READY  ')).toBe(true);
+    s.weapons.slot[0] = LootWeapon.Burst; s.weapons.charge2[0] = 1; s.weapons.slot[1] = LootWeapon.Heavy; s.weapons.charge2[1] = 0.4; s.stations.level[w] = 2;
+    expect(weaponsLootLine(panel(s))).toBe('Burst READY  Heavy OFF');
+    s.stations.level[w] = 4; expect(weaponsLootLine(panel(s))).toBe('Burst READY  Heavy 40%');
+    s.weapons.slot[1] = LootWeapon.Missile; s.weapons.charge2[1] = 1; s.weapons.torpedoStock = 0; expect(weaponsLootLine(panel(s))).toBe('Burst READY  Missile EMPTY');
+    s.weapons.slot[0] = LootWeapon.Missile; s.weapons.charge2[0] = 0.55; s.weapons.torpedoStock = TORP_CAP;
+    expect(weaponsLootLine(panel(s)).length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+    placeEnemy(s); s.enemy.scanned = 1; s.enemy.lockUntilTick = s.tick + 100;
+    const locked = weaponsFooter(panel(s)); expect(locked.endsWith('  LOCKED')).toBe(true); expect(locked.length).toBeLessThanOrEqual(44);   // 44 glyphs fit the 308 px card (as the Navigation footer)
+  });
+  it('a filled slot takes the last target row for the loot line: five target rows, else six', () => {
+    const { s } = seatedW(); expect(panel(s).rows).toBe(6); s.weapons.slot[1] = LootWeapon.Ion; expect(panel(s).rows).toBe(5);
+  });
+  it('the SWAP row: listed after the targets while cargo holds a weapon and no enemy is present; Down reaches it; Confirm swaps with the selected slot, or slot 1; no draws', () => {
+    const { s, w } = seatedW(); s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Heavy; s.weapons.charge2[0] = 0.9; s.weapons.charge2[1] = 0.6; s.weapons.cargo = LootWeapon.Missile;
+    s.stations.cursor[w] = placeDebris(s, room(s, 'A'), 600, 1);   // the cursor on the one target: Down goes to the SWAP row
+    expect(panel(s).swap).toBe('SWAP: cargo Missile for Burst'); expect(weaponsRowTexts(panel(s)).slice(-1)).toEqual(['SWAP: cargo Missile for Burst']);
+    run(s, 1, () => intents({ moveY: 1 })); run(s, 1, () => intents({}));
+    expect(s.stations.cursor[w]).toBe(SWAP_SLOT); expect(panel(s).cursor).toBe(panel(s).targets.length);
+    const r0 = JSON.stringify([s.rng.combat.s, s.rng.loot.s]);
+    run(s, 1, () => intents({ confirmPressed: true }));
+    expect([Array.from(s.weapons.slot), s.weapons.cargo, s.weapons.charge2[0], s.weapons.charge2[1]]).toEqual([[LootWeapon.Missile, LootWeapon.Heavy], LootWeapon.Burst, 0, 0.6]);
+    expect(JSON.stringify([s.rng.combat.s, s.rng.loot.s])).toBe(r0);
+    s.weapons.selector = Weapon.Slot2; expect(panel(s).swap).toBe('SWAP: cargo Burst for Heavy');
+    run(s, 1, () => intents({ confirmPressed: true })); expect([Array.from(s.weapons.slot), s.weapons.cargo]).toEqual([[LootWeapon.Missile, LootWeapon.Burst], LootWeapon.Heavy]);
+    expect(panel(s).swap!.length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
+  });
+  it('no SWAP row with an enemy present or an empty cargo; a cursor left on it moves off', () => {
+    const { s, w } = seatedW(); s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Heavy;
+    expect(panel(s).swap).toBeNull(); run(s, 1, () => intents({ moveY: 1 })); expect(s.stations.cursor[w]).toBe(-1);
+    s.weapons.cargo = LootWeapon.Ion; s.stations.cursor[w] = SWAP_SLOT; placeEnemy(s);
+    expect(panel(s).swap).toBeNull();
+    run(s, 1, () => intents({ confirmPressed: true })); expect(s.weapons.cargo).toBe(LootWeapon.Ion);
+    run(s, 1, () => intents({ moveY: 1 })); expect(s.stations.cursor[w]).not.toBe(SWAP_SLOT);
+  });
+});

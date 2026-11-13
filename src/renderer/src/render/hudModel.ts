@@ -1,11 +1,11 @@
 import { weaponDef } from '../sim/weaponDefs';
-import { LootPlace } from '../sim/weapons';
+import { LootPlace, Weapon, SWAP_SLOT, canSwap, swapSlot } from '../sim/weapons';
 import { ICON_KINDS, stationTint, type IconKind, type IconTint } from './roomIconModel';
 import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX } from '../sim/tuning';
+import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX, WEAPON_SLOTS, SLOT_LEVELS } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf, EXIT_JUMP, exitText } from '../sim/run';
 import { depthOf, peaceful } from '../sim/depth';
 import { EVENTS } from '../sim/events';
@@ -60,7 +60,9 @@ function upgradeRowsOf(state: SimState, cursor: number): UpgradeRow[] {
 export type DoorsPanel = { kind: 'doors'; item: string; status: string; action: string; openAirlocks: number } | { kind: 'doors'; item: null };
 export type TargetKindName = 'debris' | 'shot' | 'rock' | 'enemy';
 export interface DebrisTarget { stableId: number; kind: TargetKindName; room: string; eta: number; frequency: number | null; hull: number | null; system: number | null; status: { hp: number; repairIn: number | null } | null; shieldsUp: boolean | null; layers: number | null; layersMax: number | null; weaponCharge: number | null; fleeSeconds: number | null }   // the last four: the enemy hull row only (spec Demo-i section 11.4)
-export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number; fetch: boolean; fed: boolean }; targets: DebrisTarget[]; cursor: number; first: number; locked: boolean }   // locked: a Science lock runs (spec Coop-i section 1); torpedo.fetch: a magazine ship with nothing in the tube or the loader, fed: a delivered torpedo loading (spec Coop-ii section 2)
+export interface WeaponsPanel { kind: 'weapons'; charge: number; selector: number; torpedo: { stock: number; cap: number; loaded: boolean; load: number; fetch: boolean; fed: boolean }; targets: DebrisTarget[]; cursor: number; first: number; locked: boolean; loot: LootSlotView[]; swap: string | null; rows: number }   // loot: the filled extra slots; swap: the SWAP row's text while it shows (after the targets; cursor = targets.length on it); rows: target rows visible (spec Loop-iii section 4)
+/** A filled extra slot on the Weapons card: its selector value, short name, charge, whether the Weapons level powers it, and for the missile pod whether the stock is empty. */
+export interface LootSlotView { selector: number; short: string; charge: number; powered: boolean; empty: boolean }   // locked: a Science lock runs (spec Coop-i section 1); torpedo.fetch: a magazine ship with nothing in the tube or the loader, fed: a delivered torpedo loading (spec Coop-ii section 2)
 export interface SciencePanel { kind: 'science'; leadSeconds: number; targets: (DebrisTarget & { scan: number })[]; cursor: number; first: number; scanning: boolean; lock: string }   // lock: '', 'LOCK: Confirm' or 'LOCKED 6s' (spec Coop-i section 1)
 export interface NavigationPanel { kind: 'navigation'; evadeChance: number; jump: { charge: number; ready: boolean }; here: string; fuel: number; fuelAfter: number | null; rows: { text: string; selectable: boolean; enabled: boolean; cursor: boolean }[]; first: number; scrap: number }
 export type ConsolePanel = EngineeringPanel | DoorsPanel | WeaponsPanel | SciencePanel | NavigationPanel;
@@ -168,6 +170,23 @@ function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' 
 function etaSeconds(state: SimState, slot: number): number { return Math.ceil((state.debris.impactTick[slot]! - state.tick) * DT); }
 
 export const WEAPONS_ROWS = 6, SCIENCE_ROWS = 7;
+/** The selector strip (spec Loop-iii section 4): Pulse F1 F2 F3, each filled slot's short name, Torp; the selected one lit. */
+export function weaponsStrip(c: WeaponsPanel): { text: string; lit: boolean }[] {
+  const items: [string, number][] = [['Pulse F1', Weapon.BeamF1], ['F2', Weapon.BeamF2], ['F3', Weapon.BeamF3], ...c.loot.map((l): [string, number] => [l.short, l.selector]), ['Torp', Weapon.Torpedo]];
+  return items.map(([text, sel]) => ({ text, lit: sel === c.selector }));
+}
+const pct = (v: number): string => (v >= 1 ? 'READY' : `${Math.floor(v * 100)}%`);
+/** The footer: the Pulse Laser's charge, the tube and the stock, LOCKED under a Science lock. */
+export function weaponsFooter(c: WeaponsPanel): string {
+  const t = c.torpedo, torp = t.loaded ? 'LOADED' : t.fed ? `${Math.floor(t.load * 100)}%` : t.fetch ? (t.stock > 0 ? 'FETCH' : 'EMPTY') : t.stock > 0 ? `${Math.floor(t.load * 100)}%` : 'EMPTY';
+  return [`Pulse ${pct(c.charge)}`, `Torp ${torp}`, `Stock ${t.stock}/${t.cap}`, ...(c.locked ? ['LOCKED'] : [])].join('  ');
+}
+/** The loot line above the footer: one figure per filled extra slot (READY, a percentage, OFF below its Weapons level, EMPTY for a missile pod with no torpedo); '' with none. */
+export function weaponsLootLine(c: WeaponsPanel): string {
+  return c.loot.map((l) => `${l.short} ${l.empty ? 'EMPTY' : !l.powered && l.charge < 1 ? 'OFF' : pct(l.charge)}`).join('  ');
+}
+/** Every target-list row in order: the targets, then the SWAP row while it shows. */
+export function weaponsRowTexts(c: WeaponsPanel): string[] { return [...c.targets.map((t) => targetRowText(t)), ...(c.swap ? [c.swap] : [])]; }
 /** First visible row: the window starts at 0 until the cursor passes the last row, then scrolls so the cursor is the last visible row (spec Combat-i section 7). */
 export function targetWindow(cursor: number, length: number, rows: number): number {
   return Math.max(0, Math.min(Math.max(cursor, 0) - rows + 1, Math.max(0, length - rows)));
@@ -265,8 +284,10 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
     return { kind: 'doors', item: `Door  ${names[d.edgeA[e]!]!.name} / ${names[d.edgeB[e]!]!.name}`, status: sealed ? 'Sealed' : state.doors.sealRequested[e] === 1 ? 'Sealing' : held ? 'Held open' : 'Auto', action, openAirlocks };   // a pending seal (someone in the doorway) reads Sealing (Codex render review 2)
   }
   if (kind === StationKind.Weapons) {
-    const slots = warnedTargets(state), c = state.stations.cursor[i]!, w = state.weapons, cursor = slots.indexOf(c);
-    return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k)), cursor, first: targetWindow(cursor, slots.length, WEAPONS_ROWS), locked: lockActive(state) };
+    const slots = warnedTargets(state), c = state.stations.cursor[i]!, w = state.weapons, swap = canSwap(state), cursor = swap && c === SWAP_SLOT ? slots.length : slots.indexOf(c);
+    const loot: LootSlotView[] = []; for (let k = 0; k < WEAPON_SLOTS; k++) { const id = w.slot[k]!; if (id) loot.push({ selector: Weapon.Slot1 + k, short: weaponDef(id).short, charge: w.charge2[k]!, powered: state.stations.level[i]! >= SLOT_LEVELS[k]!, empty: weaponDef(id).kind === 'missile' && w.torpedoStock <= 0 }); }
+    const rows = loot.length ? WEAPONS_ROWS - 1 : WEAPONS_ROWS, swapText = swap ? `SWAP: cargo ${weaponDef(w.cargo).short} for ${weaponDef(w.slot[swapSlot(state)]!).short}` : null;
+    return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k)), cursor, first: targetWindow(cursor, slots.length + (swap ? 1 : 0), rows), locked: lockActive(state), loot, swap: swapText, rows };
   }
   if (kind === StationKind.Science) {
     const slots = warnedTargets(state), c = state.stations.cursor[i]!, cursor = slots.indexOf(c);

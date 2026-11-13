@@ -1,5 +1,5 @@
 import type { SimState } from '../sim/state';
-import { EnemySystem, EnemyRoom, ENEMY_ROOM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, rotateSecondsLeft } from '../sim/enemy';
+import { EnemySystem, EnemyRoom, ENEMY_ROOM_NAMES, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, rotateSecondsLeft, ionSecondsLeft } from '../sim/enemy';
 import { isEnemySlot, enemySystemOf, ENEMY_SLOT } from '../sim/debrisTargets';
 import { StationKind } from '../sim/stationKinds';
 import { beaconKey } from '../sim/run';
@@ -18,7 +18,7 @@ export const SHIP = { x: (WINDOW.w - ENEMY_COLS * ENEMY_TILE) / 2, y: 44, w: ENE
 export interface Pt { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 export type RoomGlyph = 'weapons' | 'engines' | 'shields';
-export interface WindowRoom { rect: Rect; glyph: RoomGlyph | null; tint: 'normal' | 'damaged' | 'down'; hp: number | null; repairIn: number | null; fire: boolean; breach: boolean }
+export interface WindowRoom { rect: Rect; glyph: RoomGlyph | null; tint: 'normal' | 'damaged' | 'down' | 'ion'; hp: number | null; repairIn: number | null; ionIn: number | null; fire: boolean; breach: boolean }   // ion / ionIn: an ion-disabled system and its whole seconds left (spec Loop-iii section 4)
 export interface EnemyWindowView {
   visible: boolean; phase: 'arriving' | 'present' | 'destroyed' | 'leaving'; t: number;
   slideX: number; shipDY: number; ship: Rect;
@@ -99,8 +99,9 @@ function presentView(state: SimState, nowTick: number, anim: WindowAnim): EnemyW
   const e = state.enemy, tick = state.tick;
   const rooms: WindowRoom[] = Array.from({ length: ENEMY_ROOMS }, (_, r) => {
     const sys = r < 3 ? r : -1, hp = sys >= 0 ? e.sysHp[sys]! : null;
-    const tint = hp === null ? 'normal' : hp <= 0 ? 'down' : hp < ENEMY_SYS_HP ? 'damaged' : 'normal';
-    return { rect: roomRect(r), glyph: GLYPHS[r]!, tint, hp: hp === null ? null : hp / ENEMY_SYS_HP, repairIn: hp !== null && hp <= 0 && e.sysRepairTick[sys]! >= 0 ? Math.ceil((e.sysRepairTick[sys]! - tick) / TICK_HZ) : null, fire: e.roomFire[r]! > 0, breach: e.roomBreach[r]! > 0 };
+    const ion = sys >= 0 && hp! > 0 ? ionSecondsLeft(state, sys) : 0;
+    const tint = hp === null ? 'normal' : hp <= 0 ? 'down' : ion > 0 ? 'ion' : hp < ENEMY_SYS_HP ? 'damaged' : 'normal';
+    return { rect: roomRect(r), glyph: GLYPHS[r]!, tint, hp: hp === null ? null : hp / ENEMY_SYS_HP, repairIn: hp !== null && hp <= 0 && e.sysRepairTick[sys]! >= 0 ? Math.ceil((e.sysRepairTick[sys]! - tick) / TICK_HZ) : null, ionIn: ion > 0 ? ion : null, fire: e.roomFire[r]! > 0, breach: e.roomBreach[r]! > 0 };
   });
   const w = state.weapons, shotAge = nowTick - w.lastShotTick;
   const flee = fleeSecondsLeft(state);
