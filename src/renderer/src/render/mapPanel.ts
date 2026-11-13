@@ -45,7 +45,7 @@ export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(m
         else if (nd.past) g.circle(x, y, 6).fill(FAINT);
         else g.circle(x, y, 6).fill(0x101420).stroke({ width: 1, color: nd.reachable ? TEXT : DIM });
         if (nd.type === 'asteroid') drawRocks(g, x, y, nd.current || nd.selected ? 0x101420 : nd.past ? DIM : nd.reachable ? TEXT : DIM);
-        const label = c === last ? 'EXIT' : nd.type === 'shop' ? '$' : nd.type === 'event' ? '?' : '';
+        const label = c === last ? 'EXIT' : nd.type === 'shop' ? '$' : nd.type === 'event' ? '!' : nd.type === 'unknown' ? '?' : '';   // ? is a beacon not yet visited (spec Loop-i section 4b)
         if (label && mi < marks.length) { const t = marks[mi++]!; t.text = label; t.position.set(x, y + 14); t.visible = true; }
       }));
     }

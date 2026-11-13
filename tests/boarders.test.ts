@@ -15,22 +15,24 @@ import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { createRng, nextFloat, nextInt } from '../src/shared/rng';
 import { TICK_HZ, DT, BOARDING_FIRST, BOARDING_FIRST_SMALL, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDING_PARTY, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, XP_RATE, HEALTH_MAX, MEDBAY_HEAL, STRESS_WEIGHTS, BOARDER_SLOTS, TRAIT_XP_MULT, BOARDER_O2_DPS, BOARDER_FIRE_DPS, O2_DAMAGE, FIRE_DAMAGE, SUFFOCATE_FRAC, scrapBoarder } from '../src/renderer/src/sim/tuning';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
-import { makeState, run, quiet, placeBoarder, room, intents, teleport, setSkill, cutterState, seconds } from './helpers/sim';
+import { makeState, run, quiet, placeBoarder, room, intents, teleport, setSkill, cutterState, seconds, mapM, setNodeTypes, chargeJump, at, woke, hazardStart } from './helpers/sim';
+import { jumpShip, NodeType } from '../src/renderer/src/sim/run';
+import { NEVER, BOARDING_AFTER_JUMP } from '../src/renderer/src/sim/tuning';
 import { stationOnline } from '../src/renderer/src/sim/stations';
 
 const T = TICK_HZ;
 const hold = { interactHeld: true };
 /** No director spawns, no enemy, no scheduled boarding: only what the fixture places. */
 function calm(players = 1, seed = 1, characters?: readonly number[]) {
-  const s = makeState(players, seed, characters); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; return s;
+  const s = woke(makeState(players, seed, characters)); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; return s;
 }
 const streams = (s: ReturnType<typeof makeState>): [number, number, number] => [s.rng.director.s, s.rng.hazards.s, s.rng.combat.s];
 const sealAllBut = (s: ReturnType<typeof makeState>, keep: number[]) => { for (let e = 0; e < s.doors.state.length; e++) if (s.derived.edgeIsDoor[e] && !keep.includes(e)) s.doors.state[e] = DoorState.Sealed; };
 
 describe('boarders: initial values, helpers', () => {
-  it('a fresh state has no boarders, the first boarding armed, zero counters', () => {
-    const s = makeState(2), b = s.boarders;
-    expect(Array.from(b.active)).toEqual([0, 0, 0, 0]); expect(Array.from(b.aloneSince)).toEqual([-1, -1, -1, -1]); expect(b.nextArrivalTick).toBe(BOARDING_FIRST_SMALL * T);
+  it('a fresh state has no boarders, no boarding armed before the first jump (spec Loop-i section 4b), zero counters', () => {
+    const s = woke(makeState(2)), b = s.boarders;
+    expect(Array.from(b.active)).toEqual([0, 0, 0, 0]); expect(Array.from(b.aloneSince)).toEqual([-1, -1, -1, -1]); expect(b.nextArrivalTick).toBe(NEVER); const h = woke(makeState(2)); hazardStart(h); expect(h.boarders.nextArrivalTick).toBe(BOARDING_FIRST_SMALL * T);   // the hazard gates keep the old first boarding
     expect([s.telemetry.boardings, s.telemetry.boardersKilled]).toEqual([0, 0]); expect(activeBoarderCount(s)).toBe(0);
     expect(combatDps(0)).toBe(CREW_MELEE_DPS); expect(combatDps(10)).toBeCloseTo(CREW_MELEE_DPS * 1.6, 12); expect(combatDefence(10)).toBeCloseTo(0.4, 12);
   });
@@ -45,7 +47,7 @@ describe('boarders: initial values, helpers', () => {
 
 describe('boarders: arrival (boarderSystem called directly)', () => {
   it('arrives exactly at BOARDING_FIRST with one hazards draw: two boarders in the drawn room with consecutive ids; no arrival while any boarder is aboard; the last kill arms the cooldown and a second party arrives', () => {
-    const s = makeState(2); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = BOARDING_FIRST * T;   // the small-crew first arrival is later (spec Demo-i section 5); this test pins the cooldown mechanics at BOARDING_FIRST
+    const s = woke(makeState(2)); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = BOARDING_FIRST * T;   // the small-crew first arrival is later (spec Demo-i section 5); this test pins the cooldown mechanics at BOARDING_FIRST
     s.tick = BOARDING_FIRST * T - 1; boarderSystem(s); expect(activeBoarderCount(s)).toBe(0);
     s.tick = BOARDING_FIRST * T; s.rng.hazards.s = 7; const d0 = s.rng.director.s, id = s.nextStableId;
     const hz = createRng(7), rm = nextInt(hz, s.derived.volume.length);
@@ -64,12 +66,12 @@ describe('boarders: arrival (boarderSystem called directly)', () => {
     expect(activeBoarderCount(s)).toBe(2); expect(s.telemetry.boardings).toBe(2); expect(b.stableId[0]).toBeGreaterThan(id + 1);
   });
   it('a party landing in a room with crew attacks on the arrival tick; landing in an empty room starts the clock on the arrival tick', () => {
-    const s = makeState(1); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = BOARDING_FIRST * T; const A = room(s, 'A'); teleport(s, 0, 2.5, 2.5);
+    const s = woke(makeState(1)); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = BOARDING_FIRST * T; const A = room(s, 'A'); teleport(s, 0, 2.5, 2.5);
     // find a hazards state whose room draw is A
     let seed = 1; while (nextInt(createRng(seed), s.derived.volume.length) !== A) seed++;
     s.tick = BOARDING_FIRST * T; s.rng.hazards.s = seed; boarderSystem(s);
     expect(s.boarders.room[0]).toBe(A); expect(Health.cur[s.crew[0]!]).toBeCloseTo(HEALTH_MAX - 2 * BOARDER_DPS * DT, 9);   // both boarders struck
-    const e = makeState(1); quiet(e); e.enemy.nextArrivalTick = 1e9; e.boarders.nextArrivalTick = BOARDING_FIRST * T; teleport(e, 0, 2.5, 9.5);   // crew in G, party lands in A
+    const e = woke(makeState(1)); quiet(e); e.enemy.nextArrivalTick = 1e9; e.boarders.nextArrivalTick = BOARDING_FIRST * T; teleport(e, 0, 2.5, 9.5);   // crew in G, party lands in A
     e.tick = BOARDING_FIRST * T; e.rng.hazards.s = seed; boarderSystem(e);
     expect(e.boarders.aloneSince[0]).toBe(e.tick);                                                // A has an online console: the clock runs from the arrival tick
   });
@@ -297,5 +299,15 @@ describe('boarders: vacuum and fire (spec Demo-ix section 1, amendments B6 and B
     expect(deadAt).toBeGreaterThan(opened + seconds(10));                                           // 60 health at 6 per second, after the room drains (amendment B10)
     expect(deadAt).toBeLessThanOrEqual(opened + seconds(12));
     expect([s.telemetry.boardersKilled, s.telemetry.boardersVented]).toEqual([2, 2]);
+  });
+});
+
+describe('boarders at a peaceful beacon (spec Loop-i section 4b)', () => {
+  it('no party arrives at a peaceful beacon even when due; after the first jump the boarding clock runs BOARDING_AFTER_JUMP from the jump', () => {
+    const s = makeState(2); quiet(s); expect(s.boarders.nextArrivalTick).toBe(NEVER);
+    s.boarders.nextArrivalTick = 0; run(s, seconds(60)); expect([activeBoarderCount(s), s.telemetry.boardings]).toEqual([0, 0]);
+    mapM(s); setNodeTypes(s, { '1:0': NodeType.Empty }); chargeJump(s); const t = s.tick; jumpShip(s, at(1, 0));
+    expect(s.boarders.nextArrivalTick).toBe(t + BOARDING_AFTER_JUMP * T);
+    run(s, BOARDING_AFTER_JUMP * T + 1); expect(s.telemetry.boardings).toBe(1);
   });
 });

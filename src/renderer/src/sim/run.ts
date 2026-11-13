@@ -11,7 +11,7 @@ import { Life, LifeState } from './components';
 import { EVENTS, choiceEnabled, resolveEvent } from './events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from './shop';
 import { addScrap } from './scrap';
-import { depthOf } from './depth';
+import { depthOf, peaceful } from './depth';
 import { TICK_HZ, DT, SECTORS, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, SECTOR_COLUMNS, NODE_STRIDE, MIDDLE_MIN, MIDDLE_MAX, EDGE_CHANCE, SHOP_CHANCE, EVENT_CHANCE, ASTEROID_CHANCE, EMPTY_CHANCE, scrapPerJump, EVENT_COUNT, JUMP_CHARGE_TIME, BOARDING_AFTER_JUMP, ENCOUNTER_START, ENCOUNTER_BOOST, NEVER, FIELD_INTERVAL, FIELD_JITTER, FIELD_SECONDS, FIELD_CLEAR_EXTRA, scrapField, EVADE_WINDOW, EVADE_COOLDOWN, VOTE_SECONDS, VOTE_SETTLE, CONFIRM_SECONDS } from './tuning';
 import { stationOnline } from './stations';
 import { quirkChargeMult } from './quirks';
@@ -62,10 +62,16 @@ export function generateMap(rng: RngState, columns: number = SECTOR_COLUMNS): { 
 
 export function nodeLabel(column: number, node: number): string { return `Node ${column + 1}${String.fromCharCode(97 + node)}`; }
 /** A destination row: the node label, naming an asteroid field (spec Demo-viii amendment R5). */
-export function destinationLabel(state: SimState, column: number, node: number): string {
-  if (overrun(state, column)) return `${nodeLabel(column, node)}  FLEET`;   // the Pursuit is there (spec Loop-i section 3)
-  return state.run.nodeType[beaconIndex(column, node)] === NodeType.Asteroid ? `${nodeLabel(column, node)}  Asteroid field` : nodeLabel(column, node);
+export function destinationLabel(state: SimState, column: number, node: number): string { return `${nodeLabel(column, node)}  ${beaconMark(state, column, node)}`; }
+/** What the crew knows of a beacon (spec Loop-i sections 3 and 4b): FLEET once overrun, EXIT, a shop always, a visited beacon's type, else ?. Presentation only: the type is drawn with the map. */
+export function beaconMark(state: SimState, column: number, node: number): string {
+  const r = state.run, k = beaconIndex(column, node), t = r.nodeType[k]!;
+  if (overrun(state, column)) return 'FLEET';
+  if (column === r.colNodes.length - 1) return 'EXIT';
+  if (t === NodeType.Shop) return 'Shop';
+  return r.visited[k] ? BEACON_NAMES[t] ?? '?' : '?';
 }
+const BEACON_NAMES = ['Hostile', 'Event', 'Shop', 'Asteroid field', 'Empty'] as const;
 /** A column at or behind the fleet front is overrun (spec Loop-i section 3): its beacons lose their own content. */
 export const overrun = (state: SimState, column: number): boolean => column <= Math.floor(state.run.pursuit);
 /** What the current beacon holds: its type, or -1 once the Pursuit has overrun it (no event, shop or field). */
@@ -175,6 +181,8 @@ export function jumpShip(state: SimState, destination: Beacon): void {
 function afterJump(state: SimState): void {
   const r = state.run, nav = state.derived.stationOfKind[StationKind.Navigation]!, last = r.colNodes.length - 1;
   r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1; r.waitUntilTick = -1; r.pursuitFought = 0;
+  if (r.wakeTick < 0) r.wakeTick = state.tick;   // the director wakes on the first jump (spec Loop-i section 4b)
+  r.calm = r.column === 0 ? 1 : 0; r.visited[hereIndex(state)] = 1;
   if (nav >= 0) state.stations.cursor[nav] = 0;
   state.telemetry.jumps++;
   arrive(state);
@@ -184,7 +192,7 @@ function afterJump(state: SimState): void {
   const type = r.column === 0 || (r.column === last && r.sector >= SECTORS - 1) ? -1 : r.nodeType[hereIndex(state)]!, hazard = type === NodeType.Hazard;
   r.encounter = hazard || type === NodeType.Asteroid ? Encounter.Pending : Encounter.None; r.encounterTick = state.tick; r.fieldNextTick = -1;
   state.enemy.nextArrivalTick = hazard ? state.tick + ENCOUNTER_START * TICK_HZ : NEVER;   // an asteroid field has no enemy: it starts in fieldSystem
-  if (overrun(state, r.column)) startPursuitFight(state);   // the Pursuit replaces the beacon's own encounter (spec Loop-i amendment S5)
+  if (overrun(state, r.column) && !peaceful(state)) startPursuitFight(state);   // the Pursuit replaces the beacon's own encounter (spec Loop-i amendment S5)
   if (activeBoarderCount(state) === 0) state.boarders.nextArrivalTick = state.tick + BOARDING_AFTER_JUMP * TICK_HZ;
   enterPhase(state, Phase.BuildUp);
 }
@@ -198,7 +206,7 @@ function startPursuitFight(state: SimState): void {
 /** Step 5a (spec Loop-i section 3, amendment S5): once per beacon visit, the Pursuit overrunning the beacon you are at starts its fight, after any enemy already here has gone. */
 export function pursuitSystem(state: SimState): void {
   const r = state.run;
-  if (r.pursuitFought || state.enemy.present || !overrun(state, r.column)) return;
+  if (r.pursuitFought || state.enemy.present || peaceful(state) || !overrun(state, r.column)) return;
   startPursuitFight(state);
 }
 
@@ -208,7 +216,7 @@ export function sectorJump(state: SimState): void {
   if (r.fuel < 1 || !atExit(state)) return;
   if (r.sector >= SECTORS - 1) { r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.jumpPending = -1; r.jumpPendingTick = -1; state.telemetry.jumps++; state.ended = 1; state.endReason = EndReason.Victory; return; }
   const map = generateMap(state.rng.map, r.colNodes.length);
-  r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType);
+  r.colNodes.set(map.colNodes); r.edgeMask.set(map.edgeMask); r.nodeType.set(map.nodeType); r.visited.fill(0);
   r.sector += 1; r.column = 0; r.node = 0; r.pursuit = PURSUIT_START;
   afterJump(state);
 }

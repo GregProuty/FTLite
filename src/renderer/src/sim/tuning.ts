@@ -40,7 +40,7 @@ export const REACH = 1.5;               // tiles from crew centre to the nearest
 export const REPAIR_TIME_FIRE = 6;      // seconds for one repairer
 export const REPAIR_TIME_BREACH = 8;
 export const REVIVE_TIME = 4;
-export const SPAWN_FIRST = 15;          // seconds until the first spawned hazard
+export const SPAWN_FIRST = 15;          // seconds until the first spawned hazard once awake (a hazard gate; the game's first jump re-arms the director, spec Loop-i section 4b)
 export const SPAWN_INTERVAL = 30;       // seconds between spawned hazards
 export const SPAWN_JITTER = 0.2;        // ±fraction of the interval
 export const SPAWN_CAP = 3;             // max simultaneous fires + breaches + failed stations
@@ -130,7 +130,7 @@ export const ROUTE_BONUS = 2, ROUTE_IDLE_SECONDS = 60;  // routing toward consol
 export const SINCE_CAP = 36000;                        // ticks: sinceProductive counters stop at 10 minutes
 
 // Enemy ship (Combat-i)
-export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120;   // seconds: first arrival, stay (survival-gate fallback, spec Combat-i section 13; first pass 180); one enemy per node, no cooldown (spec Demo-vi section 2)
+export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120;   // seconds: the hazard gates' first arrival (the game has no timed first enemy since Loop-i section 4b), stay (survival-gate fallback, spec Combat-i section 13; first pass 180); one enemy per node, no cooldown (spec Demo-vi section 2)
 export const NEVER = 2 ** 31 - 1;                      // a tick that never comes: no further arrival at this node
 export const ENCOUNTER_START = 8, ENCOUNTER_REWARD_HULL = 8, ENCOUNTER_BOOST = 4, ENCOUNTER_NOTICE_SECONDS = 8, ENCOUNTER_SPAWN_MULT = 2;   // spec Demo-vi: seconds from a Hazard-node arrival to contact, hull for a win, drive charge multiplier after a win, notice seconds, director interval multiplier while fighting
 export const SHOT_BREACH_FIRST = 0.25;                 // a Shot impact tries a breach first below this roll, else a fire first (debris 0.5; spec Demo-vi section 3)
@@ -151,8 +151,8 @@ export const ENEMY_SYS_HP = 30, ENEMY_SYS_REPAIR = 45, ENEMY_EVADE = 0.15;   // 
 
 // Boarders (Boarders-i)
 export const BOARDER_SLOTS = 4;
-export const BOARDING_FIRST_SMALL = 330, ENCOUNTER_FIRST_SMALL = 270;   // seconds: first party / first encounter for crews of two or fewer (spec Demo-i section 5)
-export const BOARDING_FIRST = 240, BOARDING_COOLDOWN = 180, BOARDING_JITTER = 0.2;   // seconds: first party, gap after the last kill (x jitter)
+export const BOARDING_FIRST_SMALL = 330, ENCOUNTER_FIRST_SMALL = 270;   // seconds: the hazard gates' first party / first encounter for crews of two or fewer (spec Demo-i section 5; the game itself waits for the first jump, Loop-i section 4b)
+export const BOARDING_FIRST = 240, BOARDING_COOLDOWN = 180, BOARDING_JITTER = 0.2;   // seconds: the hazard gates' first party, gap after the last kill (x jitter)
 export const BOARDING_PARTY = 2;
 export const BOARDER_O2_DPS = O2_DAMAGE, BOARDER_FIRE_DPS = FIRE_DAMAGE;                   // boarders suffocate and burn like the crew, below SUFFOCATE_FRAC (spec Demo-ix section 1)
 export const BOARDER_HEALTH = 60, BOARDER_DPS = 6;                                   // health; damage per second to the focused crew member before Combat defence

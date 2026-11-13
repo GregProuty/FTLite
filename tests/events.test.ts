@@ -104,7 +104,7 @@ describe('shops', () => {
     expect(rows).toHaveLength(13); expect(rows[0]).toEqual({ text: 'Shop   scrap 100', select: 'none', index: 0, enabled: false });   // mask 1:0 = 1: one forward destination (Node 3a) and the sideways Node 2b
     expect(rows.slice(1, 10).map((r) => r.text)).toEqual(['Hull +25 (30 scrap)', 'Torpedoes +2 (20 scrap)', ...UPGRADE_KINDS.map((k) => `${STATION_NAMES[k]} +1 bar (50 scrap)`), 'Fuel +2 (12 scrap)']);
     expect(UPGRADE_KINDS).toEqual([StationKind.Navigation, StationKind.Weapons, StationKind.Science, StationKind.LifeSupport, StationKind.Medbay, StationKind.Doors]);
-    expect(rows.slice(10).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a', 'jump', 8], ['Node 2b', 'jump', 5], ['EVADE: Confirm', 'evade', 0]]);   // row indices are beacon indices (column x 4 + node)
+    expect(rows.slice(10).map((r) => [r.text, r.select, r.index])).toEqual([['Node 3a  ?', 'jump', 8], ['Node 2b  ?', 'jump', 5], ['EVADE: Confirm', 'evade', 0]]);   // unvisited beacons read ? (spec Loop-i section 4b)   // row indices are beacon indices (column x 4 + node)
     expect(rows[1]!.enabled).toBe(false); s.hull = 90; expect(navRows(s)[1]!.enabled).toBe(true);
     expect(rows[2]!.enabled).toBe(true); s.weapons.torpedoStock = TORP_CAP; expect(navRows(s)[2]!.enabled).toBe(false);
     expect(rows.slice(3, 9).every((r) => r.enabled)).toBe(true);

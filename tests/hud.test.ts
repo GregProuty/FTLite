@@ -408,7 +408,7 @@ describe('buildHudModel', () => {
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
     const nav = () => model().players[0]!.console as NavigationPanel, p = nav();
     const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;
-    expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a', true, true, false], ['Node 2b', true, true, true], ['EVADE: Confirm', true, true, false]]); expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect([p.fuel, p.fuelAfter]).toEqual([8, 7]);
+    expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a  ?', true, true, false], ['Node 2b  ?', true, true, true], ['EVADE: Confirm', true, true, false]]); expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect([p.fuel, p.fuelAfter]).toEqual([8, 7]);
     expect(navigationFooter(p)).toBe(`${evade}  Jump 64%  Fuel 8>7  Scrap 0`);
     s.stations.cursor[n] = 2; expect(navigationFooter(nav())).toBe(`${evade}  Jump 64%  Fuel 8  Scrap 0`);   // the evade row: no jump chosen
     s.stations.cursor[n] = 1; chargeJump(s); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
@@ -434,7 +434,7 @@ describe('buildHudModel', () => {
     igniteRoom(s, room(s, 'A')); placeEnemy(s); const t = buildHudModel(s, slots(2), 'running', '').threats; expect(t[0]!.icon).toBe('icon.weapons'); expect(t[1]!.text).toBe('Fire: Bridge'); expect(t[2]!.text).toBe('Event: Supply cache');
     setNodeTypes(s, { '1:2': NodeType.Shop }); const sh = buildHudModel(s, slots(2), 'running', '').threats; expect(sh.map((x) => x.text).slice(-2)).toEqual(['Event: Supply cache', 'Shop here']); expect(sh.map((x) => x.text).slice(0, 2)).toEqual([expect.stringMatching(/^Enemy ship/), 'Fire: Bridge']);
     resolveEvent(s, 0); const q = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
-    expect(q.rows).toHaveLength(13); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Fuel +2 (12 scrap)'); expect(q.rows[10]!.text).toBe('Node 3a');   // mask 1:2 = 1: one forward destination, then the sideways Node 2b
+    expect(q.rows).toHaveLength(13); expect(q.rows[0]!.text).toBe('Shop   scrap 85'); expect(q.rows[1]!.text).toBe('Hull +25 (30 scrap)'); expect(q.rows[1]!.enabled).toBe(false); expect(q.rows[9]!.text).toBe('Fuel +2 (12 scrap)'); expect(q.rows[10]!.text).toBe('Node 3a  ?');   // mask 1:2 = 1: one forward destination, then the sideways Node 2b
     expect(buildHudModel(s, slots(2), 'running', '').threats.map((x) => x.text).slice(-1)).toEqual(['Shop here']);
     s.run.upgrades[StationKind.Weapons] = 1; const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 1, eng);
     const m2 = buildHudModel(s, slots(2), 'running', ''); expect(m2.stations.find((x) => x.kind === StationKind.Weapons)!.max).toBe(STATION_MAX[StationKind.Weapons]! + 1);

@@ -7,6 +7,8 @@ import { step } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
 import { NodeType } from '../../src/renderer/src/sim/run';
+import { ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, BOARDING_FIRST, BOARDING_FIRST_SMALL } from '../../src/renderer/src/sim/tuning';
+import { Encounter } from '../../src/renderer/src/sim/enemy';
 import { NODE_STRIDE, SHIELD_ROTATE, TICK_HZ, SKILL_COUNT, XP_THRESHOLDS, ENEMY_HULL, ENCOUNTER_MAX, ENEMY_FIRST_SHOT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, BOARDER_HEALTH, BOARDER_MOVE } from '../../src/renderer/src/sim/tuning';
 import { ObjectKind } from '../../src/renderer/src/sim/debris';
 import { ENEMY_SLOTS } from '../../src/renderer/src/sim/debrisTargets';
@@ -79,7 +81,7 @@ export function quiet(state: SimState): void { state.director.nextSpawnTick = 1e
 /** Put the director in Build Up with a due attempt, plenty of budget and no stress or stall pressure, so one spawn can be observed in isolation. */
 export function armSpawn(state: SimState): void {
   const d = state.director;
-  d.phase = Phase.BuildUp; d.phaseTick = state.tick; d.lastSpawnTick = state.tick; d.budgetLeft = 99; d.stress = 0; d.nextStressTick = 1e9; d.nextSpawnTick = state.tick;
+  wake(state); d.phase = Phase.BuildUp; d.phaseTick = state.tick; d.lastSpawnTick = state.tick; d.budgetLeft = 99; d.stress = 0; d.nextStressTick = 1e9; d.nextSpawnTick = state.tick;   // awake: no peace at the start beacon (spec Loop-i section 4b)
 }
 
 /** Place an enemy as arrive() would (no draw): fresh StableId, full systems, the given shield frequency, the combat fields (maxHull is the column's, never below the hull given: spec Demo-i section 11.5 places hull 40 of 100). */
@@ -147,3 +149,13 @@ export function mapM(state: SimState): void {
 export const at = (column: number, node: number): { column: number; node: number } => ({ column, node });
 /** The forward destination `node` in the next column. */
 export const ahead = (state: SimState, node: number): { column: number; node: number } => ({ column: state.run.column + 1, node });
+/** Leave the peace of the start beacon without a jump (spec Loop-i section 4b): the director, the enemy and boarders act at column 0, with the clocks counted from tick 0 as before Loop-i. Hazard tests and gates use it. */
+export function wake(state: SimState): void { state.run.calm = 0; state.run.wakeTick = 0; }
+/** The pre-Loop-i hazard schedule at the start beacon (the hazard gates): awake from tick 0, the first enemy and boarding party at the old crew-size times. */
+export function hazardStart(state: SimState): void {
+  wake(state);
+  const small = state.playerCount <= 2;
+  state.enemy.nextArrivalTick = (small ? ENCOUNTER_FIRST_SMALL : ENCOUNTER_FIRST) * TICK_HZ; state.boarders.nextArrivalTick = (small ? BOARDING_FIRST_SMALL : BOARDING_FIRST) * TICK_HZ; state.run.encounter = Encounter.Pending;
+}
+/** wake() returning the state, for setups that build an awake state inline. */
+export function woke<S extends SimState>(state: S): S { wake(state); return state; }

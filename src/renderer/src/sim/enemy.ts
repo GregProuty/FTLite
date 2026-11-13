@@ -5,7 +5,7 @@ import { spawnShot, shotsInFlight } from './debris';
 import { nextTarget, ENEMY_SLOT, ENEMY_SLOTS, isEnemySlot, enemySystemOf } from './debrisTargets';
 import { minutesOf } from './director';
 import { addScrap } from './scrap';
-import { depthOf } from './depth';
+import { depthOf, peaceful } from './depth';
 import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE, KILL_FUEL_MIN, PURSUIT_HULL_MULT, PURSUIT_FIRE_MULT } from './tuning';
 
 const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
@@ -159,7 +159,7 @@ export function damageEnemy(state: SimState, slot: number, amount: number): void
 /** Per tick, after the director and before the debris step: arrival, else repairs, shield recharge, the flee start, the engines pause, withdrawal, then a due shot (re-arm first; spawn only with weapons up and under the cap). */
 export function enemySystem(state: SimState): void {
   const e = state.enemy;
-  if (!e.present) { if (state.tick >= e.nextArrivalTick) arrive(state); return; }
+  if (!e.present) { if (state.tick >= e.nextArrivalTick && !peaceful(state)) arrive(state); return; }   // nothing arrives at a peaceful beacon (spec Loop-i section 4b)
   if (interiorStep(state)) return;   // first for a present enemy (amendment I3): destroyed by fire, no shot, no withdrawal
   for (let sys = 0; sys < ENEMY_SYSTEM_COUNT; sys++) {
     if (e.sysRepairTick[sys]! >= 0 && state.tick >= e.sysRepairTick[sys]!) {

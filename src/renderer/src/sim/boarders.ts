@@ -6,7 +6,7 @@ import { stationOnline } from './stations';
 import { failStation } from './power';
 import { downCrew } from './crew';
 import { addScrap } from './scrap';
-import { depthOf } from './depth';
+import { depthOf, peaceful } from './depth';
 import { Skill, skillLevelOf, addXp } from './skills';
 import { TICK_HZ, DT, BOARDING_PARTY, BOARDING_COOLDOWN, BOARDING_JITTER, BOARDER_HEALTH, BOARDER_DPS, CREW_MELEE_DPS, COMBAT_GAIN, COMBAT_DEFENCE, BOARDER_MOVE, BOARDER_SABOTAGE, XP_PER_KILL, HEALTH_EPS, scrapBoarder, BOARDER_O2_DPS, BOARDER_FIRE_DPS, SUFFOCATE_FRAC } from './tuning';
 
@@ -134,7 +134,7 @@ function boarderHazards(state: SimState): void {
 export function boarderSystem(state: SimState): void {
   const b = state.boarders;
   boarderHazards(state);   // a slot killed here is inactive, so the loop below skips it (amendment B6)
-  if (activeBoarderCount(state) === 0 && state.tick >= b.nextArrivalTick) arriveParty(state);
+  if (activeBoarderCount(state) === 0 && state.tick >= b.nextArrivalTick && !peaceful(state)) arriveParty(state);   // no party at a peaceful beacon (spec Loop-i section 4b)
   for (let k = 0; k < b.active.length; k++) {
     if (!b.active[k]) continue;
     const room = b.room[k]!, targets = consciousInRoom(state, room);

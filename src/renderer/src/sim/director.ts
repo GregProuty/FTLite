@@ -5,6 +5,7 @@ import { roomAt } from './grid';
 import { StationKind } from './stationKinds';
 import { activeBoarderCount } from './boarders';
 import { Encounter } from './enemy';
+import { peaceful } from './depth';
 import { igniteRoom, burningRoomCount } from './hazards/fire';
 import { activateBreach, activeBreachCount, freeSites } from './hazards/breach';
 import { failStation } from './power';
@@ -21,7 +22,8 @@ export function activeHazardCount(state: SimState): number {
   return burningRoomCount(state) + activeBreachCount(state) + failedStationCount(state) + activeDebrisCount(state);
 }
 
-export function minutesOf(state: SimState): number { return state.tick / (60 * TICK_HZ); }
+/** Minutes of escalation, counted from the first jump (spec Loop-i section 4b): 0 until then. */
+export function minutesOf(state: SimState): number { const w = state.run.wakeTick; return w < 0 ? 0 : (state.tick - w) / (60 * TICK_HZ); }
 
 /** Escalation (spec 4-i section 7): the interval shrinks toward a floor; solo crews get more time. */
 export function spawnInterval(minutes: number, players: number): number {
@@ -207,6 +209,7 @@ export function phaseStep(state: SimState): void {
 export function directorSystem(state: SimState): void {
   const d = state.director;
   if (state.tick >= d.nextStressTick) { updateStress(state); d.nextStressTick += STRESS_PERIOD * TICK_HZ; }
+  if (peaceful(state)) return;   // a peaceful beacon: no phases, no spawns (spec Loop-i section 4b); the jump out enters Build Up
   phaseStep(state);
   if (d.phase === Phase.BuildUp && state.tick >= d.nextSpawnTick) {
     const spawned = attemptSpawn(state);

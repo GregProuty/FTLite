@@ -8,7 +8,7 @@ import { hashState } from '../src/renderer/src/sim/hash';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown, stationOutput } from '../src/renderer/src/sim/stations';
 import { SKILL_COUNT, XP_THRESHOLDS, STATION_MAX } from '../src/renderer/src/sim/tuning';
-import { LAYOUT, makeState, RECRUITS, intents, run, teleport, room, seconds, placeDebris, setSkill } from './helpers/sim';
+import { LAYOUT, makeState, RECRUITS, intents, run, teleport, room, seconds, placeDebris, setSkill, wake } from './helpers/sim';
 import { Health, Life, LifeState, Position } from '../src/renderer/src/sim/components';
 import { coolingPerUnit } from '../src/renderer/src/sim/heat';
 import { debrisSystem } from '../src/renderer/src/sim/debris';
@@ -195,7 +195,7 @@ describe('trait effects', () => {
 
 describe('determinism with the four characters', () => {
   it('two runs and a snapshot round-trip at tick 300 agree after 600 ticks, with a live fire, Okoro repairing it and the director running', () => {
-    const mk = () => { const s = makeState(4, 11, DEFAULT_CHARACTERS); igniteRoom(s, room(s, 'G')); teleport(s, 0, 2.5, 9.5); s.director.nextSpawnTick = 0; return s; };   // RNG draws (spread, spawns) and earned XP both happen before the save
+    const mk = () => { const s = makeState(4, 11, DEFAULT_CHARACTERS); wake(s); igniteRoom(s, room(s, 'G')); teleport(s, 0, 2.5, 9.5); s.director.nextSpawnTick = 0; return s; };   // RNG draws (spread, spawns) and earned XP both happen before the save
     const f = () => intents({ interactHeld: true }, { moveY: 1 }, { moveX: 1 }, {});
     const a = mk(), b = mk(), c = mk();
     const hazards0 = a.rng.hazards.s, director0 = a.rng.director.s, repair0 = xp(a, 0, Skill.Repair);

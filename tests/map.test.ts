@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { buildHudModel, mapTitle } from '../src/renderer/src/render/hudModel';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { SECTOR_COLUMNS, NODE_STRIDE } from '../src/renderer/src/sim/tuning';
-import { navRows, NAV_TEXT_MAX } from '../src/renderer/src/sim/run';
-import { makeState, mapM, setNodeTypes, seatNavigator, chargeJump, quiet, setEvent, grantScrap } from './helpers/sim';
+import { navRows, NAV_TEXT_MAX, beaconIndex, jumpShip, sectorJump } from '../src/renderer/src/sim/run';
+import { makeState, mapM, setNodeTypes, seatNavigator, chargeJump, quiet, setEvent, grantScrap, at } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: `kb:${i}` }));
 const build = (s: ReturnType<typeof makeState>, phase: 'running' | 'paused' = 'running') => buildHudModel(s, slots(2), phase, '').map;
@@ -19,7 +19,7 @@ describe('sector map model', () => {
   it('on fixture M at column 1 node 2 reports current, reachable, selected, past, edges and types', () => {
     const s = makeState(2); quiet(s); mapM(s);
     s.run.column = 1; s.run.node = 2;
-    setNodeTypes(s, { '1:0': NodeType.Shop, '2:1': NodeType.Event });
+    setNodeTypes(s, { '1:0': NodeType.Shop, '2:1': NodeType.Event }); s.run.visited.fill(1);   // every beacon seen: the types show (spec Loop-i section 4b)
     const n = seatNavigator(s, 0); s.stations.cursor[n] = 0;
     const m = build(s)!;
     expect(m.columns.length).toBe(6); expect(m.columns.map((c) => c.nodes.length)).toEqual([1, 3, 2, 2, 2, 1]);
@@ -64,7 +64,7 @@ describe('sector map model', () => {
     expect(sel.length).toBe(1); expect(sel[0]!.ci).toBe(1);
   });
   it('marks each node with its type, asteroid fields and empty beacons included', () => {
-    const s = makeState(2); quiet(s); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid, '1:1': NodeType.Shop, '2:0': NodeType.Event, '2:1': NodeType.Empty }); seatNavigator(s, 0);
+    const s = makeState(2); quiet(s); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid, '1:1': NodeType.Shop, '2:0': NodeType.Event, '2:1': NodeType.Empty }); s.run.visited.fill(1); seatNavigator(s, 0);
     const m = build(s)!;
     expect(m.columns[1]!.nodes.map((x) => x.type)).toEqual(['asteroid', 'shop', 'hazard']);
     expect(m.columns[2]!.nodes.map((x) => x.type)).toEqual(['event', 'empty']);
@@ -77,7 +77,32 @@ describe('the fleet front on the map (spec Loop-i section 3)', () => {
     expect(build(s)!.fleet).toBe(-2);
     s.run.column = 1; s.run.node = 1; s.run.pursuit = 1.5;
     expect(build(s)!.fleet).toBe(1);
-    expect(navRows(s).filter((r) => r.select === 'jump').map((r) => r.text)).toEqual(['Node 3a', 'Node 2a  FLEET', 'Node 2c  FLEET']);
+    expect(navRows(s).filter((r) => r.select === 'jump').map((r) => r.text)).toEqual(['Node 3a  ?', 'Node 2a  FLEET', 'Node 2c  FLEET']);
     for (const r of navRows(s)) expect(r.text.length).toBeLessThanOrEqual(NAV_TEXT_MAX);
+  });
+});
+
+describe('hidden beacons (spec Loop-i section 4b, amendment S6)', () => {
+  const fixture = () => { const s = makeState(2); quiet(s); mapM(s); setNodeTypes(s, { '1:0': NodeType.Asteroid, '1:1': NodeType.Shop, '1:2': NodeType.Event, '2:0': NodeType.Empty }); seatNavigator(s, 0); return s; };
+  const jumpTexts = (s: ReturnType<typeof makeState>) => navRows(s).filter((r) => r.select === 'jump' || r.select === 'sector').map((r) => r.text);
+  it('unvisited beacons show ? on the map and in the rows, except shops (always shown) and the exit (EXIT); visited beacons show their type', () => {
+    const s = fixture();
+    expect(build(s)!.columns.map((c) => c.nodes.map((n) => n.type))).toEqual([['hazard'], ['unknown', 'shop', 'unknown'], ['unknown', 'unknown'], ['unknown', 'unknown'], ['unknown', 'unknown'], ['exit']]);
+    expect(jumpTexts(s)).toEqual(['Node 2a  ?', 'Node 2c  ?']);
+    s.run.visited[beaconIndex(1, 0)] = 1; s.run.visited[beaconIndex(1, 2)] = 1;
+    expect(jumpTexts(s)).toEqual(['Node 2a  Asteroid field', 'Node 2c  Event']); expect(build(s)!.columns[1]!.nodes.map((n) => n.type)).toEqual(['asteroid', 'shop', 'event']);
+    s.run.column = 1; s.run.node = 1; expect(jumpTexts(s)).toEqual(['Node 3a  ?', 'Node 2a  Asteroid field', 'Node 2c  Event']);
+    s.run.visited[beaconIndex(2, 0)] = 1; expect(jumpTexts(s)[0]).toBe('Node 3a  Empty');
+    s.run.column = 2; s.run.node = 1; s.run.visited[beaconIndex(2, 1)] = 1; expect(jumpTexts(s)).toEqual(['Node 4a  ?', 'Node 3a  Empty']);
+    s.run.column = 3; s.run.node = 0; s.run.visited[beaconIndex(3, 1)] = 1; expect(jumpTexts(s)).toEqual(['Node 5a  ?', 'Node 4b  Hostile']);
+    s.run.column = 4; s.run.node = 0; expect(jumpTexts(s)).toEqual(['Node 6a  EXIT', 'Node 5b  ?']);
+    s.run.pursuit = 4; expect(jumpTexts(s)).toEqual(['Node 6a  EXIT', 'Node 5b  FLEET']);
+    for (const t of jumpTexts(s)) expect(t.length).toBeLessThanOrEqual(NAV_TEXT_MAX);
+  });
+  it('arrival marks the beacon visited, and an event still opens at a hidden Event beacon (S6); a sector jump clears the marks but the new arrival', () => {
+    const s = fixture(); expect(s.run.visited[0]).toBe(1); expect(Array.from(s.run.visited).reduce((a, b) => a + b, 0)).toBe(1);
+    chargeJump(s); jumpShip(s, at(1, 2)); expect([s.run.visited[beaconIndex(1, 2)], s.run.event >= 0]).toEqual([1, true]);
+    s.run.column = SECTOR_COLUMNS - 1; s.run.node = 0; s.run.event = -1; chargeJump(s); sectorJump(s);
+    expect([s.run.sector, s.run.visited[0], Array.from(s.run.visited).reduce((a, b) => a + b, 0)]).toEqual([1, 1, 1]);
   });
 });

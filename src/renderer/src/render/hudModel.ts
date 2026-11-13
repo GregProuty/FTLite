@@ -5,7 +5,7 @@ import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/i
 import { DoorState, conditionRoomAt } from '../sim/grid';
 import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField } from '../sim/tuning';
 import { navRows, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf } from '../sim/run';
-import { depthOf } from '../sim/depth';
+import { depthOf, peaceful } from '../sim/depth';
 import { EVENTS } from '../sim/events';
 import { skillLevelOf, SKILL_NAMES } from '../sim/skills';
 import { CHARACTERS, DEFAULT_CHARACTERS, RECRUIT, characterOf, ASSET_NAMES, COMPLICATION_NAMES, type Character } from '../sim/characters';
@@ -71,7 +71,8 @@ export function jumpText(jump: { charge: number; ready: boolean }): string { ret
 export function scienceFooter(p: SciencePanel): string { return `Lead ${Math.round(p.leadSeconds)}s${p.scanning ? '   Scanning' : ''}${p.lock ? `   ${p.lock}` : ''}`; }
 /** The Navigation footer (spec Loop-i section 2): evade, the drive, the fuel (now > after the highlighted jump) and scrap. */
 export function navigationFooter(p: NavigationPanel): string { return `Evade ${Math.round(p.evadeChance * 100)}%  Jump ${jumpText(p.jump)}  Fuel ${p.fuelAfter === null ? p.fuel : `${p.fuel}>${p.fuelAfter}`}  Scrap ${p.scrap}`; }
-export interface MapNode { type: 'hazard' | 'event' | 'shop' | 'asteroid' | 'empty'; current: boolean; reachable: boolean; selected: boolean; past: boolean }
+export interface MapNode { type: 'hazard' | 'event' | 'shop' | 'asteroid' | 'empty' | 'unknown' | 'exit'; current: boolean;   // unknown: not yet visited (spec Loop-i section 4b)
+  reachable: boolean; selected: boolean; past: boolean }
 export interface MapModel { columns: { nodes: MapNode[] }[]; edges: { from: [number, number]; to: [number, number] }[]; column: number; sector: number; fleet: number; jump: string }   // fleet: floor(pursuit), the last overrun column (spec Loop-i section 3)   // spec section 5; column and jump feed the title
 export function mapTitle(m: MapModel): string { return `SECTOR ${m.sector + 1}/${SECTORS}   node ${m.column + 1}/${m.columns.length}   Jump ${m.jump}`; }
 const NODE_TYPES = ['hazard', 'event', 'shop', 'asteroid', 'empty'] as const;
@@ -86,7 +87,8 @@ function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | 
     const nodes: MapNode[] = [];
     for (let n = 0; n < r.colNodes[c]!; n++) {
       const k = beaconIndex(c, n);
-      nodes.push({ type: NODE_TYPES[r.nodeType[k]!] ?? 'hazard', current: c === r.column && n === r.node, reachable: reach.some((b) => b.column === c && b.node === n), selected: k === sel, past: c < r.column });
+      const t = r.nodeType[k]!, type: MapNode['type'] = c === last ? 'exit' : t === NodeType.Shop ? 'shop' : r.visited[k] ? NODE_TYPES[t] ?? 'hazard' : 'unknown';   // hidden until visited, shops always shown (spec Loop-i section 4b)
+      nodes.push({ type, current: c === r.column && n === r.node, reachable: reach.some((b) => b.column === c && b.node === n), selected: k === sel, past: c < r.column });
     }
     columns.push({ nodes });
     if (c > 0 && c < last) for (let n = 0; n + 1 < r.colNodes[c]!; n++) edges.push({ from: [c, n], to: [c, n + 1] });   // the sideways edges between vertical neighbours (spec Loop-i section 1)
@@ -201,11 +203,16 @@ export function runNotice(state: SimState): string[] {
   if (r.encounter === Encounter.Over && state.tick - r.encounterTick < window) return field ? [] : ['Enemy gone'];   // a field is only left by a jump, which re-arms the encounter at once (amendment A3)
   if (r.encounter === Encounter.Pending && field && r.encounterTick + ENCOUNTER_START * TICK_HZ - state.tick <= window) return ['Asteroid field ahead'];
   if (r.encounter === Encounter.Pending && e.nextArrivalTick - state.tick <= window) return [r.pursuitFought ? 'The Pursuit has caught up: elite ship approaching' : 'Contact: enemy ship approaching'];   // spec Loop-i section 3
-  if (state.weapons.torpedoDropTick >= 0 && state.tick - state.weapons.torpedoDropTick < DROP_NOTICE_SECONDS * TICK_HZ) return ['Torpedo dropped'];   // a carried torpedo lost at the cap (spec Coop-ii amendment D5)
+  if (state.weapons.torpedoDropTick >= 0 && state.tick - state.weapons.torpedoDropTick < DROP_NOTICE_SECONDS * TICK_HZ) return ['Torpedo dropped'];
+  if (peaceful(state)) return ['Safe here. Jump when ready', ...readyLine(state)];   // a peaceful beacon (spec Loop-i section 4b)   // a carried torpedo lost at the cap (spec Coop-ii amendment D5)
   if (e.present && e.fleeing && e.surrenderIntact) return [`ENEMY SURRENDERS   hold fire ${fleeSecondsLeft(state)}s for +${scrapSurrender(depthOf(state))} scrap`];
   if (contentOf(state) === NodeType.Shop) return [`SHOP at ${nodeLabel(r.column, r.node)}   scrap ${r.scrap}`, 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)  Upgrade (50)'];
-  if (r.jumpCharge >= 1) { const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation']; }
-  return [];
+  return readyLine(state);
+}
+/** The ready drive's line: someone take Navigation, or just JUMP READY when seated; nothing before it is ready. */
+function readyLine(state: SimState): string[] {
+  if (state.run.jumpCharge < 1) return [];
+  const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation'];
 }
 
 function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | null {

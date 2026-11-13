@@ -11,9 +11,9 @@ import { downCrew } from '../src/renderer/src/sim/crew';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
 import { botIntent } from './helpers/bot';
 import { StationKind, STATION_COUNT } from '../src/renderer/src/sim/stationKinds';
-import { ahead, LAYOUT, CUTTER, cutterState, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent, setNodeTypes } from './helpers/sim';
+import { woke, hazardStart, ahead, LAYOUT, CUTTER, cutterState, makeState, intents, run, placeDebris, placeEnemy, placeShot, disableSystem, teleport, seconds, room, overdrive, setSkill, placeBoarder, setMap, seatNavigator, mapM, setEvent, setNodeTypes } from './helpers/sim';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST_SMALL, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
+import { NEVER, HEAT_MAX, STRESS_PERIOD, SPAWN_FIRST, TICK_HZ, DEBRIS_SLOTS, ENCOUNTER_FIRST_SMALL, ENEMY_SYS_HP, BOARDER_SLOTS, JUMP_CHARGE_TIME } from '../src/renderer/src/sim/tuning';
 import { ObjectKind, shotsInFlight } from '../src/renderer/src/sim/debris';
 import { EnemySystem, damageEnemy } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
@@ -247,8 +247,8 @@ describe('snapshot', () => {
   });
   it('a run saved mid Build Up continues like an uninterrupted run through at least two phase changes', () => {
     const transitions = (s: ReturnType<typeof makeState>, ticks: number) => { let n = 0, last = s.director.phase; for (let t = 0; t < ticks; t++) { step(s, [NEUTRAL_INTENT, NEUTRAL_INTENT]); if (s.director.phase !== last) { n++; last = s.director.phase; } } return n; };
-    const whole = makeState(2, 24); transitions(whole, 6000);
-    const first = makeState(2, 24); transitions(first, 1500);
+    const whole = woke(makeState(2, 24)); transitions(whole, 6000);   // awake: the director runs from tick 0 (spec Loop-i section 4b)
+    const first = woke(makeState(2, 24)); transitions(first, 1500);
     expect(first.director.phase).toBe(Phase.BuildUp);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
     expect(transitions(resumed, 4500)).toBeGreaterThanOrEqual(2);
@@ -293,7 +293,7 @@ describe('snapshot', () => {
 
   it('round-trips the enemy block, debris kinds and the encounter counters; each alone changes the hash; a fresh state has the initial values', () => {
     const f = makeState(2).enemy;
-    expect([f.present, f.hull, f.stableId, f.nextArrivalTick, f.nextShotTick, f.departTick]).toEqual([0, 0, 0, ENCOUNTER_FIRST_SMALL * TICK_HZ, -1, -1]);
+    expect([f.present, f.hull, f.stableId, f.nextArrivalTick, f.nextShotTick, f.departTick]).toEqual([0, 0, 0, NEVER, -1, -1]);   // no timed first enemy (spec Loop-i section 4b)
     const s = makeState(2, 5); s.enemy.present = 1; s.enemy.hull = 37; s.enemy.stableId = 41; s.enemy.nextArrivalTick = 9000; s.enemy.nextShotTick = 1234; s.enemy.departTick = 5678;
     s.enemy.sysHp.set([7, 11, 19]); s.enemy.sysRepairTick.set([111, 222, 333]); s.enemy.shieldFreq = 3; s.enemy.scanned = 1; s.enemy.scan = 0.45; s.telemetry.enemyDisables = 4;
     s.debris.kind[2] = 1; s.debris.kind[5] = 1; s.telemetry.encounters = 3; s.telemetry.enemiesDestroyed = 2;
@@ -394,13 +394,14 @@ describe('snapshot', () => {
     expect(resumed.stations.failed[1]).toBe(0); expect(resumed.boarders.aloneSince[0]).toBe(-2);     // Doors stays online: the visit already sabotaged
     expect(hashState(resumed)).toBe(hashState(whole));
   });
-  it('round-trips the Loop-i run fields (spec Loop-i section 6): sector, fuel, pursuit, the wait, the pursuit fight; each alone changes the hash', () => {
-    const s = makeState(2, 5); s.run.sector = 2; s.run.fuel = 3; s.run.pursuit = 2.25; s.run.waitUntilTick = 4321; s.run.pursuitFought = 1;
+  it('round-trips the Loop-i run fields (spec Loop-i section 6): sector, fuel, pursuit, the wait, the pursuit fight, the peace and the visited marks; each alone changes the hash', () => {
+    const s = makeState(2, 5); s.run.sector = 2; s.run.fuel = 3; s.run.pursuit = 2.25; s.run.waitUntilTick = 4321; s.run.pursuitFought = 1; s.run.calm = 0; s.run.wakeTick = 777; s.run.visited[9] = 1;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect([t.run.sector, t.run.fuel, t.run.pursuit, t.run.waitUntilTick, t.run.pursuitFought]).toEqual([2, 3, 2.25, 4321, 1]);
+    expect([t.run.sector, t.run.fuel, t.run.pursuit, t.run.waitUntilTick, t.run.pursuitFought, t.run.calm, t.run.wakeTick, Array.from(t.run.visited)]).toEqual([2, 3, 2.25, 4321, 1, 0, 777, Array.from(s.run.visited)]);
     const base = hashState(makeState(2, 5));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
-    for (const k of ['sector', 'fuel', 'pursuit', 'waitUntilTick', 'pursuitFought'] as const) expect(mutate((u) => { u.run[k] = 7; })).not.toBe(base);
+    for (const k of ['sector', 'fuel', 'pursuit', 'waitUntilTick', 'pursuitFought', 'calm', 'wakeTick'] as const) expect(mutate((u) => { u.run[k] = 7; })).not.toBe(base);
+    expect(mutate((u) => { u.run.visited[9] = 1; })).not.toBe(base);
   });
   it('round-trips the run block, the map stream and telemetry.jumps; each alone changes the hash', () => {
     const s = makeState(2, 5); s.run.column = 3; s.run.node = 2; s.run.nodesReached = 3; s.run.jumpCharge = 0.42; s.run.colNodes.set([1, 3, 4, 3, 2, 1]); s.run.edgeMask[4] = 5; s.telemetry.jumps = 3; s.rng.map.s = 123456;
@@ -475,7 +476,7 @@ describe('snapshot: encounters (spec Demo-vi section 2)', () => {
     expect(hashState(resumed)).toBe(hashState(whole));
   });
   it('a run saved after a won encounter with the drive boosted continues like the uninterrupted run through the jump', () => {
-    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); s.tick = s.enemy.nextArrivalTick; run(s, 1); damageEnemy(s, ENEMY_SLOT, 999); seatNavigator(s, 1); run(s, 30); return s; };
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; hazardStart(s); s.boarders.nextArrivalTick = 1e9; mapM(s); s.tick = s.enemy.nextArrivalTick; run(s, 1); damageEnemy(s, ENEMY_SLOT, 999); seatNavigator(s, 1); run(s, 30); return s; };
     const whole = setup(makeState(2, 7)), part = setup(makeState(2, 7));
     expect([part.run.encounter, part.run.driveBoost]).toEqual([3, 1]);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));

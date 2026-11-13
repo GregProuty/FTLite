@@ -8,7 +8,7 @@ import { Seated, Health } from '../src/renderer/src/sim/components';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { activeHazardCount } from '../src/renderer/src/sim/director';
 import { createRng, nextFloat } from '../src/shared/rng';
-import { makeState as makeAnyState, overdrive, run, room, seconds, teleport, placeDebris, intents, setSkill } from './helpers/sim';
+import { makeState as makeAnyState, overdrive, run, room, seconds, teleport, placeDebris, intents, setSkill, wake } from './helpers/sim';
 // Heat is the subject here: pin a quirk that leaves it alone (Old Drive), so the seed's natural Hot Reactor draw does not shift every figure (spec Run-iii section 5).
 const makeState = (players = 2, seed = 1) => makeAnyState(players, seed, undefined, { quirk: 5 });
 import { Skill } from '../src/renderer/src/sim/skills';
@@ -143,7 +143,7 @@ describe('heat', () => {
     expect(s.rng.hazards.s).toBe(two.s);
   });
   it('the director on the overheat tick counts the new failure: at the cap it skips its spawn', () => {
-    const s = makeState(1), nav = overdrive(s, StationKind.Navigation);
+    const s = makeState(1), nav = overdrive(s, StationKind.Navigation); wake(s);   // the director acts away from the peaceful start (spec Loop-i section 4b)
     expect(activateBreach(s, 0)).toBe(true); expect(activateBreach(s, 1)).toBe(true);   // two hazards that draw no RNG
     s.stations.heat[nav] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = 1;          // overheat draw 0.627: no fire
     s.director.nextSpawnTick = s.tick;                                          // the director runs this tick, after heatStep
@@ -152,7 +152,7 @@ describe('heat', () => {
     expect(s.stations.failed[nav]).toBe(1);
     expect(activeHazardCount(s)).toBe(SPAWN_CAP);                              // 2 breaches + the overheat failure: nothing spawned
     expect(s.rng.director.s).toBe(jitterOnly.s);                               // only the interval jitter was drawn, no type roll
-    const t = makeState(1), nav2 = overdrive(t, StationKind.Navigation);
+    const t = makeState(1), nav2 = overdrive(t, StationKind.Navigation); wake(t);
     expect(activateBreach(t, 0)).toBe(true);                                   // one breach
     t.stations.heat[nav2] = HEAT_MAX - HEAT_RISE; t.rng.hazards.s = 7;         // overheat draw 0.012: fire in the Navigation room
     t.director.nextSpawnTick = t.tick;

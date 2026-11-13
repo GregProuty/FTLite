@@ -4,12 +4,12 @@ import { EVENTS, resolveEvent } from '../src/renderer/src/sim/events';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { NOTICE_LINE_MAX, scrapSurrender, scrapField, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_START, NEVER } from '../src/renderer/src/sim/tuning';
 import { Encounter } from '../src/renderer/src/sim/enemy';
-import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump, seatNavigator, placeEnemy } from './helpers/sim';
+import { makeState, quiet, mapM, setEvent, setNodeTypes, grantScrap, chargeJump, seatNavigator, placeEnemy, wake } from './helpers/sim';
 
 // Spec Demo-i sections 4, 8 and 11.4 rule 1b: the two-line run notice both players read.
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: i === 0 ? 'kb:0' : 'kb:1' }));
 const SHOP = ['SHOP at Node 2a   scrap 45', 'Hull +25 (30)  Torpedoes +2 (20)  Fuel +2 (12)  Upgrade (50)'];   // the fuel price joins the list (spec Loop-i section 2)
-const fresh = (players = 2) => { const s = makeState(players); quiet(s); mapM(s); return s; };
+const fresh = (players = 2) => { const s = makeState(players); quiet(s); mapM(s); wake(s); return s; };   // awake: the peaceful start's own notice has its test below (spec Loop-i section 4b)
 const shopAt = (s: ReturnType<typeof makeState>) => { s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); grantScrap(s, 45); };
 const surrender = (s: ReturnType<typeof makeState>, secs = 8) => { placeEnemy(s); s.enemy.fleeing = 1; s.enemy.surrenderIntact = 1; s.enemy.departTick = s.tick + secs * 60; };
 
@@ -91,7 +91,7 @@ describe('runNotice: encounters (spec Demo-vi section 2)', () => {
   it('every encounter line is ASCII and within NOTICE_LINE_MAX', () => {
     const lines = [...WON, 'Enemy gone', 'Contact: enemy ship approaching'];
     for (const l of lines) { expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); expect(/^[ -~]+$/.test(l)).toBe(true); }
-    const c = fresh(); c.enemy.nextArrivalTick = c.tick + 60; expect(runNotice(c)).toEqual([lines[3]]);
+    const c = fresh(); c.run.encounter = Encounter.Pending; c.enemy.nextArrivalTick = c.tick + 60;   // the start is no encounter since Loop-i section 4b expect(runNotice(c)).toEqual([lines[3]]);
   });
 });
 
@@ -148,5 +148,15 @@ describe('runNotice: the Pursuit (spec Loop-i section 3)', () => {
     expect(runNotice(s)).toEqual(['Contact: enemy ship approaching']);
     s.run.pursuitFought = 1; const line = runNotice(s)[0]!;
     expect(line).toBe('The Pursuit has caught up: elite ship approaching'); expect(line.length).toBeLessThanOrEqual(NOTICE_LINE_MAX);
+  });
+});
+
+describe('runNotice: a peaceful start (spec Loop-i section 4b)', () => {
+  it('at a peaceful beacon: Safe here. Jump when ready, with the ready drive on the second line; gone after the jump', () => {
+    const s = makeState(2); quiet(s); mapM(s); expect(runNotice(s)).toEqual(['Safe here. Jump when ready']);
+    chargeJump(s); expect(runNotice(s)).toEqual(['Safe here. Jump when ready', 'JUMP READY   someone take Navigation']);
+    seatNavigator(s, 0); expect(runNotice(s)).toEqual(['Safe here. Jump when ready', 'JUMP READY']);
+    expect(buildHudModel(s, slots(2), 'running', '').threats).toEqual([]);
+    s.run.calm = 0; expect(runNotice(s)).toEqual(['JUMP READY']);
   });
 });

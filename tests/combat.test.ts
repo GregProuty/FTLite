@@ -10,7 +10,7 @@ import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
 import { jumpShip, reachable } from '../src/renderer/src/sim/run';
 import { createRng, nextFloat, nextInt, type RngState } from '../src/shared/rng';
 import { TICK_HZ, ENEMY_FIRST_SHOT, ENEMY_HULL, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, ENEMY_SYS_HP, ENEMY_FLEE_DELAY, scrapSurrender, scrapEnemy, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, SHOT_BREACH_FIRST } from '../src/renderer/src/sim/tuning';
-import { makeState, quiet, placeEnemy, placeShot, placeDebris, run, disableSystem } from './helpers/sim';
+import { makeState, quiet, placeEnemy, placeShot, placeDebris, run, disableSystem, wake } from './helpers/sim';
 
 const T = TICK_HZ;
 const wpn = (s: ReturnType<typeof makeState>) => s.derived.stationOfKind[StationKind.Weapons]!;
@@ -28,7 +28,7 @@ function armed(hull = ENEMY_HULL, shieldFreq = 1) {
 describe('combat: arrival, scaling and the weapon charge', () => {
   it('column 0: maxHull 100, one layer, the first shot armed, the charge 0 on arrival and 1 when due; column 5: 150 and two layers; weapons down reads 0', () => {
     for (const [column, maxHull, layers] of [[0, 100, 1], [5, 150, 2]] as const) {
-      const s = makeState(2); quiet(s); s.run.column = column; s.enemy.nextArrivalTick = s.tick; const t = s.tick;
+      const s = makeState(2); quiet(s); wake(s); s.run.column = column; s.enemy.nextArrivalTick = s.tick; const t = s.tick;
       step(s, []);
       expect([s.enemy.present, s.enemy.maxHull, s.enemy.hull, s.enemy.shieldLayers, s.enemy.shieldRecharge, s.enemy.fleeing, s.enemy.surrenderIntact]).toEqual([1, maxHull, maxHull, layers, 0, 0, 0]);
       expect([enemyMaxHull(column), enemyShieldMax(column)]).toEqual([maxHull, layers]);
