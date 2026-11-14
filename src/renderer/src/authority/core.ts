@@ -45,6 +45,9 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   let controls: JournalControl[] = [], publicationSequence = 0, eventSequence = 0, controlRevision = 0;
   let receiveOrder = 0, lifecycleOrdinal = 0, appliedLifecycleOrdinal = 0, baselineLifecycleOrdinal = 0;
   let controlQueue: { record: JournalControl; binding?: Binding }[] = [];
+  // Recovery never replenishes the persisted gameplay allowance. Its lifetime is
+  // one control drain, shared by live ingress and recorded replay admissions.
+  const recoveredPlayers = new Set<number>();
   let pauseReason: string | null = null, tickTimeMs: number | null = null;
   let controlResults: CommandResult[] = [];
   let phase: PublishedState['phase'] = state.ended ? 'ended' : 'running', pauseOwner: number | null = null;
@@ -174,7 +177,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       const envelope = message.envelope;
       if (!binding.players.includes(envelope.id.player)) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unowned' } }, true); continue; }
       if (envelope.runId !== deps.init.runId) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'wrong-run' } }, true); continue; }
-      const admission = binding.ledger.admit(envelope, state.tick);
+      const admission = binding.ledger.admit(envelope, state.tick, phase === 'paused' ? recoveredPlayers : undefined);
       if (admission.status !== 'queued') { send(binding, { kind: 'result', runId: deps.init.runId, result: admission.result }, true); continue; }
       if (phase === 'ended' || phase === 'error') {
         result(binding, { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
@@ -188,6 +191,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   }
   function applyControls(): void {
     const queue = controlQueue.sort((a, b) => a.record.order - b.record.order); controlQueue = [];
+    recoveredPlayers.clear();
     if (!queue.length) return;
     const nested = activeFrame !== null;
     if (!nested) begin({ kind: 'controls' });

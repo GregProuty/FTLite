@@ -24,6 +24,8 @@ export interface AuthorityDeps {
 export interface Authority1a { attach(link: Link, players: readonly number[]): Unsubscribe; start(init: RunInit): void; pump(): void; dispose(): void }
 export interface Authority extends Authority1a {
   checkpoint(botControllers: readonly CardUiState[]): Checkpoint;
+  /** Restore paused with no attached producers. Retire old client/transport queues,
+   * then attach fresh producers synchronized from the restored publication. */
   restore(checkpoint: Checkpoint): void;
   replay(): ReplayV2;
 }
@@ -54,19 +56,12 @@ export function createAuthority(deps: AuthorityDeps): Authority {
     checkpoint(botControllers) { if (!core || disposed) throw new Error('authority unavailable'); return core.checkpoint(botControllers); },
     restore(checkpoint) {
       if (disposed) throw new Error('authority disposed');
+      if (attached.size) throw new Error('detach all producers before restore');
       const layout = deps.resolveLayout(checkpoint?.init?.layoutId);
       const cp = validateCheckpoint(layout, checkpoint, deps.contentDigest);
-      for (const entry of attached.values()) if (entry.players.some(p => p >= cp.init.playerCount)) throw new Error('invalid restored ownership');
-      if (core && cp.init.runId === core.cursors().runId) {
-        const cursors = core.cursors();
-        cp.publicationSequence = Math.max(cp.publicationSequence, cursors.publicationSequence);
-        cp.eventSequence = Math.max(cp.eventSequence, cursors.eventSequence);
-        cp.controlRevision = Math.max(cp.controlRevision, cursors.controlRevision);
-      }
       const next = createAuthorityCore({ ...deps, init: cp.init }, loadSnapshot(layout, cp.snapshot, deps.contentDigest), cp, true);
       try {
         core?.dispose(); core = next;
-        for (const [link, entry] of attached) entry.off = next.attach(link, entry.players);
       } catch (error) { try { next.dispose(); } finally { core = null; } throw error; }
     },
     pump() { core?.pump(); },

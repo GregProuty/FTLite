@@ -10,7 +10,9 @@ export interface LedgerState {
   admissionCounts: number[];
 }
 export interface Ledger {
-  admit(envelope: AdmittedEnvelope, tick: number): Admission;
+  /** The paused authority supplies the players already recovered since its last
+   * control drain. Only a queued over-budget resume consumes this allowance. */
+  admit(envelope: AdmittedEnvelope, tick: number, recoveredPlayers?: Set<PlayerId>): Admission;
   finish(result: CommandResult): void;
   highWater(): readonly number[];
   export(): LedgerState;
@@ -29,7 +31,7 @@ export function createLedger(owned: readonly PlayerId[], playerLimit = MAX_PLAYE
     while (cache.size > 256) cache.delete(cache.keys().next().value!);
   }
   return {
-    admit(envelope, tick) {
+    admit(envelope, tick, recoveredPlayers) {
       const reject = (reason: CommandReason): Admission => ({ status: 'rejected', result: { id: { ...envelope.id }, tick, status: 'rejected', reason } });
       // Canonical codec validation also excludes unknown properties and non-finite payloads.
       let payload: string;
@@ -47,7 +49,10 @@ export function createLedger(owned: readonly PlayerId[], playerLimit = MAX_PLAYE
       if (sequence <= water[player]!) return { status: 'duplicate', result: { id: { ...envelope.id }, tick, status: 'already-processed' } };
       if (sequence !== water[player]! + 1) return reject('expected-sequence');
       if (countTick !== tick) { countTick = tick; counts.fill(0); }
-      if (pending.size >= 256 || counts[player]! >= 16) return reject('over-capacity');
+      const overBudget = counts[player]! >= 16;
+      const recovery = overBudget && recoveredPlayers !== undefined && !recoveredPlayers.has(player)
+        && envelope.command.kind === 'setPaused' && envelope.command.paused === false;
+      if (pending.size >= 256 || (overBudget && !recovery)) return reject('over-capacity');
       water[player] = sequence;
       // Control admission uses the next unexecuted tick too, including while paused.
       if (envelope.requestedTick !== tick) {
@@ -55,7 +60,8 @@ export function createLedger(owned: readonly PlayerId[], playerLimit = MAX_PLAYE
         if (admission.status === 'rejected') store(player, sequence, payload, admission.result);
         return admission;
       }
-      counts[player] = counts[player]! + 1;
+      if (recovery) recoveredPlayers!.add(player);
+      else counts[player] = counts[player]! + 1;
       pending.set(key, { payload, tick });
       return { status: 'queued' };
     },

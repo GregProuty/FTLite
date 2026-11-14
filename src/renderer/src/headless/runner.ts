@@ -6,7 +6,8 @@ import { createLoopbackHarness } from '../net/loopback';
 import { createAuthority, type Authority, type Checkpoint, type Authority1a, type AuthorityDeps, type CrashRecord } from '../authority/authority';
 import { createClientRun } from '../clientControl/clientRun';
 import { createBotClient } from '../clientControl/botClient';
-import { createCardUiState, pauseActions, translateTick } from '../clientControl/cardController';
+import { createCardUiState, pauseActions, reconcileCommandResult, translateTick } from '../clientControl/cardController';
+import { validateCheckpoint } from '../authority/checkpoint';
 import type { InputFrame } from '../clientControl/inputFrame';
 import type { Command } from '../net/contracts';
 
@@ -20,9 +21,11 @@ export interface HeadlessInit {
 /** Synchronous orchestration using the same byte transport, controller and public authority as the app. */
 export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps: AuthorityDeps) => Authority1a = createAuthority) {
   const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest: init.contentDigest });
-  const pair = transport.connectLocal(), owned = Array.from({ length: init.playerCount }, (_, p) => p), runId = init.runId ?? 'headless-1';
-  const client = createClientRun(pair.clientLink, owned, { runId, contentDigest: init.contentDigest, resolveLayout: () => init.layout });
-  const botControllers = owned.map(player => createBotClient(player, client));
+  const owned = Array.from({ length: init.playerCount }, (_, p) => p), runId = init.runId ?? 'headless-1';
+  let pair = transport.connectLocal();
+  const makeClient = () => createClientRun(pair.clientLink, owned, { runId, contentDigest: init.contentDigest, resolveLayout: () => init.layout });
+  let client = makeClient(), botControllers = owned.map(player => createBotClient(player, client));
+  let detach = () => {};
   let now = 0, deadlineOrdinal = 0, frames: readonly InputFrame[] = [], fault: CrashRecord | null = null;
   let bots = false;
   let scripted: readonly ScriptedCommand[] = [];
@@ -61,7 +64,7 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
       transport.drain();
     }
   });
-  authority.attach(pair.authorityLink, owned);
+  detach = authority.attach(pair.authorityLink, owned);
   authority.start({ runId, layoutId: init.layout.id, layoutHash: deriveLayout(init.layout).layoutHash, simVersion: SIM_VERSION, contentDigest: init.contentDigest,
     seed: init.seed, playerCount: init.playerCount, characters: init.characters ?? DEFAULT_CHARACTERS, unlocked: init.unlocked ?? [], quirk: init.quirk });
   transport.drain();
@@ -83,10 +86,25 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
   return {
     checkpoint(): Checkpoint { transport.drain(); const cp = durable().checkpoint([client.ui]); transport.drain(); return cp; },
     restore(checkpoint: Checkpoint): void {
-      if (checkpoint.init.runId !== runId) throw new Error('headless restore requires the same run ID');
-      durable().restore(checkpoint);
-      if (checkpoint.botControllers[0]) Object.assign(client.ui, structuredClone(checkpoint.botControllers[0]));
-      scripted = []; frames = []; fault = null; transport.drain(); client.takeEvents(); client.takeResults();
+      if (disposed) throw new Error('headless runner disposed');
+      const owner = durable(), cp = validateCheckpoint(init.layout, checkpoint, init.contentDigest);
+      if (cp.init.runId !== runId || cp.init.playerCount !== owned.length) throw new Error('headless restore requires the same run ID and player ownership');
+      // Validation must precede teardown. Sessions are retired without draining:
+      // old reliable packets, ingress and producer counters belong to the old run.
+      detach(); client.dispose(); pair.host.close('restore'); pair.client.close('restore');
+      owner.restore(cp);
+      pair = transport.connectLocal(); client = makeClient();
+      if (cp.botControllers[0]) Object.assign(client.ui, structuredClone(cp.botControllers[0]));
+      // The sealed ledger is authoritative even if saved producer memory had
+      // emitted unadmitted commands. Keep checkpoint repeat/decision timestamps.
+      for (let p = 0; p < client.ui.players.length; p++) {
+        client.ui.players[p]!.nextSequence = cp.commandHighWater[p]! + 1;
+        client.ui.players[p]!.heldSequence = cp.heldHighWater[p]!;
+      }
+      for (const { result } of cp.recentResults) reconcileCommandResult(client.ui, result);
+      botControllers = owned.map(player => createBotClient(player, client));
+      scripted = []; frames = []; fault = null;
+      detach = owner.attach(pair.authorityLink, owned); transport.drain();
     },
     replay() { return durable().replay(); },
     setPaused(paused: boolean): void {
@@ -97,9 +115,9 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
       bots = false; frames = nextFrames; scripted = commands; advance();
     },
     advanceBots(): void { bots = true; scripted = []; advance(); },
-    botControllers,
+    get botControllers() { return botControllers; },
     view() { const view = client.state(); if (!view) throw new Error('missing initial publication'); return view; },
-    ui: client.ui,
+    get ui() { return client.ui; },
     drain() { transport.drain(); },
     dispose
   };
