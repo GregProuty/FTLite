@@ -277,8 +277,8 @@ H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by
 9. Everything on the map is visible to both players and the enemy; no sensor range or fog (§9, §10). **(rec.)**
 10. Net-2 is not needed for the duel; Net-3 is written mode-agnostic (§11b). **(rec.)**
 11. The dev flight view in H-1 is a workbench; the solo playtest mode is the owner's, not a player-facing game mode (§11a, §15). **(rec.)**
-13. Tab (gamepad Select/View) switches stations in solo (§11a). **(rec.)**
 12. Map size, belt radii and spawns at r = 2000 (§3) need checking against the 3 to 5 minute target once the hunter exists. *(start)*
+13. Tab (gamepad Select/View) switches stations in solo (§11a). **(rec.)**
 
 ## Change log
 
