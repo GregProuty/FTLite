@@ -8,7 +8,8 @@ import { loadSnapshot, saveSnapshot } from '../src/renderer/src/sim/snapshot';
 import { stepCommands } from '../src/renderer/src/sim/step';
 import { HEALTH_MAX, SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { createHeadlessRunner } from '../src/renderer/src/headless/runner';
-import { createAuthority } from '../src/renderer/src/authority/authority';
+import { createAuthority, type Authority1a } from '../src/renderer/src/authority/authority';
+import type { LifecyclePause, RunInit } from '../src/renderer/src/net/contracts';
 import { createLocalRuntime } from '../src/renderer/src/app/localRuntime';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { createFixtureAuthority } from './helpers/authorityFixture';
@@ -156,6 +157,37 @@ describe('simulation ownership', () => {
       for (let i = 0; i < 20; i++) { authority.start(init); expect(timers.size).toBe(1); expect(highWater()).toEqual(bound); }
     } finally { authority.dispose(); }
     expect(timers.size).toBe(0);
+  });
+
+  it.each(['replacement', 'failed-construction'] as const)('preserves the couch lifecycle subscription after %s and clears it on final owner disposal', (kind) => {
+    let now = 0;
+    let authority!: Authority1a, started!: RunInit;
+    const delivered: LifecyclePause[] = [];
+    const runtime = createLocalRuntime({ layout: LAYOUT, playerCount: 1, seed: 1, characters: RECRUITS, unlocked: [], runId: 'couch-lifecycle',
+      contentDigest: __GAMEPLAY_CONTENT_DIGEST__, clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, frames: () => [], onCrash(record) { throw Error(record.error); },
+      authorityFactory(deps) {
+        authority = createAuthority({ ...deps, bindLifecyclePause(request) {
+          // Observe actual delivery through localRuntime's shipping callback slot.
+          return deps.bindLifecyclePause!(control => { delivered.push(control); request(control); });
+        } });
+        return { ...authority, start(init) {
+          started = init; authority.start(init);
+          if (kind === 'replacement') authority.start(init);
+        } };
+      }
+    });
+    try {
+      if (kind === 'failed-construction') expect(() => authority.start({ ...started, quirk: -1 })).toThrow(/quirk/);
+      const pause = { paused: true, reason: 'blur' };
+      runtime.requestLifecyclePause(pause); runtime.pump();
+      expect(delivered).toEqual([pause]);
+      expect(runtime.publication()).toMatchObject({ phase: 'paused', tick: 0 });
+      now = 1000; runtime.pump(); expect(runtime.state()!.tick).toBe(0);
+      // Keep the runtime alive so its own disposed guard cannot hide a stale slot.
+      authority.dispose();
+      runtime.requestLifecyclePause({ paused: false, reason: 'focus' });
+      expect(delivered).toEqual([pause]);
+    } finally { runtime.dispose(); }
   });
 
   it('disposes an adopted world when the initial clock rejects construction', () => {

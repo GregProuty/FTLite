@@ -10,7 +10,8 @@ export interface AuthorityDeps {
   clock: MonotonicClock; scheduler: Scheduler; contentDigest: string;
   resolveLayout(id: string): ShipLayout; onCrash(record: CrashRecord): void;
   beforeControls?(): void; beforeTick?(nextTick: number, tickTimeMs: number): void;
-  /** Trusted couch adapter only; never exposed on Link or assigned a player command ID. */
+  /** Trusted couch adapter only; never exposed on Link or assigned a player command ID.
+   * The unsubscriber releases only its registration, preserving a newer replacement callback. */
   bindLifecyclePause?(request: (control: LifecyclePause) => void): void | Unsubscribe;
 }
 /** Live Net-1a owner: closed held/command/contextual-callout ingress; durable restore belongs to Net-1b. */

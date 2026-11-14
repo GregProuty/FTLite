@@ -54,7 +54,7 @@ export function createLocalRuntime(deps: LocalRuntimeDeps) {
   authority = (deps.authorityFactory ?? createAuthority)({
     clock: deps.clock, contentDigest: deps.contentDigest, resolveLayout: () => deps.layout, onCrash: deps.onCrash,
     scheduler: { schedule: (delay, cb) => deps.scheduler.schedule(delay, () => { if (!disposed) { cb(); receive(); } }) },
-    bindLifecyclePause(request) { requestLifecycle = request; return () => { requestLifecycle = null; }; },
+    bindLifecyclePause(request) { requestLifecycle = request; return () => { if (requestLifecycle === request) requestLifecycle = null; }; },
     beforeControls() { receive(); deps.beforeControls?.(); transport.drain(); },
     beforeTick(tick, deadline) { receive(); const view = client.state(); if (view) { bracketTick = view.tick; deps.recordPrev?.(view); client.send(translateTick(view, client.ui, deps.frames(tick, deadline), tick)); } transport.drain(); }
   });
