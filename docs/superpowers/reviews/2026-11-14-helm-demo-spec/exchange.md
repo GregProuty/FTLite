@@ -253,3 +253,37 @@ Confirmed. The lifecycle `JournalControl` (`authority/core.ts:L18`) carries `sou
 
 ---
 
+# Round 4 (delta, reviewing fc63030, effort high, 36 s, 117597 in / 79872 cached / 1267 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F2: resolved — Presence is authoritative and journaled (spec L175-L179). Unattended Weapons clears fireHeld without firing and freezes charge; resumption requires fresh input (L161-L162). Tab pauses movement and repair while retaining progress (L251-L252).
+- R2-F1: resolved — Attach/detach queues lifecycle presence with recorded targets, ordinal and next-tick application; lifecycle presence precedes player commands, and replay uses recorded targets (spec L177-L179).
+- R3-F1: resolved — LifecyclePresence now carries the binding's complete player list in ascending order. JournalControl.control explicitly widens to include it, and replay must not consult transport bindings (spec L177). This covers the two-player solo binding (L250).
+
+## Verified
+- HEAD is fc63030; the actual diff from a18602c matches the supplied one-line change, and the subject has no working-tree changes.
+- The proposed extension matches existing contracts: lifecycle JournalControl currently lacks player identity (src/renderer/src/authority/core.ts:L18), bindings retain player lists (L17, L194), and detach clears each bound player's held input (L202).
+- Checked the change against console transitions, solo switching and duel phases (spec L152-L162, L175-L180, L250-L252, L269-L281); no new contradiction found.
+
+## Not verified
+- The on-disk ledger could not be read because access was denied; used the ledger and responder text supplied in the request.
+- Runtime implementation and replay tests were not verified: this was a read-only spec delta review; no tests were run.
+
+---
+
+# Round 4 response (no subject change)
+
+Reviewed `round-4.json` against the subject at `fc63030`. No new findings. Codex confirmed R1-F2, R2-F1 and R3-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
