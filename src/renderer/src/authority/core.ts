@@ -42,6 +42,9 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   const heldSequences = Array.from({ length: state.playerCount }, () => 0);
   const ledger = createLedger(Array.from({ length: state.playerCount }, (_, p) => p), state.playerCount);
   let pending: { binding: Binding; envelope: AdmittedEnvelope }[] = [];
+  // Captured batches are no longer in pending/controlQueue. Retain their ledger
+  // ownership until completion so a fault followed by detach can finish them.
+  let inFlight: typeof pending = [];
   let controls: JournalControl[] = [], publicationSequence = 0, eventSequence = 0, controlRevision = 0;
   let receiveOrder = 0, lifecycleOrdinal = 0, appliedLifecycleOrdinal = 0, baselineLifecycleOrdinal = 0;
   let controlQueue: { record: JournalControl; binding?: Binding }[] = [];
@@ -62,6 +65,8 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   let botMemory: CardUiState[] = [];
   let bindingOrdinal = 0, replaying = false;
   let frames: ReplayFrame[] = [], activeFrame: ReplayFrame | null = null;
+  const deferredDetaches = new Set<Unsubscribe>();
+  let flushingDetaches = false;
   let durableBaseline: Checkpoint;
   const replayBindings = new Map<number, Binding>();
   function begin(action: ReplayAction): void {
@@ -72,8 +77,17 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   function complete(): ReplayFrame {
     const frame = activeFrame!;
     if (phase !== 'error') frame.after = { tick: state.tick, hash: completedHash, phase, eventSequence, publicationSequence, controlRevision };
+    if (phase !== 'error') inFlight = [];
     activeFrame = null;
+    flushDetaches();
     return frame;
+  }
+  function flushDetaches(): void {
+    if (activeFrame || flushingDetaches) return;
+    flushingDetaches = true;
+    try {
+      for (const detach of deferredDetaches) { deferredDetaches.delete(detach); detach(); }
+    } finally { flushingDetaches = false; }
   }
 
   if (restored) {
@@ -94,6 +108,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   }
   function sealCheckpoint(botControllers: readonly CardUiState[]): Checkpoint {
     if (disposed || pumping) throw new Error('checkpoint requires completed boundary');
+    if (phase === 'error') throw new Error('cannot checkpoint faulted authority');
     // Check controller memory before any admission or acknowledgment side effect.
     captureCheckpointWithBots(botControllers);
     drainIngress(); applyControls();
@@ -195,6 +210,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (!queue.length) return;
     const nested = activeFrame !== null;
     if (!nested) begin({ kind: 'controls' });
+    for (const entry of queue) if (entry.record.source === 'player') inFlight.push({ binding: entry.binding!, envelope: entry.record.envelope });
     if (phase === 'ended' || phase === 'error') {
       for (const entry of queue) if (entry.record.source === 'player') result(entry.binding!, { id: entry.record.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
       if (!nested) complete(); return;
@@ -237,6 +253,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       (input.commands as CommandEnvelope[]).push(entry.envelope);
     }
     begin({ kind: 'tick', input, heldSequences: [...heldSequences] });
+    inFlight = frozen;
     const record: JournalTick = { tick: state.tick, input, heldSequences: [...heldSequences], results: controlResults, controls }; controls = []; controlResults = []; if (!replaying) ticks.push(record);
     const executed = stepCommands(state, input); record.results = [...record.results, ...executed];
     const nextCues = cueCounters(state);
@@ -265,7 +282,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       driver.pump();
       if (!replaying && frames.length > 4096) { applyControls(); rejectPending(); resetBaseline(); }
     } catch (error) {
-      activeFrame = null; phase = 'error'; driver.dispose(); applyControls(); let snapshotAfterFault: Snapshot | null = null;
+      activeFrame = null; phase = 'error'; driver.dispose(); flushDetaches(); applyControls(); let snapshotAfterFault: Snapshot | null = null;
       try { snapshotAfterFault = saveSnapshot(state, deps.contentDigest); } catch { /* corrupted state */ }
       deps.onCrash({ init: structuredClone(deps.init), checkpoint: structuredClone(durableBaseline), frames: structuredClone(frames), lastPublishedSequence: publicationSequence, tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
     } finally { pumping = false; }
@@ -297,11 +314,15 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       if (disposed || players.some((p) => !Number.isInteger(p) || p < 0 || p >= state.playerCount || [...bindings].some((b) => b.players.includes(p))) || new Set(players).size !== players.length) throw new Error('invalid player ownership');
       const binding: Binding = { id: ++bindingOrdinal, link, players: [...players], ledger, ingress: [], unsubscribe: [] }; bindings.add(binding);
       const detach = (): void => {
+        // Finish the entire captured admission/control/tick batch before changing
+        // ownership. Replay sees the outer outcome first, then this detach.
+        if (activeFrame) { if (bindings.has(binding)) deferredDetaches.add(detach); return; }
         if (!bindings.delete(binding)) return;
         for (const off of binding.unsubscribe) off();
         begin({ kind: 'detach', binding: binding.id, players: [...binding.players] });
-        for (const entry of pending) if (entry.binding === binding) ledger.finish({ id: entry.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
+        for (const entry of [...pending, ...inFlight]) if (entry.binding === binding) ledger.finish({ id: entry.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
         pending = pending.filter((p) => p.binding !== binding);
+        inFlight = inFlight.filter((p) => p.binding !== binding);
         for (const entry of controlQueue) if (entry.binding === binding && entry.record.source === 'player') ledger.finish({ id: entry.record.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
         controlQueue = controlQueue.filter((entry) => entry.binding !== binding);
         for (const p of players) held[p] = { moveX: 0, moveY: 0, interactHeld: false };
@@ -374,7 +395,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       const cleanup = (action: () => void): void => { try { action(); } catch (error) { errors.push(error); } };
       cleanup(() => driver.dispose()); cleanup(() => unbindLifecycle?.());
       for (const binding of bindings) for (const off of binding.unsubscribe) cleanup(off);
-      bindings.clear(); pending = []; controls = []; controlQueue = []; pendingCallouts.clear();
+      bindings.clear(); deferredDetaches.clear(); pending = []; inFlight = []; controls = []; controlQueue = []; pendingCallouts.clear();
       disposeSimState(state);
       if (errors.length) throw errors[0];
     }

@@ -35,7 +35,7 @@ const checkpointSchema = z.object({
   commandHighWater: z.array(uint).min(1).max(MAX_PLAYERS), recentResults: z.array(z.unknown()).max(MAX_PLAYERS * 256),
   admissionTick: stamp, admissionCounts: z.array(uint.max(16)).min(1).max(MAX_PLAYERS),
   eventSequence: uint, publicationSequence: uint, controlRevision: uint, receiveOrder: uint, lifecycleOrdinal: uint,
-  botControllers: z.array(uiSchema).max(MAX_PLAYERS), paused: z.boolean(), phase: z.enum(['running', 'paused', 'ended', 'error']),
+  botControllers: z.array(uiSchema).max(MAX_PLAYERS), paused: z.boolean(), phase: z.enum(['running', 'paused', 'ended']),
   pauseOwner: uint.max(MAX_PLAYERS - 1).nullable(), pauseReason: text.nullable(), heldHighWater: z.array(uint).min(1).max(MAX_PLAYERS),
   held: z.array(z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean() }).strict()).min(1).max(MAX_PLAYERS)
 }).strict();
@@ -52,7 +52,7 @@ export function validateCheckpoint(layout: ShipLayout, value: unknown, contentDi
   cp.snapshot = validateSnapshot(layout, cp.snapshot, contentDigest);
   const n = cp.init.playerCount;
   const ended = cp.snapshot.values[canonicalFields(layout, n).find(field => field.name === 'ended')!.offset] === 1;
-  if (ended !== (cp.phase === 'ended') && cp.phase !== 'error') throw new Error('inconsistent checkpoint terminal phase');
+  if (ended !== (cp.phase === 'ended')) throw new Error('inconsistent checkpoint terminal phase');
   if (cp.snapshot.header.playerCount !== n || [cp.commandHighWater, cp.admissionCounts, cp.heldHighWater, cp.held].some(a => a.length !== n) ||
     cp.admissionTick > cp.snapshot.header.tick || cp.paused !== (cp.phase === 'paused') || (cp.pauseOwner !== null && cp.pauseOwner >= n)) throw new Error('inconsistent checkpoint');
   const ledger = createLedger(Array.from({ length: n }, (_, p) => p), n);
