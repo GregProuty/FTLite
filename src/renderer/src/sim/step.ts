@@ -26,7 +26,7 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
 }
 
-/** One fixed 60 Hz tick in the spec's system order (Â§4 rule 4a). */
+/** One fixed 60 Hz tick in the spec system order (section 4 rule 4a). */
 export function stepCommands(state: SimState, input: MigrationTickInput): readonly CommandResult[] {
   if (state.ended) return [];
   const intents = heldPhaseInputs(input, state.playerCount);

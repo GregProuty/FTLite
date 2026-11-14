@@ -11,7 +11,7 @@ const MAP_FIELDS = SECTOR_COLUMNS * (1 + 2 * NODE_STRIDE);   // colNodes, edgeMa
 const RUN_FIELDS = 4 + MAP_FIELDS + 3 + STATION_COUNT + 3 + 2 + 3 + 1 + 2 + 4 + 7 + SECTOR_COLUMNS * NODE_STRIDE + 3 + 3 * SECTOR_COLUMNS * NODE_STRIDE + 1 + 3 + 1;   // + navSig, navSelect, navIndex (spec Demo-xi section 3), arrivalTick (amendment 10)   // + ambush, cache, revealed and ambushState (spec Demo-x-b section 3)   // + eventsSeen (spec Loop-v section 3)   // + finalBeacon (spec Loop-iv section 4)   // + shopWeapon (spec Loop-iii section 3)   // + sector, fuel, pursuit, waitUntilTick, pursuitFought, calm, wakeTick and the visited marks (spec Loop-i sections 4b and 6)   // + fieldNextTick (spec Demo-viii section 1), + the evade ticks (spec Coop-ii section 1), + the vote and jump ticks (section 3); the votes are per player
 const TELEMETRY_SCALARS = 33, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
 
-/** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec Ã‚Â§4). */
+/** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec section 4). */
 export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
 export function layoutIdNumber(s: SimState): number { return parseInt(s.derived.idHash, 16); }
 

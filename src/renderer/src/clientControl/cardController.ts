@@ -1,4 +1,4 @@
-import type { Command, CommandEnvelope, EventRef, HeldFrame, LegacyInputEnvelope, RunId } from '../net/contracts';
+import type { Command, CommandEnvelope, CommandResult, EventRef, HeldFrame, LegacyInputEnvelope, RunId } from '../net/contracts';
 import type { SimState } from '../sim/state';
 import { NEUTRAL_FRAME, type InputFrame } from './inputFrame';
 import { Life, LifeState, Seated } from '../sim/components';
@@ -16,13 +16,13 @@ import { upgradeRows } from '../sim/power';
 
 export interface CardUiState {
   runId: RunId;
-  players: { nextSequence: number; heldSequence: number; heldDir: number; repeat: number; lastTick: number; seat: number; pendingVoteSequence: number; pendingVote: { event: EventRef; choice: number } | null }[];
+  players: { nextSequence: number; heldSequence: number; heldDir: number; repeat: number; lastTick: number; seat: number; pendingVoteSequence: number; pendingVoteTick: number; pendingVote: { event: EventRef; choice: number } | null }[];
   stations: { rowKey: string | null; page: 'main' | 'upgrades' }[];
   groupBar: boolean[];
 }
 export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[]; legacyCardInput: LegacyInputEnvelope[] }
 export function createCardUiState(runId: RunId, players: number): CardUiState {
-  return { runId, players: Array.from({ length: players }, () => ({ nextSequence: 1, heldSequence: 0, heldDir: Dir.None, repeat: 0, lastTick: -1, seat: -1, pendingVoteSequence: 0, pendingVote: null })), stations: [], groupBar: [] };
+  return { runId, players: Array.from({ length: players }, () => ({ nextSequence: 1, heldSequence: 0, heldDir: Dir.None, repeat: 0, lastTick: -1, seat: -1, pendingVoteSequence: 0, pendingVoteTick: -1, pendingVote: null })), stations: [], groupBar: [] };
 }
 export function createCardUi(runId = ''): CardUiState { return createCardUiState(runId, 0); }
 export function pauseActions(ui: CardUiState, player: number, tick: number, paused: boolean): ClientActions {
@@ -45,10 +45,18 @@ export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water
       }
     }
     producer.seat = seat;
-    if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || (water[p] ?? 0) >= producer.pendingVoteSequence)) producer.pendingVote = null;
+    // Admission high-water alone is insufficient: pause can publish an unexecuted tick.
+    if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || ((water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
   }
   while (ui.stations.length < view.stations.cursor.length) ui.stations.push({ rowKey: null, page: 'main' });
   while (ui.groupBar.length < view.groups.tab.length) ui.groupBar.push(false);
+}
+/** Rejections are terminal without a publication; applied results may precede state.
+ * Only the matching vote ID can retire the latest optimistic choice here.
+ */
+export function reconcileCommandResult(ui: CardUiState, result: CommandResult): void {
+  const producer = ui.players[result.id.player];
+  if (result.status === 'rejected' && producer?.pendingVote && result.id.sequence === producer.pendingVoteSequence) producer.pendingVote = null;
 }
 /** Client-owned 0.5 threshold, horizontal tie, and eight-tick repeat. */
 export function stickEdge(ui: CardUiState, pid: number, moveX: number, moveY: number, tick = ui.players[pid]!.lastTick + 1): Dir {
@@ -93,7 +101,7 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
     if (confirm && override && view.run.event >= 0 && view.run.eventChoice < 0) {
       const event = eventRef(view), previous = producer.pendingVote && sameEvent(event, producer.pendingVote.event) ? producer.pendingVote.choice : view.run.vote[player]!;
       const choice = (previous + 1) % EVENT_DEFS[view.run.event]!.choices.length;
-      emit({ kind: 'vote', event, choice }); producer.pendingVote = { event, choice }; producer.pendingVoteSequence = producer.nextSequence - 1; confirm = false;
+      emit({ kind: 'vote', event, choice }); producer.pendingVote = { event, choice }; producer.pendingVoteSequence = producer.nextSequence - 1; producer.pendingVoteTick = tick; confirm = false;
     } else if (confirm && override && view.run.jumpPending >= 0) {
       emit({ kind: 'jumpAgree', pending: { visit: visitRef(view), requestedAtTick: view.run.jumpPendingTick, destination: view.run.jumpPending } }); confirm = false;
     }

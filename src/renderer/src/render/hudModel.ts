@@ -169,7 +169,7 @@ function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | 
 /** A player's room is "low" on the HUD below this oxygen fraction (a warning, well above SUFFOCATE_FRAC). */
 export const HUD_LOW_O2_FRAC = 0.5;
 
-/** Slot key â†’ device kind. The key format is owned by input/sources.ts (`kb:0`, `kb:1`, `gp:<index>`); nothing else is parsed from it. */
+/** Slot key -> device kind. The key format is owned by input/sources.ts (`kb:0`, `kb:1`, `gp:<index>`); nothing else is parsed from it. */
 export function deviceKindOf(key: string | null): DeviceKind {
   if (key === 'kb:0') return 'kb0'; if (key === 'kb:1') return 'kb1'; if (key?.startsWith('gp:')) return 'pad'; return null;
 }

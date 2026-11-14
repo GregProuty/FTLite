@@ -5,7 +5,7 @@ import type { SimState } from '../sim/state';
 import { loadSnapshot } from '../sim/snapshot';
 import { unflatten } from '../sim/flatten';
 import { hashF64 } from '../../../shared/hash';
-import { createCardUi, reconcileUi, type ClientActions } from './cardController';
+import { createCardUi, reconcileUi, reconcileCommandResult, type ClientActions } from './cardController';
 
 export function createClientRun(link: Link, owned: readonly PlayerId[], options: { runId: string; resolveLayout(id: string): ShipLayout }) {
   let replica: SimState | null = null, publication: PublishedState | null = null, lastEvent = 0, disposed = false;
@@ -25,6 +25,7 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       }
       publication = next; reconcileUi(replica, ui, next.runId, next.commandHighWater);
     } else if (message.kind === 'result' && message.runId === options.runId) {
+      reconcileCommandResult(ui, message.result);
       results.push(message.result); if (results.length > 1024) results.shift();
     } else if (message.kind === 'event' && message.event.runId === options.runId && message.event.eventSequence > lastEvent) {
       lastEvent = message.event.eventSequence; events.push(message.event);

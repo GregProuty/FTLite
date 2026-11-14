@@ -262,7 +262,7 @@ describe('session', () => {
     press({ confirm: true }); session.frame(); press({});                    // start again
     expect(calls.filter((c) => c === 'reset')).toHaveLength(2);
   });
-  describe('credits sub-state (spec Â§4)', () => {
+  describe('credits sub-state (spec section 4)', () => {
     const joined = () => { const h = harness(); h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); return h; };
     it('opens on Cancel from a joined player, shows the lines, and stays in the lobby', () => {
       const h = joined();
@@ -315,7 +315,7 @@ describe('session', () => {
     it('a reconnecting device cannot close the credits on the frame it reclaims its slot', () => {
       const h = joined();
       h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
-      h.pressMany(); h.frames(1);                                                     // 'a' vanishes â†’ reconnect
+      h.pressMany(); h.frames(1);                                                     // 'a' vanishes -> reconnect
       expect(h.last().players[0]!.status).toBe('reconnect');
       h.press('a', { cancel: true, any: true }); h.frames(1); h.release(); h.frames(1); // reclaim + Cancel in one frame: ignored
       expect(h.last().players[0]!.status).toBe('active'); expect(h.session.creditsOpen).toBe(true);

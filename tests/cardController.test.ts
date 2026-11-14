@@ -103,3 +103,85 @@ it('repeat preserves tick phase across missed opportunities and changes directio
   expect(translateTick(s, ui, [{ ...down, moveY: -1 }], 18).legacyCardInput).toHaveLength(0);
   expect(translateTick(s, ui, [{ ...down, moveY: -1 }], 19).legacyCardInput).toHaveLength(1);
 });
+import { createLoopbackHarness } from '../src/renderer/src/net/loopback';
+import { createClientRun } from '../src/renderer/src/clientControl/clientRun';
+import { createFixtureAuthority } from './helpers/authorityFixture';
+import { LAYOUT } from './helpers/sim';
+import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
+
+/** Real bytes/ledger/pause/publication path; mutations only create the initial fixture. */
+function votePublicationRig() {
+  const owner = makeState(2); quiet(owner); setEvent(owner, 4);
+  const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__ });
+  const pair = transport.connectLocal(); let now = 0;
+  const client = createClientRun(pair.clientLink, [0, 1], { runId: 'vote-publication', resolveLayout: () => LAYOUT });
+  const authority = createFixtureAuthority({ clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} },
+    contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: () => LAYOUT, onCrash(record) { throw new Error(record.error); },
+    beforeControls() { transport.drain(); }, beforeTick() { transport.drain(); },
+    init: { runId: 'vote-publication', layoutId: LAYOUT.id, layoutHash: owner.derived.layoutHash, simVersion: SIM_VERSION,
+      contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 1, playerCount: 2, characters: [], unlocked: [] }
+  }, owner);
+  authority.attach(pair.authorityLink, [0, 1]); transport.drain();
+  return { owner, client, pair,
+    press(requestedTick = owner.tick) {
+      const actions = translateTick(client.state()!, client.ui, [{ ...NEUTRAL_FRAME, confirmPresses: 1 }], requestedTick);
+      client.send(actions); return actions.commands[0]!;
+    },
+    pause(paused: boolean, requestedTick = owner.tick) { client.send(pauseActions(client.ui, 0, requestedTick, paused)); },
+    pump(time = now) { now = time; authority.pump(); transport.drain(); },
+    dispose() { authority.dispose(); client.dispose(); pair.host.close('test-end'); pair.client.close('test-end'); }
+  };
+}
+
+describe('pending vote completion across control publications', () => {
+  it('retains the submitted choice through pause/resume admission-only publications', () => {
+    const h = votePublicationRig();
+    try {
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 0 });
+      h.pause(true); h.pump();
+      expect(h.client.publication()).toMatchObject({ tick: 0, phase: 'paused', commandHighWater: [2, 0] });
+      expect(h.owner.run.vote[0]).toBe(-1);
+      expect(h.client.ui.players[0]!.pendingVote?.choice).toBe(0);
+      h.pause(false); h.pump();
+      expect(h.client.publication()).toMatchObject({ tick: 0, phase: 'running', commandHighWater: [3, 0] });
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 1 });
+      h.pump(17);
+      expect(h.owner.run.vote[0]).toBe(1); expect(h.client.ui.players[0]!.pendingVote).toBeNull();
+    } finally { h.dispose(); }
+  });
+  it('retires a successful vote only when the executed state is published', () => {
+    const h = votePublicationRig();
+    try {
+      const sent = h.press(), pendingAtResult: number[] = [];
+      h.pair.clientLink.onMessage((_channel, bytes) => {
+        const message = decodeMessage(bytes);
+        if (message.kind === 'result' && message.result.id.player === 0 && message.result.id.sequence === sent.id.sequence)
+          pendingAtResult.push(h.client.ui.players[0]!.pendingVote?.choice ?? -1);
+      });
+      h.pump(17);
+      expect(pendingAtResult).toEqual([0]);
+      expect(h.client.state()!.run.vote[0]).toBe(0); expect(h.client.ui.players[0]!.pendingVote).toBeNull();
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 1 });
+    } finally { h.dispose(); }
+  });
+  it('retires a matching terminal rejection without requiring another publication', () => {
+    const h = votePublicationRig();
+    try {
+      h.press(1); h.pump();
+      expect(h.client.takeResults()).toContainEqual(expect.objectContaining({ id: { player: 0, sequence: 1 }, status: 'rejected', reason: 'stale-tick' }));
+      expect(h.client.publication()!.commandHighWater).toEqual([0, 0]);
+      expect(h.client.ui.players[0]!.pendingVote).toBeNull();
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 0 });
+    } finally { h.dispose(); }
+  });
+  it('an older rejected vote and unrelated rejected control preserve the newest pending choice', () => {
+    const h = votePublicationRig();
+    try {
+      h.press(1); expect(h.press().command).toMatchObject({ kind: 'vote', choice: 1 });
+      h.pause(true, 1); h.pump();
+      expect(h.client.takeResults().map(result => result.id.sequence)).toEqual([1, 3]);
+      expect(h.client.ui.players[0]!.pendingVote?.choice).toBe(1);
+      h.pump(17); expect(h.owner.run.vote[0]).toBe(1);
+    } finally { h.dispose(); }
+  });
+});
