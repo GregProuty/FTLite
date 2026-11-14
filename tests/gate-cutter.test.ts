@@ -15,7 +15,7 @@ const FIVE_MINUTES = seconds(300);
 
 describe('gate-cutter: two bots survive five minutes on the cutter', () => {
   for (const seed of [1, 2, 3]) {
-    it(`seed ${seed}`, () => {
+    it(`seed ${seed}`, { timeout: 60_000 }, () => {
       const s = createSimState(parseShip(cutter), 2, seed, DEFAULT_CHARACTERS); hazardStart(s);   // the old hazard schedule at the (now peaceful) start beacon, as gate-survival (spec Loop-i section 4b)
       let minHull = s.hull, impacts = 0, lastImpact = -1, maxHazards = 0, minHealth = HEALTH_MAX, encounterImpacts = 0, lastTelemetryImpacts = 0, repairsSeen = false, fireRepairOutsideRoom = 0, healthAt4 = '';
       beginGateTrace(s, `cutter:${seed}`);

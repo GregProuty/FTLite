@@ -6,7 +6,7 @@ import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { downCrew } from '../src/renderer/src/sim/crew';
 import { jumpShip, reachable } from '../src/renderer/src/sim/run';
 import { stationOutput } from '../src/renderer/src/sim/stations';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { botIntent } from './helpers/bot';
 import { CARRY_SPEED_MULT } from '../src/renderer/src/sim/tuning';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';

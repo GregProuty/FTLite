@@ -1,19 +1,19 @@
 import type { Intent } from '../../../shared/intent';
 import { NEUTRAL_INTENT } from '../../../shared/intent';
-import type { SimState } from './state';
-import { Position, Life, LifeState, Seated, Health } from './components';
-import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from './interact';
-import { navRows, beaconAt, overrun, type NavRow } from './run';
-import { EVENTS } from './events';
-import { StationKind } from './stationKinds';
-import { DoorState, roomAt, conditionRoomAt } from './grid';
-import { stationOnline } from './stations';
-import { quirkChargeMult } from './quirks';
-import { JUMP_CHARGE_TIME, TICK_HZ, WEAPON_SLOTS } from './tuning';
-import { Weapon, selectorList } from './weapons';
-import { weaponDef } from './weaponDefs';
-import { EnemySystem, enemySysUp } from './enemy';
-import { warnedTargets, ENEMY_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_WEAPONS_SLOT } from './debrisTargets';
+import type { SimState } from '../sim/state';
+import { Position, Life, LifeState, Seated, Health } from '../sim/components';
+import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
+import { navRows, beaconAt, overrun, type NavRow } from '../sim/run';
+import { EVENTS } from '../sim/events';
+import { StationKind } from '../sim/stationKinds';
+import { DoorState, roomAt, conditionRoomAt } from '../sim/grid';
+import { stationOnline } from '../sim/stations';
+import { quirkChargeMult } from '../sim/quirks';
+import { JUMP_CHARGE_TIME, TICK_HZ, WEAPON_SLOTS } from '../sim/tuning';
+import { Weapon, selectorList } from '../sim/weapons';
+import { weaponDef } from '../sim/weaponDefs';
+import { EnemySystem, enemySysUp } from '../sim/enemy';
+import { warnedTargets, ENEMY_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_WEAPONS_SLOT } from '../sim/debrisTargets';
 
 /** Bot self-preservation (spec Demo-ii section 10): below this health a bot keeps out of burning rooms; below BOT_RECOVER_HEALTH it stays in an online Medbay. Bot policy, not sim tuning. */
 export const BOT_RETREAT_HEALTH = 30;

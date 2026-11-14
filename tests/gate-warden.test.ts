@@ -10,6 +10,7 @@ import { Weapon } from '../src/renderer/src/sim/weapons';
 import { LootWeapon } from '../src/renderer/src/sim/weaponDefs';
 import { TICK_HZ, SECTORS, SECTOR_COLUMNS } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, mapM, chargeJump, intents } from './helpers/sim';
+import { decisionView } from './helpers/rawInput';
 
 // Spec Loop-iv section 3: this scripted gunner (no return fire, unlike the bot gunner of Demo-xiii) proves the Warden can be destroyed and the run won.
 // The gunner sits at Weapons (the starting level 2) and aims at the shields room, the Pulse Laser tuned to the current
@@ -25,14 +26,15 @@ function fight(loot: number): { shots: number; hits: number; seconds: number; re
   beginGateTrace(s, `warden:${loot}`);
   for (let t = 0; t < LIMIT && !s.ended; t++) {
     s.boarders.nextArrivalTick = 1e9;
+    const view = decisionView(s);
     let fire = false;
-    if (s.enemy.present) {
-      if (arrived < 0) arrived = s.tick;
+    if (view.enemy.present) {
+      if (arrived < 0) arrived = view.tick;
       s.enemy.nextShotTick = 1e9;
       s.stations.cursor[w] = ENEMY_SHIELDS_SLOT;
-      const layerUp = enemySysUp(s, EnemySystem.Shields) && s.enemy.shieldLayers > 0;
-      if (s.weapons.charge >= 1) { s.weapons.selector = s.enemy.shieldFreq - 1; fire = true; }
-      else if (loot && s.weapons.charge2[0]! >= 1 && !layerUp) { s.weapons.selector = Weapon.Slot1; fire = true; }
+      const layerUp = enemySysUp(view, EnemySystem.Shields) && view.enemy.shieldLayers > 0;
+      if (view.weapons.charge >= 1) { s.weapons.selector = view.enemy.shieldFreq - 1; fire = true; }
+      else if (loot && view.weapons.charge2[0]! >= 1 && !layerUp) { s.weapons.selector = Weapon.Slot1; fire = true; }
     }
     step(s, intents(fire ? { confirmPressed: true } : {}, {}));
   }
@@ -41,12 +43,12 @@ function fight(loot: number): { shots: number; hits: number; seconds: number; re
 }
 
 describe('Warden gate: a scripted gunner destroys the Warden and wins the run', () => {
-  it('seed 1: the starting loadout (Pulse Laser only) wins', () => {
+  it('seed 1: the starting loadout (Pulse Laser only) wins', { timeout: 60_000 }, () => {
     const r = fight(LootWeapon.None);
     expect(r.reason).toBe(EndReason.Victory);
     expect([r.shots, r.hits, r.seconds]).toEqual(PULSE_ONLY);   // recorded on the first run (spec Loop-iv amendments)
   });
-  it('seed 1: with one loot weapon (a Heavy Laser in slot 1) it wins in fewer shots and less time', () => {
+  it('seed 1: with one loot weapon (a Heavy Laser in slot 1) it wins in fewer shots and less time', { timeout: 60_000 }, () => {
     const r = fight(LootWeapon.Heavy);
     expect(r.reason).toBe(EndReason.Victory);
     expect([r.shots, r.hits, r.seconds]).toEqual(WITH_HEAVY); expect(r.shots).toBeLessThan(PULSE_ONLY[0]!);

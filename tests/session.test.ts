@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSession, DEFAULT_SEED } from '../src/renderer/src/app/session';
+import { createSession, DEFAULT_SEED } from './helpers/sessionFixture';
 import type { TelemetryRecord } from '../src/renderer/src/sim/telemetry';
 import { downCrew, EndReason } from '../src/renderer/src/sim/crew';
 import type { SourceSample } from '../src/renderer/src/input/deviceManager';
@@ -10,10 +10,10 @@ import { LAYOUT, seatNavigator, chargeJump, armSpawn, placeEnemy } from './helpe
 import { damageEnemy } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import type { Cue } from '../src/renderer/src/app/audioCues';
-import { loadSnapshot, type Snapshot } from '../src/renderer/src/sim/snapshot';
-import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay';
+import { loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import type { CrashRecord } from '../src/renderer/src/authority/authority';
+import { stepCommands } from '../src/renderer/src/sim/step';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { step } from '../src/renderer/src/sim/step';
 
 import type { HudModel } from '../src/renderer/src/render/hudModel';
 
@@ -176,10 +176,10 @@ describe('session', () => {
     const before = st.tick;
     h.frames(1, 20);
     expect(h.crashes).toHaveLength(1);
-    const p = h.crashes[0] as { baseline: Snapshot; intentsSinceBaseline: CompactIntent[][]; tick: number };
+    const p = h.crashes[0] as CrashRecord;
     expect(p.baseline.header.tick).toBe(600);
     // The faulting tick's intents are recorded before step() throws, so they are included (+1).
-    expect(p.intentsSinceBaseline.length).toBe(p.tick - 600 + 1);
+    expect(p.ticks.length).toBe(p.tick - 600 + 1);
     expect(p.tick).toBeGreaterThanOrEqual(before);
   });
   it('baseline plus recorded intents replays to the pre-fault state', () => {
@@ -191,10 +191,10 @@ describe('session', () => {
     const live = hashState(st);
     (st as unknown as { rooms: null }).rooms = null;
     h.frames(1, 20);
-    const p = h.crashes[0] as { baseline: Snapshot; intentsSinceBaseline: CompactIntent[][]; tick: number };
+    const p = h.crashes[0] as CrashRecord;
     const replayed = loadSnapshot(LAYOUT, p.baseline);
     // The last recorded entry belongs to the tick that faulted; the ones before it lead to the pre-fault state.
-    for (const c of p.intentsSinceBaseline.slice(0, -1)) step(replayed, c.map(decodeIntent));
+    for (const frame of p.ticks.slice(0, -1)) stepCommands(replayed, frame.input);
     expect(hashState(replayed)).toBe(live);
   });
   it('a Confirm press while paused does not resume when canResume() is false', () => {

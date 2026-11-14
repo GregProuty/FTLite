@@ -1,3 +1,4 @@
+import { snapshotPhaseStep as propertyPhaseStep } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import type { Intent } from '../src/shared/intent';
@@ -169,7 +170,7 @@ describe('Engineering console', () => {
       sitDown(s, 0, eng);
       for (const e of script) {
         for (let k = 0; k < HAZARD_EVERY; k++) {                           // one stick edge per 5 ticks, Confirm edges every tick while true
-          run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm }));
+          propertyPhaseStep(s, intents({ ...e.dir, confirmPressed: e.confirm }));
           if (!check(s)) return false;                                     // checked after every tick, so nothing can hide behind a later input
         }
       }

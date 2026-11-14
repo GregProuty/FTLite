@@ -8,7 +8,7 @@ import { depthOf } from '../src/renderer/src/sim/depth';
 import { FUEL_START, PURSUIT_START, PURSUIT_STEP, WAIT_SECONDS, WAIT_FUEL_CHANCE, WAIT_FUEL, FIELD_FUEL, PURSUIT_HULL_MULT, PURSUIT_FIRE_MULT } from '../src/renderer/src/sim/tuning';
 import { deriveStreams } from '../src/renderer/src/sim/state';
 import { Phase, enterPhase, minutesOf } from '../src/renderer/src/sim/director';
-import { step } from '../src/renderer/src/sim/step';
+import { step } from './helpers/rawInput';
 import { EndReason, downCrew } from '../src/renderer/src/sim/crew';
 import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -24,7 +24,7 @@ import { fieldSystem, endField } from '../src/renderer/src/sim/run';
 import { spawnFieldRock, ObjectKind, activeDebrisCount } from '../src/renderer/src/sim/debris';
 import { FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, scrapField, scrapPerJump, FREQ_COUNT } from '../src/renderer/src/sim/tuning';
 import { EVADE_WINDOW, EVADE_COOLDOWN } from '../src/renderer/src/sim/tuning';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { botIntent } from './helpers/bot';
 
 const T = TICK_HZ;
 const calm = (players = 2, seed = 1) => { const s = makeState(players, seed); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; s.run.jumpCharge = 0; return s; };   // P1: the calm start beacon begins with a full drive

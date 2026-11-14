@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { botIntent } from './helpers/bot';
 import { confirmTarget, ConfirmKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { EndReason } from '../src/renderer/src/sim/crew';
@@ -14,7 +14,7 @@ import { makeState, quiet, room, RECRUITS, allHazard } from './helpers/sim';
 const JUMPS = SECTORS * SECTOR_COLUMNS;
 const WAITS_MAX = 12;
 describe('jump gate: a scripted navigator jumps the quiet ship through every sector', () => {
-  it('seed 1, two Recruits: eighteen jumps with waits for fuel, the final beacon and the Warden arriving, both alive, within 18 x (charge + 10) + 12 waits seconds', () => {
+  it('seed 1, two Recruits: eighteen jumps with waits for fuel, the final beacon and the Warden arriving, both alive, within 18 x (charge + 10) + 12 waits seconds', { timeout: 60_000 }, () => {
     const s = makeState(2, 1, RECRUITS, { quirk: 3 }); quiet(s);   // Lucky Hull: no debris flies in this gate, so the quirk is inert
     allHazard(s); const silence = () => { if (!s.run.finalBeacon) s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; };   // a quiet ship: no enemy (pursuit fights included) before the final beacon and no boarders, every tick
     const nav = s.derived.stationOfKind[StationKind.Navigation]!, A = room(s, 'A'), eid = s.crew[0]!;

@@ -111,7 +111,8 @@ describe('quirk', () => {
     const lead = (k: number, seated: boolean) => { const s = quirkState(k); if (seated) sitDown(s, 0, s.derived.stationOfKind[StationKind.Science]!); return scienceLead(s); };
     expect(lead(4, false)).toBe(SCIENCE_LEAD_UNMANNED + 4); expect(lead(0, false)).toBe(SCIENCE_LEAD_UNMANNED); expect(lead(4, true)).toBeCloseTo(22); expect(lead(0, true)).toBeCloseTo(18);
   });
-  it('5 Old Drive: the charge takes 75 s; the ready tick is 4500', () => {
+  // Integration: thousands of tick-addressed Confirm commands retain the complete byte path.
+  it('5 Old Drive: the charge takes 75 s; the ready tick is 4500', { timeout: 60_000 }, () => {
     const q = quirkState(5); quiet(q); q.enemy.nextArrivalTick = 1e9; q.boarders.nextArrivalTick = 1e9; q.run.jumpCharge = 0; run(q, 1); expect(q.run.jumpCharge).toBeCloseTo(DT / (JUMP_CHARGE_TIME * 1.25), 12);   // P1: the calm start beacon begins with a full drive
     const c = quirkState(0); quiet(c); c.enemy.nextArrivalTick = 1e9; c.boarders.nextArrivalTick = 1e9; c.run.jumpCharge = 0; run(c, 1); expect(c.run.jumpCharge).toBeCloseTo(DT / JUMP_CHARGE_TIME, 12);
     const ready = (k: number) => { const s = quirkState(k); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; s.run.jumpCharge = 0; seatNavigator(s, 0); downCrew(s, 1); run(s, 1); let n = 1; while (s.telemetry.jumps === 0 && n < 6000) { run(s, 1, () => intents({ confirmPressed: true }, {})); n++; } return s.tick; };

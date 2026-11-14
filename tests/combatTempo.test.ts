@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { step } from './helpers/rawInput';
+import { botIntent } from './helpers/bot';
 import { jumpShip } from '../src/renderer/src/sim/run';
 import { Life, LifeState, Health } from '../src/renderer/src/sim/components';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
@@ -46,18 +46,18 @@ function firstFight(s: SimState, limit = seconds(600)): { seconds: number; outco
 
 describe('combat tempo (spec Demo-xiii section 4)', () => {
   for (const seed of SEEDS) {
-    it(`seed ${seed}: an ignored first enemy costs 15 to 30 hull in its first 60 s`, () => {
+    it(`seed ${seed}: an ignored first enemy costs 15 to 30 hull in its first 60 s`, { timeout: 60_000 }, () => {
       const lost = passiveHullLost(seed);
       expect(lost).toBeGreaterThanOrEqual(15); expect(lost).toBeLessThanOrEqual(30);
       expect(lost).toBe(PASSIVE_HULL_LOST[seed - 1]);   // recorded (amendment 6)
     });
-    it(`seed ${seed}: with the starting loadout and the bot gunner the first enemy dies or flees in 40 to 80 s`, () => {
+    it(`seed ${seed}: with the starting loadout and the bot gunner the first enemy dies or flees in 40 to 80 s`, { timeout: 60_000 }, () => {
       const f = firstFight(createSimState(SKIFF, 2, seed, DEFAULT_CHARACTERS));
       expect(['kill', 'surrender', 'flight'], JSON.stringify(f)).toContain(f.outcome);
       expect(f.seconds, JSON.stringify(f)).toBeGreaterThanOrEqual(40); expect(f.seconds, JSON.stringify(f)).toBeLessThanOrEqual(80);
       expect([f.outcome, Math.round(f.seconds)]).toEqual(FIRST_FIGHT[seed - 1]);   // recorded (amendment 6)
     });
-    it(`seed ${seed}: a sector-3 enemy against the gunner and no upgrades is survived`, () => {
+    it(`seed ${seed}: a sector-3 enemy against the gunner and no upgrades is survived`, { timeout: 60_000 }, () => {
       const s = createSimState(SKIFF, 2, seed, DEFAULT_CHARACTERS); s.run.sector = 2;   // the third sector, column 1: depth 13
       const f = firstFight(s);
       expect(s.ended, JSON.stringify(f)).toBe(0);

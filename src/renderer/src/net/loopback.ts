@@ -33,6 +33,7 @@ function compatible(a: Compatibility, b: Compatibility): boolean {
 /** One harness is one local registry, with an explicit, nonreentrant drain queue. */
 export function createLoopbackHarness(compatibility: Compatibility, options: LoopbackOptions = {}): {
   createSession(expectedCompatibility?: Compatibility): Session;
+  connectLocal(): { host: Session; client: Session; authorityLink: Link; clientLink: Link };
   drain(): void;
 } {
   if (!validCompatibility(compatibility)) throw new Error('invalid loopback compatibility');
@@ -61,10 +62,7 @@ export function createLoopbackHarness(compatibility: Compatibility, options: Loo
       if (this.closed || this.code || this.peers.size) throw new Error('session unavailable');
       const host = registry.get(code);
       if (!host || host.closed || host === this) throw new Error('unknown local join code');
-      if (!compatible(host.expected, this.expected)) throw new Error('incompatible loopback session');
-      const pair = new Pair(this, host); pairs.add(pair);
-      this.peers.add(pair.a); host.peers.add(pair.b);
-      notify(host.linkListeners, [pair.b]); notify(this.linkListeners, [pair.a]);
+      connect(this, host);
     }
     onLink(cb: (link: Link) => void): Unsubscribe { return subscribe(this.linkListeners, cb); }
     onLinkLost(cb: (peer: PeerId) => void): Unsubscribe { return subscribe(this.lostListeners, cb); }
@@ -166,7 +164,19 @@ export function createLoopbackHarness(compatibility: Compatibility, options: Loo
     }
     drain(cutoff: number): void { this.deliver(this.a, this.b, cutoff); this.deliver(this.b, this.a, cutoff); }
   }
+  function connect(client: LocalSession, host: LocalSession): Pair {
+    if (client.closed || host.closed || client === host || client.code || client.peers.size) throw new Error('session unavailable');
+    if (!compatible(host.expected, client.expected)) throw new Error('incompatible loopback session');
+    const pair = new Pair(client, host); pairs.add(pair);
+    client.peers.add(pair.a); host.peers.add(pair.b);
+    notify(host.linkListeners, [pair.b]); notify(client.linkListeners, [pair.a]);
+    return pair;
+  }
   return {
+    connectLocal() {
+      const host = new LocalSession(defaults), client = new LocalSession(defaults), pair = connect(client, host);
+      return { host, client, authorityLink: pair.b, clientLink: pair.a };
+    },
     createSession(expected = defaults) {
       if (!validCompatibility(expected)) throw new Error('invalid loopback compatibility');
       return new LocalSession(expected);

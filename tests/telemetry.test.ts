@@ -5,7 +5,7 @@ import { telemetrySystem, telemetryRecord, eventSeconds, durationSeconds } from 
 import { hashState } from '../src/renderer/src/sim/hash';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { step } from '../src/renderer/src/sim/step';
+import { step } from './helpers/rawInput';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation, powerUsed } from '../src/renderer/src/sim/power';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';

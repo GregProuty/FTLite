@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { runAcceptance, acceptanceTable, runAcceptanceCli } from '../src/renderer/src/sim/acceptance';
+import { runAcceptance, acceptanceTable, runAcceptanceCli } from '../src/renderer/src/headless/acceptance';
 import { telemetryRecord, type TelemetryRecord } from '../src/renderer/src/sim/telemetry';
 import { createSimState } from '../src/renderer/src/sim/state';
-import { step } from '../src/renderer/src/sim/step';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { step } from './helpers/rawInput';
+import { botIntent } from './helpers/bot';
 import { DEFAULT_CHARACTERS, RECRUIT } from '../src/renderer/src/sim/characters';
 import { ACCEPTANCE_MINUTES, TICK_HZ } from '../src/renderer/src/sim/tuning';
 import { LAYOUT } from './helpers/sim';

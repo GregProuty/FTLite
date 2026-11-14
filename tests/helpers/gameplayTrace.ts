@@ -7,7 +7,8 @@ import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
 import skiff from '../../src/renderer/src/sim/ship/skiff.json';
 import cutter from '../../src/renderer/src/sim/ship/cutter.json';
-import { step } from '../../src/renderer/src/sim/step';
+import { rawFrame } from './rawInput';
+import { createFixtureRunner } from './authorityFixture';
 import { sitDown } from '../../src/renderer/src/sim/stations';
 import { navRows, NodeType } from '../../src/renderer/src/sim/run';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
@@ -102,9 +103,10 @@ function mutate(s: SimState, m: Mutation): void {
     default: throw new Error(`unknown baseline setup mutation ${m.op}`);
   }
 }
-export function runScenario(spec: GameplayScenario) {
+export function runScenario(spec: GameplayScenario, contentDigest = __GAMEPLAY_CONTENT_DIGEST__) {
   const layout = parseShip({ starter, skiff, cutter }[spec.layout]);
   const s = createSimState(layout, spec.characters.length, spec.seed, spec.characters, { unlocked: spec.unlocks });
+  const runner = createFixtureRunner(s, contentDigest);
   const observations: { tick: number; state: Plain }[] = [];
   const decisions: { tick: number; inputs: Intent[]; rng: unknown }[] = [];
   for (let tick = 0; tick < spec.ticks; tick++) {
@@ -114,9 +116,10 @@ export function runScenario(spec: GameplayScenario) {
     if (spec.golden) for (let pid = 0; pid < s.playerCount; pid++) { const [x, y, bits] = golden.replay.intents[tick]![pid]!; inputs[pid] = { moveX: x!, moveY: y!, interactHeld: !!(bits! & 1), interactPressed: !!(bits! & 2), confirmPressed: !!(bits! & 4), cancelPressed: !!(bits! & 8) }; }
     else for (const input of spec.inputs) if (input.tick === tick) inputs[input.pid] = { ...NEUTRAL_INTENT, ...input.input };
     const before = JSON.stringify(s.rng);
-    step(s, inputs);
+    runner.refresh(); runner.advance(inputs.map(rawFrame));
     if (inputs.some((i) => i.confirmPressed || i.cancelPressed || i.interactPressed) || JSON.stringify(s.rng) !== before) decisions.push({ tick, inputs, rng: canonical(s.rng) });
   }
   observations.push({ tick: s.tick, state: projectGameplay(s) });
+  runner.dispose();
   return { name: spec.name, observations, decisions, summary: { tick: s.tick, hull: s.hull, ended: s.ended, telemetry: canonical(s.telemetry), simVersion: SIM_VERSION } };
 }

@@ -37,6 +37,7 @@ async function start(): Promise<void> {
     sampleDevices: () => [...keyboard.sample(), ...sampleGamepads()],
     renderer, hud,
     now: () => performance.now(),
+    scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     canResume: () => !document.hidden && document.hasFocus(),
     credits: CREDITS,
     playCue: audio.play,
@@ -55,5 +56,6 @@ async function start(): Promise<void> {
   window.ftlite?.onSuspend(() => session.pause());
   window.ftlite?.onResume(() => session.resume());
   renderer.app.ticker.add(() => session.frame());
+  window.addEventListener('beforeunload', () => session.dispose(), { once: true });
 }
 start().catch(showFatal);

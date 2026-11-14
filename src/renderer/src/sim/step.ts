@@ -19,14 +19,19 @@ import { enemySystem } from './enemy';
 import { medbayStep } from './medbay';
 import { xpSystem } from './xp';
 import { telemetrySystem } from './telemetry';
+import { legacyPhaseInputs, type MigrationTickInput } from './commands';
+import type { CommandResult } from '../net/contracts';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
   return clampIntent(intents[pid] ?? NEUTRAL_INTENT);
 }
 
 /** One fixed 60 Hz tick in the spec's system order (§4 rule 4a). */
-export function step(state: SimState, intents: readonly Intent[]): void {
-  if (state.ended) return;
+export function stepCommands(state: SimState, input: MigrationTickInput): readonly CommandResult[] {
+  if (state.ended) return [];
+  const intents = legacyPhaseInputs(input, state.playerCount);
+  const results: CommandResult[] = input.commands.map((envelope) => ({ id: { ...envelope.id }, tick: state.tick, status: 'rejected', reason: 'unsupported' }));
+  for (const envelope of input.legacyCardInput) results.push({ id: { ...envelope.id }, tick: state.tick, status: 'applied' });
   const hazardTick = state.tick % HAZARD_EVERY === 0;
   state.scratch.doorToggles.clear(); state.scratch.doorCycles.clear(); state.scratch.airlockToggles.clear(); state.scratch.satThisTick.fill(0); state.scratch.stoodThisTick.fill(0); state.scratch.activeThisTick.fill(0); state.scratch.votePress.fill(0); state.scratch.jumpConfirm.fill(0); state.scratch.confirmUsed.fill(0);
   jumpStep(state);   // (0) the jump drive charges first, so a Confirm on the ready tick jumps (spec Run-i section 6)
@@ -60,4 +65,5 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   telemetrySystem(state);   // (8) telemetry: final-state samples and life edges, on the ending tick too
   trackNavCursor(state);   // (9) the Navigation cursor follows its row when the list changed this tick (spec Demo-xi section 3)
   state.tick++;
+  return results;
 }

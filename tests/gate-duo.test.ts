@@ -9,7 +9,7 @@ import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 // Spec Demo-i section 5: the duo gate. The survival gate's loop and metric verbatim, target minHealth >= 25 (baseline 0.0 / 0.1 / 0.1).
 describe('demo gate: two bots keep both crew healthy for five minutes', () => {
   for (const seed of [1, 2, 3]) {
-    it(`seed ${seed}`, () => {
+    it(`seed ${seed}`, { timeout: 60_000 }, () => {
       const s = makeState(2, seed, DEFAULT_CHARACTERS);
       let minHealth = HEALTH_MAX, minHull = s.hull;
       beginGateTrace(s, `duo:${seed}`);

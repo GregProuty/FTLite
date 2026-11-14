@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
+import { heldStep as step } from './helpers/heldInput';
 import { enemyMaxHull, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, damageEnemy, EnemySystem, leave } from '../src/renderer/src/sim/enemy';
 import { spawnShot, debrisSystem, spawnDebris } from '../src/renderer/src/sim/debris';
 import { ENEMY_SLOT, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';

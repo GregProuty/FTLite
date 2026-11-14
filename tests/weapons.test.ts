@@ -1,3 +1,4 @@
+import { snapshotPhaseStep as propertyPhaseStep } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
 import { LOCK_SECONDS, LOCK_HIT_BONUS, ENEMY_SYS_HP } from '../src/renderer/src/sim/tuning';
 import { enemyBeamThreshold, EnemySystem } from '../src/renderer/src/sim/enemy';
@@ -178,7 +179,7 @@ describe('properties', () => {
         const target = c >= 0 && s.debris.active[c] === 1 && s.debris.warned[c] === 1;
         const willShoot = confirm && ready && target;
         const expected = createRng(s.rng.combat.s); if (willShoot) nextFloat(expected);
-        run(s, 1, () => intents({ ...dir, confirmPressed: confirm }));
+        propertyPhaseStep(s, intents({ ...dir, confirmPressed: confirm }));
         if (s.rng.combat.s !== expected.s) return false;                           // one draw for a shot, none otherwise
         if (w.torpedoStock !== prevStock - (loadCompletes ? 1 : 0)) return false;   // the only stock change is a load completion (regeneration needs 90 s; the run is shorter)
         if (w.torpedoStock < 0 || w.torpedoStock > TORP_CAP || (w.torpedoLoaded !== 0 && w.torpedoLoaded !== 1)) return false;

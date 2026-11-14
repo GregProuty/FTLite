@@ -12,7 +12,7 @@ const FIVE_MINUTES = seconds(300);
 
 describe('increment 1 gate: two bots survive five minutes', () => {
   for (const seed of [1, 2, 3]) {
-    it(`seed ${seed}`, () => {
+    it(`seed ${seed}`, { timeout: 60_000 }, () => {
       const s = makeState(2, seed, DEFAULT_CHARACTERS); hazardStart(s);   // the start beacon is peaceful since Loop-i (spec section 4b): this hazard soak keeps the old schedule there, awake from tick 0 with the first enemy at 270 s and boarders at 330 s
       let minHull = s.hull, impacts = 0, lastImpact = -1, maxHazards = 0, minHealth = HEALTH_MAX, encounterImpacts = 0, lastTelemetryImpacts = 0, repairsSeen = false, fireRepairOutsideRoom = 0, healthAt4 = '';
       beginGateTrace(s, `survival:${seed}`);

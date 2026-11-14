@@ -1,20 +1,20 @@
-import starter from './ship/starter.json';
-import { parseShip } from './ship/schema';
-import { createSimState } from './state';
-import { step } from './step';
-import { botIntent } from './bot';
-import { DEFAULT_CHARACTERS } from './characters';
-import { telemetryRecord, type TelemetryRecord } from './telemetry';
-import { TICK_HZ, ACCEPTANCE_MINUTES } from './tuning';
+import starter from '../sim/ship/starter.json';
+import { parseShip } from '../sim/ship/schema';
+import { createHeadlessRunner } from './runner';
+import { botFrame } from '../clientControl/botClient';
+import { DEFAULT_CHARACTERS } from '../sim/characters';
+import { telemetryRecord, type TelemetryRecord } from '../sim/telemetry';
+import { TICK_HZ, ACCEPTANCE_MINUTES } from '../sim/tuning';
 
-export interface AcceptanceArgs { players: number; seed: number; minutes: number; characters?: readonly number[] }
+export interface AcceptanceArgs { players: number; seed: number; minutes: number; characters?: readonly number[]; contentDigest?: string }
 
 /** Headless soak: the bot crew on the starter ship until the tick budget or the run end, with no survival cheat (spec 4-ii section 8). */
-export function runAcceptance({ players, seed, minutes, characters = DEFAULT_CHARACTERS }: AcceptanceArgs): TelemetryRecord {
-  const state = createSimState(parseShip(starter), players, seed, characters);
+export function runAcceptance({ players, seed, minutes, characters = DEFAULT_CHARACTERS, contentDigest = __GAMEPLAY_CONTENT_DIGEST__ }: AcceptanceArgs): TelemetryRecord {
+  const runner = createHeadlessRunner({ layout: parseShip(starter), playerCount: players, seed, characters, contentDigest });
+  const state = runner.view();
   const budget = Math.round(minutes * 60 * TICK_HZ);
-  while (state.tick < budget && !state.ended) step(state, state.crew.map((_, pid) => botIntent(state, pid)));
-  return telemetryRecord(state, seed);
+  while (state.tick < budget && !state.ended) runner.advance(state.crew.map((_, pid) => botFrame(state, runner.ui, pid)));
+  const record = telemetryRecord(state, seed); runner.dispose(); return record;
 }
 
 const COLUMNS = ['players', 'seed', 'ended-at', 'reason', 'first-down', 'first-death', 'never-manned', 'longest-idle', 'spawns', 'impacts', 'hits/shots', 'enemy', 'boarders', 'nodes', 'scrap', 'score'];

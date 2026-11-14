@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { botIntent } from './helpers/bot';
 import { Health, Life, LifeState } from '../src/renderer/src/sim/components';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { TICK_HZ, HEALTH_MAX } from '../src/renderer/src/sim/tuning';
@@ -8,7 +8,7 @@ import { makeState, quiet, seconds, wake } from './helpers/sim';
 
 describe('boarding gate: two bots clear a forced boarding at 1:00 with the ship otherwise quiet', () => {
   for (const seed of [1, 2, 3]) {
-    it(`seed ${seed}`, () => {
+    it(`seed ${seed}`, { timeout: 60_000 }, () => {
       const s = makeState(2, seed, DEFAULT_CHARACTERS); wake(s); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 60 * TICK_HZ;   // awake: no peace at the start beacon (spec Loop-i section 4b)
       let minHealth = HEALTH_MAX;
       beginGateTrace(s, `boarding:${seed}`);

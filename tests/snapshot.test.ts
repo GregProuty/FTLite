@@ -1,10 +1,12 @@
+import { botIntent as fixtureBotPolicy } from '../src/renderer/src/clientControl/botPolicy';
+import { snapshotPhaseStep } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
 import { TEAM_MULT as TM2 } from '../src/renderer/src/sim/tuning';
 import fc from 'fast-check';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { flatten, unflatten } from '../src/renderer/src/sim/flatten';
-import { step } from '../src/renderer/src/sim/step';
+import { step } from './helpers/rawInput';
 import { Position, Seated, Life, LifeState } from '../src/renderer/src/sim/components';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { downCrew } from '../src/renderer/src/sim/crew';
@@ -26,7 +28,7 @@ import { navRows, jumpShip, NodeType } from '../src/renderer/src/sim/run';
 function advanced(seed: number, players = 2) {
   const s = makeState(players, seed);
   s.director.nextSpawnTick = 0;
-  for (let i = 0; i < 1500; i++) step(s, Array.from({ length: players }, (_, pid) => botIntent(s, pid)));
+  for (let i = 0; i < 1500; i++) snapshotPhaseStep(s, Array.from({ length: players }, (_, pid) => fixtureBotPolicy(s, pid)));
   return s;
 }
 
@@ -132,7 +134,7 @@ describe('snapshot', () => {
   it('property: same seed and intents give the same hash', () => {
     fc.assert(fc.property(fc.integer(), arbScript(2), (seed, script) => {
       const a = advanced(seed), b = advanced(seed);
-      for (const tick of script) { step(a, tick); step(b, tick); }
+      for (const tick of script) { snapshotPhaseStep(a, tick); snapshotPhaseStep(b, tick); }
       expect(hashState(a)).toBe(hashState(b));
     }), { numRuns: 50 });
   });
@@ -140,18 +142,18 @@ describe('snapshot', () => {
     fc.assert(fc.property(fc.integer(), arbScript(2), fc.nat(), (seed, script, nRaw) => {
       const n = nRaw % script.length;
       const whole = advanced(seed);
-      for (const tick of script) step(whole, tick);
+      for (const tick of script) snapshotPhaseStep(whole, tick);
       const first = advanced(seed);
-      for (let i = 0; i < n; i++) step(first, script[i]!);
+      for (let i = 0; i < n; i++) snapshotPhaseStep(first, script[i]!);
       const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
-      for (let i = n; i < script.length; i++) step(resumed, script[i]!);
+      for (let i = n; i < script.length; i++) snapshotPhaseStep(resumed, script[i]!);
       expect(hashState(resumed)).toBe(hashState(whole));
     }), { numRuns: 50 });
   });
   it('property: fuzzed intents never produce NaN or out-of-range values', () => {
     fc.assert(fc.property(fc.integer(), arbScript(4), (seed, script) => {
       const s = advanced(seed, 4);
-      for (const tick of script) step(s, tick);
+      for (const tick of script) snapshotPhaseStep(s, tick);
       for (const v of flatten(s)) expect(Number.isFinite(v)).toBe(true);
       for (let r = 0; r < s.rooms.o2.length; r++) { expect(s.rooms.o2[r]).toBeGreaterThanOrEqual(0); expect(s.rooms.o2[r]).toBeLessThanOrEqual(s.derived.volume[r]! + 1e-9); }
       for (const eid of s.crew) {

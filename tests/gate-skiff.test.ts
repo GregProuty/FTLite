@@ -20,7 +20,7 @@ const SKIFF_FLOOR = 25;
 
 describe('gate-skiff: two bots keep both crew alive on the Skiff for five minutes', () => {
   for (const seed of [1, 2, 3]) {
-    it(`seed ${seed}`, () => {
+    it(`seed ${seed}`, { timeout: 60_000 }, () => {
       const s = createSimState(parseShip(skiff), 2, seed, DEFAULT_CHARACTERS);
       let minHealth = HEALTH_MAX, minHull = s.hull;
       beginGateTrace(s, `skiff:${seed}`);

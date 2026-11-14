@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { boarderSystem, damageBoarder, killBoarderByHazard, boarderTarget, boardersInRoom, activeBoarderCount, combatDps, combatDefence, roomCentre, boarderMarkers, ALONE_IDLE, ALONE_SABOTAGED } from '../src/renderer/src/sim/boarders';
 import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { rawStress, anyUnattended, activeHazardCount } from '../src/renderer/src/sim/director';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { botIntent } from './helpers/bot';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { stationOutput } from '../src/renderer/src/sim/stations';
 import { failStation, repairStation } from '../src/renderer/src/sim/power';

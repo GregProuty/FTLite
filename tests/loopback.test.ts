@@ -10,6 +10,16 @@ async function pair(options?: Parameters<typeof createLoopbackHarness>[1]) {
   return { ...harness, host, client, a: client.links[0]!, b: host.links[0]! };
 }
 describe('local loopback session', () => {
+  it('synchronous local bootstrap uses the same queued bytes and teardown as Session host/join', async () => {
+    const normal = await pair(), harness = createLoopbackHarness(compatibility), local = harness.connectLocal();
+    const first: unknown[] = [], second: unknown[] = [];
+    normal.b.onMessage((_, bytes) => first.push(decodeMessage(bytes)));
+    local.authorityLink.onMessage((_, bytes) => second.push(decodeMessage(bytes)));
+    const bytes = encodeMessage(commandMessage());
+    normal.a.send('reliable-ordered', bytes); local.clientLink.send('reliable-ordered', bytes);
+    expect(first).toEqual([]); expect(second).toEqual([]); normal.drain(); harness.drain(); expect(second).toEqual(first);
+    normal.host.close('done'); local.host.close('done'); expect(local.client.links).toHaveLength(0); expect(normal.client.links).toHaveLength(0);
+  });
   it('copies at send and for every delivery listener, queues callbacks, and delivers reliable FIFO', async () => {
     const p = await pair(), first: number[] = [], second: number[] = [];
     p.b.onMessage((_, bytes) => { first.push(bytes[0]!); bytes[0] = 99; });

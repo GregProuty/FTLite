@@ -1,22 +1,20 @@
 import type { ShipLayout } from '../sim/ship/schema';
-import { createSimState, type SimState } from '../sim/state';
-import { step } from '../sim/step';
-import { saveSnapshot, type Snapshot } from '../sim/snapshot';
-import { encodeIntent, type CompactIntent } from '../sim/replay';
-import { TICK_HZ, DT } from '../sim/tuning';
+import type { SimState } from '../sim/state';
+import { TICK_HZ } from '../sim/tuning';
+import { createLocalRuntime } from './localRuntime';
+import type { createAuthority } from '../authority/authority';
+import type { Scheduler, Unsubscribe } from '../net/contracts';
 import { createDeviceManager, type SourceSample, type SlotInfo } from '../input/deviceManager';
 import { createIntentFeed, NEUTRAL_FRAME, type InputFrame } from './intents';
-import { stepAccumulator } from './loop';
 import { buildHudModel, type HudModel } from '../render/hudModel';
 import { EndReason } from '../sim/crew';
-import { telemetryRecord, type TelemetryRecord } from '../sim/telemetry';
+import { type TelemetryRecord } from '../sim/telemetry';
 import { EMPTY_PROGRESS, applyRun, unlockNames, type Progress } from '../sim/progress';
 import { DEFAULT_CHARACTERS } from '../sim/characters';
 import { cueCounters, audioCues, type Cue, type CueCounters } from './audioCues';
 import { pressCallouts, bubbles, flashingKinds, type Callout, type Bubble } from '../render/calloutModel';
 
 export const DEFAULT_SEED = 2026;
-const CRASH_HISTORY = 300;
 export const CREDITS_SCROLL_MS = 150;
 
 export interface SessionDeps {
@@ -26,6 +24,9 @@ export interface SessionDeps {
   renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[]): void } | null;
   hud: { update(m: HudModel): void } | null;
   now(): number;
+  scheduler?: Scheduler;
+  contentDigest?: string;
+  authorityFactory?: typeof createAuthority;
   saveCrash(payload: unknown): void;
   /** Called once with the run's record on the tick it ends (spec 4-ii section 7). */
   saveTelemetry?: (record: TelemetryRecord) => void;
@@ -51,29 +52,59 @@ export function createSession(deps: SessionDeps) {
   let state: SimState | null = null;
   let feed: ReturnType<typeof createIntentFeed> | null = null;
   let slots: SlotInfo[] = [];
-  let accumulator = 0, lastNow: number | null = null;
-  let baseline: Snapshot | null = null;
-  let intentsSinceBaseline: CompactIntent[][] = [];
+  let lastNow: number | null = null, runCounter = 0;
+  let runtime: ReturnType<typeof createLocalRuntime> | null = null, cancelLobby: Unsubscribe | null = null;
+  let disposed = false;
+  const scheduler = deps.scheduler ?? { schedule: () => () => {} };
   let prevCounters: CueCounters | null = null;
+  const pendingCues = new Set<Cue>();
   let creditsOpen = false, creditsScroll = 0, scrollHold = 0, scrollDir = 0;
   let callouts: Callout[] = [];   // spec Coop-i section 3: app state only, never in Intent, replays or snapshots
 
+  function scheduleLobby(): void {
+    cancelLobby?.();
+    if (!disposed && phase !== 'running' && phase !== 'paused') cancelLobby = scheduler.schedule(1000 / 120, () => { pump(); scheduleLobby(); });
+  }
   function start(): void {
-    deps.renderer?.reset();
+    cancelLobby?.(); runtime?.dispose(); deps.renderer?.reset();
     const playerCount = slots.filter((s) => s.status !== 'empty').length;
     const layout = typeof deps.layout === 'function' ? deps.layout(playerCount) : deps.layout;
-    state = createSimState(layout, playerCount, seed, DEFAULT_CHARACTERS, { unlocked: progress.unlocked }); newUnlocks = [];
-    feed = createIntentFeed(playerCount);
-    accumulator = 0; baseline = null; intentsSinceBaseline = []; callouts = [];
-    prevCounters = cueCounters(state);
+    feed = createIntentFeed(playerCount); newUnlocks = []; callouts = []; prevCounters = null; pendingCues.clear();
     phase = 'running'; message = '';
+    runtime = createLocalRuntime({
+      layout, playerCount, seed, characters: DEFAULT_CHARACTERS, unlocked: progress.unlocked,
+      runId: `couch-${++runCounter}`, contentDigest: deps.contentDigest ?? __GAMEPLAY_CONTENT_DIGEST__,
+      clock: { nowMs: deps.now }, scheduler, authorityFactory: deps.authorityFactory,
+      beforeControls: sampleControls,
+      frames: () => feed!.tick().map((i) => ({ moveX: i.moveX, moveY: i.moveY, interactHeld: i.interactHeld, interactPresses: Number(i.interactPressed), confirmPresses: Number(i.confirmPressed), cancelPresses: Number(i.cancelPressed) })),
+      recordPrev: (view) => deps.renderer?.recordPrev(view),
+      onPublication(view, publication) {
+        state = view;
+        if (phase === 'running' || phase === 'paused') {
+          if (publication.phase === 'paused') { phase = 'paused'; message = 'PAUSED'; }
+          else if (publication.phase === 'running') { phase = 'running'; message = ''; }
+        }
+        const next = cueCounters(view); if (prevCounters) for (const cue of audioCues(prevCounters, next)) pendingCues.add(cue); prevCounters = next;
+      },
+      onEvent(event) {
+        if (event.payload.kind !== 'ended' || phase === 'gameover') return;
+        const record = event.payload.record; deps.saveTelemetry?.(record);
+        const next = applyRun(progress, record); newUnlocks = next.unlocked.filter((id) => !progress.unlocked.includes(id)); progress = next; deps.saveProgress?.(progress);
+        phase = 'gameover';
+        message = `${state!.endReason === EndReason.Hull ? 'HULL LOST' : state!.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'} after ${Math.floor(state!.tick / TICK_HZ)}s. Confirm: same seed. Cancel: new seed.`;
+        scheduleLobby();
+      },
+      onCrash(record) { phase = 'error'; message = `Sim fault: ${record.error}. Crash data saved.`; deps.saveCrash(record); },
+      draw(view) { deps.renderer?.draw(view, 1, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : []); }
+    });
+    state = runtime.state();
   }
 
   function anyPress(frames: { confirmPresses: number; cancelPresses: number }[], key: 'confirmPresses' | 'cancelPresses'): boolean {
     return frames.some((f) => f[key] > 0);
   }
 
-  function doResume(): void { if (phase === 'paused') { phase = 'running'; message = ''; lastNow = null; } }
+  function doResume(): void { if (phase === 'paused') { runtime?.requestPause(false); phase = 'running'; message = ''; lastNow = null; } }
 
   function openCredits(): void { creditsOpen = true; creditsScroll = 0; scrollHold = 0; scrollDir = 0; }
   function closeCredits(): void { creditsOpen = false; }
@@ -89,14 +120,9 @@ export function createSession(deps: SessionDeps) {
     while (scrollHold >= CREDITS_SCROLL_MS) { scrollHold -= CREDITS_SCROLL_MS; stepOnce(); }
   }
 
-  return {
-    get phase() { return phase; }, get state() { return state; }, get seed() { return seed; }, get creditsOpen() { return creditsOpen; }, get callouts(): readonly Callout[] { return callouts; },
-    pause() { if (phase === 'running') { phase = 'paused'; message = 'PAUSED'; accumulator = 0; } },
-    resume() { doResume(); },
-    frame() {
+  function sampleControls(): void {
       const now = deps.now();
       const deltaMs = lastNow === null ? 0 : Math.min(250, now - lastNow);
-      const delta = deltaMs / 1000;
       lastNow = now;
       const wasActive = slots.map((s) => s.status === 'active');
       const { frames: raw, slots: s, joinedCount, callouts: calloutPresses } = dm.update(deps.sampleDevices(), phase === 'lobby' && !creditsOpen);
@@ -112,44 +138,27 @@ export function createSession(deps: SessionDeps) {
         else if (joinedCount > 0 && anyPress(frames, 'confirmPresses')) start();
       } else if (phase === 'running' && state && feed) {
         feed.beginFrame(frames);
-        const r = stepAccumulator(accumulator, delta); accumulator = r.accumulator;
-        try {
-          for (let i = 0; i < r.ticks; i++) {
-            deps.renderer?.recordPrev(state);   // before every tick, so interpolation spans only the last tick
-            const intents = feed.tick();
-            if (state.tick % CRASH_HISTORY === 0) { baseline = saveSnapshot(state); intentsSinceBaseline = []; }
-            intentsSinceBaseline.push(intents.map(encodeIntent));
-            step(state, intents);
-            if (state.ended) {
-              const record = telemetryRecord(state, seed); deps.saveTelemetry?.(record);
-              const next = applyRun(progress, record); newUnlocks = next.unlocked.filter((id) => !progress.unlocked.includes(id)); progress = next; deps.saveProgress?.(progress);
-              phase = 'gameover';
-              message = `${state.endReason === EndReason.Hull ? 'HULL LOST' : state.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'} after ${Math.floor(state.tick / TICK_HZ)}s. Confirm: same seed. Cancel: new seed.`;
-              break;
-            }
-          }
-          // Once per frame, after the tick loop (also on the ending frame, so it carries its terminal cue): spec Demo-ii section 5.
-          const nextCounters = cueCounters(state);
-          if (prevCounters) for (const c of audioCues(prevCounters, nextCounters)) deps.playCue?.(c);
-          prevCounters = nextCounters;
-          if (phase === 'running') {   // callouts, after the ticks: the text reads the state the players see this frame
-            const pressed = calloutPresses.flatMap((n, pid) => (n > 0 ? [pid] : []));
-            callouts = pressCallouts(callouts, state, pressed);
-            if (pressed.some((pid) => pid < state!.playerCount)) deps.playCue?.('callout');
-          }
-        } catch (err) {
-          phase = 'error';
-          message = `Sim fault: ${(err as Error).message}. Crash data saved.`;
-          let snapshotAfterFault: unknown = null;
-          try { snapshotAfterFault = saveSnapshot(state); } catch { snapshotAfterFault = null; }
-          deps.saveCrash({ tick: state.tick, seed, error: String(err), baseline, intentsSinceBaseline, snapshotAfterFault });
-        }
+        const pressed = calloutPresses.flatMap((n, pid) => n > 0 ? [pid] : []);
+        callouts = pressCallouts(callouts, state, pressed);
+        if (pressed.some((pid) => pid < state!.playerCount)) deps.playCue?.('callout');
       } else if (phase === 'gameover') {
         if (anyPress(frames, 'cancelPresses')) { seed += 1; phase = 'lobby'; message = `New seed. ${LOBBY_MSG}`; }
         else if (anyPress(frames, 'confirmPresses')) { phase = 'lobby'; message = `Same seed. ${LOBBY_MSG}`; }
       }
-      // In the error phase the state may be corrupt: never read it again (the draw and HUD are outside the try).
-      if (state && deps.renderer && phase !== 'error') deps.renderer.draw(state, phase === 'running' ? accumulator / DT : 1, phase === 'running' || phase === 'paused' ? bubbles(state, callouts, state.tick) : []);
+  }
+  function pump(): void {
+    if (disposed) return;
+    if (runtime && (phase === 'running' || phase === 'paused')) runtime.pump(); else sampleControls();
+  }
+  scheduleLobby();
+  return {
+    get phase() { return phase; }, get state() { return state; }, get seed() { return seed; }, get creditsOpen() { return creditsOpen; }, get callouts(): readonly Callout[] { return callouts; },
+    pause() { if (phase === 'running') { runtime?.requestPause(true); phase = 'paused'; message = 'PAUSED'; } },
+    resume() { doResume(); }, pump,
+    dispose() { disposed = true; cancelLobby?.(); runtime?.dispose(); },
+    frame() {
+      for (const cue of pendingCues) deps.playCue?.(cue); pendingCues.clear();
+      if (phase !== 'error') runtime?.frame();
       deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null, state && phase === 'running' ? flashingKinds(callouts, state.tick) : []));
     }
   };

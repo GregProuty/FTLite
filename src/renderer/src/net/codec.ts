@@ -5,7 +5,14 @@ import type { AuthorityMessage, ClientMessage } from './contracts';
 // Bounds are wire resource limits. Layout/catalog membership remains execution validation.
 export const MAX_MESSAGE_BYTES = 65_536;
 export const MAX_INDEX = 65_535;
-const finite = z.number().finite().transform((n) => n === 0 ? 0 : n);
+// Validate homogeneous numeric storage in one bounded pass instead of allocating a
+// Zod effects context for every scalar. Both endpoints still validate every value.
+const finiteValues = z.custom<number[]>((value) => {
+  if (!Array.isArray(value) || value.length > MAX_MESSAGE_BYTES) return false;
+  for (const n of value) if (typeof n !== 'number' || !Number.isFinite(n)) return false;
+  return true;
+}, 'invalid snapshot values')
+  .transform((values) => values.map((n) => n === 0 ? 0 : n));
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const positive = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const index = z.number().int().min(0).max(MAX_INDEX);
@@ -61,7 +68,7 @@ const snapshot = z.object({
     rngStates: z.object({ hazards: u32, director: u32, combat: u32, loot: u32, cosmetic: u32, map: u32, quirk: u32 }).strict(),
     layoutId: text, layoutHash: text, playerCount: z.number().int().min(1).max(4), manifest: z.array(text).min(1).max(128)
   }).strict(),
-  values: z.array(finite).max(MAX_MESSAGE_BYTES)
+  values: finiteValues
 }).strict();
 const stringList = z.array(text).max(128);
 const seconds = z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -116,8 +123,21 @@ export function decodeMessage(bytes: Uint8Array): ClientMessage | AuthorityMessa
 export interface LatestMessageMetadata { key: string; sequence: number }
 /** Framing policy lives above transport; sequences were stamped by the producer. */
 export function latestMessageMetadata(bytes: Uint8Array): LatestMessageMetadata | null {
-  const message = decodeMessage(bytes);
-  if (message.kind === 'held') return { key: `held:${message.frame.runId}:${message.frame.player}`, sequence: message.frame.sequence };
-  if (message.kind === 'state') return { key: `state:${message.state.runId}`, sequence: message.state.publicationSequence };
+  if (bytes.byteLength > MAX_MESSAGE_BYTES) throw new Error('message exceeds byte limit');
+  // Transport only needs stream identity; the receiving codec validates the payload.
+  const message: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  if (!message || typeof message !== 'object') return null;
+  const tagged = message as { kind?: unknown; frame?: unknown; state?: unknown };
+  const value = tagged.kind === 'held' ? tagged.frame : tagged.kind === 'state' ? tagged.state : null;
+  if (!value || typeof value !== 'object') return null;
+  const data = value as { runId?: unknown; player?: unknown; sequence?: unknown; publicationSequence?: unknown };
+  if (typeof data.runId !== 'string' || data.runId.length < 1 || data.runId.length > 128) return null;
+  const sequence = tagged.kind === 'held' ? data.sequence : data.publicationSequence;
+  if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence) || sequence < 1) return null;
+  if (tagged.kind === 'held') {
+    if (typeof data.player !== 'number' || !Number.isInteger(data.player) || data.player < 0 || data.player > 3) return null;
+    return { key: `held:${data.runId}:${data.player}`, sequence };
+  }
+  if (tagged.kind === 'state') return { key: `state:${data.runId}`, sequence };
   return null;
 }

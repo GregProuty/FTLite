@@ -1,7 +1,7 @@
 import { expect } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { step } from '../../src/renderer/src/sim/step';
+import { step } from './rawInput';
 import { Health } from '../../src/renderer/src/sim/components';
 import { STREAM_NAMES, type SimState } from '../../src/renderer/src/sim/state';
 import type { Intent } from '../../src/shared/intent';

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
-import { runReplay, encodeIntent, decodeIntent } from '../src/renderer/src/sim/replay';
+import { encodeIntent, decodeIntent } from '../src/renderer/src/sim/replay';
+import { runReplay } from './helpers/legacyReplay';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { LAYOUT } from './helpers/sim';
 import { scriptedReplay } from './helpers/script';

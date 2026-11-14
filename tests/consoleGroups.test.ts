@@ -3,7 +3,7 @@ import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { createSimState, type SimState } from '../src/renderer/src/sim/state';
-import { step } from '../src/renderer/src/sim/step';
+import { step } from './helpers/rawInput';
 import { Seated } from '../src/renderer/src/sim/components';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';

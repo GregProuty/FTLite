@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
-import { botIntent, gunnerPid, BOT_RECOVER_HEALTH } from '../src/renderer/src/sim/bot';
+import { step } from './helpers/rawInput';
+import { botIntent, gunnerPid, BOT_RECOVER_HEALTH } from './helpers/bot';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { Seated, Health, Position } from '../src/renderer/src/sim/components';

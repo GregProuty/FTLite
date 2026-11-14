@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { stepAccumulator, MAX_TICKS_PER_FRAME } from '../src/renderer/src/app/loop';
 import { DT } from '../src/renderer/src/sim/tuning';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { step } from '../src/renderer/src/sim/step';
+import { heldStep as step } from './helpers/heldInput';
 import { makeState, intents } from './helpers/sim';
 import { createIntentFeed, NEUTRAL_FRAME, type InputFrame } from '../src/renderer/src/app/intents';
 

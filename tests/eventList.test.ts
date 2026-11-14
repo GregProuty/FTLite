@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { nextFloat } from '../src/shared/rng';
-import { step } from '../src/renderer/src/sim/step';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { step } from './helpers/rawInput';
+import { botIntent } from './helpers/bot';
 import { EVENT_DEFS, choiceEnabled, choiceLabel, isBlue, pickEvent, eventEligible, noticeChoices, resolveEvent } from '../src/renderer/src/sim/events';
 import type { Effect, Outcome } from '../src/renderer/src/sim/eventDefs';
 import type { SimState } from '../src/renderer/src/sim/state';

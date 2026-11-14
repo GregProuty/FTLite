@@ -549,3 +549,23 @@ Numeric results below are current measured evidence, not acceptance floors. Heal
 Additional pinned outcomes: jump gate has **6 waits**, all **18 jumps**, sector 2/column 5, final beacon and Warden present, both crew conscious. Run gate resolves **1 event**, buys **1 repair**, earns **822**, spends **30**, ends with **792 scrap / 100 hull**, all 18 jumps and the Warden present. Warden Pulse-only is **35 shots / 25 hits / 270 seconds** from arrival; with Heavy Laser it is **31 / 21 / 183**, both victories. Boarding kills both boarders in every seed. Duo and Skiff health floors remain **25**. No gate floor was lowered.
 
 `tests/fixtures/net1a-baseline.json` pins 19 immutable scenarios: starter/Skiff/Cutter seeds 1-3; charge completion, direction+Confirm and destroyed targets; Science system/SWAP rows; held-stick Skiff Ops and Helm tab crossings including offline tabs (repeat changes at ticks **1, 9, 17, 25**); multi-seat vote and jump; Navigation Confirm on the exact ready tick; sector jump, visit reset and row reconciliation. Short scenarios retain every completed gameplay observation. The original seed-2026/four-player/7200-tick golden stores observations every 60 ticks and its final state, plus action/RNG change points, independent of any future translator.
+
+
+## Net-1a task 3: authority boundary parity and measured cost
+
+All eight gate families now run through the shared headless authority, loopback byte transport, copied replica and client translator. The test fixture barrier preserves the original owner object and publishes setup/mid-run mutations before decisions. The pinned action/RNG/gameplay traces and every figure/floor in the table above still match exactly. The saved golden hashes are unchanged; no SIM_VERSION bump or bless was performed. Default acceptance's nine output rows match the unmodified task-2 BASE exactly on all three final runs.
+
+Final verification on Node v24.18.0, the same machine and unchanged Vitest default worker configuration: **1403 tests passed across 107 files**, three consecutive full-suite runs. The existing conditional build-output test also ran because a build was present. Typecheck passed. Final timing samples include npm startup and ran serially with warm caches:
+
+| Command | Run 1 (s) | Run 2 (s) | Run 3 (s) | Median (s) | Original median (s) | Ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| `npm test -- --reporter=dot` | 42.9510012 | 43.2951542 | 42.9527250 | **42.9527250** | 9.1849161 | 4.6764x |
+| `npm run acceptance` | 22.5608266 | 22.5605756 | 29.5451174 | **22.5608266** | 1.6897844 | 13.3513x |
+
+The original 1.5x review ceilings were not met. Profiling identified repeated per-number schema work and redundant full-state validation in transport stream-key inspection. Keeping complete serialized delivery, strict endpoint validation and replica checksums, a bounded numeric-array validator plus framing-only metadata parsing reduced the measured 500-publication operation total from roughly 661ms to 70ms. No-edge bridge messages are omitted while every held frame still travels as bytes; redundant fixture publications are skipped only when complete canonical owner/replica values match.
+
+After that evidence, the execution controller explicitly approved revised wall-time review ceilings of **60s for the suite and 30s for default acceptance**, both met by the measured medians. Long gate/combat-tempo scenarios and the Old Drive ready-tick integration test have explicit 60s test timeouts; the global unit-test timeout remains 5s. Every seed, tick count, Confirm sequence, assertion and gameplay floor is retained.
+
+Pure held-only unit tests use the allowed empty-command phase executor. Snapshot malformed-input/serialization properties (including their unchanged bot-generated setup), and console/weapons invariant properties use a test-only explicit phase adapter with their original cases and assertions. The adapter's imports are restricted by a test to those three property-test modules. Separate valid-hardware snapshot continuation properties and all gate/parity/golden/acceptance drivers retain the complete byte path. These scoped unit-test choices do not introduce a production raw-input overload.
+
+The three full-suite/performance runs preceded a final terminal-only ingress guard: an owned next-sequence resume after ended/error now returns cached `unavailable` without resurrecting the run or replaying terminal effects. Both regressions were observed failing and then passed; the final authority suite is14/14 and typecheck passed. The controller explicitly accepted the existing performance samples because this guard affects stopped runs only.

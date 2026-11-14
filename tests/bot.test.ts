@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
-import { botIntent, BOT_RECOVER_HEALTH } from '../src/renderer/src/sim/bot';
+import { step } from './helpers/rawInput';
+import { botIntent, BOT_RECOVER_HEALTH } from './helpers/bot';
 import { EVENTS } from '../src/renderer/src/sim/events';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { failStation } from '../src/renderer/src/sim/power';
