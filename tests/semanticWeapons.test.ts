@@ -18,11 +18,39 @@ import { enemyWindowModel, freshWindowAnim } from '../src/renderer/src/render/en
 import { botFrame } from '../src/renderer/src/clientControl/botClient';
 import { Skill } from '../src/renderer/src/sim/skills';
 import { XP_PER_SHOT } from '../src/renderer/src/sim/tuning';
+import { createFixtureRunner } from './helpers/authorityFixture';
 const setup = () => { const s = makeState(); quiet(s); placeDebris(s, room(s, 'A'), 600, 1, 99); const station = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, station); return { s, station, target: { kind: 'object', stableId: 99 } as TargetRef }; };
 const envelope = (s: ReturnType<typeof makeState>, command: Command, sequence = 1) => ({ runId: 'run', id: { player: 0, sequence }, requestedTick: s.tick, command });
 const apply = (s: ReturnType<typeof makeState>, command: Command) => applyConsoleCommand(s, envelope(s, command));
 const pulse = { selector: 0, expectedWeaponId: 1 };
 describe('semantic Weapons', () => {
+  it.each(['warning/destruction', 'enemy arrival/departure'] as const)('forgets old SWAP focus after automatic %s through the byte runner', (path) => {
+    const s = makeState(1); quiet(s); s.enemy.nextArrivalTick = 1e9;
+    const station = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, station);
+    s.weapons.slot.set([1, 2]); s.weapons.cargo = 3;
+    const runner = createFixtureRunner(s);
+    try {
+      runner.advance([{ ...NEUTRAL_FRAME, moveY: 1 }]); // select SWAP with no targets
+      runner.advance([NEUTRAL_FRAME]);
+      expect(runner.ui.stations[station]!.rowKey).toBe('swap'); expect(runner.view().weapons.target).toBeNull();
+      if (path === 'warning/destruction') {
+        placeDebris(s, room(s, 'A'), 60, 0); s.weapons.charge = 1; s.rng.combat = createRng(7);
+      } else { s.run.calm = 0; s.enemy.nextArrivalTick = s.tick; }
+      runner.refresh(); runner.advance([NEUTRAL_FRAME]);
+      expect(runner.view().weapons.target?.kind).toBe(path === 'warning/destruction' ? 'object' : 'enemy');
+      if (path === 'warning/destruction') {
+        runner.advance([{ ...NEUTRAL_FRAME, confirmPresses: 1 }]);
+        expect(s.telemetry.shots).toBe(1); expect(s.debris.active.some(Boolean)).toBe(false);
+      } else {
+        s.enemy.departTick = s.tick; runner.refresh(); runner.advance([NEUTRAL_FRAME]);
+        expect(s.enemy.present).toBe(0);
+      }
+      expect(runner.view().weapons.target).toBeNull();
+      runner.advance([{ ...NEUTRAL_FRAME, confirmPresses: 1 }]);
+      expect(Array.from(s.weapons.slot)).toEqual([1, 2]); expect(s.weapons.cargo).toBe(3);
+      expect(runner.ui.stations[station]!.rowKey).not.toBe('swap');
+    } finally { runner.dispose(); }
+  });
   it('initializes and reinitializes authoritative target on sit without client input', () => {
     const { s, station, target } = setup(); expect(s.weapons.target).toEqual(target);
     apply(s, { kind: 'selectTarget', station, target: null }); expect(s.weapons.target).toBeNull();

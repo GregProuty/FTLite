@@ -78,6 +78,10 @@ export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water
     if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || ((water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
   }
   while (ui.groupBar.length < view.groups.tab.length) ui.groupBar.push(false);
+  // Automatic aim acquisition supersedes the old local SWAP highlight. Keep
+  // intentional SWAP focus only while the authority still has no target.
+  const weapons = view.derived.stationOfKind[StationKind.Weapons]!, target = view.weapons.target;
+  if (weapons >= 0 && view.stations.occupant[weapons]! >= 0 && target) ui.stations[weapons]!.rowKey = target.kind === 'object' ? `object:${target.stableId}` : `enemy:${target.stableId}:${target.room}`;
 }
 /** Rejections are terminal without a publication; applied results may precede state.
  * Only the matching vote ID can retire the latest optimistic choice here.
