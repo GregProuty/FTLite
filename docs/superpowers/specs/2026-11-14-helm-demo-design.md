@@ -122,7 +122,7 @@ Direct stick (Q18). The Helm's client sends **held axes every tick on the existi
 | Thrust forward | 120 u/s² along the heading, × the Engines factor |
 | Thrust reverse | 40% of forward |
 | Drag | Velocity × (1 − 0.15 · dt) each tick (mild, Q12). Terminal speed under full thrust is about 800 u/s, so crossing the map takes several seconds, not a minute |
-| **Stabilise** | While both axes are zero, the assist cancels **sideways** velocity (perpendicular to the heading) at up to 80 u/s². It never cancels gravity or forward speed, so a released ship stops skidding but still coasts, falls and orbits (Q12: "kills drift" for beginners; experts thrust through it) **(rec.)** |
+| **Stabilise** | On the tick both axes go to zero, the assist records the **sideways** speed (perpendicular to the heading) as the skid, then removes it at up to 80 u/s² until it is gone. Sideways speed that gravity adds later is never recorded, so the assist never cancels gravity or forward speed: a released ship stops skidding but still coasts, falls and orbits (Q12: "kills drift" for beginners; experts thrust through it) **(rec.)** |
 
 Keys: keyboard W/S thrust, A/D turn, the existing stand-up key to leave the console (§8); gamepad left stick (x turn, y thrust) or d-pad, triggers as an alternative for thrust and reverse, the existing stand-up button.
 
@@ -359,3 +359,4 @@ H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by
 - 2026-11-14: folded in the tactical view (grill Q23 to Q23c): a large zoomable map with one planet, an asteroid belt and clusters; a per-player follow camera with pan, snap and zoom; the view's draw order; held-input flight and missile steering. The one-screen arena and the fixed shared camera are gone. The short-lived separate tactical view spec was merged here and deleted.
 - 2026-11-14: grill Q25: one shared map, two views. The Helm keeps the follow camera; Weapons gets a whole-map sector view on the lettered grid that zooms and pans but does not follow (§2, §10, §10a, §10b, §18 item 14).
 - 2026-11-14: grill Q26 and Q27. Weapons is ship-centred like the Helm (the sector view is withdrawn until a Science or Captain station). Players are characters aboard the Cutter: seated, they see their console's map view; standing, they see the FTL-style interior and walk to the damaged room to repair it (hold-to-repair, replacing the button-sequence mini game). Consoles are roles; solo Tab switches characters. Rewrote §2, §8, §10, §10a, §10b, §11, §12, §13 and §15; added risks 7 and 8 and open items 15 to 18.
+- 2026-11-14: H-0a plan review (R1-F1): stabilise removes only the skid recorded at release, so it never cancels gravity (§6).

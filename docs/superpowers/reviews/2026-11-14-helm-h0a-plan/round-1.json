@@ -1,0 +1,46 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Stabilise cancels gravity applied during the same tick",
+      "claim": "flyShip applies gravity to velocity before computing stabilise, allowing the assist to erase gravity's sideways contribution completely.",
+      "evidence": "plan L743-L752 updates velocity from gravity before removing sideways velocity; spec L125 explicitly says stabilise never cancels gravity. Evaluating the supplied code with DEFAULT_FLIGHT, position (1200, 0), zero velocity, heading 0 and released axes leaves both position and velocity unchanged after one tick.",
+      "why": "An idle ship can hover against gravity instead of falling. The existing stabilise tests disable gravity, so they cannot detect this contradiction.",
+      "fix": "Compute the stabilise correction from incoming velocity before adding gravity and edge increments, then apply drag and update position. Add a gravity-enabled regression proving that stabilise preserves the tick's gravitational acceleration."
+    },
+    {
+      "severity": "P1",
+      "title": "Mixed contacts resolve in a different body order from the spec",
+      "claim": "resolveContacts handles static contacts for both ships before resolving their moving contact. The spec requires static then moving contacts for each body in crew/enemy order. The plan discloses an asteroid-order change, but not this change.",
+      "evidence": "plan L908-L915 places shipShip after the complete ships loop; spec L74-L86 requires per-body static contacts followed by moving contacts. plan L38 only explains replacing broad-phase cell order with asteroid index order.",
+      "why": "Collision corrections do not commute. With an asteroid at (600, 0), radius 20, and stationary ships at (545, 0) and (580, 0), the supplied resolver ends at x=532.5 and x=572.5. It resolves the enemy's asteroid contact before the crew's ship contact, changing subsequent corrections and leaving the enemy overlapping that asteroid.",
+      "fix": "Resolve the crew's static contacts and ship–ship pair before the enemy's static contacts, preventing duplicate pair resolution. Add a mixed static/moving-contact test that asserts the specified sequence and resulting positions."
+    },
+    {
+      "severity": "P2",
+      "title": "The Engines-factor test never checks damaged turn rate",
+      "claim": "The test named 'scales thrust and turn' checks only velocity magnitude. Turn assertions elsewhere cover only undamaged Engines.",
+      "evidence": "plan L627-L633 asserts thrust magnitude without inspecting heading or headingAcc; plan L612-L618 tests turning with healthy rooms. spec L109 requires Engines damage to scale both thrust and turn.",
+      "why": "An in-memory mutation removing the Engines factor from plan L738 still passed all 31 planned test assertions.",
+      "fix": "For damage levels 0, 1 and 2, assert accumulated rotation over multiple ticks using heading plus headingAcc against TURN_STEPS_PER_TICK multiplied by elapsed ticks and the expected factor."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The checkout is master at 0fdd1e3; git diff against 3fc7999 showed no changes to the subject, spec or listed dependencies.",
+    "Consumed repository interfaces exist with the assumed signatures: src/shared/rng.ts:L2-L21, src/shared/hash.ts:L3, and src/renderer/src/sim/tuning.ts:L2-L3. Script dependencies and test discovery match package.json:L9-L26 and vitest.config.ts:L6.",
+    "Task dependencies are ordered correctly by inspection. Task 3's physics has no premature contacts import (plan L714-L763); Task 4 supplies the import and replacement stepFlight together (plan L921-L935).",
+    "All 31 planned test assertions passed in a custom in-memory harness using the extracted code and repository RNG/hash helpers: 22 before contacts and nine additional assertions-based tests after Tasks 4–5. This was not a Vitest or TypeScript compiler run.",
+    "The heading generator guarantees the tested rotational symmetry, produces the stated 0.024541228522912288 literal, and had maximum unit-length error 1.11e-16 (plan L210-L246). All 200 seeded-map validations passed (plan L308-L309).",
+    "Zero-distance static and ship–ship contacts remained finite; planet-centre contact pushed to (0, -90). Valid dirBetween interpolation remained finite, and synthetic grid-corner queries returned their asteroid (plan L263-L267, L501-L522, L878-L895).",
+    "Manual guard inspection found no forbidden constructs in the proposed sim modules; generator trigonometry stays outside the guarded graph (plan L202-L228; tests/boundary.test.ts:L12-L27; tests/helpers/determinismGuard.ts:L3-L41).",
+    "flattenTactical includes RNG state, fractional headings, rooms, grace timers and counters, and canonicalises negative zero. Map/grid omission is coherent under the stated seed-derived, unchanged-map invariant (plan L41, L1040-L1046).",
+    "The flight/combat milestone split follows spec L301-L306 and explicitly defers authority integration, golden replay and SIM_VERSION changes (plan L15-L20, L1115-L1116)."
+  ],
+  "not_verified": [
+    "Strict TypeScript compilation, actual Vitest execution and AST-guard execution were not performed. The proposed files do not exist as implementation files, scratch writes are unavailable in this read-only sandbox, and node_modules inspection was prohibited. In-memory type stripping does not prove type correctness.",
+    "The requested review ledger is absent both from the checkout and commit 3fc7999. No awaited finding IDs were supplied, so prior is empty.",
+    "Cross-platform execution and map validity beyond the specified 200 seeds were not verified."
+  ]
+}

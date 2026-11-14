@@ -40,6 +40,8 @@ H-0a changes no existing gameplay and needs no `SIM_VERSION` bump: nothing in th
 3. **Hit counters** (`planetHits`, `asteroidHits`, `shipHits`) count contacts that cost hull, one per grace window. H-0b's telemetry reads them.
 4. **The map is not flattened** into the hash beyond its asteroid count: it is a pure function of the seed, which is flattened.
 5. **Spawn heading** is prograde (the clockwise orbit direction), so a ship starts nose-forward in its orbit.
+6. **Stabilise removes only the skid captured at release** (spec §6, as amended with this plan): on the tick both axes go to zero, the sideways speed relative to the nose is recorded, and the assist removes up to 80 u/s² of it until it is gone. Cancelling *all* sideways velocity every tick would erase gravity's pull whenever it is sideways to the nose, so a released ship flying nose-forward in orbit would stop orbiting, against the spec's "still coasts, falls and orbits".
+7. **Contact order** follows spec §4 per body: ship 0's static contacts, then the ship pair, then ship 1's static contacts.
 
 ## File structure
 
@@ -557,7 +559,7 @@ import { describe, expect, it } from 'vitest';
 import { createTacticalState, Room, type Ship } from '../src/renderer/src/sim/tactical/state';
 import { edgeAccel, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { circularSpeed } from '../src/renderer/src/sim/tactical/map';
-import { DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, R_MAP, THRUST, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
+import { DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, R_MAP, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 
 const GRAVITY_ONLY: FlightTuning = { gravity: true, edge: false, drag: 0, stabilise: 0 };
 const FLIGHT_NO_FIELD: FlightTuning = { gravity: false, edge: false, drag: DEFAULT_FLIGHT.drag, stabilise: DEFAULT_FLIGHT.stabilise };
@@ -630,7 +632,35 @@ describe('flight configuration (spec §4 tests, §6)', () => {
       expect(s.rooms[Room.Engines]).toBe(level);
       flyShip(s, { turn: 1, thrust: 1 }, { ...FLIGHT_NO_FIELD, drag: 0 });
       expect(Math.sqrt(s.vx * s.vx + s.vy * s.vy)).toBeCloseTo(THRUST * factor * DT, 12);
+      for (let t = 1; t < 60; t++) flyShip(s, { turn: 1, thrust: 0 }, FLIGHT_NO_FIELD);
+      expect(s.heading + s.headingAcc).toBeCloseTo(TURN_STEPS_PER_TICK * 60 * factor, 9);
     }
+  });
+});
+
+describe('stabilise never cancels gravity (spec §6)', () => {
+  it('a released ship at rest still starts to fall on its first tick', () => {
+    const s = ship({ x: 1200, y: 0, heading: 0 });
+    flyShip(s, { turn: 0, thrust: 0 }, DEFAULT_FLIGHT);
+    expect(s.vx).toBeLessThan(0);
+    expect(s.x).toBeLessThan(1200);
+  });
+  it('a released ship flying nose-forward in a circular orbit keeps orbiting', () => {
+    const s = ship({ x: 250, y: 0, vx: 0, vy: circularSpeed(250), heading: 128 });   // heading 128 = south = prograde here
+    for (let t = 0; t < 3600; t++) {
+      flyShip(s, { turn: 0, thrust: 0 }, { ...GRAVITY_ONLY, stabilise: DEFAULT_FLIGHT.stabilise });
+      expect(Math.abs(Math.sqrt(s.x * s.x + s.y * s.y) - 250) / 250).toBeLessThan(0.02);
+    }
+  });
+  it('removes only the skid captured at release, then stops', () => {
+    const s = ship({ vx: 10, vy: -300 });
+    flyShip(s, { turn: 0, thrust: 0 }, FLIGHT_NO_FIELD);
+    expect(s.skidBudget).toBe(10 - DEFAULT_FLIGHT.stabilise * DT);
+    for (let t = 0; t < 30; t++) flyShip(s, { turn: 0, thrust: 0 }, FLIGHT_NO_FIELD);
+    expect(s.skidBudget).toBe(0);
+    s.vx = 5;                                                   // a later push sideways is not a new skid
+    flyShip(s, { turn: 0, thrust: 0 }, FLIGHT_NO_FIELD);
+    expect(s.vx).toBeGreaterThan(4.9);
   });
 });
 
@@ -681,6 +711,8 @@ export interface Ship {
   /** Tick from which contact with body id k may cost hull again: 0 planet, 1..n asteroid k−1, n+1 the other ship. */
   graceUntil: Int32Array;
   planetHits: number; asteroidHits: number; shipHits: number;
+  /** Stabilise (spec §6): true while both axes were zero last tick; the skid captured at release and still to remove, and its side (±1). */
+  released: boolean; skidBudget: number; skidSign: number;
 }
 
 export interface TacticalState { tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase; ships: [Ship, Ship] }
@@ -693,7 +725,7 @@ export const NO_AXES: Axes = { turn: 0, thrust: 0 };
 export function otherShipBody(map: MapDef): number { return map.asteroids.length + 1; }
 
 function shipAt(s: Spawn, bodies: number): Ship {
-  return { x: s.x, y: s.y, vx: s.vx, vy: s.vy, heading: s.heading, headingAcc: 0, hull: SHIP_HULL, rooms: [0, 0, 0], graceUntil: new Int32Array(bodies), planetHits: 0, asteroidHits: 0, shipHits: 0 };
+  return { x: s.x, y: s.y, vx: s.vx, vy: s.vy, heading: s.heading, headingAcc: 0, hull: SHIP_HULL, rooms: [0, 0, 0], graceUntil: new Int32Array(bodies), planetHits: 0, asteroidHits: 0, shipHits: 0, released: false, skidBudget: 0, skidSign: 0 };
 }
 
 export function createTacticalState(seed: number): TacticalState {
@@ -706,7 +738,7 @@ export function createTacticalState(seed: number): TacticalState {
 
 - [ ] **Step 4: Write the physics (no contacts yet)**
 
-Create `src/renderer/src/sim/tactical/physics.ts`. Order within `flyShip` is fixed (spec §4, §6): turn, then sum the accelerations (gravity, edge, thrust), update velocity, stabilise if both axes are zero, drag, then position. Task 4 adds contacts to `stepFlight`.
+Create `src/renderer/src/sim/tactical/physics.ts`. Order within `flyShip` is fixed (spec §4, §6): turn, stabilise (it removes only the skid captured at the moment of release, so it never cancels gravity), then sum the accelerations (gravity, edge, thrust), update velocity, drag, then position. Task 4 adds contacts to `stepFlight`.
 
 ```ts
 // Flight physics (spec §3, §4, §6): softened gravity, the edge spring, turn, thrust, stabilise, drag,
@@ -739,18 +771,23 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning): void {
   while (s.headingAcc >= 1) { s.heading = wrapHeading(s.heading + 1); s.headingAcc -= 1; }
   while (s.headingAcc <= -1) { s.heading = wrapHeading(s.heading - 1); s.headingAcc += 1; }
   const h0 = hx(s.heading), h1 = hy(s.heading);
+  // Stabilise (spec §6): on the tick both axes go to zero, capture the sideways speed (along px, py, 90° clockwise of the
+  // nose) as the skid to remove; then remove up to STABILISE · dt of it per tick until it is gone. Gravity's later
+  // sideways pull is never captured, so a released ship still falls and orbits. Runs before this tick's forces.
+  const idle = axes.turn === 0 && axes.thrust === 0, px = -h1, py = h0;
+  if (idle && !s.released) { const side = s.vx * px + s.vy * py; s.skidBudget = Math.abs(side); s.skidSign = Math.sign(side); }
+  if (!idle) { s.skidBudget = 0; s.skidSign = 0; }
+  s.released = idle;
+  if (idle && s.skidBudget > 0 && tuning.stabilise > 0) {
+    const cut = Math.min(s.skidBudget, tuning.stabilise * DT);
+    s.vx -= s.skidSign * cut * px; s.vy -= s.skidSign * cut * py; s.skidBudget -= cut;
+  }
   let ax = 0, ay = 0;
   if (tuning.gravity) { const [gx, gy] = gravityAccel(s.x, s.y); ax += gx; ay += gy; }
   if (tuning.edge) { const [ex, ey] = edgeAccel(s.x, s.y); ax += ex; ay += ey; }
   if (axes.thrust > 0) { ax += h0 * THRUST * f; ay += h1 * THRUST * f; }
   else if (axes.thrust < 0) { ax -= h0 * THRUST * REVERSE_FRACTION * f; ay -= h1 * THRUST * REVERSE_FRACTION * f; }
   s.vx += ax * DT; s.vy += ay * DT;
-  if (axes.turn === 0 && axes.thrust === 0 && tuning.stabilise > 0) {
-    const along = s.vx * h0 + s.vy * h1;
-    const sx = s.vx - along * h0, sy = s.vy - along * h1;
-    const side = Math.sqrt(sx * sx + sy * sy);
-    if (side > 0) { const cut = Math.min(side, tuning.stabilise * DT) / side; s.vx -= sx * cut; s.vy -= sy * cut; }
-  }
   const keep = 1 - tuning.drag * DT;
   s.vx *= keep; s.vy *= keep;
   s.x += s.vx * DT; s.y += s.vy * DT;
@@ -766,7 +803,7 @@ export function stepFlight(state: TacticalState, axes: readonly Axes[], tuning: 
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/tacticalFlight.test.ts tests/boundary.test.ts`
-Expected: PASS (11 flight tests). The orbit stays between about 249.18 and 250.83; energy drifts about 4e-5 over 5 minutes; 30 s of thrust reaches about 789 u/s.
+Expected: PASS (14 flight tests). The orbit stays between about 249.18 and 250.83; energy drifts about 4e-5 over 5 minutes; 30 s of thrust reaches about 789 u/s.
 
 - [ ] **Step 6: Commit**
 
@@ -853,6 +890,14 @@ describe('ship contacts (spec §4 collision matrix)', () => {
     stepFlight(st, IDLE, STILL);
     expect(s.hull).toBe(0);
   });
+  it('resolves in spec order: ship 0 statics, the pair, then ship 1 statics, so a pushed ship cannot end inside the planet', () => {
+    const st = duel(), [a, b] = st.ships, rim = PLANET_RADIUS + SHIP_RADIUS;
+    Object.assign(b, { x: 0, y: -(rim + 1), vx: 0, vy: 0 });              // just clear of the planet
+    Object.assign(a, { x: 0, y: -(rim + 1 + 2 * SHIP_RADIUS - 5), vx: 0, vy: 0 });   // overlapping ship 1 by 5
+    stepFlight(st, IDLE, STILL);
+    expect(Math.sqrt(b.x * b.x + b.y * b.y)).toBeGreaterThanOrEqual(rim - 1e-9);   // the pair push moved ship 1 in; its planet contact pushed it out
+    expect(b.planetHits).toBe(1);
+  });
 });
 ```
 
@@ -903,16 +948,21 @@ function shipShip(state: TacticalState): void {
   for (const s of [a, b]) { s.hull = Math.max(0, s.hull - SHIP_CONTACT_HULL); s.graceUntil[body] = state.tick + CONTACT_GRACE_TICKS; s.shipHits++; }
 }
 
-export function resolveContacts(state: TacticalState): void {
+function hitStatics(state: TacticalState, s: Ship): void {
   const { map, grid } = state;
-  for (const s of state.ships) {
-    if (hitStatic(state, s, map.planet.x, map.planet.y, map.planet.r, 0, PLANET_CONTACT_HULL)) s.planetHits++;
-    for (const k of queryGrid(grid, s.x, s.y, SHIP_RADIUS)) {
-      const a = map.asteroids[k]!;
-      if (hitStatic(state, s, a.x, a.y, a.r, k + 1, ASTEROID_CONTACT_HULL)) s.asteroidHits++;
-    }
+  if (hitStatic(state, s, map.planet.x, map.planet.y, map.planet.r, 0, PLANET_CONTACT_HULL)) s.planetHits++;
+  for (const k of queryGrid(grid, s.x, s.y, SHIP_RADIUS)) {
+    const a = map.asteroids[k]!;
+    if (hitStatic(state, s, a.x, a.y, a.r, k + 1, ASTEROID_CONTACT_HULL)) s.asteroidHits++;
   }
+}
+
+/** Spec §4 order, per body in ship order: its static contacts, then its moving contacts. Ship 0 meets the planet and
+ *  asteroids, then ship 1 (the pair is resolved once, here); then ship 1 meets the planet and asteroids. */
+export function resolveContacts(state: TacticalState): void {
+  hitStatics(state, state.ships[0]);
   shipShip(state);
+  hitStatics(state, state.ships[1]);
 }
 ```
 
@@ -938,7 +988,7 @@ export function stepFlight(state: TacticalState, axes: readonly Axes[], tuning: 
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/tacticalContacts.test.ts tests/tacticalFlight.test.ts tests/boundary.test.ts`
-Expected: PASS (4 contact tests, 11 flight tests).
+Expected: PASS (5 contact tests, 14 flight tests).
 
 - [ ] **Step 6: Commit**
 
@@ -1040,7 +1090,8 @@ import type { TacticalState } from './state';
 export function flattenTactical(s: TacticalState): Float64Array {
   const out: number[] = [s.tick, s.seed, s.rng.s, s.map.asteroids.length];
   for (const sh of s.ships) {
-    out.push(sh.x, sh.y, sh.vx, sh.vy, sh.heading, sh.headingAcc, sh.hull, sh.rooms[0], sh.rooms[1], sh.rooms[2], sh.planetHits, sh.asteroidHits, sh.shipHits);
+    out.push(sh.x, sh.y, sh.vx, sh.vy, sh.heading, sh.headingAcc, sh.hull, sh.rooms[0], sh.rooms[1], sh.rooms[2], sh.planetHits, sh.asteroidHits, sh.shipHits,
+      sh.released ? 1 : 0, sh.skidBudget, sh.skidSign);
     for (const g of sh.graceUntil) out.push(g);
   }
   return Float64Array.from(out, (v) => (v === 0 ? 0 : v));
