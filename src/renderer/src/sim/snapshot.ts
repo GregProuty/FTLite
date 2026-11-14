@@ -44,7 +44,8 @@ function validated(layout: ShipLayout, derived: Derived, input: unknown, expecte
   if (h.simVersion !== SIM_VERSION) throw new Error('snapshot sim version does not match');
   if (h.contentDigest !== digest) throw new Error('snapshot content digest does not match');
   if (h.layoutId !== layout.id || h.layoutHash !== derived.layoutHash) throw new Error('snapshot layout does not match');
-  if (!Array.isArray(h.manifest) || h.manifest.length !== FLATTEN_MANIFEST.length || h.manifest.some((v, i) => v !== FLATTEN_MANIFEST[i])) throw new Error('snapshot manifest does not match');
+  const manifest = h.manifest;
+  if (!Array.isArray(manifest) || manifest.length !== FLATTEN_MANIFEST.length || FLATTEN_MANIFEST.some((v, i) => manifest[i] !== v)) throw new Error('snapshot manifest does not match');
   if (typeof h.playerCount !== 'number' || !Number.isInteger(h.playerCount) || h.playerCount < 1 || h.playerCount > MAX_PLAYERS || h.playerCount > layout.spawns.length) throw new Error('snapshot player count is invalid');
   if (typeof h.tick !== 'number' || !Number.isSafeInteger(h.tick) || h.tick < 0) throw new Error('snapshot tick is invalid');
   const rng = record(h.rngStates, STREAM_NAMES, 'rngStates');

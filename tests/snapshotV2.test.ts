@@ -27,6 +27,8 @@ describe('transactional snapshot format 2', () => {
     ['layout hash', (s: Snapshot) => { s.header.layoutHash = '00000000'; }],
     ['content digest', (s: Snapshot) => { s.header.contentDigest = '0'.repeat(64); }],
     ['manifest', (s: Snapshot) => { s.header.manifest.reverse(); }],
+    ['wholly sparse manifest', (s: Snapshot) => { s.header.manifest = new Array<string>(s.header.manifest.length); }],
+    ['deleted manifest entry', (s: Snapshot) => { delete s.header.manifest[3]; }],
     ['truncated', (s: Snapshot) => { s.values.pop(); }],
     ['excess', (s: Snapshot) => { s.values.push(0); }],
     ['NaN', (s: Snapshot) => { s.values[20] = NaN; }],
@@ -48,6 +50,7 @@ describe('transactional snapshot format 2', () => {
     const snap = saveSnapshot(state), entities = [...getAllEntities(state.world)];
     const allocation = [Stable.id.length, Object.keys(Stable.id).length];
     corrupt(snap);
+    expect(() => snapshots.validateSnapshot(LAYOUT, snap)).toThrow();
     expect(() => snapshots.restoreSnapshot(state, snap)).toThrow();
     expect(hashState(state)).toBe(hash);
     expect(getAllEntities(state.world)).toEqual(entities);

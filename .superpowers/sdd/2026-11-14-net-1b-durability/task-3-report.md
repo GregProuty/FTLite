@@ -51,3 +51,9 @@ The new tests also assert rejected restores/loads preserve live hashes, entities
 ## Remaining scope
 
 No known failing focused check. Full-suite/performance acceptance remains task 5 as assigned; this task did not repeat a full suite. Task 4 should pass explicit `init.contentDigest` for portable replay/checkpoint/crash work and keep fixture digest rebinding confined to clearly labeled test representation adaptation. Future canonical gameplay fields must be added to the shared canonical plan and receive an appropriate domain rule; timestamps and inactive sentinels must retain existing semantics.
+
+## Review fix round 1 — C-001
+
+Confirmed the review finding: `Array.prototype.some` skips missing entries when called on the incoming manifest. Changed only manifest comparison to iterate the trusted dense `FLATTEN_MANIFEST`, requiring a matching value at every expected index. Added wholly sparse and single-deleted-entry regression cases. The rejection matrix now explicitly exercises `validateSnapshot` as well as `restoreSnapshot` and `loadSnapshot`, and asserts unchanged live hash, entities, component-cell population and allocation high-water.
+
+Red evidence: `npm test -- tests/snapshotV2.test.ts` reported **2 failed, 46 passed** before the production fix; both new sparse-manifest cases failed because `validateSnapshot` did not throw. Green evidence after the fix: the same command reported **48 passed** (1.01 s duration). `npm run typecheck` passed. No full suite, unrelated changes, fixture rebinding, or gameplay/hash changes were made for this correction.
