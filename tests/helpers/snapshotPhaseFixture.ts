@@ -7,7 +7,8 @@ import { rawFrame } from './rawInput';
 const clients = new WeakMap<SimState, ReturnType<typeof createCardUi>>();
 /** Approved pure snapshot/invariant-unit exception: this adapter reads its owned
  * fixture before invoking a whole step. It does not test client ownership isolation.
- * The graph whitelist limits this adapter to snapshot/console/weapons properties;
+ * The graph whitelist limits this adapter to snapshot/console/weapons properties
+ * and the isolated impossible-fire bot self-preservation unit fixtures;
  * authority fixtures, gates, parity, acceptance and byte continuation stay isolated.
  */
 export function snapshotPhaseClient(state: SimState) {

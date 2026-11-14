@@ -1,0 +1,30 @@
+
+> ftlite@0.0.1 test
+> vitest run --maxWorkers=8 --reporter=dot
+
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+····························································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································································stdout | tests/spike-bitecs.test.ts > bitecs 0.4.0 behaviour (spike) > recycles removed entity ids and reports them non-existent until re-added
+bitecs recycled id: true
+
+·····················stdout | tests/spike-bitecs.test.ts > bitecs 0.4.0 behaviour (spike) > measures snapshot size and hash time for the record (spec §11 spike criterion)
+snapshot 5280 bytes, hashState 0.0283 ms
+
+node.exe : stderr | tests/assets.test.ts > asset manifest > every required file exists; optional files absent are
+reported as warnings
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (stderr | tests/...ted as warnings:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+optional art not yet present (placeholders in use): art/tiles/breach.png, art/tiles/floor_damaged.png,
+art/crew/body_base.png, art/crew/sit.png, art/fx/vent.png, art/fx/arc.png, art/icons/hazards.png
+
+···········································································································································································································································································································································································
+
+ Test Files  128 passed (128)
+      Tests  1660 passed (1660)
+   Start at  13:55:07
+   Duration  72.06s (transform 2.81s, setup 17.00s, collect 28.85s, tests 414.84s, environment 19ms, prepare 14.16s)

@@ -1,0 +1,13 @@
+﻿{
+  "platform": "win32/x64",
+  "fullSuite": { "passed": 1664, "files": 129, "exit": 0, "vitestSeconds": 53.86, "wallSeconds": 54.7166185, "maxWorkers": "Math.min(8, availableParallelism())" },
+  "typecheckExit": 0,
+  "buildExit": 0,
+  "acceptance": { "exit": 0, "wallSeconds": 29.1554908, "originalBaselineRows": 9, "exactDataRowEquality": true },
+  "determinismExit": 0,
+  "injectedActualPageFailureExit": 1,
+  "simVersion": 35,
+  "goldenFinalHash": "b87a0284",
+  "physicalController": "NOT RUN",
+  "actualOsMinimizeOrSuspend": "NOT RUN"
+}

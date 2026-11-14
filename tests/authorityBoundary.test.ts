@@ -6,13 +6,23 @@ import { moduleSpecifiers } from './helpers/determinismGuard';
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? sourceFiles(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : []);
 }
+const coreOwners = ['src/renderer/src/authority/authority.ts', 'src/renderer/src/authority/replay.ts'];
+function assertCoreOwner(file: string, source: string): void {
+  for (const specifier of moduleSpecifiers(source)) if (/authority\/core$|^\.\/core$/.test(specifier)) {
+    expect(coreOwners).toContain(file.replaceAll('\\', '/'));
+  }
+}
+it('rejects new authority core importers outside the two named validated owners', () => {
+  expect(() => assertCoreOwner('src/renderer/src/headless/runner.ts', "import { createAuthorityCore } from '../authority/core';")).toThrow();
+  expect(() => assertCoreOwner('src/renderer/src/authority/unvalidatedReplay.ts', "import { createAuthorityCore } from './core';")).toThrow();
+});
 it('keeps fixture adoption and publication outside the production composition graph', () => {
   for (const file of sourceFiles('src')) {
     const source = readFileSync(file, 'utf8');
     for (const specifier of moduleSpecifiers(source)) {
       expect(specifier).not.toMatch(/(?:^|\/)tests(?:\/|$)/);
-      if (/authority\/core$|^\.\/core$/.test(specifier)) expect(file.replaceAll('\\', '/')).toBe('src/renderer/src/authority/authority.ts');
     }
+    assertCoreOwner(file, source);
     if (!file.replaceAll('\\', '/').endsWith('/authority/core.ts')) expect(source).not.toContain('.publishCompletedState(');
   }
 });
@@ -32,6 +42,8 @@ it('keeps all eight gates, parity, acceptance and golden on the shared byte runn
   expect(moduleSpecifiers(readFileSync('src/renderer/src/headless/acceptance.ts', 'utf8'))).toContain('./runner');
   for (const file of sourceFiles('tests')) {
     if (!moduleSpecifiers(readFileSync(file, 'utf8')).some((path) => path.endsWith('/snapshotPhaseFixture'))) continue;
-    expect(['tests/snapshot.test.ts', 'tests/console.test.ts', 'tests/weapons.test.ts']).toContain(file.replaceAll('\\', '/'));
+    expect(['tests/snapshot.test.ts', 'tests/console.test.ts', 'tests/weapons.test.ts', 'tests/botSelfPreservationUnit.test.ts']).toContain(file.replaceAll('\\', '/'));
   }
+  expect(moduleSpecifiers(readFileSync('tests/bot.test.ts', 'utf8'))).toContain('./helpers/rawInput');
+  expect(moduleSpecifiers(readFileSync('tests/bot.test.ts', 'utf8')).some(path => /snapshotPhaseFixture|botSelfPreservationUnit/.test(path))).toBe(false);
 });

@@ -1,0 +1,182 @@
+
+> ftlite@0.0.1 test
+> vitest run --reporter=dot
+
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+··········································x···························xxxxx···xxxx······················x···x···················································································································································x·······x···································································································································································································································································································································x···································································································································································································································································································································································································································································································································································································································································stdout | tests/spike-bitecs.test.ts > bitecs 0.4.0 behaviour (spike) > recycles removed entity ids and reports them non-existent until re-added
+bitecs recycled id: true
+
+stdout | tests/spike-bitecs.test.ts > bitecs 0.4.0 behaviour (spike) > measures snapshot size and hash time for the record (spec §11 spike criterion)
+snapshot 5280 bytes, hashState 0.0333 ms
+
+node.exe : stderr | tests/assets.test.ts > asset manifest > every required file exists; optional files absent are
+reported as warnings
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (stderr | tests/...ted as warnings:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+optional art not yet present (placeholders in use): art/tiles/breach.png, art/tiles/floor_damaged.png,
+art/crew/body_base.png, art/crew/sit.png, art/fx/vent.png, art/fx/arc.png, art/icons/hazards.png
+
+···································································································································································································································································································································································································································x·······
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 16 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/authorityBoundary.test.ts > keeps fixture adoption and publication outside the production composition
+graph
+AssertionError: expected 'src/renderer/src/authority/replay.ts' to be 'src/renderer/src/authority/authority.…' //
+Object.is equality
+
+Expected: "src/renderer/src/authority/authority.ts"
+Received: "src/renderer/src/authority/replay.ts"
+
+ ❯ tests/authorityBoundary.test.ts:14:93
+     12|     for (const specifier of moduleSpecifiers(source)) {
+     13|       expect(specifier).not.toMatch(/(?:^|\/)tests(?:\/|$)/);
+     14|       if (/authority\/core$|^\.\/core$/.test(specifier)) expect(file.r…
+       |                                                                                             ^
+     15|     }
+     16|     if (!file.replaceAll('\\', '/').endsWith('/authority/core.ts')) ex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (a) at health 20 it never enters a
+burning corridor on its route to a hazard goal, and reaches the goal once the fire is out
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (f) trapped at health 20 in a burning
+room with the corridor burning too, it fights or walks and never idles
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (g) the captain at 20 health with a ready
+drive and the Medbay offline never walks into a burning corridor
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (b) at health 20 inside a burning room it
+leaves within 120 ticks
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (c) at health 20 with the Medbay online
+it walks there and stays until health 60 despite a hazard goal, then leaves
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (h) at health 20 in a doorway beside a
+burning corridor, with the Medbay cut off and a healthy teammate, it steps out of the doorway within 60 ticks
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (i) at health 20 at a burning doorway
+with no safe Medbay (teammate at 100) it leaves for good or holds Interact on the fire, and never dithers
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (i) at health 20 at a burning doorway
+with no safe Medbay (teammate at 20) it leaves for good or holds Interact on the fire, and never dithers
+ FAIL  tests/bot.test.ts > bot self-preservation (spec Demo-ii section 10) > (e) at health 80 it still walks into a
+burning room to fight the fire
+Error: snapshot field rooms.fire has invalid value 1000000
+ ❯ validateCanonicalValues src/renderer/src/sim/snapshotValidation.ts:95:13
+     93|     if (typeof value !== 'number' || !Number.isFinite(value) || value …
+     94|       const field = fields.find(f => i >= f.offset && i < f.offset + f…
+     95|       throw new Error(`snapshot field ${field.name} has invalid value …
+       |             ^
+     96|     }
+     97|   }
+ ❯ validated src/renderer/src/sim/snapshot.ts:54:3
+ ❯ validateSnapshot src/renderer/src/sim/snapshot.ts:69:10
+ ❯ validateCheckpoint src/renderer/src/authority/checkpoint.ts:52:17
+ ❯ captureCheckpoint src/renderer/src/authority/core.ts:86:12
+ ❯ resetBaseline src/renderer/src/authority/core.ts:121:23
+ ❯ createLiveAuthorityCore src/renderer/src/authority/core.ts:271:5
+ ❯ createAuthorityCore src/renderer/src/authority/core.ts:34:16
+ ❯ createFixtureAuthority tests/helpers/authorityFixture.ts:11:16
+ ❯ Object.start tests/helpers/authorityFixture.ts:21:28
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  tests/director.test.ts > soak > 20 sim minutes with an unkillable bot crew: every phase twice, no stall past 60
+s, no Relax past 60 s, stress within 0..1
+Error: Test timed out in 60000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/director.test.ts:327:3
+    325|
+    326| describe('soak', () => {
+    327|   it('20 sim minutes with an unkillable bot crew: every phase twice, n…
+       |   ^
+    328|     const s = woke(makeState(2, 1, DEFAULT_CHARACTERS));
+    329|     const seen = [0, 0, 0, 0]; let last = s.director.phase; seen[last]…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  tests/netParity.test.ts > independent Net-1a baseline oracle > golden-2026-four-7200
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/netParity.test.ts:59:37
+     57|     expect(changes).toEqual([1, 9, 17, 25]);
+     58|   });
+     59|   for (const scenario of scenarios) it(scenario.name, () => {
+       |                                     ^
+     60|     const expected = baseline.scenarios.find((s) => s.name === scenari…
+     61|     expect(expected, 'missing pinned baseline').toBeDefined();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  tests/run.test.ts > asteroid fields (spec Demo-viii section 1) > a jump to an Asteroid node: pending with no
+enemy arrival; the field starts at +8 s with a rock on the start tick; no enemy ever
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/run.test.ts:277:3
+
+    275|     expect([FIELD_INTERVAL, FIELD_FLIGHT, FIELD_SECONDS, scrapField(1)…
+    276|   });
+    277|   it('a jump to an Asteroid node: pending with no enemy arrival; the f…
+       |   ^
+    278|     const s = arriveField(), t0 = s.tick;
+    279|     expect([s.run.encounter, s.run.encounterTick, s.enemy.nextArrivalT…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+ FAIL  tests/run.test.ts > asteroid fields (spec Demo-viii section 1) > spawns every 6 s +/- 20% for 60 s, then stops;
+clears at +72 s with +20 scrap, the drive boost and a win
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/run.test.ts:306:3
+    304|     expect(s.run.fieldNextTick).toBe(t + Math.round(FIELD_INTERVAL * T…
+    305|   });
+    306|   it('spawns every 6 s +/- 20% for 60 s, then stops; clears at +72 s w…
+       |   ^
+    307|     const s = arriveField(); steady(s, ENCOUNTER_START * T + 1);
+    308|     const start = s.run.encounterTick, spawns: number[] = [start], see…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/16]⎯
+
+ FAIL  tests/run.test.ts > the evasive manoeuvre (spec Coop-ii section 1, amendments D1-D3) > the captain bot never
+starts one
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/run.test.ts:365:3
+    363|     const u = makeState(2); quiet(u); run(u, 5, () => intents({ confir…
+    364|   });
+    365|   it('the captain bot never starts one', () => {
+       |   ^
+    366|     const s = makeState(2, 3); quiet(s); chargeJump(s);
+    367|     for (let t = 0; t < 120 * TICK_HZ && !s.ended; t++) step(s, [botIn…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/16]⎯
+
+ FAIL  tests/snapshot.test.ts > snapshot > a run saved mid Build Up continues like an uninterrupted run through at
+least two phase changes
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/snapshot.test.ts:255:3
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/16]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+ ❯ Object.onTimeoutError node_modules/vitest/dist/chunks/rpc.-pEldfrD.js:53:10
+ ❯ Timeout._onTimeout node_modules/vitest/dist/chunks/index.B521nVV-.js:59:62
+ ❯ listOnTimeout node:internal/timers:605:17
+ ❯ processTimers node:internal/timers:541:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ Test Files  6 failed | 121 passed (127)
+      Tests  16 failed | 1643 passed (1659)
+     Errors  1 error
+   Start at  13:51:39
+   Duration  66.59s (transform 8.21s, setup 21.05s, collect 53.37s, tests 682.70s, environment 23ms, prepare 25.12s)

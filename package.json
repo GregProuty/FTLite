@@ -8,6 +8,7 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:determinism": "tsx scripts/determinism/run.ts",
     "typecheck": "tsc -b",
     "bless": "tsx scripts/bless-golden.ts",
     "acceptance": "tsx scripts/acceptance.ts",

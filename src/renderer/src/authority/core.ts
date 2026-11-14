@@ -2,6 +2,7 @@ import type { AuthorityMessage, ClientMessage, CommandEnvelope, CommandResult, H
 import { decodeMessage, encodeMessage } from '../net/codec';
 import { saveSnapshot, type Snapshot } from '../sim/snapshot';
 import { hashState } from '../sim/hash';
+import { hashF64 } from '../../../shared/hash';
 import { assertSimStateLive, disposeSimState, type SimState } from '../sim/state';
 import { stepCommands } from '../sim/step';
 import { isPauseControl, type TickInput } from '../sim/commands';
@@ -123,8 +124,11 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   function send(binding: Binding, message: AuthorityMessage, reliable = false): void { if (message.kind === 'result') activeFrame?.results.push(structuredClone(message.result)); binding.link.send(reliable ? 'reliable-ordered' : 'unreliable-latest', encodeMessage(message)); }
   function publishCompletedState(reliable = false): void {
     if (disposed || phase === 'error') return;
-    const publication: PublishedState = { runId: deps.init.runId, tick: state.tick, publicationSequence: ++publicationSequence,
-      snapshot: saveSnapshot(state, deps.contentDigest), hash: (completedHash = hashState(state)), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs,
+    // Hash the exact freshly captured canonical values, avoiding a second field
+    // traversal. No state/hash cache: direct fixture mutations remain observable.
+    const sequence = ++publicationSequence, snapshot = saveSnapshot(state, deps.contentDigest);
+    const publication: PublishedState = { runId: deps.init.runId, tick: state.tick, publicationSequence: sequence,
+      snapshot, hash: (completedHash = hashF64(Float64Array.from(snapshot.values))), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs,
       commandHighWater: highWater(), heldHighWater: [...heldSequences], auxiliaryHighWater: [...auxiliarySequences], eventSequence };
     const bytes = encodeMessage({ kind: 'state', state: publication });
     // A stopped clock cannot replace a lost latest packet. Control boundaries

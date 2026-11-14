@@ -76,7 +76,8 @@ function rangeFor(field: CanonicalField, layout: ShipLayout, derived: Derived, p
   return integer;
 }
 
-const compiled = new WeakMap<CanonicalField[], Range[]>();
+interface Bounds { min: Float64Array; max: Float64Array; whole: Uint8Array }
+const compiled = new WeakMap<CanonicalField[], Bounds>();
 /** One bounded numeric pass; the field plan is reused by every publication. */
 export function validateCanonicalValues(layout: ShipLayout, derived: Derived, players: number, values: number[]): void {
   const fields = canonicalFields(layout, players), last = fields[fields.length - 1]!;
@@ -84,13 +85,16 @@ export function validateCanonicalValues(layout: ShipLayout, derived: Derived, pl
   // Layout-dependent bounds are cheap and compiled only for a new layout/shape.
   let bounds = compiled.get(fields);
   if (!bounds) {
-    bounds = [];
-    for (const f of fields) for (let k = 0; k < f.count; k++) bounds.push(rangeFor(f, layout, derived, players, k));
+    bounds = { min: new Float64Array(values.length), max: new Float64Array(values.length), whole: new Uint8Array(values.length) };
+    for (const f of fields) for (let k = 0; k < f.count; k++) {
+      const [min, max, whole] = rangeFor(f, layout, derived, players, k), i = f.offset + k;
+      bounds.min[i] = min; bounds.max[i] = max; bounds.whole[i] = Number(!!whole);
+    }
     compiled.set(fields, bounds);
   }
   for (let i = 0; i < values.length; i++) {
-    const value = values[i], [min, max, whole] = bounds[i]!;
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max || (whole && !Number.isSafeInteger(value))) {
+    const value = values[i];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < bounds.min[i]! || value > bounds.max[i]! || (bounds.whole[i] && !Number.isSafeInteger(value))) {
       const field = fields.find(f => i >= f.offset && i < f.offset + f.count)!;
       throw new Error(`snapshot field ${field.name} has invalid value ${String(value)}`);
     }
