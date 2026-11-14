@@ -83,3 +83,7 @@ Implications for the specs:
 - Each reputation path has its own ending: the merchant retires rich; the renegade (the owner's word here; the spec's placeholder label was "Insurgent") takes down the regime; smuggler and pirate endings are still to be written.
 - The ending the crew reaches follows from the reputation it drifted into (Q6), so how they played chooses how it ends.
 - Still open: whether a crew can retire early, how a crew with a mixed reputation ends, and what the smuggler and pirate endings are.
+
+## Q9. What happens when your character dies?
+
+**Answer: A for now, downed but never dead.** A crew member drops and a teammate revives them, as FTLite does today; the risk is the ship, not your character. "Eventually cloning / DNA storage": a later in-world system that brings real death back with a way to return (Claude's reading: death costs something, and a clone or stored DNA restores the character, perhaps with a price or skill loss; to be designed).
