@@ -135,3 +135,12 @@ Implications for the specs:
 Implications for the specs:
 - Every demo playtest needs two people. Bots for an empty seat are not part of the demo (they may come later, Q5).
 - Both consoles have to be fun for the person sitting at them: Weapons is not a passenger while the Helm flies, and the Helm is not a taxi for Weapons.
+
+### Q15b. One couch, or two computers?
+
+**Answer: B, two computers over the network.** Each player has their own screen. This matches the direction spec's "every console a mini game on your own screen".
+
+Implications for the specs:
+- The playable demo depends on networking: Net-1a/1b (the offline authority boundary) and the milestone that adds real transport between two machines (Net-3 in the Net-0 table). The current Net-1 spec excludes sockets.
+- The Helm sim (physics, gravity, arcs, enemy) can be built and tested headless in parallel with the networking work, and has to follow the Net-1 rules from day one (commands, determinism, no `Math.sin`/`cos`). The duel becomes playable when two machines can connect (Claude's reading; the owner can correct it).
+- Each screen may show the shared tactical view framed for its console (the Helm's controls on one, Weapons' arcs and room lock on the other).
