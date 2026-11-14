@@ -74,3 +74,12 @@ Implications for the specs:
 
 - Revisitable: the graph is open and remembers what the crew did. The owner answered C to an option recommended as "C, fully revisitable"; Claude records it that way, and the owner can correct it.
 - Hubs carry the Pirates! and Stardew layers (markets, contacts, relationships); the one-beat systems carry the FTL layer.
+
+## Q8. Does a campaign end?
+
+**Answer: several endings, one per path.** "Merchants retire rich, renegade/terrorist takes down the alliance, ect."
+
+Implications for the specs:
+- Each reputation path has its own ending: the merchant retires rich; the renegade (the owner's word here; the spec's placeholder label was "Insurgent") takes down the regime; smuggler and pirate endings are still to be written.
+- The ending the crew reaches follows from the reputation it drifted into (Q6), so how they played chooses how it ends.
+- Still open: whether a crew can retire early, how a crew with a mixed reputation ends, and what the smuggler and pirate endings are.
