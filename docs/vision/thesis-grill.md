@@ -115,3 +115,7 @@ Technical note (Claude): the sim bans `Math.sin`, `Math.cos` and similar for cro
 ## Q12. How should the ship feel to fly?
 
 **Answer: B tuned toward A.** Arcade with real momentum and real gravity: thrust changes velocity and the well's pull bends the path, so slingshots around the planet work. Mild drag and a "stabilise" assist that kills drift when the Helm lets go keep it flyable for beginners; experts whip around the well.
+
+## Q13. How does Weapons aim in the shared view?
+
+**Answer: C, arcs plus targeting rooms.** Each weapon has a firing arc (some wide, some narrow, some forward-only). The Helm's positioning decides which weapons can bear; inside an arc, the gunner locks onto an enemy room (Engines, Weapons, Shields and so on) and times the release (the charge-and-release mini game). This keeps FTL's room-targeting strategy and makes the Helm and the gunner one team.
