@@ -1,5 +1,7 @@
+import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
-import { buildHudModel, mapTitle } from '../src/renderer/src/render/hudModel';
+import { mapTitle } from '../src/renderer/src/render/hudModel';
 import { NodeType } from '../src/renderer/src/sim/run';
 import { SECTOR_COLUMNS, NODE_STRIDE } from '../src/renderer/src/sim/tuning';
 import { navRows, NAV_TEXT_MAX, beaconIndex, jumpShip, sectorJump } from '../src/renderer/src/sim/run';
@@ -20,7 +22,7 @@ describe('sector map model', () => {
     const s = makeState(2); quiet(s); mapM(s);
     s.run.column = 1; s.run.node = 2;
     setNodeTypes(s, { '1:0': NodeType.Shop, '2:1': NodeType.Event }); s.run.visited.fill(1);   // every beacon seen: the types show (spec Loop-i section 4b)
-    const n = seatNavigator(s, 0); s.stations.cursor[n] = 0;
+    const n = seatNavigator(s, 0); cardSelection(s, n).cursor = 0;
     const m = build(s)!;
     expect(m.columns.length).toBe(6); expect(m.columns.map((c) => c.nodes.length)).toEqual([1, 3, 2, 2, 2, 1]);
     const flat = m.columns.flatMap((c, ci) => c.nodes.map((nd, k) => ({ ci, k, nd })));
@@ -38,7 +40,7 @@ describe('sector map model', () => {
   });
   it('from the start the cursor selects its destination among two reachable nodes', () => {
     const s = makeState(2); quiet(s); mapM(s);
-    const n = seatNavigator(s, 0); s.stations.cursor[n] = 1;
+    const n = seatNavigator(s, 0); cardSelection(s, n).cursor = 1;
     const m = build(s)!;
     expect(m.columns[1]!.nodes.map((x) => [x.reachable, x.selected])).toEqual([[true, false], [false, false], [true, true]]);
   });
@@ -48,18 +50,18 @@ describe('sector map model', () => {
     chargeJump(s); expect(mapTitle(build(s)!)).toBe('SECTOR 1/3   node 2/6   Jump READY'); s.run.sector = 2; expect(mapTitle(build(s)!)).toBe('SECTOR 3/3   node 2/6   Jump READY');
   });
   it('a pending event selects nothing but the next column stays reachable', () => {
-    const s = makeState(2); quiet(s); mapM(s); const n = seatNavigator(s, 0); s.stations.cursor[n] = 0; setEvent(s, 0);
+    const s = makeState(2); quiet(s); mapM(s); const n = seatNavigator(s, 0); cardSelection(s, n).cursor = 0; setEvent(s, 0);
     const m = build(s)!, flat = m.columns.flatMap((c) => c.nodes);
     expect(flat.some((x) => x.selected)).toBe(false);
     expect(m.columns[1]!.nodes.map((x) => x.reachable)).toEqual([true, false, true]);
   });
   it('a shop node selects nothing on a buy row, and exactly the destination on a jump row', () => {
     const s = makeState(2); quiet(s); mapM(s); setNodeTypes(s, { '0:0': NodeType.Shop }); grantScrap(s, 100);
-    const n = seatNavigator(s, 0); s.stations.cursor[n] = 1;
+    const n = seatNavigator(s, 0); cardSelection(s, n).cursor = 1;
     expect(navRows(s)[1]!.select).toBe('buy');
     expect(build(s)!.columns.flatMap((c) => c.nodes).some((x) => x.selected)).toBe(false);
     const j = navRows(s).findIndex((r) => r.select === 'jump'); expect(j).toBeGreaterThan(1);
-    s.stations.cursor[n] = j;
+    cardSelection(s, n).cursor = j;
     const sel = build(s)!.columns.flatMap((c, ci) => c.nodes.map((x, k) => ({ ci, k, x }))).filter((e) => e.x.selected);
     expect(sel.length).toBe(1); expect(sel[0]!.ci).toBe(1);
   });

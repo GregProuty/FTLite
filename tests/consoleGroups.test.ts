@@ -1,9 +1,11 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { createSimState, type SimState } from '../src/renderer/src/sim/state';
-import { step } from '../src/renderer/src/sim/step';
+import { step, fixtureRunner } from './helpers/rawInput';
 import { Seated } from '../src/renderer/src/sim/components';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';
@@ -11,7 +13,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
-import { RECRUITS, teleport, quiet } from './helpers/sim';
+import { RECRUITS, teleport, quiet, setEvent } from './helpers/sim';
 
 type GroupedJson = typeof starter & { consoleGroups: { tile: [number, number]; kinds: string[] }[] };
 /** The starter with two console groups (spec Demo-x-a section 1): the Helm (Navigation + Weapons) on the Bridge, Ops (Science + Engineering + Doors) in the Science Lab. */
@@ -66,35 +68,43 @@ describe('seating at a console group', () => {
     expect(s.stations.occupant[at(s, StationKind.Navigation)]).toBe(0);
     expect(s.stations.occupant[at(s, StationKind.Weapons)]).toBe(0);
     expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Navigation));
-    expect(s.groups.tab[0]).toBe(0); expect(s.groups.bar[0]).toBe(0);
+    expect(s.groups.tab[0]).toBe(0); expect(Number(fixtureRunner(s).ui.groupBar[0])).toBe(0);
   });
   it('Up from the first row reaches the tab bar, Left/Right switch tabs, Down goes back; sitting again opens the first tab', () => {
     const s = state(); sitAt(s, 12, 2);
     expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Science));
-    edge(s, 0, -1); expect(s.groups.bar[1]).toBe(1);
+    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(1);
     edge(s, 1, 0); expect(s.groups.tab[1]).toBe(1); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Engineering));
     edge(s, 1, 0); expect(s.groups.tab[1]).toBe(2); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Doors));
     edge(s, 1, 0); expect(s.groups.tab[1]).toBe(0);   // wraps
     edge(s, -1, 0); expect(s.groups.tab[1]).toBe(2);
-    edge(s, 0, 1); expect(s.groups.bar[1]).toBe(0); expect(s.groups.tab[1]).toBe(2);
+    edge(s, 0, 1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0); expect(s.groups.tab[1]).toBe(2);
     step(s, press({ cancelPressed: true })); step(s, press({}));
-    expect(s.groups.bar[1]).toBe(0);
+    expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0);
     sitAt(s, 12, 2); expect(s.groups.tab[1]).toBe(0); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Science));
+  });
+  it('Navigation skips event headers for first-row Up and preserves its row on tab-bar Down', () => {
+    const s = state(); sitAt(s, 2, 2); setEvent(s, 4); fixtureRunner(s).refresh();
+    const nav = at(s, StationKind.Navigation), ui = fixtureRunner(s).ui;
+    expect(ui.stations[nav]!.rowKey).toBe('choice:0');
+    edge(s, 0, -.5); expect(ui.groupBar[0]).toBe(true);
+    edge(s, 0, .5); expect(ui.groupBar[0]).toBe(false); expect(ui.stations[nav]!.rowKey).toBe('choice:0');
+    expect(s.groups.tab[0]).toBe(0); expect(s.run.vote[0]).toBe(-1);
   });
   it('input reaches only the active tab\'s station', () => {
     const s = state(); sitAt(s, 12, 2);
     const eng = at(s, StationKind.Engineering), doors = at(s, StationKind.Doors), sci = at(s, StationKind.Science), wpn = at(s, StationKind.Weapons);
     edge(s, 0, -1); edge(s, 1, 0); edge(s, 0, 1);   // the Engineering tab, back on the rows
-    const doorsCursor = s.stations.cursor[doors]!, sciCursor = s.stations.cursor[sci]!;
-    expect(s.stations.cursor[eng]).toBe(StationKind.Engineering);
+    const doorsCursor = cardSelection(s, doors).cursor!, sciCursor = scienceTargetSlot(s);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Engineering);
     edge(s, 0, -1); edge(s, 0, -1);   // up to the Weapons row (kind 1)
-    expect(s.stations.cursor[eng]).toBe(StationKind.Weapons); expect(s.stations.cursor[doors]).toBe(doorsCursor);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Weapons); expect(cardSelection(s, doors).cursor).toBe(doorsCursor);
     const level = s.stations.level[wpn]!;
     edge(s, -1, 0); expect(s.stations.level[wpn]).toBe(level - 1);   // Left pulls a bar
-    edge(s, 0, -1); expect(s.groups.bar[1]).toBe(0); expect(s.stations.cursor[eng]).toBe(0);   // row 0
-    edge(s, 0, -1); expect(s.groups.bar[1]).toBe(1);
+    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0); expect(cardSelection(s, eng).cursor).toBe(0);   // row 0
+    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(1);
     edge(s, 1, 0); edge(s, 0, 1); edge(s, 0, 1);   // the Doors tab: Down moves the Doors cursor only
-    expect(s.stations.cursor[doors]).toBe(doorsCursor + 1); expect(s.stations.cursor[eng]).toBe(0); expect(s.stations.cursor[sci]).toBe(sciCursor);
+    expect(cardSelection(s, doors).cursor).toBe(doorsCursor + 1); expect(cardSelection(s, eng).cursor).toBe(0); expect(scienceTargetSlot(s)).toBe(sciCursor);
   });
   it('one member failing leaves the officer seated on the others; all failing stands the officer up', () => {
     const s = state(); sitAt(s, 2, 2);
@@ -122,12 +132,12 @@ describe('seating at a console group', () => {
     const s = state(); sitAt(s, 12, 2); standUp(s, 0);
     for (const k of [StationKind.Science, StationKind.Engineering, StationKind.Doors]) expect(s.stations.occupant[at(s, k)]).toBe(-1);
   });
-  it('the tab and the tab-bar focus round-trip in a snapshot and each changes the hash', () => {
+  it('the authoritative tab round-trips while client focus never changes the hash', () => {
     const s = state(); sitAt(s, 12, 2); edge(s, 0, -1); edge(s, 1, 0);
     const t = loadSnapshot(GROUPED, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect(hashState(t)).toBe(hashState(s)); expect(t.groups.tab[1]).toBe(1); expect(t.groups.bar[1]).toBe(1);
+    expect(hashState(t)).toBe(hashState(s)); expect(t.groups.tab[1]).toBe(1); expect('bar' in t.groups).toBe(false);
     const h = hashState(s); s.groups.tab[0] = 1; expect(hashState(s)).not.toBe(h);
-    const h2 = hashState(s); s.groups.bar[0] = 1; expect(hashState(s)).not.toBe(h2);
+    const h2 = hashState(s); fixtureRunner(s).ui.groupBar[0] = true; expect(hashState(s)).toBe(h2);
   });
 });
 

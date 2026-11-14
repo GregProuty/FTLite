@@ -1,5 +1,7 @@
+import { scienceTargetSlot } from '../sim/debrisTargets';
+import type { CardUiState } from '../clientControl/cardController';
 import { weaponDef } from '../sim/weaponDefs';
-import { LootPlace, Weapon, SWAP_SLOT, canSwap, swapSlot } from '../sim/weapons';
+import { LootPlace, Weapon, canSwap, swapSlot } from '../sim/weapons';
 import { ICON_KINDS, stationTint, type IconKind, type IconTint } from './roomIconModel';
 import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
@@ -26,6 +28,7 @@ import { EndReason } from '../sim/crew';
 import { boarderMarkers, boardersInRoom } from '../sim/boarders';
 import { QUIRK_NAMES } from '../sim/quirks';
 import { doorsCursorTarget } from '../sim/doors';
+import { cardRowIndex, cardRows } from '../clientControl/cardController';
 import { shipLine, shipForCrew } from '../sim/ship/fleet';
 import { textPx, rowPx, TEXT, WARN, PAD } from './theme';
 import { NOTICE, CARD_INNER_W, BLOCK_INNER_W, THREATS } from './hudLayout';
@@ -144,11 +147,11 @@ export interface MapNode { type: 'hazard' | 'event' | 'shop' | 'asteroid' | 'emp
 export interface MapModel { columns: { nodes: MapNode[] }[]; edges: { from: [number, number]; to: [number, number] }[]; column: number; sector: number; fleet: number; jump: string }   // fleet: floor(pursuit), the last overrun column (spec Loop-i section 3)   // spec section 5; column and jump feed the title
 export function mapTitle(m: MapModel): string { return `SECTOR ${m.sector + 1}/${SECTORS}   node ${m.column + 1}/${m.columns.length}   Jump ${m.jump}`; }
 const NODE_TYPES = ['hazard', 'event', 'shop', 'asteroid', 'empty'] as const;
-function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | null {
+function mapBlock(state: SimState | null, phase: HudModel['phase'], ui?: CardUiState): MapModel | null {
   if (!state || phase !== 'running') return null;
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;
   if (!navigatorAtHelm(state)) return null;   // a navigator on the Helm tab (a grouped Helm on its Weapons tab shows the enemy window, spec Demo-x-c)
-  const r = state.run, reach = reachable(state), row = navRows(state)[state.stations.cursor[nav]!];
+  const r = state.run, reach = reachable(state), row = navRows(state)[cardRowIndex(state, nav, ui)];
   const sel = row && row.select === 'jump' ? row.index : -1;
   const columns: MapModel['columns'] = [], edges: MapModel['edges'] = [], last = r.colNodes.length - 1;
   for (let c = 0; c <= last; c++) {
@@ -168,7 +171,7 @@ function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | 
 /** A player's room is "low" on the HUD below this oxygen fraction (a warning, well above SUFFOCATE_FRAC). */
 export const HUD_LOW_O2_FRAC = 0.5;
 
-/** Slot key → device kind. The key format is owned by input/sources.ts (`kb:0`, `kb:1`, `gp:<index>`); nothing else is parsed from it. */
+/** Slot key -> device kind. The key format is owned by input/sources.ts (`kb:0`, `kb:1`, `gp:<index>`); nothing else is parsed from it. */
 export function deviceKindOf(key: string | null): DeviceKind {
   if (key === 'kb:0') return 'kb0'; if (key === 'kb:1') return 'kb1'; if (key?.startsWith('gp:')) return 'pad'; return null;
 }
@@ -184,7 +187,7 @@ const describe = (c: Character): HudCharacter => ({ name: c.name, asset: ASSET_N
 
 const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { health: 0, life: 0, bleed: 0, lowOxygen: false, carrying: false, vote: '', lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '', tabs: null, tabFocus: false, skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[RECRUIT]!) };
 
-function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> {
+function player(state: SimState, pid: number, ui?: CardUiState): Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> {
   const eid = state.crew[pid]!;
   const skills = Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k));
   const base = { health: Health.cur[eid]!, life: Life.state[eid]!, bleed: Life.bleed[eid]!, carrying: state.carrying[pid] === 1, vote: state.run.event >= 0 && state.run.eventChoice < 0 && state.run.vote[pid]! >= 0 ? `VOTE ${state.run.vote[pid]! + 1}` : '', skills, character: describe(characterOf(state, pid)) };
@@ -196,7 +199,7 @@ function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' 
   if (seatedAt >= 0) {
     const kind = state.derived.stationKind[seatedAt]!;
     const tabs = consoleTabs(state, seatedAt), g = state.derived.stationGroup[seatedAt]!;
-    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind), tabs, tabFocus: g >= 0 && state.groups.bar[g] === 1 };
+    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind, ui), tabs, tabFocus: g >= 0 && (ui?.groupBar[g] ?? false) };
   }
   let interactPrompt = '', interactIcon: string | null = null, progress = 0;
   const t = interactTarget(state, pid);
@@ -410,15 +413,16 @@ function readyLine(state: SimState): string[] {
   const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation'];
 }
 
-function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | null {
+function consolePanel(state: SimState, i: number, kind: number, ui?: CardUiState): ConsolePanel | null {
   const d = state.derived;
   if (kind === StationKind.Engineering) {
     const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: baseMax(state, k), failed: si >= 0 && state.stations.failed[si] === 1, unpowered: unpoweredAt(state, k, si), ...thermal(state, si) }; });
-    const cursor = state.stations.cursor[i]!;
-    return { rows, cursor, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state), page: state.stations.page[i]!, upgrades: upgradeRowsOf(state, cursor), scrap: state.run.scrap };
+    const at = cardRowIndex(state, i, ui), key = cardRows(state, i, ui)[at]?.key, page = ui?.stations[i]?.page === 'upgrades' ? 1 : 0;
+    const cursor = page ? key === 'reactor' ? REACTOR_ROW : key === 'back' ? BACK_ROW : Number(key?.split(':')[1]) : at;
+    return { rows, cursor, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state), page, upgrades: upgradeRowsOf(state, cursor), scrap: state.run.scrap };
   }
   if (kind === StationKind.Doors) {
-    const t = doorsCursorTarget(state, state.stations.cursor[i]!);
+    const t = doorsCursorTarget(state, cardRowIndex(state, i, ui));
     if (!t) return { kind: 'doors', item: null };
     const online = stationOnline(state, i), openAirlocks = state.airlocks.open.reduce((n, v) => n + v, 0), names = state.layout.rooms;
     if (t.kind === 'airlock') {
@@ -433,18 +437,18 @@ function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | 
   }
   if (kind === StationKind.Weapons) {
     const e = state.enemy, shieldsUp = e.present === 1 && e.sysHp[EnemySystem.Shields]! > 0;
-    const slots = warnedTargets(state), c = state.stations.cursor[i]!, w = state.weapons, swap = canSwap(state), cursor = swap && c === SWAP_SLOT ? slots.length : slots.indexOf(c);
+    const slots = warnedTargets(state), w = state.weapons, swap = canSwap(state), cursor = cardRowIndex(state, i, ui);
     const loot: LootSlotView[] = []; for (let k = 0; k < WEAPON_SLOTS; k++) { const id = w.slot[k]!; if (id) loot.push({ selector: Weapon.Slot1 + k, short: weaponDef(id).short, charge: w.charge2[k]!, powered: state.stations.level[i]! >= SLOT_LEVELS[k]!, empty: weaponDef(id).kind === 'missile' && w.torpedoStock <= 0 }); }
     const rows = loot.length ? WEAPONS_ROWS - 1 : WEAPONS_ROWS, swapText = swap ? `SWAP: cargo ${weaponDef(w.cargo).short} for ${weaponDef(w.slot[swapSlot(state)]!).short}` : null;
     return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k, true)), cursor, first: targetWindow(cursor, slots.length + (swap ? 1 : 0), rows), locked: lockActive(state), loot, swap: swapText, rows, enemyFreq: e.present && e.scanned ? e.shieldFreq : null, freqUnknown: e.present === 1 && !e.scanned && shieldsUp, shieldsUp, shot: shotResult(state) };
   }
   if (kind === StationKind.Science) {
-    const slots = warnedTargets(state, false), c = state.stations.cursor[i]!, cursor = c < 0 ? slots.length : slots.indexOf(c), system = systemRow(state, i);   // the enemy ship as one row (spec Demo-x-c section 4)   // the cursor -1 is the system row (spec Demo-x-b section 3)
+    const slots = warnedTargets(state, false), c = scienceTargetSlot(state), cursor = c < 0 ? slots.length : slots.indexOf(c), system = systemRow(state, i);   // the enemy ship as one row (spec Demo-x-c section 4)   // the cursor -1 is the system row (spec Demo-x-b section 3)
     return { kind: 'science', leadSeconds: scienceLead(state), targets: slots.map((k) => ({ ...target(state, k), scan: k === ENEMY_SLOT ? state.enemy.scan : isEnemySlot(k) ? 0 : state.debris.scan[k]! })), cursor, first: targetWindow(cursor, slots.length + 1 + system.results.length, SCIENCE_ROWS), scanning: state.science.scanning === 1, lock: lockActive(state) ? `LOCKED ${lockSecondsLeft(state)}s` : canLock(state, i) ? 'LOCK: Confirm' : '', system };
   }
   if (kind === StationKind.Navigation) {
-    const r = state.run, all = navRows(state), c0 = state.stations.cursor[i]!, ca = all[c0] && all[c0]!.select !== 'none' ? c0 : all.findIndex((row) => row.select !== 'none');
-    const kept = all.map((row, k) => k).filter((k) => all[k]!.select !== 'evade' || k === ca || evadeRowShown(state, all[k]!.text)), rows = kept.map((k) => all[k]!), c = kept.indexOf(ca);   // the evade row only when it means something, in the card only (spec Demo-xii section 4 and amendment 5)   // c: the highlighted row, the first selectable one while the sim cursor still sits on a header   // spec Run-ii 9: the event, shop or destination rows, the cursor row, the jump state and scrap
+    const r = state.run, all = navRows(state), c0 = cardRowIndex(state, i, ui), ca = all[c0] && all[c0]!.select !== 'none' ? c0 : all.findIndex((row) => row.select !== 'none');
+    const kept = all.map((row, k) => k).filter((k) => all[k]!.select !== 'evade' || k === ca || evadeRowShown(state, all[k]!.text)), rows = kept.map((k) => all[k]!), c = kept.indexOf(ca);   // the evade row only when it means something, in the card only (spec Demo-xii section 4 and amendment 5)   // c: the highlighted row, the first selectable one from client row memory   // spec Run-ii 9: the event, shop or destination rows, the cursor row, the jump state and scrap
     return { kind: 'navigation', evadeChance: evadeChance(stationOutput(state, i), state.tick < r.evadeUntilTick), jump: { charge: r.jumpCharge, ready: r.jumpCharge >= 1 }, here: nodeLabel(r.column, r.node), fuel: r.fuel, fuelAfter: rows[c] && (rows[c]!.select === 'jump' || rows[c]!.select === 'sector') ? r.fuel - 1 : null, rows: rows.map((row, k) => ({ text: row.text, selectable: row.select !== 'none', enabled: row.enabled, cursor: k === c, blue: row.blue === true })), first: targetWindow(c, rows.length, 7), scrap: r.scrap };
   }
   return null;
@@ -495,11 +499,11 @@ function gainsSummary(state: SimState): string[] {
 
 export interface HudProgress { bestScore: number; runs: number; victories: number; newUnlocks: string[]; unlocked: string[] }
 
-export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: HudModel['phase'], message: string, credits: { lines: readonly string[]; scroll: number } | null = null, progress: HudProgress | null = null, calloutFlash: readonly number[] = []): HudModel {
+export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: HudModel['phase'], message: string, credits: { lines: readonly string[]; scroll: number } | null = null, progress: HudProgress | null = null, calloutFlash: readonly number[] = [], ui?: CardUiState): HudModel {
   const players: HudPlayer[] = slots.map((slot, pid) => {
     const head = { pid, status: slot.status, deviceKind: slot.status === 'active' ? deviceKindOf(slot.key) : null };
     if (!state || pid >= state.playerCount) return { ...head, ...EMPTY, skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[DEFAULT_CHARACTERS[pid] ?? RECRUIT]!) };
-    return { ...head, ...player(state, pid) };
+    return { ...head, ...player(state, pid, ui) };
   });
   const threats: HudThreat[] = [];
   if (state) {
@@ -521,5 +525,5 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, unpowered: unpoweredAt(state, kind, i), icon: ICON_KINDS[kind]!, iconTint: stationTint(state, i), ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? lobbyLines(slots.filter((sl) => sl.status !== 'empty').length) : [], lobbyShip: phase === 'lobby' ? shipLine(slots.filter((sl) => sl.status !== 'empty').length) : '', notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
+  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase, ui), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? lobbyLines(slots.filter((sl) => sl.status !== 'empty').length) : [], lobbyShip: phase === 'lobby' ? shipLine(slots.filter((sl) => sl.status !== 'empty').length) : '', notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
 }

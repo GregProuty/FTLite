@@ -24,7 +24,7 @@ export interface ConsoleDraw { members: readonly number[]; x: number; y: number;
 const SIDES: readonly Side[] = ['n', 'e', 's', 'w'];
 const DIR: Readonly<Record<Side, { dx: number; dy: number }>> = { n: { dx: 0, dy: -1 }, e: { dx: 1, dy: 0 }, s: { dx: 0, dy: 1 }, w: { dx: -1, dy: 0 } };
 
-/** The console's state over its members: down when no member is online (a group seats while one member is online), occupied when someone sits there, else free. */
+/** Desk appearance uses authoritative occupancy and power; card focus is client-owned. The console's state over its members: down when no member is online (a group seats while one member is online), occupied when someone sits there, else free. */
 export function consoleLook(state: SimState, members: readonly number[]): ConsoleLook {
   if (!members.some((j) => stationOnline(state, j))) return 'down';
   return state.stations.occupant[members[0]!]! >= 0 ? 'occupied' : 'free';

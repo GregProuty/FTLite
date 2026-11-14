@@ -1,6 +1,6 @@
 import type { SimState } from '../sim/state';
 import { EnemySystem, EnemyRoom, ENEMY_ROOM_NAMES, ENEMY_SYSTEM_COUNT, enemyShieldCap, isWarden, enemyWeaponCharge, fleeSecondsLeft, rotateSecondsLeft, ionSecondsLeft } from '../sim/enemy';
-import { isEnemySlot, enemyRoomOfSlot } from '../sim/debrisTargets';
+import { isEnemySlot, enemyRoomOfSlot, weaponsTargetSlot } from '../sim/debrisTargets';
 import { StationKind } from '../sim/stationKinds';
 import { beaconKey } from '../sim/run';
 import { TICK_HZ, ENEMY_SYS_HP, ENEMY_ROOMS, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS } from '../sim/tuning';
@@ -111,7 +111,7 @@ function presentView(state: SimState, nowTick: number, anim: WindowAnim): EnemyW
   const flee = fleeSecondsLeft(state);
   const status = e.fleeing && e.surrenderIntact ? `SURRENDERING ${flee}s  hold fire` : e.fleeing ? `FLEEING ${flee}s` : e.sysHp[EnemySystem.Engines] === 0 ? 'ENGINES DOWN' : 'ENEMY';
   const first = problems(state)[0];
-  const wpn = state.derived.stationOfKind[StationKind.Weapons]!, cursor = wpn >= 0 && state.stations.occupant[wpn]! >= 0 ? state.stations.cursor[wpn]! : -1;
+  const wpn = state.derived.stationOfKind[StationKind.Weapons]!, cursor = wpn >= 0 && state.stations.occupant[wpn]! >= 0 ? weaponsTargetSlot(state) : -1;
   const reticle = cursor >= 0 && isEnemySlot(cursor) ? { room: enemyRoomOfSlot(cursor) } : null;
   const bolt = boltOf(state, nowTick);
   const age = nowTick - anim.arriveTick, arriving = anim.arriveTick >= 0 && age < ARRIVE_SECONDS * TICK_HZ;

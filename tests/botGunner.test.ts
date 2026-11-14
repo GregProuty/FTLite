@@ -1,6 +1,7 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
-import { botIntent, gunnerPid, BOT_RECOVER_HEALTH } from '../src/renderer/src/sim/bot';
+import { step, fixtureRunner } from './helpers/rawInput';
+import { botIntent, gunnerPid, BOT_RECOVER_HEALTH } from './helpers/bot';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { Seated, Health, Position } from '../src/renderer/src/sim/components';
@@ -90,13 +91,13 @@ describe('the bot gunner (spec Demo-xiii section 3)', () => {
     sitDown(s, 0, nav); s.weapons.charge = 1;
     expect(Seated.station[s.crew[0]!]).toBe(nav);
     for (let t = 0; t < 240 && s.telemetry.shots === 0; t++) { s.run.jumpCharge = 0; s.enemy.nextShotTick = 1e9; step(s, [botIntent(s, 0), NEUTRAL_INTENT]); }
-    expect([Seated.station[s.crew[0]!], s.groups.tab[g], s.groups.bar[g], s.telemetry.shots, s.weapons.lastShotTarget]).toEqual([w, 1, 0, 1, ENEMY_SHIELDS_SLOT]);
+    expect([Seated.station[s.crew[0]!], s.groups.tab[g], Number(fixtureRunner(s).ui.groupBar[g]), s.telemetry.shots, s.weapons.lastShotTarget]).toEqual([w, 1, 0, 1, ENEMY_SHIELDS_SLOT]);
   });
 
   it('a seated Science bot scans the enemy ship', () => {
     const s = starterFight(), sci = sciOf(s); sitDown(s, 1, sci);
     runBot1(s, seconds(30), () => s.enemy.scanned === 1);
-    expect([s.enemy.scanned, s.stations.cursor[sci]]).toEqual([1, ENEMY_SLOT]);
+    expect([s.enemy.scanned, scienceTargetSlot(s)]).toEqual([1, ENEMY_SLOT]);
   });
 
   it('the gunner draws nothing: botIntent leaves every stream as it was', () => {

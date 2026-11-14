@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSession, DEFAULT_SEED } from '../src/renderer/src/app/session';
+import { createSession, DEFAULT_SEED } from './helpers/sessionFixture';
 import type { TelemetryRecord } from '../src/renderer/src/sim/telemetry';
 import { downCrew, EndReason } from '../src/renderer/src/sim/crew';
 import type { SourceSample } from '../src/renderer/src/input/deviceManager';
@@ -10,12 +10,15 @@ import { LAYOUT, seatNavigator, chargeJump, armSpawn, placeEnemy } from './helpe
 import { damageEnemy } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import type { Cue } from '../src/renderer/src/app/audioCues';
-import { loadSnapshot, type Snapshot } from '../src/renderer/src/sim/snapshot';
-import { decodeIntent, type CompactIntent } from '../src/renderer/src/sim/replay';
+import { loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import type { CrashRecord } from '../src/renderer/src/authority/authority';
+import { stepCommands } from '../src/renderer/src/sim/step';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { step } from '../src/renderer/src/sim/step';
 
 import type { HudModel } from '../src/renderer/src/render/hudModel';
+import { createSession as createLiveSession } from '../src/renderer/src/app/session';
+import { createFixtureAuthority } from './helpers/authorityFixture';
+import { createSimState, type SimState } from '../src/renderer/src/sim/state';
 
 function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C'], withTelemetry = true, initialProgress?: Progress) {
   const storage = (() => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); } }; })();
@@ -37,6 +40,39 @@ function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', '
   const frames = (n: number, ms = 1000 / 60) => { for (let i = 0; i < n; i++) { t += ms; session.frame(); } };
   return { session, press, pressMany, sample, frames, crashes, records, cues, storage, release: () => press('a', {}), last: () => last! };
 }
+
+it('focused Confirm resumes retained debt without a render and reaches gameplay exactly once at its real timestamp', () => {
+  let now = 0, samples: SourceSample[] = [], owner: SimState | null = null, crash: CrashRecord | null = null;
+  const session = createLiveSession({ layout: LAYOUT, now: () => now, sampleDevices: () => samples, renderer: null, hud: null, canResume: () => true,
+    saveCrash(record) { crash = record as CrashRecord; }, authorityFactory(deps) {
+      let core: ReturnType<typeof createFixtureAuthority>;
+      let attach: Parameters<typeof core.attach>;
+      return { attach(...args) { attach = args; return () => {}; },
+        start(init) { owner = createSimState(LAYOUT, init.playerCount, init.seed, init.characters); owner.run.event = 0; owner.run.eventChoice = -1; core = createFixtureAuthority({ ...deps, init }, owner); core.attach(...attach); },
+        pump() { core.pump(); }, dispose() { core.dispose(); } };
+    } });
+  const sample = (extra: Partial<SourceSample>) => { samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: true, ...extra }]; };
+  sample({ interact: true }); session.pump(); sample({}); session.pump(); sample({ confirm: true }); session.pump(); sample({});
+  now = 5000; session.pause('blur'); session.pump(); expect(session.state!.tick).toBe(0);
+  now = 15000; sample({ confirm: true }); session.pump(); expect(session.phase).toBe('running'); expect(session.state!.tick).toBe(120);
+  sample({}); session.pump(); expect(session.state!.tick).toBe(240); session.pump(); expect(session.state!.tick).toBe(300);
+  now = 15017; session.pump(); now = 15034; session.pump();
+  (owner as unknown as { rooms: null }).rooms = null; now = 15050; session.pump();
+  const journal = crash as unknown as CrashRecord;
+  expect(journal.baseline.header.tick).toBe(300);
+  expect(journal.ticks.map((tick) => tick.input.commands.filter(entry => entry.command.kind !== 'setPaused').map(entry => entry.command.kind))).toEqual([['vote'], [], []]);
+  expect(journal.ticks[0]!.input.commands[0]!.requestedTick).toBe(300);
+  session.dispose();
+});
+
+it.each([['blur', 'focus'], ['hidden', 'visible'], ['os-suspend', 'os-resume']])('trusted %s/%s lifecycle resumes automatically with no Confirm', (pause, resume) => {
+  let now = 0, samples: SourceSample[] = [];
+  const session = createLiveSession({ layout: LAYOUT, now: () => now, sampleDevices: () => samples, renderer: null, hud: null, canResume: () => false, saveCrash() {} });
+  const sample = (interact: boolean, confirm: boolean) => { samples = [{ key: 'a', moveX: 0, moveY: 0, interact, confirm, cancel: false, any: true }]; };
+  sample(true, false); session.pump(); sample(false, false); session.pump(); sample(false, true); session.pump(); sample(false, false);
+  session.pause(pause!); session.pump(); now = 10000; session.pump(); expect(session.state!.tick).toBe(0);
+  session.resume(resume!); session.pump(); expect(session.phase).toBe('running'); now = 10017; session.pump(); expect(session.state!.tick).toBe(1); session.dispose();
+});
 
 describe('session', () => {
   it('progress: the lobby shows runs and best; a lost run saves progress and unlocks the scrap reserve; the next run starts with it', () => {
@@ -166,7 +202,7 @@ describe('session', () => {
     expect(session.phase).toBe('error');
     expect(hudModels).toBeGreaterThan(0);
   });
-  it('crash payload carries a rolling baseline and the intents since it', () => {
+  it('crash payload carries a rolling baseline and semantic inputs since it', () => {
     const h = harness();
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
     h.press('a', { confirm: true }); h.frames(1); h.release();
@@ -176,13 +212,14 @@ describe('session', () => {
     const before = st.tick;
     h.frames(1, 20);
     expect(h.crashes).toHaveLength(1);
-    const p = h.crashes[0] as { baseline: Snapshot; intentsSinceBaseline: CompactIntent[][]; tick: number };
+    const p = h.crashes[0] as CrashRecord;
     expect(p.baseline.header.tick).toBe(600);
-    // The faulting tick's intents are recorded before step() throws, so they are included (+1).
-    expect(p.intentsSinceBaseline.length).toBe(p.tick - 600 + 1);
+    // The faulting tick's semantic inputs are recorded before execution throws (+1).
+    expect(p.ticks.length).toBe(p.tick - 600 + 1);
     expect(p.tick).toBeGreaterThanOrEqual(before);
+    for (const frame of p.ticks) expect(Object.keys(frame.input).sort()).toEqual(['commands', 'held']);
   });
-  it('baseline plus recorded intents replays to the pre-fault state', () => {
+  it('baseline plus recorded semantic inputs replays to the pre-fault state', () => {
     const h = harness();
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
     h.press('a', { confirm: true }); h.frames(1); h.release();
@@ -191,10 +228,10 @@ describe('session', () => {
     const live = hashState(st);
     (st as unknown as { rooms: null }).rooms = null;
     h.frames(1, 20);
-    const p = h.crashes[0] as { baseline: Snapshot; intentsSinceBaseline: CompactIntent[][]; tick: number };
+    const p = h.crashes[0] as CrashRecord;
     const replayed = loadSnapshot(LAYOUT, p.baseline);
     // The last recorded entry belongs to the tick that faulted; the ones before it lead to the pre-fault state.
-    for (const c of p.intentsSinceBaseline.slice(0, -1)) step(replayed, c.map(decodeIntent));
+    for (const frame of p.ticks.slice(0, -1)) stepCommands(replayed, frame.input);
     expect(hashState(replayed)).toBe(live);
   });
   it('a Confirm press while paused does not resume when canResume() is false', () => {
@@ -226,7 +263,7 @@ describe('session', () => {
     press({ confirm: true }); session.frame(); press({});                    // start again
     expect(calls.filter((c) => c === 'reset')).toHaveLength(2);
   });
-  describe('credits sub-state (spec §4)', () => {
+  describe('credits sub-state (spec section 4)', () => {
     const joined = () => { const h = harness(); h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); return h; };
     it('opens on Cancel from a joined player, shows the lines, and stays in the lobby', () => {
       const h = joined();
@@ -279,7 +316,7 @@ describe('session', () => {
     it('a reconnecting device cannot close the credits on the frame it reclaims its slot', () => {
       const h = joined();
       h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
-      h.pressMany(); h.frames(1);                                                     // 'a' vanishes → reconnect
+      h.pressMany(); h.frames(1);                                                     // 'a' vanishes -> reconnect
       expect(h.last().players[0]!.status).toBe('reconnect');
       h.press('a', { cancel: true, any: true }); h.frames(1); h.release(); h.frames(1); // reclaim + Cancel in one frame: ignored
       expect(h.last().players[0]!.status).toBe('active'); expect(h.session.creditsOpen).toBe(true);

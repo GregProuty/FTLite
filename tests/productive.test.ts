@@ -1,3 +1,5 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { recent, isProductive } from '../src/renderer/src/sim/productive';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -27,7 +29,7 @@ describe('isProductive', () => {
     const s = makeState(2), nav = idx(s, StationKind.Navigation), sci = idx(s, StationKind.Science), A = room(s, 'A');
     s.director.nextSpawnTick = 1e9; sitDown(s, 0, nav); sitDown(s, 1, sci);
     expect(isProductive(s, nav)).toBe(false); expect(isProductive(s, sci)).toBe(false);
-    s.science.scanning = 1; s.stations.cursor[sci] = 0;                          // no valid target: the scan branch needs one
+    s.science.scanning = 1; s.science.target = targetRef(s, 0);                          // no valid target: the scan branch needs one
     expect(isProductive(s, sci)).toBe(false);
     placeDebris(s, A, 600, 1);
     expect(isProductive(s, nav)).toBe(true); expect(isProductive(s, sci)).toBe(true);
@@ -38,21 +40,21 @@ describe('isProductive', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering);
     s.director.nextSpawnTick = 1e9; sitDown(s, 0, eng);
     expect(isProductive(s, eng)).toBe(false);                                     // stamps unset at tick 0
-    s.stations.cursor[eng] = StationKind.Doors; run(s, 1, () => intents(right)); // Doors 1 -> 2 (the spare bar): a change, and an overdrive
+    cardSelection(s, eng).cursor = StationKind.Doors; run(s, 1, () => intents(right)); // Doors 1 -> 2 (the spare bar): a change, and an overdrive
     expect(s.skills.lastEngChangeTick).toBe(0); expect(isProductive(s, eng)).toBe(true);
     run(s, 1, () => intents({ moveX: -1 }));                                      // back to 1: no overdrive, but the change is recent
     expect(isProductive(s, eng)).toBe(true);
     run(s, PRODUCTIVE_WINDOW_TICKS);
     expect(s.tick - s.skills.lastEngChangeTick).toBeGreaterThanOrEqual(PRODUCTIVE_WINDOW_TICKS); expect(isProductive(s, eng)).toBe(false);
-    s.stations.cursor[eng] = StationKind.Weapons; run(s, 1, () => intents(right)); run(s, 1);
+    cardSelection(s, eng).cursor = StationKind.Weapons; run(s, 1, () => intents(right)); run(s, 1);
     expect(s.stations.level[idx(s, StationKind.Weapons)]).toBe(3);   // Weapons 1 -> 2 takes the spare bar without overdrive (its max is 3)
     const stamp = s.skills.lastEngChangeTick; run(s, 1, () => intents(right));   // refused: the pool is empty, so no re-stamp
     expect(s.skills.lastEngChangeTick).toBe(stamp);
     run(s, PRODUCTIVE_WINDOW_TICKS + 1); expect(isProductive(s, eng)).toBe(false);
-    s.stations.cursor[eng] = StationKind.Weapons; run(s, 1, () => intents(confirm));   // coolant 0 -> 1 on Weapons: a change
+    cardSelection(s, eng).cursor = StationKind.Weapons; run(s, 1, () => intents(confirm));   // coolant 0 -> 1 on Weapons: a change
     expect(s.stations.coolant[idx(s, StationKind.Weapons)]).toBe(1); expect(s.skills.lastEngChangeTick).toBe(s.tick - 1); expect(isProductive(s, eng)).toBe(true);
     run(s, PRODUCTIVE_WINDOW_TICKS + 1);
-    s.stations.cursor[eng] = StationKind.Engineering; run(s, 1, () => intents(confirm));   // refused: the Engineering row holds no coolant
+    cardSelection(s, eng).cursor = StationKind.Engineering; run(s, 1, () => intents(confirm));   // refused: the Engineering row holds no coolant
     expect(isProductive(s, eng)).toBe(false);
     const t = makeState(1), engT = idx(t, StationKind.Engineering), doors = idx(t, StationKind.Doors);
     t.director.nextSpawnTick = 1e9; setSkill(t, 0, Skill.Engineering, 8); sitDown(t, 0, engT);

@@ -1,3 +1,4 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
 import { generateMap, NodeType, beaconIndex, beaconMark, jumpShip, sectorJump, reachable } from '../src/renderer/src/sim/run';
 import { createRng, nextFloat } from '../src/shared/rng';
@@ -77,9 +78,9 @@ describe('the system scan: the row, its chance and its time (spec Demo-x-b secti
     let p = panel(s);
     expect(p.system).toEqual({ text: 'Scan system  (detect 60%)', enabled: true, results: [] });
     expect(p.cursor).toBe(p.targets.length);   // no target: the cursor is on the row
-    const slot = placeDebris(s, 0, 60 * T, 1); s.stations.cursor[sci] = slot;   // one warned object
-    run(s, 1, () => intents({}, { moveY: 1 })); expect(s.stations.cursor[sci]).toBe(-1);
-    run(s, 1); run(s, 1, () => intents({}, { moveY: 1 })); expect(s.stations.cursor[sci]).toBe(slot);
+    const slot = placeDebris(s, 0, 60 * T, 1); s.science.target = targetRef(s, slot);   // one warned object
+    run(s, 1, () => intents({}, { moveY: 1 })); expect(scienceTargetSlot(s)).toBe(-1);
+    run(s, 1); run(s, 1, () => intents({}, { moveY: 1 })); expect(scienceTargetSlot(s)).toBe(slot);
     p = panel(s); expect(p.cursor).toBe(0);
   });
   it('Confirm on the row starts it; it lasts SYSTEM_SCAN_TIME (8 s) at output 1, scaled by the output; the row shows its progress', () => {

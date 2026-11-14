@@ -1,5 +1,5 @@
+import type { TargetRef } from '../net/contracts';
 import type { SimState } from './state';
-import { Dir } from './dir';
 import { DEBRIS_SLOTS } from './tuning';
 
 /** The enemy's five rooms as target slots (spec Demo-x-c section 4): ENEMY_SLOT is the Hold (the old hull row: hull damage only) and the ship as a whole for Science; then one slot per system room. Never indices into the debris arrays. */
@@ -38,11 +38,17 @@ export function nextTarget(state: SimState, afterStableId: number, exclude: numb
   return list[0]!;
 }
 
-/** Up/Down cycle the warned targets by StableId with wrap; with none the cursor is -1. Shared by Weapons and Science (spec 2b-ii section 4). */
-export function cycleTarget(state: SimState, i: number, dir: number): void {
-  const list = warnedTargets(state), c = state.stations.cursor;
-  if (!list.length) { c[i] = -1; return; }
-  if (dir !== Dir.Up && dir !== Dir.Down) return;
-  const k = list.indexOf(c[i]!), n = list.length;
-  c[i] = list[k < 0 ? 0 : dir === Dir.Up ? (k + n - 1) % n : (k + 1) % n]!;
+/** Resolve identity before accessing a pool slot; enemy rooms are bounded separately. */
+export function resolveTarget(state: SimState, ref: TargetRef): number | null {
+  if (ref.kind === 'enemy') return state.enemy.present && state.enemy.stableId === ref.stableId && Number.isInteger(ref.room) && ref.room >= 0 && ref.room < 5 ? slotOfEnemyRoom(ref.room) : null;
+  const slot = state.debris.stableId.findIndex(id => id === ref.stableId);
+  return slot >= 0 && isTarget(state, slot) ? slot : null;
 }
+/** Pure slot-to-identity conversion for published rows and authoritative lifecycle transitions. */
+export function targetRef(state: SimState, slot: number): TargetRef | null {
+  if (slot < 0) return null;
+  return isEnemySlot(slot) ? { kind: 'enemy', stableId: state.enemy.stableId, room: enemyRoomOfSlot(slot) } : { kind: 'object', stableId: state.debris.stableId[slot]! };
+}
+export function weaponsTargetSlot(state: SimState): number { return state.weapons.target ? resolveTarget(state, state.weapons.target) ?? -1 : -1; }
+
+export function scienceTargetSlot(state: SimState): number { return state.science.target ? resolveTarget(state, state.science.target) ?? -1 : -1; }

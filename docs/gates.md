@@ -506,3 +506,113 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
 - [x] Gates re-recorded, unchanged (the new fields are write-only in the sim): `gate-skiff` 60.9 / 25.3 / 67.8 (min hull 54 / 42 / 90), `gate-duo` 27.2 / 57.5 / 57.7 (min hull 20 / 68 / 58); every other gate passes with its pinned figures. No floor moved.
 - [x] Claude's visual check: a stripped shot's reason, a matched hit, the marked selector (spec amendment 12).
 - [ ] Manual, the user: the couch checklist; the gunner reads the frequency and the shot results without being told.
+
+## Net-1a task 1: pinned offline baseline (2026-11-13)
+
+Baseline HEAD `88979b3` (game code `0a47e50`), SIM_VERSION **34**, layout hash `47b01080`, saved golden final hash **`0a644af3`**. No bless, version change, tuning change or floor change. Exact saved hashes still pass.
+
+Measured on Windows, AMD Ryzen 7 9700X (16 logical processors), Node **v24.18.0**, Vitest **3.2.7**, checked-in configuration: node environment, default forks pool, file parallelism enabled, automatic worker count, no worker CLI/environment overrides. Runs were serial on the same machine with warm dependency/filesystem caches. Commands include npm startup; acceptance uses the unchanged defaults (20 minutes; seeds 1/2/3; players 1/2/4).
+
+| Measurement | Run 1 (s) | Run 2 (s) | Run 3 (s) | Median (s) | Task 3 initial 1.5x ceiling (s) |
+|---|---:|---:|---:|---:|---:|
+| `npm test -- --reporter=dot` | 9.1849161 | 9.3151324 | 9.1134793 | **9.1849161** | 13.77737415 |
+| `npm run acceptance` | 1.8922747 | 1.6897844 | 1.6868335 | **1.6897844** | 2.5346766 |
+
+Each baseline suite run passed 1220 tests / 96 files with one existing skipped test/file. Full logs and timing samples are in `.superpowers/sdd/2026-11-13-net-1a-boundary/task-1-baseline-*`. These are the unchanged pre-implementation timings required by N5.
+
+All eight gates retain their original setup, per-tick fixture mutations, policy, duration and assertions. A test-only wrapper calls the real step with unchanged values, compresses identical input spans, records exact RNG stream changes and compares initial/final named gameplay projections and minima against `tests/fixtures/net1a-gates.json`. The Warden's one-tick `run` call is expanded to its identical direct step solely to observe it. Normal tests never rewrite either baseline fixture. Explicit capture scripts live under `scripts/capture-net1a-*.ts`.
+
+Numeric results below are current measured evidence, not acceptance floors. Health is printed to three decimals; fixtures retain the full Float64 values. Shots/hits are player shots/hits; boarding/killed are boarding parties/boarders killed; scrap is earned/spent/remaining.
+
+| Gate / seed | End tick | Min health | Min hull | Shots/hits | Encounters | Boarding/killed | Jumps | Scrap E/S/R |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| boarding:1 | 10800 | 29.050 | 70 | 3/1 | 2 | 1/2 | 2 | 48/0/48 |
+| boarding:2 | 10800 | 30.850 | 80 | 4/2 | 1 | 1/2 | 2 | 52/0/52 |
+| boarding:3 | 10800 | 22.625 | 60 | 7/7 | 2 | 1/2 | 2 | 52/0/52 |
+| cutter:1 | 18000 | 60.550 | 66 | 2/0 | 1 | 0/0 | 0 | 0/0/0 |
+| cutter:2 | 18000 | 58.100 | 56 | 1/0 | 1 | 0/0 | 0 | 0/0/0 |
+| cutter:3 | 18000 | 60.775 | 82 | 1/1 | 1 | 0/0 | 0 | 0/0/0 |
+| duo:1 | 18000 | 27.175 | 20 | 14/10 | 4 | 0/0 | 4 | 80/0/80 |
+| duo:2 | 18000 | 57.550 | 68 | 15/10 | 2 | 0/0 | 4 | 99/24/75 |
+| duo:3 | 18000 | 57.700 | 58 | 21/17 | 3 | 0/0 | 4 | 99/0/99 |
+| jump:1 | 56995 | 100.000 | 100 | 0/0 | 1 | 0/0 | 18 | 782/0/782 |
+| run:1 | 55794 | 100.000 | 90 | 0/0 | 1 | 0/0 | 18 | 822/30/792 |
+| skiff:1 | 18000 | 60.925 | 54 | 22/17 | 5 | 0/0 | 5 | 186/0/186 |
+| skiff:2 | 18000 | 25.325 | 42 | 7/3 | 2 | 0/0 | 4 | 80/24/56 |
+| skiff:3 | 18000 | 67.825 | 90 | 19/14 | 3 | 0/0 | 5 | 133/0/133 |
+| survival:1 | 18000 | 77.725 | 66 | 3/1 | 1 | 0/0 | 0 | 0/0/0 |
+| survival:2 | 18000 | 49.775 | 66 | 0/0 | 1 | 0/0 | 0 | 0/0/0 |
+| survival:3 | 18000 | 66.400 | 72 | 2/2 | 1 | 0/0 | 0 | 0/0/0 |
+| warden:0 | 16694 | 100.000 | 100 | 35/25 | 1 | 0/0 | 1 | 0/0/0 |
+| warden:2 | 11488 | 100.000 | 100 | 31/21 | 1 | 0/0 | 1 | 0/0/0 |
+
+Additional pinned outcomes: jump gate has **6 waits**, all **18 jumps**, sector 2/column 5, final beacon and Warden present, both crew conscious. Run gate resolves **1 event**, buys **1 repair**, earns **822**, spends **30**, ends with **792 scrap / 100 hull**, all 18 jumps and the Warden present. Warden Pulse-only is **35 shots / 25 hits / 270 seconds** from arrival; with Heavy Laser it is **31 / 21 / 183**, both victories. Boarding kills both boarders in every seed. Duo and Skiff health floors remain **25**. No gate floor was lowered.
+
+`tests/fixtures/net1a-baseline.json` pins 19 immutable scenarios: starter/Skiff/Cutter seeds 1-3; charge completion, direction+Confirm and destroyed targets; Science system/SWAP rows; held-stick Skiff Ops and Helm tab crossings including offline tabs (repeat changes at ticks **1, 9, 17, 25**); multi-seat vote and jump; Navigation Confirm on the exact ready tick; sector jump, visit reset and row reconciliation. Short scenarios retain every completed gameplay observation. The original seed-2026/four-player/7200-tick golden stores observations every 60 ticks and its final state, plus action/RNG change points, independent of any future translator.
+
+
+## Net-1a task 3: authority boundary parity and measured cost
+
+All eight gate families now run through the shared headless authority, loopback byte transport, copied replica and client translator. The test fixture barrier preserves the original owner object and publishes setup/mid-run mutations before decisions. The pinned action/RNG/gameplay traces and every figure/floor in the table above still match exactly. The saved golden hashes are unchanged; no SIM_VERSION bump or bless was performed. Default acceptance's nine output rows match the unmodified task-2 BASE exactly on all three final runs.
+
+Final verification on Node v24.18.0, the same machine and unchanged Vitest default worker configuration: **1403 tests passed across 107 files**, three consecutive full-suite runs. The existing conditional build-output test also ran because a build was present. Typecheck passed. Final timing samples include npm startup and ran serially with warm caches:
+
+| Command | Run 1 (s) | Run 2 (s) | Run 3 (s) | Median (s) | Original median (s) | Ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| `npm test -- --reporter=dot` | 42.9510012 | 43.2951542 | 42.9527250 | **42.9527250** | 9.1849161 | 4.6764x |
+| `npm run acceptance` | 22.5608266 | 22.5605756 | 29.5451174 | **22.5608266** | 1.6897844 | 13.3513x |
+
+The original 1.5x review ceilings were not met. Profiling identified repeated per-number schema work and redundant full-state validation in transport stream-key inspection. Keeping complete serialized delivery, strict endpoint validation and replica checksums, a bounded numeric-array validator plus framing-only metadata parsing reduced the measured 500-publication operation total from roughly 661ms to 70ms. No-edge bridge messages are omitted while every held frame still travels as bytes; redundant fixture publications are skipped only when complete canonical owner/replica values match.
+
+After that evidence, the execution controller explicitly approved revised wall-time review ceilings of **60s for the suite and 30s for default acceptance**, both met by the measured medians. Long gate/combat-tempo scenarios and the Old Drive ready-tick integration test have explicit 60s test timeouts; the global unit-test timeout remains 5s. Every seed, tick count, Confirm sequence, assertion and gameplay floor is retained.
+
+Pure held-only unit tests use the allowed empty-command phase executor. Snapshot malformed-input/serialization properties (including their unchanged bot-generated setup), and console/weapons invariant properties use a test-only explicit phase adapter with their original cases and assertions. The adapter's imports are restricted by a test to those three property-test modules. Separate valid-hardware snapshot continuation properties and all gate/parity/golden/acceptance drivers retain the complete byte path. These scoped unit-test choices do not introduce a production raw-input overload.
+
+The three full-suite/performance runs preceded a final terminal-only ingress guard: an owned next-sequence resume after ended/error now returns cached `unavailable` without resurrecting the run or replaying terminal effects. Both regressions were observed failing and then passed; the final authority suite is14/14 and typecheck passed. The controller explicitly accepted the existing performance samples because this guard affects stopped runs only.
+
+## Net-1a task 7: explicit Weapons commands
+
+Weapons now publishes stable aim identity, and fire/swap requests carry explicit target and equipment identities. All 24 independent parity tests and every gate trace retain their pinned gameplay, action and RNG results. No tuning, scenario, floor, pinned fixture, SIM_VERSION or golden-bless change was made. The raw-axis projection SHA-256 remains `e498ffb122f11c7c6fb0217a5f9a9bc350ae0ef78602be3ebfcb728572e2e1d1`; the projection still appends its independently mapped target field in its original serialization order.
+
+The scripted Warden driver now sends selectTarget/selectWeapon/fire through the shared byte runner instead of mutating canonical aim/selector. Pulse-only remains **35 shots / 25 hits / 270 seconds** (end tick **16694**); Heavy Laser remains **31 / 21 / 183** (end tick **11488**), both victories. Combat tempo seeds 1–3 retain passive hull loss **20 / 20 / 20**, first fights **kill 45s / surrender 66s / surrender 56s**, and sector-3 outcomes **surrender 68s, 2 hull lost / withdrawn 120s, 50 lost / surrender 88s, 0 lost**. Both crew survive each sector-3 case.
+
+Focused verification passed **208/208** tests in **14.40s**, including Weapons, target rooms, stable target lifecycle, both Warden gates, all nine tempo cases and the independent parity oracle. The full suite ran **1476 tests / 113 files** in **41.03s**: **1474 passed**, the permitted saved-golden-hash assertion first diverged at tick **60**, and one old controller assertion still expected a Weapons legacy-bridge message. That isolated assertion was updated to require no bridge message while preserving its no-vote and invalid-seat checks; the controller authorized focused re-verification rather than repeating the full suite for this test-only correction. Typecheck passes. Detailed RED/GREEN and final build/live evidence are recorded with the task execution report.
+
+## Net-1a task 8: authoritative Science target
+
+Science now publishes stable target identity and executes explicit scan, system-scan and frequency-lock commands. Scan housekeeping retains its phase before player commands; null/system selection pauses target progress without cancelling the scanning flag, and system scans run independently. The existing sit/reset, warning auto-selection, stable-order removal, stand/departure and XP behavior remain covered. The runtime legacy card bridge now admits Navigation only.
+
+All **24 independent gameplay parity cases**, all eight gate families and their pinned action/RNG/gameplay traces pass unchanged. The Warden and combat-tempo figures above remain unchanged. All **nine default acceptance rows** exactly match `task-3-benchmarks/20261113-181731/acceptance-baseline.log`, including end times, outcomes and every reported statistic. No tuning, scenario, floor, pinned fixture, SIM_VERSION or golden-bless change was made. The raw-axis projection SHA-256 remains `e498ffb122f11c7c6fb0217a5f9a9bc350ae0ef78602be3ebfcb728572e2e1d1`.
+
+A separate byte-path fixture records the required intentional stale-reference difference: at execution tick **0**, player 0 destroys target 99 and automatic removal retargets Science to 100; player 1's already-addressed `scan(99)` rejects instead of starting a scan on 100. The old implicit Confirm would set scanning to 1. The first difference is completed publication tick **1**, `science.scanning` (**old 1 / new 0**); a fresh Confirm from the replacement publication starts the new scan. This is not a changed gate or a weakened parity assertion.
+
+Final focused verification: **366/366 tests**, including 10 semantic Science cases, in **10.48s**. Frozen-source full suite: **1487 passed / 1488 total across 114 files in 43.57s**; the sole failure is the permitted saved-golden-hash assertion, first at tick **60**. All other golden assertions pass. Typecheck and production build pass. The unchanged default acceptance command exits 0. Detailed RED/GREEN, reader audit, fixture mappings and parent live-smoke evidence are recorded in the task execution report.
+
+## Net-1a task 9: Navigation and client card memory
+
+Navigation uses explicit purchase/travel/wait/evade commands and client-owned semantic rows. Canonical station cursor/page and Navigation row memory are removed; group tabs/occupants and Weapons/Science targets remain gameplay state. All **24 independent parity cases**, all eight gate families and their original action/RNG/gameplay traces retain their pinned results. The route gate reaches the Warden at completed tick **55794**, with **18 jumps**, **100 hull**, **822 scrap earned / 30 spent / 792 remaining**, one event resolved and one purchase. All **nine default acceptance rows** exactly match the Task-3 baseline, including every printed field. No tuning, floor, fixture, scenario values, SIM_VERSION or golden-bless change was made.
+
+The first full run recorded **1501 passed / 2 failed / 1503 total**, 115 files, **41.08s**. Besides the permitted saved-hash divergence at tick **60**, the route gate initially differed at tick **94**, `actions[94].inputs[0][1]`: old Up (-1), new neutral (0) with Confirm. A baseline/current probe traced this to the gate's direct replacement of its drawn event: its original scripted observer read numeric row 3 once before the old simulation reconciled choice 0 to row 2. The migrated client correctly reconciles before the scripted decision. A controller-approved, test-only one-decision observation preserves that specific fixture artifact; production keeps normal reconciliation and the oracle is unchanged. Corrected gate plus parity plus semantic Navigation passed **38/38 in 9.62s**, restoring the exact original trace. The controller accepted focused re-verification for this sole test-only correction; no second full-suite pass is claimed.
+
+Earlier focused validation passed **367/367 in 18 files**; final Navigation/group regression validation passed **27/27**. Typecheck and production build pass; unchanged default acceptance exits 0. Source freeze covers 276 source/test/script/build-input files. Detailed RED/GREEN, tick-94 old/new observations, fixture adaptation limits, reader audit and live-smoke evidence are recorded in the Task-9 execution report.
+
+## Net-1a task 10: published-state bot clients
+
+Acceptance now keeps one host-side bot controller per player and decides inside the outer pre-tick opportunity from the completed replica. Each bot uses the shared human translator for only its own player, preserving shared command/held sequences and avoiding neutral frames or repeat changes for other players. Controller captures are detached copies of the shared client UI, including the duplicate-decision tick guard; portable checkpoint storage remains Net-1b work.
+
+Every fixture bot decision compares `botFrame` on completed authoritative state and the decoded replica using separate identical UI copies, and checks both RNG states remain unchanged. Existing independent action/RNG/gameplay traces still guard policy changes common to both. The eight gate families and all 19 pinned cases match exactly: first divergence **none**. All numeric figures in the task-1 table above remain unchanged. In particular, duo minimum health remains **27.175 / 57.550 / 57.700**, Skiff **60.925 / 25.325 / 67.825**; their floors stay **25**. Jump/run end at **56995 / 55794** ticks with **18 jumps** each. Run scrap remains **822/30/792** and final hull **100**. Warden shots/hits remain **35/25** and **31/21**, with **270 / 183 seconds** from arrival.
+
+Final verification: **1508 passed / 1 permitted saved-hash failure**, **116 files**, **48.25s**, including all eight gate files. The sole failure is the deferred golden hash comparison at tick **60**; no SIM_VERSION change or bless occurred. Typecheck and production build pass. Unchanged default starter acceptance exits 0, with all **nine complete data rows exactly equal** to the original baseline. New byte-path tests cover two-player isolation, shared sequences, detached captures, unpublished/restarted runs, duplicate decisions, a poisoned live owner reference, the original two-tick direction releases, and calm-beacon/healing thresholds. Existing gunner target, surrender and grouped-tab tests also pass. No scenario, fixture, floor, strategy or tuning was changed.
+
+
+## Net-1a task 11: final semantic authority cutover
+
+Final production ingress accepts held movement/Interact, the closed semantic command union and contextual auxiliary callouts. The temporary bridge and renderer accumulator are removed. Reliable authority events supply cue, pause, callout and completion identities; clients buffer until state, deduplicate, coalesce cue playback in priority order, and apply each completion once even if storage callbacks fail. Callouts retain owned-player validation, separate sequence watermarks, Downed Help, Dead exclusion and three-second expiry without canonical/RNG changes.
+
+The golden test-local trace begins with a complete snapshot and replays held inputs plus semantic commands over the shared copied-byte authority path. Historical press conversion exists only under tests. Its 120 checkpoint projections and final gameplay match the independent task-1 pinned baseline; saved hash differences remain the expected accumulated canonical UI-removal/target-shape change. The separate parity oracle retains its exact original input pattern and allows only the final version metadata change. No floor, gate scenario, pinned fixture, bot strategy or gameplay tuning is changed.
+
+The execution controller inspected the entire pre-bless suite: **1518 passed / 1 named saved-hash failure**, **117 files**, **49.58s**, with first hash divergence at tick **60**. All eight gate families, the independent gameplay trace suite and all **120 golden checkpoints plus final state** matched their original pinned projections. Typecheck and build passed; the unchanged default acceptance command passed with all **nine complete data rows exactly equal** to the Task-3 baseline.
+
+Only then was SIM_VERSION bumped once, **34 to 35**, and the controller ran **npm run bless exactly once**. The new golden keeps **7200 ticks / 120 checkpoints**, a complete initial snapshot (**660 values / 20 sections**), and **13 explicit toggleDoorLocal commands**. First/final hashes changed from **98b0a043 / 0a644af3** to **5e92109c / b87a0284**, reflecting the accumulated canonical UI/target schema changes and final version metadata. Independent gameplay comparisons remain exact. Post-bless verification is **1519/1519 tests passing**, **117 files**, **45.43s**; typecheck and production build pass again. Source verification confirms only the version line and golden payload changed between the pre- and post-bless freezes.
+
+Durable replay/checkpoint v2, per-viewer HUD, recycling and real-browser cross-engine tests remain Net-1b work. Physical gamepads are unavailable and their checklist remains unchecked; virtual-pad evidence does not constitute physical-controller validation. Final-code live observations are recorded separately by the execution controller.

@@ -29,7 +29,7 @@ export function baseMax(state: SimState, kind: number): number { return STATION_
 /** Highest level a station may hold: the base plus the overdrive bar for every kind except Engineering (spec 2b-i section 4). */
 export function maxLevel(state: SimState, kind: number): number { return baseMax(state, kind) + (kind === StationKind.Engineering ? 0 : STATION_OVERDRIVE); }
 
-/** Engineering operator moves one bar to (+1) or from (-1) station i. Returns whether the allocation changed. */
+/** Explicit target station index, independent of any card selection. Engineering operator moves one bar to (+1) or from (-1) station i. Returns whether the allocation changed. */
 export function shiftBar(state: SimState, i: number, delta: 1 | -1): boolean {
   const d = state.derived, eng = d.stationOfKind[StationKind.Engineering]!;
   if (state.stations.failed[eng]) return false;                       // allocations frozen while Engineering is failed

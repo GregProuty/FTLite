@@ -1,19 +1,23 @@
+import { scienceTargetSlot } from '../sim/debrisTargets';
+import { weaponsTargetSlot } from '../sim/debrisTargets';
+import { cardRowIndex, type CardUiState } from './cardController';
+import type { InputFrame } from './inputFrame';
 import type { Intent } from '../../../shared/intent';
 import { NEUTRAL_INTENT } from '../../../shared/intent';
-import type { SimState } from './state';
-import { Position, Life, LifeState, Seated, Health } from './components';
-import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from './interact';
-import { navRows, beaconAt, overrun, type NavRow } from './run';
-import { EVENTS } from './events';
-import { StationKind } from './stationKinds';
-import { DoorState, roomAt, conditionRoomAt } from './grid';
-import { stationOnline } from './stations';
-import { quirkChargeMult } from './quirks';
-import { JUMP_CHARGE_TIME, TICK_HZ, WEAPON_SLOTS } from './tuning';
-import { Weapon, selectorList } from './weapons';
-import { weaponDef } from './weaponDefs';
-import { EnemySystem, enemySysUp } from './enemy';
-import { warnedTargets, ENEMY_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_WEAPONS_SLOT } from './debrisTargets';
+import type { SimState } from '../sim/state';
+import { Position, Life, LifeState, Seated, Health } from '../sim/components';
+import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
+import { navRows, beaconAt, overrun, type NavRow } from '../sim/run';
+import { EVENTS } from '../sim/events';
+import { StationKind } from '../sim/stationKinds';
+import { DoorState, roomAt, conditionRoomAt } from '../sim/grid';
+import { stationOnline } from '../sim/stations';
+import { quirkChargeMult } from '../sim/quirks';
+import { JUMP_CHARGE_TIME, TICK_HZ, WEAPON_SLOTS } from '../sim/tuning';
+import { Weapon, selectorList } from '../sim/weapons';
+import { weaponDef } from '../sim/weaponDefs';
+import { EnemySystem, enemySysUp } from '../sim/enemy';
+import { warnedTargets, ENEMY_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_WEAPONS_SLOT } from '../sim/debrisTargets';
 
 /** Bot self-preservation (spec Demo-ii section 10): below this health a bot keeps out of burning rooms; below BOT_RECOVER_HEALTH it stays in an online Medbay. Bot policy, not sim tuning. */
 export const BOT_RETREAT_HEALTH = 30;
@@ -83,14 +87,14 @@ function driveReady(state: SimState): boolean {
 }
 
 /** Run behaviour for pid 0 (spec Demo-i section 6): walk to Navigation when the drive is ready, sit, take the event's safe choice or the first jump row, stand after the jump. Null when the run behaviour is not active (pid > 0, no Navigation, or its console failed or offline: the hazard goals repair it). */
-function runIntent(state: SimState, pid: number, eid: number, here: number, blocked?: Set<number>): Intent | null {
+function runIntent(state: SimState, ui: CardUiState, pid: number, eid: number, here: number, blocked?: Set<number>): Intent | null {
   const nav = state.derived.stationOfKind[StationKind.Navigation]!;
   if (pid !== 0 || nav < 0 || !stationOnline(state, nav)) return null;
   const r = state.run, pending = r.event >= 0 && r.eventChoice < 0, seated = Seated.station[eid]! >= 0 && state.stations.occupant[nav] === pid, ready = driveReady(state);   // at Navigation, or on another tab of its console group (spec Demo-xiii amendment 3)
   if (seated) {
     if (!ready && !pending) return { ...NEUTRAL_INTENT, cancelPressed: true };
-    const tab = tabTo(state, eid, nav); if (tab) return tab;   // back to the Helm tab first
-    const rows = navRows(state), c = state.stations.cursor[nav]!;
+    const tab = tabTo(state, ui, eid, nav); if (tab) return tab;   // back to the Helm tab first
+    const rows = navRows(state), c = cardRowIndex(state, nav, ui);
     const t = pending ? rows.findIndex((row) => row.select === 'choice' && row.index === EVENTS[r.event]!.safeChoice) : wayOnRow(state, rows);
     if (t < 0) return NEUTRAL_INTENT;
     if (c !== t) return state.tick % 2 === 0 ? { ...NEUTRAL_INTENT, moveY: t > c ? 1 : -1 } : NEUTRAL_INTENT;   // one stick edge per two ticks
@@ -188,12 +192,12 @@ const CANCEL: Intent = { ...NEUTRAL_INTENT, cancelPressed: true };
 const press = (state: SimState, moveX: number, moveY: number): Intent => (state.tick % 2 === 0 ? { ...NEUTRAL_INTENT, moveX, moveY } : NEUTRAL_INTENT);
 
 /** The tab-bar presses that bring a seated bot to `station`'s tab of its console group (spec Demo-x-a section 1): Up to the bar, Left/Right to the tab, Down back to the rows. Null when already there, or not at a group. */
-function tabTo(state: SimState, eid: number, station: number): Intent | null {
+function tabTo(state: SimState, ui: CardUiState, eid: number, station: number): Intent | null {
   const d = state.derived, g = d.stationGroup[station]!;
   if (g < 0) return null;
   const members = d.groupStations[g]!, k = members.indexOf(station), n = members.length, gr = state.groups;
-  if (Seated.station[eid] === station && !gr.bar[g]) return null;
-  if (!gr.bar[g]) return press(state, 0, -1);
+  if (Seated.station[eid] === station && !ui.groupBar[g]) return null;
+  if (!ui.groupBar[g]) return press(state, 0, -1);
   if (gr.tab[g] !== k) { const right = (k - gr.tab[g]! + n) % n; return press(state, right <= n - right ? 1 : -1, 0); }
   return press(state, 0, 1);
 }
@@ -248,18 +252,18 @@ function gunnerPlan(state: SimState): { selector: number; slot: number; ready: b
 }
 
 /** Seated at the guns: the Weapons tab, the cursor on the room, the selector on the weapon, then Confirm; nothing while a surrender is offered. */
-function gunnerInput(state: SimState, eid: number, wpn: number): Intent {
-  const tab = tabTo(state, eid, wpn); if (tab) return tab;
+function gunnerInput(state: SimState, ui: CardUiState, eid: number, wpn: number): Intent {
+  const tab = tabTo(state, ui, eid, wpn); if (tab) return tab;
   const e = state.enemy, w = state.weapons;
   if (e.fleeing && e.surrenderIntact) return NEUTRAL_INTENT;   // take the scrap: any damage voids the surrender
-  const plan = gunnerPlan(state), c = state.stations.cursor[wpn]!, grouped = state.derived.stationGroup[wpn]! >= 0;
+  const plan = gunnerPlan(state), c = weaponsTargetSlot(state), grouped = state.derived.stationGroup[wpn]! >= 0;
   if (c !== plan.slot) return press(state, 0, cycleToward(warnedTargets(state), c, plan.slot, grouped));
   if (w.selector !== plan.selector) { const list = selectorList(state), k = list.indexOf(w.selector), j = list.indexOf(plan.selector), n = list.length, right = (j - k + n) % n; return press(state, right <= n - right ? 1 : -1, 0); }
   return plan.ready ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;
 }
 
 /** The gunner's duty (spec Demo-xiii section 3): to the guns while an enemy is present, unless called away (amendment 2) or, as the captain, the jump comes first; at them, fire. Null when this bot has no gunner duty this tick. */
-function gunnerIntent(state: SimState, pid: number, eid: number, here: number, blocked?: Set<number>): Intent | null {
+function gunnerIntent(state: SimState, ui: CardUiState, pid: number, eid: number, here: number, blocked?: Set<number>): Intent | null {
   const d = state.derived, wpn = d.stationOfKind[StationKind.Weapons]!;
   if (pid !== gunnerPid(state)) return null;
   const g = d.stationGroup[wpn]!, members = g >= 0 ? d.groupStations[g]! : [wpn], seat = Seated.station[eid]!, atGuns = seat >= 0 && members.includes(seat);
@@ -267,7 +271,7 @@ function gunnerIntent(state: SimState, pid: number, eid: number, here: number, b
   if (pid === 0 && nav >= 0 && stationOnline(state, nav) && (driveReady(state) || (r.event >= 0 && r.eventChoice < 0))) return atGuns && !helm ? CANCEL : null;   // the captain's jump and vote come first (runIntent)
   if (!state.enemy.present || !stationOnline(state, wpn) || gunnerCalled(state, pid, eid, here)) return atGuns ? CANCEL : null;
   if (seat < 0 && Health.cur[eid]! < BOT_GUN_HEAL_HEALTH) { const mr = recoveryRoom(state, Health.cur[eid]!); if (mr >= 0) { if (roomAt(state, Position.x[eid]!, Position.y[eid]!) === mr) return NEUTRAL_INTENT; const step = firstStep(state, here, new Set(d.roomTiles[mr]!), blocked); if (step >= 0) return walkTo(state, eid, step); } }   // a gunner below BOT_GUN_HEAL_HEALTH heals first, to BOT_RECOVER_HEALTH in an online Medbay, before it takes the guns (amendment 2)
-  if (atGuns) return gunnerInput(state, eid, wpn);
+  if (atGuns) return gunnerInput(state, ui, eid, wpn);
   if (seat >= 0 || state.stations.occupant[wpn]! >= 0) return null;
   const c = confirmTarget(state, pid);
   if (c.kind === ConfirmKind.Console && members.includes(c.index)) return { ...NEUTRAL_INTENT, confirmPressed: true };
@@ -276,20 +280,20 @@ function gunnerIntent(state: SimState, pid: number, eid: number, here: number, b
 }
 
 /** A seated Science bot with nothing running scans the enemy ship (spec Demo-xiii section 3): the cursor to the ship row, then Confirm. Null otherwise. */
-function scienceIntent(state: SimState, eid: number): Intent | null {
+function scienceIntent(state: SimState, ui: CardUiState, eid: number): Intent | null {
   const sci = state.derived.stationOfKind[StationKind.Science]!, e = state.enemy;
   if (sci < 0 || Seated.station[eid] !== sci || !e.present || e.scanned || state.science.scanning || !stationOnline(state, sci)) return null;
   const g = state.derived.stationGroup[sci]!;
-  if (g >= 0 && state.groups.bar[g]) return press(state, 0, 1);   // off the tab bar
-  const c = state.stations.cursor[sci]!, list = [...warnedTargets(state, false), -1];
+  if (g >= 0 && ui.groupBar[g]) return press(state, 0, 1);   // off the tab bar
+  const c = scienceTargetSlot(state), list = [...warnedTargets(state, false), -1];
   if (c !== ENEMY_SLOT) return press(state, 0, cycleToward(list, c < 0 ? -1 : c, ENEMY_SLOT, g >= 0));
   return { ...NEUTRAL_INTENT, confirmPressed: true };
 }
 
-export function botIntent(state: SimState, pid: number): Intent {
+function botIntent(state: SimState, ui: CardUiState, pid: number): Intent {
   const eid = state.crew[pid]!;
   if (Life.state[eid] !== LifeState.Conscious) return NEUTRAL_INTENT;
-  const it = dutyIntent(state, pid, eid), r = state.run;
+  const it = dutyIntent(state, ui, pid, eid), r = state.run;
   if (Seated.station[eid] !== -1) {   // seated (spec Demo-xi amendment 4): a crew member who is not the Navigation occupant votes the safe choice and agrees to a pending jump from the seat, like a standing bot
     const nav = state.derived.stationOfKind[StationKind.Navigation]!;
     if (nav >= 0 && state.stations.occupant[nav] === pid) return it;
@@ -303,7 +307,7 @@ export function botIntent(state: SimState, pid: number): Intent {
   return it;
 }
 
-function dutyIntent(state: SimState, pid: number, eid: number): Intent {
+function dutyIntent(state: SimState, ui: CardUiState, pid: number, eid: number): Intent {
   const here = Math.floor(Position.y[eid]!) * state.derived.width + Math.floor(Position.x[eid]!);
   const raw = interactTarget(state, pid), target = raw.kind === TargetKind.Pickup || raw.kind === TargetKind.Deliver ? { kind: TargetKind.None, index: -1 } : raw;   // bots never run torpedoes (spec Coop-ii section 2)
   if (target.kind === TargetKind.Fight || target.kind === TargetKind.Revive) return { ...NEUTRAL_INTENT, interactHeld: true };   // urgent: outranks every run behaviour
@@ -316,13 +320,19 @@ function dutyIntent(state: SimState, pid: number, eid: number): Intent {
     const retreat = retreatIntent(state, pid, eid, here, blocked, target); if (retreat) return retreat;
     if (!blocked.size) blocked = undefined;
   }
-  const gun = gunnerIntent(state, pid, eid, here, blocked); if (gun) return gun;
-  const sci = scienceIntent(state, eid); if (sci) return sci;
-  const run = runIntent(state, pid, eid, here, blocked); if (run) return run;
+  const gun = gunnerIntent(state, ui, pid, eid, here, blocked); if (gun) return gun;
+  const sci = scienceIntent(state, ui, eid); if (sci) return sci;
+  const run = runIntent(state, ui, pid, eid, here, blocked); if (run) return run;
   const goals = goalTiles(state, pid, here);
   if (target.kind !== TargetKind.None) return { ...NEUTRAL_INTENT, interactHeld: true };
   if (!goals.size) return NEUTRAL_INTENT;
   const next = firstStep(state, here, goals, blocked);
   if (next < 0) return NEUTRAL_INTENT;
   return walkTo(state, eid, next);
+}
+
+/** Pure policy: completed state and client UI in, the original device cadence out. */
+export function botFrame(view: SimState, ui: CardUiState, player: number): InputFrame {
+  const input = botIntent(view, ui, player);
+  return { moveX: input.moveX, moveY: input.moveY, interactHeld: input.interactHeld, interactPresses: Number(input.interactPressed), confirmPresses: Number(input.confirmPressed), cancelPresses: Number(input.cancelPressed) };
 }

@@ -1,36 +1,17 @@
+import { calloutFor, type CalloutText } from '../events/callout';
+export { calloutFor } from '../events/callout';
+export type { CalloutText } from '../events/callout';
 import type { SimState } from '../sim/state';
-import { Life, LifeState, Position, Seated } from '../sim/components';
-import { interactTarget, TargetKind } from '../sim/interact';
-import { STATION_NAMES } from '../sim/stationKinds';
-import { baseMax } from '../sim/power';
+import { Life, LifeState, Position } from '../sim/components';
 import { TICK_HZ } from '../sim/tuning';
 import { TILE_PX } from '../../../shared/resolution';
 
 /** Callouts (spec Coop-i section 3): presentation only. They live in the app and render layers and never enter Intent, replays or snapshots. */
 export const CALLOUT_SECONDS = 3;
 
-export interface CalloutText { text: string; icon: string | null; flash: number | null }
 /** One press: who, the sim tick it was made on, and what it said then (the text is fixed at the press). */
 export interface Callout extends CalloutText { pid: number; tick: number }
 export interface Bubble { pid: number; text: string; icon: string | null }
-
-const OVER_HERE: CalloutText = { text: 'Over here!', icon: null, flash: null };
-
-/** What a press says for this player right now: downed, seated below full power, beside a fire, breach or failed station, else Over here!. */
-export function calloutFor(state: SimState, pid: number): CalloutText {
-  const eid = state.crew[pid]!;
-  if (Life.state[eid] === LifeState.Downed) return { text: 'Help!', icon: 'icon.medical', flash: null };
-  const seat = Seated.station[eid]!;
-  if (seat >= 0) {
-    const kind = state.derived.stationKind[seat]!;
-    return state.stations.level[seat]! < baseMax(state, kind) ? { text: `Power to ${STATION_NAMES[kind]}!`, icon: 'icon.power', flash: kind } : OVER_HERE;
-  }
-  const t = interactTarget(state, pid);
-  if (t.kind === TargetKind.Fire) return { text: 'Fire here!', icon: 'icon.fire', flash: null };
-  if (t.kind === TargetKind.Breach) return { text: 'Breach here!', icon: 'icon.breach', flash: null };
-  if (t.kind === TargetKind.Power) return { text: 'Repair here!', icon: 'icon.repair', flash: null };
-  return OVER_HERE;
-}
 
 const live = (c: Callout, nowTick: number): boolean => nowTick >= c.tick && nowTick - c.tick < CALLOUT_SECONDS * TICK_HZ;
 

@@ -1,8 +1,9 @@
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { boarderSystem, damageBoarder, killBoarderByHazard, boarderTarget, boardersInRoom, activeBoarderCount, combatDps, combatDefence, roomCentre, boarderMarkers, ALONE_IDLE, ALONE_SABOTAGED } from '../src/renderer/src/sim/boarders';
 import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { rawStress, anyUnattended, activeHazardCount } from '../src/renderer/src/sim/director';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { botIntent } from './helpers/bot';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { stationOutput } from '../src/renderer/src/sim/stations';
 import { failStation, repairStation } from '../src/renderer/src/sim/power';
@@ -290,7 +291,7 @@ describe('boarders: vacuum and fire (spec Demo-ix section 1, amendments B6 and B
     sitDown(s, 0, doors); teleport(s, 1, 16.5, 3.5);                                                 // player 1 waits in the Medbay
     for (let e = 0; e < d.edgeA.length; e++) if (d.edgeIsDoor[e] && (d.edgeA[e] === E || d.edgeB[e] === E)) s.doors.state[e] = DoorState.Sealed;
     const k0 = placeBoarder(s, E), k1 = placeBoarder(s, E);
-    s.stations.cursor[doors] = d.doorEdges.length + 2;                                               // the Engines airlock
+    cardSelection(s, doors).cursor = d.doorEdges.length + 2;                                               // the Engines airlock
     run(s, 1, () => intents({ confirmPressed: true }, {})); run(s, 1, () => intents({}, {}));
     expect(s.airlocks.open[2]).toBe(1);
     const opened = s.tick - 2;

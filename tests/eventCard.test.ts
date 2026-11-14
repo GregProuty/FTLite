@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { TICK_HZ, VOTE_SECONDS, VOTE_SETTLE } from '../src/renderer/src/sim/tuning';
 import { EVENTS, EVENT_DEFS } from '../src/renderer/src/sim/events';
@@ -35,7 +36,7 @@ describe('events wait for the crew (spec Demo-x-b section 2)', () => {
     run(s, 2); expect(s.run.eventChoice).toBe(0);
   });
   it('the seated officer’s row vote starts the limit', () => {
-    const s = open(4, 2); const n = seatNavigator(s, 0); run(s, 30 * T); s.stations.cursor[n] = 3;
+    const s = open(4, 2); const n = seatNavigator(s, 0); run(s, 30 * T); cardSelection(s, n).cursor = 3;
     const first = s.tick; run(s, 1, press(0)); expect(s.run.vote[0]).toBe(1); expect(s.run.eventOpenTick).toBe(first);
   });
   it('arrival at an Event beacon opens the event without starting the limit', () => {

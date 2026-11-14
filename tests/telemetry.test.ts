@@ -1,3 +1,4 @@
+import { weaponSelection, fireFixtureWeapon } from './helpers/weaponFixture';
 import { describe, it, expect } from 'vitest';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
 import { runScore } from '../src/renderer/src/sim/score';
@@ -5,14 +6,14 @@ import { telemetrySystem, telemetryRecord, eventSeconds, durationSeconds } from 
 import { hashState } from '../src/renderer/src/sim/hash';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { Skill } from '../src/renderer/src/sim/skills';
-import { step } from '../src/renderer/src/sim/step';
+import { step } from './helpers/rawInput';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { failStation, powerUsed } from '../src/renderer/src/sim/power';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { downCrew, EndReason } from '../src/renderer/src/sim/crew';
 import { debrisSystem } from '../src/renderer/src/sim/debris';
-import { fireWeapon, beamHits, Weapon } from '../src/renderer/src/sim/weapons';
+import { beamHits, Weapon } from '../src/renderer/src/sim/weapons';
 import { stationOutput } from '../src/renderer/src/sim/stations';
 import { Health, Life, LifeState, Seated } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -234,15 +235,15 @@ describe('telemetry: event counters', () => {
   });
   it('shots and hits: a beam hit, a beam miss, a torpedo hit, and a rejected attempt with no charge', () => {
     const B = room(makeState(1), 'B');
-    const hit = makeState(1), w1 = wpn(hit); sitDown(hit, 0, w1); placeDebris(hit, B, 600, 1); hit.stations.cursor[w1] = 0; hit.weapons.charge = 1; hit.rng.combat.s = 7;   // 0.012: hits at any threshold
-    expect(fireWeapon(hit)).toBe(true); expect([hit.telemetry.shots, hit.telemetry.hits]).toEqual([1, 1]);
-    const miss = makeState(1), w2 = wpn(miss); sitDown(miss, 0, w2); placeDebris(miss, B, 600, 1, undefined, 3); miss.stations.cursor[w2] = 0; miss.weapons.charge = 1; miss.weapons.selector = 0; miss.rng.combat.s = 4;
+    const hit = makeState(1), w1 = wpn(hit); sitDown(hit, 0, w1); placeDebris(hit, B, 600, 1); weaponSelection(hit).cursor = 0; hit.weapons.charge = 1; hit.rng.combat.s = 7;   // 0.012: hits at any threshold
+    expect(fireFixtureWeapon(hit)).toBe(true); expect([hit.telemetry.shots, hit.telemetry.hits]).toEqual([1, 1]);
+    const miss = makeState(1), w2 = wpn(miss); sitDown(miss, 0, w2); placeDebris(miss, B, 600, 1, undefined, 3); weaponSelection(miss).cursor = 0; miss.weapons.charge = 1; miss.weapons.selector = 0; miss.rng.combat.s = 4;
     expect(beamHits(nextFloat(createRng(4)), stationOutput(miss, w2), false)).toBe(false);   // guard: 0.924 misses an unmatched frequency at the starter output
-    expect(fireWeapon(miss)).toBe(false); expect([miss.telemetry.shots, miss.telemetry.hits]).toEqual([1, 0]);
-    const torp = makeState(1), w3 = wpn(torp); sitDown(torp, 0, w3); placeDebris(torp, B, 600, 1); torp.stations.cursor[w3] = 0; torp.weapons.selector = Weapon.Torpedo; torp.weapons.torpedoLoaded = 1; torp.rng.combat.s = 7;
-    expect(fireWeapon(torp)).toBe(true); expect([torp.telemetry.shots, torp.telemetry.hits]).toEqual([1, 1]);
-    const none = makeState(1), w4 = wpn(none); sitDown(none, 0, w4); placeDebris(none, B, 600, 1); none.stations.cursor[w4] = 0; none.weapons.charge = 0.5;
-    expect(fireWeapon(none)).toBe(false); expect([none.telemetry.shots, none.telemetry.hits]).toEqual([0, 0]);
+    expect(fireFixtureWeapon(miss)).toBe(false); expect([miss.telemetry.shots, miss.telemetry.hits]).toEqual([1, 0]);
+    const torp = makeState(1), w3 = wpn(torp); sitDown(torp, 0, w3); placeDebris(torp, B, 600, 1); weaponSelection(torp).cursor = 0; torp.weapons.selector = Weapon.Torpedo; torp.weapons.torpedoLoaded = 1; torp.rng.combat.s = 7;
+    expect(fireFixtureWeapon(torp)).toBe(true); expect([torp.telemetry.shots, torp.telemetry.hits]).toEqual([1, 1]);
+    const none = makeState(1), w4 = wpn(none); sitDown(none, 0, w4); placeDebris(none, B, 600, 1); weaponSelection(none).cursor = 0; none.weapons.charge = 0.5;
+    expect(fireFixtureWeapon(none)).toBe(false); expect([none.telemetry.shots, none.telemetry.hits]).toEqual([0, 0]);
   });
   it('repairs count each kind once on completion, even with two holders', () => {
     const f = makeState(1), G = room(f, 'G'); quiet(f); igniteRoom(f, G); teleport(f, 0, 2.5, 9.5);

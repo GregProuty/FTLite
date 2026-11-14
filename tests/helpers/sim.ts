@@ -3,7 +3,8 @@ import starter from '../../src/renderer/src/sim/ship/starter.json';
 import cutter from '../../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { createSimState, type SimState, type SimOptions } from '../../src/renderer/src/sim/state';
-import { step } from '../../src/renderer/src/sim/step';
+import { step, neutralFixtureTick } from './rawInput';
+import { stepCommands } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
 import { NodeType } from '../../src/renderer/src/sim/run';
@@ -37,8 +38,11 @@ export function intents(...per: Partial<Intent>[]): Intent[] {
   return per.map((p) => ({ ...NEUTRAL_INTENT, ...p }));
 }
 
-export function run(state: SimState, ticks: number, perTick: (tick: number) => Intent[] = () => []): void {
-  for (let i = 0; i < ticks; i++) step(state, perTick(state.tick));
+export function run(state: SimState, ticks: number, perTick?: (tick: number) => Intent[]): void {
+  for (let i = 0; i < ticks; i++) {
+    if (perTick) step(state, perTick(state.tick));
+    else { neutralFixtureTick(state); stepCommands(state, { held: [], commands: [] }); }
+  }
 }
 
 export function teleport(state: SimState, pid: number, x: number, y: number): void {

@@ -1,10 +1,10 @@
 import type { SimState } from './state';
 import { StationKind } from './stationKinds';
 import { stationOnline, stationOutput } from './stations';
-import { warnedTargets, ENEMY_SLOT, isEnemySlot } from './debrisTargets';
+import { resolveTarget, scienceTargetSlot, ENEMY_SLOT, isEnemySlot } from './debrisTargets';
 import { DT, SCAN_TIME, LOCK_SECONDS, TICK_HZ, SYSTEM_SCAN_TIME, SCAN_DETECT_BASE, SCAN_DETECT_SKILL, SCAN_DETECT_MAX, CACHE_FUEL, CACHE_FUEL_CHANCE, scrapCache } from './tuning';
 import { lockActive } from './enemy';
-import { Dir } from './dir';
+import type { TargetRef } from '../net/contracts';
 import { nextFloat } from '../../../shared/rng';
 import { skillLevelOf } from './skills';
 import { Skill } from './skillIds';
@@ -21,14 +21,6 @@ export function scanDetectChance(level: number): number { return Math.min(SCAN_D
 /** The chance for the officer seated at Science console i (level 0 with nobody seated). */
 export function detectChance(state: SimState, i: number): number { const occ = state.stations.occupant[i]!; return scanDetectChance(occ >= 0 ? skillLevelOf(state, occ, Skill.Science) : 0); }
 
-/** Science's Up/Down (spec 2b-ii section 4, Demo-x-b section 3): the warned targets by StableId, then the system row (cursor -1), with wrap. */
-function scienceCycle(state: SimState, i: number, dir: number): void {
-  if (dir !== Dir.Up && dir !== Dir.Down) return;
-  const list = [...warnedTargets(state, false), -1], c = state.stations.cursor, n = list.length;   // the enemy ship as one row (spec Demo-x-c section 4)
-  const k = list.indexOf(c[i]! < 0 ? -1 : c[i]!);
-  c[i] = list[k < 0 ? 0 : dir === Dir.Up ? (k + n - 1) % n : (k + 1) % n]!;
-}
-
 /** Confirm on the system row: the one scan of this beacon visit starts (spec Demo-x-b section 3). False when Science is offline or the scan already ran. */
 export function startSystemScan(state: SimState, i: number): boolean {
   const sc = state.science;
@@ -36,7 +28,7 @@ export function startSystemScan(state: SimState, i: number): boolean {
   sc.systemState = SystemScan.Running; sc.systemStartTick = state.tick; return true;
 }
 
-/** Once per tick: a running system scan progresses while Science is online and occupied, wherever the cursor is; at 1 it resolves. */
+/** Once per tick: a running system scan progresses while Science is online and occupied, wherever the target is; at 1 it resolves. */
 export function systemScanStep(state: SimState): void {
   const sc = state.science;
   if (sc.systemState !== SystemScan.Running) return;
@@ -63,32 +55,33 @@ function resolveSystemScan(state: SimState, sci: number): void {
   sc.systemState = SystemScan.Done; sc.systemTick = state.tick; sc.systemResult = res | (charted << 3);
 }
 
-/** A lock is possible (spec Coop-i section 1): Science online with the cursor on the scanned enemy's hull row and no lock running. */
+/** A lock is possible (spec Coop-i section 1): Science online with the target on the scanned enemy's hull row and no lock running. */
 export function canLock(state: SimState, i: number): boolean {
   const e = state.enemy;
-  return stationOnline(state, i) && state.stations.cursor[i] === ENEMY_SLOT && e.present === 1 && e.scanned === 1 && !lockActive(state);
+  return stationOnline(state, i) && scienceTargetSlot(state) === ENEMY_SLOT && e.present === 1 && e.scanned === 1 && !lockActive(state);
 }
 
-/** Seated Science input: Up/Down cycle warned targets and the system row; Confirm starts a scan of the selected unscanned object or of the enemy hull row (spec 2b-ii section 4, Combat-ii section 5), or the system scan on its row (spec Demo-x-b section 3). */
-export function scienceInput(state: SimState, i: number, dir: number, confirm: boolean): void {
-  scienceCycle(state, i, dir);
-  if (!confirm) return;
-  const c = state.stations.cursor[i]!, db = state.debris, e = state.enemy;
-  if (c < 0) { startSystemScan(state, i); return; }   // the system row (spec Demo-x-b section 3)
-  if (isEnemySlot(c)) {
-    if (c === ENEMY_SLOT && e.present && !e.scanned) state.science.scanning = 1;   // only the hull row scans the ship (spec Combat-ii section 5)
-    else if (canLock(state, i)) e.lockUntilTick = state.tick + LOCK_SECONDS * TICK_HZ;   // scanned: Confirm locks the frequency for Weapons (spec Coop-i section 1)
-    return;
-  }
-  if (db.active[c] && db.warned[c] && !db.scanned[c]) state.science.scanning = 1;
+/** Start a scan of the explicitly identified object or enemy hull. No target is inferred from UI. */
+export function startTargetScan(state: SimState, i: number, target: TargetRef): boolean {
+  if (!stationOnline(state, i) || state.derived.stationKind[i] !== StationKind.Science) return false;
+  const slot = resolveTarget(state, target);
+  if (slot === null || (isEnemySlot(slot) ? slot !== ENEMY_SLOT || state.enemy.scanned === 1 : state.debris.scanned[slot] === 1)) return false;
+  state.science.target = { ...target }; state.science.scanning = 1; return true;
 }
 
-/** Once per tick: the running scan progresses while Science is online and occupied and its cursor is an unscanned warned object or the unscanned enemy hull row. */
+/** Lock the identified enemy's known frequency; aiming and the command remain independent. */
+export function lockFrequency(state: SimState, i: number, enemyId: number): boolean {
+  const e = state.enemy;
+  if (!stationOnline(state, i) || state.derived.stationKind[i] !== StationKind.Science || !e.present || e.stableId !== enemyId || !e.scanned || lockActive(state)) return false;
+  e.lockUntilTick = state.tick + LOCK_SECONDS * TICK_HZ; return true;
+}
+
+/** Once per tick: the running scan progresses while Science is online and occupied and its target is an unscanned warned object or the unscanned enemy hull row. */
 export function scanStep(state: SimState): void {
   if (!state.science.scanning) return;
   const sci = state.derived.stationOfKind[StationKind.Science]!;
   if (sci < 0 || !stationOnline(state, sci) || state.stations.occupant[sci]! < 0) return;
-  const c = state.stations.cursor[sci]!, db = state.debris, e = state.enemy;
+  const c = scienceTargetSlot(state), db = state.debris, e = state.enemy;
   if (c < 0) return;
   if (isEnemySlot(c)) {
     if (c !== ENEMY_SLOT || !e.present || e.scanned) return;

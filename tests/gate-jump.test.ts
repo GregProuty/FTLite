@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
+import { botIntent } from './helpers/bot';
 import { confirmTarget, ConfirmKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { EndReason } from '../src/renderer/src/sim/crew';
@@ -14,12 +14,13 @@ import { makeState, quiet, room, RECRUITS, allHazard } from './helpers/sim';
 const JUMPS = SECTORS * SECTOR_COLUMNS;
 const WAITS_MAX = 12;
 describe('jump gate: a scripted navigator jumps the quiet ship through every sector', () => {
-  it('seed 1, two Recruits: eighteen jumps with waits for fuel, the final beacon and the Warden arriving, both alive, within 18 x (charge + 10) + 12 waits seconds', () => {
+  it('seed 1, two Recruits: eighteen jumps with waits for fuel, the final beacon and the Warden arriving, both alive, within 18 x (charge + 10) + 12 waits seconds', { timeout: 60_000 }, () => {
     const s = makeState(2, 1, RECRUITS, { quirk: 3 }); quiet(s);   // Lucky Hull: no debris flies in this gate, so the quirk is inert
     allHazard(s); const silence = () => { if (!s.run.finalBeacon) s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; };   // a quiet ship: no enemy (pursuit fights included) before the final beacon and no boarders, every tick
     const nav = s.derived.stationOfKind[StationKind.Navigation]!, A = room(s, 'A'), eid = s.crew[0]!;
     let seatedOnce = false, waits = 0, lastSector = 0, wasWaiting = false;
     const limit = (JUMPS * (JUMP_CHARGE_TIME + 10) + WAITS_MAX * WAIT_SECONDS) * TICK_HZ;
+    beginGateTrace(s, 'jump:1');
     for (let t = 0; t < limit && !s.ended && !(s.run.finalBeacon && s.enemy.present); t++) {
       silence();
       let p0 = { ...NEUTRAL_INTENT };
@@ -29,6 +30,7 @@ describe('jump gate: a scripted navigator jumps the quiet ship through every sec
       if (s.run.sector !== lastSector) { lastSector = s.run.sector; allHazard(s); }   // each new sector's map is quiet too
       const waiting = s.run.waitUntilTick >= 0; if (waiting && !wasWaiting) waits++; wasWaiting = waiting;
     }
+    assertGateTrace(s);
     expect(seatedOnce).toBe(true);
     expect([s.telemetry.jumps, s.run.sector, s.run.column, s.run.finalBeacon, s.enemy.present, s.ended, s.endReason]).toEqual([JUMPS, SECTORS - 1, SECTOR_COLUMNS - 1, 1, 1, 0, EndReason.None]);   // the Warden has arrived
     expect(waits).toBeGreaterThan(0);   // eight fuel do not cover eighteen jumps (spec section 2)

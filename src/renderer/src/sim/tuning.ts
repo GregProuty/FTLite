@@ -4,7 +4,7 @@ export const DT = 1 / TICK_HZ;
 export const HAZARD_EVERY = 5;                 // hazards run every 5th tick (12 Hz)
 export const HAZARD_DT = DT * HAZARD_EVERY;
 export const O2_K = 6;                         // oxygen diffusion rate (per second, per unit conductance)
-export const SIM_VERSION = 34;
+export const SIM_VERSION = 35;
 export const TELEMETRY_KEEP = 50;   // game-over records kept in localStorage (spec 4-ii section 7)
 export const REPAIR_FIRE = 0, REPAIR_BREACH = 1, REPAIR_POWER = 2;   // indices into telemetry.repairs (spec 4-ii section 5)
 export const ACCEPTANCE_MINUTES = 20;   // default soak length for npm run acceptance
@@ -142,7 +142,7 @@ export const SINCE_CAP = 36000;                        // ticks: sinceProductive
 
 // Enemy ship (Combat-i)
 export const ENCOUNTER_FIRST = 210, ENCOUNTER_MAX = 120;   // seconds: the hazard gates' first arrival (the game has no timed first enemy since Loop-i section 4b), stay (survival-gate fallback, spec Combat-i section 13; first pass 180); one enemy per node, no cooldown (spec Demo-vi section 2)
-export const NEVER = 2 ** 31 - 1;                      // a tick that never comes: no further arrival at this node
+export const NEVER = 2147483647;                      // a tick that never comes: no further arrival at this node
 export const ENCOUNTER_START = 8, ENCOUNTER_REWARD_HULL = 8, ENCOUNTER_BOOST = 4, ENCOUNTER_NOTICE_SECONDS = 8, ENCOUNTER_SPAWN_MULT = 2;   // spec Demo-vi: seconds from a Hazard-node arrival to contact, hull for a win, drive charge multiplier after a win, notice seconds, director interval multiplier while fighting
 export const SHOT_BREACH_FIRST = 0.25;                 // a Shot impact tries a breach first below this roll, else a fire first (debris 0.5; spec Demo-vi section 3)
 export const ENEMY_HULL = 100, ENEMY_FIRST_SHOT = 5;

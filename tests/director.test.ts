@@ -1,3 +1,6 @@
+import { createCardUiState } from '../src/renderer/src/clientControl/cardController';
+import { heldStep } from './helpers/heldInput';
+import { botPolicyIntent as peacefulBotPolicy } from './helpers/bot';
 import { describe, it, expect } from 'vitest';
 import { Phase, HazardType, activeHazardCount, spawnInterval, spawnCap, cycleBudget, rawStress, anyUnattended, updateStress, typeWeights, chooseType, phaseStep, directorSystem, minutesOf } from '../src/renderer/src/sim/director';
 import { burningRoomCount, igniteRoom } from '../src/renderer/src/sim/hazards/fire';
@@ -17,7 +20,7 @@ import { FIRE_SPREAD_P, SPAWN_WEIGHTS, FIRE_SPAWN_CAP, ENCOUNTER_SPAWN_MULT } fr
 import { TICK_HZ, SPAWN_FIRST, SPAWN_INTERVAL, SPAWN_JITTER, SPAWN_CAP, SPAWN_INTERVAL_MIN, SPAWN_CAP_MAX, STRESS_WEIGHTS, STRESS_PERIOD, PEAK_LEVEL, RELAX_LEVEL, SUSTAIN_SECONDS, FADE_TIMEOUT, RELAX_MIN, RELAX_MAX, STALL_SECONDS, SINCE_CAP, HULL_MAX, HEALTH_MAX, PRODUCTIVE_WINDOW_TICKS, HAZARD_EVERY } from '../src/renderer/src/sim/tuning';
 import { botIntent } from './helpers/bot';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
-import { step } from '../src/renderer/src/sim/step';
+import { step } from './helpers/rawInput';
 import { roomAt } from '../src/renderer/src/sim/grid';
 import { makeState, run, intents, seconds, placeDebris, teleport, room, quiet, armSpawn, chargeJump, mapM, setNodeTypes, at, woke } from './helpers/sim';
 import { jumpShip, reachable, sectorJump, NodeType } from '../src/renderer/src/sim/run';
@@ -371,9 +374,9 @@ describe('fire retune (spec Demo-vi section 3)', () => {
 describe('a peaceful start (spec Loop-i section 4b)', () => {
   it('nothing spawns, arrives or boards at a peaceful beacon over 300 s, even with every clock due; the drive still charges', () => {
     for (const players of [1, 2, 4]) {
-      const s = makeState(players, 3, DEFAULT_CHARACTERS); expect([s.run.calm, s.run.wakeTick, s.enemy.nextArrivalTick, s.boarders.nextArrivalTick, s.run.encounter]).toEqual([1, -1, NEVER, NEVER, Encounter.None]);
+      const s = makeState(players, 3, DEFAULT_CHARACTERS), ui = createCardUiState('peaceful-unit', players); expect([s.run.calm, s.run.wakeTick, s.enemy.nextArrivalTick, s.boarders.nextArrivalTick, s.run.encounter]).toEqual([1, -1, NEVER, NEVER, Encounter.None]);
       s.enemy.nextArrivalTick = 0; s.boarders.nextArrivalTick = 0; s.director.nextSpawnTick = 0;
-      for (let t = 0; t < seconds(300); t++) { step(s, Array.from({ length: players }, (_, p) => botIntent(s, p))); s.run.jumpCharge = Math.min(s.run.jumpCharge, 0.99); }   // the bots never get a ready drive: they stay at the start
+      for (let t = 0; t < seconds(300); t++) { heldStep(s, Array.from({ length: players }, (_, p) => peacefulBotPolicy(s, ui, p))); s.run.jumpCharge = Math.min(s.run.jumpCharge, 0.99); }   // the bots never get a ready drive: they stay at the start
       expect([Array.from(s.telemetry.spawns), s.telemetry.encounters, s.telemetry.boardings, s.enemy.present, activeHazardCount(s), s.telemetry.impacts]).toEqual([[0, 0, 0, 0], 0, 0, 0, 0, 0]);
       expect(s.ended).toBe(0);
     }

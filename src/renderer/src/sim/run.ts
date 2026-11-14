@@ -1,7 +1,6 @@
 import type { SimState } from './state';
 import { nextFloat, nextInt, type RngState } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
-import { Dir } from './dir';
 import { clearObjects, spawnFieldRock } from './debris';
 import { leave, Encounter } from './enemy';
 import { activeBoarderCount } from './boarders';
@@ -9,7 +8,7 @@ import { enterPhase, Phase } from './director';
 import { consciousCount } from './crew';
 import { Life, LifeState } from './components';
 import { EVENT_DEFS, choiceEnabled, resolveEvent, pickEvent, choiceLabel, isBlue } from './events';
-import { SHOP_ITEM_COUNT, WEAPON_ITEM, itemLabel, itemEnabled, buy } from './shop';
+import { SHOP_ITEM_COUNT, WEAPON_ITEM, itemLabel, itemEnabled } from './shop';
 import { LOOT_WEAPON_TYPES } from './weaponDefs';
 import { addScrap } from './scrap';
 import { depthOf, peaceful } from './depth';
@@ -167,55 +166,6 @@ export function navRows(state: SimState): NavRow[] {
   return rows;
 }
 
-/** Keep the cursor on an existing selectable row, else the first selectable row (0 if none) (spec Run-ii section 6). */
-export function clampNavCursor(state: SimState): void {
-  const nav = state.derived.stationOfKind[StationKind.Navigation]!; if (nav < 0) return;
-  const rows = navRows(state), c = state.stations.cursor[nav]!;
-  if (rows[c] && rows[c]!.select !== 'none') return;
-  const first = rows.findIndex((row) => row.select !== 'none'); state.stations.cursor[nav] = first < 0 ? 0 : first;
-}
-
-const SELECT_CODE: Record<NavRow['select'], number> = { none: 0, choice: 1, buy: 2, jump: 3, sector: 4, wait: 5, evade: 6 };
-/** A signature of the row list's (select, index) sequence (FNV-1a over 32 bits): equal lists, equal signatures; text and enabled do not count. */
-function rowsSignature(rows: readonly NavRow[]): number {
-  let h = 2166136261;
-  for (const row of rows) { h = Math.imul(h ^ SELECT_CODE[row.select], 16777619) >>> 0; h = Math.imul(h ^ row.index, 16777619) >>> 0; }
-  return h;
-}
-/** Remember the row list's signature and the cursor row's (select, index) (spec Demo-xi section 3). */
-function noteNavCursor(state: SimState, nav: number, rows: readonly NavRow[]): void {
-  const r = state.run, row = rows[state.stations.cursor[nav]!];
-  r.navSig = rowsSignature(rows); r.navSelect = row ? SELECT_CODE[row.select] : 0; r.navIndex = row ? row.index : 0;
-}
-/** The cursor follows its row (spec Demo-xi section 3): when the row list changed since the last check, the cursor goes to the row with the remembered (select, index), else to row 0; then onto a selectable row (clampNavCursor's rule). Called at the end of every tick and before the officer's input. */
-export function trackNavCursor(state: SimState): void {
-  const nav = state.derived.stationOfKind[StationKind.Navigation]!; if (nav < 0) return;
-  const r = state.run, rows = navRows(state);
-  if (r.navSig >= 0 && rowsSignature(rows) !== r.navSig) {
-    const k = rows.findIndex((row) => SELECT_CODE[row.select] === r.navSelect && row.index === r.navIndex && row.select !== 'none');
-    state.stations.cursor[nav] = k >= 0 ? k : 0;
-  }
-  clampNavCursor(state);
-  noteNavCursor(state, nav, rows);
-}
-
-/** Seated Navigation input: Up/Down move over the selectable rows, a Confirm edge acts on the row: choose, buy or (with a ready drive) jump (spec Run-ii section 6). */
-export function navigationInput(state: SimState, i: number, dir: number, confirm: boolean): void {
-  trackNavCursor(state);
-  const rows = navRows(state), c = state.stations.cursor, n = rows.length;
-  if (!rows.some((row) => row.select !== 'none')) return;
-  const stepTo = (delta: number) => { let k = c[i]!; do k = (k + delta + n) % n; while (rows[k]!.select === 'none'); c[i] = k; };
-  if (dir === Dir.Up) stepTo(-1); else if (dir === Dir.Down) stepTo(1);
-  noteNavCursor(state, i, rows);   // the officer's own move is the remembered row before any buy or vote this tick
-  if (!confirm) return;
-  const row = rows[c[i]!]!;
-  if (row.select === 'choice' && row.enabled) { const pid = state.stations.occupant[i]!; if (pid >= 0 && state.run.vote[pid] !== row.index) { state.run.vote[pid] = row.index; state.run.voteTick = state.tick; } }   // the officer's vote (spec Coop-ii amendment D7)
-  else if (row.select === 'buy' && row.enabled) { buy(state, row.index); clampNavCursor(state); }
-  else if ((row.select === 'jump' || row.select === 'sector') && state.run.jumpCharge >= 1) requestJump(state, row.index);
-  else if (row.select === 'wait' && row.enabled) startWait(state);
-  else if (row.select === 'evade') startEvade(state);
-}
-
 /** The jump (spec Run-i section 6, Run-ii section 6): leave the encounter, keep the ship, arrive (scrap, maybe an event), re-arm the clocks, maybe win. A destination not reachable is a no-op. A Hazard node short of the last column is an encounter with contact in ENCOUNTER_START seconds; an Asteroid node a field starting then (spec Demo-viii section 1); Event and Shop nodes are quiet (spec Demo-vi section 2). */
 export function jumpShip(state: SimState, destination: Beacon): void {
   const r = state.run;
@@ -226,14 +176,12 @@ export function jumpShip(state: SimState, destination: Beacon): void {
 
 /** The jump's common steps (spec Run-i section 6, Loop-i section 2): one fuel, the counters, the drive, arrival (scrap, maybe an event), the encounter left behind, the beacon's own encounter, the clocks. The exit is a Hazard on the way out except in the last sector; column 0 is quiet. */
 function afterJump(state: SimState): void {
-  const r = state.run, nav = state.derived.stationOfKind[StationKind.Navigation]!, last = r.colNodes.length - 1;
+  const r = state.run, last = r.colNodes.length - 1;
   r.fuel -= 1; r.nodesReached += 1; r.jumpCharge = 0; r.driveBoost = 0; r.jumpPending = -1; r.jumpPendingTick = -1; r.waitUntilTick = -1; r.pursuitFought = 0;
   if (r.wakeTick < 0) r.wakeTick = state.tick;   // the director wakes on the first jump (spec Loop-i section 4b)
   r.calm = r.column === 0 ? 1 : 0; r.visited[hereIndex(state)] = 1;
   r.arrivalTick = state.tick;
   if (r.calm) r.jumpCharge = 1;   // the drive is full at a sector's calm arrival beacon (spec Demo-xi section 4)
-  if (nav >= 0) state.stations.cursor[nav] = 0;
-  r.navSig = -1;   // a new beacon: row 0, no relocation by the old row (spec Demo-xi section 3)
   state.telemetry.jumps++;
   arrive(state);
   clearObjects(state);
@@ -288,7 +236,6 @@ function waitStep(state: SimState): void {
   if (r.waitUntilTick < 0 || state.tick < r.waitUntilTick) return;
   r.waitUntilTick = -1; r.pursuit += PURSUIT_STEP;
   if (nextFloat(state.rng.loot) < WAIT_FUEL_CHANCE) r.fuel += WAIT_FUEL;
-  clampNavCursor(state);
 }
 
 /** Leaving a field early (spec Demo-viii section 1): the encounter is over with no reward and the field clock stops. */
@@ -334,7 +281,7 @@ export function tallyVotes(state: SimState): { choice: number; voters: number; u
   return { choice: ov >= 0 && choiceEnabled(state, r.event, ov) && counts[ov] === top ? ov : counts.indexOf(top), voters, unanimous: false };
 }
 
-/** Step 2a, the single decision point (spec Coop-ii section 3): standing Confirms vote (the first press option 1, then toggling); a vote of a crew member who is not conscious is discarded; the event waits for the first vote (spec Demo-x-b section 2), then resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after the first vote. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
+/** Step 2a, the single decision point (spec Coop-ii section 3): explicit collected votes are assigned; a vote of a crew member who is not conscious is discarded; the event waits for the first vote (spec Demo-x-b section 2), then resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after the first vote. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
 /** A jump by its row code: a beacon index, or EXIT_JUMP for the sector jump. */
 function doJump(state: SimState, code: number): void { if (code === EXIT_JUMP) sectorJump(state); else jumpShip(state, beaconAt(code)); }
 
@@ -343,7 +290,7 @@ export function decisionSystem(state: SimState): void {
   waitStep(state);   // the wait for help ends (spec Loop-i section 2)
   if (r.event >= 0 && r.eventChoice < 0) {
     for (let pid = 0; pid < state.playerCount; pid++) {
-      if (state.scratch.votePress[pid]) { r.vote[pid] = (r.vote[pid]! + 1) % EVENT_DEFS[r.event]!.choices.length; r.voteTick = state.tick; }   // option 1 first, then round the options (spec Loop-v: two or three)
+      if (state.scratch.voteChoices[pid]! >= 0) { r.vote[pid] = state.scratch.voteChoices[pid]!; r.voteTick = state.tick; }   // The client selected this exact choice; authority never cycles.
       if (Life.state[state.crew[pid]!] !== LifeState.Conscious) r.vote[pid] = -1;
     }
     if (r.eventOpenTick < 0 && r.vote.some((v) => v >= 0)) r.eventOpenTick = state.tick;   // the event waits for the crew: the limit starts at the first vote, a standing press or the officer's row (spec Demo-x-b section 2)
@@ -352,7 +299,7 @@ export function decisionSystem(state: SimState): void {
     if (r.eventOpenTick >= 0 && ((all && state.tick - r.voteTick >= VOTE_SETTLE * TICK_HZ) || state.tick >= r.eventOpenTick + VOTE_SECONDS * TICK_HZ)) {
       const t = tallyVotes(state);
       if (t.voters >= 2) { if (t.unanimous) state.telemetry.votesUnanimous++; else state.telemetry.votesSplit++; }
-      resolveEvent(state, t.choice); r.vote.fill(-1); r.voteTick = -1; clampNavCursor(state);
+      resolveEvent(state, t.choice); r.vote.fill(-1); r.voteTick = -1;
     }
   }
   if (r.jumpPending >= 0) {

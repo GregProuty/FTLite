@@ -37,6 +37,7 @@ async function start(): Promise<void> {
     sampleDevices: () => [...keyboard.sample(), ...sampleGamepads()],
     renderer, hud,
     now: () => performance.now(),
+    scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     canResume: () => !document.hidden && document.hasFocus(),
     credits: CREDITS,
     playCue: audio.play,
@@ -49,11 +50,12 @@ async function start(): Promise<void> {
   window.addEventListener('resize', resize); resize();
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
-  window.addEventListener('blur', () => session.pause());
-  document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause(); else session.resume(); });
-  window.addEventListener('focus', () => session.resume());
-  window.ftlite?.onSuspend(() => session.pause());
-  window.ftlite?.onResume(() => session.resume());
+  window.addEventListener('blur', () => session.pause('blur'));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause('hidden'); else session.resume('visible'); });
+  window.addEventListener('focus', () => session.resume('focus'));
+  window.ftlite?.onSuspend(() => session.pause('os-suspend'));
+  window.ftlite?.onResume(() => session.resume('os-resume'));
   renderer.app.ticker.add(() => session.frame());
+  window.addEventListener('beforeunload', () => session.dispose(), { once: true });
 }
 start().catch(showFatal);

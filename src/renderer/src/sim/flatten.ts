@@ -5,20 +5,20 @@ import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, SECTOR_COLUMNS, 
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
-export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'airlocks', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
-const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 8, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 19 + 2 * WEAPON_SLOTS, SCIENCE_FIELDS = 6, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 18 + 2 * ENEMY_ROOMS + 3 * ENEMY_SYSTEM_COUNT, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
+export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'airlocks', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
+const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 6, POWER_FIELDS = 1, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 22 + 2 * WEAPON_SLOTS, SCIENCE_FIELDS = 9, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 18 + 2 * ENEMY_ROOMS + 3 * ENEMY_SYSTEM_COUNT, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
 const MAP_FIELDS = SECTOR_COLUMNS * (1 + 2 * NODE_STRIDE);   // colNodes, edgeMask, nodeType (spec Loop-i section 6)
-const RUN_FIELDS = 4 + MAP_FIELDS + 3 + STATION_COUNT + 3 + 2 + 3 + 1 + 2 + 4 + 7 + SECTOR_COLUMNS * NODE_STRIDE + 3 + 3 * SECTOR_COLUMNS * NODE_STRIDE + 1 + 3 + 1;   // + navSig, navSelect, navIndex (spec Demo-xi section 3), arrivalTick (amendment 10)   // + ambush, cache, revealed and ambushState (spec Demo-x-b section 3)   // + eventsSeen (spec Loop-v section 3)   // + finalBeacon (spec Loop-iv section 4)   // + shopWeapon (spec Loop-iii section 3)   // + sector, fuel, pursuit, waitUntilTick, pursuitFought, calm, wakeTick and the visited marks (spec Loop-i sections 4b and 6)   // + fieldNextTick (spec Demo-viii section 1), + the evade ticks (spec Coop-ii section 1), + the vote and jump ticks (section 3); the votes are per player
+const RUN_FIELDS = 4 + MAP_FIELDS + 3 + STATION_COUNT + 3 + 2 + 3 + 1 + 2 + 4 + 7 + SECTOR_COLUMNS * NODE_STRIDE + 3 + 3 * SECTOR_COLUMNS * NODE_STRIDE + 1 + 1;   // arrivalTick (amendment 10)   // + ambush, cache, revealed and ambushState (spec Demo-x-b section 3)   // + eventsSeen (spec Loop-v section 3)   // + finalBeacon (spec Loop-iv section 4)   // + shopWeapon (spec Loop-iii section 3)   // + sector, fuel, pursuit, waitUntilTick, pursuitFought, calm, wakeTick and the visited marks (spec Loop-i sections 4b and 6)   // + fieldNextTick (spec Demo-viii section 1), + the evade ticks (spec Coop-ii section 1), + the vote and jump ticks (section 3); the votes are per player
 const TELEMETRY_SCALARS = 33, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
 
-/** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec §4). */
+/** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec section 4). */
 export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
 export function layoutIdNumber(s: SimState): number { return parseInt(s.derived.idHash, 16); }
 
 function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3 + s.airlocks.open.length
     + s.breaches.active.length * 2 + COUNTER_FIELDS + DIRECTOR_FIELDS + TELEMETRY_SCALARS + TELEMETRY_FIXED + 3 * s.playerCount
-    + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + 2 * s.groups.tab.length + s.playerCount * STICK_FIELDS
+    + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + s.groups.tab.length
     + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + ENEMY_FIELDS + BOARDERS_FIELDS + RUN_FIELDS + s.playerCount + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length + s.crew.length * CREW_FIELDS + s.playerCount;
 }
 
@@ -40,19 +40,19 @@ export function flatten(s: SimState): Float64Array {
   for (const v of tm.mannedTicks) put(v); for (const v of tm.idleRun) put(v); for (const v of tm.longestIdle) put(v); for (const v of tm.prevLife) put(v);
   for (const v of tm.spawns) put(v); for (const v of tm.repairs) put(v); for (const v of tm.phaseEntries) put(v);
   for (const v of s.stations.level) put(v); for (const v of s.stations.failed) put(v); for (const v of s.stations.repair) put(v);
-  for (const v of s.stations.occupant) put(v); for (const v of s.stations.cursor) put(v);
-  for (const v of s.stations.heat) put(v); for (const v of s.stations.coolant) put(v); for (const v of s.stations.page) put(v);
+  // Only gameplay station state is canonical; card rows/pages live on clients.
+  for (const v of s.stations.occupant) put(v);
+  for (const v of s.stations.heat) put(v); for (const v of s.stations.coolant) put(v);
   put(s.power.capacity);
-  for (const v of s.groups.tab) put(v); for (const v of s.groups.bar) put(v);   // none on a ship without console groups (spec Demo-x-a section 1)
-  for (let p = 0; p < s.playerCount; p++) put(s.stick.heldDir[p]!); for (let p = 0; p < s.playerCount; p++) put(s.stick.repeat[p]!);
+  for (const v of s.groups.tab) put(v);   // none on a ship without console groups (spec Demo-x-a section 1)
   const dbf = s.debris;
   for (const v of dbf.active) put(v); for (const v of dbf.stableId) put(v); for (const v of dbf.room) put(v); for (const v of dbf.impactTick) put(v); for (const v of dbf.warned) put(v);
   for (const v of dbf.frequency) put(v); for (const v of dbf.scanned) put(v); for (const v of dbf.scan) put(v); for (const v of dbf.kind) put(v);
-  const w = s.weapons; put(w.charge); put(w.selector); put(w.torpedoStock); put(w.torpedoLoaded); put(w.torpedoLoad); put(w.torpedoRegen); put(w.lastShotTick); put(w.lastShotTarget); put(w.lastShotResult); put(w.lastShotKind); put(w.torpedoFed); put(w.torpedoDropTick); for (const v of w.slot) put(v); for (const v of w.charge2) put(v); put(w.cargo); put(w.lootTick); put(w.lootId); put(w.lootPlace); put(w.lootBought); put(w.lastShotSelector); put(w.lastShotDamage);
+  const w = s.weapons; put(w.target === null ? 0 : w.target.kind === 'object' ? 1 : 2); put(w.target?.stableId ?? 0); put(w.target?.kind === 'enemy' ? w.target.room : -1); put(w.charge); put(w.selector); put(w.torpedoStock); put(w.torpedoLoaded); put(w.torpedoLoad); put(w.torpedoRegen); put(w.lastShotTick); put(w.lastShotTarget); put(w.lastShotResult); put(w.lastShotKind); put(w.torpedoFed); put(w.torpedoDropTick); for (const v of w.slot) put(v); for (const v of w.charge2) put(v); put(w.cargo); put(w.lootTick); put(w.lootId); put(w.lootPlace); put(w.lootBought); put(w.lastShotSelector); put(w.lastShotDamage);
   const en = s.enemy; put(en.present); put(en.hull); put(en.stableId); put(en.nextArrivalTick); put(en.nextShotTick); put(en.departTick); for (const v of en.sysHp) put(v); for (const v of en.sysRepairTick) put(v); put(en.shieldFreq); put(en.scanned); put(en.scan); put(en.maxHull); put(en.shieldLayers); put(en.shieldRecharge); put(en.shotArmTick); put(en.fleeing); put(en.surrenderIntact); put(en.lastHitTick); put(en.shieldRotateTick); put(en.lockUntilTick); for (const v of en.roomFire) put(v); for (const v of en.roomBreach) put(v); for (const v of en.ionUntil) put(v);
   const bd = s.boarders; put(bd.nextArrivalTick); for (const v of bd.active) put(v); for (const v of bd.stableId) put(v); for (const v of bd.room) put(v); for (const v of bd.health) put(v); for (const v of bd.nextMoveTick) put(v); for (const v of bd.aloneSince) put(v);
-  const rn = s.run; put(rn.column); put(rn.node); put(rn.nodesReached); put(rn.jumpCharge); for (const v of rn.colNodes) put(v); for (const v of rn.edgeMask) put(v); for (const v of rn.nodeType) put(v); put(rn.scrap); put(rn.event); put(rn.eventChoice); for (const v of rn.upgrades) put(v); put(rn.reactorBonus); put(rn.boughtTick); put(rn.boughtKind); put(rn.quirk); put(rn.startBonus); put(rn.encounter); put(rn.encounterTick); put(rn.driveBoost); put(rn.fieldNextTick); put(rn.evadeUntilTick); put(rn.evadeReadyTick); for (const v of rn.vote) put(v); put(rn.eventOpenTick); put(rn.voteTick); put(rn.jumpPending); put(rn.jumpPendingTick); put(rn.sector); put(rn.fuel); put(rn.pursuit); put(rn.waitUntilTick); put(rn.pursuitFought); put(rn.calm); put(rn.wakeTick); for (const v of rn.visited) put(v); put(rn.shopWeapon); put(rn.finalBeacon); put(rn.eventsSeen); for (const v of rn.ambush) put(v); for (const v of rn.cache) put(v); for (const v of rn.revealed) put(v); put(rn.ambushState); put(rn.navSig); put(rn.navSelect); put(rn.navIndex); put(rn.arrivalTick);
-  const sc = s.science; put(sc.scanning); put(sc.system); put(sc.systemState); put(sc.systemStartTick); put(sc.systemTick); put(sc.systemResult);
+  const rn = s.run; put(rn.column); put(rn.node); put(rn.nodesReached); put(rn.jumpCharge); for (const v of rn.colNodes) put(v); for (const v of rn.edgeMask) put(v); for (const v of rn.nodeType) put(v); put(rn.scrap); put(rn.event); put(rn.eventChoice); for (const v of rn.upgrades) put(v); put(rn.reactorBonus); put(rn.boughtTick); put(rn.boughtKind); put(rn.quirk); put(rn.startBonus); put(rn.encounter); put(rn.encounterTick); put(rn.driveBoost); put(rn.fieldNextTick); put(rn.evadeUntilTick); put(rn.evadeReadyTick); for (const v of rn.vote) put(v); put(rn.eventOpenTick); put(rn.voteTick); put(rn.jumpPending); put(rn.jumpPendingTick); put(rn.sector); put(rn.fuel); put(rn.pursuit); put(rn.waitUntilTick); put(rn.pursuitFought); put(rn.calm); put(rn.wakeTick); for (const v of rn.visited) put(v); put(rn.shopWeapon); put(rn.finalBeacon); put(rn.eventsSeen); for (const v of rn.ambush) put(v); for (const v of rn.cache) put(v); for (const v of rn.revealed) put(v); put(rn.ambushState); put(rn.arrivalTick);
+  const sc = s.science; put(sc.target === null ? 0 : sc.target.kind === 'object' ? 1 : 2); put(sc.target?.stableId ?? 0); put(sc.target?.kind === 'enemy' ? sc.target.room : -1); put(sc.scanning); put(sc.system); put(sc.systemState); put(sc.systemStartTick); put(sc.systemTick); put(sc.systemResult);
   for (const v of s.skills.xp) put(v); put(s.skills.lastEngChangeTick); put(s.skills.lastDoorToggleTick); put(s.skills.lsDeliveredTick); put(s.skills.lastShotTick);
   for (const v of s.crewCharacter) put(v);
   for (const v of s.carrying) put(v);
@@ -66,6 +66,8 @@ export function flatten(s: SimState): Float64Array {
 
 /** Inverse of flatten into a state created for the same layout and playerCount. */
 export function unflatten(s: SimState, v: Float64Array): void {
+  const expected = size(s);
+  if (v.length !== expected) throw new Error(`snapshot length ${v.length} does not match expected ${expected}`);
   let i = 0;
   const get = (): number => v[i++]!;
   const ver = get(), idh = get(), lh = get();
@@ -95,24 +97,25 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (let i = 0; i < s.stations.failed.length; i++) s.stations.failed[i] = get();
   for (let i = 0; i < s.stations.repair.length; i++) s.stations.repair[i] = get();
   for (let i = 0; i < s.stations.occupant.length; i++) s.stations.occupant[i] = get();
-  for (let i = 0; i < s.stations.cursor.length; i++) s.stations.cursor[i] = get();
   for (let i = 0; i < s.stations.heat.length; i++) s.stations.heat[i] = get();
   for (let i = 0; i < s.stations.coolant.length; i++) s.stations.coolant[i] = get();
-  for (let i = 0; i < s.stations.page.length; i++) s.stations.page[i] = get();
   s.power.capacity = get();
-  for (let g = 0; g < s.groups.tab.length; g++) s.groups.tab[g] = get(); for (let g = 0; g < s.groups.bar.length; g++) s.groups.bar[g] = get();
-  for (let p = 0; p < s.playerCount; p++) s.stick.heldDir[p] = get(); for (let p = 0; p < s.playerCount; p++) s.stick.repeat[p] = get();
+  for (let g = 0; g < s.groups.tab.length; g++) s.groups.tab[g] = get();
   const db = s.debris;
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.active[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.stableId[k] = get();
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.room[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.impactTick[k] = get();
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.warned[k] = get();
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.frequency[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.scanned[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.scan[k] = get();
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.kind[k] = get();
+  const targetKind = get(), targetId = get(), targetRoom = get();
+  s.weapons.target = targetKind === 0 ? null : targetKind === 1 ? { kind: 'object', stableId: targetId } : { kind: 'enemy', stableId: targetId, room: targetRoom };
   s.weapons.charge = get(); s.weapons.selector = get(); s.weapons.torpedoStock = get(); s.weapons.torpedoLoaded = get(); s.weapons.torpedoLoad = get(); s.weapons.torpedoRegen = get(); s.weapons.lastShotTick = get(); s.weapons.lastShotTarget = get(); s.weapons.lastShotResult = get(); s.weapons.lastShotKind = get(); s.weapons.torpedoFed = get(); s.weapons.torpedoDropTick = get(); for (let k = 0; k < WEAPON_SLOTS; k++) s.weapons.slot[k] = get(); for (let k = 0; k < WEAPON_SLOTS; k++) s.weapons.charge2[k] = get(); s.weapons.cargo = get(); s.weapons.lootTick = get(); s.weapons.lootId = get(); s.weapons.lootPlace = get(); s.weapons.lootBought = get(); s.weapons.lastShotSelector = get(); s.weapons.lastShotDamage = get();
   for (const k of ['present', 'hull', 'stableId', 'nextArrivalTick', 'nextShotTick', 'departTick'] as const) s.enemy[k] = get();
   for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysHp[k] = get(); for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.sysRepairTick[k] = get(); s.enemy.shieldFreq = get(); s.enemy.scanned = get(); s.enemy.scan = get(); for (const k of ['maxHull', 'shieldLayers', 'shieldRecharge', 'shotArmTick', 'fleeing', 'surrenderIntact', 'lastHitTick', 'shieldRotateTick', 'lockUntilTick'] as const) s.enemy[k] = get(); for (let k = 0; k < ENEMY_ROOMS; k++) s.enemy.roomFire[k] = get(); for (let k = 0; k < ENEMY_ROOMS; k++) s.enemy.roomBreach[k] = get(); for (let k = 0; k < ENEMY_SYSTEM_COUNT; k++) s.enemy.ionUntil[k] = get();
   s.boarders.nextArrivalTick = get(); for (const arr of [s.boarders.active, s.boarders.stableId, s.boarders.room, s.boarders.health, s.boarders.nextMoveTick, s.boarders.aloneSince]) for (let k = 0; k < BOARDER_SLOTS; k++) arr[k] = get();
-  s.run.column = get(); s.run.node = get(); s.run.nodesReached = get(); s.run.jumpCharge = get(); for (let k = 0; k < SECTOR_COLUMNS; k++) s.run.colNodes[k] = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.edgeMask[k] = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.nodeType[k] = get(); s.run.scrap = get(); s.run.event = get(); s.run.eventChoice = get(); for (let k = 0; k < STATION_COUNT; k++) s.run.upgrades[k] = get(); s.run.reactorBonus = get(); s.run.boughtTick = get(); s.run.boughtKind = get(); s.run.quirk = get(); s.run.startBonus = get(); s.run.encounter = get(); s.run.encounterTick = get(); s.run.driveBoost = get(); s.run.fieldNextTick = get(); s.run.evadeUntilTick = get(); s.run.evadeReadyTick = get(); for (let p = 0; p < s.run.vote.length; p++) s.run.vote[p] = get(); s.run.eventOpenTick = get(); s.run.voteTick = get(); s.run.jumpPending = get(); s.run.jumpPendingTick = get(); s.run.sector = get(); s.run.fuel = get(); s.run.pursuit = get(); s.run.waitUntilTick = get(); s.run.pursuitFought = get(); s.run.calm = get(); s.run.wakeTick = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.visited[k] = get(); s.run.shopWeapon = get(); s.run.finalBeacon = get(); s.run.eventsSeen = get(); for (const arr of [s.run.ambush, s.run.cache, s.run.revealed]) for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) arr[k] = get(); s.run.ambushState = get(); s.run.navSig = get(); s.run.navSelect = get(); s.run.navIndex = get(); s.run.arrivalTick = get();
+  s.run.column = get(); s.run.node = get(); s.run.nodesReached = get(); s.run.jumpCharge = get(); for (let k = 0; k < SECTOR_COLUMNS; k++) s.run.colNodes[k] = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.edgeMask[k] = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.nodeType[k] = get(); s.run.scrap = get(); s.run.event = get(); s.run.eventChoice = get(); for (let k = 0; k < STATION_COUNT; k++) s.run.upgrades[k] = get(); s.run.reactorBonus = get(); s.run.boughtTick = get(); s.run.boughtKind = get(); s.run.quirk = get(); s.run.startBonus = get(); s.run.encounter = get(); s.run.encounterTick = get(); s.run.driveBoost = get(); s.run.fieldNextTick = get(); s.run.evadeUntilTick = get(); s.run.evadeReadyTick = get(); for (let p = 0; p < s.run.vote.length; p++) s.run.vote[p] = get(); s.run.eventOpenTick = get(); s.run.voteTick = get(); s.run.jumpPending = get(); s.run.jumpPendingTick = get(); s.run.sector = get(); s.run.fuel = get(); s.run.pursuit = get(); s.run.waitUntilTick = get(); s.run.pursuitFought = get(); s.run.calm = get(); s.run.wakeTick = get(); for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) s.run.visited[k] = get(); s.run.shopWeapon = get(); s.run.finalBeacon = get(); s.run.eventsSeen = get(); for (const arr of [s.run.ambush, s.run.cache, s.run.revealed]) for (let k = 0; k < SECTOR_COLUMNS * NODE_STRIDE; k++) arr[k] = get(); s.run.ambushState = get(); s.run.arrivalTick = get();
+  const scienceKind = get(), scienceId = get(), scienceRoom = get();
+  s.science.target = scienceKind === 0 ? null : scienceKind === 1 ? { kind: 'object', stableId: scienceId } : { kind: 'enemy', stableId: scienceId, room: scienceRoom };
   for (const k of ['scanning', 'system', 'systemState', 'systemStartTick', 'systemTick', 'systemResult'] as const) s.science[k] = get();
   for (let k = 0; k < s.skills.xp.length; k++) s.skills.xp[k] = get();
   s.skills.lastEngChangeTick = get(); s.skills.lastDoorToggleTick = get(); s.skills.lsDeliveredTick = get(); s.skills.lastShotTick = get();

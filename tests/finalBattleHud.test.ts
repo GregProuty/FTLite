@@ -1,3 +1,4 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
 import { buildHudModel, runNotice, targetRowText, type WeaponsPanel, type SciencePanel } from '../src/renderer/src/render/hudModel';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim } from '../src/renderer/src/render/enemyWindowModel';
@@ -45,7 +46,7 @@ describe('the Warden on the HUD and in the enemy window (spec Loop-iv section 2)
     const o = makeState(2); quiet(o); o.tick = 6000; placeEnemy(o); expect(enemyWindowModel(o, o.tick, settled(o)).title).toBeNull();
   });
   it('the Weapons hull row has no departure seconds (the Warden never leaves) and three layers; the threat line reads shields 3/3', () => {
-    const s = withWarden(); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;   // the ship row is Science's since Demo-x-c (Weapons targets rooms)
+    const s = withWarden(); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.science.target = targetRef(s, ENEMY_SLOT);   // the ship row is Science's since Demo-x-c (Weapons targets rooms)
     const m = buildHudModel(s, slots(2), 'running', ''), panel = m.players[0]!.console as SciencePanel, hull = panel.targets.find((t) => t.kind === 'enemy')!;
     expect(targetRowText(hull)).toBe('Enemy 100% freq ? [###]');
     expect(m.threats[0]!.text).toBe('Enemy 100% shields 3/3');

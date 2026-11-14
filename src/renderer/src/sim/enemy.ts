@@ -1,3 +1,4 @@
+import { targetRef } from './debrisTargets';
 import type { SimState } from './state';
 import { nextFloat, nextInt } from '../../../shared/rng';
 import { StationKind } from './stationKinds';
@@ -10,8 +11,6 @@ import { LOOT_WEAPON_TYPES } from './weaponDefs';
 import { depthOf, peaceful } from './depth';
 import { TICK_HZ, ENCOUNTER_MAX, NEVER, HULL_MAX, ENCOUNTER_REWARD_HULL, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_INTERVAL, ENEMY_FIRE_MIN, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_BEAM_BASE, ENEMY_BEAM_SCALE, ESCALATION_RATE, CREW_INTERVAL_MULT, FREQ_COUNT, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, scrapEnemy, DT, ENEMY_HULL_PER_COLUMN, ENEMY_SHIELD_LAYERS, SHIELD_RECHARGE_TIME, ENEMY_FLEE_FRAC, ENEMY_FLEE_DELAY, scrapSurrender, ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, SHIELD_ROTATE, KILL_FUEL_MIN, PURSUIT_HULL_MULT, PURSUIT_FIRE_MULT, WEAPON_DROP_CHANCE, WARDEN_HULL_MULT, WARDEN_FIRE_MULT, WARDEN_SHIELD_EXTRA, FIRST_STRIKE_SECONDS } from './tuning';
 import { EndReason } from './crew';
-
-const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
 
 /** Seconds between enemy shots: the foundation's escalation shape with the solo multiplier (spec Combat-i section 5). */
 export function fireInterval(minutes: number, players: number): number {
@@ -89,12 +88,12 @@ export function arrive(state: SimState): void {
   e.shieldLayers = enemyShieldCap(state); e.shieldRecharge = 0; e.shotArmTick = state.tick; e.fleeing = 0; e.surrenderIntact = 0; e.lastHitTick = -1; e.roomFire.fill(0); e.roomBreach.fill(0); e.shieldRotateTick = state.tick + SHIELD_ROTATE * TICK_HZ; e.lockUntilTick = -1; e.ionUntil.fill(-1);   // spec Coop-i section 1: the re-tune clock, no lock; spec Demo-i section 11.3, Demo-ii section 4, Demo-viii section 2b
   if (state.run.ambushState === 1) { e.shotArmTick = state.tick - ENEMY_FIRST_SHOT * TICK_HZ; e.nextShotTick = state.tick; }   // an undetected ambusher: its first shot is charged (spec Demo-x-b section 3)
   else if (state.run.ambushState === 2) { e.shieldLayers = 0; e.shieldRecharge = 0; e.ionUntil[EnemySystem.Shields] = state.tick + FIRST_STRIKE_SECONDS * TICK_HZ; }   // a detected one: the first strike, its shields down (acting as ionised) for FIRST_STRIKE_SECONDS
+  const wpn = state.derived.stationOfKind[StationKind.Weapons]!;
+  if (wpn >= 0 && state.stations.occupant[wpn]! >= 0 && !state.weapons.target) state.weapons.target = targetRef(state, ENEMY_SLOT);
   state.telemetry.encounters++;
   state.run.encounter = Encounter.Fighting; state.run.encounterTick = state.tick;
-  for (const kind of TARGETING_KINDS) {
-    const i = state.derived.stationOfKind[kind]!;
-    if (i >= 0 && state.stations.occupant[i]! >= 0 && state.stations.cursor[i]! < 0) state.stations.cursor[i] = ENEMY_SLOT;
-  }
+  const sci = state.derived.stationOfKind[StationKind.Science]!;
+  if (sci >= 0 && state.stations.occupant[sci]! >= 0 && !state.science.target) state.science.target = targetRef(state, ENEMY_SLOT);
 }
 
 /** Departure (destroyed or withdrawn): retarget cursors by StableId before clearing it, then the encounter ends (spec Demo-vi section 2): a kill or a paid surrender is a win (+hull, the drive boost), anything else is over; no draw, and no further enemy at this node. */
@@ -102,11 +101,9 @@ export function leave(state: SimState, destroyed: boolean): void {
   if (!state.enemy.present) return;   // a second call is harmless (spec Demo-viii amendment I2)
   const e = state.enemy, sci = state.derived.stationOfKind[StationKind.Science]!;
   const won = destroyed || (e.fleeing === 1 && e.surrenderIntact === 1);   // read before the flee fields are cleared
-  const scanningEnemy = sci >= 0 && isEnemySlot(state.stations.cursor[sci]!);
-  for (const kind of TARGETING_KINDS) {
-    const i = state.derived.stationOfKind[kind]!;
-    if (i >= 0 && isEnemySlot(state.stations.cursor[i]!)) state.stations.cursor[i] = nextTarget(state, e.stableId, ENEMY_SLOTS);
-  }
+  if (state.weapons.target?.kind === 'enemy') state.weapons.target = targetRef(state, nextTarget(state, e.stableId, ENEMY_SLOTS));
+  const scanningEnemy = sci >= 0 && state.science.target?.kind === 'enemy';
+  if (scanningEnemy) state.science.target = targetRef(state, nextTarget(state, e.stableId, ENEMY_SLOTS));
   e.present = 0; e.hull = 0; e.stableId = 0; e.nextShotTick = -1; e.departTick = -1;
   e.sysHp.fill(0); e.sysRepairTick.fill(-1); e.shieldFreq = 0; e.scanned = 0; e.scan = 0;
   if (scanningEnemy) state.science.scanning = 0;

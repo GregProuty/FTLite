@@ -1,3 +1,7 @@
+import { weaponSelection } from './helpers/weaponFixture';
+import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
+import { cardSelection } from './helpers/cardUi';
+import { snapshotPhaseStep as propertyPhaseStep } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import type { Intent } from '../src/shared/intent';
@@ -14,7 +18,6 @@ import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../src/renderer/src/sim/state';
 import { Weapon } from '../src/renderer/src/sim/weapons';
-import { buildHudModel } from '../src/renderer/src/render/hudModel';
 import type { SlotInfo } from '../src/renderer/src/input/deviceManager';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { makeState as makeAnyState, intents, run, teleport, seconds, placeDebris, overdrive, room, cutterState, quiet, grantScrap } from './helpers/sim';
@@ -91,11 +94,11 @@ describe('Engineering console', () => {
   it('up/down move the cursor over kinds with wrap; right/left move bars; refusals leave state unchanged', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering), nav = idx(s, StationKind.Navigation);
     sitDown(s, 0, eng);
-    expect(s.stations.cursor[eng]).toBe(StationKind.Engineering);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Engineering);
     run(s, 1, () => intents(down)); run(s, 1, () => intents({}));
-    expect(s.stations.cursor[eng]).toBe(StationKind.LifeSupport);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.LifeSupport);
     for (let i = 0; i < 4; i++) { run(s, 1, () => intents(up)); run(s, 1, () => intents({})); }
-    expect(s.stations.cursor[eng]).toBe(StationKind.Navigation);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Navigation);
     run(s, 1, () => intents(right));
     expect(s.stations.level[nav]).toBe(2); expect(powerPool(s)).toBe(0);
     run(s, STICK_REPEAT_TICKS * 3, () => intents(right));             // held: repeats are refused at max / empty pool
@@ -103,14 +106,14 @@ describe('Engineering console', () => {
     run(s, 1, () => intents(left));
     expect(s.stations.level[nav]).toBe(1); expect(powerPool(s)).toBe(1);
     for (let i = 0; i < 3; i++) { run(s, 1, () => intents(down)); run(s, 1, () => intents({})); }
-    expect(s.stations.cursor[eng]).toBe(StationKind.Engineering);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Engineering);
     run(s, 1, () => intents(left));
     expect(s.stations.level[eng]).toBe(1);                              // never below 1
   });
   it('holding right adds one bar per repeat interval while the pool lasts', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering), wpn = idx(s, StationKind.Weapons);
     sitDown(s, 0, eng); s.stations.level[wpn] = 0;                       // pool 3, weapons max 3
-    s.stations.cursor[eng] = StationKind.Weapons;
+    cardSelection(s, eng).cursor = StationKind.Weapons;
     run(s, STICK_REPEAT_TICKS * 2 + 1, () => intents(right));
     expect(s.stations.level[wpn]).toBe(3); expect(powerPool(s)).toBe(0);
   });
@@ -119,25 +122,25 @@ describe('Engineering console', () => {
     sitDown(s, 0, eng);
     run(s, 1, () => intents(confirm));
     expect(coolantUsed(s)).toBe(0);                                      // Engineering row: nothing
-    s.stations.cursor[eng] = StationKind.Weapons;
+    cardSelection(s, eng).cursor = StationKind.Weapons;
     const stepTo = (expected: number, delta: number) => { const before = coolantUsed(s); run(s, 1, () => intents(confirm)); expect(s.stations.coolant[wpn]).toBe(expected); expect(coolantUsed(s)).toBe(before + delta); };
     stepTo(1, 1); stepTo(2, 1); stepTo(0, -2);                            // the pool total moves by exactly the step
     stepTo(1, 1); stepTo(2, 1);                                           // back to 2
     s.stations.coolant[idx(s, StationKind.Science)] = 1;                  // 3 of 4 used
-    s.stations.cursor[eng] = StationKind.Navigation;
+    cardSelection(s, eng).cursor = StationKind.Navigation;
     run(s, 1, () => intents(confirm)); expect(s.stations.coolant[nav]).toBe(1); expect(coolantUsed(s)).toBe(COOLANT_POOL);
     run(s, 1, () => intents(confirm)); expect(s.stations.coolant[nav]).toBe(0);   // the step to 2 cannot be supplied: wrap
     expect(coolantUsed(s)).toBe(3);
   });
   it('same tick: a Left out of overdrive, or a Confirm to two units, on the would-be overheat tick prevents it', () => {
     const a = makeState(1), engA = idx(a, StationKind.Engineering), wpnA = overdrive(a, StationKind.Weapons);
-    a.director.nextSpawnTick = 1e9; sitDown(a, 0, engA); a.stations.cursor[engA] = StationKind.Weapons;
+    a.director.nextSpawnTick = 1e9; sitDown(a, 0, engA); cardSelection(a, engA).cursor = StationKind.Weapons;
     a.stations.heat[wpnA] = HEAT_MAX - HEAT_RISE;
     run(a, 1, () => intents(left));                                            // consoleSystem (level 4 -> 3) precedes heatStep
     expect(a.stations.level[wpnA]).toBe(3); expect(a.stations.failed[wpnA]).toBe(0);
     expect(a.stations.heat[wpnA]).toBe(HEAT_MAX - HEAT_RISE - HEAT_COOL_IDLE);   // idle cooling instead of an overheat
     const b = makeState(1), engB = idx(b, StationKind.Engineering), wpnB = overdrive(b, StationKind.Weapons);
-    b.director.nextSpawnTick = 1e9; sitDown(b, 0, engB); b.stations.cursor[engB] = StationKind.Weapons;
+    b.director.nextSpawnTick = 1e9; sitDown(b, 0, engB); cardSelection(b, engB).cursor = StationKind.Weapons;
     b.stations.heat[wpnB] = HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT); b.stations.coolant[wpnB] = 1;   // one unit: the next update would reach HEAT_MAX
     run(b, 1, () => intents(confirm));                                         // 1 -> 2 units before heatStep: net 0
     expect(b.stations.coolant[wpnB]).toBe(2); expect(b.stations.failed[wpnB]).toBe(0); expect(b.stations.heat[wpnB]).toBe(HEAT_MAX - (HEAT_RISE - HEAT_COOL_UNIT));
@@ -169,7 +172,7 @@ describe('Engineering console', () => {
       sitDown(s, 0, eng);
       for (const e of script) {
         for (let k = 0; k < HAZARD_EVERY; k++) {                           // one stick edge per 5 ticks, Confirm edges every tick while true
-          run(s, 1, () => intents({ ...e.dir, confirmPressed: e.confirm }));
+          propertyPhaseStep(s, intents({ ...e.dir, confirmPressed: e.confirm }));
           if (!check(s)) return false;                                     // checked after every tick, so nothing can hide behind a later input
         }
       }
@@ -184,9 +187,9 @@ describe('Doors console', () => {
     sitDown(s, 0, doors);
     const first = s.derived.doorEdges[0]!, last = s.derived.doorEdges.at(-1)!;
     run(s, 1, () => intents(up));
-    expect(s.derived.doorEdges[s.stations.cursor[doors]!]).toBe(last);
+    expect(s.derived.doorEdges[cardSelection(s, doors).cursor!]).toBe(last);
     run(s, 1, () => intents({})); run(s, 1, () => intents(down));
-    expect(s.derived.doorEdges[s.stations.cursor[doors]!]).toBe(first);
+    expect(s.derived.doorEdges[cardSelection(s, doors).cursor!]).toBe(first);
     run(s, 1, () => intents(confirm));
     expect(s.doors.state[first]).toBe(DoorState.Sealed);            // online: Auto -> Sealed, one press as before Demo-vii (spec Demo-vii amendment 19)
     run(s, 1, () => intents({})); run(s, 1, () => intents(confirm));
@@ -222,27 +225,27 @@ describe('Doors console: held doors, airlocks and the fail-safe (spec Demo-vii s
   it('the cursor walks every door, then every airlock, then wraps, in both directions', () => {
     const { s, i } = seated(), D = s.derived.doorEdges.length, n = doorsCursorCount(s);
     expect(n).toBe(D + 4);
-    expect(s.stations.cursor[i]).toBe(0);
+    expect(cardSelection(s, i).cursor).toBe(0);
     const seen: number[] = [];
-    for (let k = 0; k < n; k++) { press(s, down); seen.push(s.stations.cursor[i]!); }
+    for (let k = 0; k < n; k++) { press(s, down); seen.push(cardSelection(s, i).cursor!); }
     expect(seen).toEqual([...Array.from({ length: n - 1 }, (_, k) => k + 1), 0]);
     expect(doorsCursorTarget(s, D - 1)).toEqual({ kind: 'door', edge: s.derived.doorEdges[D - 1] });
     expect(doorsCursorTarget(s, D)).toEqual({ kind: 'airlock', index: 0 });
     expect(doorsCursorTarget(s, n)).toBeNull();
     press(s, up);
-    expect(s.stations.cursor[i]).toBe(n - 1);
+    expect(cardSelection(s, i).cursor).toBe(n - 1);
     expect(doorsCursorTarget(s, n - 1)).toEqual({ kind: 'airlock', index: 3 });
   });
   it('Confirm on a door cycles Auto -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19)', () => {
     const { s, i } = seated(), e = s.derived.doorEdges[0]!;
-    expect(s.stations.cursor[i]).toBe(0);
+    expect(cardSelection(s, i).cursor).toBe(0);
     press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Sealed);
     press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.HeldOpen);
     press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Closed);
   });
   it('Confirm on an airlock toggles it and stamps the Doors productivity tick', () => {
     const { s, i } = seated();
-    s.stations.cursor[i] = s.derived.doorEdges.length + 2;               // the Engines airlock
+    cardSelection(s, i).cursor = s.derived.doorEdges.length + 2;               // the Engines airlock
     press(s, confirm);
     expect(Array.from(s.airlocks.open)).toEqual([0, 0, 1, 0]);
     expect(s.skills.lastDoorToggleTick).toBe(s.tick - 2);
@@ -255,7 +258,7 @@ describe('Doors console: held doors, airlocks and the fail-safe (spec Demo-vii s
     expect(stationOnline(s, i)).toBe(false);
     press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Sealed);
     press(s, confirm); expect(s.doors.state[e]).toBe(DoorState.Closed);
-    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    cardSelection(s, i).cursor = s.derived.doorEdges.length + 2;
     const stamp = s.skills.lastDoorToggleTick;
     press(s, confirm);
     expect(Array.from(s.airlocks.open)).toEqual([0, 0, 0, 0]);
@@ -278,8 +281,8 @@ describe('Doors console: held doors, airlocks and the fail-safe (spec Demo-vii s
   it('a command on the tick the station goes offline is undone that tick, before any oxygen moves', () => {
     // Player 0 at Doors opens the Engines airlock (accepted: online when read); player 1 at Engineering pulls the Doors bar on the same tick.
     const { s, i } = seated(), eng = s.derived.stationOfKind[StationKind.Engineering]!, E = room(s, 'E');
-    sitDown(s, 1, eng); s.stations.cursor[eng] = StationKind.Doors;
-    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    sitDown(s, 1, eng); cardSelection(s, eng).cursor = StationKind.Doors;
+    cardSelection(s, i).cursor = s.derived.doorEdges.length + 2;
     while (s.tick % HAZARD_EVERY !== 0) run(s, 1, () => intents({}, {}));   // this tick runs the oxygen step
     const before = s.rooms.o2[E]!, vented = s.o2Counters.vented;
     run(s, 1, () => intents(confirm, left));
@@ -332,9 +335,9 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     run(s, 1, () => intents({}, confirm));
     expect(s.debris.active[0]).toBe(0); expect(s.rng.combat.s).toBe(one.s); expect(s.weapons.charge).toBe(0);
     const second = placeDebris(s, A, seconds(30), 1, undefined, 1);            // reuses slot 0; already warned, so nothing auto-selects it
-    expect(s.stations.cursor[wpn]).toBe(-1);
+    expect(weaponSelection(s).cursor).toBe(-1);
     run(s, 1, () => intents({}, down)); run(s, 1, () => intents({}, {}));       // Down with cursor -1 selects the first warned target
-    expect(s.stations.cursor[wpn]).toBe(second);
+    expect(weaponSelection(s).cursor).toBe(second);
     run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
     expect(s.weapons.selector).toBe(Weapon.Torpedo);
     expect(s.weapons.torpedoLoaded).toBe(0);                                     // about 12 s in: not yet
@@ -384,7 +387,7 @@ describe('scripted-intent gate: Engineering overdrive', () => {
     edge(down);                                                               // cursor Engineering -> Life Support
     edge(left); expect(s.stations.level[ls]).toBe(1); expect(powerPool(s)).toBe(2);
     edge(up); edge(up); edge(up);                                             // Life Support -> Engineering -> Science -> Weapons
-    expect(s.stations.cursor[eng]).toBe(StationKind.Weapons);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Weapons);
     edge(right); edge(right);
     expect(s.stations.level[wpn]).toBe(4); expect(powerPool(s)).toBe(0);
     edge(confirm); edge(confirm);
@@ -436,47 +439,47 @@ describe('Engineering Upgrades page', () => {
   const edge = (s: ReturnType<typeof makeState>, i: Partial<Intent>) => { run(s, 1, () => intents(i)); run(s, 1, () => intents({})); };
   const levels = (s: ReturnType<typeof makeState>) => [Array.from(s.stations.level), Array.from(s.stations.coolant), Array.from(s.run.upgrades), s.run.reactorBonus, s.power.capacity, s.run.scrap];
   it('the power page gains the UPGRADES row after Doors: Down from Doors and Up from Navigation reach it; Left/Right and coolant are inert on it', () => {
-    const { s, eng } = seat(); s.stations.cursor[eng] = StationKind.Doors;
-    edge(s, down); expect(s.stations.cursor[eng]).toBe(UPGRADES);
-    edge(s, down); expect(s.stations.cursor[eng]).toBe(StationKind.Navigation);
-    edge(s, up); expect(s.stations.cursor[eng]).toBe(UPGRADES);
-    const before = levels(s); edge(s, left); edge(s, right); expect(levels(s)).toEqual(before); expect(s.stations.page[eng]).toBe(0);
-    edge(s, up); expect(s.stations.cursor[eng]).toBe(StationKind.Doors);
+    const { s, eng } = seat(); cardSelection(s, eng).cursor = StationKind.Doors;
+    edge(s, down); expect(cardSelection(s, eng).cursor).toBe(UPGRADES);
+    edge(s, down); expect(cardSelection(s, eng).cursor).toBe(StationKind.Navigation);
+    edge(s, up); expect(cardSelection(s, eng).cursor).toBe(UPGRADES);
+    const before = levels(s); edge(s, left); edge(s, right); expect(levels(s)).toEqual(before); expect(cardSelection(s, eng).page).toBe(0);
+    edge(s, up); expect(cardSelection(s, eng).cursor).toBe(StationKind.Doors);
   });
   it('Confirm on UPGRADES opens the page on its first row without touching coolant; the power page is otherwise unchanged', () => {
-    const { s, eng } = seat(); s.stations.cursor[eng] = UPGRADES; const before = levels(s);
-    run(s, 1, () => intents(confirm)); expect([s.stations.page[eng], s.stations.cursor[eng]]).toEqual([1, StationKind.Navigation]); expect(levels(s)).toEqual(before);
-    const p = seat(); p.s.stations.cursor[p.eng] = StationKind.Weapons; run(p.s, 1, () => intents(confirm)); expect(p.s.stations.coolant[idx(p.s, StationKind.Weapons)]).toBe(1); expect(p.s.stations.page[p.eng]).toBe(0);   // coolant still cycles on a station row
+    const { s, eng } = seat(); cardSelection(s, eng).cursor = UPGRADES; const before = levels(s);
+    run(s, 1, () => intents(confirm)); expect([cardSelection(s, eng).page, cardSelection(s, eng).cursor]).toEqual([1, StationKind.Navigation]); expect(levels(s)).toEqual(before);
+    const p = seat(); cardSelection(p.s, p.eng).cursor = StationKind.Weapons; run(p.s, 1, () => intents(confirm)); expect(p.s.stations.coolant[idx(p.s, StationKind.Weapons)]).toBe(1); expect(cardSelection(p.s, p.eng).page).toBe(0);   // coolant still cycles on a station row
   });
   it('Up/Down wrap over the upgradeable kinds (Engineering skipped), Reactor and BACK; Left/Right do nothing', () => {
-    const { s, eng } = seat(); s.stations.cursor[eng] = UPGRADES; run(s, 1, () => intents(confirm)); run(s, 1);
-    const seen: number[] = [s.stations.cursor[eng]!];
-    for (let k = 0; k < 8; k++) { edge(s, down); seen.push(s.stations.cursor[eng]!); }
+    const { s, eng } = seat(); cardSelection(s, eng).cursor = UPGRADES; run(s, 1, () => intents(confirm)); run(s, 1);
+    const seen: number[] = [cardSelection(s, eng).cursor!];
+    for (let k = 0; k < 8; k++) { edge(s, down); seen.push(cardSelection(s, eng).cursor!); }
     expect(seen).toEqual([0, 1, 2, 4, 5, 6, REACTOR_ROW, BACK, 0]);
-    edge(s, up); expect(s.stations.cursor[eng]).toBe(BACK);
-    const before = levels(s); edge(s, left); edge(s, right); s.stations.cursor[eng] = StationKind.Weapons; edge(s, left); edge(s, right); expect(levels(s)).toEqual(before); expect(s.stations.page[eng]).toBe(1);
+    edge(s, up); expect(cardSelection(s, eng).cursor).toBe(BACK);
+    const before = levels(s); edge(s, left); edge(s, right); cardSelection(s, eng).cursor = StationKind.Weapons; edge(s, left); edge(s, right); expect(levels(s)).toEqual(before); expect(cardSelection(s, eng).page).toBe(1);
   });
   it('Confirm buys: a Weapons level for 30 then 45; a reactor bar for 25 arrives unpowered; maxed or unaffordable rows do nothing; BACK returns to UPGRADES on the power page', () => {
-    const { s, eng } = seat(200); s.stations.page[eng] = 1; s.stations.cursor[eng] = StationKind.Weapons; const used = Array.from(s.stations.level);
+    const { s, eng } = seat(200); cardSelection(s, eng).page = 1; cardSelection(s, eng).cursor = StationKind.Weapons; const used = Array.from(s.stations.level);
     run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap, baseMax(s, StationKind.Weapons)]).toEqual([1, 170, STATION_MAX[StationKind.Weapons]! + 1]);
     run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap]).toEqual([2, 125]);
     run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap]).toEqual([3, 65]);
     run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap, s.telemetry.purchases]).toEqual([3, 65, 3]);   // maxed
-    s.stations.cursor[eng] = REACTOR_ROW; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.power.capacity, s.run.reactorBonus, s.run.scrap, powerPool(s)]).toEqual([REACTOR_CAPACITY + 1, 1, 40, 2]);
+    cardSelection(s, eng).cursor = REACTOR_ROW; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.power.capacity, s.run.reactorBonus, s.run.scrap, powerPool(s)]).toEqual([REACTOR_CAPACITY + 1, 1, 40, 2]);
     expect(Array.from(s.stations.level)).toEqual(used);
-    grantScrap(s, 10); s.stations.cursor[eng] = StationKind.Science; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Science], s.run.scrap]).toEqual([0, 10]);   // 30 needed
-    s.stations.cursor[eng] = BACK; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.stations.page[eng], s.stations.cursor[eng]]).toEqual([0, UPGRADES]);
+    grantScrap(s, 10); cardSelection(s, eng).cursor = StationKind.Science; run(s, 1); run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Science], s.run.scrap]).toEqual([0, 10]);   // 30 needed
+    cardSelection(s, eng).cursor = BACK; run(s, 1); run(s, 1, () => intents(confirm)); expect([cardSelection(s, eng).page, cardSelection(s, eng).cursor]).toEqual([0, UPGRADES]);
   });
   it('standing resets the page; sitting again starts on the power page at Engineering', () => {
-    const { s, eng } = seat(); s.stations.cursor[eng] = UPGRADES; run(s, 1, () => intents(confirm)); expect(s.stations.page[eng]).toBe(1);
-    run(s, 1, () => intents({ cancelPressed: true })); expect([Seated.station[s.crew[0]!], s.stations.page[eng]]).toEqual([-1, 0]);
-    s.stations.page[eng] = 1; sitDown(s, 0, eng); expect([s.stations.page[eng], s.stations.cursor[eng]]).toEqual([0, StationKind.Engineering]);
-    s.stations.page[eng] = 1; failStation(s, eng); expect([Seated.station[s.crew[0]!], s.stations.page[eng]]).toEqual([-1, 0]);   // a failure stands the officer
+    const { s, eng } = seat(); cardSelection(s, eng).cursor = UPGRADES; run(s, 1, () => intents(confirm)); expect(cardSelection(s, eng).page).toBe(1);
+    run(s, 1, () => intents({ cancelPressed: true })); expect([Seated.station[s.crew[0]!], cardSelection(s, eng).page]).toEqual([-1, 0]);
+    cardSelection(s, eng).page = 1; sitDown(s, 0, eng); expect([cardSelection(s, eng).page, cardSelection(s, eng).cursor]).toEqual([0, StationKind.Engineering]);
+    cardSelection(s, eng).page = 1; failStation(s, eng); expect([Seated.station[s.crew[0]!], cardSelection(s, eng).page]).toEqual([-1, 0]);   // a failure stands the officer
   });
   it('only an online, seated Engineering officer buys: an offline console refuses; a standing Confirm and another console never buy', () => {
-    const { s, eng } = seat(); s.stations.page[eng] = 1; s.stations.cursor[eng] = StationKind.Weapons; s.stations.failed[eng] = 1;   // failed under a seated officer (failStation would stand them)
+    const { s, eng } = seat(); cardSelection(s, eng).page = 1; cardSelection(s, eng).cursor = StationKind.Weapons; s.stations.failed[eng] = 1;   // failed under a seated officer (failStation would stand them)
     run(s, 1, () => intents(confirm)); expect([s.run.upgrades[StationKind.Weapons], s.run.scrap]).toEqual([0, 200]);
-    const t = makeState(2); quiet(t); grantScrap(t, 200); const w = idx(t, StationKind.Weapons); sitDown(t, 1, w); at(t, 0, idx(t, StationKind.Engineering)); t.stations.page[idx(t, StationKind.Engineering)] = 1;
+    const t = makeState(2); quiet(t); grantScrap(t, 200); const w = idx(t, StationKind.Weapons); sitDown(t, 1, w); at(t, 0, idx(t, StationKind.Engineering)); cardSelection(t, idx(t, StationKind.Engineering)).page = 1;
     run(t, 4, () => intents(confirm, confirm)); expect(Seated.station[t.crew[0]!]).toBe(idx(t, StationKind.Engineering)); expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.run.scrap]).toEqual([[0, 0, 0, 0, 0, 0, 0], 0, 200]);
   });
 });

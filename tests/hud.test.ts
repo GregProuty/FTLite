@@ -1,7 +1,12 @@
+import { fixtureCardUi } from './helpers/cardUi';
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
+import { weaponSelection } from './helpers/weaponFixture';
+import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
-import { buildHudModel, clockLine, sectorLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText, upgradeRowText, engineeringFooter } from '../src/renderer/src/render/hudModel';
+import {  clockLine, sectorLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText, upgradeRowText, engineeringFooter } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -17,7 +22,7 @@ import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
-import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
+import { NodeType } from '../src/renderer/src/sim/run';
 import { resolveEvent } from '../src/renderer/src/sim/events';
 import { EnemySystem, EnemyRoom } from '../src/renderer/src/sim/enemy';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim, rightColumn, windowShown } from '../src/renderer/src/render/enemyWindowModel';
@@ -35,14 +40,14 @@ describe('the Doors card (spec Demo-vii section 1)', () => {
   const card = (s: ReturnType<typeof cutterState>) => buildHudModel(s, slots(2), 'running', '').players[0]!.console as DoorsPanel;
   it('names the selected door or airlock, its state and the Confirm action, for every state', () => {
     const { s, i } = seated(), e = s.derived.doorEdges[3]!;   // edge 3: Aft Passage <-> Weapons
-    s.stations.cursor[i] = 3;
+    cardSelection(s, i).cursor = 3;
     const row = (st: number) => { s.doors.state[e] = st; const c = card(s); return c.item === null ? null : [c.item, c.status, c.action]; };
     expect(row(DoorState.Closed)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
     expect(row(DoorState.Open)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
     expect(row(DoorState.HeldOpen)).toEqual(['Door  Aft Passage / Weapons', 'Held open', 'Release']);
     expect(row(DoorState.Sealed)).toEqual(['Door  Aft Passage / Weapons', 'Sealed', 'Hold open']);
     s.doors.state[e] = DoorState.Closed; s.doors.sealRequested[e] = 1; expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Door  Aft Passage / Weapons', 'Sealing', 'Hold open']); s.doors.sealRequested[e] = 0;   // a pending seal (Codex render review 2)   // the online cycle: Auto -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19)
-    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    cardSelection(s, i).cursor = s.derived.doorEdges.length + 2;
     expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Airlock  Engines', 'Airlock closed', 'Open airlock']);
     s.airlocks.open[2] = 1; s.airlocks.open[0] = 1;
     expect(card(s)).toEqual({ kind: 'doors', item: 'Airlock  Engines', status: 'AIRLOCK OPEN', action: 'Close airlock', openAirlocks: 2 });
@@ -50,18 +55,18 @@ describe('the Doors card (spec Demo-vii section 1)', () => {
   it('offline: a door shows the plain seal toggle and an airlock no action', () => {
     const { s, i } = seated();
     s.stations.level[i] = 0;
-    s.stations.cursor[i] = 0;
+    cardSelection(s, i).cursor = 0;
     expect((card(s) as { action: string }).action).toBe('Seal');
     s.doors.state[s.derived.doorEdges[0]!] = DoorState.Sealed;
     expect((card(s) as { action: string }).action).toBe('Release');
-    s.stations.cursor[i] = s.derived.doorEdges.length;
+    cardSelection(s, i).cursor = s.derived.doorEdges.length;
     expect((card(s) as { action: string }).action).toBe('');
   });
   it('every card line fits CONSOLE_LINE_MAX, for every door and airlock on the cutter', () => {
     const { s, i } = seated();
     s.airlocks.open.fill(1);
     for (let c = 0; c < s.derived.doorEdges.length + s.airlocks.open.length; c++) {
-      s.stations.cursor[i] = c;
+      cardSelection(s, i).cursor = c;
       const p = card(s) as Exclude<DoorsPanel, { item: null }>;
       for (const line of [p.item, p.status, `Confirm: ${p.action}`, `Open airlocks: ${p.openAirlocks}`]) expect(line.length, line).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
     }
@@ -157,7 +162,7 @@ describe('buildHudModel', () => {
     const eng = s.derived.stationOfKind[StationKind.Engineering]!;
     teleport(s, 0, 17.5, 9.5);
     expect(buildHudModel(s, slots(1), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Engineering');
-    sitDown(s, 0, eng); s.stations.cursor[eng] = StationKind.Weapons;
+    sitDown(s, 0, eng); cardSelection(s, eng).cursor = StationKind.Weapons;
     const p = buildHudModel(s, slots(1), 'running', '').players[0]!;
     expect(p.seated).toBe(StationKind.Engineering); expect(p.cancelPrompt).toBe('Stand'); expect(p.confirmPrompt).toBe(''); expect(p.interactPrompt).toBe('');
     const panel = p.console as EngineeringPanel;
@@ -207,9 +212,9 @@ describe('buildHudModel', () => {
     expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }]);
     expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0, fetch: false, fed: false });
     expect(panel.cursor).toBe(0);                                                  // sitDown selected id 10 (slot 1), which is targets[0]
-    s.stations.cursor[wpn] = 0;                                                    // slot 0 is id 30: targets[1]
+    weaponSelection(s).cursor = 0;                                                    // slot 0 is id 30: targets[1]
     expect((buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel).cursor).toBe(1);
-    s.debris.warned.fill(0); s.stations.cursor[wpn] = -1;
+    s.debris.warned.fill(0); weaponSelection(s).cursor = -1;
     const empty = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
     expect(empty.targets).toEqual([]); expect(empty.cursor).toBe(-1);
   });
@@ -227,7 +232,7 @@ describe('buildHudModel', () => {
     const wpn = s.derived.stationOfKind[StationKind.Weapons]!, sci = s.derived.stationOfKind[StationKind.Science]!;
     placeDebris(s, A, 300, 1, 10, 2); placeDebris(s, B, 600, 1, 20, 3);
     s.debris.scanned[0] = 1; s.debris.scan[0] = 1; s.debris.scan[1] = 0.4;
-    sitDown(s, 0, wpn); sitDown(s, 1, sci); s.science.scanning = 1; s.stations.cursor[sci] = 1;
+    sitDown(s, 0, wpn); sitDown(s, 1, sci); s.science.scanning = 1; s.science.target = targetRef(s, 1);
     s.weapons.selector = 3; s.weapons.torpedoLoaded = 1; s.weapons.torpedoStock = 2; s.weapons.torpedoLoad = 0;
     const m = buildHudModel(s, slots(2), 'running', '');
     expect(m.threats.map((t) => t.text)).toEqual(['Debris: Bridge 5s freq 2', 'Debris: Weapons Bay 10s']);
@@ -253,7 +258,7 @@ describe('buildHudModel', () => {
     const s = makeState(2), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!, c = s.derived.stationOfKind[StationKind.Science]!;
     placeDebris(s, A, 600, 1); placeEnemy(s); s.enemy.hull = 64; sitDown(s, 0, w); sitDown(s, 1, c);
     const k = placeShot(s, A, 420, 1, undefined, 2); s.debris.scanned[k] = 1;
-    s.stations.cursor[w] = ENEMY_SLOT;                                   // Science stays on the object
+    weaponSelection(s).cursor = ENEMY_SLOT;                                   // Science stays on the object
     const m = buildHudModel(s, slots(2), 'running', '');
     const wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
     expect(wp.targets[1]).toEqual({ enemyRoom: EnemyRoom.Hold, stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null });   // Weapons: the Hold room (spec Demo-x-c section 4)
@@ -266,11 +271,11 @@ describe('buildHudModel', () => {
     expect([targetWindow(-1, 3, 6), targetWindow(5, 9, 6), targetWindow(6, 9, 6), targetWindow(8, 9, 6), targetWindow(8, 9, 7), targetWindow(2, 2, 6)]).toEqual([0, 0, 1, 3, 2, 0]);
     const s = makeState(1), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!;
     for (let n = 0; n < 8; n++) placeDebris(s, A, 600, 1); placeEnemy(s);
-    sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT;
+    sitDown(s, 0, w); weaponSelection(s).cursor = ENEMY_SLOT;
     const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
     expect(wp.targets).toHaveLength(13); expect(wp.cursor).toBe(8); expect(wp.first).toBe(3);   // eight objects and five rooms (spec Demo-x-c section 4)
-    s.stations.cursor[w] = ENEMY_SHIELDS_SLOT; const wp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; expect(wp2.cursor).toBe(12); expect(wp2.first).toBe(7);
-    run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
+    weaponSelection(s).cursor = ENEMY_SHIELDS_SLOT; const wp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; expect(wp2.cursor).toBe(12); expect(wp2.first).toBe(7);
+    run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.science.target = targetRef(s, ENEMY_SLOT);
     const sp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel;
     expect(sp.targets).toHaveLength(9); expect(sp.cursor).toBe(8); expect(sp.first).toBe(2);        // seven Science rows; the ship is one row there (spec Demo-x-c section 4)
   });
@@ -309,7 +314,7 @@ describe('buildHudModel', () => {
     expect((m.players[1]!.console as SciencePanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[5]!.status).toEqual({ hp: 0, repairIn: 45 });
     expect(m.threats[0]!.text).toBe('Enemy 64% shields DOWN'); expect(m.threats[1]!.text).toBe('Down: weapons');
     guardDebris(s);                                                                       // a read at slots 8..11 throws: the model must branch before indexing
-    expect(() => { for (const slot of ENEMY_SLOTS) { s.stations.cursor[w] = slot; s.stations.cursor[c] = slot; buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
+    expect(() => { for (const slot of ENEMY_SLOTS) { weaponSelection(s).cursor = slot; s.science.target = targetRef(s, slot); buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
   });
   it('reports heat fraction, coolant and overdrive per Engineering row and per station, and the free coolant', () => {
     const s = makeState(1);
@@ -406,28 +411,28 @@ describe('buildHudModel', () => {
     s.run.column = 3; s.run.sector = 1; s.run.fuel = 6; expect([clockLine(model()), sectorLine(model())]).toEqual(['HULL 100   FUEL 6', 'SECTOR 2/3  node 4/6']);
     s.tick = 999 * 60; expect(clockLine(model()).length).toBeLessThanOrEqual(20); s.tick = 0;   // the 240 px card holds about 20 glyphs at the larger font (tests/hudFit measures it)
     s.run.column = 0; s.run.sector = 0; s.run.fuel = 8; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); setNodeTypes(s, {});   // all Hazard: the labels are plain node labels
-    const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
+    const n = seatNavigator(s, 0); cardSelection(s, n).cursor = 1; s.run.jumpCharge = 0.64;
     const nav = () => model().players[0]!.console as NavigationPanel, p = nav();
     const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;
     expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a  ?', true, true, false], ['Node 2b  ?', true, true, true]]);   // no evade row at a calm beacon (spec Demo-xii section 4) expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect([p.fuel, p.fuelAfter]).toEqual([8, 7]);
     expect(navigationFooter(p)).toBe(`${evade}  Jump 64%  Fuel 8>7  Scrap 0`);
-    s.stations.cursor[n] = 2; expect(navigationFooter(nav())).toBe(`${evade}  Jump 64%  Fuel 8  Scrap 0`);   // the evade row: no jump chosen
-    s.stations.cursor[n] = 1; chargeJump(s); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
-    s.run.column = SECTOR_COLUMNS - 1; s.stations.cursor[n] = 0; const f = nav();
+    cardSelection(s, n).cursor = 2; expect(navigationFooter(nav())).toBe(`${evade}  Jump 64%  Fuel 8  Scrap 0`);   // the evade row: no jump chosen
+    cardSelection(s, n).cursor = 1; chargeJump(s); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
+    s.run.column = SECTOR_COLUMNS - 1; cardSelection(s, n).cursor = 0; const f = nav();
     expect(f.rows.map((r) => r.text)).toEqual(['Jump to sector 2']); expect(navigationFooter(f)).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
     s.run.fuel = 0; expect(nav().rows.map((r) => r.text)).toEqual(['Wait for help']); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 0  Scrap 0`);
-    s.run.fuel = 10; s.run.scrap = 999; s.run.column = 0; s.stations.cursor[n] = 0; const wide = navigationFooter(nav());
+    s.run.fuel = 10; s.run.scrap = 999; s.run.column = 0; cardSelection(s, n).cursor = 0; const wide = navigationFooter(nav());
     expect(wide).toBe(`${evade}  Jump READY  Fuel 10>9  Scrap 999`); expect(wide.length).toBeLessThanOrEqual(44);   // 44 glyphs at about 6.25 px fit the 308 px card from x = 8 (CONSOLE_LINE_MAX 40 is the card's comfortable budget)
   });
   it('the panel window and the highlighted row come from the model: the first selectable row while the sim cursor is still 0, the cursor row scrolls the window', () => {
     const e = makeState(2); quiet(e); mapM(e); e.run.column = 1; e.run.node = 2; setEvent(e, 4); seatNavigator(e, 0);
     const ep = buildHudModel(e, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect([ep.rows[0]!.cursor, ep.rows[2]!.cursor, ep.first]).toEqual([false, true, 0]);
     const s = makeState(2); quiet(s); setMap(s, [1, 3, 2, 2, 2, 1], { '0:0': 0b101, '1:0': 0b11 }); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); const n = seatNavigator(s, 0);
-    s.stations.cursor[n] = 7; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(8); expect(p.first).toBe(1);   // three shop items (spec Loop-ii section 3), two forward and one sideways destination, evade
-    s.stations.cursor[n] = 1; expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel).first).toBe(0);
+    cardSelection(s, n).cursor = 7; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(8); expect(p.first).toBe(1);   // three shop items (spec Loop-ii section 3), two forward and one sideways destination, evade
+    cardSelection(s, n).cursor = 1; expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel).first).toBe(0);
   });
   it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows last, and baseMax on the power rows', () => {
-    const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); clampNavCursor(s);
+    const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); fixtureCardUi(s);
     const m = buildHudModel(s, slots(2), 'running', ''); const p = m.players[0]!.console as NavigationPanel;
     expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['A cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60, a station fails)', true, true, false]]);
     expect(p.scrap).toBe(45); s.run.jumpCharge = 0.64; expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toMatch(/^Evade \d+%  Jump 64%  Fuel 8  Scrap 45$/);
@@ -598,11 +603,11 @@ describe('the Upgrades page in the HUD model', () => {
   const seat = (scrap: number) => { const s = makeState(1); quiet(s); const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 0, eng); grantScrap(s, scrap); return { s, eng }; };
   const panelOf = (s: ReturnType<typeof makeState>) => buildHudModel(s, slots(1), 'running', '').players[0]!.console as EngineeringPanel;
   it('the power page: the cursor on the UPGRADES row (index 7) and the pool footer', () => {
-    const { s, eng } = seat(120); s.stations.cursor[eng] = 7; const p = panelOf(s);
+    const { s, eng } = seat(120); cardSelection(s, eng).cursor = 7; const p = panelOf(s);
     expect([p.page, p.cursor, p.scrap]).toEqual([0, 7, 120]); expect(engineeringFooter(p)).toBe(`pool 1   coolant ${COOLANT_POOL}/${COOLANT_POOL}`);
   });
   it('the Upgrades page rows, prices and footer, exactly; the cursor row; disabled rows', () => {
-    const { s, eng } = seat(120); s.stations.page[eng] = 1; s.stations.cursor[eng] = StationKind.Weapons; const p = panelOf(s);
+    const { s, eng } = seat(120); cardSelection(s, eng).page = 1; cardSelection(s, eng).cursor = StationKind.Weapons; const p = panelOf(s);
     expect(p.upgrades.map(upgradeRowText)).toEqual(['Navigation  lvl 2/5  30', 'Weapons  lvl 3/6  30', 'Science  lvl 2/5  30', 'Life Support  lvl 3/6  30', 'Medbay  lvl 2/5  30', 'Doors  lvl 1/4  30', 'Reactor  +1 bar  25', 'BACK']);
     expect(p.upgrades.map((r) => r.cursor)).toEqual([false, true, false, false, false, false, false, false]);
     expect(p.upgrades.map((r) => r.row)).toEqual([0, 1, 2, 4, 5, 6, REACTOR_ROW, REACTOR_ROW + 1]);
@@ -615,7 +620,7 @@ describe('the Upgrades page in the HUD model', () => {
     expect(engineeringFooter(m)).toBe('Scrap 999');
   });
   it('every Upgrades page line fits CONSOLE_LINE_MAX at any level', () => {
-    const { s, eng } = seat(999); s.stations.page[eng] = 1;
+    const { s, eng } = seat(999); cardSelection(s, eng).page = 1;
     for (let lvl = 0; lvl <= 3; lvl++) { s.run.upgrades.fill(lvl); s.run.reactorBonus = Math.min(5, lvl * 2); for (const r of panelOf(s).upgrades) expect(upgradeRowText(r).length, upgradeRowText(r)).toBeLessThanOrEqual(CONSOLE_LINE_MAX); }
     expect(engineeringFooter(panelOf(s)).length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
   });
@@ -691,10 +696,10 @@ describe('the Weapons card with loot weapons', () => {
   });
   it('the SWAP row: listed after the targets while cargo holds a weapon and no enemy is present; Down reaches it; Confirm swaps with the selected slot, or slot 1; no draws', () => {
     const { s, w } = seatedW(); s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Heavy; s.weapons.charge2[0] = 0.9; s.weapons.charge2[1] = 0.6; s.weapons.cargo = LootWeapon.Missile;
-    s.stations.cursor[w] = placeDebris(s, room(s, 'A'), 600, 1);   // the cursor on the one target: Down goes to the SWAP row
+    weaponSelection(s).cursor = placeDebris(s, room(s, 'A'), 600, 1);   // the cursor on the one target: Down goes to the SWAP row
     expect(panel(s).swap).toBe('SWAP: cargo Missile for Burst'); expect(weaponsRowTexts(panel(s)).slice(-1)).toEqual(['SWAP: cargo Missile for Burst']);
     run(s, 1, () => intents({ moveY: 1 })); run(s, 1, () => intents({}));
-    expect(s.stations.cursor[w]).toBe(SWAP_SLOT); expect(panel(s).cursor).toBe(panel(s).targets.length);
+    expect(s.weapons.target).toBeNull(); expect(panel(s).cursor).toBe(panel(s).targets.length);
     const r0 = JSON.stringify([s.rng.combat.s, s.rng.loot.s]);
     run(s, 1, () => intents({ confirmPressed: true }));
     expect([Array.from(s.weapons.slot), s.weapons.cargo, s.weapons.charge2[0], s.weapons.charge2[1]]).toEqual([[LootWeapon.Missile, LootWeapon.Heavy], LootWeapon.Burst, 0, 0.6]);
@@ -705,11 +710,11 @@ describe('the Weapons card with loot weapons', () => {
   });
   it('no SWAP row with an enemy present or an empty cargo; a cursor left on it moves off', () => {
     const { s, w } = seatedW(); s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Heavy;
-    expect(panel(s).swap).toBeNull(); run(s, 1, () => intents({ moveY: 1 })); expect(s.stations.cursor[w]).toBe(-1);
-    s.weapons.cargo = LootWeapon.Ion; s.stations.cursor[w] = SWAP_SLOT; placeEnemy(s);
+    expect(panel(s).swap).toBeNull(); run(s, 1, () => intents({ moveY: 1 })); expect(weaponSelection(s).cursor).toBe(-1);
+    s.weapons.cargo = LootWeapon.Ion; weaponSelection(s).cursor = SWAP_SLOT; placeEnemy(s);
     expect(panel(s).swap).toBeNull();
     run(s, 1, () => intents({ confirmPressed: true })); expect(s.weapons.cargo).toBe(LootWeapon.Ion);
-    run(s, 1, () => intents({ moveY: 1 })); expect(s.stations.cursor[w]).not.toBe(SWAP_SLOT);
+    run(s, 1, () => intents({ moveY: 1 })); expect(weaponSelection(s).cursor).not.toBe(SWAP_SLOT);
   });
 });
 

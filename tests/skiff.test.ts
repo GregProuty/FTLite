@@ -5,16 +5,16 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { reachableTiles } from '../src/renderer/src/sim/ship/reachability';
 import { createSimState, type SimState } from '../src/renderer/src/sim/state';
-import { step } from '../src/renderer/src/sim/step';
+import { step, fixtureRunner } from './helpers/rawInput';
 import { Seated } from '../src/renderer/src/sim/components';
-import { botIntent } from '../src/renderer/src/sim/bot';
+import { botIntent } from './helpers/bot';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { StationKind, STATION_IDS } from '../src/renderer/src/sim/stationKinds';
 import { failStation, powerUsed, powerCapacity } from '../src/renderer/src/sim/power';
 import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { buildHudModel, tabText } from '../src/renderer/src/render/hudModel';
 import { shipForCrew, shipLine } from '../src/renderer/src/sim/ship/fleet';
-import { createSession } from '../src/renderer/src/app/session';
+import { createSession } from './helpers/sessionFixture';
 import type { SlotInfo, SourceSample } from '../src/renderer/src/input/deviceManager';
 import type { ShipLayout } from '../src/renderer/src/sim/ship/schema';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
@@ -75,7 +75,7 @@ describe('the Skiff (spec Demo-x-a section 2)', () => {
 describe('the console card tab bar (spec Demo-x-a section 1)', () => {
   it('shows HELM | WEAPONS with the active tab, the bar focus, a switch and an offline tab', () => {
     const s = state(); sitAt(s, HELM);
-    const p = (): ReturnType<typeof buildHudModel>['players'][number] => buildHudModel(s, slots(2), 'running', '').players[0]!;
+    const p = (): ReturnType<typeof buildHudModel>['players'][number] => buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!;
     expect(p().tabs!.map(tabText)).toEqual(['HELM', 'WEAPONS']); expect(p().tabs!.map((t) => t.active)).toEqual([true, false]); expect(p().tabFocus).toBe(false);
     expect(p().seated).toBe(StationKind.Navigation); expect(p().console!).toMatchObject({ kind: 'navigation' });
     edge(s, 0, -1); expect(p().tabFocus).toBe(true);
@@ -86,11 +86,11 @@ describe('the console card tab bar (spec Demo-x-a section 1)', () => {
   it('shows SCIENCE | ENGINEERING | DOORS at Ops, no tabs at a single console, and the group in the Sit prompt', () => {
     const s = state();
     teleport(s, 0, OPS[0]! + 0.5, OPS[1]! + 1.5);
-    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Sci + Eng + Doors')   // short member names fit the player block at the larger font (spec Demo-x-c section 1);
+    expect(buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!.confirmPrompt).toBe('Sit: Sci + Eng + Doors')   // short member names fit the player block at the larger font (spec Demo-x-c section 1);
     teleport(s, 0, HELM[0]! + 0.5, HELM[1]! + 0.5);
-    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Helm + Weapons');
+    expect(buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!.confirmPrompt).toBe('Sit: Helm + Weapons');
     sitAt(s, OPS);
-    expect(buildHudModel(s, slots(2), 'running', '').players[0]!.tabs!.map(tabText)).toEqual(['SCIENCE', 'ENGINEERING', 'DOORS']);
+    expect(buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!.tabs!.map(tabText)).toEqual(['SCIENCE', 'ENGINEERING', 'DOORS']);
     const t = createSimState(LAYOUT, 2, 1, RECRUITS); quiet(t); sitAt(t, LAYOUT.stations.find((st) => st.id === 'navigation')!.tile);
     expect(buildHudModel(t, slots(2), 'running', '').players[0]!.tabs).toBeNull();
   });

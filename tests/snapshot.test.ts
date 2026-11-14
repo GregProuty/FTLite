@@ -1,10 +1,14 @@
+import { cardSelection } from './helpers/cardUi';
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
+import { botPolicyIntent as fixtureBotPolicy } from './helpers/bot';
+import { snapshotPhaseStep, snapshotPhaseClient } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
 import { TEAM_MULT as TM2 } from '../src/renderer/src/sim/tuning';
 import fc from 'fast-check';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { flatten } from '../src/renderer/src/sim/flatten';
-import { step } from '../src/renderer/src/sim/step';
+import { flatten, unflatten } from '../src/renderer/src/sim/flatten';
+import { step } from './helpers/rawInput';
 import { Position, Seated, Life, LifeState } from '../src/renderer/src/sim/components';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { downCrew } from '../src/renderer/src/sim/crew';
@@ -26,7 +30,10 @@ import { navRows, jumpShip, NodeType } from '../src/renderer/src/sim/run';
 function advanced(seed: number, players = 2) {
   const s = makeState(players, seed);
   s.director.nextSpawnTick = 0;
-  for (let i = 0; i < 1500; i++) step(s, Array.from({ length: players }, (_, pid) => botIntent(s, pid)));
+  for (let i = 0; i < 1500; i++) {
+    const { view, ui } = snapshotPhaseClient(s);
+    snapshotPhaseStep(s, Array.from({ length: players }, (_, pid) => fixtureBotPolicy(view, ui, pid)));
+  }
   return s;
 }
 
@@ -132,7 +139,7 @@ describe('snapshot', () => {
   it('property: same seed and intents give the same hash', () => {
     fc.assert(fc.property(fc.integer(), arbScript(2), (seed, script) => {
       const a = advanced(seed), b = advanced(seed);
-      for (const tick of script) { step(a, tick); step(b, tick); }
+      for (const tick of script) { snapshotPhaseStep(a, tick); snapshotPhaseStep(b, tick); }
       expect(hashState(a)).toBe(hashState(b));
     }), { numRuns: 50 });
   });
@@ -140,18 +147,18 @@ describe('snapshot', () => {
     fc.assert(fc.property(fc.integer(), arbScript(2), fc.nat(), (seed, script, nRaw) => {
       const n = nRaw % script.length;
       const whole = advanced(seed);
-      for (const tick of script) step(whole, tick);
+      for (const tick of script) snapshotPhaseStep(whole, tick);
       const first = advanced(seed);
-      for (let i = 0; i < n; i++) step(first, script[i]!);
+      for (let i = 0; i < n; i++) snapshotPhaseStep(first, script[i]!);
       const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(first))));
-      for (let i = n; i < script.length; i++) step(resumed, script[i]!);
+      for (let i = n; i < script.length; i++) snapshotPhaseStep(resumed, script[i]!);
       expect(hashState(resumed)).toBe(hashState(whole));
     }), { numRuns: 50 });
   });
   it('property: fuzzed intents never produce NaN or out-of-range values', () => {
     fc.assert(fc.property(fc.integer(), arbScript(4), (seed, script) => {
       const s = advanced(seed, 4);
-      for (const tick of script) step(s, tick);
+      for (const tick of script) snapshotPhaseStep(s, tick);
       for (const v of flatten(s)) expect(Number.isFinite(v)).toBe(true);
       for (let r = 0; r < s.rooms.o2.length; r++) { expect(s.rooms.o2[r]).toBeGreaterThanOrEqual(0); expect(s.rooms.o2[r]).toBeLessThanOrEqual(s.derived.volume[r]! + 1e-9); }
       for (const eid of s.crew) {
@@ -165,14 +172,14 @@ describe('snapshot', () => {
     step(s, [NEUTRAL_INTENT]);
     expect(s.tick).toBe(1);
   });
-  it('round-trips seating, power and stick state', () => {
+  it('round-trips seating and power without canonical client repeat', () => {
     const s = makeState(2, 5);
     const eng = s.derived.stationOfKind[3]!;
-    sitDown(s, 0, eng); s.stations.cursor[eng] = 5; s.stations.failed[1] = 1; s.stations.repair[1] = 0.25; s.stations.level[2] = 0; s.stick.heldDir[0] = 2; s.stick.repeat[0] = 3;
+    sitDown(s, 0, eng); s.stations.failed[1] = 1; s.stations.repair[1] = 0.25; s.stations.level[2] = 0;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect(hashState(t)).toBe(hashState(s));
-    expect(Seated.station[t.crew[0]!]).toBe(eng); expect(t.stations.occupant[eng]).toBe(0); expect(t.stations.cursor[eng]).toBe(5);
-    expect(t.stations.failed[1]).toBe(1); expect(t.stations.repair[1]).toBe(0.25); expect(t.stick.heldDir[0]).toBe(2); expect(t.stick.repeat[0]).toBe(3);
+    expect(Seated.station[t.crew[0]!]).toBe(eng); expect(t.stations.occupant[eng]).toBe(0);
+    expect(t.stations.failed[1]).toBe(1); expect(t.stations.repair[1]).toBe(0.25); expect('stick' in t).toBe(false);
   });
   it('round-trips debris, weapons charge and room impact ticks', () => {
     const s = makeState(2, 5);
@@ -338,7 +345,7 @@ describe('snapshot', () => {
     expect(hashState(resumed)).toBe(hashState(whole));
   });
   it('a run saved with the enemy weapons down, a repair due in 10 ticks and an enemy scan running continues like the uninterrupted run through the repair and the repaired first shot', () => {
-    const setup = (s: ReturnType<typeof makeState>) => { run(s, 100); placeEnemy(s); disableSystem(s, EnemySystem.Weapons); s.enemy.sysRepairTick[EnemySystem.Weapons] = s.tick + 10; s.enemy.nextShotTick = s.tick + 15; const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 1, c); s.stations.cursor[c] = ENEMY_SLOT; s.science.scanning = 1; };
+    const setup = (s: ReturnType<typeof makeState>) => { run(s, 100); placeEnemy(s); disableSystem(s, EnemySystem.Weapons); s.enemy.sysRepairTick[EnemySystem.Weapons] = s.tick + 10; s.enemy.nextShotTick = s.tick + 15; const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 1, c); s.science.target = targetRef(s, ENEMY_SLOT); s.science.scanning = 1; };
     const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9; setup(whole);
     const part = makeState(2, 31); part.director.nextSpawnTick = 1e9; setup(part);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
@@ -424,28 +431,28 @@ describe('snapshot', () => {
     expect(mutate((u) => { u.run.upgrades[1] = 3; })).not.toBe(mutate((u) => { u.run.upgrades[1] = 2; }));
     for (const k of ['scrapEarned', 'scrapSpent', 'eventsResolved', 'purchases'] as const) expect(mutate((u) => { u.telemetry[k] = 7; })).not.toBe(base);
   });
-  it('round-trips the upgrade levels, run.reactorBonus, the reactor capacity, stations.page and the last purchase; each alone changes the hash (spec Loop-ii section 6)', () => {
-    const s = makeState(2, 5); s.run.upgrades.set([2, 3, 1, 0, 0, 2, 1]); s.run.reactorBonus = 4; s.power.capacity = 14; s.stations.page[3] = 1; s.run.boughtTick = 321; s.run.boughtKind = 7;
+  it('round-trips the upgrade levels, run.reactorBonus, the reactor capacity and the last purchase; each alone changes the hash (spec Loop-ii section 6)', () => {
+    const s = makeState(2, 5); s.run.upgrades.set([2, 3, 1, 0, 0, 2, 1]); s.run.reactorBonus = 4; s.power.capacity = 14; s.run.boughtTick = 321; s.run.boughtKind = 7;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.power.capacity, Array.from(t.stations.page), t.run.boughtTick, t.run.boughtKind]).toEqual([[2, 3, 1, 0, 0, 2, 1], 4, 14, [0, 0, 0, 1, 0, 0, 0], 321, 7]);
+    expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.power.capacity, t.run.boughtTick, t.run.boughtKind]).toEqual([[2, 3, 1, 0, 0, 2, 1], 4, 14, 321, 7]);
     expect(hashState(t)).toBe(hashState(s));
     const base = hashState(makeState(2, 5));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
-    expect(mutate((u) => { u.run.reactorBonus = 1; })).not.toBe(base); expect(mutate((u) => { u.stations.page[3] = 1; })).not.toBe(base); expect(mutate((u) => { u.power.capacity = 11; })).not.toBe(base);
+    expect(mutate((u) => { u.run.reactorBonus = 1; })).not.toBe(base); expect(mutate((u) => { u.power.capacity = 11; })).not.toBe(base);
     for (const k of ['boughtTick', 'boughtKind'] as const) expect(mutate((u) => { u.run[k] = 3; })).not.toBe(base);   // the purchase notice's tick and row (spec Loop-ii amendment A3)
   });
-  it('a run saved with a pending event resumes with the same rows and cursor', () => {
+  it('a run saved with a pending event resumes with the same rows and a fresh client highlight', () => {
     const s = makeState(2, 5); s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s);
     s.run.column = 1; s.run.node = 2; s.run.nodesReached = 1; s.telemetry.jumps = 1; setEvent(s, 4);
-    const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 3;
+    const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 3;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect(navRows(t)).toEqual(navRows(s)); expect(t.stations.cursor[n]).toBe(3);
+    expect(navRows(t)).toEqual(navRows(s)); expect(cardSelection(t, n).cursor).toBe(2);
   });
-  it('a run saved mid-charge with the cursor on the second destination continues to the same jump as the uninterrupted run', () => {
-    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.9; return n; };
+  it('a run saved mid-charge continues to the same jump when the client restores its separate row memory', () => {
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 1; s.run.jumpCharge = 0.9; return n; };
     const whole = makeState(2, 31), part = makeState(2, 31); const n = setup(whole); setup(part);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
-    expect(resumed.stations.cursor[n]).toBe(1); expect(resumed.run.jumpCharge).toBe(0.9);
+    expect(cardSelection(resumed, n).cursor).toBe(0); cardSelection(resumed, n).cursor = cardSelection(part, n).cursor; expect(resumed.run.jumpCharge).toBe(0.9);
     const drive = (s: ReturnType<typeof makeState>) => run(s, 0.1 * JUMP_CHARGE_TIME * TICK_HZ + 600, () => intents({ confirmPressed: true }, { confirmPressed: true }));   // P2 confirms the jump (spec Coop-ii section 3)
     drive(whole); drive(resumed);
     expect([resumed.run.column, resumed.run.node, resumed.run.nodesReached]).toEqual([1, 1, 1]);
@@ -566,5 +573,16 @@ describe('snapshot: the loot weapons (spec Loop-iii section 5)', () => {
     const base = hashState(makeState(2, 7));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 7); f(u); return hashState(u); };
     for (const f of [(u: ReturnType<typeof makeState>) => { u.weapons.slot[1] = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.charge2[0] = 0.1; }, (u: ReturnType<typeof makeState>) => { u.weapons.cargo = 1; }, (u: ReturnType<typeof makeState>) => { u.enemy.ionUntil[2] = 5; }, (u: ReturnType<typeof makeState>) => { u.run.shopWeapon = 3; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootTick = 9; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootId = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootPlace = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootBought = 1; }]) expect(mutate(f)).not.toBe(base);
+  });
+});
+
+// Malformed lengths must fail before even the header's mutable fields are applied.
+describe('snapshot exact length validation', () => {
+  it.each([-1, 1])('rejects length delta %i without mutating the destination', (delta) => {
+    const s = makeState(2); run(s, 15); const before = flatten(s);
+    const source = flatten(makeState(2, 99));
+    const malformed = new Float64Array(source.length + delta); malformed.set(source.subarray(0, malformed.length));
+    expect(() => unflatten(s, malformed)).toThrow(/snapshot length/);
+    expect(flatten(s)).toEqual(before);
   });
 });

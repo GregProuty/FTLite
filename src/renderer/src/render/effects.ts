@@ -1,3 +1,4 @@
+import type { CardUiState } from '../clientControl/cardController';
 import { AnimatedSprite, Container, Graphics, Sprite } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
@@ -14,7 +15,7 @@ export const LOW_O2_MAX_ALPHA = 0.6;
 const IMPACT_FLASH_TICKS = 18, IMPACT_COLOR = 0xff6b5a, IMPACT_MAX_ALPHA = 0.7;
 const SCALE = TILE_PX / 16;
 
-export interface EffectsLayer { below: Container; above: Container; draw(state: SimState): void }
+export interface EffectsLayer { below: Container; above: Container; draw(state: SimState, ui?: CardUiState): void }
 
 export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): EffectsLayer {
   const missing = new Set(assets.missing);
@@ -34,7 +35,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
 
   return {
     below, above,
-    draw(state) {
+    draw(state, ui) {
       const d = state.derived, w = d.width;
       // Low oxygen tint: nothing drawn at frac >= 0.98.
       o2Layer.clear();
@@ -87,7 +88,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
       }
       // Doors console selection: a pulsing outline on the selected door or airlock tile while someone is seated there (spec Demo-vii amendment 3).
       outline.clear();
-      const sel = doorsCursorTile(state);
+      const sel = doorsCursorTile(state, ui);
       if (sel >= 0) {
         const [tx, ty] = tileXY(w, sel), pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(state.tick * 0.2));
         outline.rect(tx * TILE_PX - 2, ty * TILE_PX - 2, TILE_PX + 4, TILE_PX + 4).stroke({ color: 0x4fc3f7, width: 3, alpha: pulse });   // drawn just outside the tile: it stays visible on amber airlock leaves
