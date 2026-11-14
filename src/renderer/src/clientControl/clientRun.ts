@@ -2,7 +2,8 @@ import type { AuthorityEvent, CommandResult, Link, PlayerId, PublishedState } fr
 import { decodeMessage, encodeMessage } from '../net/codec';
 import type { ShipLayout } from '../sim/ship/schema';
 import type { SimState } from '../sim/state';
-import { loadSnapshot } from '../sim/snapshot';
+import { loadSnapshot, SNAPSHOT_FORMAT } from '../sim/snapshot';
+import { SIM_VERSION } from '../sim/tuning';
 import { unflatten } from '../sim/flatten';
 import { hashF64 } from '../../../shared/hash';
 import { createCardUi, reconcileUi, reconcileCommandResult, type ClientActions } from './cardController';
@@ -20,7 +21,7 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
     if (message.kind === 'state') {
       const next = message.state;
       if (next.runId !== options.runId || next.publicationSequence <= (publication?.publicationSequence ?? 0)) return;
-      if (startupSequence === null) startupSequence = next.eventSequence;
+      if (next.snapshot.header.formatVersion !== SNAPSHOT_FORMAT || next.snapshot.header.simVersion !== SIM_VERSION) { link.close('state-version'); return; }
       const values = Float64Array.from(next.snapshot.values);
       if (hashF64(values) !== next.hash) { link.close('state-checksum'); return; }
       if (!replica) replica = loadSnapshot(JSON.parse(JSON.stringify(options.resolveLayout(next.snapshot.header.layoutId))) as ShipLayout, next.snapshot);
@@ -29,6 +30,13 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
         unflatten(replica, values);
       }
       publication = next; reconcileUi(replica, ui, next.runId, next.commandHighWater);
+      // A replacement starts after the authority's admitted IDs; an existing
+      // producer may already have newer input in flight and must never rewind.
+      for (let player = 0; player < replica.playerCount; player++) {
+        ui.players[player]!.heldSequence = Math.max(ui.players[player]!.heldSequence, next.heldHighWater[player]!);
+        auxiliarySequences[player] = Math.max(auxiliarySequences[player]!, next.auxiliaryHighWater[player]!);
+      }
+      if (startupSequence === null) startupSequence = next.eventSequence;
     } else if (message.kind === 'result' && message.runId === options.runId) {
       reconcileCommandResult(ui, message.result);
       results.push(message.result); if (results.length > 1024) results.shift();

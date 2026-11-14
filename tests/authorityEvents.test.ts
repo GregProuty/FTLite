@@ -90,12 +90,12 @@ it('bounds unavailable future event history and requests a reset by closing the 
   }
   expect(closed).toHaveBeenCalledWith('event-history-unavailable'); h.dispose();
 });
-it('applies one completion despite duplicate delivery, coalesced state and failing storage callbacks; rendering never advances authority', () => {
+it.each([false, true])('applies one completion despite duplicate delivery, failing storage and final latest loss=%s; rendering never advances authority', (dropFinalLatest) => {
   let now = 0, samples: SourceSample[] = [], owner: SimState | null = null;
   const saveProgress = vi.fn(() => { throw Error('storage full'); }), saveTelemetry = vi.fn(() => { throw Error('storage full'); }), cues: string[] = [];
   const session = createSession({ layout: LAYOUT, now: () => now, sampleDevices: () => samples, renderer: null, hud: null, saveCrash() { throw Error('unexpected crash'); }, saveProgress, saveTelemetry, playCue(cue) { cues.push(cue); }, authorityFactory(deps) {
     let core: ReturnType<typeof createFixtureAuthority>, attachment: Parameters<typeof core.attach>;
-    return { attach(...args) { attachment = args; const link = args[0], send = link.send.bind(link); link.send = (channel, bytes) => { send(channel, bytes); const message = decodeMessage(bytes); if (message.kind === 'event') send(channel, bytes); }; return () => {}; },
+    return { attach(...args) { attachment = args; const link = args[0], send = link.send.bind(link); link.send = (channel, bytes) => { if (dropFinalLatest && owner?.ended && channel === 'unreliable-latest') return; send(channel, bytes); const message = decodeMessage(bytes); if (message.kind === 'event') send(channel, bytes); }; return () => {}; },
       start(init) { owner = createSimState(LAYOUT, init.playerCount, init.seed); core = createFixtureAuthority({ ...deps, init }, owner); core.attach(...attachment); }, pump() { core.pump(); }, dispose() { core.dispose(); } };
   } });
   const sample = (interact = false, confirm = false) => { samples = [{ key: 'a', moveX: 0, moveY: 0, interact, confirm, cancel: false, any: true }]; session.pump(); };

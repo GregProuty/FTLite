@@ -62,7 +62,7 @@ describe('closed wire codec', () => {
     const sim = createSimState(LAYOUT, 2, 17);
     const state: AuthorityMessage = { kind: 'state', state: { runId: 'run-1', tick: 0, publicationSequence: 1,
       snapshot: saveSnapshot(sim), hash: '0123456789abcdef', phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null, pauseOwner: null, controlRevision: 0,
-      commandHighWater: [0, 0], eventSequence: 0 } };
+      commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } };
     expect(roundTrip(state)).toEqual(state);
     const result: AuthorityMessage = { kind: 'result', runId: 'run-1', result: { id: { player: 0, sequence: 1 }, tick: 0, status: 'rejected', reason: 'unsupported' } };
     expect(roundTrip(result)).toEqual(result);
@@ -86,6 +86,18 @@ describe('closed wire codec', () => {
 
 
 describe('wire limit edges', () => {
+  it('requires a bounded safe watermark for every player in all producer streams', () => {
+    const snapshot = saveSnapshot(createSimState(LAYOUT, 2, 17));
+    const message: AuthorityMessage & { kind: 'state' } = { kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1,
+      snapshot, hash: 'h', phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null, pauseOwner: null, controlRevision: 0,
+      commandHighWater: [0, Number.MAX_SAFE_INTEGER], heldHighWater: [0, Number.MAX_SAFE_INTEGER], auxiliaryHighWater: [0, Number.MAX_SAFE_INTEGER], eventSequence: 0 } };
+    expect(roundTrip(message)).toEqual(message);
+    for (const field of ['commandHighWater', 'heldHighWater', 'auxiliaryHighWater']) {
+      for (const invalid of [undefined, [], [0], [0, 0, 0, 0, 0], [-1, 0], [0.5, 0], [Number.MAX_SAFE_INTEGER + 1, 0]]) {
+        expect(() => decodeMessage(raw({ ...message, state: { ...message.state, [field]: invalid } }))).toThrow();
+      }
+    }
+  });
   it('rejects raw JSON overflow/nonfinite axes and unknown nested input fields', () => {
     for (const number of ['1e309', '-1e309', 'null', '"0"']) {
       const data = new TextEncoder().encode('{"kind":"held","frame":{"runId":"r","player":0,"tick":0,"sequence":1,"held":{"moveX":' + number + ',"moveY":0,"interactHeld":false}}}');
@@ -102,7 +114,7 @@ describe('wire limit edges', () => {
   it('rejects oversized encoding, excessive publication vectors and unknown RNG keys', () => {
     const sim = createSimState(LAYOUT, 2, 17), snapshot = saveSnapshot(sim);
     const message: AuthorityMessage & { kind: 'state' } = { kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1,
-      snapshot, hash: 'h', phase: 'paused', pauseReason: 'player', lagTicks: 0, tickTimeMs: null, pauseOwner: 0, controlRevision: 1, commandHighWater: [0, 0], eventSequence: 0 } };
+      snapshot, hash: 'h', phase: 'paused', pauseReason: 'player', lagTicks: 0, tickTimeMs: null, pauseOwner: 0, controlRevision: 1, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } };
     expect(latestMessageMetadata(encodeMessage(message))).toEqual({ key: 'state:r', sequence: 1 });
     expect(() => decodeMessage(raw({ ...message, state: { ...message.state, commandHighWater: [0, 0, 0, 0, 0] } }))).toThrow();
     expect(() => decodeMessage(raw({ ...message, state: { ...message.state, snapshot: { ...snapshot, header: { ...snapshot.header, rngStates: { ...snapshot.header.rngStates, extra: 1 } } } } }))).toThrow();
@@ -114,7 +126,7 @@ describe('wire limit edges', () => {
   it('round trips full-range finite Float64 state values and normalizes negative zero', () => {
     const snapshot = saveSnapshot(createSimState(LAYOUT, 2, 17)); snapshot.values = [Number.MAX_VALUE, Number.MIN_VALUE, -0, 0.3333333333333333];
     const message: AuthorityMessage = { kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1, snapshot, hash: 'h', phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null,
-      pauseOwner: null, controlRevision: 0, commandHighWater: [0, 0], eventSequence: 0 } };
+      pauseOwner: null, controlRevision: 0, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } };
     const decoded = roundTrip(message); if (decoded.kind !== 'state') throw new Error('fixture');
     expect(decoded.state.snapshot.values).toEqual([1.7976931348623157e308, 5e-324, 0, 0.3333333333333333]);
   });

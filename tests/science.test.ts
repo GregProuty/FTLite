@@ -133,7 +133,7 @@ describe('the Science lock (spec Coop-i section 1)', () => {
   });
   it('no lock from a subsystem row, without an enemy, without Confirm, or while a lock already runs', () => {
     const a = seated(1); a.s.science.target = targetRef(a.s, ENEMY_WEAPONS_SLOT); startTargetScan(a.s, a.i, a.s.science.target!); expect(a.s.enemy.lockUntilTick).toBe(-1);
-    const b = seated(1); expect(b.s.enemy.lockUntilTick).toBe(-1);
+    const b = seated(1); run(b.s, 1); expect(b.s.tick).toBe(6001); expect(b.s.enemy.lockUntilTick).toBe(-1);
     const c = seated(1); c.s.enemy.present = 0; lockFrequency(c.s, c.i, c.s.enemy.stableId); expect(c.s.enemy.lockUntilTick).toBe(-1);
     const d = seated(1); d.s.enemy.lockUntilTick = 6100; lockFrequency(d.s, d.i, d.s.enemy.stableId); expect(d.s.enemy.lockUntilTick).toBe(6100);
   });

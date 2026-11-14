@@ -53,12 +53,16 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
     ticks = []; controls = []; controlResults = [];
   }
   function send(binding: Binding, message: AuthorityMessage, reliable = false): void { binding.link.send(reliable ? 'reliable-ordered' : 'unreliable-latest', encodeMessage(message)); }
-  function publishCompletedState(): void {
+  function publishCompletedState(reliable = false): void {
     if (disposed || phase === 'error') return;
     const publication: PublishedState = { runId: deps.init.runId, tick: state.tick, publicationSequence: ++publicationSequence,
-      snapshot: saveSnapshot(state), hash: hashState(state), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs, commandHighWater: highWater(), eventSequence };
+      snapshot: saveSnapshot(state), hash: hashState(state), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs,
+      commandHighWater: highWater(), heldHighWater: [...heldSequences], auxiliaryHighWater: [...auxiliarySequences], eventSequence };
     const bytes = encodeMessage({ kind: 'state', state: publication });
-    for (const binding of bindings) binding.link.send('unreliable-latest', bytes);
+    // A stopped clock cannot replace a lost latest packet. Control boundaries
+    // share reliable delivery with the events that depend on their state.
+    const channel = reliable || phase === 'paused' || phase === 'ended' ? 'reliable-ordered' : 'unreliable-latest';
+    for (const binding of bindings) binding.link.send(channel, bytes);
   }
   function result(binding: Binding, value: CommandResult): void {
     binding.ledger.finish(value); send(binding, { kind: 'result', runId: deps.init.runId, result: value }, true);
@@ -132,7 +136,7 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
     emit({ kind: 'pause', paused, owner, reason: reason ?? 'resume' });
     driver.setPaused(paused);
     if (paused) held.forEach((h) => { h.moveX = 0; h.moveY = 0; h.interactHeld = false; });
-    publishCompletedState();
+    publishCompletedState(true);
   }
   function executeTick(_nextTick: number, deadline: number): void {
     // Producer opportunities happen outside execution; absent or failed producers never gate ticks.
@@ -202,7 +206,7 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
           if (binding.ingress.length >= 256) { link.close('ingress-overflow'); return; } binding.ingress.push({ message, order: ++receiveOrder });
         } catch { link.close('malformed'); }
       }), link.onClose(detach));
-      publishCompletedState(); return detach;
+      publishCompletedState(true); return detach;
     },
     pump, publishCompletedState,
     dispose(): void { if (disposed) return; disposed = true; driver.dispose(); unbindLifecycle?.(); for (const binding of bindings) for (const off of binding.unsubscribe) off(); bindings.clear(); pending = []; controls = []; controlQueue = []; }

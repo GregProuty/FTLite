@@ -16,7 +16,7 @@ const message: AuthorityMessage = {
   state: {
     runId: 'profile', tick: 0, publicationSequence: 1,
     snapshot: saveSnapshot(state), hash: hashState(state), phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null,
-    pauseOwner: null, controlRevision: 0, commandHighWater: [0, 0, 0, 0], eventSequence: 0
+    pauseOwner: null, controlRevision: 0, commandHighWater: [0, 0, 0, 0], heldHighWater: [0, 0, 0, 0], auxiliaryHighWater: [0, 0, 0, 0], eventSequence: 0
   }
 };
 const bytes = encodeMessage(message);

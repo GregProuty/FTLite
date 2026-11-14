@@ -89,7 +89,8 @@ export interface PublishedState {
   runId: RunId; tick: number; publicationSequence: number; snapshot: Snapshot; hash: string;
   phase: 'running' | 'paused' | 'ended' | 'error'; pauseOwner: PlayerId | null; controlRevision: number;
   pauseReason: string | null; lagTicks: number; tickTimeMs: number | null;
-  commandHighWater: readonly number[]; eventSequence: number;
+  // Highest admitted per-player IDs; zero means no input in that stream yet.
+  commandHighWater: readonly number[]; heldHighWater: readonly number[]; auxiliaryHighWater: readonly number[]; eventSequence: number;
 }
 export type ClientMessage = { kind: 'held'; frame: HeldFrame } | { kind: 'command'; envelope: CommandEnvelope } | ClientAuxMessage;
 export type AuthorityMessage =
