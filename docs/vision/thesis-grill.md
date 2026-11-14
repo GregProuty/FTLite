@@ -223,3 +223,14 @@ The demo is fun when 4 of 5 are yes across 3 sessions, at least one with a pair 
 Telemetry targets per duel: length 3 to 5 minutes; both outcomes (win and loss) occur across sessions; both weapons are used in every duel.
 
 The grill for the Helm demo ends here; the Helm demo spec is written from Q11 to Q22.
+
+## Q23. What does the tactical view show? (bridge-simulator reference)
+
+**Owner's reference (2026-11-14):** "i think we want to copy artemis bridge simulator for this." Then: "im just talking about the tactical view. We need to be able to scroll in and out in a large map, and the helm pilots the ship through this map."
+
+**Answer:** the tactical view is a **large map** the player can **zoom in and out of**, and the Helm pilots the ship through it. The map is bigger than one screen; the fixed whole-arena camera (Helm spec §10 default) is dropped.
+
+Implications for the specs:
+- The reference is the bridge-simulator genre's tactical/radar view. The game takes the ideas (a zoomable map, a bearing ring, arcs drawn on the map) and designs its own screens, art, names and layout; it does not reproduce another game's interface (foundation §12, direction spec A10).
+- Zoom ranges from a close view for precise flying and aiming to a wide view of the whole map.
+- Still open: how the camera follows (Q23b), and what fills a map larger than the one-planet duel arena (Q23c).
