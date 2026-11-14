@@ -107,3 +107,7 @@ Implications for the specs: every milestone's playtest asks whether the session 
 - **Weapons shares the same view** to aim its weapons.
 
 Technical note (Claude): the sim bans `Math.sin`, `Math.cos` and similar for cross-engine determinism (Net-1 AST guard). Headings and gravity must use exact arithmetic: a fixed table of heading vectors, and `sqrt`, which is allowed.
+
+## Q11. How does the gravity-well view relate to FTL's inside-the-ship combat?
+
+**Answer: Claude's recommendation.** Design for **both at once**: the Helm steers and Weapons aims in the tactical view, hits land in FTL-style rooms, and the inside crew runs power, fires and repairs, linked by damage. **The demo is the tactical view with a thin link to the inside:** damage to the Engines room cuts the Helm's thrust and turning; damage to the Weapons room slows Weapons' charge. The full interior link comes after the demo proves gravity-well piloting is fun.
