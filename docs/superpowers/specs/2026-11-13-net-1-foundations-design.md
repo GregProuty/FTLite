@@ -49,7 +49,7 @@ Signatures below define required behavior, not mandatory filenames. All message 
 ```ts
 type PeerId = string;
 type RunId = string;
-type PlayerId = number; // existing 0..3 cap
+type PlayerId = number; // 0..MAX_PLAYERS-1 (4 today); never hard-code the cap, see amendment 8
 type ChannelKind = 'reliable-ordered' | 'unreliable-latest';
 type Unsubscribe = () => void;
 interface TransportCaps {
@@ -425,3 +425,4 @@ None blocks Net-1. The supplied prompt authorizes the offline architecture decis
 6. **Temporary raw-press adapter during Net-1a migration (Claude, second review).** Tasks 5–9 migrate card families one at a time while the game stays playable, so families not yet migrated still need their old input path. Allow exactly one clearly named temporary adapter inside the authority (`legacyCardInput`) that applies the old raw-intent card logic for unmigrated families only, behind the same ledger and tick admission. Each family task deletes its branch of the adapter. Task 11 deletes the adapter, and a test asserts the authority's ingress accepts no raw presses. This is the only runtime raw-press path; the test-only legacy fixture translator for the golden stays separate.
 7. **The golden during Net-1a (Claude, second review).** The canonical shape changes family by family, so the golden hash test may fail on intermediate Net-1a commits. Following the project rule, it is the only test allowed to fail before the single bless. Every intermediate commit must instead pass the gameplay-projection differential traces (section 11) and all other tests. The single SIM_VERSION bump and bless happen once, at the end of Net-1a, after traced parity.
 
+8. **Room for big crews and several ships** (owner, 2026-11-13: "someday i want to be able to have 16 players operating a single battle star, or multiple ships"). Net-1a/1b code sizes player tables, caps and validation from `MAX_PLAYERS` or the run's player list, never a literal 4. Ship-scoped command targets use stable IDs within a ship namespace, so a later optional `ship` field is additive. Nothing about multi-ship play or a higher player cap is built now; gameplay is unchanged.
