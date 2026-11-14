@@ -153,3 +153,11 @@ Implications for the specs:
 - The duel's obstacles are the planet and the few scattered asteroids from Q14.
 - Rings, an atmosphere or aerobraking are later tuning options, not demo scope.
 - The same pull and collision rules apply to the enemy, so the Helm can bait it into the planet.
+
+## Q17. How does the enemy ship fight?
+
+**Answer: B, the hunter.** One sim-flown enemy under the same physics, gravity and arc rules as the crew's ship. It chases the crew, tries to keep them in its forward arc and uses the well's pull to cut corners. It is aggressive but blunt, so the Helm can bait it into the planet or an asteroid.
+
+Implications for the specs:
+- The enemy behaviour is written as states (hunt now), so moods (flee to cover when low, line up a slingshot) are a small later addition.
+- The enemy uses the same command shape as the crew's ship and no information the crew could not see, so it stays deterministic and fair.
