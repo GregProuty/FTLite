@@ -4,7 +4,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../src/shared/resolution';
 import { WORLD_BAND, worldFit } from '../src/renderer/src/render/worldFit';
 import { WINDOW, SHIP, navigatorAtHelm } from '../src/renderer/src/render/enemyWindowModel';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { ENEMY_TILE, OLD_ENEMY_TILE } from '../src/renderer/src/render/enemyShipLayout';

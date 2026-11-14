@@ -3,7 +3,7 @@ import fc from 'fast-check';
 import { oxygenStep, totalO2, roomBreached, roomVenting, passageFor } from '../src/renderer/src/sim/hazards/oxygen';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { O2_K, O2_SNAP_EPS, PASSAGE_SEALED, PASSAGE_CLOSED, PASSAGE_OPEN, SEAL_SKILL } from '../src/renderer/src/sim/tuning';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { makeState, room, teleport, setSkill, quirkState, cutterState, CUTTER, RECRUITS, quiet, run, seconds } from './helpers/sim';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { FIRE_SHRINK_FRAC } from '../src/renderer/src/sim/tuning';

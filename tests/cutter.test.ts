@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { step } from './helpers/rawInput';
 import { botIntent } from './helpers/bot';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';

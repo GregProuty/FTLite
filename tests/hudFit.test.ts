@@ -1,7 +1,8 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState, type SimState } from '../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './helpers/simLifetime';
 import { textPx, rowPx, TEXT_SCALE, TITLE_SCALE, PAD, contrast, TEXT_PAIRS, FONT_SIZE, FONT_NATIVE, LINE } from '../src/renderer/src/render/theme';
 import { CLOCK, POWER, THREATS, POWER_ROW, CARD_ROW, CARD_INNER_W, BLOCK_INNER_W, BLOCK_HP_X, BLOCK_HP_W, BLOCK_O2_X, NOTICE, EVENT_CARD, SUMMARY_W, CREDITS } from '../src/renderer/src/render/hudLayout';
 import { buildHudModel, clockLine, sectorLine, timeLine, directorText, weaponsStrip, weaponsFooterLines, weaponsLootLine, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, tabLabel, skillsLine, seatName, runNotice, lobbyLines, upgradeRowText, STATION_SHORT, HIDDEN_SHIP, HELM_NOTICE, EVENT_CARD_HELP, objectThreatText, type HudModel, type WeaponsPanel, type NavigationPanel, type SciencePanel, type EngineeringPanel, type DebrisTarget, type DoorsPanel } from '../src/renderer/src/render/hudModel';
@@ -41,7 +42,7 @@ describe('the theme (spec Demo-x-c section 1)', () => {
 describe('the left column at the larger font', () => {
   const inner = CLOCK.w - 2 * PAD;
   it('the clock card: hull and fuel, the sector, the time, the director and the quirk at their longest', () => {
-    const base = buildHudModel(null, [], 'running', '');
+    const base = buildHudModel(null, fixtureCouchViewer(null), { slots: [], phase: 'running', message: '' });
     const m: HudModel = { ...base, hull: 100, simSeconds: 9999, run: { column: SECTOR_COLUMNS - 1, columns: SECTOR_COLUMNS, sector: SECTORS - 1, fuel: 99, quirk: '' } };
     for (const s of [clockLine(m), sectorLine(m), timeLine(m)]) fits(s, inner);
     for (const phase of PHASE_NAMES) fits(directorText({ ...m, director: { phase, stress: 1 } }), inner);
@@ -151,7 +152,7 @@ describe('the notices, threats, event card, lobby, summary and credits at the la
     for (const d of EVENT_DEFS) fits(`Event: ${d.title}`, W);
     for (const t of ['Helm offline', 'Hidden ship: contact 99s', 'Shop here']) fits(t, W);
     const s = makeState(2); quiet(s); s.enemy.present = 1; s.enemy.maxHull = 100; s.enemy.hull = 100; s.enemy.sysHp.fill(0); s.enemy.fleeing = 1;
-    for (const t of buildHudModel(s, [], 'running', '').threats) fits(t.text, W);
+    for (const t of buildHudModel(s, fixtureCouchViewer(s), { slots: [], phase: 'running', message: '' }).threats) fits(t.text, W);
   });
   it('the event card: the title, the text rows, each choice with four voters, the status and the help', () => {
     const inner = EVENT_CARD.w - 32;
@@ -164,7 +165,7 @@ describe('the notices, threats, event card, lobby, summary and credits at the la
   it('the lobby card for 1 to 4 players, a four-player game-over summary, the banners and the credits', () => {
     for (let n = 1; n <= 4; n++) for (const l of lobbyLines(n)) fits(l, SUMMARY_W);
     const s = makeState(4); quiet(s); s.tick = 3599 * 60; s.ended = 1;
-    const m = buildHudModel(s, Array.from({ length: 4 }, () => ({ status: 'active' as const, key: 'kb:0' })), 'gameover', '', null, { bestScore: 99999, runs: 999, victories: 99, newUnlocks: ['Reyes', 'Dubois'], unlocked: [] });
+    const m = buildHudModel(s, fixtureCouchViewer(s), { slots: Array.from({ length: 4 }, () => ({ status: 'active' as const, key: 'kb:0' })), phase: 'gameover', message: '', credits: null, progress: { bestScore: 99999, runs: 999, victories: 99, newUnlocks: ['Reyes', 'Dubois'], unlocked: [] } });
     for (const l of m.summary!) fits(l, SUMMARY_W);
     for (const b of ['Press Interact to join. Confirm: start. Cancel: credits', 'New seed. Press Interact to join. Confirm: start. Cancel: credits', 'CREW LOST after 3599s. Confirm: same seed. Cancel: new seed.', 'PAUSED']) fits(b, 1280 - 16, TITLE_SCALE);
     for (const l of buildCreditLines(parseManifest(JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'))))) fits(l, CREDITS.w - 32);

@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { buildHudModel, threatTint } from '../src/renderer/src/render/hudModel';
 import { TEXT, WARN } from '../src/renderer/src/render/theme';
@@ -10,7 +11,7 @@ const slots = [{ status: 'active' as const, key: 'kb:0' }, { status: 'active' as
 describe('R5: the threats panel colours', () => {
   it('Event and Shop here rows use TEXT; a fire stays WARN', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); igniteRoom(s, room(s, 'A')); setNodeTypes(s, { '1:2': NodeType.Shop });
-    const t = buildHudModel(s, slots, 'running', '').threats, tint = (prefix: string) => threatTint(t.find((x) => x.text.startsWith(prefix))!);
+    const t = buildHudModel(s, fixtureCouchViewer(s), { slots: slots, phase: 'running', message: '' }).threats, tint = (prefix: string) => threatTint(t.find((x) => x.text.startsWith(prefix))!);
     expect(tint('Event: ')).toBe(TEXT); expect(tint('Shop here')).toBe(TEXT); expect(tint('Fire: ')).toBe(WARN);
   });
 });

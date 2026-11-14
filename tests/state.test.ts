@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { heldStep as step } from './helpers/heldInput';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { flatten, unflatten } from '../src/renderer/src/sim/flatten';

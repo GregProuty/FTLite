@@ -5,7 +5,7 @@ import { jumpShip } from '../src/renderer/src/sim/run';
 import { Life, LifeState, Health } from '../src/renderer/src/sim/components';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState, type SimState } from '../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './helpers/simLifetime';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { TICK_HZ, HEALTH_MAX } from '../src/renderer/src/sim/tuning';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';

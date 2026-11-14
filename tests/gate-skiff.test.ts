@@ -5,7 +5,7 @@ import { seconds } from './helpers/sim';
 import { botIntent } from './helpers/bot';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { HEALTH_MAX } from '../src/renderer/src/sim/tuning';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 

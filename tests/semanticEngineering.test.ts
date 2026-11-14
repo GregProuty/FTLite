@@ -50,7 +50,7 @@ describe('semantic Engineering', () => {
       const s = makeState(), station = s.derived.stationOfKind[kind]!, ui = createCardUiState('run', s.playerCount); sitDown(s, 0, station); reconcileUi(s, ui, 'run', []);
 
       Object.defineProperty(s.stations, 'cursor', { get() { throw new Error('migrated cursor read'); } }); Object.defineProperty(s.stations, 'page', { get() { throw new Error('migrated page read'); } });
-      expect(() => { cardRows(s, station, ui); translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 0); buildHudModel(s, [], 'running', '', null, null, [], ui); doorsCursorTile(s, ui); botFrame(s, ui, 0); }).not.toThrow();
+      expect(() => { cardRows(s, station, ui); translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 0); buildHudModel(s, { mode: 'couch', ui: ui }, { slots: [], phase: 'running', message: '', credits: null, progress: null, calloutFlash: [] }); doorsCursorTile(s, ui); botFrame(s, ui, 0); }).not.toThrow();
     }
   });
   it('preserves standalone offline coolant but blocks grouped offline Engineering', () => {

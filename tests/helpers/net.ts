@@ -14,7 +14,7 @@ export function publishedBotHarness(state: SimState, drainInitial = true) {
   const owned = state.crew.map((_, player) => player);
   const send = pair.clientLink.send.bind(pair.clientLink);
   pair.clientLink.send = (kind, bytes) => { sent.push(decodeMessage(bytes) as ClientMessage); send(kind, bytes); };
-  const client = createClientRun(pair.clientLink, owned, { runId, resolveLayout: () => state.layout });
+  const client = createClientRun(pair.clientLink, owned, { runId, contentDigest, resolveLayout: () => state.layout });
   let now = 0, ordinal = 0;
   const authority = createFixtureAuthority({ contentDigest, clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} },
     resolveLayout: () => state.layout, onCrash(record) { throw new Error(record.error); },

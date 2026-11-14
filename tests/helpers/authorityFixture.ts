@@ -4,10 +4,13 @@ import type { SimState } from '../../src/renderer/src/sim/state';
 import type { RunInit } from '../../src/renderer/src/net/contracts';
 import { createHeadlessRunner } from '../../src/renderer/src/headless/runner';
 import { flatten } from '../../src/renderer/src/sim/flatten';
+import { ownTestCleanup } from './simLifetime';
 
 /** Sole test-only owner adoption seam. Production always allocates its own state. */
 export function createFixtureAuthority(deps: AuthorityDeps & { init: RunInit }, state: SimState) {
-  return createAuthorityCore(deps, state);
+  const core = createAuthorityCore(deps, state);
+  ownTestCleanup(() => core.dispose());
+  return core;
 }
 export function createFixtureRunner(state: SimState, contentDigest = __GAMEPLAY_CONTENT_DIGEST__) {
   let core: ReturnType<typeof createFixtureAuthority>;
@@ -19,6 +22,7 @@ export function createFixtureRunner(state: SimState, contentDigest = __GAMEPLAY_
       pump() { core.pump(); }, dispose() { core.dispose(); }
     };
   });
+  ownTestCleanup(() => runner.dispose());
   return { ...runner, refresh() {
     // Repeated bot decisions in one tick need one publication unless a fixture
     // changed in between. Compare canonical values, including ECS-backed fields.

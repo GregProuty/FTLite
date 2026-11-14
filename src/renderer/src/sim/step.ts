@@ -1,6 +1,6 @@
 import type { Intent } from '../../../shared/intent';
 import { NEUTRAL_INTENT, clampIntent } from '../../../shared/intent';
-import type { SimState } from './state';
+import { assertSimStateLive, type SimState } from './state';
 import { HAZARD_EVERY } from './tuning';
 import { interactSystem } from './interact';
 import { jumpStep, fieldSystem, decisionSystem, pursuitSystem } from './run';
@@ -28,6 +28,7 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
 
 /** One fixed 60 Hz tick in the spec system order (section 4 rule 4a). */
 export function stepCommands(state: SimState, input: TickInput): readonly CommandResult[] {
+  assertSimStateLive(state);
   if (state.ended) return [];
   const intents = heldPhaseInputs(input, state.playerCount);
   state.scratch.commandResults.length = 0;

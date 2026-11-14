@@ -1,12 +1,34 @@
-import type { Intent } from '../../../shared/intent';
-
-export type CompactIntent = [number, number, number];
-/** Historical numeric fixture data only; no shipping replay executor accepts presses. */
-export interface Replay { version: number; seed: number; playerCount: number; layoutId: string; simVersion: number; layoutHash: string; intents: CompactIntent[][] }
-
-export function encodeIntent(i: Intent): CompactIntent {
-  return [i.moveX, i.moveY, (i.interactHeld ? 1 : 0) | (i.interactPressed ? 2 : 0) | (i.confirmPressed ? 4 : 0) | (i.cancelPressed ? 8 : 0)];
+import type { ClientMessage, CommandResult, HeldInput, LifecyclePause, PublishedState, RunInit } from '../net/contracts';
+import type { Snapshot } from './snapshot';
+import type { Checkpoint } from '../net/contracts';
+import type { TickInput } from './commands';
+export type ReplayAdmission = { binding: number; players: number[]; order: number; message: Exclude<ClientMessage, { kind: 'callout' }> };
+export type ReplayAction =
+  | { kind: 'admission'; entries: ReplayAdmission[] }
+  | { kind: 'lifecycle'; order: number; ordinal: number; control: LifecyclePause }
+  | { kind: 'controls' }
+  | { kind: 'tick'; input: TickInput; heldSequences: number[] }
+  | { kind: 'detach'; binding: number; players: number[] }
+  | { kind: 'publish' }
+  | { kind: 'seal' }
+  | { kind: 'cursor'; receiveOrder: number };
+export interface ReplayOutcome {
+  tick: number; hash: string; phase: PublishedState['phase']; eventSequence: number;
+  publicationSequence: number; controlRevision: number;
 }
-export function decodeIntent(c: CompactIntent): Intent {
-  return { moveX: c[0], moveY: c[1], interactHeld: !!(c[2] & 1), interactPressed: !!(c[2] & 2), confirmPressed: !!(c[2] & 4), cancelPressed: !!(c[2] & 8) };
+export interface ReplayFrame {
+  tick: number; eventSequenceBefore: number; action: ReplayAction;
+  results: CommandResult[]; events: { eventSequence: number; tick: number; kind: 'cue' | 'pause' | 'ended' }[]; after?: ReplayOutcome;
+}
+/** Portable semantic replay. Auxiliary requests/presentation payloads are deliberately absent. */
+export interface ReplayV2 { version: 2; init: RunInit; initial: Snapshot; checkpoint: Checkpoint; frames: ReplayFrame[] }
+export type { HeldInput };
+
+/** Property insertion order is not part of portable JSON semantics. */
+export function replayDataEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = Object.keys(a).sort(), right = Object.keys(b).sort();
+  return left.length === right.length && left.every((key, i) => key === right[i] && replayDataEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
 }

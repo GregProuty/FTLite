@@ -47,7 +47,7 @@ describe('client semantic interaction translation', () => {
 });
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { fixtureRunner } from './helpers/rawInput';
 import { Seated } from '../src/renderer/src/sim/components';
 import { pauseActions } from '../src/renderer/src/clientControl/cardController';

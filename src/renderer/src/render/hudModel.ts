@@ -34,6 +34,24 @@ import { textPx, rowPx, TEXT, WARN, PAD } from './theme';
 import { NOTICE, CARD_INNER_W, BLOCK_INNER_W, THREATS } from './hudLayout';
 import { navigatorAtHelm } from './enemyWindowModel';
 import { shotResult, type ShotResult, type ShotTone } from './shotResult';
+import { bubbles, type Bubble, type Callout } from './calloutModel';
+
+export type Viewer = { mode: 'couch'; ui: CardUiState } | { mode: 'player'; player: number; ui: CardUiState };
+/** Presentation data supplied by the session; never part of canonical simulation state. */
+export interface HudContext {
+  slots: readonly SlotInfo[];
+  phase: HudModel['phase'];
+  message: string;
+  credits?: { lines: readonly string[]; scroll: number } | null;
+  progress?: HudProgress | null;
+  calloutFlash?: readonly number[];
+  callouts?: readonly Callout[];
+}
+/** Detached data for the future player layout; seated is a station kind, as in HudPlayer. */
+export interface HudCrewStatus {
+  pid: number; role: string; health: number; seated: number | null;
+  status: SlotStatus; offline: boolean; downed: boolean; life: number; callout: Bubble | null;
+}
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
@@ -113,6 +131,8 @@ export interface HudThreat { icon: 'icon.fire' | 'icon.breach' | 'icon.power' | 
 /** A threat row's colour: warning red for a hazard, the text colour for a run row (spec Demo-xii section 5). */
 export function threatTint(t: HudThreat): number { return t.info ? TEXT : WARN; }
 export interface HudModel {
+  primaryConsole?: ConsolePanel | null;
+  otherCrewStatus?: HudCrewStatus[];
   phase: 'lobby' | 'running' | 'paused' | 'gameover' | 'error'; message: string; hull: number; simSeconds: number; tick: number;
   threats: HudThreat[]; boarders: { stableId: number; x: number; y: number; health: number }[]; power: { capacity: number; used: number }; stations: HudStation[]; weapons: { charge: number; ready: boolean; torpedoLoaded: boolean; torpedoStock: number }; impactTick: number[]; map: MapModel | null;
   players: HudPlayer[]; summary: string[] | null; credits: string[] | null; creditsScroll: number;
@@ -499,7 +519,13 @@ function gainsSummary(state: SimState): string[] {
 
 export interface HudProgress { bestScore: number; runs: number; victories: number; newUnlocks: string[]; unlocked: string[] }
 
-export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: HudModel['phase'], message: string, credits: { lines: readonly string[]; scroll: number } | null = null, progress: HudProgress | null = null, calloutFlash: readonly number[] = [], ui?: CardUiState): HudModel {
+export function buildHudModel(state: SimState | null, viewer: Viewer, context: HudContext): HudModel {
+  if (viewer.mode === 'player' && (!state || !Number.isInteger(viewer.player) || viewer.player < 0 || viewer.player >= state.playerCount)) {
+    if (import.meta.env.DEV) throw new RangeError('Invalid HUD viewer player');
+    return { ...buildHudModel(null, { mode: 'couch', ui: viewer.ui }, { slots: [], phase: 'error', message: 'Invalid HUD viewer' }), primaryConsole: null, otherCrewStatus: [] };
+  }
+  const { slots, phase, message, credits = null, progress = null, calloutFlash = [] } = context;
+  const ui = viewer.ui;
   const players: HudPlayer[] = slots.map((slot, pid) => {
     const head = { pid, status: slot.status, deviceKind: slot.status === 'active' ? deviceKindOf(slot.key) : null };
     if (!state || pid >= state.playerCount) return { ...head, ...EMPTY, skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[DEFAULT_CHARACTERS[pid] ?? RECRUIT]!) };
@@ -525,5 +551,18 @@ export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: 
   }
   const stations: HudStation[] = state ? Array.from(state.derived.stationKind, (kind, i) => ({ kind, name: STATION_NAMES[kind]!, level: state.stations.level[i]!, max: baseMax(state, kind), online: stationOnline(state, i), occupant: state.stations.occupant[i]! >= 0 ? state.stations.occupant[i]! : null, unpowered: unpoweredAt(state, kind, i), icon: ICON_KINDS[kind]!, iconTint: stationTint(state, i), ...thermal(state, i) })) : [];
   const power = state ? { capacity: powerCapacity(state), used: powerUsed(state) } : { capacity: 0, used: 0 };
-  return { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase, ui), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? lobbyLines(slots.filter((sl) => sl.status !== 'empty').length) : [], lobbyShip: phase === 'lobby' ? shipLine(slots.filter((sl) => sl.status !== 'empty').length) : '', notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
+  const model: HudModel = { phase, message, hull: state?.hull ?? 0, simSeconds: state ? Math.floor(state.tick / TICK_HZ) : 0, tick: state?.tick ?? 0, threats, boarders: state ? boarderMarkers(state) : [], power, stations, weapons: state ? { charge: state.weapons.charge, ready: state.weapons.charge >= 1, torpedoLoaded: state.weapons.torpedoLoaded === 1, torpedoStock: state.weapons.torpedoStock } : { charge: 0, ready: false, torpedoLoaded: false, torpedoStock: 0 }, impactTick: state ? Array.from(state.rooms.impactTick) : [], map: mapBlock(state, phase, ui), players, progressLine: phase === 'lobby' && progress ? `Runs ${progress.runs}  Best ${progress.bestScore}${progress.unlocked.length ? `  Unlocked: ${progress.unlocked.join(', ')}` : ''}` : '', summary: state && phase === 'gameover' ? [...headlineSummary(state), ...progressSummary(progress), ...gainsSummary(state)] : null, credits: credits ? [...credits.lines] : null, creditsScroll: credits?.scroll ?? 0, director: state ? { phase: PHASE_NAMES[state.director.phase]!, stress: state.director.stress } : { phase: PHASE_NAMES[0]!, stress: 0 }, run: { column: state ? state.run.column : 0, columns: SECTOR_COLUMNS, sector: state ? state.run.sector : 0, fuel: state ? state.run.fuel : 0, quirk: state ? QUIRK_NAMES[state.run.quirk]! : '' }, lobbyLines: phase === 'lobby' ? lobbyLines(slots.filter((sl) => sl.status !== 'empty').length) : [], lobbyShip: phase === 'lobby' ? shipLine(slots.filter((sl) => sl.status !== 'empty').length) : '', notice: state && phase === 'running' ? runNotice(state) : [], eventCard: state && phase === 'running' ? eventCard(state) : null, calloutFlash: state && phase === 'running' ? [...calloutFlash] : [] };
+  if (viewer.mode === 'player' && state) {
+    model.primaryConsole = player(state, viewer.player, ui).console;
+    const activeCallouts = phase === 'running' || phase === 'paused' ? bubbles(state, context.callouts ?? [], state.tick) : [];
+    model.otherCrewStatus = state.crew.flatMap((eid, pid): HudCrewStatus[] => {
+      if (pid === viewer.player) return [];
+      const station = Seated.station[eid]!, seated = station >= 0 ? state.derived.stationKind[station]! : null;
+      return [{ pid, role: seated === null ? 'Crew' : TAB_NAMES[seated]!, health: Health.cur[eid]!, seated,
+        status: slots[pid]?.status ?? 'empty', offline: station >= 0 && !stationOnline(state, station),
+        downed: Life.state[eid] === LifeState.Downed, life: Life.state[eid]!,
+        callout: activeCallouts.find(c => c.pid === pid) ?? null }];
+    });
+  }
+  return model;
 }

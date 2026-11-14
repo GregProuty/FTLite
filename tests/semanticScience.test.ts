@@ -123,6 +123,6 @@ describe('semantic Science', () => {
     const hashes = refs.map(target => { s.science.target = target; unflatten(copy, flatten(s)); expect(copy.science.target).toEqual(target); return hashState(s); }); expect(new Set(hashes).size).toBe(refs.length);
     const ui = createCardUiState('run', 2); reconcileUi(s, ui, 'run', []);
     Object.defineProperty(s.stations, 'cursor', { get() { throw new Error('migrated cursor read'); } });
-    expect(() => { translateTick(s, ui, [NEUTRAL_FRAME, NEUTRAL_FRAME], s.tick); buildHudModel(s, [], 'running', '', null, null, [], ui); botFrame(s, ui, 1); isProductive(s, station); scanStep(s); }).not.toThrow();
+    expect(() => { translateTick(s, ui, [NEUTRAL_FRAME, NEUTRAL_FRAME], s.tick); buildHudModel(s, { mode: 'couch', ui: ui }, { slots: [], phase: 'running', message: '', credits: null, progress: null, calloutFlash: [] }); botFrame(s, ui, 1); isProductive(s, station); scanStep(s); }).not.toThrow();
   });
 });

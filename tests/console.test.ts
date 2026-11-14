@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { weaponSelection } from './helpers/weaponFixture';
 import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
 import { cardSelection } from './helpers/cardUi';
@@ -16,7 +17,7 @@ import { hashState } from '../src/renderer/src/sim/hash';
 import { TORP_START, REPAIR_TIME_POWER, STICK_REPEAT_TICKS, HEAT_MAX, HEAT_RISE, HEAT_COOL_UNIT, HEAT_COOL_IDLE, COOLANT_POOL, HAZARD_EVERY, REACTOR_CAPACITY, STATION_MAX } from '../src/renderer/src/sim/tuning';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { Weapon } from '../src/renderer/src/sim/weapons';
 import type { SlotInfo } from '../src/renderer/src/input/deviceManager';
 import { createRng, nextFloat } from '../src/shared/rng';
@@ -326,7 +327,7 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     run(s, seconds(8) + 2);
     expect(s.debris.scanned[0]).toBe(1);
     const slots: SlotInfo[] = [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }];
-    expect(buildHudModel(s, slots, 'running', '').threats[0]!.text).toMatch(/ freq 3$/);
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots, phase: 'running', message: '' }).threats[0]!.text).toMatch(/ freq 3$/);
     run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {})); run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
     expect(s.weapons.selector).toBe(Weapon.BeamF3);
     run(s, seconds(12) + 2 - (seconds(8) + 6));                                 // the beam has been charging since the sit: top it up to 12 s + 2 ticks

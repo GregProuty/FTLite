@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { calloutFor, pressCallouts, bubbles, flashingKinds, CALLOUT_SECONDS, type Callout } from '../src/renderer/src/render/calloutModel';
 import { buildHudModel } from '../src/renderer/src/render/hudModel';
@@ -62,8 +63,8 @@ describe('bubbles and the Engineering flash', () => {
     expect(flashingKinds(c, s.tick)).toEqual([StationKind.Weapons]);
     expect(flashingKinds(c, s.tick + CALLOUT_SECONDS * T)).toEqual([]);
     const slots = [{ status: 'active' as const, key: 'kb:0' }, { status: 'active' as const, key: 'kb:1' }];
-    expect(buildHudModel(s, slots, 'running', '', null, null, flashingKinds(c, s.tick)).calloutFlash).toEqual([StationKind.Weapons]);
-    expect(buildHudModel(s, slots, 'running', '').calloutFlash).toEqual([]);
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots, phase: 'running', message: '', credits: null, progress: null, calloutFlash: flashingKinds(c, s.tick) }).calloutFlash).toEqual([StationKind.Weapons]);
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots, phase: 'running', message: '' }).calloutFlash).toEqual([]);
   });
 });
 

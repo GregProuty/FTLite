@@ -1,0 +1,14 @@
+[
+  {
+    "name": "ui-smoke",
+    "exit": 0,
+    "expectedExit": 0,
+    "seconds": 6.840245799976401
+  },
+  {
+    "name": "injected-page-failure",
+    "exit": 1,
+    "expectedExit": 1,
+    "seconds": 20.35778240003856
+  }
+]

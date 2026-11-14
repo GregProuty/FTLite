@@ -2,7 +2,6 @@ import type { ShipLayout } from '../sim/ship/schema';
 import type { SimState } from '../sim/state';
 import { TICK_HZ } from '../sim/tuning';
 import { createLocalRuntime } from './localRuntime';
-import type { createAuthority } from '../authority/authority';
 import type { Scheduler, Unsubscribe } from '../net/contracts';
 import { createDeviceManager, type SourceSample, type SlotInfo } from '../input/deviceManager';
 import { NEUTRAL_FRAME, type InputFrame } from './intents';
@@ -15,6 +14,7 @@ import { DEFAULT_CHARACTERS } from '../sim/characters';
 import { CUE_ORDER, type Cue } from '../events/audioCues';
 import { calloutIcon } from '../events/callout';
 import { bubbles, flashingKinds, type Callout, type Bubble } from '../render/calloutModel';
+import { createCardUiState } from '../clientControl/cardController';
 
 export const DEFAULT_SEED = 2026;
 export const CREDITS_SCROLL_MS = 150;
@@ -28,7 +28,7 @@ export interface SessionDeps {
   now(): number;
   scheduler?: Scheduler;
   contentDigest?: string;
-  authorityFactory?: typeof createAuthority;
+  authorityFactory?: (deps: import('../authority/authority').AuthorityDeps) => import('../authority/authority').Authority1a;
   saveCrash(payload: unknown): void;
   /** Called once with the run's record on the tick it ends (spec 4-ii section 7). */
   saveTelemetry?: (record: TelemetryRecord) => void;
@@ -44,6 +44,7 @@ export interface SessionDeps {
 
 export function createSession(deps: SessionDeps) {
   const dm = createDeviceManager();
+  const lobbyUi = createCardUiState('lobby', 0);
   const credits = deps.credits ?? [];
   const LOBBY_MSG = 'Press Interact to join. Confirm: start. Cancel: credits';
   let progress: Progress = EMPTY_PROGRESS; try { progress = deps.loadProgress?.() ?? EMPTY_PROGRESS; } catch { progress = EMPTY_PROGRESS; }   // a throwing loader must not stop the session
@@ -174,7 +175,13 @@ export function createSession(deps: SessionDeps) {
     frame() {
       for (const cue of CUE_ORDER) if (pendingCues.has(cue)) deps.playCue?.(cue); pendingCues.clear();
       if (phase !== 'error') runtime?.frame();
-      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null, state && phase === 'running' ? flashingKinds(callouts, state.tick) : [], runtime?.ui));
+      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, { mode: 'couch', ui: runtime?.ui ?? lobbyUi }, {
+        slots, phase, message,
+        credits: creditsOpen ? { lines: credits, scroll: creditsScroll } : null,
+        progress: phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null,
+        calloutFlash: state && phase === 'running' ? flashingKinds(callouts, state.tick) : [],
+        callouts
+      }));
     }
   };
 }

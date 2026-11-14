@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
 import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
@@ -8,7 +9,7 @@ import { navRows, NAV_TEXT_MAX, beaconIndex, jumpShip, sectorJump } from '../src
 import { makeState, mapM, setNodeTypes, seatNavigator, chargeJump, quiet, setEvent, grantScrap, at } from './helpers/sim';
 
 const slots = (n: number) => Array.from({ length: n }, (_, i) => ({ status: 'active' as const, key: `kb:${i}` }));
-const build = (s: ReturnType<typeof makeState>, phase: 'running' | 'paused' = 'running') => buildHudModel(s, slots(2), phase, '').map;
+const build = (s: ReturnType<typeof makeState>, phase: 'running' | 'paused' = 'running') => buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: phase, message: '' }).map;
 
 describe('sector map model', () => {
   it('is null with no one at Navigation and outside running', () => {
@@ -16,7 +17,7 @@ describe('sector map model', () => {
     expect(build(s)).toBeNull();
     seatNavigator(s, 0);
     expect(build(s)).not.toBeNull(); expect(build(s, 'paused')).toBeNull();
-    expect(buildHudModel(null, slots(1), 'lobby', '').map).toBeNull();
+    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(1), phase: 'lobby', message: '' }).map).toBeNull();
   });
   it('on fixture M at column 1 node 2 reports current, reachable, selected, past, edges and types', () => {
     const s = makeState(2); quiet(s); mapM(s);

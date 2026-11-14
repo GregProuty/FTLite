@@ -1,5 +1,5 @@
 import type { TargetRef } from '../net/contracts';
-import { createWorld, createEntityIndex, addEntity, addComponent } from 'bitecs';
+import { createWorld, createEntityIndex, addEntity, addComponent, getAllEntities, removeEntity } from 'bitecs';
 import type { World } from 'bitecs';
 import { createRng, nextU32, nextInt, type RngState } from '../../../shared/rng';
 import type { ShipLayout } from './ship/schema';
@@ -74,6 +74,31 @@ export function deriveStreams(seed: number): RngStreams {
 // never share an id. A shared index hands out disjoint ids across worlds. Non-versioned: bitECS 0.4.0's
 // withVersioning() misbehaves under recycling (docs/spikes.md).
 const SHARED_ENTITY_INDEX = createEntityIndex();
+const disposedStates = new WeakSet<SimState>();
+const componentCells = [Position.x, Position.y, Health.cur, Life.state, Life.bleed, Life.reviveProgress, Life.reviverPid, Stable.id, Owner.pid, Seated.station];
+
+/** Remove world-owned entities, including a spawn that failed before joining crew. */
+function releaseWorld(world: World): void {
+  for (const eid of getAllEntities(world)) {
+    removeEntity(world, eid);
+    for (const cells of componentCells) delete cells[eid];
+  }
+}
+
+export function assertSimStateLive(state: SimState): void {
+  if (disposedStates.has(state)) throw new Error('simulation state disposed');
+}
+
+/** Owners call this once finished; views borrowed from an owner share its lifetime. */
+export function disposeSimState(state: SimState): void {
+  if (disposedStates.has(state)) return;
+  disposedStates.add(state);
+  releaseWorld(state.world);
+  state.crew.length = 0;
+  state.scratch.commandResults.length = 0;
+  state.scratch.doorToggles.clear(); state.scratch.doorCycles.clear(); state.scratch.airlockToggles.clear();
+  state.weapons.target = null; state.science.target = null;
+}
 
 /** Creation options (spec Run-iii section 5): the unlocked start bonuses, and a forced ship quirk (tests and gates; the draw is still made). */
 export interface SimOptions { unlocked?: readonly string[]; quirk?: number }
@@ -81,6 +106,7 @@ export interface SimOptions { unlocked?: readonly string[]; quirk?: number }
 export function createSimState(layout: ShipLayout, playerCount: number, seed: number, characters: readonly number[] = DEFAULT_CHARACTERS, options: SimOptions = {}): SimState {
   const derived = deriveLayout(layout);
   const world = createWorld(SHARED_ENTITY_INDEX);
+  try {
   const R = derived.volume.length, E = layout.edges.length, S = layout.breachSites.length;
   const N = layout.stations.length;
   const rng = deriveStreams(seed);
@@ -115,6 +141,10 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
   applyHeadStarts(state);
   applyStartBonuses(state, options.unlocked ?? []);
   return state;
+  } catch (error) {
+    releaseWorld(world);
+    throw error;
+  }
 }
 
 function spawnCrew(state: SimState, pid: number): number {
