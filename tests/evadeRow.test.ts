@@ -1,5 +1,7 @@
+import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
-import { buildHudModel, type NavigationPanel } from '../src/renderer/src/render/hudModel';
+import { type NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { navRows, NodeType } from '../src/renderer/src/sim/run';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import type { SimState } from '../src/renderer/src/sim/state';
@@ -33,10 +35,10 @@ describe('R4: the evade row only with an enemy or a field', () => {
   });
   it('the highlight follows the sim cursor: the same row text, and the hidden row shows while the cursor sits on it', () => {
     const { s, nav } = seated(), rows = navRows(s);
-    s.stations.cursor[nav] = rows.findIndex((r) => r.select === 'jump');
+    cardSelection(s, nav).cursor = rows.findIndex((r) => r.select === 'jump');
     const c = card(s), lit = c.rows.find((r) => r.cursor)!;
-    expect(lit.text).toBe(rows[s.stations.cursor[nav]!]!.text);
-    s.stations.cursor[nav] = rows.length - 1;
+    expect(lit.text).toBe(rows[cardSelection(s, nav).cursor!]!.text);
+    cardSelection(s, nav).cursor = rows.length - 1;
     expect(card(s).rows.at(-1)).toMatchObject({ text: 'EVADE: Confirm', cursor: true });
   });
 });

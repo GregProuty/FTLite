@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { encodeMessage, decodeMessage } from '../src/renderer/src/net/codec';
 import { describe, it, expect } from 'vitest';
 import { createCardUi, reconcileUi, translateTick } from '../src/renderer/src/clientControl/cardController';
@@ -24,23 +25,23 @@ describe('client semantic interaction translation', () => {
     expect([first.commands[0]?.command, second.commands[0]?.command]).toMatchObject([{ kind: 'vote', choice: 0 }, { kind: 'vote', choice: 1 }]);
     expect(first.legacyCardInput).toEqual([]);
   });
-  it('Navigation direction plus Confirm emits one explicit vote and bridge direction without Confirm', () => {
+  it('Navigation direction plus Confirm emits one explicit vote with no bridge input', () => {
     const s = makeState(2); quiet(s); setEvent(s, 0);
     const nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav);
-    s.stations.cursor[nav] = navRows(s).findIndex(r => r.select === 'choice');
+    cardSelection(s, nav).cursor = navRows(s).findIndex(r => r.select === 'choice');
     const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
     const actions = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1, confirmPresses: 1 }], s.tick);
     expect(actions.commands.map(c => c.command)).toMatchObject([{ kind: 'vote', choice: 1 }]);
-    expect(actions.legacyCardInput.map(c => c.input)).toEqual([{ station: nav, direction: Dir.Down, confirm: false }]);
+    expect(actions.legacyCardInput).toEqual([]); expect(ui.stations[nav]!.rowKey).toBe('choice:1');
   });
   it('held card direction repeats once every eight ticks and resets on a fresh seat', () => {
     const s = makeState(); const nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav);
     const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
     const ticks: number[] = [];
-    for (let tick = 0; tick < 18; tick++) if (translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], tick).legacyCardInput.length) ticks.push(tick);
+    for (let tick = 0; tick < 18; tick++) { const previous = ui.stations[nav]!.rowKey; translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], tick); if (ui.stations[nav]!.rowKey !== previous) ticks.push(tick); }
     expect(ticks).toEqual([0, 8, 16]);
     standUp(s, 0); reconcileUi(s, ui, 'run', []); sitDown(s, 0, nav); reconcileUi(s, ui, 'run', []);
-    expect(translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 18).legacyCardInput[0]?.input).toMatchObject({ direction: Dir.Down });
+    const previous = ui.stations[nav]!.rowKey; translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 18); expect(ui.stations[nav]!.rowKey).not.toBe(previous);
     expect('stick' in s).toBe(false); expect('bar' in s.groups).toBe(false);
   });
 });
@@ -78,30 +79,27 @@ describe('shared client navigation and held inputs', () => {
     const results = stepCommands(s, { held: [], legacyCardInput: [], commands: [{ runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'vote', event: eventRef(s), choice: 0 } }] });
     expect(results[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
   });
-  it('movement and held Interact remain raw state, while pause shares semantic and bridge sequences', () => {
+  it('movement and held Interact remain raw state, while pause shares the gameplay command sequence', () => {
     const s = makeState(1); const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
     const held = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveX: .8, moveY: .8, interactHeld: true, interactPresses: 1 }], 0);
     expect(held.held[0]!.held).toEqual({ moveX: .8, moveY: .8, interactHeld: true }); expect(held.commands).toEqual([]); expect(held.legacyCardInput).toEqual([]);
     const nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav); reconcileUi(s, ui, 'run', []);
-    const card = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 1);
+    const card = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1, confirmPresses: 1 }], 1);
     const pause = pauseActions(ui, 0, 1, true);
     const stand = translateTick(s, ui, [{ ...NEUTRAL_FRAME, interactPresses: 1, cancelPresses: 1, confirmPresses: 1 }], 1);
-    expect([card.legacyCardInput[0]!.id.sequence, pause.commands[0]!.id.sequence, stand.commands[0]!.id.sequence]).toEqual([1, 2, 3]);
+    expect([card.commands[0]!.id.sequence, pause.commands[0]!.id.sequence, stand.commands[0]!.id.sequence]).toEqual([1, 2, 3]);
     expect(stand.commands.map(c => c.command.kind)).toEqual(['stand']); expect(stand.legacyCardInput).toEqual([]);
   });
 });
 
 it('repeat preserves tick phase across missed opportunities and changes direction immediately', () => {
-  const s = makeState(1); sitDown(s, 0, s.derived.stationOfKind[StationKind.Navigation]!);
+  const s = makeState(1), nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav);
   const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
   const down = { ...NEUTRAL_FRAME, moveY: 1 };
-  expect(translateTick(s, ui, [down], 0).legacyCardInput).toHaveLength(1);
-  expect(translateTick(s, ui, [down], 3).legacyCardInput).toHaveLength(0);
-  expect(translateTick(s, ui, [down], 8).legacyCardInput).toHaveLength(1);
-  expect(translateTick(s, ui, [down], 8).legacyCardInput).toHaveLength(0);
-  expect(translateTick(s, ui, [{ ...down, moveY: -1 }], 11).legacyCardInput[0]?.input.direction).toBe(Dir.Up);
-  expect(translateTick(s, ui, [{ ...down, moveY: -1 }], 18).legacyCardInput).toHaveLength(0);
-  expect(translateTick(s, ui, [{ ...down, moveY: -1 }], 19).legacyCardInput).toHaveLength(1);
+  const changed = (tick: number, frame = down) => { const previous = ui.stations[nav]!.rowKey; const actions = translateTick(s, ui, [frame], tick); expect(actions.legacyCardInput).toEqual([]); return ui.stations[nav]!.rowKey !== previous; };
+  expect(changed(0)).toBe(true); expect(changed(3)).toBe(false); expect(changed(8)).toBe(true); expect(changed(8)).toBe(false);
+  expect(changed(11, { ...down, moveY: -1 })).toBe(true); expect(ui.players[0]!.heldDir).toBe(Dir.Up);
+  expect(changed(18, { ...down, moveY: -1 })).toBe(false); expect(changed(19, { ...down, moveY: -1 })).toBe(true);
 });
 import { createLoopbackHarness } from '../src/renderer/src/net/loopback';
 import { createClientRun } from '../src/renderer/src/clientControl/clientRun';

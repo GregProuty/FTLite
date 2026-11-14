@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { botIntent as fixtureBotPolicy } from '../src/renderer/src/clientControl/botPolicy';
 import { snapshotPhaseStep, snapshotPhaseClient } from './helpers/snapshotPhaseFixture';
@@ -430,28 +431,28 @@ describe('snapshot', () => {
     expect(mutate((u) => { u.run.upgrades[1] = 3; })).not.toBe(mutate((u) => { u.run.upgrades[1] = 2; }));
     for (const k of ['scrapEarned', 'scrapSpent', 'eventsResolved', 'purchases'] as const) expect(mutate((u) => { u.telemetry[k] = 7; })).not.toBe(base);
   });
-  it('round-trips the upgrade levels, run.reactorBonus, the reactor capacity, stations.page and the last purchase; each alone changes the hash (spec Loop-ii section 6)', () => {
-    const s = makeState(2, 5); s.run.upgrades.set([2, 3, 1, 0, 0, 2, 1]); s.run.reactorBonus = 4; s.power.capacity = 14; s.stations.page[0] = 1; s.run.boughtTick = 321; s.run.boughtKind = 7;
+  it('round-trips the upgrade levels, run.reactorBonus, the reactor capacity and the last purchase; each alone changes the hash (spec Loop-ii section 6)', () => {
+    const s = makeState(2, 5); s.run.upgrades.set([2, 3, 1, 0, 0, 2, 1]); s.run.reactorBonus = 4; s.power.capacity = 14; s.run.boughtTick = 321; s.run.boughtKind = 7;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.power.capacity, Array.from(t.stations.page), t.run.boughtTick, t.run.boughtKind]).toEqual([[2, 3, 1, 0, 0, 2, 1], 4, 14, [1, 0, 0, 0, 0, 0, 0], 321, 7]);
+    expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.power.capacity, t.run.boughtTick, t.run.boughtKind]).toEqual([[2, 3, 1, 0, 0, 2, 1], 4, 14, 321, 7]);
     expect(hashState(t)).toBe(hashState(s));
     const base = hashState(makeState(2, 5));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
-    expect(mutate((u) => { u.run.reactorBonus = 1; })).not.toBe(base); expect(mutate((u) => { u.stations.page[0] = 1; })).not.toBe(base); expect(mutate((u) => { u.power.capacity = 11; })).not.toBe(base);
+    expect(mutate((u) => { u.run.reactorBonus = 1; })).not.toBe(base); expect(mutate((u) => { u.power.capacity = 11; })).not.toBe(base);
     for (const k of ['boughtTick', 'boughtKind'] as const) expect(mutate((u) => { u.run[k] = 3; })).not.toBe(base);   // the purchase notice's tick and row (spec Loop-ii amendment A3)
   });
-  it('a run saved with a pending event resumes with the same rows and cursor', () => {
+  it('a run saved with a pending event resumes with the same rows and a fresh client highlight', () => {
     const s = makeState(2, 5); s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s);
     s.run.column = 1; s.run.node = 2; s.run.nodesReached = 1; s.telemetry.jumps = 1; setEvent(s, 4);
-    const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 3;
+    const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 3;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect(navRows(t)).toEqual(navRows(s)); expect(t.stations.cursor[n]).toBe(3);
+    expect(navRows(t)).toEqual(navRows(s)); expect(cardSelection(t, n).cursor).toBe(2);
   });
-  it('a run saved mid-charge with the cursor on the second destination continues to the same jump as the uninterrupted run', () => {
-    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.9; return n; };
+  it('a run saved mid-charge continues to the same jump when the client restores its separate row memory', () => {
+    const setup = (s: ReturnType<typeof makeState>) => { s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 1; s.run.jumpCharge = 0.9; return n; };
     const whole = makeState(2, 31), part = makeState(2, 31); const n = setup(whole); setup(part);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));
-    expect(resumed.stations.cursor[n]).toBe(1); expect(resumed.run.jumpCharge).toBe(0.9);
+    expect(cardSelection(resumed, n).cursor).toBe(0); cardSelection(resumed, n).cursor = cardSelection(part, n).cursor; expect(resumed.run.jumpCharge).toBe(0.9);
     const drive = (s: ReturnType<typeof makeState>) => run(s, 0.1 * JUMP_CHARGE_TIME * TICK_HZ + 600, () => intents({ confirmPressed: true }, { confirmPressed: true }));   // P2 confirms the jump (spec Coop-ii section 3)
     drive(whole); drive(resumed);
     expect([resumed.run.column, resumed.run.node, resumed.run.nodesReached]).toEqual([1, 1, 1]);

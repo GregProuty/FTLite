@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { stepCommands } from '../src/renderer/src/sim/step';
 import type { Command, CommandEnvelope } from '../src/renderer/src/net/contracts';
@@ -92,10 +93,10 @@ describe('interaction execution validation and phase preservation', () => {
   });
   it('the bridge rejects migrated Navigation voting, inactive seats, and raw press fields', () => {
     const s = makeState(2); setEvent(s, 0); const nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav);
-    s.stations.cursor[nav] = navRows(s).findIndex(r => r.select === 'choice');
+    cardSelection(s, nav).cursor = navRows(s).findIndex(r => r.select === 'choice');
     const legacy = { kind: 'legacyCardInput' as const, runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: 0, input: { station: nav, direction: Dir.None, confirm: true } };
     expect(admitLegacyCardInput(createLedger([0]), legacy, 0, s)).toMatchObject({ status: 'rejected', result: { reason: 'unsupported' } });
-    expect(legacyCardReason(s, { ...legacy, input: { ...legacy.input, station: s.derived.stationOfKind[StationKind.Engineering]! } })).toBe('invalid-seat');
+    expect(legacyCardReason(s, { ...legacy, input: { ...legacy.input, station: s.derived.stationOfKind[StationKind.Engineering]! } })).toBe('unsupported');
     const malformed = { ...legacy, input: { ...legacy.input, confirmPressed: true } };
     expect(admitLegacyCardInput(createLedger([0]), malformed, 0, s)).toMatchObject({ status: 'rejected', result: { reason: 'malformed' } });
     stepCommands(s, { held: [], commands: [], legacyCardInput: [legacy] }); expect(s.run.vote[0]).toBe(-1);

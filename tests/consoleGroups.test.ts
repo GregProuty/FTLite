@@ -13,7 +13,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { NEUTRAL_INTENT, type Intent } from '../src/shared/intent';
-import { RECRUITS, teleport, quiet } from './helpers/sim';
+import { RECRUITS, teleport, quiet, setEvent } from './helpers/sim';
 
 type GroupedJson = typeof starter & { consoleGroups: { tile: [number, number]; kinds: string[] }[] };
 /** The starter with two console groups (spec Demo-x-a section 1): the Helm (Navigation + Weapons) on the Bridge, Ops (Science + Engineering + Doors) in the Science Lab. */
@@ -82,6 +82,14 @@ describe('seating at a console group', () => {
     step(s, press({ cancelPressed: true })); step(s, press({}));
     expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0);
     sitAt(s, 12, 2); expect(s.groups.tab[1]).toBe(0); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Science));
+  });
+  it('Navigation skips event headers for first-row Up and preserves its row on tab-bar Down', () => {
+    const s = state(); sitAt(s, 2, 2); setEvent(s, 4); fixtureRunner(s).refresh();
+    const nav = at(s, StationKind.Navigation), ui = fixtureRunner(s).ui;
+    expect(ui.stations[nav]!.rowKey).toBe('choice:0');
+    edge(s, 0, -.5); expect(ui.groupBar[0]).toBe(true);
+    edge(s, 0, .5); expect(ui.groupBar[0]).toBe(false); expect(ui.stations[nav]!.rowKey).toBe('choice:0');
+    expect(s.groups.tab[0]).toBe(0); expect(s.run.vote[0]).toBe(-1);
   });
   it('input reaches only the active tab\'s station', () => {
     const s = state(); sitAt(s, 12, 2);

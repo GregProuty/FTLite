@@ -48,8 +48,8 @@ describe('semantic Engineering', () => {
   it('reads client UI for migrated rows, HUD and bot decisions with canonical slots guarded', () => {
     for (const kind of [StationKind.Engineering, StationKind.Doors]) {
       const s = makeState(), station = s.derived.stationOfKind[kind]!, ui = createCardUiState('run', s.playerCount); sitDown(s, 0, station); reconcileUi(s, ui, 'run', []);
-      const trap = <T extends object>(array: T): T => new Proxy(array, { get(target, key) { if (key === String(station)) throw new Error('migrated canonical UI read'); const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value; } });
-      s.stations.cursor = trap(s.stations.cursor); s.stations.page = trap(s.stations.page);
+
+      Object.defineProperty(s.stations, 'cursor', { get() { throw new Error('migrated cursor read'); } }); Object.defineProperty(s.stations, 'page', { get() { throw new Error('migrated page read'); } });
       expect(() => { cardRows(s, station, ui); translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 0); buildHudModel(s, [], 'running', '', null, null, [], ui); doorsCursorTile(s, ui); botFrame(s, ui, 0); }).not.toThrow();
     }
   });

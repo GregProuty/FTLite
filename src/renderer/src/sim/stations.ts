@@ -20,21 +20,18 @@ export function failedStationCount(state: SimState): number {
   let n = 0; for (const f of state.stations.failed) if (f) n++; return n;
 }
 
-/** Reset a console's cursor per kind (spec section 4). */
-function resetCursor(state: SimState, i: number): void {
+/** Seating resets gameplay targets; card focus belongs to the client. */
+function resetTarget(state: SimState, i: number): void {
   const d = state.derived, kind = d.stationKind[i]!;
   if (kind === StationKind.Weapons) { state.weapons.target = targetRef(state, warnedTargets(state)[0] ?? -1); return; }
   if (kind === StationKind.Science) { state.science.target = targetRef(state, warnedTargets(state, false)[0] ?? -1); return; }
-  if (kind === StationKind.Engineering || kind === StationKind.Doors) return;
-  state.stations.page[i] = 0;   // every seat opens on the power page (spec Loop-ii section 2)
-  state.stations.cursor[i] = 0;
 }
 
-/** Seat a player: snap to the console tile centre and reset the legacy cursor per kind (spec section 4). At a console group the player sits at every member, on the first tab; the client reconciles focus and repeat (spec Demo-x-a section 1). */
+/** Seat a player: snap to the console tile centre and reset gameplay targets (spec section 4). At a console group the player sits at every member, on the first tab; the client reconciles focus and repeat (spec Demo-x-a section 1). */
 export function sitDown(state: SimState, pid: number, i: number): void {
   const eid = state.crew[pid]!, d = state.derived, g = d.stationGroup[i]!;
   const members = g >= 0 ? d.groupStations[g]! : [i];
-  for (const j of members) { state.stations.occupant[j] = pid; resetCursor(state, j); }
+  for (const j of members) { state.stations.occupant[j] = pid; resetTarget(state, j); }
   if (g >= 0) { state.groups.tab[g] = 0; }
   Seated.station[eid] = members[0]!;
   const t = d.stationTile[i]!, tx = t % d.width;

@@ -64,7 +64,7 @@ describe('semantic Weapons', () => {
     expect(out.commands[1]!.command).toMatchObject({ weapon: pulse, target: { kind: 'object', stableId: 100 } });
     const result = stepCommands(s, { held: [], commands: out.commands, legacyCardInput: [] });
     expect(result.map(r => r.status)).toEqual(['applied', 'applied']); expect(s.telemetry.shots).toBe(1); expect(s.weapons.lastShotTarget).toBe(1);
-    expect(s.stations.cursor[station]).toBe(0);
+    expect(s.stations).not.toHaveProperty('cursor');
   });
   it('a real miss is applied and consumes one RNG draw, charge and awards shot XP', () => {
     const { s, station, target } = setup(); let seed = 1; while (nextFloat(createRng(seed)) < 0.9) seed++;
@@ -133,8 +133,8 @@ describe('semantic Weapons', () => {
   });
   it('reads authoritative aim throughout HUD, reticle, bots and input with canonical cursor slots guarded', () => {
     const { s, station } = setup(); placeEnemy(s); const ui = createCardUiState('run', s.playerCount); reconcileUi(s, ui, 'run', []);
-    const trap = <T extends object>(array: T): T => new Proxy(array, { get(target, key) { if (key === String(station)) throw new Error('migrated canonical UI read'); const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value; } });
-    s.stations.cursor = trap(s.stations.cursor); s.stations.page = trap(s.stations.page);
+
+    Object.defineProperty(s.stations, 'cursor', { get() { throw new Error('migrated cursor read'); } }); Object.defineProperty(s.stations, 'page', { get() { throw new Error('migrated page read'); } });
     expect(() => { translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 0); buildHudModel(s, [], 'running', '', null, null, [], ui); enemyWindowModel(s, s.tick, freshWindowAnim()); botFrame(s, ui, 0); }).not.toThrow();
   });
 });

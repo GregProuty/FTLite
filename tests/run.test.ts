@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
 import { DoorState } from '../src/renderer/src/sim/grid';
@@ -144,15 +145,15 @@ describe('run: charge and Navigation input', () => {
     const reachableBefore = reachable(s);
     const n = seatNavigator(s, 0); run(s, 1);
     const d0 = s.rng.director.s;
-    run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(1);
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(2);           // the evade row, always last (spec Coop-ii section 1)
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(0);           // wraps
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(2);          // Up wraps the other way
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(1);
-    run(s, 1, () => intents({ moveX: 1 }, {})); run(s, 1, () => intents({ moveX: -1 }, {})); expect(s.stations.cursor[n]).toBe(1);
+    run(s, 1, () => intents({ moveY: 1 }, {})); expect(cardSelection(s, n).cursor).toBe(1);
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(cardSelection(s, n).cursor).toBe(2);           // the evade row, always last (spec Coop-ii section 1)
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(cardSelection(s, n).cursor).toBe(0);           // wraps
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: -1 }, {})); expect(cardSelection(s, n).cursor).toBe(2);          // Up wraps the other way
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: -1 }, {})); expect(cardSelection(s, n).cursor).toBe(1);
+    run(s, 1, () => intents({ moveX: 1 }, {})); run(s, 1, () => intents({ moveX: -1 }, {})); expect(cardSelection(s, n).cursor).toBe(1);
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.nodesReached).toBe(0); expect(s.rng.director.s).toBe(d0);   // not ready
-    chargeJump(s); run(s, 1, () => intents({ confirmPressed: true }, {}));
-    expect(s.run.nodesReached).toBe(1); expect(s.run.column).toBe(1); expect(s.run.node).toBe(reachableBefore[1]!.node); expect(s.run.node).toBe(2); expect(s.stations.cursor[n]).toBe(0);   // cursor 1 -> destination 2
+    chargeJump(s); cardSelection(s, n).cursor = 1; run(s, 1, () => intents({ confirmPressed: true }, {})); // chargeJump changes fixture VisitRef; restore the intended client row.
+    expect(s.run.nodesReached).toBe(1); expect(s.run.column).toBe(1); expect(s.run.node).toBe(reachableBefore[1]!.node); expect(s.run.node).toBe(2); expect(cardSelection(s, n).cursor).toBe(0);   // cursor 1 -> destination 2
     const h = calm(1); setMap(h, MAP_M_NODES, MAP);
     seatNavigator(h, 0); run(h, 1); h.run.jumpCharge = 1 - 1.5 * DT / JUMP_CHARGE_TIME;
     run(h, 3, () => intents({}, {}));                                                    // neutral intents: the dispatch only sends Confirm edges, and none is sent while the charge becomes ready
@@ -185,7 +186,7 @@ describe('run: the jump', () => {
     const dr = createRng(s.rng.director.s); nextFloat(dr); const h0 = s.rng.hazards.s, c0 = s.rng.combat.s, m0 = s.rng.map.s;
     const reachableBefore = reachable(s);
     jumpShip(s, reachable(s)[0]!);
-    expect([s.run.column, s.run.nodesReached, s.run.jumpCharge, s.telemetry.jumps]).toEqual([1, 1, 0, 1]); expect(s.run.node).toBe(reachableBefore[0]!.node); expect(s.stations.cursor[nav]).toBe(0);
+    expect([s.run.column, s.run.nodesReached, s.run.jumpCharge, s.telemetry.jumps]).toEqual([1, 1, 0, 1]); expect(s.run.node).toBe(reachableBefore[0]!.node); expect(cardSelection(s, nav).cursor).toBe(0);
     expect(Array.from(s.debris.active)).toEqual(new Array(DEBRIS_SLOTS).fill(0)); expect(s.weapons.target).toBeNull(); expect(scienceTargetSlot(s)).toBe(-1); expect(s.science.scanning).toBe(0);
     expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.enemy.nextArrivalTick]).toEqual([0, 0, s.run.nodeType[NODE_STRIDE + s.run.node] === NodeType.Hazard ? tick + ENCOUNTER_START * T : NEVER]);
     expect([s.boarders.active[0], s.boarders.room[0], s.boarders.health[0], s.boarders.nextMoveTick[0], s.boarders.nextArrivalTick]).toEqual([1, before.boarderRoom, before.boarderHealth, before.boarderMove, before.boardArrival]);
@@ -335,7 +336,7 @@ describe('asteroid fields (spec Demo-viii section 1)', () => {
 
 describe('the evasive manoeuvre (spec Coop-ii section 1, amendments D1-D3)', () => {
   const evadeRow = (s: ReturnType<typeof makeState>) => navRows(s).findIndex((r) => r.select === 'evade');
-  const seated = () => { const s = makeState(2); quiet(s); allHazard(s); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = evadeRow(s); return { s, n }; };
+  const seated = () => { const s = makeState(2); quiet(s); allHazard(s); const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = evadeRow(s); return { s, n }; };
   it('the Navigation rows end with the evade row: EVADE: Confirm while ready', () => {
     const { s } = seated(); const rows = navRows(s);
     expect(rows[rows.length - 1]).toEqual({ text: 'EVADE: Confirm', select: 'evade', index: 0, enabled: true });
@@ -369,7 +370,7 @@ describe('the evasive manoeuvre (spec Coop-ii section 1, amendments D1-D3)', () 
 });
 
 describe('the jump confirmation (spec Coop-ii section 3, amendment D7)', () => {
-  const ready = (players = 2) => { const s = makeState(players); quiet(s); allHazard(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); s.stations.cursor[n] = 0; return { s, n }; };
+  const ready = (players = 2) => { const s = makeState(players); quiet(s); allHazard(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); cardSelection(s, n).cursor = 0; return { s, n }; };
   it('with two conscious players the pilot\'s Confirm opens a 5 s confirmation; a standing Confirm jumps', () => {
     const { s } = ready(); const dest = reachable(s)[0]!;
     run(s, 1, () => intents({ confirmPressed: true }, {}));
@@ -424,10 +425,10 @@ describe('sectors, fuel and waiting (spec Loop-i sections 1 and 2, amendments S1
     for (const r of navRows(s)) expect(r.text.length).toBeLessThanOrEqual(NAV_TEXT_MAX);
   });
   it('the exit row through the console: a lone pilot\'s Confirm with a ready drive jumps to the next sector; before the drive is ready nothing', () => {
-    const s = ready(); exitAt(s, 0); s.run.jumpCharge = 0.5; const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 0;
+    const s = ready(); exitAt(s, 0); s.run.jumpCharge = 0.5; const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 0;
     run(s, 1, () => intents({ confirmPressed: true })); expect(s.run.sector).toBe(0);
     chargeJump(s); run(s, 1, () => intents({})); run(s, 1, () => intents({ confirmPressed: true })); expect([s.run.sector, s.run.column]).toEqual([1, 0]);
-    const p = calm(2); mapM(p); exitAt(p, 0); const m = seatNavigator(p, 0); run(p, 1); p.stations.cursor[m] = 0; chargeJump(p);   // two crew: the second Confirm (spec Coop-ii section 3)
+    const p = calm(2); mapM(p); exitAt(p, 0); const m = seatNavigator(p, 0); run(p, 1); cardSelection(p, m).cursor = 0; chargeJump(p);   // two crew: the second Confirm (spec Coop-ii section 3)
     run(p, 1, () => intents({ confirmPressed: true }, {})); expect([p.run.sector, p.run.jumpPending]).toEqual([0, EXIT_JUMP]);
     run(p, 1, () => intents({}, { confirmPressed: true })); expect([p.run.sector, p.run.jumpPending]).toEqual([1, -1]);
   });
@@ -452,7 +453,7 @@ describe('sectors, fuel and waiting (spec Loop-i sections 1 and 2, amendments S1
   it('Wait for help: a seated Confirm starts 20 s; then the pursuit steps once and one loot draw gives 2 fuel below 0.6, else nothing and the crew can wait again', () => {
     const outcomes = new Set<number>();
     for (let seed = 1; seed <= 12; seed++) {
-      const s = calm(1, seed); mapM(s); s.run.fuel = 0; const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 0;
+      const s = calm(1, seed); mapM(s); s.run.fuel = 0; const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 0;
       run(s, 1, () => intents({ confirmPressed: true })); const start = s.tick - 1;
       expect(s.run.waitUntilTick).toBe(start + WAIT_SECONDS * T);
       expect(navRows(s).map((r) => [r.text, r.select, r.enabled])).toEqual([['Waiting for help  20s', 'wait', false], ['EVADE: Confirm', 'evade', true]]);

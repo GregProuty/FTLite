@@ -1,3 +1,4 @@
+import { buy, itemEnabled, WEAPON_ITEM } from './shop';
 import { startTargetScan, startSystemScan, lockFrequency } from './science';
 import { resolveTarget } from './debrisTargets';
 import { weaponMatches, canFireWeaponAt, fireWeaponAt, swapCargo, canSwap } from './weapons';
@@ -11,7 +12,7 @@ import { stationOnline, sitDown, standUp, selectTab } from './stations';
 import { shedPower, shiftBar, buyUpgrade, buyReactor } from './power';
 import { cycleCoolant } from './heat';
 import { StationKind } from './stationKinds';
-import { hereIndex, navRows, navCursorAfterDirection } from './run';
+import { hereIndex, navRows, contentOf, NodeType, requestJump, EXIT_JUMP, startWait, startEvade } from './run';
 import { choiceEnabled, EVENT_DEFS } from './events';
 import { CONFIRM_SECONDS, TICK_HZ } from './tuning';
 
@@ -106,6 +107,25 @@ export function applyConsoleCommand(state: SimState, envelope: CommandEnvelope):
     if (!unchanged) { state.run.vote[pid] = c.choice; state.run.voteTick = state.tick; }
     return commandResult(state, envelope, undefined, unchanged);
   }
+  if (c.kind === 'buy' || c.kind === 'jump' || c.kind === 'sectorJump' || c.kind === 'wait' || c.kind === 'evade') {
+    if (c.station !== seat || state.stations.occupant[seat] !== pid || state.derived.stationKind[seat] !== StationKind.Navigation) return commandResult(state, envelope, 'invalid-seat');
+    if (state.derived.stationGroup[seat]! >= 0 && !stationOnline(state, seat)) return commandResult(state, envelope, 'unavailable');
+    if (c.kind === 'evade') return commandResult(state, envelope, startEvade(state) ? undefined : 'unavailable');
+    if (!sameVisit(state, c.visit)) return commandResult(state, envelope, 'stale-target');
+    const rows = navRows(state);
+    if (c.kind === 'buy') {
+      if (contentOf(state) !== NodeType.Shop || c.expectedOffer !== (c.item === WEAPON_ITEM ? state.run.shopWeapon : 0)) return commandResult(state, envelope, 'stale-target');
+      if (!rows.some(row => row.select === 'buy' && row.index === c.item) || !itemEnabled(state, c.item)) return commandResult(state, envelope, 'unavailable');
+      buy(state, c.item); return commandResult(state, envelope);
+    }
+    if (c.kind === 'wait') return commandResult(state, envelope, rows.some(row => row.select === 'wait' && row.enabled) && startWait(state) ? undefined : 'unavailable');
+    const destination = c.kind === 'sectorJump' ? EXIT_JUMP : c.destination;
+    if (!rows.some(row => row.select === (c.kind === 'sectorJump' ? 'sector' : 'jump') && row.index === destination)) return commandResult(state, envelope, 'stale-target');
+    if (state.run.jumpCharge < 1 || state.run.fuel < 1) return commandResult(state, envelope, 'unavailable');
+    const pending = state.run.jumpPending, reached = state.run.nodesReached;
+    requestJump(state, destination);
+    return commandResult(state, envelope, undefined, pending === state.run.jumpPending && reached === state.run.nodesReached);
+  }
   if (c.kind === 'scan' || c.kind === 'systemScan' || c.kind === 'lockFrequency' || (c.kind === 'selectTarget' && state.derived.stationKind[seat] === StationKind.Science)) {
     if (c.station !== seat || state.stations.occupant[seat] !== pid || state.derived.stationKind[seat] !== StationKind.Science) return commandResult(state, envelope, 'invalid-seat');
     if (state.derived.stationGroup[seat]! >= 0 && !stationOnline(state, seat)) return commandResult(state, envelope, 'unavailable');
@@ -177,14 +197,7 @@ export function applyConsoleCommand(state: SimState, envelope: CommandEnvelope):
   }
   return commandResult(state, envelope, 'unsupported');
 }
-/** Admission and execution both guard the single temporary bridge. */
-export function legacyCardReason(state: SimState, envelope: LegacyInputEnvelope, inTick = false): CommandReason | undefined {
-  const pid = envelope.id.player, input = envelope.input, i = input.station;
-  if (envelope.requestedTick !== state.tick) return 'stale-tick';
-  if (!conscious(state, pid) || Seated.station[state.crew[pid]!] !== i || state.stations.occupant[i] !== pid || (inTick && (state.scratch.satThisTick[pid] || state.scratch.stoodThisTick[pid]))) return 'invalid-seat';
-  const kind = state.derived.stationKind[i];
-  if (kind !== StationKind.Navigation) return 'unsupported';
-  if (state.derived.stationGroup[i]! >= 0 && !stationOnline(state, i)) return 'unavailable';
-  if (kind === StationKind.Navigation && input.confirm) { const rows = navRows(state); if (rows[navCursorAfterDirection(rows, state.stations.cursor[i]!, input.direction)]?.select === 'choice') return 'unsupported'; }
-  return undefined;
+/** Empty migration scaffolding: no card family accepts raw input. */
+export function legacyCardReason(_state: SimState, _envelope: LegacyInputEnvelope, _inTick = false): CommandReason {
+  return 'unsupported';
 }

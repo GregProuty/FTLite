@@ -1,3 +1,4 @@
+import { createCardUiState } from '../src/renderer/src/clientControl/cardController';
 import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, expect, it } from 'vitest';
 import { Health } from '../src/renderer/src/sim/components';
@@ -18,8 +19,7 @@ describe('independent Net-1a baseline oracle', () => {
   });
   it('ignores only client UI memory, keeping the weapon selector', () => {
     const s = makeState(), expected = projectGameplay(s);
-    s.stations.cursor[0] = 8; s.stations.page[0] = 1; s.run.navSig = 3;
-    s.run.navSelect = 4; s.run.navIndex = 5;
+    const ui = createCardUiState('test', s.playerCount); ui.stations.push({ rowKey: 'evade:0', page: 'upgrades' }); ui.groupBar.push(true);
     expect(firstDifference(expected, projectGameplay(s))).toBeNull();
     s.weapons.selector = 2;
     expect(firstDifference(expected, projectGameplay(s))?.field).toBe('weapons.selector');

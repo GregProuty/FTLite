@@ -1,8 +1,10 @@
+import { fixtureCardUi } from './helpers/cardUi';
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { DoorState } from '../src/renderer/src/sim/grid';
 import { TICK_HZ, VOTE_SECONDS, VOTE_SETTLE, FUEL_COST, SHOP_FUEL } from '../src/renderer/src/sim/tuning';
 import { teleport } from './helpers/sim';
-import { NodeType, NAV_TEXT_MAX, reachable, navRows, clampNavCursor, jumpShip } from '../src/renderer/src/sim/run';
+import { NodeType, NAV_TEXT_MAX, reachable, navRows, jumpShip } from '../src/renderer/src/sim/run';
 import { addScrap, spendScrap } from '../src/renderer/src/sim/scrap';
 import { EVENTS, EVENT_DEFS, choiceEnabled, choiceLabel, resolveEvent } from '../src/renderer/src/sim/events';
 import { SHOP_ITEM_COUNT, itemLabel, itemEnabled, buy } from '../src/renderer/src/sim/shop';
@@ -37,12 +39,12 @@ describe('arrival', () => {
     const s = calm(); at(s, 1, 2); setEvent(s, 4); chargeJump(s); const n = seatNavigator(s, 0); run(s, 1);
     const rows = navRows(s);
     expect(rows.map((r) => [r.text, r.select, r.index, r.enabled])).toEqual([[EVENTS[4]!.title, 'none', 0, false], [EVENTS[4]!.text, 'none', 0, false], [EVENTS[4]!.choices[0], 'choice', 0, true], [EVENTS[4]!.choices[1], 'choice', 1, true], ['EVADE: Confirm', 'evade', 0, true]]);   // the evade row last (spec Coop-ii section 1)
-    expect(s.stations.cursor[n]).toBe(2); clampNavCursor(s); expect(s.stations.cursor[n]).toBe(2);   // the console's own clamp already ran in the seated tick (spec section 6)
+    expect(cardSelection(s, n).cursor).toBe(2); fixtureCardUi(s); expect(cardSelection(s, n).cursor).toBe(2);   // the console's own clamp already ran in the seated tick (spec section 6)
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect([s.run.vote[0], s.run.eventChoice]).toEqual([0, -1]);   // the officer's vote (spec Coop-ii amendment D7)
     run(s, 1, () => intents({}, { confirmPressed: true })); run(s, VOTE_SETTLE * TICK_HZ);                                    // P2 votes option 1 too; it resolves once the votes settle
     expect([s.run.column, s.telemetry.jumps, s.run.jumpCharge, s.run.eventChoice, s.run.scrap, s.telemetry.eventsResolved]).toEqual([1, 1, 1, 0, 40, 1]);
-    expect(navRows(s).map((r) => r.select)).toEqual(['jump', 'jump', 'evade']); expect(s.stations.cursor[n]).toBe(0);   // forward Node 3a, sideways Node 2b (spec Loop-i section 1); the choice row is gone: the cursor goes to row 0 (spec Demo-xi section 3)
-    run(s, 1, () => intents({}, {})); expect(s.stations.cursor[n]).toBe(0); run(s, 1, () => intents({ confirmPressed: true }, {})); run(s, 1, () => intents({}, { confirmPressed: true }));   // the pilot, then the second officer (spec Coop-ii section 3)
+    expect(navRows(s).map((r) => r.select)).toEqual(['jump', 'jump', 'evade']); expect(cardSelection(s, n).cursor).toBe(0);   // forward Node 3a, sideways Node 2b (spec Loop-i section 1); the choice row is gone: the cursor goes to row 0 (spec Demo-xi section 3)
+    run(s, 1, () => intents({}, {})); expect(cardSelection(s, n).cursor).toBe(0); run(s, 1, () => intents({ confirmPressed: true }, {})); run(s, 1, () => intents({}, { confirmPressed: true }));   // the pilot, then the second officer (spec Coop-ii section 3)
     expect([s.run.column, s.run.node]).toEqual([2, 0]);
   });
 });
@@ -89,7 +91,7 @@ describe('events: every choice', () => {
     resolveEvent(s, 0); expect([Health.cur[s.crew[0]!], Health.cur[dead], Life.state[dead], s.run.scrap]).toEqual([HEALTH_MAX, 0, LifeState.Dead, 85]);
   });
   it('a disabled choice under Confirm changes nothing; resolveEvent on a resolved or absent event is a no-op', () => {
-    const s = setup(5, 14); const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); clampNavCursor(s); expect(s.stations.cursor[n]).toBe(2);
+    const s = setup(5, 14); const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); fixtureCardUi(s); expect(cardSelection(s, n).cursor).toBe(2);
     const h = JSON.stringify([s.run.scrap, s.run.eventChoice, s.telemetry.eventsResolved, Array.from(Health.cur).slice(0, 4)]);
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(JSON.stringify([s.run.scrap, s.run.eventChoice, s.telemetry.eventsResolved, Array.from(Health.cur).slice(0, 4)])).toBe(h); expect(s.run.column).toBe(1);
     const r = setup(4); resolveEvent(r, 0); resolveEvent(r, 1); expect([r.run.scrap, r.telemetry.eventsResolved]).toEqual([140, 1]);
@@ -126,13 +128,13 @@ describe('shops', () => {
   });
   it('cursor rules: a buy keeps the cursor on its (now disabled) row, the header is skipped, wrap crosses the ends, a shrink moves to the first selectable row', () => {
     const s = shop(); s.hull = 90; const n = seatNavigator(s, 0); run(s, 1);
-    run(s, 1, () => intents({}, {})); expect(s.stations.cursor[n]).toBe(1);                                   // header skipped
-    run(s, 1, () => intents({ moveY: -1 }, {})); expect(s.stations.cursor[n]).toBe(6);                       // Up from row 1 wraps to the last row (the evade row, spec Coop-ii section 1)
-    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(s.stations.cursor[n]).toBe(1);   // Down from the last wraps to row 1
-    run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.hull).toBe(HULL_MAX); expect(s.stations.cursor[n]).toBe(1); expect(navRows(s)[1]!.enabled).toBe(false);
+    run(s, 1, () => intents({}, {})); expect(cardSelection(s, n).cursor).toBe(1);                                   // header skipped
+    run(s, 1, () => intents({ moveY: -1 }, {})); expect(cardSelection(s, n).cursor).toBe(6);                       // Up from row 1 wraps to the last row (the evade row, spec Coop-ii section 1)
+    run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ moveY: 1 }, {})); expect(cardSelection(s, n).cursor).toBe(1);   // Down from the last wraps to row 1
+    run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.hull).toBe(HULL_MAX); expect(cardSelection(s, n).cursor).toBe(1); expect(navRows(s)[1]!.enabled).toBe(false);
     run(s, 1, () => intents({}, {})); run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.scrap).toBe(70);   // disabled: nothing
-    const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); e.stations.cursor[m] = 3; run(e, 1, () => intents({ confirmPressed: true }, {})); run(e, 2, () => intents({}, { confirmPressed: true })); run(e, VOTE_SETTLE * TICK_HZ);   // P2 votes 1, then 2: both for option 2
-    expect(e.run.eventChoice).toBe(1); expect(e.stations.cursor[m]).toBe(1);                                  // the choice row is gone: row 0, the header, then the first selectable row (spec Demo-xi section 3)
+    const e = shop(); setEvent(e, 4); const m = seatNavigator(e, 0); run(e, 1); cardSelection(e, m).cursor = 3; run(e, 1, () => intents({ confirmPressed: true }, {})); run(e, 2, () => intents({}, { confirmPressed: true })); run(e, VOTE_SETTLE * TICK_HZ);   // P2 votes 1, then 2: both for option 2
+    expect(e.run.eventChoice).toBe(1); expect(cardSelection(e, m).cursor).toBe(1);                                  // the choice row is gone: row 0, the header, then the first selectable row (spec Demo-xi section 3)
     expect(navRows(e)).toHaveLength(7);
   });
 });
@@ -198,7 +200,7 @@ describe('crew votes (spec Coop-ii section 3, amendments D6-D8)', () => {
     run(s, 1, press(1)); expect([s.run.vote[1], s.stations.occupant[n]]).toEqual([0, -1]);
   });
   it('the seated Navigation officer votes with the rows', () => {
-    const s = open(); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 3;
+    const s = open(); const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 3;
     run(s, 1, press(0)); expect(s.run.vote[0]).toBe(1); expect(s.run.eventChoice).toBe(-1);
   });
   it('resolves once every conscious player has an enabled vote (settled for VOTE_SETTLE), the majority wins', () => {
@@ -215,7 +217,7 @@ describe('crew votes (spec Coop-ii section 3, amendments D6-D8)', () => {
     run(s, SETTLE - 2); expect(s.run.eventChoice).toBe(-1); run(s, 3); expect(s.run.eventChoice).toBeGreaterThanOrEqual(0);
   });
   it('a tie goes to the seated Navigation officer, else to the lowest option', () => {
-    const s = open(4, 2); const n = seatNavigator(s, 0); run(s, 1); s.stations.cursor[n] = 3;
+    const s = open(4, 2); const n = seatNavigator(s, 0); run(s, 1); cardSelection(s, n).cursor = 3;
     run(s, 1, press(0, 1)); run(s, SETTLE + 1); expect(s.run.eventChoice).toBe(1);   // officer 1, the other 0
     const t = open(4, 2); run(t, 1, press(0, 1)); run(t, 1, press(1)); run(t, SETTLE + 1); expect(t.run.eventChoice).toBe(0);
   });

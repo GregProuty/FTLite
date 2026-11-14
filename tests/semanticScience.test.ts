@@ -122,7 +122,7 @@ describe('semantic Science', () => {
     const copy = makeState(2), refs: (TargetRef | null)[] = [null, { kind: 'object', stableId: 99 }, { kind: 'object', stableId: 100 }, { kind: 'enemy', stableId: 99, room: 4 }];
     const hashes = refs.map(target => { s.science.target = target; unflatten(copy, flatten(s)); expect(copy.science.target).toEqual(target); return hashState(s); }); expect(new Set(hashes).size).toBe(refs.length);
     const ui = createCardUiState('run', 2); reconcileUi(s, ui, 'run', []);
-    s.stations.cursor = new Proxy(s.stations.cursor, { get(array, key) { if (key === String(station)) throw new Error('migrated cursor read'); const v = Reflect.get(array, key); return typeof v === 'function' ? v.bind(array) : v; } });
+    Object.defineProperty(s.stations, 'cursor', { get() { throw new Error('migrated cursor read'); } });
     expect(() => { translateTick(s, ui, [NEUTRAL_FRAME, NEUTRAL_FRAME], s.tick); buildHudModel(s, [], 'running', '', null, null, [], ui); botFrame(s, ui, 1); isProductive(s, station); scanStep(s); }).not.toThrow();
   });
 });

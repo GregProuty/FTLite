@@ -1,5 +1,5 @@
 import { cardSelection } from './helpers/cardUi';
-import { navigationInput } from '../src/renderer/src/sim/run';
+import { legacyCardReason } from '../src/renderer/src/sim/commands';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
@@ -27,7 +27,7 @@ const SKIFF = parseShip(skiff);
 /** Two players, a quiet hazard map, the drive charged, P1 (pid 0) seated at Navigation with the cursor on the first jump row. */
 function ready() {
   const s = makeState(2); quiet(s); allHazard(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9;
-  const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); s.stations.cursor[n] = 0; return { s, n };
+  const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); cardSelection(s, n).cursor = 0; return { s, n };
 }
 const seat = (s: ReturnType<typeof makeState>, pid: number, kind: number): number => { const i = s.derived.stationOfKind[kind]!; sitDown(s, pid, i); if (kind === StationKind.Engineering) cardSelection(s, i).cursor = StationKind.Navigation; return i; };   // Engineering's cursor on the Navigation row: a Confirm there cycles its coolant
 
@@ -101,7 +101,7 @@ describe('B3: every player votes in an event (spec Demo-xi section 2)', () => {
   });
   it('the Navigation officer still picks with the rows, and its Confirm is not a vote press', () => {
     const { s, n } = open(); const rows = navRows(s), last = rows.map((r) => r.select).lastIndexOf('choice');
-    s.stations.cursor[n] = last;
+    cardSelection(s, n).cursor = last;
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.vote[0]).toBe(rows[last]!.index);
     run(s, 1, () => intents({ confirmPressed: true }, {})); expect(s.run.vote[0]).toBe(rows[last]!.index);   // a second press on the same row does not cycle it
   });
@@ -124,37 +124,38 @@ describe('B2: the Navigation cursor never lands on a jump row by itself (spec De
     s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); s.run.shopWeapon = 1; grantScrap(s, 999);
     const n = seatNavigator(s, 0); run(s, 1); return { s, n };
   };
-  const key = (s: ReturnType<typeof makeState>, n: number) => { const r = navRows(s)[s.stations.cursor[n]!]!; return [r.select, r.index]; };
+  const key = (s: ReturnType<typeof makeState>, n: number) => { const r = navRows(s)[cardSelection(s, n).cursor!]!; return [r.select, r.index]; };
   it('a row above the cursor disappearing leaves the cursor on the same row', () => {
     const { s, n } = shop(); const rows = navRows(s), j = rows.map((r) => r.select).lastIndexOf('jump');
-    s.stations.cursor[n] = j; run(s, 1); const before = key(s, n);
+    cardSelection(s, n).cursor = j; run(s, 1); const before = key(s, n);
     s.run.shopWeapon = 0; run(s, 1);   // the weapon row above the cursor is gone (sold)
-    expect(key(s, n)).toEqual(before); expect(s.stations.cursor[n]).toBe(j - 1);
+    expect(key(s, n)).toEqual(before); expect(cardSelection(s, n).cursor).toBe(j - 1);
   });
   it('buying a shop item keeps the cursor on that item\'s row; buying the weapon (its row gone) moves to the top, never onto a jump row', () => {
     const { s, n } = shop(); s.hull = 90;
-    s.stations.cursor[n] = 1; run(s, 1); run(s, 1, () => intents({ confirmPressed: true })); expect(key(s, n)).toEqual(['buy', 0]);
+    cardSelection(s, n).cursor = 1; run(s, 1); run(s, 1, () => intents({ confirmPressed: true })); expect(key(s, n)).toEqual(['buy', 0]);
     const w = navRows(s).findIndex((r) => r.select === 'buy' && r.index === WEAPON_ITEM); expect(navRows(s)[w + 1]!.select).toBe('jump');
-    s.stations.cursor[n] = w; run(s, 1); run(s, 1, () => intents({ confirmPressed: true }));
+    cardSelection(s, n).cursor = w; run(s, 1); run(s, 1, () => intents({ confirmPressed: true }));
     expect(s.run.shopWeapon).toBe(0); expect(s.run.column).toBe(1);
-    expect(s.stations.cursor[n]).toBe(1); expect(key(s, n)).toEqual(['buy', 0]);   // row 0 is the shop header: the first selectable row
+    expect(cardSelection(s, n).cursor).toBe(1); expect(key(s, n)).toEqual(['buy', 0]);   // row 0 is the shop header: the first selectable row
     run(s, 1, () => intents({ confirmPressed: true })); expect(s.run.column).toBe(1);   // the next Confirm does not leave
   });
   it('a resolved event puts the cursor on row 0, not on the jump row at its old row number', () => {
     const s = makeState(1); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); s.run.column = 1; s.run.node = 1; setEvent(s, 4);   // map M node 1b: three destinations, so the old row number is a jump row
     const n = seatNavigator(s, 0); run(s, 1);
-    const choice = navRows(s).map((r) => r.select).indexOf('choice'); s.stations.cursor[n] = choice;
+    const choice = navRows(s).map((r) => r.select).indexOf('choice'); cardSelection(s, n).cursor = choice;
     run(s, 1, () => intents({ confirmPressed: true })); run(s, VOTE_SETTLE * TICK_HZ + 1);
     expect(s.run.eventChoice).toBeGreaterThanOrEqual(0); expect(navRows(s)[choice]!.select).toBe('jump');
-    expect(s.stations.cursor[n]).toBe(0);
+    expect(cardSelection(s, n).cursor).toBe(0);
   });
   it('after a jump the cursor is on row 0 (unchanged)', () => {
-    const { s, n } = shop(); s.stations.cursor[n] = navRows(s).map((r) => r.select).lastIndexOf('jump'); run(s, 1); chargeJump(s);
+    const { s, n } = shop(); cardSelection(s, n).cursor = navRows(s).map((r) => r.select).lastIndexOf('jump'); run(s, 1); chargeJump(s);
+    cardSelection(s, n).cursor = navRows(s).map((r) => r.select).lastIndexOf('jump'); // chargeJump changes the fixture visit; restore the chosen client row.
     run(s, 1, () => intents({ confirmPressed: true })); expect(s.run.column).toBeGreaterThanOrEqual(1); expect(s.run.nodesReached).toBeGreaterThan(0);
-    expect(s.stations.cursor[n]).toBe(0);
+    expect(cardSelection(s, n).cursor).toBe(0);
   });
   it('the Navigation officer\'s own moves are kept', () => {
-    const { s, n } = shop(); run(s, 1, () => intents({ moveY: 1 })); const c = s.stations.cursor[n]!; run(s, 3); expect(s.stations.cursor[n]).toBe(c);
+    const { s, n } = shop(); run(s, 1, () => intents({ moveY: 1 })); const c = cardSelection(s, n).cursor!; run(s, 3); expect(cardSelection(s, n).cursor).toBe(c);
   });
 });
 
@@ -222,9 +223,9 @@ describe('P2: fire burns systems (spec Demo-xi section 5, amendment 3)', () => {
   });
 });
 
-it('the remaining Navigation bridge cannot execute an event choice', () => {
+it('the empty Navigation bridge cannot execute an event choice', () => {
   const s = makeState(2); setEvent(s, 0); const nav = seatNavigator(s, 0);
-  s.stations.cursor[nav] = navRows(s).findIndex(row => row.select === 'choice');
-  navigationInput(s, nav, Dir.None, true);
+  cardSelection(s, nav).cursor = navRows(s).findIndex(row => row.select === 'choice');
+  expect(legacyCardReason(s, { kind: 'legacyCardInput', runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: s.tick, input: { station: nav, direction: Dir.None, confirm: true } })).toBe('unsupported');
   expect(s.run.vote[0]).toBe(-1); expect(s.run.eventOpenTick).toBe(-1);
 });

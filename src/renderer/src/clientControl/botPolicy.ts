@@ -1,6 +1,6 @@
 import { scienceTargetSlot } from '../sim/debrisTargets';
 import { weaponsTargetSlot } from '../sim/debrisTargets';
-import type { CardUiState } from './cardController';
+import { cardRowIndex, type CardUiState } from './cardController';
 import type { Intent } from '../../../shared/intent';
 import { NEUTRAL_INTENT } from '../../../shared/intent';
 import type { SimState } from '../sim/state';
@@ -93,7 +93,7 @@ function runIntent(state: SimState, ui: CardUiState, pid: number, eid: number, h
   if (seated) {
     if (!ready && !pending) return { ...NEUTRAL_INTENT, cancelPressed: true };
     const tab = tabTo(state, ui, eid, nav); if (tab) return tab;   // back to the Helm tab first
-    const rows = navRows(state), c = state.stations.cursor[nav]!;
+    const rows = navRows(state), c = cardRowIndex(state, nav, ui);
     const t = pending ? rows.findIndex((row) => row.select === 'choice' && row.index === EVENTS[r.event]!.safeChoice) : wayOnRow(state, rows);
     if (t < 0) return NEUTRAL_INTENT;
     if (c !== t) return state.tick % 2 === 0 ? { ...NEUTRAL_INTENT, moveY: t > c ? 1 : -1 } : NEUTRAL_INTENT;   // one stick edge per two ticks

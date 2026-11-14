@@ -1,4 +1,5 @@
-import type { Command, CommandEnvelope, CommandResult, EventRef, HeldFrame, LegacyInputEnvelope, RunId } from '../net/contracts';
+import { WEAPON_ITEM } from '../sim/shop';
+import type { Command, CommandEnvelope, CommandResult, EventRef, HeldFrame, LegacyInputEnvelope, RunId, VisitRef } from '../net/contracts';
 import type { SimState } from '../sim/state';
 import { NEUTRAL_FRAME, type InputFrame } from './inputFrame';
 import { Life, LifeState, Seated } from '../sim/components';
@@ -9,7 +10,7 @@ import { eventRef, navigationOfficer, visitRef } from '../sim/commands';
 import { EVENT_DEFS } from '../sim/events';
 import { StationKind, STATION_COUNT, STATION_NAMES } from '../sim/stationKinds';
 import { stationOnline } from '../sim/stations';
-import { navRows, navCursorAfterDirection } from '../sim/run';
+import { navRows } from '../sim/run';
 import { canSwap, swapSlot, selectorList, weaponRef } from '../sim/weapons';
 import { warnedTargets, targetRef, weaponsTargetSlot, scienceTargetSlot } from '../sim/debrisTargets';
 import { upgradeRows, REACTOR_ROW, BACK_ROW, canUpgrade, canBuyReactor } from '../sim/power';
@@ -20,11 +21,22 @@ export interface CardUiState {
   players: { nextSequence: number; heldSequence: number; heldDir: number; repeat: number; lastTick: number; seat: number; pendingVoteSequence: number; pendingVoteTick: number; pendingVote: { event: EventRef; choice: number } | null }[];
   stations: { rowKey: string | null; page: 'main' | 'upgrades' }[];
   groupBar: boolean[];
+  navigationVisit: VisitRef | null;
 }
 export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[]; legacyCardInput: LegacyInputEnvelope[] }
 export interface CardRow { key: string; enabled: boolean; text: string; action: Command | null }
 export function cardRows(view: SimState, station: number, ui?: CardUiState): readonly CardRow[] {
   const kind = view.derived.stationKind[station], online = stationOnline(view, station), available = online || view.derived.stationGroup[station]! < 0;
+  if (kind === StationKind.Navigation) return navRows(view).map((row, index): CardRow => {
+    const visit = visitRef(view);
+    const action: Command | null = row.select === 'choice' ? { kind: 'vote', event: eventRef(view), choice: row.index }
+      : row.select === 'buy' ? { kind: 'buy', station, visit, item: row.index, expectedOffer: row.index === WEAPON_ITEM ? view.run.shopWeapon : 0 }
+      : row.select === 'jump' ? { kind: 'jump', station, visit, destination: row.index }
+      : row.select === 'sector' ? { kind: 'sectorJump', station, visit }
+      : row.select === 'wait' ? { kind: 'wait', station, visit }
+      : row.select === 'evade' ? { kind: 'evade', station } : null;
+    return { key: row.select === 'none' ? `text:${index}` : `${row.select}:${row.index}`, text: row.text, enabled: row.enabled, action };
+  });
   if (kind === StationKind.Engineering) {
     if (ui?.stations[station]?.page === 'upgrades') return upgradeRows(view).map(system => system === BACK_ROW ? { key: 'back', text: 'BACK', enabled: true, action: null } : system === REACTOR_ROW ? { key: 'reactor', text: 'Reactor', enabled: online && canBuyReactor(view), action: { kind: 'buyReactor', station, expectedBonus: view.run.reactorBonus } } : { key: `upgrade:${system}`, text: STATION_NAMES[system]!, enabled: online && canUpgrade(view, system), action: { kind: 'buyUpgrade', station, system, expectedLevel: view.run.upgrades[system]! } });
     return [...Array.from({ length: STATION_COUNT }, (_, system): CardRow => { const target = view.derived.stationOfKind[system]!; return { key: target >= 0 ? `station:${target}` : `missing:${system}`, text: STATION_NAMES[system]!, enabled: available && target >= 0, action: target >= 0 ? { kind: 'coolant', station, target } : null }; }), { key: 'upgrades', text: 'UPGRADES', enabled: true, action: null }];
@@ -50,11 +62,12 @@ export function cardRowIndex(view: SimState, station: number, ui?: CardUiState):
     return key === 'swap' && canSwap(view) ? rows.length - 1 : -1;
   }
   if (view.derived.stationKind[station] === StationKind.Science) { const slot = scienceTargetSlot(view); return slot < 0 ? rows.length - 1 : warnedTargets(view, false).indexOf(slot); }
+  if (view.derived.stationKind[station] === StationKind.Navigation) return found >= 0 && rows[found]!.action ? found : rows.findIndex(row => row.action !== null);
   if (found >= 0) return found;
   return view.derived.stationKind[station] === StationKind.Engineering && ui?.stations[station]?.page !== 'upgrades' ? StationKind.Engineering : rows.length ? 0 : -1;
 }
 export function createCardUiState(runId: RunId, players: number): CardUiState {
-  return { runId, players: Array.from({ length: players }, () => ({ nextSequence: 1, heldSequence: 0, heldDir: Dir.None, repeat: 0, lastTick: -1, seat: -1, pendingVoteSequence: 0, pendingVoteTick: -1, pendingVote: null })), stations: [], groupBar: [] };
+  return { runId, players: Array.from({ length: players }, () => ({ nextSequence: 1, heldSequence: 0, heldDir: Dir.None, repeat: 0, lastTick: -1, seat: -1, pendingVoteSequence: 0, pendingVoteTick: -1, pendingVote: null })), stations: [], groupBar: [], navigationVisit: null };
 }
 export function createCardUi(runId = ''): CardUiState { return createCardUiState(runId, 0); }
 export function pauseActions(ui: CardUiState, player: number, tick: number, paused: boolean): ClientActions {
@@ -63,6 +76,19 @@ export function pauseActions(ui: CardUiState, player: number, tick: number, paus
   return { held: [], legacyCardInput: [], commands: [{ runId: ui.runId, id: { player, sequence: producer.nextSequence++ }, requestedTick: tick, command: { kind: 'setPaused', paused } }] };
 }
 const sameEvent = (a: EventRef, b: EventRef): boolean => a.eventId === b.eventId && a.visit.sector === b.visit.sector && a.visit.beacon === b.visit.beacon && a.visit.arrivalTick === b.visit.arrivalTick;
+/** Reconcile completed publications without mutating gameplay or advancing repeats. */
+export function reconcileCardUi(view: SimState, ui: CardUiState): void {
+  while (ui.stations.length < view.derived.stationKind.length) ui.stations.push({ rowKey: null, page: 'main' });
+  const visit = visitRef(view), previous = ui.navigationVisit;
+  const changed = !previous || previous.sector !== visit.sector || previous.beacon !== visit.beacon || previous.arrivalTick !== visit.arrivalTick;
+  const nav = view.derived.stationOfKind[StationKind.Navigation]!;
+  if (nav >= 0) {
+    const memory = ui.stations[nav]!;
+    if (changed) memory.rowKey = null;
+    memory.rowKey = cardRows(view, nav, ui)[cardRowIndex(view, nav, ui)]?.key ?? null;
+  }
+  ui.navigationVisit = visit;
+}
 /** Publications reconcile lifecycle/acknowledgments without advancing repeat. */
 export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water: readonly number[]): void {
   if (ui.runId !== runId) Object.assign(ui, createCardUiState(runId, view.playerCount));
@@ -83,6 +109,7 @@ export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water
     if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || ((water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
   }
   while (ui.groupBar.length < view.groups.tab.length) ui.groupBar.push(false);
+  reconcileCardUi(view, ui);
   // Automatic aim acquisition supersedes the old local SWAP highlight. Keep
   // intentional SWAP focus only while the authority still has no target.
   const weapons = view.derived.stationOfKind[StationKind.Weapons]!, target = view.weapons.target;
@@ -109,15 +136,11 @@ export function stickEdge(ui: CardUiState, pid: number, moveX: number, moveY: nu
   return Dir.None;
 }
 export { Dir };
-/** Unmigrated families still expose their published cursor/page; no canonical mirrors. */
+/** Up from the first selectable card row enters the group tab bar. */
 export function atFirstRow(state: SimState, i: number, ui?: CardUiState): boolean {
   if (!stationOnline(state, i)) return true;
-  if (state.derived.stationKind[i] === StationKind.Engineering || state.derived.stationKind[i] === StationKind.Doors || state.derived.stationKind[i] === StationKind.Weapons || state.derived.stationKind[i] === StationKind.Science) return cardRowIndex(state, i, ui) <= 0;
-  const c = state.stations.cursor[i]!;
-  switch (state.derived.stationKind[i]) {
-    case StationKind.Navigation: { const first = navRows(state).findIndex(row => row.select !== 'none'); return first < 0 || c <= first; }
-    default: return true;
-  }
+  const first = state.derived.stationKind[i] === StationKind.Navigation ? cardRows(state, i, ui).findIndex(row => row.action !== null) : 0;
+  return cardRowIndex(state, i, ui) <= first;
 }
 /** Translate only completed state plus client memory. Held movement/Interact remain raw. */
 export function translateTick(view: SimState, ui: CardUiState, frames: readonly InputFrame[], tick: number): ClientActions {
@@ -217,14 +240,19 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
       }
       continue;
     }
-    if (kind !== StationKind.Navigation) continue;
-    let vote: Command | null = null;
-    if (kind === StationKind.Navigation && confirm) {
-      const rows = navRows(view), row = rows[navCursorAfterDirection(rows, view.stations.cursor[seat]!, dir)];
-      if (row?.select === 'choice') { vote = { kind: 'vote', event: eventRef(view), choice: row.index }; confirm = false; }
+    if (kind === StationKind.Navigation) {
+      const memory = ui.stations[seat]!, rows = cardRows(view, seat, ui);
+      let index = cardRowIndex(view, seat, ui);
+      if (index < 0) continue;
+      if (dir === Dir.Up || dir === Dir.Down) {
+        const delta = dir === Dir.Up ? -1 : 1;
+        do index = (index + delta + rows.length) % rows.length; while (!rows[index]!.action);
+      }
+      const row = rows[index]!; memory.rowKey = row.key;
+      // Readiness advances before the authority's C phase. Confirm still sends
+      // the explicit travel action when the preceding publication is not ready.
+      if (confirm && row.action) emit(row.action);
     }
-    if (dir !== Dir.None || confirm) out.legacyCardInput.push({ kind: 'legacyCardInput', runId: ui.runId, id: { player, sequence: sequence() }, requestedTick: tick, input: { station: seat, direction: dir, confirm } });
-    if (vote) emit(vote);
   }
   return out;
 }

@@ -1,3 +1,4 @@
+import { fixtureCardUi } from './helpers/cardUi';
 import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { weaponSelection } from './helpers/weaponFixture';
 import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
@@ -21,7 +22,7 @@ import { Skill } from '../src/renderer/src/sim/skills';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
-import { clampNavCursor, NodeType } from '../src/renderer/src/sim/run';
+import { NodeType } from '../src/renderer/src/sim/run';
 import { resolveEvent } from '../src/renderer/src/sim/events';
 import { EnemySystem, EnemyRoom } from '../src/renderer/src/sim/enemy';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim, rightColumn, windowShown } from '../src/renderer/src/render/enemyWindowModel';
@@ -410,28 +411,28 @@ describe('buildHudModel', () => {
     s.run.column = 3; s.run.sector = 1; s.run.fuel = 6; expect([clockLine(model()), sectorLine(model())]).toEqual(['HULL 100   FUEL 6', 'SECTOR 2/3  node 4/6']);
     s.tick = 999 * 60; expect(clockLine(model()).length).toBeLessThanOrEqual(20); s.tick = 0;   // the 240 px card holds about 20 glyphs at the larger font (tests/hudFit measures it)
     s.run.column = 0; s.run.sector = 0; s.run.fuel = 8; setMap(s, [1, 2, 2, 2, 2, 1], { '0:0': 0b11, '1:0': 1, '1:1': 1, '2:0': 1, '2:1': 1, '3:0': 1, '3:1': 1, '4:0': 1, '4:1': 1 }); setNodeTypes(s, {});   // all Hazard: the labels are plain node labels
-    const n = seatNavigator(s, 0); s.stations.cursor[n] = 1; s.run.jumpCharge = 0.64;
+    const n = seatNavigator(s, 0); cardSelection(s, n).cursor = 1; s.run.jumpCharge = 0.64;
     const nav = () => model().players[0]!.console as NavigationPanel, p = nav();
     const evade = `Evade ${Math.round((EVADE_BASE + EVADE_SCALE * stationOutput(s, n)) * 100)}%`;
     expect(p.here).toBe('Node 1a'); expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Node 2a  ?', true, true, false], ['Node 2b  ?', true, true, true]]);   // no evade row at a calm beacon (spec Demo-xii section 4) expect(p.scrap).toBe(0); expect(p.jump).toEqual({ charge: 0.64, ready: false }); expect([p.fuel, p.fuelAfter]).toEqual([8, 7]);
     expect(navigationFooter(p)).toBe(`${evade}  Jump 64%  Fuel 8>7  Scrap 0`);
-    s.stations.cursor[n] = 2; expect(navigationFooter(nav())).toBe(`${evade}  Jump 64%  Fuel 8  Scrap 0`);   // the evade row: no jump chosen
-    s.stations.cursor[n] = 1; chargeJump(s); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
-    s.run.column = SECTOR_COLUMNS - 1; s.stations.cursor[n] = 0; const f = nav();
+    cardSelection(s, n).cursor = 2; expect(navigationFooter(nav())).toBe(`${evade}  Jump 64%  Fuel 8  Scrap 0`);   // the evade row: no jump chosen
+    cardSelection(s, n).cursor = 1; chargeJump(s); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
+    s.run.column = SECTOR_COLUMNS - 1; cardSelection(s, n).cursor = 0; const f = nav();
     expect(f.rows.map((r) => r.text)).toEqual(['Jump to sector 2']); expect(navigationFooter(f)).toBe(`${evade}  Jump READY  Fuel 8>7  Scrap 0`);
     s.run.fuel = 0; expect(nav().rows.map((r) => r.text)).toEqual(['Wait for help']); expect(navigationFooter(nav())).toBe(`${evade}  Jump READY  Fuel 0  Scrap 0`);
-    s.run.fuel = 10; s.run.scrap = 999; s.run.column = 0; s.stations.cursor[n] = 0; const wide = navigationFooter(nav());
+    s.run.fuel = 10; s.run.scrap = 999; s.run.column = 0; cardSelection(s, n).cursor = 0; const wide = navigationFooter(nav());
     expect(wide).toBe(`${evade}  Jump READY  Fuel 10>9  Scrap 999`); expect(wide.length).toBeLessThanOrEqual(44);   // 44 glyphs at about 6.25 px fit the 308 px card from x = 8 (CONSOLE_LINE_MAX 40 is the card's comfortable budget)
   });
   it('the panel window and the highlighted row come from the model: the first selectable row while the sim cursor is still 0, the cursor row scrolls the window', () => {
     const e = makeState(2); quiet(e); mapM(e); e.run.column = 1; e.run.node = 2; setEvent(e, 4); seatNavigator(e, 0);
     const ep = buildHudModel(e, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect([ep.rows[0]!.cursor, ep.rows[2]!.cursor, ep.first]).toEqual([false, true, 0]);
     const s = makeState(2); quiet(s); setMap(s, [1, 3, 2, 2, 2, 1], { '0:0': 0b101, '1:0': 0b11 }); s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); const n = seatNavigator(s, 0);
-    s.stations.cursor[n] = 7; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(8); expect(p.first).toBe(1);   // three shop items (spec Loop-ii section 3), two forward and one sideways destination, evade
-    s.stations.cursor[n] = 1; expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel).first).toBe(0);
+    cardSelection(s, n).cursor = 7; const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel; expect(p.rows).toHaveLength(8); expect(p.first).toBe(1);   // three shop items (spec Loop-ii section 3), two forward and one sideways destination, evade
+    cardSelection(s, n).cursor = 1; expect((buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel).first).toBe(0);
   });
   it('event and shop rows: four event rows with the cursor on the first choice, the shop list, the footer scrap, the threat rows last, and baseMax on the power rows', () => {
-    const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); clampNavCursor(s);
+    const s = makeState(2); quiet(s); mapM(s); s.run.column = 1; s.run.node = 2; setEvent(s, 4); grantScrap(s, 45); const n = seatNavigator(s, 0); run(s, 1); fixtureCardUi(s);
     const m = buildHudModel(s, slots(2), 'running', ''); const p = m.players[0]!.console as NavigationPanel;
     expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.cursor])).toEqual([['Supply cache', false, false, false], ['A cache, hard-wired to something.', false, false, false], ['Take the scrap (+40)', true, true, true], ['Strip it bare (+60, a station fails)', true, true, false]]);
     expect(p.scrap).toBe(45); s.run.jumpCharge = 0.64; expect(navigationFooter(buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel)).toMatch(/^Evade \d+%  Jump 64%  Fuel 8  Scrap 45$/);

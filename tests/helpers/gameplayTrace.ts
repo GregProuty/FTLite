@@ -114,8 +114,8 @@ function mutate(s: SimState, m: Mutation): void {
     case 'event': setEvent(s, n); break;
     case 'bar': break; // Applied to the client after the fixture publication below.
     case 'offline': s.stations.level[s.derived.stationOfKind[n]!] = 0; break;
-    case 'choice': s.stations.cursor[s.derived.stationOfKind[StationKind.Navigation]!] = navRows(s).findIndex((r) => r.select === 'choice'); break;
-    case 'lastJumpRow': s.stations.cursor[s.derived.stationOfKind[StationKind.Navigation]!] = navRows(s).map((r) => r.select).lastIndexOf('jump'); break;
+    case 'choice': break; // Applied after the completed fixture publication.
+    case 'lastJumpRow': break; // Applied after the completed fixture publication.
     case 'shop': s.run.column = 1; s.run.node = 0; setNodeTypes(s, { '1:0': NodeType.Shop }); s.run.shopWeapon = 1; s.run.scrap = 999; break;
     default: throw new Error(`unknown baseline setup mutation ${m.op}`);
   }
@@ -135,6 +135,10 @@ export function runScenario(spec: GameplayScenario, contentDigest = __GAMEPLAY_C
     const before = JSON.stringify(s.rng);
     runner.refresh();
     for (const m of spec.setup) if (m.tick === tick && m.op === 'bar') runner.ui.groupBar[s.derived.stationGroup[s.derived.stationOfKind[Number(m.args[0])]!]!] = true;
+    for (const m of spec.setup) if (m.tick === tick && (m.op === 'choice' || m.op === 'lastJumpRow')) {
+      const rows = navRows(runner.view()), index = m.op === 'choice' ? rows.findIndex(row => row.select === 'choice') : rows.map(row => row.select).lastIndexOf('jump');
+      const row = rows[index]!; runner.ui.stations[s.derived.stationOfKind[StationKind.Navigation]!]!.rowKey = `${row.select}:${row.index}`;
+    }
     runner.advance(inputs.map(rawFrame));
     if (inputs.some((i) => i.confirmPressed || i.cancelPressed || i.interactPressed) || JSON.stringify(s.rng) !== before) decisions.push({ tick, inputs, rng: canonical(s.rng) });
   }

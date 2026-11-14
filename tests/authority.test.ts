@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { createHash } from 'node:crypto';
 import { projectGameplay } from './helpers/gameplayTrace';
 import { describe, expect, it } from 'vitest';
@@ -93,7 +94,7 @@ describe('copied headless authority', () => {
     const state = makeState(1); run(state, 1);
     run(state, 1, () => {
       const nav = seatNavigator(state, 0); setEvent(state, 4);
-      state.stations.cursor[nav] = navRows(state).findIndex((row) => row.select === 'choice' && row.index === 0);
+      cardSelection(state, nav).cursor = navRows(state).findIndex((row) => row.select === 'choice' && row.index === 0);
       return intents({ confirmPressed: true });
     });
     expect([state.run.vote[0], state.run.eventChoice]).toEqual([0, -1]);
