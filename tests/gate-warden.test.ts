@@ -2,11 +2,12 @@ import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/g
 import { describe, it, expect } from 'vitest';
 import { sectorJump } from '../src/renderer/src/sim/run';
 import { EnemySystem, enemySysUp } from '../src/renderer/src/sim/enemy';
-import { ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTargets';
+import { ENEMY_SHIELDS_SLOT, targetRef } from '../src/renderer/src/sim/debrisTargets';
 import { EndReason } from '../src/renderer/src/sim/crew';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
-import { Weapon } from '../src/renderer/src/sim/weapons';
+import { Weapon, weaponRef } from '../src/renderer/src/sim/weapons';
+import type { ScriptedCommand } from '../src/renderer/src/headless/runner';
 import { LootWeapon } from '../src/renderer/src/sim/weaponDefs';
 import { TICK_HZ, SECTORS, SECTOR_COLUMNS } from '../src/renderer/src/sim/tuning';
 import { makeState, quiet, mapM, chargeJump, intents } from './helpers/sim';
@@ -28,15 +29,22 @@ function fight(loot: number): { shots: number; hits: number; seconds: number; re
     s.boarders.nextArrivalTick = 1e9;
     const view = decisionView(s);
     let fire = false;
+    const commands: ScriptedCommand[] = [];
     if (view.enemy.present) {
       if (arrived < 0) arrived = view.tick;
       s.enemy.nextShotTick = 1e9;
-      s.stations.cursor[w] = ENEMY_SHIELDS_SLOT;
+      const target = targetRef(view, ENEMY_SHIELDS_SLOT)!;
+      commands.push({ player: 0, command: { kind: 'selectTarget', station: w, target } });
       const layerUp = enemySysUp(view, EnemySystem.Shields) && view.enemy.shieldLayers > 0;
-      if (view.weapons.charge >= 1) { s.weapons.selector = view.enemy.shieldFreq - 1; fire = true; }
-      else if (loot && view.weapons.charge2[0]! >= 1 && !layerUp) { s.weapons.selector = Weapon.Slot1; fire = true; }
+      let selector = view.weapons.selector;
+      if (view.weapons.charge >= 1) { selector = view.enemy.shieldFreq - 1; fire = true; }
+      else if (loot && view.weapons.charge2[0]! >= 1 && !layerUp) { selector = Weapon.Slot1; fire = true; }
+      if (fire) {
+        const weapon = weaponRef(view, selector);
+        commands.push({ player: 0, command: { kind: 'selectWeapon', station: w, weapon } }, { player: 0, command: { kind: 'fire', station: w, weapon, target } });
+      }
     }
-    step(s, intents(fire ? { confirmPressed: true } : {}, {}));
+    step(s, intents(fire ? { confirmPressed: true } : {}, {}), commands);
   }
   assertGateTrace(s);
   return { shots: s.telemetry.shots, hits: s.telemetry.hits, seconds: Math.round((s.tick - arrived) / TICK_HZ), reason: s.endReason };

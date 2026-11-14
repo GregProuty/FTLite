@@ -7,6 +7,9 @@ import { createAuthority, type Authority1a, type AuthorityDeps, type CrashRecord
 import { createClientRun } from '../clientControl/clientRun';
 import { translateTick } from '../clientControl/cardController';
 import type { InputFrame } from '../clientControl/inputFrame';
+import type { Command } from '../net/contracts';
+
+export interface ScriptedCommand { player: number; command: Command }
 
 export interface HeadlessInit {
   layout: ShipLayout; playerCount: number; seed: number; contentDigest: string;
@@ -19,13 +22,23 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
   const pair = transport.connectLocal(), owned = Array.from({ length: init.playerCount }, (_, p) => p), runId = init.runId ?? 'headless-1';
   const client = createClientRun(pair.clientLink, owned, { runId, resolveLayout: () => init.layout });
   let now = 0, deadlineOrdinal = 0, frames: readonly InputFrame[] = [], fault: CrashRecord | null = null;
+  let scripted: readonly ScriptedCommand[] = [];
   const authority = authorityFactory({
     contentDigest: init.contentDigest, clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, resolveLayout: () => init.layout,
     onCrash(record) { fault = record; init.onCrash?.(record); },
     beforeControls() { transport.drain(); },
     beforeTick(tick) {
       transport.drain(); const view = client.state();
-      if (view) client.send(translateTick(view, client.ui, frames, tick));
+      if (view) {
+        const actions = translateTick(view, client.ui, frames, tick);
+        for (const { player, command } of scripted) {
+          const producer = client.ui.players[player];
+          if (!producer || !Number.isSafeInteger(producer.nextSequence)) throw new Error('input sequence exhausted');
+          actions.commands.push({ runId: client.ui.runId, id: { player, sequence: producer.nextSequence++ }, requestedTick: tick, command });
+        }
+        scripted = [];
+        client.send(actions);
+      }
       transport.drain();
     }
   });
@@ -34,8 +47,8 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
     seed: init.seed, playerCount: init.playerCount, characters: init.characters ?? DEFAULT_CHARACTERS, unlocked: init.unlocked ?? [], quirk: init.quirk });
   transport.drain();
   return {
-    advance(nextFrames: readonly InputFrame[]): void {
-      frames = nextFrames; now = ++deadlineOrdinal * 1000 / TICK_HZ; authority.pump(); transport.drain();
+    advance(nextFrames: readonly InputFrame[], commands: readonly ScriptedCommand[] = []): void {
+      frames = nextFrames; scripted = commands; now = ++deadlineOrdinal * 1000 / TICK_HZ; authority.pump(); transport.drain();
       if (fault && !init.onCrash) throw new Error(`headless authority fault: ${(fault as CrashRecord).error}`);
     },
     view() { const view = client.state(); if (!view) throw new Error('missing initial publication'); return view; },

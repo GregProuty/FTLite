@@ -10,8 +10,8 @@ import { EVENT_DEFS } from '../sim/events';
 import { StationKind, STATION_COUNT, STATION_NAMES } from '../sim/stationKinds';
 import { stationOnline } from '../sim/stations';
 import { navRows, navCursorAfterDirection } from '../sim/run';
-import { canSwap, SWAP_SLOT } from '../sim/weapons';
-import { warnedTargets } from '../sim/debrisTargets';
+import { canSwap, swapSlot, selectorList, weaponRef } from '../sim/weapons';
+import { warnedTargets, targetRef, weaponsTargetSlot } from '../sim/debrisTargets';
 import { upgradeRows, REACTOR_ROW, BACK_ROW, canUpgrade, canBuyReactor } from '../sim/power';
 import { doorsCursorCount, doorsCursorTarget } from '../sim/doors';
 
@@ -30,11 +30,21 @@ export function cardRows(view: SimState, station: number, ui?: CardUiState): rea
     return [...Array.from({ length: STATION_COUNT }, (_, system): CardRow => { const target = view.derived.stationOfKind[system]!; return { key: target >= 0 ? `station:${target}` : `missing:${system}`, text: STATION_NAMES[system]!, enabled: available && target >= 0, action: target >= 0 ? { kind: 'coolant', station, target } : null }; }), { key: 'upgrades', text: 'UPGRADES', enabled: true, action: null }];
   }
   if (kind === StationKind.Doors) return Array.from({ length: doorsCursorCount(view) }, (_, row): CardRow => { const target = doorsCursorTarget(view, row)!; return target.kind === 'door' ? { key: `door:${target.edge}`, text: `Door ${target.edge}`, enabled: available, action: { kind: 'doorCycle', station, edge: target.edge, mode: online ? 'cycle' : 'seal' } } : { key: `airlock:${target.index}`, text: `Airlock ${target.index}`, enabled: online, action: { kind: 'airlockToggle', station, airlock: target.index } }; });
+  if (kind === StationKind.Weapons) {
+    const rows: CardRow[] = warnedTargets(view).map(slot => { const target = targetRef(view, slot)!; return { key: target.kind === 'object' ? `object:${target.stableId}` : `enemy:${target.stableId}:${target.room}`, text: `Target ${target.stableId}`, enabled: available, action: { kind: 'selectTarget', station, target } }; });
+    if (canSwap(view)) { const slot = swapSlot(view); rows.push({ key: 'swap', text: 'SWAP', enabled: available, action: { kind: 'swapCargo', station, slot, expectedCargo: view.weapons.cargo, expectedEquipped: view.weapons.slot[slot]! } }); }
+    return rows;
+  }
   return [];
 }
 /** Stable-key fallback is independent of retained canonical UI slots. */
 export function cardRowIndex(view: SimState, station: number, ui?: CardUiState): number {
   const rows = cardRows(view, station, ui), key = ui?.stations[station]?.rowKey, found = rows.findIndex(row => row.key === key);
+  if (view.derived.stationKind[station] === StationKind.Weapons) {
+    const slot = weaponsTargetSlot(view);
+    if (slot >= 0) return warnedTargets(view).indexOf(slot);
+    return key === 'swap' && canSwap(view) ? rows.length - 1 : -1;
+  }
   if (found >= 0) return found;
   return view.derived.stationKind[station] === StationKind.Engineering && ui?.stations[station]?.page !== 'upgrades' ? StationKind.Engineering : rows.length ? 0 : -1;
 }
@@ -93,11 +103,10 @@ export { Dir };
 /** Unmigrated families still expose their published cursor/page; no canonical mirrors. */
 export function atFirstRow(state: SimState, i: number, ui?: CardUiState): boolean {
   if (!stationOnline(state, i)) return true;
-  if (state.derived.stationKind[i] === StationKind.Engineering || state.derived.stationKind[i] === StationKind.Doors) return cardRowIndex(state, i, ui) <= 0;
+  if (state.derived.stationKind[i] === StationKind.Engineering || state.derived.stationKind[i] === StationKind.Doors || state.derived.stationKind[i] === StationKind.Weapons) return cardRowIndex(state, i, ui) <= 0;
   const c = state.stations.cursor[i]!;
   switch (state.derived.stationKind[i]) {
     case StationKind.Navigation: { const first = navRows(state).findIndex(row => row.select !== 'none'); return first < 0 || c <= first; }
-    case StationKind.Weapons: { const list = canSwap(state) ? [...warnedTargets(state), SWAP_SLOT] : warnedTargets(state); return list.indexOf(c) <= 0; }
     case StationKind.Science: return [...warnedTargets(state, false), -1].indexOf(c < 0 ? -1 : c) <= 0;
     default: return true;
   }
@@ -141,6 +150,33 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
       if (!stationOnline(view, seat)) continue;
     }
     const kind = view.derived.stationKind[seat]!;
+    if (kind === StationKind.Weapons) {
+      const memory = ui.stations[seat]!, rows = cardRows(view, seat, ui);
+      let index = cardRowIndex(view, seat, ui), weapon = weaponRef(view);
+      // A swap into an empty slot removes its row. The next input resumes at
+      // the first warned target before applying that input's direction.
+      if (index < 0 && memory.rowKey === 'swap' && !canSwap(view) && (dir !== Dir.None || confirm)) {
+        index = rows.length ? 0 : -1; memory.rowKey = rows[index]?.key ?? null;
+        const action = rows[index]?.action;
+        if (action?.kind === 'selectTarget') emit(action);
+      }
+      if (dir === Dir.Up || dir === Dir.Down) {
+        index = rows.length ? index < 0 ? 0 : (index + (dir === Dir.Up ? rows.length - 1 : 1)) % rows.length : -1;
+        const row = rows[index]; memory.rowKey = row?.key ?? null;
+        emit({ kind: 'selectTarget', station: seat, target: row?.action?.kind === 'selectTarget' ? row.action.target : null });
+      }
+      if (dir === Dir.Left || dir === Dir.Right) {
+        const list = selectorList(view), at = list.indexOf(weapon.selector);
+        weapon = weaponRef(view, list[at < 0 ? 0 : (at + (dir === Dir.Left ? list.length - 1 : 1)) % list.length]!);
+        emit({ kind: 'selectWeapon', station: seat, weapon });
+      }
+      if (confirm) {
+        const row = rows[index];
+        if (row?.action?.kind === 'swapCargo') { const slot = Math.max(0, weapon.selector - 4); emit({ ...row.action, slot, expectedEquipped: view.weapons.slot[slot]! }); }
+        else if (row?.action?.kind === 'selectTarget' && row.action.target) emit({ kind: 'fire', station: seat, weapon, target: row.action.target });
+      }
+      continue;
+    }
     if (kind === StationKind.Engineering || kind === StationKind.Doors) {
       const memory = ui.stations[seat]!, rows = cardRows(view, seat, ui); let index = cardRowIndex(view, seat, ui);
       if (!rows.length) continue;
@@ -155,7 +191,7 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
       }
       continue;
     }
-    if (![StationKind.Navigation, StationKind.Engineering, StationKind.Doors, StationKind.Weapons, StationKind.Science].some(k => k === kind)) continue;
+    if (![StationKind.Navigation, StationKind.Science].some(k => k === kind)) continue;
     let vote: Command | null = null;
     if (kind === StationKind.Navigation && confirm) {
       const rows = navRows(view), row = rows[navCursorAfterDirection(rows, view.stations.cursor[seat]!, dir)];

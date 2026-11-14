@@ -1,3 +1,4 @@
+import { weaponSelection, fireFixtureWeapon } from './helpers/weaponFixture';
 import { describe, it, expect } from 'vitest';
 import { heldStep as step } from './helpers/heldInput';
 import { enemyMaxHull, enemyShieldMax, enemyWeaponCharge, fleeSecondsLeft, damageEnemy, EnemySystem, leave } from '../src/renderer/src/sim/enemy';
@@ -6,7 +7,7 @@ import { ENEMY_SLOT, ENEMY_SHIELDS_SLOT } from '../src/renderer/src/sim/debrisTa
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { failStation } from '../src/renderer/src/sim/power';
-import { fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
+import { Weapon } from '../src/renderer/src/sim/weapons';
 import { jumpShip, reachable } from '../src/renderer/src/sim/run';
 import { createRng, nextFloat, nextInt, type RngState } from '../src/shared/rng';
 import { TICK_HZ, ENEMY_FIRST_SHOT, ENEMY_HULL, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, ENEMY_SYS_HP, ENEMY_FLEE_DELAY, scrapSurrender, scrapEnemy, FREQ_COUNT, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, SHOT_BREACH_FIRST } from '../src/renderer/src/sim/tuning';
@@ -21,7 +22,7 @@ const HIT_SEED = seedWhere((u) => u < 0.5), MISS_SEED = seedWhere((u) => u > 0.9
 /** Weapons seated, charged, cursor on the enemy hull row, selector BeamF1 (tuned when shieldFreq is 1); the director silenced and no shot due. */
 function armed(hull = ENEMY_HULL, shieldFreq = 1) {
   const s = makeState(2); quiet(s); placeEnemy(s, hull, shieldFreq); s.enemy.nextShotTick = 1e9;
-  const w = wpn(s); sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT; s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1;
+  const w = wpn(s); sitDown(s, 0, w); weaponSelection(s).cursor = ENEMY_SLOT; s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1;
   return { s, w };
 }
 
@@ -59,25 +60,25 @@ describe('combat: beams against shield layers', () => {
   it('an untuned hit strips a layer with one combat draw and no hull damage; a second at layers 0 damages; a tuned hit pierces; a miss does nothing', () => {
     const { s } = armed(ENEMY_HULL, 2); s.weapons.selector = Weapon.BeamF1; s.rng.combat.s = HIT_SEED;   // BeamF1 against frequency 2: untuned
     const one = createRng(HIT_SEED); nextFloat(one);
-    expect(fireWeapon(s)).toBe(true);
+    expect(fireFixtureWeapon(s)).toBe(true);
     expect([s.enemy.shieldLayers, s.enemy.shieldRecharge, s.enemy.hull, s.telemetry.shieldHits, s.telemetry.hits, s.telemetry.shots, s.weapons.charge]).toEqual([0, 0, ENEMY_HULL, 1, 1, 1, 0]);
     expect(s.rng.combat.s).toBe(one.s); expect(s.skills.lastShotTick).toBe(s.tick);
     s.weapons.charge = 1; s.rng.combat.s = HIT_SEED;
-    expect(fireWeapon(s)).toBe(true);
+    expect(fireFixtureWeapon(s)).toBe(true);
     expect([s.enemy.hull, s.telemetry.hits, s.telemetry.shieldHits, s.telemetry.shots]).toEqual([ENEMY_HULL - ENEMY_BEAM_DAMAGE, 2, 1, 2]);
     const t = armed(ENEMY_HULL, 1); t.s.rng.combat.s = HIT_SEED;   // BeamF1 against frequency 1: tuned
-    expect(fireWeapon(t.s)).toBe(true); expect([t.s.enemy.hull, t.s.enemy.shieldLayers, t.s.telemetry.shieldHits, t.s.telemetry.hits]).toEqual([ENEMY_HULL - ENEMY_BEAM_DAMAGE, 1, 0, 1]);
+    expect(fireFixtureWeapon(t.s)).toBe(true); expect([t.s.enemy.hull, t.s.enemy.shieldLayers, t.s.telemetry.shieldHits, t.s.telemetry.hits]).toEqual([ENEMY_HULL - ENEMY_BEAM_DAMAGE, 1, 0, 1]);
     for (const freq of [1, 2]) {
       const m = armed(ENEMY_HULL, freq); m.s.rng.combat.s = MISS_SEED; const c1 = createRng(MISS_SEED); nextFloat(c1);
-      expect(fireWeapon(m.s)).toBe(false);
+      expect(fireFixtureWeapon(m.s)).toBe(false);
       expect([m.s.enemy.hull, m.s.enemy.shieldLayers, m.s.telemetry.shots, m.s.telemetry.hits, m.s.telemetry.shieldHits, m.s.weapons.charge]).toEqual([ENEMY_HULL, 1, 1, 0, 0, 0]); expect(m.s.rng.combat.s).toBe(c1.s);
     }
   });
   it('shields down: every selector pierces; a torpedo hits the hull for 35 and leaves the layers; damaging the shield system to 0 zeroes the layers', () => {
     const d = armed(ENEMY_HULL, 2); disableSystem(d.s, EnemySystem.Shields); d.s.rng.combat.s = HIT_SEED;
-    expect(fireWeapon(d.s)).toBe(true); expect([d.s.enemy.hull, d.s.telemetry.shieldHits]).toEqual([ENEMY_HULL - ENEMY_BEAM_DAMAGE, 0]);
+    expect(fireFixtureWeapon(d.s)).toBe(true); expect([d.s.enemy.hull, d.s.telemetry.shieldHits]).toEqual([ENEMY_HULL - ENEMY_BEAM_DAMAGE, 0]);
     const t = armed(ENEMY_HULL, 2); t.s.weapons.selector = Weapon.Torpedo; t.s.weapons.torpedoLoaded = 1; t.s.rng.combat.s = HIT_SEED;
-    expect(fireWeapon(t.s)).toBe(true); expect([t.s.enemy.hull, t.s.enemy.shieldLayers, t.s.telemetry.shieldHits]).toEqual([ENEMY_HULL - ENEMY_TORP_DAMAGE, 1, 0]);
+    expect(fireFixtureWeapon(t.s)).toBe(true); expect([t.s.enemy.hull, t.s.enemy.shieldLayers, t.s.telemetry.shieldHits]).toEqual([ENEMY_HULL - ENEMY_TORP_DAMAGE, 1, 0]);
     const k = armed(); k.s.enemy.shieldRecharge = 0.5; damageEnemy(k.s, ENEMY_SHIELDS_SLOT, 30);
     expect([k.s.enemy.sysHp[EnemySystem.Shields], k.s.enemy.shieldLayers, k.s.enemy.shieldRecharge]).toEqual([0, 0, 0]);
   });
@@ -120,7 +121,7 @@ describe('combat: aimed shots', () => {
 describe('combat: flee and surrender', () => {
   /** A tuned beam (BeamF1 against frequency 1) fired directly; the rest runs through step. */
   const fleer = (hull: number) => { const f = armed(hull, 1); f.s.enemy.departTick = f.s.tick + 600 * T; return f; };
-  const shoot = (s: ReturnType<typeof makeState>) => { s.weapons.charge = 1; s.rng.combat.s = HIT_SEED; return fireWeapon(s); };
+  const shoot = (s: ReturnType<typeof makeState>) => { s.weapons.charge = 1; s.rng.combat.s = HIT_SEED; return fireFixtureWeapon(s); };
   it('a beam to hull 25 starts the flee on the next tick; 26 does not; engines down at the crossing blocks it', () => {
     const { s } = fleer(40); expect(s.enemy.maxHull).toBe(100);
     expect(shoot(s)).toBe(true); expect(s.enemy.hull).toBe(25); expect(s.enemy.fleeing).toBe(0);
@@ -168,9 +169,9 @@ describe('combat: the hit stamp (spec Demo-ii section 4)', () => {
     const p = makeState(2); placeEnemy(p); expect(p.enemy.lastHitTick).toBe(-1);
     const d = makeState(2); placeEnemy(d); d.tick = 77; damageEnemy(d, ENEMY_SLOT, 15); expect(d.enemy.lastHitTick).toBe(77);
     const { s } = armed(ENEMY_HULL, 2); s.tick = 123; s.rng.combat.s = HIT_SEED;   // BeamF1 against frequency 2: an untuned hit strips a layer
-    expect(fireWeapon(s)).toBe(true); expect([s.telemetry.shieldHits, s.enemy.lastHitTick]).toEqual([1, 123]);
+    expect(fireFixtureWeapon(s)).toBe(true); expect([s.telemetry.shieldHits, s.enemy.lastHitTick]).toEqual([1, 123]);
     const t = armed(ENEMY_HULL, 2); t.s.tick = 200; t.s.weapons.selector = Weapon.Torpedo; t.s.weapons.torpedoLoaded = 1; t.s.rng.combat.s = HIT_SEED;
-    expect(fireWeapon(t.s)).toBe(true); expect(t.s.enemy.lastHitTick).toBe(200);
+    expect(fireFixtureWeapon(t.s)).toBe(true); expect(t.s.enemy.lastHitTick).toBe(200);
     leave(t.s, false); expect(t.s.enemy.lastHitTick).toBe(-1);
     const a = makeState(2); quiet(a); a.run.column = 0; a.enemy.nextArrivalTick = a.tick; step(a, []); expect(a.enemy.lastHitTick).toBe(-1);
   });

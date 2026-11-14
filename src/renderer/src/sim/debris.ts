@@ -1,3 +1,4 @@
+import { targetRef, weaponsTargetSlot } from './debrisTargets';
 import type { SimState } from './state';
 import { Position, Health, Life, LifeState } from './components';
 import { nextFloat, nextInt } from '../../../shared/rng';
@@ -53,11 +54,12 @@ export function shotsInFlight(state: SimState): number {
   let n = 0; const db = state.debris; for (let k = 0; k < db.active.length; k++) if (db.active[k] && db.kind[k] === ObjectKind.Shot) n++; return n;
 }
 
-const TARGETING_KINDS = [StationKind.Weapons, StationKind.Science] as const;
+const TARGETING_KINDS = [StationKind.Science] as const;
 
 /** Free a slot. Every targeting console's cursor is retargeted by StableId before the identity is cleared, so the target order survives removal. */
 export function removeDebris(state: SimState, slot: number): void {
   const db = state.debris;
+  if (weaponsTargetSlot(state) === slot) state.weapons.target = targetRef(state, nextTarget(state, db.stableId[slot]!, slot));
   for (const kind of TARGETING_KINDS) {
     const i = state.derived.stationOfKind[kind]!;
     if (i >= 0 && state.stations.cursor[i] === slot) state.stations.cursor[i] = nextTarget(state, db.stableId[slot]!, slot);
@@ -128,6 +130,8 @@ export function debrisSystem(state: SimState): void {
     if (!db.active[k] || db.warned[k]) continue;
     if (db.impactTick[k]! - state.tick <= lead * TICK_HZ) {   // compare in ticks: lead x 60 is exact for the tuning values, remaining x DT is not
       db.warned[k] = 1;
+      const wpn = state.derived.stationOfKind[StationKind.Weapons]!;
+      if (wpn >= 0 && state.stations.occupant[wpn]! >= 0 && !state.weapons.target) state.weapons.target = targetRef(state, k);
       for (const kind of TARGETING_KINDS) {   // first warning auto-selects
         const i = state.derived.stationOfKind[kind]!;
         if (i >= 0 && state.stations.occupant[i]! >= 0 && state.stations.cursor[i]! < 0) state.stations.cursor[i] = k;

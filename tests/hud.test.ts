@@ -1,3 +1,4 @@
+import { weaponSelection } from './helpers/weaponFixture';
 import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
 import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
@@ -209,9 +210,9 @@ describe('buildHudModel', () => {
     expect(panel.targets).toEqual([{ stableId: 10, room: 'Weapons Bay', eta: 5, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }, { stableId: 30, room: 'Bridge', eta: 10, frequency: null, kind: 'debris', hull: null, system: null, status: null, shieldsUp: null, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null }]);
     expect(panel.selector).toBe(0); expect(panel.torpedo).toEqual({ stock: TORP_START, cap: TORP_CAP, loaded: false, load: 0, fetch: false, fed: false });
     expect(panel.cursor).toBe(0);                                                  // sitDown selected id 10 (slot 1), which is targets[0]
-    s.stations.cursor[wpn] = 0;                                                    // slot 0 is id 30: targets[1]
+    weaponSelection(s).cursor = 0;                                                    // slot 0 is id 30: targets[1]
     expect((buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel).cursor).toBe(1);
-    s.debris.warned.fill(0); s.stations.cursor[wpn] = -1;
+    s.debris.warned.fill(0); weaponSelection(s).cursor = -1;
     const empty = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
     expect(empty.targets).toEqual([]); expect(empty.cursor).toBe(-1);
   });
@@ -255,7 +256,7 @@ describe('buildHudModel', () => {
     const s = makeState(2), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!, c = s.derived.stationOfKind[StationKind.Science]!;
     placeDebris(s, A, 600, 1); placeEnemy(s); s.enemy.hull = 64; sitDown(s, 0, w); sitDown(s, 1, c);
     const k = placeShot(s, A, 420, 1, undefined, 2); s.debris.scanned[k] = 1;
-    s.stations.cursor[w] = ENEMY_SLOT;                                   // Science stays on the object
+    weaponSelection(s).cursor = ENEMY_SLOT;                                   // Science stays on the object
     const m = buildHudModel(s, slots(2), 'running', '');
     const wp = m.players[0]!.console as WeaponsPanel, sp = m.players[1]!.console as SciencePanel;
     expect(wp.targets[1]).toEqual({ enemyRoom: EnemyRoom.Hold, stableId: s.enemy.stableId, kind: 'enemy', room: 'Enemy ship', eta: ENCOUNTER_MAX, frequency: null, hull: 0.64, system: null, status: null, shieldsUp: true, layers: null, layersMax: null, weaponCharge: null, fleeSeconds: null });   // Weapons: the Hold room (spec Demo-x-c section 4)
@@ -268,10 +269,10 @@ describe('buildHudModel', () => {
     expect([targetWindow(-1, 3, 6), targetWindow(5, 9, 6), targetWindow(6, 9, 6), targetWindow(8, 9, 6), targetWindow(8, 9, 7), targetWindow(2, 2, 6)]).toEqual([0, 0, 1, 3, 2, 0]);
     const s = makeState(1), A = room(s, 'A'); quiet(s); const w = s.derived.stationOfKind[StationKind.Weapons]!;
     for (let n = 0; n < 8; n++) placeDebris(s, A, 600, 1); placeEnemy(s);
-    sitDown(s, 0, w); s.stations.cursor[w] = ENEMY_SLOT;
+    sitDown(s, 0, w); weaponSelection(s).cursor = ENEMY_SLOT;
     const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
     expect(wp.targets).toHaveLength(13); expect(wp.cursor).toBe(8); expect(wp.first).toBe(3);   // eight objects and five rooms (spec Demo-x-c section 4)
-    s.stations.cursor[w] = ENEMY_SHIELDS_SLOT; const wp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; expect(wp2.cursor).toBe(12); expect(wp2.first).toBe(7);
+    weaponSelection(s).cursor = ENEMY_SHIELDS_SLOT; const wp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; expect(wp2.cursor).toBe(12); expect(wp2.first).toBe(7);
     run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
     const sp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel;
     expect(sp.targets).toHaveLength(9); expect(sp.cursor).toBe(8); expect(sp.first).toBe(2);        // seven Science rows; the ship is one row there (spec Demo-x-c section 4)
@@ -311,7 +312,7 @@ describe('buildHudModel', () => {
     expect((m.players[1]!.console as SciencePanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[5]!.status).toEqual({ hp: 0, repairIn: 45 });
     expect(m.threats[0]!.text).toBe('Enemy 64% shields DOWN'); expect(m.threats[1]!.text).toBe('Down: weapons');
     guardDebris(s);                                                                       // a read at slots 8..11 throws: the model must branch before indexing
-    expect(() => { for (const slot of ENEMY_SLOTS) { s.stations.cursor[w] = slot; s.stations.cursor[c] = slot; buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
+    expect(() => { for (const slot of ENEMY_SLOTS) { weaponSelection(s).cursor = slot; s.stations.cursor[c] = slot; buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
   });
   it('reports heat fraction, coolant and overdrive per Engineering row and per station, and the free coolant', () => {
     const s = makeState(1);
@@ -693,10 +694,10 @@ describe('the Weapons card with loot weapons', () => {
   });
   it('the SWAP row: listed after the targets while cargo holds a weapon and no enemy is present; Down reaches it; Confirm swaps with the selected slot, or slot 1; no draws', () => {
     const { s, w } = seatedW(); s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Heavy; s.weapons.charge2[0] = 0.9; s.weapons.charge2[1] = 0.6; s.weapons.cargo = LootWeapon.Missile;
-    s.stations.cursor[w] = placeDebris(s, room(s, 'A'), 600, 1);   // the cursor on the one target: Down goes to the SWAP row
+    weaponSelection(s).cursor = placeDebris(s, room(s, 'A'), 600, 1);   // the cursor on the one target: Down goes to the SWAP row
     expect(panel(s).swap).toBe('SWAP: cargo Missile for Burst'); expect(weaponsRowTexts(panel(s)).slice(-1)).toEqual(['SWAP: cargo Missile for Burst']);
     run(s, 1, () => intents({ moveY: 1 })); run(s, 1, () => intents({}));
-    expect(s.stations.cursor[w]).toBe(SWAP_SLOT); expect(panel(s).cursor).toBe(panel(s).targets.length);
+    expect(s.weapons.target).toBeNull(); expect(panel(s).cursor).toBe(panel(s).targets.length);
     const r0 = JSON.stringify([s.rng.combat.s, s.rng.loot.s]);
     run(s, 1, () => intents({ confirmPressed: true }));
     expect([Array.from(s.weapons.slot), s.weapons.cargo, s.weapons.charge2[0], s.weapons.charge2[1]]).toEqual([[LootWeapon.Missile, LootWeapon.Heavy], LootWeapon.Burst, 0, 0.6]);
@@ -707,11 +708,11 @@ describe('the Weapons card with loot weapons', () => {
   });
   it('no SWAP row with an enemy present or an empty cargo; a cursor left on it moves off', () => {
     const { s, w } = seatedW(); s.weapons.slot[0] = LootWeapon.Burst; s.weapons.slot[1] = LootWeapon.Heavy;
-    expect(panel(s).swap).toBeNull(); run(s, 1, () => intents({ moveY: 1 })); expect(s.stations.cursor[w]).toBe(-1);
-    s.weapons.cargo = LootWeapon.Ion; s.stations.cursor[w] = SWAP_SLOT; placeEnemy(s);
+    expect(panel(s).swap).toBeNull(); run(s, 1, () => intents({ moveY: 1 })); expect(weaponSelection(s).cursor).toBe(-1);
+    s.weapons.cargo = LootWeapon.Ion; weaponSelection(s).cursor = SWAP_SLOT; placeEnemy(s);
     expect(panel(s).swap).toBeNull();
     run(s, 1, () => intents({ confirmPressed: true })); expect(s.weapons.cargo).toBe(LootWeapon.Ion);
-    run(s, 1, () => intents({ moveY: 1 })); expect(s.stations.cursor[w]).not.toBe(SWAP_SLOT);
+    run(s, 1, () => intents({ moveY: 1 })); expect(weaponSelection(s).cursor).not.toBe(SWAP_SLOT);
   });
 });
 

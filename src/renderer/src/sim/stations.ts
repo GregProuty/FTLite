@@ -3,7 +3,7 @@ import { Position, Seated } from './components';
 import { StationKind } from './stationKinds';
 import { STATION_MAX } from './tuning';
 import { skillLevel, skillCurve } from './skills';
-import { warnedTargets } from './debrisTargets';
+import { warnedTargets, targetRef } from './debrisTargets';
 
 export function stationOnline(state: SimState, i: number): boolean {
   return state.stations.failed[i] === 0 && state.stations.level[i]! > 0;
@@ -23,9 +23,10 @@ export function failedStationCount(state: SimState): number {
 /** Reset a console's cursor per kind (spec section 4). */
 function resetCursor(state: SimState, i: number): void {
   const d = state.derived, kind = d.stationKind[i]!;
+  if (kind === StationKind.Weapons) { state.weapons.target = targetRef(state, warnedTargets(state)[0] ?? -1); return; }
   if (kind === StationKind.Engineering || kind === StationKind.Doors) return;
   state.stations.page[i] = 0;   // every seat opens on the power page (spec Loop-ii section 2)
-  state.stations.cursor[i] = kind === StationKind.Weapons || kind === StationKind.Science ? (warnedTargets(state)[0] ?? -1)
+  state.stations.cursor[i] = kind === StationKind.Science ? (warnedTargets(state)[0] ?? -1)
     : 0;
 }
 

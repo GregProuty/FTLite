@@ -1,3 +1,5 @@
+import { resolveTarget } from './debrisTargets';
+import { weaponMatches, canFireWeaponAt, fireWeaponAt, swapCargo, canSwap } from './weapons';
 import { NEUTRAL_INTENT, type Intent } from '../../../shared/intent';
 import type { CommandEnvelope, CommandReason, CommandResult, HeldInput, LegacyInputEnvelope, VisitRef, EventRef } from '../net/contracts';
 import type { SimState } from './state';
@@ -103,6 +105,27 @@ export function applyConsoleCommand(state: SimState, envelope: CommandEnvelope):
     if (!unchanged) { state.run.vote[pid] = c.choice; state.run.voteTick = state.tick; }
     return commandResult(state, envelope, undefined, unchanged);
   }
+  if (c.kind === 'selectWeapon' || c.kind === 'selectTarget' || c.kind === 'fire' || c.kind === 'swapCargo') {
+    if (c.station !== seat || state.stations.occupant[seat] !== pid || state.derived.stationKind[seat] !== StationKind.Weapons) return commandResult(state, envelope, 'invalid-seat');
+    if (state.derived.stationGroup[seat]! >= 0 && !stationOnline(state, seat)) return commandResult(state, envelope, 'unavailable');
+    if (c.kind === 'selectTarget') {
+      if (c.target && resolveTarget(state, c.target) === null) return commandResult(state, envelope, 'stale-target');
+      const previous = state.weapons.target;
+      const unchanged = previous === null ? c.target === null : c.target !== null && previous.kind === c.target.kind && previous.stableId === c.target.stableId && (previous.kind !== 'enemy' || (c.target.kind === 'enemy' && previous.room === c.target.room));
+      state.weapons.target = c.target ? { ...c.target } : null;
+      return commandResult(state, envelope, undefined, unchanged);
+    }
+    if (c.kind === 'swapCargo') {
+      if (!Number.isInteger(c.slot) || c.slot < 0 || c.slot >= state.weapons.slot.length || state.weapons.cargo !== c.expectedCargo || state.weapons.slot[c.slot] !== c.expectedEquipped) return commandResult(state, envelope, 'stale-target');
+      if (!canSwap(state)) return commandResult(state, envelope, 'unavailable');
+      swapCargo(state, c.slot); return commandResult(state, envelope);
+    }
+    if (!weaponMatches(state, c.weapon)) return commandResult(state, envelope, 'stale-target');
+    if (c.kind === 'selectWeapon') { const unchanged = state.weapons.selector === c.weapon.selector; state.weapons.selector = c.weapon.selector; return commandResult(state, envelope, undefined, unchanged); }
+    if (resolveTarget(state, c.target) === null) return commandResult(state, envelope, 'stale-target');
+    if (!canFireWeaponAt(state, c.weapon, c.target)) return commandResult(state, envelope, 'unavailable');
+    fireWeaponAt(state, c.weapon, c.target); return commandResult(state, envelope);
+  }
   if (c.kind === 'power' || c.kind === 'coolant' || c.kind === 'buyUpgrade' || c.kind === 'buyReactor' || c.kind === 'doorCycle' || c.kind === 'airlockToggle') {
     const engineering = c.kind === 'power' || c.kind === 'coolant' || c.kind === 'buyUpgrade' || c.kind === 'buyReactor';
     if (c.station !== seat || state.stations.occupant[seat] !== pid || state.derived.stationKind[seat] !== (engineering ? StationKind.Engineering : StationKind.Doors)) return commandResult(state, envelope, 'invalid-seat');
@@ -140,7 +163,7 @@ export function legacyCardReason(state: SimState, envelope: LegacyInputEnvelope,
   if (envelope.requestedTick !== state.tick) return 'stale-tick';
   if (!conscious(state, pid) || Seated.station[state.crew[pid]!] !== i || state.stations.occupant[i] !== pid || (inTick && (state.scratch.satThisTick[pid] || state.scratch.stoodThisTick[pid]))) return 'invalid-seat';
   const kind = state.derived.stationKind[i];
-  if (![StationKind.Weapons, StationKind.Science, StationKind.Navigation].some(k => k === kind)) return 'unsupported';
+  if (![StationKind.Science, StationKind.Navigation].some(k => k === kind)) return 'unsupported';
   if (state.derived.stationGroup[i]! >= 0 && !stationOnline(state, i)) return 'unavailable';
   if (kind === StationKind.Navigation && input.confirm) { const rows = navRows(state); if (rows[navCursorAfterDirection(rows, state.stations.cursor[i]!, input.direction)]?.select === 'choice') return 'unsupported'; }
   return undefined;

@@ -74,7 +74,7 @@ describe('shared client navigation and held inputs', () => {
     const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
     const actions = translateTick(s, ui, [{ ...NEUTRAL_FRAME, confirmPresses: 1 }], 0);
     expect(Seated.station[s.crew[0]!]).toBe(wpn); expect(actions.commands).toEqual([]);
-    expect(actions.legacyCardInput).toHaveLength(1);
+    expect(actions.legacyCardInput).toEqual([]); // Weapons is semantic; with no target, Confirm emits neither fire nor vote.
     const results = stepCommands(s, { held: [], legacyCardInput: [], commands: [{ runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'vote', event: eventRef(s), choice: 0 } }] });
     expect(results[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
   });

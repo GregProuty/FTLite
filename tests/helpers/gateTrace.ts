@@ -5,6 +5,7 @@ import { step } from './rawInput';
 import { Health } from '../../src/renderer/src/sim/components';
 import { STREAM_NAMES, type SimState } from '../../src/renderer/src/sim/state';
 import type { Intent } from '../../src/shared/intent';
+import type { ScriptedCommand } from '../../src/renderer/src/headless/runner';
 import { firstDifference, projectGameplay } from './gameplayTrace';
 
 type Input = [number, number, number];
@@ -54,7 +55,7 @@ export function beginGateTrace(s: SimState, name: string): void {
   active.set(s, { trace: { name, initial: projectGameplay(s), minHull: s.hull, minHealth: Math.min(...s.crew.map((eid) => Health.cur[eid]!)), actions: [], rng: [] }, previousInputs: '', rng: STREAM_NAMES.map((n) => s.rng[n].s) });
 }
 /** Real step, unchanged input values. The gate owns all setup and mid-run mutations. */
-export function tracedStep(s: SimState, inputs: readonly Intent[]): void {
+export function tracedStep(s: SimState, inputs: readonly Intent[], commands?: readonly ScriptedCommand[]): void {
   const recording = active.get(s);
   if (!recording) throw new Error('gate trace must begin before its first step');
   const tick = s.tick;
@@ -62,7 +63,7 @@ export function tracedStep(s: SimState, inputs: readonly Intent[]): void {
   const text = JSON.stringify(values), last = recording.trace.actions.at(-1);
   if (text === recording.previousInputs && last) last.through = tick;
   else { recording.trace.actions.push({ tick, through: tick, inputs: values }); recording.previousInputs = text; }
-  step(s, inputs);
+  step(s, inputs, commands);
   const changed: Record<string, number> = {};
   STREAM_NAMES.forEach((name, i) => { const value = s.rng[name].s; if (value !== recording.rng[i]) { changed[name] = value; recording.rng[i] = value; } });
   if (Object.keys(changed).length) recording.trace.rng.push({ tick, changed });

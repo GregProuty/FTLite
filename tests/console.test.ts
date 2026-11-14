@@ -1,3 +1,4 @@
+import { weaponSelection } from './helpers/weaponFixture';
 import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
 import { cardSelection } from './helpers/cardUi';
 import { snapshotPhaseStep as propertyPhaseStep } from './helpers/snapshotPhaseFixture';
@@ -334,9 +335,9 @@ describe('scripted-intent gate: Science, Weapons, Navigation', () => {
     run(s, 1, () => intents({}, confirm));
     expect(s.debris.active[0]).toBe(0); expect(s.rng.combat.s).toBe(one.s); expect(s.weapons.charge).toBe(0);
     const second = placeDebris(s, A, seconds(30), 1, undefined, 1);            // reuses slot 0; already warned, so nothing auto-selects it
-    expect(s.stations.cursor[wpn]).toBe(-1);
+    expect(weaponSelection(s).cursor).toBe(-1);
     run(s, 1, () => intents({}, down)); run(s, 1, () => intents({}, {}));       // Down with cursor -1 selects the first warned target
-    expect(s.stations.cursor[wpn]).toBe(second);
+    expect(weaponSelection(s).cursor).toBe(second);
     run(s, 1, () => intents({}, right)); run(s, 1, () => intents({}, {}));
     expect(s.weapons.selector).toBe(Weapon.Torpedo);
     expect(s.weapons.torpedoLoaded).toBe(0);                                     // about 12 s in: not yet

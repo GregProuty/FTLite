@@ -1,6 +1,6 @@
 import type { CardUiState } from '../clientControl/cardController';
 import { weaponDef } from '../sim/weaponDefs';
-import { LootPlace, Weapon, SWAP_SLOT, canSwap, swapSlot } from '../sim/weapons';
+import { LootPlace, Weapon, canSwap, swapSlot } from '../sim/weapons';
 import { ICON_KINDS, stationTint, type IconKind, type IconTint } from './roomIconModel';
 import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
@@ -436,7 +436,7 @@ function consolePanel(state: SimState, i: number, kind: number, ui?: CardUiState
   }
   if (kind === StationKind.Weapons) {
     const e = state.enemy, shieldsUp = e.present === 1 && e.sysHp[EnemySystem.Shields]! > 0;
-    const slots = warnedTargets(state), c = state.stations.cursor[i]!, w = state.weapons, swap = canSwap(state), cursor = swap && c === SWAP_SLOT ? slots.length : slots.indexOf(c);
+    const slots = warnedTargets(state), w = state.weapons, swap = canSwap(state), cursor = cardRowIndex(state, i, ui);
     const loot: LootSlotView[] = []; for (let k = 0; k < WEAPON_SLOTS; k++) { const id = w.slot[k]!; if (id) loot.push({ selector: Weapon.Slot1 + k, short: weaponDef(id).short, charge: w.charge2[k]!, powered: state.stations.level[i]! >= SLOT_LEVELS[k]!, empty: weaponDef(id).kind === 'missile' && w.torpedoStock <= 0 }); }
     const rows = loot.length ? WEAPONS_ROWS - 1 : WEAPONS_ROWS, swapText = swap ? `SWAP: cargo ${weaponDef(w.cargo).short} for ${weaponDef(w.slot[swapSlot(state)]!).short}` : null;
     return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k, true)), cursor, first: targetWindow(cursor, slots.length + (swap ? 1 : 0), rows), locked: lockActive(state), loot, swap: swapText, rows, enemyFreq: e.present && e.scanned ? e.shieldFreq : null, freqUnknown: e.present === 1 && !e.scanned && shieldsUp, shieldsUp, shot: shotResult(state) };

@@ -185,7 +185,7 @@ describe('run: the jump', () => {
     const reachableBefore = reachable(s);
     jumpShip(s, reachable(s)[0]!);
     expect([s.run.column, s.run.nodesReached, s.run.jumpCharge, s.telemetry.jumps]).toEqual([1, 1, 0, 1]); expect(s.run.node).toBe(reachableBefore[0]!.node); expect(s.stations.cursor[nav]).toBe(0);
-    expect(Array.from(s.debris.active)).toEqual(new Array(DEBRIS_SLOTS).fill(0)); expect(s.stations.cursor[s.derived.stationOfKind[StationKind.Weapons]!]).toBe(-1); expect(s.stations.cursor[sci]).toBe(-1); expect(s.science.scanning).toBe(0);
+    expect(Array.from(s.debris.active)).toEqual(new Array(DEBRIS_SLOTS).fill(0)); expect(s.weapons.target).toBeNull(); expect(s.stations.cursor[sci]).toBe(-1); expect(s.science.scanning).toBe(0);
     expect([s.enemy.present, s.telemetry.enemiesDestroyed, s.enemy.nextArrivalTick]).toEqual([0, 0, s.run.nodeType[NODE_STRIDE + s.run.node] === NodeType.Hazard ? tick + ENCOUNTER_START * T : NEVER]);
     expect([s.boarders.active[0], s.boarders.room[0], s.boarders.health[0], s.boarders.nextMoveTick[0], s.boarders.nextArrivalTick]).toEqual([1, before.boarderRoom, before.boarderHealth, before.boarderMove, before.boardArrival]);
     expect([s.director.phase, s.director.phaseTick, s.director.stress]).toEqual([Phase.BuildUp, tick, before.stress]);

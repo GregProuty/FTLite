@@ -1,3 +1,4 @@
+import { weaponSelection } from './helpers/weaponFixture';
 import { describe, it, expect } from 'vitest';
 import { enemyWindowModel, windowRoomCentre, stepWindowAnim, freshWindowAnim, WINDOW, SHIP_MARGIN, ARRIVE_SECONDS, BREAK_SECONDS, FLY_SECONDS, BOLT_SECONDS, type WindowAnim } from '../src/renderer/src/render/enemyWindowModel';
 import { ENEMY_LAYOUT, ENEMY_TILE, OLD_ENEMY_TILE, enemyRoomAt } from '../src/renderer/src/render/enemyShipLayout';
@@ -17,7 +18,7 @@ const present = () => { const s = makeState(2); quiet(s); s.tick = 6000; placeEn
 /** An anim for an enemy that arrived long ago. */
 const settled = (s: ReturnType<typeof makeState>): WindowAnim => { let a = freshWindowAnim(); s.tick -= 600; a = stepWindowAnim(a, s); s.tick += 600; return stepWindowAnim(a, s); };
 const view = (s: ReturnType<typeof makeState>, anim = settled(s), now = s.tick) => enemyWindowModel(s, now, anim);
-const seatWeapons = (s: ReturnType<typeof makeState>, cursor: number) => { const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w); s.stations.cursor[w] = cursor; };
+const seatWeapons = (s: ReturnType<typeof makeState>, cursor: number) => { const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w); weaponSelection(s).cursor = cursor; };
 
 describe('enemy ship layout', () => {
   it('five rooms, 11 x 7 tiles of 32 px (1.6x the old 20), bow left towards our ship; doors join two rooms; consoles inside their rooms (spec Demo-x-c section 3)', () => {

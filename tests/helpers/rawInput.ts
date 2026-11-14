@@ -2,6 +2,7 @@ import type { Intent } from '../../src/shared/intent';
 import type { SimState } from '../../src/renderer/src/sim/state';
 import type { InputFrame } from '../../src/renderer/src/clientControl/inputFrame';
 import { createFixtureRunner } from './authorityFixture';
+import type { ScriptedCommand } from '../../src/renderer/src/headless/runner';
 
 const runners = new WeakMap<SimState, ReturnType<typeof createFixtureRunner>>();
 export function rawFrame(input: Intent): InputFrame {
@@ -14,9 +15,9 @@ export function fixtureRunner(state: SimState) {
 }
 /** Publish fixture changes before every scripted decision; callers receive a separate replica. */
 export function decisionView(state: SimState): SimState { const runner = fixtureRunner(state); runner.refresh(); return runner.view(); }
-export function step(state: SimState, intents: readonly Intent[]): void {
+export function step(state: SimState, intents: readonly Intent[], commands?: readonly ScriptedCommand[]): void {
   if (state.ended) return;
-  const runner = fixtureRunner(state); runner.refresh(); runner.advance(intents.map(rawFrame));
+  const runner = fixtureRunner(state); runner.refresh(); runner.advance(intents.map(i => rawFrame(commands ? { ...i, confirmPressed: false } : i)), commands);
 }
 
 /** A pure unit run() with no input explicitly releases any existing fixture UI.

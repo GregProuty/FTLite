@@ -39,10 +39,13 @@ export function projectGameplay(s: SimState): Record<string, unknown> {
   for (const key of Object.keys(s).sort()) if (!omitted.has(key)) out[key] = canonical((s as unknown as Plain)[key]);
   const stations = out.stations as Plain; delete stations.cursor; delete stations.page;
   delete (out.groups as Plain).bar;
+  // Preserve the pinned projection's insertion order: target was always
+  // appended after the independently named weapon fields.
+  delete (out.weapons as Plain).target;
   for (const key of ['navSig', 'navSelect', 'navIndex']) delete (out.run as Plain)[key];
   for (const [family, kind] of [['weapons', StationKind.Weapons], ['science', StationKind.Science]] as const) {
     const station = s.derived.stationOfKind[kind]!;
-    (out[family] as Plain).target = targetProjection(s, station < 0 ? -1 : s.stations.cursor[station]!);
+    (out[family] as Plain).target = family === 'weapons' ? s.weapons.target === null ? null : s.weapons.target.kind === 'object' ? { kind: 'debris', stableId: s.weapons.target.stableId } : { kind: 'enemy-room', stableId: s.weapons.target.stableId, room: s.weapons.target.room } : targetProjection(s, station < 0 ? -1 : s.stations.cursor[station]!);
   }
   out.layoutId = s.layout.id; out.layoutHash = s.derived.layoutHash;
   out.crew = s.crew.map((eid, pid) => ({ pid, stableId: Stable.id[eid], x: Position.x[eid], y: Position.y[eid], health: Health.cur[eid], life: Life.state[eid], bleed: Life.bleed[eid], reviveProgress: Life.reviveProgress[eid], reviverPid: Life.reviverPid[eid], station: Seated.station[eid] }));

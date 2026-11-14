@@ -1,3 +1,4 @@
+import { weaponsTargetSlot } from '../sim/debrisTargets';
 import type { CardUiState } from './cardController';
 import type { Intent } from '../../../shared/intent';
 import { NEUTRAL_INTENT } from '../../../shared/intent';
@@ -253,7 +254,7 @@ function gunnerInput(state: SimState, ui: CardUiState, eid: number, wpn: number)
   const tab = tabTo(state, ui, eid, wpn); if (tab) return tab;
   const e = state.enemy, w = state.weapons;
   if (e.fleeing && e.surrenderIntact) return NEUTRAL_INTENT;   // take the scrap: any damage voids the surrender
-  const plan = gunnerPlan(state), c = state.stations.cursor[wpn]!, grouped = state.derived.stationGroup[wpn]! >= 0;
+  const plan = gunnerPlan(state), c = weaponsTargetSlot(state), grouped = state.derived.stationGroup[wpn]! >= 0;
   if (c !== plan.slot) return press(state, 0, cycleToward(warnedTargets(state), c, plan.slot, grouped));
   if (w.selector !== plan.selector) { const list = selectorList(state), k = list.indexOf(w.selector), j = list.indexOf(plan.selector), n = list.length, right = (j - k + n) % n; return press(state, right <= n - right ? 1 : -1, 0); }
   return plan.ready ? { ...NEUTRAL_INTENT, confirmPressed: true } : NEUTRAL_INTENT;

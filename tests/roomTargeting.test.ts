@@ -1,7 +1,8 @@
+import { weaponSelection, fireFixtureWeapon, weaponsDirection } from './helpers/weaponFixture';
 import { describe, it, expect } from 'vitest';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_PILOTING_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, enemyRoomOfSlot, slotOfEnemyRoom, warnedTargets } from '../src/renderer/src/sim/debrisTargets';
 import { EnemyRoom, EnemySystem, ENEMY_ROOM_NAMES, damageEnemy, enemyBeamThreshold, enemySystem } from '../src/renderer/src/sim/enemy';
-import { weaponsInput, fireWeapon, Weapon } from '../src/renderer/src/sim/weapons';
+import { Weapon } from '../src/renderer/src/sim/weapons';
 import { windowOrder } from '../src/renderer/src/render/enemyShipLayout';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim } from '../src/renderer/src/render/enemyWindowModel';
 import { buildHudModel, targetRowText, type WeaponsPanel } from '../src/renderer/src/render/hudModel';
@@ -23,16 +24,16 @@ describe('the five rooms as targets', () => {
     expect(ENEMY_SLOTS.map(enemyRoomOfSlot)).toEqual(windowOrder());
     expect(ENEMY_SLOTS.map((k) => ENEMY_ROOM_NAMES[enemyRoomOfSlot(k)])).toEqual(['Hold', 'Weapons', 'Piloting', 'Engines', 'Shields']);
     for (let r = 0; r < 5; r++) expect(enemyRoomOfSlot(slotOfEnemyRoom(r))).toBe(r);
-    const { s, w } = seated(); expect(s.stations.cursor[w]).toBe(ENEMY_SLOT);
-    const seen = [s.stations.cursor[w]];
-    for (let k = 0; k < 5; k++) { weaponsInput(s, w, Dir.Down, false); seen.push(s.stations.cursor[w]); }
+    const { s, w } = seated(); expect(weaponSelection(s).cursor).toBe(ENEMY_SLOT);
+    const seen = [weaponSelection(s).cursor];
+    for (let k = 0; k < 5; k++) { weaponsDirection(s, w, Dir.Down, false); seen.push(weaponSelection(s).cursor); }
     expect(seen).toEqual([ENEMY_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_PILOTING_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_SLOT]);
-    weaponsInput(s, w, Dir.Up, false); expect(s.stations.cursor[w]).toBe(ENEMY_SHIELDS_SLOT);
+    weaponsDirection(s, w, Dir.Up, false); expect(weaponSelection(s).cursor).toBe(ENEMY_SHIELDS_SLOT);
     expect(warnedTargets(s, false)).toEqual([ENEMY_SLOT]);   // Science keeps one row for the ship
   });
   it('the reticle marks the targeted room in the window as the cursor walks', () => {
     const { s, w } = seated(); let a = stepWindowAnim(freshWindowAnim(), s); s.tick += 600; a = stepWindowAnim(a, s);
-    for (const slot of ENEMY_SLOTS) { s.stations.cursor[w] = slot; expect(enemyWindowModel(s, s.tick, a).reticle).toEqual({ room: enemyRoomOfSlot(slot) }); }
+    for (const slot of ENEMY_SLOTS) { weaponSelection(s).cursor = slot; expect(enemyWindowModel(s, s.tick, a).reticle).toEqual({ room: enemyRoomOfSlot(slot) }); }
   });
   it('the card rows read `Shields room  100%` for a system room and `Hold  hull 64%` for the plain room, and fit the card', () => {
     const { s } = seated(); s.enemy.hull = 0.64 * s.enemy.maxHull;
@@ -61,9 +62,9 @@ describe('Piloting and the Hold (spec Demo-x-c section 4)', () => {
     s.tick = s.enemy.sysRepairTick[EnemySystem.Piloting]!; s.enemy.departTick = s.tick + 1e6; enemySystem(s); expect(s.enemy.sysHp[EnemySystem.Piloting]).toBe(ENEMY_SYS_HP);
   });
   it('a Hold hit is hull damage only, its fire or breach in the Hold, with no room draw', () => {
-    const { s, w } = seated(); s.enemy.shieldLayers = 0; s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1; s.stations.cursor[w] = ENEMY_SLOT;
+    const { s, w } = seated(); s.enemy.shieldLayers = 0; s.weapons.charge = 1; s.weapons.selector = Weapon.BeamF1; weaponSelection(s).cursor = ENEMY_SLOT;
     let seed = 1; for (; seed < 5000; seed++) { const r = createRng(seed); if (nextFloat(r) < 0.3 && nextFloat(r) < ENEMY_HIT_FIRE) break; }
-    s.rng.combat.s = seed; expect(fireWeapon(s)).toBe(true);
+    s.rng.combat.s = seed; expect(fireFixtureWeapon(s)).toBe(true);
     const ref = createRng(seed); nextFloat(ref); nextFloat(ref); expect(s.rng.combat.s).toBe(ref.s);
     expect(s.enemy.hull).toBe(ENEMY_HULL - ENEMY_BEAM_DAMAGE); expect(Array.from(s.enemy.sysHp)).toEqual([ENEMY_SYS_HP, ENEMY_SYS_HP, ENEMY_SYS_HP, ENEMY_SYS_HP]);
     expect(Array.from(s.enemy.roomFire).map((v) => v > 0)).toEqual([false, false, false, false, true]); expect(EnemyRoom.Hold).toBe(4);
