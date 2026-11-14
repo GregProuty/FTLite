@@ -1,0 +1,16 @@
+.gitignore
+docs/superpowers/plans/2026-11-13-net-1a-boundary.md
+docs/superpowers/prompts/2026-11-14-claude-cloudflare-setup.md
+docs/superpowers/research/2026-11-14-cloudflare-setup-handoff.md
+docs/superpowers/specs/2026-11-13-ftl-gap-audit.md
+reports/2026-11-13-playtest-audit.json
+research/coop-i-sim.diff
+research/coop-ii-sim.diff
+research/demo-ix.diff
+research/demo-vii-render.diff
+research/demo-vii-sim.diff
+research/demo-viii-render.diff
+research/demo-viii-sim.diff
+research/sectors-core.diff
+scratch.txt
+scripts/playtest-audit.ts
