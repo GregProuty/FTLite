@@ -1,5 +1,5 @@
 import type { ShipLayout } from '../../src/renderer/src/sim/ship/schema';
-import { loadSnapshot, type Snapshot } from '../../src/renderer/src/sim/snapshot';
+import { loadSnapshot, type Snapshot } from './simLifetime';
 import { hashState } from '../../src/renderer/src/sim/hash';
 import type { TickInput } from '../../src/renderer/src/sim/commands';
 import { SIM_VERSION, TICK_HZ } from '../../src/renderer/src/sim/tuning';

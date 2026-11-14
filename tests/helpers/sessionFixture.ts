@@ -1,6 +1,7 @@
 import { createSession as createAppSession, type SessionDeps } from '../../src/renderer/src/app/session';
-import { createSimState, type SimState } from '../../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './simLifetime';
 import { createFixtureAuthority } from './authorityFixture';
+import { ownTestCleanup } from './simLifetime';
 export { DEFAULT_SEED } from '../../src/renderer/src/app/session';
 
 /** Existing session scenarios explicitly adopt an owner; production exposes only its replica. */
@@ -19,6 +20,7 @@ export function createSession(deps: SessionDeps) {
       pump() { core!.pump(); }, dispose() { core?.dispose(); }
     };
   } });
+  ownTestCleanup(() => session.dispose());
   return new Proxy(session, { get(target, key, receiver) {
     if (key === 'state') return owner;
     if (key === 'frame') return () => {

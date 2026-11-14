@@ -11,7 +11,7 @@ import { Weapon } from '../src/renderer/src/sim/weapons';
 import { EnemySystem } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SHIELDS_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState, type SimState } from '../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './helpers/simLifetime';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { makeState, quiet, placeEnemy, disableSystem, seconds, wake, room } from './helpers/sim';

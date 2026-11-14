@@ -2,7 +2,7 @@
 import { performance } from 'node:perf_hooks';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState, disposeSimState } from '../src/renderer/src/sim/state';
 import { RECRUIT } from '../src/renderer/src/sim/characters';
 import { saveSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
@@ -11,6 +11,7 @@ import type { AuthorityMessage } from '../src/renderer/src/net/contracts';
 
 // Match the original four-Recruit, seed-1 profiling fixture without test helpers.
 const state = createSimState(parseShip(starter), 4, 1, [RECRUIT, RECRUIT, RECRUIT, RECRUIT]);
+try {
 const message: AuthorityMessage = {
   kind: 'state',
   state: {
@@ -34,3 +35,4 @@ for (const [name, operation] of Object.entries(operations)) {
   times[name] = performance.now() - start;
 }
 console.log('publication profile / 500 (milliseconds):', times);
+} finally { disposeSimState(state); }

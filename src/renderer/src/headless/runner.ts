@@ -26,7 +26,18 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
   let now = 0, deadlineOrdinal = 0, frames: readonly InputFrame[] = [], fault: CrashRecord | null = null;
   let bots = false;
   let scripted: readonly ScriptedCommand[] = [];
-  const authority = authorityFactory({
+  let authority: Authority1a | undefined, disposed = false;
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    const errors: unknown[] = [];
+    for (const cleanup of [() => authority?.dispose(), () => client.dispose(), () => pair.host.close('disposed'), () => pair.client.close('disposed')]) {
+      try { cleanup(); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw errors[0];
+  }
+  try {
+  authority = authorityFactory({
     contentDigest: init.contentDigest, clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, resolveLayout: () => init.layout,
     onCrash(record) { fault = record; init.onCrash?.(record); },
     beforeControls() { transport.drain(); },
@@ -53,8 +64,13 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
   authority.start({ runId, layoutId: init.layout.id, layoutHash: deriveLayout(init.layout).layoutHash, simVersion: SIM_VERSION, contentDigest: init.contentDigest,
     seed: init.seed, playerCount: init.playerCount, characters: init.characters ?? DEFAULT_CHARACTERS, unlocked: init.unlocked ?? [], quirk: init.quirk });
   transport.drain();
+  } catch (error) {
+    try { dispose(); } catch { /* preserve the startup error after attempting all cleanup */ }
+    throw error;
+  }
   function advance(): void {
-    now = ++deadlineOrdinal * 1000 / TICK_HZ; authority.pump(); transport.drain();
+    if (disposed) throw new Error('headless runner disposed');
+    now = ++deadlineOrdinal * 1000 / TICK_HZ; authority!.pump(); transport.drain();
     // Headless runs consume reliable presentation events without playing them.
     client.takeEvents();
     if (fault && !init.onCrash) throw new Error(`headless authority fault: ${(fault as CrashRecord).error}`);
@@ -68,6 +84,6 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
     view() { const view = client.state(); if (!view) throw new Error('missing initial publication'); return view; },
     ui: client.ui,
     drain() { transport.drain(); },
-    dispose() { authority.dispose(); client.dispose(); pair.host.close('disposed'); pair.client.close('disposed'); }
+    dispose
   };
 }

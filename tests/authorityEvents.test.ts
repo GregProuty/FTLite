@@ -10,7 +10,7 @@ import { hashState } from '../src/renderer/src/sim/hash';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
 import type { AuthorityEvent, PublishedState } from '../src/renderer/src/net/contracts';
 import { createSession } from '../src/renderer/src/app/session';
-import { createSimState, type SimState } from '../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './helpers/simLifetime';
 import { decodeMessage } from '../src/renderer/src/net/codec';
 import { downCrew } from '../src/renderer/src/sim/crew';
 import type { SourceSample } from '../src/renderer/src/input/deviceManager';
@@ -56,9 +56,9 @@ it('buffers future events until matching state, deduplicates events, and drops o
   h.pump(34); expect(h.client.takeEvents()).toEqual([event]); h.dispose();
 });
 it('does not replay startup ephemeral history', () => {
-  const h = rig(); h.client.dispose();
+  const h = rig(), previous = h.client.publication()!; h.client.dispose();
   const client = createClientRun(h.pair.clientLink, [0], { runId: 'events', resolveLayout: () => LAYOUT });
-  const publication: PublishedState = { ...h.client.publication()!, publicationSequence: 2, eventSequence: 4, snapshot: saveSnapshot(h.state) };
+  const publication: PublishedState = { ...previous, publicationSequence: 2, eventSequence: 4, snapshot: saveSnapshot(h.state) };
   h.pair.authorityLink.send('unreliable-latest', encodeMessage({ kind: 'state', state: publication }));
   h.pair.authorityLink.send('reliable-ordered', encodeMessage({ kind: 'event', event: { runId: 'events', eventSequence: 3, tick: 0, payload: { kind: 'cue', cue: 'shot' } } }));
   h.transport.drain(); expect(client.takeEvents()).toEqual([]); client.dispose(); h.dispose();

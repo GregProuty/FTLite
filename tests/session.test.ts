@@ -10,7 +10,7 @@ import { LAYOUT, seatNavigator, chargeJump, armSpawn, placeEnemy } from './helpe
 import { damageEnemy } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import type { Cue } from '../src/renderer/src/app/audioCues';
-import { loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import { loadSnapshot } from './helpers/simLifetime';
 import type { CrashRecord } from '../src/renderer/src/authority/authority';
 import { stepCommands } from '../src/renderer/src/sim/step';
 import { hashState } from '../src/renderer/src/sim/hash';
@@ -18,7 +18,7 @@ import { hashState } from '../src/renderer/src/sim/hash';
 import type { HudModel } from '../src/renderer/src/render/hudModel';
 import { createSession as createLiveSession } from '../src/renderer/src/app/session';
 import { createFixtureAuthority } from './helpers/authorityFixture';
-import { createSimState, type SimState } from '../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './helpers/simLifetime';
 
 function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C'], withTelemetry = true, initialProgress?: Progress) {
   const storage = (() => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); } }; })();

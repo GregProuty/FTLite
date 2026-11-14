@@ -22,7 +22,7 @@ import { Skill, xpIndex } from '../src/renderer/src/sim/skills';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { interiorStep, enemyRoomOfHit, EnemyRoom, arrive as enemyArrive } from '../src/renderer/src/sim/enemy';
 import { ENEMY_ROOMS, ENEMY_HIT_FIRE, ENEMY_HIT_BREACH, ENEMY_FIRE_SECONDS, ENEMY_BREACH_SECONDS, ENEMY_FIRE_HULL_DPS, ENEMY_FIRE_SYS_DPS, ENEMY_BREACH_HULL_DPS, scrapEnemy } from '../src/renderer/src/sim/tuning';
-import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import { saveSnapshot, loadSnapshot } from './helpers/simLifetime';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { LAYOUT } from './helpers/sim';
 

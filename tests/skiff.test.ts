@@ -4,7 +4,7 @@ import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { reachableTiles } from '../src/renderer/src/sim/ship/reachability';
-import { createSimState, type SimState } from '../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './helpers/simLifetime';
 import { step, fixtureRunner } from './helpers/rawInput';
 import { Seated } from '../src/renderer/src/sim/components';
 import { botIntent } from './helpers/bot';

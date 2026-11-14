@@ -10,10 +10,12 @@ export interface AcceptanceArgs { players: number; seed: number; minutes: number
 /** Headless soak: the bot crew on the starter ship until the tick budget or the run end, with no survival cheat (spec 4-ii section 8). */
 export function runAcceptance({ players, seed, minutes, characters = DEFAULT_CHARACTERS, contentDigest = __GAMEPLAY_CONTENT_DIGEST__ }: AcceptanceArgs): TelemetryRecord {
   const runner = createHeadlessRunner({ layout: parseShip(starter), playerCount: players, seed, characters, contentDigest });
+  try {
   const state = runner.view();
   const budget = Math.round(minutes * 60 * TICK_HZ);
   while (state.tick < budget && !state.ended) runner.advanceBots();
-  const record = telemetryRecord(state, seed); runner.dispose(); return record;
+  return telemetryRecord(state, seed);
+  } finally { runner.dispose(); }
 }
 
 const COLUMNS = ['players', 'seed', 'ended-at', 'reason', 'first-down', 'first-death', 'never-manned', 'longest-idle', 'spawns', 'impacts', 'hits/shots', 'enemy', 'boarders', 'nodes', 'scrap', 'score'];

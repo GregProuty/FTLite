@@ -1,5 +1,5 @@
 import type { ShipLayout } from '../../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../../src/renderer/src/sim/state';
+import { createSimState, disposeSimState } from './simLifetime';
 import { saveSnapshot } from '../../src/renderer/src/sim/snapshot';
 import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
@@ -12,7 +12,9 @@ export function convertLegacyReplay(layout: ShipLayout, replay: Replay, contentD
   if (replay.layoutId !== layout.id) throw new Error(`replay is for layout ${replay.layoutId}, loaded ${layout.id}`);
   if (replay.simVersion !== SIM_VERSION) throw new Error(`replay is for sim version ${replay.simVersion}, running ${SIM_VERSION}`);
   if (replay.layoutHash !== deriveLayout(layout).layoutHash) throw new Error('replay layout hash does not match the loaded layout');
-  const initial = saveSnapshot(createSimState(layout, replay.playerCount, replay.seed));
+  const state = createSimState(layout, replay.playerCount, replay.seed);
+  let initial: ReturnType<typeof saveSnapshot>;
+  try { initial = saveSnapshot(state); } finally { disposeSimState(state); }
   const trace: SemanticTrace = { version: 'net1a-test', runId: 'golden', seed: replay.seed, initial, ticks: [] };
   const runner = semanticRunner(layout, initial, replay.seed, trace.runId, contentDigest);
   try {

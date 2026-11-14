@@ -2,7 +2,7 @@ import type { AuthorityMessage, ClientMessage, CommandEnvelope, CommandResult, H
 import { decodeMessage, encodeMessage } from '../net/codec';
 import { saveSnapshot, type Snapshot } from '../sim/snapshot';
 import { hashState } from '../sim/hash';
-import type { SimState } from '../sim/state';
+import { assertSimStateLive, disposeSimState, type SimState } from '../sim/state';
 import { stepCommands } from '../sim/step';
 import { isPauseControl, type TickInput } from '../sim/commands';
 import { telemetryRecord } from '../sim/telemetry';
@@ -26,6 +26,12 @@ export interface CrashRecord {
 }
 /** Internal owner. Only the public wrapper constructs it in shipping code. */
 export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state: SimState) {
+  assertSimStateLive(state);
+  try { return createLiveAuthorityCore(deps, state); }
+  catch (error) { disposeSimState(state); throw error; }
+}
+
+function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state: SimState) {
   const bindings = new Set<Binding>();
   const held: HeldInput[] = Array.from({ length: state.playerCount }, () => ({ moveX: 0, moveY: 0, interactHeld: false }));
   const heldSequences = Array.from({ length: state.playerCount }, () => 0);
@@ -182,12 +188,13 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
   }
   const driver = createTickDriver(deps.clock, { schedule: (delay) => deps.scheduler.schedule(delay, pump) }, executeTick);
   if (phase === 'ended') driver.dispose();
-  const unbindLifecycle = deps.bindLifecyclePause?.((control) => {
+  let unbindLifecycle: void | Unsubscribe;
+  try { unbindLifecycle = deps.bindLifecyclePause?.((control) => {
     if (disposed || phase === 'ended' || phase === 'error') return;
     if (typeof control.paused !== 'boolean' || !control.reason || control.reason.length > 128) throw new Error('invalid lifecycle control');
     if (controlQueue.length >= 256 || !Number.isSafeInteger(lifecycleOrdinal + 1)) throw new Error('lifecycle control capacity');
     controlQueue.push({ record: { source: 'lifecycle', order: ++receiveOrder, ordinal: ++lifecycleOrdinal, control: { ...control } } });
-  });
+  }); } catch (error) { driver.dispose(); throw error; }
   return {
     attach(link: Link, players: readonly number[]): Unsubscribe {
       if (disposed || players.some((p) => !Number.isInteger(p) || p < 0 || p >= state.playerCount || [...bindings].some((b) => b.players.includes(p))) || new Set(players).size !== players.length) throw new Error('invalid player ownership');
@@ -201,14 +208,27 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
         controlQueue = controlQueue.filter((entry) => entry.binding !== binding);
         for (const p of players) held[p] = { moveX: 0, moveY: 0, interactHeld: false };
       };
+      try {
       binding.unsubscribe.push(link.onMessage((_kind, bytes) => {
         try { const message = decodeMessage(bytes); if (message.kind === 'state' || message.kind === 'result' || message.kind === 'event') { link.close('invalid-client-message'); return; }
           if (binding.ingress.length >= 256) { link.close('ingress-overflow'); return; } binding.ingress.push({ message, order: ++receiveOrder });
         } catch { link.close('malformed'); }
-      }), link.onClose(detach));
+      }));
+      binding.unsubscribe.push(link.onClose(detach));
       publishCompletedState(true); return detach;
+      } catch (error) { detach(); throw error; }
     },
     pump, publishCompletedState,
-    dispose(): void { if (disposed) return; disposed = true; driver.dispose(); unbindLifecycle?.(); for (const binding of bindings) for (const off of binding.unsubscribe) off(); bindings.clear(); pending = []; controls = []; controlQueue = []; }
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      const errors: unknown[] = [];
+      const cleanup = (action: () => void): void => { try { action(); } catch (error) { errors.push(error); } };
+      cleanup(() => driver.dispose()); cleanup(() => unbindLifecycle?.());
+      for (const binding of bindings) for (const off of binding.unsubscribe) cleanup(off);
+      bindings.clear(); pending = []; controls = []; controlQueue = []; pendingCallouts.clear();
+      disposeSimState(state);
+      if (errors.length) throw errors[0];
+    }
   };
 }

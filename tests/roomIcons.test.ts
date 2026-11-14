@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { roomIcons, ICON_KINDS, stationTint } from '../src/renderer/src/render/roomIconModel';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { failStation } from '../src/renderer/src/sim/power';
 import { buildHudModel } from '../src/renderer/src/render/hudModel';

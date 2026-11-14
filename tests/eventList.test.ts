@@ -9,7 +9,7 @@ import { NAV_TEXT_MAX, NodeType, navRows, sectorJump, jumpShip, tallyVotes } fro
 import { buildHudModel, runNotice, type NavigationPanel } from '../src/renderer/src/render/hudModel';
 import { textPx } from '../src/renderer/src/render/theme';
 import { NOTICE } from '../src/renderer/src/render/hudLayout';
-import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import { saveSnapshot, loadSnapshot } from './helpers/simLifetime';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { Encounter } from '../src/renderer/src/sim/enemy';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';

@@ -2,7 +2,7 @@ import { Phase } from '../../src/renderer/src/sim/director';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
 import cutter from '../../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
-import { createSimState, type SimState, type SimOptions } from '../../src/renderer/src/sim/state';
+import { createSimState, type SimState, type SimOptions } from './simLifetime';
 import { step, neutralFixtureTick } from './rawInput';
 import { stepCommands } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';

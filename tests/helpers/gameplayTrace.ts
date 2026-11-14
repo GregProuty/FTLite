@@ -1,4 +1,4 @@
-import { createSimState, type SimState } from '../../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './simLifetime';
 import { Position, Health, Life, Stable, Seated } from '../../src/renderer/src/sim/components';
 import { StationKind } from '../../src/renderer/src/sim/stationKinds';
 import { enemyRoomOfSlot, targetRef } from '../../src/renderer/src/sim/debrisTargets';
@@ -127,6 +127,7 @@ export function runScenario(spec: GameplayScenario, contentDigest = __GAMEPLAY_C
   const runner = createFixtureRunner(s, contentDigest);
   const observations: { tick: number; state: Plain }[] = [];
   const decisions: { tick: number; inputs: Intent[]; rng: unknown }[] = [];
+  try {
   for (let tick = 0; tick < spec.ticks; tick++) {
     for (const m of spec.setup) if (m.tick === tick) mutate(s, m);
     if (tick % spec.every === 0) observations.push({ tick: s.tick, state: projectGameplay(s) });
@@ -144,6 +145,6 @@ export function runScenario(spec: GameplayScenario, contentDigest = __GAMEPLAY_C
     if (inputs.some((i) => i.confirmPressed || i.cancelPressed || i.interactPressed) || JSON.stringify(s.rng) !== before) decisions.push({ tick, inputs, rng: canonical(s.rng) });
   }
   observations.push({ tick: s.tick, state: projectGameplay(s) });
-  runner.dispose();
   return { name: spec.name, observations, decisions, summary: { tick: s.tick, hull: s.hull, ended: s.ended, telemetry: canonical(s.telemetry), simVersion: SIM_VERSION } };
+  } finally { runner.dispose(); }
 }

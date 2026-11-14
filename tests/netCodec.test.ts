@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { decodeMessage, encodeMessage, latestMessageMetadata, MAX_MESSAGE_BYTES } from '../src/renderer/src/net/codec';
 import type { AuthorityMessage, ClientMessage } from '../src/renderer/src/net/contracts';
 import { commands, commandMessage, heldMessage } from './helpers/net';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { saveSnapshot } from '../src/renderer/src/sim/snapshot';
 import { telemetryRecord } from '../src/renderer/src/sim/telemetry';
 import { LAYOUT } from './helpers/sim';

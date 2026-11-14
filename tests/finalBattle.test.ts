@@ -5,7 +5,7 @@ import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { depthOf, peaceful } from '../src/renderer/src/sim/depth';
 import { minutesOf, directorSystem, spawnInterval } from '../src/renderer/src/sim/director';
 import { EndReason, downCrew } from '../src/renderer/src/sim/crew';
-import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import { saveSnapshot, loadSnapshot } from './helpers/simLifetime';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { TICK_HZ, SECTORS, SECTOR_COLUMNS, ENCOUNTER_START, ENCOUNTER_MAX, ENEMY_FIRE_JITTER, SPAWN_JITTER, ENCOUNTER_SPAWN_MULT, NEVER, WARDEN_HULL_MULT, WARDEN_FIRE_MULT, WARDEN_SHIELD_EXTRA, SHIELD_RECHARGE_TIME } from '../src/renderer/src/sim/tuning';

@@ -1,5 +1,5 @@
 import type { SimState } from './state';
-import { STREAM_NAMES } from './state';
+import { assertSimStateLive, STREAM_NAMES } from './state';
 import { Position, Health, Life, Stable, Seated } from './components';
 import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, SECTOR_COLUMNS, NODE_STRIDE, ENEMY_ROOMS, WEAPON_SLOTS } from './tuning';
 import { STATION_COUNT } from './stationKinds';
@@ -12,8 +12,8 @@ const RUN_FIELDS = 4 + MAP_FIELDS + 3 + STATION_COUNT + 3 + 2 + 3 + 1 + 2 + 4 + 
 const TELEMETRY_SCALARS = 33, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
 
 /** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec section 4). */
-export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
-export function layoutIdNumber(s: SimState): number { return parseInt(s.derived.idHash, 16); }
+export function layoutHashNumber(s: SimState): number { assertSimStateLive(s); return parseInt(s.derived.layoutHash, 16); }
+export function layoutIdNumber(s: SimState): number { assertSimStateLive(s); return parseInt(s.derived.idHash, 16); }
 
 function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3 + s.airlocks.open.length
@@ -24,6 +24,7 @@ function size(s: SimState): number {
 
 /** Canonical order. Crew by PlayerId (their StableIds were allocated in that order). -0 is written as 0. */
 export function flatten(s: SimState): Float64Array {
+  assertSimStateLive(s);
   const out = new Float64Array(size(s));
   let i = 0;
   const put = (v: number): void => { out[i++] = v === 0 ? 0 : v; };
@@ -66,6 +67,7 @@ export function flatten(s: SimState): Float64Array {
 
 /** Inverse of flatten into a state created for the same layout and playerCount. */
 export function unflatten(s: SimState, v: Float64Array): void {
+  assertSimStateLive(s);
   const expected = size(s);
   if (v.length !== expected) throw new Error(`snapshot length ${v.length} does not match expected ${expected}`);
   let i = 0;

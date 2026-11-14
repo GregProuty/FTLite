@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { consoleLook, consoleSide, deskPicture, consoles, DESK_FILL, DESK_OUTLINE, DESK_W, DESK_D, SCREEN_LIT, SCREEN_DIM, SCREEN_DOWN, WALL_GAP } from '../src/renderer/src/render/consoleModel';

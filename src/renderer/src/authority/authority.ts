@@ -28,11 +28,20 @@ export function createAuthority(deps: AuthorityDeps): Authority1a {
       if (disposed) throw new Error('authority disposed');
       const layout = deps.resolveLayout(init.layoutId);
       if (init.simVersion !== SIM_VERSION || init.contentDigest !== deps.contentDigest || init.layoutHash !== deriveLayout(layout).layoutHash || layout.id !== init.layoutId) throw new Error('incompatible run');
-      core?.dispose();
-      core = createAuthorityCore({ ...deps, init }, createSimState(layout, init.playerCount, init.seed, init.characters, { unlocked: init.unlocked, quirk: init.quirk }));
-      for (const [link, entry] of attached) entry.off = core.attach(link, entry.players);
+      const next = createAuthorityCore({ ...deps, init }, createSimState(layout, init.playerCount, init.seed, init.characters, { unlocked: init.unlocked, quirk: init.quirk }));
+      try {
+        core?.dispose(); core = next;
+        for (const [link, entry] of attached) entry.off = next.attach(link, entry.players);
+      } catch (error) {
+        try { next.dispose(); } finally { core = null; }
+        throw error;
+      }
     },
     pump() { core?.pump(); },
-    dispose() { disposed = true; core?.dispose(); core = null; attached.clear(); }
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      try { core?.dispose(); } finally { core = null; attached.clear(); }
+    }
   };
 }

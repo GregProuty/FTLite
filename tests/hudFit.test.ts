@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState, type SimState } from '../src/renderer/src/sim/state';
+import { createSimState, type SimState } from './helpers/simLifetime';
 import { textPx, rowPx, TEXT_SCALE, TITLE_SCALE, PAD, contrast, TEXT_PAIRS, FONT_SIZE, FONT_NATIVE, LINE } from '../src/renderer/src/render/theme';
 import { CLOCK, POWER, THREATS, POWER_ROW, CARD_ROW, CARD_INNER_W, BLOCK_INNER_W, BLOCK_HP_X, BLOCK_HP_W, BLOCK_O2_X, NOTICE, EVENT_CARD, SUMMARY_W, CREDITS } from '../src/renderer/src/render/hudLayout';
 import { buildHudModel, clockLine, sectorLine, timeLine, directorText, weaponsStrip, weaponsFooterLines, weaponsLootLine, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, tabLabel, skillsLine, seatName, runNotice, lobbyLines, upgradeRowText, STATION_SHORT, HIDDEN_SHIP, HELM_NOTICE, EVENT_CARD_HELP, objectThreatText, type HudModel, type WeaponsPanel, type NavigationPanel, type SciencePanel, type EngineeringPanel, type DebrisTarget, type DoorsPanel } from '../src/renderer/src/render/hudModel';

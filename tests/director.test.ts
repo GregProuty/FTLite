@@ -10,7 +10,7 @@ import { failStation } from '../src/renderer/src/sim/power';
 import { activeDebrisCount } from '../src/renderer/src/sim/debris';
 import { Seated, Life, LifeState, Health } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import type { ShipLayout } from '../src/renderer/src/sim/ship/schema';
 import starter from '../src/renderer/src/sim/ship/starter.json';

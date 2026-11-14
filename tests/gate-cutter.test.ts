@@ -6,7 +6,7 @@ import { roomAt } from '../src/renderer/src/sim/grid';
 import { seconds, hazardStart } from './helpers/sim';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { botIntent } from './helpers/bot';
 import { HEALTH_MAX } from '../src/renderer/src/sim/tuning';
 import { DEFAULT_CHARACTERS } from '../src/renderer/src/sim/characters';

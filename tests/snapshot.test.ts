@@ -5,7 +5,7 @@ import { snapshotPhaseStep, snapshotPhaseClient } from './helpers/snapshotPhaseF
 import { describe, it, expect } from 'vitest';
 import { TEAM_MULT as TM2 } from '../src/renderer/src/sim/tuning';
 import fc from 'fast-check';
-import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import { saveSnapshot, loadSnapshot } from './helpers/simLifetime';
 import { hashState } from '../src/renderer/src/sim/hash';
 import { flatten, unflatten } from '../src/renderer/src/sim/flatten';
 import { step } from './helpers/rawInput';

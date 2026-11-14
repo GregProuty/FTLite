@@ -19,7 +19,7 @@ import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { stepCommands } from '../src/renderer/src/sim/step';
 import type { CrashRecord } from '../src/renderer/src/authority/authority';
 import fc from 'fast-check';
-import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
+import { saveSnapshot, loadSnapshot } from './helpers/simLifetime';
 import { createLocalRuntime } from '../src/renderer/src/app/localRuntime';
 
 function rig(beforeTick?: (tick: number) => void, onCrash: (record: CrashRecord) => void = (r) => { throw new Error(r.error); }) {

@@ -4,7 +4,7 @@ import { Dir } from '../src/renderer/src/sim/dir';
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createSimState } from '../src/renderer/src/sim/state';
+import { createSimState } from './helpers/simLifetime';
 import { step } from './helpers/rawInput';
 import { reachable, beaconIndex, jumpShip, sectorJump } from '../src/renderer/src/sim/run';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
