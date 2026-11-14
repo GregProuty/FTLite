@@ -37,10 +37,11 @@ It exists to answer one question: **is gravity-well piloting with a two-person c
 | Q23 | The tactical view is a large map, bigger than one screen, that the player zooms in and out of |
 | Q23b | The camera follows the player's ship; the player can pan away and snap back |
 | Q23c | One planet, an asteroid belt ring and loose asteroid clusters, stored as data |
+| Q24 | Until Net-3, the owner playtests alone, owning both seats and switching between the stations |
 
 ### Not in the demo
 
-Interior crew, oxygen, fires, doors and walking (the full inside link comes after, Q11). Bots in seats (Q15). Solo play. The sector run, events, dialogue, shops, careers and the open world. Moons, rings, atmospheres and aerobraking (Q16, Q23c). Directional shields (Q20). Enemy moods (Q17). Sensor range or fog. New art beyond original placeholder shapes (§12). Prediction and rollback (§11).
+Interior crew, oxygen, fires, doors and walking (the full inside link comes after, Q11). Bots in seats (Q15). A solo game mode for players (solo exists only as the owner's playtest mode, §11a). The sector run, events, dialogue, shops, careers and the open world. Moons, rings, atmospheres and aerobraking (Q16, Q23c). Directional shields (Q20). Enemy moods (Q17). Sensor range or fog. New art beyond original placeholder shapes (§12). Prediction and rollback (§11b).
 
 ## 3. The map
 
@@ -188,7 +189,18 @@ Original placeholder shapes in Pixi Graphics; the world container is scaled and 
 
 Rendering interpolates between published states (render time = latest state minus one tick), so motion stays smooth at 60 fps today and over Net-3's 20 to 30 Hz deltas later.
 
-## 11. Two screens over the network (Q15b)
+## 11. Seats, solo playtesting and the network
+
+### 11a. Solo playtesting (Q24)
+
+Until Net-3 exists, the owner playtests alone and runs between the stations.
+
+- **One player, both seats.** The solo player owns both seats (Helm = player 0, Weapons = player 1) as two player IDs on one local loopback link, which Net-1a already supports. The authority, commands, held input and sim are exactly those Net-3 carries later; only the transport differs. Nothing in the duel is built twice.
+- **Switching.** Tab (gamepad: Select/View) swaps the screen between the Helm and Weapons. Each station keeps its own camera (§10a), and the screen is exactly what a multiplayer player at that station sees.
+- **The station left behind** behaves as if its player stepped away, the same rule as leaving for a repair (§8): the Helm's axes read zero, so the ship coasts with stabilise on; the laser charge freezes and a missile in flight coasts unsteered. Repair works as in §8 from either station.
+- **Duel length:** solo duels run longer and harder than two-player ones, because one station is always idle. The Q22 targets apply to two-player sessions; solo telemetry is recorded with a `solo` flag and judged separately.
+
+### 11b. Two screens over the network (Q15b)
 
 - **Seats:** the lobby assigns player 0 to the Helm and player 1 to Weapons; the players can swap before starting. One player per machine.
 - **Transport:** the demo runs over Net-0's chosen stack. By Net-0 and the direction spec A6, **Net-1b comes before Net-3**, and Net-3 is "two machines over the internet, no prediction" (WebRTC, Cloudflare signalling and TURN, join codes). Net-3 needs the owner's Cloudflare account and domain (Net-0 open item 2). Net-3's state and message shapes should be mode-agnostic so the duel rides on it without rework.
@@ -224,11 +236,11 @@ To make that cheap: the map is data (planet, belt, clusters, spawns, goal circle
 | # | Milestone | Proves | Depends on |
 |---|---|---|---|
 | H-0 | **Duel sim, headless.** First the map, physics, headings and held-input flight (with the orbit, energy, hash and 200-seed map tests); then both consoles' rules, shields, rooms, repair, the hunter, commands, telemetry, the scripted pair and the golden replay | The rules are deterministic and tunable; the scripted duels hit the telemetry targets | Net-1a (in) |
-| H-1 | **Dev view.** First a **dev flight view**: one ship, one player, the full camera (§10a) and the Helm layer, to meet the §6 feel targets by hand. Then the Weapons layer and a **dev-only split view** (two keyboards, one machine). Workbenches, never the demo (Q15b) | Feel tuning starts early; the owner flies it | H-0 (flight part first) |
+| H-1 | **Dev view and solo playtest.** First a **dev flight view**: one ship, one player, the full camera (§10a) and the Helm layer, to meet the §6 feel targets by hand. Then the Weapons layer and the **solo playtest mode** (one player, both seats, Tab between stations, §11a). Not the multiplayer demo (Q15b) | Feel tuning starts early; the owner flies it | H-0 (flight part first) |
 | H-2 | **The networked duel (the demo).** Two machines, one player each, over Net-3. LAN playtests first, then internet. Run the Q22 checklist | **Is it fun?** | H-1, Net-1b, Net-3 |
 | H-3 | **The B run.** Debris run and escape (§14) | The map and physics carry more than a duel | H-2 passed |
 
-H-0's flight part and H-1's flight view come first: everything else in the duel sits on top of them. H-0 and H-1 run alongside Net-1b. Roadmap item 36 records this order. It puts the Helm demo ahead of the direction spec's MG-0/MG-X/MG-1a sequence for now; those milestones remain, and MG-1a's integrated encounter becomes this duel plus the full interior link.
+H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by switching stations before Net-3; the dev split view is optional once switching works. H-0's flight part and H-1's flight view come first: everything else in the duel sits on top of them. H-0 and H-1 run alongside Net-1b. Roadmap item 36 records this order. It puts the Helm demo ahead of the direction spec's MG-0/MG-X/MG-1a sequence for now; those milestones remain, and MG-1a's integrated encounter becomes this duel plus the full interior link.
 
 ## 16. Acceptance (Q22)
 
@@ -245,7 +257,7 @@ H-0's flight part and H-1's flight view come first: everything else in the duel 
 
 ## 17. Risks
 
-1. **Network latency on a direct stick.** The biggest risk (§11). Mitigation: seat the Helm on the host, LAN first, measure, pull own-ship prediction forward if needed.
+1. **Network latency on a direct stick.** The biggest risk (§11b). Mitigation: seat the Helm on the host, LAN first, measure, pull own-ship prediction forward if needed.
 2. **The demo waits on Net-1b and Net-3.** Mitigation: H-0 and H-1 proceed in parallel; the owner's Cloudflare setup is requested early.
 3. **The gunner is idle while the Helm lines up, or during the approach across a large map.** Missiles, the room lock and repair give Weapons work; telemetry tracks time with nothing to do. If the approach is dull, move the spawns in (§3).
 4. **Gravity makes the fight a spiral.** If both ships settle into the same orbit, add tuning (spawn orbits, enemy lead) before adding systems.
@@ -263,11 +275,13 @@ H-0's flight part and H-1's flight view come first: everything else in the duel 
 7. North-up with a rotating ship, not heading-up (§10a). **(rec.)**
 8. The camera stays where it was panned until the player snaps back; no automatic return (§10a). **(rec.)**
 9. Everything on the map is visible to both players and the enemy; no sensor range or fog (§9, §10). **(rec.)**
-10. Net-2 is not needed for the duel; Net-3 is written mode-agnostic (§11). **(rec.)**
-11. The dev views in H-1 are workbenches, never the demo (§15). **(rec.)**
+10. Net-2 is not needed for the duel; Net-3 is written mode-agnostic (§11b). **(rec.)**
+11. The dev flight view in H-1 is a workbench; the solo playtest mode is the owner's, not a player-facing game mode (§11a, §15). **(rec.)**
+13. Tab (gamepad Select/View) switches stations in solo (§11a). **(rec.)**
 12. Map size, belt radii and spawns at r = 2000 (§3) need checking against the 3 to 5 minute target once the hunter exists. *(start)*
 
 ## Change log
 
 - 2026-11-14: written from the owner's Helm direction and grill Q11 to Q22.
+- 2026-11-14: grill Q24: solo playtesting until Net-3, one player owning both seats and switching stations (§11a); H-1 gains the solo mode.
 - 2026-11-14: folded in the tactical view (grill Q23 to Q23c): a large zoomable map with one planet, an asteroid belt and clusters; a per-player follow camera with pan, snap and zoom; the view's draw order; held-input flight and missile steering. The one-screen arena and the fixed shared camera are gone. The short-lived separate tactical view spec was merged here and deleted.

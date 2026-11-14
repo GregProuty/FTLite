@@ -248,3 +248,13 @@ Implications for the specs:
 **Answer: A, one planet with a bigger neighbourhood.** The same single planet and well in a map about 4 to 5 times wider than the old arena, with an asteroid belt ring to thread through and a few loose asteroid clusters. The map is stored as data so moons (B) can be added as bodies later; a small system with places (C) belongs to the later run and the open world.
 
 The tactical view (Q23 to Q23c) is specified in the Helm demo spec (`docs/superpowers/specs/2026-11-14-helm-demo-design.md`, sections 3, 6 and 10).
+
+## Q24. How does the owner run both stations alone?
+
+**Owner direction (2026-11-14):** "the demo needs to be compatible with the eventual netcode 3 for mp but at first i will just playtest both stations myself in single player". **Answer: A, switch between the stations.** "ill just run between the stations"
+
+Implications for the specs:
+- Solo is a playtest mode until Net-3: one player owns both seats (Helm and Weapons) as two player IDs on one local link, which Net-1a's loopback already supports. The authority, commands and sim are the ones Net-3 carries later; only the transport differs.
+- One key (Tab) swaps the player's screen between the Helm and Weapons. The station left behind behaves as if its player stepped away (the same rule as leaving for a repair, Q21): the ship coasts with stabilise on; the laser charge freezes and a missile in flight coasts unsteered.
+- Each station's screen is exactly what a multiplayer player at that station will see.
+- Q15's "no solo mode" becomes "no solo game mode for players; solo is the owner's playtest mode until Net-3". Bots still never take a seat.
