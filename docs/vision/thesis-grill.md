@@ -234,3 +234,11 @@ Implications for the specs:
 - The reference is the bridge-simulator genre's tactical/radar view. The game takes the ideas (a zoomable map, a bearing ring, arcs drawn on the map) and designs its own screens, art, names and layout; it does not reproduce another game's interface (foundation §12, direction spec A10).
 - Zoom ranges from a close view for precise flying and aiming to a wide view of the whole map.
 - Still open: how the camera follows (Q23b), and what fills a map larger than the one-planet duel arena (Q23c).
+
+### Q23b. How does the camera move around the large map?
+
+**Answer: B, follows the ship by default, and the player can pan away.** The camera stays centred on the player's ship; the player can drag or pan to look ahead, and one key snaps back to the ship. When the ship is off-screen, an edge arrow points to it.
+
+Implications for the specs:
+- Each player controls their own camera and zoom; the camera is client-only view state, never sent to the sim and never part of the hash.
+- Zoom and pan never change what the sim does; only what the player sees.
