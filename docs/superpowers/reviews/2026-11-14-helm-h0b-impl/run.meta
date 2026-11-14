@@ -1,0 +1,11 @@
+topic=helm-h0b-impl
+subject_kind=impl
+subject=src/renderer/src/sim/tactical/duel.ts src/renderer/src/sim/tactical/geometry.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/hunter.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/weapons.ts tests/tacticalDeterminism.test.ts tests/tacticalGeometry.test.ts tests/tacticalHunter.test.ts tests/tacticalMissiles.test.ts tests/tacticalWeapons.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\helm-h0b
+base=master
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-14
+head_at_setup=4fac7ec
