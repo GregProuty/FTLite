@@ -47,13 +47,13 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   let previousCues = cueCounters(state);
   const auxiliarySequences = heldSequences.map(() => 0);
   const pendingCallouts = new Map<number, ClientAuxMessage>();
-  let baseline = saveSnapshot(state), baselineHighWater: readonly number[] = heldSequences.slice(), baselineHeldSequences: readonly number[] = heldSequences.slice(), baselineControlRevision = 0;
+  let baseline = saveSnapshot(state, deps.contentDigest), baselineHighWater: readonly number[] = heldSequences.slice(), baselineHeldSequences: readonly number[] = heldSequences.slice(), baselineControlRevision = 0;
   let baselineHeld = held.map((h) => ({ ...h }));
   let baselineControlState: CrashRecord['baselineControlState'] = { phase, pauseOwner, pauseReason, revision: controlRevision };
   let ticks: JournalTick[] = [];
   const highWater = (): number[] => ledger.highWater().slice(0, state.playerCount);
   function checkpoint(): void {
-    baseline = saveSnapshot(state); baselineHighWater = highWater(); baselineHeldSequences = [...heldSequences];
+    baseline = saveSnapshot(state, deps.contentDigest); baselineHighWater = highWater(); baselineHeldSequences = [...heldSequences];
     baselineControlRevision = controlRevision; baselineLifecycleOrdinal = appliedLifecycleOrdinal;
     baselineHeld = held.map((h) => ({ ...h })); baselineControlState = { phase, pauseOwner, pauseReason, revision: controlRevision };
     ticks = []; controls = []; controlResults = [];
@@ -62,7 +62,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   function publishCompletedState(reliable = false): void {
     if (disposed || phase === 'error') return;
     const publication: PublishedState = { runId: deps.init.runId, tick: state.tick, publicationSequence: ++publicationSequence,
-      snapshot: saveSnapshot(state), hash: hashState(state), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs,
+      snapshot: saveSnapshot(state, deps.contentDigest), hash: hashState(state), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs,
       commandHighWater: highWater(), heldHighWater: [...heldSequences], auxiliaryHighWater: [...auxiliarySequences], eventSequence };
     const bytes = encodeMessage({ kind: 'state', state: publication });
     // A stopped clock cannot replace a lost latest packet. Control boundaries
@@ -182,7 +182,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       driver.pump();
     } catch (error) {
       phase = 'error'; driver.dispose(); applyControls(); let snapshotAfterFault: Snapshot | null = null;
-      try { snapshotAfterFault = saveSnapshot(state); } catch { /* corrupted state */ }
+      try { snapshotAfterFault = saveSnapshot(state, deps.contentDigest); } catch { /* corrupted state */ }
       deps.onCrash({ tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
     } finally { pumping = false; }
   }

@@ -21,7 +21,7 @@ export interface HeadlessInit {
 export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps: AuthorityDeps) => Authority1a = createAuthority) {
   const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest: init.contentDigest });
   const pair = transport.connectLocal(), owned = Array.from({ length: init.playerCount }, (_, p) => p), runId = init.runId ?? 'headless-1';
-  const client = createClientRun(pair.clientLink, owned, { runId, resolveLayout: () => init.layout });
+  const client = createClientRun(pair.clientLink, owned, { runId, contentDigest: init.contentDigest, resolveLayout: () => init.layout });
   const botControllers = owned.map(player => createBotClient(player, client));
   let now = 0, deadlineOrdinal = 0, frames: readonly InputFrame[] = [], fault: CrashRecord | null = null;
   let bots = false;

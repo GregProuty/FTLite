@@ -12,6 +12,8 @@ const GOLDEN = 'tests/golden/basic.json';
 const golden = JSON.parse(readFileSync(GOLDEN, 'utf8')) as { replay: SemanticTrace | ReturnType<typeof scriptedReplay>; hashes: string[]; finalHash: string };
 // Pre-cutover saved input is converted solely in this test; blessing saves semantic input.
 const trace = 'intents' in golden.replay ? convertLegacyReplay(LAYOUT, golden.replay) : golden.replay;
+// Header-only fixture adaptation: source changes alter the digest, never canonical values or expected hashes.
+trace.initial.header.contentDigest = __GAMEPLAY_CONTENT_DIGEST__;
 const observations: { tick: number; state: Record<string, unknown> }[] = [];
 const result = runSemanticReplay(LAYOUT, trace, 60, __GAMEPLAY_CONTENT_DIGEST__, state => observations.push({ tick: state.tick, state: projectGameplay(state) }));
 

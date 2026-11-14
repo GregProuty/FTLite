@@ -22,7 +22,7 @@ export interface LocalRuntimeDeps {
 export function createLocalRuntime(deps: LocalRuntimeDeps) {
   const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest: deps.contentDigest });
   const pair = transport.connectLocal(), owned = Array.from({ length: deps.playerCount }, (_, p) => p);
-  const client = createClientRun(pair.clientLink, owned, { runId: deps.runId, resolveLayout: () => deps.layout });
+  const client = createClientRun(pair.clientLink, owned, { runId: deps.runId, contentDigest: deps.contentDigest, resolveLayout: () => deps.layout });
   let disposed = false, notifiedSequence = 0;
   let requestLifecycle: ((control: LifecyclePause) => void) | null = null;
   let bracketTick: number | null = null, validBracket = false, lastSeats: number[] = [], lastArrival = -1, lastRevision = -1;

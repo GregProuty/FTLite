@@ -1,3 +1,5 @@
+import { computeContentDigest } from '../build/contentDigest';
+const contentDigest = computeContentDigest(process.cwd());
 // Explicit diagnostic only: npx tsx scripts/profile-publication.ts
 import { performance } from 'node:perf_hooks';
 import starter from '../src/renderer/src/sim/ship/starter.json';
@@ -16,14 +18,14 @@ const message: AuthorityMessage = {
   kind: 'state',
   state: {
     runId: 'profile', tick: 0, publicationSequence: 1,
-    snapshot: saveSnapshot(state), hash: hashState(state), phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null,
+    snapshot: saveSnapshot(state, contentDigest), hash: hashState(state), phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null,
     pauseOwner: null, controlRevision: 0, commandHighWater: [0, 0, 0, 0], heldHighWater: [0, 0, 0, 0], auxiliaryHighWater: [0, 0, 0, 0], eventSequence: 0
   }
 };
 const bytes = encodeMessage(message);
 const times: Record<string, number> = {};
 const operations = {
-  snapshot: () => saveSnapshot(state),
+  snapshot: () => saveSnapshot(state, contentDigest),
   hash: () => hashState(state),
   encode: () => encodeMessage(message),
   metadata: () => latestMessageMetadata(bytes),

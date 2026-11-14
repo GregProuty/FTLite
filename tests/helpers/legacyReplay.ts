@@ -14,7 +14,7 @@ export function convertLegacyReplay(layout: ShipLayout, replay: Replay, contentD
   if (replay.layoutHash !== deriveLayout(layout).layoutHash) throw new Error('replay layout hash does not match the loaded layout');
   const state = createSimState(layout, replay.playerCount, replay.seed);
   let initial: ReturnType<typeof saveSnapshot>;
-  try { initial = saveSnapshot(state); } finally { disposeSimState(state); }
+  try { initial = saveSnapshot(state, contentDigest); } finally { disposeSimState(state); }
   const trace: SemanticTrace = { version: 'net1a-test', runId: 'golden', seed: replay.seed, initial, ticks: [] };
   const runner = semanticRunner(layout, initial, replay.seed, trace.runId, contentDigest);
   try {

@@ -2,15 +2,14 @@ import type { AuthorityEvent, CommandResult, Link, PlayerId, PublishedState } fr
 import { decodeMessage, encodeMessage } from '../net/codec';
 import type { ShipLayout } from '../sim/ship/schema';
 import { disposeSimState, type SimState } from '../sim/state';
-import { loadSnapshot, SNAPSHOT_FORMAT } from '../sim/snapshot';
+import { loadSnapshot, restoreSnapshot, SNAPSHOT_FORMAT } from '../sim/snapshot';
 import { SIM_VERSION } from '../sim/tuning';
-import { unflatten } from '../sim/flatten';
 import { hashF64 } from '../../../shared/hash';
 import { createCardUi, reconcileUi, reconcileCommandResult, type ClientActions } from './cardController';
 
 export type ClientRun = ReturnType<typeof createClientRun>;
 
-export function createClientRun(link: Link, owned: readonly PlayerId[], options: { runId: string; resolveLayout(id: string): ShipLayout }) {
+export function createClientRun(link: Link, owned: readonly PlayerId[], options: { runId: string; contentDigest?: string; resolveLayout(id: string): ShipLayout }) {
   let replica: SimState | null = null, publication: PublishedState | null = null, lastEvent = 0, disposed = false;
   const ui = createCardUi(options.runId), results: CommandResult[] = [], events: AuthorityEvent[] = [];
   const auxiliarySequences: number[] = [];
@@ -22,13 +21,14 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       const next = message.state;
       if (next.runId !== options.runId || next.publicationSequence <= (publication?.publicationSequence ?? 0)) return;
       if (next.snapshot.header.formatVersion !== SNAPSHOT_FORMAT || next.snapshot.header.simVersion !== SIM_VERSION) { link.close('state-version'); return; }
+      if (next.tick !== next.snapshot.header.tick) throw new Error('publication tick does not match snapshot');
       const values = Float64Array.from(next.snapshot.values);
       if (hashF64(values) !== next.hash) { link.close('state-checksum'); return; }
-      if (!replica) replica = loadSnapshot(JSON.parse(JSON.stringify(options.resolveLayout(next.snapshot.header.layoutId))) as ShipLayout, next.snapshot);
-      else {
-        if (next.snapshot.header.layoutHash !== replica.derived.layoutHash || next.snapshot.header.playerCount !== replica.playerCount) throw new Error('incompatible publication');
-        unflatten(replica, values);
-      }
+      if (!replica || next.snapshot.header.layoutId !== replica.layout.id || next.snapshot.header.layoutHash !== replica.derived.layoutHash || next.snapshot.header.playerCount !== replica.playerCount) {
+        const replacement = loadSnapshot(JSON.parse(JSON.stringify(options.resolveLayout(next.snapshot.header.layoutId))) as ShipLayout, next.snapshot, options.contentDigest);
+        if (replica) disposeSimState(replica);
+        replica = replacement;
+      } else restoreSnapshot(replica, next.snapshot, options.contentDigest);
       publication = next; reconcileUi(replica, ui, next.runId, next.commandHighWater);
       // A replacement starts after the authority's admitted IDs; an existing
       // producer may already have newer input in flight and must never rewind.

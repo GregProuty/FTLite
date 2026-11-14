@@ -13,10 +13,10 @@ import type { SimState } from '../../src/renderer/src/sim/state';
 /** Test-local semantic trace, not the deferred portable replay-v2 format. */
 export interface SemanticTrace { version: 'net1a-test'; runId: string; seed: number; initial: Snapshot; ticks: TickInput[] }
 export function semanticRunner(layout: ShipLayout, initial: Snapshot, seed: number, runId: string, contentDigest = __GAMEPLAY_CONTENT_DIGEST__) {
-  const state = loadSnapshot(layout, initial);
+  const state = loadSnapshot(layout, initial, contentDigest);
   const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest });
   const pair = transport.connectLocal(), owned = state.crew.map((_, p) => p);
-  const client = createClientRun(pair.clientLink, owned, { runId, resolveLayout: () => layout });
+  const client = createClientRun(pair.clientLink, owned, { runId, contentDigest, resolveLayout: () => layout });
   let now = 0, ordinal = 0;
   const authority = createFixtureAuthority({ clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, contentDigest, resolveLayout: () => layout, onCrash(r) { throw Error(r.error); },
     init: { runId, seed, playerCount: state.playerCount, characters: [], unlocked: [], layoutId: layout.id, layoutHash: deriveLayout(layout).layoutHash, simVersion: SIM_VERSION, contentDigest } }, state);
