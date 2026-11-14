@@ -61,3 +61,43 @@ export const BROAD_CELL = 200;
 /** Switches for the §4 test configurations; the game always uses DEFAULT_FLIGHT. */
 export interface FlightTuning { gravity: boolean; edge: boolean; drag: number; stabilise: number }
 export const DEFAULT_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: DRAG, stabilise: STABILISE };
+
+// Weapons and shields (§5, §7a)
+export const LASER_RANGE = 450;
+export const LASER_ARC_COS = 0.5;             // ±60° arc: inside when dot(h, d) ≥ cos 60° · |d|
+/** Laser charge in whole units, so tick counts are exact: full at LASER_CHARGE_UNITS. Weapons damage level 0 / 1 / 2
+ *  charges at these units per tick, which is 4 s × 1 / 1.6 / 2.5 (§5): full in 240 / 384 / 600 ticks. */
+export const LASER_CHARGE_UNITS = 9600;
+export const LASER_CHARGE_RATE: readonly number[] = [40, 25, 16];
+export const LASER_HOLD_TICKS = 180;          // a full charge can be held 3 s, then it vents
+export const LASER_HULL = 2;
+export const SHIELD_LAYERS = 2;
+/** Shield recharge clock in whole units: a layer at SHIELD_RECHARGE_UNITS. Shields damage level 0 / 1 / 2 adds these units
+ *  per tick, which is 5 s × 1 / 1.5 / stopped (§5): a layer in 300 / 450 ticks, or never. */
+export const SHIELD_RECHARGE_UNITS = 900;
+export const SHIELD_RATE: readonly number[] = [3, 2, 0];
+
+// Missiles (§7b, §4 collision matrix)
+export const MAGAZINE = 4;
+export const MAGAZINE_REGEN_TICKS = 2700;     // 45 s per missile regained
+export const MISSILE_RADIUS = 4;
+export const MISSILE_SPAWN_OFFSET = 25;       // ship radius 20 + missile radius 4 + 1 clear
+export const MISSILE_LAUNCH_SPEED = 60;
+export const MISSILE_THRUST = 160;
+export const MISSILE_TURN_STEPS_PER_TICK = (120 / 360) * HEADING_COUNT * DT;   // 120°/s, about 1.42
+export const MISSILE_FUEL_TICKS = 360;        // 6 s of thrust
+export const MISSILE_LIFE_TICKS = 480;        // then 2 s of coasting, then it self-destructs
+export const MISSILE_ARM_TICKS = 60;          // its own ship is ignored for the first 1 s
+export const MISSILE_HULL = 3;
+
+// The hunter (§9)
+export const HUNTER_LEAD_S = 0.5;
+export const HUNTER_THRUST_COS = 0.8660254037844386;   // thrust when the heading error is under 30°
+export const HUNTER_LOOKAHEAD_S = 0.75;
+export const HUNTER_AVOID_MARGIN = 30;
+export const HUNTER_JITTER_TICKS = 12;        // release jitter drawn uniformly from 0..12 ticks
+export const HUNTER_MISSILE_RANGE = 400;
+export const HUNTER_MISSILE_COOLDOWN_TICKS = 1800;
+export const HUNTER_TRAIL_TICKS = 18;         // missile pursuit aims where the crew was 0.3 s ago
+export const HUNTER_WALK_TICKS = 360;         // 6 s stand-in for crossing its ship
+export const REPAIR_WORK_TICKS = 240;         // 4 s per damage level
