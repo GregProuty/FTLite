@@ -47,3 +47,13 @@ Implications for the specs:
 - Ships stay small: fewer rooms than the reference map (on the order of 6 to 10), so every room matters and a crew of 2 still feels stretched.
 - Scarcity of crew time (Q3) is tuned for 2 to 4; bots fill seats up to the ship's crew size.
 - Milestones SHIP-1 to SHIP-3 drop in priority.
+
+## Q6. Who chooses the career, and when?
+
+**Answer: B, the crew drifts by what it does.** "They have choices to make at each place they jump to. They level up their individual characters with what they do."
+
+Implications for the specs:
+- No career pick in the lobby. The crew's reputation (smuggler, pirate, merchant, insurgent) grows from the jobs and choices it takes, and the world reacts to the reputation.
+- Direction on session one comes from the choices at every place the crew jumps to (jobs, events, encounters), not from a starting label.
+- Each player's character levels up individually from what they do: today's per-skill XP from use (skills and XP, roadmap item 1) is the model, extended to the new tasks, mini games and dialogue.
+- Blue options (spec section 6b) come from these individually earned skills.
