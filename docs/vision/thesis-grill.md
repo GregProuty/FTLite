@@ -197,3 +197,12 @@ Implications for the specs:
 - The laser opens the enemy up; the missile is the scarce guaranteed hit. Each weapon has its own job.
 - The enemy's Shields room is a real target: damaging it slows or stops shield recharge.
 - Directional shields (shield the side you show) are a possible later variant on top of this, not demo scope.
+
+## Q21. What happens to a damaged room in the demo?
+
+**Answer: C, a player repairs it.** Either player can leave their console for a short repair mini game on the damaged room (Engines, Weapons or Shields). While the Helm repairs, nobody flies; while the gunner repairs, nobody shoots. Damage does not heal by itself.
+
+Implications for the specs:
+- A small repair mini game is in demo scope, the first piece of the "inside" link (Q11) and the first FTL-style crew trade-off.
+- While the Helm is away, the ship coasts on its momentum and the stabilise assist engages as on a release (Claude's default; the owner can correct it).
+- Still open (Claude's default for the spec): the enemy also repairs, and pays the same price (a damaged enemy stops manoeuvring or firing while it repairs), so the trade is symmetric.
