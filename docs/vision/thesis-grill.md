@@ -57,3 +57,13 @@ Implications for the specs:
 - Direction on session one comes from the choices at every place the crew jumps to (jobs, events, encounters), not from a starting label.
 - Each player's character levels up individually from what they do: today's per-skill XP from use (skills and XP, roadmap item 1) is the model, extended to the new tasks, mini games and dialogue.
 - Blue options (spec section 6b) come from these individually earned skills.
+
+## Q7. How does the crew travel?
+
+**Answer: a randomly generated graph of star systems.** The crew jumps along the graph's links from system to system (FTL-style jumps, not free sailing).
+
+Implications for the specs:
+- Each campaign generates its own graph; nodes are star systems, edges are jump routes.
+- The napkin's "Alliance controlled star system" becomes a region of many systems under the regime's control (Claude's reading; the owner can correct it).
+- The direction spec's "one star system per campaign" (sections 3 and 7) changes to this graph.
+- FTLite's sector map and jumps are the starting point for the code.
