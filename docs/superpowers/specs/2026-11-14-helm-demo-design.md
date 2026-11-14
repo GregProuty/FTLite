@@ -1,6 +1,6 @@
 # Helm Demo: The Gravity-Well Duel (design)
 
-Status: spec written 2026-11-14 from the owner's direction and thesis grill Q11 to Q23c. Not yet reviewed. **Gospel: `docs/vision/napkin.md`; binding answers: `docs/vision/thesis-grill.md`** (the grill wins where this spec disagrees). Numbers marked *(start)* are starting values for tuning, not decisions. Defaults marked **(rec.)** are Claude's; the owner can overturn any of them.
+Status: spec written 2026-11-14 from the owner's direction and thesis grill Q11 to Q27. Not yet reviewed. **Gospel: `docs/vision/napkin.md`; binding answers: `docs/vision/thesis-grill.md`** (the grill wins where this spec disagrees). Numbers marked *(start)* are starting values for tuning, not decisions. Defaults marked **(rec.)** are Claude's; the owner can overturn any of them.
 
 ## 1. The owner's words
 
@@ -10,11 +10,13 @@ Status: spec written 2026-11-14 from the owner's direction and thesis grill Q11 
 
 > "im just talking about the tactical view. We need to be able to scroll in and out in a large map, and the helm pilots the ship through this map." (Q23)
 
-Reference for the tactical view: the bridge-simulator genre (the owner named Artemis Spaceship Bridge Simulator). This game takes the genre's ideas (a station screen per player, a zoomable map, a bearing ring, arcs drawn on the map) and designs its own screens, art, names and layout. It does not reproduce another game's interface (foundation §12, direction spec A10).
+> "These map view gameplay mechanisms/ mini games are perfect for what we're trying to build. Especially because the graphics are minimal. So the players should see these map views when in their terminals, but see the FTL style map of the ship when they leave the consoles, and be able to run around as their character and fix issues/ do tasks around the ship" (Q26, Q27)
+
+Reference for the tactical view: the bridge-simulator genre (the owner named Artemis Spaceship Bridge Simulator). This game takes the genre's ideas (a station screen per player, different views of one shared space, a zoomable map, a bearing ring, arcs drawn on the map) and designs its own screens, art, names and layout. It does not reproduce another game's interface (foundation §12, direction spec A10).
 
 ## 2. What the demo is
 
-Two friends on two computers crew one small ship against one enemy ship in a large map around a planet, seen top-down. One player flies the **Helm** (direct stick, real momentum, real gravity). The other runs **Weapons** (a laser with a firing arc and a room lock, and cruise missiles the gunner steers by hand). Each player has their own zoomable view of the same map. Hits damage FTL-style rooms (Engines, Weapons, Shields), and a player has to leave their console to repair them. The duel ends when one hull breaks: about 3 to 5 minutes.
+Two friends on two computers crew one small ship against one enemy ship in a large map around a planet, seen top-down. One player flies the **Helm** (direct stick, real momentum, real gravity). The other runs **Weapons** (a laser with a firing arc and a room lock, and cruise missiles the gunner steers by hand). Seated at a console, each player sees that console's **map view** of the one shared map, centred on their ship (Q25, Q26). Hits damage FTL-style rooms (Engines, Weapons, Shields). To repair one, a player **stands up, sees the FTL-style interior of their ship, and runs their character to the damaged room** to fix it (Q27), while their console sits empty. The duel ends when one hull breaks: about 3 to 5 minutes.
 
 It exists to answer one question: **is gravity-well piloting with a two-person crew fun?** (Q14). It is built so the same map, physics and enemy carry a later three-encounter run (§14).
 
@@ -38,10 +40,13 @@ It exists to answer one question: **is gravity-well piloting with a two-person c
 | Q23b | The camera follows the player's ship; the player can pan away and snap back |
 | Q23c | One planet, an asteroid belt ring and loose asteroid clusters, stored as data |
 | Q24 | Until Net-3, the owner playtests alone, owning both seats and switching between the stations |
+| Q25 | One shared map space, a different view per station |
+| Q26 | Weapons is ship-centred like the Helm (Q25's sector map withdrawn); minimal map graphics are the style |
+| Q27 | At a console: its map view. Standing: the FTL-style interior; walk to rooms and repair there. In the demo |
 
 ### Not in the demo
 
-Interior crew, oxygen, fires, doors and walking (the full inside link comes after, Q11). Bots in seats (Q15). A solo game mode for players (solo exists only as the owner's playtest mode, §11a). The sector run, events, dialogue, shops, careers and the open world. Moons, rings, atmospheres and aerobraking (Q16, Q23c). Directional shields (Q20). Enemy moods (Q17). Sensor range or fog. New art beyond original placeholder shapes (§12). Prediction and rollback (§11b).
+Oxygen, fires, breaches, boarders, medbay, power allocation and the other sector-run interior systems (the interior in the demo is walking, doors, consoles and repair only, §8). Per-room task mini games beyond repair (MG-X). A whole-map sector view (waits for a Science or Captain station, Q26). Bots in seats (Q15). A solo game mode for players (solo exists only as the owner's playtest mode, §11a). The sector run, events, dialogue, shops, careers and the open world. Moons, rings, atmospheres and aerobraking (Q16, Q23c). Directional shields (Q20). Enemy moods (Q17). Sensor range or fog. New art beyond original placeholder shapes (§12). Prediction and rollback (§11b).
 
 ## 3. The map
 
@@ -68,7 +73,7 @@ The sim runs at today's 60 Hz (`TICK_HZ`) inside the Net-1 authority and follows
 - **Arcs and sectors without angles:** "inside a ±θ arc" means `dot(h, u) ≥ cos θ · |u|`, where `cos θ` is a literal constant. "Which side" uses the 2-D cross product. Neither needs trigonometry.
 - **Integration:** semi-implicit (symplectic) Euler once per tick: apply forces, update velocity, update position. Bodies update in a fixed order (crew ship, enemy, missiles by spawn id). Collisions are circle against circle, resolved in the same fixed order.
 - **Broad phase:** about 100 static asteroids. A fixed uniform grid (cell 200 units), built once per map, gives each body its nearby asteroids in a fixed cell order. Collisions and line of sight stay cheap and deterministic as maps grow.
-- **Randomness:** one new named stream, `rng.tactical`, seeded from the duel seed. It feeds the map layout, repair prompts and the enemy's small decision jitter. Combat hits are geometric and draw no random numbers.
+- **Randomness:** one new named stream, `rng.tactical`, seeded from the duel seed. It feeds the map layout and the enemy's small decision jitter. Combat hits are geometric and draw no random numbers.
 
 Tests (in `npm test`): a circular orbit at r = 250 holds its radius within 2% over 60 s with no thrust; energy drift stays bounded over a 5-minute coast; the same seed and commands give the same hash; every seed from 1 to 200 produces a valid map (no overlaps, three passable gaps, clear spawns); a golden replay of a scripted duel; arc and sector truth tables.
 
@@ -106,7 +111,7 @@ Direct stick (Q18). The Helm's client sends **held axes every tick on the existi
 | Drag | Velocity × (1 − 0.15 · dt) each tick (mild, Q12). Terminal speed under full thrust is about 800 u/s, so crossing the map takes several seconds, not a minute |
 | **Stabilise** | While both axes are zero, the assist cancels **sideways** velocity (perpendicular to the heading) at up to 80 u/s². It never cancels gravity or forward speed, so a released ship stops skidding but still coasts, falls and orbits (Q12: "kills drift" for beginners; experts thrust through it) **(rec.)** |
 
-Keys: keyboard W/S thrust, A/D turn, R repair; gamepad left stick (x turn, y thrust) or d-pad, triggers as an alternative for thrust and reverse, a face button for repair.
+Keys: keyboard W/S thrust, A/D turn, the existing stand-up key to leave the console (§8); gamepad left stick (x turn, y thrust) or d-pad, triggers as an alternative for thrust and reverse, the existing stand-up button.
 
 **Feel targets** (tuned by hand in the dev flight view, §15): from a standstill near the belt, a pilot threads a gap within 15 s of trying; a slingshot past the planet at r ≈ 150 changes direction by more than 90° and leaves faster than it came in; a released ship at cruise speed stops skidding within 1 s.
 
@@ -116,7 +121,7 @@ Two modes on one console: **laser** and **missile in flight** (Q19, Q19b).
 
 ### 7a. Laser (Q13)
 
-- **Arc:** ±60° around the nose, range 450 *(start)*. The Weapons view draws the arc. The Helm's positioning decides whether the enemy is in it.
+- **Arc:** ±60° around the nose, range 450 *(start)*. The Weapons view draws the arc, and the enemy's arc too (same rules, §9), so the crew can see where not to be. The Helm's positioning decides whether the enemy is in it.
 - **Room lock:** the gunner cycles the locked enemy room (Weapons, Shields, Engines). The lock is shown on the enemy ship on both screens.
 - **Charge and release:** holding Fire charges the laser (4 s × the Weapons-room factor). Releasing at full charge fires; releasing early discards the charge. A full charge can be held for 3 s, then it vents and starts over. The skill is timing the release for the moment the enemy is in the arc with line of sight.
 - **The shot:** an instant beam. It hits if the enemy is inside the arc and range and the segment between the ships misses the planet and every asteroid; otherwise it is a miss (shown). It draws no random numbers.
@@ -131,16 +136,21 @@ Two modes on one console: **laser** and **missile in flight** (Q19, Q19b).
 - **The trade:** while a missile flies, the laser cannot be charged or fired; a held full charge freezes (no venting). When the missile ends, the console returns to laser mode (Q19b).
 - **Point defence:** none in the demo. Missiles are dodged by flying, or die on the planet and asteroids **(rec.; the grill leaves it open)**.
 
-Keys: keyboard Q/E cycle the lock, Space hold-to-charge and release, F launch a missile, A/D steer a missile, R repair; the gamepad equivalent.
+Keys: keyboard Q/E cycle the lock, Space hold-to-charge and release, F launch a missile, A/D steer a missile, the stand-up key to leave; the gamepad equivalent.
 
-## 8. Damage and repair (Q21)
+## 8. The interior: leaving the console, walking and repair (Q21, Q27)
 
-Either player can leave their console to repair one damaged room.
+Each player is a character aboard the crew's ship. **Seated at a console, they see its map view (§10). Standing, they see the FTL-style interior of their own ship** and walk their character through it. This reuses FTLite's existing interior, not a new one.
 
-- **Leaving:** press Repair, choose a damaged room, and the player's screen shows the repair mini game in place of their console. While the Helm is away, axes read zero (the ship coasts with stabilise on). While the gunner is away, the laser charge freezes and a missile in flight coasts unsteered. Press Repair again to go back at any time; repair progress on the current step is kept.
-- **The mini game:** the sim deals a sequence of **6 direction prompts** per damage level from `rng.tactical`. Each correct press advances it; a wrong press locks input for 0.5 s. Completing a sequence lowers that room by one level. A quick player clears a level in about 3 to 4 s *(start)*.
-- **Why sim-owned:** the sequence lives in the authority and presses arrive as commands, so the outcome is deterministic and no client-reported quality is needed. This is deliberately smaller than MG-X's attempt model (direction spec A1, A2). If MG-X lands first, repair moves onto it.
-- **Enemy repair:** the enemy repairs too, at the same price **(rec.)**: repairing Engines stops it turning and thrusting; repairing Weapons or Shields stops it firing. It uses the same per-level duration (§9).
+- **The ship:** the **Cutter** layout (`sim/ship/cutter.json`, the FTL-look ship from Demo-iii) **(rec.)**. Its Navigation console (the bridge, bow), Weapons console (midship) and Engineering room (stern) are in separate rooms, so every repair is a walk: bridge to Engineering is about 25 tiles, about 6 s at today's 4 tiles/s. The Skiff is ruled out because its Navigation and Weapons share one console. Other Cutter consoles (Science, Doors, Medbay, Life Support) are scenery in the demo: a player can't sit at them **(rec.)**.
+- **What runs inside:** walking and collision (`movement.ts`), doors opening as crew pass (`doors.ts`), sitting down and standing up (`stations.ts`), and Interact (`interact.ts`). Fires, oxygen, breaches, boarders, power allocation, medbay, events and the director are **off** in the duel.
+- **Consoles are roles.** Sitting at Navigation makes a player the Helm; sitting at Weapons makes them the gunner. Either player may sit at either free console **(rec.)**, so a pair can swap mid-fight. A duel starts with player 0 seated at Navigation and player 1 at Weapons.
+- **An empty console:** with nobody at Navigation, the ship coasts with stabilise on (axes read zero). With nobody at Weapons, the laser charge freezes and a missile in flight coasts unsteered.
+- **Damage shows inside.** Each tactical room (§5) has a **repair point** in an interior room, named in the duel's layout data **(rec.)**: Engines in Engineering (E), Weapons in the Weapons room (W), Shields in a Cutter room chosen in H-1 so that all three repairs are a walk from both consoles *(start: the room nearest midship that holds no console)*. A damaged room shows its level on the interior view (tint and a marker), and the console overlays list it.
+- **Repair:** stand within reach of the repair point and hold Interact, the same targeting and progress as today's station repair (`TargetKind.Power` in `interact.ts`), as a new target kind for tactical room damage. One damage level takes **4 s** for one repairer *(start)*; two players together each work at the existing `TEAM_MULT` (1.25). Letting go keeps the progress. Completing lowers the room by one level.
+- **Why hold-to-repair, not the old button sequence:** the walk is now the price of leaving a console, and hold-to-repair is what FTLite's crew already does. The per-room task mini games of the napkin come with MG-X and replace it there **(rec.)**.
+- **Inputs:** held axes move the character while standing and fly or steer while seated (§13). Interact and stand up/sit down are today's interaction commands.
+- **Enemy repair:** the enemy has no interior. It repairs abstractly at the same price **(rec.)**: repairing Engines stops it turning and thrusting; repairing Weapons or Shields stops it firing. One level takes the 4 s repair time plus a fixed 6 s walk allowance (§9).
 
 ## 9. The enemy: the hunter (Q17)
 
@@ -150,17 +160,18 @@ Written as a small state machine; the demo has two states, and moods (Q17 C) are
 
 - **Hunt:** steer toward a lead point (where the crew's ship will be in 0.5 s at its current velocity). Thrust when the heading error is under 30°. Avoid the planet and asteroids with a **short lookahead**: if the straight-line path over the next 0.75 s comes within `body radius + 30`, turn away and thrust. The short lookahead is the bluntness that lets the Helm bait it into the planet or the belt (Q16, Q17).
 - **Firing:** charge the laser continuously and release when the crew's ship is in arc with line of sight, after a 0.2 s jitter from `rng.tactical`. Lock the crew's Shields room until it reaches level 2, then Weapons (the lock only matters once a shot lands with the crew's shields down). Launch a missile when the crew is within 400, at most one per 30 s, and steer it with simple pursuit with a 0.3 s reaction lag (beatable by hard turns and by putting the planet or the belt between them).
-- **Repair:** when a room is at level 2, or at level 1 and the crew's ship is out of laser range, enter **Repair** for that room (§8 price), then return to Hunt.
+- **Repair:** when a room is at level 2, or at level 1 and the crew's ship is out of laser range, enter **Repair** for that room (§8: 4 s per level plus the 6 s walk allowance), then return to Hunt.
 
 Tuning goal: a competent pair wins about 60 to 70% of the time, and a pair who ignores the planet loses (Q22).
 
-## 10. The tactical view
+## 10. The console map views
 
-Each player sees the same map on their own screen through their own camera (Q23, Q23b). The camera is client-only view state: it is never sent to the authority and never part of the sim hash, so looking around cannot change the game.
+A seated player sees the shared map through their console's own camera (Q23, Q23b, Q25, Q26). Both consoles are **ship-centred**; they differ in what is drawn on top (§10b). The style is minimal vector graphics on dark space, by choice (Q26). Cameras are client-only view state: they are never sent to the authority and never part of the sim hash, so looking around cannot change the game. A standing player sees the interior instead (§8); each console keeps its camera for whoever sits there next.
 
-### 10a. The camera
+### 10a. The camera (both consoles)
 
-- **Follow by default.** The camera centres on the player's own ship. North is fixed at the top and the ship rotates **(rec.)**, so the planet and the orbits stay still on screen and a slingshot reads as a curve.
+- **North up.** North is fixed at the top and ships rotate **(rec.)**, so the planet and the orbits stay still on screen and a slingshot reads as a curve.
+- **Follow by default.** The camera centres on the player's own ship.
 - **Zoom.** Continuous between the closest and the widest view, eased over 0.15 s; about the cursor with the mouse wheel, about the screen centre with keys and gamepad.
   - Closest: about 1.2 px per unit (the ship is about 48 px across; fine flying and aiming).
   - Widest: the whole map fits the screen height (about 0.12 px per unit at 720 px).
@@ -169,8 +180,9 @@ Each player sees the same map on their own screen through their own camera (Q23,
 - **Snap back.** Keyboard `C` or a right-stick click recentres on the ship with a 0.2 s ease and resumes following.
 - **Off-screen arrows.** At the screen edge, arrows point to things off-screen: the player's own ship (always), the enemy and the planet, each with its distance.
 - **Keys:** keyboard `−`/`=` and the mouse wheel zoom; gamepad shoulders zoom. These never clash with the Helm's or Weapons' keys.
+- **Weapons, missile in flight:** `C` toggles the camera between following the ship and following the missile **(rec.: steering a missile far from the ship needs it on screen)**. The off-screen arrows add the missile.
 
-Because the camera is per player, the gunner can watch the enemy while the Helm watches the planet.
+Because each player zooms and pans on their own, the gunner can watch the enemy while the Helm watches the planet, and either can call out positions by grid square.
 
 ### 10b. What the view draws
 
@@ -184,8 +196,8 @@ Original placeholder shapes in Pixi Graphics; the world container is scaled and 
 6. **Ships:** original wedge silhouettes with three room segments tinted by damage, and shield rings. **Below a minimum on-screen size, a ship draws as a fixed-size icon** (a chevron along its heading, coloured crew or enemy), so ships never vanish at wide zoom. Missiles draw with trails.
 7. **Per-console layers:**
    - **Helm:** the **predicted path** (about 2 s ahead at close zoom, rising to about 8 s at wide zoom), computed by the same pure physics function from the latest state; a velocity vector; a heading line; the thrust and turn state; a **bearing ring** around the ship (0 to 359, north = 0) at close and middle zoom.
-   - **Weapons:** the laser arc and range, the charge bar, the room lock on the enemy, the missile count, and in missile mode the missile's predicted path.
-8. **Screen-space overlay:** off-screen arrows, the zoom level, a scale bar, the snap-back hint while panned, both hulls, the shield pips, the room damage and the other player's status (flying, firing, repairing).
+   - **Weapons:** the bearing ring; the own laser arc and range; **the enemy's arc** (dimmer, so the crew sees where not to be); the room lock and bearing and range on the enemy; and in missile mode the missile's predicted path.
+8. **Screen-space overlay:** off-screen arrows, the zoom level, a scale bar, the snap-back hint while panned, both hulls, the shield pips, the room damage, and the other player's status (at Helm, at Weapons, walking, repairing). Weapons adds the charge bar and the missile magazine. A short console readout list on one side (hull, shields, room levels, magazine) in the same minimal style **(rec.)**.
 
 Rendering interpolates between published states (render time = latest state minus one tick), so motion stays smooth at 60 fps today and over Net-3's 20 to 30 Hz deltas later.
 
@@ -195,31 +207,32 @@ Rendering interpolates between published states (render time = latest state minu
 
 Until Net-3 exists, the owner playtests alone and runs between the stations.
 
-- **One player, both seats.** The solo player owns both seats (Helm = player 0, Weapons = player 1) as two player IDs on one local loopback link, which Net-1a already supports. The authority, commands, held input and sim are exactly those Net-3 carries later; only the transport differs. Nothing in the duel is built twice.
-- **Switching.** Tab (gamepad: Select/View) swaps the screen between the Helm and Weapons. Each station keeps its own camera (§10a), and the screen is exactly what a multiplayer player at that station sees.
-- **The station left behind** behaves as if its player stepped away, the same rule as leaving for a repair (§8): the Helm's axes read zero, so the ship coasts with stabilise on; the laser charge freezes and a missile in flight coasts unsteered. Repair works as in §8 from either station.
+- **One player, both characters.** The solo player owns both characters (player 0 and player 1) as two player IDs on one local loopback link, which Net-1a already supports. The authority, commands, held input and sim are exactly those Net-3 carries later; only the transport differs. Nothing in the duel is built twice.
+- **Switching.** Tab (gamepad: Select/View) switches which character the owner controls, and the screen with it: that character's console view if seated, the interior if standing (Q27). Each screen is exactly what a multiplayer player in that position sees.
+- **The character left behind** stays where it is. A seated one leaves its console idle, the same rule as an empty console (§8): the ship coasts with stabilise on; the laser charge freezes and a missile in flight coasts unsteered. The owner can also run one character to a repair and Tab back.
 - **Duel length:** solo duels run longer and harder than two-player ones, because one station is always idle. The Q22 targets apply to two-player sessions; solo telemetry is recorded with a `solo` flag and judged separately.
 
 ### 11b. Two screens over the network (Q15b)
 
-- **Seats:** the lobby assigns player 0 to the Helm and player 1 to Weapons; the players can swap before starting. One player per machine.
+- **Seats:** player 0 starts seated at Navigation (Helm) and player 1 at Weapons; the players can swap before starting, or swap consoles during the duel by walking (§8). One player per machine.
 - **Transport:** the demo runs over Net-0's chosen stack. By Net-0 and the direction spec A6, **Net-1b comes before Net-3**, and Net-3 is "two machines over the internet, no prediction" (WebRTC, Cloudflare signalling and TURN, join codes). Net-3 needs the owner's Cloudflare account and domain (Net-0 open item 2). Net-3's state and message shapes should be mode-agnostic so the duel rides on it without rework.
-- **Net-2 is not a prerequisite for the duel (rec.).** Click-to-move and the per-player FTL layout serve the interior game (MG-1b), not this view.
+- **Net-2 is not a prerequisite for the duel (rec.).** The demo's interior is walked with the held stick, as in the couch game today; Net-2's click-to-move and per-player interior layout are not needed for it.
 - **Latency:** without prediction (Net-4), the remote player's inputs show after one round trip plus interpolation. A direct stick is the input most sensitive to this, so seat the Helm on the host machine where possible. The first networked playtests run on one home network (LAN); internet tests follow, with input-to-screen delay measured. If delay makes the Helm feel bad, pulling prediction of **the crew's own ship** forward from Net-4 is the planned remedy (§17).
 
 ## 12. Look and sound
 
-Original placeholder shapes drawn with Pixi Graphics (§10b): a shaded planet disc, rough asteroid polygons, both ships as original wedge silhouettes with three visible room segments, shield rings, a beam flash, missile trails, an impact burst and a planet-contact spark. No new art files, so the foundation §12 originality rule holds trivially. The existing music tracks may play; there are no new sound effects beyond reusing the ones that exist.
+**Console views:** minimal vector graphics on dark space, the chosen style (Q26), drawn with Pixi Graphics (§10b): a shaded planet disc, rough asteroid polygons, both ships as original wedge silhouettes with three visible room segments, shield rings, arcs, a beam flash, missile trails, an impact burst and a planet-contact spark. **Interior:** the existing FTL-look Cutter renderer (Demo-iii, Demo-x), plus a damage tint and marker on the three repair rooms. No new art files, so the foundation §12 originality rule holds trivially. The existing music tracks may play; there are no new sound effects beyond reusing the ones that exist.
 
 ## 13. Architecture
 
-- **Sim, new subtree `sim/tactical/`:** `map.ts` (`MapDef`, the seeded generator and its validation), `bodies.ts` and `physics.ts` (gravity, thrust, drag, stabilise, integration, collisions, the broad-phase grid, and the pure `predictPath(state, bodyId, seconds)` used by the render), `headings.ts` (generated), `state.ts` (`TacticalState`: bodies, ships, rooms, shields, weapons, missiles, repair, enemy brain, telemetry), `step.ts`, `weapons.ts`, `repair.ts`, `hunter.ts`, `hash.ts`, `snapshot.ts`, `tuning.ts`. It imports nothing from the sector-run sim beyond shared helpers (RNG, hashing).
-- **One session, two modes:** the authority gains a mode discriminant, `sector` (today) or `duel`. A run is one or the other. Command validation, ledgers, the tick driver and publication stay shared.
-- **Inputs:** turn and thrust for the Helm, and missile steering for Weapons, ride the existing held-input channel (validated per seat: the Helm seat's held input steers the ship; the Weapons seat's steers its missile). A new tactical command family joins the closed union (an explicit Net-1 amendment, as MG-X will be): `laserLock {room}`, `laserCharge {held}`, `missileLaunch`, `repairToggle {room}`, `repairPress {dir}`. Only the Weapons seat sends weapon commands; either seat sends repair commands for its own player.
-- **Client view, new `render/tactical/`:** `camera.ts` (follow, pan, snap, zoom, screen ↔ world transforms; pure and unit-tested), `tacticalLayer.ts` (the draw order in §10b), `offscreen.ts` (edge arrows), `grid.ts`. Camera inputs are handled in the client and never become commands.
+- **Sim, new subtree `sim/tactical/`:** `map.ts` (`MapDef`, the seeded generator and its validation), `bodies.ts` and `physics.ts` (gravity, thrust, drag, stabilise, integration, collisions, the broad-phase grid, and the pure `predictPath(state, bodyId, seconds)` used by the render), `headings.ts` (generated), `state.ts` (`TacticalState`: bodies, ships, rooms, shields, weapons, missiles, enemy brain and its abstract repair, telemetry), `step.ts`, `weapons.ts`, `hunter.ts`, `hash.ts`, `snapshot.ts`, `tuning.ts`. It imports nothing from the sector-run sim beyond shared helpers (RNG, hashing).
+- **The interior (Q27):** the duel's state is `{ interior, tactical }`. `interior` is today's `SimState`, created from the Cutter layout with the duel's systems switched off (§8). Each duel tick runs, in order: the existing interior systems the duel uses (movement, doors, sit and stand, interact, including the new tactical-repair target kind); then the tactical step, which reads who is seated at Navigation and Weapons from the interior; then the damage hand-over (tactical room levels are the single source of truth; the interior reads them to place repair targets and draw tints, and a finished repair lowers the tactical level). How the interior systems are switched off (flags on `SimState` versus a duel-only system list in the step) is settled in the H-0 plan **(rec.: a duel-only system list; the sector step is unchanged)**.
+- **One session, two modes:** the authority gains a mode discriminant, `sector` (today) or `duel`. A run is one or the other. Command validation, ledgers, the tick driver and publication stay shared. `authority/core.ts`, typed to `SimState` today, takes the duel state through that discriminant.
+- **Inputs:** held axes are routed by the character's position: **standing**, they walk the character (today's path); **seated at Navigation**, they are the Helm's turn and thrust; **seated at Weapons**, they steer a missile in flight. A new tactical command family joins the closed union (an explicit Net-1 amendment, as MG-X will be): `laserLock {room}`, `laserCharge {held}`, `missileLaunch`. The authority accepts them only from the player seated at Weapons. Sitting, standing and Interact use the existing interaction commands.
+- **Client view, new `render/tactical/`:** `camera.ts` (follow, pan, snap, zoom, screen ↔ world transforms; pure and unit-tested), `tacticalLayer.ts` (the draw order in §10b), `offscreen.ts` (edge arrows), `grid.ts`. Camera inputs are handled in the client and never become commands. The screen shows the console view while the player's character is seated and the existing interior renderer while standing.
 - **Versioning:** one `SIM_VERSION` bump when the duel mode lands, with its own golden file. The sector run's figures, gates and goldens are unchanged.
-- **Scripted pair for tests only:** a headless scripted Helm and gunner (orbit, line up, release in arc, the occasional missile and repair) drive telemetry and gate tests. They are never offered as a seat (Q15).
-- **Telemetry (per duel):** duration; outcome; laser releases, hits, misses and layers stripped; missiles launched, hits by room, losses by cause; planet and asteroid contacts per ship; enemy planet and belt contacts after crew manoeuvres (baits); repairs started and finished per player; time away from each console; time the enemy spent in the laser arc; time Weapons had nothing to do.
+- **Scripted pair for tests only:** a headless scripted Helm and gunner (orbit, line up, release in arc, the occasional missile, and standing up to walk to a repair and back) drive telemetry and gate tests. They are never offered as a seat (Q15).
+- **Telemetry (per duel):** duration; outcome; laser releases, hits, misses and layers stripped; missiles launched, hits by room, losses by cause; planet and asteroid contacts per ship; enemy planet and belt contacts after crew manoeuvres (baits); repairs started and finished per player; time away from each console, split into walking and repairing; console swaps; time the enemy spent in the laser arc; time Weapons had nothing to do.
 
 ## 14. Growing into B (Q14)
 
@@ -235,12 +248,12 @@ To make that cheap: the map is data (planet, belt, clusters, spawns, goal circle
 
 | # | Milestone | Proves | Depends on |
 |---|---|---|---|
-| H-0 | **Duel sim, headless.** First the map, physics, headings and held-input flight (with the orbit, energy, hash and 200-seed map tests); then both consoles' rules, shields, rooms, repair, the hunter, commands, telemetry, the scripted pair and the golden replay | The rules are deterministic and tunable; the scripted duels hit the telemetry targets | Net-1a (in) |
-| H-1 | **Dev view and solo playtest.** First a **dev flight view**: one ship, one player, the full camera (§10a) and the Helm layer, to meet the §6 feel targets by hand. Then the Weapons layer and the **solo playtest mode** (one player, both seats, Tab between stations, §11a). Not the multiplayer demo (Q15b) | Feel tuning starts early; the owner flies it | H-0 (flight part first) |
+| H-0 | **Duel sim, headless.** First the map, physics, headings and held-input flight (with the orbit, energy, hash and 200-seed map tests); then both consoles' rules, shields, rooms, the hunter, commands; then the **interior link** (§8, §13: the Cutter interior with the duel's systems, seat-routed held input, repair points and the tactical-repair target); telemetry, the scripted pair and the golden replay | The rules are deterministic and tunable; the scripted duels, walking to repairs included, hit the telemetry targets | Net-1a (in) |
+| H-1 | **Dev view and solo playtest.** First a **dev flight view**: one ship, one player, the follow camera (§10a) and the Helm layer, to meet the §6 feel targets by hand. Then the Weapons layer; then **standing up into the interior view**, walking to a repair and sitting back down; then the **solo playtest mode** (one player, both characters, Tab between them, §11a). Not the multiplayer demo (Q15b) | Feel tuning starts early; the owner flies it and runs the ship | H-0 (flight part first) |
 | H-2 | **The networked duel (the demo).** Two machines, one player each, over Net-3. LAN playtests first, then internet. Run the Q22 checklist | **Is it fun?** | H-1, Net-1b, Net-3 |
 | H-3 | **The B run.** Debris run and escape (§14) | The map and physics carry more than a duel | H-2 passed |
 
-H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by switching stations before Net-3; the dev split view is optional once switching works. H-0's flight part and H-1's flight view come first: everything else in the duel sits on top of them. H-0 and H-1 run alongside Net-1b. Roadmap item 36 records this order. It puts the Helm demo ahead of the direction spec's MG-0/MG-X/MG-1a sequence for now; those milestones remain, and MG-1a's integrated encounter becomes this duel plus the full interior link.
+H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by switching stations before Net-3; the dev split view is optional once switching works. H-0's flight part and H-1's flight view come first: everything else in the duel sits on top of them. H-0 and H-1 run alongside Net-1b. Roadmap item 36 records this order. It puts the Helm demo ahead of the direction spec's MG-0/MG-X/MG-1a sequence for now; those milestones remain. The duel already carries a walking interior (Q27); MG-1a's integrated encounter becomes this duel plus the rest of the interior (fires, oxygen, power, boarders) and MG-X's per-room tasks.
 
 ## 16. Acceptance (Q22)
 
@@ -249,7 +262,7 @@ H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by
 **Playtest checklist** (H-2, after each session, yes/no):
 1. Did the Helm use the planet's gravity on purpose at least once (a slingshot or a bait)?
 2. Did the two players talk to coordinate ("bring the nose round", "missile away")?
-3. Did either player leave their console to repair at a moment that mattered?
+3. Did either player run from their console to repair at a moment that mattered?
 4. Can each player retell one fight moment?
 5. Did they want to play again straight away?
 
@@ -263,6 +276,8 @@ H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by
 4. **Gravity makes the fight a spiral.** If both ships settle into the same orbit, add tuning (spawn orbits, enemy lead) before adding systems.
 5. **The hunter is too dumb or too good.** Tuned against the scripted pair first, then by playtest; its numbers are all in `sim/tactical/tuning.ts`.
 6. **Determinism with Float64.** IEEE `+ − × ÷ sqrt` are exact and identical across engines, but literals and operation order must be fixed; the real-browser cross-engine harness from Net-1b runs the duel golden too.
+7. **Reusing the sector interior couples the duel to `SimState`.** The interior systems were written for the sector run and read many of its fields. Mitigation: the duel runs only the systems it lists (§13); a test asserts that a duel's interior never starts fires, breaches, boarders or events; the sector run's goldens must stay unchanged.
+8. **Walking makes repair too slow or too cheap.** The Cutter's walk (about 6 s end to end) plus 4 s per level is the price. Tune with the repair time and the Shields repair point's position before changing the ship.
 
 ## 18. Open questions (defaults taken meanwhile)
 
@@ -271,17 +286,24 @@ H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by
 3. One missile in flight at a time; the magazine regenerates (§7b). **(rec.)**
 4. Missiles can hit their own ship after 1 s (§7b). **(rec.)**
 5. No point defence in the demo (§7b). **(rec.)**
-6. The enemy repairs and pays the same price (§8). **(rec., in grill Q21)**
+6. The enemy repairs abstractly at the same price plus a fixed walk allowance (§8). **(rec., in grill Q21)**
 7. North-up with a rotating ship, not heading-up (§10a). **(rec.)**
 8. The camera stays where it was panned until the player snaps back; no automatic return (§10a). **(rec.)**
 9. Everything on the map is visible to both players and the enemy; no sensor range or fog (§9, §10). **(rec.)**
 10. Net-2 is not needed for the duel; Net-3 is written mode-agnostic (§11b). **(rec.)**
 11. The dev flight view in H-1 is a workbench; the solo playtest mode is the owner's, not a player-facing game mode (§11a, §15). **(rec.)**
 12. Map size, belt radii and spawns at r = 2000 (§3) need checking against the 3 to 5 minute target once the hunter exists. *(start)*
-13. Tab (gamepad Select/View) switches stations in solo (§11a). **(rec.)**
+13. Tab (gamepad Select/View) switches the controlled character in solo (§11a). **(rec.)**
+14. At Weapons, `C` during a missile's flight toggles the camera between the ship and the missile (§10a). **(rec.)**
+15. The Cutter is the duel ship; its other consoles are scenery (§8). **(rec.)**
+16. Either player may sit at either free console mid-duel (§8). **(rec.)**
+17. Repair is hold-to-repair, 4 s per level, until MG-X's per-room tasks (§8). **(rec.)** *(start)*
+18. Where the Shields repair point sits on the Cutter (§8); chosen in H-1. *(start)*
 
 ## Change log
 
 - 2026-11-14: written from the owner's Helm direction and grill Q11 to Q22.
 - 2026-11-14: grill Q24: solo playtesting until Net-3, one player owning both seats and switching stations (§11a); H-1 gains the solo mode.
 - 2026-11-14: folded in the tactical view (grill Q23 to Q23c): a large zoomable map with one planet, an asteroid belt and clusters; a per-player follow camera with pan, snap and zoom; the view's draw order; held-input flight and missile steering. The one-screen arena and the fixed shared camera are gone. The short-lived separate tactical view spec was merged here and deleted.
+- 2026-11-14: grill Q25: one shared map, two views. The Helm keeps the follow camera; Weapons gets a whole-map sector view on the lettered grid that zooms and pans but does not follow (§2, §10, §10a, §10b, §18 item 14).
+- 2026-11-14: grill Q26 and Q27. Weapons is ship-centred like the Helm (the sector view is withdrawn until a Science or Captain station). Players are characters aboard the Cutter: seated, they see their console's map view; standing, they see the FTL-style interior and walk to the damaged room to repair it (hold-to-repair, replacing the button-sequence mini game). Consoles are roles; solo Tab switches characters. Rewrote §2, §8, §10, §10a, §10b, §11, §12, §13 and §15; added risks 7 and 8 and open items 15 to 18.

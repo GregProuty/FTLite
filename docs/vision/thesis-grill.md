@@ -258,3 +258,33 @@ Implications for the specs:
 - One key (Tab) swaps the player's screen between the Helm and Weapons. The station left behind behaves as if its player stepped away (the same rule as leaving for a repair, Q21): the ship coasts with stabilise on; the laser charge freezes and a missile in flight coasts unsteered.
 - Each station's screen is exactly what a multiplayer player at that station will see.
 - Q15's "no solo mode" becomes "no solo game mode for players; solo is the owner's playtest mode until Net-3". Bots still never take a seat.
+
+## Q25. Do the Helm and Weapons see the map the same way?
+
+**Owner direction (2026-11-14), on bridge-simulator reference screenshots:** one is "the science view, he gets the big sector map and the helm is [the other], he can still zoom out but is centered on the ship. BUT its a shared map space, just different views". **Answer: Weapons gets the sector map.** (The demo has no Science station, so the gunner, the second seat, takes the sector view.)
+
+Implications for the specs:
+- One map, one sim, two different cameras. Neither camera changes what the sim does.
+- **Helm:** follows its own ship, as Q23b says. It can zoom out and pan, and snaps back to the ship.
+- **Weapons:** a sector map. By default the whole map fits the screen on the lettered grid, and the camera does not follow any ship. The gunner can zoom into an area and pan, and one key returns to the whole map. Laser arc, room lock, charge and missile path are drawn on top.
+- As before, the game takes the idea (separate stations get different views of a shared space) and designs its own screens; it does not copy another game's look.
+
+## Q26. What does the Weapons console look like? (revises Q25)
+
+**Owner direction (2026-11-14), on a bridge-simulator Weapons screenshot:** "ok here is the weapons view. These map view gameplay mechanisms/ mini games are perfect for what we're trying to build. Especially because the graphics are minimal." **Answer: ship-centred, like the Helm.** The gunner's view follows the own ship and zooms like the Helm's, with the own firing arc, the enemy's arc, the room lock and the missile tubes drawn on it.
+
+Implications for the specs:
+- Q25's Weapons sector map is withdrawn. Q25 still holds that both stations look at one shared map space through different views; the whole-map sector view waits for a Science or Captain station.
+- Minimal map graphics are a feature, not a placeholder to replace: the consoles are clean vector views.
+
+## Q27. What does a player see away from a console?
+
+**Owner direction (2026-11-14):** "the players should see these map views when in their terminals, but see the FTL style map of the ship when they leave the consoles, and be able to run around as their character and fix issues/ do tasks around the ship". **Answer: in the Helm demo** (the owner took Claude's recommendation over "after the demo").
+
+Implications for the specs:
+- Two kinds of screen: **seated at a console**, the player sees that console's map view; **standing**, the player sees the FTL-style interior of their own ship and walks their character through it.
+- Repair means walking to the damaged room and working there; the time away from a console is the walk plus the work. This replaces the Helm spec's in-place button-sequence repair.
+- The interior reuses FTLite's existing walking, doors, consoles and hold-to-repair, on the Cutter layout (separate bridge, Weapons and Engineering rooms).
+- Amends Q11: the demo's inside link is no longer only "thin"; the crew walks the interior. Fires, oxygen, breaches and boarders stay out of the demo.
+- Amends Q21: repair is done in the room, not from the console. Amends Q24: in solo, Tab switches which character the owner controls.
+- "Tasks around the ship" beyond repair (per-room mini games, napkin) come with MG-X; the demo uses hold-to-repair.
