@@ -1,6 +1,6 @@
 # Direction Spec: Outlaw Crew (working title)
 
-Status: direction captured 2026-11-13 from the owner. This document sets the game's new direction; it is not a feature spec or a plan. Each milestone in section 9 gets its own spec, review and plan. Decisions marked **(rec.)** are Claude's recommendations, taken under the standing order ("take the recommendation and move on"); the owner can overturn any of them.
+Status: direction captured 2026-11-13 from the owner. **The gospel is `docs/vision/napkin.md`**; where this spec and the napkin disagree, the napkin wins. This document sets the game's new direction; it is not a feature spec or a plan. Each milestone in section 9 gets its own spec, review and plan. Decisions marked **(rec.)** are Claude's recommendations, taken under the standing order ("take the recommendation and move on"); the owner can overturn any of them.
 
 ## 1. The owner's words
 
