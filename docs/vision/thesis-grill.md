@@ -179,3 +179,12 @@ Implications for the specs:
 - Two weapons. The laser uses Q13's model (firing arc, room lock, charge and timed release).
 - Cruise missiles are flown by the gunner after launch, not fire-and-forget, so the gunner has their own piloting mini game alongside the Helm's. How the gunner controls them is Q19b.
 - Missiles are bodies in the same sim: the well's pull and the asteroids act on them too (Claude's reading; the owner can correct it).
+
+### Q19b. How does the gunner fly a cruise missile?
+
+**Answer: A, direct steering.** After launch the gunner steers the missile left/right with a stick like the Helm's; it thrusts on its own and has a few seconds of fuel. It hits whatever room it physically strikes. While a missile is in flight the gunner cannot aim the laser: flying a missile and using the laser are a trade.
+
+Implications for the specs:
+- The gunner's console has two modes: laser (arc, room lock, timed release) and missile (steer in flight).
+- Missile room targeting comes from the impact point on the enemy hull, so approach angle matters: the gunner picks the room by where they hit.
+- Still open (Claude's defaults for the spec, owner can correct): a small magazine (about 4), one missile in flight at a time, and the missile counts as a body under gravity and asteroid collision. Whether the enemy can shoot missiles down is open.
