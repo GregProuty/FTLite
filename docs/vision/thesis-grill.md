@@ -119,3 +119,11 @@ Technical note (Claude): the sim bans `Math.sin`, `Math.cos` and similar for cro
 ## Q13. How does Weapons aim in the shared view?
 
 **Answer: C, arcs plus targeting rooms.** Each weapon has a firing arc (some wide, some narrow, some forward-only). The Helm's positioning decides which weapons can bear; inside an arc, the gunner locks onto an enemy room (Engines, Weapons, Shields and so on) and times the release (the charge-and-release mini game). This keeps FTL's room-targeting strategy and makes the Helm and the gunner one team.
+
+## Q14. What does one demo session look like?
+
+**Answer: A, one duel, built so it can grow into B.** The demo is one ship against one enemy ship around a single planet with a few asteroids: break their hull to win, lose yours and you lose, about 3 to 5 minutes. It is the smallest test of whether gravity-well piloting is fun.
+
+Implications for the specs:
+- The demo is done when the duel is fun in a playtest.
+- Built to grow into B (a short run: obstacle run through a debris field, then the duel, then an escape from two pursuers to a jump point). The physics, obstacles and enemy behaviour are written so the debris run and the escape reuse them; nothing in the duel assumes it is the only encounter.
