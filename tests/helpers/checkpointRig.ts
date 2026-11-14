@@ -6,9 +6,9 @@ import { createLoopbackHarness } from '../../src/renderer/src/net/loopback';
 import { encodeMessage, decodeMessage } from '../../src/renderer/src/net/codec';
 import type { AuthorityMessage, ClientMessage } from '../../src/renderer/src/net/contracts';
 import { ownTestCleanup } from './simLifetime';
-export function checkpointRig() {
+export function checkpointRig(playerCount = 1) {
   let now = 0;
-  const init = { runId: 'durable', layoutId: LAYOUT.id, layoutHash: deriveLayout(LAYOUT).layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 7, playerCount: 1, characters: [0], unlocked: [], quirk: 0 };
+  const init = { runId: 'durable', layoutId: LAYOUT.id, layoutHash: deriveLayout(LAYOUT).layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 7, playerCount, characters: [0], unlocked: [], quirk: 0 };
   const authority = createAuthority({ clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, contentDigest: init.contentDigest, resolveLayout: () => LAYOUT, onCrash: r => { throw Error(r.error); } });
   const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest: init.contentDigest });
   const pair = transport.connectLocal(), output: AuthorityMessage[] = [];

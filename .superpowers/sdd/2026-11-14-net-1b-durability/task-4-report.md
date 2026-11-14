@@ -77,3 +77,25 @@ The standalone parser accepts up to 1,000,000 boundary frames, 1024 entries/resu
 ## Remaining scope / limitations
 
 No known failing focused check. Full suite, production/browser build acceptance and 900-second per-ship browser/performance gates remain task 5, as assigned. Historical raw replay conversion is test tooling only. Restore API preserves state/control integrity, but persistence storage, network host migration and UI orchestration are outside this task. Replay is an in-memory, fully validated semantic trace, not an unbounded archival recorder; use the observer/options above for long acceptance scenarios.
+
+## Review fix round 1 — C-001 and C-002
+
+Read and reproduced both findings from `task-4-review.md` before changing production code.
+
+**C-001:** Detach now discards its undrained ingress explicitly and records the existing payload-free cursor boundary with the current global receive ordinal. The detach still applies the same pending-command rejection and held-input cleanup. No discarded held/command/callout payload is added to replay. Four regression cases compare the entire replayed and live checkpoint: separate undrained held, command and callout packets, and mixed bindings where a detached link has later queued input while a retained link still has earlier command ordinals. The mixed case confirms the lower-order commands remain executable in receive order, including stale rejection/high-water advancement followed by an applied control.
+
+**C-002:** Initial phase setup and baseline capture/validation now run inside the tick-driver cleanup boundary. Baseline initialization occurs before publishing the candidate lifecycle callback. This ordering matters for replacement: unregistering a newly published callback would empty the shared callback slot rather than recover the old owner's callback. Throwing or invalid bot memory therefore leaves the existing callback untouched. Construction failure marks the candidate disposed and attempts driver/lifecycle release before the outer owner releases its world, preserving the original construction error. Four regression cases cover throwing and invalid bot memory during first start and replacement, asserting outstanding timer/registration counts, exact prior checkpoint preservation, callback identity, successful lifecycle pause delivery to the prior owner, and zero registrations after final disposal.
+
+The requested disposal run exposed three existing task-1 tests still passing literal `contentDigest: 'test'`. They failed at task-3 digest validation before reaching their intended cleanup path. With controller approval, updated only those test fixtures to the explicit injected SHA-256 digest; production validation was not relaxed.
+
+Red evidence:
+
+`npm test -- tests/replayV2.test.ts tests/checkpointStartup.test.ts tests/simDisposal.test.ts --maxWorkers=2`
+
+**11 failed, 18 passed:** four new receive-cursor failures (live 1/replay 0, mixed live 4/replay 2), four new startup/replacement timer leaks (1 instead of 0, or 2 instead of 1), and the three obsolete digest fixtures described above.
+
+Green evidence:
+
+`npm test -- tests/replayV2.test.ts tests/checkpointStartup.test.ts tests/simDisposal.test.ts tests/checkpointV2.test.ts tests/checkpointBots.test.ts tests/crashRecordV2.test.ts --maxWorkers=2`
+
+**6 files, 51 tests passed**, 2.44 s. Includes the existing 2,000-lifetime allocation/disposal gate, callback-replacement tests, all checkpoint/replay/bot/crash coverage, and the eight new review regressions. `npm run typecheck` and `git diff --check` passed. No full suite, golden regeneration, gameplay changes, external setup, or unrelated scope was added.

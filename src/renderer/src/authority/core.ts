@@ -263,18 +263,27 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     } finally { pumping = false; }
   }
   const driver = createTickDriver(deps.clock, { schedule: (delay) => deps.scheduler.schedule(delay, pump) }, executeTick);
-  if (phase === 'ended') driver.dispose();
-  else if (phase !== 'running') driver.setPaused(true);
-  let unbindLifecycle: void | Unsubscribe;
-  try { unbindLifecycle = deps.bindLifecyclePause?.((control) => {
+  let unbindLifecycle: void | Unsubscribe = undefined;
+  try {
+    if (phase === 'ended') driver.dispose();
+    else if (phase !== 'running') driver.setPaused(true);
+    // Validate the baseline before replacing a live owner's lifecycle callback.
+    resetBaseline(!restored);
+    unbindLifecycle = deps.bindLifecyclePause?.((control) => {
     if (disposed || phase === 'ended' || phase === 'error') return;
     if (typeof control.paused !== 'boolean' || !control.reason || control.reason.length > 128) throw new Error('invalid lifecycle control');
     if (controlQueue.length >= 256 || !Number.isSafeInteger(lifecycleOrdinal + 1)) throw new Error('lifecycle control capacity');
     begin({ kind: 'lifecycle', order: ++receiveOrder, ordinal: ++lifecycleOrdinal, control: { ...control } });
     controlQueue.push({ record: { source: 'lifecycle', order: receiveOrder, ordinal: lifecycleOrdinal, control: { ...control } } });
     complete();
-  }); } catch (error) { driver.dispose(); throw error; }
-  resetBaseline(!restored);
+    });
+  } catch (error) {
+    disposed = true;
+    // Attempt every release without hiding the construction error.
+    try { driver.dispose(); } catch { /* cleanup failure */ }
+    try { unbindLifecycle?.(); } catch { /* cleanup failure */ }
+    throw error;
+  }
   return {
     attach(link: Link, players: readonly number[]): Unsubscribe {
       if (disposed || players.some((p) => !Number.isInteger(p) || p < 0 || p >= state.playerCount || [...bindings].some((b) => b.players.includes(p))) || new Set(players).size !== players.length) throw new Error('invalid player ownership');
@@ -289,6 +298,9 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
         controlQueue = controlQueue.filter((entry) => entry.binding !== binding);
         for (const p of players) held[p] = { moveX: 0, moveY: 0, interactHeld: false };
         complete();
+        // Discarded ingress already consumed receive ordinals, including auxiliary bytes.
+        binding.ingress.length = 0;
+        begin({ kind: 'cursor', receiveOrder }); complete();
       };
       try {
       binding.unsubscribe.push(link.onMessage((_kind, bytes) => {

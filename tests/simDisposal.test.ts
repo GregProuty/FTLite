@@ -130,9 +130,9 @@ describe('simulation ownership', () => {
 
   it('owns adopted worlds and disposes them even if a lifecycle unsubscriber throws', () => {
     const state = create();
-    const core = createFixtureAuthority({ clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, contentDigest: 'test', resolveLayout: () => LAYOUT, onCrash() {},
+    const core = createFixtureAuthority({ clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: () => LAYOUT, onCrash() {},
       bindLifecyclePause: () => () => { throw Error('unsubscribe failure'); },
-      init: { runId: 'test', seed: 1, playerCount: 4, characters: RECRUITS, unlocked: [], layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION, contentDigest: 'test' } }, state);
+      init: { runId: 'test', seed: 1, playerCount: 4, characters: RECRUITS, unlocked: [], layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__ } }, state);
     expect(() => core.dispose()).toThrow(/unsubscribe failure/);
     expect(() => hashState(state)).toThrow(/disposed/); expect(getAllEntities(state.world)).toEqual([]);
     expect(() => core.dispose()).not.toThrow();
@@ -142,9 +142,9 @@ describe('simulation ownership', () => {
     let fail = false;
     const timers = new Set<() => void>();
     const authority = createAuthority({ clock: { nowMs: () => 0 }, scheduler: { schedule(_delay, callback) { timers.add(callback); return () => { timers.delete(callback); }; } },
-      contentDigest: 'test', resolveLayout: () => LAYOUT, onCrash() {}, bindLifecyclePause() { if (fail) throw Error('binding failed'); } });
+      contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: () => LAYOUT, onCrash() {}, bindLifecyclePause() { if (fail) throw Error('binding failed'); } });
     const init = { runId: 'replacement', seed: 1, playerCount: 4, characters: RECRUITS, unlocked: [], layoutId: LAYOUT.id,
-      layoutHash: deriveLayout(LAYOUT).layoutHash, simVersion: SIM_VERSION, contentDigest: 'test' };
+      layoutHash: deriveLayout(LAYOUT).layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__ };
     try {
       authority.start(init);
       const warm = create(); sim.disposeSimState(warm); const bound = highWater();
@@ -192,8 +192,8 @@ describe('simulation ownership', () => {
 
   it('disposes an adopted world when the initial clock rejects construction', () => {
     const state = create();
-    expect(() => createFixtureAuthority({ clock: { nowMs: () => NaN }, scheduler: { schedule: () => () => {} }, contentDigest: 'test', resolveLayout: () => LAYOUT, onCrash() {},
-      init: { runId: 'test', seed: 1, playerCount: 4, characters: RECRUITS, unlocked: [], layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION, contentDigest: 'test' } }, state)).toThrow(/initial clock/);
+    expect(() => createFixtureAuthority({ clock: { nowMs: () => NaN }, scheduler: { schedule: () => () => {} }, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: () => LAYOUT, onCrash() {},
+      init: { runId: 'test', seed: 1, playerCount: 4, characters: RECRUITS, unlocked: [], layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__ } }, state)).toThrow(/initial clock/);
     expect(() => hashState(state)).toThrow(/disposed/); expect(getAllEntities(state.world)).toEqual([]);
   });
 });

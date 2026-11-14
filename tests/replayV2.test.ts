@@ -53,3 +53,31 @@ it('supports sampled long-run tracing without retaining another complete journal
   expect(result.checkpoint.snapshot).toEqual(h.authority.checkpoint([]).snapshot);
   expect(runReplay(LAYOUT, replay, h.init.contentDigest, undefined, { retainFrames: true }).frames).toEqual(replay.frames);
 });
+it.each(['held', 'command', 'callout'] as const)('preserves the receive cursor when detaching undrained %s ingress', kind => {
+  const h = checkpointRig();
+  if (kind === 'held') h.send({ kind, frame: { runId: h.init.runId, player: 0, tick: 0, sequence: 1, held: { moveX: 1, moveY: 0, interactHeld: true } } });
+  else if (kind === 'command') h.send({ kind, envelope: { runId: h.init.runId, id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'stand' } } });
+  else h.send({ kind, runId: h.init.runId, player: 0, sequence: 1, calloutKind: 'contextual' });
+  h.detach();
+  const replay = h.authority.replay(), checkpoint = h.authority.checkpoint([]);
+  expect(checkpoint.receiveOrder).toBe(1); expect(checkpoint.commandHighWater).toEqual([0]);
+  expect(JSON.stringify(replay)).not.toContain('callout');
+  expect(runReplay(LAYOUT, replay, h.init.contentDigest).checkpoint).toEqual(checkpoint);
+});
+it('replays earlier undrained ingress from another binding after recording a detach cursor', () => {
+  const h = checkpointRig(2), pair = h.transport.connectLocal(); h.authority.attach(pair.authorityLink, [1]);
+  try {
+    for (const [sequence, requestedTick] of [[1, 99], [2, 0]]) pair.clientLink.send('reliable-ordered', encodeMessage({ kind: 'command', envelope: {
+      runId: h.init.runId, id: { player: 1, sequence: sequence! }, requestedTick: requestedTick!, command: { kind: 'setPaused', paused: false }
+    } }));
+    h.drain();
+    h.send({ kind: 'callout', runId: h.init.runId, player: 0, sequence: 1, calloutKind: 'contextual' });
+    h.send({ kind: 'held', frame: { runId: h.init.runId, player: 0, tick: 0, sequence: 1, held: { moveX: 1, moveY: 0, interactHeld: true } } });
+    h.detach(); h.pump();
+    const replay = h.authority.replay(), checkpoint = h.authority.checkpoint([]);
+    expect(checkpoint.receiveOrder).toBe(4); expect(checkpoint.commandHighWater).toEqual([0, 2]);
+    const actual = runReplay(LAYOUT, replay, h.init.contentDigest);
+    expect(actual.checkpoint).toEqual(checkpoint);
+    expect(actual.results.map(result => [result.id.sequence, result.status, result.reason])).toEqual([[1, 'rejected', 'stale-tick'], [2, 'applied', undefined]]);
+  } finally { pair.host.close('done'); pair.client.close('done'); }
+});
