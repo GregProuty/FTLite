@@ -1,0 +1,147 @@
+import { describe, expect, it } from 'vitest';
+import { createTacticalState, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { applyWeaponsInput, IDLE_INPUT, laserEligible, tickWeapons, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
+import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+
+/** Crew at (−600, −300) heading east, enemy 300 units east of it: inside the belt, clear of the planet, in arc and range. */
+function duel(): TacticalState {
+  const st = createTacticalState(5);
+  Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
+  Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
+  return st;
+}
+const input = (over: Partial<ShipInput> = {}): ShipInput => ({ ...IDLE_INPUT, ...over });
+/** One weapons tick for both ships (no flight): commands, then clocks. */
+function tick(st: TacticalState, crew: ShipInput, enemy: ShipInput = IDLE_INPUT): void {
+  applyWeaponsInput(st, 0, crew); applyWeaponsInput(st, 1, enemy);
+  tickWeapons(st, 0, crew); tickWeapons(st, 1, enemy);
+  st.tick++;
+}
+function hold(st: TacticalState, ticks: number, over: Partial<ShipInput> = {}): void {
+  tick(st, input({ laserCharge: true, ...over }));
+  for (let t = 1; t < ticks; t++) tick(st, input(over));
+}
+
+describe('laser charge and release (spec §7a, §7 table)', () => {
+  it('charges to full in exactly 240 ticks (4 s) while Fire is held', () => {
+    const st = duel(), s = st.ships[0];
+    hold(st, 239);
+    expect(s.laserCharge).toBeLessThan(LASER_CHARGE_UNITS);
+    tick(st, input());
+    expect(s.laserCharge).toBe(LASER_CHARGE_UNITS);
+  });
+  it('a full release in arc strips a shield layer', () => {
+    const st = duel(), [a, b] = st.ships;
+    hold(st, 240);
+    tick(st, input({ laserCharge: false }));
+    expect([a.shots, a.laserHits, a.layersStripped]).toEqual([1, 1, 1]);
+    expect(b.shields).toBe(1);
+    expect(b.hull).toBe(SHIP_HULL);
+    expect(a.laserCharge).toBe(0);
+    expect(st.events).toContainEqual({ kind: 'laser', ship: 0, hit: true, x1: -600, y1: -300, x2: -300, y2: -300 });
+  });
+  it('an early release discards the charge without a shot', () => {
+    const st = duel(), a = st.ships[0];
+    hold(st, 100);
+    tick(st, input({ laserCharge: false }));
+    expect(a.laserCharge).toBe(0);
+    expect(a.shots).toBe(0);
+  });
+  it('with shields down, damages the locked room and costs 2 hull; a room at level 2 takes no more room damage', () => {
+    const st = duel(), b = st.ships[1];
+    b.shields = 0;
+    tick(st, input({ laserLock: Room.Engines }));
+    for (let shot = 0; shot < 3; shot++) {
+      b.shields = 0; b.shieldClock = 0;
+      hold(st, 240);
+      tick(st, input({ laserCharge: false }));
+    }
+    expect(b.rooms[Room.Engines]).toBe(2);
+    expect(b.hull).toBe(SHIP_HULL - 6);
+  });
+  it('misses outside the arc, out of range or without line of sight', () => {
+    const st = duel(), a = st.ships[0];
+    st.ships[1].x = -900;                                   // behind the crew
+    expect(laserEligible(st, 0, 1)).toBe(false);
+    hold(st, 240);
+    tick(st, input({ laserCharge: false }));
+    expect([a.shots, a.laserHits]).toEqual([1, 0]);
+    expect(st.ships[1].shields).toBe(2);
+    Object.assign(st.ships[1], { x: -600 + 460, y: -300 });  // in arc, out of range
+    expect(laserEligible(st, 0, 1)).toBe(false);
+    Object.assign(st.ships[0], { x: -300, y: 0 }); Object.assign(st.ships[1], { x: 300, y: 0 });   // planet between
+    expect(laserEligible(st, 0, 1)).toBe(false);
+  });
+  it('a full charge held 3 s vents and starts charging again', () => {
+    const st = duel(), a = st.ships[0];
+    hold(st, 240 + LASER_HOLD_TICKS - 1);
+    expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
+    tick(st, input());
+    expect(a.laserCharge).toBe(0);
+    tick(st, input());
+    expect(a.laserCharge).toBeGreaterThan(0);
+  });
+  it('Weapons damage stretches the charge time: 10 s at level 2', () => {
+    const st = duel(), a = st.ships[0];
+    a.rooms[Room.Weapons] = 2;
+    hold(st, 599);
+    expect(a.laserCharge).toBeLessThan(LASER_CHARGE_UNITS);
+    tick(st, input());
+    expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
+  });
+  it('an empty Weapons console lets go of Fire without firing or discarding, and freezes the charge', () => {
+    const st = duel(), a = st.ships[0];
+    hold(st, 120);
+    const charge = a.laserCharge;
+    tick(st, input({ weapons: false, laserCharge: false }));
+    expect(a.fireHeld).toBe(false);
+    expect(a.shots).toBe(0);
+    for (let t = 0; t < 60; t++) tick(st, input({ weapons: false }));
+    expect(a.laserCharge).toBe(charge);
+    tick(st, input());                                      // attended again: nothing until a fresh press
+    expect(a.laserCharge).toBe(charge);
+    hold(st, 10);
+    expect(a.laserCharge).toBeGreaterThan(charge);
+  });
+});
+
+describe('shields (spec §5)', () => {
+  it('recharge one layer per 5 s, 7.5 s at Shields level 1, and stop at level 2 with the clock held', () => {
+    const st = duel(), b = st.ships[1];
+    b.shields = 0;
+    for (let t = 0; t < 300; t++) tick(st, input());
+    expect(b.shields).toBe(1);
+    b.rooms[Room.Shields] = 1;
+    for (let t = 0; t < 449; t++) tick(st, input());
+    expect(b.shields).toBe(1);
+    tick(st, input());
+    expect(b.shields).toBe(2);
+    b.shields = 1; b.rooms[Room.Shields] = 2;
+    for (let t = 0; t < 120; t++) tick(st, input());
+    const held = b.shieldClock;
+    for (let t = 0; t < 600; t++) tick(st, input());
+    expect(b.shields).toBe(1);
+    expect(b.shieldClock).toBe(held);
+  });
+  it('a stripping hit resets the recharge clock', () => {
+    const st = duel(), b = st.ships[1];
+    b.shields = 1; b.shieldClock = 0;
+    hold(st, 240);
+    expect(b.shieldClock).toBe(240 * SHIELD_RATE[0]!);
+    tick(st, input({ laserCharge: false }));
+    expect(b.shields).toBe(0);
+    expect(b.shieldClock).toBe(SHIELD_RATE[0]);           // reset by the hit, then one tick of recharge
+  });
+});
+
+describe('magazine (spec §7b)', () => {
+  it('regains one missile every 45 s up to the full magazine', () => {
+    const st = duel(), a = st.ships[0];
+    a.magazine = MAGAZINE - 2;
+    for (let t = 0; t < MAGAZINE_REGEN_TICKS; t++) tick(st, input());
+    expect(a.magazine).toBe(MAGAZINE - 1);
+    for (let t = 0; t < 2 * MAGAZINE_REGEN_TICKS; t++) tick(st, input());
+    expect(a.magazine).toBe(MAGAZINE);
+    expect(a.magazineClock).toBe(0);
+  });
+});
