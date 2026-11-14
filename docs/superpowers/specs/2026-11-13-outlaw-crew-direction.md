@@ -6,6 +6,12 @@ Status: direction captured 2026-11-13 from the owner. This document sets the gam
 
 > "What if the game play loop was 'Play these mini games to operate a space ship in a pirates gameplay open world, together with friends'. In a Firefly setting like ex rebel in an Alliance controlled star system. Choose to be a smuggler, pirate, merchant, or terrorist."
 
+The owner's clarification the same day:
+
+> "it's going to be among us style game play loop now, but keeping the FTL dual tetris combat. Plus story events with FTL/Stardew style dialogue options, with Blue Options based on crew skill and abilities"
+
+So the game has three layers, each from one inspiration: **the moment-to-moment loop is Among Us-style tasks around the ship map; combat is FTL's two-ship systems battle; the story is FTL/Stardew dialogue events with blue options.** The open world (Pirates!) and the careers sit around them.
+
 The owner's reference image is a deduction game's ship map (`c:\Users\djuar\Downloads\Screenshot_(496).webp`): about fourteen rooms joined by corridors, where every room holds something to interact with or a unique mini game. Earlier the same day: "someday i want to be able to have 16 players operating a single battle star, or multiple ships" (roadmap, Someday maybe).
 
 ## 2. The pitch
@@ -16,18 +22,30 @@ The inspirations and what each contributes:
 
 | Source | What we take | What we never take |
 |---|---|---|
-| FTL (today's FTLite) | Real-time ship crises: fire, breaches, oxygen, boarders, power, shields and frequencies, enemy ships with rooms | Its art, names and ships (foundation §12) |
-| The deduction game in the screenshot | A ship that is a **map of rooms you run between**, each room with its own **task mini game** on your own screen | Its map layout, art, characters, specific tasks and impostor mechanic |
+| FTL (today's FTLite) | **The combat**: two ships side by side, each juggling reactor power, shields, weapons and damaged rooms while picking the other apart ("dual Tetris"); real-time crises (fire, breaches, oxygen, boarders); **story events with blue options** | Its art, names and ships (foundation §12) |
+| The deduction game in the screenshot | **The core loop**: a personal task list spread across a map of rooms, each task a short mini game on your own screen; a shared progress bar; urgent crises that need people in two rooms at once; a crew gathering to decide | Its map layout, art, characters and specific tasks. The hidden-traitor mechanic is not in the core game (section 11) |
+| Stardew Valley | **Dialogue**: characters with portraits and a voice, short lines, choices that change how a recurring contact feels about the crew | Its characters, art and writing |
 | Sid Meier's Pirates! | An **open world** of ports, trade, contracts, rumours, factions, reputation and a wanted level; you choose your career by what you do | Its names, setting and content |
 | Firefly (tone only) | Ex-rebels scraping by on the frontier under a victorious central government; a found-family crew; a ship that is home | Every name, ship design, character, species and line (no "Alliance", "Browncoats", "Serenity", "Reavers", no Firefly-class silhouettes) |
 
 ## 3. Pillars
 
-1. **Every console is a mini game.** Sitting at a station opens a short, readable, skill-based task on your own screen (3 to 12 s per action). The quality of the result drives the ship: a better weapons release hits harder, a cleaner frequency tune strips shields, a faster repair restores the system sooner.
-2. **The ship is a map you run.** Rooms joined by corridors and doors; crises pull you from your station; you are needed in two places at once. FTLite's crew walking, oxygen, fire, breach and boarder simulation stays.
+1. **The loop is tasks around the ship (Among Us-style).** Each player has a task list spread across the ship's rooms. Every task, and every console, is a short, readable, skill-based mini game on your own screen (3 to 12 s per action). Finishing tasks fills the crew's shared bar toward the current goal. Crises pull you away, and some need two people in two rooms at once. FTLite's crew walking, oxygen, fire, breach and boarder simulation stays.
+2. **Combat is FTL's dual Tetris.** Ship-to-ship fights keep FTLite's FTL model: both ships have rooms, systems, reactor power, shield layers, weapon charge and crews. You juggle your own ship's power and damage while picking the enemy's rooms apart. The mini games are how stations act in the fight; the rules underneath stay FTL's.
 3. **An open world, Pirates!-style.** One star system per campaign (procedurally arranged planets, moons, stations, belts and lanes). Sail anywhere; trade, take contracts, chase rumours, dodge patrols.
 4. **Choose your life.** Smuggler, pirate, merchant or insurgent. These are reputations you earn by what you do, not locked classes.
 5. **Together with friends.** 1 to 16 players, one per machine (Net-0 decision); bots fill empty seats and dropped players. Bigger crews fly bigger ships.
+6. **Stories with blue options (FTL and Stardew).** Story events are conversations with characters: a portrait, short lines, and two to four choices. **Blue options** appear when someone aboard has the skill, ability, gear or standing for them, and name who makes them possible.
+
+## 3a. The core loop in detail (Among Us-style)
+
+- **Phases.** A session alternates three phases: **in port** (trade, contracts, talk, refit), **underway** (travel with tasks and encounters), and **in combat** (the FTL battle). Tasks exist in all three; combat replaces routine tasks with battle stations.
+- **Task lists.** On every leg, each player receives 3 to 6 tasks spread across the ship's rooms: routine upkeep (clear the scrubbers, recalibrate the sensors, balance the reactor) and **job tasks** from the current contract (pack the contraband before the customs cordon, prime the cargo lock before boarding, plot the blockade run). The list is on your own screen; the target rooms show on your map.
+- **The shared bar.** Every finished task fills the crew's bar for the leg's goal: drive spooled, cargo ready, the hidden compartments sealed before inspection. Unfinished upkeep has consequences (systems drift, oxygen falls, the drive spools slower), so there is always something to do.
+- **Crises are the urgent tasks.** Fires, breaches, boarders and enemy hits (today's hazards) interrupt the list. The worst need **two people in two rooms at once** (a reactor surge held at two panels, a hull seal from both sides of a door), which is the reason a crew must talk.
+- **The ship map.** A console on the bridge (and a small map on everyone's screen) shows each crew member's room, the open tasks and the crises: the crew's shared picture.
+- **Gathering to decide.** Story events and big choices call the crew together. Everyone sees the conversation; choices are made with today's vote (majority, the captain breaks ties).
+- **Bots** take a task list like a player and resolve mini games with a skill-based quality model.
 
 ## 4. The setting (original; names are placeholders)
 
@@ -77,6 +95,24 @@ Rules for every mini game:
 - **Failing costs time, never locks you out.** A bad result is a weaker effect or a retry, never a dead station.
 - **Bots** resolve mini games with a skill-based quality model, so solo play and dropped seats still work.
 
+## 6a. Combat: FTL's dual Tetris, kept
+
+Combat keeps today's model and grows it; nothing is simplified for the mini games.
+- **Two ships, both fully simulated:** rooms, systems (weapons, shields, engines, piloting, sensors, oxygen, doors, medbay), a reactor with power bars, shield layers with frequencies, weapon charge, hull, crews who repair, fight fires and board.
+- **Your half of the puzzle:** Engineering moves power between systems as damage takes bars away; Repairs and the crew restore broken rooms; the Helm evades.
+- **Their half:** Sensors reads and tunes their shields; Weapons times its volleys and picks the room to hit (shields first, then weapons or engines); boarders can be sent across.
+- **The mini games are the input, FTL's rules are the result.** A good release is more damage or accuracy within today's formulas; a bad one is weaker, never a different game. Bots fight through the same rules.
+- **Victory conditions grow with the careers:** destroy, disable and board (pirate), outrun (smuggler), make them surrender (merchant), or reach the target system and plant the charge (insurgent).
+
+## 6b. Story events and dialogue
+
+Today's events-as-data (Loop-v: data-driven events with blue options tagged with a console or skill, a safe choice for bots, weights and depth gates) grow into conversations.
+- **Characters.** Each event has a speaker with a portrait and a name: a customs officer, a syndicate fixer, a desperate colonist, an old comrade from the war. Short lines, Stardew-style, one beat at a time.
+- **Choices.** Two to four per beat, with the effect or odds stated where today's events state them.
+- **Blue options.** A choice appears in blue when someone aboard qualifies, and it names them: `[Engineering 3 · Mara] Offer to fix their reactor`. Qualifiers: a skill level, a character's ability or complication, a species ability (later), carried gear or cargo, faction standing or a career reputation. Bots count, so a solo player still sees them. A blue option is reliably good, as in FTL.
+- **Recurring contacts (Stardew).** Contacts at ports remember the crew: a relationship level changes their lines, prices, contracts and rumours, and unlocks their own story arcs.
+- **Who chooses.** The whole crew sees every line; choices use today's vote (majority, captain breaks ties, a time limit).
+
 ## 7. The open-world loop
 
 - **Travel.** Navigation plots a course on the system map; the voyage plays in real time with encounters on the way: Accord patrols and customs, pirates, merchants, distress calls, derelicts, belts. Today's encounter, event and enemy-ship systems become these.
@@ -107,7 +143,8 @@ Rules for every mini game:
 | D-0 | This direction | An agreed vision | Roadmap item 35 |
 | Net-1a | The offline authority boundary (planned) | Client UI sends commands | Unchanged; mini games need it |
 | MG-0 | **Mini-game sandbox** | Are the mini games fun? | Three mini games (Weapons charge and release, Sensors tune the band, Repairs reroute the conduit) in a standalone renderer page with no sim; can run beside Net-1a because it touches no sim code |
-| MG-1 | Mini games at the Skiff's consoles | The ship loop with mini games | Replaces the Skiff's cards; result commands through the Net-1a boundary; the bots' quality model; takes Net-2's place |
+| MG-1 | The task loop on the Skiff | Among Us-style loop with FTL combat underneath | Task lists across rooms, the shared bar, mini games at the consoles (replacing the cards), one two-room crisis; result commands through the Net-1a boundary; the bots' quality model; takes Net-2's place |
+| EV-1 | Dialogue events with blue options | FTL/Stardew stories | Speakers with portraits, beats, blue options naming the qualifying crew member; today's 28 events rewritten as conversations |
 | OW-1 | The open-world slice | Pirates!-style travel and trade | One system, travel with encounters, ports with market and contracts; Merchant and Smuggler backgrounds; customs inspections with the Comms and Cargo mini games; campaign save |
 | Net-3 to Net-6 | Online play (as decided) | Friends over the internet | Order unchanged; can interleave with OW work |
 | OW-2 | Outlaw careers | Choosing your life | Factions and heat, Pirate (boarding and capture), Insurgent operations, rumours, the ship's log |
@@ -130,6 +167,11 @@ Rules for every mini game:
 2. A persistent campaign with an optional one-life mode, instead of short roguelike runs (rec.: yes, section 7).
 3. Couch play stays for 2 to 4 players with per-player panels, with online as the main mode (rec.: yes).
 4. The game's name and the factions' names (placeholders until the owner names them).
+5. A hidden-traitor mode (an Accord informant aboard, the deduction game's signature) (rec.: not in the core co-op game; park it in Someday maybe as an optional mode).
+
+## Change log
+
+- 2026-11-13, owner clarification: the moment-to-moment loop is Among Us-style tasks (section 3a), FTL's dual-Tetris combat is kept whole (section 6a), and story events become FTL/Stardew dialogue with blue options from crew skills and abilities (section 6b). EV-1 added; MG-1 became the task loop.
 
 ## Amendments
 
