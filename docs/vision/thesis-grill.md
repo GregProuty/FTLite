@@ -206,3 +206,20 @@ Implications for the specs:
 - A small repair mini game is in demo scope, the first piece of the "inside" link (Q11) and the first FTL-style crew trade-off.
 - While the Helm is away, the ship coasts on its momentum and the stabilise assist engages as on a release (Claude's default; the owner can correct it).
 - Still open (Claude's default for the spec): the enemy also repairs, and pays the same price (a damaged enemy stops manoeuvring or firing while it repairs), so the trade is symmetric.
+
+## Q22. How do we know the demo works?
+
+**Answer: C, a checklist plus numbers from the sim.**
+
+After every playtest session, five yes/no questions:
+1. Did the Helm use the planet's gravity on purpose at least once (a slingshot or a bait)?
+2. Did the two players talk to coordinate ("bring the nose round", "missile away")?
+3. Did either player leave their console to repair at a moment that mattered?
+4. Can each player retell one fight moment (Q10)?
+5. Did they want to play again straight away?
+
+The demo is fun when 4 of 5 are yes across 3 sessions, at least one with a pair other than the owner.
+
+Telemetry targets per duel: length 3 to 5 minutes; both outcomes (win and loss) occur across sessions; both weapons are used in every duel.
+
+The grill for the Helm demo ends here; the Helm demo spec is written from Q11 to Q22.
