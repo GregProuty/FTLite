@@ -50,12 +50,12 @@ export function projectGameplay(s: SimState): Record<string, unknown> {
 /** First exact difference in canonical field order. Observation tick wins over array index. */
 export function firstDifference(expected: unknown, actual: unknown): { tick: number; field: string } | null {
   const visit = (a: unknown, b: unknown, field: string, tick: number): { tick: number; field: string } | null => {
-    if (a && typeof a === 'object' && typeof (a as Plain).tick === 'number') tick = (a as Plain).tick as number;
+    const timed = a && typeof a === 'object' ? a : b;
+    if (timed && typeof timed === 'object' && typeof (timed as Plain).tick === 'number') tick = (timed as Plain).tick as number;
     if (Object.is(a, b)) return null;
     if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return { tick, field };
     if (Array.isArray(a) && Array.isArray(b)) {
-      if (a.length !== b.length) return { tick, field: `${field}.length` };
-      for (let i = 0; i < a.length; i++) { const d = visit(a[i], b[i], `${field}[${i}]`, tick); if (d) return d; }
+      for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = visit(a[i], b[i], `${field}[${i}]`, tick); if (d) return d; }
       return null;
     }
     const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();

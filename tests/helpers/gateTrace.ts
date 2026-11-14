@@ -8,11 +8,48 @@ import type { Intent } from '../../src/shared/intent';
 import { firstDifference, projectGameplay } from './gameplayTrace';
 
 type Input = [number, number, number];
-type GateTrace = { name: string; initial: Record<string, unknown>; final?: Record<string, unknown>; minHull: number; minHealth: number; actions: { tick: number; through: number; inputs: Input[] }[]; rng: { tick: number; changed: Record<string, number> }[] };
+export type GateTrace = { name: string; initial: Record<string, unknown>; final?: Record<string, unknown>; minHull: number; minHealth: number; actions: { tick: number; through: number; inputs: Input[] }[]; rng: { tick: number; changed: Record<string, number> }[] };
 type Recording = { trace: GateTrace; previousInputs: string; rng: number[] };
 const active = new WeakMap<SimState, Recording>();
 const fixture = 'tests/fixtures/net1a-gates.json';
 const expected = existsSync(fixture) ? JSON.parse(readFileSync(fixture, 'utf8')) as { gates: GateTrace[] } : null;
+type Difference = { tick: number; field: string };
+/** Compare action coverage rather than its compression, then choose the earliest observation. */
+export function firstGateDifference(expected: GateTrace, actual: GateTrace): Difference | null {
+  let actionDifference: Difference | null = null;
+  let a = 0, b = 0, tick = Math.min(expected.actions[0]?.tick ?? Infinity, actual.actions[0]?.tick ?? Infinity);
+  while (Number.isFinite(tick)) {
+    while (expected.actions[a] && expected.actions[a]!.through < tick) a++;
+    while (actual.actions[b] && actual.actions[b]!.through < tick) b++;
+    const left = expected.actions[a], right = actual.actions[b];
+    const leftCovered = left && left.tick <= tick, rightCovered = right && right.tick <= tick;
+    if (!!leftCovered !== !!rightCovered) { actionDifference = { tick, field: `actions[${tick}].inputs` }; break; }
+    if (leftCovered && rightCovered) {
+      const difference = firstDifference(left.inputs, right.inputs);
+      if (difference) { actionDifference = { tick, field: `actions[${tick}].inputs${difference.field}` }; break; }
+      tick = Math.min(left.through, right.through) + 1;
+    } else tick = Math.min(left?.tick ?? Infinity, right?.tick ?? Infinity);
+  }
+  let rngDifference: Difference | null = null;
+  a = 0; b = 0;
+  while (expected.rng[a] || actual.rng[b]) {
+    const left = expected.rng[a], right = actual.rng[b];
+    tick = Math.min(left?.tick ?? Infinity, right?.tick ?? Infinity);
+    if (left?.tick !== right?.tick) { rngDifference = { tick, field: `rng[${tick}]` }; break; }
+    const difference = firstDifference(left!.changed, right!.changed);
+    if (difference) { rngDifference = { tick, field: `rng[${tick}].changed.${difference.field}` }; break; }
+    a++; b++;
+  }
+  const initial = firstDifference(expected.initial, actual.initial);
+  const final = firstDifference(expected.final, actual.final);
+  // Minima carry no sample timestamp; their first known observation is the completed final state.
+  const summary = firstDifference(
+    { tick: expected.final?.tick ?? 0, name: expected.name, minHull: expected.minHull, minHealth: expected.minHealth },
+    { tick: actual.final?.tick ?? 0, name: actual.name, minHull: actual.minHull, minHealth: actual.minHealth });
+  const candidates = [initial && { ...initial, field: `initial.${initial.field}` }, actionDifference, rngDifference,
+    final && { ...final, field: `final.${final.field}` }, summary];
+  return candidates.reduce<Difference | null>((first, next) => next && (!first || next.tick < first.tick) ? next : first, null);
+}
 export function beginGateTrace(s: SimState, name: string): void {
   active.set(s, { trace: { name, initial: projectGameplay(s), minHull: s.hull, minHealth: Math.min(...s.crew.map((eid) => Health.cur[eid]!)), actions: [], rng: [] }, previousInputs: '', rng: STREAM_NAMES.map((n) => s.rng[n].s) });
 }
@@ -41,7 +78,7 @@ export function assertGateTrace(s: SimState): void {
   else {
     const baseline = expected?.gates.find((g) => g.name === actual.name);
     expect(baseline, `missing pinned gate ${actual.name}`).toBeDefined();
-    expect(firstDifference(baseline, actual), `first action/RNG/gameplay divergence in ${actual.name}`).toBeNull();
+    expect(firstGateDifference(baseline!, actual), `first action/RNG/gameplay divergence in ${actual.name}`).toBeNull();
   }
   active.delete(s);
 }
