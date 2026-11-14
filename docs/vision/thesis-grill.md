@@ -188,3 +188,12 @@ Implications for the specs:
 - The gunner's console has two modes: laser (arc, room lock, timed release) and missile (steer in flight).
 - Missile room targeting comes from the impact point on the enemy hull, so approach angle matters: the gunner picks the room by where they hit.
 - Still open (Claude's defaults for the spec, owner can correct): a small magazine (about 4), one missile in flight at a time, and the missile counts as a body under gravity and asteroid collision. Whether the enemy can shoot missiles down is open.
+
+## Q20. Do the ships have shields?
+
+**Answer: B, FTL-style shield layers.** Each ship has 1 to 2 recharging shield layers. A laser hit strips a layer, or damages a room once shields are down. Missiles pass through shields and always hit a room.
+
+Implications for the specs:
+- The laser opens the enemy up; the missile is the scarce guaranteed hit. Each weapon has its own job.
+- The enemy's Shields room is a real target: damaging it slows or stops shield recharge.
+- Directional shields (shield the side you show) are a possible later variant on top of this, not demo scope.
