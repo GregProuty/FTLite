@@ -676,18 +676,24 @@ describe('flight (spec §7b)', () => {
     expect(m.vx - vx).toBeLessThan(0.2);                                 // tick 361: gravity only
   });
   it('self-destructs at the end of its 480th tick, after that tick\'s move and contacts, unfreezing the laser that tick', () => {
-    const st = duel();
+    const st = duel(), s = st.ships[0];
     tick(st, input({ missileLaunch: true }));
     const m = st.missiles[0]!;
-    Object.assign(m, { x: -300, y: 600, vx: 0, vy: 0, age: MISSILE_LIFE_TICKS - 2 });   // open space
+    Object.assign(m, { x: -300, y: 600, vx: 60, vy: 0, age: MISSILE_LIFE_TICKS - 2 });   // open space, coasting east
+    s.laserCharge = LASER_CHARGE_UNITS; s.laserHold = 50;                 // a full charge, frozen while the missile flies
     tick(st, input());
     expect(m.age).toBe(MISSILE_LIFE_TICKS - 1);
     expect(st.missiles[0]).not.toBeNull();
+    expect(s.laserHold).toBe(50);                                          // tick 479: still frozen
+    const x479 = m.x;
     tick(st, input());
     expect(m.age).toBe(MISSILE_LIFE_TICKS);
     expect(st.missiles[0]).toBeNull();
-    expect(st.events.at(-1)).toMatchObject({ kind: 'missileEnd', ship: 0, cause: 'expired' });
-    expect(st.ships[0].missilesLost).toBe(1);
+    const ended = st.events.at(-1)!;
+    expect(ended).toMatchObject({ kind: 'missileEnd', ship: 0, cause: 'expired' });
+    expect(ended.kind === 'missileEnd' && ended.x).toBeGreaterThan(x479 + 0.9);   // tick 480 still moved it (about 1 unit east)
+    expect(s.missilesLost).toBe(1);
+    expect(s.laserHold).toBe(51);                                          // unfrozen on tick 480 itself
   });
   it('flies on unsteered when nobody is at Weapons, and keeps its thrust', () => {
     const st = duel();

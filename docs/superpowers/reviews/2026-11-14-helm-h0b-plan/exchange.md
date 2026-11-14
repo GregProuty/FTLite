@@ -72,3 +72,51 @@ Confirmed: no test covered decision 4's central case. New missiles test: charge 
 
 ---
 
+# Round 2 (delta, reviewing c8ead31, effort medium, 54 s, 200375 in / 147840 cached / 1663 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 Complete the expiry regression assertions requested in R1-F3
+The implementation fixes expiry, but the new test does not verify the final movement or same-tick laser unfreezing promised by its title. · plan L678–690 starts with an uncharged laser and asserts only age, missile removal, ending cause, and missilesLost. It never checks position or laser clocks. · The test would still pass if expiry skipped the final movement or occurred after weapon clocks. These were explicit regression cases requested in R1-F3. · Initialize a full laser charge with a nonzero hold timer. Assert the timer remains frozen on tick 479 and advances on tick 480. Give the missile a known velocity and assert its final position or expiry-event coordinates include tick 480's movement.
+
+## Prior findings
+- R1-F1: resolved — plan L1291–1293 starts cooldown only when missilesLaunched increases; L1089–1097 covers a crew hit invalidating the proposed launch.
+- R1-F2: resolved — plan L1195–1197 distinguishes astern using the dot product, and L1246/L1253 apply it to both pursuits. L1033–1042 tests ship astern, missile astern, and dead ahead.
+- R1-F3: still open — The implementation is corrected: plan L830–837 performs movement, L874 expires survivors after contacts, and L1297–1298 orders expiry before weapon clocks. The remaining issue is P2 test coverage: L678–690 does not assert final movement or laser unfreezing.
+- R1-F4: resolved — plan L749–766 verifies full charge and hold=100 remain frozen, resume at 101 without a press, vent at 180, and do not recharge. The loop bounds match tickWeapons at L964–966.
+
+## Verified
+- HEAD is c8ead31; inspected the current affected plan sections and supporting spec passages.
+- Fuel applies through age 360 at plan L835; survivor expiry at L874 implements spec L147's 480-tick lifetime.
+- Changed simulation expressions introduce no forbidden Math operations, platform globals, or imports under tests/helpers/determinismGuard.ts:L3–37.
+- The revised step retains the H-0c integration boundary stated at plan L1273–1274 and L1331.
+
+## Not verified
+- Did not execute the embedded implementation, typecheck, or tests in this read-only review; the responder's execution claims were not independently reproduced.
+- The on-disk ledger could not be read because access was denied; used the supplied ledger and response.
+- Unchanged material was not re-reviewed beyond dependencies needed to assess the four fixes.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the subject at `c8ead31`. 1 accepted (P2), 0 rejected, 0 deferred. Codex confirmed R1-F1, R1-F2 and R1-F4 resolved, and confirmed R1-F3's code fix. R1-F3's test coverage is the same point as R2-F1, and both are fixed here.
+
+## R2-F1 [P2]: Complete the expiry regression assertions requested in R1-F3 (with R1-F3)
+
+Confirmed. The test checked only age, removal, the cause and `missilesLost`, so it would not catch a missile that stopped moving on its last tick or a laser that unfroze a tick late. The test now gives the missile `vx` 60 in open space and gives the crew a frozen full charge (hold 50). On tick 479 the hold stays 50 and the missile is alive. On tick 480 the missile is removed, its `expired` event's `x` is more than 0.9 past its tick-479 `x` (the 480th move happened before expiry), and the hold is 51 (the laser unfroze that same tick). Re-checked by applying the plan task by task to a fresh worktree of master: each task typechecks and passes (137, 162, 179).
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-14-helm-h0b-combat.md
+
+<!-- end -->
+
+---
+

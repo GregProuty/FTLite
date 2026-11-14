@@ -1,0 +1,46 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "Complete the expiry regression assertions requested in R1-F3",
+      "claim": "The implementation fixes expiry, but the new test does not verify the final movement or same-tick laser unfreezing promised by its title.",
+      "evidence": "plan L678–690 starts with an uncharged laser and asserts only age, missile removal, ending cause, and missilesLost. It never checks position or laser clocks.",
+      "why": "The test would still pass if expiry skipped the final movement or occurred after weapon clocks. These were explicit regression cases requested in R1-F3.",
+      "fix": "Initialize a full laser charge with a nonzero hold timer. Assert the timer remains frozen on tick 479 and advances on tick 480. Give the missile a known velocity and assert its final position or expiry-event coordinates include tick 480's movement."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "plan L1291–1293 starts cooldown only when missilesLaunched increases; L1089–1097 covers a crew hit invalidating the proposed launch."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "plan L1195–1197 distinguishes astern using the dot product, and L1246/L1253 apply it to both pursuits. L1033–1042 tests ship astern, missile astern, and dead ahead."
+    },
+    {
+      "id": "R1-F3",
+      "result": "still open",
+      "note": "The implementation is corrected: plan L830–837 performs movement, L874 expires survivors after contacts, and L1297–1298 orders expiry before weapon clocks. The remaining issue is P2 test coverage: L678–690 does not assert final movement or laser unfreezing."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "plan L749–766 verifies full charge and hold=100 remain frozen, resume at 101 without a press, vent at 180, and do not recharge. The loop bounds match tickWeapons at L964–966."
+    }
+  ],
+  "verified": [
+    "HEAD is c8ead31; inspected the current affected plan sections and supporting spec passages.",
+    "Fuel applies through age 360 at plan L835; survivor expiry at L874 implements spec L147's 480-tick lifetime.",
+    "Changed simulation expressions introduce no forbidden Math operations, platform globals, or imports under tests/helpers/determinismGuard.ts:L3–37.",
+    "The revised step retains the H-0c integration boundary stated at plan L1273–1274 and L1331."
+  ],
+  "not_verified": [
+    "Did not execute the embedded implementation, typecheck, or tests in this read-only review; the responder's execution claims were not independently reproduced.",
+    "The on-disk ledger could not be read because access was denied; used the supplied ledger and response.",
+    "Unchanged material was not re-reviewed beyond dependencies needed to assess the four fixes."
+  ]
+}
