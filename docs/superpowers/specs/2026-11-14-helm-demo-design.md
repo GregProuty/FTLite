@@ -37,6 +37,8 @@ Interior crew, oxygen, fires, doors and walking (the full inside link comes afte
 
 ## 3. The arena
 
+> **Superseded by the tactical view spec** (`2026-11-14-tactical-view-design.md` §3, grill Q23 to Q23c): the map is now a large zoomable map, radius about 2800, with one planet, an asteroid belt ring with gaps and loose clusters, and spawns at r = 2000. The table below is the original one-screen arena, kept for history.
+
 A fixed, circular arena seen from above, with the planet at its centre.
 
 | Thing | Rule | Values *(start)* |
@@ -84,6 +86,8 @@ Both ships have identical stats (the enemy is symmetric in the demo).
 Every room hit also deals hull damage (§7). A room at level 2 takes no further room damage, but its hits still cost hull.
 
 ## 6. The Helm console
+
+> **Flight is specified in the tactical view spec §5** (same rules; turn and thrust now ride the existing held-input channel instead of a new `helmAxes` command). This section is kept for history.
 
 Direct stick (Q18). The Helm sends **held axes every tick**: `turn ∈ {−1, 0, 1}` and `thrust ∈ {−1, 0, 1}`.
 
@@ -144,7 +148,7 @@ Tuning goal: a competent pair wins about 60 to 70% of the time, and a pair who i
 ## 10. Two screens over the network (Q15b)
 
 - **Seats:** the lobby assigns player 0 to the Helm and player 1 to Weapons; the players can swap before starting. One player per machine.
-- **The shared view:** both screens show the **whole arena with a fixed camera** (planet centred, at about 0.6 px per unit at 1280 x 720) **(rec.)**, so it is literally the same view (owner's words: "weapons will share that view"). Each screen adds its own layer: the Helm sees the predicted path and its thrust and turn state; Weapons sees the laser arc, the charge bar, the room lock and the missile count. Both see both hulls, the shield pips, the room damage and the other player's status (flying, firing, repairing).
+- **The shared view:** *superseded by the tactical view spec §6 and §7 (grill Q23, Q23b): each player has their own camera that follows their ship, zooms and pans over a large map.* Originally: both screens show the **whole arena with a fixed camera** (planet centred, at about 0.6 px per unit at 1280 x 720) **(rec.)**, so it is literally the same view (owner's words: "weapons will share that view"). Each screen adds its own layer: the Helm sees the predicted path and its thrust and turn state; Weapons sees the laser arc, the charge bar, the room lock and the missile count. Both see both hulls, the shield pips, the room damage and the other player's status (flying, firing, repairing).
 - **Transport:** the demo runs over Net-0's chosen stack. By Net-0 and the direction spec A6, **Net-1b comes before Net-3**, and Net-3 is "two machines over the internet, no prediction" (WebRTC, Cloudflare signalling and TURN, join codes). Net-3 needs the owner's Cloudflare account and domain (Net-0 open item 2).
 - **Net-2 is not a prerequisite for the duel (rec.).** Click-to-move and the per-player FTL layout serve the interior game (MG-1b), not this view.
 - **Latency:** without prediction (Net-4), the Helm's own inputs show after one round trip plus interpolation. A direct stick is the input most sensitive to this. The first networked playtests run on one home network (LAN, low latency); internet tests follow. If internet delay makes the Helm feel bad, pulling prediction of **the crew's own ship** forward from Net-4 is the planned remedy (§14).
@@ -157,7 +161,7 @@ Original placeholder shapes drawn with Pixi Graphics: a shaded planet disc, roug
 
 - **New subtree `sim/tactical/`:** `state.ts` (`TacticalState`: bodies, ships, rooms, shields, weapons, missiles, repair, enemy brain, telemetry), `step.ts`, `physics.ts`, `headings.ts` (generated), `weapons.ts`, `repair.ts`, `hunter.ts`, `hash.ts`, `snapshot.ts`, `tuning.ts`. It imports nothing from the sector-run sim beyond shared helpers (RNG, hashing).
 - **One session, two modes:** the authority gains a mode discriminant, `sector` (today) or `duel`. A run is one or the other. Command validation, ledgers, the tick driver and publication stay shared.
-- **Commands:** a new tactical family added to the closed union (an explicit Net-1 amendment, as MG-X will be): `helmAxes {turn, thrust}` (held; latest per player per tick), `laserLock {room}`, `laserCharge {held}`, `missileLaunch`, `missileSteer {turn}`, `repairToggle {room}`, `repairPress {dir}`. Seat ownership is validated as today: only the Helm seat sends `helmAxes`; only the Weapons seat sends weapon commands; either seat sends repair commands for its own player.
+- **Commands:** a new tactical family added to the closed union (an explicit Net-1 amendment, as MG-X will be): turn and thrust on the existing held-input channel (tactical view spec §5; originally a `helmAxes` command), `laserLock {room}`, `laserCharge {held}`, `missileLaunch`, `missileSteer {turn}`, `repairToggle {room}`, `repairPress {dir}`. Seat ownership is validated as today: only the Helm seat sends `helmAxes`; only the Weapons seat sends weapon commands; either seat sends repair commands for its own player.
 - **Versioning:** one `SIM_VERSION` bump when the duel mode lands, with its own golden file. The sector run's figures, gates and goldens are unchanged.
 - **Scripted pair for tests only:** a headless scripted Helm and gunner (orbit, line up, release in arc, the occasional missile and repair) drive telemetry and gate tests. They are never offered as a seat (Q15).
 - **Telemetry (per duel):** duration; outcome; laser releases, hits, misses and layers stripped; missiles launched, hits by room, losses by cause; planet and asteroid contacts per ship; enemy planet contacts after crew manoeuvres (baits); repairs started and finished per player; time away from each console; time the enemy spent in the laser arc.
@@ -212,10 +216,11 @@ H-0 and H-1 run alongside Net-1b. Roadmap item 36 records this order. It puts th
 3. Missiles can hit their own ship after 1 s (§7b). **(rec.)**
 4. No point defence in the demo (§7b). **(rec.)**
 5. The enemy repairs and pays the same price (§8). **(rec., in grill Q21)**
-6. A fixed whole-arena camera on both screens (§10). **(rec.)**
+6. ~~A fixed whole-arena camera on both screens (§10).~~ Replaced by grill Q23 and Q23b (tactical view spec §6).
 7. Net-2 is not needed for the duel (§10). **(rec.)**
 8. The dev-only split view in H-1 is a tuning workbench, never the demo (§14). **(rec.)**
 
 ## Change log
 
 - 2026-11-14: written from the owner's Helm direction and grill Q11 to Q22.
+- 2026-11-14: the arena, flight and camera moved to the tactical view spec (grill Q23 to Q23c): a large zoomable map, a follow camera with pan and snap, and held-input flight.
