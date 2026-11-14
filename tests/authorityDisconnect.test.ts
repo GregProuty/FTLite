@@ -10,7 +10,7 @@ import { decodeMessage, encodeMessage } from '../src/renderer/src/net/codec';
 import type { AuthorityMessage, ClientMessage, CommandEnvelope, Link } from '../src/renderer/src/net/contracts';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 
-function rig() {
+function rig(attachInitially = true) {
   const state = makeState(1), crashes: CrashRecord[] = [], closes: string[] = [], releases: string[] = [];
   const init = { runId: 'disconnect', seed: 1, playerCount: 1, characters: [], unlocked: [], contentDigest: __GAMEPLAY_CONTENT_DIGEST__, layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION };
   let now = 0, delayed = false, overflow: AuthorityMessage['kind'] | undefined, throwAfterOverflow = false;
@@ -39,10 +39,11 @@ function rig() {
     }
   };
   const authority = createFixtureAuthority({ init, contentDigest: init.contentDigest, resolveLayout: () => LAYOUT, clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, onCrash: record => crashes.push(record) }, state);
-  const detach = authority.attach(link, [0]); transport.drain();
+  const attach = () => authority.attach(link, [0]);
+  const detach = attachInitially ? attach() : () => {}; transport.drain();
   ownTestCleanup(() => { pair.host.close('done'); pair.client.close('done'); });
   const send = (message: ClientMessage) => { pair.clientLink.send('reliable-ordered', encodeMessage(message)); transport.drain(); };
-  return { init, state, authority, transport, pair, detach, crashes, closes, releases, send,
+  return { init, state, authority, transport, pair, attach, detach, crashes, closes, releases, send,
     command(sequence: number, command: CommandEnvelope['command'] = { kind: 'stand' }, requestedTick = state.tick) {
       send({ kind: 'command', envelope: { runId: init.runId, id: { player: 0, sequence }, requestedTick, command } });
     },
@@ -130,6 +131,63 @@ it.each(['controls', 'tick'] as const)('finishes abandoned %s batch entries as u
   h.transport.drain(); h.pump();
   expect(output.filter(message => message.kind === 'result').map(message => message.result))
     .toEqual([{ id: { player: 0, sequence: 2 }, tick: boundary === 'tick' ? 1 : 0, status: 'rejected', reason: 'unavailable' }]);
+});
+
+it.each(['admission', 'controls', 'seal'] as const)('unwinds a fault in checkpoint %s immediately and retains last-good recovery', boundary => {
+  const h = rig(); h.held(); h.pump();
+  const prefix = h.authority.replay(), completed = h.authority.captureCheckpoint();
+  const command: CommandEnvelope['command'] = boundary === 'controls' ? { kind: 'setPaused', paused: false } : { kind: 'stand' };
+  h.command(1, command); h.command(2, command, boundary === 'admission' ? 99 : 0);
+  h.overflow('result', true);
+  expect(() => h.authority.checkpoint([])).toThrow('transport failed after close');
+  // Cleanup cannot depend on another pump, checkpoint attempt, or owner retry.
+  expect(h.releases).toEqual(['message', 'close']);
+  expect(h.closes).toEqual(['reliable-overflow']);
+  expect(h.crashes).toHaveLength(1);
+  const crash = h.crashes[0]!, after = h.authority.replay();
+  expect(crash.checkpoint).toEqual(prefix.checkpoint);
+  expect(crash.snapshotAfterFault).not.toBeNull();
+  expect(crash.frames.find(frame => frame.action.kind === boundary && !frame.after)).toBeDefined();
+  expect(crash.frames.filter(frame => frame.action.kind === 'detach')).toHaveLength(1);
+  h.detach(); h.detach(); h.pair.authorityLink.close('again');
+  expect(() => h.authority.checkpoint([])).toThrow(/fault/);
+  expect(h.authority.replay()).toEqual(after);
+  expect(h.releases).toEqual(['message', 'close']);
+  expect(runReplay(LAYOUT, { ...prefix, frames: crash.frames.slice(0, prefix.frames.length) }, h.init.contentDigest).checkpoint).toEqual(completed);
+  const pair = h.transport.connectLocal(), output: AuthorityMessage[] = [];
+  pair.clientLink.onMessage((_, bytes) => output.push(decodeMessage(bytes) as AuthorityMessage));
+  h.authority.attach(pair.authorityLink, [0]);
+  ownTestCleanup(() => { pair.host.close('done'); pair.client.close('done'); });
+  for (const sequence of [1, 2]) pair.clientLink.send('reliable-ordered', encodeMessage({ kind: 'command', envelope: {
+    runId: h.init.runId, id: { player: 0, sequence }, requestedTick: boundary === 'admission' && sequence === 2 ? 99 : 0, command
+  } }));
+  h.transport.drain(); h.pump();
+  expect(output.filter(message => message.kind === 'result').map(message => [message.result.status, message.result.reason]))
+    .toEqual(boundary === 'controls' ? [['applied', undefined], ['rejected', 'unavailable']] : [['rejected', 'unavailable'], ['rejected', boundary === 'admission' ? 'stale-tick' : 'unavailable']]);
+  const recovered = createAuthority({ contentDigest: h.init.contentDigest, resolveLayout: () => LAYOUT, clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash: record => { throw new Error(record.error); } });
+  ownTestCleanup(() => recovered.dispose());
+  recovered.restore(crash.checkpoint);
+  expect(recovered.checkpoint([])).toMatchObject({ phase: 'paused', pauseReason: 'restore', snapshot: prefix.checkpoint.snapshot });
+});
+
+it('unwinds an initial attach publication fault before returning and releases ownership', () => {
+  const h = rig(false), prefix = h.authority.replay();
+  h.overflow('state', true);
+  expect(() => h.attach()).toThrow('transport failed after close');
+  expect(h.releases).toEqual(['message', 'close']);
+  expect(h.closes).toEqual(['reliable-overflow']);
+  expect(h.crashes).toHaveLength(1);
+  const crash = h.crashes[0]!, after = h.authority.replay();
+  expect(crash.checkpoint).toEqual(prefix.checkpoint);
+  expect(crash.frames.find(frame => frame.action.kind === 'publish')?.after).toBeUndefined();
+  expect(crash.frames.filter(frame => frame.action.kind === 'detach')).toHaveLength(1);
+  expect(() => h.authority.checkpoint([])).toThrow(/fault/);
+  h.pair.authorityLink.close('again'); expect(h.authority.replay()).toEqual(after);
+  expect(runReplay(LAYOUT, { ...prefix, frames: crash.frames.filter(frame => frame.after) }, h.init.contentDigest).checkpoint).toEqual(prefix.checkpoint);
+  const pair = h.transport.connectLocal();
+  const off = h.authority.attach(pair.authorityLink, [0]); // The failed attach no longer owns the seat.
+  off(); off(); pair.host.close('done'); pair.client.close('done');
+  expect(h.releases).toEqual(['message', 'close']);
 });
 
 it('rejects faulted checkpoints without sealing partial state and resumes the last-good crash checkpoint', () => {

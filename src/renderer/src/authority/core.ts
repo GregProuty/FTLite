@@ -111,10 +111,12 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (phase === 'error') throw new Error('cannot checkpoint faulted authority');
     // Check controller memory before any admission or acknowledgment side effect.
     captureCheckpointWithBots(botControllers);
-    drainIngress(); applyControls();
-    rejectPending();
-    botMemory = structuredClone([...botControllers]);
-    return captureCheckpoint();
+    try {
+      drainIngress(); applyControls();
+      rejectPending();
+      botMemory = structuredClone([...botControllers]);
+      return captureCheckpoint();
+    } catch (error) { recordFault(error); throw error; }
   }
   function rejectPending(): void {
     begin({ kind: 'seal' });
@@ -281,11 +283,15 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       flushCallouts();
       driver.pump();
       if (!replaying && frames.length > 4096) { applyControls(); rejectPending(); resetBaseline(); }
-    } catch (error) {
-      activeFrame = null; phase = 'error'; driver.dispose(); flushDetaches(); applyControls(); let snapshotAfterFault: Snapshot | null = null;
-      try { snapshotAfterFault = saveSnapshot(state, deps.contentDigest); } catch { /* corrupted state */ }
-      deps.onCrash({ init: structuredClone(deps.init), checkpoint: structuredClone(durableBaseline), frames: structuredClone(frames), lastPublishedSequence: publicationSequence, tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
-    } finally { pumping = false; }
+    } catch (error) { recordFault(error); }
+    finally { pumping = false; }
+  }
+  function recordFault(error: unknown): void {
+    // Public checkpoint and attach frames can fail outside pump. Abandon their
+    // incomplete frame before flushing cleanup, and preserve the durable baseline.
+    activeFrame = null; phase = 'error'; driver.dispose(); flushDetaches(); applyControls(); let snapshotAfterFault: Snapshot | null = null;
+    try { snapshotAfterFault = saveSnapshot(state, deps.contentDigest); } catch { /* corrupted state */ }
+    deps.onCrash({ init: structuredClone(deps.init), checkpoint: structuredClone(durableBaseline), frames: structuredClone(frames), lastPublishedSequence: publicationSequence, tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
   }
   const driver = createTickDriver(deps.clock, { schedule: (delay) => deps.scheduler.schedule(delay, pump) }, executeTick);
   let unbindLifecycle: void | Unsubscribe = undefined;
@@ -339,7 +345,11 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       }));
       binding.unsubscribe.push(link.onClose(detach));
       begin({ kind: 'publish' }); publishCompletedState(true); complete(); return detach;
-      } catch (error) { detach(); throw error; }
+      } catch (error) {
+        detach();
+        if (activeFrame) recordFault(error);
+        throw error;
+      }
     },
     pump, publishCompletedState, checkpoint: sealCheckpoint,
     replay(): ReplayV2 { return structuredClone({ version: 2, init: deps.init, initial: durableBaseline.snapshot, checkpoint: durableBaseline, frames }); },
