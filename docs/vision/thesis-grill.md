@@ -161,3 +161,12 @@ Implications for the specs:
 Implications for the specs:
 - The enemy behaviour is written as states (hunt now), so moods (flee to cover when low, line up a slingshot) are a small later addition.
 - The enemy uses the same command shape as the crew's ship and no information the crew could not see, so it stays deterministic and fair.
+
+## Q18. What do the Helm's hands do?
+
+**Answer: A, direct stick.** Turn left/right, thrust forward, a little reverse thrust; letting go engages the stabilise assist (Q12). Keyboard or gamepad, Asteroids-style.
+
+Implications for the specs:
+- The Helm sends held axes every tick (turn, thrust), not set-and-leave orders.
+- Turning steps through the fixed heading table (no `Math.sin`/`cos`); thrust adds the heading vector times engine power.
+- A set-and-leave throttle (Pirates! sails) is a possible later beginner option, not demo scope.
