@@ -1,0 +1,109 @@
+import type { Intent } from '../../../shared/intent';
+import type { Snapshot } from '../sim/snapshot';
+import type { TelemetryRecord } from '../sim/telemetry';
+
+export type PeerId = string;
+export type RunId = string;
+export type PlayerId = number; // 0..3, never an ECS entity ID
+export type StationId = number;
+export type ChannelKind = 'reliable-ordered' | 'unreliable-latest';
+export type Unsubscribe = () => void;
+export interface TransportCaps { unreliable: boolean; maxDatagram: number; hidesPeerIp: boolean; p2p: boolean }
+export interface LinkStats { rttMs: number; lossPct: number; relayed: boolean; bufferedBytes: number }
+export interface Link {
+  readonly peer: PeerId;
+  readonly caps: TransportCaps;
+  send(kind: ChannelKind, bytes: Uint8Array): void;
+  onMessage(cb: (kind: ChannelKind, bytes: Uint8Array) => void): Unsubscribe;
+  onClose(cb: (reason: string) => void): Unsubscribe;
+  stats(): LinkStats;
+  close(reason: string): void;
+}
+export interface HostOpts { protocolVersion: number; contentDigest: string }
+export interface Compatibility extends HostOpts { simVersion: number }
+export interface Session {
+  readonly links: readonly Link[];
+  host(opts: HostOpts): Promise<{ joinCode: string }>;
+  join(code: string, seatToken?: string): Promise<void>;
+  onLink(cb: (link: Link) => void): Unsubscribe;
+  onLinkLost(cb: (peer: PeerId) => void): Unsubscribe;
+  close(reason: string): void;
+}
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean }
+export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
+export interface CommandId { player: PlayerId; sequence: number }
+export type TargetRef = { kind: 'object'; stableId: number } | { kind: 'enemy'; stableId: number; room: number };
+export interface VisitRef { sector: number; beacon: number; arrivalTick: number }
+export interface EventRef { visit: VisitRef; eventId: number }
+export interface JumpRef { visit: VisitRef; requestedAtTick: number; destination: number }
+export interface WeaponRef { selector: number; expectedWeaponId: number }
+export type Command =
+  | { kind: 'moveTo'; tile: number }
+  | { kind: 'sit'; station: StationId }
+  | { kind: 'stand' }
+  | { kind: 'toggleDoorLocal'; edge: number }
+  | { kind: 'doorCycle'; station: StationId; edge: number; mode: 'cycle' | 'seal' }
+  | { kind: 'airlockToggle'; station: StationId; airlock: number }
+  | { kind: 'power'; station: StationId; target: StationId; delta: -1 | 1 }
+  | { kind: 'coolant'; station: StationId; target: StationId }
+  | { kind: 'buyUpgrade'; station: StationId; system: number; expectedLevel: number }
+  | { kind: 'buyReactor'; station: StationId; expectedBonus: number }
+  | { kind: 'selectWeapon'; station: StationId; weapon: WeaponRef }
+  | { kind: 'selectTarget'; station: StationId; target: TargetRef | null }
+  | { kind: 'fire'; station: StationId; weapon: WeaponRef; target: TargetRef }
+  | { kind: 'swapCargo'; station: StationId; slot: number; expectedCargo: number; expectedEquipped: number }
+  | { kind: 'scan'; station: StationId; target: TargetRef }
+  | { kind: 'systemScan'; station: StationId; visit: VisitRef }
+  | { kind: 'lockFrequency'; station: StationId; enemyId: number }
+  | { kind: 'vote'; event: EventRef; choice: number }
+  | { kind: 'jumpAgree'; pending: JumpRef }
+  | { kind: 'buy'; station: StationId; visit: VisitRef; item: number; expectedOffer: number }
+  | { kind: 'jump'; station: StationId; visit: VisitRef; destination: number }
+  | { kind: 'sectorJump'; station: StationId; visit: VisitRef }
+  | { kind: 'wait'; station: StationId; visit: VisitRef }
+  | { kind: 'evade'; station: StationId }
+  | { kind: 'tab'; group: number; station: StationId }
+  | { kind: 'setPaused'; paused: boolean };
+export interface CommandEnvelope { runId: RunId; id: CommandId; requestedTick: number; command: Command }
+/** Temporary immutable bridge; admitted by the same command ledger, never a semantic command kind. */
+export type LegacyCardInput = Readonly<Intent>;
+export interface LegacyInputEnvelope {
+  readonly kind: 'legacyCardInput'; readonly runId: RunId; readonly id: Readonly<CommandId>;
+  readonly requestedTick: number; readonly input: LegacyCardInput;
+}
+export const COMMAND_REASONS = [
+  'wrong-run', 'unowned', 'malformed', 'expected-sequence', 'stale-tick', 'over-capacity',
+  'invalid-seat', 'stale-target', 'unavailable', 'unsupported', 'conflicting-duplicate'
+] as const;
+export type CommandReason = typeof COMMAND_REASONS[number];
+export interface CommandResult {
+  id: CommandId; tick: number; status: 'applied' | 'noop' | 'rejected' | 'already-processed'; reason?: CommandReason;
+}
+export type Admission = { status: 'queued' } | { status: 'duplicate' | 'rejected'; result: CommandResult };
+export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' };
+// Described structurally here until pure cue derivation moves out of app in task 11.
+export type Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'upgrade' | 'victory' | 'defeat' | 'callout';
+export interface AuthorityEvent {
+  runId: RunId; eventSequence: number; tick: number;
+  payload:
+    | { kind: 'cue'; cue: Cue }
+    | { kind: 'callout'; player: PlayerId; text: string; station: number | null }
+    | { kind: 'pause'; paused: boolean; owner: PlayerId | null; reason: string }
+    | { kind: 'ended'; record: TelemetryRecord };
+}
+export interface PublishedState {
+  runId: RunId; tick: number; publicationSequence: number; snapshot: Snapshot; hash: string;
+  phase: 'running' | 'paused' | 'ended' | 'error'; pauseOwner: PlayerId | null; controlRevision: number;
+  commandHighWater: readonly number[]; eventSequence: number;
+}
+export type ClientMessage = { kind: 'held'; frame: HeldFrame } | { kind: 'command'; envelope: CommandEnvelope } | ClientAuxMessage | LegacyInputEnvelope;
+export type AuthorityMessage =
+  | { kind: 'state'; state: PublishedState }
+  | { kind: 'result'; runId: RunId; result: CommandResult }
+  | { kind: 'event'; event: AuthorityEvent };
+export interface RunInit {
+  runId: RunId; layoutId: string; layoutHash: string; simVersion: number; contentDigest: string; seed: number;
+  playerCount: number; characters: readonly number[]; unlocked: readonly string[]; quirk?: number;
+}
+export interface MonotonicClock { nowMs(): number }
+export interface Scheduler { schedule(delayMs: number, cb: () => void): Unsubscribe }

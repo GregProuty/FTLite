@@ -6,5 +6,5 @@
     "outDir": "./.tsout/web", "emitDeclarationOnly": true,
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/shared/**/*", "tests/**/*", "scripts/**/*"]
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/shared/**/*", "tests/**/*", "scripts/**/*", "build/contentDigest.ts"]
 }
