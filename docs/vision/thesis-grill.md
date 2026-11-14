@@ -170,3 +170,12 @@ Implications for the specs:
 - The Helm sends held axes every tick (turn, thrust), not set-and-leave orders.
 - Turning steps through the fixed heading table (no `Math.sin`/`cos`); thrust adds the heading vector times engine power.
 - A set-and-leave throttle (Pirates! sails) is a possible later beginner option, not demo scope.
+
+## Q19. What weapons does the gunner have?
+
+**Answer (owner's own option): a laser weapon and cruise missiles that the gunner controls.** "im thinking a laser weapon and cruise missiles that they control"
+
+Implications for the specs:
+- Two weapons. The laser uses Q13's model (firing arc, room lock, charge and timed release).
+- Cruise missiles are flown by the gunner after launch, not fire-and-forget, so the gunner has their own piloting mini game alongside the Helm's. How the gunner controls them is Q19b.
+- Missiles are bodies in the same sim: the well's pull and the asteroids act on them too (Claude's reading; the owner can correct it).
