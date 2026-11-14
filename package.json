@@ -12,6 +12,7 @@
     "bless": "tsx scripts/bless-golden.ts",
     "acceptance": "tsx scripts/acceptance.ts",
     "credits": "tsx scripts/gen-credits.ts",
+    "gen:headings": "tsx scripts/gen-headings.ts",
     "dist": "electron-vite build && electron-builder --win"
   },
   "devDependencies": {
