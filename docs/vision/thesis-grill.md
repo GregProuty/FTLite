@@ -25,3 +25,15 @@ Implications for the specs:
 - Each leg offers more tasks than the crew can finish; task value differs and is visible enough to argue about.
 - A choice needs scarcity to bite. The scarce resource is crew time per leg: the leg ends on arrival, and whatever is unfinished has consequences. This is a soft limit set by the travel itself, not a countdown timer (Claude's reading; the owner can correct it).
 - Consequences are delayed and traceable: the skipped scanner fails at the customs checkpoint, and the crew can see why.
+
+## Q4. What is at stake when it goes wrong?
+
+**Answer: all three as modes of one saved campaign, tuned for Standard.** The owner is "in between A and B" and can see all three, even C. Q4b settled the default: B.
+
+- **The structure is a saved campaign:** careers, contacts, reputation and the open world persist across sessions.
+- **How bad losing the ship is is a setting chosen when the campaign starts:**
+  - **One life (FTL):** losing the ship ends the campaign.
+  - **Standard (Pirates!), the default and the tuning target:** ship and cargo lost, the crew escapes in a pod with debt and claws back.
+  - **Relaxed (Stardew):** a repair bill and lost time, never the ship.
+- One code path. The modes differ only in loss rules and a few tuning knobs; all balance and playtesting targets Standard.
+- Still open: whether a campaign has an ending (retire, clear the debt) or runs forever, and how Standard avoids a debt spiral.
