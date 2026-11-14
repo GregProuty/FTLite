@@ -666,3 +666,10 @@ The fresh smoke ran couch-1 tick 46 through couch-2 tick 42 with Skiff, two crew
 SIM_VERSION remains **35** and golden final **b87a0284**. The checked-in determinism fixture is unchanged (SHA-256 `5d41def865825b1cc9b6634d31f0fa799941263981a96205993e4d1be390a7d4`). No gameplay, expected-vector, timeout or acceptance-floor changes were made in final fixes.
 
 Evidence: `.superpowers/sdd/2026-11-14-net-1b-durability/final-validation/` contains final command logs, timings and baseline comparison; `task-5-logs/engines.json` and UI artifacts now describe the fresh final source. Earlier task-5 validation/logs remain historical and explicitly source-scoped. The initial controller PowerShell wrapper aborted on expected warning stderr; a subsequent output-print encoding error occurred after successful build. The corrected runner resumed only unrun gates; neither harness issue changed product code.
+
+
+## Net-3 recovery preflight
+
+Net-1b merged as **3047027** with Helm H-0a: **1732 tests/135 files**, typecheck and build passed (60.40s Vitest, 61.2382s wall, slightly above the earlier Net-1b-only 60s budget with expanded coverage). Opus follow-ups then fixed in **5885496/03e7954**: deferred disconnect cleanup at completed frames, shared fault unwind for pump/checkpoint/attach boundaries, and rejection of faulted checkpoints. Independent review and scoped re-review approved.
+
+Final preflight source **03e7954**: **1746/1746 tests, 136 files, 54.47s Vitest / 55.3368s wall**; typecheck/build pass. Default acceptance **29.2584s wall**, all nine original rows exactly equal. No timing threshold, golden, sim version or gameplay changes. Real-browser/physical-device checks were not repeated for these lifecycle guards; previous engine evidence stays source-scoped. Full report: [Net-3 preflight review](superpowers/reviews/2026-11-14-net-3-preflight-review.md). Net-3 host/transport work remains ahead.

@@ -57,10 +57,10 @@ Evidence:
 
 Later, each optional: Steam lobbies and invites as an add-on, a dedicated Node server with a client-visible projection (the same authority), spectators (a read-only role), and larger crews.
 
-Implementation status, 2026-11-14: the Net-1b offline implementation gate passes recycling/disposal, viewer HUD, durable snapshot/checkpoint/replay v2 and the checked-in Cutter/Skiff determinism fixture in Node, real Electron Chromium and real Firefox. The full regression suite, typecheck, production build and unchanged acceptance rows pass; measured results and platform limits are recorded in [docs/gates.md](../../gates.md#net-1b-final-review-and-validation). Whole-branch review and the scoped restore-fix re-review are complete. Final source 9b8fddd passes 1,680 tests, build/typecheck, unchanged acceptance rows and all three engine checks; branch integration is pending. This does not provide internet transport, hosting, join codes or re-host orchestration; those remain Net-3 work.
+Implementation status, 2026-11-14: the Net-1b offline implementation gate passes recycling/disposal, viewer HUD, durable snapshot/checkpoint/replay v2 and the checked-in Cutter/Skiff determinism fixture in Node, real Electron Chromium and real Firefox. The full regression suite, typecheck, production build and unchanged acceptance rows pass; measured results and platform limits are recorded in [docs/gates.md](../../gates.md#net-1b-final-review-and-validation). Whole-branch review and the scoped restore-fix re-review are complete. Final source 9b8fddd passes 1,680 tests, build/typecheck, unchanged acceptance rows and all three engine checks; Net-1b merged as 3047027 on 2026-11-14; the combined Helm/Net-1b tree passed 1,732 tests, typecheck and build. This does not provide internet transport, hosting, join codes or re-host orchestration; those remain Net-3 work.
 
 ## 5. Open questions (none blocks Net-1)
 
 1. Safari support: test JavaScriptCore determinism once a Mac is available. Until then prediction still works, because corrections are bounded.
-2. The Cloudflare account and the domain for the signalling service (needed at Net-3).
+2. Cloudflare account and development hostname are now resolved (2026-11-14 handoff); TURN and Wrangler authentication are prepared. The actual Worker and internet transport are not deployed. Net-3 implementation design: `2026-11-14-net-3-internet-sessions-design.md`.
 3. Whether the browser build is also a single-player and couch-play target, or networked only.

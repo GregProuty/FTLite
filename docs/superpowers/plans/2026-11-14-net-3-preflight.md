@@ -26,12 +26,14 @@
 
 A faulted authority cannot seal a new resumable checkpoint, and external checkpoint validation rejects phase:error. Keep the CrashRecord last-good checkpoint and optional snapshotAfterFault for diagnostics; do not remove crash diagnostics or claim the partially executed state is healthy. Replaying a completed prefix stays supported.
 
-- [ ] Write meaningful regressions for F-1: force reliable queue overflow while a replay frame is active, verify no crash caused by nested journal boundaries, held neutral, no orphan pending/control ledger entries, idempotent cleanup and replay checkpoint equality. Exercise already queued ingress and at least control/publication closure; add tick-result coverage if a separate path matters.
-- [ ] Write F-2 regressions: inject a real authority fault, checkpoint() refuses without further mutation; validateCheckpoint rejects a well-shaped error-phase checkpoint; last-good CrashRecord checkpoint restores and resumes using the supported detached-producer lifecycle.
-- [ ] Run focused tests to record expected red failures, then implement the minimal fixes.
-- [ ] Run changed suites plus authority/replay/checkpoint/loopback/disposal/golden/parity tests and typecheck. Preserve all expected fixtures and gameplay comparisons. Commit with a report of exact commands/results.
-- [ ] Obtain independent task review and address material findings. Run final full tests/typecheck/build once the fixes are stable; record that the merged Helm+Net-1b baseline is 1732 tests/135 files, 60.40s Vitest (slightly over the prior Net-1b-only 60s timing budget), not a performance regression claim against identical coverage.
+- [x] Write meaningful regressions for F-1: force reliable queue overflow while a replay frame is active, verify no crash caused by nested journal boundaries, held neutral, no orphan pending/control ledger entries, idempotent cleanup and replay checkpoint equality. Exercise already queued ingress and at least control/publication closure; add tick-result coverage if a separate path matters.
+- [x] Write F-2 regressions: inject a real authority fault, checkpoint() refuses without further mutation; validateCheckpoint rejects a well-shaped error-phase checkpoint; last-good CrashRecord checkpoint restores and resumes using the supported detached-producer lifecycle.
+- [x] Run focused tests to record expected red failures, then implement the minimal fixes.
+- [x] Run changed suites plus authority/replay/checkpoint/loopback/disposal/golden/parity tests and typecheck. Preserve all expected fixtures and gameplay comparisons. Commit with a report of exact commands/results.
+- [x] Obtain independent task review and address material findings. Run final full tests/typecheck/build once the fixes are stable; record that the merged Helm+Net-1b baseline is 1732 tests/135 files, 60.40s Vitest (slightly over the prior Net-1b-only 60s timing budget), not a performance regression claim against identical coverage.
 
 ## Next deliverable
 
 The Net-3 internet-session spec follows the approved WebRTC/Cloudflare topology and the completed account handoff. It must resolve delayed command admission, secure room/seat authentication, Electron process ownership, bounded state deltas, reconnect/bot handoff, checkpoint fencing and re-hosting before implementation. Net-3 does not implement Net-4 prediction or Net-6 WSS gameplay relay.
+
+Completed at source03e7954; 1746tests/typecheck/build/unchanged acceptance passed. Follow-up plan: 2026-11-14-net-3a-host-runtime.md.
