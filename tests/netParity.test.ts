@@ -1,3 +1,4 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, expect, it } from 'vitest';
 import { Health } from '../src/renderer/src/sim/components';
 import { makeState, placeDebris, placeEnemy } from './helpers/sim';
@@ -26,7 +27,7 @@ describe('independent Net-1a baseline oracle', () => {
   it('retains stable selected targets, enemy room identity and selector while nulling system/SWAP rows', () => {
     const s = makeState(); const w = s.derived.stationOfKind[StationKind.Weapons]!, sc = s.derived.stationOfKind[StationKind.Science]!;
     placeDebris(s, 0, 10000, 1, 99); placeDebris(s, 1, 10000, 1, 100);
-    s.weapons.target = { kind: 'object', stableId: 99 }; s.stations.cursor[sc] = 1;
+    s.weapons.target = { kind: 'object', stableId: 99 }; s.science.target = targetRef(s, 1);
     const expected = projectGameplay(s);
     expect((expected.weapons as Record<string, unknown>).target).toEqual({ kind: 'debris', stableId: 99 });
     expect((expected.science as Record<string, unknown>).target).toEqual({ kind: 'debris', stableId: 100 });
@@ -34,7 +35,7 @@ describe('independent Net-1a baseline oracle', () => {
     expect(firstDifference(expected, projectGameplay(s))?.field).toBe('weapons.target.stableId');
     placeEnemy(s); s.weapons.target = { kind: 'enemy', stableId: s.enemy.stableId, room: 0 };
     expect((projectGameplay(s).weapons as Record<string, unknown>).target).toEqual({ kind: 'enemy-room', stableId: s.enemy.stableId, room: 0 });
-    for (const cursor of [-1, -2]) { s.stations.cursor[sc] = cursor; expect((projectGameplay(s).science as Record<string, unknown>).target).toBeNull(); }
+    for (const cursor of [-1, -2]) { s.science.target = targetRef(s, cursor); expect((projectGameplay(s).science as Record<string, unknown>).target).toBeNull(); }
   });
   it('short scripts exercise their named gameplay transitions', () => {
     const end = (name: string) => baseline.scenarios.find((s) => s.name === name)!.observations.at(-1)!.state;

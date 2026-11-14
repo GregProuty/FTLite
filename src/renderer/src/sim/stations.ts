@@ -24,10 +24,10 @@ export function failedStationCount(state: SimState): number {
 function resetCursor(state: SimState, i: number): void {
   const d = state.derived, kind = d.stationKind[i]!;
   if (kind === StationKind.Weapons) { state.weapons.target = targetRef(state, warnedTargets(state)[0] ?? -1); return; }
+  if (kind === StationKind.Science) { state.science.target = targetRef(state, warnedTargets(state, false)[0] ?? -1); return; }
   if (kind === StationKind.Engineering || kind === StationKind.Doors) return;
   state.stations.page[i] = 0;   // every seat opens on the power page (spec Loop-ii section 2)
-  state.stations.cursor[i] = kind === StationKind.Science ? (warnedTargets(state)[0] ?? -1)
-    : 0;
+  state.stations.cursor[i] = 0;
 }
 
 /** Seat a player: snap to the console tile centre and reset the legacy cursor per kind (spec section 4). At a console group the player sits at every member, on the first tab; the client reconciles focus and repeat (spec Demo-x-a section 1). */

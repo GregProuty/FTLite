@@ -1,3 +1,4 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { weaponSelection } from './helpers/weaponFixture';
 import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
 import { cardSelection } from './helpers/cardUi';
@@ -230,7 +231,7 @@ describe('buildHudModel', () => {
     const wpn = s.derived.stationOfKind[StationKind.Weapons]!, sci = s.derived.stationOfKind[StationKind.Science]!;
     placeDebris(s, A, 300, 1, 10, 2); placeDebris(s, B, 600, 1, 20, 3);
     s.debris.scanned[0] = 1; s.debris.scan[0] = 1; s.debris.scan[1] = 0.4;
-    sitDown(s, 0, wpn); sitDown(s, 1, sci); s.science.scanning = 1; s.stations.cursor[sci] = 1;
+    sitDown(s, 0, wpn); sitDown(s, 1, sci); s.science.scanning = 1; s.science.target = targetRef(s, 1);
     s.weapons.selector = 3; s.weapons.torpedoLoaded = 1; s.weapons.torpedoStock = 2; s.weapons.torpedoLoad = 0;
     const m = buildHudModel(s, slots(2), 'running', '');
     expect(m.threats.map((t) => t.text)).toEqual(['Debris: Bridge 5s freq 2', 'Debris: Weapons Bay 10s']);
@@ -273,7 +274,7 @@ describe('buildHudModel', () => {
     const wp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel;
     expect(wp.targets).toHaveLength(13); expect(wp.cursor).toBe(8); expect(wp.first).toBe(3);   // eight objects and five rooms (spec Demo-x-c section 4)
     weaponSelection(s).cursor = ENEMY_SHIELDS_SLOT; const wp2 = buildHudModel(s, slots(1), 'running', '').players[0]!.console as WeaponsPanel; expect(wp2.cursor).toBe(12); expect(wp2.first).toBe(7);
-    run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
+    run(s, 1, () => intents({ cancelPressed: true })); const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 0, c); s.science.target = targetRef(s, ENEMY_SLOT);
     const sp = buildHudModel(s, slots(1), 'running', '').players[0]!.console as SciencePanel;
     expect(sp.targets).toHaveLength(9); expect(sp.cursor).toBe(8); expect(sp.first).toBe(2);        // seven Science rows; the ship is one row there (spec Demo-x-c section 4)
   });
@@ -312,7 +313,7 @@ describe('buildHudModel', () => {
     expect((m.players[1]!.console as SciencePanel).targets[1]).toMatchObject({ frequency: 2, shieldsUp: false }); expect(wp.targets[2]!.status).toEqual({ hp: 0, repairIn: 45 }); expect(wp.targets[5]!.status).toEqual({ hp: 0, repairIn: 45 });
     expect(m.threats[0]!.text).toBe('Enemy 64% shields DOWN'); expect(m.threats[1]!.text).toBe('Down: weapons');
     guardDebris(s);                                                                       // a read at slots 8..11 throws: the model must branch before indexing
-    expect(() => { for (const slot of ENEMY_SLOTS) { weaponSelection(s).cursor = slot; s.stations.cursor[c] = slot; buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
+    expect(() => { for (const slot of ENEMY_SLOTS) { weaponSelection(s).cursor = slot; s.science.target = targetRef(s, slot); buildHudModel(s, slots(2), 'running', ''); } }).not.toThrow();
   });
   it('reports heat fraction, coolant and overdrive per Engineering row and per station, and the free coolant', () => {
     const s = makeState(1);

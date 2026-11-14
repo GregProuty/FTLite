@@ -1,3 +1,4 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
 import { step, fixtureRunner } from './helpers/rawInput';
 import { botIntent, gunnerPid, BOT_RECOVER_HEALTH } from './helpers/bot';
@@ -96,7 +97,7 @@ describe('the bot gunner (spec Demo-xiii section 3)', () => {
   it('a seated Science bot scans the enemy ship', () => {
     const s = starterFight(), sci = sciOf(s); sitDown(s, 1, sci);
     runBot1(s, seconds(30), () => s.enemy.scanned === 1);
-    expect([s.enemy.scanned, s.stations.cursor[sci]]).toEqual([1, ENEMY_SLOT]);
+    expect([s.enemy.scanned, scienceTargetSlot(s)]).toEqual([1, ENEMY_SLOT]);
   });
 
   it('the gunner draws nothing: botIntent leaves every stream as it was', () => {

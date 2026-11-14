@@ -1,6 +1,7 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { weaponSelection } from './helpers/weaponFixture';
 import { describe, it, expect } from 'vitest';
-import { warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
+import { warnedTargets, nextTarget } from '../src/renderer/src/sim/debrisTargets';
 import { spawnDebris, removeDebris, scienceLead, evades, debrisSystem, activeDebrisCount, spawnFieldRock, ObjectKind } from '../src/renderer/src/sim/debris';
 import { isTarget } from '../src/renderer/src/sim/debrisTargets';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
@@ -259,7 +260,7 @@ describe('frequency and shared cursors (2b-ii)', () => {
   it('a fresh state starts with selector 0, TORP_START stock and every other new field at 0', () => {
     const s = makeState(2);
     expect(s.weapons).toEqual({ target: null, charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0, lastShotTick: -1, lastShotTarget: -1, lastShotResult: 0, lastShotKind: 0, torpedoFed: 0, torpedoDropTick: -1, slot: new Uint8Array(2), charge2: new Float64Array(2), cargo: 0, lootTick: -1, lootId: 0, lootPlace: 0, lootBought: 0, lastShotSelector: 0, lastShotDamage: 0 });   // Loop-iii adds the extra slots, their charges and the cargo
-    expect(s.science).toEqual({ scanning: 0, system: 0, systemState: 0, systemStartTick: -1, systemTick: -1, systemResult: 0 });   // the system scan ready (spec Demo-x-b section 3)
+    expect(s.science).toEqual({ target: null, scanning: 0, system: 0, systemState: 0, systemStartTick: -1, systemTick: -1, systemResult: 0 });   // the system scan ready (spec Demo-x-b section 3)
     expect(Array.from(s.debris.frequency).every((v) => v === 0)).toBe(true);
     expect(Array.from(s.debris.scanned).every((v) => v === 0)).toBe(true);
     expect(Array.from(s.debris.scan).every((v) => v === 0)).toBe(true);
@@ -269,26 +270,24 @@ describe('frequency and shared cursors (2b-ii)', () => {
     placeDebris(s, A, 600, 1, 10, 2); placeDebris(s, A, 600, 1, 20, 3); placeDebris(s, A, 600, 1, 30, 1);   // slots 0, 1, 2
     s.debris.scanned[1] = 1; s.debris.scan[1] = 1;
     sitDown(s, 0, wpn); sitDown(s, 1, sci);
-    expect(weaponSelection(s).cursor).toBe(0); expect(s.stations.cursor[sci]).toBe(0);         // smallest StableId on sit, both consoles
-    weaponSelection(s).cursor = 1; s.stations.cursor[sci] = 1;
+    expect(weaponSelection(s).cursor).toBe(0); expect(scienceTargetSlot(s)).toBe(0);         // smallest StableId on sit, both consoles
+    weaponSelection(s).cursor = 1; s.science.target = targetRef(s, 1);
     removeDebris(s, 1);
-    expect(weaponSelection(s).cursor).toBe(2); expect(s.stations.cursor[sci]).toBe(2);         // next StableId (30) for both
+    expect(weaponSelection(s).cursor).toBe(2); expect(scienceTargetSlot(s)).toBe(2);         // next StableId (30) for both
     expect(s.debris.frequency[1]).toBe(0); expect(s.debris.scanned[1]).toBe(0); expect(s.debris.scan[1]).toBe(0);
   });
-  it('the first warning auto-selects for a seated Science operator at -1; cycleTarget cycles and wraps for either console', () => {
+  it('the first warning auto-selects Science; client target cycling wraps through the system row', () => {
     const s = makeState(1), A = room(s, 'A'), sci = s.derived.stationOfKind[StationKind.Science]!;
     s.director.nextSpawnTick = 1e9;
     sitDown(s, 0, sci);
-    expect(s.stations.cursor[sci]).toBe(-1);
+    expect(scienceTargetSlot(s)).toBe(-1);
     placeDebris(s, A, 60, 0);                                                                // inside the seated lead: warned next tick
     run(s, 1);
-    expect(s.debris.warned[0]).toBe(1); expect(s.stations.cursor[sci]).toBe(0);
+    expect(s.debris.warned[0]).toBe(1); expect(scienceTargetSlot(s)).toBe(0);
     placeDebris(s, A, 600, 1, 50); placeDebris(s, A, 600, 1, 40);                           // slots 1 (id 50), 2 (id 40)
-    cycleTarget(s, sci, Dir.Down); expect(s.stations.cursor[sci]).toBe(2);
-    cycleTarget(s, sci, Dir.Down); expect(s.stations.cursor[sci]).toBe(1);
-    cycleTarget(s, sci, Dir.Down); expect(s.stations.cursor[sci]).toBe(0);                  // wraps
-    cycleTarget(s, sci, Dir.Up); expect(s.stations.cursor[sci]).toBe(1);                    // wraps backwards
-    cycleTarget(s, sci, Dir.Left); expect(s.stations.cursor[sci]).toBe(1);                  // left/right do not move the target
+    for (const slot of [2, 1, -1, 0]) { run(s, 1); run(s, 1, () => intents({ moveY: 1 })); expect(scienceTargetSlot(s)).toBe(slot); }
+    run(s, 1); run(s, 1, () => intents({ moveY: -1 })); expect(s.science.target).toBeNull();
+    run(s, 1); run(s, 1, () => intents({ moveX: -1 })); expect(s.science.target).toBeNull();
   });
   it('standUp from Science clears scanning; from any other seat it does not', () => {
     const s = makeState(2), sci = s.derived.stationOfKind[StationKind.Science]!, nav = s.derived.stationOfKind[StationKind.Navigation]!;

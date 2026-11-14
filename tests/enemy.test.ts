@@ -1,9 +1,10 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { weaponSelection, fireFixtureWeapon, weaponsDirection } from './helpers/weaponFixture';
 import { describe, it, expect } from 'vitest';
 import { SHIELD_ROTATE, LOCK_SECONDS } from '../src/renderer/src/sim/tuning';
 import { enemySystem, fireInterval, leave, EnemySystem, enemyBeamThreshold, damageEnemy, Encounter } from '../src/renderer/src/sim/enemy';
 import { ObjectKind, shotsInFlight, debrisSystem, spawnDebris } from '../src/renderer/src/sim/debris';
-import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_PILOTING_SLOT, isEnemySlot, enemySystemOf, targetStableId, isTarget, warnedTargets, nextTarget, cycleTarget } from '../src/renderer/src/sim/debrisTargets';
+import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, ENEMY_PILOTING_SLOT, isEnemySlot, enemySystemOf, targetStableId, isTarget, warnedTargets, nextTarget } from '../src/renderer/src/sim/debrisTargets';
 import { sitDown, standUp, stationOutput } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Dir } from '../src/renderer/src/sim/dir';
@@ -12,7 +13,7 @@ import { createRng, nextFloat, nextInt } from '../src/shared/rng';
 import { TICK_HZ, ENCOUNTER_FIRST, ENCOUNTER_FIRST_SMALL, ENCOUNTER_MAX, ENEMY_HULL, ENEMY_FIRST_SHOT, ENEMY_FIRE_JITTER, ENEMY_SHOTS_MAX, ENEMY_SHOT_FLIGHT, ENEMY_SHOT_JITTER, FREQ_COUNT, ENEMY_AIM_CHANCE, CREW_INTERVAL_MULT, DEBRIS_SLOTS, HULL_MAX, ENEMY_SHOT_HULL_DAMAGE, ENEMY_SHOT_CREW_DAMAGE, DEBRIS_HULL_DAMAGE, ENEMY_BEAM_DAMAGE, ENEMY_TORP_DAMAGE, XP_PER_SHOT, DEBRIS_CREW_DAMAGE, STRESS_WEIGHTS, ENEMY_SYS_HP, ENEMY_SYS_REPAIR, ENEMY_EVADE, DT, SCAN_TIME, ENCOUNTER_REWARD_HULL, NEVER } from '../src/renderer/src/sim/tuning';
 import { makeState, run, quiet, armSpawn, placeEnemy, disableSystem, guardDebris, placeShot, placeDebris, room, intents, teleport, seconds, wake, hazardStart } from './helpers/sim';
 import { Weapon } from '../src/renderer/src/sim/weapons';
-import { scienceInput, scanStep } from '../src/renderer/src/sim/science';
+import { startTargetScan, scanStep } from '../src/renderer/src/sim/science';
 import { isProductive } from '../src/renderer/src/sim/productive';
 import { failStation } from '../src/renderer/src/sim/power';
 import { rawStress, anyUnattended, activeHazardCount } from '../src/renderer/src/sim/director';
@@ -67,7 +68,7 @@ describe('enemy: schedule (enemySystem called directly)', () => {
     sitDown(s, 0, w); placeDebris(s, A, 600, 1); sitDown(s, 1, c);   // Science sits after the warning, so its cursor is on slot 0
     weaponSelection(s).cursor = -1;                                      // force Weapons to "nothing selected"
     s.tick = ENCOUNTER_FIRST * T; enemySystem(s);
-    expect(weaponSelection(s).cursor).toBe(ENEMY_SLOT); expect(s.stations.cursor[c]).toBe(0);
+    expect(weaponSelection(s).cursor).toBe(ENEMY_SLOT); expect(scienceTargetSlot(s)).toBe(0);
   });
   it('a due shot re-arms with one director draw, then spawns a Shot with the four hazards draws (the aim, the room, the flight, the frequency), in spawnObject order', () => {
     const s = makeState(2); quiet(s); placeEnemy(s);
@@ -177,9 +178,9 @@ describe('enemy: targets', () => {
   it('leave retargets cursors on the enemy to the next StableId or -1; removeDebris can land a cursor on the enemy', () => {
     const s = makeState(2), A = room(s, 'A'), w = wpn(s), c = sci(s);
     placeDebris(s, A, 600, 1); placeEnemy(s); const b = placeDebris(s, A, 600, 1);
-    sitDown(s, 0, w); sitDown(s, 1, c); weaponSelection(s).cursor = ENEMY_SHIELDS_SLOT; s.stations.cursor[c] = ENEMY_WEAPONS_SLOT;
+    sitDown(s, 0, w); sitDown(s, 1, c); weaponSelection(s).cursor = ENEMY_SHIELDS_SLOT; s.science.target = targetRef(s, ENEMY_WEAPONS_SLOT);
     leave(s, false);
-    expect(weaponSelection(s).cursor).toBe(b); expect(s.stations.cursor[c]).toBe(b);
+    expect(weaponSelection(s).cursor).toBe(b); expect(scienceTargetSlot(s)).toBe(b);
     expect(Array.from(s.enemy.sysHp)).toEqual([0, 0, 0, 0]); expect(Array.from(s.enemy.sysRepairTick)).toEqual([-1, -1, -1, -1]); expect([s.enemy.shieldFreq, s.enemy.scanned, s.enemy.scan]).toEqual([0, 0, 0]);
     const t = makeState(1), w2 = wpn(t); const a2 = placeDebris(t, A, 600, 1); placeEnemy(t);
     sitDown(t, 0, w2); expect(weaponSelection(t).cursor).toBe(a2);
@@ -187,15 +188,15 @@ describe('enemy: targets', () => {
     expect(weaponSelection(t).cursor).toBe(ENEMY_SLOT);
     const alone = makeState(1), w3 = wpn(alone); placeEnemy(alone); sitDown(alone, 0, w3); expect(weaponSelection(alone).cursor).toBe(ENEMY_SLOT);
     leave(alone, false); expect(weaponSelection(alone).cursor).toBe(-1);
-    const sc = makeState(1); placeEnemy(sc); const c4 = sci(sc); sitDown(sc, 0, c4); sc.stations.cursor[c4] = ENEMY_SLOT; sc.science.scanning = 1;
+    const sc = makeState(1); placeEnemy(sc); const c4 = sci(sc); sitDown(sc, 0, c4); sc.science.target = targetRef(sc, ENEMY_SLOT); sc.science.scanning = 1;
     leave(sc, false); expect(sc.science.scanning).toBe(0);
     const ps = makeState(2), Ap = room(ps, 'A'), wq = wpn(ps), cq = sci(ps); placeDebris(ps, Ap, 600, 1); placeEnemy(ps); const bq = placeDebris(ps, Ap, 600, 1);
-    sitDown(ps, 0, wq); sitDown(ps, 1, cq); ps.stations.cursor[cq] = ENEMY_WEAPONS_SLOT; weaponSelection(ps).cursor = ENEMY_SHIELDS_SLOT; ps.science.scanning = 1; ps.debris.scan[bq] = 0.4;
+    sitDown(ps, 0, wq); sitDown(ps, 1, cq); ps.science.target = targetRef(ps, ENEMY_WEAPONS_SLOT); weaponSelection(ps).cursor = ENEMY_SHIELDS_SLOT; ps.science.scanning = 1; ps.debris.scan[bq] = 0.4;
     leave(ps, false);                                                  // the paused object scan survives; both cursors move to the successor
-    expect(ps.science.scanning).toBe(0); expect(ps.debris.scan[bq]).toBe(0.4); expect([weaponSelection(ps).cursor, ps.stations.cursor[cq]]).toEqual([bq, bq]);
+    expect(ps.science.scanning).toBe(0); expect(ps.debris.scan[bq]).toBe(0.4); expect([weaponSelection(ps).cursor, scienceTargetSlot(ps)]).toEqual([bq, bq]);
     const none = makeState(2), w5 = wpn(none), c5 = sci(none); placeEnemy(none); sitDown(none, 0, w5); sitDown(none, 1, c5);
-    weaponSelection(none).cursor = ENEMY_SHIELDS_SLOT; none.stations.cursor[c5] = ENEMY_ENGINES_SLOT; leave(none, false);
-    expect([weaponSelection(none).cursor, none.stations.cursor[c5]]).toEqual([-1, -1]);
+    weaponSelection(none).cursor = ENEMY_SHIELDS_SLOT; none.science.target = targetRef(none, ENEMY_ENGINES_SLOT); leave(none, false);
+    expect([weaponSelection(none).cursor, scienceTargetSlot(none)]).toEqual([-1, -1]);
   });
   it('placeDebris into a slot freed by a shot writes kind 0 (a later debris impact deals the debris damage, not the shot damage)', () => {
     const s = makeState(1), A = room(s, 'A'); quiet(s);
@@ -291,7 +292,7 @@ describe('enemy: shot impacts and guards', () => {
   });
   it('a shot can be scanned and shot down exactly like debris', () => {
     const s = makeState(1), B = room(s, 'B'); quiet(s); const c = sci(s); sitDown(s, 0, c); const k = placeShot(s, B, 6000, 1, undefined, 2);
-    s.stations.cursor[c] = k; scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(1);
+    s.science.target = targetRef(s, k); startTargetScan(s, c, s.science.target!); expect(s.science.scanning).toBe(1);
     run(s, seconds(20)); expect(s.debris.scanned[k]).toBe(1); expect(s.debris.frequency[k]).toBe(2);
     run(s, 1, () => intents({ cancelPressed: true }));
     const w = wpn(s); sitDown(s, 0, w); weaponSelection(s).cursor = k; s.weapons.selector = Weapon.BeamF2; s.weapons.charge = 1; s.rng.combat.s = 7;
@@ -299,8 +300,8 @@ describe('enemy: shot impacts and guards', () => {
   });
   it('Science guards: Confirm on the enemy hull row starts the ship scan; scanStep with the cursor on the enemy touches nothing; neither reads a debris array at ENEMY_SLOT', () => {
     const s = makeState(1), A = room(s, 'A'); placeEnemy(s); const c = sci(s); sitDown(s, 0, c); const k = placeDebris(s, A, 600, 1); s.debris.scan[k] = 0.4;
-    s.stations.cursor[c] = ENEMY_SLOT; guardDebris(s);
-    scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(1);
+    s.science.target = targetRef(s, ENEMY_SLOT); guardDebris(s);
+    startTargetScan(s, c, s.science.target!); expect(s.science.scanning).toBe(1);
     s.science.scanning = 1; scanStep(s); expect(s.science.scanning).toBe(1); expect(s.debris.scan[k]).toBe(0.4); expect(s.enemy.scan).toBeGreaterThan(0);
   });
   it('productive: the enemy alone makes neither Science nor Navigation productive; one shot in flight does', () => {
@@ -313,7 +314,7 @@ describe('enemy: shot impacts and guards', () => {
     expect(s.skills.xp[0 * 6 + 3]).toBe(0); expect(s.skills.xp[1 * 6 + 0]).toBe(0);                  // no Science or Navigation XP
     placeShot(s, room(s, 'A'), 6000, 1);
     expect(isProductive(s, c)).toBe(true); expect(isProductive(s, n)).toBe(true);
-    s.science.scanning = 1; s.stations.cursor[c] = ENEMY_SLOT; guardDebris(s); expect(isProductive(s, c)).toBe(true);   // through anyWarned, not the scan branch; the guard proves no debris array is read at ENEMY_SLOT
+    s.science.scanning = 1; s.science.target = targetRef(s, ENEMY_SLOT); guardDebris(s); expect(isProductive(s, c)).toBe(true);   // through anyWarned, not the scan branch; the guard proves no debris array is read at ENEMY_SLOT
   });
   it('director: rawStress with the enemy alone is 0.30, with one shot 0.50; the enemy is never unattended; a shot counts toward the hazard cap', () => {
     const s = makeState(2); placeEnemy(s);
@@ -425,41 +426,41 @@ describe('enemy systems: shields in the fire path, subsystem rows, the scan', ()
     expect(s.enemy.nextShotTick).toBe(tick + ENEMY_FIRST_SHOT * T);
   });
   it('the enemy scan: Confirm on the hull row starts it, scanStep advances and completes it, subsystem rows neither start nor progress it, leave clears it', () => {
-    const s = makeState(1); quiet(s); placeEnemy(s, ENEMY_HULL, 3); const c = sci(s); sitDown(s, 0, c); s.stations.cursor[c] = ENEMY_SLOT;
+    const s = makeState(1); quiet(s); placeEnemy(s, ENEMY_HULL, 3); const c = sci(s); sitDown(s, 0, c); s.science.target = targetRef(s, ENEMY_SLOT);
     const output = stationOutput(s, c); expect(output).toBeCloseTo(0.375, 12);                 // starter Science allocation 1 of 2, skill curve 0.75 at level 0
-    scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(1);
+    startTargetScan(s, c, s.science.target!); expect(s.science.scanning).toBe(1);
     scanStep(s); expect(s.enemy.scan).toBeCloseTo(DT * output / SCAN_TIME, 12);
-    s.stations.cursor[c] = ENEMY_SHIELDS_SLOT; const paused = s.enemy.scan; scanStep(s); expect(s.enemy.scan).toBe(paused);
-    s.stations.cursor[c] = ENEMY_SLOT; const total = Math.ceil(SCAN_TIME / output / DT);     // 960 calls in all reach 1
+    s.science.target = targetRef(s, ENEMY_SHIELDS_SLOT); const paused = s.enemy.scan; scanStep(s); expect(s.enemy.scan).toBe(paused);
+    s.science.target = targetRef(s, ENEMY_SLOT); const total = Math.ceil(SCAN_TIME / output / DT);     // 960 calls in all reach 1
     for (let n = 1; n < total - 1; n++) scanStep(s);
     expect(s.enemy.scan).toBeLessThan(1); expect(s.science.scanning).toBe(1);
     scanStep(s); expect(s.enemy.scan).toBe(1); expect(s.enemy.scanned).toBe(1); expect(s.science.scanning).toBe(0);
     scanStep(s); expect(s.enemy.scan).toBe(1);                                                // clamped, and scanning is off
-    scienceInput(s, c, -1, true); expect(s.science.scanning).toBe(0);                          // scanned: nothing to start
-    const t = makeState(1); quiet(t); placeEnemy(t); const c2 = sci(t); sitDown(t, 0, c2); t.stations.cursor[c2] = ENEMY_WEAPONS_SLOT;
-    scienceInput(t, c2, -1, true); expect(t.science.scanning).toBe(0);
-    t.stations.cursor[c2] = ENEMY_SLOT; scienceInput(t, c2, -1, true); scanStep(t); standUp(t, 0); const kept = t.enemy.scan; scanStep(t); expect(t.enemy.scan).toBe(kept);
-    sitDown(t, 0, c2); t.stations.cursor[c2] = ENEMY_SLOT; scienceInput(t, c2, -1, true); scanStep(t); expect(t.enemy.scan).toBeGreaterThan(kept);
+    startTargetScan(s, c, s.science.target!); expect(s.science.scanning).toBe(0);                          // scanned: nothing to start
+    const t = makeState(1); quiet(t); placeEnemy(t); const c2 = sci(t); sitDown(t, 0, c2); t.science.target = targetRef(t, ENEMY_WEAPONS_SLOT);
+    startTargetScan(t, c2, t.science.target!); expect(t.science.scanning).toBe(0);
+    t.science.target = targetRef(t, ENEMY_SLOT); startTargetScan(t, c2, t.science.target!); scanStep(t); standUp(t, 0); const kept = t.enemy.scan; scanStep(t); expect(t.enemy.scan).toBe(kept);
+    sitDown(t, 0, c2); t.science.target = targetRef(t, ENEMY_SLOT); startTargetScan(t, c2, t.science.target!); scanStep(t); expect(t.enemy.scan).toBeGreaterThan(kept);
     const fk = t.enemy.scan; failStation(t, c2); scanStep(t); expect(t.enemy.scan).toBe(fk);   // a failed Science station pauses the scan
     leave(t, false); expect([t.enemy.scan, t.enemy.scanned, t.science.scanning]).toEqual([0, 0, 0]);
     const kl = makeState(2); quiet(kl); placeEnemy(kl, 15, 1); const wk = wpn(kl), ck = sci(kl); sitDown(kl, 0, wk); sitDown(kl, 1, ck);
-    weaponSelection(kl).cursor = ENEMY_SLOT; kl.stations.cursor[ck] = ENEMY_SLOT; kl.weapons.charge = 1; kl.weapons.selector = Weapon.BeamF1; kl.rng.combat.s = 7;
+    weaponSelection(kl).cursor = ENEMY_SLOT; kl.science.target = targetRef(kl, ENEMY_SLOT); kl.weapons.charge = 1; kl.weapons.selector = Weapon.BeamF1; kl.rng.combat.s = 7;
     kl.science.scanning = 1; kl.enemy.scan = 1 - 2 * DT * stationOutput(kl, ck) / SCAN_TIME;                                       // one increment (and a margin) below completion
     run(kl, 1, () => intents({ confirmPressed: true }, {}));                                                                      // the matched beam kills; the scan state is cleared, not completed
     expect([kl.enemy.present, kl.enemy.scan, kl.enemy.scanned, kl.science.scanning]).toEqual([0, 0, 0, 0]);
-    const absent = makeState(1); const c3 = sci(absent); sitDown(absent, 0, c3); absent.stations.cursor[c3] = ENEMY_SLOT; scienceInput(absent, c3, -1, true); expect(absent.science.scanning).toBe(0);
+    const absent = makeState(1); const c3 = sci(absent); sitDown(absent, 0, c3); absent.science.target = targetRef(absent, ENEMY_SLOT); startTargetScan(absent, c3, absent.science.target!); expect(absent.science.scanning).toBe(0);
   });
   it('productive: a running enemy scan is productive; the enemy alone (all four rows) is not; the read trap covers slots 8 to 11', () => {
     const s = makeState(2); quiet(s); placeEnemy(s); s.enemy.nextShotTick = 1e9; const c = sci(s), n = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, c); sitDown(s, 1, n);
-    for (const slot of ENEMY_SLOTS) { s.stations.cursor[c] = slot; expect(isProductive(s, c)).toBe(false); }
-    s.science.scanning = 1; s.stations.cursor[c] = ENEMY_WEAPONS_SLOT; expect(isProductive(s, c)).toBe(false); s.science.scanning = 0;   // scanning, but on a system row with no object in flight
+    for (const slot of ENEMY_SLOTS) { s.science.target = targetRef(s, slot); expect(isProductive(s, c)).toBe(false); }
+    s.science.scanning = 1; s.science.target = targetRef(s, ENEMY_WEAPONS_SLOT); expect(isProductive(s, c)).toBe(false); s.science.scanning = 0;   // scanning, but on a system row with no object in flight
     expect(isProductive(s, n)).toBe(false);
-    s.stations.cursor[c] = ENEMY_SLOT; s.science.scanning = 1; expect(isProductive(s, c)).toBe(true);
+    s.science.target = targetRef(s, ENEMY_SLOT); s.science.scanning = 1; expect(isProductive(s, c)).toBe(true);
     s.enemy.scanned = 1; expect(isProductive(s, c)).toBe(false);
     const g = makeState(2); quiet(g); placeEnemy(g); const cg = sci(g), wg = wpn(g); sitDown(g, 0, cg); sitDown(g, 1, wg); g.weapons.charge = 1; guardDebris(g);
     for (const slot of ENEMY_SLOTS) {
-      g.stations.cursor[cg] = slot; weaponSelection(g).cursor = slot; g.science.scanning = 1;
-      expect(() => { scienceInput(g, cg, -1, true); scanStep(g); isProductive(g, cg); g.rng.combat.s = 7; fireFixtureWeapon(g); g.weapons.charge = 1; }).not.toThrow();
+      g.science.target = targetRef(g, slot); weaponSelection(g).cursor = slot; g.science.scanning = 1;
+      expect(() => { startTargetScan(g, cg, g.science.target!); scanStep(g); isProductive(g, cg); g.rng.combat.s = 7; fireFixtureWeapon(g); g.weapons.charge = 1; }).not.toThrow();
     }
   });
 });

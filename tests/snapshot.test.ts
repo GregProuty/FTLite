@@ -1,3 +1,4 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { botIntent as fixtureBotPolicy } from '../src/renderer/src/clientControl/botPolicy';
 import { snapshotPhaseStep, snapshotPhaseClient } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
@@ -343,7 +344,7 @@ describe('snapshot', () => {
     expect(hashState(resumed)).toBe(hashState(whole));
   });
   it('a run saved with the enemy weapons down, a repair due in 10 ticks and an enemy scan running continues like the uninterrupted run through the repair and the repaired first shot', () => {
-    const setup = (s: ReturnType<typeof makeState>) => { run(s, 100); placeEnemy(s); disableSystem(s, EnemySystem.Weapons); s.enemy.sysRepairTick[EnemySystem.Weapons] = s.tick + 10; s.enemy.nextShotTick = s.tick + 15; const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 1, c); s.stations.cursor[c] = ENEMY_SLOT; s.science.scanning = 1; };
+    const setup = (s: ReturnType<typeof makeState>) => { run(s, 100); placeEnemy(s); disableSystem(s, EnemySystem.Weapons); s.enemy.sysRepairTick[EnemySystem.Weapons] = s.tick + 10; s.enemy.nextShotTick = s.tick + 15; const c = s.derived.stationOfKind[StationKind.Science]!; sitDown(s, 1, c); s.science.target = targetRef(s, ENEMY_SLOT); s.science.scanning = 1; };
     const whole = makeState(2, 31); whole.director.nextSpawnTick = 1e9; setup(whole);
     const part = makeState(2, 31); part.director.nextSpawnTick = 1e9; setup(part);
     const resumed = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(part))));

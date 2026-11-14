@@ -1,3 +1,4 @@
+import { scienceTargetSlot } from '../sim/debrisTargets';
 import { weaponsTargetSlot } from '../sim/debrisTargets';
 import type { CardUiState } from './cardController';
 import type { Intent } from '../../../shared/intent';
@@ -283,7 +284,7 @@ function scienceIntent(state: SimState, ui: CardUiState, eid: number): Intent | 
   if (sci < 0 || Seated.station[eid] !== sci || !e.present || e.scanned || state.science.scanning || !stationOnline(state, sci)) return null;
   const g = state.derived.stationGroup[sci]!;
   if (g >= 0 && ui.groupBar[g]) return press(state, 0, 1);   // off the tab bar
-  const c = state.stations.cursor[sci]!, list = [...warnedTargets(state, false), -1];
+  const c = scienceTargetSlot(state), list = [...warnedTargets(state, false), -1];
   if (c !== ENEMY_SLOT) return press(state, 0, cycleToward(list, c < 0 ? -1 : c, ENEMY_SLOT, g >= 0));
   return { ...NEUTRAL_INTENT, confirmPressed: true };
 }

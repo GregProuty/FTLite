@@ -1,3 +1,4 @@
+import { startTargetScan, startSystemScan, lockFrequency } from './science';
 import { resolveTarget } from './debrisTargets';
 import { weaponMatches, canFireWeaponAt, fireWeaponAt, swapCargo, canSwap } from './weapons';
 import { NEUTRAL_INTENT, type Intent } from '../../../shared/intent';
@@ -105,6 +106,25 @@ export function applyConsoleCommand(state: SimState, envelope: CommandEnvelope):
     if (!unchanged) { state.run.vote[pid] = c.choice; state.run.voteTick = state.tick; }
     return commandResult(state, envelope, undefined, unchanged);
   }
+  if (c.kind === 'scan' || c.kind === 'systemScan' || c.kind === 'lockFrequency' || (c.kind === 'selectTarget' && state.derived.stationKind[seat] === StationKind.Science)) {
+    if (c.station !== seat || state.stations.occupant[seat] !== pid || state.derived.stationKind[seat] !== StationKind.Science) return commandResult(state, envelope, 'invalid-seat');
+    if (state.derived.stationGroup[seat]! >= 0 && !stationOnline(state, seat)) return commandResult(state, envelope, 'unavailable');
+    if (c.kind === 'selectTarget' || c.kind === 'scan') {
+      if (c.target && (resolveTarget(state, c.target) === null || (c.target.kind === 'enemy' && c.target.room !== 4))) return commandResult(state, envelope, 'stale-target');
+      if (c.kind === 'selectTarget') {
+        const old = state.science.target, unchanged = old === null ? c.target === null : c.target !== null && old.kind === c.target.kind && old.stableId === c.target.stableId && (old.kind !== 'enemy' || (c.target.kind === 'enemy' && old.room === c.target.room));
+        state.science.target = c.target ? { ...c.target } : null;
+        return commandResult(state, envelope, undefined, unchanged);
+      }
+      return commandResult(state, envelope, startTargetScan(state, seat, c.target) ? undefined : 'unavailable');
+    }
+    if (c.kind === 'systemScan') {
+      if (!sameVisit(state, c.visit)) return commandResult(state, envelope, 'stale-target');
+      return commandResult(state, envelope, startSystemScan(state, seat) ? undefined : 'unavailable');
+    }
+    if (!state.enemy.present || state.enemy.stableId !== c.enemyId) return commandResult(state, envelope, 'stale-target');
+    return commandResult(state, envelope, lockFrequency(state, seat, c.enemyId) ? undefined : 'unavailable');
+  }
   if (c.kind === 'selectWeapon' || c.kind === 'selectTarget' || c.kind === 'fire' || c.kind === 'swapCargo') {
     if (c.station !== seat || state.stations.occupant[seat] !== pid || state.derived.stationKind[seat] !== StationKind.Weapons) return commandResult(state, envelope, 'invalid-seat');
     if (state.derived.stationGroup[seat]! >= 0 && !stationOnline(state, seat)) return commandResult(state, envelope, 'unavailable');
@@ -163,7 +183,7 @@ export function legacyCardReason(state: SimState, envelope: LegacyInputEnvelope,
   if (envelope.requestedTick !== state.tick) return 'stale-tick';
   if (!conscious(state, pid) || Seated.station[state.crew[pid]!] !== i || state.stations.occupant[i] !== pid || (inTick && (state.scratch.satThisTick[pid] || state.scratch.stoodThisTick[pid]))) return 'invalid-seat';
   const kind = state.derived.stationKind[i];
-  if (![StationKind.Science, StationKind.Navigation].some(k => k === kind)) return 'unsupported';
+  if (kind !== StationKind.Navigation) return 'unsupported';
   if (state.derived.stationGroup[i]! >= 0 && !stationOnline(state, i)) return 'unavailable';
   if (kind === StationKind.Navigation && input.confirm) { const rows = navRows(state); if (rows[navCursorAfterDirection(rows, state.stations.cursor[i]!, input.direction)]?.select === 'choice') return 'unsupported'; }
   return undefined;

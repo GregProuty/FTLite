@@ -1,3 +1,4 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { recent, isProductive } from '../src/renderer/src/sim/productive';
@@ -28,7 +29,7 @@ describe('isProductive', () => {
     const s = makeState(2), nav = idx(s, StationKind.Navigation), sci = idx(s, StationKind.Science), A = room(s, 'A');
     s.director.nextSpawnTick = 1e9; sitDown(s, 0, nav); sitDown(s, 1, sci);
     expect(isProductive(s, nav)).toBe(false); expect(isProductive(s, sci)).toBe(false);
-    s.science.scanning = 1; s.stations.cursor[sci] = 0;                          // no valid target: the scan branch needs one
+    s.science.scanning = 1; s.science.target = targetRef(s, 0);                          // no valid target: the scan branch needs one
     expect(isProductive(s, sci)).toBe(false);
     placeDebris(s, A, 600, 1);
     expect(isProductive(s, nav)).toBe(true); expect(isProductive(s, sci)).toBe(true);

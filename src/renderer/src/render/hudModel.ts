@@ -1,3 +1,4 @@
+import { scienceTargetSlot } from '../sim/debrisTargets';
 import type { CardUiState } from '../clientControl/cardController';
 import { weaponDef } from '../sim/weaponDefs';
 import { LootPlace, Weapon, canSwap, swapSlot } from '../sim/weapons';
@@ -442,7 +443,7 @@ function consolePanel(state: SimState, i: number, kind: number, ui?: CardUiState
     return { kind: 'weapons', charge: w.charge, selector: w.selector, torpedo: { stock: w.torpedoStock, cap: TORP_CAP, loaded: w.torpedoLoaded === 1, load: w.torpedoLoad, fetch: state.derived.magazineTile >= 0 && w.torpedoLoaded === 0 && w.torpedoFed === 0, fed: w.torpedoFed === 1 }, targets: slots.map((k) => target(state, k, true)), cursor, first: targetWindow(cursor, slots.length + (swap ? 1 : 0), rows), locked: lockActive(state), loot, swap: swapText, rows, enemyFreq: e.present && e.scanned ? e.shieldFreq : null, freqUnknown: e.present === 1 && !e.scanned && shieldsUp, shieldsUp, shot: shotResult(state) };
   }
   if (kind === StationKind.Science) {
-    const slots = warnedTargets(state, false), c = state.stations.cursor[i]!, cursor = c < 0 ? slots.length : slots.indexOf(c), system = systemRow(state, i);   // the enemy ship as one row (spec Demo-x-c section 4)   // the cursor -1 is the system row (spec Demo-x-b section 3)
+    const slots = warnedTargets(state, false), c = scienceTargetSlot(state), cursor = c < 0 ? slots.length : slots.indexOf(c), system = systemRow(state, i);   // the enemy ship as one row (spec Demo-x-c section 4)   // the cursor -1 is the system row (spec Demo-x-b section 3)
     return { kind: 'science', leadSeconds: scienceLead(state), targets: slots.map((k) => ({ ...target(state, k), scan: k === ENEMY_SLOT ? state.enemy.scan : isEnemySlot(k) ? 0 : state.debris.scan[k]! })), cursor, first: targetWindow(cursor, slots.length + 1 + system.results.length, SCIENCE_ROWS), scanning: state.science.scanning === 1, lock: lockActive(state) ? `LOCKED ${lockSecondsLeft(state)}s` : canLock(state, i) ? 'LOCK: Confirm' : '', system };
   }
   if (kind === StationKind.Navigation) {

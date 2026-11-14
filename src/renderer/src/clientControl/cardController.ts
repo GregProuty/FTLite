@@ -11,7 +11,7 @@ import { StationKind, STATION_COUNT, STATION_NAMES } from '../sim/stationKinds';
 import { stationOnline } from '../sim/stations';
 import { navRows, navCursorAfterDirection } from '../sim/run';
 import { canSwap, swapSlot, selectorList, weaponRef } from '../sim/weapons';
-import { warnedTargets, targetRef, weaponsTargetSlot } from '../sim/debrisTargets';
+import { warnedTargets, targetRef, weaponsTargetSlot, scienceTargetSlot } from '../sim/debrisTargets';
 import { upgradeRows, REACTOR_ROW, BACK_ROW, canUpgrade, canBuyReactor } from '../sim/power';
 import { doorsCursorCount, doorsCursorTarget } from '../sim/doors';
 
@@ -30,6 +30,10 @@ export function cardRows(view: SimState, station: number, ui?: CardUiState): rea
     return [...Array.from({ length: STATION_COUNT }, (_, system): CardRow => { const target = view.derived.stationOfKind[system]!; return { key: target >= 0 ? `station:${target}` : `missing:${system}`, text: STATION_NAMES[system]!, enabled: available && target >= 0, action: target >= 0 ? { kind: 'coolant', station, target } : null }; }), { key: 'upgrades', text: 'UPGRADES', enabled: true, action: null }];
   }
   if (kind === StationKind.Doors) return Array.from({ length: doorsCursorCount(view) }, (_, row): CardRow => { const target = doorsCursorTarget(view, row)!; return target.kind === 'door' ? { key: `door:${target.edge}`, text: `Door ${target.edge}`, enabled: available, action: { kind: 'doorCycle', station, edge: target.edge, mode: online ? 'cycle' : 'seal' } } : { key: `airlock:${target.index}`, text: `Airlock ${target.index}`, enabled: online, action: { kind: 'airlockToggle', station, airlock: target.index } }; });
+  if (kind === StationKind.Science) return [
+    ...warnedTargets(view, false).map((slot): CardRow => { const target = targetRef(view, slot)!; return { key: target.kind === 'object' ? `object:${target.stableId}` : `enemy:${target.stableId}:${target.room}`, text: `Target ${target.stableId}`, enabled: available, action: { kind: 'selectTarget', station, target } }; }),
+    { key: 'system', text: 'Scan system', enabled: online, action: { kind: 'systemScan', station, visit: visitRef(view) } }
+  ];
   if (kind === StationKind.Weapons) {
     const rows: CardRow[] = warnedTargets(view).map(slot => { const target = targetRef(view, slot)!; return { key: target.kind === 'object' ? `object:${target.stableId}` : `enemy:${target.stableId}:${target.room}`, text: `Target ${target.stableId}`, enabled: available, action: { kind: 'selectTarget', station, target } }; });
     if (canSwap(view)) { const slot = swapSlot(view); rows.push({ key: 'swap', text: 'SWAP', enabled: available, action: { kind: 'swapCargo', station, slot, expectedCargo: view.weapons.cargo, expectedEquipped: view.weapons.slot[slot]! } }); }
@@ -45,6 +49,7 @@ export function cardRowIndex(view: SimState, station: number, ui?: CardUiState):
     if (slot >= 0) return warnedTargets(view).indexOf(slot);
     return key === 'swap' && canSwap(view) ? rows.length - 1 : -1;
   }
+  if (view.derived.stationKind[station] === StationKind.Science) { const slot = scienceTargetSlot(view); return slot < 0 ? rows.length - 1 : warnedTargets(view, false).indexOf(slot); }
   if (found >= 0) return found;
   return view.derived.stationKind[station] === StationKind.Engineering && ui?.stations[station]?.page !== 'upgrades' ? StationKind.Engineering : rows.length ? 0 : -1;
 }
@@ -107,11 +112,10 @@ export { Dir };
 /** Unmigrated families still expose their published cursor/page; no canonical mirrors. */
 export function atFirstRow(state: SimState, i: number, ui?: CardUiState): boolean {
   if (!stationOnline(state, i)) return true;
-  if (state.derived.stationKind[i] === StationKind.Engineering || state.derived.stationKind[i] === StationKind.Doors || state.derived.stationKind[i] === StationKind.Weapons) return cardRowIndex(state, i, ui) <= 0;
+  if (state.derived.stationKind[i] === StationKind.Engineering || state.derived.stationKind[i] === StationKind.Doors || state.derived.stationKind[i] === StationKind.Weapons || state.derived.stationKind[i] === StationKind.Science) return cardRowIndex(state, i, ui) <= 0;
   const c = state.stations.cursor[i]!;
   switch (state.derived.stationKind[i]) {
     case StationKind.Navigation: { const first = navRows(state).findIndex(row => row.select !== 'none'); return first < 0 || c <= first; }
-    case StationKind.Science: return [...warnedTargets(state, false), -1].indexOf(c < 0 ? -1 : c) <= 0;
     default: return true;
   }
 }
@@ -154,6 +158,24 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
       if (!stationOnline(view, seat)) continue;
     }
     const kind = view.derived.stationKind[seat]!;
+    if (kind === StationKind.Science) {
+      const rows = cardRows(view, seat, ui); let index = cardRowIndex(view, seat, ui);
+      if (dir === Dir.Up || dir === Dir.Down) {
+        index = index < 0 ? 0 : (index + (dir === Dir.Up ? rows.length - 1 : 1)) % rows.length;
+        const action = rows[index]!.action;
+        emit({ kind: 'selectTarget', station: seat, target: action?.kind === 'selectTarget' ? action.target : null });
+      }
+      const row = rows[index]; ui.stations[seat]!.rowKey = row?.key ?? null;
+      if (confirm && row?.action) {
+        const action = row.action;
+        if (action.kind === 'systemScan') emit(action);
+        else if (action.kind === 'selectTarget' && action.target) {
+          if (action.target.kind === 'enemy' && view.enemy.scanned) emit({ kind: 'lockFrequency', station: seat, enemyId: action.target.stableId });
+          else emit({ kind: 'scan', station: seat, target: action.target });
+        }
+      }
+      continue;
+    }
     if (kind === StationKind.Weapons) {
       const memory = ui.stations[seat]!, rows = cardRows(view, seat, ui);
       let index = cardRowIndex(view, seat, ui), weapon = weaponRef(view);
@@ -195,7 +217,7 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
       }
       continue;
     }
-    if (![StationKind.Navigation, StationKind.Science].some(k => k === kind)) continue;
+    if (kind !== StationKind.Navigation) continue;
     let vote: Command | null = null;
     if (kind === StationKind.Navigation && confirm) {
       const rows = navRows(view), row = rows[navCursorAfterDirection(rows, view.stations.cursor[seat]!, dir)];

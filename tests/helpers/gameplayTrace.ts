@@ -1,7 +1,7 @@
 import { createSimState, type SimState } from '../../src/renderer/src/sim/state';
 import { Position, Health, Life, Stable, Seated } from '../../src/renderer/src/sim/components';
 import { StationKind } from '../../src/renderer/src/sim/stationKinds';
-import { enemyRoomOfSlot } from '../../src/renderer/src/sim/debrisTargets';
+import { enemyRoomOfSlot, targetRef } from '../../src/renderer/src/sim/debrisTargets';
 import { DEBRIS_SLOTS, SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
@@ -41,11 +41,11 @@ export function projectGameplay(s: SimState): Record<string, unknown> {
   delete (out.groups as Plain).bar;
   // Preserve the pinned projection's insertion order: target was always
   // appended after the independently named weapon fields.
-  delete (out.weapons as Plain).target;
+  delete (out.weapons as Plain).target; delete (out.science as Plain).target;
   for (const key of ['navSig', 'navSelect', 'navIndex']) delete (out.run as Plain)[key];
-  for (const [family, kind] of [['weapons', StationKind.Weapons], ['science', StationKind.Science]] as const) {
-    const station = s.derived.stationOfKind[kind]!;
-    (out[family] as Plain).target = family === 'weapons' ? s.weapons.target === null ? null : s.weapons.target.kind === 'object' ? { kind: 'debris', stableId: s.weapons.target.stableId } : { kind: 'enemy-room', stableId: s.weapons.target.stableId, room: s.weapons.target.room } : targetProjection(s, station < 0 ? -1 : s.stations.cursor[station]!);
+  for (const family of ['weapons', 'science'] as const) {
+    const target = s[family].target;
+    (out[family] as Plain).target = target === null ? null : target.kind === 'object' ? { kind: 'debris', stableId: target.stableId } : { kind: 'enemy-room', stableId: target.stableId, room: target.room };
   }
   out.layoutId = s.layout.id; out.layoutHash = s.derived.layoutHash;
   out.crew = s.crew.map((eid, pid) => ({ pid, stableId: Stable.id[eid], x: Position.x[eid], y: Position.y[eid], health: Health.cur[eid], life: Life.state[eid], bleed: Life.bleed[eid], reviveProgress: Life.reviveProgress[eid], reviverPid: Life.reviverPid[eid], station: Seated.station[eid] }));
@@ -91,10 +91,24 @@ export const scenarios: readonly GameplayScenario[] = freeze([
 function mutate(s: SimState, m: Mutation): void {
   const a = m.args, n = Number(a[0]);
   switch (m.op) {
-    case 'set': { const path = String(a[0]).split('.'); let at = s as unknown as Plain; for (const key of path.slice(0, -1)) at = at[key] as Plain; at[path.at(-1)!] = a[1]; break; }
+    case 'set': {
+      const path = String(a[0]).split('.');
+      // Translate pinned numeric setup identities at the fixture barrier only.
+      if (path[0] === 'stations' && path[1] === 'cursor') {
+        const kind = s.derived.stationKind[Number(path[2])];
+        if (kind === StationKind.Science || kind === StationKind.Weapons) { s[kind === StationKind.Science ? 'science' : 'weapons'].target = targetRef(s, Number(a[1])); break; }
+      }
+      // This fixture invalidates a slot directly, without removal/retargeting.
+      if (path[0] === 'debris' && path[1] === 'active' && a[1] === 0 && s.science.target?.kind === 'object' && s.science.target.stableId === s.debris.stableId[Number(path[2])]) s.science.target = null;
+      let at = s as unknown as Plain; for (const key of path.slice(0, -1)) at = at[key] as Plain; at[path.at(-1)!] = a[1]; break;
+    }
     case 'quiet': s.director.nextSpawnTick = 1e9; s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; break;
     case 'seat': sitDown(s, n, s.derived.stationOfKind[Number(a[1])]!); break;
-    case 'debris': placeDebris(s, 0, 1000000, 1); placeDebris(s, 1, 1000000, 1); break;
+    case 'debris': {
+      const first = placeDebris(s, 0, 1000000, 1); placeDebris(s, 1, 1000000, 1);
+      // The pinned setup's unoccupied Science cursor was initially slot zero.
+      s.science.target = targetRef(s, first); break;
+    }
     case 'enemy': placeEnemy(s); break;
     case 'map': mapM(s); break;
     case 'event': setEvent(s, n); break;

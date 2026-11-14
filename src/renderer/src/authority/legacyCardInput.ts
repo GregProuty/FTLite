@@ -3,7 +3,7 @@ import type { SimState } from '../sim/state';
 import { legacyCardReason, commandResult } from '../sim/commands';
 import type { Ledger } from './ledger';
 
-/** The one temporary ingress bridge for Navigation and Science only. */
+/** The one temporary ingress bridge for Navigation only. */
 export function admitLegacyCardInput(ledger: Ledger, envelope: LegacyInputEnvelope, tick: number, state: SimState) {
   const admission = ledger.admit(envelope, tick);
   if (admission.status !== 'queued') return admission;

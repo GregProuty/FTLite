@@ -1,6 +1,7 @@
+import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
 import { LOCK_SECONDS, TICK_HZ as HZ, ENEMY_HULL } from '../src/renderer/src/sim/tuning';
-import { scienceInput } from '../src/renderer/src/sim/science';
+import { startTargetScan, lockFrequency } from '../src/renderer/src/sim/science';
 import { ENEMY_SLOT, ENEMY_WEAPONS_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { lockActive } from '../src/renderer/src/sim/enemy';
 import { Dir } from '../src/renderer/src/sim/dir';
@@ -36,9 +37,9 @@ describe('scanning', () => {
     run(s, 1, () => intents(confirm));
     expect(s.science.scanning).toBe(0);                                        // Confirm on a scanned object does nothing
     placeDebris(s, A, 1e6, 1, undefined, 1);                                   // slot 1, unscanned
-    s.stations.cursor[i] = 1; run(s, 1, () => intents(confirm)); run(s, 30);
+    s.science.target = targetRef(s, 1); run(s, 1, () => intents(confirm)); run(s, 30);
     const p1 = s.debris.scan[1]!; expect(p1).toBeGreaterThan(0);
-    s.stations.cursor[i] = 0; run(s, 30);                                      // a scanned object is selected while scanning: nothing progresses
+    s.science.target = targetRef(s, 0); run(s, 30);                                      // a scanned object is selected while scanning: nothing progresses
     expect(s.science.scanning).toBe(1); expect(s.debris.scan[1]).toBe(p1); expect(s.debris.scan[0]).toBe(1);
     run(s, 1, () => intents(cancel)); failStation(s, i);                       // revealed information survives a stand and a failure
     expect(s.debris.scanned[0]).toBe(1); expect(s.debris.frequency[0]).toBe(2);
@@ -48,8 +49,8 @@ describe('scanning', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
     s.director.nextSpawnTick = 1e9; sitDown(s, 0, i);
     run(s, 1, () => intents(confirm)); expect(s.science.scanning).toBe(0);                 // cursor -1
-    s.stations.cursor[i] = 3; run(s, 1, () => intents(confirm)); expect(s.science.scanning).toBe(0);   // inactive slot
-    const u = placeDebris(s, A, 1e6, 0); s.stations.cursor[i] = u;
+    s.science.target = targetRef(s, 3); run(s, 1, () => intents(confirm)); expect(s.science.scanning).toBe(0);   // inactive slot
+    const u = placeDebris(s, A, 1e6, 0); s.science.target = targetRef(s, u);
     run(s, 1, () => intents(confirm));
     expect(s.science.scanning).toBe(0); expect(s.debris.scan[u]).toBe(0);                  // active but unwarned
   });
@@ -59,9 +60,9 @@ describe('scanning', () => {
     placeDebris(s, A, 1e6, 1, 10, 2); placeDebris(s, A, 1e6, 1, 20, 1);
     s.debris.scanned[0] = 1; s.debris.scan[0] = 1;                                           // the old target is scanned: Confirm on it would start nothing
     sitDown(s, 0, i);
-    expect(s.stations.cursor[i]).toBe(0);
+    expect(scienceTargetSlot(s)).toBe(0);
     run(s, 1, () => intents({ moveY: 1, confirmPressed: true }));
-    expect(s.stations.cursor[i]).toBe(1); expect(s.science.scanning).toBe(1);                 // the stick edge moved the cursor first, then Confirm acted on slot 1
+    expect(scienceTargetSlot(s)).toBe(1); expect(s.science.scanning).toBe(1);                 // the stick edge moved the cursor first, then Confirm acted on slot 1
   });
   it('level 2 scans within 8 s; overdriven within 5.4 s; unmanned or offline never progresses', () => {
     const a = makeState(1), ia = sci(a), A = room(a, 'A');
@@ -73,7 +74,7 @@ describe('scanning', () => {
     run(b, 1, () => intents(confirm)); run(b, Math.ceil(seconds(6 / 1.125)) + 2);
     expect(b.debris.scanned[0]).toBe(1);
     const c = makeState(1), ic = sci(c);
-    c.director.nextSpawnTick = 1e9; placeDebris(c, A, 1e6, 1); c.science.scanning = 1; c.stations.cursor[ic] = 0;
+    c.director.nextSpawnTick = 1e9; placeDebris(c, A, 1e6, 1); c.science.scanning = 1; c.science.target = targetRef(c, 0);
     run(c, seconds(5));
     expect(c.debris.scan[0]).toBe(0);                                           // nobody seated
     sitDown(c, 0, ic); run(c, 1, () => intents(confirm)); run(c, 30);
@@ -94,14 +95,14 @@ describe('scanning', () => {
     run(s, 1, () => intents(down));                                              // scanStep precedes input: slot 0 advances once more on this tick, then the cursor moves
     const first = s.debris.scan[0]!; expect(first).toBeGreaterThan(0); expect(first).toBeLessThan(1);
     run(s, seconds(2));                                                          // scanning continues on slot 1
-    expect(s.stations.cursor[i]).toBe(1); expect(s.science.scanning).toBe(1);
+    expect(scienceTargetSlot(s)).toBe(1); expect(s.science.scanning).toBe(1);
     expect(s.debris.scan[0]).toBe(first); expect(s.debris.scan[1]).toBeGreaterThan(0);
     run(s, 1, () => intents(cancel));                                            // the Cancel tick still scanned once before the stand
     const second = s.debris.scan[1]!;
     expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.science.scanning).toBe(0);
     run(s, seconds(2));
     expect(s.debris.scan[1]).toBe(second);                                       // paused, not lost
-    sitDown(s, 0, i); s.stations.cursor[i] = 1;
+    sitDown(s, 0, i); s.science.target = targetRef(s, 1);
     run(s, 1, () => intents(confirm)); run(s, 1);
     expect(s.debris.scan[1]).toBeGreaterThan(second);                            // resumed from the kept progress
   });
@@ -113,7 +114,7 @@ describe('scanning', () => {
     run(s, 1, () => intents(confirm)); run(s, seconds(1));
     expect(s.debris.scan[0]).toBeGreaterThan(0);
     run(s, seconds(2) + 1);                                                      // slot 0 impacts
-    expect(s.debris.active[0]).toBe(0); expect(s.debris.scan[0]).toBe(0); expect(s.stations.cursor[i]).toBe(1);
+    expect(s.debris.active[0]).toBe(0); expect(s.debris.scan[0]).toBe(0); expect(scienceTargetSlot(s)).toBe(1);
     expect(s.science.scanning).toBe(1);                                          // still scanning: now the retargeted object
     scanStep(s);
     expect(s.debris.scan[1]).toBeGreaterThan(0);
@@ -121,20 +122,20 @@ describe('scanning', () => {
 });
 
 describe('the Science lock (spec Coop-i section 1)', () => {
-  const seated = (scanned = 1) => { const s = makeState(2); quiet(s); s.tick = 6000; placeEnemy(s, ENEMY_HULL, 2); s.enemy.nextShotTick = 1e9; s.enemy.scanned = scanned; s.enemy.scan = scanned; const i = sci(s); sitDown(s, 0, i); s.stations.cursor[i] = ENEMY_SLOT; return { s, i }; };
+  const seated = (scanned = 1) => { const s = makeState(2); quiet(s); s.tick = 6000; placeEnemy(s, ENEMY_HULL, 2); s.enemy.nextShotTick = 1e9; s.enemy.scanned = scanned; s.enemy.scan = scanned; const i = sci(s); sitDown(s, 0, i); s.science.target = targetRef(s, ENEMY_SLOT); return { s, i }; };
   it('Confirm on the scanned hull row locks for LOCK_SECONDS; unscanned it starts the scan instead', () => {
     const { s, i } = seated(1);
-    scienceInput(s, i, Dir.None, true);
+    lockFrequency(s, i, s.enemy.stableId);
     expect(s.enemy.lockUntilTick).toBe(6000 + LOCK_SECONDS * HZ); expect(lockActive(s)).toBe(true); expect(s.science.scanning).toBe(0);
     const t = seated(0);
-    scienceInput(t.s, t.i, Dir.None, true);
+    startTargetScan(t.s, t.i, t.s.science.target!);
     expect(t.s.enemy.lockUntilTick).toBe(-1); expect(t.s.science.scanning).toBe(1); expect(lockActive(t.s)).toBe(false);
   });
   it('no lock from a subsystem row, without an enemy, without Confirm, or while a lock already runs', () => {
-    const a = seated(1); a.s.stations.cursor[a.i] = ENEMY_WEAPONS_SLOT; scienceInput(a.s, a.i, Dir.None, true); expect(a.s.enemy.lockUntilTick).toBe(-1);
-    const b = seated(1); scienceInput(b.s, b.i, Dir.None, false); expect(b.s.enemy.lockUntilTick).toBe(-1);
-    const c = seated(1); c.s.enemy.present = 0; scienceInput(c.s, c.i, Dir.None, true); expect(c.s.enemy.lockUntilTick).toBe(-1);
-    const d = seated(1); d.s.enemy.lockUntilTick = 6100; scienceInput(d.s, d.i, Dir.None, true); expect(d.s.enemy.lockUntilTick).toBe(6100);
+    const a = seated(1); a.s.science.target = targetRef(a.s, ENEMY_WEAPONS_SLOT); startTargetScan(a.s, a.i, a.s.science.target!); expect(a.s.enemy.lockUntilTick).toBe(-1);
+    const b = seated(1); expect(b.s.enemy.lockUntilTick).toBe(-1);
+    const c = seated(1); c.s.enemy.present = 0; lockFrequency(c.s, c.i, c.s.enemy.stableId); expect(c.s.enemy.lockUntilTick).toBe(-1);
+    const d = seated(1); d.s.enemy.lockUntilTick = 6100; lockFrequency(d.s, d.i, d.s.enemy.stableId); expect(d.s.enemy.lockUntilTick).toBe(6100);
   });
   it('through step: a seated Science officer locks, the lock holds 8 s and ends; the Confirm that seats the officer does not lock', () => {
     const { s } = seated(1);
@@ -143,7 +144,7 @@ describe('the Science lock (spec Coop-i section 1)', () => {
     run(s, LOCK_SECONDS * HZ - 2); expect(lockActive(s)).toBe(true);
     run(s, 1); expect(lockActive(s)).toBe(false);
     run(s, 1); expect(s.enemy.lockUntilTick).toBe(-1);
-    const u = seated(1); run(u.s, 1, () => intents(cancel)); run(u.s, 1); u.s.stations.cursor[u.i] = ENEMY_SLOT;
+    const u = seated(1); run(u.s, 1, () => intents(cancel)); run(u.s, 1); u.s.science.target = targetRef(u.s, ENEMY_SLOT);
     const tile = u.s.derived.stationTile[u.i]!, w = u.s.derived.width; teleport(u.s, 0, tile % w + 0.5, Math.floor(tile / w) + 0.5);
     run(u.s, 1, () => intents(confirm)); expect(Seated.station[u.s.crew[0]!]).toBe(u.i); expect(u.s.enemy.lockUntilTick).toBe(-1);   // that Confirm sat the player down: no lock on the seating tick
   });
@@ -153,7 +154,7 @@ describe('the Science lock (spec Coop-i section 1)', () => {
     expect(footer()).toBe('Warning 18s   LOCK: Confirm');
     s.enemy.lockUntilTick = s.tick + 6 * HZ; expect(footer()).toBe('Warning 18s   LOCKED 6s');
     s.tick += 1; expect(footer()).toBe('Warning 18s   LOCKED 6s');   // whole seconds rounded up
-    s.enemy.lockUntilTick = -1; s.stations.cursor[i] = ENEMY_WEAPONS_SLOT; expect(footer()).toBe('Warning 18s');
-    s.stations.cursor[i] = ENEMY_SLOT; s.enemy.scanned = 0; s.science.scanning = 1; expect(footer()).toBe('Warning 18s   Scanning');
+    s.enemy.lockUntilTick = -1; s.science.target = targetRef(s, ENEMY_WEAPONS_SLOT); expect(footer()).toBe('Warning 18s');
+    s.science.target = targetRef(s, ENEMY_SLOT); s.enemy.scanned = 0; s.science.scanning = 1; expect(footer()).toBe('Warning 18s   Scanning');
   });
 });

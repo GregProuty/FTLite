@@ -4,7 +4,7 @@ import { StationKind } from './stationKinds';
 import { toggleSeal, cycleDoor } from './doors';
 
 import { chargeBeam } from './weapons';
-import { scienceInput, scanStep, systemScanStep } from './science';
+import { scanStep, systemScanStep } from './science';
 import { navigationInput } from './run';
 import { regenTorpedo, loadTorpedo } from './torpedoes';
 
@@ -34,8 +34,7 @@ export function consoleSystem(state: SimState, input: MigrationTickInput): void 
       if (reason) continue;
       const i = envelope.input.station, dir = envelope.input.direction, confirm = envelope.input.confirm && !state.scratch.confirmUsed[pid];
       const kind = state.derived.stationKind[i]!;
-      if (kind === StationKind.Science) scienceInput(state, i, dir, confirm);
-      else if (kind === StationKind.Navigation) navigationInput(state, i, dir, confirm);
+      if (kind === StationKind.Navigation) navigationInput(state, i, dir, confirm);
     }
   }
   const asc = (set: Set<number>): number[] => [...set].sort((a, b) => a - b);
