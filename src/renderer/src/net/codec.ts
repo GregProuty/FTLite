@@ -98,7 +98,7 @@ const payload = z.discriminatedUnion('kind', [
 ]);
 const state = z.object({
   runId: text, tick: uint, publicationSequence: positive, snapshot, hash: text, phase: z.enum(['running', 'paused', 'ended', 'error']),
-  pauseOwner: player.nullable(), controlRevision: uint, commandHighWater: z.array(uint).min(1).max(4), eventSequence: uint
+  pauseOwner: player.nullable(), controlRevision: uint, pauseReason: text.nullable(), lagTicks: uint, tickTimeMs: seconds.nullable(), commandHighWater: z.array(uint).min(1).max(4), eventSequence: uint
 }).strict();
 const authorityEvent = z.object({ runId: text, eventSequence: positive, tick: uint, payload }).strict();
 const messageSchema = z.discriminatedUnion('kind', [

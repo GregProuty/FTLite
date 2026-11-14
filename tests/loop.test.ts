@@ -6,7 +6,8 @@ import { heldStep as step } from './helpers/heldInput';
 import { makeState, intents } from './helpers/sim';
 import { createIntentFeed, NEUTRAL_FRAME, type InputFrame } from '../src/renderer/src/app/intents';
 
-describe('stepAccumulator', () => {
+// Isolated compatibility tests only. Runtime authority timing is covered by authorityClock.test.ts.
+describe('legacy stepAccumulator (removed in task 11)', () => {
   it('yields one tick per DT and keeps the remainder', () => {
     const r = stepAccumulator(0, DT * 2.5);
     expect(r.ticks).toBe(2); expect(r.accumulator).toBeCloseTo(DT * 0.5, 9);

@@ -5,7 +5,8 @@ import { createLocalRuntime } from './localRuntime';
 import type { createAuthority } from '../authority/authority';
 import type { Scheduler, Unsubscribe } from '../net/contracts';
 import { createDeviceManager, type SourceSample, type SlotInfo } from '../input/deviceManager';
-import { createIntentFeed, NEUTRAL_FRAME, type InputFrame } from './intents';
+import { NEUTRAL_FRAME, type InputFrame } from './intents';
+import { createInputTimeline } from './inputTimeline';
 import { buildHudModel, type HudModel } from '../render/hudModel';
 import { EndReason } from '../sim/crew';
 import { type TelemetryRecord } from '../sim/telemetry';
@@ -50,7 +51,7 @@ export function createSession(deps: SessionDeps) {
   let message = LOBBY_MSG;
   let seed = DEFAULT_SEED;
   let state: SimState | null = null;
-  let feed: ReturnType<typeof createIntentFeed> | null = null;
+  let timeline: ReturnType<typeof createInputTimeline> | null = null;
   let slots: SlotInfo[] = [];
   let lastNow: number | null = null, runCounter = 0;
   let runtime: ReturnType<typeof createLocalRuntime> | null = null, cancelLobby: Unsubscribe | null = null;
@@ -69,20 +70,20 @@ export function createSession(deps: SessionDeps) {
     cancelLobby?.(); runtime?.dispose(); deps.renderer?.reset();
     const playerCount = slots.filter((s) => s.status !== 'empty').length;
     const layout = typeof deps.layout === 'function' ? deps.layout(playerCount) : deps.layout;
-    feed = createIntentFeed(playerCount); newUnlocks = []; callouts = []; prevCounters = null; pendingCues.clear();
+    timeline = createInputTimeline(playerCount); newUnlocks = []; callouts = []; prevCounters = null; pendingCues.clear();
     phase = 'running'; message = '';
     runtime = createLocalRuntime({
       layout, playerCount, seed, characters: DEFAULT_CHARACTERS, unlocked: progress.unlocked,
       runId: `couch-${++runCounter}`, contentDigest: deps.contentDigest ?? __GAMEPLAY_CONTENT_DIGEST__,
       clock: { nowMs: deps.now }, scheduler, authorityFactory: deps.authorityFactory,
       beforeControls: sampleControls,
-      frames: () => feed!.tick().map((i) => ({ moveX: i.moveX, moveY: i.moveY, interactHeld: i.interactHeld, interactPresses: Number(i.interactPressed), confirmPresses: Number(i.confirmPressed), cancelPresses: Number(i.cancelPressed) })),
+      frames: (_tick, deadline) => timeline!.consume(deadline),
       recordPrev: (view) => deps.renderer?.recordPrev(view),
       onPublication(view, publication) {
         state = view;
         if (phase === 'running' || phase === 'paused') {
           if (publication.phase === 'paused') { phase = 'paused'; message = 'PAUSED'; }
-          else if (publication.phase === 'running') { phase = 'running'; message = ''; }
+          else if (publication.phase === 'running') { phase = 'running'; message = publication.lagTicks > 0 ? `CATCHING UP (${publication.lagTicks} ticks)` : ''; }
         }
         const next = cueCounters(view); if (prevCounters) for (const cue of audioCues(prevCounters, next)) pendingCues.add(cue); prevCounters = next;
       },
@@ -95,7 +96,7 @@ export function createSession(deps: SessionDeps) {
         scheduleLobby();
       },
       onCrash(record) { phase = 'error'; message = `Sim fault: ${record.error}. Crash data saved.`; deps.saveCrash(record); },
-      draw(view) { deps.renderer?.draw(view, 1, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : []); }
+      draw(view, alpha) { deps.renderer?.draw(view, alpha, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : []); }
     });
     state = runtime.state();
   }
@@ -104,7 +105,13 @@ export function createSession(deps: SessionDeps) {
     return frames.some((f) => f[key] > 0);
   }
 
-  function doResume(): void { if (phase === 'paused') { runtime?.requestPause(false); phase = 'running'; message = ''; lastNow = null; } }
+  function doResume(reason?: string, player = 0): void {
+    if (phase === 'paused') {
+      if (reason) runtime?.requestLifecyclePause({ paused: false, reason });
+      else runtime?.requestPause(false, player);
+      phase = 'running'; message = ''; lastNow = null;
+    }
+  }
 
   function openCredits(): void { creditsOpen = true; creditsScroll = 0; scrollHold = 0; scrollDir = 0; }
   function closeCredits(): void { creditsOpen = false; }
@@ -129,15 +136,15 @@ export function createSession(deps: SessionDeps) {
       // While the credits are open, a slot that became active this frame (a reclaim) gets no say this frame.
       const frames = creditsOpen ? raw.map((f, i) => (wasActive[i] && s[i]!.status === 'active') ? f : { ...NEUTRAL_FRAME }) : raw;
       slots = s;
-      if (phase === 'paused' && anyPress(frames, 'confirmPresses') && (deps.canResume ?? (() => true))()) doResume();
+      if (phase === 'paused' && anyPress(frames, 'confirmPresses') && (deps.canResume ?? (() => true))()) doResume(undefined, frames.findIndex((f) => f.confirmPresses > 0));
       if (phase === 'lobby') {
         if (creditsOpen) {
           if (anyPress(frames, 'cancelPresses') || anyPress(frames, 'confirmPresses')) closeCredits();   // Cancel wins; Confirm closes without starting
           else scrollCredits(frames, deltaMs);
         } else if (anyPress(frames, 'cancelPresses')) openCredits();
         else if (joinedCount > 0 && anyPress(frames, 'confirmPresses')) start();
-      } else if (phase === 'running' && state && feed) {
-        feed.beginFrame(frames);
+      } else if (phase === 'running' && state && timeline) {
+        timeline.sample(now, frames);
         const pressed = calloutPresses.flatMap((n, pid) => n > 0 ? [pid] : []);
         callouts = pressCallouts(callouts, state, pressed);
         if (pressed.some((pid) => pid < state!.playerCount)) deps.playCue?.('callout');
@@ -153,8 +160,8 @@ export function createSession(deps: SessionDeps) {
   scheduleLobby();
   return {
     get phase() { return phase; }, get state() { return state; }, get seed() { return seed; }, get creditsOpen() { return creditsOpen; }, get callouts(): readonly Callout[] { return callouts; },
-    pause() { if (phase === 'running') { runtime?.requestPause(true); phase = 'paused'; message = 'PAUSED'; } },
-    resume() { doResume(); }, pump,
+    pause(reason = 'suspend') { if (phase === 'running') { timeline?.neutralize(deps.now()); runtime?.requestLifecyclePause({ paused: true, reason }); phase = 'paused'; message = 'PAUSED'; } },
+    resume(reason = 'resume') { doResume(reason); }, pump,
     dispose() { disposed = true; cancelLobby?.(); runtime?.dispose(); },
     frame() {
       for (const cue of pendingCues) deps.playCue?.(cue); pendingCues.clear();

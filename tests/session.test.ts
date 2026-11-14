@@ -16,6 +16,9 @@ import { stepCommands } from '../src/renderer/src/sim/step';
 import { hashState } from '../src/renderer/src/sim/hash';
 
 import type { HudModel } from '../src/renderer/src/render/hudModel';
+import { createSession as createLiveSession } from '../src/renderer/src/app/session';
+import { createFixtureAuthority } from './helpers/authorityFixture';
+import { createSimState, type SimState } from '../src/renderer/src/sim/state';
 
 function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', 'Line A', 'Line B', 'Line C'], withTelemetry = true, initialProgress?: Progress) {
   const storage = (() => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); } }; })();
@@ -37,6 +40,39 @@ function harness(canResume?: () => boolean, credits: string[] = ['FTLite', '', '
   const frames = (n: number, ms = 1000 / 60) => { for (let i = 0; i < n; i++) { t += ms; session.frame(); } };
   return { session, press, pressMany, sample, frames, crashes, records, cues, storage, release: () => press('a', {}), last: () => last! };
 }
+
+it('focused Confirm resumes retained debt without a render and reaches gameplay exactly once at its real timestamp', () => {
+  let now = 0, samples: SourceSample[] = [], owner: SimState | null = null, crash: CrashRecord | null = null;
+  const session = createLiveSession({ layout: LAYOUT, now: () => now, sampleDevices: () => samples, renderer: null, hud: null, canResume: () => true,
+    saveCrash(record) { crash = record as CrashRecord; }, authorityFactory(deps) {
+      let core: ReturnType<typeof createFixtureAuthority>;
+      let attach: Parameters<typeof core.attach>;
+      return { attach(...args) { attach = args; return () => {}; },
+        start(init) { owner = createSimState(LAYOUT, init.playerCount, init.seed, init.characters); core = createFixtureAuthority({ ...deps, init }, owner); core.attach(...attach); },
+        pump() { core.pump(); }, dispose() { core.dispose(); } };
+    } });
+  const sample = (extra: Partial<SourceSample>) => { samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: true, ...extra }]; };
+  sample({ interact: true }); session.pump(); sample({}); session.pump(); sample({ confirm: true }); session.pump(); sample({});
+  now = 5000; session.pause('blur'); session.pump(); expect(session.state!.tick).toBe(0);
+  now = 15000; sample({ confirm: true }); session.pump(); expect(session.phase).toBe('running'); expect(session.state!.tick).toBe(120);
+  sample({}); session.pump(); expect(session.state!.tick).toBe(240); session.pump(); expect(session.state!.tick).toBe(300);
+  now = 15017; session.pump(); now = 15034; session.pump();
+  (owner as unknown as { rooms: null }).rooms = null; now = 15050; session.pump();
+  const journal = crash as unknown as CrashRecord;
+  expect(journal.baseline.header.tick).toBe(300);
+  expect(journal.ticks.map((tick) => tick.input.legacyCardInput.map((entry) => entry.input.confirmPressed))).toEqual([[true], [], []]);
+  expect(journal.ticks[0]!.input.legacyCardInput[0]!.requestedTick).toBe(300);
+  session.dispose();
+});
+
+it.each([['blur', 'focus'], ['hidden', 'visible'], ['os-suspend', 'os-resume']])('trusted %s/%s lifecycle resumes automatically with no Confirm', (pause, resume) => {
+  let now = 0, samples: SourceSample[] = [];
+  const session = createLiveSession({ layout: LAYOUT, now: () => now, sampleDevices: () => samples, renderer: null, hud: null, canResume: () => false, saveCrash() {} });
+  const sample = (interact: boolean, confirm: boolean) => { samples = [{ key: 'a', moveX: 0, moveY: 0, interact, confirm, cancel: false, any: true }]; };
+  sample(true, false); session.pump(); sample(false, false); session.pump(); sample(false, true); session.pump(); sample(false, false);
+  session.pause(pause!); session.pump(); now = 10000; session.pump(); expect(session.state!.tick).toBe(0);
+  session.resume(resume!); session.pump(); expect(session.phase).toBe('running'); now = 10017; session.pump(); expect(session.state!.tick).toBe(1); session.dispose();
+});
 
 describe('session', () => {
   it('progress: the lobby shows runs and best; a lost run saves progress and unlocks the scrap reserve; the next run starts with it', () => {

@@ -113,15 +113,16 @@ describe('copied headless authority', () => {
     const h = rig(undefined, (record) => { crash = record; });
     const control = (sequence: number, paused: boolean): ClientMessage => ({ kind: 'command', envelope: { runId: 'test', id: { player: 0, sequence }, requestedTick: 0, command: { kind: 'setPaused', paused } } });
     h.send(control(1, true)); h.tick(); expect(h.state.tick).toBe(0);
-    h.send(control(2, false)); h.tick(); expect(h.state.tick).toBe(0);
-    h.send({ kind: 'command', envelope: { runId: 'test', id: { player: 0, sequence: 3 }, requestedTick: 0, command: { kind: 'moveTo', tile: 0 } } }); h.tick();
+    h.send(control(2, false)); h.tick(); expect(h.state.tick).toBe(1);
+    h.send({ kind: 'command', envelope: { runId: 'test', id: { player: 0, sequence: 3 }, requestedTick: 1, command: { kind: 'moveTo', tile: 0 } } }); h.tick();
     (h.state as unknown as { rooms: null }).rooms = null; h.tick();
     expect(crash).not.toBeNull(); const journal = crash as unknown as CrashRecord;
     expect(journal.baselineHighWater).toEqual([0, 0]);
-    expect(journal.ticks.map((tick) => tick.tick)).toEqual([0, 1]);
-    expect(journal.ticks[0]!.controls.map((command) => command.id.sequence)).toEqual([1, 2]);
-    expect(journal.ticks[0]!.results.map((result) => result.id.sequence)).toEqual([1, 2, 3]);
-    expect(journal.ticks[1]!.results).toEqual([]);
+    expect(journal.ticks.map((tick) => tick.tick)).toEqual([0, 1, 2]);
+    expect(journal.ticks[0]!.controls.map((command) => command.source === 'player' ? command.envelope.id.sequence : 0)).toEqual([1, 2]);
+    expect(journal.ticks[0]!.results.map((result) => result.id.sequence)).toEqual([1, 2]);
+    expect(journal.ticks[1]!.results.map((result) => result.id.sequence)).toEqual([3]);
+    expect(journal.ticks[2]!.results).toEqual([]);
     h.dispose();
   });
   it('valid hardware frames preserve snapshot continuation through the byte path', () => {

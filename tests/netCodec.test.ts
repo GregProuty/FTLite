@@ -61,7 +61,7 @@ describe('closed wire codec', () => {
   it('round trips real state, results and every reliable event payload losslessly', () => {
     const sim = createSimState(LAYOUT, 2, 17);
     const state: AuthorityMessage = { kind: 'state', state: { runId: 'run-1', tick: 0, publicationSequence: 1,
-      snapshot: saveSnapshot(sim), hash: '0123456789abcdef', phase: 'running', pauseOwner: null, controlRevision: 0,
+      snapshot: saveSnapshot(sim), hash: '0123456789abcdef', phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null, pauseOwner: null, controlRevision: 0,
       commandHighWater: [0, 0], eventSequence: 0 } };
     expect(roundTrip(state)).toEqual(state);
     const result: AuthorityMessage = { kind: 'result', runId: 'run-1', result: { id: { player: 0, sequence: 1 }, tick: 0, status: 'rejected', reason: 'unsupported' } };
@@ -102,7 +102,7 @@ describe('wire limit edges', () => {
   it('rejects oversized encoding, excessive publication vectors and unknown RNG keys', () => {
     const sim = createSimState(LAYOUT, 2, 17), snapshot = saveSnapshot(sim);
     const message: AuthorityMessage & { kind: 'state' } = { kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1,
-      snapshot, hash: 'h', phase: 'paused', pauseOwner: 0, controlRevision: 1, commandHighWater: [0, 0], eventSequence: 0 } };
+      snapshot, hash: 'h', phase: 'paused', pauseReason: 'player', lagTicks: 0, tickTimeMs: null, pauseOwner: 0, controlRevision: 1, commandHighWater: [0, 0], eventSequence: 0 } };
     expect(latestMessageMetadata(encodeMessage(message))).toEqual({ key: 'state:r', sequence: 1 });
     expect(() => decodeMessage(raw({ ...message, state: { ...message.state, commandHighWater: [0, 0, 0, 0, 0] } }))).toThrow();
     expect(() => decodeMessage(raw({ ...message, state: { ...message.state, snapshot: { ...snapshot, header: { ...snapshot.header, rngStates: { ...snapshot.header.rngStates, extra: 1 } } } } }))).toThrow();
@@ -113,7 +113,7 @@ describe('wire limit edges', () => {
   });
   it('round trips full-range finite Float64 state values and normalizes negative zero', () => {
     const snapshot = saveSnapshot(createSimState(LAYOUT, 2, 17)); snapshot.values = [Number.MAX_VALUE, Number.MIN_VALUE, -0, 0.3333333333333333];
-    const message: AuthorityMessage = { kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1, snapshot, hash: 'h', phase: 'running',
+    const message: AuthorityMessage = { kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1, snapshot, hash: 'h', phase: 'running', pauseReason: null, lagTicks: 0, tickTimeMs: null,
       pauseOwner: null, controlRevision: 0, commandHighWater: [0, 0], eventSequence: 0 } };
     const decoded = roundTrip(message); if (decoded.kind !== 'state') throw new Error('fixture');
     expect(decoded.state.snapshot.values).toEqual([1.7976931348623157e308, 5e-324, 0, 0.3333333333333333]);

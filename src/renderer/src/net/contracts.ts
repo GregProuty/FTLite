@@ -31,6 +31,7 @@ export interface Session {
 }
 export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
+export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }
 export type TargetRef = { kind: 'object'; stableId: number } | { kind: 'enemy'; stableId: number; room: number };
 export interface VisitRef { sector: number; beacon: number; arrivalTick: number }
@@ -94,6 +95,7 @@ export interface AuthorityEvent {
 export interface PublishedState {
   runId: RunId; tick: number; publicationSequence: number; snapshot: Snapshot; hash: string;
   phase: 'running' | 'paused' | 'ended' | 'error'; pauseOwner: PlayerId | null; controlRevision: number;
+  pauseReason: string | null; lagTicks: number; tickTimeMs: number | null;
   commandHighWater: readonly number[]; eventSequence: number;
 }
 export type ClientMessage = { kind: 'held'; frame: HeldFrame } | { kind: 'command'; envelope: CommandEnvelope } | ClientAuxMessage | LegacyInputEnvelope;

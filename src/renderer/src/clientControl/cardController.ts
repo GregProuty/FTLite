@@ -10,6 +10,12 @@ export interface CardUiState {
 }
 export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[]; legacyCardInput: LegacyInputEnvelope[] }
 export function createCardUi(runId = ''): CardUiState { return { runId, players: [], stations: [], groupBar: [] }; }
+/** Resume is a control-phase command; its gameplay Confirm stays in the timestamped timeline. */
+export function pauseActions(ui: CardUiState, player: number, tick: number, paused: boolean): ClientActions {
+  const producer = ui.players[player];
+  if (!producer || !Number.isSafeInteger(producer.nextSequence)) throw new Error('input sequence exhausted');
+  return { held: [], legacyCardInput: [], commands: [{ runId: ui.runId, id: { player, sequence: producer.nextSequence++ }, requestedTick: tick, command: { kind: 'setPaused', paused } }] };
+}
 /** Reconciliation does not advance repeat. Tasks 5–9 move each family's UI here. */
 export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water: readonly number[]): void {
   if (ui.runId !== runId) { ui.runId = runId; ui.players = []; ui.stations = []; ui.groupBar = []; }

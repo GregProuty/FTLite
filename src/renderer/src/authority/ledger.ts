@@ -38,6 +38,7 @@ export function createLedger(owned: readonly PlayerId[]): Ledger {
       if (countTick !== tick) { countTick = tick; counts.fill(0); }
       if (pending.size >= 256 || counts[player]! >= 16) return reject('over-capacity');
       water[player] = sequence;
+      // Control admission uses the next unexecuted tick too, including while paused.
       if (envelope.requestedTick !== tick) {
         const admission = reject('stale-tick');
         if (admission.status === 'rejected') store(player, sequence, payload, admission.result);

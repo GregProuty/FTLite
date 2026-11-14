@@ -3,7 +3,7 @@ import { NEUTRAL_INTENT, type Intent } from '../../../shared/intent';
 import { NEUTRAL_FRAME, type InputFrame } from '../clientControl/inputFrame';
 export { NEUTRAL_FRAME, type InputFrame } from '../clientControl/inputFrame';
 
-/** Turns per-frame device snapshots into per-tick intents. Each press edge is delivered on exactly one tick (spec §6): N queued presses take N consecutive ticks. */
+/** Legacy isolated-test adapter, removed with app/loop.ts in task 11. Runtime uses inputTimeline. */
 export function createIntentFeed(playerCount: number) {
   const held: InputFrame[] = Array.from({ length: playerCount }, () => ({ ...NEUTRAL_FRAME }));
   const pending = Array.from({ length: playerCount }, () => ({ interact: 0, confirm: 0, cancel: 0 }));

@@ -1,4 +1,4 @@
-import type { Link, MonotonicClock, RunInit, Scheduler, Unsubscribe } from '../net/contracts';
+import type { LifecyclePause, Link, MonotonicClock, RunInit, Scheduler, Unsubscribe } from '../net/contracts';
 import { createSimState } from '../sim/state';
 import type { ShipLayout } from '../sim/ship/schema';
 import { deriveLayout } from '../sim/ship/derived';
@@ -10,6 +10,8 @@ export interface AuthorityDeps {
   clock: MonotonicClock; scheduler: Scheduler; contentDigest: string;
   resolveLayout(id: string): ShipLayout; onCrash(record: CrashRecord): void;
   beforeControls?(): void; beforeTick?(nextTick: number, tickTimeMs: number): void;
+  /** Trusted couch adapter only; never exposed on Link or assigned a player command ID. */
+  bindLifecyclePause?(request: (control: LifecyclePause) => void): void | Unsubscribe;
 }
 export interface Authority1a { attach(link: Link, players: readonly number[]): Unsubscribe; start(init: RunInit): void; pump(): void; dispose(): void }
 export function createAuthority(deps: AuthorityDeps): Authority1a {
