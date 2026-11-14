@@ -9,4 +9,3 @@ export function encodeIntent(i: Intent): CompactIntent {
 export function decodeIntent(c: CompactIntent): Intent {
   return { moveX: c[0], moveY: c[1], interactHeld: !!(c[2] & 1), interactPressed: !!(c[2] & 2), confirmPressed: !!(c[2] & 4), cancelPressed: !!(c[2] & 8) };
 }
-
