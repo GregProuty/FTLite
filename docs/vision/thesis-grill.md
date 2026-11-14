@@ -247,4 +247,4 @@ Implications for the specs:
 
 **Answer: A, one planet with a bigger neighbourhood.** The same single planet and well in a map about 4 to 5 times wider than the old arena, with an asteroid belt ring to thread through and a few loose asteroid clusters. The map is stored as data so moons (B) can be added as bodies later; a small system with places (C) belongs to the later run and the open world.
 
-The tactical view spec (`docs/superpowers/specs/2026-11-14-tactical-view-design.md`) is written from Q23 to Q23c.
+The tactical view (Q23 to Q23c) is specified in the Helm demo spec (`docs/superpowers/specs/2026-11-14-helm-demo-design.md`, sections 3, 6 and 10).
