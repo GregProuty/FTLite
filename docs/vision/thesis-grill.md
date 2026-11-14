@@ -111,3 +111,7 @@ Technical note (Claude): the sim bans `Math.sin`, `Math.cos` and similar for cro
 ## Q11. How does the gravity-well view relate to FTL's inside-the-ship combat?
 
 **Answer: Claude's recommendation.** Design for **both at once**: the Helm steers and Weapons aims in the tactical view, hits land in FTL-style rooms, and the inside crew runs power, fires and repairs, linked by damage. **The demo is the tactical view with a thin link to the inside:** damage to the Engines room cuts the Helm's thrust and turning; damage to the Weapons room slows Weapons' charge. The full interior link comes after the demo proves gravity-well piloting is fun.
+
+## Q12. How should the ship feel to fly?
+
+**Answer: B tuned toward A.** Arcade with real momentum and real gravity: thrust changes velocity and the well's pull bends the path, so slingshots around the planet work. Mild drag and a "stabilise" assist that kills drift when the Helm lets go keep it flyable for beginners; experts whip around the well.
