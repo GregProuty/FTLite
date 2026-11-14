@@ -97,3 +97,13 @@ Implications for the specs:
 - D. The drift (the career formed from the crew's deeds).
 
 Implications for the specs: every milestone's playtest asks whether the session produced a fight story and a choice story. Combat (MG-1a, CB-1) and dialogue with consequences (EV-0, EV-1, delayed callbacks) get the most polish.
+
+## Owner direction, 2026-11-14: the core demo is the Helm
+
+> "core demo i want to build will be around the helm mini game. This is sid meiers pirates inspired navigation around a gravity well in a tactical top down view. Helm will manage the thrust, velocity and turning of the ship to navigate through obsticals, and around enemies. weapons will share that view to target weapons"
+
+- The demo is built around the **Helm mini game**: a top-down tactical view of space around a **gravity well**, inspired by the ship-to-ship sailing of Sid Meier's Pirates!.
+- The Helm controls **thrust, velocity and turning**: steering through obstacles and around enemies.
+- **Weapons shares the same view** to aim its weapons.
+
+Technical note (Claude): the sim bans `Math.sin`, `Math.cos` and similar for cross-engine determinism (Net-1 AST guard). Headings and gravity must use exact arithmetic: a fixed table of heading vectors, and `sqrt`, which is allowed.
