@@ -116,3 +116,86 @@ Confirmed. `flatten.ts:L30` writes `SIM_VERSION` first into every flattened stat
 
 ---
 
+# Round 2 (delta, reviewing 97cd5cb, effort medium, 145 s, 451476 in / 382592 cached / 4487 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Disconnect presence changes still lack a journaled transition
+The new presence command covers Tab, but disconnect and reconnect change authoritative presence without specifying their journal representation or application tick. · spec L172 changes present on link disconnect/reconnection; spec L264 applies presence commands in the seat phase. src/renderer/src/authority/core.ts:L195-L202 clears held input on detach, while L148-L153 journals held inputs and commands. Neutral held input cannot encode presence. · A disconnected seated gunner must freeze charge; an attended gunner with neutral axes need not. Replaying the existing journal cannot distinguish those states unless lifecycle presence changes are recorded. · Specify a trusted, journaled presence lifecycle event, its tick and ordering relative to player commands, and its replay behavior for disconnect and reconnect.
+
+### [P1] R2-F2 Hunter firing schedules releases before charge is ready
+The revised jitter rule releases within 12 ticks of acquiring arc and line of sight regardless of charge, and does not define how firing is scheduled again while the target remains continuously eligible. · spec L195 schedules release on the first eligible tick plus 0–12 ticks. spec L136 requires 4 seconds of charging and discards partial charge on release; spec L190 requires the hunter to use the same inputs and rules. · An early acquisition discards the hunter's charge. Implementers must invent whether it retries immediately, waits for full charge, or waits for another arc entry, producing substantially different combat. · Define full-charge and range eligibility, when jitter is sampled relative to readiness, cancellation conditions, and rearming after a release while the target stays in arc. Define initial history values for the 18-tick pursuit buffer.
+
+### [P1] R2-F3 The missile collision matrix does not exempt its launching ship
+The matrix destroys a missile on any solid contact, but only delays damage to its own ship. It does not say to ignore the launching ship during the first second. · spec L82 destroys missiles on 'anything solid' and applies ship impact damage only to the enemy or the own ship after one second. spec L143 launches from the nose; L145 says a missile can hit its own ship after one second. · A radius-4 missile launched at the radius-20 ship's nose overlaps its own hull. Reading the matrix literally destroys it immediately; treating the grace period as collision immunity produces a different result. · Explicitly exclude owner-ship contacts from both destruction and damage before the arming age, define the launch centre offset, and specify whether missile–missile contacts destroy both missiles.
+
+### [P1] R2-F4 The replacement skid-stop gate lacks a feasible initial condition
+The new one-second sideways-speed test does not specify initial velocity and cannot hold for the cruise-speed skid described elsewhere. · spec L88 requires sideways speed below 5 u/s within one second; L121 gives approximately 800 u/s terminal speed; L122 caps stabilise at 80 u/s²; L126 describes stopping a cruise-speed skid within one second. A 60-step arithmetic check with the stated drag and assist reduces 800 u/s to approximately 614.06 u/s, even without sideways gravity. · The gravity-only gate is now feasible, but the replacement flight gate still requires the plan writer to choose an unstated starting condition or change tuning. · Specify initial sideways and forward velocities, position, heading, and force configuration for the skid test. Align its threshold and the cruise-speed feel target with the chosen assist strength.
+
+### [P1] R2-F5 Weapons repair requires no walk from the Weapons console
+The stated one-tile repair walk is not enforced by the chosen tile and existing reach rule. · spec L168 places Weapons at (8,6); L179 places its repair at (8,7) and claims a one-tile walk; L183 permits repair from anywhere in that room within REACH. src/renderer/src/sim/stations.ts:L38-L39 centres the seated character on its console tile; sim/interact.ts:L28-L36 measures distance to the target tile's square; sim/tuning.ts:L39 sets REACH to 1.5. The distance from (8.5,6.5) to the repair tile is only 0.5. · The gunner can stand and repair without moving, so the travel-cost claim and its proposed acceptance measurement are incorrect. · Explicitly document and accept a zero-walk Weapons repair, or choose geometry/eligibility that requires the intended walk. Distinguish distance to the tile from distance to the first eligible repair position.
+
+## Prior findings
+- R1-F1: still open — The gravity-only checks are corrected and numerically feasible, but the new skid gate at spec L88 lacks initial conditions and conflicts with the cruise-speed target at L126 under L122's assist limit.
+- R1-F2: still open — Tab and unattended repair are specified. Disconnect/reconnect presence at spec L172 still lacks a journaled lifecycle representation; authority/core.ts:L148-L153 records inputs, while L195-L202 only clears held input on detach.
+- R1-F3: resolved — spec L262-L274 supplies the separate duel phase list, scratch reset, seat precedence, command allowlist, held Interact, and tick advancement. Held-open doors remove the need for local door-toggle processing.
+- R1-F4: still open — Edge force, restitution, damage grace and ship contact are specified. spec L82 still conflicts with the own-ship arming rule at L145 by destroying missiles on any solid contact before arming.
+- R1-F5: resolved — spec L147-L159 defines unattended propulsion, charge preservation, ignored release during flight, cleared fireHeld, and the fresh-press requirement on resumption.
+- R1-F6: still open — Repair priority, visit duration and disabled actions are now explicit at spec L196. Firing at L195 still lacks charge-readiness and repeat-shot scheduling, and the history buffer lacks startup values.
+- R1-F7: still open — Tiles, same-room targeting and tie-breaking are fixed. The claimed one-tile Weapons walk at spec L179 is actually zero under L183 and the existing REACH geometry.
+- R1-F8: resolved — spec L169 selects trait-free Recruits, no head starts and no XP, matching characters.ts:L18 and L27-L30.
+- R1-F9: resolved — spec L98 and L108 define recharge progress, stripping-hit reset, level-2 suspension, repair resumption and full-layer behavior.
+- R1-F10: resolved — spec L276 permits version-only sector golden regeneration and isolates tactical RNG from sector serialization, matching flatten.ts:L30-L31.
+
+## Verified
+- HEAD is 97cd5cbdc7ebf2e3b0c1114a010997c5c5700281; the subject diff reports 67 insertions and 22 deletions.
+- Read the binding Q11–Q27 answers and napkin, and checked changed rules against the cited source.
+- A read-only Node integration of spec L59/L74/L88's gravity-only configuration produced radius 249.184–250.827 over 60 seconds and maximum relative energy error approximately 0.0000435 over five minutes.
+- Cutter row data places the selected repair tiles in E, W and R; the same-room requirement at spec L183 addresses the original through-wall targeting defect.
+- No files were modified and no Jest suite was run.
+
+## Not verified
+- The on-disk ledger could not be read because access was denied; the supplied ledger and response were used.
+- Actual movement travel times, duel implementation, cross-engine replay and playtest acceptance were not executed in this specification-only review.
+- sed failed with a sandbox CreateFileMapping error; bounded PowerShell reads were used instead.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `97cd5cb`. 5 new findings accepted, 0 rejected, 0 deferred. Codex confirmed R1-F3, R1-F5, R1-F8, R1-F9 and R1-F10 resolved. R1-F1, R1-F2, R1-F4, R1-F6 and R1-F7 were reopened; each pairs with one new finding and is fixed together with it.
+
+## R2-F1 [P1]: Disconnect presence changes still lack a journaled transition (with R1-F2)
+
+Confirmed. Detach only zeroes held input (`authority/core.ts:L195-L202`), and the journal records commands and lifecycle controls (`core.ts:L18`, `JournalControl` with `source: 'lifecycle'`). §8 now routes detach and attach through that existing lifecycle path as a lifecycle presence control. It is journaled in the tick's `controls` with its ordinal, applied at the next tick boundary, and applied before player commands in the seat phase. Replay reproduces it from the journal.
+
+## R2-F2 [P1]: Hunter firing schedules releases before charge is ready (with R1-F6)
+
+Confirmed. The old rule could release a partial charge, which §7a discards. §9 now holds Fire whenever the laser isn't frozen. It defines eligibility (arc, range, line of sight) and draws the jitter only on the first tick where a full charge and eligibility both hold. It cancels and redraws if either lapses before the release, and notes that a release resets the charge, so repeat shots wait a full charge. The 18-tick pursuit buffer is seeded with the crew ship's spawn position.
+
+## R2-F3 [P1]: The missile collision matrix does not exempt its launching ship (with R1-F4)
+
+Confirmed. "Anything solid" included the launching ship. The §4 matrix now separates missile against planet, asteroid or edge (destroyed); against the other ship (lands, then destroyed); against its own ship (ignored entirely for 60 ticks, then lands); and missile against missile (both destroyed, no damage). §7b gives the spawn point: centre + heading × 25 (ship radius 20, missile radius 4, 1 clear).
+
+## R2-F4 [P1]: The replacement skid-stop gate lacks a feasible initial condition (with R1-F1)
+
+Confirmed. An 80 u/s² assist cannot remove an 800 u/s skid in 1 s. §4's flight test now starts at 300 u/s forward and 60 u/s sideways, heading north, gravity and edge off, and requires sideways speed below 5 u/s within 60 ticks. A Node check with the stated drag and assist gives 0.00. The terminal-speed test now has a 30 s window, since the drag time constant is about 6.7 s; the check gives 789.2 u/s, within 5% of 800. §6's feel target is restated as a skid of up to 60 u/s stopping within 1 s.
+
+## R2-F5 [P1]: Weapons repair requires no walk from the Weapons console (with R1-F7)
+
+Confirmed. A seated character sits on the console tile (`stations.ts:L38-L39`), and `REACH` 1.5 is measured to the tile's square (`interact.ts:L28-L36`), so 8,7 is in reach from 8,6. §8 now accepts this explicitly: the gunner's own-room repair needs no walk by design, and standing up still empties the console for the whole repair. The table says "none", and walks are now defined as the path to the first in-reach position.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-14-helm-demo-design.md
+
+<!-- end -->
+
+---
+
