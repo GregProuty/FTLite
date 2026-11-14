@@ -199,3 +199,57 @@ Confirmed. A seated character sits on the console tile (`stations.ts:L38-L39`), 
 
 ---
 
+# Round 3 (delta, reviewing a18602c, effort medium, 80 s, 203534 in / 143872 cached / 2611 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R3-F1 Lifecycle presence records need an explicit player target
+The new lifecycle presence payload records whether someone is present but does not identify whose presence changes. The existing lifecycle journal wrapper supplies no player identity either. · spec L177 specifies `{present: false}` / `{present: true}` inside a lifecycle JournalControl. src/renderer/src/authority/core.ts:L18 contains only source, order, ordinal and control for lifecycle records; L192-L202 associates each live binding with a players array. spec L250 explicitly allows two player IDs on one link. · Replay has no live binding from which to recover the affected player. Disconnecting player 0 and disconnecting player 1 can therefore produce indistinguishable presence records with different required simulation outcomes. · Define a discriminated lifecycle presence control carrying a player ID, or an explicit player-ID list. Specify that attach/detach records all affected binding players, with deterministic ordering, and extend JournalControl's control union accordingly. Replay must apply those recorded targets without consulting transport bindings.
+
+## Prior findings
+- R1-F1: resolved — spec L91 separates gravity-only and dissipative tests and supplies numerical bounds; L129 aligns the skid feel target with 60 u/s.
+- R1-F2: still open — Tab and unattended behavior are defined, but the lifecycle payload at spec L177 omits the affected player. The lifecycle JournalControl at authority/core.ts:L18 has no player or binding field, leaving disconnect replay incomplete.
+- R1-F4: resolved — spec L57 and L75-L87 define boundary and collision behavior; L84 now explicitly ignores owner contacts for 60 ticks, and L146 supplies launch clearance.
+- R1-F6: resolved — spec L202 now schedules jitter only with full charge and eligibility, defines cancellation and recharging, and seeds pursuit history. L203 defines repair priority, walk/work timing, one-level visits and disabled actions.
+- R1-F7: resolved — spec L185-L190 fixes repair tiles, requires same-room eligibility, defines target ties and explicitly accepts zero-walk Weapons repair. H-0 includes these rules at L301.
+- R2-F1: still open — spec L177-L179 adds journaling and application ordering, but not the player identity needed to replay the transition; authority/core.ts:L18 cannot supply it.
+- R2-F2: resolved — spec L202 requires full charge plus arc, range and LOS before sampling jitter, cancels on loss of readiness, and defines repeat charging and initial pursuit history.
+- R2-F3: resolved — spec L84 exempts owner contacts from destruction and damage for 60 ticks; L85 destroys both colliding missiles; L146 places the missile centre 25 units from the ship centre.
+- R2-F4: resolved — spec L91 specifies heading, velocities, disabled environmental forces and duration. Arithmetic gives 0 u/s sideways after 60 ticks and 789.18 u/s forward after 30 seconds.
+- R2-F5: resolved — spec L186-L189 explicitly accepts no Weapons repair walk and measures other walks to first reach. This matches stations.ts:L38, interact.ts:L28-L36 and tuning.ts:L39.
+
+## Verified
+- HEAD is a18602c1f85cd02993256023e57a5dd930173e18 on master; the subject has no working-tree diff against that commit. The actual revision diff matches the supplied delta.
+- Read-only Node arithmetic using spec L59, L74 and L91 produced a 60-second orbit radius range of 249.861–254.913 and maximum relative energy drift of 0.0000871 over five minutes, within the stated gates.
+- Repair points lie in the specified Cutter rooms, and Weapons repair is reachable from the console position: spec L185-L190; cutter.json:L12-L15 and L488-L493.
+- Checked the revised rules against thesis-grill.md Q11–Q27 and napkin.md; accepting an already-in-room repair while standing preserves Q27's room-based repair requirement.
+
+## Not verified
+- The on-disk ledger read was denied; review history was taken from the supplied ledger and responder text.
+- No Jest suite or implemented duel simulation was run. Numerical checks establish feasibility of the revised gates, not gameplay feel or runtime integration.
+- Unchanged material outside the awaited findings and directly affected interactions was not re-reviewed.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `a18602c`. 1 new finding accepted, 0 rejected, 0 deferred. Codex confirmed R1-F1, R1-F4, R1-F6, R1-F7, R2-F2, R2-F3, R2-F4 and R2-F5 resolved. R1-F2 and R2-F1 remain open on the same point as R3-F1 and are fixed with it.
+
+## R3-F1 [P1]: Lifecycle presence records need an explicit player target (with R1-F2, R2-F1)
+
+Confirmed. The lifecycle `JournalControl` (`authority/core.ts:L18`) carries `source`, `order`, `ordinal` and `control`, with no player. A binding holds a `players` array (`core.ts:L192-L202`), and one link carries two players in solo (§11a). §8 now defines `LifecyclePresence = { kind: 'presence'; players: number[]; present: boolean }` as a new member of the lifecycle control union beside `LifecyclePause`, with `players` set to the binding's full list in ascending order. `JournalControl.control` widens to `LifecyclePause | LifecyclePresence`. Replay applies the recorded `players` and never consults transport bindings.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-14-helm-demo-design.md
+
+<!-- end -->
+
+---
+

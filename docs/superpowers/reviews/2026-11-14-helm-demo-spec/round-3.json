@@ -1,0 +1,76 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Lifecycle presence records need an explicit player target",
+      "claim": "The new lifecycle presence payload records whether someone is present but does not identify whose presence changes. The existing lifecycle journal wrapper supplies no player identity either.",
+      "evidence": "spec L177 specifies `{present: false}` / `{present: true}` inside a lifecycle JournalControl. src/renderer/src/authority/core.ts:L18 contains only source, order, ordinal and control for lifecycle records; L192-L202 associates each live binding with a players array. spec L250 explicitly allows two player IDs on one link.",
+      "why": "Replay has no live binding from which to recover the affected player. Disconnecting player 0 and disconnecting player 1 can therefore produce indistinguishable presence records with different required simulation outcomes.",
+      "fix": "Define a discriminated lifecycle presence control carrying a player ID, or an explicit player-ID list. Specify that attach/detach records all affected binding players, with deterministic ordering, and extend JournalControl's control union accordingly. Replay must apply those recorded targets without consulting transport bindings."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "spec L91 separates gravity-only and dissipative tests and supplies numerical bounds; L129 aligns the skid feel target with 60 u/s."
+    },
+    {
+      "id": "R1-F2",
+      "result": "still open",
+      "note": "Tab and unattended behavior are defined, but the lifecycle payload at spec L177 omits the affected player. The lifecycle JournalControl at authority/core.ts:L18 has no player or binding field, leaving disconnect replay incomplete."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "spec L57 and L75-L87 define boundary and collision behavior; L84 now explicitly ignores owner contacts for 60 ticks, and L146 supplies launch clearance."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "spec L202 now schedules jitter only with full charge and eligibility, defines cancellation and recharging, and seeds pursuit history. L203 defines repair priority, walk/work timing, one-level visits and disabled actions."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "spec L185-L190 fixes repair tiles, requires same-room eligibility, defines target ties and explicitly accepts zero-walk Weapons repair. H-0 includes these rules at L301."
+    },
+    {
+      "id": "R2-F1",
+      "result": "still open",
+      "note": "spec L177-L179 adds journaling and application ordering, but not the player identity needed to replay the transition; authority/core.ts:L18 cannot supply it."
+    },
+    {
+      "id": "R2-F2",
+      "result": "resolved",
+      "note": "spec L202 requires full charge plus arc, range and LOS before sampling jitter, cancels on loss of readiness, and defines repeat charging and initial pursuit history."
+    },
+    {
+      "id": "R2-F3",
+      "result": "resolved",
+      "note": "spec L84 exempts owner contacts from destruction and damage for 60 ticks; L85 destroys both colliding missiles; L146 places the missile centre 25 units from the ship centre."
+    },
+    {
+      "id": "R2-F4",
+      "result": "resolved",
+      "note": "spec L91 specifies heading, velocities, disabled environmental forces and duration. Arithmetic gives 0 u/s sideways after 60 ticks and 789.18 u/s forward after 30 seconds."
+    },
+    {
+      "id": "R2-F5",
+      "result": "resolved",
+      "note": "spec L186-L189 explicitly accepts no Weapons repair walk and measures other walks to first reach. This matches stations.ts:L38, interact.ts:L28-L36 and tuning.ts:L39."
+    }
+  ],
+  "verified": [
+    "HEAD is a18602c1f85cd02993256023e57a5dd930173e18 on master; the subject has no working-tree diff against that commit. The actual revision diff matches the supplied delta.",
+    "Read-only Node arithmetic using spec L59, L74 and L91 produced a 60-second orbit radius range of 249.861–254.913 and maximum relative energy drift of 0.0000871 over five minutes, within the stated gates.",
+    "Repair points lie in the specified Cutter rooms, and Weapons repair is reachable from the console position: spec L185-L190; cutter.json:L12-L15 and L488-L493.",
+    "Checked the revised rules against thesis-grill.md Q11–Q27 and napkin.md; accepting an already-in-room repair while standing preserves Q27's room-based repair requirement."
+  ],
+  "not_verified": [
+    "The on-disk ledger read was denied; review history was taken from the supplied ledger and responder text.",
+    "No Jest suite or implemented duel simulation was run. Numerical checks establish feasibility of the revised gates, not gameplay feel or runtime integration.",
+    "Unchanged material outside the awaited findings and directly affected interactions was not re-reviewed."
+  ]
+}
