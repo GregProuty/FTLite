@@ -1,3 +1,4 @@
+import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
 import { describe, it, expect } from 'vitest';
 import { sectorJump } from '../src/renderer/src/sim/run';
 import { EnemySystem, enemySysUp } from '../src/renderer/src/sim/enemy';
@@ -8,7 +9,7 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { Weapon } from '../src/renderer/src/sim/weapons';
 import { LootWeapon } from '../src/renderer/src/sim/weaponDefs';
 import { TICK_HZ, SECTORS, SECTOR_COLUMNS } from '../src/renderer/src/sim/tuning';
-import { makeState, run, quiet, mapM, chargeJump, intents } from './helpers/sim';
+import { makeState, quiet, mapM, chargeJump, intents } from './helpers/sim';
 
 // Spec Loop-iv section 3: this scripted gunner (no return fire, unlike the bot gunner of Demo-xiii) proves the Warden can be destroyed and the run won.
 // The gunner sits at Weapons (the starting level 2) and aims at the shields room, the Pulse Laser tuned to the current
@@ -21,6 +22,7 @@ function fight(loot: number): { shots: number; hits: number; seconds: number; re
   const w = s.derived.stationOfKind[StationKind.Weapons]!; sitDown(s, 0, w);
   if (loot) s.weapons.slot[0] = loot;
   let arrived = -1;
+  beginGateTrace(s, `warden:${loot}`);
   for (let t = 0; t < LIMIT && !s.ended; t++) {
     s.boarders.nextArrivalTick = 1e9;
     let fire = false;
@@ -32,8 +34,9 @@ function fight(loot: number): { shots: number; hits: number; seconds: number; re
       if (s.weapons.charge >= 1) { s.weapons.selector = s.enemy.shieldFreq - 1; fire = true; }
       else if (loot && s.weapons.charge2[0]! >= 1 && !layerUp) { s.weapons.selector = Weapon.Slot1; fire = true; }
     }
-    run(s, 1, () => intents(fire ? { confirmPressed: true } : {}, {}));
+    step(s, intents(fire ? { confirmPressed: true } : {}, {}));
   }
+  assertGateTrace(s);
   return { shots: s.telemetry.shots, hits: s.telemetry.hits, seconds: Math.round((s.tick - arrived) / TICK_HZ), reason: s.endReason };
 }
 

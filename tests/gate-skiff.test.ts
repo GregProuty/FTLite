@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
+import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
 import { Life, LifeState, Health } from '../src/renderer/src/sim/components';
 import { seconds } from './helpers/sim';
 import { botIntent } from './helpers/bot';
@@ -23,11 +23,13 @@ describe('gate-skiff: two bots keep both crew alive on the Skiff for five minute
     it(`seed ${seed}`, () => {
       const s = createSimState(parseShip(skiff), 2, seed, DEFAULT_CHARACTERS);
       let minHealth = HEALTH_MAX, minHull = s.hull;
+      beginGateTrace(s, `skiff:${seed}`);
       for (let t = 0; t < seconds(300) && !s.ended; t++) {
         step(s, [botIntent(s, 0), botIntent(s, 1)]);
         minHull = Math.min(minHull, s.hull);
         for (const eid of s.crew) if (Life.state[eid] === LifeState.Conscious) minHealth = Math.min(minHealth, Health.cur[eid]!);
       }
+      assertGateTrace(s);
       const figures = `min health ${minHealth.toFixed(1)}, min hull ${minHull}, boardings ${s.telemetry.boardings}, encounters ${s.telemetry.encounters}`;
       expect(s.ended, `run ended at ${Math.floor(s.tick / 60)}s, reason ${s.endReason}; ${figures}`).toBe(0);
       expect(s.crew.filter((eid) => Life.state[eid] === LifeState.Conscious).length, figures).toBe(2);

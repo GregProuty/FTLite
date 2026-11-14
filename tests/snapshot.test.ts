@@ -3,7 +3,7 @@ import { TEAM_MULT as TM2 } from '../src/renderer/src/sim/tuning';
 import fc from 'fast-check';
 import { saveSnapshot, loadSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashState } from '../src/renderer/src/sim/hash';
-import { flatten } from '../src/renderer/src/sim/flatten';
+import { flatten, unflatten } from '../src/renderer/src/sim/flatten';
 import { step } from '../src/renderer/src/sim/step';
 import { Position, Seated, Life, LifeState } from '../src/renderer/src/sim/components';
 import { sitDown } from '../src/renderer/src/sim/stations';
@@ -566,5 +566,16 @@ describe('snapshot: the loot weapons (spec Loop-iii section 5)', () => {
     const base = hashState(makeState(2, 7));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 7); f(u); return hashState(u); };
     for (const f of [(u: ReturnType<typeof makeState>) => { u.weapons.slot[1] = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.charge2[0] = 0.1; }, (u: ReturnType<typeof makeState>) => { u.weapons.cargo = 1; }, (u: ReturnType<typeof makeState>) => { u.enemy.ionUntil[2] = 5; }, (u: ReturnType<typeof makeState>) => { u.run.shopWeapon = 3; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootTick = 9; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootId = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootPlace = 2; }, (u: ReturnType<typeof makeState>) => { u.weapons.lootBought = 1; }]) expect(mutate(f)).not.toBe(base);
+  });
+});
+
+// Malformed lengths must fail before even the header's mutable fields are applied.
+describe('snapshot exact length validation', () => {
+  it.each([-1, 1])('rejects length delta %i without mutating the destination', (delta) => {
+    const s = makeState(2); run(s, 15); const before = flatten(s);
+    const source = flatten(makeState(2, 99));
+    const malformed = new Float64Array(source.length + delta); malformed.set(source.subarray(0, malformed.length));
+    expect(() => unflatten(s, malformed)).toThrow(/snapshot length/);
+    expect(flatten(s)).toEqual(before);
   });
 });

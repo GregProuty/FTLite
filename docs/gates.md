@@ -506,3 +506,46 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
 - [x] Gates re-recorded, unchanged (the new fields are write-only in the sim): `gate-skiff` 60.9 / 25.3 / 67.8 (min hull 54 / 42 / 90), `gate-duo` 27.2 / 57.5 / 57.7 (min hull 20 / 68 / 58); every other gate passes with its pinned figures. No floor moved.
 - [x] Claude's visual check: a stripped shot's reason, a matched hit, the marked selector (spec amendment 12).
 - [ ] Manual, the user: the couch checklist; the gunner reads the frequency and the shot results without being told.
+
+## Net-1a task 1: pinned offline baseline (2026-11-13)
+
+Baseline HEAD `88979b3` (game code `0a47e50`), SIM_VERSION **34**, layout hash `47b01080`, saved golden final hash **`0a644af3`**. No bless, version change, tuning change or floor change. Exact saved hashes still pass.
+
+Measured on Windows, AMD Ryzen 7 9700X (16 logical processors), Node **v24.18.0**, Vitest **3.2.7**, checked-in configuration: node environment, default forks pool, file parallelism enabled, automatic worker count, no worker CLI/environment overrides. Runs were serial on the same machine with warm dependency/filesystem caches. Commands include npm startup; acceptance uses the unchanged defaults (20 minutes; seeds 1/2/3; players 1/2/4).
+
+| Measurement | Run 1 (s) | Run 2 (s) | Run 3 (s) | Median (s) | Task 3 initial 1.5x ceiling (s) |
+|---|---:|---:|---:|---:|---:|
+| `npm test -- --reporter=dot` | 9.1849161 | 9.3151324 | 9.1134793 | **9.1849161** | 13.77737415 |
+| `npm run acceptance` | 1.8922747 | 1.6897844 | 1.6868335 | **1.6897844** | 2.5346766 |
+
+Each baseline suite run passed 1220 tests / 96 files with one existing skipped test/file. Full logs and timing samples are in `.superpowers/sdd/2026-11-13-net-1a-boundary/task-1-baseline-*`. These are the unchanged pre-implementation timings required by N5.
+
+All eight gates retain their original setup, per-tick fixture mutations, policy, duration and assertions. A test-only wrapper calls the real step with unchanged values, compresses identical input spans, records exact RNG stream changes and compares initial/final named gameplay projections and minima against `tests/fixtures/net1a-gates.json`. The Warden's one-tick `run` call is expanded to its identical direct step solely to observe it. Normal tests never rewrite either baseline fixture. Explicit capture scripts live under `scripts/capture-net1a-*.ts`.
+
+Numeric results below are current measured evidence, not acceptance floors. Health is printed to three decimals; fixtures retain the full Float64 values. Shots/hits are player shots/hits; boarding/killed are boarding parties/boarders killed; scrap is earned/spent/remaining.
+
+| Gate / seed | End tick | Min health | Min hull | Shots/hits | Encounters | Boarding/killed | Jumps | Scrap E/S/R |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| boarding:1 | 10800 | 29.050 | 70 | 3/1 | 2 | 1/2 | 2 | 48/0/48 |
+| boarding:2 | 10800 | 30.850 | 80 | 4/2 | 1 | 1/2 | 2 | 52/0/52 |
+| boarding:3 | 10800 | 22.625 | 60 | 7/7 | 2 | 1/2 | 2 | 52/0/52 |
+| cutter:1 | 18000 | 60.550 | 66 | 2/0 | 1 | 0/0 | 0 | 0/0/0 |
+| cutter:2 | 18000 | 58.100 | 56 | 1/0 | 1 | 0/0 | 0 | 0/0/0 |
+| cutter:3 | 18000 | 60.775 | 82 | 1/1 | 1 | 0/0 | 0 | 0/0/0 |
+| duo:1 | 18000 | 27.175 | 20 | 14/10 | 4 | 0/0 | 4 | 80/0/80 |
+| duo:2 | 18000 | 57.550 | 68 | 15/10 | 2 | 0/0 | 4 | 99/24/75 |
+| duo:3 | 18000 | 57.700 | 58 | 21/17 | 3 | 0/0 | 4 | 99/0/99 |
+| jump:1 | 56995 | 100.000 | 100 | 0/0 | 1 | 0/0 | 18 | 782/0/782 |
+| run:1 | 55794 | 100.000 | 90 | 0/0 | 1 | 0/0 | 18 | 822/30/792 |
+| skiff:1 | 18000 | 60.925 | 54 | 22/17 | 5 | 0/0 | 5 | 186/0/186 |
+| skiff:2 | 18000 | 25.325 | 42 | 7/3 | 2 | 0/0 | 4 | 80/24/56 |
+| skiff:3 | 18000 | 67.825 | 90 | 19/14 | 3 | 0/0 | 5 | 133/0/133 |
+| survival:1 | 18000 | 77.725 | 66 | 3/1 | 1 | 0/0 | 0 | 0/0/0 |
+| survival:2 | 18000 | 49.775 | 66 | 0/0 | 1 | 0/0 | 0 | 0/0/0 |
+| survival:3 | 18000 | 66.400 | 72 | 2/2 | 1 | 0/0 | 0 | 0/0/0 |
+| warden:0 | 16694 | 100.000 | 100 | 35/25 | 1 | 0/0 | 1 | 0/0/0 |
+| warden:2 | 11488 | 100.000 | 100 | 31/21 | 1 | 0/0 | 1 | 0/0/0 |
+
+Additional pinned outcomes: jump gate has **6 waits**, all **18 jumps**, sector 2/column 5, final beacon and Warden present, both crew conscious. Run gate resolves **1 event**, buys **1 repair**, earns **822**, spends **30**, ends with **792 scrap / 100 hull**, all 18 jumps and the Warden present. Warden Pulse-only is **35 shots / 25 hits / 270 seconds** from arrival; with Heavy Laser it is **31 / 21 / 183**, both victories. Boarding kills both boarders in every seed. Duo and Skiff health floors remain **25**. No gate floor was lowered.
+
+`tests/fixtures/net1a-baseline.json` pins 19 immutable scenarios: starter/Skiff/Cutter seeds 1-3; charge completion, direction+Confirm and destroyed targets; Science system/SWAP rows; held-stick Skiff Ops and Helm tab crossings including offline tabs (repeat changes at ticks **1, 9, 17, 25**); multi-seat vote and jump; Navigation Confirm on the exact ready tick; sector jump, visit reset and row reconciliation. Short scenarios retain every completed gameplay observation. The original seed-2026/four-player/7200-tick golden stores observations every 60 ticks and its final state, plus action/RNG change points, independent of any future translator.

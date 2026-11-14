@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
+import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
 import { Life, LifeState, Position, Health } from '../src/renderer/src/sim/components';
 import { interactTarget, TargetKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
@@ -15,6 +15,7 @@ describe('increment 1 gate: two bots survive five minutes', () => {
     it(`seed ${seed}`, () => {
       const s = makeState(2, seed, DEFAULT_CHARACTERS); hazardStart(s);   // the start beacon is peaceful since Loop-i (spec section 4b): this hazard soak keeps the old schedule there, awake from tick 0 with the first enemy at 270 s and boarders at 330 s
       let minHull = s.hull, impacts = 0, lastImpact = -1, maxHazards = 0, minHealth = HEALTH_MAX, encounterImpacts = 0, lastTelemetryImpacts = 0, repairsSeen = false, fireRepairOutsideRoom = 0, healthAt4 = '';
+      beginGateTrace(s, `survival:${seed}`);
       for (let t = 0; t < FIVE_MINUTES && !s.ended; t++) {
         s.run.jumpCharge = 0;   // hazard gate: the captain bot (spec Demo-i section 6) must not leave for Navigation, so the drive never reads ready
         const intents = [botIntent(s, 0), botIntent(s, 1)];
@@ -40,6 +41,7 @@ describe('increment 1 gate: two bots survive five minutes', () => {
         maxHazards = Math.max(maxHazards, active);
         if (Array.from(s.rooms.fireRepair).some((p) => p > 0) || Array.from(s.breaches.repair).some((p) => p > 0)) repairsSeen = true;
       }
+      assertGateTrace(s);
       const figures = `min hull ${minHull}, encounter impacts ${encounterImpacts}, min health ${minHealth.toFixed(1)}, health at 4:00 ${healthAt4}, boardings ${s.telemetry.boardings}, boarders killed ${s.telemetry.boardersKilled}`;
       expect(s.ended, `run ended at ${Math.floor(s.tick / 60)}s, reason ${s.endReason}`).toBe(0);
       expect(fireRepairOutsideRoom).toBe(0);

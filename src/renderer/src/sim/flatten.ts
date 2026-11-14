@@ -66,6 +66,8 @@ export function flatten(s: SimState): Float64Array {
 
 /** Inverse of flatten into a state created for the same layout and playerCount. */
 export function unflatten(s: SimState, v: Float64Array): void {
+  const expected = size(s);
+  if (v.length !== expected) throw new Error(`snapshot length ${v.length} does not match expected ${expected}`);
   let i = 0;
   const get = (): number => v[i++]!;
   const ver = get(), idh = get(), lh = get();

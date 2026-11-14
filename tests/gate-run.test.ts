@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
+import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
 import { botIntent } from '../src/renderer/src/sim/bot';
 import { confirmTarget, ConfirmKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
@@ -23,6 +23,7 @@ describe('run gate: a scripted navigator resolves an event, buys a hull repair a
     let lastJumps = 0, bought = false, holdOff = false, lastSector = 0;
     const move = (dy: number) => { holdOff = !holdOff; return holdOff ? { ...NEUTRAL_INTENT, moveY: dy } : { ...NEUTRAL_INTENT }; };   // one stick edge per two ticks: a release between presses
     const limit = (JUMPS * (JUMP_CHARGE_TIME + 10) + 12 * WAIT_SECONDS) * TICK_HZ;
+    beginGateTrace(s, 'run:1');
     for (let t = 0; t < limit && !s.ended && !(s.run.finalBeacon && s.enemy.present); t++) {
       silence();
       let p0 = { ...NEUTRAL_INTENT };
@@ -38,6 +39,7 @@ describe('run gate: a scripted navigator resolves an event, buys a hull repair a
       if (s.run.sector !== lastSector) { lastSector = s.run.sector; allHazard(s); }   // the later sectors' maps are quiet: one event and one shop in this gate
       if (s.telemetry.jumps !== lastJumps) { lastJumps = s.telemetry.jumps; if (s.run.sector === 0 && s.run.column === 1) s.run.event = 4; }   // the arrival drew an id; pin the Supply cache
     }
+    assertGateTrace(s);
     expect([s.ended, s.endReason, s.run.finalBeacon, s.enemy.present, s.enemy.maxHull, s.telemetry.jumps, s.run.sector, s.run.column]).toEqual([0, EndReason.None, 1, 1, Math.round(enemyMaxHull(SECTORS * SECTOR_COLUMNS - 1) * WARDEN_HULL_MULT), JUMPS, SECTORS - 1, SECTOR_COLUMNS - 1]);   // the Warden, not a victory
     let jumpScrap = 0; for (let d = 1; d < SECTORS * SECTOR_COLUMNS; d++) jumpScrap += scrapPerJump(d);   // every arrival pays its depth, the sector arrivals at depths 6 and 12 included; the jump to the final beacon pays nothing
     expect([s.telemetry.scrapEarned, s.telemetry.scrapSpent, s.run.scrap, s.telemetry.eventsResolved, s.telemetry.purchases, s.hull]).toEqual([jumpScrap + 40, 30, jumpScrap + 40 - 30, 1, 1, HULL_MAX]);

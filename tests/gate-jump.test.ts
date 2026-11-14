@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { step } from '../src/renderer/src/sim/step';
+import { tracedStep as step, beginGateTrace, assertGateTrace } from './helpers/gateTrace';
 import { botIntent } from '../src/renderer/src/sim/bot';
 import { confirmTarget, ConfirmKind } from '../src/renderer/src/sim/interact';
 import { roomAt } from '../src/renderer/src/sim/grid';
@@ -20,6 +20,7 @@ describe('jump gate: a scripted navigator jumps the quiet ship through every sec
     const nav = s.derived.stationOfKind[StationKind.Navigation]!, A = room(s, 'A'), eid = s.crew[0]!;
     let seatedOnce = false, waits = 0, lastSector = 0, wasWaiting = false;
     const limit = (JUMPS * (JUMP_CHARGE_TIME + 10) + WAITS_MAX * WAIT_SECONDS) * TICK_HZ;
+    beginGateTrace(s, 'jump:1');
     for (let t = 0; t < limit && !s.ended && !(s.run.finalBeacon && s.enemy.present); t++) {
       silence();
       let p0 = { ...NEUTRAL_INTENT };
@@ -29,6 +30,7 @@ describe('jump gate: a scripted navigator jumps the quiet ship through every sec
       if (s.run.sector !== lastSector) { lastSector = s.run.sector; allHazard(s); }   // each new sector's map is quiet too
       const waiting = s.run.waitUntilTick >= 0; if (waiting && !wasWaiting) waits++; wasWaiting = waiting;
     }
+    assertGateTrace(s);
     expect(seatedOnce).toBe(true);
     expect([s.telemetry.jumps, s.run.sector, s.run.column, s.run.finalBeacon, s.enemy.present, s.ended, s.endReason]).toEqual([JUMPS, SECTORS - 1, SECTOR_COLUMNS - 1, 1, 1, 0, EndReason.None]);   // the Warden has arrived
     expect(waits).toBeGreaterThan(0);   // eight fuel do not cover eighteen jumps (spec section 2)
