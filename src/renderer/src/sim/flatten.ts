@@ -16,6 +16,7 @@ type NumericRecord = Record<string, number | ArrayLike<number>>;
 interface Access { field: CanonicalField; container: number; property: string; player?: number }
 interface AccessPlan { containers: ((s: SimState) => NumericRecord)[]; fields: Access[]; targets: { group: 'weapons' | 'science'; offset: number }[] }
 const accessPlans = new WeakMap<CanonicalField[], AccessPlan>();
+function canonicalNumber(value: number): number { return value === 0 ? 0 : value; }
 /** Compile field routing, never state storage. Records, arrays and ECS IDs can all be replaced. */
 function accessPlan(fields: CanonicalField[]): AccessPlan {
   const cached = accessPlans.get(fields); if (cached) return cached;
@@ -49,14 +50,15 @@ export function flatten(s: SimState): Float64Array {
   out[0] = SIM_VERSION; out[1] = layoutIdNumber(s); out[2] = layoutHashNumber(s); out[9] = s.crew.length;
   for (const { group, offset } of plan.targets) {
     const target = s[group].target;
-    out[offset] = target === null ? 0 : target.kind === 'object' ? 1 : 2;
-    out[offset + 1] = target?.stableId ?? 0; out[offset + 2] = target?.kind === 'enemy' ? target.room : -1;
+    out[offset] = canonicalNumber(target === null ? 0 : target.kind === 'object' ? 1 : 2);
+    out[offset + 1] = canonicalNumber(target?.stableId ?? 0);
+    out[offset + 2] = canonicalNumber(target?.kind === 'enemy' ? target.room : -1);
   }
   for (const access of plan.fields) {
     const f = access.field, value = containers[access.container]![access.player === undefined ? access.property : s.crew[access.player]!]!;
     for (let k = 0; k < f.count; k++) {
       const v = f.array ? (value as ArrayLike<number>)[k]! : value as number;
-      out[f.offset + k] = v === 0 ? 0 : v;
+      out[f.offset + k] = canonicalNumber(v);
     }
   }
   return out;

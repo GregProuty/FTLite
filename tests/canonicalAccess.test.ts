@@ -3,6 +3,8 @@ import { makeState } from './helpers/sim';
 import { flatten, unflatten, canonicalFields } from '../src/renderer/src/sim/flatten';
 import { Position } from '../src/renderer/src/sim/components';
 import { disposeSimState } from '../src/renderer/src/sim/state';
+import { loadSnapshot, saveSnapshot, validateSnapshot } from './helpers/simLifetime';
+import { hashState } from '../src/renderer/src/sim/hash';
 it('canonical access observes replaced records, typed arrays, targets and each live world', () => {
   const a = makeState(2), b = makeState(2);
   flatten(a); flatten(b); // Warm the shared layout access plan before changing owned storage.
@@ -31,4 +33,21 @@ it('restoring unchanged values still restores the sign of zero exactly', () => {
   const state = makeState(2), values = flatten(state), offset = canonicalFields(state.layout, 2).find(f => f.name === 'rooms.fire')!.offset;
   state.rooms.fire[0] = -0; unflatten(state, values); expect(Object.is(state.rooms.fire[0], -0)).toBe(false);
   values[offset] = -0; unflatten(state, values); expect(Object.is(state.rooms.fire[0], -0)).toBe(true);
+});
+it.each(['weapons', 'science'] as const)('%s enemy room signed zero is canonical across JSON snapshot restore', group => {
+  const state = makeState(2), digest = 'a'.repeat(64);
+  state[group].target = { kind: 'enemy', stableId: 1, room: 0 };
+  const positiveValues = flatten(state), positiveHash = hashState(state);
+  state[group].target = { kind: 'enemy', stableId: 1, room: -0 };
+  const values = flatten(state), hash = hashState(state);
+  const offset = canonicalFields(state.layout, 2).find(f => f.name === `${group}.$targetRoom`)!.offset;
+  expect.soft(Object.is(values[offset], 0)).toBe(true);
+  expect.soft(values).toEqual(positiveValues);
+  expect.soft(hash).toBe(positiveHash);
+  const snapshot = saveSnapshot(state, digest);
+  expect(validateSnapshot(state.layout, snapshot, digest)).toEqual(snapshot);
+  expect.soft(Object.is(snapshot.values[offset], 0)).toBe(true);
+  const restored = loadSnapshot(state.layout, JSON.parse(JSON.stringify(snapshot)), digest);
+  expect.soft(hashState(restored)).toBe(hash);
+  expect.soft(flatten(restored)).toEqual(values);
 });

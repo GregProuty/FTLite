@@ -1,0 +1,9 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+························································································································
+
+ Test Files  5 passed (5)
+      Tests  120 passed (120)
+   Start at  14:35:01
+   Duration  8.56s (transform 584ms, setup 840ms, collect 2.41s, tests 8.30s, environment 0ms, prepare 345ms)

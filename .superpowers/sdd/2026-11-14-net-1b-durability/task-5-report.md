@@ -93,3 +93,13 @@ Physical controllers and handheld hardware are **NOT RUN**; this virtual input i
 ## Handoff
 
 Required final commands and evidence pass. Whole-branch review remains the controller's next step; do not advertise Net-1b complete or internet play based solely on this implementation report. Remaining limits: optional Firefox is not yet mandatory CI, Safari/JSC/ARM untested, physical controllers untested, and the existing in-memory replay parser/journal bounds documented by task 4 still apply.
+
+## Review correction C-001 (round 1)
+
+The full-suite, acceptance, build, real-engine and UI evidence above belongs to source **7567633**. It is historical evidence for that source, not a fresh full gate for this correction. The controller will run all gates after the whole-branch review/fix wave.
+
+The optimized target path bypassed signed-zero normalization. Weapons and Science enemy targets with accepted `room: -0` consequently changed hash after JSON snapshot restore. Target kind, ID and room now use the same canonical numeric normalization as ordinary fields; snapshot validation and exact signed-zero restore behavior are unchanged. No version, expected vector, golden or timeout changes.
+
+TDD evidence: the new parameterized regression failed for both Weapons and Science before the fix (**2 failed / 3 passed**, exit 1), including canonical positive-zero, equality to room `0`, and accepted JSON snapshot round-trip hash equality. After the fix, `npx vitest run tests/canonicalAccess.test.ts tests/snapshot.test.ts tests/snapshotV2.test.ts tests/golden.test.ts tests/determinismHarness.test.ts --reporter=dot --maxWorkers=2` passed **120/120 tests in five files, 8.56s**, exit 0. The existing signed-zero restore regression remains intact. `npm run typecheck` passed, exit 0. Logs: `task-5-logs/fix-round-1-red.log`, `fix-round-1-focused.log`, and `fix-round-1-typecheck.log`.
+
+Validation for this latest fix is limited to those focused checks. Full suite, acceptance, build, browser and UI smoke were deliberately not repeated during this correction, as directed by the controller.
