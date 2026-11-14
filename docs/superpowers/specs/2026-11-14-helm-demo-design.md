@@ -54,12 +54,12 @@ A circular map about 4 to 5 times wider than one screen, with the planet at its 
 
 | Thing | Rule | Values *(start)* |
 |---|---|---|
-| Map edge | Circle of radius `R_MAP`. Past the edge a soft spring pushes bodies back in; no damage. Drawn as a faint boundary | `R_MAP` 2800 units |
+| Map edge | Circle of radius `R_MAP`. A ship past the edge gets an inward acceleration `a = −K_EDGE · (|d| − R_MAP) · d/|d|`; no damage. A missile that crosses it is destroyed (§4 collision matrix). Drawn as a faint boundary | `R_MAP` 2800 units; `K_EDGE` 2 /s² |
 | Planet | Static at the origin; pulls every body (ships, missiles); contact costs hull and bounces (Q16) | radius 70; contact 4 hull, bounce keeps 50% of the normal speed, 1 s grace before it can hurt the same ship again |
 | Gravity | `a = −GM · d / (|d|² + ε²)^{3/2}` toward the planet | `GM` 2.5e6 (a circular orbit at r = 250 moves at 100 u/s; the pull is about 2 u/s² at the belt and 0.3 u/s² at the edge); `ε` 20 |
 | Asteroid belt | A ring of static asteroids between two radii, with 3 **gaps** at seeded bearings wide enough to fly through at speed. Threading the belt is the Helm's obstacle course | inner radius 1100, outer 1300; about 70 asteroids, radius 15 to 45; gaps 160 units wide |
 | Loose clusters | 3 clusters of 4 to 7 asteroids at seeded positions between the belt and the edge; cover and obstacles | cluster radius 150; asteroid radius 20 to 55 |
-| Asteroids (all) | Static circles. They do not pull. Contact costs hull and bounces; they block laser line of sight | contact 1 hull |
+| Asteroids (all) | Static circles. They do not pull. Contact costs hull and bounces; they block laser line of sight | contact 1 hull; bounce keeps 50% of the normal speed; 1 s grace per ship–asteroid pair |
 | Spawns | Two spawn points on opposite sides, outside the belt, in slow orbits going the same way, so a fight starts with an approach | r = 2000 |
 
 **Seeded layout:** belt positions, gap bearings and cluster positions come from `rng.tactical` and the duel seed. A generator rejects overlaps (with the planet, each other, the spawns and the gap corridors), so every seed gives a fair map. The layout is part of the published run setup, so both screens draw the same map.
@@ -72,10 +72,20 @@ The sim runs at today's 60 Hz (`TICK_HZ`) inside the Net-1 authority and follows
 - **Headings:** a fixed table of **256 unit vectors** in `sim/tactical/headings.ts`, written as numeric literals by a generator script that runs outside the sim (`scripts/gen-headings.ts`, which may use `Math.cos`). A test checks every entry's length against 1 by `sqrt` and checks the table's symmetry. A ship's heading is an index from 0 to 255, plus a fractional turn accumulator.
 - **Arcs and sectors without angles:** "inside a ±θ arc" means `dot(h, u) ≥ cos θ · |u|`, where `cos θ` is a literal constant. "Which side" uses the 2-D cross product. Neither needs trigonometry.
 - **Integration:** semi-implicit (symplectic) Euler once per tick: apply forces, update velocity, update position. Bodies update in a fixed order (crew ship, enemy, missiles by spawn id). Collisions are circle against circle, resolved in the same fixed order.
+- **Collisions** (after all positions update; per body in the fixed order, static bodies first in broad-phase cell order, then the other moving bodies by id; a contact is `|d| < r₁ + r₂`):
+
+  | Pair | Outcome *(start)* |
+  |---|---|
+  | Ship – planet | Push the ship out along the contact normal to `r₁ + r₂`; reflect the normal velocity component, keeping 50%; 4 hull; then a 1 s grace for that ship and the planet, during which contact still pushes and bounces but costs no hull |
+  | Ship – asteroid | Same, 1 hull, grace per ship–asteroid pair |
+  | Ship – ship | Push both apart equally along the normal; exchange the normal velocity components, then keep 50% of each; 1 hull each; 1 s grace for the pair |
+  | Missile (radius 4) – anything solid or the map edge | The missile is destroyed. On a ship (the enemy, or its own ship after 1 s of flight) it lands per §7b first |
+  | Several contacts in one tick | Each is handled in the order above for that body; hull costs add; positions are corrected after each push |
+- **Map edge:** applied as a force with gravity (§3), not as a contact, so it needs no correction step.
 - **Broad phase:** about 100 static asteroids. A fixed uniform grid (cell 200 units), built once per map, gives each body its nearby asteroids in a fixed cell order. Collisions and line of sight stay cheap and deterministic as maps grow.
 - **Randomness:** one new named stream, `rng.tactical`, seeded from the duel seed. It feeds the map layout and the enemy's small decision jitter. Combat hits are geometric and draw no random numbers.
 
-Tests (in `npm test`): a circular orbit at r = 250 holds its radius within 2% over 60 s with no thrust; energy drift stays bounded over a 5-minute coast; the same seed and commands give the same hash; every seed from 1 to 200 produces a valid map (no overlaps, three passable gaps, clear spawns); a golden replay of a scripted duel; arc and sector truth tables.
+Tests (in `npm test`): **gravity-only configuration** (drag and stabilise switched off by test tuning): a circular orbit at r = 250 holds its radius within 2% over 60 s, and total energy over a 5-minute coast stays within 1% of its start. **Flight configuration** (drag and stabilise on): terminal speed under full thrust is within 5% of the §6 figure, and a released ship's sideways speed falls below 5 u/s within 1 s. The same seed and commands give the same hash; every seed from 1 to 200 produces a valid map (no overlaps, three passable gaps, clear spawns); a golden replay of a scripted duel; arc and sector truth tables.
 
 ## 5. The ships
 
@@ -85,7 +95,7 @@ Both ships have identical stats (the enemy is symmetric in the demo).
 |---|---|
 | Body | Circle of radius 20; hull 30 |
 | Rooms | **Weapons** (nose), **Shields** (flanks), **Engines** (stern). Each has a damage level of 0, 1 or 2 |
-| Shields | 2 layers; one layer recharges every 5 s while undamaged |
+| Shields | 2 layers. Below 2 layers, a recharge clock counts up at 1/s ÷ the Shields-room factor; at 5 s it adds a layer and resets to 0. A laser hit that strips a layer resets the clock to 0. The clock is held (not reset) while the Shields room is at level 2, and resumes at the new factor when repair lowers it. At 2 layers the clock stays at 0 |
 
 **Room by impact point.** A missile hits the room where it physically strikes. Take the impact point `p` relative to the ship centre, `f = dot(p, h)` and `s = cross(h, p)`: nose if `f ≥ |s|`, stern if `−f ≥ |s|`, otherwise flank. Approach angle is the gunner's room choice (Q19b).
 
@@ -95,7 +105,7 @@ Both ships have identical stats (the enemy is symmetric in the demo).
 |---|---|
 | Engines | Thrust and turn rate ×1 / ×0.6 / ×0.25 (Q11) |
 | Weapons | Laser charge time ×1 / ×1.6 / ×2.5; missiles cannot launch at level 2 (Q11) |
-| Shields | Recharge time ×1 / ×1.5 / stopped (Q20) |
+| Shields | Recharge time ×1 / ×1.5 / stopped, applied to the recharge clock above (Q20) |
 
 Every room hit also deals hull damage (§7). A room at level 2 takes no further room damage, but its hits still cost hull.
 
@@ -134,6 +144,19 @@ Two modes on one console: **laser** and **missile in flight** (Q19, Q19b).
 - **Flight:** the missile thrusts on its own (160 u/s²). The gunner steers it at 120°/s on the held-input channel (turn axis), using the same kind of stick as the Helm's turn. Gravity acts on it, so curving it round the planet is a skill. 6 s of fuel, then it coasts for 2 s and self-destructs.
 - **Impact:** with the enemy ship, it bypasses shields (Q20); the room comes from the impact point (§5), that room takes +1 damage and the hull takes 3. A missile hitting the planet, an asteroid or the map edge is destroyed. A missile can hit its own ship after 1 s of flight **(rec.: the gunner has to fly it carefully)**.
 - **The trade:** while a missile flies, the laser cannot be charged or fired; a held full charge freezes (no venting). When the missile ends, the console returns to laser mode (Q19b).
+- **Unattended missiles:** a missile always burns its 6 s of fuel and then coasts and self-destructs on its own clock, attended or not. "Unattended" (§8) only means its steering input reads zero, so it flies straight under thrust and gravity.
+
+**Weapons state transitions.** The laser has `charge` (0 to full) and a `fireHeld` flag set by `laserCharge {held}`. *Attended* means a present player is seated at Weapons (§8).
+
+| Event | Laser | Missile |
+|---|---|---|
+| `laserCharge {held: true}`, attended, no missile in flight | `fireHeld` set; charge rises each tick; at full, the 3 s hold timer runs, then it vents to 0 | n/a |
+| `laserCharge {held: false}`, attended | Full: fire (§7a), charge to 0. Partial: discard, charge to 0 | n/a |
+| `laserCharge` of either kind while a missile flies | Ignored (rejected `missile-in-flight`); charge and hold timer frozen | Unchanged |
+| `missileLaunch`, attended, magazine > 0, Weapons room < 2, no missile in flight | Charge and hold timer freeze where they are; `fireHeld` cleared | Launched (§7b) |
+| Missile ends (impact, self-destruct, planet, asteroid, edge) | Unfreezes. A frozen full charge resumes its hold timer and needs a fresh `held: true` then `held: false` to fire | — |
+| Console becomes unattended (stand up, Tab away, disconnect) | `fireHeld` cleared **without firing or discarding**; charge and hold timer freeze | Steering reads zero |
+| Console becomes attended again | Unfreezes; fire needs a fresh `held: true` | Steering resumes |
 - **Point defence:** none in the demo. Missiles are dodged by flying, or die on the planet and asteroids **(rec.; the grill leaves it open)**.
 
 Keys: keyboard Q/E cycle the lock, Space hold-to-charge and release, F launch a missile, A/D steer a missile, the stand-up key to leave; the gamepad equivalent.
@@ -142,15 +165,25 @@ Keys: keyboard Q/E cycle the lock, Space hold-to-charge and release, F launch a 
 
 Each player is a character aboard the crew's ship. **Seated at a console, they see its map view (§10). Standing, they see the FTL-style interior of their own ship** and walk their character through it. This reuses FTLite's existing interior, not a new one.
 
-- **The ship:** the **Cutter** layout (`sim/ship/cutter.json`, the FTL-look ship from Demo-iii) **(rec.)**. Its Navigation console (the bridge, bow), Weapons console (midship) and Engineering room (stern) are in separate rooms, so every repair is a walk: bridge to Engineering is about 25 tiles, about 6 s at today's 4 tiles/s. The Skiff is ruled out because its Navigation and Weapons share one console. Other Cutter consoles (Science, Doors, Medbay, Life Support) are scenery in the demo: a player can't sit at them **(rec.)**.
-- **What runs inside:** walking and collision (`movement.ts`), doors opening as crew pass (`doors.ts`), sitting down and standing up (`stations.ts`), and Interact (`interact.ts`). Fires, oxygen, breaches, boarders, power allocation, medbay, events and the director are **off** in the duel.
+- **The ship:** the **Cutter** layout (`sim/ship/cutter.json`, the FTL-look ship from Demo-iii) **(rec.)**. Its Navigation console (Bridge B, tile 27,6, bow), Weapons console (Weapons W, tile 8,6) and Engines room (E, stern) are separate rooms, and the Cutter has no console groups. The Skiff is ruled out because its Navigation and Weapons share one console. Other Cutter consoles (Science, Doors, Medbay, Life Support, Engineering) are scenery in the demo: `sit` on them is rejected **(rec.)**.
+- **The crew:** both characters are the trait-free **Recruit** (`CHARACTERS[4]` in `characters.ts`), with no skill head starts, and **XP is not awarded in the duel**, so walking is exactly `CREW_SPEED` (4 tiles/s) and repair is exactly the §8 time **(rec.)**. Character choice comes back with the sector run.
+- **What runs inside:** walking and collision (`movement.ts`), sitting down and standing up, and Interact on the held input (`interactHeld`). **Every door is held open for the whole duel** (`DoorState.HeldOpen`, set at creation): today's doors need the Doors station online, and power is off in the duel. Fires, oxygen, breaches, boarders, power allocation, medbay, events and the director are **off**. The exact phase list is in §13.
 - **Consoles are roles.** Sitting at Navigation makes a player the Helm; sitting at Weapons makes them the gunner. Either player may sit at either free console **(rec.)**, so a pair can swap mid-fight. A duel starts with player 0 seated at Navigation and player 1 at Weapons.
-- **An empty console:** with nobody at Navigation, the ship coasts with stabilise on (axes read zero). With nobody at Weapons, the laser charge freezes and a missile in flight coasts unsteered.
-- **Damage shows inside.** Each tactical room (§5) has a **repair point** in an interior room, named in the duel's layout data **(rec.)**: Engines in Engineering (E), Weapons in the Weapons room (W), Shields in a Cutter room chosen in H-1 so that all three repairs are a walk from both consoles *(start: the room nearest midship that holds no console)*. A damaged room shows its level on the interior view (tint and a marker), and the console overlays list it.
-- **Repair:** stand within reach of the repair point and hold Interact, the same targeting and progress as today's station repair (`TargetKind.Power` in `interact.ts`), as a new target kind for tactical room damage. One damage level takes **4 s** for one repairer *(start)*; two players together each work at the existing `TEAM_MULT` (1.25). Letting go keeps the progress. Completing lowers the room by one level.
+- **Present or away.** Each player has a `present` flag in the duel state, true at the start. It goes false when the player's client sends `presence {present: false}` (solo Tab, §11a) or the player's link disconnects, and true on `presence {present: true}` or reconnection. Going away also zeroes that player's held input, as the authority already does on disconnect (`authority/core.ts`). A character whose player is away stays exactly where it is.
+- **An empty console** is one with nobody seated, or with a seated player who is away. With Navigation empty, the ship coasts with stabilise on (axes read zero). With Weapons empty, the §7 "unattended" rules apply: the charge freezes, nothing fires, and a missile flies on unsteered.
+- **Damage shows inside.** Each tactical room (§5) has a **repair point**, a tile named in the duel's layout data **(rec.)**:
+
+  | Tactical room | Interior room | Tile | Walk from Bridge console | Walk from Weapons console |
+  |---|---|---|---|---|
+  | Engines | Engines (E) | 2,6 | about 27 tiles, 7 s | about 6 tiles, 1.5 s |
+  | Weapons | Weapons (W) | 8,7 | about 22 tiles, 5.5 s | 1 tile (the gunner's own room: a quick fix, but the console still stands empty for the repair) |
+  | Shields | Reactor (R) | 16,8 | about 11 tiles, 3 s | about 8 tiles, 2 s |
+
+  Walking figures are paths through the Cutter's doors at 4 tiles/s *(start; H-0 measures them with the scripted pair)*. A damaged room shows its level on the interior view (tint and a marker), and the console overlays list it.
+- **Repair:** while standing **inside the repair point's room** and within `REACH` of its tile, hold Interact (`interactHeld`). It is a new interaction target kind for tactical room damage, modelled on today's station repair in `interact.ts` but with the same-room check that the Power target lacks. If several repair targets qualify, the nearest wins, ties to the lower tactical room index (Weapons, Shields, Engines). One damage level takes **4 s** for one repairer *(start)*; two players on the same target each work at the existing `TEAM_MULT` (1.25). Progress is kept when Interact is released, when the repairer walks off or goes away, and when the room takes another hit (a hit adds a level; the progress continues toward lowering it by one). Completing lowers the room by one level and resets the progress.
 - **Why hold-to-repair, not the old button sequence:** the walk is now the price of leaving a console, and hold-to-repair is what FTLite's crew already does. The per-room task mini games of the napkin come with MG-X and replace it there **(rec.)**.
-- **Inputs:** held axes move the character while standing and fly or steer while seated (§13). Interact and stand up/sit down are today's interaction commands.
-- **Enemy repair:** the enemy has no interior. It repairs abstractly at the same price **(rec.)**: repairing Engines stops it turning and thrusting; repairing Weapons or Shields stops it firing. One level takes the 4 s repair time plus a fixed 6 s walk allowance (§9).
+- **Inputs:** held axes move the character while standing and fly or steer while seated (§13). Interact is the held `interactHeld` flag. Sitting down and standing up are today's `sit` and `stand` commands; `presence` is new (§13).
+- **Enemy repair:** the enemy has no interior. It repairs abstractly at about the same price **(rec.)**, specified in §9.
 
 ## 9. The enemy: the hunter (Q17)
 
@@ -159,8 +192,8 @@ A sim-flown ship under the same physics, arcs and rules. It sees only what the c
 Written as a small state machine; the demo has two states, and moods (Q17 C) are later additions.
 
 - **Hunt:** steer toward a lead point (where the crew's ship will be in 0.5 s at its current velocity). Thrust when the heading error is under 30°. Avoid the planet and asteroids with a **short lookahead**: if the straight-line path over the next 0.75 s comes within `body radius + 30`, turn away and thrust. The short lookahead is the bluntness that lets the Helm bait it into the planet or the belt (Q16, Q17).
-- **Firing:** charge the laser continuously and release when the crew's ship is in arc with line of sight, after a 0.2 s jitter from `rng.tactical`. Lock the crew's Shields room until it reaches level 2, then Weapons (the lock only matters once a shot lands with the crew's shields down). Launch a missile when the crew is within 400, at most one per 30 s, and steer it with simple pursuit with a 0.3 s reaction lag (beatable by hard turns and by putting the planet or the belt between them).
-- **Repair:** when a room is at level 2, or at level 1 and the crew's ship is out of laser range, enter **Repair** for that room (§8: 4 s per level plus the 6 s walk allowance), then return to Hunt.
+- **Firing:** charge the laser continuously. The first tick the crew's ship is in arc with line of sight, draw one jitter `j` uniformly from 0 to 12 ticks (0.2 s) from `rng.tactical`; release `j` ticks later if it is still in arc with line of sight, else wait for the next in-arc tick and draw again. Lock the crew's Shields room until it reaches level 2, then Weapons (the lock only matters once a shot lands with the crew's shields down). Launch a missile when the crew is within 400, at most one per 30 s. Steer it by simple pursuit toward where the crew's ship was **18 ticks (0.3 s) ago**, read from a ring buffer of the crew ship's last 18 positions kept in the hunter's state (beatable by hard turns and by putting the planet or the belt between them).
+- **Repair** (one room at a time, highest damage level first, ties Engines, then Weapons, then Shields): enter Repair when a room is at level 2, or at level 1 while the crew's ship is out of laser range. A Repair visit has a **walk** of 6 s (the stand-in for crossing its ship), then **work** at 4 s per level, then it returns to Hunt; it repairs **one level per visit**. During the whole visit the repaired room's console is "empty" by the §8 rule: repairing Engines zeroes its axes (it coasts with stabilise on); repairing Weapons or Shields means it does not charge, fire, launch or steer a missile (its missile, if any, flies on unsteered). A new hit during the visit does not interrupt it. The timers count ticks and draw no random numbers.
 
 Tuning goal: a competent pair wins about 60 to 70% of the time, and a pair who ignores the planet loses (Q22).
 
@@ -208,8 +241,8 @@ Rendering interpolates between published states (render time = latest state minu
 Until Net-3 exists, the owner playtests alone and runs between the stations.
 
 - **One player, both characters.** The solo player owns both characters (player 0 and player 1) as two player IDs on one local loopback link, which Net-1a already supports. The authority, commands, held input and sim are exactly those Net-3 carries later; only the transport differs. Nothing in the duel is built twice.
-- **Switching.** Tab (gamepad: Select/View) switches which character the owner controls, and the screen with it: that character's console view if seated, the interior if standing (Q27). Each screen is exactly what a multiplayer player in that position sees.
-- **The character left behind** stays where it is. A seated one leaves its console idle, the same rule as an empty console (§8): the ship coasts with stabilise on; the laser charge freezes and a missile in flight coasts unsteered. The owner can also run one character to a repair and Tab back.
+- **Switching.** Tab (gamepad: Select/View) switches which character the owner controls, and the screen with it: that character's console view if seated, the interior if standing (Q27). The client sends `presence {present: false}` for the character left and `presence {present: true}` for the one taken, in that order on the same tick, and stops sending held input for the character left (§8). Each screen is exactly what a multiplayer player in that position sees.
+- **The character left behind** stays where it is and is *away* (§8). A seated one leaves its console empty: the ship coasts with stabilise on; the laser charge freezes without firing, and a missile flies on unsteered. A standing one stops walking, and any repair it was doing pauses with its progress kept (its Interact reads released). The owner can run one character to a repair, Tab back, and Tab again to finish it.
 - **Duel length:** solo duels run longer and harder than two-player ones, because one station is always idle. The Q22 targets apply to two-player sessions; solo telemetry is recorded with a `solo` flag and judged separately.
 
 ### 11b. Two screens over the network (Q15b)
@@ -226,11 +259,21 @@ Until Net-3 exists, the owner playtests alone and runs between the stations.
 ## 13. Architecture
 
 - **Sim, new subtree `sim/tactical/`:** `map.ts` (`MapDef`, the seeded generator and its validation), `bodies.ts` and `physics.ts` (gravity, thrust, drag, stabilise, integration, collisions, the broad-phase grid, and the pure `predictPath(state, bodyId, seconds)` used by the render), `headings.ts` (generated), `state.ts` (`TacticalState`: bodies, ships, rooms, shields, weapons, missiles, enemy brain and its abstract repair, telemetry), `step.ts`, `weapons.ts`, `hunter.ts`, `hash.ts`, `snapshot.ts`, `tuning.ts`. It imports nothing from the sector-run sim beyond shared helpers (RNG, hashing).
-- **The interior (Q27):** the duel's state is `{ interior, tactical }`. `interior` is today's `SimState`, created from the Cutter layout with the duel's systems switched off (§8). Each duel tick runs, in order: the existing interior systems the duel uses (movement, doors, sit and stand, interact, including the new tactical-repair target kind); then the tactical step, which reads who is seated at Navigation and Weapons from the interior; then the damage hand-over (tactical room levels are the single source of truth; the interior reads them to place repair targets and draw tints, and a finished repair lowers the tactical level). How the interior systems are switched off (flags on `SimState` versus a duel-only system list in the step) is settled in the H-0 plan **(rec.: a duel-only system list; the sector step is unchanged)**.
+- **The interior (Q27):** the duel's state is `{ interior, tactical, present }`. `interior` is today's `SimState`, created from the Cutter layout with two Recruits (§8) and every door held open. The sector `stepCommands` (`sim/step.ts`) is **not** called; a new `sim/duel/step.ts` runs its own phase list, and the sector step is unchanged. Each duel tick:
+  1. **Reset scratch** as the sector step does.
+  2. **Seat phase:** apply `sit` commands through today's interaction-command validation (`commands.ts`), allowed only on the Navigation and Weapons stations; then apply `stand` through the stand handler, which H-0 extracts from `consoleSystem` (`console.ts`) into a shared function so the duel can call it without the sector console effects (beams, scans, torpedoes, door toggles). Then apply `presence`.
+  3. **Tactical commands:** `laserLock`, `laserCharge`, `missileLaunch`, validated against the seats **after** step 2: accepted only from a present player now seated at Weapons, else rejected `not-at-weapons`.
+  4. **Interact:** the duel's interaction targeting (tactical repair targets only; no fires, breaches, revives, fights or torpedoes) reads each standing, present player's `interactHeld`.
+  5. **Movement** (`movementSystem`), for standing, present players only.
+  6. **Tactical step** (§4 to §9), reading who is present and seated at Navigation and Weapons, and their held axes.
+  7. **Damage hand-over:** tactical room levels are the single source of truth; the interior reads them for repair targets and tints, and a finished repair lowers the tactical level.
+  8. **Advance the tick.**
+
+  Same-tick order between players follows the existing envelope order inside each phase. The duel's command allowlist is `sit`, `stand`, `presence`, `laserLock`, `laserCharge`, `missileLaunch` and the session's `setPaused`; anything else is rejected `not-in-duel`.
 - **One session, two modes:** the authority gains a mode discriminant, `sector` (today) or `duel`. A run is one or the other. Command validation, ledgers, the tick driver and publication stay shared. `authority/core.ts`, typed to `SimState` today, takes the duel state through that discriminant.
-- **Inputs:** held axes are routed by the character's position: **standing**, they walk the character (today's path); **seated at Navigation**, they are the Helm's turn and thrust; **seated at Weapons**, they steer a missile in flight. A new tactical command family joins the closed union (an explicit Net-1 amendment, as MG-X will be): `laserLock {room}`, `laserCharge {held}`, `missileLaunch`. The authority accepts them only from the player seated at Weapons. Sitting, standing and Interact use the existing interaction commands.
+- **Inputs:** held axes are routed by the character's position: **standing**, they walk the character (today's path); **seated at Navigation**, they are the Helm's turn and thrust; **seated at Weapons**, they steer a missile in flight. A new duel command family joins the closed union (an explicit Net-1 amendment, as MG-X will be): `laserLock {room}`, `laserCharge {held}`, `missileLaunch` and `presence {present}`. Sitting and standing use the existing `sit` and `stand` commands; Interact is the held `interactHeld` flag.
 - **Client view, new `render/tactical/`:** `camera.ts` (follow, pan, snap, zoom, screen ↔ world transforms; pure and unit-tested), `tacticalLayer.ts` (the draw order in §10b), `offscreen.ts` (edge arrows), `grid.ts`. Camera inputs are handled in the client and never become commands. The screen shows the console view while the player's character is seated and the existing interior renderer while standing.
-- **Versioning:** one `SIM_VERSION` bump when the duel mode lands, with its own golden file. The sector run's figures, gates and goldens are unchanged.
+- **Versioning:** one `SIM_VERSION` bump when the duel mode lands, with a new duel golden. `SIM_VERSION` is hashed into every flattened state (`flatten.ts`), so the sector goldens are **re-blessed for the version number only**: the bless commit must show that only the version field changed, and the sector run's gameplay figures, gates and traces stay unchanged. The tactical state and `rng.tactical` live only in the duel state and its own flatten; the sector `SimState`'s stream list does not change.
 - **Scripted pair for tests only:** a headless scripted Helm and gunner (orbit, line up, release in arc, the occasional missile, and standing up to walk to a repair and back) drive telemetry and gate tests. They are never offered as a seat (Q15).
 - **Telemetry (per duel):** duration; outcome; laser releases, hits, misses and layers stripped; missiles launched, hits by room, losses by cause; planet and asteroid contacts per ship; enemy planet and belt contacts after crew manoeuvres (baits); repairs started and finished per player; time away from each console, split into walking and repairing; console swaps; time the enemy spent in the laser arc; time Weapons had nothing to do.
 
@@ -276,8 +319,8 @@ H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by
 4. **Gravity makes the fight a spiral.** If both ships settle into the same orbit, add tuning (spawn orbits, enemy lead) before adding systems.
 5. **The hunter is too dumb or too good.** Tuned against the scripted pair first, then by playtest; its numbers are all in `sim/tactical/tuning.ts`.
 6. **Determinism with Float64.** IEEE `+ − × ÷ sqrt` are exact and identical across engines, but literals and operation order must be fixed; the real-browser cross-engine harness from Net-1b runs the duel golden too.
-7. **Reusing the sector interior couples the duel to `SimState`.** The interior systems were written for the sector run and read many of its fields. Mitigation: the duel runs only the systems it lists (§13); a test asserts that a duel's interior never starts fires, breaches, boarders or events; the sector run's goldens must stay unchanged.
-8. **Walking makes repair too slow or too cheap.** The Cutter's walk (about 6 s end to end) plus 4 s per level is the price. Tune with the repair time and the Shields repair point's position before changing the ship.
+7. **Reusing the sector interior couples the duel to `SimState`.** The interior systems were written for the sector run and read many of its fields. Mitigation: the duel runs only the phases it lists (§13); a test asserts that a duel's interior never starts fires, breaches, boarders or events; the sector run's gameplay traces must stay unchanged (its goldens change only by the version number, §13).
+8. **Walking makes repair too slow or too cheap.** The Cutter's walks (1.5 to 7 s, §8) plus 4 s per level are the price. Tune with the repair time and the Shields repair point's position before changing the ship.
 
 ## 18. Open questions (defaults taken meanwhile)
 
@@ -298,7 +341,9 @@ H-1 includes the solo playtest mode (§11a), so the owner plays the full duel by
 15. The Cutter is the duel ship; its other consoles are scenery (§8). **(rec.)**
 16. Either player may sit at either free console mid-duel (§8). **(rec.)**
 17. Repair is hold-to-repair, 4 s per level, until MG-X's per-room tasks (§8). **(rec.)** *(start)*
-18. Where the Shields repair point sits on the Cutter (§8); chosen in H-1. *(start)*
+18. The Shields repair point sits in the Cutter's Reactor room (R) (§8). **(rec.)**
+19. Both crew are trait-free Recruits with no XP in the duel (§8). **(rec.)**
+20. Every Cutter door is held open in the duel (§8). **(rec.)**
 
 ## Change log
 
