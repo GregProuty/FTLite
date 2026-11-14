@@ -120,3 +120,38 @@ Confirmed. The test checked only age, removal, the cause and `missilesLost`, so 
 
 ---
 
+# Round 3 (delta, reviewing 0886e4c, effort medium, 44 s, 145165 in / 107008 cached / 1217 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F3: resolved — Movement completes before contact resolution and expiry (plan L833–843, L862–880), and stepDuel expires missiles before weapon clocks (L1301–1304). Fuel-boundary and revised expiry assertions cover the requested regressions (L666–696).
+- R2-F1: resolved — The revised test asserts hold=50 on tick 479, an expired event beyond x479+0.9 after tick 480's movement, and hold=51 that same tick (plan L682–696). Both missing regression assertions are now present.
+
+## Verified
+- HEAD is 0886e4c; the actual diff matches the supplied delta and changes only the expiry test.
+- The test helper resolves missiles before advancing weapon clocks (plan L612–617), matching stepDuel (L1301–1304).
+- The full-charge fixture remains frozen while the missile exists and resumes its hold timer immediately after removal (plan L683–696, L921–924, L968–972), consistent with spec L147–149.
+- The revised movement assertion is consistent with eastward velocity and gravity at the fixture position (plan L682, L694; src/renderer/src/sim/tactical/physics.ts:L9–12). No new defect identified in the delta.
+
+## Not verified
+- No tests, TypeScript compiler, or determinism guard were executed; conclusions are from static inspection. The responder's reported test counts were not independently reproduced.
+- The on-disk ledger could not be read because access was denied; the supplied ledger and response were used.
+- Unchanged material outside the awaited findings was not re-reviewed.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json` against the subject at `0886e4c`. No new findings. Codex confirmed R1-F3 and R2-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
