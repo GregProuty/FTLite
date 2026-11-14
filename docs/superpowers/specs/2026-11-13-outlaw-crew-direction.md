@@ -32,9 +32,9 @@ The inspirations and what each contributes:
 
 1. **The loop is tasks around the ship (Among Us-style).** Each player has a task list spread across the ship's rooms. Every task, and every console, is a short, readable, skill-based mini game on your own screen (3 to 12 s per action). Finishing tasks fills the crew's shared bar toward the current goal. Crises pull you away, and some need two people in two rooms at once. FTLite's crew walking, oxygen, fire, breach and boarder simulation stays.
 2. **Combat is FTL's dual Tetris.** Ship-to-ship fights keep FTLite's FTL model: both ships have rooms, systems, reactor power, shield layers, weapon charge and crews. You juggle your own ship's power and damage while picking the enemy's rooms apart. The mini games are how stations act in the fight; the rules underneath stay FTL's.
-3. **An open world, Pirates!-style.** One star system per campaign (procedurally arranged planets, moons, stations, belts and lanes). Sail anywhere; trade, take contracts, chase rumours, dodge patrols.
+3. **An open world, Pirates!-style.** A randomly generated graph of star systems per campaign, joined by jump routes. Most systems are one beat on arrival (a port, a job, an event, a fight or a patrol); a few hub systems hold several places and are home ports the crew returns to. The graph is revisitable and remembers the crew (grill Q7, Q7b).
 4. **Choose your life.** Smuggler, pirate, merchant or insurgent. These are reputations you earn by what you do, not locked classes.
-5. **Together with friends.** 1 to 16 players, one per machine (Net-0 decision); bots fill empty seats and dropped players. Bigger crews fly bigger ships.
+5. **Together with friends.** Designed and tuned for **2 to 4 players**, one per machine (Net-0 decision); bots fill empty seats and dropped players. Larger crews (6, 16, several ships) stay possible in the architecture as later, secondary modes (grill Q5).
 6. **Stories with blue options (FTL and Stardew).** Story events are conversations with characters: a portrait, short lines, and two to four choices. **Blue options** appear when someone aboard has the skill, ability, gear or standing for them, and name who makes them possible.
 
 ## 3a. The core loop in detail (Among Us-style)
@@ -57,7 +57,7 @@ The inspirations and what each contributes:
 
 ## 5. Careers
 
-A career is a **starting background** chosen in the lobby (ship, cargo, contacts, debt and starting standing) plus the **reputation** the crew earns afterwards. A crew can drift between careers; the world reacts to the reputation, not the label.
+There is **no career pick in the lobby** (grill Q6). The crew's reputation as smugglers, pirates, merchants or renegades grows from the jobs and choices it takes at each place it jumps to, and the world reacts to that reputation. Each player's character levels up individually from what they do. Each path has its own ending: merchants retire rich, renegades take down the regime; smuggler and pirate endings are to be written (grill Q8).
 
 | Career | Core activity | Signature mini games and moments | World reaction |
 |---|---|---|---|
@@ -121,7 +121,7 @@ Today's events-as-data (Loop-v: data-driven events with blue options tagged with
 - **Rumours and changing places.** Tips mark targets on the map for a while; ports and beacons change while you are away (from Someday maybe).
 - **Capture by boarding.** Disable a ship, board it on foot, take its cargo, ransom it or take the ship (from Someday maybe).
 - **The ship's log.** Every session ends with the crew's story so far (from Someday maybe).
-- **Campaign shape (rec.).** A persistent campaign per crew, saved between sessions of 30 to 90 minutes, with a career goal (clear the debt, retire rich, become a syndicate power, win the remnant's war) and an ending. Losing the ship is a heavy setback (ship and cargo lost, crew escape in a pod with debt), not the end. An optional one-life mode keeps roguelike permadeath. Each new campaign generates a new system.
+- **Campaign shape (grill Q4, Q8, Q9).** One saved campaign per crew, played over many sessions, ending in the ending of the path the crew drifted into. Losing the ship is a mode chosen at campaign start: **One life** (the campaign ends), **Standard** (the default and the tuning target: ship and cargo lost, the crew escapes in a pod with debt) and **Relaxed** (a repair bill and lost time). Crew members are downed, never dead, for now; cloning or DNA storage may bring real death back later. Each new campaign generates a new graph.
 
 ## 8. What stays, what changes, what goes
 
@@ -150,7 +150,7 @@ Today's events-as-data (Loop-v: data-driven events with blue options tagged with
 | EV-1 | Dialogue events with blue options | FTL/Stardew stories | Today's 28 events rewritten as conversations |
 | CB-1 | The symmetric enemy ship | Combat both ways | Enemy oxygen, doors, reactor and simulated crew; outbound boarding; capture (A3) |
 | Net-1b | Durability (as decided) | Long runs and recovery | Required before Net-3 and before campaign saves (A6) |
-| OW-0 | Port-to-port contract slice | The open world, small | Replaces the sector run with a bounded slice: a few ports, travel with encounters, one contract type, Merchant background; campaign save rules defined first (A9) |
+| OW-0 | Port-to-port contract slice | The open world, small | Replaces the sector run with a bounded slice: a few ports, travel with encounters, one contract type, merchant jobs; campaign save rules defined first (A9) |
 | Net-3 to Net-6 | Online play (as decided) | Friends over the internet | Order unchanged; can interleave with OW work |
 | OW-1 | The open world | Pirates!-style travel and trade | One full system, markets, the contracts board, Smuggler background with customs inspections (Comms and Cargo mini games), contacts and relationships |
 | OW-2 | Outlaw careers | Choosing your life | Factions and heat, Pirate (needs CB-1), Insurgent operations, rumours, the ship's log |
@@ -179,6 +179,20 @@ Today's events-as-data (Loop-v: data-driven events with blue options tagged with
 ## Change log
 
 - 2026-11-13, owner clarification: the moment-to-moment loop is Among Us-style tasks (section 3a), FTL's dual-Tetris combat is kept whole (section 6a), and story events become FTL/Stardew dialogue with blue options from crew skills and abilities (section 6b). EV-1 added; MG-1 became the task loop.
+
+## Thesis grill (binding)
+
+The owner's answers in `docs/vision/thesis-grill.md` (2026-11-13) bind this spec, second only to `docs/vision/napkin.md`. Summary:
+- **Q1** Mini games are the game: they are how the ship is operated.
+- **Q2** About half calm, half crisis: the director slows FTLite's near-constant pressure; calm time is real play.
+- **Q3** The calm half is tense because of **choices**: each leg offers more tasks than the crew can finish, and skipped tasks have visible, delayed consequences.
+- **Q4** One saved campaign; loss severity is a mode (One life, **Standard** default, Relaxed).
+- **Q5** Designed for **2 to 4 players**; small ships of about 6 to 10 rooms.
+- **Q6** Careers drift from deeds; characters level individually from what they do.
+- **Q7** A random graph of star systems; most are one beat, a few are revisitable hubs.
+- **Q8** One ending per path (merchants retire rich, renegades take down the regime).
+- **Q9** Downed, never dead, for now; cloning or DNA storage later.
+- **Q10** Players should retell all four story kinds (close call, fight, choice, drift); **the fight and the choice must be really good**, and every milestone playtest checks for them.
 
 ## Amendments
 

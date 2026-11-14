@@ -87,3 +87,13 @@ Implications for the specs:
 ## Q9. What happens when your character dies?
 
 **Answer: A for now, downed but never dead.** A crew member drops and a teammate revives them, as FTLite does today; the risk is the ship, not your character. "Eventually cloning / DNA storage": a later in-world system that brings real death back with a way to return (Claude's reading: death costs something, and a clone or stored DNA restores the character, perhaps with a price or skill loss; to be designed).
+
+## Q10. What story do friends tell afterwards?
+
+**Answer: all four, with the fight (B) and the choice (C) made really good.**
+- A. The close call (mini games under pressure as a choice comes due).
+- **B. The fight:** FTL's dual-Tetris combat played with your hands. Must be excellent.
+- **C. The choice:** story choices with consequences that come back jumps later. Must be excellent.
+- D. The drift (the career formed from the crew's deeds).
+
+Implications for the specs: every milestone's playtest asks whether the session produced a fight story and a choice story. Combat (MG-1a, CB-1) and dialogue with consequences (EV-0, EV-1, delayed callbacks) get the most polish.
