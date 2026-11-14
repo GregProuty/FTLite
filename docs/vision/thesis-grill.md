@@ -67,3 +67,10 @@ Implications for the specs:
 - The napkin's "Alliance controlled star system" becomes a region of many systems under the regime's control (Claude's reading; the owner can correct it).
 - The direction spec's "one star system per campaign" (sections 3 and 7) changes to this graph.
 - FTLite's sector map and jumps are the starting point for the code.
+
+### Q7b. What happens when you arrive in a system?
+
+**Answer: C. Most systems are one beat; a few hub systems hold several places.** Most systems give one thing on arrival (a port, a job, an event, a fight or a patrol). Hubs (for example a capital world, a frontier port, a remnant hideout) hold several places to visit and are where the crew returns to trade and pick up jobs.
+
+- Revisitable: the graph is open and remembers what the crew did. The owner answered C to an option recommended as "C, fully revisitable"; Claude records it that way, and the owner can correct it.
+- Hubs carry the Pirates! and Stardew layers (markets, contacts, relationships); the one-beat systems carry the FTL layer.
