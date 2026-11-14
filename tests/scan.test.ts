@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
 import { generateMap, NodeType, beaconIndex, beaconMark, jumpShip, sectorJump, reachable } from '../src/renderer/src/sim/run';
@@ -34,7 +35,7 @@ function arriveAt(seed: number, type: number, o: { ambush?: boolean; cache?: boo
   sitDown(s, 1, sci); run(s, 1);
   return { s, sci };
 }
-const panel = (s: ReturnType<typeof makeState>) => buildHudModel(s, slots(2), 'running', '').players[1]!.console as SciencePanel;
+const panel = (s: ReturnType<typeof makeState>) => buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }).players[1]!.console as SciencePanel;
 /** Run the scan to its end; returns the ticks it took. */
 function scanToEnd(s: ReturnType<typeof makeState>): number { const t0 = s.tick; run(s, 1, confirm1); while (s.science.systemState !== SystemScan.Done && s.tick - t0 < 60 * T) run(s, 1); return s.tick - t0; }
 /** The rng.loot draws the scan will make, read from a copy of the stream. */
@@ -161,7 +162,7 @@ describe('the system scan: what it finds (spec Demo-x-b section 3)', () => {
     }
     expect(revealed).toBeGreaterThan(0);
     const { s } = arriveAt(1, NodeType.Hazard); s.run.revealed[beaconIndex(1, 0)] = 1;
-    const m = buildHudModel(s, slots(2), 'running', '');
+    const m = buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' });
     expect(m.map).toBeNull();   // nobody at Navigation: the map is the officer's
     expect(beaconMark(s, 1, 0)).toBe('Event'); expect(beaconMark(s, 1, 2)).toBe('?');
   });
@@ -183,7 +184,7 @@ describe('the system scan: ambushes (spec Demo-x-b section 3)', () => {
   it('a detected ambusher: the notice and the threat while it comes, then it arrives on time with its shields down for 10 s and its first shot on the usual clock', () => {
     const { s } = arriveAt(2, NodeType.Empty, { ambush: true });
     s.run.ambushState = 2;   // as a scan's detection leaves it
-    const m = buildHudModel(s, slots(2), 'running', ''), left = Math.ceil((s.enemy.nextArrivalTick - s.tick) / T);
+    const m = buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }), left = Math.ceil((s.enemy.nextArrivalTick - s.tick) / T);
     expect(runNotice(s)[0]).toBe(`Hidden ship detected: cloaked raider   contact ${left}s`);
     expect(runNotice(s)[1]).toBe('Strike first: its shields will be down 10s');
     expect(m.threats.some((t) => t.text === `Hidden ship: contact ${left}s`)).toBe(true);

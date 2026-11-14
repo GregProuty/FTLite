@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { TICK_HZ, VOTE_SECONDS, VOTE_SETTLE } from '../src/renderer/src/sim/tuning';
@@ -54,9 +55,9 @@ describe('the event card (spec Demo-x-b section 2)', () => {
     expect(card.choices.map((c) => c.number)).toEqual(def.choices.map((_, k) => `${k + 1}.`));
     expect(card.choices.map((c) => c.votes)).toEqual(def.choices.map(() => []));
     expect(card.help).toBe('Confirm to vote   Navigation officer: pick a row');   // spec Demo-xi section 2: seated players vote too
-    expect(buildHudModel(s, slots(2), 'running', '').eventCard).toEqual(card);
-    expect(buildHudModel(s, slots(2), 'paused', '').eventCard).toBeNull();
-    const none = makeState(2, 1); expect(eventCard(none)).toBeNull(); expect(buildHudModel(none, slots(2), 'running', '').eventCard).toBeNull();
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }).eventCard).toEqual(card);
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'paused', message: '' }).eventCard).toBeNull();
+    const none = makeState(2, 1); expect(eventCard(none)).toBeNull(); expect(buildHudModel(none, fixtureCouchViewer(none), { slots: slots(2), phase: 'running', message: '' }).eventCard).toBeNull();
   });
   it('each player’s vote is marked beside the choice; a downed player’s vote goes', () => {
     const s = open(4, 2); run(s, 1, press(0, 1)); run(s, 1, press(1));   // P1 option 1, P2 option 2

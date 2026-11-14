@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
 import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
@@ -10,7 +11,7 @@ import { makeState, quiet, seatNavigator, placeEnemy, setEvent, setNodeTypes, ma
 /** The evade row only when it means something (spec Demo-xii section 4): hidden in the card model only, the sim rows unchanged. */
 const slots = [{ status: 'active' as const, key: 'kb:0' }];
 function seated(): { s: SimState; nav: number } { const s = makeState(1); quiet(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9; mapM(s); const nav = seatNavigator(s, 0); return { s, nav }; }
-const card = (s: SimState) => buildHudModel(s, slots, 'running', '').players[0]!.console as NavigationPanel;
+const card = (s: SimState) => buildHudModel(s, fixtureCouchViewer(s), { slots: slots, phase: 'running', message: '' }).players[0]!.console as NavigationPanel;
 const texts = (s: SimState) => card(s).rows.map((r) => r.text);
 const here = (s: SimState) => `${s.run.column}:${s.run.node}`;
 

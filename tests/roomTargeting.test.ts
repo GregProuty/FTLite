@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { weaponSelection, fireFixtureWeapon, weaponsDirection } from './helpers/weaponFixture';
 import { describe, it, expect } from 'vitest';
 import { ENEMY_SLOT, ENEMY_SLOTS, ENEMY_PILOTING_SLOT, ENEMY_WEAPONS_SLOT, ENEMY_ENGINES_SLOT, ENEMY_SHIELDS_SLOT, enemyRoomOfSlot, slotOfEnemyRoom, warnedTargets } from '../src/renderer/src/sim/debrisTargets';
@@ -37,7 +38,7 @@ describe('the five rooms as targets', () => {
   });
   it('the card rows read `Shields room  100%` for a system room and `Hold  hull 64%` for the plain room, and fit the card', () => {
     const { s } = seated(); s.enemy.hull = 0.64 * s.enemy.maxHull;
-    const rows = () => (buildHudModel(s, slots, 'running', '').players[0]!.console as WeaponsPanel).targets.map((t) => targetRowText(t));
+    const rows = () => (buildHudModel(s, fixtureCouchViewer(s), { slots: slots, phase: 'running', message: '' }).players[0]!.console as WeaponsPanel).targets.map((t) => targetRowText(t));
     expect(rows()).toEqual(['Hold  hull 64%', 'Weapons room  100%', 'Piloting room  100%', 'Engines room  100%', 'Shields room  100%']);
     s.enemy.sysHp[EnemySystem.Piloting] = 15; expect(rows()[2]).toBe('Piloting room  50%');
     for (const name of ENEMY_ROOM_NAMES) for (const t of [`${name} room  DOWN 45s`, `${name} room  100%  ION 10s`, `${name}  hull 100%`]) expect(textPx(t), t).toBeLessThanOrEqual(CARD_INNER_W);

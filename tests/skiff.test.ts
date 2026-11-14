@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
@@ -75,7 +76,7 @@ describe('the Skiff (spec Demo-x-a section 2)', () => {
 describe('the console card tab bar (spec Demo-x-a section 1)', () => {
   it('shows HELM | WEAPONS with the active tab, the bar focus, a switch and an offline tab', () => {
     const s = state(); sitAt(s, HELM);
-    const p = (): ReturnType<typeof buildHudModel>['players'][number] => buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!;
+    const p = (): ReturnType<typeof buildHudModel>['players'][number] => buildHudModel(s, { mode: 'couch', ui: fixtureRunner(s).ui }, { slots: slots(2), phase: 'running', message: '', credits: null, progress: null, calloutFlash: [] }).players[0]!;
     expect(p().tabs!.map(tabText)).toEqual(['HELM', 'WEAPONS']); expect(p().tabs!.map((t) => t.active)).toEqual([true, false]); expect(p().tabFocus).toBe(false);
     expect(p().seated).toBe(StationKind.Navigation); expect(p().console!).toMatchObject({ kind: 'navigation' });
     edge(s, 0, -1); expect(p().tabFocus).toBe(true);
@@ -86,13 +87,13 @@ describe('the console card tab bar (spec Demo-x-a section 1)', () => {
   it('shows SCIENCE | ENGINEERING | DOORS at Ops, no tabs at a single console, and the group in the Sit prompt', () => {
     const s = state();
     teleport(s, 0, OPS[0]! + 0.5, OPS[1]! + 1.5);
-    expect(buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!.confirmPrompt).toBe('Sit: Sci + Eng + Doors')   // short member names fit the player block at the larger font (spec Demo-x-c section 1);
+    expect(buildHudModel(s, { mode: 'couch', ui: fixtureRunner(s).ui }, { slots: slots(2), phase: 'running', message: '', credits: null, progress: null, calloutFlash: [] }).players[0]!.confirmPrompt).toBe('Sit: Sci + Eng + Doors')   // short member names fit the player block at the larger font (spec Demo-x-c section 1);
     teleport(s, 0, HELM[0]! + 0.5, HELM[1]! + 0.5);
-    expect(buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!.confirmPrompt).toBe('Sit: Helm + Weapons');
+    expect(buildHudModel(s, { mode: 'couch', ui: fixtureRunner(s).ui }, { slots: slots(2), phase: 'running', message: '', credits: null, progress: null, calloutFlash: [] }).players[0]!.confirmPrompt).toBe('Sit: Helm + Weapons');
     sitAt(s, OPS);
-    expect(buildHudModel(s, slots(2), 'running', '', null, null, [], fixtureRunner(s).ui).players[0]!.tabs!.map(tabText)).toEqual(['SCIENCE', 'ENGINEERING', 'DOORS']);
+    expect(buildHudModel(s, { mode: 'couch', ui: fixtureRunner(s).ui }, { slots: slots(2), phase: 'running', message: '', credits: null, progress: null, calloutFlash: [] }).players[0]!.tabs!.map(tabText)).toEqual(['SCIENCE', 'ENGINEERING', 'DOORS']);
     const t = createSimState(LAYOUT, 2, 1, RECRUITS); quiet(t); sitAt(t, LAYOUT.stations.find((st) => st.id === 'navigation')!.tile);
-    expect(buildHudModel(t, slots(2), 'running', '').players[0]!.tabs).toBeNull();
+    expect(buildHudModel(t, fixtureCouchViewer(t), { slots: slots(2), phase: 'running', message: '' }).players[0]!.tabs).toBeNull();
   });
 });
 
@@ -100,9 +101,10 @@ describe('which ship flies (spec Demo-x-a section 3)', () => {
   it('is the Skiff for one or two players and the cutter for three or four; the lobby names it', () => {
     expect([1, 2, 3, 4].map(shipForCrew)).toEqual(['skiff', 'skiff', 'cutter', 'cutter']);
     expect(shipLine(0)).toBe('Ship: Skiff (2 crew)'); expect(shipLine(2)).toBe('Ship: Skiff (2 crew)'); expect(shipLine(3)).toBe('Ship: Cutter (4 crew)');
-    expect(buildHudModel(null, slots(2), 'lobby', '').lobbyShip).toBe('Ship: Skiff (2 crew)');
-    expect(buildHudModel(null, slots(4), 'lobby', '').lobbyShip).toBe('Ship: Cutter (4 crew)');
-    expect(buildHudModel(state(), slots(2), 'running', '').lobbyShip).toBe('');
+    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(2), phase: 'lobby', message: '' }).lobbyShip).toBe('Ship: Skiff (2 crew)');
+    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(4), phase: 'lobby', message: '' }).lobbyShip).toBe('Ship: Cutter (4 crew)');
+    const s = state();
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }).lobbyShip).toBe('');
   });
   it('the session asks for the ship by the run\'s player count', () => {
     const asked: number[] = [];

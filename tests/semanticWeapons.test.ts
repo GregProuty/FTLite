@@ -135,6 +135,6 @@ describe('semantic Weapons', () => {
     const { s, station } = setup(); placeEnemy(s); const ui = createCardUiState('run', s.playerCount); reconcileUi(s, ui, 'run', []);
 
     Object.defineProperty(s.stations, 'cursor', { get() { throw new Error('migrated cursor read'); } }); Object.defineProperty(s.stations, 'page', { get() { throw new Error('migrated page read'); } });
-    expect(() => { translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 0); buildHudModel(s, [], 'running', '', null, null, [], ui); enemyWindowModel(s, s.tick, freshWindowAnim()); botFrame(s, ui, 0); }).not.toThrow();
+    expect(() => { translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1 }], 0); buildHudModel(s, { mode: 'couch', ui: ui }, { slots: [], phase: 'running', message: '', credits: null, progress: null, calloutFlash: [] }); enemyWindowModel(s, s.tick, freshWindowAnim()); botFrame(s, ui, 0); }).not.toThrow();
   });
 });

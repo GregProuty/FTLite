@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { nextFloat } from '../src/shared/rng';
 import { step } from './helpers/rawInput';
@@ -126,7 +127,7 @@ describe('blue options, dim choices and three-way votes on the HUD (spec Loop-v 
   const idOf = (key: string) => EVENT_DEFS.findIndex((d) => d.id === key);
   it('Navigation lists the title, the text rows and the choices; a blue option carries its station name and the blue flag; an unmet one is disabled', () => {
     const s = calm(); const id = idOf('weaponsLocker'); setEvent(s, id); seatNavigator(s, 0); run(s, 1);
-    const p = buildHudModel(s, slots(2), 'running', '').players[0]!.console as NavigationPanel;
+    const p = buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }).players[0]!.console as NavigationPanel;
     expect(p.rows.map((r) => [r.text, r.selectable, r.enabled, r.blue])).toEqual([
       ['Weapons locker', false, false, false], ['A sealed military locker tumbles', false, false, false], ['past, its lock still blinking.', false, false, false],
       ['Crack it (60%: a weapon, or a fire)', true, true, false], ['[Science 3] Read the lock (a weapon)', true, false, true], ['Leave it spinning', true, true, false]]);   // no evade row at a calm event (spec Demo-xii section 4)
@@ -135,7 +136,7 @@ describe('blue options, dim choices and three-way votes on the HUD (spec Loop-v 
   });
   it('a standing Confirm rounds three options; the prompt names the next one; a three-way tie goes to the officer', () => {
     const s = calm(3); const id = idOf('pirateToll'); setEvent(s, id); const press = (...pids: number[]) => () => intents(...[0, 1, 2].map((p) => (pids.includes(p) ? { confirmPressed: true } : {})));
-    const prompt = () => buildHudModel(s, slots(3), 'running', '').players[1]!.confirmPrompt;
+    const prompt = () => buildHudModel(s, fixtureCouchViewer(s), { slots: slots(3), phase: 'running', message: '' }).players[1]!.confirmPrompt;
     expect(prompt()).toBe('Vote 1'); run(s, 1, press(1)); expect([s.run.vote[1], prompt()]).toEqual([0, 'Vote 2']);
     run(s, 1); run(s, 1, press(1)); expect([s.run.vote[1], prompt()]).toEqual([1, 'Vote 3']);
     run(s, 1); run(s, 1, press(1)); expect([s.run.vote[1], prompt()]).toEqual([2, 'Vote 1']);

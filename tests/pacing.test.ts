@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { generateMap, assignNodeTypes, NodeType, navRows, beaconIndex, sectorJump } from '../src/renderer/src/sim/run';
 import { createRng } from '../src/shared/rng';
@@ -52,7 +53,7 @@ describe('pacing: the helm-offline warning (spec Demo-x-b section 2)', () => {
       const jumps = navRows(s).filter((r) => r.select === 'jump');
       expect(jumps.length).toBeGreaterThan(0);
       for (const r of jumps) { expect(r.text).toBe('Helm offline'); expect(r.enabled).toBe(false); }
-      const m = buildHudModel(s, slots(2), 'running', '');
+      const m = buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' });
       expect(m.threats[0]).toEqual({ icon: 'icon.power', text: 'Helm offline' });
       expect(m.notice[0]).toBe(HELM);
     });

@@ -15,6 +15,7 @@ import { DEFAULT_CHARACTERS } from '../sim/characters';
 import { CUE_ORDER, type Cue } from '../events/audioCues';
 import { calloutIcon } from '../events/callout';
 import { bubbles, flashingKinds, type Callout, type Bubble } from '../render/calloutModel';
+import { createCardUiState } from '../clientControl/cardController';
 
 export const DEFAULT_SEED = 2026;
 export const CREDITS_SCROLL_MS = 150;
@@ -44,6 +45,7 @@ export interface SessionDeps {
 
 export function createSession(deps: SessionDeps) {
   const dm = createDeviceManager();
+  const lobbyUi = createCardUiState('lobby', 0);
   const credits = deps.credits ?? [];
   const LOBBY_MSG = 'Press Interact to join. Confirm: start. Cancel: credits';
   let progress: Progress = EMPTY_PROGRESS; try { progress = deps.loadProgress?.() ?? EMPTY_PROGRESS; } catch { progress = EMPTY_PROGRESS; }   // a throwing loader must not stop the session
@@ -174,7 +176,13 @@ export function createSession(deps: SessionDeps) {
     frame() {
       for (const cue of CUE_ORDER) if (pendingCues.has(cue)) deps.playCue?.(cue); pendingCues.clear();
       if (phase !== 'error') runtime?.frame();
-      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null, state && phase === 'running' ? flashingKinds(callouts, state.tick) : [], runtime?.ui));
+      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, { mode: 'couch', ui: runtime?.ui ?? lobbyUi }, {
+        slots, phase, message,
+        credits: creditsOpen ? { lines: credits, scroll: creditsScroll } : null,
+        progress: phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null,
+        calloutFlash: state && phase === 'running' ? flashingKinds(callouts, state.tick) : [],
+        callouts
+      }));
     }
   };
 }

@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { roomIcons, ICON_KINDS, stationTint } from '../src/renderer/src/render/roomIconModel';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
@@ -58,7 +59,7 @@ describe('roomIcons', () => {
   it('the HUD rows carry the same icon and tint', () => {
     const s = makeState(), w = s.derived.stationOfKind[StationKind.Weapons]!;
     failStation(s, w);
-    const m = buildHudModel(s, [], 'running', '');
+    const m = buildHudModel(s, fixtureCouchViewer(s), { slots: [], phase: 'running', message: '' });
     const st = m.stations.find((x) => x.kind === StationKind.Weapons)!;
     expect(st.icon).toBe('weapons'); expect(st.iconTint).toBe(stationTint(s, w)); expect(st.iconTint).toBe('failed');
   });
@@ -66,6 +67,6 @@ describe('roomIcons', () => {
   it('a HUD power row with Weapons at level 0 (not failed) is unpowered', () => {
     const s = makeState(), w = s.derived.stationOfKind[StationKind.Weapons]!;
     s.stations.level[w] = 0;
-    expect(buildHudModel(s, [], 'running', '').stations.find((x) => x.kind === StationKind.Weapons)!.iconTint).toBe('unpowered');
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: [], phase: 'running', message: '' }).stations.find((x) => x.kind === StationKind.Weapons)!.iconTint).toBe('unpowered');
   });
 });

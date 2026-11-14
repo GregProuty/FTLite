@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { buildHudModel, runNotice } from '../src/renderer/src/render/hudModel';
 import { EVENTS, resolveEvent } from '../src/renderer/src/sim/events';
@@ -48,9 +49,9 @@ describe('runNotice', () => {
   });
   it('the model: the notice is [] outside running, even with a ready drive', () => {
     const s = fresh(); chargeJump(s);
-    expect(buildHudModel(s, slots(2), 'running', '').notice).toEqual(['JUMP READY   someone take Navigation']);
-    for (const phase of ['lobby', 'paused', 'gameover', 'error'] as const) expect(buildHudModel(s, slots(2), phase, '').notice).toEqual([]);
-    expect(buildHudModel(null, slots(2), 'lobby', '').notice).toEqual([]);
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }).notice).toEqual(['JUMP READY   someone take Navigation']);
+    for (const phase of ['lobby', 'paused', 'gameover', 'error'] as const) expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: phase, message: '' }).notice).toEqual([]);
+    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(2), phase: 'lobby', message: '' }).notice).toEqual([]);
   });
   it('every possible notice line is ASCII and within NOTICE_LINE_MAX characters', () => {
     const lines: string[] = [];
@@ -134,7 +135,7 @@ describe('votes and the jump confirmation on the HUD (spec Coop-ii section 3)', 
   it('the event notice counts the vote down; each player shows their vote beside their name', () => {
     const s = fresh(); setEvent(s, 4); s.run.eventOpenTick = s.tick; s.tick += 3 * 60;
     expect(runNotice(s)).toEqual(['EVENT: Supply cache   vote 12s', '1 Take it (+40)  /  2 Strip it (+60)']);
-    s.run.vote[1] = 1; const m = buildHudModel(s, slots(2), 'running', '');
+    s.run.vote[1] = 1; const m = buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' });
     expect([m.players[0]!.vote, m.players[1]!.vote]).toEqual(['', 'VOTE 2']);
     for (const ev of EVENTS) { setEvent(s, EVENTS.indexOf(ev)); s.run.eventOpenTick = s.tick; for (const l of runNotice(s)) expect(l.length).toBeLessThanOrEqual(NOTICE_LINE_MAX); }
   });
@@ -159,7 +160,7 @@ describe('runNotice: a peaceful start (spec Loop-i section 4b)', () => {
     const s = makeState(2); quiet(s); mapM(s); s.run.jumpCharge = 0; expect(runNotice(s)).toEqual(['Safe here. Jump when ready']);   // P1: the calm start beacon begins with a full drive
     chargeJump(s); expect(runNotice(s)).toEqual(['Safe here. Jump when ready', 'JUMP READY   someone take Navigation']);
     seatNavigator(s, 0); expect(runNotice(s)).toEqual(['Safe here. Jump when ready', 'JUMP READY']);
-    expect(buildHudModel(s, slots(2), 'running', '').threats).toEqual([]);
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }).threats).toEqual([]);
     s.run.calm = 0; expect(runNotice(s)).toEqual(['JUMP READY']);
   });
 });

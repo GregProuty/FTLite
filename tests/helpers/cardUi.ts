@@ -1,9 +1,9 @@
 import type { SimState } from '../../src/renderer/src/sim/state';
 import { StationKind } from '../../src/renderer/src/sim/stationKinds';
-import { cardRowIndex, cardRows } from '../../src/renderer/src/clientControl/cardController';
+import { cardRowIndex, cardRows, createCardUiState } from '../../src/renderer/src/clientControl/cardController';
 import { upgradeRows, REACTOR_ROW, BACK_ROW } from '../../src/renderer/src/sim/power';
 import { fixtureRunner } from './rawInput';
-import { buildHudModel } from '../../src/renderer/src/render/hudModel';
+import { buildHudModel, type Viewer } from '../../src/renderer/src/render/hudModel';
 export function fixtureCardUi(state: SimState) { const runner = fixtureRunner(state); runner.refresh(); return runner.ui; }
 /** Numeric fixture convenience only; migrated UI never reads canonical slots. */
 export function cardSelection(state: SimState, station: number) {
@@ -21,4 +21,7 @@ export function cardSelection(state: SimState, station: number) {
     set page(value: number) { ui.stations[station]!.page = value ? 'upgrades' : 'main'; }
   };
 }
-export const buildFixtureHud: typeof buildHudModel = (state, slots, phase, message, credits, progress, flash, ui) => buildHudModel(state, slots, phase, message, credits, progress, flash, ui ?? (state ? fixtureCardUi(state) : undefined));
+export function fixtureCouchViewer(state: SimState | null): Viewer {
+  return { mode: 'couch', ui: state ? fixtureCardUi(state) : createCardUiState('lobby', 0) };
+}
+export { buildHudModel as buildFixtureHud };

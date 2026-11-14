@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { weaponSelection, fireFixtureWeapon, weaponsDirection } from './helpers/weaponFixture';
 import { snapshotPhaseStep as propertyPhaseStep } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
@@ -277,7 +278,7 @@ describe('beams under the Science lock (spec Coop-i section 1, amendments C1 and
   });
   it('the Weapons card reads locked while a lock runs', () => {
     const s = atEnemy(Weapon.BeamF1, LOW, true);
-    const card = () => buildHudModel(s, [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }], 'running', '').players[0]!.console as WeaponsPanel;
+    const card = () => buildHudModel(s, fixtureCouchViewer(s), { slots: [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }], phase: 'running', message: '' }).players[0]!.console as WeaponsPanel;
     expect(card().locked).toBe(true); s.enemy.lockUntilTick = -1; expect(card().locked).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+import { fixtureCouchViewer } from './helpers/cardUi';
 import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
 import { describe, it, expect } from 'vitest';
 import { LOCK_SECONDS, TICK_HZ as HZ, ENEMY_HULL } from '../src/renderer/src/sim/tuning';
@@ -43,7 +44,7 @@ describe('scanning', () => {
     expect(s.science.scanning).toBe(1); expect(s.debris.scan[1]).toBe(p1); expect(s.debris.scan[0]).toBe(1);
     run(s, 1, () => intents(cancel)); failStation(s, i);                       // revealed information survives a stand and a failure
     expect(s.debris.scanned[0]).toBe(1); expect(s.debris.frequency[0]).toBe(2);
-    expect(buildHudModel(s, [{ status: 'active', key: 'kb:0' }], 'running', '').threats.map((t) => t.text).filter((x) => / freq \d$/.test(x))[0]).toMatch(/ freq 2$/);   // the Power threat precedes debris, so take the first debris one
+    expect(buildHudModel(s, fixtureCouchViewer(s), { slots: [{ status: 'active', key: 'kb:0' }], phase: 'running', message: '' }).threats.map((t) => t.text).filter((x) => / freq \d$/.test(x))[0]).toMatch(/ freq 2$/);   // the Power threat precedes debris, so take the first debris one
   });
   it('Confirm with cursor -1, an inactive slot or an unwarned object starts nothing', () => {
     const s = makeState(1), i = sci(s), A = room(s, 'A');
@@ -150,7 +151,7 @@ describe('the Science lock (spec Coop-i section 1)', () => {
   });
   it('the Science footer: LOCK: Confirm when possible, LOCKED 6s while one runs, nothing on a subsystem row or before the scan', () => {
     const { s, i } = seated(1);
-    const footer = () => scienceFooter(buildHudModel(s, [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }], 'running', '').players[0]!.console as SciencePanel);
+    const footer = () => scienceFooter(buildHudModel(s, fixtureCouchViewer(s), { slots: [{ status: 'active', key: 'kb:0' }, { status: 'active', key: 'kb:1' }], phase: 'running', message: '' }).players[0]!.console as SciencePanel);
     expect(footer()).toBe('Warning 18s   LOCK: Confirm');
     s.enemy.lockUntilTick = s.tick + 6 * HZ; expect(footer()).toBe('Warning 18s   LOCKED 6s');
     s.tick += 1; expect(footer()).toBe('Warning 18s   LOCKED 6s');   // whole seconds rounded up
