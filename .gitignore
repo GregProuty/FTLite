@@ -3,3 +3,12 @@ out
 dist
 .tsout
 *.log
+
+# Local secrets (never commit)
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+
+# Local git worktrees
+.worktrees/
