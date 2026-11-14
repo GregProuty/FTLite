@@ -1,0 +1,31 @@
+
+> ftlite@0.0.1 build
+> electron-vite build
+
+vite v7.3.8 building ssr environment for production...
+transforming...
+✓ 2 modules transformed.
+rendering chunks...
+out/main/index.js  1.32 kB
+✓ built in 54ms
+vite v7.3.8 building ssr environment for production...
+transforming...
+✓ 1 modules transformed.
+rendering chunks...
+out/preload/index.js  0.26 kB
+✓ built in 9ms
+vite v7.3.8 building client environment for production...
+transforming...
+✓ 852 modules transformed.
+rendering chunks...
+../../out/renderer/index.html                                 0.30 kB
+../../out/renderer/assets/Filter-BSbYFj8v.js                  2.20 kB
+../../out/renderer/assets/BufferResource-BljwFito.js         16.74 kB
+../../out/renderer/assets/webworkerAll-CqYI6E4s.js           34.88 kB
+../../out/renderer/assets/CanvasRenderer-C9TSntIA.js         42.68 kB
+../../out/renderer/assets/WebGPURenderer-BLEPedu_.js         71.72 kB
+../../out/renderer/assets/browserAll-D7nxcKYS.js            100.87 kB
+../../out/renderer/assets/RenderTargetSystem-DjZuI-TB.js    108.60 kB
+../../out/renderer/assets/WebGLRenderer-BwZ66sUA.js         130.18 kB
+../../out/renderer/assets/index-Dde2OY2_.js               1,525.23 kB
+✓ built in 2.58s

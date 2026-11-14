@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "9b8fddda183dd9ff32d2c241210635053e1d8eb5",
+  "gates": [
+    {
+      "name": "full-test",
+      "exit": 0,
+      "seconds": 52.784141700016335
+    },
+    {
+      "name": "typecheck",
+      "exit": 0,
+      "seconds": 0.42825830000219867
+    },
+    {
+      "name": "build",
+      "exit": 0,
+      "seconds": 3.4946603000280447
+    },
+    {
+      "name": "acceptance",
+      "exit": 0,
+      "seconds": 28.988187099981587
+    },
+    {
+      "name": "determinism",
+      "exit": 0,
+      "seconds": 60.99720099999104
+    }
+  ]
+}

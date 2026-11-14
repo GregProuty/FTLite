@@ -35,10 +35,10 @@
 
 **Interfaces:** Produce `disposeSimState(state: SimState): void` and `assertSimStateLive(state: SimState): void` from state.ts. Track disposed status outside canonical flatten/hash. All owners dispose their own worlds; shared borrowed views do not.
 
-- [ ] Write tests: 2,000 four-crew create/dispose cycles while a sentinel lives; entity/component high-water plateaus after warm-up; sentinel hash unchanged; removed entities absent from original world; repeated disposal harmless; recycled health/seat fully initialized. Interleave two runs and loads against isolated hashes. Failed construction/load releases allocations.
-- [ ] Run `npx vitest run tests/simDisposal.test.ts` and capture intended failures.
-- [ ] Implement removeEntity plus clearing every owned component cell, disposed-state rejection at public simulation/serialization entry points, exception-safe construction and teardown. Keep the shared index. Update test ownership where tests inspect an adopted world after runner disposal; inspect before disposal instead of relying on freed storage.
-- [ ] Run disposal, snapshot, headless, authority recovery and golden tests plus typecheck. Commit passing change with no gameplay hash change.
+- [x] Write tests: 2,000 four-crew create/dispose cycles while a sentinel lives; entity/component high-water plateaus after warm-up; sentinel hash unchanged; removed entities absent from original world; repeated disposal harmless; recycled health/seat fully initialized. Interleave two runs and loads against isolated hashes. Failed construction/load releases allocations.
+- [x] Run `npx vitest run tests/simDisposal.test.ts` and capture intended failures.
+- [x] Implement removeEntity plus clearing every owned component cell, disposed-state rejection at public simulation/serialization entry points, exception-safe construction and teardown. Keep the shared index. Update test ownership where tests inspect an adopted world after runner disposal; inspect before disposal instead of relying on freed storage.
+- [x] Run disposal, snapshot, headless, authority recovery and golden tests plus typecheck. Commit passing change with no gameplay hash change.
 
 ### Task 2: Explicit viewer HUD model
 
@@ -46,10 +46,10 @@
 
 **Interfaces:** Export `Viewer = {mode:'couch';ui:CardUiState}|{mode:'player';player:number;ui:CardUiState}` and `HudContext` packaging existing buildHudModel context; use `buildHudModel(state: SimState|null, viewer: Viewer, context: HudContext): HudModel`. Preserve existing context fields rather than dropping progress, slots, messages, credits, callouts. Add typed optional `primaryConsole` and `otherCrewStatus` fields.
 
-- [ ] Write failing tests comparing couch content to existing assertions and player views from identical state: each seated player sees own card; standing viewer has none; other pills include role, health, seat, offline/downed and callouts; invalid player throws in development and returns safe empty model in production.
-- [ ] Run `npx vitest run tests/hudViewer.test.ts` to establish failures.
-- [ ] Adapt callers to explicit couch Viewer; implement player model without new rendering or input behavior. Use a testable environment policy for invalid-viewer behavior consistent with existing build conventions.
-- [ ] Run existing HUD tests, new viewer tests, typecheck and build; commit.
+- [x] Write failing tests comparing couch content to existing assertions and player views from identical state: each seated player sees own card; standing viewer has none; other pills include role, health, seat, offline/downed and callouts; invalid player throws in development and returns safe empty model in production.
+- [x] Run `npx vitest run tests/hudViewer.test.ts` to establish failures.
+- [x] Adapt callers to explicit couch Viewer; implement player model without new rendering or input behavior. Use a testable environment policy for invalid-viewer behavior consistent with existing build conventions.
+- [x] Run existing HUD tests, new viewer tests, typecheck and build; commit.
 
 ### Task 3: Transactional snapshot format 2
 
@@ -57,10 +57,10 @@
 
 **Interfaces:** Keep saveSnapshot/loadSnapshot names. Add `restoreSnapshot(state: SimState, snap: Snapshot): void` for validated in-place restore and `validateSnapshot(layout: ShipLayout, snap: unknown): Snapshot` for portable decoding. Snapshot header carries content digest; resolve it using existing build content digest plumbing, with explicit argument when running outside bundled code. Validation must precede all live writes.
 
-- [ ] Test unsupported v1, wrong sim/layout/content/manifest, truncated or excess values, NaN/Infinity, invalid enum/range/integer fields, inconsistent header tick/RNG/player count, malformed object structure. Assert rejection leaves live hash and allocation counts unchanged. Test same-shape restore uses the same world and arrays; replacement validates before disposing prior state.
-- [ ] Run new snapshot tests to capture failures.
-- [ ] Implement format 2 validation with field-aware constraints that accept all valid current fixtures, including negative historical visit timestamps. Reuse flatten schema/manifest ordering instead of maintaining a divergent shadow layout. Validate every incoming publication before in-place application.
-- [ ] Run snapshot, codec, recovery, golden and parity tests plus typecheck; commit representation-only fixture updates. Expected golden final remains b87a0284.
+- [x] Test unsupported v1, wrong sim/layout/content/manifest, truncated or excess values, NaN/Infinity, invalid enum/range/integer fields, inconsistent header tick/RNG/player count, malformed object structure. Assert rejection leaves live hash and allocation counts unchanged. Test same-shape restore uses the same world and arrays; replacement validates before disposing prior state.
+- [x] Run new snapshot tests to capture failures.
+- [x] Implement format 2 validation with field-aware constraints that accept all valid current fixtures, including negative historical visit timestamps. Reuse flatten schema/manifest ordering instead of maintaining a divergent shadow layout. Validate every incoming publication before in-place application.
+- [x] Run snapshot, codec, recovery, golden and parity tests plus typecheck; commit representation-only fixture updates. Expected golden final remains b87a0284.
 
 ### Task 4: Authority checkpoint and semantic replay v2
 
@@ -68,11 +68,11 @@
 
 **Interfaces:** Export `Checkpoint` and `ReplayV2` portable schemas; expose `checkpoint(botControllers: readonly CardUiState[]): Checkpoint` and `restore(checkpoint: Checkpoint): void` on public authority. Keep Authority1a compatibility via an extended authority interface if fixtures need the narrower contract. Checkpoint includes spec's complete RunInit, Snapshot, command high-water/cache, event/control cursors, bot UI and pause state, plus held producer high-water needed by existing continuity rules. Auxiliary history resets on external restore. Export validated replay parser and deterministic replay runner using existing authority admission and phase execution; no production raw-button decoder path.
 
-- [ ] Test uninterrupted versus checkpoint/retry/restored continuation with held input, bot cursor/repeat memory, stale/duplicate/conflicting commands, reward/purchase commands, pause/resume order, terminal state, rejected commands and link reassignment. Assert sim hashes plus ledger/control/event integrity; restore is paused, clears stale held input, does not replay completion/callouts. Reject future admitted commands explicitly before sealing the checkpoint and deliver their results.
-- [ ] Test corrupt version/init/cache/player/sequence/bot state rejects transactionally; checkpoint output is detached from live memory; sequence tables support injected player limit 16 and player 15 without raising game cap. Replace Net-1a literal-four ledger/wire assumptions with MAX_PLAYERS/runtime limits.
-- [ ] Run new tests and capture intended failures.
-- [ ] Implement bounded ledger export/restore and completed-boundary checkpoint hooks. Record complete initial snapshot/init, canonical held inputs, admitted semantic envelopes and results plus ordered control boundaries in replay v2. Replay uses authority validator/dedup/executor, bypasses wall time. Reject v1 clearly; isolate any legacy numeric codec in test tooling if still needed there. CrashRecord retains complete init/checkpoint, subsequent admitted frames, publication sequence and error with existing 300-tick bound.
-- [ ] Convert the existing semantic golden fixture to replay v2 without changing gameplay values or hashes; verify 120 existing hashes and final b87a0284. Run checkpoint/replay/crash/recovery/authority/golden/parity tests and typecheck; commit.
+- [x] Test uninterrupted versus checkpoint/retry/restored continuation with held input, bot cursor/repeat memory, stale/duplicate/conflicting commands, reward/purchase commands, pause/resume order, terminal state, rejected commands and link reassignment. Assert sim hashes plus ledger/control/event integrity; restore is paused, clears stale held input, does not replay completion/callouts. Reject future admitted commands explicitly before sealing the checkpoint and deliver their results.
+- [x] Test corrupt version/init/cache/player/sequence/bot state rejects transactionally; checkpoint output is detached from live memory; sequence tables support injected player limit 16 and player 15 without raising game cap. Replace Net-1a literal-four ledger/wire assumptions with MAX_PLAYERS/runtime limits.
+- [x] Run new tests and capture intended failures.
+- [x] Implement bounded ledger export/restore and completed-boundary checkpoint hooks. Record complete initial snapshot/init, canonical held inputs, admitted semantic envelopes and results plus ordered control boundaries in replay v2. Replay uses authority validator/dedup/executor, bypasses wall time. Reject v1 clearly; isolate any legacy numeric codec in test tooling if still needed there. CrashRecord retains complete init/checkpoint, subsequent admitted frames, publication sequence and error with existing 300-tick bound.
+- [x] Convert the existing semantic golden fixture to replay v2 without changing gameplay values or hashes; verify 120 existing hashes and final b87a0284. Run checkpoint/replay/crash/recovery/authority/golden/parity tests and typecheck; commit.
 
 ### Task 5: Real-browser determinism harness and durability gate
 
@@ -80,8 +80,10 @@
 
 **Interfaces:** Shared browser-compatible fixture runner consumes task 4 replay/checkpoint APIs and emits engine/version, ship, seed, every-60-tick hashes, command-result/event-order evidence, and first differing tick/field. Add `npm run test:determinism` with nonzero failure exit. Electron runner uses real hidden BrowserWindow with nodeIntegration false, isolated narrow reporting preload (create a separate preload file if needed).
 
-- [ ] Write harness tests for comparison mismatch, page failure, timeout and missing optional Firefox. A missing mandatory Chromium is a failure, not skip. Firefox absence is explicitly NOT RUN; Safari/JSC/ARM remain gaps.
-- [ ] Implement checked-in independent semantic scripts for both ships totaling 15 simulated minutes each, 900 one-second samples per ship; explicitly chain runs when ended. Exercise analog inputs, station groups, target removal/reuse, purchases, voting, pause boundaries, checkpoint restore and interleaved worlds. Do not substitute state-responsive bots for recorded input. Compare command results/event order separately from canonical hashes.
-- [ ] Generate expected vectors in Node, run identical bundle in real Electron Chromium with no Pixi/WebGL, compare every vector and fail with field diff. Run real Firefox through localhost result endpoint when supported executable is available; otherwise record precise NOT RUN reason. Never use ELECTRON_RUN_AS_NODE as browser evidence.
-- [ ] Run full `npm test`, `npm run typecheck`, `npm run build`, `npm run test:determinism` and existing gameplay/acceptance gates sequentially where timing matters. Record actual engine versions and figures in docs/gates.md. Perform affected couch restart/HUD smoke checks and clearly distinguish automated/virtual input from hardware checks.
-- [ ] Commit, obtain whole-branch review and resolve material findings before reporting Net-1b complete. Internet play remains pending Net-3.
+- [x] Write harness tests for comparison mismatch, page failure, timeout and missing optional Firefox. A missing mandatory Chromium is a failure, not skip. Firefox absence is explicitly NOT RUN; Safari/JSC/ARM remain gaps.
+- [x] Implement checked-in independent semantic scripts for both ships totaling 15 simulated minutes each, 900 one-second samples per ship; explicitly chain runs when ended. Exercise analog inputs, station groups, target removal/reuse, purchases, voting, pause boundaries, checkpoint restore and interleaved worlds. Do not substitute state-responsive bots for recorded input. Compare command results/event order separately from canonical hashes.
+- [x] Generate expected vectors in Node, run identical bundle in real Electron Chromium with no Pixi/WebGL, compare every vector and fail with field diff. Run real Firefox through localhost result endpoint when supported executable is available; otherwise record precise NOT RUN reason. Never use ELECTRON_RUN_AS_NODE as browser evidence.
+- [x] Run full `npm test`, `npm run typecheck`, `npm run build`, `npm run test:determinism` and existing gameplay/acceptance gates sequentially where timing matters. Record actual engine versions and figures in docs/gates.md. Perform affected couch restart/HUD smoke checks and clearly distinguish automated/virtual input from hardware checks.
+- [x] Commit, obtain whole-branch review and resolve material findings before reporting Net-1b complete. Internet play remains pending Net-3.
+
+Completion: all five tasks and final review complete; final source 9b8fddd passes the recorded gates in docs/gates.md. Integration into master remains a separate owner choice.

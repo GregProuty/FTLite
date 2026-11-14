@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "9b8fddda183dd9ff32d2c241210635053e1d8eb5",
+  "platform": "win32/x64",
+  "contentDigest": "534318150919ed155d73ac4b65b88c3c3d78597661eeef6485def4ae935c289c",
+  "fullSuite": {
+    "passed": 1680,
+    "files": 130,
+    "exit": 0,
+    "vitestSeconds": 51.97,
+    "wallSeconds": 52.784141700016335
+  },
+  "typecheckExit": 0,
+  "buildExit": 0,
+  "acceptance": {
+    "exit": 0,
+    "wallSeconds": 28.988187099981587,
+    "originalBaselineRows": 9,
+    "exactDataRowEquality": true
+  },
+  "determinismExit": 0,
+  "injectedActualPageFailureExit": 1,
+  "simVersion": 35,
+  "goldenFinalHash": "b87a0284",
+  "physicalController": "NOT RUN",
+  "actualOsMinimizeOrSuspend": "NOT RUN"
+}

@@ -642,3 +642,27 @@ Chromium uses an actual hidden `BrowserWindow`, Node integration off, context is
 Real Electron couch smoke uses an offscreen painted renderer, keyboard plus a labelled virtual gamepad, and final application source. Visually checked running HUD, pause, game-over and restarted HUD; `couch-1` becomes `couch-2`, both have two crew and full hull, the forced completion is stored once, and there are zero renderer exceptions. **Physical controllers/handheld hardware remain NOT RUN.** Programmatic blur/focus was exercised; actual OS minimize/restore and suspend/resume were **NOT RUN** in this smoke. Evidence and the complete run-chain table are in `.superpowers/sdd/2026-11-14-net-1b-durability/task-5-report.md` and `task-5-logs/`.
 
 Review correction C-001 restores canonical positive-zero normalization for all numeric Weapons/Science target fields. Both enemy-room `-0` regressions failed before the fix; afterward canonical bytes/hash match room `0`, accepted JSON snapshot restore preserves the hash, and the existing exact signed-zero restore test still passes. Latest validation: **120/120 focused canonical/snapshot/golden/harness tests, five files, 8.56s**, plus typecheck, both exit 0. Logs are `task-5-logs/fix-round-1-{red,focused,typecheck}.log`. **The full gate and real-engine/UI figures above belong to source 7567633; they were not rerun for this correction.** Fresh all-gate validation is reserved for the controller after the whole-branch review/fix wave. SIM_VERSION, golden, expected vectors and timeouts remain unchanged.
+
+
+## Net-1b final review and validation
+
+Final source **9b8fddd** (implementation fixes **eaf8986**), validated 2026-11-14 on Windows x64. Whole-branch review and its single scoped re-review are complete: both restore findings addressed, no remaining important findings. External restore now requires detached producers; the headless owner validates first and retires/recreates sessions and producer memory. A paused authority at the ordinary command cap permits one resume-only recovery per player/control drain, retaining gameplay admission counts and all normal identity, tick, deduplication and queue checks. See the foundations specification sections 3, 5 and 10.
+
+Fresh final gates supersede the earlier source-7567633 measurements above:
+
+| Gate | Final result |
+|---|---|
+| Full suite | **1680/1680 tests, 130 files**, 51.97s Vitest / **52.7841s wall** (under 60s) |
+| Typecheck / production build | Both exit 0 |
+| Default acceptance | **28.9882s wall** (under 30s); all nine original baseline data rows exactly equal |
+| Node 24.18.0 / V8 13.6.233.17-node.50 | 1800 samples / 404 result-event boundaries match; 18.1478s |
+| Electron 37.10.3 / Chromium 138.0.7204.251 | Same vectors and boundaries match; 18.0203s |
+| Firefox 160.0 | Same vectors and boundaries match; 22.8393s |
+| Actual injected Chromium page failure | Correct nonzero exit 1 |
+| Couch UI smoke | Keyboard + virtual gamepad: two crew, movement, pause/resume, one completion, restart; zero renderer exceptions |
+
+The fresh smoke ran couch-1 tick 46 through couch-2 tick 42 with Skiff, two crew and hull 100. Running, paused, game-over and restarted screenshots were inspected. Physical controllers, actual OS minimize/suspend, Safari/JSC, ARM and other operating systems remain **NOT RUN**. No internet transport or two-machine session is provided by Net-1b.
+
+SIM_VERSION remains **35** and golden final **b87a0284**. The checked-in determinism fixture is unchanged (SHA-256 `5d41def865825b1cc9b6634d31f0fa799941263981a96205993e4d1be390a7d4`). No gameplay, expected-vector, timeout or acceptance-floor changes were made in final fixes.
+
+Evidence: `.superpowers/sdd/2026-11-14-net-1b-durability/final-validation/` contains final command logs, timings and baseline comparison; `task-5-logs/engines.json` and UI artifacts now describe the fresh final source. Earlier task-5 validation/logs remain historical and explicitly source-scoped. The initial controller PowerShell wrapper aborted on expected warning stderr; a subsequent output-print encoding error occurred after successful build. The corrected runner resumed only unrun gates; neither harness issue changed product code.

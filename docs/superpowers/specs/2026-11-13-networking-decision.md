@@ -57,7 +57,7 @@ Evidence:
 
 Later, each optional: Steam lobbies and invites as an add-on, a dedicated Node server with a client-visible projection (the same authority), spectators (a read-only role), and larger crews.
 
-Implementation status, 2026-11-14: the Net-1b offline implementation gate passes recycling/disposal, viewer HUD, durable snapshot/checkpoint/replay v2 and the checked-in Cutter/Skiff determinism fixture in Node, real Electron Chromium and real Firefox. The full regression suite, typecheck, production build and unchanged acceptance rows pass; measured results and platform limits are recorded in [docs/gates.md](../../gates.md#net-1b-task-5-final-durability-and-real-engine-gate). Whole-branch review remains the final milestone step. This does not provide internet transport, hosting, join codes or re-host orchestration; those remain Net-3 work.
+Implementation status, 2026-11-14: the Net-1b offline implementation gate passes recycling/disposal, viewer HUD, durable snapshot/checkpoint/replay v2 and the checked-in Cutter/Skiff determinism fixture in Node, real Electron Chromium and real Firefox. The full regression suite, typecheck, production build and unchanged acceptance rows pass; measured results and platform limits are recorded in [docs/gates.md](../../gates.md#net-1b-final-review-and-validation). Whole-branch review and the scoped restore-fix re-review are complete. Final source 9b8fddd passes 1,680 tests, build/typecheck, unchanged acceptance rows and all three engine checks; branch integration is pending. This does not provide internet transport, hosting, join codes or re-host orchestration; those remain Net-3 work.
 
 ## 5. Open questions (none blocks Net-1)
 
