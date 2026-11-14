@@ -66,3 +66,50 @@ Confirmed. The test checked only the thrust magnitude. It now also turns for 60 
 
 ---
 
+# Round 2 (delta, reviewing a6629f2, effort medium, 49 s, 185544 in / 137472 cached / 1616 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Captured skid budget ignores drag and creates reverse skid
+Stabilise continues subtracting the original skid after drag has already removed part of it, driving sideways velocity through zero. · plan L778 captures the initial sideways speed; L782-L783 subtract only the assist correction from that budget, while L791-L792 independently apply drag to velocity. A Node arithmetic reproduction with heading 0, vx=300, gravity/edge disabled and default stabilise/drag ends after 225 ticks with skidBudget=0 but vx=-58.27445181038878. Spec L125 requires the released ship to stop skidding. · The assist creates substantial sideways motion in the opposite direction, then stops correcting it. The existing 60 u/s test tolerates the smaller overshoot of approximately -3.06 u/s. · Apply the drag multiplier to the remaining captured skid budget as well as velocity, preserving the separation from later gravitational acceleration. Add a no-field regression with a substantial initial skid that asserts the sideways velocity never reverses and reaches zero when the budget is exhausted.
+
+## Prior findings
+- R1-F1: resolved — plan L777-L790 now captures skid only at release and applies the assist before gravity. The amended spec L125 describes this mechanic; plan L642-L663 adds gravity and capture regressions. The separate drag regression introduced by this fix is reported above.
+- R1-F2: resolved — plan L962-L965 resolves ship 0 statics, the pair once, then ship 1 statics, matching spec L75. The regression at L893-L899 distinguishes the previous order: ship 1 moves to y=-88.5 before its planet correction to y=-90.
+- R1-F3: resolved — plan L630-L636 now asserts heading plus headingAcc after 60 turning ticks for every Engines level. Arithmetic checks produce the expected 106.66666666666667, 64 and 26.666666666666668 steps.
+
+## Verified
+- HEAD is a6629f24ef9ca1b092beb3e05d07a2b111606809.
+- New stabilise fields are declared and initialized at plan L715 and L728, included in the hash at L1093-L1094, and copied into prediction by the existing spread at L1131.
+- New Math.sign usage at plan L778 is permitted by tests/helpers/determinismGuard.ts:L3.
+- Inspected the amended spec and affected flight, contacts, hash and prediction sections; ran focused Node arithmetic checks.
+
+## Not verified
+- Did not execute extracted TypeScript, Vitest or the AST guard; compilation and full test-pass claims remain unverified.
+- The run-directory ledger could not be read because access was denied; used the ledger and response supplied in the request.
+- Unchanged plan sections were not re-reviewed.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the subject at `a6629f2`. 1 accepted, 0 rejected, 0 deferred. Codex confirmed R1-F1, R1-F2 and R1-F3 resolved.
+
+## R2-F1 [P1]: Captured skid budget ignores drag and creates reverse skid
+
+Confirmed. Drag scales the velocity each tick (plan Task 3, `keep`), but the budget did not shrink with it, so the assist kept removing skid that drag had already taken. Node reproduced the reversal. After the drag step, `flyShip` now also applies `s.skidBudget *= keep`, so the budget follows the real remaining skid. A Node check of the fixed loop from a 300 u/s skid ends at vx 0 and budget 0, never going below 0. New Task 3 test: a 300 u/s sideways skid, no field, 400 ticks; `vx` never goes negative and ends at exactly 0 with the budget at 0. The existing budget assertion now expects `(10 − 80·dt) · (1 − 0.15·dt)`. Extracted task by task into a scratch worktree, every task typechecks and its tests pass (120 at the end).
+
+## Also changed
+
+- Task 3 and Task 4 expected counts: 15 flight tests.
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-14-helm-h0a-flight-sim.md
+
+<!-- end -->
+
+---
+

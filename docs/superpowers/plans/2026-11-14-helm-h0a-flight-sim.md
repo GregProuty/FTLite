@@ -652,10 +652,19 @@ describe('stabilise never cancels gravity (spec §6)', () => {
       expect(Math.abs(Math.sqrt(s.x * s.x + s.y * s.y) - 250) / 250).toBeLessThan(0.02);
     }
   });
+  it('a large skid shrinks to zero under stabilise and drag without ever reversing', () => {
+    const s = ship({ vx: 300, vy: 0, heading: 0 });
+    for (let t = 0; t < 400; t++) {
+      flyShip(s, { turn: 0, thrust: 0 }, FLIGHT_NO_FIELD);
+      expect(s.vx).toBeGreaterThanOrEqual(0);
+    }
+    expect(s.vx).toBe(0);
+    expect(s.skidBudget).toBe(0);
+  });
   it('removes only the skid captured at release, then stops', () => {
     const s = ship({ vx: 10, vy: -300 });
     flyShip(s, { turn: 0, thrust: 0 }, FLIGHT_NO_FIELD);
-    expect(s.skidBudget).toBe(10 - DEFAULT_FLIGHT.stabilise * DT);
+    expect(s.skidBudget).toBeCloseTo((10 - DEFAULT_FLIGHT.stabilise * DT) * (1 - DEFAULT_FLIGHT.drag * DT), 12);
     for (let t = 0; t < 30; t++) flyShip(s, { turn: 0, thrust: 0 }, FLIGHT_NO_FIELD);
     expect(s.skidBudget).toBe(0);
     s.vx = 5;                                                   // a later push sideways is not a new skid
@@ -790,6 +799,7 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning): void {
   s.vx += ax * DT; s.vy += ay * DT;
   const keep = 1 - tuning.drag * DT;
   s.vx *= keep; s.vy *= keep;
+  s.skidBudget *= keep;   // drag shrinks the remaining skid too, so the assist never pushes past zero
   s.x += s.vx * DT; s.y += s.vy * DT;
 }
 
@@ -803,7 +813,7 @@ export function stepFlight(state: TacticalState, axes: readonly Axes[], tuning: 
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/tacticalFlight.test.ts tests/boundary.test.ts`
-Expected: PASS (14 flight tests). The orbit stays between about 249.18 and 250.83; energy drifts about 4e-5 over 5 minutes; 30 s of thrust reaches about 789 u/s.
+Expected: PASS (15 flight tests). The orbit stays between about 249.18 and 250.83; energy drifts about 4e-5 over 5 minutes; 30 s of thrust reaches about 789 u/s.
 
 - [ ] **Step 6: Commit**
 
@@ -988,7 +998,7 @@ export function stepFlight(state: TacticalState, axes: readonly Axes[], tuning: 
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/tacticalContacts.test.ts tests/tacticalFlight.test.ts tests/boundary.test.ts`
-Expected: PASS (5 contact tests, 14 flight tests).
+Expected: PASS (5 contact tests, 15 flight tests).
 
 - [ ] **Step 6: Commit**
 

@@ -1,0 +1,41 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Captured skid budget ignores drag and creates reverse skid",
+      "claim": "Stabilise continues subtracting the original skid after drag has already removed part of it, driving sideways velocity through zero.",
+      "evidence": "plan L778 captures the initial sideways speed; L782-L783 subtract only the assist correction from that budget, while L791-L792 independently apply drag to velocity. A Node arithmetic reproduction with heading 0, vx=300, gravity/edge disabled and default stabilise/drag ends after 225 ticks with skidBudget=0 but vx=-58.27445181038878. Spec L125 requires the released ship to stop skidding.",
+      "why": "The assist creates substantial sideways motion in the opposite direction, then stops correcting it. The existing 60 u/s test tolerates the smaller overshoot of approximately -3.06 u/s.",
+      "fix": "Apply the drag multiplier to the remaining captured skid budget as well as velocity, preserving the separation from later gravitational acceleration. Add a no-field regression with a substantial initial skid that asserts the sideways velocity never reverses and reaches zero when the budget is exhausted."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "plan L777-L790 now captures skid only at release and applies the assist before gravity. The amended spec L125 describes this mechanic; plan L642-L663 adds gravity and capture regressions. The separate drag regression introduced by this fix is reported above."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "plan L962-L965 resolves ship 0 statics, the pair once, then ship 1 statics, matching spec L75. The regression at L893-L899 distinguishes the previous order: ship 1 moves to y=-88.5 before its planet correction to y=-90."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "plan L630-L636 now asserts heading plus headingAcc after 60 turning ticks for every Engines level. Arithmetic checks produce the expected 106.66666666666667, 64 and 26.666666666666668 steps."
+    }
+  ],
+  "verified": [
+    "HEAD is a6629f24ef9ca1b092beb3e05d07a2b111606809.",
+    "New stabilise fields are declared and initialized at plan L715 and L728, included in the hash at L1093-L1094, and copied into prediction by the existing spread at L1131.",
+    "New Math.sign usage at plan L778 is permitted by tests/helpers/determinismGuard.ts:L3.",
+    "Inspected the amended spec and affected flight, contacts, hash and prediction sections; ran focused Node arithmetic checks."
+  ],
+  "not_verified": [
+    "Did not execute extracted TypeScript, Vitest or the AST guard; compilation and full test-pass claims remain unverified.",
+    "The run-directory ledger could not be read because access was denied; used the ledger and response supplied in the request.",
+    "Unchanged plan sections were not re-reviewed."
+  ]
+}
