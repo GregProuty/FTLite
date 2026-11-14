@@ -123,3 +123,18 @@ describe('loopback queue boundary cases', () => {
     expect(seen).toEqual([7]); expect(p.a.stats().lossPct).toBe(50); expect(p.a.stats().bufferedBytes).toBe(0);
   });
 });
+describe('loopback empty payloads', () => {
+  it.each(['reliable-ordered', 'unreliable-latest'] as const)('closes empty %s payloads without queueing or delivery', async (channel) => {
+    const p = await pair(), delivered: number[] = [], aReasons: string[] = [], bReasons: string[] = [];
+    p.a.onMessage((_, bytes) => delivered.push(bytes[0]!));
+    p.b.onMessage((_, bytes) => delivered.push(bytes[0]!));
+    p.a.onClose((reason) => aReasons.push(reason)); p.b.onClose((reason) => bReasons.push(reason));
+    p.a.send('reliable-ordered', new Uint8Array([1])); p.b.send('reliable-ordered', new Uint8Array([2]));
+    expect(() => p.a.send(channel, new Uint8Array(0))).not.toThrow();
+    expect(p.a.stats().bufferedBytes).toBe(0); expect(p.b.stats().bufferedBytes).toBe(0);
+    p.a.send(channel, new Uint8Array(0)); p.b.send('reliable-ordered', new Uint8Array([3]));
+    p.a.close('again'); p.b.close('again'); p.drain();
+    expect(aReasons).toEqual(['empty-payload']); expect(bReasons).toEqual(['empty-payload']);
+    expect(delivered).toEqual([]); expect(p.client.links).toEqual([]); expect(p.host.links).toEqual([]);
+  });
+});

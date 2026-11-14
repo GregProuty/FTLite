@@ -111,6 +111,7 @@ export function createLoopbackHarness(compatibility: Compatibility, options: Loo
       if (this.closed) return;
       if (kind !== 'reliable-ordered' && kind !== 'unreliable-latest') { this.close('unsupported-channel'); return; }
       if (!(bytes instanceof Uint8Array)) { this.close('invalid-payload'); return; }
+      if (bytes.byteLength === 0) { this.close('empty-payload'); return; }
       if (bytes.byteLength > CAPS.maxDatagram) { this.close('oversize'); return; }
       // Never retain a view of caller-owned memory, including Node Buffer.slice().
       const copy = Uint8Array.from(bytes);
