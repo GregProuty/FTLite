@@ -66,11 +66,11 @@ A career is a **starting background** chosen in the lobby (ship, cargo, contacts
 | **Merchant** | Buy low, sell high, carry legal freight, escort convoys | Haggling at port; loading cargo; holding convoy formation at the Helm | Lawful standing; cheaper permits; pirates target you |
 | **Insurgent** (rec. label) | Fight the Accord for the remnant: sabotage depots and warships, steal intel, free prisoners | Slicing a station's security; planting charges on a military target; evading pursuit | Remnant rewards and safe houses; maximum Accord heat |
 
-**(rec.)** The owner wrote "terrorist". The recommended in-game label is **Insurgent** (or Rebel). The career's missions target the Accord's military, infrastructure and officials, never civilians. This keeps the found-family outlaw tone of the inspiration and avoids storefront and rating trouble. The owner can overrule this.
+**(rec.)** The owner wrote "terrorist". The recommended in-game label is **Insurgent** (or Rebel). The career's missions target the Accord's military, infrastructure and officials, never civilians. This keeps the found-family outlaw tone of the inspiration. The owner can overrule this.
 
 ## 6. The ship: rooms and their mini games
 
-Each room has one station. Sitting there opens its mini game; standing up closes it. Results go to the authority as one semantic command (section 8). All designs below are original; none copies a task from the reference game.
+Each room has one station. Sitting there opens its mini game; standing up closes it. Results go to the authority as one semantic command (section 8). All designs below are meant to be original; amendment A10 checks the prototypes.
 
 | Room | Station mini game (original) | Drives |
 |---|---|---|
@@ -98,7 +98,7 @@ Rules for every mini game:
 ## 6a. Combat: FTL's dual Tetris, kept
 
 Combat keeps today's model and grows it; nothing is simplified for the mini games.
-- **Two ships, both fully simulated:** rooms, systems (weapons, shields, engines, piloting, sensors, oxygen, doors, medbay), a reactor with power bars, shield layers with frequencies, weapon charge, hull, crews who repair, fight fires and board.
+- **Two ships.** Our ship is fully simulated today: rooms, systems, a reactor with power bars, shields with frequencies, weapon charge, hull, oxygen, doors, fire, breaches and a crew. **The enemy is not yet symmetric** (amendment A3): it has four system HP/ion entries and five rooms (`sim/enemy.ts:24`), timer repairs (`sim/enemy.ts:181`), damage-timer fires and breaches (`sim/enemy.ts:145`) and render-only crew (`render/enemyWindowModel.ts:74`). A full enemy simulation (its own oxygen, doors, reactor and crew) and outbound boarding are new work with their own milestone (CB-1).
 - **Your half of the puzzle:** Engineering moves power between systems as damage takes bars away; Repairs and the crew restore broken rooms; the Helm evades.
 - **Their half:** Sensors reads and tunes their shields; Weapons times its volleys and picks the room to hit (shields first, then weapons or engines); boarders can be sent across.
 - **The mini games are the input, FTL's rules are the result.** A good release is more damage or accuracy within today's formulas; a bad one is weaker, never a different game. Bots fight through the same rules.
@@ -128,8 +128,8 @@ Today's events-as-data (Loop-v: data-driven events with blue options tagged with
 **Stays (the engine of the new game):** crew walking and rooms; oxygen, fire, breaches, boarders, doors and airlocks; power, shields, frequencies and the enemy ship window; weapons and loot; skills, XP and characters; votes; bots; the director's pacing (now for voyages and fights); events as data (now encounters, port events and contracts); determinism, replays and saves; the whole networking decision (Net-0) and Net-1.
 
 **Changes:**
-- **Console cards become mini games.** Net-1 already makes console UI client-owned state that emits semantic commands. A mini game is exactly that: it runs on the player's machine and sends one result command, for example `fire(weapon, target, quality)` or `repair(system, quality)`. The authority validates the seat, timing and bounds, then applies the effect deterministically. **Net-1a continues unchanged; it is the foundation the mini games plug into.**
-- **Net-2 (FTL-style keyboard and mouse with clickable cards) becomes the mini-game consoles**, for keyboard, mouse and gamepad.
+- **Console cards become mini games.** Net-1 already makes console UI client-owned state that emits semantic commands. A mini game is exactly that: it runs on the player's machine and sends one result command, for example `fire(weapon, target, quality)` or `repair(system, quality)`. The authority validates the seat, timing and bounds, then applies the effect deterministically. **Net-1a continues unchanged as a pure extraction; it is the foundation the mini games plug into.** The quality-bearing result commands and the attempt lifecycle are a separate, explicit command extension (MG-X, amendments A1 and A2), because Net-1's `fire` carries no quality and repair is held input today.
+- **Net-2 (FTL-style keyboard and mouse with clickable cards) becomes the mini-game consoles**, for keyboard, mouse and gamepad. Net-2's other deliverables (click-to-move with pathfinding as `moveTo`, the per-player screen layout) move into MG-1 (amendment A6).
 - **Scrap becomes credits**; shops become ports; Engineering upgrades become the shipyard and refits.
 - **The per-player screen** (your mini game large, the ship around it, the others as status) becomes the main way to play. Couch play stays for 2 to 4 players with one mini-game panel per player **(rec.)**.
 - **Ship classes scale with the crew:** the Skiff (1 to 2), a freighter (3 to 6), then a capital ship (up to 16) with 12 to 16 rooms. Several ships per crew come after that. Net-1 amendment 8 already keeps room for both.
@@ -141,17 +141,24 @@ Today's events-as-data (Loop-v: data-driven events with blue options tagged with
 | # | Milestone | Proves | Notes |
 |---|---|---|---|
 | D-0 | This direction | An agreed vision | Roadmap item 35 |
-| Net-1a | The offline authority boundary (planned) | Client UI sends commands | Unchanged; mini games need it |
-| MG-0 | **Mini-game sandbox** | Are the mini games fun? | Three mini games (Weapons charge and release, Sensors tune the band, Repairs reroute the conduit) in a standalone renderer page with no sim; can run beside Net-1a because it touches no sim code |
-| MG-1 | The task loop on the Skiff | Among Us-style loop with FTL combat underneath | Task lists across rooms, the shared bar, mini games at the consoles (replacing the cards), one two-room crisis; result commands through the Net-1a boundary; the bots' quality model; takes Net-2's place |
-| EV-1 | Dialogue events with blue options | FTL/Stardew stories | Speakers with portraits, beats, blue options naming the qualifying crew member; today's 28 events rewritten as conversations |
-| OW-1 | The open-world slice | Pirates!-style travel and trade | One system, travel with encounters, ports with market and contracts; Merchant and Smuggler backgrounds; customs inspections with the Comms and Cargo mini games; campaign save |
+| Net-1a | The offline authority boundary (planned) | Client UI sends commands | Unchanged pure extraction |
+| MG-0 | **Mini-game prototype** (disposable) | Are the mini games fun to operate? | Three mini games (Weapons charge and release, Sensors tune the band, Repairs reroute the conduit) in a standalone renderer page with no sim; runs beside Net-1a. A prototype, not a playable-game milestone. Also tests two- and four-player panel layouts at 1280 x 720 with gamepad and keyboard (A9) |
+| MG-X | The mini-game command extension | Results enter the sim safely | Authority-owned attempts (identity, eligibility tick, minimum duration, one completion, invalidation), bounded quality in a defined numeric form, a deterministic outcome formula, replay and checkpoint records; replaces held repair with one path (A1, A2) |
+| MG-1a | One integrated encounter | Mini games under combat pressure | Weapons, Sensors and Repair as mini games in a real Skiff fight on today's sector run; defined quality effects, charge overlap, passive output while unoccupied, XP and skill effects; gates on combat throughput, crisis response and repeated-play fatigue (A5) |
+| MG-1b | The task loop on the Skiff | The Among Us-style loop | The task model (A4), task lists, the shared bar, every Skiff console as a mini game, one two-room crisis with solo and downed-crew fallback, bots on tasks (A7), click-to-move and the per-player layout from Net-2 (A6); the sector run stays as the harness |
+| EV-0 | One branching conversation | The dialogue model | Beats, per-beat votes, named blue options, revalidation at resolution, captain rule (A8) |
+| EV-1 | Dialogue events with blue options | FTL/Stardew stories | Today's 28 events rewritten as conversations |
+| CB-1 | The symmetric enemy ship | Combat both ways | Enemy oxygen, doors, reactor and simulated crew; outbound boarding; capture (A3) |
+| Net-1b | Durability (as decided) | Long runs and recovery | Required before Net-3 and before campaign saves (A6) |
+| OW-0 | Port-to-port contract slice | The open world, small | Replaces the sector run with a bounded slice: a few ports, travel with encounters, one contract type, Merchant background; campaign save rules defined first (A9) |
 | Net-3 to Net-6 | Online play (as decided) | Friends over the internet | Order unchanged; can interleave with OW work |
-| OW-2 | Outlaw careers | Choosing your life | Factions and heat, Pirate (boarding and capture), Insurgent operations, rumours, the ship's log |
-| SHIP-1 | A freighter for 3 to 6 | Bigger crews | Raise `MAX_PLAYERS`; more rooms and mini games |
-| SHIP-2 | A capital ship for up to 16, then several ships | The owner's big-crew goal | Departments, a captain role, majority votes, a dedicated server as host |
+| OW-1 | The open world | Pirates!-style travel and trade | One full system, markets, the contracts board, Smuggler background with customs inspections (Comms and Cargo mini games), contacts and relationships |
+| OW-2 | Outlaw careers | Choosing your life | Factions and heat, Pirate (needs CB-1), Insurgent operations, rumours, the ship's log |
+| SHIP-1 | A freighter for 3 to 6 | Bigger crews | Raise `MAX_PLAYERS`; task occupancy, votes, bots and network cost validated at 6 |
+| SHIP-2 | A capital ship for up to 16 | The owner's big-crew goal | Departments, a captain role, majority votes, a dedicated server; validated at 16 |
+| SHIP-3 | Several ships per crew | Fleet play | Separate from SHIP-2 |
 
-**Why this order (rec.):** the riskiest assumption is that mini games make running the ship fun, so MG-0 tests it cheaply before anything is rebuilt. Net-1a still goes first, because mini games are client UI that sends commands, and building them on today's raw-press cards would be thrown away.
+**Why this order (rec.):** the riskiest assumption is that mini games make running the ship fun, so MG-0 tests the controls cheaply and MG-1a tests them under combat pressure before every console is converted. Net-1a still goes first, because mini games are client UI that sends commands, and building them on today's raw-press cards would be thrown away. The sector run stays as the playable harness until OW-0 replaces it.
 
 ## 10. Risks
 
@@ -175,4 +182,15 @@ Today's events-as-data (Loop-v: data-driven events with blue options tagged with
 
 ## Amendments
 
-(none yet)
+From Codex's review (`2026-11-13-outlaw-crew-review.md`), all accepted; the milestone table above already reflects them.
+
+- **A1. Mini-game commands are an explicit extension (MG-X).** Net-1a stays a pure extraction. MG-X adds typed task and attempt identities, target identities, a bounded quality value, its execution phase, completion effects, cancellation and duplicate handling. Held repair is replaced or kept on purpose; the two paths never both pay out.
+- **A2. Attempts have an authority-owned lifecycle.** An attempt gets an identity and an eligibility (start) tick from the authority, a minimum duration and exactly one completion. Standing up, switching tabs, going down, the target being repaired or destroyed, pause, reconnect and host recovery invalidate it by stated rules. Difficulty and skill are pinned at the start tick. Replays record the canonical quality and accepted tick; checkpoints hold active attempts and the bots' timing and random state. Quality is a defined number (for example an integer 0 to 100) fed to a deterministic formula. Friends-only trust is accepted: bounds cannot prove honest dexterity. Tests cover duplicate, stale, interrupted, restored and late completions.
+- **A3. The enemy is not yet symmetric.** Section 6a now states what exists. Full enemy simulation, outbound boarding and capture are milestone CB-1, which must land before OW-2's Pirate career.
+- **A4. A task model.** Each task instance has a stable identity, a leg and goal, a room, an assignee or claim, prerequisites, progress, a reward and a lifecycle. Specify reassignment, partial completion, suspension and resumption around combat, and bar scaling with the number of active crew. The Skiff's grouped seats (`sim/ship/skiff.json:46`) are a stated exception to one station per room; roaming tasks live in rooms without a console. Paired two-room crises have a solo, bot and downed-crew fallback so a lone survivor never deadlocks. Upkeep decay pauses in port and during dialogue.
+- **A5. Prove the loop under pressure before converting everything.** MG-0 is a disposable controls prototype. MG-1a is one integrated encounter. Its spec must define quality effects, how a 3 to 12 s action overlaps weapon charge (so it never lengthens every weapon cycle), passive output while a station is unoccupied, XP, teamwork, and whether today's skill multipliers (`sim/stations.ts:13`, `sim/skills.ts:22`) are kept, replaced or both. Gates: combat throughput, crisis response time and repeated-play fatigue.
+- **A6. No lost dependencies.** Net-1b stays before Net-3 and before campaign saves. Net-2's click-to-move with pathfinding and per-player layout move into MG-1b. The sector run stays as the playable harness through MG-1 and EV-1, until OW-0 replaces it with a bounded port-to-port slice.
+- **A7. Bots do tasks like players.** Bots walk to tasks, reserve them, take the attempt's duration, can be interrupted, pair for crises, and draw quality deterministically through the same validation as humans, with no free completions. Gates: solo with bots, a lone survivor, mixed human and bot crews, and a disconnect then reclaim mid-task. The Net-1 bot baseline holds until MG deliberately changes it.
+- **A8. Dialogue state and votes.** Votes reference an event beat and reset each beat; blue-option qualifiers are revalidated at resolution; eligibility for conscious and away crew is stated. The captain is chosen in the lobby (fallback: the lowest-numbered conscious player); today's tie-break by Navigation (`sim/run.ts:326`) becomes the captain. The timer and combat-pause policy are specified. One branching conversation (EV-0) comes before rewriting all 28 events; contacts and relationships persist from OW-1.
+- **A9. Couch and campaign scale are gated early.** MG-0 tests two- and four-player panel layouts at the target resolution with controllers and keyboard, including alerts and accessible timing. Before OW-0: campaign save ownership, reserved seats and roster changes, loss recovery, economy bounds and voyage pacing (today's director is beacon-gated, `sim/director.ts:26`). SHIP-1 and SHIP-2 validate task occupancy, votes, bots and measured network and state costs at 6 and 16 players.
+- **A10. Originality is shown, not claimed.** Each content gate compares the actual prototypes (interaction sketches, room layout, terms, silhouettes, portraits) with the inspirations. Setting names stay provisional; this is a content review, not trademark clearance.
