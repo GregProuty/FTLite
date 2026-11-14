@@ -7,12 +7,13 @@ import { Dir } from '../sim/dir';
 import { STICK_EDGE_THRESHOLD, STICK_REPEAT_TICKS } from '../sim/tuning';
 import { eventRef, navigationOfficer, visitRef } from '../sim/commands';
 import { EVENT_DEFS } from '../sim/events';
-import { StationKind } from '../sim/stationKinds';
+import { StationKind, STATION_COUNT, STATION_NAMES } from '../sim/stationKinds';
 import { stationOnline } from '../sim/stations';
 import { navRows, navCursorAfterDirection } from '../sim/run';
 import { canSwap, SWAP_SLOT } from '../sim/weapons';
 import { warnedTargets } from '../sim/debrisTargets';
-import { upgradeRows } from '../sim/power';
+import { upgradeRows, REACTOR_ROW, BACK_ROW, canUpgrade, canBuyReactor } from '../sim/power';
+import { doorsCursorCount, doorsCursorTarget } from '../sim/doors';
 
 export interface CardUiState {
   runId: RunId;
@@ -21,6 +22,22 @@ export interface CardUiState {
   groupBar: boolean[];
 }
 export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[]; legacyCardInput: LegacyInputEnvelope[] }
+export interface CardRow { key: string; enabled: boolean; text: string; action: Command | null }
+export function cardRows(view: SimState, station: number, ui?: CardUiState): readonly CardRow[] {
+  const kind = view.derived.stationKind[station], online = stationOnline(view, station), available = online || view.derived.stationGroup[station]! < 0;
+  if (kind === StationKind.Engineering) {
+    if (ui?.stations[station]?.page === 'upgrades') return upgradeRows(view).map(system => system === BACK_ROW ? { key: 'back', text: 'BACK', enabled: true, action: null } : system === REACTOR_ROW ? { key: 'reactor', text: 'Reactor', enabled: online && canBuyReactor(view), action: { kind: 'buyReactor', station, expectedBonus: view.run.reactorBonus } } : { key: `upgrade:${system}`, text: STATION_NAMES[system]!, enabled: online && canUpgrade(view, system), action: { kind: 'buyUpgrade', station, system, expectedLevel: view.run.upgrades[system]! } });
+    return [...Array.from({ length: STATION_COUNT }, (_, system): CardRow => { const target = view.derived.stationOfKind[system]!; return { key: target >= 0 ? `station:${target}` : `missing:${system}`, text: STATION_NAMES[system]!, enabled: available && target >= 0, action: target >= 0 ? { kind: 'coolant', station, target } : null }; }), { key: 'upgrades', text: 'UPGRADES', enabled: true, action: null }];
+  }
+  if (kind === StationKind.Doors) return Array.from({ length: doorsCursorCount(view) }, (_, row): CardRow => { const target = doorsCursorTarget(view, row)!; return target.kind === 'door' ? { key: `door:${target.edge}`, text: `Door ${target.edge}`, enabled: available, action: { kind: 'doorCycle', station, edge: target.edge, mode: online ? 'cycle' : 'seal' } } : { key: `airlock:${target.index}`, text: `Airlock ${target.index}`, enabled: online, action: { kind: 'airlockToggle', station, airlock: target.index } }; });
+  return [];
+}
+/** Stable-key fallback is independent of retained canonical UI slots. */
+export function cardRowIndex(view: SimState, station: number, ui?: CardUiState): number {
+  const rows = cardRows(view, station, ui), key = ui?.stations[station]?.rowKey, found = rows.findIndex(row => row.key === key);
+  if (found >= 0) return found;
+  return view.derived.stationKind[station] === StationKind.Engineering && ui?.stations[station]?.page !== 'upgrades' ? StationKind.Engineering : rows.length ? 0 : -1;
+}
 export function createCardUiState(runId: RunId, players: number): CardUiState {
   return { runId, players: Array.from({ length: players }, () => ({ nextSequence: 1, heldSequence: 0, heldDir: Dir.None, repeat: 0, lastTick: -1, seat: -1, pendingVoteSequence: 0, pendingVoteTick: -1, pendingVote: null })), stations: [], groupBar: [] };
 }
@@ -34,6 +51,7 @@ const sameEvent = (a: EventRef, b: EventRef): boolean => a.eventId === b.eventId
 /** Publications reconcile lifecycle/acknowledgments without advancing repeat. */
 export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water: readonly number[]): void {
   if (ui.runId !== runId) Object.assign(ui, createCardUiState(runId, view.playerCount));
+  while (ui.stations.length < view.derived.stationKind.length) ui.stations.push({ rowKey: null, page: 'main' });
   for (let p = 0; p < view.playerCount; p++) {
     ui.players[p] ??= createCardUiState(runId, 1).players[0]!;
     const producer = ui.players[p]!, seat = Seated.station[view.crew[p]!]!;
@@ -42,13 +60,13 @@ export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water
       producer.heldDir = Dir.None; producer.repeat = 0; producer.lastTick = -1;
       for (const i of [producer.seat, seat]) if (i >= 0) {
         const group = view.derived.stationGroup[i]!; if (group >= 0) ui.groupBar[group] = false;
+        for (const member of group >= 0 ? view.derived.groupStations[group]! : [i]) ui.stations[member] = { rowKey: null, page: 'main' };
       }
     }
     producer.seat = seat;
     // Admission high-water alone is insufficient: pause can publish an unexecuted tick.
     if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || ((water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
   }
-  while (ui.stations.length < view.stations.cursor.length) ui.stations.push({ rowKey: null, page: 'main' });
   while (ui.groupBar.length < view.groups.tab.length) ui.groupBar.push(false);
 }
 /** Rejections are terminal without a publication; applied results may precede state.
@@ -73,15 +91,14 @@ export function stickEdge(ui: CardUiState, pid: number, moveX: number, moveY: nu
 }
 export { Dir };
 /** Unmigrated families still expose their published cursor/page; no canonical mirrors. */
-export function atFirstRow(state: SimState, i: number): boolean {
+export function atFirstRow(state: SimState, i: number, ui?: CardUiState): boolean {
   if (!stationOnline(state, i)) return true;
+  if (state.derived.stationKind[i] === StationKind.Engineering || state.derived.stationKind[i] === StationKind.Doors) return cardRowIndex(state, i, ui) <= 0;
   const c = state.stations.cursor[i]!;
   switch (state.derived.stationKind[i]) {
     case StationKind.Navigation: { const first = navRows(state).findIndex(row => row.select !== 'none'); return first < 0 || c <= first; }
     case StationKind.Weapons: { const list = canSwap(state) ? [...warnedTargets(state), SWAP_SLOT] : warnedTargets(state); return list.indexOf(c) <= 0; }
     case StationKind.Science: return [...warnedTargets(state, false), -1].indexOf(c < 0 ? -1 : c) <= 0;
-    case StationKind.Engineering: return state.stations.page[i] === 1 ? upgradeRows(state).indexOf(c) <= 0 : c <= 0;
-    case StationKind.Doors: return c <= 0;
     default: return true;
   }
 }
@@ -120,10 +137,24 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
         else if (dir === Dir.Down) ui.groupBar[group] = false;
         continue;
       }
-      if (dir === Dir.Up && atFirstRow(view, seat)) { ui.groupBar[group] = true; continue; }
+      if (dir === Dir.Up && atFirstRow(view, seat, ui)) { ui.groupBar[group] = true; continue; }
       if (!stationOnline(view, seat)) continue;
     }
     const kind = view.derived.stationKind[seat]!;
+    if (kind === StationKind.Engineering || kind === StationKind.Doors) {
+      const memory = ui.stations[seat]!, rows = cardRows(view, seat, ui); let index = cardRowIndex(view, seat, ui);
+      if (!rows.length) continue;
+      if (dir === Dir.Up || (kind === StationKind.Doors && dir === Dir.Left)) index = (index + rows.length - 1) % rows.length;
+      else if (dir === Dir.Down || (kind === StationKind.Doors && dir === Dir.Right)) index = (index + 1) % rows.length;
+      const row = rows[index]!; memory.rowKey = row.key;
+      if (kind === StationKind.Engineering && memory.page === 'main' && (dir === Dir.Left || dir === Dir.Right) && row.action?.kind === 'coolant') emit({ kind: 'power', station: seat, target: row.action.target, delta: dir === Dir.Right ? 1 : -1 });
+      if (confirm) {
+        if (row.key === 'upgrades') { memory.page = 'upgrades'; memory.rowKey = cardRows(view, seat, ui)[0]?.key ?? null; }
+        else if (row.key === 'back') { memory.page = 'main'; memory.rowKey = 'upgrades'; }
+        else if (row.enabled && row.action) emit(row.action);
+      }
+      continue;
+    }
     if (![StationKind.Navigation, StationKind.Engineering, StationKind.Doors, StationKind.Weapons, StationKind.Science].some(k => k === kind)) continue;
     let vote: Command | null = null;
     if (kind === StationKind.Navigation && confirm) {

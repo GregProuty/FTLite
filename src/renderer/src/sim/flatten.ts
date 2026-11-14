@@ -40,6 +40,8 @@ export function flatten(s: SimState): Float64Array {
   for (const v of tm.mannedTicks) put(v); for (const v of tm.idleRun) put(v); for (const v of tm.longestIdle) put(v); for (const v of tm.prevLife) put(v);
   for (const v of tm.spawns) put(v); for (const v of tm.repairs) put(v); for (const v of tm.phaseEntries) put(v);
   for (const v of s.stations.level) put(v); for (const v of s.stations.failed) put(v); for (const v of s.stations.repair) put(v);
+  // Retained cursor/page slots round-trip until the final family migration;
+  // Engineering and Doors never consult or update these slots.
   for (const v of s.stations.occupant) put(v); for (const v of s.stations.cursor) put(v);
   for (const v of s.stations.heat) put(v); for (const v of s.stations.coolant) put(v); for (const v of s.stations.page) put(v);
   put(s.power.capacity);

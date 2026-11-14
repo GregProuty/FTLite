@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { fixtureRunner } from './helpers/rawInput';
 import { describe, it, expect } from 'vitest';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -166,7 +167,7 @@ describe('heat', () => {
   it('a failed Engineering ejects its operator, and no coolant or bar input lands until it is repaired', () => {
     const s = makeState(1), eng = idx(s, StationKind.Engineering), wpn = idx(s, StationKind.Weapons);
     s.director.nextSpawnTick = 1e9;
-    sitDown(s, 0, eng); s.stations.cursor[eng] = StationKind.Weapons; s.stations.coolant[wpn] = 1;
+    sitDown(s, 0, eng); cardSelection(s, eng).cursor = StationKind.Weapons; s.stations.coolant[wpn] = 1;
     const levels = Array.from(s.stations.level);
     failStation(s, eng);
     expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[eng]).toBe(-1);

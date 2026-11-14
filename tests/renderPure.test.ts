@@ -1,3 +1,4 @@
+import { cardSelection, fixtureCardUi } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { sliceGrid } from '../src/renderer/src/render/sheet';
 import { pickVariant, wallKind, floorVariant, wallVariant } from '../src/renderer/src/render/tilePick';
@@ -31,11 +32,11 @@ describe('airlocks and the Doors selection (spec Demo-vii section 1)', () => {
   });
   it('doorsCursorTile: -1 with nobody seated; the selected door tile, then an airlock tile', () => {
     const s = cutterState(), i = s.derived.stationOfKind[StationKind.Doors]!;
-    expect(doorsCursorTile(s)).toBe(-1);
+    expect(doorsCursorTile(s, fixtureCardUi(s))).toBe(-1);
     sitDown(s, 0, i);
-    expect(doorsCursorTile(s)).toBe(s.derived.edgeTile[s.derived.doorEdges[0]!]);
-    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
-    expect(doorsCursorTile(s)).toBe(s.derived.airlockTile[2]);
+    expect(doorsCursorTile(s, fixtureCardUi(s))).toBe(s.derived.edgeTile[s.derived.doorEdges[0]!]);
+    cardSelection(s, i).cursor = s.derived.doorEdges.length + 2;
+    expect(doorsCursorTile(s, fixtureCardUi(s))).toBe(s.derived.airlockTile[2]);
   });
 });
 

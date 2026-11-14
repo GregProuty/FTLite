@@ -5,7 +5,8 @@ import { Life, LifeState, Position, Seated } from './components';
 import { roomAt } from './grid';
 import { inReachOfTile } from './interact';
 import { stationOnline, sitDown, standUp, selectTab } from './stations';
-import { shedPower } from './power';
+import { shedPower, shiftBar, buyUpgrade, buyReactor } from './power';
+import { cycleCoolant } from './heat';
 import { StationKind } from './stationKinds';
 import { hereIndex, navRows, navCursorAfterDirection } from './run';
 import { choiceEnabled, EVENT_DEFS } from './events';
@@ -102,6 +103,35 @@ export function applyConsoleCommand(state: SimState, envelope: CommandEnvelope):
     if (!unchanged) { state.run.vote[pid] = c.choice; state.run.voteTick = state.tick; }
     return commandResult(state, envelope, undefined, unchanged);
   }
+  if (c.kind === 'power' || c.kind === 'coolant' || c.kind === 'buyUpgrade' || c.kind === 'buyReactor' || c.kind === 'doorCycle' || c.kind === 'airlockToggle') {
+    const engineering = c.kind === 'power' || c.kind === 'coolant' || c.kind === 'buyUpgrade' || c.kind === 'buyReactor';
+    if (c.station !== seat || state.stations.occupant[seat] !== pid || state.derived.stationKind[seat] !== (engineering ? StationKind.Engineering : StationKind.Doors)) return commandResult(state, envelope, 'invalid-seat');
+    const online = stationOnline(state, seat), grouped = state.derived.stationGroup[seat]! >= 0;
+    if (grouped && !online) return commandResult(state, envelope, 'unavailable');
+    if (c.kind === 'power' || c.kind === 'coolant') {
+      if (!Number.isInteger(c.target) || c.target < 0 || c.target >= state.derived.stationKind.length) return commandResult(state, envelope, 'stale-target');
+      const changed = c.kind === 'power' ? shiftBar(state, c.target, c.delta) : cycleCoolant(state, c.target);
+      if (changed) state.skills.lastEngChangeTick = state.tick;
+      return commandResult(state, envelope, undefined, !changed);
+    }
+    if (c.kind === 'buyUpgrade' || c.kind === 'buyReactor') {
+      if (!online) return commandResult(state, envelope, 'unavailable');
+      if (c.kind === 'buyUpgrade' ? state.run.upgrades[c.system] !== c.expectedLevel : state.run.reactorBonus !== c.expectedBonus) return commandResult(state, envelope, 'stale-target');
+      const bought = c.kind === 'buyUpgrade' ? buyUpgrade(state, c.system) : buyReactor(state);
+      return commandResult(state, envelope, bought ? undefined : 'unavailable');
+    }
+    if (c.kind === 'doorCycle') {
+      if (!state.derived.doorEdges.includes(c.edge)) return commandResult(state, envelope, 'stale-target');
+      if (c.mode !== (online ? 'cycle' : 'seal')) return commandResult(state, envelope, 'unavailable');
+      (online ? state.scratch.doorCycles : state.scratch.doorToggles).add(c.edge);
+    } else {
+      if (!Number.isInteger(c.airlock) || c.airlock < 0 || c.airlock >= state.airlocks.open.length) return commandResult(state, envelope, 'stale-target');
+      if (!online) return commandResult(state, envelope, 'unavailable');
+      state.scratch.airlockToggles.add(c.airlock);
+    }
+    state.skills.lastDoorToggleTick = state.tick;
+    return commandResult(state, envelope);
+  }
   return commandResult(state, envelope, 'unsupported');
 }
 /** Admission and execution both guard the single temporary bridge. */
@@ -110,7 +140,7 @@ export function legacyCardReason(state: SimState, envelope: LegacyInputEnvelope,
   if (envelope.requestedTick !== state.tick) return 'stale-tick';
   if (!conscious(state, pid) || Seated.station[state.crew[pid]!] !== i || state.stations.occupant[i] !== pid || (inTick && (state.scratch.satThisTick[pid] || state.scratch.stoodThisTick[pid]))) return 'invalid-seat';
   const kind = state.derived.stationKind[i];
-  if (![StationKind.Engineering, StationKind.Doors, StationKind.Weapons, StationKind.Science, StationKind.Navigation].some(k => k === kind)) return 'unsupported';
+  if (![StationKind.Weapons, StationKind.Science, StationKind.Navigation].some(k => k === kind)) return 'unsupported';
   if (state.derived.stationGroup[i]! >= 0 && !stationOnline(state, i)) return 'unavailable';
   if (kind === StationKind.Navigation && input.confirm) { const rows = navRows(state); if (rows[navCursorAfterDirection(rows, state.stations.cursor[i]!, input.direction)]?.select === 'choice') return 'unsupported'; }
   return undefined;

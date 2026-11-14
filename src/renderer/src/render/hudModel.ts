@@ -27,6 +27,7 @@ import { EndReason } from '../sim/crew';
 import { boarderMarkers, boardersInRoom } from '../sim/boarders';
 import { QUIRK_NAMES } from '../sim/quirks';
 import { doorsCursorTarget } from '../sim/doors';
+import { cardRowIndex, cardRows } from '../clientControl/cardController';
 import { shipLine, shipForCrew } from '../sim/ship/fleet';
 import { textPx, rowPx, TEXT, WARN, PAD } from './theme';
 import { NOTICE, CARD_INNER_W, BLOCK_INNER_W, THREATS } from './hudLayout';
@@ -197,7 +198,7 @@ function player(state: SimState, pid: number, ui?: CardUiState): Omit<HudPlayer,
   if (seatedAt >= 0) {
     const kind = state.derived.stationKind[seatedAt]!;
     const tabs = consoleTabs(state, seatedAt), g = state.derived.stationGroup[seatedAt]!;
-    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind), tabs, tabFocus: g >= 0 && (ui?.groupBar[g] ?? false) };
+    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind, ui), tabs, tabFocus: g >= 0 && (ui?.groupBar[g] ?? false) };
   }
   let interactPrompt = '', interactIcon: string | null = null, progress = 0;
   const t = interactTarget(state, pid);
@@ -411,15 +412,16 @@ function readyLine(state: SimState): string[] {
   const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 && state.stations.occupant[nav]! >= 0 ? ['JUMP READY'] : ['JUMP READY   someone take Navigation'];
 }
 
-function consolePanel(state: SimState, i: number, kind: number): ConsolePanel | null {
+function consolePanel(state: SimState, i: number, kind: number, ui?: CardUiState): ConsolePanel | null {
   const d = state.derived;
   if (kind === StationKind.Engineering) {
     const rows = STATION_NAMES.map((name, k) => { const si = d.stationOfKind[k]!; return { kind: k, name, level: si >= 0 ? state.stations.level[si]! : 0, max: baseMax(state, k), failed: si >= 0 && state.stations.failed[si] === 1, unpowered: unpoweredAt(state, k, si), ...thermal(state, si) }; });
-    const cursor = state.stations.cursor[i]!;
-    return { rows, cursor, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state), page: state.stations.page[i]!, upgrades: upgradeRowsOf(state, cursor), scrap: state.run.scrap };
+    const at = cardRowIndex(state, i, ui), key = cardRows(state, i, ui)[at]?.key, page = ui?.stations[i]?.page === 'upgrades' ? 1 : 0;
+    const cursor = page ? key === 'reactor' ? REACTOR_ROW : key === 'back' ? BACK_ROW : Number(key?.split(':')[1]) : at;
+    return { rows, cursor, pool: powerPool(state), coolantFree: COOLANT_POOL - coolantUsed(state), page, upgrades: upgradeRowsOf(state, cursor), scrap: state.run.scrap };
   }
   if (kind === StationKind.Doors) {
-    const t = doorsCursorTarget(state, state.stations.cursor[i]!);
+    const t = doorsCursorTarget(state, cardRowIndex(state, i, ui));
     if (!t) return { kind: 'doors', item: null };
     const online = stationOnline(state, i), openAirlocks = state.airlocks.open.reduce((n, v) => n + v, 0), names = state.layout.rooms;
     if (t.kind === 'airlock') {

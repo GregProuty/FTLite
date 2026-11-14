@@ -173,10 +173,10 @@ describe('snapshot', () => {
   it('round-trips seating and power without canonical client repeat', () => {
     const s = makeState(2, 5);
     const eng = s.derived.stationOfKind[3]!;
-    sitDown(s, 0, eng); s.stations.cursor[eng] = 5; s.stations.failed[1] = 1; s.stations.repair[1] = 0.25; s.stations.level[2] = 0;
+    sitDown(s, 0, eng); s.stations.failed[1] = 1; s.stations.repair[1] = 0.25; s.stations.level[2] = 0;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect(hashState(t)).toBe(hashState(s));
-    expect(Seated.station[t.crew[0]!]).toBe(eng); expect(t.stations.occupant[eng]).toBe(0); expect(t.stations.cursor[eng]).toBe(5);
+    expect(Seated.station[t.crew[0]!]).toBe(eng); expect(t.stations.occupant[eng]).toBe(0);
     expect(t.stations.failed[1]).toBe(1); expect(t.stations.repair[1]).toBe(0.25); expect('stick' in t).toBe(false);
   });
   it('round-trips debris, weapons charge and room impact ticks', () => {
@@ -430,13 +430,13 @@ describe('snapshot', () => {
     for (const k of ['scrapEarned', 'scrapSpent', 'eventsResolved', 'purchases'] as const) expect(mutate((u) => { u.telemetry[k] = 7; })).not.toBe(base);
   });
   it('round-trips the upgrade levels, run.reactorBonus, the reactor capacity, stations.page and the last purchase; each alone changes the hash (spec Loop-ii section 6)', () => {
-    const s = makeState(2, 5); s.run.upgrades.set([2, 3, 1, 0, 0, 2, 1]); s.run.reactorBonus = 4; s.power.capacity = 14; s.stations.page[3] = 1; s.run.boughtTick = 321; s.run.boughtKind = 7;
+    const s = makeState(2, 5); s.run.upgrades.set([2, 3, 1, 0, 0, 2, 1]); s.run.reactorBonus = 4; s.power.capacity = 14; s.stations.page[0] = 1; s.run.boughtTick = 321; s.run.boughtKind = 7;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.power.capacity, Array.from(t.stations.page), t.run.boughtTick, t.run.boughtKind]).toEqual([[2, 3, 1, 0, 0, 2, 1], 4, 14, [0, 0, 0, 1, 0, 0, 0], 321, 7]);
+    expect([Array.from(t.run.upgrades), t.run.reactorBonus, t.power.capacity, Array.from(t.stations.page), t.run.boughtTick, t.run.boughtKind]).toEqual([[2, 3, 1, 0, 0, 2, 1], 4, 14, [1, 0, 0, 0, 0, 0, 0], 321, 7]);
     expect(hashState(t)).toBe(hashState(s));
     const base = hashState(makeState(2, 5));
     const mutate = (f: (u: ReturnType<typeof makeState>) => void) => { const u = makeState(2, 5); f(u); return hashState(u); };
-    expect(mutate((u) => { u.run.reactorBonus = 1; })).not.toBe(base); expect(mutate((u) => { u.stations.page[3] = 1; })).not.toBe(base); expect(mutate((u) => { u.power.capacity = 11; })).not.toBe(base);
+    expect(mutate((u) => { u.run.reactorBonus = 1; })).not.toBe(base); expect(mutate((u) => { u.stations.page[0] = 1; })).not.toBe(base); expect(mutate((u) => { u.power.capacity = 11; })).not.toBe(base);
     for (const k of ['boughtTick', 'boughtKind'] as const) expect(mutate((u) => { u.run[k] = 3; })).not.toBe(base);   // the purchase notice's tick and row (spec Loop-ii amendment A3)
   });
   it('a run saved with a pending event resumes with the same rows and cursor', () => {

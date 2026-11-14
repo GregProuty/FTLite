@@ -23,10 +23,9 @@ export function failedStationCount(state: SimState): number {
 /** Reset a console's cursor per kind (spec section 4). */
 function resetCursor(state: SimState, i: number): void {
   const d = state.derived, kind = d.stationKind[i]!;
+  if (kind === StationKind.Engineering || kind === StationKind.Doors) return;
   state.stations.page[i] = 0;   // every seat opens on the power page (spec Loop-ii section 2)
-  state.stations.cursor[i] = kind === StationKind.Engineering ? StationKind.Engineering
-    : kind === StationKind.Doors ? (d.doorEdges.length + d.airlockRoom.length ? 0 : -1)
-    : kind === StationKind.Weapons || kind === StationKind.Science ? (warnedTargets(state)[0] ?? -1)
+  state.stations.cursor[i] = kind === StationKind.Weapons || kind === StationKind.Science ? (warnedTargets(state)[0] ?? -1)
     : 0;
 }
 
@@ -62,7 +61,7 @@ export function standUp(state: SimState, pid: number): void {
   const g = d.stationGroup[i]!;
   Seated.station[eid] = -1;
   for (const j of g >= 0 ? d.groupStations[g]! : [i]) {
-    state.stations.occupant[j] = -1; state.stations.page[j] = 0;   // standing resets the Engineering page (spec Loop-ii section 2)
+    state.stations.occupant[j] = -1;   // standing resets the Engineering page (spec Loop-ii section 2)
     if (d.stationKind[j] === StationKind.Science) state.science.scanning = 0;   // spec 2b-ii section 4: any stand pauses the scan
   }
 }

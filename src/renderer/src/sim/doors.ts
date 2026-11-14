@@ -46,7 +46,7 @@ export function doorsCursorCount(state: SimState): number { return state.derived
 
 export type DoorsCursorTarget = { kind: 'door'; edge: number } | { kind: 'airlock'; index: number };
 
-/** What cursor value c selects: a door edge, an airlock index, or null when c is outside the list. */
+/** Pure row lookup for client cards: what row c selects: a door edge, an airlock index, or null when c is outside the list. */
 export function doorsCursorTarget(state: SimState, c: number): DoorsCursorTarget | null {
   const edges = state.derived.doorEdges;
   if (c < 0 || c >= doorsCursorCount(state)) return null;

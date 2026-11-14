@@ -22,7 +22,7 @@ export interface SessionDeps {
   /** The ship, or the ship for the run's player count (spec Demo-x-a section 3). */
   layout: ShipLayout | ((playerCount: number) => ShipLayout);
   sampleDevices(): SourceSample[];
-  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[]): void } | null;
+  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: import('../clientControl/cardController').CardUiState): void } | null;
   hud: { update(m: HudModel): void } | null;
   now(): number;
   scheduler?: Scheduler;
@@ -96,7 +96,7 @@ export function createSession(deps: SessionDeps) {
         scheduleLobby();
       },
       onCrash(record) { phase = 'error'; message = `Sim fault: ${record.error}. Crash data saved.`; deps.saveCrash(record); },
-      draw(view, alpha) { deps.renderer?.draw(view, alpha, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : []); }
+      draw(view, alpha) { deps.renderer?.draw(view, alpha, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : [], runtime?.ui); }
     });
     state = runtime.state();
   }

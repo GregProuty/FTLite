@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { navigationInput } from '../src/renderer/src/sim/run';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { describe, it, expect } from 'vitest';
@@ -28,7 +29,7 @@ function ready() {
   const s = makeState(2); quiet(s); allHazard(s); s.enemy.nextArrivalTick = 1e9; s.boarders.nextArrivalTick = 1e9;
   const n = seatNavigator(s, 0); run(s, 1); chargeJump(s); s.stations.cursor[n] = 0; return { s, n };
 }
-const seat = (s: ReturnType<typeof makeState>, pid: number, kind: number): number => { const i = s.derived.stationOfKind[kind]!; sitDown(s, pid, i); if (kind === StationKind.Engineering) s.stations.cursor[i] = StationKind.Navigation; return i; };   // Engineering's cursor on the Navigation row: a Confirm there cycles its coolant
+const seat = (s: ReturnType<typeof makeState>, pid: number, kind: number): number => { const i = s.derived.stationOfKind[kind]!; sitDown(s, pid, i); if (kind === StationKind.Engineering) cardSelection(s, i).cursor = StationKind.Navigation; return i; };   // Engineering's cursor on the Navigation row: a Confirm there cycles its coolant
 
 describe('B1: any other player agrees to a jump (spec Demo-xi section 1)', () => {
   it('a seated non-Navigation Confirm agrees and is consumed: its card did not act', () => {

@@ -1,7 +1,9 @@
+import { buildFixtureHud as buildHudModel } from './helpers/cardUi';
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { Phase } from '../src/renderer/src/sim/director';
 import { QUIRK_NAMES } from '../src/renderer/src/sim/quirks';
-import { buildHudModel, clockLine, sectorLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText, upgradeRowText, engineeringFooter } from '../src/renderer/src/render/hudModel';
+import {  clockLine, sectorLine, navigationFooter, deviceKindOf, glyphName, targetWindow, targetRowText, upgradeRowText, engineeringFooter } from '../src/renderer/src/render/hudModel';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
 import { Life, LifeState } from '../src/renderer/src/sim/components';
@@ -35,14 +37,14 @@ describe('the Doors card (spec Demo-vii section 1)', () => {
   const card = (s: ReturnType<typeof cutterState>) => buildHudModel(s, slots(2), 'running', '').players[0]!.console as DoorsPanel;
   it('names the selected door or airlock, its state and the Confirm action, for every state', () => {
     const { s, i } = seated(), e = s.derived.doorEdges[3]!;   // edge 3: Aft Passage <-> Weapons
-    s.stations.cursor[i] = 3;
+    cardSelection(s, i).cursor = 3;
     const row = (st: number) => { s.doors.state[e] = st; const c = card(s); return c.item === null ? null : [c.item, c.status, c.action]; };
     expect(row(DoorState.Closed)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
     expect(row(DoorState.Open)).toEqual(['Door  Aft Passage / Weapons', 'Auto', 'Seal']);
     expect(row(DoorState.HeldOpen)).toEqual(['Door  Aft Passage / Weapons', 'Held open', 'Release']);
     expect(row(DoorState.Sealed)).toEqual(['Door  Aft Passage / Weapons', 'Sealed', 'Hold open']);
     s.doors.state[e] = DoorState.Closed; s.doors.sealRequested[e] = 1; expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Door  Aft Passage / Weapons', 'Sealing', 'Hold open']); s.doors.sealRequested[e] = 0;   // a pending seal (Codex render review 2)   // the online cycle: Auto -> Sealed -> Held open -> Auto (spec Demo-vii amendment 19)
-    s.stations.cursor[i] = s.derived.doorEdges.length + 2;
+    cardSelection(s, i).cursor = s.derived.doorEdges.length + 2;
     expect([card(s).item, (card(s) as { status: string }).status, (card(s) as { action: string }).action]).toEqual(['Airlock  Engines', 'Airlock closed', 'Open airlock']);
     s.airlocks.open[2] = 1; s.airlocks.open[0] = 1;
     expect(card(s)).toEqual({ kind: 'doors', item: 'Airlock  Engines', status: 'AIRLOCK OPEN', action: 'Close airlock', openAirlocks: 2 });
@@ -50,18 +52,18 @@ describe('the Doors card (spec Demo-vii section 1)', () => {
   it('offline: a door shows the plain seal toggle and an airlock no action', () => {
     const { s, i } = seated();
     s.stations.level[i] = 0;
-    s.stations.cursor[i] = 0;
+    cardSelection(s, i).cursor = 0;
     expect((card(s) as { action: string }).action).toBe('Seal');
     s.doors.state[s.derived.doorEdges[0]!] = DoorState.Sealed;
     expect((card(s) as { action: string }).action).toBe('Release');
-    s.stations.cursor[i] = s.derived.doorEdges.length;
+    cardSelection(s, i).cursor = s.derived.doorEdges.length;
     expect((card(s) as { action: string }).action).toBe('');
   });
   it('every card line fits CONSOLE_LINE_MAX, for every door and airlock on the cutter', () => {
     const { s, i } = seated();
     s.airlocks.open.fill(1);
     for (let c = 0; c < s.derived.doorEdges.length + s.airlocks.open.length; c++) {
-      s.stations.cursor[i] = c;
+      cardSelection(s, i).cursor = c;
       const p = card(s) as Exclude<DoorsPanel, { item: null }>;
       for (const line of [p.item, p.status, `Confirm: ${p.action}`, `Open airlocks: ${p.openAirlocks}`]) expect(line.length, line).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
     }
@@ -157,7 +159,7 @@ describe('buildHudModel', () => {
     const eng = s.derived.stationOfKind[StationKind.Engineering]!;
     teleport(s, 0, 17.5, 9.5);
     expect(buildHudModel(s, slots(1), 'running', '').players[0]!.confirmPrompt).toBe('Sit: Engineering');
-    sitDown(s, 0, eng); s.stations.cursor[eng] = StationKind.Weapons;
+    sitDown(s, 0, eng); cardSelection(s, eng).cursor = StationKind.Weapons;
     const p = buildHudModel(s, slots(1), 'running', '').players[0]!;
     expect(p.seated).toBe(StationKind.Engineering); expect(p.cancelPrompt).toBe('Stand'); expect(p.confirmPrompt).toBe(''); expect(p.interactPrompt).toBe('');
     const panel = p.console as EngineeringPanel;
@@ -598,11 +600,11 @@ describe('the Upgrades page in the HUD model', () => {
   const seat = (scrap: number) => { const s = makeState(1); quiet(s); const eng = s.derived.stationOfKind[StationKind.Engineering]!; sitDown(s, 0, eng); grantScrap(s, scrap); return { s, eng }; };
   const panelOf = (s: ReturnType<typeof makeState>) => buildHudModel(s, slots(1), 'running', '').players[0]!.console as EngineeringPanel;
   it('the power page: the cursor on the UPGRADES row (index 7) and the pool footer', () => {
-    const { s, eng } = seat(120); s.stations.cursor[eng] = 7; const p = panelOf(s);
+    const { s, eng } = seat(120); cardSelection(s, eng).cursor = 7; const p = panelOf(s);
     expect([p.page, p.cursor, p.scrap]).toEqual([0, 7, 120]); expect(engineeringFooter(p)).toBe(`pool 1   coolant ${COOLANT_POOL}/${COOLANT_POOL}`);
   });
   it('the Upgrades page rows, prices and footer, exactly; the cursor row; disabled rows', () => {
-    const { s, eng } = seat(120); s.stations.page[eng] = 1; s.stations.cursor[eng] = StationKind.Weapons; const p = panelOf(s);
+    const { s, eng } = seat(120); cardSelection(s, eng).page = 1; cardSelection(s, eng).cursor = StationKind.Weapons; const p = panelOf(s);
     expect(p.upgrades.map(upgradeRowText)).toEqual(['Navigation  lvl 2/5  30', 'Weapons  lvl 3/6  30', 'Science  lvl 2/5  30', 'Life Support  lvl 3/6  30', 'Medbay  lvl 2/5  30', 'Doors  lvl 1/4  30', 'Reactor  +1 bar  25', 'BACK']);
     expect(p.upgrades.map((r) => r.cursor)).toEqual([false, true, false, false, false, false, false, false]);
     expect(p.upgrades.map((r) => r.row)).toEqual([0, 1, 2, 4, 5, 6, REACTOR_ROW, REACTOR_ROW + 1]);
@@ -615,7 +617,7 @@ describe('the Upgrades page in the HUD model', () => {
     expect(engineeringFooter(m)).toBe('Scrap 999');
   });
   it('every Upgrades page line fits CONSOLE_LINE_MAX at any level', () => {
-    const { s, eng } = seat(999); s.stations.page[eng] = 1;
+    const { s, eng } = seat(999); cardSelection(s, eng).page = 1;
     for (let lvl = 0; lvl <= 3; lvl++) { s.run.upgrades.fill(lvl); s.run.reactorBonus = Math.min(5, lvl * 2); for (const r of panelOf(s).upgrades) expect(upgradeRowText(r).length, upgradeRowText(r)).toBeLessThanOrEqual(CONSOLE_LINE_MAX); }
     expect(engineeringFooter(panelOf(s)).length).toBeLessThanOrEqual(CONSOLE_LINE_MAX);
   });

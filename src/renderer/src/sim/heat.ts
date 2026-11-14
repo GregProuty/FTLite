@@ -24,7 +24,7 @@ export function coolingPerUnit(state: SimState): number {
 
 export function coolantUsed(state: SimState): number { let t = 0; for (const v of state.stations.coolant) t += v; return t; }
 
-/** Engineering Confirm: cycle station i's coolant 0, 1, 2, 0; a step the pool cannot supply wraps to 0. Engineering itself holds none. Returns whether the value changed. */
+/** Explicit Engineering target: cycle station i's coolant 0, 1, 2, 0; a step the pool cannot supply wraps to 0. Engineering itself holds none. Returns whether the value changed. */
 export function cycleCoolant(state: SimState, i: number): boolean {
   if (i < 0 || state.derived.stationKind[i] === StationKind.Engineering) return false;
   const c = state.stations.coolant[i]!;

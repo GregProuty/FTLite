@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import { Seated, Position } from '../src/renderer/src/sim/components';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
@@ -89,9 +90,9 @@ describe('power model', () => {
     sitDown(s, 0, eng);
     expect(Seated.station[s.crew[0]!]).toBe(eng); expect(s.stations.occupant[eng]).toBe(0);
     expect(Position.x[s.crew[0]!]).toBe(18.5); expect(Position.y[s.crew[0]!]).toBe(9.5);
-    expect(s.stations.cursor[eng]).toBe(StationKind.Engineering);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Engineering);
     sitDown(s, 1, doors);
-    expect(s.stations.cursor[doors]).toBe(0);
+    expect(cardSelection(s, doors).cursor).toBe(0);
     standUp(s, 0);
     expect(Seated.station[s.crew[0]!]).toBe(-1); expect(s.stations.occupant[eng]).toBe(-1);
     failStation(s, doors);

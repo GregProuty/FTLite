@@ -1,3 +1,4 @@
+import type { CardUiState } from '../clientControl/cardController';
 import { Application, Container } from 'pixi.js';
 import { worldFit } from './worldFit';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
@@ -26,7 +27,7 @@ export interface Renderer {
   resize(winW: number, winH: number): void;
   reset(): void;
   recordPrev(state: SimState): void;
-  draw(state: SimState, alpha: number, bubbles?: readonly Bubble[]): void;
+  draw(state: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: CardUiState): void;
 }
 
 export async function createRenderer(assets: GameAssets): Promise<Renderer> {
@@ -62,7 +63,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
     },
-    draw(state, alpha, bubbles = []) {
+    draw(state, alpha, bubbles = [], ui) {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
@@ -76,7 +77,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       icons.update(state);
       consoleDesks.draw(state);
       magazine.draw(state);
-      effects.draw(state);
+      effects.draw(state, ui);
       crew.draw(state, alpha);
       boarders.draw(state, dt);
       callouts.draw(state, bubbles, { scale: fit.scale, x: fit.x + shake.x, y: fit.y + shake.y });

@@ -1,3 +1,4 @@
+import { cardSelection } from './helpers/cardUi';
 import { describe, it, expect } from 'vitest';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
@@ -85,16 +86,16 @@ describe('seating at a console group', () => {
     const s = state(); sitAt(s, 12, 2);
     const eng = at(s, StationKind.Engineering), doors = at(s, StationKind.Doors), sci = at(s, StationKind.Science), wpn = at(s, StationKind.Weapons);
     edge(s, 0, -1); edge(s, 1, 0); edge(s, 0, 1);   // the Engineering tab, back on the rows
-    const doorsCursor = s.stations.cursor[doors]!, sciCursor = s.stations.cursor[sci]!;
-    expect(s.stations.cursor[eng]).toBe(StationKind.Engineering);
+    const doorsCursor = cardSelection(s, doors).cursor!, sciCursor = s.stations.cursor[sci]!;
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Engineering);
     edge(s, 0, -1); edge(s, 0, -1);   // up to the Weapons row (kind 1)
-    expect(s.stations.cursor[eng]).toBe(StationKind.Weapons); expect(s.stations.cursor[doors]).toBe(doorsCursor);
+    expect(cardSelection(s, eng).cursor).toBe(StationKind.Weapons); expect(cardSelection(s, doors).cursor).toBe(doorsCursor);
     const level = s.stations.level[wpn]!;
     edge(s, -1, 0); expect(s.stations.level[wpn]).toBe(level - 1);   // Left pulls a bar
-    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0); expect(s.stations.cursor[eng]).toBe(0);   // row 0
+    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0); expect(cardSelection(s, eng).cursor).toBe(0);   // row 0
     edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(1);
     edge(s, 1, 0); edge(s, 0, 1); edge(s, 0, 1);   // the Doors tab: Down moves the Doors cursor only
-    expect(s.stations.cursor[doors]).toBe(doorsCursor + 1); expect(s.stations.cursor[eng]).toBe(0); expect(s.stations.cursor[sci]).toBe(sciCursor);
+    expect(cardSelection(s, doors).cursor).toBe(doorsCursor + 1); expect(cardSelection(s, eng).cursor).toBe(0); expect(s.stations.cursor[sci]).toBe(sciCursor);
   });
   it('one member failing leaves the officer seated on the others; all failing stands the officer up', () => {
     const s = state(); sitAt(s, 2, 2);
