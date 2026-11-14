@@ -1,7 +1,6 @@
 import starter from '../sim/ship/starter.json';
 import { parseShip } from '../sim/ship/schema';
 import { createHeadlessRunner } from './runner';
-import { botFrame } from '../clientControl/botClient';
 import { DEFAULT_CHARACTERS } from '../sim/characters';
 import { telemetryRecord, type TelemetryRecord } from '../sim/telemetry';
 import { TICK_HZ, ACCEPTANCE_MINUTES } from '../sim/tuning';
@@ -13,7 +12,7 @@ export function runAcceptance({ players, seed, minutes, characters = DEFAULT_CHA
   const runner = createHeadlessRunner({ layout: parseShip(starter), playerCount: players, seed, characters, contentDigest });
   const state = runner.view();
   const budget = Math.round(minutes * 60 * TICK_HZ);
-  while (state.tick < budget && !state.ended) runner.advance(state.crew.map((_, pid) => botFrame(state, runner.ui, pid)));
+  while (state.tick < budget && !state.ended) runner.advanceBots();
   const record = telemetryRecord(state, seed); runner.dispose(); return record;
 }
 

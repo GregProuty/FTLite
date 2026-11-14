@@ -1,6 +1,6 @@
 import { createCardUiState } from '../src/renderer/src/clientControl/cardController';
 import { heldStep } from './helpers/heldInput';
-import { botIntent as peacefulBotPolicy } from '../src/renderer/src/clientControl/botPolicy';
+import { botPolicyIntent as peacefulBotPolicy } from './helpers/bot';
 import { describe, it, expect } from 'vitest';
 import { Phase, HazardType, activeHazardCount, spawnInterval, spawnCap, cycleBudget, rawStress, anyUnattended, updateStress, typeWeights, chooseType, phaseStep, directorSystem, minutesOf } from '../src/renderer/src/sim/director';
 import { burningRoomCount, igniteRoom } from '../src/renderer/src/sim/hazards/fire';

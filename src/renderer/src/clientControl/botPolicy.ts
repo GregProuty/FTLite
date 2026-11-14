@@ -1,6 +1,7 @@
 import { scienceTargetSlot } from '../sim/debrisTargets';
 import { weaponsTargetSlot } from '../sim/debrisTargets';
 import { cardRowIndex, type CardUiState } from './cardController';
+import type { InputFrame } from './inputFrame';
 import type { Intent } from '../../../shared/intent';
 import { NEUTRAL_INTENT } from '../../../shared/intent';
 import type { SimState } from '../sim/state';
@@ -289,7 +290,7 @@ function scienceIntent(state: SimState, ui: CardUiState, eid: number): Intent | 
   return { ...NEUTRAL_INTENT, confirmPressed: true };
 }
 
-export function botIntent(state: SimState, ui: CardUiState, pid: number): Intent {
+function botIntent(state: SimState, ui: CardUiState, pid: number): Intent {
   const eid = state.crew[pid]!;
   if (Life.state[eid] !== LifeState.Conscious) return NEUTRAL_INTENT;
   const it = dutyIntent(state, ui, pid, eid), r = state.run;
@@ -328,4 +329,10 @@ function dutyIntent(state: SimState, ui: CardUiState, pid: number, eid: number):
   const next = firstStep(state, here, goals, blocked);
   if (next < 0) return NEUTRAL_INTENT;
   return walkTo(state, eid, next);
+}
+
+/** Pure policy: completed state and client UI in, the original device cadence out. */
+export function botFrame(view: SimState, ui: CardUiState, player: number): InputFrame {
+  const input = botIntent(view, ui, player);
+  return { moveX: input.moveX, moveY: input.moveY, interactHeld: input.interactHeld, interactPresses: Number(input.interactPressed), confirmPresses: Number(input.confirmPressed), cancelPresses: Number(input.cancelPressed) };
 }

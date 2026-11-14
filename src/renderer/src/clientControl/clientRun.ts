@@ -7,6 +7,8 @@ import { unflatten } from '../sim/flatten';
 import { hashF64 } from '../../../shared/hash';
 import { createCardUi, reconcileUi, reconcileCommandResult, type ClientActions } from './cardController';
 
+export type ClientRun = ReturnType<typeof createClientRun>;
+
 export function createClientRun(link: Link, owned: readonly PlayerId[], options: { runId: string; resolveLayout(id: string): ShipLayout }) {
   let replica: SimState | null = null, publication: PublishedState | null = null, lastEvent = 0, disposed = false;
   const ui = createCardUi(options.runId), results: CommandResult[] = [], events: AuthorityEvent[] = [];

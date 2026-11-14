@@ -1,4 +1,33 @@
 import type { ClientMessage, Command, Compatibility, HeldFrame } from '../../src/renderer/src/net/contracts';
+import { createLoopbackHarness } from '../../src/renderer/src/net/loopback';
+import { decodeMessage } from '../../src/renderer/src/net/codec';
+import { createClientRun } from '../../src/renderer/src/clientControl/clientRun';
+import { createFixtureAuthority } from './authorityFixture';
+import type { SimState } from '../../src/renderer/src/sim/state';
+import { SIM_VERSION, TICK_HZ } from '../../src/renderer/src/sim/tuning';
+
+/** Real byte link and completed publications, with outgoing messages captured before ingress. */
+export function publishedBotHarness(state: SimState, drainInitial = true) {
+  const contentDigest = 'a'.repeat(64), runId = 'bot-test';
+  const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest });
+  const pair = transport.connectLocal(), sent: ClientMessage[] = [];
+  const owned = state.crew.map((_, player) => player);
+  const send = pair.clientLink.send.bind(pair.clientLink);
+  pair.clientLink.send = (kind, bytes) => { sent.push(decodeMessage(bytes) as ClientMessage); send(kind, bytes); };
+  const client = createClientRun(pair.clientLink, owned, { runId, resolveLayout: () => state.layout });
+  let now = 0, ordinal = 0;
+  const authority = createFixtureAuthority({ contentDigest, clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} },
+    resolveLayout: () => state.layout, onCrash(record) { throw new Error(record.error); },
+    init: { runId, layoutId: state.layout.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION, contentDigest,
+      seed: 1, playerCount: state.playerCount, characters: [], unlocked: [] }
+  }, state);
+  authority.attach(pair.authorityLink, owned); if (drainInitial) transport.drain();
+  return { client, sent,
+    publish() { authority.publishCompletedState(); transport.drain(); },
+    advance() { transport.drain(); now = ++ordinal * 1000 / TICK_HZ; authority.pump(); transport.drain(); },
+    dispose() { authority.dispose(); client.dispose(); pair.host.close('disposed'); pair.client.close('disposed'); }
+  };
+}
 
 export const compatibility: Compatibility = { protocolVersion: 1, simVersion: 34, contentDigest: 'a'.repeat(64) };
 export const visit = { sector: 0, beacon: 1, arrivalTick: 0 };

@@ -1,10 +1,28 @@
-import type { SimState } from '../sim/state';
-import { botIntent } from './botPolicy';
-import type { CardUiState } from './cardController';
+import { botFrame } from './botPolicy';
+import { translateTick, type CardUiState, type ClientActions } from './cardController';
+import type { ClientRun } from './clientRun';
 import type { InputFrame } from './inputFrame';
 
-/** A host-side producer reads only the last completed replica; policy and cadence are unchanged. */
-export function botFrame(view: SimState, ui: CardUiState, player: number): InputFrame {
-  const input = botIntent(view, ui, player);
-  return { moveX: input.moveX, moveY: input.moveY, interactHeld: input.interactHeld, interactPresses: Number(input.interactPressed), confirmPresses: Number(input.confirmPressed), cancelPresses: Number(input.cancelPressed) };
+export { botFrame } from './botPolicy';
+
+/** One host-side agent per player. All producers on a link share the client's UI
+ * and sequence owner; a decision translates only this player's frame. */
+export function createBotClient(player: number, clientRun: ClientRun) {
+  return {
+    decide(tick: number): ClientActions {
+      const view = clientRun.state(), empty = { held: [], commands: [], legacyCardInput: [] };
+      if (!view) return empty;
+      const producer = clientRun.ui.players[player];
+      if (!producer) throw new Error('invalid bot player');
+      if (tick <= (producer.botDecisionTick ?? -1)) return empty;
+      const frames: InputFrame[] = [];
+      frames[player] = botFrame(view, clientRun.ui, player);
+      const actions = translateTick(view, clientRun.ui, frames, tick, [player]);
+      producer.botDecisionTick = tick;
+      return actions;
+    },
+    /** Detached capture of the shared controller memory, including repeat and
+     * sequence ownership. Portable checkpoint storage belongs to Net-1b. */
+    controllerState(): CardUiState { return structuredClone(clientRun.ui); }
+  };
 }

@@ -1,6 +1,6 @@
 import { cardSelection } from './helpers/cardUi';
 import { targetRef, scienceTargetSlot } from '../src/renderer/src/sim/debrisTargets';
-import { botIntent as fixtureBotPolicy } from '../src/renderer/src/clientControl/botPolicy';
+import { botPolicyIntent as fixtureBotPolicy } from './helpers/bot';
 import { snapshotPhaseStep, snapshotPhaseClient } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
 import { TEAM_MULT as TM2 } from '../src/renderer/src/sim/tuning';

@@ -18,7 +18,7 @@ import { doorsCursorCount, doorsCursorTarget } from '../sim/doors';
 
 export interface CardUiState {
   runId: RunId;
-  players: { nextSequence: number; heldSequence: number; heldDir: number; repeat: number; lastTick: number; seat: number; pendingVoteSequence: number; pendingVoteTick: number; pendingVote: { event: EventRef; choice: number } | null }[];
+  players: { nextSequence: number; heldSequence: number; heldDir: number; repeat: number; lastTick: number; botDecisionTick?: number; seat: number; pendingVoteSequence: number; pendingVoteTick: number; pendingVote: { event: EventRef; choice: number } | null }[];
   stations: { rowKey: string | null; page: 'main' | 'upgrades' }[];
   groupBar: boolean[];
   navigationVisit: VisitRef | null;
@@ -143,9 +143,10 @@ export function atFirstRow(state: SimState, i: number, ui?: CardUiState): boolea
   return cardRowIndex(state, i, ui) <= first;
 }
 /** Translate only completed state plus client memory. Held movement/Interact remain raw. */
-export function translateTick(view: SimState, ui: CardUiState, frames: readonly InputFrame[], tick: number): ClientActions {
+export function translateTick(view: SimState, ui: CardUiState, frames: readonly InputFrame[], tick: number, players?: readonly number[]): ClientActions {
   const out: ClientActions = { held: [], commands: [], legacyCardInput: [] };
   for (let player = 0; player < view.playerCount; player++) {
+    if (players && !players.includes(player)) continue;
     const f = frames[player] ?? NEUTRAL_FRAME, producer = ui.players[player]!;
     const sequence = (): number => { if (!Number.isSafeInteger(producer.nextSequence)) throw new Error('input sequence exhausted'); return producer.nextSequence++; };
     const emit = (command: Command): void => { out.commands.push({ runId: ui.runId, id: { player, sequence: sequence() }, requestedTick: tick, command }); };
