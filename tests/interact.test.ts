@@ -1,3 +1,4 @@
+import { interactSystem } from '../src/renderer/src/sim/interact';
 import { describe, it, expect } from 'vitest';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../src/renderer/src/sim/interact';
 import { Life, LifeState, Health } from '../src/renderer/src/sim/components';
@@ -213,4 +214,10 @@ describe('hands together (spec Coop-i section 2, amendments C3 and C5)', () => {
     run(s, 1, held(2));
     expect(s.rooms.fireRepair[G]).toBeCloseTo(TEAM_MULT * DT * ((1 + 5 * REPAIR_SKILL_GAIN) + 1) / REPAIR_TIME_FIRE, 12);
   });
+});
+
+it('held interaction no longer decodes a raw Confirm into a local door action', () => {
+  const s = makeState(1); teleport(s, 0, 2.5, 8.5);
+  interactSystem(s, intents({ confirmPressed: true }));
+  expect(s.scratch.doorToggles.size).toBe(0);
 });

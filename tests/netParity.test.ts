@@ -18,7 +18,7 @@ describe('independent Net-1a baseline oracle', () => {
   it('ignores only client UI memory, keeping the weapon selector', () => {
     const s = makeState(), expected = projectGameplay(s);
     s.stations.cursor[0] = 8; s.stations.page[0] = 1; s.run.navSig = 3;
-    s.run.navSelect = 4; s.run.navIndex = 5; s.stick.repeat[0] = 6; s.stick.heldDir[0] = 2;
+    s.run.navSelect = 4; s.run.navIndex = 5;
     expect(firstDifference(expected, projectGameplay(s))).toBeNull();
     s.weapons.selector = 2;
     expect(firstDifference(expected, projectGameplay(s))?.field).toBe('weapons.selector');

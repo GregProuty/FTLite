@@ -1,4 +1,4 @@
-import type { Intent } from '../../../shared/intent';
+import type { Dir } from '../sim/dir';
 import type { Snapshot } from '../sim/snapshot';
 import type { TelemetryRecord } from '../sim/telemetry';
 
@@ -67,7 +67,7 @@ export type Command =
   | { kind: 'setPaused'; paused: boolean };
 export interface CommandEnvelope { runId: RunId; id: CommandId; requestedTick: number; command: Command }
 /** Temporary immutable bridge; admitted by the same command ledger, never a semantic command kind. */
-export type LegacyCardInput = Readonly<Intent>;
+export type LegacyCardInput = Readonly<{ station: number; direction: Dir; confirm: boolean }>;
 export interface LegacyInputEnvelope {
   readonly kind: 'legacyCardInput'; readonly runId: RunId; readonly id: Readonly<CommandId>;
   readonly requestedTick: number; readonly input: LegacyCardInput;

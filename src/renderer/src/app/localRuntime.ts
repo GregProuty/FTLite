@@ -52,7 +52,7 @@ export function createLocalRuntime(deps: LocalRuntimeDeps) {
     seed: deps.seed, playerCount: deps.playerCount, characters: deps.characters, unlocked: deps.unlocked });
   receive();
   return {
-    state: client.state, publication: client.publication,
+    state: client.state, ui: client.ui, publication: client.publication,
     pump() { if (!disposed) { authority.pump(); receive(); } },
     frame() {
       const view = client.state(), publication = client.publication();

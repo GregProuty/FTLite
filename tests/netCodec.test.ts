@@ -21,7 +21,7 @@ describe('closed wire codec', () => {
   it('round trips callout and the distinct temporary immutable bridge', () => {
     const callout: ClientMessage = { kind: 'callout', runId: 'run-1', player: 3, sequence: 1, calloutKind: 'contextual' };
     const legacy: ClientMessage = { kind: 'legacyCardInput', runId: 'run-1', id: { player: 0, sequence: 1 }, requestedTick: 0,
-      input: { moveX: 0.8, moveY: 0.8, interactHeld: true, interactPressed: false, confirmPressed: true, cancelPressed: false } };
+      input: { station: 0, direction: 2, confirm: true } };
     expect(roundTrip(callout)).toEqual(callout);
     expect(roundTrip(legacy)).toEqual(legacy);
     expect(() => decodeMessage(raw({ ...callout, text: 'forged' }))).toThrow();

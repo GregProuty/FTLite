@@ -1,3 +1,4 @@
+import type { CardUiState } from '../clientControl/cardController';
 import { weaponDef } from '../sim/weaponDefs';
 import { LootPlace, Weapon, SWAP_SLOT, canSwap, swapSlot } from '../sim/weapons';
 import { ICON_KINDS, stationTint, type IconKind, type IconTint } from './roomIconModel';
@@ -168,7 +169,7 @@ function mapBlock(state: SimState | null, phase: HudModel['phase']): MapModel | 
 /** A player's room is "low" on the HUD below this oxygen fraction (a warning, well above SUFFOCATE_FRAC). */
 export const HUD_LOW_O2_FRAC = 0.5;
 
-/** Slot key → device kind. The key format is owned by input/sources.ts (`kb:0`, `kb:1`, `gp:<index>`); nothing else is parsed from it. */
+/** Slot key â†’ device kind. The key format is owned by input/sources.ts (`kb:0`, `kb:1`, `gp:<index>`); nothing else is parsed from it. */
 export function deviceKindOf(key: string | null): DeviceKind {
   if (key === 'kb:0') return 'kb0'; if (key === 'kb:1') return 'kb1'; if (key?.startsWith('gp:')) return 'pad'; return null;
 }
@@ -184,7 +185,7 @@ const describe = (c: Character): HudCharacter => ({ name: c.name, asset: ASSET_N
 
 const EMPTY: Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> = { health: 0, life: 0, bleed: 0, lowOxygen: false, carrying: false, vote: '', lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, progress: 0, seated: null, console: null, cancelPrompt: '', tabs: null, tabFocus: false, skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[RECRUIT]!) };
 
-function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> {
+function player(state: SimState, pid: number, ui?: CardUiState): Omit<HudPlayer, 'pid' | 'status' | 'deviceKind'> {
   const eid = state.crew[pid]!;
   const skills = Array.from({ length: SKILL_COUNT }, (_, k) => skillLevelOf(state, pid, k));
   const base = { health: Health.cur[eid]!, life: Life.state[eid]!, bleed: Life.bleed[eid]!, carrying: state.carrying[pid] === 1, vote: state.run.event >= 0 && state.run.eventChoice < 0 && state.run.vote[pid]! >= 0 ? `VOTE ${state.run.vote[pid]! + 1}` : '', skills, character: describe(characterOf(state, pid)) };
@@ -196,7 +197,7 @@ function player(state: SimState, pid: number): Omit<HudPlayer, 'pid' | 'status' 
   if (seatedAt >= 0) {
     const kind = state.derived.stationKind[seatedAt]!;
     const tabs = consoleTabs(state, seatedAt), g = state.derived.stationGroup[seatedAt]!;
-    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind), tabs, tabFocus: g >= 0 && state.groups.bar[g] === 1 };
+    return { ...base, lowOxygen, lifeText: '', interactPrompt: '', interactIcon: null, confirmPrompt: '', confirmIcon: null, cancelPrompt: 'Stand', progress: 0, seated: kind, console: consolePanel(state, seatedAt, kind), tabs, tabFocus: g >= 0 && (ui?.groupBar[g] ?? false) };
   }
   let interactPrompt = '', interactIcon: string | null = null, progress = 0;
   const t = interactTarget(state, pid);
@@ -495,11 +496,11 @@ function gainsSummary(state: SimState): string[] {
 
 export interface HudProgress { bestScore: number; runs: number; victories: number; newUnlocks: string[]; unlocked: string[] }
 
-export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: HudModel['phase'], message: string, credits: { lines: readonly string[]; scroll: number } | null = null, progress: HudProgress | null = null, calloutFlash: readonly number[] = []): HudModel {
+export function buildHudModel(state: SimState | null, slots: SlotInfo[], phase: HudModel['phase'], message: string, credits: { lines: readonly string[]; scroll: number } | null = null, progress: HudProgress | null = null, calloutFlash: readonly number[] = [], ui?: CardUiState): HudModel {
   const players: HudPlayer[] = slots.map((slot, pid) => {
     const head = { pid, status: slot.status, deviceKind: slot.status === 'active' ? deviceKindOf(slot.key) : null };
     if (!state || pid >= state.playerCount) return { ...head, ...EMPTY, skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[DEFAULT_CHARACTERS[pid] ?? RECRUIT]!) };
-    return { ...head, ...player(state, pid) };
+    return { ...head, ...player(state, pid, ui) };
   });
   const threats: HudThreat[] = [];
   if (state) {

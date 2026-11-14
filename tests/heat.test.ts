@@ -1,3 +1,4 @@
+import { fixtureRunner } from './helpers/rawInput';
 import { describe, it, expect } from 'vitest';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { stationOutput, sitDown } from '../src/renderer/src/sim/stations';
@@ -109,7 +110,7 @@ describe('heat', () => {
       const s = makeState(2), doors = overdrive(s, StationKind.Doors);
       s.director.nextSpawnTick = 1e9; sitDown(s, 1, doors);
       s.stations.heat[doors] = HEAT_MAX - HEAT_RISE; s.rng.hazards.s = seed;
-      s.stick.heldDir[1] = 2; s.stick.repeat[1] = 3;                           // stick state the forced stand must clear
+      fixtureRunner(s).ui.players[1]!.heldDir = 2; fixtureRunner(s).ui.players[1]!.repeat = 3;                           // stick state the forced stand must clear
       atStation(s, 0, idx(s, StationKind.Navigation));                         // player 0 stands in the Doors room (A) for the fire-damage check
       return { s, doors, r: s.derived.stationRoom[doors]! };
     };
@@ -118,7 +119,7 @@ describe('heat', () => {
     run(a.s, 1, () => intents({}, down));                                      // the Doors operator holds a direction, so stick state is nonzero until the forced stand
     expect(a.s.stations.failed[a.doors]).toBe(1); expect(a.s.stations.heat[a.doors]).toBe(0);
     expect(Seated.station[a.s.crew[1]!]).toBe(-1); expect(a.s.stations.occupant[a.doors]).toBe(-1);
-    expect(a.s.stick.heldDir[1]).toBe(0); expect(a.s.stick.repeat[1]).toBe(0);
+    expect(fixtureRunner(a.s).ui.players[1]!.heldDir).toBe(0); expect(fixtureRunner(a.s).ui.players[1]!.repeat).toBe(0);
     expect(a.s.rooms.fire[a.r]).toBe(FIRE_START); expect(a.s.rng.hazards.s).toBe(one.s);
     expect(Health.cur[a.s.crew[0]!]).toBeLessThan(HEALTH_MAX);                 // crewSystem applies fire damage on the overheat tick itself
     const b = mk(1);                                                           // first draw 0.627 >= 0.5: no fire

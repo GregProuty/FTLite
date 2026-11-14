@@ -22,7 +22,7 @@ const axis = z.number().finite().min(-1).max(1).transform((n) => n === 0 ? 0 : n
 const id = z.object({ player, sequence: positive }).strict();
 const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean() }).strict();
 const frame = z.object({ runId: text, player, tick: uint, sequence: positive, held }).strict();
-const visit = z.object({ sector: index, beacon: index, arrivalTick: uint }).strict();
+const visit = z.object({ sector: index, beacon: index, arrivalTick: z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER) }).strict();
 const target = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('object'), stableId: positive }).strict(),
   z.object({ kind: z.literal('enemy'), stableId: positive, room: index }).strict()
@@ -59,7 +59,7 @@ export const commandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
 ]);
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();
-const legacyInput = held.extend({ interactPressed: z.boolean(), confirmPressed: z.boolean(), cancelPressed: z.boolean() }).strict();
+const legacyInput = z.object({ station: index, direction: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), confirm: z.boolean() }).strict();
 const result = z.object({ id, tick: uint, status: z.enum(['applied', 'noop', 'rejected', 'already-processed']), reason: z.enum(COMMAND_REASONS).optional() }).strict();
 const u32 = z.number().int().min(0).max(4_294_967_295);
 const snapshot = z.object({

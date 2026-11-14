@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { projectGameplay } from './helpers/gameplayTrace';
 import { describe, expect, it } from 'vitest';
 import { createHeadlessRunner } from '../src/renderer/src/headless/runner';
 import { createFixtureRunner } from './helpers/authorityFixture';
@@ -62,7 +64,9 @@ describe('copied headless authority', () => {
       expect(Number.isFinite(Position.x[eid])).toBe(true);
       expect(hashState(runner.view())).toBe(hashState(state));
       expect(hashState(state)).toBe(hashState(reference));
-      expect(hashState(state)).toBe('03ef835a'); // independently captured from e2be3c3's original raw step
+      // Independently captured from committed cb026b0 before canonical UI removal.
+      expect([Position.x[eid], Position.y[eid]]).toEqual([2.5471404520791032, 9.547140452079104]);
+      expect(createHash('sha256').update(JSON.stringify(projectGameplay(state))).digest('hex')).toBe('e498ffb122f11c7c6fb0217a5f9a9bc350ae0ef78602be3ebfcb728572e2e1d1');
       runner.dispose();
     }
   });

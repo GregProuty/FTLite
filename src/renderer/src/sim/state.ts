@@ -41,9 +41,8 @@ export interface SimState {
   injectionScratch: Float64Array;
   stations: { level: Uint8Array; failed: Uint8Array; repair: Float64Array; occupant: Int8Array; cursor: Int16Array; heat: Int16Array; coolant: Uint8Array; page: Uint8Array };   // page: the Engineering card's page, 0 power, 1 upgrades (spec Loop-ii section 2)   // heat 0..HEAT_MAX and coolant units per station (spec 2b-i section 3)
   power: { capacity: number };
-  /** Per console group (spec Demo-x-a section 1): the active tab (index into derived.groupStations[g]) and 1 while the stick is on the tab bar. */
-  groups: { tab: Uint8Array; bar: Uint8Array };
-  stick: { heldDir: Int8Array; repeat: Int16Array };   // per player: 0 none, 1 up, 2 down, 3 left, 4 right; ticks until the next repeat edge
+  /** Per console group (spec Demo-x-a section 1): the authoritative active tab (index into derived.groupStations[g]); focus belongs to the client. */
+  groups: { tab: Uint8Array };
   /** Debris objects in fixed slots (spec 2a-ii section 3). stableId is 0 while a slot is inactive. */
   debris: { active: Uint8Array; stableId: Int32Array; room: Int16Array; impactTick: Int32Array; warned: Uint8Array; frequency: Uint8Array; scanned: Uint8Array; scan: Float64Array; kind: Uint8Array };
   weapons: { charge: number; selector: number; torpedoStock: number; torpedoLoaded: number; torpedoLoad: number; torpedoRegen: number; lastShotTick: number; lastShotTarget: number; lastShotResult: number; lastShotKind: number; torpedoFed: number; torpedoDropTick: number; slot: Uint8Array; charge2: Float64Array; cargo: number; lootTick: number; lootId: number; lootPlace: number; lootBought: number; lastShotSelector: number; lastShotDamage: number };   // lastShotSelector / lastShotDamage: the selector value the last shot was fired with and the hull damage it (or its volley) dealt, for the shot-result line (spec Demo-xiv section 2)   // loot*: the last weapon found or bought for the notice (spec Loop-iii section 4): tick (-1 none), id, LootPlace, 1 when bought;   // slot / charge2: the extra slots' loot weapon ids (0 empty) and charges, cargo one spare weapon id (spec Loop-iii section 2); selector 4 / 5 select the extra slots; torpedoFed: 1 while a carried torpedo waits in the loader (magazine ships, spec Coop-ii amendment D4); torpedoDropTick: the last carried torpedo lost at the cap, -1 none; selector 0..2 beam F1..F3, 3 torpedo; beam charge 0..1 survives standing and power failure; the last shot for the renderer (spec Demo-viii section 2): tick (-1 none), the cursor slot fired at, result 0 miss / 1 stripped / 2 hit, kind 0 beam / 1 torpedo
@@ -59,7 +58,7 @@ export interface SimState {
   skills: { xp: Float64Array; lastEngChangeTick: number; lastDoorToggleTick: number; lsDeliveredTick: number; lastShotTick: number };
   science: { scanning: number; system: number; systemState: number; systemStartTick: number; systemTick: number; systemResult: number };   // scanning: 1 while an object scan is running (spec 2b-ii section 4); system*: the system scan's progress 0..1, SystemScan state, start and finish ticks (-1 none) and ScanFound bits with the charted count from bit 3 (spec Demo-x-b section 3)
   /** Tick-scoped scratch (not snapshotted): cleared at the start of every step. */
-  scratch: { doorToggles: Set<number>; doorCycles: Set<number>; airlockToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array; activeThisTick: Uint8Array; votePress: Uint8Array; jumpConfirm: Uint8Array; confirmUsed: Uint8Array };   // confirmUsed: a seated Confirm taken by an agreement or a vote, so the card does not act on it (spec Demo-xi sections 1-2)   // votePress / jumpConfirm: a standing Confirm routed to the vote or the jump confirmation (spec Coop-ii amendment D7)
+  scratch: { commandResults: import('../net/contracts').CommandResult[]; doorToggles: Set<number>; doorCycles: Set<number>; airlockToggles: Set<number>; satThisTick: Uint8Array; stoodThisTick: Uint8Array; activeThisTick: Uint8Array; voteChoices: Int16Array; jumpConfirm: Uint8Array; confirmUsed: Uint8Array };   // confirmUsed: a seated Confirm taken by an agreement or a vote, so the card does not act on it (spec Demo-xi sections 1-2)   // voteChoices / jumpConfirm: explicit choices and validated agreements collected in I (spec Coop-ii amendment D7)
 }
 
 export function deriveStreams(seed: number): RngStreams {
@@ -97,8 +96,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     injectionScratch: new Float64Array(R),
     stations: { level: Uint8Array.from(layout.stations.map((st) => st.allocation)), failed: new Uint8Array(N), repair: new Float64Array(N), occupant: new Int8Array(N).fill(-1), cursor: new Int16Array(N), heat: new Int16Array(N), coolant: new Uint8Array(N), page: new Uint8Array(N) },
     power: { capacity: REACTOR_CAPACITY },
-    groups: { tab: new Uint8Array(derived.groupStations.length), bar: new Uint8Array(derived.groupStations.length) },
-    stick: { heldDir: new Int8Array(playerCount), repeat: new Int16Array(playerCount) },
+    groups: { tab: new Uint8Array(derived.groupStations.length) },
     debris: { active: new Uint8Array(DEBRIS_SLOTS), stableId: new Int32Array(DEBRIS_SLOTS), room: new Int16Array(DEBRIS_SLOTS), impactTick: new Int32Array(DEBRIS_SLOTS), warned: new Uint8Array(DEBRIS_SLOTS), frequency: new Uint8Array(DEBRIS_SLOTS), scanned: new Uint8Array(DEBRIS_SLOTS), scan: new Float64Array(DEBRIS_SLOTS), kind: new Uint8Array(DEBRIS_SLOTS) },
     weapons: { charge: 0, selector: 0, torpedoStock: TORP_START, torpedoLoaded: 0, torpedoLoad: 0, torpedoRegen: 0, lastShotTick: -1, lastShotTarget: -1, lastShotResult: 0, lastShotKind: 0, torpedoFed: 0, torpedoDropTick: -1, slot: new Uint8Array(WEAPON_SLOTS), charge2: new Float64Array(WEAPON_SLOTS), cargo: 0, lootTick: -1, lootId: 0, lootPlace: 0, lootBought: 0, lastShotSelector: 0, lastShotDamage: 0 },
     boarders: { active: new Uint8Array(BOARDER_SLOTS), stableId: new Int32Array(BOARDER_SLOTS), room: new Int16Array(BOARDER_SLOTS), health: new Float64Array(BOARDER_SLOTS), nextMoveTick: new Int32Array(BOARDER_SLOTS), aloneSince: new Int32Array(BOARDER_SLOTS).fill(-1), nextArrivalTick: NEVER },   // no party before the first jump (spec Loop-i section 4b)
@@ -108,7 +106,7 @@ export function createSimState(layout: ShipLayout, playerCount: number, seed: nu
     carrying: new Uint8Array(playerCount),
     crewCharacter: Uint8Array.from({ length: playerCount }, (_, pid) => characters[pid] ?? RECRUIT),
     skills: { xp: new Float64Array(playerCount * SKILL_COUNT), lastEngChangeTick: -1, lastDoorToggleTick: -1, lsDeliveredTick: -1, lastShotTick: -1 },
-    scratch: { doorToggles: new Set<number>(), doorCycles: new Set<number>(), airlockToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount), votePress: new Uint8Array(playerCount), jumpConfirm: new Uint8Array(playerCount), confirmUsed: new Uint8Array(playerCount) }
+    scratch: { commandResults: [], doorToggles: new Set<number>(), doorCycles: new Set<number>(), airlockToggles: new Set<number>(), satThisTick: new Uint8Array(playerCount), stoodThisTick: new Uint8Array(playerCount), activeThisTick: new Uint8Array(playerCount), voteChoices: new Int16Array(playerCount).fill(-1), jumpConfirm: new Uint8Array(playerCount), confirmUsed: new Uint8Array(playerCount) }
   };
   state.run.quirk = nextInt(rng.quirk, QUIRK_COUNT);   // the one draw from the seventh stream, before any override
   if (options.quirk !== undefined) { const q = options.quirk; if (!Number.isInteger(q) || q < 0 || q >= QUIRK_COUNT) throw new Error(`quirk out of range: ${q}`); state.run.quirk = q; }

@@ -48,7 +48,7 @@ it('focused Confirm resumes retained debt without a render and reaches gameplay 
       let core: ReturnType<typeof createFixtureAuthority>;
       let attach: Parameters<typeof core.attach>;
       return { attach(...args) { attach = args; return () => {}; },
-        start(init) { owner = createSimState(LAYOUT, init.playerCount, init.seed, init.characters); core = createFixtureAuthority({ ...deps, init }, owner); core.attach(...attach); },
+        start(init) { owner = createSimState(LAYOUT, init.playerCount, init.seed, init.characters); owner.run.event = 0; owner.run.eventChoice = -1; core = createFixtureAuthority({ ...deps, init }, owner); core.attach(...attach); },
         pump() { core.pump(); }, dispose() { core.dispose(); } };
     } });
   const sample = (extra: Partial<SourceSample>) => { samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: false, cancel: false, any: true, ...extra }]; };
@@ -60,8 +60,8 @@ it('focused Confirm resumes retained debt without a render and reaches gameplay 
   (owner as unknown as { rooms: null }).rooms = null; now = 15050; session.pump();
   const journal = crash as unknown as CrashRecord;
   expect(journal.baseline.header.tick).toBe(300);
-  expect(journal.ticks.map((tick) => tick.input.legacyCardInput.map((entry) => entry.input.confirmPressed))).toEqual([[true], [], []]);
-  expect(journal.ticks[0]!.input.legacyCardInput[0]!.requestedTick).toBe(300);
+  expect(journal.ticks.map((tick) => tick.input.commands.filter(entry => entry.command.kind !== 'setPaused').map(entry => entry.command.kind))).toEqual([['vote'], [], []]);
+  expect(journal.ticks[0]!.input.commands[0]!.requestedTick).toBe(300);
   session.dispose();
 });
 
@@ -262,7 +262,7 @@ describe('session', () => {
     press({ confirm: true }); session.frame(); press({});                    // start again
     expect(calls.filter((c) => c === 'reset')).toHaveLength(2);
   });
-  describe('credits sub-state (spec §4)', () => {
+  describe('credits sub-state (spec Â§4)', () => {
     const joined = () => { const h = harness(); h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1); return h; };
     it('opens on Cancel from a joined player, shows the lines, and stays in the lobby', () => {
       const h = joined();
@@ -315,7 +315,7 @@ describe('session', () => {
     it('a reconnecting device cannot close the credits on the frame it reclaims its slot', () => {
       const h = joined();
       h.press('a', { cancel: true }); h.frames(1); h.release(); h.frames(1);
-      h.pressMany(); h.frames(1);                                                     // 'a' vanishes → reconnect
+      h.pressMany(); h.frames(1);                                                     // 'a' vanishes â†’ reconnect
       expect(h.last().players[0]!.status).toBe('reconnect');
       h.press('a', { cancel: true, any: true }); h.frames(1); h.release(); h.frames(1); // reclaim + Cancel in one frame: ignored
       expect(h.last().players[0]!.status).toBe('active'); expect(h.session.creditsOpen).toBe(true);

@@ -1,3 +1,5 @@
+import { navigationInput } from '../src/renderer/src/sim/run';
+import { Dir } from '../src/renderer/src/sim/dir';
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
@@ -217,4 +219,11 @@ describe('P2: fire burns systems (spec Demo-xi section 5, amendment 3)', () => {
     const secs = (s.tick - start) / TICK_HZ; expect(s.stations.failed[w]).toBe(1); expect(secs).toBeGreaterThan(15); expect(secs).toBeLessThan(35);
     const e = hot(); igniteRoom(e.s, e.room); run(e.s, 5 * TICK_HZ); extinguishRoom(e.s, e.room); run(e.s, 10 * TICK_HZ); expect([e.s.stations.failed[e.w], e.s.stations.heat[e.w]]).toEqual([0, 0]);
   });
+});
+
+it('the remaining Navigation bridge cannot execute an event choice', () => {
+  const s = makeState(2); setEvent(s, 0); const nav = seatNavigator(s, 0);
+  s.stations.cursor[nav] = navRows(s).findIndex(row => row.select === 'choice');
+  navigationInput(s, nav, Dir.None, true);
+  expect(s.run.vote[0]).toBe(-1); expect(s.run.eventOpenTick).toBe(-1);
 });

@@ -199,18 +199,27 @@ export function trackNavCursor(state: SimState): void {
   noteNavCursor(state, nav, rows);
 }
 
+/** Pure selectable-row traversal used by the client and temporary Navigation bridge. */
+export function navCursorAfterDirection(rows: readonly NavRow[], cursor: number, dir: number): number {
+  if (!rows.some(row => row.select !== 'none')) return 0;
+  let k = rows[cursor]?.select && rows[cursor]!.select !== 'none' ? cursor : rows.findIndex(row => row.select !== 'none');
+  if (dir === Dir.Up || dir === Dir.Down) {
+    const delta = dir === Dir.Up ? -1 : 1;
+    do k = (k + delta + rows.length) % rows.length; while (rows[k]!.select === 'none');
+  }
+  return k;
+}
+
 /** Seated Navigation input: Up/Down move over the selectable rows, a Confirm edge acts on the row: choose, buy or (with a ready drive) jump (spec Run-ii section 6). */
 export function navigationInput(state: SimState, i: number, dir: number, confirm: boolean): void {
   trackNavCursor(state);
-  const rows = navRows(state), c = state.stations.cursor, n = rows.length;
+  const rows = navRows(state), c = state.stations.cursor;
   if (!rows.some((row) => row.select !== 'none')) return;
-  const stepTo = (delta: number) => { let k = c[i]!; do k = (k + delta + n) % n; while (rows[k]!.select === 'none'); c[i] = k; };
-  if (dir === Dir.Up) stepTo(-1); else if (dir === Dir.Down) stepTo(1);
+  c[i] = navCursorAfterDirection(rows, c[i]!, dir);
   noteNavCursor(state, i, rows);   // the officer's own move is the remembered row before any buy or vote this tick
   if (!confirm) return;
   const row = rows[c[i]!]!;
-  if (row.select === 'choice' && row.enabled) { const pid = state.stations.occupant[i]!; if (pid >= 0 && state.run.vote[pid] !== row.index) { state.run.vote[pid] = row.index; state.run.voteTick = state.tick; } }   // the officer's vote (spec Coop-ii amendment D7)
-  else if (row.select === 'buy' && row.enabled) { buy(state, row.index); clampNavCursor(state); }
+  if (row.select === 'buy' && row.enabled) { buy(state, row.index); clampNavCursor(state); }
   else if ((row.select === 'jump' || row.select === 'sector') && state.run.jumpCharge >= 1) requestJump(state, row.index);
   else if (row.select === 'wait' && row.enabled) startWait(state);
   else if (row.select === 'evade') startEvade(state);
@@ -334,7 +343,7 @@ export function tallyVotes(state: SimState): { choice: number; voters: number; u
   return { choice: ov >= 0 && choiceEnabled(state, r.event, ov) && counts[ov] === top ? ov : counts.indexOf(top), voters, unanimous: false };
 }
 
-/** Step 2a, the single decision point (spec Coop-ii section 3): standing Confirms vote (the first press option 1, then toggling); a vote of a crew member who is not conscious is discarded; the event waits for the first vote (spec Demo-x-b section 2), then resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after the first vote. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
+/** Step 2a, the single decision point (spec Coop-ii section 3): explicit collected votes are assigned; a vote of a crew member who is not conscious is discarded; the event waits for the first vote (spec Demo-x-b section 2), then resolves when every conscious player has an enabled vote unchanged for VOTE_SETTLE seconds, or VOTE_SECONDS after the first vote. A pending jump goes on a standing Confirm (or once the pilot is the only one conscious) and lapses after CONFIRM_SECONDS. */
 /** A jump by its row code: a beacon index, or EXIT_JUMP for the sector jump. */
 function doJump(state: SimState, code: number): void { if (code === EXIT_JUMP) sectorJump(state); else jumpShip(state, beaconAt(code)); }
 
@@ -343,7 +352,7 @@ export function decisionSystem(state: SimState): void {
   waitStep(state);   // the wait for help ends (spec Loop-i section 2)
   if (r.event >= 0 && r.eventChoice < 0) {
     for (let pid = 0; pid < state.playerCount; pid++) {
-      if (state.scratch.votePress[pid]) { r.vote[pid] = (r.vote[pid]! + 1) % EVENT_DEFS[r.event]!.choices.length; r.voteTick = state.tick; }   // option 1 first, then round the options (spec Loop-v: two or three)
+      if (state.scratch.voteChoices[pid]! >= 0) { r.vote[pid] = state.scratch.voteChoices[pid]!; r.voteTick = state.tick; }   // The client selected this exact choice; authority never cycles.
       if (Life.state[state.crew[pid]!] !== LifeState.Conscious) r.vote[pid] = -1;
     }
     if (r.eventOpenTick < 0 && r.vote.some((v) => v >= 0)) r.eventOpenTick = state.tick;   // the event waits for the crew: the limit starts at the first vote, a standing press or the officer's row (spec Demo-x-b section 2)

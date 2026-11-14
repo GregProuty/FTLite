@@ -5,20 +5,20 @@ import { SIM_VERSION, DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, SECTOR_COLUMNS, 
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
-export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'airlocks', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'stick', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
-const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 8, POWER_FIELDS = 1, STICK_FIELDS = 2, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 19 + 2 * WEAPON_SLOTS, SCIENCE_FIELDS = 6, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 18 + 2 * ENEMY_ROOMS + 3 * ENEMY_SYSTEM_COUNT, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
+export const FLATTEN_MANIFEST = ['header', 'rng', 'rooms', 'doors', 'airlocks', 'breaches', 'o2Counters', 'director', 'telemetry', 'stations', 'power', 'debris', 'weapons', 'enemy', 'boarders', 'run', 'science', 'skills', 'characters', 'crew'];
+const HEADER_FIELDS = 10, COUNTER_FIELDS = 5, DIRECTOR_FIELDS = 8 + STATION_COUNT, CREW_FIELDS = 9, STATION_FIELDS = 8, POWER_FIELDS = 1, ROOM_FIELDS = 4, DEBRIS_FIELDS = 9, WEAPONS_FIELDS = 19 + 2 * WEAPON_SLOTS, SCIENCE_FIELDS = 6, SKILL_STAMP_FIELDS = 4, ENEMY_FIELDS = 18 + 2 * ENEMY_ROOMS + 3 * ENEMY_SYSTEM_COUNT, BOARDERS_FIELDS = 1 + 6 * BOARDER_SLOTS;
 const MAP_FIELDS = SECTOR_COLUMNS * (1 + 2 * NODE_STRIDE);   // colNodes, edgeMask, nodeType (spec Loop-i section 6)
 const RUN_FIELDS = 4 + MAP_FIELDS + 3 + STATION_COUNT + 3 + 2 + 3 + 1 + 2 + 4 + 7 + SECTOR_COLUMNS * NODE_STRIDE + 3 + 3 * SECTOR_COLUMNS * NODE_STRIDE + 1 + 3 + 1;   // + navSig, navSelect, navIndex (spec Demo-xi section 3), arrivalTick (amendment 10)   // + ambush, cache, revealed and ambushState (spec Demo-x-b section 3)   // + eventsSeen (spec Loop-v section 3)   // + finalBeacon (spec Loop-iv section 4)   // + shopWeapon (spec Loop-iii section 3)   // + sector, fuel, pursuit, waitUntilTick, pursuitFought, calm, wakeTick and the visited marks (spec Loop-i sections 4b and 6)   // + fieldNextTick (spec Demo-viii section 1), + the evade ticks (spec Coop-ii section 1), + the vote and jump ticks (section 3); the votes are per player
 const TELEMETRY_SCALARS = 33, TELEMETRY_FIXED = STATION_COUNT + 4 + 3 + 4;
 
-/** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec §4). */
+/** Ship identity (id hash + content hash) and sim version as numbers, so they are part of the canonical state (spec Ã‚Â§4). */
 export function layoutHashNumber(s: SimState): number { return parseInt(s.derived.layoutHash, 16); }
 export function layoutIdNumber(s: SimState): number { return parseInt(s.derived.idHash, 16); }
 
 function size(s: SimState): number {
   return HEADER_FIELDS + STREAM_NAMES.length + s.rooms.o2.length * ROOM_FIELDS + s.doors.state.length * 3 + s.airlocks.open.length
     + s.breaches.active.length * 2 + COUNTER_FIELDS + DIRECTOR_FIELDS + TELEMETRY_SCALARS + TELEMETRY_FIXED + 3 * s.playerCount
-    + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + 2 * s.groups.tab.length + s.playerCount * STICK_FIELDS
+    + s.stations.level.length * STATION_FIELDS + POWER_FIELDS + s.groups.tab.length
     + DEBRIS_SLOTS * DEBRIS_FIELDS + WEAPONS_FIELDS + ENEMY_FIELDS + BOARDERS_FIELDS + RUN_FIELDS + s.playerCount + SCIENCE_FIELDS + s.playerCount * SKILL_COUNT + SKILL_STAMP_FIELDS + s.crew.length + s.crew.length * CREW_FIELDS + s.playerCount;
 }
 
@@ -43,8 +43,7 @@ export function flatten(s: SimState): Float64Array {
   for (const v of s.stations.occupant) put(v); for (const v of s.stations.cursor) put(v);
   for (const v of s.stations.heat) put(v); for (const v of s.stations.coolant) put(v); for (const v of s.stations.page) put(v);
   put(s.power.capacity);
-  for (const v of s.groups.tab) put(v); for (const v of s.groups.bar) put(v);   // none on a ship without console groups (spec Demo-x-a section 1)
-  for (let p = 0; p < s.playerCount; p++) put(s.stick.heldDir[p]!); for (let p = 0; p < s.playerCount; p++) put(s.stick.repeat[p]!);
+  for (const v of s.groups.tab) put(v);   // none on a ship without console groups (spec Demo-x-a section 1)
   const dbf = s.debris;
   for (const v of dbf.active) put(v); for (const v of dbf.stableId) put(v); for (const v of dbf.room) put(v); for (const v of dbf.impactTick) put(v); for (const v of dbf.warned) put(v);
   for (const v of dbf.frequency) put(v); for (const v of dbf.scanned) put(v); for (const v of dbf.scan) put(v); for (const v of dbf.kind) put(v);
@@ -102,8 +101,7 @@ export function unflatten(s: SimState, v: Float64Array): void {
   for (let i = 0; i < s.stations.coolant.length; i++) s.stations.coolant[i] = get();
   for (let i = 0; i < s.stations.page.length; i++) s.stations.page[i] = get();
   s.power.capacity = get();
-  for (let g = 0; g < s.groups.tab.length; g++) s.groups.tab[g] = get(); for (let g = 0; g < s.groups.bar.length; g++) s.groups.bar[g] = get();
-  for (let p = 0; p < s.playerCount; p++) s.stick.heldDir[p] = get(); for (let p = 0; p < s.playerCount; p++) s.stick.repeat[p] = get();
+  for (let g = 0; g < s.groups.tab.length; g++) s.groups.tab[g] = get();
   const db = s.debris;
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.active[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.stableId[k] = get();
   for (let k = 0; k < DEBRIS_SLOTS; k++) db.room[k] = get(); for (let k = 0; k < DEBRIS_SLOTS; k++) db.impactTick[k] = get();

@@ -36,8 +36,7 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
     send(actions: ClientActions): void {
       if (disposed) return;
       for (const frame of actions.held) if (owned.includes(frame.player)) link.send('unreliable-latest', encodeMessage({ kind: 'held', frame }));
-      for (const envelope of actions.commands) if (owned.includes(envelope.id.player)) link.send('reliable-ordered', encodeMessage({ kind: 'command', envelope }));
-      for (const envelope of actions.legacyCardInput) if (owned.includes(envelope.id.player)) link.send('reliable-ordered', encodeMessage(envelope));
+      for (const envelope of [...actions.commands, ...actions.legacyCardInput].sort((a,b) => a.id.player-b.id.player || a.id.sequence-b.id.sequence)) if (owned.includes(envelope.id.player)) link.send('reliable-ordered', encodeMessage('kind' in envelope ? envelope : { kind: 'command', envelope }));
     },
     dispose() { disposed = true; unsubscribe(); events.length = 0; results.length = 0; }
   };

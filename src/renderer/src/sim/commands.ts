@@ -1,24 +1,117 @@
 import { NEUTRAL_INTENT, type Intent } from '../../../shared/intent';
-import type { CommandEnvelope, HeldInput, LegacyInputEnvelope } from '../net/contracts';
+import type { CommandEnvelope, CommandReason, CommandResult, HeldInput, LegacyInputEnvelope, VisitRef, EventRef } from '../net/contracts';
+import type { SimState } from './state';
+import { Life, LifeState, Position, Seated } from './components';
+import { roomAt } from './grid';
+import { inReachOfTile } from './interact';
+import { stationOnline, sitDown, standUp, selectTab } from './stations';
+import { shedPower } from './power';
+import { StationKind } from './stationKinds';
+import { hereIndex, navRows, navCursorAfterDirection } from './run';
+import { choiceEnabled, EVENT_DEFS } from './events';
+import { CONFIRM_SECONDS, TICK_HZ } from './tuning';
 
 export interface TickInput { held: readonly HeldInput[]; commands: readonly CommandEnvelope[] }
 export interface MigrationTickInput extends TickInput { legacyCardInput: readonly LegacyInputEnvelope[] }
-/** Control envelopes are removed at pump entry, never executed in a sim phase. */
 export function isPauseControl(envelope: CommandEnvelope | LegacyInputEnvelope): envelope is CommandEnvelope & { command: { kind: 'setPaused'; paused: boolean } } {
   return !('kind' in envelope) && envelope.command.kind === 'setPaused';
 }
-/** Immutable temporary phase data. Only the authority bridge admits press envelopes.
- * Held axes also drive unmigrated console directions here until task 5 owns repeat.
- * No envelope means no one-shot; held movement/repair and direction remain available.
- */
-export function legacyPhaseInputs(input: MigrationTickInput, players: number): Intent[] {
-  const intents = Array.from({ length: players }, (_, p) => ({ ...NEUTRAL_INTENT, ...input.held[p] }));
-  for (const envelope of input.legacyCardInput) {
-    const target = intents[envelope.id.player];
-    if (!target) continue;
-    target.interactPressed ||= envelope.input.interactPressed;
-    target.confirmPressed ||= envelope.input.confirmPressed;
-    target.cancelPressed ||= envelope.input.cancelPressed;
+/** Held inputs never carry one-shot actions into the simulation. */
+export function heldPhaseInputs(input: TickInput, players: number): Intent[] {
+  return Array.from({ length: players }, (_, p) => ({ ...NEUTRAL_INTENT, ...input.held[p] }));
+}
+export function visitRef(state: SimState): VisitRef { return { sector: state.run.sector, beacon: hereIndex(state), arrivalTick: state.run.arrivalTick }; }
+export function eventRef(state: SimState): EventRef { return { visit: visitRef(state), eventId: state.run.event }; }
+export function sameVisit(state: SimState, visit: VisitRef): boolean { return visit.sector === state.run.sector && visit.beacon === hereIndex(state) && visit.arrivalTick === state.run.arrivalTick; }
+export function navigationOfficer(state: SimState): number { const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 ? state.stations.occupant[nav]! : -1; }
+export function commandResult(state: SimState, envelope: CommandEnvelope | LegacyInputEnvelope, reason?: CommandReason, noop = false): CommandResult {
+  return { id: { ...envelope.id }, tick: state.tick, status: reason ? 'rejected' : noop ? 'noop' : 'applied', ...(reason ? { reason } : {}) };
+}
+function conscious(state: SimState, pid: number): boolean { return pid >= 0 && pid < state.playerCount && Life.state[state.crew[pid]!] === LifeState.Conscious; }
+function voteReason(state: SimState, envelope: CommandEnvelope): CommandReason | undefined {
+  const c = envelope.command; if (c.kind !== 'vote') return 'unsupported';
+  if (!sameVisit(state, c.event.visit) || c.event.eventId !== state.run.event || state.run.eventChoice >= 0 || state.run.event < 0) return 'stale-target';
+  if (!Number.isInteger(c.choice) || c.choice < 0 || c.choice >= EVENT_DEFS[state.run.event]!.choices.length) return 'unavailable';
+  return undefined;
+}
+/** I phase: validate explicit targets, collect votes/agreements, then arbitrate seats. */
+export function applyInteractionCommands(state: SimState, commands: readonly CommandEnvelope[]): void {
+  const requests = new Map<number, CommandEnvelope[]>();
+  for (const envelope of commands) {
+    const { command: c, id: { player: pid } } = envelope;
+    if (!['sit', 'toggleDoorLocal', 'vote', 'jumpAgree'].includes(c.kind)) continue;
+    // Navigation votes execute at the officer's C slot, including invalid inactive-tab attempts.
+    if (c.kind === 'vote' && navigationOfficer(state) === pid) continue;
+    let reason: CommandReason | undefined;
+    if (envelope.requestedTick !== state.tick) reason = 'stale-tick';
+    else if (!conscious(state, pid)) reason = 'unavailable';
+    else {
+      const eid = state.crew[pid]!;
+      if (c.kind === 'sit') {
+        const i = c.station, tile = state.derived.stationTile[i], g = state.derived.stationGroup[i], members = g !== undefined && g >= 0 ? state.derived.groupStations[g]! : [i];
+        if (Seated.station[eid]! >= 0) reason = 'invalid-seat';
+        else if (tile === undefined || roomAt(state, Position.x[eid]!, Position.y[eid]!) !== state.derived.stationRoom[i] || !inReachOfTile(state, eid, tile)) reason = 'stale-target';
+        else if (members.some(j => state.stations.occupant[j]! >= 0) || !members.some(j => stationOnline(state, j))) reason = 'unavailable';
+        else { const first = members[0]!; requests.set(first, [...(requests.get(first) ?? []), envelope]); continue; }
+      } else if (c.kind === 'toggleDoorLocal') {
+        if (Seated.station[eid]! >= 0) reason = 'invalid-seat';
+        else if (!state.derived.edgeIsDoor[c.edge] || !inReachOfTile(state, eid, state.derived.edgeTile[c.edge]!)) reason = 'stale-target';
+        else state.scratch.doorToggles.add(c.edge);
+      } else if (c.kind === 'vote') {
+        reason = voteReason(state, envelope);
+        if (!reason) { state.scratch.voteChoices[pid] = c.choice; state.scratch.confirmUsed[pid] = 1; }
+      } else if (c.kind === 'jumpAgree') {
+        const r = state.run;
+        if (navigationOfficer(state) === pid) reason = 'invalid-seat';
+        else if (!sameVisit(state, c.pending.visit) || r.jumpPending < 0 || r.jumpPending !== c.pending.destination || r.jumpPendingTick !== c.pending.requestedAtTick) reason = 'stale-target';
+        else if ((r.event >= 0 && r.eventChoice < 0) || state.tick >= r.jumpPendingTick + CONFIRM_SECONDS * TICK_HZ) reason = 'unavailable';
+        else { state.scratch.jumpConfirm[pid] = 1; state.scratch.confirmUsed[pid] = 1; }
+      }
+    }
+    state.scratch.commandResults.push(commandResult(state, envelope, reason));
   }
-  return intents;
+  for (const station of [...requests.keys()].sort((a,b) => a-b)) {
+    const ordered = requests.get(station)!.sort((a,b) => a.id.player-b.id.player || a.id.sequence-b.id.sequence);
+    for (const envelope of ordered) {
+      const pid = envelope.id.player;
+      if (state.scratch.satThisTick[pid] || state.stations.occupant[station]! >= 0) state.scratch.commandResults.push(commandResult(state, envelope, 'unavailable'));
+      else { sitDown(state, pid, station); state.scratch.satThisTick[pid] = 1; state.scratch.commandResults.push(commandResult(state, envelope)); }
+    }
+  }
+}
+/** C phase; callers preserve ascending player/sequence order and whole-slot stand/tab consumption. */
+export function applyConsoleCommand(state: SimState, envelope: CommandEnvelope): CommandResult {
+  const { command: c, id: { player: pid } } = envelope;
+  if (envelope.requestedTick !== state.tick) return commandResult(state, envelope, 'stale-tick');
+  if (c.kind === 'moveTo') return commandResult(state, envelope, 'unsupported');
+  if (!conscious(state, pid)) return commandResult(state, envelope, 'unavailable');
+  const seat = Seated.station[state.crew[pid]!]!;
+  if (seat < 0 || state.scratch.satThisTick[pid] || state.scratch.stoodThisTick[pid]) return commandResult(state, envelope, 'invalid-seat');
+  if (c.kind === 'stand') { standUp(state, pid); shedPower(state); state.scratch.stoodThisTick[pid] = 1; return commandResult(state, envelope); }
+  if (c.kind === 'tab') {
+    const members = state.derived.groupStations[c.group];
+    if (!members || state.derived.stationGroup[seat] !== c.group || !members.includes(c.station) || members.some(i => state.stations.occupant[i] !== pid)) return commandResult(state, envelope, 'invalid-seat');
+    selectTab(state, pid, c.group, members.indexOf(c.station)); return commandResult(state, envelope);
+  }
+  if (c.kind === 'vote') {
+    const nav = state.derived.stationOfKind[StationKind.Navigation]!;
+    if (navigationOfficer(state) !== pid || seat !== nav) return commandResult(state, envelope, 'invalid-seat');
+    const reason = voteReason(state, envelope); if (reason) return commandResult(state, envelope, reason);
+    if ((state.derived.stationGroup[seat]! >= 0 && !stationOnline(state, seat)) || !choiceEnabled(state, state.run.event, c.choice)) return commandResult(state, envelope, 'unavailable');
+    const unchanged = state.run.vote[pid] === c.choice;
+    if (!unchanged) { state.run.vote[pid] = c.choice; state.run.voteTick = state.tick; }
+    return commandResult(state, envelope, undefined, unchanged);
+  }
+  return commandResult(state, envelope, 'unsupported');
+}
+/** Admission and execution both guard the single temporary bridge. */
+export function legacyCardReason(state: SimState, envelope: LegacyInputEnvelope, inTick = false): CommandReason | undefined {
+  const pid = envelope.id.player, input = envelope.input, i = input.station;
+  if (envelope.requestedTick !== state.tick) return 'stale-tick';
+  if (!conscious(state, pid) || Seated.station[state.crew[pid]!] !== i || state.stations.occupant[i] !== pid || (inTick && (state.scratch.satThisTick[pid] || state.scratch.stoodThisTick[pid]))) return 'invalid-seat';
+  const kind = state.derived.stationKind[i];
+  if (![StationKind.Engineering, StationKind.Doors, StationKind.Weapons, StationKind.Science, StationKind.Navigation].some(k => k === kind)) return 'unsupported';
+  if (state.derived.stationGroup[i]! >= 0 && !stationOnline(state, i)) return 'unavailable';
+  if (kind === StationKind.Navigation && input.confirm) { const rows = navRows(state); if (rows[navCursorAfterDirection(rows, state.stations.cursor[i]!, input.direction)]?.select === 'choice') return 'unsupported'; }
+  return undefined;
 }

@@ -166,7 +166,7 @@ export function createSession(deps: SessionDeps) {
     frame() {
       for (const cue of pendingCues) deps.playCue?.(cue); pendingCues.clear();
       if (phase !== 'error') runtime?.frame();
-      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null, state && phase === 'running' ? flashingKinds(callouts, state.tick) : []));
+      deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null, state && phase === 'running' ? flashingKinds(callouts, state.tick) : [], runtime?.ui));
     }
   };
 }

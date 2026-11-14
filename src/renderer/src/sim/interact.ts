@@ -7,7 +7,8 @@ import { repairBreach } from './hazards/breach';
 import { reviveCrew } from './crew';
 import { boarderTarget, damageBoarder, combatDps } from './boarders';
 import { intentFor } from './step';
-import { stationOnline, sitDown } from './stations';
+import { applyInteractionCommands } from './commands';
+import type { CommandEnvelope } from '../net/contracts';
 import { repairStation } from './power';
 import { StationKind } from './stationKinds';
 import { canDeliver, pickUpTorpedo, deliverTorpedo } from './torpedoes';
@@ -97,31 +98,14 @@ export function confirmTarget(state: SimState, pid: number): ConfirmTarget {
 }
 
 /** Step 1 (before movement): Confirm actions, revive arbitration, repair and revive progress. */
-export function interactSystem(state: SimState, intents: readonly Intent[]): void {
+export function interactSystem(state: SimState, intents: readonly Intent[], commands: readonly CommandEnvelope[] = []): void {
   const targets: Target[] = [];
-  const sitRequests = new Map<number, number[]>();
-  const nav = state.derived.stationOfKind[StationKind.Navigation]!, navOfficer = nav >= 0 ? state.stations.occupant[nav]! : -1;   // the occupant, on every tab of a group (spec Demo-xi amendment 1)
   for (let pid = 0; pid < state.playerCount; pid++) {
     const it = intentFor(intents, pid);
-    const eid = state.crew[pid]!, conscious = Life.state[eid] === LifeState.Conscious, standing = conscious && Seated.station[eid]! < 0;
-    const otherSeat = conscious && Seated.station[eid]! >= 0 && pid !== navOfficer;   // seated, and not the Navigation occupant
-    if (it.confirmPressed && (standing || otherSeat) && state.run.event >= 0 && state.run.eventChoice < 0) { state.scratch.votePress[pid] = 1; if (otherSeat) state.scratch.confirmUsed[pid] = 1; }   // an open event: a standing or other seated Confirm is a vote, never a door, a seat or the card; before a pending jump (spec Coop-ii amendment D7, Demo-xi section 2 and amendment 2)
-    else if (it.confirmPressed && (standing || otherSeat) && state.run.jumpPending >= 0) { state.scratch.jumpConfirm[pid] = 1; if (otherSeat) state.scratch.confirmUsed[pid] = 1; }   // a pending jump: any other conscious player's Confirm agrees, seated or standing; a seated press is consumed (spec Demo-xi section 1)
-    else if (it.confirmPressed && standing) {
-      const c = confirmTarget(state, pid);
-      if (c.kind === ConfirmKind.Door) state.scratch.doorToggles.add(c.index);       // applied once per door at the end of consoleSystem
-      else if (c.kind === ConfirmKind.Console) { const g = state.derived.stationGroup[c.index]!, i = g >= 0 ? state.derived.groupStations[g]![0]! : c.index; sitRequests.set(i, [...(sitRequests.get(i) ?? []), pid]); }   // a console group seats at its first tab (spec Demo-x-a section 1)
-    }
     targets.push(it.interactHeld ? interactTarget(state, pid) : NONE);
   }
-  // Seating: online and unoccupied; the lowest pid wins a tie; the seating Confirm is consumed (spec section 4). A console group needs one member online (spec Demo-x-a section 1).
-  for (const i of [...sitRequests.keys()].sort((a, b) => a - b)) {
-    const g = state.derived.stationGroup[i]!, members = g >= 0 ? state.derived.groupStations[g]! : [i];
-    if (!members.some((j) => stationOnline(state, j)) || state.stations.occupant[i]! >= 0) continue;
-    const pid = Math.min(...sitRequests.get(i)!);
-    sitDown(state, pid, i); state.scratch.satThisTick[pid] = 1;
-    targets[pid] = NONE;                                                            // a player who sits this tick repairs or revives nothing this tick
-  }
+  applyInteractionCommands(state, commands);
+  for (let pid = 0; pid < state.playerCount; pid++) if (state.scratch.satThisTick[pid]) targets[pid] = NONE;
   // Hands together (spec Coop-i section 2, amendments C3 and C5): holders per exact (kind, index); two or more each work at TEAM_MULT, and teamSeconds counts once per such target per tick.
   const holders = new Map<number, number>();
   const key = (t: Target): number => t.kind * 4096 + t.index;

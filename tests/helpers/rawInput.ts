@@ -18,3 +18,11 @@ export function step(state: SimState, intents: readonly Intent[]): void {
   if (state.ended) return;
   const runner = fixtureRunner(state); runner.refresh(); runner.advance(intents.map(rawFrame));
 }
+
+/** A pure unit run() with no input explicitly releases any existing fixture UI.
+ * This is not used by the byte runner, gates, parity, golden or acceptance.
+ */
+export function neutralFixtureTick(state: SimState): void {
+  const runner = runners.get(state); if (!runner) return;
+  for (const producer of runner.ui.players) { producer.heldDir = 0; producer.repeat = 0; producer.lastTick = state.tick; }
+}

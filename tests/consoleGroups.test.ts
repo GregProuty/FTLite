@@ -3,7 +3,7 @@ import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { createSimState, type SimState } from '../src/renderer/src/sim/state';
-import { step } from './helpers/rawInput';
+import { step, fixtureRunner } from './helpers/rawInput';
 import { Seated } from '../src/renderer/src/sim/components';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import { failStation, shiftBar } from '../src/renderer/src/sim/power';
@@ -66,19 +66,19 @@ describe('seating at a console group', () => {
     expect(s.stations.occupant[at(s, StationKind.Navigation)]).toBe(0);
     expect(s.stations.occupant[at(s, StationKind.Weapons)]).toBe(0);
     expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Navigation));
-    expect(s.groups.tab[0]).toBe(0); expect(s.groups.bar[0]).toBe(0);
+    expect(s.groups.tab[0]).toBe(0); expect(Number(fixtureRunner(s).ui.groupBar[0])).toBe(0);
   });
   it('Up from the first row reaches the tab bar, Left/Right switch tabs, Down goes back; sitting again opens the first tab', () => {
     const s = state(); sitAt(s, 12, 2);
     expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Science));
-    edge(s, 0, -1); expect(s.groups.bar[1]).toBe(1);
+    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(1);
     edge(s, 1, 0); expect(s.groups.tab[1]).toBe(1); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Engineering));
     edge(s, 1, 0); expect(s.groups.tab[1]).toBe(2); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Doors));
     edge(s, 1, 0); expect(s.groups.tab[1]).toBe(0);   // wraps
     edge(s, -1, 0); expect(s.groups.tab[1]).toBe(2);
-    edge(s, 0, 1); expect(s.groups.bar[1]).toBe(0); expect(s.groups.tab[1]).toBe(2);
+    edge(s, 0, 1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0); expect(s.groups.tab[1]).toBe(2);
     step(s, press({ cancelPressed: true })); step(s, press({}));
-    expect(s.groups.bar[1]).toBe(0);
+    expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0);
     sitAt(s, 12, 2); expect(s.groups.tab[1]).toBe(0); expect(Seated.station[s.crew[0]!]).toBe(at(s, StationKind.Science));
   });
   it('input reaches only the active tab\'s station', () => {
@@ -91,8 +91,8 @@ describe('seating at a console group', () => {
     expect(s.stations.cursor[eng]).toBe(StationKind.Weapons); expect(s.stations.cursor[doors]).toBe(doorsCursor);
     const level = s.stations.level[wpn]!;
     edge(s, -1, 0); expect(s.stations.level[wpn]).toBe(level - 1);   // Left pulls a bar
-    edge(s, 0, -1); expect(s.groups.bar[1]).toBe(0); expect(s.stations.cursor[eng]).toBe(0);   // row 0
-    edge(s, 0, -1); expect(s.groups.bar[1]).toBe(1);
+    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(0); expect(s.stations.cursor[eng]).toBe(0);   // row 0
+    edge(s, 0, -1); expect(Number(fixtureRunner(s).ui.groupBar[1])).toBe(1);
     edge(s, 1, 0); edge(s, 0, 1); edge(s, 0, 1);   // the Doors tab: Down moves the Doors cursor only
     expect(s.stations.cursor[doors]).toBe(doorsCursor + 1); expect(s.stations.cursor[eng]).toBe(0); expect(s.stations.cursor[sci]).toBe(sciCursor);
   });
@@ -122,12 +122,12 @@ describe('seating at a console group', () => {
     const s = state(); sitAt(s, 12, 2); standUp(s, 0);
     for (const k of [StationKind.Science, StationKind.Engineering, StationKind.Doors]) expect(s.stations.occupant[at(s, k)]).toBe(-1);
   });
-  it('the tab and the tab-bar focus round-trip in a snapshot and each changes the hash', () => {
+  it('the authoritative tab round-trips while client focus never changes the hash', () => {
     const s = state(); sitAt(s, 12, 2); edge(s, 0, -1); edge(s, 1, 0);
     const t = loadSnapshot(GROUPED, JSON.parse(JSON.stringify(saveSnapshot(s))));
-    expect(hashState(t)).toBe(hashState(s)); expect(t.groups.tab[1]).toBe(1); expect(t.groups.bar[1]).toBe(1);
+    expect(hashState(t)).toBe(hashState(s)); expect(t.groups.tab[1]).toBe(1); expect('bar' in t.groups).toBe(false);
     const h = hashState(s); s.groups.tab[0] = 1; expect(hashState(s)).not.toBe(h);
-    const h2 = hashState(s); s.groups.bar[0] = 1; expect(hashState(s)).not.toBe(h2);
+    const h2 = hashState(s); fixtureRunner(s).ui.groupBar[0] = true; expect(hashState(s)).toBe(h2);
   });
 });
 

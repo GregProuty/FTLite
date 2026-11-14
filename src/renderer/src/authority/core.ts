@@ -69,7 +69,7 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
       const envelope = message.kind === 'command' ? message.envelope : message;
       if (!binding.players.includes(envelope.id.player)) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unowned' } }, true); continue; }
       if (envelope.runId !== deps.init.runId) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'wrong-run' } }, true); continue; }
-      const admission = 'kind' in envelope ? admitLegacyCardInput(binding.ledger, envelope, state.tick) : binding.ledger.admit(envelope, state.tick);
+      const admission = 'kind' in envelope ? admitLegacyCardInput(binding.ledger, envelope, state.tick, state) : binding.ledger.admit(envelope, state.tick);
       if (admission.status !== 'queued') { send(binding, { kind: 'result', runId: deps.init.runId, result: admission.result }, true); continue; }
       if (phase === 'ended' || phase === 'error') {
         result(binding, { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });

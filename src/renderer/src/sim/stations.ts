@@ -20,7 +20,7 @@ export function failedStationCount(state: SimState): number {
   let n = 0; for (const f of state.stations.failed) if (f) n++; return n;
 }
 
-/** Reset a console's cursor per kind (spec §4). */
+/** Reset a console's cursor per kind (spec Ã‚Â§4). */
 function resetCursor(state: SimState, i: number): void {
   const d = state.derived, kind = d.stationKind[i]!;
   state.stations.page[i] = 0;   // every seat opens on the power page (spec Loop-ii section 2)
@@ -30,16 +30,15 @@ function resetCursor(state: SimState, i: number): void {
     : 0;
 }
 
-/** Seat a player: snap to the console tile centre, reset stick state, reset the cursor per kind (spec §4). At a console group the player sits at every member, on the first tab, off the tab bar (spec Demo-x-a section 1). */
+/** Seat a player: snap to the console tile centre and reset the legacy cursor per kind (spec Ã‚Â§4). At a console group the player sits at every member, on the first tab; the client reconciles focus and repeat (spec Demo-x-a section 1). */
 export function sitDown(state: SimState, pid: number, i: number): void {
   const eid = state.crew[pid]!, d = state.derived, g = d.stationGroup[i]!;
   const members = g >= 0 ? d.groupStations[g]! : [i];
   for (const j of members) { state.stations.occupant[j] = pid; resetCursor(state, j); }
-  if (g >= 0) { state.groups.tab[g] = 0; state.groups.bar[g] = 0; }
+  if (g >= 0) { state.groups.tab[g] = 0; }
   Seated.station[eid] = members[0]!;
   const t = d.stationTile[i]!, tx = t % d.width;
   Position.x[eid] = tx + 0.5; Position.y[eid] = (t - tx) / d.width + 0.5;
-  state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0;
 }
 
 /** Switch a seated player's console group to tab k: the seat follows the active tab (spec Demo-x-a section 1). */
@@ -66,6 +65,4 @@ export function standUp(state: SimState, pid: number): void {
     state.stations.occupant[j] = -1; state.stations.page[j] = 0;   // standing resets the Engineering page (spec Loop-ii section 2)
     if (d.stationKind[j] === StationKind.Science) state.science.scanning = 0;   // spec 2b-ii section 4: any stand pauses the scan
   }
-  if (g >= 0) state.groups.bar[g] = 0;
-  state.stick.heldDir[pid] = 0; state.stick.repeat[pid] = 0;
 }

@@ -1,5 +1,5 @@
 import { botIntent as fixtureBotPolicy } from '../src/renderer/src/clientControl/botPolicy';
-import { snapshotPhaseStep } from './helpers/snapshotPhaseFixture';
+import { snapshotPhaseStep, snapshotPhaseClient } from './helpers/snapshotPhaseFixture';
 import { describe, it, expect } from 'vitest';
 import { TEAM_MULT as TM2 } from '../src/renderer/src/sim/tuning';
 import fc from 'fast-check';
@@ -28,7 +28,10 @@ import { navRows, jumpShip, NodeType } from '../src/renderer/src/sim/run';
 function advanced(seed: number, players = 2) {
   const s = makeState(players, seed);
   s.director.nextSpawnTick = 0;
-  for (let i = 0; i < 1500; i++) snapshotPhaseStep(s, Array.from({ length: players }, (_, pid) => fixtureBotPolicy(s, pid)));
+  for (let i = 0; i < 1500; i++) {
+    const { view, ui } = snapshotPhaseClient(s);
+    snapshotPhaseStep(s, Array.from({ length: players }, (_, pid) => fixtureBotPolicy(view, ui, pid)));
+  }
   return s;
 }
 
@@ -167,14 +170,14 @@ describe('snapshot', () => {
     step(s, [NEUTRAL_INTENT]);
     expect(s.tick).toBe(1);
   });
-  it('round-trips seating, power and stick state', () => {
+  it('round-trips seating and power without canonical client repeat', () => {
     const s = makeState(2, 5);
     const eng = s.derived.stationOfKind[3]!;
-    sitDown(s, 0, eng); s.stations.cursor[eng] = 5; s.stations.failed[1] = 1; s.stations.repair[1] = 0.25; s.stations.level[2] = 0; s.stick.heldDir[0] = 2; s.stick.repeat[0] = 3;
+    sitDown(s, 0, eng); s.stations.cursor[eng] = 5; s.stations.failed[1] = 1; s.stations.repair[1] = 0.25; s.stations.level[2] = 0;
     const t = loadSnapshot(LAYOUT, JSON.parse(JSON.stringify(saveSnapshot(s))));
     expect(hashState(t)).toBe(hashState(s));
     expect(Seated.station[t.crew[0]!]).toBe(eng); expect(t.stations.occupant[eng]).toBe(0); expect(t.stations.cursor[eng]).toBe(5);
-    expect(t.stations.failed[1]).toBe(1); expect(t.stations.repair[1]).toBe(0.25); expect(t.stick.heldDir[0]).toBe(2); expect(t.stick.repeat[0]).toBe(3);
+    expect(t.stations.failed[1]).toBe(1); expect(t.stations.repair[1]).toBe(0.25); expect('stick' in t).toBe(false);
   });
   it('round-trips debris, weapons charge and room impact ticks', () => {
     const s = makeState(2, 5);

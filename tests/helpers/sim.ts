@@ -3,7 +3,7 @@ import starter from '../../src/renderer/src/sim/ship/starter.json';
 import cutter from '../../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { createSimState, type SimState, type SimOptions } from '../../src/renderer/src/sim/state';
-import { step } from './rawInput';
+import { step, neutralFixtureTick } from './rawInput';
 import { stepCommands } from '../../src/renderer/src/sim/step';
 import { Position } from '../../src/renderer/src/sim/components';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
@@ -41,7 +41,7 @@ export function intents(...per: Partial<Intent>[]): Intent[] {
 export function run(state: SimState, ticks: number, perTick?: (tick: number) => Intent[]): void {
   for (let i = 0; i < ticks; i++) {
     if (perTick) step(state, perTick(state.tick));
-    else stepCommands(state, { held: [], commands: [], legacyCardInput: [] });
+    else { neutralFixtureTick(state); stepCommands(state, { held: [], commands: [], legacyCardInput: [] }); }
   }
 }
 
