@@ -144,3 +144,12 @@ Implications for the specs:
 - The playable demo depends on networking: Net-1a/1b (the offline authority boundary) and the milestone that adds real transport between two machines (Net-3 in the Net-0 table). The current Net-1 spec excludes sockets.
 - The Helm sim (physics, gravity, arcs, enemy) can be built and tested headless in parallel with the networking work, and has to follow the Net-1 rules from day one (commands, determinism, no `Math.sin`/`cos`). The duel becomes playable when two machines can connect (Claude's reading; the owner can correct it).
 - Each screen may show the shared tactical view framed for its console (the Helm's controls on one, Weapons' arcs and room lock on the other).
+
+## Q16. What does the planet do?
+
+**Answer: A, gravity only, and the planet is a wall.** The planet pulls every ship toward it; touching it costs heavy hull damage and bounces the ship off. No rings, debris band or atmosphere in the demo.
+
+Implications for the specs:
+- The duel's obstacles are the planet and the few scattered asteroids from Q14.
+- Rings, an atmosphere or aerobraking are later tuning options, not demo scope.
+- The same pull and collision rules apply to the enemy, so the Helm can bait it into the planet.
