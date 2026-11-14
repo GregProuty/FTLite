@@ -3,7 +3,7 @@ import type { TelemetryRecord } from '../sim/telemetry';
 
 export type PeerId = string;
 export type RunId = string;
-export type PlayerId = number; // 0..3, never an ECS entity ID
+export type PlayerId = number; // bounded by the configured player limit, never an ECS entity ID
 export type StationId = number;
 export type ChannelKind = 'reliable-ordered' | 'unreliable-latest';
 export type Unsubscribe = () => void;
@@ -103,3 +103,16 @@ export interface RunInit {
 }
 export interface MonotonicClock { nowMs(): number }
 export interface Scheduler { schedule(delayMs: number, cb: () => void): Unsubscribe }
+
+/** Durable authority envelope; no auxiliary request or presentation history. */
+export interface Checkpoint {
+  checkpointVersion: 2; init: RunInit; snapshot: Snapshot;
+  commandHighWater: number[];
+  recentResults: { envelope: CommandEnvelope; result: CommandResult }[];
+  admissionTick: number; admissionCounts: number[];
+  eventSequence: number; publicationSequence: number; controlRevision: number;
+  receiveOrder: number; lifecycleOrdinal: number;
+  botControllers: import('../clientControl/cardController').CardUiState[]; paused: boolean;
+  phase: PublishedState['phase']; pauseOwner: number | null; pauseReason: string | null;
+  heldHighWater: number[]; held: HeldInput[];
+}

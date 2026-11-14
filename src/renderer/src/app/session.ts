@@ -2,7 +2,6 @@ import type { ShipLayout } from '../sim/ship/schema';
 import type { SimState } from '../sim/state';
 import { TICK_HZ } from '../sim/tuning';
 import { createLocalRuntime } from './localRuntime';
-import type { createAuthority } from '../authority/authority';
 import type { Scheduler, Unsubscribe } from '../net/contracts';
 import { createDeviceManager, type SourceSample, type SlotInfo } from '../input/deviceManager';
 import { NEUTRAL_FRAME, type InputFrame } from './intents';
@@ -29,7 +28,7 @@ export interface SessionDeps {
   now(): number;
   scheduler?: Scheduler;
   contentDigest?: string;
-  authorityFactory?: typeof createAuthority;
+  authorityFactory?: (deps: import('../authority/authority').AuthorityDeps) => import('../authority/authority').Authority1a;
   saveCrash(payload: unknown): void;
   /** Called once with the run's record on the tick it ends (spec 4-ii section 7). */
   saveTelemetry?: (record: TelemetryRecord) => void;

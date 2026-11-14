@@ -3,10 +3,10 @@ import { deriveLayout } from '../sim/ship/derived';
 import { DEFAULT_CHARACTERS } from '../sim/characters';
 import { SIM_VERSION, TICK_HZ } from '../sim/tuning';
 import { createLoopbackHarness } from '../net/loopback';
-import { createAuthority, type Authority1a, type AuthorityDeps, type CrashRecord } from '../authority/authority';
+import { createAuthority, type Authority, type Checkpoint, type Authority1a, type AuthorityDeps, type CrashRecord } from '../authority/authority';
 import { createClientRun } from '../clientControl/clientRun';
 import { createBotClient } from '../clientControl/botClient';
-import { translateTick } from '../clientControl/cardController';
+import { createCardUiState, pauseActions, translateTick } from '../clientControl/cardController';
 import type { InputFrame } from '../clientControl/inputFrame';
 import type { Command } from '../net/contracts';
 
@@ -39,6 +39,7 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
   try {
   authority = authorityFactory({
     contentDigest: init.contentDigest, clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, resolveLayout: () => init.layout,
+    botControllers: () => [client.ui.players.length ? client.ui : createCardUiState(runId, init.playerCount)],
     onCrash(record) { fault = record; init.onCrash?.(record); },
     beforeControls() { transport.drain(); },
     beforeTick(tick) {
@@ -75,7 +76,23 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
     client.takeEvents();
     if (fault && !init.onCrash) throw new Error(`headless authority fault: ${(fault as CrashRecord).error}`);
   }
+  function durable(): Authority {
+    if (!authority || !('checkpoint' in authority) || !('restore' in authority)) throw new Error('authority does not support durability');
+    return authority as Authority;
+  }
   return {
+    checkpoint(): Checkpoint { transport.drain(); const cp = durable().checkpoint([client.ui]); transport.drain(); return cp; },
+    restore(checkpoint: Checkpoint): void {
+      if (checkpoint.init.runId !== runId) throw new Error('headless restore requires the same run ID');
+      durable().restore(checkpoint);
+      if (checkpoint.botControllers[0]) Object.assign(client.ui, structuredClone(checkpoint.botControllers[0]));
+      scripted = []; frames = []; fault = null; transport.drain(); client.takeEvents(); client.takeResults();
+    },
+    replay() { return durable().replay(); },
+    setPaused(paused: boolean): void {
+      const view = client.state(); if (!view) throw new Error('missing initial publication');
+      client.send(pauseActions(client.ui, 0, view.tick, paused)); transport.drain(); authority!.pump(); transport.drain(); client.takeEvents();
+    },
     advance(nextFrames: readonly InputFrame[], commands: readonly ScriptedCommand[] = []): void {
       bots = false; frames = nextFrames; scripted = commands; advance();
     },

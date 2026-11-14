@@ -3,7 +3,7 @@ import { createSimState, disposeSimState } from './simLifetime';
 import { saveSnapshot } from '../../src/renderer/src/sim/snapshot';
 import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
-import { decodeIntent, type Replay } from '../../src/renderer/src/sim/replay';
+import { decodeIntent, type Replay } from './legacyIntentCodec';
 import { translateTick } from '../../src/renderer/src/clientControl/cardController';
 import { semanticRunner, type SemanticTrace } from './semanticReplay';
 import { rawFrame } from './rawInput';

@@ -17,7 +17,7 @@ export interface LocalRuntimeDeps {
   frames(tick: number, tickTimeMs: number): readonly InputFrame[];
   beforeControls?(): void; recordPrev?(view: SimState): void; draw?(view: SimState, alpha: number): void;
   onPublication?(view: SimState, publication: PublishedState): void; onEvent?(event: AuthorityEvent): void;
-  onCrash: AuthorityDeps['onCrash']; authorityFactory?: typeof createAuthority;
+  onCrash: AuthorityDeps['onCrash']; authorityFactory?: (deps: import('../authority/authority').AuthorityDeps) => import('../authority/authority').Authority1a;
 }
 export function createLocalRuntime(deps: LocalRuntimeDeps) {
   const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest: deps.contentDigest });
@@ -40,7 +40,7 @@ export function createLocalRuntime(deps: LocalRuntimeDeps) {
     }
     for (const event of client.takeEvents()) deps.onEvent?.(event);
   }
-  let authority: ReturnType<typeof createAuthority> | undefined;
+  let authority: import('../authority/authority').Authority1a | undefined;
   function dispose(): void {
     if (disposed) return;
     disposed = true;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { clampIntent, NEUTRAL_INTENT } from '../src/shared/intent';
 import { createIntentFeed, NEUTRAL_FRAME } from '../src/renderer/src/app/intents';
-import { encodeIntent } from '../src/renderer/src/sim/replay';
+import { encodeIntent } from './helpers/legacyIntentCodec';
 
 describe('clampIntent', () => {
   it('passes a neutral intent through unchanged', () => {

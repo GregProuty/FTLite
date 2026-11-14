@@ -14,10 +14,11 @@ const finiteValues = z.custom<number[]>((value) => {
   return true;
 }, 'invalid snapshot values')
   .transform((values) => values.map((n) => n === 0 ? 0 : n));
+function messageSchemaFor(playerLimit: number) {
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const positive = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const index = z.number().int().min(0).max(MAX_INDEX);
-const player = z.number().int().min(0).max(MAX_PLAYERS - 1);
+const player = z.number().int().min(0).max(playerLimit - 1);
 const text = z.string().min(1).max(128);
 const axis = z.number().finite().min(-1).max(1).transform((n) => n === 0 ? 0 : n);
 const id = z.object({ player, sequence: positive }).strict();
@@ -31,7 +32,7 @@ const target = z.discriminatedUnion('kind', [
 const weapon = z.object({ selector: index, expectedWeaponId: index }).strict();
 const eventRef = z.object({ visit, eventId: index }).strict();
 const jump = z.object({ visit, requestedAtTick: uint, destination: index }).strict();
-export const commandSchema = z.discriminatedUnion('kind', [
+const commandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('moveTo'), tile: index }).strict(),
   z.object({ kind: z.literal('sit'), station: index }).strict(),
   z.object({ kind: z.literal('stand') }).strict(),
@@ -66,7 +67,7 @@ const snapshot = z.object({
   header: z.object({
     formatVersion: positive, simVersion: positive, contentDigest: z.string().regex(/^[0-9a-f]{64}$/), tick: uint,
     rngStates: z.object({ hazards: u32, director: u32, combat: u32, loot: u32, cosmetic: u32, map: u32, quirk: u32 }).strict(),
-    layoutId: text, layoutHash: text, playerCount: z.number().int().min(1).max(MAX_PLAYERS), manifest: z.array(text).min(1).max(128)
+    layoutId: text, layoutHash: text, playerCount: z.number().int().min(1).max(playerLimit), manifest: z.array(text).min(1).max(128)
   }).strict(),
   values: finiteValues
 }).strict();
@@ -75,9 +76,9 @@ const seconds = z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER);
 const recordMap = z.record(text, seconds).refine((r) => Object.keys(r).length <= 128, 'too many entries');
 const lifeEvent = z.object({ who: text, seconds }).strict().nullable();
 const telemetry = z.object({
-  version: z.literal(1), simVersion: positive, seed: u32, playerCount: z.number().int().min(1).max(MAX_PLAYERS), characters: z.array(text).min(1).max(MAX_PLAYERS),
+  version: z.literal(1), simVersion: positive, seed: u32, playerCount: z.number().int().min(1).max(playerLimit), characters: z.array(text).min(1).max(playerLimit),
   endReason: z.enum(['hull', 'crew', 'victory', 'running']), durationSeconds: seconds, firstDown: lifeEvent, firstDeath: lifeEvent,
-  stationsNeverManned: stringList, mannedSeconds: recordMap, longestIdleSeconds: z.array(seconds).max(MAX_PLAYERS),
+  stationsNeverManned: stringList, mannedSeconds: recordMap, longestIdleSeconds: z.array(seconds).max(playerLimit),
   spawns: z.object({ fire: uint, breach: uint, power: uint, debris: uint }).strict(),
   impacts: uint, evadeRolls: uint, evasions: uint, shots: uint, hits: uint,
   repairs: z.object({ fire: uint, breach: uint, power: uint }).strict(), maxStress: seconds,
@@ -88,7 +89,7 @@ const telemetry = z.object({
     events: uint, purchases: uint, upgrades: z.record(text, index).refine((r) => Object.keys(r).length <= 128, 'too many upgrades'),
     reactorBonus: index, quirk: text, unlocks: stringList }).strict(),
   teamwork: z.object({ lockedShots: uint, teamSeconds: seconds, revives: uint, timedEvades: uint, votesUnanimous: uint, votesSplit: uint }).strict(),
-  score: seconds, skills: z.array(z.array(index).max(128)).max(MAX_PLAYERS)
+  score: seconds, skills: z.array(z.array(index).max(128)).max(playerLimit)
 }).strict();
 const payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cue'), cue: z.enum(['alarm', 'impact', 'shot', 'hit', 'ready', 'jump', 'upgrade', 'victory', 'defeat', 'callout']) }).strict(),
@@ -99,7 +100,7 @@ const payload = z.discriminatedUnion('kind', [
 const state = z.object({
   runId: text, tick: uint, publicationSequence: positive, snapshot, hash: text, phase: z.enum(['running', 'paused', 'ended', 'error']),
   pauseOwner: player.nullable(), controlRevision: uint, pauseReason: text.nullable(), lagTicks: uint, tickTimeMs: seconds.nullable(),
-  commandHighWater: z.array(uint).min(1).max(MAX_PLAYERS), heldHighWater: z.array(uint).min(1).max(MAX_PLAYERS), auxiliaryHighWater: z.array(uint).min(1).max(MAX_PLAYERS), eventSequence: uint
+  commandHighWater: z.array(uint).min(1).max(playerLimit), heldHighWater: z.array(uint).min(1).max(playerLimit), auxiliaryHighWater: z.array(uint).min(1).max(playerLimit), eventSequence: uint
 }).strict().refine((value) => [value.commandHighWater, value.heldHighWater, value.auxiliaryHighWater]
   .every((water) => water.length === value.snapshot.header.playerCount), 'publication watermarks must cover every player');
 const authorityEvent = z.object({ runId: text, eventSequence: positive, tick: uint, payload }).strict();
@@ -111,16 +112,25 @@ const messageSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('result'), runId: text, result }).strict(),
   z.object({ kind: z.literal('event'), event: authorityEvent }).strict()
 ]);
-export function encodeMessage(message: ClientMessage | AuthorityMessage): Uint8Array {
-  const validated = messageSchema.parse(message);
-  const bytes = new TextEncoder().encode(JSON.stringify(validated));
-  if (bytes.byteLength > MAX_MESSAGE_BYTES) throw new Error('message exceeds byte limit');
-  return bytes;
+return { messageSchema, commandSchema };
 }
-export function decodeMessage(bytes: Uint8Array): ClientMessage | AuthorityMessage {
-  if (bytes.byteLength > MAX_MESSAGE_BYTES) throw new Error('message exceeds byte limit');
-  return messageSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
+export function createMessageCodec(playerLimit = MAX_PLAYERS) {
+  if (!Number.isInteger(playerLimit) || playerLimit < 1 || playerLimit > 256) throw new Error('invalid player limit');
+  const { messageSchema } = messageSchemaFor(playerLimit);
+  return {
+    encodeMessage(message: ClientMessage | AuthorityMessage): Uint8Array {
+      const bytes = new TextEncoder().encode(JSON.stringify(messageSchema.parse(message)));
+      if (bytes.byteLength > MAX_MESSAGE_BYTES) throw new Error('message exceeds byte limit');
+      return bytes;
+    },
+    decodeMessage(bytes: Uint8Array): ClientMessage | AuthorityMessage {
+      if (bytes.byteLength > MAX_MESSAGE_BYTES) throw new Error('message exceeds byte limit');
+      return messageSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
+    }
+  };
 }
+export const commandSchema = messageSchemaFor(MAX_PLAYERS).commandSchema;
+export const { encodeMessage, decodeMessage } = createMessageCodec();
 export interface LatestMessageMetadata { key: string; sequence: number }
 /** Framing policy lives above transport; sequences were stamped by the producer. */
 export function latestMessageMetadata(bytes: Uint8Array): LatestMessageMetadata | null {

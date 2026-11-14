@@ -1,19 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
-import { encodeIntent, decodeIntent } from '../src/renderer/src/sim/replay';
-import { convertLegacyReplay } from './helpers/legacyReplay';
-import { runSemanticReplay, type SemanticTrace } from './helpers/semanticReplay';
+import { encodeIntent, decodeIntent } from './helpers/legacyIntentCodec';
+import type { ReplayV2 } from '../src/renderer/src/sim/replay';
+import { runSemanticReplay } from './helpers/semanticReplay';
 import { firstDifference, projectGameplay } from './helpers/gameplayTrace';
 import { NEUTRAL_INTENT } from '../src/shared/intent';
 import { LAYOUT } from './helpers/sim';
-import { scriptedReplay, scriptedSemanticReplay } from './helpers/script';
+import { scriptedSemanticReplay } from './helpers/script';
 
 const GOLDEN = 'tests/golden/basic.json';
-const golden = JSON.parse(readFileSync(GOLDEN, 'utf8')) as { replay: SemanticTrace | ReturnType<typeof scriptedReplay>; hashes: string[]; finalHash: string };
-// Pre-cutover saved input is converted solely in this test; blessing saves semantic input.
-const trace = 'intents' in golden.replay ? convertLegacyReplay(LAYOUT, golden.replay) : golden.replay;
+const golden = JSON.parse(readFileSync(GOLDEN, 'utf8')) as { replay: ReplayV2; hashes: string[]; finalHash: string };
+const trace = golden.replay;
 // Header-only fixture adaptation: source changes alter the digest, never canonical values or expected hashes.
 trace.initial.header.contentDigest = __GAMEPLAY_CONTENT_DIGEST__;
+trace.init.contentDigest = __GAMEPLAY_CONTENT_DIGEST__;
+trace.checkpoint.init.contentDigest = __GAMEPLAY_CONTENT_DIGEST__;
+trace.checkpoint.snapshot.header.contentDigest = __GAMEPLAY_CONTENT_DIGEST__;
 const observations: { tick: number; state: Record<string, unknown> }[] = [];
 const result = runSemanticReplay(LAYOUT, trace, 60, __GAMEPLAY_CONTENT_DIGEST__, state => observations.push({ tick: state.tick, state: projectGameplay(state) }));
 
@@ -35,12 +37,13 @@ describe('replay', () => {
     expect(firstDifference(expected, observations)).toBeNull();
     expect(trace.initial.header.tick).toBe(0);
     expect(trace.initial.values.length).toBeGreaterThan(0);
-    expect(trace.ticks.every(input => Object.keys(input).sort().join(',') === 'commands,held')).toBe(true);
+    expect(trace.version).toBe(2);
+    expect(trace.frames.filter(frame => frame.action.kind === 'tick')).toHaveLength(7200);
   });
   it('rejects a replay from another sim version or layout hash', () => {
     const base = scriptedSemanticReplay(1, 1, 5);
-    expect(() => runSemanticReplay(LAYOUT, { ...base, initial: { ...base.initial, header: { ...base.initial.header, simVersion: 999 } } })).toThrow(/sim version/);
-    expect(() => runSemanticReplay(LAYOUT, { ...base, initial: { ...base.initial, header: { ...base.initial.header, layoutHash: 'deadbeef' } } })).toThrow(/snapshot layout does not match/);
+    expect(() => runSemanticReplay(LAYOUT, { ...base, checkpoint: { ...base.checkpoint, snapshot: { ...base.initial, header: { ...base.initial.header, simVersion: 999 } } } })).toThrow(/sim version/);
+    expect(() => runSemanticReplay(LAYOUT, { ...base, checkpoint: { ...base.checkpoint, snapshot: { ...base.initial, header: { ...base.initial.header, layoutHash: 'deadbeef' } } } })).toThrow(/snapshot layout does not match/);
     expect(() => runSemanticReplay(LAYOUT, base)).not.toThrow();
   });
 });

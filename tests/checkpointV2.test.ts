@@ -1,0 +1,128 @@
+import { expect, it } from 'vitest';
+import { createAuthority } from '../src/renderer/src/authority/authority';
+import { createLedger } from '../src/renderer/src/authority/ledger';
+import { createMessageCodec } from '../src/renderer/src/net/codec';
+import { LAYOUT } from './helpers/sim';
+import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
+import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
+import { createCardUiState } from '../src/renderer/src/clientControl/cardController';
+import { createLoopbackHarness } from '../src/renderer/src/net/loopback';
+import { encodeMessage, decodeMessage } from '../src/renderer/src/net/codec';
+import type { AuthorityMessage, CommandEnvelope, ClientMessage } from '../src/renderer/src/net/contracts';
+import { ownTestCleanup } from './helpers/simLifetime';
+import { checkpointRig } from './helpers/checkpointRig';
+const envelope = (sequence: number, requestedTick = 0): CommandEnvelope => ({ runId: 'durable', id: { player: 0, sequence }, requestedTick, command: { kind: 'stand' } });
+it('restores detached checkpoint paused, keeps cached retries and publication continuity', () => {
+  const h = checkpointRig(); h.send({ kind: 'command', envelope: envelope(1) }); h.pump(17);
+  const ui = createCardUiState('durable', 1); ui.players[0]!.repeat = 7; ui.players[0]!.nextSequence = 2;
+  const cp = h.authority.checkpoint([ui]); ui.players[0]!.repeat = 99;
+  expect(cp.botControllers[0]!.players[0]!.repeat).toBe(7);
+  h.pump(34); const before = h.output.filter(m => m.kind === 'state').at(-1)!;
+  h.authority.restore(cp); h.drain();
+  const after = h.output.filter(m => m.kind === 'state').at(-1)!;
+  expect(after.state.phase).toBe('paused'); expect(after.state.publicationSequence).toBeGreaterThan(before.state.publicationSequence);
+  h.send({ kind: 'command', envelope: envelope(1) }); h.pump();
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result).toEqual(cp.recentResults[0]!.result);
+  expect(h.authority.checkpoint([]).commandHighWater).toEqual([1]);
+});
+it('checkpoint acknowledges pending actions and preserves per-tick cap across restore', () => {
+  const h = checkpointRig();
+  for (let i = 1; i <= 16; i++) h.send({ kind: 'command', envelope: envelope(i) });
+  const cp = h.authority.checkpoint([]); h.drain();
+  expect(h.output.filter(m => m.kind === 'result')).toHaveLength(16);
+  expect(cp.recentResults).toHaveLength(16);
+  h.authority.restore(cp); h.send({ kind: 'command', envelope: envelope(17) }); h.pump();
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result.reason).toBe('over-capacity');
+});
+it.each(['version', 'init', 'cache', 'sequence', 'bot'])('rejects corrupt %s transactionally', kind => {
+  const h = checkpointRig(); const cp = h.authority.checkpoint([createCardUiState('durable', 1)]), bad = structuredClone(cp);
+  if (kind === 'version') (bad as any).checkpointVersion = 1;
+  if (kind === 'init') bad.init.seed = -1;
+  if (kind === 'cache') (bad.recentResults as any).push({ envelope: envelope(99), result: { id: { player: 0, sequence: 99 }, tick: 0, status: 'noop' } });
+  if (kind === 'sequence') bad.commandHighWater[0] = -1;
+  if (kind === 'bot') bad.botControllers[0]!.players[0]!.repeat = NaN;
+  expect(() => h.authority.restore(bad)).toThrow(); expect(h.authority.checkpoint([createCardUiState('durable', 1)])).toEqual(cp);
+});
+it('supports injected 16-player codec and ledger without raising game cap', () => {
+  const codec = createMessageCodec(16), ledger = createLedger([15], 16);
+  const e = { ...envelope(1), id: { player: 15, sequence: 1 } };
+  expect(codec.decodeMessage(codec.encodeMessage({ kind: 'command', envelope: e }))).toEqual({ kind: 'command', envelope: e });
+  expect(ledger.admit(e, 0)).toEqual({ status: 'queued' }); ledger.finish({ id: e.id, tick: 0, status: 'noop' });
+  const copy = createLedger([15], 16); copy.restore(ledger.export()); expect(copy.admit(e, 0).status).toBe('duplicate');
+  expect(() => encodeMessage({ kind: 'command', envelope: e })).toThrow();
+});
+import { loadSnapshot, saveSnapshot } from './helpers/simLifetime';
+import { Position } from '../src/renderer/src/sim/components';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { hashState } from '../src/renderer/src/sim/hash';
+it('clears held controls on external restore and requires a fresh producer sequence', () => {
+  const h = checkpointRig();
+  h.send({ kind: 'held', frame: { runId: 'durable', player: 0, tick: 0, sequence: 10, held: { moveX: 1, moveY: 0, interactHeld: true } } }); h.pump(17);
+  const cp = h.authority.checkpoint([]); h.authority.restore(cp); h.drain();
+  const restored = h.authority.checkpoint([]); expect(restored.held).toEqual([{ moveX: 0, moveY: 0, interactHeld: false }]); expect(restored.heldHighWater).toEqual([10]);
+  h.send({ kind: 'command', envelope: { ...envelope(1, 1), command: { kind: 'setPaused', paused: false } } }); h.pump();
+  h.send({ kind: 'held', frame: { runId: 'durable', player: 0, tick: 1, sequence: 10, held: { moveX: 1, moveY: 0, interactHeld: true } } }); h.pump(34);
+  const before = loadSnapshot(LAYOUT, cp.snapshot), after = loadSnapshot(LAYOUT, h.authority.checkpoint([]).snapshot);
+  expect(Position.x[after.crew[0]!]).toBe(Position.x[before.crew[0]!]);
+  h.send({ kind: 'held', frame: { runId: 'durable', player: 0, tick: 2, sequence: 11, held: { moveX: 1, moveY: 0, interactHeld: false } } }); h.pump(51);
+  const fresh = loadSnapshot(LAYOUT, h.authority.checkpoint([]).snapshot); expect(Position.x[fresh.crew[0]!]).toBeGreaterThan(Position.x[after.crew[0]!]!);
+});
+it('cached purchase retries after restore cannot spend scrap or repeat a reward', () => {
+  const h = checkpointRig(), setup = h.authority.checkpoint([]), state = loadSnapshot(LAYOUT, setup.snapshot);
+  const station = state.derived.stationOfKind[StationKind.Engineering]!; sitDown(state, 0, station); state.run.scrap = 100;
+  setup.snapshot = saveSnapshot(state); h.authority.restore(setup); h.drain();
+  h.send({ kind: 'command', envelope: { ...envelope(1), command: { kind: 'setPaused', paused: false } } }); h.pump();
+  const buy = { ...envelope(2), command: { kind: 'buyReactor' as const, station, expectedBonus: 0 } };
+  h.send({ kind: 'command', envelope: buy }); h.pump(17);
+  const cp = h.authority.checkpoint([]), purchased = loadSnapshot(LAYOUT, cp.snapshot);
+  expect(purchased.run.scrap).toBe(75); expect(purchased.run.reactorBonus).toBe(1);
+  h.authority.restore(cp); h.drain(); const eventCount = h.output.filter(m => m.kind === 'event').length;
+  h.send({ kind: 'command', envelope: buy }); h.pump();
+  const retry = h.authority.checkpoint([]); expect(hashState(loadSnapshot(LAYOUT, retry.snapshot))).toBe(hashState(purchased));
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result.status).toBe('applied');
+  expect(h.output.filter(m => m.kind === 'event')).toHaveLength(eventCount);
+  h.send({ kind: 'command', envelope: { ...buy, command: { ...buy.command, expectedBonus: 1 } } }); h.pump();
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result.reason).toBe('conflicting-duplicate');
+});
+it.each(['missing-cache', 'bad-result', 'bad-count', 'terminal'])('rejects inconsistent %s checkpoint before changing state', kind => {
+  const h = checkpointRig(); h.send({ kind: 'command', envelope: envelope(1) }); h.pump(17);
+  const cp = h.authority.checkpoint([]), bad = structuredClone(cp);
+  if (kind === 'missing-cache') bad.recentResults = [];
+  if (kind === 'bad-result') { bad.recentResults[0]!.result.status = 'applied'; bad.recentResults[0]!.result.reason = 'stale-tick'; }
+  if (kind === 'bad-count') bad.admissionTick = -1;
+  if (kind === 'terminal') bad.phase = 'ended';
+  expect(() => h.authority.restore(bad)).toThrow(); expect(h.authority.checkpoint([])).toEqual(cp);
+});
+import { setEvent, seatNavigator } from './helpers/sim';
+import { eventRef } from '../src/renderer/src/sim/commands';
+it('a restored vote retry preserves its reward and RNG draws exactly', () => {
+  const h = checkpointRig(), setup = h.authority.checkpoint([]), state = loadSnapshot(LAYOUT, setup.snapshot);
+  seatNavigator(state, 0); setEvent(state, 0); setup.snapshot = saveSnapshot(state); h.authority.restore(setup); h.drain();
+  h.send({ kind: 'command', envelope: { ...envelope(1), command: { kind: 'setPaused', paused: false } } }); h.pump();
+  const vote = { ...envelope(2), command: { kind: 'vote' as const, event: eventRef(state), choice: 0 } };
+  h.send({ kind: 'command', envelope: vote }); h.pump(1034);
+  const cp = h.authority.checkpoint([]), settled = loadSnapshot(LAYOUT, cp.snapshot); expect(settled.run.eventChoice).toBe(0);
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result.status).toBe('applied');
+  h.authority.restore(cp); h.send({ kind: 'command', envelope: vote }); h.pump();
+  expect(h.authority.checkpoint([]).snapshot).toEqual(cp.snapshot);
+});
+it('restoring an ended checkpoint publishes terminal state without repeating completion', () => {
+  const h = checkpointRig(), cp = h.authority.checkpoint([]), state = loadSnapshot(LAYOUT, cp.snapshot); state.hull = 0; cp.snapshot = saveSnapshot(state);
+  h.authority.restore(cp); h.drain(); h.send({ kind: 'command', envelope: { ...envelope(1), command: { kind: 'setPaused', paused: false } } }); h.pump(); h.pump(17);
+  const ended = h.authority.checkpoint([]); expect(ended.phase).toBe('ended');
+  expect(h.output.filter(m => m.kind === 'event' && m.event.payload.kind === 'ended')).toHaveLength(1);
+  const fresh = checkpointRig(); fresh.output.length = 0; fresh.authority.restore(ended); fresh.drain();
+  expect(fresh.output.filter(m => m.kind === 'state').at(-1)!.state.phase).toBe('ended');
+  expect(fresh.output.filter(m => m.kind === 'event')).toHaveLength(0);
+  fresh.send({ kind: 'command', envelope: { ...envelope(2, 1), command: { kind: 'setPaused', paused: false } } }); fresh.pump(100);
+  expect(fresh.output.filter(m => m.kind === 'result').at(-1)!.result.reason).toBe('unavailable');
+  expect(fresh.output.filter(m => m.kind === 'event')).toHaveLength(0);
+});
+it('checkpoint values and cached envelopes never alias live authority memory', () => {
+  const h = checkpointRig(); h.send({ kind: 'command', envelope: envelope(1) }); h.pump(17);
+  const original = h.authority.checkpoint([]), exported = h.authority.checkpoint([]);
+  exported.snapshot.values[0] = -999; exported.commandHighWater[0] = 999; exported.held[0]!.moveX = -1;
+  exported.recentResults[0]!.envelope.command = { kind: 'moveTo', tile: 9 }; exported.recentResults[0]!.result.status = 'applied';
+  expect(h.authority.checkpoint([])).toEqual(original);
+});
