@@ -598,7 +598,7 @@ import { describe, expect, it } from 'vitest';
 import { flyMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { createTacticalState, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, IDLE_INPUT, tickWeapons, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
-import { MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_TURN_STEPS_PER_TICK, R_MAP, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+import { DT, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_THRUST, MISSILE_TURN_STEPS_PER_TICK, R_MAP, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 
 /** Crew at (−600, −300) heading east, enemy far off at (−600, 600): inside the belt and clear of the planet. */
 function duel(): TacticalState {
@@ -656,15 +656,37 @@ describe('launch (spec §7b)', () => {
 });
 
 describe('flight (spec §7b)', () => {
-  it('turns at 120°/s under the gunner and expires after 8 s with a missileEnd event', () => {
+  it('turns at 120°/s under the gunner', () => {
     const st = duel();
     Object.assign(st.ships[0], { x: -600, y: -300, heading: 0 });       // aim north, away from everything
     tick(st, input({ missileLaunch: true }));
     for (let t = 1; t < 60; t++) tick(st, input(), 1);
     expect(st.missiles[0]!.heading).toBe(Math.floor(MISSILE_TURN_STEPS_PER_TICK * 59));
-    let ended = false;
-    for (let t = 60; t <= MISSILE_LIFE_TICKS + 1 && !ended; t++) { tick(st, input()); ended = st.missiles[0] === null; }
-    expect(ended).toBe(true);
+  });
+  it('thrusts on its first 360 ticks and coasts after', () => {
+    const st = duel();
+    applyWeaponsInput(st, 0, input({ missileLaunch: true }));
+    const m = st.missiles[0]!;
+    Object.assign(m, { x: -600, y: -300, vx: 0, vy: 0, heading: 64, age: 359 });
+    flyMissile(st, 0, 0);
+    expect(m.age).toBe(360);
+    expect(m.vx).toBeGreaterThan(MISSILE_THRUST * DT);                  // thrust east plus a little gravity
+    const vx = m.vx;
+    flyMissile(st, 0, 0);
+    expect(m.vx - vx).toBeLessThan(0.2);                                 // tick 361: gravity only
+  });
+  it('self-destructs at the end of its 480th tick, after that tick\'s move and contacts, unfreezing the laser that tick', () => {
+    const st = duel();
+    tick(st, input({ missileLaunch: true }));
+    const m = st.missiles[0]!;
+    Object.assign(m, { x: -300, y: 600, vx: 0, vy: 0, age: MISSILE_LIFE_TICKS - 2 });   // open space
+    tick(st, input());
+    expect(m.age).toBe(MISSILE_LIFE_TICKS - 1);
+    expect(st.missiles[0]).not.toBeNull();
+    tick(st, input());
+    expect(m.age).toBe(MISSILE_LIFE_TICKS);
+    expect(st.missiles[0]).toBeNull();
+    expect(st.events.at(-1)).toMatchObject({ kind: 'missileEnd', ship: 0, cause: 'expired' });
     expect(st.ships[0].missilesLost).toBe(1);
   });
   it('flies on unsteered when nobody is at Weapons, and keeps its thrust', () => {
@@ -723,6 +745,25 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     resolveMissiles(st);
     expect(st.missiles).toEqual([null, null]);
     expect(st.ships[1].hull).toBe(SHIP_HULL);
+  });
+  it('a frozen full charge keeps its hold timer, then vents after the rest of the 3 s with no press, and does not recharge', () => {
+    const st = duel(), s = st.ships[0];
+    tick(st, input({ laserCharge: true }));
+    for (let t = 1; t < 240 + 100; t++) tick(st, input());
+    expect([s.laserCharge, s.laserHold]).toEqual([LASER_CHARGE_UNITS, 100]);
+    tick(st, input({ missileLaunch: true }));                          // the launch freezes before the clocks run
+    for (let t = 0; t < 50; t++) tick(st, input());
+    expect([s.laserCharge, s.laserHold, s.fireHeld]).toEqual([LASER_CHARGE_UNITS, 100, false]);
+    Object.assign(st.missiles[0]!, { x: 0, y: -60 });                  // into the planet
+    tick(st, input());                                                  // ends; the hold timer resumes this tick
+    expect(st.missiles[0]).toBeNull();
+    expect(s.laserHold).toBe(101);
+    for (let t = 0; t < LASER_HOLD_TICKS - 102; t++) tick(st, input());
+    expect([s.laserCharge, s.laserHold]).toEqual([LASER_CHARGE_UNITS, LASER_HOLD_TICKS - 1]);
+    tick(st, input());
+    expect([s.laserCharge, s.laserHold]).toEqual([0, 0]);              // vented
+    for (let t = 0; t < 60; t++) tick(st, input());
+    expect(s.laserCharge).toBe(0);                                      // Fire is not held: no recharge
   });
   it('unfreezes the laser when the missile ends; a held full charge needs a fresh press and release', () => {
     const st = duel(), s = st.ships[0];
@@ -787,7 +828,6 @@ export function flyMissile(state: TacticalState, i: number, steer: number): void
   const m = state.missiles[i];
   if (!m) return;
   m.age++;
-  if (m.age > MISSILE_LIFE_TICKS) { end(state, i, 'expired'); return; }
   m.headingAcc += (Math.sign(steer) || 0) * MISSILE_TURN_STEPS_PER_TICK;
   while (m.headingAcc >= 1) { m.heading = wrapHeading(m.heading + 1); m.headingAcc -= 1; }
   while (m.headingAcc <= -1) { m.heading = wrapHeading(m.heading - 1); m.headingAcc += 1; }
@@ -811,7 +851,8 @@ function land(state: TacticalState, i: number, k: number): void {
   end(state, i, 'ship');
 }
 
-/** Missile contacts in spec §4 order, per missile in owner order: statics and the edge, then ships by id, then the other missile. */
+/** Missile contacts in spec §4 order, per missile in owner order: statics and the edge, then ships by id, then the other
+ *  missile. Then a missile that survived its MISSILE_LIFE_TICKS-th tick self-destructs (after that tick's move and contacts). */
 export function resolveMissiles(state: TacticalState): void {
   for (let i = 0; i < 2; i++) {
     const m = state.missiles[i];
@@ -830,6 +871,7 @@ export function resolveMissiles(state: TacticalState): void {
     const o = state.missiles[1 - i];
     if (o && touches(m, o.x, o.y, MISSILE_RADIUS)) { end(state, i, 'missile'); end(state, 1 - i, 'missile'); }
   }
+  for (let i = 0; i < 2; i++) if (state.missiles[i] && state.missiles[i]!.age >= MISSILE_LIFE_TICKS) end(state, i, 'expired');
 }
 ```
 
@@ -933,7 +975,7 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/tacticalWeapons.test.ts tests/tacticalMissiles.test.ts tests/boundary.test.ts`
-Expected: PASS (11 weapons tests, 9 missile tests).
+Expected: PASS (11 weapons tests, 11 missile tests).
 
 Run: `npm run typecheck`
 Expected: exit 0.
@@ -958,7 +1000,7 @@ git commit -m "feat(tactical): laser charge/release with arcs and room lock, shi
 
 **Interfaces:**
 - Consumes: Tasks 1 and 2; `flyShip` (`physics.ts`), `resolveContacts` (`contacts.ts`), `hashTactical`; `nextInt` (`src/shared/rng.ts`).
-- Produces: `hunterThink(state): ShipInput` (updates `state.hunter`; the only `rng` draw is the release jitter); `stepDuel(state, crew: ShipInput, tuning?: FlightTuning): void`. Fixed order inside `stepDuel`: return at once if the duel has ended; reset `events`; the hunter thinks; weapon commands for ship 0 then 1; ships fly (axes only while `helm`); missiles fly (steering only while `weapons`); ship contacts; missile contacts; weapon clocks for ship 0 then 1; outcome from the hulls; advance the tick. H-0c's duel step and H-1's dev view call `stepDuel`.
+- Produces: `hunterThink(state): ShipInput` (updates `state.hunter`; the only `rng` draw is the release jitter); `pursuitTurn(heading, dx, dy): number` (`sideOf`, but a fixed clockwise turn for a target dead astern); `stepDuel(state, crew: ShipInput, tuning?: FlightTuning): void`. Fixed order inside `stepDuel`: return at once if the duel has ended; reset `events`; the hunter thinks; weapon commands for ship 0 then 1 (and if the enemy's launch went through, its missile cooldown starts now); ships fly (axes only while `helm`); missiles fly (steering only while `weapons`); ship contacts; missile contacts; weapon clocks for ship 0 then 1; outcome from the hulls; advance the tick. H-0c's duel step and H-1's dev view call `stepDuel`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -968,7 +1010,7 @@ Create `tests/tacticalHunter.test.ts`:
 import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
-import { hunterThink } from '../src/renderer/src/sim/tactical/hunter';
+import { hunterThink, pursuitTurn } from '../src/renderer/src/sim/tactical/hunter';
 import { createTacticalState, HunterMode, Outcome, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HUNTER_JITTER_TICKS, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_WALK_TICKS, LASER_CHARGE_UNITS, REPAIR_WORK_TICKS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
@@ -987,6 +1029,17 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     expect(hunterThink(st).axes).toEqual({ turn: 0, thrust: 1 });      // crew dead ahead
     st.ships[1].heading = 0;                                             // facing north: the crew is anticlockwise (west)
     expect(hunterThink(st).axes).toEqual({ turn: -1, thrust: 0 });
+  });
+  it('turns clockwise toward a target dead astern instead of not turning, for the ship and for its missile', () => {
+    const st = facing();
+    Object.assign(st.ships[1], { heading: 192 });
+    Object.assign(st.ships[0], { x: 0, y: -300 });                       // dead astern of an enemy facing west, 300 away
+    expect(hunterThink(st).axes).toEqual({ turn: 1, thrust: 0 });
+    expect(pursuitTurn(0, 0, -10)).toBe(0);                               // dead ahead: no turn
+    st.missiles[1] = { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 };   // pointing north
+    st.hunter.trail.fill(0);
+    for (let k = 0; k < st.hunter.trail.length; k += 2) { st.hunter.trail[k] = -300; st.hunter.trail[k + 1] = 0; }   // the crew was due south
+    expect(hunterThink(st).steer).toBe(1);
   });
   it('turns away and thrusts when its straight path will pass near the planet', () => {
     const st = facing();
@@ -1022,13 +1075,26 @@ describe('hunter: firing (spec §9 Firing)', () => {
     st.ships[0].rooms[Room.Shields] = 2;
     expect(hunterThink(st).laserLock).toBe(Room.Weapons);
   });
-  it('launches a missile within 400 units, then not again for 30 s', () => {
+  it('launches a missile within 400 units, then not again for 30 s after a launch', () => {
     const st = facing();
-    expect(hunterThink(st).missileLaunch).toBe(true);
-    st.tick += HUNTER_MISSILE_COOLDOWN_TICKS - 1;
+    stepDuel(st, IDLE_INPUT);
+    expect(st.missiles[1]).not.toBeNull();
+    expect(st.hunter.lastLaunch).toBe(0);
+    st.missiles[1] = null;
+    st.tick = HUNTER_MISSILE_COOLDOWN_TICKS - 1;
     expect(hunterThink(st).missileLaunch).toBe(false);
-    st.tick += 1;
+    st.tick = HUNTER_MISSILE_COOLDOWN_TICKS;
     expect(hunterThink(st).missileLaunch).toBe(true);
+  });
+  it('a launch refused on the tick (the crew knocks its Weapons room to level 2 first) costs no cooldown', () => {
+    const st = facing(), [crew, me] = st.ships;
+    me.rooms[Room.Weapons] = 1; me.shields = 0;
+    crew.lock = Room.Weapons; crew.fireHeld = true; crew.laserCharge = LASER_CHARGE_UNITS;
+    const before = st.hunter.lastLaunch;
+    stepDuel(st, { ...IDLE_INPUT, laserCharge: false });
+    expect(me.rooms[Room.Weapons]).toBe(2);
+    expect(st.missiles[1]).toBeNull();
+    expect(st.hunter.lastLaunch).toBe(before);
   });
   it('steers its missile toward where the crew was 18 ticks ago', () => {
     const st = facing();
@@ -1124,6 +1190,13 @@ import { laserEligible, laserFull, type ShipInput } from './weapons';
 /** Repair priority (spec §9): highest level first, ties Engines, then Weapons, then Shields. */
 const REPAIR_ORDER = [Room.Engines, Room.Weapons, Room.Shields] as const;
 
+/** Turn toward (dx, dy) for pursuit (spec §9): sideOf, except a target dead astern (zero cross product, behind) gets a fixed
+ *  clockwise turn instead of none. Dead ahead stays 0. */
+export function pursuitTurn(heading: number, dx: number, dy: number): number {
+  const side = sideOf(heading, dx, dy);
+  return side !== 0 || hx(heading) * dx + hy(heading) * dy >= 0 ? side : 1;
+}
+
 /** The first solid body the enemy's straight-line path over the lookahead comes within its radius + margin of, or null. */
 function threatAhead(state: TacticalState): { x: number; y: number } | null {
   const s = state.ships[1], ex = s.x + s.vx * HUNTER_LOOKAHEAD_S, ey = s.y + s.vy * HUNTER_LOOKAHEAD_S, p = state.map.planet;
@@ -1170,14 +1243,14 @@ export function hunterThink(state: TacticalState): ShipInput {
     else {
       const dx = crew.x + crew.vx * HUNTER_LEAD_S - me.x, dy = crew.y + crew.vy * HUNTER_LEAD_S - me.y;
       const aligned = hx(me.heading) * dx + hy(me.heading) * dy >= HUNTER_THRUST_COS * Math.sqrt(dx * dx + dy * dy);
-      input.axes = { turn: sideOf(me.heading, dx, dy), thrust: aligned ? 1 : 0 };
+      input.axes = { turn: pursuitTurn(me.heading, dx, dy), thrust: aligned ? 1 : 0 };
     }
   }
   if (!weapons) { h.fireAt = -1; return input; }
 
   input.laserLock = crew.rooms[Room.Shields] < 2 ? Room.Shields : Room.Weapons;
   const missile = state.missiles[1];
-  if (missile) input.steer = sideOf(missile.heading, oldX - missile.x, oldY - missile.y);
+  if (missile) input.steer = pursuitTurn(missile.heading, oldX - missile.x, oldY - missile.y);
   else {
     if (!me.fireHeld) { input.laserCharge = true; h.fireAt = -1; }   // press first; a release can only follow a held press
     else if (laserFull(state, 1) && laserEligible(state, 1, 0)) {
@@ -1186,7 +1259,7 @@ export function hunterThink(state: TacticalState): ShipInput {
     } else h.fireAt = -1;
     const dx = crew.x - me.x, dy = crew.y - me.y;
     if (me.magazine > 0 && me.rooms[Room.Weapons] < 2 && dx * dx + dy * dy <= HUNTER_MISSILE_RANGE * HUNTER_MISSILE_RANGE
-      && state.tick - h.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS) { input.missileLaunch = true; h.lastLaunch = state.tick; }
+      && state.tick - h.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS) input.missileLaunch = true;   // stepDuel starts the cooldown only if it launches
   }
   return input;
 }
@@ -1215,7 +1288,9 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   if (state.outcome !== Outcome.Running) return;
   state.events = [];
   const inputs: [ShipInput, ShipInput] = [crew, hunterThink(state)];
+  const enemyLaunches = state.ships[1].missilesLaunched;
   for (let i = 0; i < 2; i++) applyWeaponsInput(state, i, inputs[i]!);
+  if (state.ships[1].missilesLaunched > enemyLaunches) state.hunter.lastLaunch = state.tick;   // a refused launch costs no cooldown
   state.ships.forEach((s, i) => flyShip(s, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning));
   for (let i = 0; i < 2; i++) flyMissile(state, i, inputs[i]!.weapons ? inputs[i]!.steer : 0);
   resolveContacts(state);
@@ -1230,7 +1305,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/tacticalHunter.test.ts tests/boundary.test.ts`
-Expected: PASS (13 hunter and duel tests; the 10-minute passive-crew test takes about 1 s).
+Expected: PASS (15 hunter and duel tests; the 10-minute passive-crew test takes about 1 s).
 
 - [ ] **Step 6: Run the full suite and the typecheck**
 
