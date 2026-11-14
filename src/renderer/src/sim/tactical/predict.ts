@@ -2,7 +2,7 @@
 // Pure: never touches the state. It stops at the first planet or asteroid contact, which it does not resolve.
 import { queryGrid } from './grid';
 import { flyShip } from './physics';
-import type { Axes, Ship, TacticalState } from './state';
+import { cloneShip, type Axes, type TacticalState } from './state';
 import { DEFAULT_FLIGHT, SHIP_RADIUS, type FlightTuning } from './tuning';
 
 export interface PathPoint { x: number; y: number }
@@ -21,12 +21,12 @@ export function touchesSolid(state: TacticalState, x: number, y: number, r: numb
 /** Positions after every `every` ticks for `ticks` ticks, ending early (with that point) at the first solid contact. */
 export function predictPath(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning: FlightTuning = DEFAULT_FLIGHT): PathPoint[] {
   const src = state.ships[shipIndex]!;
-  const s: Ship = { ...src, rooms: [...src.rooms], graceUntil: src.graceUntil };   // flyShip never touches graceUntil
+  const s = cloneShip(src), stride = Math.max(1, Math.floor(every));
   const out: PathPoint[] = [];
   for (let t = 1; t <= ticks; t++) {
     flyShip(s, axes, tuning);
     if (touchesSolid(state, s.x, s.y, SHIP_RADIUS)) { out.push({ x: s.x, y: s.y }); break; }
-    if (t % every === 0) out.push({ x: s.x, y: s.y });
+    if (t % stride === 0) out.push({ x: s.x, y: s.y });
   }
   return out;
 }

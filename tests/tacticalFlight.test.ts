@@ -131,3 +131,27 @@ describe('map edge (spec §3)', () => {
     expect(s.vx).toBeLessThan(0);
   });
 });
+
+describe('held axes are quantised by sign (Helm H-0a final review)', () => {
+  const turned = (turn: number): Ship => { const s = ship({}); for (let t = 0; t < 60; t++) flyShip(s, { turn, thrust: 0 }, FLIGHT_NO_FIELD); return s; };
+  it('an analog turn turns exactly as a full turn does', () => {
+    for (const [a, full] of [[0.5, 1], [-0.7, -1]] as const) {
+      const x = turned(a), y = turned(full);
+      expect(x.heading).toBe(y.heading);
+      expect(x.headingAcc).toBe(y.headingAcc);
+    }
+  });
+  it('an analog thrust gives the same velocity as full thrust', () => {
+    const a = ship({}), b = ship({});
+    flyShip(a, { turn: 0, thrust: 0.3 }, FLIGHT_NO_FIELD);
+    flyShip(b, { turn: 0, thrust: 1 }, FLIGHT_NO_FIELD);
+    expect(a.vx).toBe(b.vx); expect(a.vy).toBe(b.vy);
+  });
+  it('a NaN axis is idle and poisons nothing', () => {
+    const s = ship({ released: false });
+    flyShip(s, { turn: NaN, thrust: NaN }, FLIGHT_NO_FIELD);
+    expect(s.heading).toBe(0); expect(s.headingAcc).toBe(0);
+    for (const v of [s.x, s.y, s.vx, s.vy]) expect(Number.isNaN(v)).toBe(false);
+    expect(s.released).toBe(true);
+  });
+});

@@ -24,7 +24,7 @@ export interface Ship {
 
 export interface TacticalState { tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase; ships: [Ship, Ship] }
 
-/** Held axes for one ship, each −1, 0 or 1: turn (+ clockwise) and thrust (+ forward). */
+/** Held axes for one ship: turn (+ clockwise) and thrust (+ forward). Nominally −1, 0 or 1; flyShip quantises them by sign (NaN counts as 0). */
 export interface Axes { turn: number; thrust: number }
 export const NO_AXES: Axes = { turn: 0, thrust: 0 };
 
@@ -40,4 +40,9 @@ export function createTacticalState(seed: number): TacticalState {
   const map = generateMap(rng);
   const bodies = map.asteroids.length + 2;
   return { tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap), ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies)] };
+}
+
+/** Deep copy of a ship. Any new nested Ship state (arrays, typed arrays) must be copied here. */
+export function cloneShip(s: Ship): Ship {
+  return { ...s, rooms: [...s.rooms], graceUntil: new Int32Array(s.graceUntil) };
 }

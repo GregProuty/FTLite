@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTacticalState, type Axes, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
-import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
+import { flattenTactical, hashTactical } from '../src/renderer/src/sim/tactical/hash';
 import { predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -51,5 +51,33 @@ describe('predictPath (spec §10b)', () => {
     const last = path[path.length - 1]!;
     expect(path.length).toBeLessThan(60);
     expect(Math.sqrt(last.x * last.x + last.y * last.y)).toBeLessThan(PLANET_RADIUS + SHIP_RADIUS);
+  });
+});
+
+describe('predictPath stride (Helm H-0a final review)', () => {
+  const axes: Axes = { turn: 0, thrust: 0 };
+  it('every: 10 over 100 free ticks gives 10 points matching the real ship', () => {
+    const st = createTacticalState(11), path = predictPath(st, 0, axes, 100, 10);
+    expect(path.length).toBe(10);
+    const real = createTacticalState(11);
+    for (let k = 0; k < 10; k++) {
+      for (let t = 0; t < 10; t++) stepFlight(real, [axes, axes]);
+      expect(path[k]).toEqual({ x: real.ships[0].x, y: real.ships[0].y });
+    }
+  });
+  it('every: 0 behaves like every: 1', () => {
+    const st = createTacticalState(11);
+    expect(predictPath(st, 0, axes, 30, 0)).toEqual(predictPath(st, 0, axes, 30, 1));
+    expect(predictPath(st, 0, axes, 30, 1).length).toBe(30);
+  });
+});
+
+describe('flatten key guard', () => {
+  // When this fails, add the new field to flattenTactical (hash.ts) and then update the lists below.
+  it('Ship and TacticalState fields are exactly those flattenTactical knows', () => {
+    const st = createTacticalState(1);
+    expect(Object.keys(st.ships[0]).sort()).toEqual(['asteroidHits', 'graceUntil', 'heading', 'headingAcc', 'hull', 'planetHits', 'released', 'rooms', 'shipHits', 'skidBudget', 'skidSign', 'vx', 'vy', 'x', 'y']);
+    expect(Object.keys(st).sort()).toEqual(['grid', 'map', 'rng', 'seed', 'ships', 'tick']);
+    expect(flattenTactical(st).length).toBe(4 + 2 * (16 + st.map.asteroids.length + 2));
   });
 });
