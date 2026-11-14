@@ -1,6 +1,7 @@
 import { createMessageCodec } from '../net/codec';
 import { MAX_PLAYERS } from '../../../shared/intent';
 import type { Admission, CommandEnvelope, CommandReason, CommandResult, PlayerId } from '../net/contracts';
+import { inputTickAllowed, type AdmissionPolicy } from '../net/receivePolicy';
 
 export type AdmittedEnvelope = CommandEnvelope;
 export interface LedgerState {
@@ -12,7 +13,7 @@ export interface LedgerState {
 export interface Ledger {
   /** The paused authority supplies the players already recovered since its last
    * control drain. Only a queued over-budget resume consumes this allowance. */
-  admit(envelope: AdmittedEnvelope, tick: number, recoveredPlayers?: Set<PlayerId>): Admission;
+  admit(envelope: AdmittedEnvelope, tick: number, recoveredPlayers?: Set<PlayerId>, policy?: AdmissionPolicy): Admission;
   finish(result: CommandResult): void;
   highWater(): readonly number[];
   export(): LedgerState;
@@ -27,43 +28,64 @@ export function createLedger(owned: readonly PlayerId[], playerLimit = MAX_PLAYE
   const completed = Array.from({ length: playerLimit }, () => new Map<number, { payload: string; result: CommandResult }>());
   let countTick = -1; const counts = Array<number>(playerLimit).fill(0);
   function store(player: number, sequence: number, payload: string, result: CommandResult): void {
-    const cache = completed[player]!; cache.set(sequence, { payload, result: { ...result, id: { ...result.id } } });
-    while (cache.size > 256) cache.delete(cache.keys().next().value!);
+    const { admission: _admission, ...semantic } = result;
+    const cache = completed[player]!; cache.set(sequence, { payload, result: { ...semantic, id: { ...result.id } } });
+    // New terminal capacity rejections can finish before older pending work.
+    // The checkpoint invariant requires retaining the high-water result.
+    while (cache.size > 256) cache.delete([...cache.keys()].find(id => id !== water[player])!);
   }
   return {
-    admit(envelope, tick, recoveredPlayers) {
-      const reject = (reason: CommandReason): Admission => ({ status: 'rejected', result: { id: { ...envelope.id }, tick, status: 'rejected', reason } });
-      // Canonical codec validation also excludes unknown properties and non-finite payloads.
-      let payload: string;
-      try {
-        const message = { kind: 'command' as const, envelope };
-        payload = JSON.stringify(decodeMessage(encodeMessage(message)));
-      } catch { return reject('malformed'); }
-      const { player, sequence } = envelope.id;
-      if (!owned.includes(player)) return reject('unowned');
-      const key = `${player}:${sequence}`, waiting = pending.get(key), cached = completed[player]!.get(sequence);
-      if (waiting || cached) {
-        if ((waiting ?? cached)!.payload !== payload) return reject('conflicting-duplicate');
-        return { status: 'duplicate', result: cached ? { ...cached.result, id: { ...cached.result.id } } : { id: { ...envelope.id }, tick: waiting!.tick, status: 'already-processed' } };
+    admit(envelope, tick, recoveredPlayers, policy = 'strict') {
+      const respond = (admission: Admission): Admission => {
+        if (policy === 'strict' || admission.status === 'queued') return admission;
+        const validOwner = owned.includes(envelope.id.player) && admission.result.reason !== 'malformed';
+        const high = validOwner ? water[envelope.id.player]! : 0;
+        return { ...admission, result: { ...admission.result, admission: {
+          expectedSequence: high + 1, disposition: validOwner && envelope.id.sequence <= high ? 'terminal' : 'retryable'
+        } } };
+      };
+      return respond(admit());
+      function admit(): Admission {
+        const reject = (reason: CommandReason): Admission => ({ status: 'rejected', result: { id: { ...envelope.id }, tick, status: 'rejected', reason } });
+        // Canonical codec validation also excludes unknown properties and non-finite payloads.
+        let payload: string;
+        try {
+          const message = { kind: 'command' as const, envelope };
+          payload = JSON.stringify(decodeMessage(encodeMessage(message)));
+        } catch { return reject('malformed'); }
+        const { player, sequence } = envelope.id;
+        if (!owned.includes(player)) return reject('unowned');
+        const key = `${player}:${sequence}`, waiting = pending.get(key), cached = completed[player]!.get(sequence);
+        if (waiting || cached) {
+          if ((waiting ?? cached)!.payload !== payload) return reject('conflicting-duplicate');
+          return { status: 'duplicate', result: cached ? { ...cached.result, id: { ...cached.result.id } } : { id: { ...envelope.id }, tick: waiting!.tick, status: 'already-processed' } };
+        }
+        if (sequence <= water[player]!) return { status: 'duplicate', result: { id: { ...envelope.id }, tick, status: 'already-processed' } };
+        if (sequence !== water[player]! + 1) return reject('expected-sequence');
+        if (countTick !== tick) { countTick = tick; counts.fill(0); }
+        const overBudget = counts[player]! >= 16;
+        const recovery = overBudget && recoveredPlayers !== undefined && !recoveredPlayers.has(player)
+          && envelope.command.kind === 'setPaused' && envelope.command.paused === false;
+        if (pending.size >= 256 || (overBudget && !recovery)) {
+          const admission = reject('over-capacity');
+          if (policy === 'receive-time') {
+            water[player] = sequence;
+            if (admission.status === 'rejected') store(player, sequence, payload, admission.result);
+          }
+          return admission;
+        }
+        water[player] = sequence;
+        // Control admission uses the next unexecuted tick too, including while paused.
+        if (!inputTickAllowed(envelope.requestedTick, tick, policy)) {
+          const admission = reject('stale-tick');
+          if (admission.status === 'rejected') store(player, sequence, payload, admission.result);
+          return admission;
+        }
+        if (recovery) recoveredPlayers!.add(player);
+        else counts[player] = counts[player]! + 1;
+        pending.set(key, { payload, tick });
+        return { status: 'queued' };
       }
-      if (sequence <= water[player]!) return { status: 'duplicate', result: { id: { ...envelope.id }, tick, status: 'already-processed' } };
-      if (sequence !== water[player]! + 1) return reject('expected-sequence');
-      if (countTick !== tick) { countTick = tick; counts.fill(0); }
-      const overBudget = counts[player]! >= 16;
-      const recovery = overBudget && recoveredPlayers !== undefined && !recoveredPlayers.has(player)
-        && envelope.command.kind === 'setPaused' && envelope.command.paused === false;
-      if (pending.size >= 256 || (overBudget && !recovery)) return reject('over-capacity');
-      water[player] = sequence;
-      // Control admission uses the next unexecuted tick too, including while paused.
-      if (envelope.requestedTick !== tick) {
-        const admission = reject('stale-tick');
-        if (admission.status === 'rejected') store(player, sequence, payload, admission.result);
-        return admission;
-      }
-      if (recovery) recoveredPlayers!.add(player);
-      else counts[player] = counts[player]! + 1;
-      pending.set(key, { payload, tick });
-      return { status: 'queued' };
     },
     finish(result) {
       const { player, sequence } = result.id, key = `${player}:${sequence}`, entry = pending.get(key);

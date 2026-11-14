@@ -9,16 +9,17 @@ import { isPauseControl, type TickInput } from '../sim/commands';
 import { telemetryRecord } from '../sim/telemetry';
 import { createTickDriver } from './tickDriver';
 import { createLedger, type AdmittedEnvelope, type Ledger } from './ledger';
-import type { AuthorityDeps } from './authority';
+import type { AuthorityDeps, AttachOptions } from './authority';
+import { inputTickAllowed, REMOTE_HELD_TIMEOUT_MS, type AdmissionPolicy } from '../net/receivePolicy';
 import type { AuthorityEvent, ClientAuxMessage } from '../net/contracts';
 import { audioCues, cueCounters } from '../events/audioCues';
 import { calloutFor } from '../events/callout';
-import { replayDataEqual, type ReplayAction, type ReplayFrame, type ReplayV2 } from '../sim/replay';
+import { replayDataEqual, type ReplayAction, type ReplayFrame, type Replay } from '../sim/replay';
 import type { CardUiState } from '../clientControl/cardController';
 import { validateCheckpoint, type Checkpoint } from './checkpoint';
 import { Life, LifeState } from '../sim/components';
 
-interface Binding { id: number; link: Link; players: readonly number[]; ledger: Ledger; ingress: { message: ClientMessage; order: number }[]; unsubscribe: Unsubscribe[] }
+interface Binding { id: number; link: Link; players: readonly number[]; admissionPolicy: AdmissionPolicy; ledger: Ledger; ingress: { message: ClientMessage; order: number; receivedAt?: number }[]; unsubscribe: Unsubscribe[] }
 export type JournalControl = { source: 'player'; order: number; envelope: CommandEnvelope } | { source: 'lifecycle'; order: number; ordinal: number; control: LifecyclePause };
 export interface JournalTick { tick: number; input: TickInput; heldSequences: readonly number[]; results: readonly CommandResult[]; controls: readonly JournalControl[] }
 export interface CrashRecord {
@@ -40,6 +41,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   const bindings = new Set<Binding>();
   const held: HeldInput[] = Array.from({ length: state.playerCount }, () => ({ moveX: 0, moveY: 0, interactHeld: false }));
   const heldSequences = Array.from({ length: state.playerCount }, () => 0);
+  const heldReceipts: (number | null)[] = heldSequences.map(() => null);
   const ledger = createLedger(Array.from({ length: state.playerCount }, (_, p) => p), state.playerCount);
   let pending: { binding: Binding; envelope: AdmittedEnvelope }[] = [];
   // Captured batches are no longer in pending/controlQueue. Retain their ledger
@@ -64,6 +66,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   let ticks: JournalTick[] = [];
   let botMemory: CardUiState[] = [];
   let bindingOrdinal = 0, replaying = false;
+  let replayVersion: 2 | 3 = 2;
   let frames: ReplayFrame[] = [], activeFrame: ReplayFrame | null = null;
   const deferredDetaches = new Set<Unsubscribe>();
   let flushingDetaches = false;
@@ -141,7 +144,18 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     ticks = []; controls = []; controlResults = [];
     durableBaseline = captureCheckpoint(); frames = [];
   }
-  function send(binding: Binding, message: AuthorityMessage, reliable = false): void { if (message.kind === 'result') activeFrame?.results.push(structuredClone(message.result)); binding.link.send(reliable ? 'reliable-ordered' : 'unreliable-latest', encodeMessage(message)); }
+  function send(binding: Binding, message: AuthorityMessage, reliable = false): void {
+    if (message.kind === 'result') {
+      if (binding.admissionPolicy === 'receive-time') {
+        const invalid = message.result.reason === 'unowned' || message.result.reason === 'wrong-run' || message.result.reason === 'malformed';
+        const high = invalid ? 0 : ledger.highWater()[message.result.id.player]!;
+        message = { ...message, result: { ...message.result, admission: { expectedSequence: high + 1,
+          disposition: !invalid && message.result.id.sequence <= high ? 'terminal' : 'retryable' } } };
+      }
+      activeFrame?.results.push(structuredClone(message.result));
+    }
+    binding.link.send(reliable ? 'reliable-ordered' : 'unreliable-latest', encodeMessage(message));
+  }
   function publishCompletedState(reliable = false): void {
     if (disposed || phase === 'error') return;
     // Hash the exact freshly captured canonical values, avoiding a second field
@@ -174,16 +188,32 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     pendingCallouts.clear();
     if (hadCallouts) { begin({ kind: 'cursor', receiveOrder }); complete(); }
   }
-  function acceptHeld(binding: Binding, frame: HeldFrame): void {
-    if (frame.runId !== deps.init.runId || !binding.players.includes(frame.player) || frame.tick !== state.tick || frame.sequence <= heldSequences[frame.player]!) return;
+  function acceptHeld(binding: Binding, frame: HeldFrame, receivedAt?: number): void {
+    if (frame.runId !== deps.init.runId || !binding.players.includes(frame.player) || !inputTickAllowed(frame.tick, state.tick, binding.admissionPolicy) || frame.sequence <= heldSequences[frame.player]!) return;
     heldSequences[frame.player] = frame.sequence; held[frame.player] = { ...frame.held };
+    if (binding.admissionPolicy === 'receive-time' && !replaying) heldReceipts[frame.player] = receivedAt!;
+  }
+  function neutralizeExpired(players: number[]): void {
+    begin({ kind: 'watchdog', players });
+    for (const p of players) { held[p] = { moveX: 0, moveY: 0, interactHeld: false }; heldReceipts[p] = null; }
+    complete();
+  }
+  function expireHeld(): void {
+    if (replaying) return;
+    const now = deps.clock.nowMs(), expired: number[] = [];
+    for (let p = 0; p < held.length; p++) if (heldReceipts[p] !== null && now - heldReceipts[p]! >= REMOTE_HELD_TIMEOUT_MS) {
+      heldReceipts[p] = null;
+      if (held[p]!.moveX !== 0 || held[p]!.moveY !== 0 || held[p]!.interactHeld) expired.push(p);
+    }
+    if (expired.length) neutralizeExpired(expired);
   }
   function drainIngress(): void {
     const incoming = [...bindings].flatMap((binding) => binding.ingress.splice(0).map((entry) => ({ ...entry, binding }))).sort((a, b) => a.order - b.order);
     const recorded = incoming.filter(entry => entry.message.kind !== 'callout');
-    if (recorded.length) begin({ kind: 'admission', entries: recorded.map(({ binding, message, order }) => ({ binding: binding.id, players: [...binding.players], message: message as Exclude<ClientMessage, { kind: 'callout' }>, order })) });
-    for (const { binding, message, order } of incoming) {
-      if (message.kind === 'held') { acceptHeld(binding, message.frame); continue; }
+    if (recorded.length) begin({ kind: 'admission', entries: recorded.map(({ binding, message, order }) => ({ binding: binding.id, players: [...binding.players], message: message as Exclude<ClientMessage, { kind: 'callout' }>, order,
+      ...(binding.admissionPolicy === 'receive-time' ? { admissionPolicy: binding.admissionPolicy, effectiveTick: state.tick } : {}) })) });
+    for (const { binding, message, order, receivedAt } of incoming) {
+      if (message.kind === 'held') { acceptHeld(binding, message.frame, receivedAt); continue; }
       if (message.kind === 'callout') {
         if (message.runId === deps.init.runId && binding.players.includes(message.player) && message.sequence > auxiliarySequences[message.player]!) {
           auxiliarySequences[message.player] = message.sequence;
@@ -194,8 +224,12 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       const envelope = message.envelope;
       if (!binding.players.includes(envelope.id.player)) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unowned' } }, true); continue; }
       if (envelope.runId !== deps.init.runId) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'wrong-run' } }, true); continue; }
-      const admission = binding.ledger.admit(envelope, state.tick, phase === 'paused' ? recoveredPlayers : undefined);
-      if (admission.status !== 'queued') { send(binding, { kind: 'result', runId: deps.init.runId, result: admission.result }, true); continue; }
+      const admission = binding.ledger.admit(envelope, state.tick, phase === 'paused' ? recoveredPlayers : undefined, binding.admissionPolicy);
+      if (admission.status !== 'queued') {
+        send(binding, { kind: 'result', runId: deps.init.runId, result: admission.result }, true);
+        if (binding.admissionPolicy === 'receive-time' && admission.result.reason === 'conflicting-duplicate' && !replaying) binding.link.close('conflicting-duplicate');
+        continue;
+      }
       if (phase === 'ended' || phase === 'error') {
         result(binding, { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
         continue;
@@ -247,12 +281,15 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     // Producer opportunities happen outside execution; absent or failed producers never gate ticks.
     try { if (!replaying) deps.beforeTick?.(state.tick, deadline); } catch { /* producer failed: run with admitted input */ }
     drainIngress();
+    expireHeld();
     flushCallouts();
     // Controls received here wait for the next pump; they cannot leak into the sim phase.
     const frozen = pending; pending = [];
     const input: TickInput = { held: held.map((h) => ({ ...h })), commands: [] };
     for (const entry of frozen) {
-      (input.commands as CommandEnvelope[]).push(entry.envelope);
+      // Admission/dedup always retain the original bytes. The simulator still
+      // enforces exact ticks on a separate execution envelope.
+      (input.commands as CommandEnvelope[]).push(entry.binding.admissionPolicy === 'receive-time' ? { ...entry.envelope, requestedTick: state.tick } : entry.envelope);
     }
     begin({ kind: 'tick', input, heldSequences: [...heldSequences] });
     inFlight = frozen;
@@ -277,6 +314,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     try {
       try { deps.beforeControls?.(); } catch { /* absent producer never prevents authority progress */ }
       drainIngress();
+      expireHeld();
       // Accrue through this boundary before any pause control changes the active epoch.
       driver.setPaused(phase !== 'running');
       applyControls();
@@ -316,9 +354,12 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     throw error;
   }
   return {
-    attach(link: Link, players: readonly number[]): Unsubscribe {
+    attach(link: Link, players: readonly number[], options: AttachOptions = {}): Unsubscribe {
+      const admissionPolicy = options.admissionPolicy ?? 'strict';
+      if (admissionPolicy !== 'strict' && admissionPolicy !== 'receive-time') throw new Error('invalid admission policy');
       if (disposed || players.some((p) => !Number.isInteger(p) || p < 0 || p >= state.playerCount || [...bindings].some((b) => b.players.includes(p))) || new Set(players).size !== players.length) throw new Error('invalid player ownership');
-      const binding: Binding = { id: ++bindingOrdinal, link, players: [...players], ledger, ingress: [], unsubscribe: [] }; bindings.add(binding);
+      const binding: Binding = { id: ++bindingOrdinal, link, players: [...players], admissionPolicy, ledger, ingress: [], unsubscribe: [] }; bindings.add(binding);
+      if (admissionPolicy === 'receive-time') replayVersion = 3;
       const detach = (): void => {
         // Finish the entire captured admission/control/tick batch before changing
         // ownership. Replay sees the outer outcome first, then this detach.
@@ -331,7 +372,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
         inFlight = inFlight.filter((p) => p.binding !== binding);
         for (const entry of controlQueue) if (entry.binding === binding && entry.record.source === 'player') ledger.finish({ id: entry.record.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
         controlQueue = controlQueue.filter((entry) => entry.binding !== binding);
-        for (const p of players) held[p] = { moveX: 0, moveY: 0, interactHeld: false };
+        for (const p of players) { held[p] = { moveX: 0, moveY: 0, interactHeld: false }; heldReceipts[p] = null; }
         complete();
         // Discarded ingress already consumed receive ordinals, including auxiliary bytes.
         binding.ingress.length = 0;
@@ -340,7 +381,8 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       try {
       binding.unsubscribe.push(link.onMessage((_kind, bytes) => {
         try { const message = decodeMessage(bytes); if (message.kind === 'state' || message.kind === 'result' || message.kind === 'event') { link.close('invalid-client-message'); return; }
-          if (binding.ingress.length >= 256) { link.close('ingress-overflow'); return; } binding.ingress.push({ message, order: ++receiveOrder });
+          if (binding.ingress.length >= 256) { link.close('ingress-overflow'); return; } binding.ingress.push({ message, order: ++receiveOrder,
+            ...(admissionPolicy === 'receive-time' && message.kind === 'held' ? { receivedAt: deps.clock.nowMs() } : {}) });
         } catch { link.close('malformed'); }
       }));
       binding.unsubscribe.push(link.onClose(detach));
@@ -352,7 +394,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       }
     },
     pump, publishCompletedState, checkpoint: sealCheckpoint,
-    replay(): ReplayV2 { return structuredClone({ version: 2, init: deps.init, initial: durableBaseline.snapshot, checkpoint: durableBaseline, frames }); },
+    replay(): Replay { return structuredClone({ version: replayVersion, init: deps.init, initial: durableBaseline.snapshot, checkpoint: durableBaseline, frames }); },
     replayFrame(frame: ReplayFrame): ReplayFrame {
       if (disposed || activeFrame || frame.tick !== state.tick || frame.eventSequenceBefore < eventSequence) throw new Error('invalid replay boundary');
       replaying = true; eventSequence = frame.eventSequenceBefore;
@@ -362,10 +404,11 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
         for (const entry of action.entries) {
           let binding = replayBindings.get(entry.binding);
           if (!binding) {
-            binding = { id: entry.binding, players: entry.players, ledger, ingress: [], unsubscribe: [], link: { send() {} } as unknown as Link };
+            binding = { id: entry.binding, players: entry.players, admissionPolicy: entry.admissionPolicy ?? 'strict', ledger, ingress: [], unsubscribe: [], link: { send() {} } as unknown as Link };
             replayBindings.set(entry.binding, binding); bindings.add(binding);
           }
           if (JSON.stringify(binding.players) !== JSON.stringify(entry.players)) throw new Error('replay ownership changed');
+          if (binding.admissionPolicy !== (entry.admissionPolicy ?? 'strict') || (entry.effectiveTick !== undefined && entry.effectiveTick !== state.tick)) throw new Error('replay admission mapping changed');
           receiveOrder = Math.max(receiveOrder, entry.order);
           binding.ingress.push({ message: entry.message, order: entry.order });
         }
@@ -380,6 +423,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       } else if (action.kind === 'publish') { begin(action); publishCompletedState(true); complete(); }
       else if (action.kind === 'seal') rejectPending();
       else if (action.kind === 'cursor') { begin(action); receiveOrder = action.receiveOrder; complete(); }
+      else if (action.kind === 'watchdog') neutralizeExpired(action.players);
       else {
         begin(action);
         const binding = replayBindings.get(action.binding);

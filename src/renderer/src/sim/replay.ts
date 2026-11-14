@@ -2,13 +2,15 @@ import type { ClientMessage, CommandResult, HeldInput, LifecyclePause, Published
 import type { Snapshot } from './snapshot';
 import type { Checkpoint } from '../net/contracts';
 import type { TickInput } from './commands';
-export type ReplayAdmission = { binding: number; players: number[]; order: number; message: Exclude<ClientMessage, { kind: 'callout' }> };
+import type { AdmissionPolicy } from '../net/receivePolicy';
+export type ReplayAdmission = { binding: number; players: number[]; order: number; message: Exclude<ClientMessage, { kind: 'callout' }>; admissionPolicy?: AdmissionPolicy; effectiveTick?: number };
 export type ReplayAction =
   | { kind: 'admission'; entries: ReplayAdmission[] }
   | { kind: 'lifecycle'; order: number; ordinal: number; control: LifecyclePause }
   | { kind: 'controls' }
   | { kind: 'tick'; input: TickInput; heldSequences: number[] }
   | { kind: 'detach'; binding: number; players: number[] }
+  | { kind: 'watchdog'; players: number[] }
   | { kind: 'publish' }
   | { kind: 'seal' }
   | { kind: 'cursor'; receiveOrder: number };
@@ -22,6 +24,8 @@ export interface ReplayFrame {
 }
 /** Portable semantic replay. Auxiliary requests/presentation payloads are deliberately absent. */
 export interface ReplayV2 { version: 2; init: RunInit; initial: Snapshot; checkpoint: Checkpoint; frames: ReplayFrame[] }
+export interface ReplayV3 extends Omit<ReplayV2, 'version'> { version: 3 }
+export type Replay = ReplayV2 | ReplayV3;
 export type { HeldInput };
 
 /** Property insertion order is not part of portable JSON semantics. */

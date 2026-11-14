@@ -61,7 +61,9 @@ const commandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
 ]);
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();
-const result = z.object({ id, tick: uint, status: z.enum(['applied', 'noop', 'rejected', 'already-processed']), reason: z.enum(COMMAND_REASONS).optional() }).strict();
+const result = z.object({ id, tick: uint, status: z.enum(['applied', 'noop', 'rejected', 'already-processed']), reason: z.enum(COMMAND_REASONS).optional(),
+  admission: z.object({ expectedSequence: positive, disposition: z.enum(['terminal', 'retryable']) }).strict().optional()
+}).strict();
 const u32 = z.number().int().min(0).max(4_294_967_295);
 const snapshot = z.object({
   header: z.object({

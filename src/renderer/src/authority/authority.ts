@@ -1,5 +1,8 @@
 import type { LifecyclePause, Link, MonotonicClock, RunInit, Scheduler, Unsubscribe } from '../net/contracts';
-import type { ReplayV2 } from '../sim/replay';
+import type { Replay } from '../sim/replay';
+import type { AdmissionPolicy } from '../net/receivePolicy';
+export type { AdmissionPolicy } from '../net/receivePolicy';
+export interface AttachOptions { admissionPolicy?: AdmissionPolicy }
 import { loadSnapshot } from '../sim/snapshot';
 import type { CardUiState } from '../clientControl/cardController';
 import { validateCheckpoint, validateRunInit, type Checkpoint } from './checkpoint';
@@ -21,21 +24,22 @@ export interface AuthorityDeps {
   bindLifecyclePause?(request: (control: LifecyclePause) => void): void | Unsubscribe;
 }
 /** Live Net-1a owner: closed held/command/contextual-callout ingress; durable restore belongs to Net-1b. */
-export interface Authority1a { attach(link: Link, players: readonly number[]): Unsubscribe; start(init: RunInit): void; pump(): void; dispose(): void }
+export interface Authority1a { attach(link: Link, players: readonly number[], options?: AttachOptions): Unsubscribe; start(init: RunInit): void; pump(): void; dispose(): void }
 export interface Authority extends Authority1a {
   checkpoint(botControllers: readonly CardUiState[]): Checkpoint;
   /** Restore paused with no attached producers. Retire old client/transport queues,
    * then attach fresh producers synchronized from the restored publication. */
   restore(checkpoint: Checkpoint): void;
-  replay(): ReplayV2;
+  replay(): Replay;
 }
 export function createAuthority(deps: AuthorityDeps): Authority {
   let core: ReturnType<typeof createAuthorityCore> | null = null, disposed = false;
-  const attached = new Map<Link, { players: readonly number[]; off?: Unsubscribe }>();
+  const attached = new Map<Link, { players: readonly number[]; options: AttachOptions; off?: Unsubscribe }>();
   return {
-    attach(link, players) {
+    attach(link, players, options = {}) {
       if (disposed || attached.has(link)) throw new Error('authority unavailable');
-      const entry = { players: [...players], off: core?.attach(link, players) }; attached.set(link, entry);
+      if (options.admissionPolicy !== undefined && options.admissionPolicy !== 'strict' && options.admissionPolicy !== 'receive-time') throw new Error('invalid admission policy');
+      const entry = { players: [...players], options: { ...options }, off: core?.attach(link, players, options) }; attached.set(link, entry);
       return () => { entry.off?.(); attached.delete(link); };
     },
     start(init) {
@@ -46,7 +50,7 @@ export function createAuthority(deps: AuthorityDeps): Authority {
       const next = createAuthorityCore({ ...deps, init }, createSimState(layout, init.playerCount, init.seed, init.characters, { unlocked: init.unlocked, quirk: init.quirk }));
       try {
         core?.dispose(); core = next;
-        for (const [link, entry] of attached) entry.off = next.attach(link, entry.players);
+        for (const [link, entry] of attached) entry.off = next.attach(link, entry.players, entry.options);
       } catch (error) {
         try { next.dispose(); } finally { core = null; }
         throw error;
