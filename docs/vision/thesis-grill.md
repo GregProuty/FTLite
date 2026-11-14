@@ -37,3 +37,13 @@ Implications for the specs:
   - **Relaxed (Stardew):** a repair bill and lost time, never the ship.
 - One code path. The modes differ only in loss rules and a few tuning knobs; all balance and playtesting targets Standard.
 - Still open: whether a campaign has an ending (retire, clear the debt) or runs forever, and how Standard avoids a debt spiral.
+
+## Q5. How many friends is the game designed for?
+
+**Answer: A, 2 to 4 players.** A small crew on a small ship, closest to FTLite today.
+
+Implications for the specs:
+- Ships, task lists, choices, crises and votes are designed and tuned for 2 to 4. Larger crews (6, 16, several ships) stay supported by the architecture but are later, secondary modes.
+- Ships stay small: fewer rooms than the reference map (on the order of 6 to 10), so every room matters and a crew of 2 still feels stretched.
+- Scarcity of crew time (Q3) is tuned for 2 to 4; bots fill seats up to the ship's crew size.
+- Milestones SHIP-1 to SHIP-3 drop in priority.
