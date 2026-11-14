@@ -113,3 +113,38 @@ Confirmed. Drag scales the velocity each tick (plan Task 3, `keep`), but the bud
 
 ---
 
+# Round 3 (delta, reviewing c446716, effort medium, 33 s, 110353 in / 74624 cached / 1116 out)
+
+Verdict: ready
+
+## Prior findings
+- R2-F1: resolved — Plan L802 scales the remaining skid budget by the same drag multiplier as velocity. The regression at plan L655-L662 checks all 400 ticks for reversal and requires exact zero velocity and budget. Independent Node arithmetic reaches both zeros at tick 179 without reversing.
+
+## Verified
+- The commit diff a6629f2..c446716 matches the supplied delta.
+- Plan L787-L802 preserves separation from later gravitational acceleration while accounting for drag, consistent with spec L124-L125.
+- The updated budget assertion at plan L667 evaluates to 8.645 after one tick; independent arithmetic confirms it.
+- The added test brings the flight test count to 15, matching plan L816 and L1001.
+- The added numeric multiplication uses existing number fields and introduces no prohibited determinism operations.
+
+## Not verified
+- Full TypeScript compilation and Vitest execution were not performed; verification was limited to delta inspection and Node arithmetic.
+- The on-disk ledger could not be read because access was denied; the supplied ledger and responder text were used.
+- Unchanged plan sections were not re-reviewed, as requested.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json` against the subject at `c446716`. No new findings. Codex confirmed R2-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
