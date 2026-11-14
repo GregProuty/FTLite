@@ -7,6 +7,7 @@ import { ENEMY_WEAPONS_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { firstDifference, projectGameplay, scenarios, runScenario } from './helpers/gameplayTrace';
 import { readFileSync } from 'node:fs';
+import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 const baseline = JSON.parse(readFileSync('tests/fixtures/net1a-baseline.json', 'utf8')) as { scenarios: ReturnType<typeof runScenario>[] };
 
 describe('independent Net-1a baseline oracle', () => {
@@ -60,7 +61,10 @@ describe('independent Net-1a baseline oracle', () => {
     expect(expected, 'missing pinned baseline').toBeDefined();
     const actual = runScenario(scenario);
     expect(firstDifference(expected.observations, actual.observations)).toBeNull();
-    expect(actual).toEqual(expected);
+    // The final cutover deliberately increments only version metadata; the pinned
+    // gameplay observations, actions, RNG and numeric summary remain exact.
+    expect(actual.summary.simVersion).toBe(SIM_VERSION);
+    expect(actual).toEqual({ ...expected, summary: { ...expected.summary, simVersion: SIM_VERSION } });
   });
   it('detects deliberate corruption of the stored oracle independently of execution', () => {
     const expected = structuredClone(baseline.scenarios[0]!.observations);

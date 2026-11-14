@@ -19,7 +19,7 @@ import { enemySystem } from './enemy';
 import { medbayStep } from './medbay';
 import { xpSystem } from './xp';
 import { telemetrySystem } from './telemetry';
-import { heldPhaseInputs, type MigrationTickInput } from './commands';
+import { heldPhaseInputs, type TickInput } from './commands';
 import type { CommandResult } from '../net/contracts';
 
 export function intentFor(intents: readonly Intent[], pid: number): Intent {
@@ -27,7 +27,7 @@ export function intentFor(intents: readonly Intent[], pid: number): Intent {
 }
 
 /** One fixed 60 Hz tick in the spec system order (section 4 rule 4a). */
-export function stepCommands(state: SimState, input: MigrationTickInput): readonly CommandResult[] {
+export function stepCommands(state: SimState, input: TickInput): readonly CommandResult[] {
   if (state.ended) return [];
   const intents = heldPhaseInputs(input, state.playerCount);
   state.scratch.commandResults.length = 0;

@@ -33,10 +33,10 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
     beforeTick(tick) {
       transport.drain(); const view = client.state();
       if (view) {
-        const actions = bots ? { held: [], commands: [], legacyCardInput: [] } as ReturnType<typeof translateTick> : translateTick(view, client.ui, frames, tick);
+        const actions = bots ? { held: [], commands: [] } as ReturnType<typeof translateTick> : translateTick(view, client.ui, frames, tick);
         if (bots) for (const bot of botControllers) {
           const next = bot.decide(tick);
-          actions.held.push(...next.held); actions.commands.push(...next.commands); actions.legacyCardInput.push(...next.legacyCardInput);
+          actions.held.push(...next.held); actions.commands.push(...next.commands);
         }
         for (const { player, command } of scripted) {
           const producer = client.ui.players[player];
@@ -55,6 +55,8 @@ export function createHeadlessRunner(init: HeadlessInit, authorityFactory: (deps
   transport.drain();
   function advance(): void {
     now = ++deadlineOrdinal * 1000 / TICK_HZ; authority.pump(); transport.drain();
+    // Headless runs consume reliable presentation events without playing them.
+    client.takeEvents();
     if (fault && !init.onCrash) throw new Error(`headless authority fault: ${(fault as CrashRecord).error}`);
   }
   return {

@@ -23,7 +23,7 @@ describe('client semantic interaction translation', () => {
     const first = translateTick(s, ui, [frame], s.tick);
     const second = translateTick(s, ui, [frame], s.tick);
     expect([first.commands[0]?.command, second.commands[0]?.command]).toMatchObject([{ kind: 'vote', choice: 0 }, { kind: 'vote', choice: 1 }]);
-    expect(first.legacyCardInput).toEqual([]);
+    expect(first).not.toHaveProperty('legacyCardInput');
   });
   it('Navigation direction plus Confirm emits one explicit vote with no bridge input', () => {
     const s = makeState(2); quiet(s); setEvent(s, 0);
@@ -32,7 +32,7 @@ describe('client semantic interaction translation', () => {
     const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
     const actions = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1, confirmPresses: 1 }], s.tick);
     expect(actions.commands.map(c => c.command)).toMatchObject([{ kind: 'vote', choice: 1 }]);
-    expect(actions.legacyCardInput).toEqual([]); expect(ui.stations[nav]!.rowKey).toBe('choice:1');
+    expect(actions).not.toHaveProperty('legacyCardInput'); expect(ui.stations[nav]!.rowKey).toBe('choice:1');
   });
   it('held card direction repeats once every eight ticks and resets on a fresh seat', () => {
     const s = makeState(); const nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav);
@@ -75,20 +75,20 @@ describe('shared client navigation and held inputs', () => {
     const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
     const actions = translateTick(s, ui, [{ ...NEUTRAL_FRAME, confirmPresses: 1 }], 0);
     expect(Seated.station[s.crew[0]!]).toBe(wpn); expect(actions.commands).toEqual([]);
-    expect(actions.legacyCardInput).toEqual([]); // Weapons is semantic; with no target, Confirm emits neither fire nor vote.
-    const results = stepCommands(s, { held: [], legacyCardInput: [], commands: [{ runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'vote', event: eventRef(s), choice: 0 } }] });
+    expect(actions).not.toHaveProperty('legacyCardInput'); // Weapons is semantic; with no target, Confirm emits neither fire nor vote.
+    const results = stepCommands(s, { held: [], commands: [{ runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'vote', event: eventRef(s), choice: 0 } }] });
     expect(results[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
   });
   it('movement and held Interact remain raw state, while pause shares the gameplay command sequence', () => {
     const s = makeState(1); const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
     const held = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveX: .8, moveY: .8, interactHeld: true, interactPresses: 1 }], 0);
-    expect(held.held[0]!.held).toEqual({ moveX: .8, moveY: .8, interactHeld: true }); expect(held.commands).toEqual([]); expect(held.legacyCardInput).toEqual([]);
+    expect(held.held[0]!.held).toEqual({ moveX: .8, moveY: .8, interactHeld: true }); expect(held.commands).toEqual([]); expect(held).not.toHaveProperty('legacyCardInput');
     const nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav); reconcileUi(s, ui, 'run', []);
     const card = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1, confirmPresses: 1 }], 1);
     const pause = pauseActions(ui, 0, 1, true);
     const stand = translateTick(s, ui, [{ ...NEUTRAL_FRAME, interactPresses: 1, cancelPresses: 1, confirmPresses: 1 }], 1);
     expect([card.commands[0]!.id.sequence, pause.commands[0]!.id.sequence, stand.commands[0]!.id.sequence]).toEqual([1, 2, 3]);
-    expect(stand.commands.map(c => c.command.kind)).toEqual(['stand']); expect(stand.legacyCardInput).toEqual([]);
+    expect(stand.commands.map(c => c.command.kind)).toEqual(['stand']); expect(stand).not.toHaveProperty('legacyCardInput');
   });
 });
 
@@ -96,7 +96,7 @@ it('repeat preserves tick phase across missed opportunities and changes directio
   const s = makeState(1), nav = s.derived.stationOfKind[StationKind.Navigation]!; sitDown(s, 0, nav);
   const ui = createCardUi('run'); reconcileUi(s, ui, 'run', []);
   const down = { ...NEUTRAL_FRAME, moveY: 1 };
-  const changed = (tick: number, frame = down) => { const previous = ui.stations[nav]!.rowKey; const actions = translateTick(s, ui, [frame], tick); expect(actions.legacyCardInput).toEqual([]); return ui.stations[nav]!.rowKey !== previous; };
+  const changed = (tick: number, frame = down) => { const previous = ui.stations[nav]!.rowKey; const actions = translateTick(s, ui, [frame], tick); expect(actions).not.toHaveProperty('legacyCardInput'); return ui.stations[nav]!.rowKey !== previous; };
   expect(changed(0)).toBe(true); expect(changed(3)).toBe(false); expect(changed(8)).toBe(true); expect(changed(8)).toBe(false);
   expect(changed(11, { ...down, moveY: -1 })).toBe(true); expect(ui.players[0]!.heldDir).toBe(Dir.Up);
   expect(changed(18, { ...down, moveY: -1 })).toBe(false); expect(changed(19, { ...down, moveY: -1 })).toBe(true);

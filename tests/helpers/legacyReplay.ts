@@ -1,23 +1,26 @@
 import type { ShipLayout } from '../../src/renderer/src/sim/ship/schema';
 import { createSimState } from '../../src/renderer/src/sim/state';
-import { hashState } from '../../src/renderer/src/sim/hash';
+import { saveSnapshot } from '../../src/renderer/src/sim/snapshot';
 import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import { decodeIntent, type Replay } from '../../src/renderer/src/sim/replay';
-import { createFixtureRunner } from './authorityFixture';
+import { translateTick } from '../../src/renderer/src/clientControl/cardController';
+import { semanticRunner, type SemanticTrace } from './semanticReplay';
 import { rawFrame } from './rawInput';
-/** Headless replay. Hashes every `every` ticks localize a divergence; the final hash is the verdict (spec §10). */
-export function runReplay(layout: ShipLayout, replay: Replay, every = 60, contentDigest = __GAMEPLAY_CONTENT_DIGEST__): { hashes: string[]; finalHash: string } {
+/** Convert historical fixture presses once; the resulting trace executes only semantic inputs. */
+export function convertLegacyReplay(layout: ShipLayout, replay: Replay, contentDigest = __GAMEPLAY_CONTENT_DIGEST__): SemanticTrace {
   if (replay.layoutId !== layout.id) throw new Error(`replay is for layout ${replay.layoutId}, loaded ${layout.id}`);
   if (replay.simVersion !== SIM_VERSION) throw new Error(`replay is for sim version ${replay.simVersion}, running ${SIM_VERSION}`);
   if (replay.layoutHash !== deriveLayout(layout).layoutHash) throw new Error('replay layout hash does not match the loaded layout');
-  const state = createSimState(layout, replay.playerCount, replay.seed);
-  const runner = createFixtureRunner(state, contentDigest);
-  const hashes: string[] = [];
-  for (let t = 0; t < replay.intents.length; t++) {
-    runner.advance(replay.intents[t]!.map(decodeIntent).map(rawFrame));
-    if ((t + 1) % every === 0) hashes.push(hashState(state));
-  }
-  runner.dispose();
-  return { hashes, finalHash: hashState(state) };
+  const initial = saveSnapshot(createSimState(layout, replay.playerCount, replay.seed));
+  const trace: SemanticTrace = { version: 'net1a-test', runId: 'golden', seed: replay.seed, initial, ticks: [] };
+  const runner = semanticRunner(layout, initial, replay.seed, trace.runId, contentDigest);
+  try {
+    for (const row of replay.intents) {
+      const actions = translateTick(runner.client.state()!, runner.client.ui, row.map(decodeIntent).map(rawFrame), runner.state.tick);
+      trace.ticks.push({ held: actions.held.map(frame => ({ ...frame.held })), commands: structuredClone(actions.commands) });
+      runner.advance(actions);
+    }
+  } finally { runner.dispose(); }
+  return trace;
 }

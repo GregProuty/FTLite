@@ -1,4 +1,3 @@
-import type { Dir } from '../sim/dir';
 import type { Snapshot } from '../sim/snapshot';
 import type { TelemetryRecord } from '../sim/telemetry';
 
@@ -66,12 +65,6 @@ export type Command =
   | { kind: 'tab'; group: number; station: StationId }
   | { kind: 'setPaused'; paused: boolean };
 export interface CommandEnvelope { runId: RunId; id: CommandId; requestedTick: number; command: Command }
-/** Temporary immutable bridge; admitted by the same command ledger, never a semantic command kind. */
-export type LegacyCardInput = Readonly<{ station: number; direction: Dir; confirm: boolean }>;
-export interface LegacyInputEnvelope {
-  readonly kind: 'legacyCardInput'; readonly runId: RunId; readonly id: Readonly<CommandId>;
-  readonly requestedTick: number; readonly input: LegacyCardInput;
-}
 export const COMMAND_REASONS = [
   'wrong-run', 'unowned', 'malformed', 'expected-sequence', 'stale-tick', 'over-capacity',
   'invalid-seat', 'stale-target', 'unavailable', 'unsupported', 'conflicting-duplicate'
@@ -82,7 +75,7 @@ export interface CommandResult {
 }
 export type Admission = { status: 'queued' } | { status: 'duplicate' | 'rejected'; result: CommandResult };
 export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' };
-// Described structurally here until pure cue derivation moves out of app in task 11.
+// Data-only event cue names shared with pure derivation.
 export type Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'upgrade' | 'victory' | 'defeat' | 'callout';
 export interface AuthorityEvent {
   runId: RunId; eventSequence: number; tick: number;
@@ -98,7 +91,7 @@ export interface PublishedState {
   pauseReason: string | null; lagTicks: number; tickTimeMs: number | null;
   commandHighWater: readonly number[]; eventSequence: number;
 }
-export type ClientMessage = { kind: 'held'; frame: HeldFrame } | { kind: 'command'; envelope: CommandEnvelope } | ClientAuxMessage | LegacyInputEnvelope;
+export type ClientMessage = { kind: 'held'; frame: HeldFrame } | { kind: 'command'; envelope: CommandEnvelope } | ClientAuxMessage;
 export type AuthorityMessage =
   | { kind: 'state'; state: PublishedState }
   | { kind: 'result'; runId: RunId; result: CommandResult }

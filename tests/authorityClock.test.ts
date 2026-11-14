@@ -35,12 +35,39 @@ function rig(hooks: Partial<AuthorityDeps> = {}) {
   authority.attach(pair.authorityLink, [0]); transport.drain();
   return { state, deadlines, timers, client, authority, get controls() { return controls; },
     at(value: number) { now = value; }, pump() { authority.pump(); transport.drain(); },
-    command(command: CommandEnvelope['command'], requestedTick = state.tick) { client.send({ held: [], legacyCardInput: [], commands: [{ runId: 'clock', id: { player: 0, sequence: ++sequence }, requestedTick, command }] }); },
+    command(command: CommandEnvelope['command'], requestedTick = state.tick) { client.send({ held: [], commands: [{ runId: 'clock', id: { player: 0, sequence: ++sequence }, requestedTick, command }] }); },
     dispose() { authority.dispose(); client.dispose(); pair.host.close('done'); pair.client.close('done'); }
   };
 }
 
 describe('authority retained clock', () => {
+  it('keeps fractional deadlines and yields identical gameplay across pump batch sizes', () => {
+    const outcomes: string[] = [];
+    for (const milliseconds of [1000 / 60, 1000 / 30, 55, 81.7]) {
+      const h = rig({ beforeTick(tick) {
+        h.client.send(translateTick(h.client.state()!, h.client.ui, [{ ...NEUTRAL_FRAME, moveX: tick % 2 ? 1 : 0, interactHeld: tick % 7 === 0 }], tick));
+      } });
+      for (let time = milliseconds; time < 5000; time += milliseconds) { h.at(time); h.pump(); }
+      h.at(5000); h.pump(); expect(h.state.tick).toBe(300);
+      outcomes.push(hashState(h.state)); h.dispose();
+    }
+    expect(new Set(outcomes).size).toBe(1);
+    const h = rig(); h.at(1000 / 60 * 2.5); h.pump(); expect(h.state.tick).toBe(2);
+    h.at(50); h.pump(); expect(h.state.tick).toBe(3); h.dispose();
+  });
+  it('delivers every timestamped edge once regardless of pump batching', () => {
+    for (const milliseconds of [1000 / 60, 1000 / 30, 55, 81.7]) {
+      const timeline = createInputTimeline(1), sent = [0, 0, 0], got = [0, 0, 0];
+      for (let i = 0; i < 200; i++) {
+        const frame = { ...NEUTRAL_FRAME, interactPresses: i % 5 === 0 ? 1 : 0, confirmPresses: i % 7 === 3 ? 1 + i % 2 : 0, cancelPresses: i % 11 === 4 ? 1 : 0 };
+        sent[0]! += frame.interactPresses; sent[1]! += frame.confirmPresses; sent[2]! += frame.cancelPresses;
+        timeline.sample(i * 1000 / 60, [frame]);
+      }
+      const h = rig({ beforeTick(_tick, deadline) { const f = timeline.consume(deadline)[0]!; got[0]! += f.interactPresses; got[1]! += f.confirmPresses; got[2]! += f.cancelPresses; } });
+      for (let time = milliseconds; time < 4000; time += milliseconds) { h.at(time); h.pump(); }
+      h.at(4000); h.pump(); expect(got).toEqual(sent); h.dispose();
+    }
+  });
   it('retains 5000ms as 120/120/60 ticks and yields immediate debt continuations', () => {
     const h = rig(); h.at(5000);
     h.pump(); expect(h.state.tick).toBe(120); expect([...h.timers.values()].map((t) => t.delay)).toEqual([0]);
@@ -152,7 +179,7 @@ describe('authority retained clock', () => {
         authorityFactory(deps) {
           const authority = createAuthority(deps); let off = () => {};
           return { ...authority, attach(link, players) {
-            off = link.onMessage((_channel, bytes) => { const message = decodeMessage(bytes); if (message.kind === 'command' || message.kind === 'legacyCardInput') actions.push(message); });
+            off = link.onMessage((_channel, bytes) => { const message = decodeMessage(bytes); if (message.kind === 'command') actions.push(message); });
             return authority.attach(link, players);
           }, dispose() { off(); authority.dispose(); } };
         },

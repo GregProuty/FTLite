@@ -21,15 +21,15 @@ describe('semantic Navigation', () => {
   it('emits a jump below published readiness and validates after jumpStep', () => {
     const { s, station, ui } = setup(); s.run.jumpCharge = 1 - DT / JUMP_CHARGE_TIME;
     const actions = translateTick(s, ui, [{ ...NEUTRAL_FRAME, confirmPresses: 1 }], s.tick);
-    expect(actions.legacyCardInput).toEqual([]); expect(actions.commands[0]?.command.kind).toBe('jump');
+    expect(actions).not.toHaveProperty('legacyCardInput'); expect(actions.commands[0]?.command.kind).toBe('jump');
     expect(cardRows(s, station, ui)[0]?.action?.kind).toBe('jump');
-    expect(stepCommands(s, { held: [], commands: actions.commands, legacyCardInput: [] })[0]?.status).toBe('applied');
+    expect(stepCommands(s, { held: [], commands: actions.commands,  })[0]?.status).toBe('applied');
     expect(s.run.nodesReached).toBe(1);
   });
   it('keeps direction in client memory and confirms the new row in the same tick', () => {
     const { s, station, ui } = setup(), before = hashState(s);
     const actions = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: -1, confirmPresses: 1 }], s.tick);
-    expect(actions.legacyCardInput).toEqual([]); expect(actions.commands[0]?.command).toEqual({ kind: 'evade', station });
+    expect(actions).not.toHaveProperty('legacyCardInput'); expect(actions.commands[0]?.command).toEqual({ kind: 'evade', station });
     expect(ui.stations[station]?.rowKey).toBe('evade:0'); expect(hashState(s)).toBe(before);
   });
   it('removes every canonical UI field from state', () => {

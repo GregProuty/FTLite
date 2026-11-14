@@ -53,6 +53,7 @@ export function createLocalRuntime(deps: LocalRuntimeDeps) {
   receive();
   return {
     state: client.state, ui: client.ui, publication: client.publication,
+    callout: client.callout,
     pump() { if (!disposed) { authority.pump(); receive(); } },
     frame() {
       const view = client.state(), publication = client.publication();

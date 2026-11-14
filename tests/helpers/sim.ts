@@ -41,7 +41,7 @@ export function intents(...per: Partial<Intent>[]): Intent[] {
 export function run(state: SimState, ticks: number, perTick?: (tick: number) => Intent[]): void {
   for (let i = 0; i < ticks; i++) {
     if (perTick) step(state, perTick(state.tick));
-    else { neutralFixtureTick(state); stepCommands(state, { held: [], commands: [], legacyCardInput: [] }); }
+    else { neutralFixtureTick(state); stepCommands(state, { held: [], commands: [] }); }
   }
 }
 

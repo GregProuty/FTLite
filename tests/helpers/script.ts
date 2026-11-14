@@ -3,6 +3,11 @@ import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import type { Replay, CompactIntent } from '../../src/renderer/src/sim/replay';
+import { convertLegacyReplay } from './legacyReplay';
+
+export function scriptedSemanticReplay(seed: number, playerCount: number, ticks: number, contentDigest = __GAMEPLAY_CONTENT_DIGEST__) {
+  return convertLegacyReplay(parseShip(starter), scriptedReplay(seed, playerCount, ticks), contentDigest);
+}
 
 /** Deterministic exercise pattern: each player walks a square and holds Interact every other 5 s window. */
 export function scriptedReplay(seed: number, playerCount: number, ticks: number): Replay {

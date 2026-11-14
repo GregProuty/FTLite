@@ -32,7 +32,7 @@ describe('published-state bot clients', () => {
     const h = publishedBotHarness(fight(), false), bot = bots.createBotClient(1, h.client);
     try {
       const before = bot.controllerState();
-      expect(bot.decide(0)).toEqual({ held: [], commands: [], legacyCardInput: [] });
+      expect(bot.decide(0)).toEqual({ held: [], commands: [] });
       expect(bot.controllerState()).toEqual(before);
       h.publish();
       expect(bot.decide(0).held.map(f => f.sequence)).toEqual([1]);
@@ -66,7 +66,7 @@ describe('published-state bot clients', () => {
       expect(second.commands.map(c => [c.id.player, c.id.sequence, c.command.kind])).toEqual([[1, 1, 'selectTarget']]);
       h.client.send(second);
       const captured = gunner.controllerState();
-      expect(gunner.decide(0)).toEqual({ held: [], commands: [], legacyCardInput: [] });
+      expect(gunner.decide(0)).toEqual({ held: [], commands: [] });
       expect(gunner.controllerState()).toEqual(captured);
       captured.players[1]!.nextSequence = 999; captured.stations[0]!.rowKey = 'changed';
       expect(h.client.ui.players[1]!.nextSequence).toBe(2);

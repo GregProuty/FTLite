@@ -202,7 +202,7 @@ describe('session', () => {
     expect(session.phase).toBe('error');
     expect(hudModels).toBeGreaterThan(0);
   });
-  it('crash payload carries a rolling baseline and the intents since it', () => {
+  it('crash payload carries a rolling baseline and semantic inputs since it', () => {
     const h = harness();
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
     h.press('a', { confirm: true }); h.frames(1); h.release();
@@ -214,11 +214,12 @@ describe('session', () => {
     expect(h.crashes).toHaveLength(1);
     const p = h.crashes[0] as CrashRecord;
     expect(p.baseline.header.tick).toBe(600);
-    // The faulting tick's intents are recorded before step() throws, so they are included (+1).
+    // The faulting tick's semantic inputs are recorded before execution throws (+1).
     expect(p.ticks.length).toBe(p.tick - 600 + 1);
     expect(p.tick).toBeGreaterThanOrEqual(before);
+    for (const frame of p.ticks) expect(Object.keys(frame.input).sort()).toEqual(['commands', 'held']);
   });
-  it('baseline plus recorded intents replays to the pre-fault state', () => {
+  it('baseline plus recorded semantic inputs replays to the pre-fault state', () => {
     const h = harness();
     h.press('a', { interact: true }); h.frames(1); h.release(); h.frames(1);
     h.press('a', { confirm: true }); h.frames(1); h.release();

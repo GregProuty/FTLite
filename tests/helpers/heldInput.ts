@@ -7,5 +7,5 @@ export function heldStep(state: SimState, held: readonly HeldInput[]): void {
   for (const input of held) for (const key of ['confirmPressed', 'interactPressed', 'cancelPressed']) {
     if ((input as unknown as Record<string, unknown>)[key]) throw new Error('held-only unit driver received a press');
   }
-  stepCommands(state, { held, commands: [], legacyCardInput: [] });
+  stepCommands(state, { held, commands: [] });
 }

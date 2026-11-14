@@ -1,13 +1,13 @@
 import { decodeMessage, encodeMessage } from '../net/codec';
-import type { Admission, CommandEnvelope, CommandReason, CommandResult, LegacyInputEnvelope, PlayerId } from '../net/contracts';
+import type { Admission, CommandEnvelope, CommandReason, CommandResult, PlayerId } from '../net/contracts';
 
-export type AdmittedEnvelope = CommandEnvelope | LegacyInputEnvelope;
+export type AdmittedEnvelope = CommandEnvelope;
 export interface Ledger {
   admit(envelope: AdmittedEnvelope, tick: number): Admission;
   finish(result: CommandResult): void;
   highWater(): readonly number[];
 }
-/** One link's owned players, with one shared semantic/bridge stream per player. */
+/** One link's owned players, with one shared command stream per player. */
 export function createLedger(owned: readonly PlayerId[]): Ledger {
   const water = [0, 0, 0, 0];
   const pending = new Map<string, { payload: string; tick: number }>();
@@ -23,7 +23,7 @@ export function createLedger(owned: readonly PlayerId[]): Ledger {
       // Canonical codec validation also excludes unknown properties and non-finite payloads.
       let payload: string;
       try {
-        const message = 'kind' in envelope ? envelope : { kind: 'command' as const, envelope };
+        const message = { kind: 'command' as const, envelope };
         payload = JSON.stringify(decodeMessage(encodeMessage(message)));
       } catch { return reject('malformed'); }
       const { player, sequence } = envelope.id;

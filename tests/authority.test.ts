@@ -61,7 +61,7 @@ describe('copied headless authority', () => {
     for (const axis of [0.8, 0.7071067811865476, 0.7071067811865475]) {
       const state = makeState(1), reference = makeState(1), runner = createFixtureRunner(state), eid = state.crew[0]!;
       runner.advance([{ ...NEUTRAL_FRAME, moveX: axis, moveY: axis }]);
-      stepCommands(reference, { held: [{ moveX: axis, moveY: axis, interactHeld: false }], commands: [], legacyCardInput: [] });
+      stepCommands(reference, { held: [{ moveX: axis, moveY: axis, interactHeld: false }], commands: [] });
       expect(Number.isFinite(Position.x[eid])).toBe(true);
       expect(hashState(runner.view())).toBe(hashState(state));
       expect(hashState(state)).toBe(hashState(reference));

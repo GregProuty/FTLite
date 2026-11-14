@@ -1,6 +1,7 @@
 import type { Intent } from '../../../shared/intent';
 
 export type CompactIntent = [number, number, number];
+/** Historical numeric fixture data only; no shipping replay executor accepts presses. */
 export interface Replay { version: number; seed: number; playerCount: number; layoutId: string; simVersion: number; layoutHash: string; intents: CompactIntent[][] }
 
 export function encodeIntent(i: Intent): CompactIntent {

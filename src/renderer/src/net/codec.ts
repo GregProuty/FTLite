@@ -59,7 +59,6 @@ export const commandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
 ]);
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();
-const legacyInput = z.object({ station: index, direction: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), confirm: z.boolean() }).strict();
 const result = z.object({ id, tick: uint, status: z.enum(['applied', 'noop', 'rejected', 'already-processed']), reason: z.enum(COMMAND_REASONS).optional() }).strict();
 const u32 = z.number().int().min(0).max(4_294_967_295);
 const snapshot = z.object({
@@ -105,7 +104,6 @@ const messageSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('held'), frame }).strict(),
   z.object({ kind: z.literal('command'), envelope }).strict(),
   z.object({ kind: z.literal('callout'), runId: text, player, sequence: positive, calloutKind: z.literal('contextual') }).strict(),
-  z.object({ kind: z.literal('legacyCardInput'), runId: text, id, requestedTick: uint, input: legacyInput }).strict(),
   z.object({ kind: z.literal('state'), state }).strict(),
   z.object({ kind: z.literal('result'), runId: text, result }).strict(),
   z.object({ kind: z.literal('event'), event: authorityEvent }).strict()

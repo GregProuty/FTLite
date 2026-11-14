@@ -14,8 +14,9 @@ import { navRows, NodeType } from '../../src/renderer/src/sim/run';
 import { NEUTRAL_INTENT, type Intent } from '../../src/shared/intent';
 import { DEFAULT_CHARACTERS } from '../../src/renderer/src/sim/characters';
 import { mapM, placeDebris, placeEnemy, setEvent, setNodeTypes } from './sim';
-import { readFileSync } from 'node:fs';
-const golden = JSON.parse(readFileSync('tests/golden/basic.json', 'utf8')) as { replay: { intents: number[][][] } };
+import { scriptedReplay } from './script';
+// Preserve the original pinned input pattern independently of the semantic golden file.
+const golden = { replay: scriptedReplay(2026, 4, 7200) };
 
 type Plain = Record<string, unknown>;
 function canonical(value: unknown): unknown {

@@ -18,12 +18,12 @@ describe('closed wire codec', () => {
     if (message.kind !== 'command') throw new Error('fixture');
     expect(() => decodeMessage(raw({ ...message, envelope: { ...message.envelope, command: { ...command, bogus: true } } }))).toThrow();
   });
-  it('round trips callout and the distinct temporary immutable bridge', () => {
+  it('round trips callout and rejects the removed bridge', () => {
     const callout: ClientMessage = { kind: 'callout', runId: 'run-1', player: 3, sequence: 1, calloutKind: 'contextual' };
-    const legacy: ClientMessage = { kind: 'legacyCardInput', runId: 'run-1', id: { player: 0, sequence: 1 }, requestedTick: 0,
+    const legacy = { kind: 'legacyCardInput', runId: 'run-1', id: { player: 0, sequence: 1 }, requestedTick: 0,
       input: { station: 0, direction: 2, confirm: true } };
     expect(roundTrip(callout)).toEqual(callout);
-    expect(roundTrip(legacy)).toEqual(legacy);
+    expect(() => decodeMessage(raw(legacy))).toThrow();
     expect(() => decodeMessage(raw({ ...callout, text: 'forged' }))).toThrow();
     expect(() => decodeMessage(raw({ ...callout, calloutKind: 'chat' }))).toThrow();
   });

@@ -20,5 +20,5 @@ export function snapshotPhaseClient(state: SimState) {
 export function snapshotPhaseStep(state: SimState, inputs: readonly Intent[]): void {
   const { view, ui } = snapshotPhaseClient(state);
   const actions = translateTick(view, ui, inputs.map(i => rawFrame(clampIntent(i))), state.tick);
-  stepCommands(state, { held: inputs.map(({ moveX, moveY, interactHeld }) => ({ moveX, moveY, interactHeld })), commands: actions.commands, legacyCardInput: actions.legacyCardInput });
+  stepCommands(state, { held: inputs.map(({ moveX, moveY, interactHeld }) => ({ moveX, moveY, interactHeld })), commands: actions.commands });
 }

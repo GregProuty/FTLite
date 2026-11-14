@@ -60,9 +60,9 @@ describe('semantic Weapons', () => {
     const { s, station } = setup(); placeDebris(s, room(s, 'A'), 600, 1, 100); s.weapons.charge = 0.9999;
     const ui = createCardUiState('run', s.playerCount); reconcileUi(s, ui, 'run', []);
     const out = translateTick(s, ui, [{ ...NEUTRAL_FRAME, moveY: 1, confirmPresses: 1 }], s.tick);
-    expect(out.legacyCardInput).toEqual([]); expect(out.commands.map(e => e.command.kind)).toEqual(['selectTarget', 'fire']);
+    expect(out).not.toHaveProperty('legacyCardInput'); expect(out.commands.map(e => e.command.kind)).toEqual(['selectTarget', 'fire']);
     expect(out.commands[1]!.command).toMatchObject({ weapon: pulse, target: { kind: 'object', stableId: 100 } });
-    const result = stepCommands(s, { held: [], commands: out.commands, legacyCardInput: [] });
+    const result = stepCommands(s, { held: [], commands: out.commands,  });
     expect(result.map(r => r.status)).toEqual(['applied', 'applied']); expect(s.telemetry.shots).toBe(1); expect(s.weapons.lastShotTarget).toBe(1);
     expect(s.stations).not.toHaveProperty('cursor');
   });
@@ -107,14 +107,14 @@ describe('semantic Weapons', () => {
     const ui = createCardUiState('run', s.playerCount); reconcileUi(s, ui, 'run', []);
     const out = translateTick(s, ui, [{ ...NEUTRAL_FRAME, confirmPresses: 1 }], s.tick);
     expect(out.commands[0]!.command).toMatchObject({ kind: 'fire', weapon: weaponRef(s) });
-    expect(stepCommands(s, { held: [], commands: out.commands, legacyCardInput: [] })[0]!.status).toBe('applied'); expect(s.weapons.torpedoLoaded).toBe(0); expect(s.telemetry.shots).toBe(1);
+    expect(stepCommands(s, { held: [], commands: out.commands,  })[0]!.status).toBe('applied'); expect(s.weapons.torpedoLoaded).toBe(0); expect(s.telemetry.shots).toBe(1);
   });
   it('rejects an old enemy identity and invalid rooms, and later fire after an earlier kill', () => {
     const { s, station } = setup(); placeEnemy(s); const old = targetRef(s, ENEMY_SHIELDS_SLOT)!; s.enemy.stableId++;
     expect(apply(s, { kind: 'fire', station, weapon: pulse, target: old }).reason).toBe('stale-target');
     expect(resolveTarget(s, { kind: 'enemy', stableId: s.enemy.stableId, room: 5 })).toBeNull();
     const target = { kind: 'object', stableId: 99 } as const; s.weapons.charge = 1; s.weapons.torpedoLoaded = 1; s.rng.combat = createRng(7);
-    const results = stepCommands(s, { held: [], commands: [envelope(s, { kind: 'fire', station, weapon: pulse, target }), envelope(s, { kind: 'fire', station, weapon: weaponRef(s, Weapon.Torpedo), target }, 2)], legacyCardInput: [] });
+    const results = stepCommands(s, { held: [], commands: [envelope(s, { kind: 'fire', station, weapon: pulse, target }), envelope(s, { kind: 'fire', station, weapon: weaponRef(s, Weapon.Torpedo), target }, 2)],  });
     expect(results.map(r => [r.status, r.reason])).toEqual([['applied', undefined], ['rejected', 'stale-target']]); expect(s.weapons.torpedoLoaded).toBe(1);
   });
   it('encodes target kind, identity and enemy room canonically and round-trips every variant', () => {

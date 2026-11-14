@@ -4,16 +4,19 @@ import { saveSnapshot, type Snapshot } from '../sim/snapshot';
 import { hashState } from '../sim/hash';
 import type { SimState } from '../sim/state';
 import { stepCommands } from '../sim/step';
-import { isPauseControl, type MigrationTickInput } from '../sim/commands';
+import { isPauseControl, type TickInput } from '../sim/commands';
 import { telemetryRecord } from '../sim/telemetry';
 import { createTickDriver } from './tickDriver';
 import { createLedger, type AdmittedEnvelope, type Ledger } from './ledger';
-import { admitLegacyCardInput } from './legacyCardInput';
 import type { AuthorityDeps } from './authority';
+import type { AuthorityEvent, ClientAuxMessage } from '../net/contracts';
+import { audioCues, cueCounters } from '../events/audioCues';
+import { calloutFor } from '../events/callout';
+import { Life, LifeState } from '../sim/components';
 
 interface Binding { link: Link; players: readonly number[]; ledger: Ledger; ingress: { message: ClientMessage; order: number }[]; unsubscribe: Unsubscribe[] }
 export type JournalControl = { source: 'player'; order: number; envelope: CommandEnvelope } | { source: 'lifecycle'; order: number; ordinal: number; control: LifecyclePause };
-export interface JournalTick { tick: number; input: MigrationTickInput; heldSequences: readonly number[]; results: readonly CommandResult[]; controls: readonly JournalControl[] }
+export interface JournalTick { tick: number; input: TickInput; heldSequences: readonly number[]; results: readonly CommandResult[]; controls: readonly JournalControl[] }
 export interface CrashRecord {
   tick: number; seed: number; error: string; baseline: Snapshot;
   baselineHighWater: readonly number[]; baselineHeldSequences: readonly number[];
@@ -35,6 +38,9 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
   let controlResults: CommandResult[] = [];
   let phase: PublishedState['phase'] = state.ended ? 'ended' : 'running', pauseOwner: number | null = null;
   let disposed = false, pumping = false;
+  let previousCues = cueCounters(state);
+  const auxiliarySequences = heldSequences.map(() => 0);
+  const pendingCallouts = new Map<number, ClientAuxMessage>();
   let baseline = saveSnapshot(state), baselineHighWater: readonly number[] = heldSequences.slice(), baselineHeldSequences: readonly number[] = heldSequences.slice(), baselineControlRevision = 0;
   let baselineHeld = held.map((h) => ({ ...h }));
   let baselineControlState: CrashRecord['baselineControlState'] = { phase, pauseOwner, pauseReason, revision: controlRevision };
@@ -57,6 +63,18 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
   function result(binding: Binding, value: CommandResult): void {
     binding.ledger.finish(value); send(binding, { kind: 'result', runId: deps.init.runId, result: value }, true);
   }
+  function emit(payload: AuthorityEvent['payload']): void {
+    const event: AuthorityEvent = { runId: deps.init.runId, eventSequence: ++eventSequence, tick: state.tick, payload };
+    for (const binding of bindings) send(binding, { kind: 'event', event }, true);
+  }
+  function flushCallouts(): void {
+    for (const player of [...pendingCallouts.keys()].sort((a, b) => a - b)) {
+      if (phase !== 'running' || Life.state[state.crew[player]!] === LifeState.Dead) continue;
+      const context = calloutFor(state, player);
+      emit({ kind: 'callout', player, text: context.text, station: context.flash });
+    }
+    pendingCallouts.clear();
+  }
   function acceptHeld(binding: Binding, frame: HeldFrame): void {
     if (frame.runId !== deps.init.runId || !binding.players.includes(frame.player) || frame.tick !== state.tick || frame.sequence <= heldSequences[frame.player]!) return;
     heldSequences[frame.player] = frame.sequence; held[frame.player] = { ...frame.held };
@@ -65,11 +83,17 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
     const incoming = [...bindings].flatMap((binding) => binding.ingress.splice(0).map((entry) => ({ ...entry, binding }))).sort((a, b) => a.order - b.order);
     for (const { binding, message, order } of incoming) {
       if (message.kind === 'held') { acceptHeld(binding, message.frame); continue; }
-      if (message.kind === 'callout') continue; // Presentation remains a local adapter until the event migration.
-      const envelope = message.kind === 'command' ? message.envelope : message;
+      if (message.kind === 'callout') {
+        if (message.runId === deps.init.runId && binding.players.includes(message.player) && message.sequence > auxiliarySequences[message.player]!) {
+          auxiliarySequences[message.player] = message.sequence;
+          pendingCallouts.set(message.player, message);
+        }
+        continue;
+      }
+      const envelope = message.envelope;
       if (!binding.players.includes(envelope.id.player)) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unowned' } }, true); continue; }
       if (envelope.runId !== deps.init.runId) { send(binding, { kind: 'result', runId: deps.init.runId, result: { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'wrong-run' } }, true); continue; }
-      const admission = 'kind' in envelope ? admitLegacyCardInput(binding.ledger, envelope, state.tick, state) : binding.ledger.admit(envelope, state.tick);
+      const admission = binding.ledger.admit(envelope, state.tick);
       if (admission.status !== 'queued') { send(binding, { kind: 'result', runId: deps.init.runId, result: admission.result }, true); continue; }
       if (phase === 'ended' || phase === 'error') {
         result(binding, { id: envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
@@ -105,6 +129,7 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
       }
     }
     phase = paused ? 'paused' : 'running'; pauseOwner = owner; pauseReason = reason;
+    emit({ kind: 'pause', paused, owner, reason: reason ?? 'resume' });
     driver.setPaused(paused);
     if (paused) held.forEach((h) => { h.moveX = 0; h.moveY = 0; h.interactHeld = false; });
     publishCompletedState();
@@ -113,21 +138,23 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
     // Producer opportunities happen outside execution; absent or failed producers never gate ticks.
     try { deps.beforeTick?.(state.tick, deadline); } catch { /* producer failed: run with admitted input */ }
     drainIngress();
+    flushCallouts();
     // Controls received here wait for the next pump; they cannot leak into the sim phase.
     const frozen = pending; pending = [];
-    const input: MigrationTickInput = { held: held.map((h) => ({ ...h })), commands: [], legacyCardInput: [] };
+    const input: TickInput = { held: held.map((h) => ({ ...h })), commands: [] };
     for (const entry of frozen) {
-      if ('kind' in entry.envelope) (input.legacyCardInput as AdmittedEnvelope[]).push(entry.envelope);
-      else (input.commands as CommandEnvelope[]).push(entry.envelope);
+      (input.commands as CommandEnvelope[]).push(entry.envelope);
     }
     const record: JournalTick = { tick: state.tick, input, heldSequences: [...heldSequences], results: controlResults, controls }; controls = []; controlResults = []; ticks.push(record);
     const executed = stepCommands(state, input); record.results = [...record.results, ...executed];
+    const nextCues = cueCounters(state);
+    for (const cue of audioCues(previousCues, nextCues)) emit({ kind: 'cue', cue });
+    previousCues = nextCues;
     for (const value of executed) { const entry = frozen.find((p) => p.envelope.id.player === value.id.player && p.envelope.id.sequence === value.id.sequence); if (entry) result(entry.binding, value); }
     tickTimeMs = deadline;
     if (state.ended) {
       phase = 'ended'; driver.dispose(); applyControls();
-      const event = { runId: deps.init.runId, eventSequence: ++eventSequence, tick: state.tick, payload: { kind: 'ended' as const, record: telemetryRecord(state, deps.init.seed) } };
-      for (const binding of bindings) send(binding, { kind: 'event', event }, true);
+      emit({ kind: 'ended', record: telemetryRecord(state, deps.init.seed) });
     }
     publishCompletedState();
     if (state.tick % 300 === 0) checkpoint();
@@ -141,6 +168,7 @@ export function createAuthorityCore(deps: AuthorityDeps & { init: RunInit }, sta
       // Accrue through this boundary before any pause control changes the active epoch.
       driver.setPaused(phase !== 'running');
       applyControls();
+      flushCallouts();
       driver.pump();
     } catch (error) {
       phase = 'error'; driver.dispose(); applyControls(); let snapshotAfterFault: Snapshot | null = null;

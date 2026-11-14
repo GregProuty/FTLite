@@ -3,7 +3,7 @@ import { startTargetScan, startSystemScan, lockFrequency } from './science';
 import { resolveTarget } from './debrisTargets';
 import { weaponMatches, canFireWeaponAt, fireWeaponAt, swapCargo, canSwap } from './weapons';
 import { NEUTRAL_INTENT, type Intent } from '../../../shared/intent';
-import type { CommandEnvelope, CommandReason, CommandResult, HeldInput, LegacyInputEnvelope, VisitRef, EventRef } from '../net/contracts';
+import type { CommandEnvelope, CommandReason, CommandResult, HeldInput, VisitRef, EventRef } from '../net/contracts';
 import type { SimState } from './state';
 import { Life, LifeState, Position, Seated } from './components';
 import { roomAt } from './grid';
@@ -17,9 +17,8 @@ import { choiceEnabled, EVENT_DEFS } from './events';
 import { CONFIRM_SECONDS, TICK_HZ } from './tuning';
 
 export interface TickInput { held: readonly HeldInput[]; commands: readonly CommandEnvelope[] }
-export interface MigrationTickInput extends TickInput { legacyCardInput: readonly LegacyInputEnvelope[] }
-export function isPauseControl(envelope: CommandEnvelope | LegacyInputEnvelope): envelope is CommandEnvelope & { command: { kind: 'setPaused'; paused: boolean } } {
-  return !('kind' in envelope) && envelope.command.kind === 'setPaused';
+export function isPauseControl(envelope: CommandEnvelope): envelope is CommandEnvelope & { command: { kind: 'setPaused'; paused: boolean } } {
+  return envelope.command.kind === 'setPaused';
 }
 /** Held inputs never carry one-shot actions into the simulation. */
 export function heldPhaseInputs(input: TickInput, players: number): Intent[] {
@@ -29,7 +28,7 @@ export function visitRef(state: SimState): VisitRef { return { sector: state.run
 export function eventRef(state: SimState): EventRef { return { visit: visitRef(state), eventId: state.run.event }; }
 export function sameVisit(state: SimState, visit: VisitRef): boolean { return visit.sector === state.run.sector && visit.beacon === hereIndex(state) && visit.arrivalTick === state.run.arrivalTick; }
 export function navigationOfficer(state: SimState): number { const nav = state.derived.stationOfKind[StationKind.Navigation]!; return nav >= 0 ? state.stations.occupant[nav]! : -1; }
-export function commandResult(state: SimState, envelope: CommandEnvelope | LegacyInputEnvelope, reason?: CommandReason, noop = false): CommandResult {
+export function commandResult(state: SimState, envelope: CommandEnvelope, reason?: CommandReason, noop = false): CommandResult {
   return { id: { ...envelope.id }, tick: state.tick, status: reason ? 'rejected' : noop ? 'noop' : 'applied', ...(reason ? { reason } : {}) };
 }
 function conscious(state: SimState, pid: number): boolean { return pid >= 0 && pid < state.playerCount && Life.state[state.crew[pid]!] === LifeState.Conscious; }
@@ -196,8 +195,4 @@ export function applyConsoleCommand(state: SimState, envelope: CommandEnvelope):
     return commandResult(state, envelope);
   }
   return commandResult(state, envelope, 'unsupported');
-}
-/** Empty migration scaffolding: no card family accepts raw input. */
-export function legacyCardReason(_state: SimState, _envelope: LegacyInputEnvelope, _inTick = false): CommandReason {
-  return 'unsupported';
 }

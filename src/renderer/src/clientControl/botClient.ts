@@ -10,7 +10,7 @@ export { botFrame } from './botPolicy';
 export function createBotClient(player: number, clientRun: ClientRun) {
   return {
     decide(tick: number): ClientActions {
-      const view = clientRun.state(), empty = { held: [], commands: [], legacyCardInput: [] };
+      const view = clientRun.state(), empty = { held: [], commands: [] };
       if (!view) return empty;
       const producer = clientRun.ui.players[player];
       if (!producer) throw new Error('invalid bot player');

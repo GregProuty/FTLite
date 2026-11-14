@@ -12,8 +12,9 @@ import { EndReason } from '../sim/crew';
 import { type TelemetryRecord } from '../sim/telemetry';
 import { EMPTY_PROGRESS, applyRun, unlockNames, type Progress } from '../sim/progress';
 import { DEFAULT_CHARACTERS } from '../sim/characters';
-import { cueCounters, audioCues, type Cue, type CueCounters } from './audioCues';
-import { pressCallouts, bubbles, flashingKinds, type Callout, type Bubble } from '../render/calloutModel';
+import { CUE_ORDER, type Cue } from '../events/audioCues';
+import { calloutIcon } from '../events/callout';
+import { bubbles, flashingKinds, type Callout, type Bubble } from '../render/calloutModel';
 
 export const DEFAULT_SEED = 2026;
 export const CREDITS_SCROLL_MS = 150;
@@ -57,7 +58,7 @@ export function createSession(deps: SessionDeps) {
   let runtime: ReturnType<typeof createLocalRuntime> | null = null, cancelLobby: Unsubscribe | null = null;
   let disposed = false;
   const scheduler = deps.scheduler ?? { schedule: () => () => {} };
-  let prevCounters: CueCounters | null = null;
+  const completedRuns = new Set<string>();
   const pendingCues = new Set<Cue>();
   let creditsOpen = false, creditsScroll = 0, scrollHold = 0, scrollDir = 0;
   let callouts: Callout[] = [];   // spec Coop-i section 3: app state only, never in Intent, replays or snapshots
@@ -70,7 +71,7 @@ export function createSession(deps: SessionDeps) {
     cancelLobby?.(); runtime?.dispose(); deps.renderer?.reset();
     const playerCount = slots.filter((s) => s.status !== 'empty').length;
     const layout = typeof deps.layout === 'function' ? deps.layout(playerCount) : deps.layout;
-    timeline = createInputTimeline(playerCount); newUnlocks = []; callouts = []; prevCounters = null; pendingCues.clear();
+    timeline = createInputTimeline(playerCount); newUnlocks = []; callouts = []; pendingCues.clear();
     phase = 'running'; message = '';
     runtime = createLocalRuntime({
       layout, playerCount, seed, characters: DEFAULT_CHARACTERS, unlocked: progress.unlocked,
@@ -85,15 +86,23 @@ export function createSession(deps: SessionDeps) {
           if (publication.phase === 'paused') { phase = 'paused'; message = 'PAUSED'; }
           else if (publication.phase === 'running') { phase = 'running'; message = publication.lagTicks > 0 ? `CATCHING UP (${publication.lagTicks} ticks)` : ''; }
         }
-        const next = cueCounters(view); if (prevCounters) for (const cue of audioCues(prevCounters, next)) pendingCues.add(cue); prevCounters = next;
       },
       onEvent(event) {
-        if (event.payload.kind !== 'ended' || phase === 'gameover') return;
-        const record = event.payload.record; deps.saveTelemetry?.(record);
-        const next = applyRun(progress, record); newUnlocks = next.unlocked.filter((id) => !progress.unlocked.includes(id)); progress = next; deps.saveProgress?.(progress);
+        if (event.payload.kind === 'cue') { pendingCues.add(event.payload.cue); return; }
+        if (event.payload.kind === 'callout') {
+          const payload = event.payload;
+          callouts = [...callouts.filter(c => c.pid !== payload.player && event.tick - c.tick < 3 * TICK_HZ), { pid: payload.player, tick: event.tick, text: payload.text, icon: calloutIcon(payload.text), flash: payload.station }].sort((a, b) => a.pid - b.pid);
+          pendingCues.add('callout'); return;
+        }
+        if (event.payload.kind !== 'ended' || completedRuns.has(event.runId)) return;
+        completedRuns.add(event.runId);
+        const record = event.payload.record;
+        const next = applyRun(progress, record); newUnlocks = next.unlocked.filter((id) => !progress.unlocked.includes(id)); progress = next;
         phase = 'gameover';
         message = `${state!.endReason === EndReason.Hull ? 'HULL LOST' : state!.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'} after ${Math.floor(state!.tick / TICK_HZ)}s. Confirm: same seed. Cancel: new seed.`;
         scheduleLobby();
+        try { deps.saveTelemetry?.(record); } catch { /* Persistence cannot interrupt completion or cause a duplicate application. */ }
+        try { deps.saveProgress?.(progress); } catch { /* Keep the once-applied in-memory profile when storage is unavailable. */ }
       },
       onCrash(record) { phase = 'error'; message = `Sim fault: ${record.error}. Crash data saved.`; deps.saveCrash(record); },
       draw(view, alpha) { deps.renderer?.draw(view, alpha, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : [], runtime?.ui); }
@@ -146,8 +155,7 @@ export function createSession(deps: SessionDeps) {
       } else if (phase === 'running' && state && timeline) {
         timeline.sample(now, frames);
         const pressed = calloutPresses.flatMap((n, pid) => n > 0 ? [pid] : []);
-        callouts = pressCallouts(callouts, state, pressed);
-        if (pressed.some((pid) => pid < state!.playerCount)) deps.playCue?.('callout');
+        for (const pid of pressed) runtime?.callout(pid);
       } else if (phase === 'gameover') {
         if (anyPress(frames, 'cancelPresses')) { seed += 1; phase = 'lobby'; message = `New seed. ${LOBBY_MSG}`; }
         else if (anyPress(frames, 'confirmPresses')) { phase = 'lobby'; message = `Same seed. ${LOBBY_MSG}`; }
@@ -164,7 +172,7 @@ export function createSession(deps: SessionDeps) {
     resume(reason = 'resume') { doResume(reason); }, pump,
     dispose() { disposed = true; cancelLobby?.(); runtime?.dispose(); },
     frame() {
-      for (const cue of pendingCues) deps.playCue?.(cue); pendingCues.clear();
+      for (const cue of CUE_ORDER) if (pendingCues.has(cue)) deps.playCue?.(cue); pendingCues.clear();
       if (phase !== 'error') runtime?.frame();
       deps.hud?.update(buildHudModel(phase === 'error' ? null : state, slots, phase, message, creditsOpen ? { lines: credits, scroll: creditsScroll } : null, phase === 'gameover' || phase === 'lobby' ? { bestScore: progress.bestScore, runs: progress.runs, victories: progress.victories, newUnlocks: unlockNames(newUnlocks), unlocked: unlockNames(progress.unlocked) } : null, state && phase === 'running' ? flashingKinds(callouts, state.tick) : [], runtime?.ui));
     }

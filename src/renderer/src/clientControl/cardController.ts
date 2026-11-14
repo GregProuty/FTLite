@@ -1,5 +1,5 @@
 import { WEAPON_ITEM } from '../sim/shop';
-import type { Command, CommandEnvelope, CommandResult, EventRef, HeldFrame, LegacyInputEnvelope, RunId, VisitRef } from '../net/contracts';
+import type { Command, CommandEnvelope, CommandResult, EventRef, HeldFrame, RunId, VisitRef } from '../net/contracts';
 import type { SimState } from '../sim/state';
 import { NEUTRAL_FRAME, type InputFrame } from './inputFrame';
 import { Life, LifeState, Seated } from '../sim/components';
@@ -23,7 +23,7 @@ export interface CardUiState {
   groupBar: boolean[];
   navigationVisit: VisitRef | null;
 }
-export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[]; legacyCardInput: LegacyInputEnvelope[] }
+export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[] }
 export interface CardRow { key: string; enabled: boolean; text: string; action: Command | null }
 export function cardRows(view: SimState, station: number, ui?: CardUiState): readonly CardRow[] {
   const kind = view.derived.stationKind[station], online = stationOnline(view, station), available = online || view.derived.stationGroup[station]! < 0;
@@ -73,7 +73,7 @@ export function createCardUi(runId = ''): CardUiState { return createCardUiState
 export function pauseActions(ui: CardUiState, player: number, tick: number, paused: boolean): ClientActions {
   const producer = ui.players[player];
   if (!producer || !Number.isSafeInteger(producer.nextSequence)) throw new Error('input sequence exhausted');
-  return { held: [], legacyCardInput: [], commands: [{ runId: ui.runId, id: { player, sequence: producer.nextSequence++ }, requestedTick: tick, command: { kind: 'setPaused', paused } }] };
+  return { held: [], commands: [{ runId: ui.runId, id: { player, sequence: producer.nextSequence++ }, requestedTick: tick, command: { kind: 'setPaused', paused } }] };
 }
 const sameEvent = (a: EventRef, b: EventRef): boolean => a.eventId === b.eventId && a.visit.sector === b.visit.sector && a.visit.beacon === b.visit.beacon && a.visit.arrivalTick === b.visit.arrivalTick;
 /** Reconcile completed publications without mutating gameplay or advancing repeats. */
@@ -144,7 +144,7 @@ export function atFirstRow(state: SimState, i: number, ui?: CardUiState): boolea
 }
 /** Translate only completed state plus client memory. Held movement/Interact remain raw. */
 export function translateTick(view: SimState, ui: CardUiState, frames: readonly InputFrame[], tick: number, players?: readonly number[]): ClientActions {
-  const out: ClientActions = { held: [], commands: [], legacyCardInput: [] };
+  const out: ClientActions = { held: [], commands: [] };
   for (let player = 0; player < view.playerCount; player++) {
     if (players && !players.includes(player)) continue;
     const f = frames[player] ?? NEUTRAL_FRAME, producer = ui.players[player]!;

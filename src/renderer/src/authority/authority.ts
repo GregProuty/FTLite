@@ -13,6 +13,7 @@ export interface AuthorityDeps {
   /** Trusted couch adapter only; never exposed on Link or assigned a player command ID. */
   bindLifecyclePause?(request: (control: LifecyclePause) => void): void | Unsubscribe;
 }
+/** Live Net-1a owner: closed held/command/contextual-callout ingress; durable restore belongs to Net-1b. */
 export interface Authority1a { attach(link: Link, players: readonly number[]): Unsubscribe; start(init: RunInit): void; pump(): void; dispose(): void }
 export function createAuthority(deps: AuthorityDeps): Authority1a {
   let core: ReturnType<typeof createAuthorityCore> | null = null, disposed = false;

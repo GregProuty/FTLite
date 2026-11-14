@@ -53,8 +53,8 @@ describe('semantic Science', () => {
     const { s, station, target } = setup(); placeDebris(s, room(s, 'A'), 600, 1, 100); startTargetScan(s, station, target);
     const ui = createCardUiState('run', 2); reconcileUi(s, ui, 'run', []);
     const actions = translateTick(s, ui, [NEUTRAL_FRAME, { ...NEUTRAL_FRAME, moveY: 1, confirmPresses: 1 }], s.tick);
-    expect(actions.legacyCardInput).toEqual([]); expect(actions.commands.map(e => e.command.kind)).toEqual(['selectTarget', 'scan']);
-    const results = stepCommands(s, { held: [], commands: actions.commands, legacyCardInput: [] });
+    expect(actions).not.toHaveProperty('legacyCardInput'); expect(actions.commands.map(e => e.command.kind)).toEqual(['selectTarget', 'scan']);
+    const results = stepCommands(s, { held: [], commands: actions.commands,  });
     expect(results.map(r => r.status)).toEqual(['applied', 'applied']); expect(s.debris.scan[0]).toBeGreaterThan(0); expect(s.debris.scan[1]).toBe(0); expect(s.science.target).toEqual({ kind: 'object', stableId: 100 });
   });
   it('rejects stale scan after an earlier player destroys its target while removal still retargets automatically', () => {

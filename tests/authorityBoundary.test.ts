@@ -27,7 +27,8 @@ it('keeps all eight gates, parity, acceptance and golden on the shared byte runn
   expect(moduleSpecifiers(readFileSync('tests/helpers/rawInput.ts', 'utf8'))).toContain('./authorityFixture');
   expect(moduleSpecifiers(readFileSync('tests/helpers/authorityFixture.ts', 'utf8'))).toContain('../../src/renderer/src/headless/runner');
   expect(moduleSpecifiers(readFileSync('tests/helpers/gameplayTrace.ts', 'utf8'))).toContain('./authorityFixture');
-  expect(moduleSpecifiers(readFileSync('tests/helpers/legacyReplay.ts', 'utf8'))).toContain('./authorityFixture');
+  expect(moduleSpecifiers(readFileSync('tests/helpers/legacyReplay.ts', 'utf8'))).toContain('./semanticReplay');
+  expect(moduleSpecifiers(readFileSync('tests/helpers/semanticReplay.ts', 'utf8'))).toContain('./authorityFixture');
   expect(moduleSpecifiers(readFileSync('src/renderer/src/headless/acceptance.ts', 'utf8'))).toContain('./runner');
   for (const file of sourceFiles('tests')) {
     if (!moduleSpecifiers(readFileSync(file, 'utf8')).some((path) => path.endsWith('/snapshotPhaseFixture'))) continue;

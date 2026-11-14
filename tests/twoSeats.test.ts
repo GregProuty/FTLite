@@ -1,5 +1,5 @@
 import { cardSelection } from './helpers/cardUi';
-import { legacyCardReason } from '../src/renderer/src/sim/commands';
+import { decodeMessage } from '../src/renderer/src/net/codec';
 import { Dir } from '../src/renderer/src/sim/dir';
 import { describe, it, expect } from 'vitest';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
@@ -226,6 +226,6 @@ describe('P2: fire burns systems (spec Demo-xi section 5, amendment 3)', () => {
 it('the empty Navigation bridge cannot execute an event choice', () => {
   const s = makeState(2); setEvent(s, 0); const nav = seatNavigator(s, 0);
   cardSelection(s, nav).cursor = navRows(s).findIndex(row => row.select === 'choice');
-  expect(legacyCardReason(s, { kind: 'legacyCardInput', runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: s.tick, input: { station: nav, direction: Dir.None, confirm: true } })).toBe('unsupported');
+  expect(() => decodeMessage(new TextEncoder().encode(JSON.stringify({ kind: 'legacyCardInput', runId: 'run', id: { player: 0, sequence: 1 }, requestedTick: s.tick, input: { station: nav, direction: Dir.None, confirm: true } })))).toThrow();
   expect(s.run.vote[0]).toBe(-1); expect(s.run.eventOpenTick).toBe(-1);
 });

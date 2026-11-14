@@ -38,7 +38,7 @@ describe('semantic Engineering', () => {
   it('opens upgrades and BACK without changing authority state or using the bridge', () => {
     const { s, station } = setup(), ui = createCardUiState('run', s.playerCount); reconcileUi(s, ui, 'run', []); ui.stations[station]!.rowKey = 'upgrades';
     const before = hashState(s), frame = { ...NEUTRAL_FRAME, confirmPresses: 1 };
-    const out = translateTick(s, ui, [frame], 0); expect(out.commands).toEqual([]); expect(out.legacyCardInput).toEqual([]); expect(ui.stations[station]!.page).toBe('upgrades'); expect(hashState(s)).toBe(before);
+    const out = translateTick(s, ui, [frame], 0); expect(out.commands).toEqual([]); expect(out).not.toHaveProperty('legacyCardInput'); expect(ui.stations[station]!.page).toBe('upgrades'); expect(hashState(s)).toBe(before);
     ui.stations[station]!.rowKey = 'back'; translateTick(s, ui, [frame], 1); expect(ui.stations[station]).toEqual({ page: 'main', rowKey: 'upgrades' }); expect(hashState(s)).toBe(before);
   });
   it('keeps unique identity keys even when the ship lacks multiple station kinds', () => {
