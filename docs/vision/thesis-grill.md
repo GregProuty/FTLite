@@ -127,3 +127,11 @@ Technical note (Claude): the sim bans `Math.sin`, `Math.cos` and similar for cro
 Implications for the specs:
 - The demo is done when the duel is fun in a playtest.
 - Built to grow into B (a short run: obstacle run through a debris field, then the duel, then an escape from two pursuers to a jump point). The physics, obstacles and enemy behaviour are written so the debris run and the escape reuse them; nothing in the duel assumes it is the only encounter.
+
+## Q15. Who sits at the consoles in the demo?
+
+**Answer: A, exactly two players.** One player on the Helm, one on Weapons. The demo is a two-person test of "you steer, I shoot"; there is no solo mode and no bot in either seat.
+
+Implications for the specs:
+- Every demo playtest needs two people. Bots for an empty seat are not part of the demo (they may come later, Q5).
+- Both consoles have to be fun for the person sitting at them: Weapons is not a passenger while the Helm flies, and the Helm is not a taxi for Weapons.
