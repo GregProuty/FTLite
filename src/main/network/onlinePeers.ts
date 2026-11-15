@@ -13,7 +13,7 @@ export interface OnlinePeersDeps {
 const close = (port: MessagePortMain) => { try { port.close(); } catch {} };
 /** Bounded private peer ownership. Issuance is serialized because equal seat generations do not identify a seat. */
 export function createOnlinePeers(deps: OnlinePeersDeps) {
-  let disposed = false, issuing: number | undefined, requesting = false, forwards = 0;
+  let disposed = false, issuing: number | undefined, requesting = false, reconcileAgain = false, forwards = 0;
   type Entry = OnlinePeer & { ready: boolean; serviceReady: boolean };
   const peers = new Map<number, Entry>();
   const failed = () => { if (!disposed) deps.onFailure(); };
@@ -68,20 +68,33 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
       const seat = snapshot.seats[peer.seatId];
       if (!seat?.occupied || !seat.connected || seat.seatGeneration !== peer.seatGeneration) retire(peer);
     }
-    if (requesting || deps.ownSeat !== snapshot.hostSeatId) return;
+    if (deps.ownSeat !== snapshot.hostSeatId) return;
+    reconcileAgain = true;
+    if (requesting) return;
     requesting = true;
+    // One attempt per seat generation per drain prevents reentrant failure callbacks
+    // from spinning, while a newer generation can still replace a pending issuance.
+    const attempted = new Map<number, number>();
     try {
-      for (let seatId = 0; seatId < snapshot.capacity; seatId++) {
-        const seat = deps.snapshot().seats[seatId];
-        if (disposed) return;
-        if (seatId === deps.ownSeat || !seat?.occupied || !seat.connected || peers.has(seatId)) continue;
-        issuing = seatId;
-        await deps.service.request({ type: 'link-request', guestSeatId: seatId });
-        issuing = undefined;
+      while (reconcileAgain && !disposed) {
+        reconcileAgain = false;
+        for (let seatId = 0; seatId < deps.snapshot().capacity; seatId++) {
+          const seat = deps.snapshot().seats[seatId];
+          if (disposed) return;
+          if (seatId === deps.ownSeat || !seat?.occupied || !seat.connected || peers.has(seatId)
+            || attempted.get(seatId) === seat.seatGeneration) continue;
+          const generation = seat.seatGeneration;
+          attempted.set(seatId, generation); issuing = seatId;
+          try { await deps.service.request({ type: 'link-request', guestSeatId: seatId }); }
+          catch {
+            // A departed guest must not block later seats or retire a newer owner.
+            if (!disposed) {
+              const peer = peers.get(seatId); if (peer?.seatGeneration === generation) retire(peer);
+              if (deps.snapshot().seats[seatId]?.seatGeneration === generation) deps.onLost(seatId);
+            }
+          } finally { issuing = undefined; }
+        }
       }
-    } catch {
-      // A guest can depart while issuance is pending; the service's own error event owns host socket loss.
-      if (!disposed && issuing !== undefined) { const peer = peers.get(issuing); if (peer) retire(peer); deps.onLost(issuing); }
     }
     finally { issuing = undefined; requesting = false; }
   }

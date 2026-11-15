@@ -48,3 +48,49 @@ it('bounds forwarded operations and ignores late failed signals after intentiona
   pending[0]!.reject({ code: 'stale-generation' }); await Promise.resolve(); await Promise.resolve(); expect(fatal).not.toHaveBeenCalled(); expect(lost).not.toHaveBeenCalled();
   for (let i = 0; i < 65; i++) signal({ attemptId: 'new', seatGeneration: 1 }); expect(fatal).toHaveBeenCalledOnce(); await peers.dispose();
 });
+
+function issuanceRace(capacity: number) {
+  let finish!: () => void, reject!: (error: unknown) => void;
+  const pending = new Promise<void>((resolve, fail) => { finish = resolve; reject = fail; });
+  const requests: number[] = [], lost = vi.fn(), fatal = vi.fn();
+  const snapshot: any = { hostSeatId: 0, hostGeneration: 1, capacity, seats: Array.from({ length: capacity }, (_, seatId) =>
+    ({ seatId, seatGeneration: 1, occupied: true, connected: true })) };
+  let peers!: ReturnType<typeof createOnlinePeers>;
+  const service: any = { request: async (op: any) => {
+    if (op.type !== 'link-request') return {};
+    requests.push(op.guestSeatId);
+    peers.issued({ attemptId: `${op.guestSeatId}-${snapshot.seats[op.guestSeatId].seatGeneration}`, role: 'offerer',
+      identity: { hostGeneration: 1, seatGeneration: snapshot.seats[op.guestSeatId].seatGeneration } } as any);
+    if (requests.length === 1) await pending;
+    return {};
+  } };
+  peers = createOnlinePeers({ controller: { startAttempt: async () => ({ latestPayloadLimit: 16088 }), onSignal: () => () => {},
+    onAttemptClosed: () => () => {}, closeAttempt: async () => {} } as any, service, ownSeat: 0, snapshot: () => snapshot,
+    channel: () => ({ port1: { close() {} }, port2: { close() {} } }) as any, onReady: () => {}, onLost: lost, onFailure: fatal });
+  return { peers, snapshot, requests, service, lost, fatal, finish, reject };
+}
+
+it('drains a newer seat generation observed while its previous issuance is pending', async () => {
+  const h = issuanceRace(2), reconciling = h.peers.reconcile();
+  h.snapshot.seats[1].seatGeneration = 2; await h.peers.reconcile();
+  expect(h.requests).toEqual([1]); h.finish(); await reconciling;
+  expect(h.requests).toEqual([1, 1]);
+  await vi.waitFor(() => expect(h.peers.ready().map(peer => [peer.seatId, peer.seatGeneration])).toEqual([[1, 2]]));
+  expect(h.fatal).not.toHaveBeenCalled(); await h.peers.dispose();
+});
+
+it('continues to a healthy seat when an earlier guest departs during issuance', async () => {
+  const h = issuanceRace(3), reconciling = h.peers.reconcile();
+  h.snapshot.seats[1].connected = false; await h.peers.reconcile();
+  h.reject({ code: 'invalid-state' }); await reconciling;
+  expect(h.requests).toEqual([1, 2]); await vi.waitFor(() => expect(h.peers.ready().map(peer => peer.seatId)).toEqual([2]));
+  expect(h.fatal).not.toHaveBeenCalled(); await h.peers.dispose();
+});
+
+it('does not immediately reissue an unchanged failing seat when reconciliation is requested during failure', async () => {
+  const h = issuanceRace(2); let attempts = 0;
+  h.service.request = async () => { attempts++; if (attempts > 4) throw Error('retry-loop'); throw { code: 'invalid-state' }; };
+  h.lost.mockImplementation(() => { if (attempts <= 4) void h.peers.reconcile(); });
+  await h.peers.reconcile(); await new Promise<void>(resolve => setImmediate(resolve));
+  expect(attempts).toBe(1); expect(h.lost).toHaveBeenCalledOnce(); expect(h.fatal).not.toHaveBeenCalled(); await h.peers.dispose();
+});
