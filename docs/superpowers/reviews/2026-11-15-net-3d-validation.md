@@ -6,8 +6,8 @@ Approved plan: `../plans/2026-11-15-net-3d-online-sector.md`. Isolated branch `c
 |---|---|---|---|
 |1: private contract/store/config|`b898ef4`, `c52ea64`|155 focused tests before review;103 covering tests after fix; root typecheck passes. Actual Windows atomic replacement and serialized writes/removals tested. Serializer and failed exclusive-temp creation regressions covered.|Task review found unchecked enumerable array fields; fix rejects extra fields and holes in actions/roster arrays. Scoped re-review approved with no new findings.|
 |2: sector handoff|`2e55a1e`|136 focused tests/11files and root typecheck pass. Human/bot/human, stale close, unavailable pending command, held cleanup, sparse seats, real memory restoration and crash cleanup covered.|Spec compliant, quality approved. Minor deferred: explicit replacement of one seat in a multi-seat human binding would strengthen whole-binding retirement coverage.|
-|3: stream ACK/neutralization|`36526be`|120 focused tests and root typecheck pass; real authority pre-ACK input rejection without ID consumption, synchronous ACK callbacks, reliable neutralization and exact120/121tick age checks.|Independent task review pending.|
-|4: coordinator/reconnect|Pending|Pending|Pending|
+|3: stream ACK/neutralization|`36526be`|120 focused tests and root typecheck pass; real authority pre-ACK input rejection without ID consumption, synchronous ACK callbacks, reliable neutralization and exact120/121tick age checks.|Spec compliant, quality approved; no findings.|
+|4: coordinator/reconnect|`37ef32a`|115 focused/affected tests and root typecheck pass. Commit deduplication, original-token retry, late factory bounds, Forget/Leave races, renewal/loss handling and native attempt notifications covered.|Independent task review pending.|
 |5: Electron IPC|Pending|Pending|Pending|
 |6: visible application|Pending|Pending|Pending|
 |7: actual app proof|Pending|Pending|Pending|

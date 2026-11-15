@@ -70,6 +70,8 @@ Concrete stream additions: accept an otherwise ordinary held frame over reliable
 
 Presentation samples become optional draw-only crew coordinates keyed by logical seat, passed to renderer/crewSprites; never temporarily rewrite Position components. Cache a detached visual snapshot before stream disposal so a disconnected screen can freeze safely after the confirmed replica is released. Dispose this frozen view on replacement/exit. Main uses an epoch-checked renderer `viewState` hint (synced/running/paused/ended) for menu status only; it cannot grant authority, change service readiness or bypass stream ACK gating.
 
+Execution clarification: the current-epoch synced hint may finish the local reconnect attempt and cancel its retry/UI watchdog, keeping the30s budget active through actual renderer synchronization. It never changes host ingress, producer ownership, service/native readiness, utility creation or resume. A false hint only misreports the caller's own progress; the independent host full-state ACK gate remains required.
+
 ## Required proof
 
 - Unit tests: strict IPC/sender/port ownership, input at nonzero seat, status redaction, one-operation bounds, stale async completion, corrupt store and late-write/forget race, both ship compatibilities, sparse roster start, duplicate committed event/reply, failed start cleanup.
