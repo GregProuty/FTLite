@@ -25,7 +25,7 @@ describe('generic host import boundary', () => {
   ])('rejects a mode dependency even through a type/export/require: %s', source => {
     expect(forbiddenDependencies(source)).toHaveLength(1);
   });
-  for (const file of walk('src/network').filter(file => relative('src/network', file).replaceAll('\\', '/') !== 'modes/sector.ts')) {
+  for (const file of [...walk('src/network').filter(file => relative('src/network', file).replaceAll('\\', '/') !== 'modes/sector.ts'), ...walk('src/main/network')]) {
     it(`${relative(resolve('.'), resolve(file))} imports only generic runtime contracts`, () => {
       expect(forbiddenDependencies(readFileSync(file, 'utf8'))).toEqual([]);
     });
