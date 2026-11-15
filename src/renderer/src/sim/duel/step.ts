@@ -105,7 +105,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     const c = e.command;
     if (c.kind !== 'laserLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
-    if (e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
+    if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
     if (c.kind === 'laserLock') { if (!validLock(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }
     else if (c.kind === 'laserCharge') { if (!canCharge(d.tactical, 0)) { result(e, 'missile-in-flight'); continue; } crew.laserCharge = c.held; }
     else { if (!canLaunch(d.tactical, 0)) { result(e, 'unavailable'); continue; } crew.missileLaunch = true; }

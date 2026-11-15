@@ -150,6 +150,18 @@ describe('consoles are roles (spec §8, §13)', () => {
   });
 });
 
+describe('weapon commands need a present gunner (spec §13)', () => {
+  it('a command claiming player −1 is refused when Weapons is empty or its occupant is away', () => {
+    for (const vacate of ['stand', 'away'] as const) {
+      const d = createDuel(layout, 5), s = d.tactical.ships[0];
+      step(d, [vacate === 'stand' ? cmd(d, 1, { kind: 'stand' }) : cmd(d, 1, { kind: 'presence', present: false })]);
+      const ghost = [cmd(d, -1, { kind: 'laserLock', room: Room.Engines }), cmd(d, -1, { kind: 'laserCharge', held: true }), cmd(d, -1, { kind: 'missileLaunch' })];
+      expect(step(d, ghost).map((r) => r.reason), vacate).toEqual(['not-at-weapons', 'not-at-weapons', 'not-at-weapons']);
+      expect([s.lock, s.fireHeld, d.tactical.missiles[0]], vacate).toEqual([Room.Shields, false, null]);
+    }
+  });
+});
+
 describe('present or away (spec §8, §11a)', () => {
   it('an away player\’s console is empty: Fire lets go without firing and their commands are refused', () => {
     const d = createDuel(layout, 5), s = d.tactical.ships[0];

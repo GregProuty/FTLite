@@ -87,6 +87,24 @@ describe('cloneTactical', () => {
     copy.ships[0].rooms[0] = 2; copy.ships[0].graceUntil[0] = 99; copy.hunter.trail[0] = 1; copy.rng.s = 7;
     expect(hashTactical(st)).toBe(before);
   });
+  it('copies missiles and events by value, not by reference', () => {
+    const st = createTacticalState(13);
+    launchMissile(st, 0); launchMissile(st, 1);
+    st.events.push({ kind: 'laser', ship: 0, hit: true, stripped: false, room: 2, x1: 0, y1: 0, x2: 1, y2: 1 });
+    st.events.push({ kind: 'missileEnd', ship: 1, cause: 'ship', target: 0, room: 1, x: 5, y: 6 });
+    const copy = cloneTactical(st);
+    expect(copy.missiles).toEqual(st.missiles);
+    expect(copy.events).toEqual(st.events);
+    for (const k of [0, 1] as const) expect(copy.missiles[k]).not.toBe(st.missiles[k]);
+    expect(copy.events).not.toBe(st.events);
+    copy.events.forEach((e, k) => expect(e).not.toBe(st.events[k]));
+    const [m0x, m1age] = [st.missiles[0]!.x, st.missiles[1]!.age];
+    copy.missiles[0]!.x += 100; copy.missiles[1]!.age = 400;
+    (copy.events[0] as { hit: boolean }).hit = false; copy.events.push({ kind: 'missileEnd', ship: 0, cause: 'edge', target: -1, room: -1, x: 0, y: 0 });
+    expect([st.missiles[0]!.x, st.missiles[1]!.age]).toEqual([m0x, m1age]);
+    expect(st.events).toHaveLength(2);
+    expect((st.events[0] as { hit: boolean }).hit).toBe(true);
+  });
 });
 
 describe('flatten key guard', () => {
