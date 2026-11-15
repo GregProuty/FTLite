@@ -1,3 +1,10 @@
+/** Native-compatible wire values, usable without importing DOM types into Workers. */
+export interface RtcIceCandidateData {
+  candidate?: string; sdpMid?: string | null; sdpMLineIndex?: number | null; usernameFragment?: string | null;
+}
+export interface RtcIceServerConfig {
+  urls: string | string[]; username?: string; credential?: string; credentialType?: 'password';
+}
 /** Trusted session data. Ticket issuance and cross-attempt consumption belong to the session provider. */
 export interface RtcIdentity {
   protocolVersion: 2; modeId: string; schemaVersion: number; simVersion: number;
@@ -8,7 +15,7 @@ export type RtcSignal =
   | { attemptId: string; roomId: string; seatGeneration: number; from: string; to: string; hostGeneration: number;
       kind: 'description'; description: { type: 'offer' | 'answer'; sdp: string } }
   | { attemptId: string; roomId: string; seatGeneration: number; from: string; to: string; hostGeneration: number;
-      kind: 'candidate'; candidate: RTCIceCandidateInit | null };
+      kind: 'candidate'; candidate: RtcIceCandidateData | null };
 export const RTC_RELIABLE_LABEL = 'ftl-reliable-v1';
 export const RTC_LATEST_LABEL = 'ftl-latest-v1';
 export const RTC_SETUP_MS = 30000;
@@ -24,7 +31,7 @@ export const RTC_TICKET_BYTES = 512;
 export interface RtcAttemptOptions {
   attemptId: string; role: 'offerer' | 'answerer'; identity: RtcIdentity;
   localTicket: string; expectedRemoteTicket: string; ticketExpiresAtEpochMs: number;
-  iceServers: readonly RTCIceServer[]; iceTransportPolicy?: 'all' | 'relay';
+  iceServers: readonly RtcIceServerConfig[]; iceTransportPolicy?: 'all' | 'relay';
 }
 export const RTC_REQUEST_CHANNEL = 'net:rtc-request';
 export const RTC_RESPONSE_CHANNEL = 'net:rtc-response';
@@ -47,7 +54,7 @@ export function isRtcAttemptOptions(value: unknown): value is RtcAttemptOptions 
     && rtcBoundedText(value.localTicket, RTC_TICKET_BYTES) && value.localTicket.length > 0
     && rtcBoundedText(value.expectedRemoteTicket, RTC_TICKET_BYTES) && value.expectedRemoteTicket.length > 0
     && typeof value.ticketExpiresAtEpochMs === 'number' && Number.isFinite(value.ticketExpiresAtEpochMs)
-    && !!copyRtcIceServers(value.iceServers as RTCIceServer[])
+    && !!copyRtcIceServers(value.iceServers as RtcIceServerConfig[])
     && (value.iceTransportPolicy === undefined || value.iceTransportPolicy === 'all' || value.iceTransportPolicy === 'relay');
 }
 export function isRtcRequest(value: unknown): value is RtcRequest {
@@ -87,7 +94,7 @@ export function isRtcIdentity(v: unknown): v is RtcIdentity {
     && rtcId(v.runId) && rtcId(v.roomId) && positive(v.hostGeneration) && positive(v.seatGeneration)
     && rtcId(v.localConnectionId) && rtcId(v.remoteConnectionId) && v.localConnectionId !== v.remoteConnectionId;
 }
-export function isRtcCandidate(v: unknown): v is RTCIceCandidateInit | null {
+export function isRtcCandidate(v: unknown): v is RtcIceCandidateData | null {
   if (v === null) return true;
   if (!rtcRecord(v) || !Object.keys(v).every(key => ['candidate','sdpMid','sdpMLineIndex','usernameFragment'].includes(key))) return false;
   return rtcBoundedText(v.candidate, RTC_CANDIDATE_BYTES)
@@ -104,9 +111,9 @@ export function isRtcSignal(v: unknown): v is RtcSignal {
     && rtcBoundedText(v.description.sdp, RTC_SDP_BYTES) && v.description.sdp.length > 0;
 }
 /** Copy validated trusted configuration, so later provider mutations cannot alter native setup. */
-export function copyRtcIceServers(value: readonly RTCIceServer[]): RTCIceServer[] | undefined {
+export function copyRtcIceServers(value: readonly RtcIceServerConfig[]): RtcIceServerConfig[] | undefined {
   if (!Array.isArray(value) || value.length > 8) return;
-  const result: RTCIceServer[] = []; let count = 0;
+  const result: RtcIceServerConfig[] = []; let count = 0;
   for (const entry of value) {
     if (!rtcRecord(entry) || !Object.keys(entry).every(key => ['urls','username','credential','credentialType'].includes(key))) return;
     const urls = typeof entry.urls === 'string' ? [entry.urls] : entry.urls;
