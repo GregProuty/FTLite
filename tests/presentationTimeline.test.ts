@@ -13,6 +13,29 @@ describe('generic presentation timeline', () => {
     expect(Math.sin(timeline.sample(200)[0]!.heading!)).toBeCloseTo(0);
     timeline.push(sample(24, 1000, 'teleport'), 400); expect(timeline.sample(400)[0]!.x).toBe(1000);
   });
+  it('immediately discards dense history when an advancing tick changes generation', () => {
+    const timeline = createPresentationTimeline();
+    for (const tick of [0, 3, 6, 9]) timeline.push(sample(tick, tick, 'before'), tick * 1000 / 60);
+    expect(timeline.sample(150)[0]).toMatchObject({ x: 3, generation: 'before' });
+    timeline.push(sample(12, 1000, 'after-teleport'), 200);
+    for (const now of [200, 225, 250, 251, 300]) expect(timeline.sample(now)[0]).toMatchObject({ x: 1000, generation: 'after-teleport' });
+    timeline.push(sample(15, 1003, 'after-teleport'), 250);
+    for (const now of [250, 275, 300, 325, 350]) {
+      expect(timeline.sample(now)[0]!.generation).toBe('after-teleport');
+      expect(timeline.sample(now)[0]!.x).toBeGreaterThanOrEqual(1000);
+    }
+  });
+  it.each(['replace', 'add', 'remove'])('snaps advancing-tick identity changes: %s', change => {
+    const timeline = createPresentationTimeline();
+    for (const tick of [0, 3, 6, 9]) timeline.push(sample(tick, tick), tick * 1000 / 60);
+    const next = sample(12, 12), extra = { id: 'new', generation: 'a', x: 1000, y: 2000 };
+    next.points = change === 'replace' ? [{ ...extra, heading: 0 }] : change === 'add' ? [...next.points, { ...extra, heading: 0 }] : [];
+    timeline.push(next, 200);
+    expect(timeline.sample(200)).toEqual(next.points);
+    expect(timeline.sample(250)).toEqual(next.points);
+    timeline.push(sample(6, 999, 'stale-generation'), 251);
+    expect(timeline.sample(251)).toEqual(next.points);
+  });
   it('ignores duplicates/out-of-order and snaps on epoch, pause and long stalls', () => {
     const timeline = createPresentationTimeline(); timeline.push(sample(0, 0), 0); timeline.push(sample(12, 12), 200);
     timeline.push(sample(12, 999), 201); timeline.push(sample(6, 999), 202); expect(timeline.sample(200)[0]!.x).toBe(6);
@@ -36,7 +59,11 @@ describe('generic presentation timeline', () => {
     timeline.push({ ...sample(0, -1e12, 'a', 'room', false, -1e12), points: [{ id: 'old', generation: 'a', x: -1e12, y: 0, heading: -1e12 }] }, 0);
     timeline.push({ ...sample(12, 0), points: [{ id: 'new', generation: 'b', x: 1e12, y: 0 }, { id: 'old', generation: 'a', x: 1e12, y: 0, heading: 1e12 }] }, 200);
     expect(timeline.sample(200).map(p => p.id)).toEqual(['new', 'old']);
-    expect(timeline.sample(200)[1]!.x).toBe(0); expect(Number.isFinite(timeline.sample(200)[1]!.heading)).toBe(true);
+    expect(timeline.sample(200)[1]!.x).toBe(1e12); expect(Number.isFinite(timeline.sample(200)[1]!.heading)).toBe(true);
+    const continuous = createPresentationTimeline();
+    continuous.push({ ...sample(0, 0), points: [{ id: 'crew', generation: 'a', x: -1e12, y: 0, heading: -1e12 }] }, 0);
+    continuous.push({ ...sample(12, 0), points: [{ id: 'crew', generation: 'a', x: 1e12, y: 0, heading: 1e12 }] }, 200);
+    expect(continuous.sample(200)[0]!.x).toBe(0); expect(Number.isFinite(continuous.sample(200)[0]!.heading)).toBe(true);
     expect(() => timeline.push({ ...sample(18, 0), points: [sample(18, 0).points[0]!, sample(18, 0).points[0]!] }, 300)).toThrow();
     expect(() => timeline.push({ ...sample(18, 0), epoch: 'x'.repeat(129) }, 300)).toThrow();
   });

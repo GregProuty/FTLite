@@ -10,7 +10,13 @@ export function validateRtcReport(value: unknown): void {
   const d = report.details;
   const atLeast = (value: unknown, minimum: number) => typeof value === 'number' && Number.isFinite(value) && value >= minimum;
   const bytesWithin = (value: unknown, maximum: number) => atLeast(value, 1) && Number.isSafeInteger(value) && (value as number) <= maximum;
-  if (d.topology.distinctProcesses !== 6 || d.topology.guestAuthorities !== 0 || d.topology.liveUtilities !== 1
+  const statuses = ['early-cleanup', 'wrong-ticket', 'stale-generation', 'cancel-attempt', 'mid-transfer-close'];
+  if (statuses.some(check => typeof d[check] !== 'string' || d[check].trim().length === 0)
+    || requiredRtcChecks.some(check => !statuses.includes(check) && (!d[check] || typeof d[check] !== 'object' || Array.isArray(d[check]))))
+    throw Error('invalid actual RTC evidence');
+  const acknowledged = (peer: any) => peer && ['ack', 'full-received'].every(key => atLeast(peer[key], 1) && Number.isSafeInteger(peer[key]));
+  if (!acknowledged(d['first-full-ack'].first) || !acknowledged(d['first-full-ack'].second)
+    || d.topology.distinctProcesses !== 6 || d.topology.guestAuthorities !== 0 || d.topology.liveUtilities !== 1
     || !atLeast(d['stall-watchdog-command'].busyMs, 500) || d['stall-watchdog-command'].hiddenRtcContinued !== true
     || !atLeast(d['canonical-presentation'].matchedPublications, 32) || d['canonical-presentation'].interpolationSeparate !== true
     || d['harness-latest-loss-reorder'].dropped !== 1 || d['harness-latest-loss-reorder'].reversedPairs !== 1
@@ -21,7 +27,7 @@ export function validateRtcReport(value: unknown): void {
     || d['pause-full-checkpoint'].pauseFromInterpolation !== true || d['pause-full-checkpoint'].presentationSnapped !== true
     || d['pause-full-checkpoint'].sameTickNotificationWithheld !== true || d['pause-full-checkpoint'].notificationFloorsChecked !== true
     || d['two-peer-isolation-disconnect'].activeInterpolationAtDisconnect !== true || d['two-peer-isolation-disconnect'].frozenAtConfirmedPositions !== true
-    || d['native-channels-route'].selectedRoute !== 'direct' || d['native-resource-cleanup'].productionTimers !== 0
+    || d['native-channels-route'].selectedRoute !== 'direct' || d['native-resource-cleanup'].hostPcsClosed !== 6 || d['native-resource-cleanup'].productionTimers !== 0
     || d['native-resource-cleanup'].productionListeners !== 0 || d['owner-cleanup'].utilities !== 3
     || d['owner-cleanup'].actualExits !== 3 || d['owner-cleanup'].windows !== 0 || d['owner-cleanup'].listeners !== 0 || d['owner-cleanup'].relayPorts !== 0)
     throw Error('invalid actual RTC evidence');

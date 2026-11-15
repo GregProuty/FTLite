@@ -21,12 +21,14 @@ export function createPresentationTimeline({ delayMs = 100, maxSamples = 16 }: P
       }
       const previous = samples.at(-1);
       const previousGenerations = new Map(previous?.points.map(point => [point.id, point.generation]));
+      const pointTransition = previous && (sample.points.length !== previous.points.length
+        || sample.points.some(point => previousGenerations.get(point.id) !== point.generation));
       const sameTickTransition = previous && sample.tick === previous.tick && (sample.paused !== previous.paused
-        || sample.points.length !== previous.points.length || sample.points.some(point => previousGenerations.get(point.id) !== point.generation));
+        || pointTransition);
       if (previous && sample.epoch === previous.epoch && (sample.tick < previous.tick || sample.tick === previous.tick && !sameTickTransition)) return;
       if (receivedAtMs < lastReceived) return;
       const authorityTime = sample.tick * TICK_MS;
-      const reset = !previous || sameTickTransition || sample.epoch !== previous.epoch || sample.paused !== previous.paused || sample.paused || sample.tick - previous.tick > 60 || receivedAtMs - lastReceived > 1000;
+      const reset = !previous || pointTransition || sameTickTransition || sample.epoch !== previous.epoch || sample.paused !== previous.paused || sample.paused || sample.tick - previous.tick > 60 || receivedAtMs - lastReceived > 1000;
       if (reset) { samples.length = 0; alignment = receivedAtMs - authorityTime; }
       else {
         // Arrival jitter cannot move the authority clock more than 2ms per sample.

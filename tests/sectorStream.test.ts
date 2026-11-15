@@ -13,11 +13,11 @@ import { encodeFull, encodeStatePacket, decodeControl, classifyStreamPacket, dec
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { telemetryRecord } from '../src/renderer/src/sim/telemetry';
 import { sectorMode } from '../src/network/modes/sector';
-import { Position } from '../src/renderer/src/sim/components';
+import { Health, Life, LifeState, Position } from '../src/renderer/src/sim/components';
 import { createHostRuntime } from '../src/network/hostRuntime';
 import { createModeRegistry } from '../src/network/modes/registry';
 import { portEndpoint } from './helpers/portEndpoint';
-import { sitDown } from '../src/renderer/src/sim/stations';
+import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 
 function endpoint() {
   const messages = new Set<(kind: ChannelKind, bytes: Uint8Array) => void>(), closes = new Set<(reason: string) => void>();
@@ -216,7 +216,7 @@ describe('sector publication and acceptance boundary', () => {
     for (let i = 1; i <= 100; i++) wire.receive(encodeSectorNotification({ kind: 'event', event: { runId: 'stream', eventSequence: i, tick: 0, payload: { kind: 'ended', record } } }, 1000, i));
     expect(wire.reasons).toEqual(['notification-history-unavailable']); expect(client.takeEvents()).toEqual([]);
   });
-  it('keeps presentation separate with stable player IDs and snaps teleport, seat, target, sector and pause changes', () => {
+  it('keeps presentation separate with stable player IDs and snaps same-tick teleport, seat and target changes', () => {
     const wire = endpoint(), clock = { now: 0, nowMs() { return this.now; } }, state = makeState(1);
     const client = createSectorRemoteClient(wire.link, [0], { ...options, clock }); ownTestCleanup(() => client.dispose()); let seq = 0;
     const publish = (overrides: Partial<PublishedState> = {}) => { const p = { ...publication(state, ++seq), ...overrides }; wire.receive(encodeStatePacket(encodeFull(publicationToImage(p, options)), seq)); return p; };
@@ -225,9 +225,44 @@ describe('sector publication and acceptance boundary', () => {
     const teleported = client.presentation.sample(0)[0]!; expect(teleported.x).toBeCloseTo(first.x + 0.1); expect(teleported.generation).not.toBe(first.generation);
     sitDown(state, 0, 0); publish(); const seated = client.presentation.sample(0)[0]!; expect(seated.generation).not.toBe(teleported.generation);
     state.weapons.target = { kind: 'object', stableId: 99 }; publish(); expect(client.presentation.sample(0)[0]!.generation).not.toBe(seated.generation);
-    state.run.sector = 1; publish(); publish({ phase: 'paused', controlRevision: 1 });
     const confirmed = saveSnapshot(client.state()!); client.presentation.sample(10000); expect(saveSnapshot(client.state()!)).toEqual(confirmed);
     wire.link.close('end'); expect(client.presentation.sample(10000)).toHaveLength(1); client.dispose(); expect(client.presentation.sample(10000)).toEqual([]);
+  });
+  it.each(['teleport', 'seat', 'weapons-target', 'science-target', 'life', 'sector', 'ended'] as const)('snaps %s from populated advancing-tick interpolation history', transition => {
+    const wire = endpoint(), clock = { now: 0, nowMs() { return this.now; } }, state = makeState(1);
+    const client = createSectorRemoteClient(wire.link, [0], { ...options, clock }); ownTestCleanup(() => client.dispose());
+    const eid = state.crew[0]!; let sequence = 0;
+    // End the history within legal movement distance of the seat, so seating
+    // must be detected by its own generation field rather than teleport inference.
+    sitDown(state, 0, 0); const seatX = Position.x[eid]!, y = Position.y[eid]!; standUp(state, 0);
+    const startX = seatX - 0.12;
+    const publish = (phase: PublishedState['phase'] = 'running') => {
+      const value = { ...publication(state, ++sequence), phase };
+      wire.receive(encodeStatePacket(encodeFull(publicationToImage(value, options)), sequence));
+    };
+    for (const tick of [0, 3, 6, 9]) {
+      state.tick = tick; clock.now = tick * 1000 / 60; teleport(state, 0, startX + tick * 0.01, y); publish();
+    }
+    const before = client.presentation.sample(150)[0]!;
+    expect(before.x).toBeCloseTo(startX + 0.03); expect(before.id).toBe('crew:0');
+    state.tick = 12; clock.now = 200; teleport(state, 0, startX + 0.12, y);
+    if (transition === 'teleport') teleport(state, 0, seatX + 1, y);
+    if (transition === 'seat') sitDown(state, 0, 0);
+    if (transition === 'weapons-target') state.weapons.target = { kind: 'object', stableId: 99 };
+    if (transition === 'science-target') state.science.target = { kind: 'object', stableId: 99 };
+    if (transition === 'life') { Life.state[eid] = LifeState.Downed; Health.cur[eid] = 0; Life.bleed[eid] = 15; }
+    if (transition === 'sector') state.run.sector = 1;
+    if (transition === 'ended') { state.ended = 1; state.endReason = 1; }
+    publish(transition === 'ended' ? 'ended' : 'running');
+    expect(wire.reasons).toEqual([]); expect(client.publication()!.tick).toBe(12);
+    const confirmed = saveSnapshot(client.state()!), expectedX = transition === 'teleport' ? seatX + 1 : seatX;
+    for (const now of [200, 225, 250, 251, 10000]) {
+      const point = client.presentation.sample(now)[0]!;
+      expect(point.x).toBeCloseTo(expectedX); expect(point.y).toBe(y);
+      if (transition === 'sector' || transition === 'ended') expect(point.generation).toBe(before.generation);
+      else expect(point.generation).not.toBe(before.generation);
+    }
+    expect(saveSnapshot(client.state()!)).toEqual(confirmed);
   });
   it('forwards trusted stream options and uses generic latest keys for a second mode', () => {
     let selected: unknown; const port = portEndpoint();
