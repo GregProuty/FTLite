@@ -14,7 +14,7 @@ import { TICK_HZ } from '../../sim/tuning';
 import { createCamera, followBody, pan, snapBack, updateCamera, zoomBy, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/tactical/feelModel';
 import type { OtherStatus } from '../../render/duel/readoutModel';
-import type { ViewEvent } from '../../render/tactical/fxModel';
+import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
 import { accumulateWheel, emptyPresses, helmAxes, WHEEL_IDLE_MS, type KeySample, type PointerSample } from './input';
@@ -326,7 +326,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (cam) cameraInput.apply(cam, k, p);
       for (const c of [cameras.helm, cameras.weapons]) {
         if (c.follow === 'missile' && !d.tactical.missiles[0]) followBody(c, 'ship');   // the followed missile ended
-        updateCamera(c, deps.viewport, dt, followTarget(d.tactical, prev, frameAlpha, c.follow));
+        // A followed missile is tracked at its interpolated (drawn) position, as the ship is (H-1 spec §6).
+        const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);
+        updateCamera(c, deps.viewport, dt, target);
       }
     },
     pause(reason) { pacer.reasons.add(reason); pacer.sync(); },

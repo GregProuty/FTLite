@@ -8,6 +8,7 @@ import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { emptyPresses, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { ZOOM_DEFAULT, ZOOM_STEP } from '../src/renderer/src/render/tactical/camera';
+import { interpolatedMissile } from '../src/renderer/src/render/tactical/fxModel';
 
 const layout = parseShip(cutter);
 const TICK_MS = 1000 / 60;
@@ -212,6 +213,20 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     press('camera'); tick();
     rt.duel.tactical.missiles[0] = null; tick();      // the followed missile ended: back to the ship
     expect(rt.cameras.weapons.follow).toBe('ship');
+    rt.dispose();
+  });
+  it('the Weapons camera follows the missile at its interpolated (drawn) position', () => {
+    const { rt, time, press, tick, ticks } = rig();
+    press('switch'); tick();
+    press('launch'); tick();
+    press('camera'); ticks(30);                       // past the 0.2 s snap
+    expect(rt.cameras.weapons.follow).toBe('missile');
+    time.advance(TICK_MS * 0.4); rt.frame(1 / 60);   // part-way to the next tick
+    const a = rt.alpha();
+    expect(a).toBeGreaterThan(0.05); expect(a).toBeLessThan(0.95);
+    const m = interpolatedMissile(rt.duel.tactical, rt.missilePrev, a, 0)!, raw = rt.duel.tactical.missiles[0]!;
+    expect(Math.hypot(m.x - raw.x, m.y - raw.y)).toBeGreaterThan(1);   // the drawn position differs from the tick position
+    expect(rt.cameras.weapons.centreX).toBeCloseTo(m.x, 6); expect(rt.cameras.weapons.centreY).toBeCloseTo(m.y, 6);
     rt.dispose();
   });
   it('X stands from Weapons too; the zoom keys move only the active console camera', () => {
