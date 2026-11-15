@@ -113,3 +113,33 @@ Actual versus mocked boundary: native ready, transfer handshake, sector start, i
 Owned changes: electron.vite.config.ts, tsconfig.web.json, shared/hostProcessProtocol, main/network/{hostProcess,transportWindow}, utility/authorityHost, network/{utilityHost,platformPort,transport/bridge}, preload/networkTransport, renderer/networkTransport.{html,ts}, hostProcess/utilityHost/platformPort/transportWindow tests and networkBoundary coverage, plus this report.
 
 Self-review found and corrected native utility event-shape and Vite dev-entry assumptions, missing main/network boundary coverage, and unbounded diagnostic traversal. Native final smoke reran after the final build. No known Task4 blocker remains. Dispose's promise bounds the main teardown request rather than waiting indefinitely for OS exit; the native proof explicitly waits for observed exit. Long-lived service leases and subsequent UI/lobby integration remain outside this task.
+
+## Review fix round 1: pre-spawn utility termination
+
+The reviewer identified a P1 missed by the initial ready-state native smoke: Electron37 UtilityProcess.kill returns false while asynchronous spawn has not completed and pid is undefined. The original adapter discarded that result, so startup cancellation or early transport construction/load failure could remove owner subscriptions and leave a utility that spawned later alive. The initial native successful-lifecycle proof did not exercise this interval.
+
+Changed only the native utility spawn adapter: it retains killRequested independently of public owner subscriptions; records a successful kill to suppress repeats; retries a pending termination on native spawn; tracks actual exit; removes its internal spawn/exit listeners on exit; and ignores kill requests after observed exit. A pre-spawn kill exception also retains intent. Main request/identity/control APIs are unchanged.
+
+Deterministic RED: `npm test -- tests/transportWindow.test.ts` produced three failures before the fix: pre-spawn abort and early transport-construction failure both left the fake native utility alive after spawn (`expected false to be true`), and repeated kill after exit made a second unnecessary native call (`expected 2 to be 1`). Tests use the actual production spawn adapter and owner with only native Electron construction/event delivery faked, including a false kill before pid allocation. They assert later exit and removal of internal lifecycle plus removed owner message listeners.
+
+Focused GREEN after fix:
+
+```text
+npm test -- tests/transportWindow.test.ts tests/hostProcess.test.ts tests/utilityHost.test.ts
+Test Files 3 passed (3)
+Tests 29 passed (29)
+```
+
+`npm run typecheck` and `npm run build` passed. No full suite was run, per controller scope. `git diff --check` passed.
+
+Actual Electron37 proof used the **production** built createHostPlatform/startHostProcess adapters. Temporary ignored `.worktrees/task4-proof/cancel-smoke.cjs` instruments native fork/kill/exit for observation without altering the kill result or event order. Its isolated launcher removes both inherited Electron/crashpad environment variables, passes --user-data-dir=<fresh temporary path>, and removes that exact profile after child exit. Immediate abort and injected early transport construction failure both explicitly require first kill=false with pid undefined, then require spawn, successful second kill, observed utility exit, and zero remaining windows. It fails on an orphan after three seconds. Command/output:
+
+```text
+node .worktrees/task4-proof/cancel-launch.cjs
+ACTUAL pre-spawn abort: first kill=false pid=undefined; spawn retry=true; utility exit observed; windows=0
+ACTUAL early transport construction failure: first kill=false pid=undefined; spawn retry=true; utility exit observed; windows=0
+ACTUAL cancellation cleanup complete: no owned utility or transport survives
+ACTUAL cancellation profile removed: true
+```
+
+Exit0. The normal built smoke was rerun after this same build via `node .worktrees/task4-proof/launch.cjs`: ready succeeded, checkpoint tick9/2626bytes, ten actual transferred peer frames, expected sandbox preferences, observed utility exit, zero windows and profile removed; exit0. Thus this round adds actual pre-spawn cancellation/failure proof to the initial actual successful-lifecycle proof. Actual OS suspend/visible renderer stall and broader restart/lifecycle matrix remain Task5; no claims broadened.

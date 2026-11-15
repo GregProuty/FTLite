@@ -8,11 +8,23 @@ export function createHostPlatform(): HostPlatform {
   return {
     spawn() {
       const child = utilityProcess.fork(join(__dirname, 'authorityHost.js'), [], { serviceName: 'FTLite authority', stdio: 'pipe' });
+      // Electron may reject kill() until its asynchronous spawn completes. Keep this
+      // intent independent of the owner's subscriptions, which teardown removes.
+      let killRequested = false, killSent = false, exited = false;
+      function terminate(): void {
+        if (exited || killSent) return;
+        try { killSent = child.kill(); } catch { /* retain intent for the spawn event */ }
+      }
+      const spawned = () => { if (killRequested) terminate(); };
+      const cleanup = () => {
+        exited = true; child.off('spawn', spawned); child.off('exit', cleanup);
+      };
+      child.on('spawn', spawned); child.on('exit', cleanup);
       return {
         postMessage: (message, ports) => child.postMessage(message, ports),
         onMessage(cb) { child.on('message', cb); return () => { child.off('message', cb); }; },
         onExit(cb) { child.on('exit', cb); return () => { child.off('exit', cb); }; },
-        kill() { child.kill(); }
+        kill() { killRequested = true; terminate(); }
       };
     },
     createTransport(identity: HostIdentity) {
