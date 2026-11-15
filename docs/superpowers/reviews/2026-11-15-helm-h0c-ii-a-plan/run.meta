@@ -1,0 +1,11 @@
+topic=helm-h0c-ii-a-plan
+subject_kind=plan
+subject=docs/superpowers/plans/2026-11-15-helm-h0c-ii-a-headless-gates.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-15
+head_at_setup=8b28cba
