@@ -13,6 +13,7 @@ import { createLoopbackHarness } from '../src/renderer/src/net/loopback';
 import { runReplay } from '../src/renderer/src/authority/replay';
 import type { AuthorityMessage, LifecyclePause, ClientMessage } from '../src/renderer/src/net/contracts';
 import { ownTestCleanup } from './helpers/simLifetime';
+import { validateCheckpoint } from '../src/renderer/src/authority/checkpoint';
 
 const envelope = (sequence = 1, requestedTick = 0, player = 0): CommandEnvelope => ({ runId: 'durable', id: { player, sequence }, requestedTick, command: { kind: 'stand' } });
 const remote = (ledger: ReturnType<typeof createLedger>, e: CommandEnvelope, tick: number, recovery?: Set<number>) => ledger.admit(e, tick, recovery, 'receive-time');
@@ -148,4 +149,35 @@ it('bounds remote link ingress and discards unadmitted bytes on overflow', () =>
   h.pump(); expect(closed).toEqual(['ingress-overflow']);
   const cp = h.authority.checkpoint([]); expect(cp.commandHighWater).toEqual([0]); expect(cp.recentResults).toEqual([]);
   expect(runReplay(LAYOUT, h.authority.replay(), h.init.contentDigest).checkpoint).toEqual(cp);
+});
+it.each([{ expectedSequence: 999, disposition: 'retryable' as const }, undefined])('rejects persisted admission metadata transactionally (%j)', admission => {
+  const source = createLedger([0]), target = createLedger([0]);
+  for (let sequence = 1; sequence <= 2; sequence++) {
+    source.admit(envelope(sequence), 0); source.finish({ id: envelope(sequence).id, tick: 0, status: 'noop' });
+  }
+  const invalid = source.export(); invalid.recentResults[1]!.result.admission = admission;
+  target.admit(envelope(), 0); target.finish({ id: envelope().id, tick: 0, status: 'applied' });
+  target.admit(envelope(2, 1), 1);
+  expect(() => target.restore(invalid)).toThrow(/admission/);
+  expect(target.admit(envelope(), 2)).toEqual({ status: 'duplicate', result: { id: envelope().id, tick: 0, status: 'applied' } });
+  expect(target.admit(envelope(2, 1), 2)).toEqual({ status: 'duplicate', result: { id: envelope(2).id, tick: 1, status: 'already-processed' } });
+  target.finish({ id: envelope(2).id, tick: 1, status: 'applied' });
+  expect(target.export()).toMatchObject({ admissionTick: 1, admissionCounts: [1, 0, 0, 0], commandHighWater: [2, 0, 0, 0] });
+  expect(target.export().recentResults.every(entry => !Object.hasOwn(entry.result, 'admission'))).toBe(true);
+});
+it('rejects response metadata in a checkpoint v2 cache', () => {
+  const h = checkpointRig(); h.send({ kind: 'command', envelope: envelope() }); h.pump(17);
+  const checkpoint = h.authority.checkpoint([]);
+  checkpoint.recentResults[0]!.result.admission = { expectedSequence: 999, disposition: 'retryable' };
+  expect(() => validateCheckpoint(LAYOUT, checkpoint, h.init.contentDigest)).toThrow(/admission/);
+});
+it('keeps healthy remote checkpoints metadata-free and strict restored retries unchanged', () => {
+  const h = checkpointRig(); h.detach(); const detachRemote = h.authority.attach(h.pair.authorityLink, [0], { admissionPolicy: 'receive-time' });
+  h.send({ kind: 'command', envelope: envelope() }); h.pump(17);
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result).toHaveProperty('admission');
+  const checkpoint = h.authority.checkpoint([]), semantic = checkpoint.recentResults[0]!.result;
+  expect(semantic).not.toHaveProperty('admission'); expect(checkpoint.checkpointVersion).toBe(2);
+  detachRemote(); h.restore(checkpoint); h.send({ kind: 'command', envelope: envelope() }); h.pump();
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result).toEqual(semantic);
+  expect(h.authority.checkpoint([]).recentResults).toEqual(checkpoint.recentResults);
 });

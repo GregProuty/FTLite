@@ -86,3 +86,12 @@ it.each(['admission', 'watchdog', 'result'] as const)('rejects isolated v3 %s me
     message: { kind: 'held', frame: { runId: h.init.runId, player: 0, tick: 0, sequence: 1, held: moving } } }] };
   expect(() => parseReplay(LAYOUT, replay, h.init.contentDigest)).toThrow();
 });
+it.each([2, 3] as const)('rejects response metadata in replay v%i checkpoint baselines before parsing or execution', version => {
+  const h = checkpointRig();
+  h.send({ kind: 'command', envelope: { runId: h.init.runId, id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'stand' } } }); h.pump(17);
+  const checkpoint = h.authority.checkpoint([]);
+  checkpoint.recentResults[0]!.result.admission = { expectedSequence: 999, disposition: 'retryable' };
+  const replay = { version, init: checkpoint.init, initial: checkpoint.snapshot, checkpoint, frames: [] };
+  expect(() => parseReplay(LAYOUT, replay, h.init.contentDigest)).toThrow(/admission/);
+  expect(() => runReplay(LAYOUT, replay, h.init.contentDigest)).toThrow(/admission/);
+});

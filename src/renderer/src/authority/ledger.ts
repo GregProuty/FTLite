@@ -116,6 +116,8 @@ export function createLedger(owned: readonly PlayerId[], playerLimit = MAX_PLAYE
         const e = entry.envelope, r = entry.result;
         const payload = JSON.stringify(decodeMessage(encodeMessage({ kind: 'command', envelope: e })));
         decodeMessage(encodeMessage({ kind: 'result', runId: e.runId, result: r }));
+        // Wire admission metadata describes a response-time stream, never a persisted semantic outcome.
+        if (Object.prototype.hasOwnProperty.call(r, 'admission')) throw new Error('admission metadata in ledger cache');
         if ((r.status === 'rejected') !== (r.reason !== undefined) || !owned.includes(e.id.player) || e.id.player !== r.id.player || e.id.sequence !== r.id.sequence || e.id.sequence > value.commandHighWater[e.id.player]! || r.status === 'already-processed' || staged[e.id.player]!.has(e.id.sequence)) throw new Error('invalid ledger cache');
         staged[e.id.player]!.set(e.id.sequence, { payload, result: structuredClone(r) });
         if (staged[e.id.player]!.size > 256) throw new Error('ledger cache capacity');
