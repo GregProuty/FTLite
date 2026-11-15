@@ -1,21 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { blessRefusal } from '../scripts/golden/blessGuard';
 
+const ok = { ok: true, message: 'identical' }, bad = { ok: false, message: 'golden replay differs at tick 5' };
+
 describe('the bless guard', () => {
-  it('refuses a version bump without a marker', () => {
-    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, markerVersion: undefined })).toMatch(/canonical-trace\.ts check/);
+  it('allows a version bump when the re-run comparison is ok', () => {
+    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, verify: () => ok })).toBeUndefined();
   });
-  it('allows a version bump with a marker for the current version', () => {
-    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, markerVersion: 36 })).toBeUndefined();
+  it('refuses a version bump when the comparison is not ok, quoting why', () => {
+    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, verify: () => bad })).toMatch(/differs at tick 5/);
   });
-  it('refuses a version bump with a stale marker', () => {
-    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, markerVersion: 35 })).toMatch(/is for version 35/);
+  it('refuses a version bump with no baseline (the comparison reports it)', () => {
+    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, verify: () => ({ ok: false, message: 'no baseline' }) })).toMatch(/no baseline/);
   });
-  it('allows a same-version bless without a marker', () => {
-    expect(blessRefusal({ storedVersion: 36, currentVersion: 36, markerVersion: undefined })).toBeUndefined();
+  it('allows a same-version bless without running the comparison', () => {
+    const verify = vi.fn(() => bad);
+    expect(blessRefusal({ storedVersion: 36, currentVersion: 36, verify })).toBeUndefined();
+    expect(verify).not.toHaveBeenCalled();
   });
-  it('always requires the marker for a version-only re-bless', () => {
-    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, markerVersion: undefined, versionOnly: true })).toBeDefined();
-    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, markerVersion: 36, versionOnly: true })).toBeUndefined();
+  it('a version-only re-bless always runs the comparison', () => {
+    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, verify: () => bad, versionOnly: true })).toBeDefined();
+    expect(blessRefusal({ storedVersion: 35, currentVersion: 36, verify: () => ok, versionOnly: true })).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import { computeContentDigest } from '../build/contentDigest';
 import { writeFileSync, mkdirSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
-import { blessRefusal, readMarkerVersion } from './golden/blessGuard';
+import { blessRefusal } from './golden/blessGuard';
+import { verifyVersionOnly } from './golden/versionOnly';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { runSemanticReplay } from '../tests/helpers/semanticReplay';
@@ -14,7 +15,7 @@ function storedVersion(path: string): number | undefined {
   const fd = openSync(path, 'r'), buf = Buffer.alloc(4096);
   try { return Number(/"simVersion":(\d+)/.exec(buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)))?.[1] ?? NaN) || undefined; } finally { closeSync(fd); }
 }
-const refusal = blessRefusal({ storedVersion: storedVersion('tests/golden/basic.json'), currentVersion: SIM_VERSION, markerVersion: readMarkerVersion() });
+const refusal = blessRefusal({ storedVersion: storedVersion('tests/golden/basic.json'), currentVersion: SIM_VERSION, verify: verifyVersionOnly });
 if (refusal) { console.error(refusal); process.exit(1); }
 
 const layout = parseShip(starter);
