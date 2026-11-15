@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copyOnlinePortDescriptor, copyOnlineStatus, validateOnlineAction, validateOnlinePortDescriptor, validateOnlineResult, validateOnlineStatus, type OnlineStatus } from '../src/shared/onlineSession';
+import { copyOnlinePortDescriptor, copyOnlineStatus, validateOnlineAction, validateOnlinePortDescriptor, validateOnlineResult, validateOnlineStatus, validateOnlineStatusEnvelope, type OnlineStatus } from '../src/shared/onlineSession';
 import type { RoomSnapshot } from '../src/shared/roomSession';
 
 const snapshot: RoomSnapshot = {
@@ -11,6 +11,12 @@ const snapshot: RoomSnapshot = {
 const status = (): OnlineStatus => ({ phase: 'lobby', role: 'host', ownSeat: 0, snapshot: structuredClone(snapshot), attachmentEpoch: 0, error: null, retryAtMs: null, persistent: true, actions: ['ready', 'start', 'leave'] });
 
 describe('bounded online renderer boundary', () => {
+  it('accepts only version one status revisions with strict bounded public data', () => {
+    expect(validateOnlineStatusEnvelope({ version: 1, revision: 1, status: status() })).toBe(true);
+    for (const value of [{ version: 2, revision: 1, status: status() }, { version: 1, revision: 0, status: status() },
+      { version: 1, revision: Number.MAX_SAFE_INTEGER + 1, status: status() }, { version: 1, revision: 1, status: status(), seatToken: 'private' },
+      { version: 1, revision: 1, status: { ...status(), seatToken: 'private' } }]) expect(validateOnlineStatusEnvelope(value)).toBe(false);
+  });
   it.each([{type:'host',capacity:1}, {type:'host',capacity:4}, {type:'join',code:'  abcd1234  '}, {type:'ready',ready:false}, {type:'remove-seat',seatId:3}, {type:'view-state',epoch:1,phase:'synced'}, ...['reconnect','start','retry','leave','forget-seat'].map(type=>({type}))])('accepts allowed action %j', action => {
     expect(validateOnlineAction(action)).toBe(true);
   });

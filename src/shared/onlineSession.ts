@@ -94,3 +94,41 @@ export function validateOnlineResult(value: unknown): value is OnlineResult {
   return rtcRecord(value) && (value.ok === true ? rtcKeys(value, ['ok'])
     : value.ok === false && rtcKeys(value, ['ok', 'code']) && isOnlineErrorCode(value.code));
 }
+
+export type Unsubscribe = () => void;
+export const ONLINE_CHANNELS = {
+  host: 'online:host', join: 'online:join', ready: 'online:ready', 'remove-seat': 'online:remove-seat',
+  'view-state': 'online:view-state', reconnect: 'online:reconnect', start: 'online:start', retry: 'online:retry',
+  leave: 'online:leave', 'forget-seat': 'online:forget-seat',
+} as const satisfies Record<OnlineAction['type'], string>;
+export const ONLINE_STATUS_CHANNEL = 'online:status';
+export const ONLINE_PORT_CHANNEL = 'online:port';
+export const ONLINE_PORT_SOURCE = 'ftlite:online:main';
+export interface OnlineStatusEnvelope { version: 1; revision: number; status: OnlineStatus }
+export function validateOnlineStatusEnvelope(value: unknown): value is OnlineStatusEnvelope {
+  return rtcRecord(value) && rtcKeys(value, ['version', 'revision', 'status']) && value.version === 1
+    && positive(value.revision) && validateOnlineStatus(value.status);
+}
+export function validateOnlinePortEnvelope(value: unknown): value is { version: 1; descriptor: OnlinePortDescriptor } {
+  return rtcRecord(value) && rtcKeys(value, ['version', 'descriptor']) && value.version === 1 && validateOnlinePortDescriptor(value.descriptor);
+}
+/** Ordinary contextBridge API. MessagePorts use the renderer-owned facade instead. */
+export interface OnlinePreloadApi {
+  host(capacity: number): Promise<OnlineResult>;
+  join(code: string): Promise<OnlineResult>;
+  ready(ready: boolean): Promise<OnlineResult>;
+  removeSeat(seatId: number): Promise<OnlineResult>;
+  viewState(epoch: number, phase: Extract<OnlineAction, { type: 'view-state' }>['phase']): Promise<OnlineResult>;
+  reconnect(): Promise<OnlineResult>;
+  start(): Promise<OnlineResult>;
+  retry(): Promise<OnlineResult>;
+  leave(): Promise<OnlineResult>;
+  forgetSeat(): Promise<OnlineResult>;
+  readStatus(): Promise<OnlineStatusEnvelope | Extract<OnlineResult, { ok: false }>>;
+  onStatus(callback: (value: OnlineStatusEnvelope) => void): Unsubscribe;
+}
+export interface FtlitePreloadApi {
+  online: OnlinePreloadApi;
+  onSuspend(callback: () => void): Unsubscribe;
+  onResume(callback: () => void): Unsubscribe;
+}

@@ -13,7 +13,7 @@ import { createAudio } from './app/audio';
 import { EMPTY_PROGRESS } from './sim/progress';
 import { CREDITS } from './render/credits.generated';
 
-declare global { interface Window { ftlite?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void } } }
+declare global { interface Window { ftlite?: import('../../shared/onlineSession').FtlitePreloadApi } }
 
 /** Startup failures (invalid ship, invalid manifest, missing required asset) stop here with the message on screen (spec §7, parent §9). */
 function showFatal(err: unknown): void {

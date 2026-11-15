@@ -6,5 +6,5 @@
     "outDir": "./.tsout/web", "emitDeclarationOnly": true,
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/renderer/networkTransport.ts", "src/network/**/*", "src/shared/**/*", "src/utility/**/*", "src/main/network/**/*", "tests/**/*", "scripts/**/*", "services/signalling/scripts/local-runtime.ts", "build/contentDigest.ts"]
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/renderer/networkTransport.ts", "src/preload/index.ts", "src/network/**/*", "src/shared/**/*", "src/utility/**/*", "src/main/network/**/*", "tests/**/*", "scripts/**/*", "services/signalling/scripts/local-runtime.ts", "build/contentDigest.ts", "build/isolatedBuildReporter.ts"]
 }
