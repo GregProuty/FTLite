@@ -37,7 +37,7 @@ No sector code changes behaviour and no `SIM_VERSION` bump is needed: `stepSoloF
 - Tick rate 60, `DT` 1/60. Ship 0 is the crew's ship. The flight view never steps, collides with or draws ship 1.
 - Every new display object is created when its layer is created. A frame only clears and redraws `Graphics`, sets `BitmapText` text, position and visibility. Task 4's test enforces this.
 - Commit with explicit paths only (`git add <paths>`), never `git add -A` or `git add .`: the owner keeps unrelated uncommitted files in this checkout. End every commit message with the Co-Authored-By trailer your own session instructs.
-- Run single test files with `npx vitest run <file>`. The full suite is `npm test` (1,869 tests and 1 skipped after this plan; 1,817 before it). Typecheck is `npm run typecheck` (`tsc -b`, both the web and the node projects).
+- Run single test files with `npx vitest run <file>`. The full suite is `npm test` (1,872 tests and 1 skipped after this plan; 1,817 before it). Typecheck is `npm run typecheck` (`tsc -b`, both the web and the node projects).
 - Known flakes: `tests/authorityBoundary.test.ts` and `tests/run.test.ts` can time out under full-suite load. If one fails in `npm test`, rerun it alone; it is unrelated to this plan.
 - Line endings: write files with LF. The repository normalises on commit (`core.autocrlf`).
 
@@ -46,7 +46,7 @@ No sector code changes behaviour and no `SIM_VERSION` bump is needed: `stepSoloF
 Each is marked **(rec.)** in the spec's sense: the recommendation, taken under the standing order, which the owner can overturn.
 
 1. **The single-ship step** **(rec.)** is `stepSoloFlight(state, axes, tuning = DEFAULT_FLIGHT)`: `flyShip` on ship 0, `hitStatics` on ship 0, `tick++`. It does not touch `events` or `outcome`, which the flight view never reads. §11's table says "the local runtime with `stepFlight`"; §9 (the single-ship step) is the specific rule and wins, because `stepFlight` would fly and collide ship 1.
-2. **Input sampling** **(rec.)**: the runtime samples the keyboard and pointer once per render frame (`frame(dt)`). Each sim tick uses the latest held axes, at most one frame old, and records them as the "current axes" the model draws with (spec §7). Press edges (Escape, C, `−`/`=`) and pointer input act in the frame, so the camera can still zoom and pan while paused.
+2. **Input sampling** **(rec.)**: the runtime samples the keyboard and pointer once per render frame (`frame(dt)`). Each sim tick uses the latest held axes, at most one frame old, and records them as the "current axes" the model draws with (spec §7). Press edges (Escape, C, `−`/`=`) and pointer input act in the frame, so the camera can still zoom and pan while paused. Within a frame the drag is applied before the wheel, because a pan clears the zoom anchor: a frame with both still zooms about the cursor (Codex plan review).
 3. **Wheel zoom while following** **(rec.)**: the wheel zooms about the cursor only when the camera is free (panned). While it follows the ship, every zoom is about the screen centre, so zooming never breaks follow and the ship never drifts off-centre. Keys always zoom about the centre (spec §6). The zoom eases in log space with a smoothstep over 0.15 s; the snap-back eases over 0.2 s.
 4. **The grid's extent and names** **(rec.)**: the grid square is ±3000 units (the smallest multiple of 500 that encloses the map's 2800 circle), so there are 12 × 12 squares of 500 (columns A to L from the west, rows 1 to 12 from the north). Past zoom 0.6 the 250-unit lines are drawn as fainter minor lines, but **the labels always name the 500-unit squares**. Read literally, spec §7 would rename every square when the spacing halves (D4 at one zoom, H7 at another), which breaks parent §10a's callouts between two players at different zooms. Labels sit in the middle of each square's visible part (at least 24 px of it), along the top and left screen edges, or just inside the grid when its edge is on screen.
 5. **Contours and culling**: contour radii come from bisection on the falling side of `gravityAccel` at module load (40 u/s² at about 250, 10 at about 500, 3 at about 910). A contour or the map edge is drawn only when the ring crosses the screen: not wholly off it, and not enclosing it. Asteroids are culled to the view; below 2 px radius they are 2-px dots, and below 0.5 px they are skipped. Each asteroid is a 9-vertex outline with radius multipliers 0.72 to 1.08, from a hash of its index (render-only).
@@ -60,7 +60,7 @@ Each is marked **(rec.)** in the spec's sense: the recommendation, taken under t
    - Off-screen arrows point at the own ship (distance from the camera centre) and the planet (distance from the own ship). They are placed where the ray from the view's centre leaves a rectangle inset 28 px, keeping 266 px clear on the right for the feel panel, with the label inward of the glyph.
    - The scale bar is the largest of 50, 100, 200, 250, 500, 1000 and 2000 units that fits in 160 px.
    - "C: SNAP BACK" shows while the camera is free, and "PAUSED   ESC: RESUME" while the `user` pause is set.
-   - The star field is 220 static screen-space stars from an xorshift seeded by the run seed.
+   - The star field is 220 stars from an xorshift seeded by the run seed, with parallax (parent §10b layer 1, Codex plan review). The stars move against the camera at a fixed `STAR_PARALLAX` = 0.02 screen px per world unit the camera centre moves, at every zoom, so a ship at 800 u/s drifts them 16 px/s and zooming never moves them. One screen of stars is drawn once into its own `Graphics` as a 2 × 2 tile; each frame only sets its position to the offset wrapped into one screen (`starOffset`) minus one tile, so the field always covers the screen with no gap.
 9. **The feel panel** **(rec.)**:
    - Distances are from the planet's centre, as parent §6's "r ≈ 150" is.
    - Skid is `|v · right|`, where `right` is the heading turned 90° clockwise.
@@ -526,12 +526,16 @@ describe('duel keyboard (H-1 spec §5)', () => {
     t.fire('keyup', key('Space'));
     s = kb.sample(); expect(s.presses.fireUp).toBe(1); expect(s.fireHeld).toBe(false);
   });
-  it('prevents the browser default on Tab, Space, the arrows and Backspace only', () => {
+  it('prevents the browser default on Tab, Space, the arrows and Backspace only, on press and release', () => {
     const t = fakeTarget(); createDuelKeyboard(t);
     for (const code of ['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']) {
-      const e = key(code); t.fire('keydown', e); expect(e.preventDefault, code).toHaveBeenCalled();
+      const down = key(code); t.fire('keydown', down); expect(down.preventDefault, `${code} down`).toHaveBeenCalled();
+      const up = key(code); t.fire('keyup', up); expect(up.preventDefault, `${code} up`).toHaveBeenCalled();
     }
-    for (const code of ['KeyW', 'Escape', 'F11', 'Equal']) { const e = key(code); t.fire('keydown', e); expect(e.preventDefault, code).not.toHaveBeenCalled(); }
+    for (const code of ['KeyW', 'Escape', 'F11', 'Equal']) {
+      const down = key(code); t.fire('keydown', down); expect(down.preventDefault, `${code} down`).not.toHaveBeenCalled();
+      const up = key(code); t.fire('keyup', up); expect(up.preventDefault, `${code} up`).not.toHaveBeenCalled();
+    }
   });
   it('blur and clear drop held keys and pending presses; destroy removes every listener', () => {
     const t = fakeTarget(), kb = createDuelKeyboard(t);
@@ -858,13 +862,14 @@ git commit -m "feat(helm): the console camera and the duel keyboard and pointer 
 **Interfaces:**
 - Consumes: Task 1's `stepSoloFlight` (in the test); Task 2's camera (`worldToScreen`, `visibleWorld`, `Camera`, `Follow`, `Point`, `Viewport`); `gravityAccel`, `predictPath`, `hx`, `hy`, `TacticalState`, `Ship`, `Circle`.
 - Produces (`render/tactical/tacticalModel.ts`):
-  - Constants: `GRID_EXTENT` (3000), `GRID_MAJOR`, `GRID_MINOR`, `GRID_MINOR_ZOOM`, `CONTOUR_ACCELS`, `ASTEROID_DOT_PX`, `DOT_MIN_PX`, `SHIP_CHEVRON_PX`, `CHEVRON_SIZE`, `PATH_*`, `BEARING_RING_ZOOM`, `BEARING_RING_PX`, `ARROW_MARGIN`, `SCALE_BAR_MAX_PX`.
+  - Constants: `GRID_EXTENT` (3000), `GRID_MAJOR`, `GRID_MINOR`, `GRID_MINOR_ZOOM`, `CONTOUR_ACCELS`, `ASTEROID_DOT_PX`, `DOT_MIN_PX`, `SHIP_CHEVRON_PX`, `CHEVRON_SIZE`, `PATH_*`, `BEARING_RING_ZOOM`, `BEARING_RING_PX`, `ARROW_MARGIN`, `SCALE_BAR_MAX_PX`, `STAR_PARALLAX` (0.02).
   - `interface PrevBody { x; y; h }`, where `h` is `heading + headingAcc`.
   - `interface TacticalModelInput { state; prev; alpha; camera; viewport; console: 'helm' | 'weapons'; axes; ships: readonly number[]; paused; reserveRight }`.
-  - `interface TacticalDraw { grid; contours; edge; planet; asteroids; ships; helm; arrows; overlay }`, and the item types `GridDraw`, `CircleDraw`, `AsteroidDraw`, `ShipDraw`, `RingDraw`, `HelmDraw`, `ArrowDraw`, `ArrowTarget`, `OverlayDraw`, `Line`, `Label`.
+  - `interface TacticalDraw { grid; contours; edge; planet; asteroids; ships; helm; arrows; overlay; stars: Point }`, and the item types `GridDraw`, `CircleDraw`, `AsteroidDraw`, `ShipDraw`, `RingDraw`, `HelmDraw`, `ArrowDraw`, `ArrowTarget`, `OverlayDraw`, `Line`, `Label`.
   - `tacticalModel(input: TacticalModelInput): TacticalDraw`.
   - `contourRadius(accel): number`; `headingAngle(h): number`; `interpolatedShip(state, prev, alpha, i): PrevBody`.
   - `followTarget(state, prev, alpha, follow, own = 0): Point | null`.
+  - `starOffset(centreX, centreY, vp): Point`: −centre × `STAR_PARALLAX`, wrapped into 0..w × 0..h.
   - `columnName(k): string`; `pathSeconds(zoom): number`; `ringCrossesRect(x, y, r, w, h): boolean`.
   - `wedgeSegments(): { room; poly: number[] }[]`; `asteroidShape(index): number[]`.
 - Produces (`render/tactical/feelModel.ts`):
@@ -881,7 +886,7 @@ import { describe, expect, it } from 'vitest';
 import { createCamera, pan, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { createFeelTracker, feelReadout, feelRows, FEEL_WINDOW_TICKS, recordFeel } from '../src/renderer/src/render/tactical/feelModel';
 import {
-  asteroidShape, BEARING_RING_PX, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, ringCrossesRect,
+  asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, ringCrossesRect,
   tacticalModel, wedgeSegments, type PrevBody, type TacticalModelInput
 } from '../src/renderer/src/render/tactical/tacticalModel';
 import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
@@ -1027,6 +1032,23 @@ describe('the overlay (H-1 spec §7 item 9)', () => {
   });
 });
 
+describe('the parallax star field (parent §10b layer 1)', () => {
+  it('moves the stars against the camera at STAR_PARALLAX px per unit, at any zoom, wrapped into one tile', () => {
+    expect(STAR_PARALLAX).toBe(0.02);
+    expect(starOffset(0, 0, vp)).toEqual({ x: 0, y: 0 });
+    expect(starOffset(1000, 0, vp)).toEqual({ x: 1280 - 20, y: 0 });       // the camera moves east 1000: the stars 20 px west
+    expect(starOffset(0, -2000, vp)).toEqual({ x: 0, y: 40 });             // north 2000: 40 px down
+    expect(starOffset(-64000 - 500, 0, vp).x).toBeCloseTo(10, 9);          // 1290 px wraps to 10
+    const st = createTacticalState(4), cam = createCamera(0, 0, 0.5);
+    const a = tacticalModel(input(st, cam)).stars;
+    pan(cam, -100, 0);                                                     // drag 100 px left: the centre moves 200 units east
+    const b = tacticalModel(input(st, cam)).stars;
+    expect(a).toEqual({ x: 0, y: 0 }); expect(b.x).toBeCloseTo(1280 - 4, 9); expect(b.y).toBe(0);
+    const zoomed = tacticalModel(input(st, createCamera(200, 0, 1.2))).stars;
+    expect(zoomed.x).toBeCloseTo(b.x, 9);                                  // independent of zoom
+  });
+});
+
 describe('shapes', () => {
   it('the wedge has three room segments and asteroids have stable outlines', () => {
     expect(wedgeSegments().map((w) => w.room)).toEqual([0, 1, 2]);
@@ -1097,6 +1119,9 @@ export const BEARING_RING_ZOOM = 0.3, BEARING_RING_PX = 120;
 export const ARROW_MARGIN = 28;
 const SCALE_STEPS: readonly number[] = [50, 100, 200, 250, 500, 1000, 2000];
 export const SCALE_BAR_MAX_PX = 160;
+/** The star field's parallax (parent §10b layer 1): screen pixels the stars move per world unit the camera centre moves,
+ *  at every zoom (plan decision 8). The ship at 800 u/s drifts the stars by 16 px/s. */
+export const STAR_PARALLAX = 0.02;
 
 export interface PrevBody { x: number; y: number; h: number }
 export interface Line { x1: number; y1: number; x2: number; y2: number }
@@ -1128,6 +1153,8 @@ export interface TacticalDraw {
   helm: HelmDraw | null;
   arrows: ArrowDraw[];
   overlay: OverlayDraw;
+  /** The star field's offset within one screen-sized tile, 0..w × 0..h (see starOffset). */
+  stars: Point;
 }
 
 export interface TacticalModelInput {
@@ -1156,6 +1183,12 @@ export function contourRadius(accel: number): number {
   return (lo + hi) / 2;
 }
 const CONTOUR_RADII = CONTOUR_ACCELS.map(contourRadius);
+
+/** The star tile's offset for a camera centre: −centre × STAR_PARALLAX, wrapped into 0..w × 0..h. */
+export function starOffset(centreX: number, centreY: number, vp: Viewport): Point {
+  const wrap = (v: number, n: number): number => ((v % n) + n) % n;
+  return { x: wrap(-centreX * STAR_PARALLAX, vp.w), y: wrap(-centreY * STAR_PARALLAX, vp.h) };
+}
 
 /** A heading in steps (any real) to radians clockwise from north. */
 export function headingAngle(h: number): number { return (h / HEADING_COUNT) * Math.PI * 2; }
@@ -1315,7 +1348,8 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
     grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
-    overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused }
+    overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
+    stars: starOffset(cam.centreX, cam.centreY, vp)
   };
 }
 
@@ -1434,7 +1468,7 @@ export function feelRows(r: FeelReadout): [string, string][] {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/tacticalModel.test.ts tests/boundary.test.ts`
-Expected: PASS (19 model tests; the boundary test is unchanged, since nothing under a guarded root imports the new files).
+Expected: PASS (20 model tests; the boundary test is unchanged, since nothing under a guarded root imports the new files).
 
 Run: `npm run typecheck`
 Expected: exit 0.
@@ -1459,7 +1493,7 @@ git commit -m "feat(helm): the Helm map-view model and the flight feel readout (
 **Interfaces:**
 - Consumes: Task 3's `TacticalDraw`, `Label`, `ShipDraw`, `ArrowTarget`, `wedgeSegments`, `asteroidShape`, `CHEVRON_SIZE`, `feelRows`; Task 2's `Viewport`; `drawPanel` (`render/panel.ts`); theme colours, `FONT_NATIVE`, `FONT_SIZE`, `LINE`, `PAD`, `textPx`.
 - Produces:
-  - `render/tactical/tacticalLayer.ts`: `SPACE`, `CREW_SHIP`, `ENEMY_SHIP`, `SHIELD_RING`; `interface TacticalLayer { container: Container; draw(d: TacticalDraw): void; reset(): void }`; `createTacticalLayer(opts: { fontFamily: string; viewport: Viewport; seed?: number }): TacticalLayer`.
+  - `render/tactical/tacticalLayer.ts`: `SPACE`, `CREW_SHIP`, `ENEMY_SHIP`, `SHIELD_RING`; `interface TacticalLayer { container: Container; stars: Container; draw(d: TacticalDraw): void; reset(): void }` (`stars` is the parallax star tile, exposed for its test); `createTacticalLayer(opts: { fontFamily: string; viewport: Viewport; seed?: number }): TacticalLayer`.
   - `render/tactical/feelPanel.ts`: `FEEL_PANEL_W` (250), `FEEL_PANEL_MARGIN` (8), `FEEL_PANEL_H`; `interface FeelPanel { container; draw(rows) }`; `createFeelPanel(opts: { fontFamily: string; x: number; y: number }): FeelPanel`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1503,6 +1537,16 @@ describe('tactical layer allocation (H-1 spec §10)', () => {
     expect(count(layer.container)).toBe(n0);
     expect(count(panel.container)).toBe(p0);
   });
+  it('the star tile follows the parallax offset: shifted by one tile so the 2 x 2 field always covers the screen', () => {
+    const layer = createTacticalLayer({ fontFamily: 'm5x7', viewport: vp });
+    const st = createTacticalState(9), cam = createCamera(0, 0);
+    const draw = (): void => layer.draw(tacticalModel({ state: st, prev: [], alpha: 1, camera: cam, viewport: vp, console: 'helm', axes: { turn: 0, thrust: 0 }, ships: [0], paused: false, reserveRight: 0 }));
+    draw();
+    expect([layer.stars.x, layer.stars.y]).toEqual([-1280, -720]);
+    pan(cam, -100, 50); draw();                     // centre +200, −100 units at zoom 0.5: stars −4 px (wrapped) and +2 px
+    expect(layer.stars.x).toBeCloseTo(-4, 9); expect(layer.stars.y).toBeCloseTo(2 - 720, 9);
+    expect(layer.stars.x).toBeLessThanOrEqual(0); expect(layer.stars.x + 2 * 1280).toBeGreaterThanOrEqual(1280);
+  });
 });
 ```
 
@@ -1535,14 +1579,15 @@ const STAR_COUNT = 220;
 /** Pool sizes: the labels name 500-unit squares (12 per axis at most), the ring has 12 labels, at most 4 arrows. */
 const GRID_LABELS = 12, RING_LABELS = 12, ARROWS = 4;
 
-export interface TacticalLayer { container: Container; draw(d: TacticalDraw): void; reset(): void }
+/** `stars` is exposed for the parallax test. */
+export interface TacticalLayer { container: Container; stars: Container; draw(d: TacticalDraw): void; reset(): void }
 export interface TacticalLayerOptions { fontFamily: string; viewport: Viewport; seed?: number }
 
 export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const { w, h } = opts.viewport;
   const container = new Container();
-  const bg = new Graphics(), grid = new Graphics(), contours = new Graphics(), bodies = new Graphics(), ships = new Graphics(), helm = new Graphics(), overlay = new Graphics();
-  container.addChild(bg, grid, contours, bodies, ships, helm, overlay);
+  const bg = new Graphics(), stars = new Graphics(), grid = new Graphics(), contours = new Graphics(), bodies = new Graphics(), ships = new Graphics(), helm = new Graphics(), overlay = new Graphics();
+  container.addChild(bg, stars, grid, contours, bodies, ships, helm, overlay);
   const mk = (size: number, tint: number, anchorX = 0, anchorY = 0): BitmapText => {
     const t = new BitmapText({ text: '', style: { fontFamily: opts.fontFamily, fontSize: size } });
     t.tint = tint; t.roundPixels = true; t.anchor.set(anchorX, anchorY); t.visible = false; container.addChild(t); return t;
@@ -1555,13 +1600,15 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   zoomText.position.set(16, h - 64); scaleText.position.set(16, h - 22); hint.position.set(w / 2, h - 12); banner.position.set(w / 2, h / 2 - 80);
   banner.text = 'PAUSED   ESC: RESUME';
 
-  // The static star field: render-only randomness, seeded (H-1 spec §7 item 1).
+  // The star field: render-only randomness, seeded (H-1 spec §7 item 1). One screen of stars is drawn as a 2 × 2 tile, so
+  // shifting it by the parallax offset (0..w, 0..h, minus one tile) always covers the screen with no gap.
   bg.rect(0, 0, w, h).fill(SPACE);
   let r = (opts.seed ?? 2026) >>> 0 || 1;
   const rnd = (): number => { r ^= r << 13; r >>>= 0; r ^= r >>> 17; r ^= r << 5; r >>>= 0; return r / 4294967296; };
   for (let k = 0; k < STAR_COUNT; k++) {
     const x = rnd() * w, y = rnd() * h, b = rnd();
-    bg.rect(Math.floor(x), Math.floor(y), b > 0.92 ? 2 : 1, b > 0.92 ? 2 : 1).fill({ color: 0xffffff, alpha: 0.25 + 0.55 * b });
+    for (const [tx, ty] of [[0, 0], [w, 0], [0, h], [w, h]] as const)
+      stars.rect(Math.floor(x) + tx, Math.floor(y) + ty, b > 0.92 ? 2 : 1, b > 0.92 ? 2 : 1).fill({ color: 0xffffff, alpha: 0.25 + 0.55 * b });
   }
 
   const setText = (t: BitmapText, s: string): void => { if (t.text !== s) t.text = s; };
@@ -1595,8 +1642,9 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   }
 
   return {
-    container,
+    container, stars,
     draw(d) {
+      stars.position.set(d.stars.x - w, d.stars.y - h);
       grid.clear(); contours.clear(); bodies.clear(); ships.clear(); helm.clear(); overlay.clear();
       for (const l of d.grid.lines) grid.moveTo(l.x1, l.y1).lineTo(l.x2, l.y2).stroke({ width: 1, color: GRID, alpha: l.major ? 0.7 : 0.3 });
       fill(cols, d.grid.columns); fill(rows, d.grid.rows);
@@ -1714,7 +1762,7 @@ export function createFeelPanel(opts: { fontFamily: string; x: number; y: number
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run tests/tacticalLayer.test.ts tests/render.test.ts`
-Expected: PASS (the new allocation test; `render.test.ts` unchanged). Pixi `Graphics` and `BitmapText` are built in Vitest's node environment without a renderer, as `render.test.ts` already does for the enemy window.
+Expected: PASS (2 new tests: the allocation test and the star parallax test; `render.test.ts` unchanged). Pixi `Graphics` and `BitmapText` are built in Vitest's node environment without a renderer, as `render.test.ts` already does for the enemy window.
 
 Run: `npm run typecheck`
 Expected: exit 0.
@@ -1871,6 +1919,16 @@ describe('the flight runtime (H-1 spec §4, §9)', () => {
     expect(Math.hypot(rt.camera.centreX - ship.x, rt.camera.centreY - ship.y)).toBeLessThan(20);
     rt.dispose();
   });
+  it('a drag and a wheel in the same frame: the camera goes free and zooms about the cursor', () => {
+    const { input, rt } = rig();
+    rt.frame(1 / 60);
+    input.pointer = { x: 900, y: 200, wheel: -100, dragX: 50, dragY: 0 };
+    rt.frame(0);
+    expect(rt.camera.follow).toBe('free');
+    expect(rt.camera.targetZoom).toBeCloseTo(ZOOM_DEFAULT * ZOOM_STEP, 12);
+    expect(rt.camera.anchor).toMatchObject({ sx: 900, sy: 200 });
+    rt.dispose();
+  });
   it('stops stepping once disposed', () => {
     const { time, rt } = rig();
     time.advance(100); const t0 = rt.state.tick; rt.dispose(); time.advance(1000);
@@ -1971,8 +2029,8 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
       sync();
       if (k.presses.camera > 0) snapBack(camera);
       zoomBy(camera, vp, k.presses.zoomIn - k.presses.zoomOut);
+      pan(camera, p.dragX, p.dragY);   // before the wheel: pan clears the zoom anchor, so a drag and a wheel in one frame still zoom about the cursor
       zoomBy(camera, vp, wheelNotches(p.wheel), p.x !== null && p.y !== null ? { x: p.x, y: p.y } : null);
-      pan(camera, p.dragX, p.dragY);
       updateCamera(camera, vp, dt, followTarget(state, prev, alpha(), camera.follow));
     },
     pause(reason) { reasons.add(reason); sync(); },
@@ -2008,7 +2066,7 @@ export function readSeed(search: string, fallback = DEFAULT_SEED): number {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run tests/flightRuntime.test.ts`
-Expected: PASS (8 tests).
+Expected: PASS (9 tests).
 
 - [ ] **Step 5: Write the boot, `main.ts`, the Electron main and the script**
 
@@ -2280,7 +2338,7 @@ Run: `npm run typecheck`
 Expected: exit 0 (both projects: `src/main/index.ts` is in the node project).
 
 Run: `npm test`
-Expected: every file passes, 1,869 tests and 1 skipped (see the known flakes in Global Constraints).
+Expected: every file passes, 1,872 tests and 1 skipped (see the known flakes in Global Constraints).
 
 - [ ] **Step 7: Check that it renders (manual, outside the repo)**
 
@@ -2292,7 +2350,7 @@ Expected:
 - the lettered grid with column letters along the top and row numbers down the left;
 - the blue contour rings, the red map edge, and the belt asteroids with their gaps;
 - "ZOOM 0.50" and a "250 u" scale bar bottom-left, and the FLIGHT FEEL panel top-right;
-- W and A/D fly the ship; `−` twelve times shows the whole map (letters A to L, rows 1 to 12, the planet, three contours, the belt with three gaps and the three clusters);
+- W and A/D fly the ship, and the stars drift slowly against its motion (parallax); `−` twelve times shows the whole map (letters A to L, rows 1 to 12, the planet, three contours, the belt with three gaps and the three clusters);
 - a right-drag shows "C: SNAP BACK", C recentres, and Escape shows "PAUSED   ESC: RESUME".
 
 The 7 `ERR_FILE_NOT_FOUND` console errors (optional art such as `art/tiles/breach.png`) appear in the sector mode too and are not from this plan. Also launch without `FTLITE_MODE` and confirm the sector lobby is unchanged. Delete any scratch files; commit nothing from this step.
