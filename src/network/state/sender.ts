@@ -68,6 +68,7 @@ export function createStateSender(options: StateSenderOptions) {
         }
       } catch { fail(); }
     },
+    acknowledgedSequence: (): number => baseSequence,
     dispose,
     stats: () => ({ ...images.stats(), resyncs, pendingOrdinary: pending }),
   };

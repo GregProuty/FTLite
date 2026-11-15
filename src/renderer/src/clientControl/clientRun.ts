@@ -174,6 +174,17 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       auxiliarySequences[player] = sequence;
       link.send('reliable-ordered', encodeMessage({ kind: 'callout', runId: options.runId, player, sequence, calloutKind: 'contextual' }));
     },
+    neutralize(player: PlayerId): void {
+      // Focus loss stops the ordinary producer. Neutralization only needs a
+      // confirmed publication and shares its held sequence with translateTick.
+      if (disposed || !publication || !owned.includes(player)) return;
+      const producer = ui.players[player]; if (!producer) return;
+      const sequence = producer.heldSequence + 1;
+      if (!Number.isSafeInteger(sequence)) { link.close('held-sequence-exhausted'); return; }
+      producer.heldSequence = sequence;
+      link.send('reliable-ordered', encodeMessage({ kind: 'held', frame: { runId: options.runId, player, tick: publication.tick, sequence,
+        held: { moveX: 0, moveY: 0, interactHeld: false } } }));
+    },
     send(actions: ClientActions): void {
       if (!canProduce() || (receiveTime && !publication)) return;
       for (const frame of actions.held) if (owned.includes(frame.player)) link.send('unreliable-latest', encodeMessage({ kind: 'held', frame }));

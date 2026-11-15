@@ -12,6 +12,17 @@ function harness() {
   return { sender, packets, closed, clock, control, advance: (ms: number) => { now += ms; } };
 }
 describe('bounded state sender', () => {
+  it('exposes only retained actually sent validated ACKs and clears readiness on disposal', () => {
+    const h = harness(); expect(h.sender.acknowledgedSequence()).toBe(0);
+    h.sender.publish(img(1), true); h.sender.publish(img(2, 4), false);
+    h.control('full-received', 1); h.control('ack', 2); h.control('ack', 999);
+    expect(h.sender.acknowledgedSequence()).toBe(0);
+    for (let sequence = 3; sequence <= 70; sequence++) h.sender.publish(img(sequence), true);
+    h.control('ack', 1); expect(h.sender.acknowledgedSequence()).toBe(0);
+    h.control('ack', 70); expect(h.sender.acknowledgedSequence()).toBe(70);
+    h.control('ack', 69); expect(h.sender.acknowledgedSequence()).toBe(70);
+    h.sender.dispose(); expect(h.sender.acknowledgedSequence()).toBe(0);
+  });
   it('publishes once per eligible tick and forces reliable immediate control fulls', () => {
     const h = harness(); h.sender.publish(img(1, 1), false); expect(h.packets).toHaveLength(0);
     h.sender.publish(img(2, 3), false); h.sender.publish(img(3, 3), false); expect(h.packets).toHaveLength(1);

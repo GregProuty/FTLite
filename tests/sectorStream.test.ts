@@ -9,7 +9,7 @@ import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { saveSnapshot } from '../src/renderer/src/sim/snapshot';
 import { hashF64 } from '../src/shared/hash';
 import { createSectorRemoteClient, createSectorStreamBinding, publicationToImage, imageToPublication, encodeSectorNotification } from '../src/network/modes/sectorStream';
-import { encodeFull, encodeStatePacket, decodeControl, classifyStreamPacket, decodeOpaquePacket, encodeOpaquePacket } from '../src/network/state/imageCodec';
+import { encodeFull, encodeStatePacket, decodeControl, encodeControl, classifyStreamPacket, decodeOpaquePacket, encodeOpaquePacket, decodeStatePacket, inspectState } from '../src/network/state/imageCodec';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { telemetryRecord } from '../src/renderer/src/sim/telemetry';
 import { sectorMode } from '../src/network/modes/sector';
@@ -48,6 +48,55 @@ function publication(state = makeState(1), sequence = 1): PublishedState {
 }
 
 describe('sector publication and acceptance boundary', () => {
+  it('discards all pre-ACK input without consuming IDs or replaying it after a valid full ACK', () => {
+    const f = fixture(), wire = endpoint(), stream = createSectorStreamBinding(wire.link, { ...options, clock: f.clock, latestPayloadLimit: 4096 });
+    ownTestCleanup(() => stream.dispose());
+    f.authority.attach(stream.link, [0], { ...stream.attachOptions, admissionPolicy: 'receive-time' });
+    const initial = inspectState(decodeStatePacket(wire.sent[0]!.bytes)).sequence;
+    let ordinal = 0;
+    const command = (sequence: number) => wire.receive(encodeOpaquePacket('input', 'command', ++ordinal, encodeMessage({ kind: 'command', envelope: {
+      runId: 'stream', id: { player: 0, sequence }, requestedTick: 0, command: { kind: 'setPaused', paused: true }
+    } })));
+    command(1);
+    wire.receive(encodeOpaquePacket('input', 'held:0', ++ordinal, encodeMessage({ kind: 'held', frame: {
+      runId: 'stream', player: 0, tick: 0, sequence: 10, held: { moveX: 1, moveY: 0, interactHeld: true }
+    } })), 'unreliable-latest');
+    wire.receive(encodeOpaquePacket('input', 'callout', ++ordinal, encodeMessage({ kind: 'callout', runId: 'stream', player: 0, sequence: 10, calloutKind: 'contextual' })));
+    f.authority.pump();
+    expect(f.authority.checkpoint([])).toMatchObject({ commandHighWater: [0], heldHighWater: [0], receiveOrder: 0, phase: 'running' });
+    // Retain a newer image without sending it (tick 1 is outside the cadence).
+    const retainedState = makeState(1); retainedState.tick = 1;
+    const retained = publication(retainedState, initial + 1);
+    stream.attachOptions.publicationSink!(retained, false);
+    wire.receive(encodeControl({ kind: 'full-received', sequence: initial }, ++ordinal)); command(1);
+    wire.receive(encodeControl({ kind: 'ack', sequence: initial + 1 }, ++ordinal)); command(1);
+    wire.receive(encodeControl({ kind: 'ack', sequence: 999 }, ++ordinal)); command(1); f.authority.pump();
+    expect(f.authority.checkpoint([]).commandHighWater).toEqual([0]);
+    wire.receive(encodeControl({ kind: 'ack', sequence: initial }, ++ordinal)); f.authority.pump();
+    expect(f.authority.checkpoint([]).commandHighWater).toEqual([0]);
+    command(1); f.authority.pump();
+    expect(f.authority.checkpoint([])).toMatchObject({ commandHighWater: [1], phase: 'paused', heldHighWater: [0], receiveOrder: 1 });
+    expect(wire.reasons).toEqual([]); expect(f.crashes).toEqual([]);
+  });
+  it('resets readiness for a replacement binding and accepts synchronous send-time ACK then input', () => {
+    const wire = endpoint();
+    const first = createSectorStreamBinding(wire.link, { ...options, clock: { nowMs: () => 0 }, latestPayloadLimit: 4096 });
+    first.attachOptions.publicationSink!(publication(), true);
+    wire.receive(encodeControl({ kind: 'ack', sequence: 1 }, 1)); first.dispose();
+    const replacement = createSectorStreamBinding(wire.link, { ...options, clock: { nowMs: () => 0 }, latestPayloadLimit: 4096 });
+    ownTestCleanup(() => replacement.dispose());
+    const received: Uint8Array[] = []; replacement.link.onMessage((_, bytes) => received.push(bytes));
+    const input = encodeOpaquePacket('input', 'callout', 2, encodeMessage({ kind: 'callout', runId: 'stream', player: 0, sequence: 1, calloutKind: 'contextual' }));
+    wire.receive(encodeControl({ kind: 'ack', sequence: 1 }, 1)); wire.receive(input); expect(received).toEqual([]);
+    const send = wire.link.send;
+    wire.link.send = (kind, bytes) => {
+      send(kind, bytes);
+      const sequence = inspectState(decodeStatePacket(bytes)).sequence;
+      wire.receive(encodeControl({ kind: 'ack', sequence }, 3)); wire.receive(input);
+    };
+    replacement.attachOptions.publicationSink!(publication(undefined, 2), true);
+    expect(received).toHaveLength(1); expect(wire.reasons).toEqual([]);
+  });
   it('streams a fully valid snapshot above the unchanged 65536 local JSON limit', () => {
     const width = 3202, layout = parseShip({ ...LAYOUT, id: 'long-hull', width, height: 5,
       rows: ['#'.repeat(width), ...Array(3).fill('#' + 'a'.repeat(width - 2) + '#'), '#'.repeat(width)],

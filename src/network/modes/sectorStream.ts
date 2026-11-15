@@ -8,7 +8,7 @@ import { Life, Position, Seated, Stable } from '../../renderer/src/sim/component
 import { CREW_SPEED, TICK_HZ } from '../../renderer/src/sim/tuning';
 import { speedMult } from '../../renderer/src/sim/characters';
 import { hashF64 } from '../../shared/hash';
-import { classifyStreamPacket, createTransportSequence, decodeOpaquePacket, decodeStatePacket, inspectState, encodeOpaquePacket, imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, type StateImage } from '../state/imageCodec';
+import { classifyStreamPacket, createTransportSequence, decodeOpaquePacket, decodeStatePacket, inspectState, encodeOpaquePacket, imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, MAX_RETAINED_IMAGES, type StateImage } from '../state/imageCodec';
 import { createStateSender } from '../state/sender';
 import { createStateReceiver } from '../state/receiver';
 import { createPresentationTimeline, type PresentationPoint, type PresentationTimelineOptions } from '../state/timeline';
@@ -62,9 +62,12 @@ function decodeNotification(packet: Uint8Array): { message: Notification; floor:
   if (!Number.isSafeInteger(floor) || floor < 0 || message.kind !== 'result' && message.kind !== 'event') throw Error('sector-notification');
   return { message, floor };
 }
-function inputIdentity(bytes: Uint8Array): { stream: string; channel: ChannelKind } {
+function inputIdentity(bytes: Uint8Array, channel: ChannelKind): { stream: string; channel: ChannelKind } {
   const message = decodeMessage(bytes);
-  if (message.kind === 'held') return { stream: `held:${message.frame.player}`, channel: 'unreliable-latest' };
+  if (message.kind === 'held') {
+    const held = message.frame.held, neutral = held.moveX === 0 && held.moveY === 0 && !held.interactHeld;
+    return { stream: `held:${message.frame.player}`, channel: neutral && channel === 'reliable-ordered' ? 'reliable-ordered' : 'unreliable-latest' };
+  }
   if (message.kind === 'command' || message.kind === 'callout') return { stream: message.kind, channel: 'reliable-ordered' };
   throw Error('sector-input-direction');
 }
@@ -72,11 +75,21 @@ function inputIdentity(bytes: Uint8Array): { stream: string; channel: ChannelKin
 /** Trusted authority attachment. It owns stream controls, while the authority owns gameplay ingress. */
 export function createSectorStreamBinding(link: Link, options: SectorValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number }) {
   const nextTransportSequence = createTransportSequence(), messages = new Set<(kind: ChannelKind, bytes: Uint8Array) => void>();
-  let closed = false;
+  let closed = false, ready = false;
+  const sentFulls = new Set<number>();
   const removers: (() => void)[] = [];
   const sender = createStateSender({ clock: options.clock, latestPayloadLimit: options.latestPayloadLimit, nextTransportSequence,
-    send: (kind, bytes) => { if (!closed) link.send(kind, bytes); }, close: reason => link.close(reason) });
-  function dispose(): void { if (closed) return; closed = true; sender.dispose(); messages.clear(); for (const off of removers.splice(0)) { try { off(); } catch { /* release all subscriptions */ } } }
+    send: (kind, bytes) => {
+      if (closed) return;
+      if (!ready && kind === 'reliable-ordered') {
+        // Record before send: a synchronous transport can deliver the ACK and
+        // subsequent input before this callback returns.
+        sentFulls.add(inspectState(decodeStatePacket(bytes)).sequence);
+        while (sentFulls.size > MAX_RETAINED_IMAGES) sentFulls.delete(sentFulls.values().next().value!);
+      }
+      link.send(kind, bytes);
+    }, close: reason => link.close(reason) });
+  function dispose(): void { if (closed) return; closed = true; ready = false; sentFulls.clear(); sender.dispose(); messages.clear(); for (const off of removers.splice(0)) { try { off(); } catch { /* release all subscriptions */ } } }
   const offClose = link.onClose(dispose);
   if (closed) offClose(); else removers.push(offClose);
   if (!closed) removers.push(link.onMessage((kind, bytes) => {
@@ -85,11 +98,14 @@ export function createSectorStreamBinding(link: Link, options: SectorValidationO
       const metadata = classifyStreamPacket(bytes);
       if (metadata.class === 'control' && metadata.stream === 'state-control') {
         if (kind !== 'reliable-ordered') throw Error('sector-control-channel');
-        sender.receiveControl(bytes); return;
+        sender.receiveControl(bytes);
+        if (!closed && !ready && sentFulls.has(sender.acknowledgedSequence())) { ready = true; sentFulls.clear(); }
+        return;
       }
       if (metadata.class !== 'input') throw Error('sector-input-direction');
-      const payload = decodeOpaquePacket(bytes), expected = inputIdentity(payload.bytes);
+      const payload = decodeOpaquePacket(bytes), expected = inputIdentity(payload.bytes, kind);
       if (payload.stream !== expected.stream || kind !== expected.channel) throw Error('sector-input-channel');
+      if (!ready) return;
       for (const receive of [...messages]) { if (closed) break; receive(kind, payload.bytes); }
     } catch { link.close('sector-stream-invalid'); }
   }));
@@ -120,7 +136,7 @@ export function createSectorRemoteClient(link: Link, owned: readonly number[], o
     onClose: cb => link.onClose(cb), onMessage: () => () => {},
     send(kind, bytes) {
       if (closed) return;
-      try { const expected = inputIdentity(bytes); if (kind !== expected.channel) throw Error('sector-input-channel');
+      try { const expected = inputIdentity(bytes, kind); if (kind !== expected.channel) throw Error('sector-input-channel');
         link.send(kind, encodeOpaquePacket('input', expected.stream, nextTransportSequence(), bytes));
       } catch { link.close('sector-stream-invalid'); }
     }
