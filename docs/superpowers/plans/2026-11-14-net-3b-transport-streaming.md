@@ -105,3 +105,5 @@ Export whole publication object validation from existing codec without raising l
 ## Coverage and completion boundary
 
 Parentdesignsections7/8 andprocessintegrationpartsof3/4 areimplementedhere. Section6alreadyNet3a andremainsregressioncoverage. Service/ticketissuance/TURN credentials/rejoinUI/focuswiring/mirrors/leases remainNet3c/d/e, not silentlyimplementedbyatestbroker. Presentation API is real/tested; shippingonlineUI consumption remainsNet3d. Retain source-specificvalidationrecords andcurrentacceptance timinglimitation; noclaimofinternetdemoreadiness fromloopbackRTC.
+
+Mode notification wire clarification: preserve every existing codec-valid result/event, including ended telemetry above4KiB. Use generic opaque packet class state, stream sector-notification, reliable-only, containing version1 + Float64 requiredPublicationSequence + unchanged original codec bytes. Bound inner codec bytes to65,536 and outer packet below128KiB; control4KiB remains reserved for small stream-control packets. Packet kind/stream and mode direction distinguish notifications from state images.
