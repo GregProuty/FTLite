@@ -1,7 +1,7 @@
 // Harness composition only. Both bundles use production sector adapters/codecs.
 import { createPortLink } from '../../src/network/portLink';
 import { browserPortEndpoint } from '../../src/network/transport/bridge';
-import { classifyStreamPacket, decodeControl, decodeState, decodeStatePacket, encodeOpaquePacket, ImageStore, inspectState } from '../../src/network/state/imageCodec';
+import { classifyStreamPacket, decodeControl, decodeOpaquePacket, decodeState, decodeStatePacket, encodeOpaquePacket, ImageStore, inspectState } from '../../src/network/state/imageCodec';
 import type { MessagePortMain } from 'electron';
 import { createSectorRemoteClient, imageToPublication } from '../../src/network/modes/sectorStream';
 import { translateTick, pauseActions } from '../../src/renderer/src/clientControl/cardController';
@@ -11,11 +11,26 @@ import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import type { PublishedState } from '../../src/renderer/src/net/contracts';
+import { decodeMessage } from '../../src/renderer/src/net/codec';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
 
 const layout = parseShip(starter);
 export const init = { runId: 'rtc-runtime', layoutId: layout.id, layoutHash: deriveLayout(layout).layoutHash,
   simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 7, playerCount: 2, characters: [0, 1], unlocked: [] };
+
+type WireNotification = { key: string; kind: 'result' | 'event'; floor: number; tick: number };
+/** Read the real mode envelope; gameplay notification shape uses the production codec. */
+function notification(bytes: Uint8Array): WireNotification | undefined {
+  if (classifyStreamPacket(bytes).stream !== 'sector-notification') return;
+  const payload = decodeOpaquePacket(bytes).bytes;
+  if (payload.length < 10 || payload[0] !== 1) throw Error('harness notification envelope');
+  const floor = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getFloat64(1, true);
+  const message = decodeMessage(payload.subarray(9));
+  if (!Number.isSafeInteger(floor) || floor < 0) throw Error('harness notification floor');
+  if (message.kind === 'result') return { key: `result:${message.result.id.player}:${message.result.id.sequence}`, kind: 'result', floor, tick: message.result.tick };
+  if (message.kind === 'event') return { key: `event:${message.event.eventSequence}`, kind: 'event', floor, tick: message.event.tick };
+  throw Error('harness notification direction');
+}
 
 /** Sacrificial fragmentation probe over the real generic PortLink/RTC bridge. */
 export function createProbe(port: MessagePortMain) {
@@ -29,11 +44,14 @@ export function createProbe(port: MessagePortMain) {
 /** Passive authority->hidden MessagePort observation; never sends state/ACK. */
 export function createObserver() {
   const images = new ImageStore(), publications = new Map<number, PublishedState>();
+  const notifications: WireNotification[] = [];
   const packets: { kind: string; tick: number; sequence: number; bytes: number; fullBytes: number; at: number }[] = [];
   let maxImageBytes = 0, maxInputBytes = 0, fullReceipts = 0, validatedAcks = 0, refreshes = 0;
   return {
     observe(bytes: Uint8Array, incoming: boolean) {
       const metadata = classifyStreamPacket(bytes);
+      const note = incoming ? notification(bytes) : undefined;
+      if (note) { notifications.push(note); if (notifications.length > 256) notifications.shift(); }
       if (metadata.class === 'input') maxInputBytes = Math.max(maxInputBytes, bytes.length + 40 + metadata.stream.length * 2);
       if (metadata.stream === 'state-control') {
         const control = decodeControl(bytes);
@@ -54,8 +72,9 @@ export function createObserver() {
       if (packets.length > 512) packets.shift();
     },
     publication: (sequence: number) => publications.get(sequence),
+    notifications: () => [...notifications],
     stats: () => ({ packets: [...packets], maxImageBytes, maxInputBytes, fullReceipts, validatedAcks, refreshes }),
-    dispose() { images.clear(); publications.clear(); packets.length = 0; }
+    dispose() { images.clear(); publications.clear(); packets.length = 0; notifications.length = 0; }
   };
 }
 
@@ -68,9 +87,28 @@ function installPage() {
   let player = 0, producer: ReturnType<typeof setInterval> | undefined, suppressAcks = false, suppressedAcks = 0;
   let controls = { ack: 0, 'full-received': 0, refresh: 0 }, lastSequence = 0, accepted = 0, sawInterpolation = false;
   let closed = false, maxInputBytes = 0;
+  let holdState = false, heldBytes = 0;
+  const heldStates: { sequence: number; tick: number; deliver(): void }[] = [];
+  const notifications: WireNotification[] = [], deliveries: (WireNotification & { confirmedSequence: number; confirmedTick: number })[] = [];
   const results: unknown[] = [], events: unknown[] = [];
   function state() { const value = client?.state(); if (!value) throw Error('no confirmed state'); return value; }
   function stop() { clearInterval(producer); producer = undefined; }
+  function dequeued(key: string, tick: number) {
+    const wire = notifications.findLast(value => value.key === key), publication = client?.publication();
+    if (!wire || !publication || tick !== wire.tick) throw Error('dequeue has no matching actual notification');
+    const delivery = { ...wire, confirmedSequence: publication.publicationSequence, confirmedTick: publication.tick };
+    deliveries.push(delivery);
+    if (delivery.confirmedSequence < wire.floor || delivery.confirmedTick < wire.tick) throw Error('notification dequeued before covering publication');
+  }
+  async function interpolating() {
+    const deadline = performance.now() + 3000;
+    while (performance.now() < deadline) {
+      const value = api.status();
+      if (value.publication?.phase === 'running' && value.producer && value.interpolationLag > 1e-4) return value;
+      await new Promise(done => setTimeout(done, 5));
+    }
+    throw Error('no active running interpolation');
+  }
   function send(moveX = 0, confirmPresses = 0) {
     const value = state(), frames = Array.from({ length: init.playerCount }, () => ({ ...NEUTRAL_FRAME }));
     frames[player] = { ...NEUTRAL_FRAME, moveX, confirmPresses };
@@ -79,19 +117,31 @@ function installPage() {
   }
   const api = {
     status() {
-      results.push(...(client?.takeResults() ?? [])); events.push(...(client?.takeEvents() ?? []));
-      if (results.length > 128 || events.length > 128) throw Error('harness notification budget');
+      for (const result of client?.takeResults() ?? []) { dequeued(`result:${result.id.player}:${result.id.sequence}`, result.tick); results.push(result); }
+      for (const event of client?.takeEvents() ?? []) { dequeued(`event:${event.eventSequence}`, event.tick); events.push(event); }
+      if (results.length > 128 || events.length > 128 || deliveries.length > 256) throw Error('harness notification budget');
       const value = client?.state(), publication = client?.publication(), presentation = client?.presentation.sample(performance.now()) ?? [];
+      const confirmedPositions = value?.crew.map((eid, index) => ({ id: `crew:${index}`, x: Position.x[eid]!, y: Position.y[eid]! })) ?? [];
+      const displayed = presentation.find(point => point.id === `crew:${player}`), confirmed = confirmedPositions[player];
+      const interpolationLag = displayed && confirmed ? Math.hypot(displayed.x - confirmed.x, displayed.y - confirmed.y) : 0;
       if (publication && publication.publicationSequence !== lastSequence) { accepted++; lastSequence = publication.publicationSequence; }
       if (value && presentation.some(point => point.id === `crew:${player}` && Math.abs(point.x - Position.x[value.crew[player]!]!) > 1e-5)) sawInterpolation = true;
       return { publication, canAllocate: client?.commandStatus(player).canAllocate ?? false, controls, suppressedAcks,
         stream: client?.streamStats(), accepted, sawInterpolation, maxInputBytes, closed, producer: producer !== undefined,
-        x: value ? Position.x[value.crew[player]!] : null, presentation, results: [...results], events: [...events] };
+        x: value ? Position.x[value.crew[player]!] : null, presentation, confirmedPositions, interpolationLag,
+        results: [...results], events: [...events], deliveries: [...deliveries], notifications: [...notifications],
+        heldPublications: heldStates.map(({ sequence, tick }) => ({ sequence, tick })) };
     },
     produce(moveX = 0) { stop(); send(moveX); producer = setInterval(() => send(moveX), 1000 / 60); },
     stop,
     primeHeld() { stop(); return send(1).held.find(frame => frame.player === player); },
     pause(paused: boolean) { stop(); const actions = pauseActions(client!.ui, player, state().tick, paused, client!.commandBudget); client!.send(actions); return actions.commands[0]; },
+    async pauseDuringInterpolation() { const before = await interpolating(); return { before, command: api.pause(true) }; },
+    holdStates() { if (holdState || heldStates.length) throw Error('state hold already active'); holdState = true; },
+    releaseStates() {
+      holdState = false; const count = heldStates.length;
+      for (const item of heldStates.splice(0)) item.deliver(); heldBytes = 0; return count;
+    },
     suppressAcks(value: boolean) { suppressAcks = value; },
     stall() {
       stop(); const value = state(), frames = Array.from({ length: init.playerCount }, () => ({ ...NEUTRAL_FRAME }));
@@ -104,7 +154,15 @@ function installPage() {
       return actions.commands[0];
     },
     disconnect() { stop(); link?.close('harness-disconnect'); },
-    dispose() { stop(); client?.dispose(); link?.close('disposed'); client = undefined; link = undefined; },
+    async disconnectDuringInterpolation() {
+      const before = await interpolating(); api.disconnect();
+      return { before, samples: [0, 25, 100, 1000].map(offsetMs => ({ offsetMs,
+        points: client!.presentation.sample(performance.now() + offsetMs) })) };
+    },
+    dispose() {
+      stop(); client?.dispose(); link?.close('disposed'); client = undefined; link = undefined;
+      heldStates.length = 0; heldBytes = 0; holdState = false;
+    },
     injectPageFailure() { setTimeout(() => { throw Error('injected RTC page failure'); }); }
   };
   target.rtcSmoke = api;
@@ -115,7 +173,24 @@ function installPage() {
     link = raw;
     // Labelled client Link boundary: suppress ONLY validated ACKs, leaving
     // full receipts and refresh requests real and unchanged for eviction proof.
-    const observed = { ...raw, send(kind: Parameters<typeof raw.send>[0], bytes: Uint8Array) {
+    const observed = { ...raw,
+      onMessage(callback: Parameters<typeof raw.onMessage>[0]) {
+        return raw.onMessage((kind, bytes) => {
+          const note = notification(bytes);
+          if (note) { notifications.push(note); if (notifications.length > 256) throw Error('harness wire notification budget'); }
+          // LABELLED INJECTION: hold original state packets only AFTER native
+          // RTC and PortLink delivery. Original notifications continue into the
+          // real client, so its dequeue floor is tested without raw-frame reorder.
+          if (holdState && classifyStreamPacket(bytes).stream === 'state') {
+            const header = inspectState(decodeStatePacket(bytes));
+            if (heldStates.length >= 8 || heldBytes + bytes.length > 1048576) throw Error('harness state hold budget');
+            const owned = bytes.slice(); heldBytes += owned.length;
+            heldStates.push({ sequence: header.sequence, tick: header.tick, deliver: () => callback(kind, owned) }); return;
+          }
+          callback(kind, bytes);
+        });
+      },
+      send(kind: Parameters<typeof raw.send>[0], bytes: Uint8Array) {
       const metadata = classifyStreamPacket(bytes);
       if (metadata.class === 'input') maxInputBytes = Math.max(maxInputBytes, bytes.length + 40 + metadata.stream.length * 2);
       if (metadata.stream === 'state-control') {

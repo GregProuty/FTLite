@@ -18,6 +18,9 @@ export function validateRtcReport(value: unknown): void {
     || !atLeast(d['cadence-byte-caps'].deltas, 80) || !bytesWithin(d['cadence-byte-caps'].maxImageBytes, 131072)
     || !bytesWithin(d['cadence-byte-caps'].maxInputBytes, 4096)
     || d['pause-full-checkpoint'].canonicalCheckpointExact !== true || d['pause-full-checkpoint'].sameTickControlFull !== true || d['native-channels-route'].nativePcs !== 4
+    || d['pause-full-checkpoint'].pauseFromInterpolation !== true || d['pause-full-checkpoint'].presentationSnapped !== true
+    || d['pause-full-checkpoint'].sameTickNotificationWithheld !== true || d['pause-full-checkpoint'].notificationFloorsChecked !== true
+    || d['two-peer-isolation-disconnect'].activeInterpolationAtDisconnect !== true || d['two-peer-isolation-disconnect'].frozenAtConfirmedPositions !== true
     || d['native-channels-route'].selectedRoute !== 'direct' || d['native-resource-cleanup'].productionTimers !== 0
     || d['native-resource-cleanup'].productionListeners !== 0 || d['owner-cleanup'].utilities !== 3
     || d['owner-cleanup'].actualExits !== 3 || d['owner-cleanup'].windows !== 0 || d['owner-cleanup'].listeners !== 0 || d['owner-cleanup'].relayPorts !== 0)

@@ -12,7 +12,9 @@ function report() {
     'harness-latest-loss-reorder': { dropped: 1, reversedPairs: 1 },
     'harness-base-eviction-refresh': { suppressed: 64, canonicalRecovered: true },
     'cadence-byte-caps': { deltas: 80, maxImageBytes: 131072, maxInputBytes: 4096 },
-    'pause-full-checkpoint': { canonicalCheckpointExact: true, sameTickControlFull: true },
+    'pause-full-checkpoint': { canonicalCheckpointExact: true, sameTickControlFull: true, pauseFromInterpolation: true,
+      presentationSnapped: true, sameTickNotificationWithheld: true, notificationFloorsChecked: true },
+    'two-peer-isolation-disconnect': { activeInterpolationAtDisconnect: true, frozenAtConfirmedPositions: true },
     'native-channels-route': { nativePcs: 4, selectedRoute: 'direct' },
     'native-resource-cleanup': { productionTimers: 0, productionListeners: 0 },
     'owner-cleanup': { utilities: 3, actualExits: 3, windows: 0, listeners: 0, relayPorts: 0 }
@@ -37,6 +39,9 @@ describe('actual RTC gate evidence admission', () => {
     ['cadence-byte-caps', 'maxImageBytes', '12'], ['cadence-byte-caps', 'maxInputBytes', '12'],
     ['cadence-byte-caps', 'maxInputBytes', 4097], ['native-channels-route', 'selectedRoute', 'unknown'],
     ['pause-full-checkpoint', 'sameTickControlFull', false],
+    ['pause-full-checkpoint', 'pauseFromInterpolation', false], ['pause-full-checkpoint', 'presentationSnapped', false],
+    ['pause-full-checkpoint', 'sameTickNotificationWithheld', false], ['pause-full-checkpoint', 'notificationFloorsChecked', false],
+    ['two-peer-isolation-disconnect', 'activeInterpolationAtDisconnect', false], ['two-peer-isolation-disconnect', 'frozenAtConfirmedPositions', false],
     ['native-resource-cleanup', 'productionTimers', 1], ['native-resource-cleanup', 'productionListeners', 1],
     ['owner-cleanup', 'actualExits', 2], ['owner-cleanup', 'windows', 1], ['owner-cleanup', 'relayPorts', 1]
   ])('rejects invalid %s.%s', (check, key, invalid) => {

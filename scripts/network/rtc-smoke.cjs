@@ -46,7 +46,25 @@ utilityProcess.fork = (...args) => {
 const baseline = () => [powerMonitor.listenerCount('suspend'), ipcMain.listenerCount('net:rtc-response'), ipcMain.listenerCount('net:transport-ready')];
 let listenerBaseline;
 const js = (window, source) => bounded(window.webContents.executeJavaScript(source), 'renderer call');
-const status = pair => js(pair.visible, 'window.rtcSmoke.status()');
+async function status(pair) {
+  const value = await js(pair.visible, 'window.rtcSmoke.status()');
+  for (const delivery of value.deliveries) {
+    const actual = pair.observer.notifications().find(note => note.key === delivery.key && note.floor === delivery.floor && note.tick === delivery.tick);
+    assert(actual && delivery.confirmedSequence >= actual.floor && delivery.confirmedTick >= actual.tick, 'actual notification floor violated at dequeue');
+  }
+  return value;
+}
+function exactPositions(points, confirmed, label) {
+  assert(points.length === confirmed.length && points.length > 0 && new Set(points.map(point => point.id)).size === points.length, label + ' identities');
+  for (const point of points) {
+    const canonical = confirmed.find(value => value.id === point.id);
+    assert(canonical && Object.is(point.x, canonical.x) && Object.is(point.y, canonical.y), label + ' canonical coordinates');
+  }
+}
+function canonicalPositions(value) {
+  return Array.from({ length: value.snapshot.header.playerCount }, (_, player) => ({ id: `crew:${player}`,
+    x: value.snapshot.values[offsets[`crew.${player}.x`]], y: value.snapshot.values[offsets[`crew.${player}.y`]] }));
+}
 const nativeStatus = window => js(window, 'window.rtcNative.status()');
 async function request(command) { const result = await host.request(command); assert(result.ok, 'authority request failed'); return result; }
 async function checkpoint() { return JSON.parse(new TextDecoder().decode((await request({ kind: 'checkpoint' })).checkpointBytes)); }
@@ -157,7 +175,8 @@ async function applied(record, command) {
   assert(command, 'producer did not allocate command');
   const value = await until(() => status(record), state => state.results.some(result => result.id.player === command.id.player && result.id.sequence === command.id.sequence), 'real command result');
   const result = value.results.find(result => result.id.player === command.id.player && result.id.sequence === command.id.sequence);
-  assert(result.status === 'applied' && result.admission?.disposition === 'terminal', 'production command was not applied'); return { value, result };
+  const delivery = value.deliveries.find(note => note.key === `result:${command.id.player}:${command.id.sequence}`);
+  assert(result.status === 'applied' && result.admission?.disposition === 'terminal' && delivery, 'production command was not applied/dequeued'); return { value, result, delivery };
 }
 async function run() {
   assert(process.versions.electron === '37.10.3', 'wrong Electron'); listenerBaseline = baseline();
@@ -250,23 +269,52 @@ async function run() {
   evidence('cadence-byte-caps', { deltas: ordinary.length, tickModulo: 3, maxImageBytes: stats.maxImageBytes, maxInputBytes: stats.maxInputBytes });
   // A real same-tick pause must publish full immediately and release the
   // result/event only with the covering publication sequence.
-  const pausedCommand = await js(first.visible, 'window.rtcSmoke.pause(true)'), paused = await applied(first, pausedCommand);
+  await js(first.visible, 'window.rtcSmoke.produce(1)');
+  const pauseAction = await js(first.visible, 'window.rtcSmoke.pauseDuringInterpolation()');
+  assert(pauseAction.before.publication.phase === 'running' && pauseAction.before.interpolationLag > 1e-4, 'pause did not begin during active interpolation');
+  const paused = await applied(first, pauseAction.command);
   const cp = await checkpoint(), matched = await match(first);
   assert(cp.paused && matched.phase === 'paused' && matched.tick === cp.snapshot.header.tick && JSON.stringify(matched.snapshot) === JSON.stringify(cp.snapshot), 'paused checkpoint differs');
   assert(paused.value.events.some(event => event.payload.kind === 'pause' && event.payload.paused && event.tick === matched.tick), 'covering pause event missing');
   const pausePacket = first.observer.stats().packets.find(packet => packet.sequence === matched.publicationSequence);
   assert(pausePacket?.kind === 'full' && pausePacket.tick === paused.result.tick, 'pause was not immediate full');
-  const points = (await status(first)).presentation; await delay(80); assert(JSON.stringify((await status(first)).presentation) === JSON.stringify(points), 'paused presentation moved');
-  // A second trusted control while paused advances the publication sequence
-  // without advancing any tick. It must still traverse RTC as an immediate full.
-  await request({ kind: 'pause', reason: 'rtc-gate-same-tick' });
-  const sameTick = await until(() => status(first), value => value.publication?.controlRevision > matched.controlRevision, 'same-tick control publication');
+  const snapped = await status(first), pausedCanonicalPositions = canonicalPositions(cp);
+  exactPositions(snapped.confirmedPositions, pausedCanonicalPositions, 'paused replica');
+  exactPositions(snapped.presentation, pausedCanonicalPositions, 'pause snap');
+  await delay(80); exactPositions((await status(first)).presentation, pausedCanonicalPositions, 'paused future sample');
+  // LABELLED INJECTION: hold the actual covering state at the guest client Link
+  // boundary after real RTC/PortLink receipt, while letting original notifications
+  // enter the production client. Same-tick notifications must remain withheld.
+  await js(first.visible, 'window.rtcSmoke.holdStates()');
+  const heldCommand = await js(first.visible, 'window.rtcSmoke.pause(true)');
+  const heldKey = `result:${heldCommand.id.player}:${heldCommand.id.sequence}`;
+  const heldView = await until(() => status(first), value => value.heldPublications.length === 1
+    && value.notifications.some(note => note.key === heldKey)
+    && value.notifications.some(note => note.kind === 'event' && note.floor === value.heldPublications[0].sequence), 'held covering full and original notifications');
+  const heldSequence = heldView.heldPublications[0].sequence;
+  const heldNotifications = heldView.notifications.filter(note => note.floor === heldSequence);
+  assert(heldNotifications.some(note => note.key === heldKey) && heldNotifications.some(note => note.kind === 'event')
+    && heldNotifications.every(note => note.tick === matched.tick) && heldSequence > matched.publicationSequence,
+    'same-tick result/event wire floors missing');
+  for (let poll = 0; poll < 5; poll++) {
+    const withheld = await status(first);
+    assert(withheld.publication.publicationSequence === matched.publicationSequence && withheld.publication.tick === matched.tick
+      && !withheld.deliveries.some(note => heldNotifications.some(expected => expected.key === note.key)), 'same-tick notification escaped before covering full');
+    await delay(20);
+  }
+  assert(await js(first.visible, 'window.rtcSmoke.releaseStates()') === 1, 'covering full release missing');
+  const covered = await applied(first, heldCommand);
+  const sameTick = await until(() => status(first), value => value.publication?.controlRevision > matched.controlRevision
+    && heldNotifications.every(note => value.deliveries.some(delivery => delivery.key === note.key && delivery.floor === heldSequence)), 'covering full result/event dequeue');
   const sameTickPacket = first.observer.stats().packets.find(packet => packet.sequence === sameTick.publication.publicationSequence);
   assert(sameTick.publication.tick === matched.tick && sameTickPacket?.kind === 'full' && sameTick.publication.publicationSequence > matched.publicationSequence,
     'same-tick control did not publish immediate full');
   await match(first);
   evidence('pause-full-checkpoint', { tick: matched.tick, sequence: matched.publicationSequence, sameTickControlSequence: sameTick.publication.publicationSequence,
-    sameTickControlFull: true, coveringResultEvent: true, canonicalCheckpointExact: true, presentationSnapped: true });
+    sameTickControlFull: true, coveringResultEvent: true, canonicalCheckpointExact: true, presentationSnapped: true,
+    pauseFromInterpolation: true, pauseLag: pauseAction.before.interpolationLag, sameTickNotificationWithheld: true, withheldPolls: 5,
+    notificationFloorsChecked: true, heldFloor: heldSequence, resultDequeuedAtSequence: covered.delivery.confirmedSequence,
+    heldDeliveries: sameTick.deliveries.filter(note => note.floor === heldSequence) });
   const selected = await Promise.all([nativeStatus(hostWindow), nativeStatus(first.hidden), nativeStatus(second.hidden)]);
   for (const report of selected) for (const pc of report.connections) {
     assert(pc.state === 'connected' && pc.selected && pc.direct && pc.channels.length === 2, 'selected direct native route missing');
@@ -276,13 +324,23 @@ async function run() {
   }
   evidence('native-channels-route', { nativePcs: 4, channelsPerPc: 2, selectedRoute: 'direct', addresses: 'redacted', lossZeroMeans: 'unavailable' });
   // Closing one peer must leave the other's actual stream/commands usable.
-  await js(first.visible, 'window.rtcSmoke.disconnect()'); const disconnected = await status(first);
-  await delay(80); const disconnectedLater = await status(first);
-  assert(disconnected.closed && !disconnectedLater.canAllocate && !disconnectedLater.producer && JSON.stringify(disconnected.presentation) === JSON.stringify(disconnectedLater.presentation), 'disconnect extrapolation/producer leak');
-  await closePair(first);
   const resume = await js(second.visible, 'window.rtcSmoke.pause(false)'); await applied(second, resume);
+  await js(first.visible, 'window.rtcSmoke.produce(-1)');
+  const disconnect = await js(first.visible, 'window.rtcSmoke.disconnectDuringInterpolation()');
+  assert(disconnect.before.publication.phase === 'running' && disconnect.before.interpolationLag > 1e-4, 'disconnect did not begin during active interpolation');
+  const lastConfirmed = first.observer.publication(disconnect.before.publication.publicationSequence);
+  assert(lastConfirmed && JSON.stringify(lastConfirmed) === JSON.stringify(disconnect.before.publication), 'disconnect confirmed state differs from authority');
+  const frozenCanonicalPositions = canonicalPositions(lastConfirmed);
+  exactPositions(disconnect.before.confirmedPositions, frozenCanonicalPositions, 'disconnect replica');
+  for (const sample of disconnect.samples) exactPositions(sample.points, frozenCanonicalPositions, `disconnect +${sample.offsetMs}ms`);
+  const disconnected = await status(first); exactPositions(disconnected.presentation, frozenCanonicalPositions, 'disconnect immediate status');
+  await delay(80); const disconnectedLater = await status(first); exactPositions(disconnectedLater.presentation, frozenCanonicalPositions, 'disconnect later status');
+  assert(disconnected.closed && !disconnectedLater.canAllocate && !disconnectedLater.producer, 'disconnect producer leak');
+  await closePair(first);
   const isolatedTick = (await match(second)).tick; await delay(100); assert((await match(second)).tick > isolatedTick, 'first peer close broke second');
-  evidence('two-peer-isolation-disconnect', { ownershipIsolated: true, survivorAdvanced: true, disconnectedPresentationFrozen: true });
+  evidence('two-peer-isolation-disconnect', { ownershipIsolated: true, survivorAdvanced: true, disconnectedPresentationFrozen: true,
+    activeInterpolationAtDisconnect: true, frozenAtConfirmedPositions: true, disconnectLag: disconnect.before.interpolationLag,
+    confirmedSequence: disconnect.before.publication.publicationSequence, futureSampleOffsetsMs: disconnect.samples.map(sample => sample.offsetMs) });
   for (const [label, flags] of [['wrong-ticket', { wrongTicket: true }], ['stale-generation', { staleGeneration: true }], ['cancel-attempt', { cancel: true }]]) {
     const invalid = await pair(flags); await closePair(invalid); await match(second); evidence(label, 'native rejected/cancelled; survivor canonical; native resources closed');
   }
