@@ -36,6 +36,40 @@ function rig(hooks: Partial<AuthorityDeps> = {}, publicationSink?: (state: Publi
 }
 
 describe('authority utility lease enforcement', () => {
+  it('discards an earlier queued trusted Resume before executing the fence pause and replays that settlement', () => {
+    let lifecycle!: (control: { paused: boolean; reason: string }) => void;
+    const publications: PublishedState[] = [];
+    const h = rig({ bindLifecyclePause(callback) { lifecycle = callback; } }, state => publications.push(state));
+    h.grant(); h.authority.completeBootstrap(); publications.length = 0;
+    lifecycle({ paused: false, reason: 'queued-trusted-resume' }); h.gate.invalidate('service-fenced'); h.pump();
+    const cp = h.authority.checkpoint([]);
+    expect(cp).toMatchObject({ phase: 'paused', pauseReason: 'session-fenced', controlRevision: 2 });
+    expect(publications.every(state => state.phase === 'paused')).toBe(true);
+    const replay = h.authority.replay(); expect(replay.version).toBe(4);
+    expect(replay.frames).toContainEqual(expect.objectContaining({ action: { kind: 'seal', discardLifecycleResumes: true } }));
+    expect(runReplay(LAYOUT, replay, __GAMEPLAY_CONTENT_DIGEST__).checkpoint).toEqual(cp);
+    for (const version of [2, 3]) expect(() => parseReplay(LAYOUT, { ...replay, version }, __GAMEPLAY_CONTENT_DIGEST__)).toThrow();
+    for (const patch of [{ discardLifecycleResumes: false }, { discardLifecycleResumes: 1 }, { discardLifecycleResumes: 'true' }, { extra: true }]) {
+      const bad = structuredClone(replay), seal = bad.frames.find(f => f.action.kind === 'seal' && 'discardLifecycleResumes' in f.action)!;
+      Object.assign(seal.action, patch); expect(() => parseReplay(LAYOUT, bad, __GAMEPLAY_CONTENT_DIGEST__)).toThrow();
+    }
+    const noResume = structuredClone(replay);
+    noResume.frames = noResume.frames.filter(frame => frame.action.kind !== 'lifecycle' || frame.action.control.reason !== 'queued-trusted-resume');
+    expect(() => runReplay(LAYOUT, noResume, __GAMEPLAY_CONTENT_DIGEST__)).toThrow(/action divergence/);
+    lifecycle({ paused: false, reason: 'closed-resume' }); h.pump(); expect(h.authority.checkpoint([]).controlRevision).toBe(2);
+    h.dispose();
+  });
+  it('keeps bootstrap paused when permission expires between its initial check and control application', () => {
+    const h = rig(); h.grant();
+    const check = h.gate.check;
+    h.gate.check = () => { const sampled = check(); h.at(12000); return sampled; };
+    h.authority.completeBootstrap();
+    const cp = h.authority.checkpoint([]);
+    expect(cp).toMatchObject({ phase: 'paused', pauseReason: 'session-fenced', controlRevision: 1 });
+    expect(cp.snapshot.header.tick).toBe(0);
+    expect(runReplay(LAYOUT, h.authority.replay(), __GAMEPLAY_CONTENT_DIGEST__).checkpoint).toEqual(cp);
+    h.dispose();
+  });
   it('records a fence from the final control callback without publishing Resume', () => {
     const publications: PublishedState[] = [];
     const h = rig({}, state => publications.push(state), message => {

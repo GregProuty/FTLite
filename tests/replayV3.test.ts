@@ -7,6 +7,15 @@ import { encodeMessage } from '../src/renderer/src/net/codec';
 
 const moving: HeldInput = { moveX: 1, moveY: 0, interactHeld: true };
 const neutral: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+it.each([2, 3] as const)('preserves a pending trusted Resume across an ordinary legacy v%i seal', version => {
+  const h = checkpointRig(), base = h.authority.replay();
+  const frame = (action: unknown) => ({ tick: 0, eventSequenceBefore: 0, action, results: [], events: [] });
+  const replay = { ...base, version, frames: [...base.frames,
+    frame({ kind: 'lifecycle', order: 1, ordinal: 1, control: { paused: false, reason: 'trusted-resume' } }),
+    frame({ kind: 'seal' }), frame({ kind: 'controls' })] };
+  const result = runReplay(LAYOUT, replay, h.init.contentDigest);
+  expect(result.checkpoint).toMatchObject({ phase: 'running', controlRevision: 1, lifecycleOrdinal: 1 });
+});
 it.each([2, 3] as const)('retains v%i playback when explicitly upgrading its unchanged action journal to v4', version => {
   const h = version === 2 ? checkpointRig() : rig();
   h.send({ kind: 'command', envelope: { runId: h.init.runId, id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'setPaused', paused: true } } }); h.pump();

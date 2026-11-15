@@ -125,14 +125,18 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       return captureCheckpoint();
     } catch (error) { recordFault(error); throw error; }
   }
-  function rejectPending(): void {
-    begin({ kind: 'seal' });
+  function rejectPending(discardLifecycleResumes = false): void {
+    const discardResumes = discardLifecycleResumes && controlQueue.some(entry => entry.record.source === 'lifecycle' && !entry.record.control.paused);
+    if (discardResumes) replayVersion = 4;
+    begin({ kind: 'seal', ...(discardResumes ? { discardLifecycleResumes: true as const } : {}) });
     for (const entry of pending) result(entry.binding, { id: entry.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
     pending = [];
     for (const entry of controlQueue) if (entry.record.source === 'player') result(entry.binding!, {
       id: entry.record.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
     // A seal settles deferred player controls as well as simulation commands.
-    controlQueue = controlQueue.filter(entry => entry.record.source === 'lifecycle');
+    // A fenced seal rejects earlier trusted Resume intents as well. Record that
+    // external lifecycle effect explicitly, preserving ordinary/legacy seals.
+    controlQueue = controlQueue.filter(entry => entry.record.source === 'lifecycle' && (!discardResumes || entry.record.control.paused));
     complete();
   }
   function lifecycle(control: LifecyclePause): void {
@@ -144,7 +148,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (!fencePending || activeFrame || settlingFence || disposed) return;
     settlingFence = true; fencePending = false;
     try {
-      rejectPending();
+      rejectPending(true);
       pendingCallouts.clear();
       // Existing watchdog/lifecycle records make offline replay independent of a live lease.
       if (replayVersion === 2) replayVersion = 3;
@@ -507,7 +511,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
         if (phase !== 'running' || !replayDataEqual(action.input.held, held) || JSON.stringify(action.heldSequences) !== JSON.stringify(heldSequences)) throw new Error('replay held divergence');
         executeTick(state.tick, 0);
       } else if (action.kind === 'publish') { begin(action); publishCompletedState(true); complete(); }
-      else if (action.kind === 'seal') rejectPending();
+      else if (action.kind === 'seal') rejectPending(action.discardLifecycleResumes);
       else if (action.kind === 'cursor') { begin(action); receiveOrder = action.receiveOrder; complete(); }
       else if (action.kind === 'watchdog') neutralizeExpired(action.players);
       else {

@@ -20,7 +20,7 @@ const action = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('detach'), binding: uint.min(1), players }).strict(),
   z.object({ kind: z.literal('watchdog'), players: players.refine(p => p.length > 0) }).strict(),
   z.object({ kind: z.literal('cursor'), receiveOrder: uint }).strict(),
-  z.object({ kind: z.literal('publish') }).strict(), z.object({ kind: z.literal('seal') }).strict()
+  z.object({ kind: z.literal('publish') }).strict(), z.object({ kind: z.literal('seal'), discardLifecycleResumes: z.literal(true).optional() }).strict()
 ]);
 const frameSchema = z.object({ tick: uint, eventSequenceBefore: uint, action, results: z.array(z.unknown()).max(1024), events: z.array(z.object({ eventSequence: uint.min(1), tick: uint, kind: z.enum(['cue', 'pause', 'ended']) }).strict()).max(256),
   after: z.object({ tick: uint, hash: z.string().regex(/^[0-9a-f]{8}$/), phase: z.enum(['running', 'paused', 'ended', 'error']), eventSequence: uint, publicationSequence: uint, controlRevision: uint }).strict().optional()
@@ -52,6 +52,7 @@ export function parseReplay(layout: ShipLayout, value: unknown, contentDigest: s
     if (frame.action.kind === 'detach' && frame.action.players.some(p => p >= checkpoint.init.playerCount)) throw new Error('invalid replay detach');
     if (frame.action.kind === 'controls' && ((frame.action.processedCount !== undefined) !== (frame.action.fenced === true)
       || version !== 4 && frame.action.fenced)) throw Error('invalid replay control fence');
+    if (frame.action.kind === 'seal' && frame.action.discardLifecycleResumes && version !== 4) throw Error('invalid replay fence seal');
     if (frame.action.kind === 'watchdog' && (version === 2 || frame.action.players.some(p => p >= checkpoint.init.playerCount))) throw new Error('invalid replay watchdog');
     if (frame.action.kind === 'tick') {
       expectedTick++;

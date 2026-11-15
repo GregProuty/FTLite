@@ -12,7 +12,7 @@ export type ReplayAction =
   | { kind: 'detach'; binding: number; players: number[] }
   | { kind: 'watchdog'; players: number[] }
   | { kind: 'publish' }
-  | { kind: 'seal' }
+  | { kind: 'seal'; discardLifecycleResumes?: true }
   | { kind: 'cursor'; receiveOrder: number };
 export interface ReplayOutcome {
   tick: number; hash: string; phase: PublishedState['phase']; eventSequence: number;
