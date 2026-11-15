@@ -24,8 +24,11 @@ export class SignalCoordinator {
   }
   private notify(a: AttemptRow, state: 'ready' | 'closed'): void {
     for (const id of [a.guest_connection, a.host_connection]) {
+      // Delivery can synchronously retire an endpoint and invalidate this attempt.
+      if (state === 'ready' && !this.store.sql.exec<{ live: number }>('SELECT live FROM room_attempts WHERE attempt_id = ?', a.attempt_id).toArray()[0]?.live) return;
       const row = this.sockets.byConnection(id);
-      if (row) this.sockets.send(row, { type: 'link-state', attemptId: a.attempt_id, state });
+      const sent = row && this.sockets.send(row, { type: 'link-state', attemptId: a.attempt_id, state });
+      if (state === 'ready' && !sent) { this.invalidate(a); return; }
     }
   }
   invalidate(a: AttemptRow): void {

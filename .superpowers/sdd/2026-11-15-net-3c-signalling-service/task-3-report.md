@@ -56,3 +56,16 @@ Runtime tests cover real pinned workerd/SQLite, eviction with webSockets:'hibern
 Some boundary tests seed persisted deadlines/counters or refill quotas to isolate the targeted limit; they do not claim wall-clock load benchmarking. Throwing-send and pending-digest tests replace only those external effects while exercising actual Room instances and SQL. Hibernation proof uses the installed runtime eviction helper, never a reconstructed fake class.
 
 Task4 must install its lifecycle handler, preserve after-await authority/operation checks, and wire proposal/lease invalidation using the provided hooks. This implementation does not establish gameplay readiness, native end-to-end proof, deployed/WAN/TURN proof, or online-demo readiness. Parent-owned spec edits and draft validation document were left unstaged. No unresolved architecture ruling remains.
+
+## Review round1 fixes (base b00f9e0)
+
+Both findings reproduced before production changes:
+
+- `npm test -- tests/signals.test.ts -t 'survivor|maximum escaped'`: RED,3 failed /21 skipped. Overflow and throwing readiness sends each produced survivor states `[closed, ready]` instead of `[closed]`. The escaped-SDP case accepted a98304-byte client frame but its server envelope was98315bytes; workerd visibly reported uncaught `invalid-frame` and the correlated-reply assertion timed out. No diagnostics were suppressed.
+- After fixes, the same command: GREEN,3 passed /21 skipped,exit0.
+- Final `npm test -- tests/signals.test.ts tests/sockets.test.ts tests/hibernation.test.ts`: GREEN,3 files /44 tests passed,exit0,10.10s.
+- Final `npm run typecheck`: exit0. `git diff --check`: clean (only platform CRLF conversion notices). No root suite, full service rerun, cloud actions, or added agents for this round.
+
+Readiness notification now rereads durable attempt liveness before each ready send and stops immediately after a missing/failed recipient delivery, invalidating the attempt if needed. Closed notifications still reach surviving endpoints. Regressions cover both output-credit overflow and an actual runtime socket's synthetic throwing send; neither permits ready after cancellation.
+
+SocketDelivery now handles the shared encoder's fixed invalid-frame rejection explicitly. An envelope exceeding the unchanged ROOM_FRAME_BYTES limit raises fixed DomainFailure too-large before sequence/credit mutation or recipient closure; other fixed encoder validation failures become invalid-frame domain failures, while unexpected exceptions remain visible. The originating numbered signal request receives its correlated error. The escaped-SDP regression verifies exact98304 inbound /98315 outbound bytes, accepted client parsing, untouched recipient sequence/credits, both connections surviving, no oversized forwarded event, and a subsequent valid signal succeeding. No wire limit was relaxed and no innocent recipient is disconnected by attacker-controlled envelope expansion.

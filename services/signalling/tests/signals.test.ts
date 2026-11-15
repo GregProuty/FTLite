@@ -1,6 +1,6 @@
 import { runInDurableObject } from 'cloudflare:test';
 import { expect, it, vi } from 'vitest';
-import type { LinkIssued, SeatSession } from '../../../src/shared/roomSession';
+import { parseClientFrame, type LinkIssued, type SeatSession } from '../../../src/shared/roomSession';
 import type { RtcSignal } from '../../../src/shared/rtcSession';
 import { connect, create, join, request, compatibility, stub, type Peer } from './socket-helpers';
 import { setup, links, signal } from './signal-helpers';
@@ -178,4 +178,44 @@ it('cancels only the superseded pending request for the same pair without reusin
   await gp.until(() => gp.messages.some(m => m.payload.type === 'link-issued'));
   expect(hp.messages.filter(m => m.payload.type === 'link-issued')).toHaveLength(1);
   expect(gp.messages.filter(m => m.payload.type === 'link-issued')).toHaveLength(1);
+});
+it.each(['overflow', 'throw'] as const)('never emits ready to the survivor after readiness delivery %s cancels the pair', async mode => {
+  const { host, hp, gp } = await setup(), { h } = await links(hp, gp);
+  gp.send({ type: 'link-ready', requestId: 1, attemptId: h.attemptId }); await gp.reply(1);
+  await runInDurableObject(stub(host), instance => {
+    const row = instance.sockets.rows().find(r => r.seat_id === 1)!;
+    if (mode === 'throw') instance.sockets.socket(row.socket_id)!.send = () => { throw Error('synthetic readiness transport failure'); };
+    else {
+      const count = instance.store.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM room_credits WHERE socket_id = ?', row.socket_id).one().count;
+      for (let i = count; i < 64; i++) expect(instance.sockets.send(row, { type: 'roster', snapshot: instance.store.snapshot() })).toBe(true);
+    }
+  });
+  hp.send({ type: 'link-ready', requestId: 2, attemptId: h.attemptId }); await hp.reply(2);
+  await gp.until(() => gp.closes.includes(1013));
+  expect(hp.messages.filter(m => m.payload.type === 'link-state' && m.payload.attemptId === h.attemptId).map(m => (m.payload as { state: string }).state)).toEqual(['closed']);
+  expect(await runInDurableObject(stub(host), instance => instance.signals.allGuestsReady())).toBe(false);
+});
+it('replies too-large for accepted maximum escaped SDP whose forwarded envelope exceeds the wire cap without harming the recipient', async () => {
+  const { host, hp, gp } = await setup(), { h } = await links(hp, gp);
+  const original = signal(h) as Extract<RtcSignal, { kind: 'description' }>;
+  original.description.sdp = '';
+  const frame = { type: 'signal', requestId: 2, signal: original };
+  const remaining = 98304 - JSON.stringify(frame).length;
+  original.description.sdp = '"'.repeat(Math.floor(remaining / 2)) + 'a'.repeat(remaining % 2);
+  const text = JSON.stringify(frame);
+  expect(new TextEncoder().encode(text).byteLength).toBe(98304);
+  expect(new TextEncoder().encode(original.description.sdp).byteLength).toBeLessThanOrEqual(65536);
+  expect(parseClientFrame(text)).toEqual(frame);
+  expect(new TextEncoder().encode(JSON.stringify({ sequence: gp.messages.at(-1)!.sequence + 1, payload: { type: 'signal', signal: original } })).byteLength).toBe(98315);
+  const credit = () => runInDurableObject(stub(host), instance => {
+    const row = instance.sockets.rows().find(r => r.seat_id === 1)!;
+    return { sequence: row.last_sent, credits: instance.store.sql.exec('SELECT sequence, bytes FROM room_credits WHERE socket_id = ? ORDER BY sequence', row.socket_id).toArray() };
+  });
+  const before = await credit();
+  hp.socket.send(text);
+  expect(await hp.reply(2)).toMatchObject({ outcome: { kind: 'error', error: { code: 'too-large', retryable: false } } });
+  expect(await credit()).toEqual(before); expect(gp.closes).toEqual([]); expect(hp.closes).toEqual([]);
+  expect(gp.messages.filter(m => m.payload.type === 'signal')).toEqual([]);
+  hp.send({ type: 'signal', requestId: 3, signal: signal(h) }); expect(await hp.reply(3)).toMatchObject({ outcome: { kind: 'void' } });
+  await gp.until(() => gp.messages.some(m => m.payload.type === 'signal'));
 });

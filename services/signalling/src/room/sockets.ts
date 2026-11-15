@@ -1,4 +1,4 @@
-import { encodeServerEnvelope, parseClientFrame, type RequestFrame, type ReplyOutcome, type ServerPayload } from '../../../../src/shared/roomSession';
+import { encodeServerEnvelope, parseClientFrame, ROOM_FRAME_BYTES, type RequestFrame, type ReplyOutcome, type ServerPayload } from '../../../../src/shared/roomSession';
 import { randomHex128, tokenHash } from '../crypto';
 import { failure, wrapDomain } from '../errors';
 import { RoomStore, type SeatRow, type TicketRow } from './store';
@@ -69,7 +69,16 @@ export class SocketDelivery {
     const socket = this.socket(row.socket_id);
     if (!socket) { this.close(row.socket_id); return false; }
     const sequence = current.last_sent + 1;
-    const text = encodeServerEnvelope({ sequence, payload }), bytes = new TextEncoder().encode(text).byteLength;
+    let text: string;
+    try { text = encodeServerEnvelope({ sequence, payload }); }
+    catch (error) {
+      if (!(error instanceof Error) || error.message !== 'invalid-frame') throw error;
+      // A valid client frame can grow when wrapped as a server event. Reject the
+      // originating request before charging credit or disconnecting its recipient.
+      const oversized = new TextEncoder().encode(JSON.stringify({ sequence, payload })).byteLength > ROOM_FRAME_BYTES;
+      failure(oversized ? 'too-large' : 'invalid-frame');
+    }
+    const bytes = new TextEncoder().encode(text).byteLength;
     const credit = this.store.sql.exec<{ count: number; bytes: number }>('SELECT COUNT(*) AS count, COALESCE(SUM(bytes), 0) AS bytes FROM room_credits WHERE socket_id = ?', row.socket_id).one();
     if (credit.count >= 64 || credit.bytes + bytes > 262144) { this.close(row.socket_id, 1013); return false; }
     this.store.transaction(() => {
