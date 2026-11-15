@@ -1,3 +1,25 @@
+import { isRoomToken, parseBoundedJson, ROOM_SMALL_BODY_BYTES } from '../../../src/shared/roomSession';
+import { failure } from './errors';
+
+export function bearerToken(request: Request, required = true): string | undefined {
+  const value = request.headers.get('Authorization');
+  if (value === null) { if (required) failure('unauthorized'); return undefined; }
+  const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(value);
+  if (!match || !isRoomToken(match[1])) failure('invalid-request');
+  return match[1];
+}
+export async function readSmallJson(request: Request): Promise<Record<string, unknown>> {
+  const bytes = await readBoundedBody(request, ROOM_SMALL_BODY_BYTES);
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes); } catch { return failure('invalid-request'); }
+  const value = parseBoundedJson(text, ROOM_SMALL_BODY_BYTES);
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) failure('invalid-request');
+  return value as Record<string, unknown>;
+}
+export function exactKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+
 /** One deadline covers the entire read. Cancellation is best effort and never
  * awaited: an untrusted stream's cancel promise must not extend that deadline. */
 export async function readBoundedBody(request: Request, maxBytes: number, timeoutMs = 5000): Promise<Uint8Array> {
