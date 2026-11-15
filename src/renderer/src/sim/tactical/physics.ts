@@ -1,7 +1,7 @@
 // Flight physics (spec §3, §4, §6): softened gravity, the edge spring, turn, thrust, stabilise, drag,
 // semi-implicit Euler. Float64 with + − × ÷ and sqrt only; no trigonometry (the determinism guard enforces it).
 import { hx, hy, wrapHeading } from './direction';
-import { resolveContacts } from './contacts';
+import { hitStatics, resolveContacts } from './contacts';
 import { Room, type Axes, type Ship, type TacticalState } from './state';
 import { DEFAULT_FLIGHT, DT, ENGINE_FACTOR, GM, GRAVITY_EPS, K_EDGE, R_MAP, REVERSE_FRACTION, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from './tuning';
 
@@ -58,5 +58,13 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning): void {
 export function stepFlight(state: TacticalState, axes: readonly Axes[], tuning: FlightTuning = DEFAULT_FLIGHT): void {
   state.ships.forEach((s, i) => flyShip(s, axes[i] ?? { turn: 0, thrust: 0 }, tuning));
   resolveContacts(state);
+  state.tick++;
+}
+
+/** The dev flight view's single-ship step (H-1 spec §9): ship 0 flies, meets the planet and asteroids, then the tick
+ *  advances. Ship 1 is never stepped and never collides, so it stays exactly as created. */
+export function stepSoloFlight(state: TacticalState, axes: Axes, tuning: FlightTuning = DEFAULT_FLIGHT): void {
+  flyShip(state.ships[0], axes, tuning);
+  hitStatics(state, state.ships[0]);
   state.tick++;
 }
