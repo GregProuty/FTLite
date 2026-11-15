@@ -73,3 +73,49 @@ Confirmed. `runDuel` now throws, with the seed, tick, command and reason, on any
 
 ---
 
+# Round 2 (delta, reviewing 51fe457, effort medium, 90 s, 361810 in / 326016 cached / 3917 out)
+
+Verdict: changes requested
+
+## Prior findings
+- R1-F1: still open — The guard accepts a marker solely by SIM_VERSION (`scripts/golden/blessGuard.ts:L14-L18`, `L37-L39`). After a passing check, a gameplay change at the same version leaves that marker valid, so both blessing paths can write without checking the code they now run (`scripts/bless-golden.ts:L17-L25`; `scripts/determinism/rebless-version.ts:L17-L18`). Bind the marker to the checked inputs and baseline, or rerun the per-tick comparison immediately before writing.
+- R1-F2: resolved — The aggregate test requires results for seeds 1–10 and no longer runs missing seeds (`tests/duelGates.test.ts:L22-L24`).
+- R1-F3: resolved — The shared runner throws on every scripted command result other than applied (`tests/helpers/scriptedDuel.ts:L39-L45`).
+
+## Verified
+- A failing canonical-trace check clears the marker, and a passing check writes it (`scripts/golden/canonical-trace.ts:L76-L89`).
+- The per-seed tests retain the weapon, cap, and planet-end assertions (`tests/duelGates.test.ts:L13-L21`).
+- The duel step returns command results to the runner (`src/renderer/src/sim/duel/step.ts:L90-L116`, `L128`).
+
+## Not verified
+- The two large fixture diffs were not spot-checked: the requested `head -c 2000` command failed in this environment.
+- No test suite was run; this was a read-only review, and the requested Jest-suite prohibition was observed.
+- The review run directory is deleted in this worktree, so its files could not be inspected.
+
+---
+
+# Round 2 response (code fixed)
+
+Reviewed `round-2.json`. No new findings. Codex confirmed R1-F2 and R1-F3 resolved, and re-raised R1-F1 correctly. Fixed again; 0 rejected, 0 deferred.
+
+## R1-F1 [P0]: Re-bless does not enforce the per-tick check (still open, fixed again)
+
+Confirmed: the marker was accepted solely by `SIM_VERSION` (`blessGuard.ts:L14-L18`), so a gameplay change made at the same version after a passing check could still bless. The marker is gone. The new `scripts/golden/versionOnly.ts` exposes `verifyVersionOnly()`, which re-traces the current code at every tick (version zeroed) and compares it against the pre-bump baseline. It is not ok when there is no baseline, when the baseline is already at the current `SIM_VERSION`, or when any tick differs. `bless-golden.ts` calls it immediately before writing for a version-bump bless (same-version blesses are unaffected), and `rebless-version.ts` always calls it. `tests/blessGuard.test.ts` injects the comparison result, and 3 of its 5 tests fail if the result is ignored. A real `check` against the existing baseline reports identical, 35 → 36, over 115,200 ticks.
+
+## Also changed
+
+- `canonical-trace.ts` is now only the CLI. `npm run typecheck` is clean and `npm test` passes 1,975 tests.
+
+## Files changed
+
+- scripts/golden/versionOnly.ts
+- scripts/golden/canonical-trace.ts
+- scripts/golden/blessGuard.ts
+- scripts/bless-golden.ts
+- scripts/determinism/rebless-version.ts
+- tests/blessGuard.test.ts
+
+<!-- end -->
+
+---
+
