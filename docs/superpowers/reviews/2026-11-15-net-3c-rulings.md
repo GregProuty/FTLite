@@ -20,7 +20,7 @@ Chronological decisions recorded in the execution ledger. Superseded proposals a
 |14|Initially considered read-only activationStatus for lost-reservation recovery; superseded by15 before final implementation.|Read-only status alone would race delayed reserve arrival.|
 |15|Use exact-tuple terminal fence acknowledgement before forgetting cancelled activation; burn reserved generation and retry accounting durably.|More recovery metadata and skipped generations, preserving safety.|
 |16|Use officially supported service-only outbound interception because pinned plugin lacks fetchMock; deny all unhandled requests.|Additional development dependencies.|
-|17|Refine16 to exact MSW2.14.7/@msw-cloudflare0.1.0 because current MSW3 requires newer TypeScript; verify installed API denies egress.|Pinned experimental adapter needs future maintenance.|
+|17|Refine16 to exact MSW2.14.7/@msw/cloudflare0.1.0 because current MSW3 requires newer TypeScript; verify installed API denies egress.|Pinned experimental adapter needs future maintenance.|
 |18|TURN works in ordinary lobby, rejects unfinished activation, and permits active guests only with current own connection and host lease.|Brief refusal during transitions; no stale issuance.|
 |19|Workerd uses manual redirect mode and rejects all redirects because error mode is unsupported; main client keeps error mode.|Tests must continue proving no second-origin request.|
 |20|Client clock uses epoch time; socket factory may be async, with late sockets closed and already-open/closed states handled.|Caller must provide correct clock/factory contract.|
@@ -29,5 +29,7 @@ Chronological decisions recorded in the execution ledger. Superseded proposals a
 |23|Final review covers this slice from39b5dc1, with targeted unchanged integration checks and full regression gates; earlier milestones were already reviewed.|Earlier latent defects are not exhaustively re-reviewed.|
 |24|Retain tracked reports/ledger as durable evidence instead of deleting the entire plan workspace.|Additional repository evidence files.|
 |25|Authorize a service-only Vitest4.1.12 security patch in the final fix if needed; it is compatible and older than two weeks, root unchanged.|Revalidate service tooling after patch; no product dependency change.|
+|26|Suppress committed/unacknowledged rosters and reject new join/auth until resolved; publish full lost snapshot before departure when fencing.|Temporary join/auth refusal during activation; existing survivors retain coherent recovery state.|
+|27|Retain bounded, single-use observed issuance evidence separately from live routes, without changing the wire in the final fix.|The current wire cannot independently prove guest-seat/request binding for equal-generation overlapping requests; correlated replies still trust the authenticated service. Never-issued, reused and stale IDs remain rejected.|
 
 No ruling authorizes deployment, account/billing/DNS changes, reading/copying owner credentials, live TURN issuance, or merging the branch.
