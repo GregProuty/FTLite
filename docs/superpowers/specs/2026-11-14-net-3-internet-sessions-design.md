@@ -2,6 +2,8 @@
 
 Status: implementation design under the approved Net-0 decision; builder check complete, ready for slice planning. Written 2026-11-14 after Net-1b merged as `3047027`, alongside Helm H-0a. This specifies the next implementation; no transport or deployment is claimed complete.
 
+Implementation update, 2026-11-15: Net-3a and Net-3b are implemented and reviewed on `codex/net-3`; [Net-3b evidence](../reviews/2026-11-15-net-3b-validation.md) covers actual local RTC, streaming and cleanup. Net-3c service integration is next. The branch is not yet merged, the inherited acceptance timing target remains unmet, and deployment/internet-demo readiness is not claimed.
+
 ## 1. Outcome and scope
 
 Two Windows Electron computers on different networks can create/join a private room, occupy one reserved crew seat each, start the same run, play through WebRTC with TURN fallback, reconnect to their own seat, and later re-host the latest saved checkpoint after the host leaves. Start with the sector run as the integration harness; service, transport and sessions must also carry the Helm duel when H-0/H-1 supplies that mode.
