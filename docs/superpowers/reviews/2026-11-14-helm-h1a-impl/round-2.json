@@ -1,0 +1,34 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Late Escape frame catches up all queued ticks on resume",
+      "claim": "Pausing a delayed frame prevents ticks immediately, but leaves them queued; resuming runs them in a burst.",
+      "evidence": "spec L45-L46; src/renderer/src/app/duel/runtime.ts:L70-L73; src/renderer/src/authority/tickDriver.ts:L47-L54; tests/flightRuntime.test.ts:L149-L163",
+      "why": "After a 500 ms stall, Escape holds the ship at tick 0, but resuming can advance it 30 ticks in one frame. The new test ends before resume.",
+      "fix": "Discard the local driver's queued debt when entering pause, without changing authority code, and test a delayed Escape followed by resume."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Escape is applied before the pump, so due ticks do not run in the pause frame; src/renderer/src/app/duel/runtime.ts:L70-L73."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "The idle gap clears the remainder before the new wheel sample is accumulated; src/renderer/src/app/duel/runtime.ts:L77-L81."
+    }
+  ],
+  "verified": [
+    "HEAD is 54dd9b5, with no uncommitted changes to the reviewed runtime or test files.",
+    "The delayed Escape test checks tick 0 while paused; tests/flightRuntime.test.ts:L149-L163.",
+    "The wheel test covers a 300 ms gap with no intervening frame; tests/flightRuntime.test.ts:L164-L171."
+  ],
+  "not_verified": [
+    "Jest was not run, as requested.",
+    "The review directory is deleted in this worktree, so its files could not be read or updated."
+  ]
+}

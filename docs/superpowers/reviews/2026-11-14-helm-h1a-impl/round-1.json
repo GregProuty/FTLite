@@ -1,0 +1,37 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Escape can advance due ticks before pausing",
+      "claim": "A frame that receives Escape pumps due simulation ticks before it sets the user pause reason. After a delayed frame, the ship can advance many ticks even though the player has pressed pause.",
+      "evidence": "spec L45-L46; src/renderer/src/app/duel/runtime.ts:L68-L73; src/renderer/src/authority/tickDriver.ts:L31-L41",
+      "why": "The driver can process up to 120 due ticks in that pump, making pause visibly late after a stall. The pause test does not cover an Escape edge with ticks due at frame entry.",
+      "fix": "Apply the Escape edges and sync the pause state before `driver.pump()`, then compute alpha after the pump. Add a headless test with due ticks queued when Escape is sampled."
+    },
+    {
+      "severity": "P2",
+      "title": "Wheel remainder survives an idle gap without render frames",
+      "claim": "When the next sampled frame contains wheel input, the runtime updates `lastWheelAt` before checking the idle interval, so an old fractional delta can combine with a new scroll after more than 200 ms without rendered frames.",
+      "evidence": "plan L73-L77; src/renderer/src/app/duel/runtime.ts:L77-L80; tests/flightRuntime.test.ts:L136-L146",
+      "why": "A resumed view can zoom an extra notch. The existing test covers an idle interval with an intervening render frame, which clears the remainder.",
+      "fix": "Check elapsed time and clear `wheelAcc` before recording the new wheel timestamp. Test the first wheel sample after a gap with no intervening `frame()` call."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The no-mode sector startup body matches master; the mode branch enters flight only for `?mode=flight`. src/renderer/src/main.ts:L30-L78; src/renderer/src/app/duel/mode.ts:L6-L8",
+    "Dev and packaged Electron load paths append `mode` only when `FTLITE_MODE` is set. src/main/index.ts:L30-L38",
+    "`stepSoloFlight` advances ship 0 through the existing static-contact pass, then increments the tick; the diff leaves `stepFlight` unchanged. src/renderer/src/sim/tactical/physics.ts:L57-L70; src/renderer/src/sim/tactical/contacts.ts:L38-L43",
+    "The camera follows the interpolated ship, and `flightMode` uses one frame alpha for camera update and drawing. src/renderer/src/app/duel/runtime.ts:L70-L81; src/renderer/src/app/duel/flightMode.ts:L54-L60",
+    "Blur, hidden, and suspend each have a separate pause reason; a long interval while paused does not accrue new tick debt. src/renderer/src/app/duel/flightMode.ts:L46-L52; src/renderer/src/authority/tickDriver.ts:L12-L25, L47-L54",
+    "The model implements fixed 500-unit grid names, contour and asteroid culling, zoom-based path horizon, bearing ring, and off-screen arrows. src/renderer/src/render/tactical/tacticalModel.ts:L123-L167, L191-L255",
+    "The Pixi layer creates display objects at construction and reuses them on draw; its test checks object counts over 60 frames. src/renderer/src/render/tactical/tacticalLayer.ts:L24-L37, L82-L148; tests/tacticalLayer.test.ts:L14-L35",
+    "`git diff master...HEAD --check` passed."
+  ],
+  "not_verified": [
+    "The flight view was not launched or visually inspected, and no test suite or build was run under the read-only review constraints.",
+    "The review run directory and ledger are absent from this checkout, so prior review responses could not be checked.",
+    "I read `render/renderer.ts` and `render/letterbox.ts` beyond the manifest to check the pointer coordinate mapping against renderer resize; no further files were explored."
+  ]
+}

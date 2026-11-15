@@ -35,7 +35,9 @@ function shipShip(state: TacticalState): void {
   for (const s of [a, b]) { s.hull = Math.max(0, s.hull - SHIP_CONTACT_HULL); s.graceUntil[body] = state.tick + CONTACT_GRACE_TICKS; s.shipHits++; }
 }
 
-function hitStatics(state: TacticalState, s: Ship): void {
+/** One ship's static contacts (spec §4 order): the planet, then asteroids in ascending index. Exported for the
+ *  single-ship flight step (H-1 spec §9). */
+export function hitStatics(state: TacticalState, s: Ship): void {
   const { map, grid } = state;
   if (hitStatic(state, s, map.planet.x, map.planet.y, map.planet.r, 0, PLANET_CONTACT_HULL)) s.planetHits++;
   for (const k of queryGrid(grid, s.x, s.y, SHIP_RADIUS)) {

@@ -1,0 +1,11 @@
+topic=helm-h1a-impl
+subject_kind=impl
+subject=package.json scripts/dev-mode.ts src/main/index.ts src/renderer/src/app/duel/flightMode.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/mode.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/main.ts src/renderer/src/render/tactical/camera.ts src/renderer/src/render/tactical/feelModel.ts src/renderer/src/render/tactical/feelPanel.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/sim/tactical/contacts.ts src/renderer/src/sim/tactical/physics.ts tests/duelInput.test.ts tests/flightRuntime.test.ts tests/tacticalCamera.test.ts tests/tacticalLayer.test.ts tests/tacticalModel.test.ts tests/tacticalSoloFlight.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\helm-h1a
+base=master
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-14
+head_at_setup=5939b6e

@@ -27,10 +27,14 @@ function createWindow(): void {
       event.preventDefault();
     }
   });
+  // FTLITE_MODE (H-1 spec §3): `flight` opens the dev flight view; the renderer reads it as `?mode=`.
+  const mode = process.env['FTLITE_MODE'];
   if (process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL']);
+    const url = new URL(process.env['ELECTRON_RENDERER_URL']);
+    if (mode) url.searchParams.set('mode', mode);
+    win.loadURL(url.toString());
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'));
+    win.loadFile(join(__dirname, '../renderer/index.html'), mode ? { query: { mode } } : undefined);
   }
 }
 
