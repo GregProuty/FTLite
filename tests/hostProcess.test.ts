@@ -30,6 +30,14 @@ function harness() {
 }
 afterEach(() => vi.useRealTimers());
 describe('main host process owner', () => {
+  it('forwards trusted streaming and actual RTC cap while rejecting missing caps before transfer', async () => {
+    const h = harness(), starting = startHostProcess(identity, h.platform); await h.ready(); const owner = await starting;
+    const bad = new Port(); await expect(owner.attachPeer('p', [0], bad as any, { streamed: true })).rejects.toThrow('invalid-peer'); expect(bad.closed).toBe(true);
+    const offered = new Port(), attaching = owner.attachPeer('p', [0], offered as any, { streamed: true, latestPayloadLimit: 4096 });
+    expect(h.sent.at(-1)).toMatchObject({ kind: 'attach', options: { streamed: true, latestPayloadLimit: 4096 } });
+    h.utility.emit('message', { kind: 'attached', requestId: 1, hostGeneration: 7, ok: true }); await attaching;
+    const disposing = owner.dispose(); h.response(2); await disposing;
+  });
   it('stamps only main IDs, rejects caller stamps and resolves bounded response bytes', async () => {
     const h = harness(), starting = startHostProcess(identity, h.platform); await h.ready(); const owner = await starting;
     await expect(owner.request({ kind: 'checkpoint', requestId: 99 } as any)).rejects.toThrow('invalid-command');

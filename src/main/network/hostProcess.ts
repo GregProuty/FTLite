@@ -1,6 +1,6 @@
 import type { MessagePortMain } from 'electron';
 import { boundedHostBytes, isHostCommand, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostCommandInput, type HostResponse } from '../../shared/netSession';
-import { isHostIdentity, isHostResponse, matchesIdentity, validPeer, type HostIdentity } from '../../shared/hostProcessProtocol';
+import { isHostIdentity, isHostResponse, matchesIdentity, validPeer, validStreamAttachmentOptions, type HostIdentity, type StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 
 type Unsubscribe = () => void;
 export interface HostProcessOptions extends HostIdentity {
@@ -9,7 +9,7 @@ export interface HostProcessOptions extends HostIdentity {
 }
 export interface HostProcessHandle {
   request(command: HostCommandInput): Promise<HostResponse>;
-  attachPeer(peer: string, players: readonly number[], port: MessagePortMain): Promise<void>;
+  attachPeer(peer: string, players: readonly number[], port: MessagePortMain, options?: StreamAttachmentOptions): Promise<void>;
   onExit(callback: (reason: string) => void): Unsubscribe;
   dispose(): Promise<void>;
 }
@@ -86,11 +86,12 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
   }
   const handle: HostProcessHandle = {
     request,
-    attachPeer(peer, players, port) {
+    attachPeer(peer, players, port, options) {
       if (stopped || stopping) { close(port); return Promise.reject(Error('disposed')); }
-      if (!validPeer(peer, players)) { close(port); return Promise.reject(Error('invalid-peer')); }
+      if (!validPeer(peer, players) || !validStreamAttachmentOptions(options)) { close(port); return Promise.reject(Error('invalid-peer')); }
       ownedPorts.add(port);
-      const result = send<void>('attached', requestId => ({ kind: 'attach', peer, players: [...players], requestId, hostGeneration: identity.hostGeneration }), [port]);
+      const result = send<void>('attached', requestId => ({ kind: 'attach', peer, players: [...players], requestId, hostGeneration: identity.hostGeneration,
+        ...(options ? { options: { ...options } } : {}) }), [port]);
       // Capacity refusal happens before transfer and must release the offered endpoint.
       return result.catch(error => { if (ownedPorts.delete(port)) close(port); throw error; });
     },

@@ -1,5 +1,19 @@
 import { boundedHostBytes, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostResponse } from './netSession';
 
+/** Trusted host attachment only; never part of gameplay or renderer IPC payloads. */
+export interface StreamAttachmentOptions { streamed?: boolean; latestPayloadLimit?: number }
+export function validStreamAttachmentOptions(value: unknown): value is StreamAttachmentOptions | undefined {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const options = value as StreamAttachmentOptions;
+  return Object.keys(options).every(key => key === 'streamed' || key === 'latestPayloadLimit')
+    && (options.streamed === undefined || typeof options.streamed === 'boolean')
+    && (options.latestPayloadLimit === undefined ? options.streamed !== true : Number.isSafeInteger(options.latestPayloadLimit)
+      // 16 KiB RTC packet less the maximum 296-byte framing header. Keep this
+      // shared boundary free of renderer-backed network type dependencies.
+      && options.latestPayloadLimit >= 4096 && options.latestPayloadLimit <= 16088);
+}
+
 export interface HostIdentity {
   modeId: string; schemaVersion: number; simVersion: number; contentDigest: string; hostGeneration: number;
 }

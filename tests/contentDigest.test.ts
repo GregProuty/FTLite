@@ -25,7 +25,14 @@ const sources = {
   'src/network/rtc/contracts.ts': 'export const limit = 4096;\n',
   'src/network/rtc/frames.ts': 'export const frame = 1;\n',
   'src/network/rtc/dataLink.ts': 'export const queue = 16;\n',
-  'src/network/rtc/peer.ts': 'export const auth = 1;\n'
+  'src/network/rtc/peer.ts': 'export const auth = 1;\n',
+  'src/network/modes/sectorStream.ts': 'export const sectorStream = 1;\n',
+  'src/network/state/imageCodec.ts': 'export const image = 1;\n',
+  'src/network/state/sender.ts': 'export const sender = 1;\n',
+  'src/network/state/receiver.ts': 'export const receiver = 1;\n',
+  'src/network/state/timeline.ts': 'export const presentation = 1;\n',
+  'src/shared/hostProcessProtocol.ts': 'export const streamOptions = 1;\n',
+  'src/renderer/src/clientControl/clientRun.ts': 'export const activation = 1;\n'
 };
 function fixture(entries = Object.entries(sources)): string {
   const root = mkdtempSync(join(tmpdir(), 'ftlite-digest-')); roots.push(root);

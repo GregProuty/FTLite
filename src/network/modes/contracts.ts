@@ -1,9 +1,11 @@
 import type { Link, MonotonicClock, Scheduler, Unsubscribe } from '../../renderer/src/net/contracts';
 import type { AdmissionPolicy } from '../../renderer/src/net/receivePolicy';
+import type { StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
+export type { StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 export type { AdmissionPolicy, Link, MonotonicClock, Scheduler, Unsubscribe };
 export interface ModeHost {
   start(initBytes: Uint8Array): void;
-  attach(link: Link, players: readonly number[], policy: AdmissionPolicy): Unsubscribe;
+  attach(link: Link, players: readonly number[], policy: AdmissionPolicy, options?: StreamAttachmentOptions): Unsubscribe;
   checkpoint(): Uint8Array;
   restore(bytes: Uint8Array): void;
   pause(reason: string): void;

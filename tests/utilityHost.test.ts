@@ -6,17 +6,26 @@ import { portEndpoint } from './helpers/portEndpoint';
 
 const identity = { protocolVersion: 2, modeId: 'counter', schemaVersion: 1, simVersion: 9, contentDigest: 'a'.repeat(64), hostGeneration: 7 };
 function harness() {
-  const messages: any[] = []; let constructed = 0, disposed = 0, now = 0;
+  const messages: any[] = [], attachments: unknown[] = []; let constructed = 0, disposed = 0, now = 0;
   const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost() {
     constructed++; let count = 0;
     return { start(bytes) { count = bytes[0]!; }, checkpoint: () => new Uint8Array([count]), restore() {},
-      pause() { count++; }, attach() { return () => {}; }, dispose() { disposed++; } };
+      pause() { count++; }, attach(_link, _players, _policy, options) { attachments.push(options); return () => {}; }, dispose() { disposed++; } };
   } };
   const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest,
     clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, onCrash() {} }, message => messages.push(message));
-  return { owner, messages, counters: () => [constructed, disposed], advance() { now++; } };
+  return { owner, messages, attachments, counters: () => [constructed, disposed], advance() { now++; } };
 }
 describe('utility trusted process boundary', () => {
+  it('forwards validated stream options to the mode and rejects invalid caps before attachment', () => {
+    const h = harness(); h.owner.receive({ kind: 'initialize', ...identity }, []);
+    const bridge = portEndpoint(); h.owner.receive({ kind: 'transport', ...identity }, [bridge.port]); bridge.receive({ kind: 'transport-ready', ...identity });
+    h.owner.receive({ kind: 'command', command: { kind: 'start', requestId: 1, hostGeneration: 7, initBytes: new Uint8Array([0]) } }, []);
+    const good = portEndpoint(); h.owner.receive({ kind: 'attach', requestId: 2, hostGeneration: 7, peer: 'p', players: [0], options: { streamed: true, latestPayloadLimit: 4096 } }, [good.port]);
+    expect(h.attachments).toEqual([{ streamed: true, latestPayloadLimit: 4096 }]); expect(h.messages.at(-1).ok).toBe(true);
+    const bad = portEndpoint(); h.owner.receive({ kind: 'attach', requestId: 3, hostGeneration: 7, peer: 'bad', players: [1], options: { streamed: true, latestPayloadLimit: 4095 } }, [bad.port]);
+    expect(h.attachments).toHaveLength(1); expect(bad.closed).toBe(true); h.owner.dispose();
+  });
   it.each([{ contentDigest: 'b'.repeat(64) }, { modeId: 'missing' }, { simVersion: 10 }, { protocolVersion: 1 }])('rejects incompatible identity before allocation %j', mismatch => {
     const h = harness(); h.owner.receive({ kind: 'initialize', ...identity, ...mismatch }, []);
     expect(h.messages.at(-1).kind).toBe('fatal'); expect(h.counters()).toEqual([0, 0]);

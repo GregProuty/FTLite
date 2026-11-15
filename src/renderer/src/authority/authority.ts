@@ -1,8 +1,13 @@
-import type { LifecyclePause, Link, MonotonicClock, RunInit, Scheduler, Unsubscribe } from '../net/contracts';
+import type { AuthorityMessage, PublishedState, LifecyclePause, Link, MonotonicClock, RunInit, Scheduler, Unsubscribe } from '../net/contracts';
 import type { Replay } from '../sim/replay';
 import type { AdmissionPolicy } from '../net/receivePolicy';
 export type { AdmissionPolicy } from '../net/receivePolicy';
-export interface AttachOptions { admissionPolicy?: AdmissionPolicy }
+export interface AttachOptions {
+  admissionPolicy?: AdmissionPolicy;
+  /** Trusted mode adapter, before the ordinary local byte codec. Receives owned data. */
+  publicationSink?(state: PublishedState, reliable: boolean): void;
+  notificationSink?(message: Extract<AuthorityMessage, { kind: 'result' | 'event' }>, requiredPublicationSequence: number): void;
+}
 import { loadSnapshot } from '../sim/snapshot';
 import type { CardUiState } from '../clientControl/cardController';
 import { validateCheckpoint, validateRunInit, type Checkpoint } from './checkpoint';

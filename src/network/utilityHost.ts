@@ -1,6 +1,6 @@
 import { createHostRuntime } from './hostRuntime';
 import { boundedHostBytes, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostCommand, type HostResponse, type PortEndpoint } from '../shared/netSession';
-import { isHostIdentity, matchesIdentity, validPeer, type HostIdentity } from '../shared/hostProcessProtocol';
+import { isHostIdentity, matchesIdentity, validPeer, validStreamAttachmentOptions, type HostIdentity } from '../shared/hostProcessProtocol';
 import type { ModeHostDeps, ModeRegistry, Unsubscribe } from './modes/contracts';
 
 /** Generic utility control plane. The entry, not a caller, supplies registry/digest/clock. */
@@ -81,8 +81,8 @@ export function createUtilityHost(registry: ModeRegistry, deps: ModeHostDeps, po
         if (!stamped) { rejectPorts(); fatal('invalid-attachment'); return; }
         const validId = message.requestId > highestRequest; highestRequest = Math.max(highestRequest, message.requestId);
         let ok = false;
-        if (validId && bridgeReady && ports.length === 1 && validPeer(message.peer, message.players)) {
-          try { runtime.attachPeer(message.peer, message.players, ports[0]!); ok = true; } catch { /* runtime closes rejected ownership */ }
+        if (validId && bridgeReady && ports.length === 1 && validPeer(message.peer, message.players) && validStreamAttachmentOptions(message.options)) {
+          try { runtime.attachPeer(message.peer, message.players, ports[0]!, message.options); ok = true; } catch { /* runtime closes rejected ownership */ }
         }
         if (!ok) rejectPorts();
         post({ kind: 'attached', requestId: message.requestId, hostGeneration: identity.hostGeneration, ok }); return;

@@ -8,6 +8,8 @@ import starter from '../../renderer/src/sim/ship/starter.json';
 import skiff from '../../renderer/src/sim/ship/skiff.json';
 import cutter from '../../renderer/src/sim/ship/cutter.json';
 import { boundedHostBytes } from '../../shared/netSession';
+import { validStreamAttachmentOptions } from '../../shared/hostProcessProtocol';
+import { createSectorStreamBinding } from './sectorStream';
 import type { ModeDefinition, ModeHost, ModeHostDeps, Unsubscribe } from './contracts';
 
 const layouts = new Map([starter, skiff, cutter].map(json => { const layout = parseShip(json); return [layout.id, layout]; }));
@@ -26,6 +28,7 @@ function createSectorHost(deps: ModeHostDeps): ModeHost {
   let pause: ((control: LifecyclePause) => void) | undefined;
   let botMemory: Checkpoint['botControllers'] = [];
   const attached = new Set<Unsubscribe>();
+  const streamDisposals = new Set<Unsubscribe>();
   function replace(value: RunInit | Checkpoint, restore: boolean): void {
     if (disposed || attached.size) throw Error('detach producers before replacing sector');
     let nextPause: typeof pause;
@@ -44,15 +47,22 @@ function createSectorHost(deps: ModeHostDeps): ModeHost {
   return {
     start(bytes) { const value = decode(bytes) as RunInit; const init = validateRunInit(resolveLayout(value?.layoutId), value, deps.contentDigest); replace(init, false); },
     restore(bytes) { const value = decode(bytes) as Checkpoint; const cp = validateCheckpoint(resolveLayout(value?.init?.layoutId), value, deps.contentDigest); replace(cp, true); },
-    attach(link, players, policy) {
+    attach(link, players, policy, options) {
       if (disposed || !authority || !players.length || players.some(p => !Number.isInteger(p) || p < 0 || p >= count) || new Set(players).size !== players.length) throw Error('invalid sector ownership');
-      const off = authority.attach(link, players, { admissionPolicy: policy });
-      const detach = () => { if (!attached.delete(detach)) return; off(); };
+      if (!validStreamAttachmentOptions(options)) throw Error('invalid stream attachment');
+      const stream = options?.streamed ? createSectorStreamBinding(link, { ...deps, resolveLayout, latestPayloadLimit: options.latestPayloadLimit! }) : undefined;
+      let off: Unsubscribe;
+      try { off = authority.attach(stream?.link ?? link, players, { admissionPolicy: policy, ...stream?.attachOptions }); }
+      catch (error) { stream?.dispose(); throw error; }
+      if (stream) streamDisposals.add(stream.dispose);
+      const detach = () => { if (!attached.delete(detach)) return; try { off(); } finally { if (stream) { streamDisposals.delete(stream.dispose); stream.dispose(); } } };
       attached.add(detach); return detach;
     },
     checkpoint() { if (!authority || disposed) throw Error('sector unavailable'); return encode(authority.checkpoint(botMemory)); },
     pause(reason) { if (!authority || disposed || !reason.length || reason.length > 128) throw Error('sector unavailable'); pause?.({ paused: true, reason }); authority.pump(); },
-    dispose() { if (disposed) return; disposed = true; try { authority?.dispose(); } finally { authority = null; pause = undefined; attached.clear(); } }
+    dispose() { if (disposed) return; disposed = true; try { authority?.dispose(); } finally {
+      authority = null; pause = undefined; attached.clear(); for (const release of streamDisposals) release(); streamDisposals.clear();
+    } }
   };
 }
 export const sectorMode: ModeDefinition = {

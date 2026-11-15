@@ -19,7 +19,7 @@ import type { CardUiState } from '../clientControl/cardController';
 import { validateCheckpoint, type Checkpoint } from './checkpoint';
 import { Life, LifeState } from '../sim/components';
 
-interface Binding { id: number; link: Link; players: readonly number[]; admissionPolicy: AdmissionPolicy; ledger: Ledger; ingress: { message: ClientMessage; order: number; receivedAt?: number }[]; unsubscribe: Unsubscribe[] }
+interface Binding extends Pick<AttachOptions, 'publicationSink' | 'notificationSink'> { id: number; link: Link; players: readonly number[]; admissionPolicy: AdmissionPolicy; ledger: Ledger; ingress: { message: ClientMessage; order: number; receivedAt?: number }[]; unsubscribe: Unsubscribe[] }
 export type JournalControl = { source: 'player'; order: number; envelope: CommandEnvelope } | { source: 'lifecycle'; order: number; ordinal: number; control: LifecyclePause };
 export interface JournalTick { tick: number; input: TickInput; heldSequences: readonly number[]; results: readonly CommandResult[]; controls: readonly JournalControl[] }
 export interface CrashRecord {
@@ -154,7 +154,10 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       }
       activeFrame?.results.push(structuredClone(message.result));
     }
-    binding.link.send(reliable ? 'reliable-ordered' : 'unreliable-latest', encodeMessage(message));
+    if (binding.notificationSink && (message.kind === 'result' || message.kind === 'event')) {
+      const covering = activeFrame?.action.kind === 'tick' || activeFrame?.action.kind === 'controls';
+      binding.notificationSink(structuredClone(message), publicationSequence + (covering ? 1 : 0));
+    } else binding.link.send(reliable ? 'reliable-ordered' : 'unreliable-latest', encodeMessage(message));
   }
   function publishCompletedState(reliable = false): void {
     if (disposed || phase === 'error') return;
@@ -164,11 +167,17 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     const publication: PublishedState = { runId: deps.init.runId, tick: state.tick, publicationSequence: sequence,
       snapshot, hash: (completedHash = hashF64(Float64Array.from(snapshot.values))), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs,
       commandHighWater: highWater(), heldHighWater: [...heldSequences], auxiliaryHighWater: [...auxiliarySequences], eventSequence };
-    const bytes = encodeMessage({ kind: 'state', state: publication });
     // A stopped clock cannot replace a lost latest packet. Control boundaries
     // share reliable delivery with the events that depend on their state.
     const channel = reliable || phase === 'paused' || phase === 'ended' ? 'reliable-ordered' : 'unreliable-latest';
-    for (const binding of bindings) binding.link.send(channel, bytes);
+    // Detach each streamed publication before any local byte encoding. A stream-only
+    // authority is not constrained by the local JSON byte ceiling.
+    for (const binding of bindings) if (binding.publicationSink) binding.publicationSink(structuredClone(publication), channel === 'reliable-ordered');
+    let bytes: Uint8Array | undefined;
+    for (const binding of bindings) if (!binding.publicationSink) {
+      bytes ??= encodeMessage({ kind: 'state', state: publication });
+      binding.link.send(channel, bytes);
+    }
   }
   function result(binding: Binding, value: CommandResult): void {
     binding.ledger.finish(value); send(binding, { kind: 'result', runId: deps.init.runId, result: value }, true);
@@ -358,7 +367,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       const admissionPolicy = options.admissionPolicy ?? 'strict';
       if (admissionPolicy !== 'strict' && admissionPolicy !== 'receive-time') throw new Error('invalid admission policy');
       if (disposed || players.some((p) => !Number.isInteger(p) || p < 0 || p >= state.playerCount || [...bindings].some((b) => b.players.includes(p))) || new Set(players).size !== players.length) throw new Error('invalid player ownership');
-      const binding: Binding = { id: ++bindingOrdinal, link, players: [...players], admissionPolicy, ledger, ingress: [], unsubscribe: [] }; bindings.add(binding);
+      const binding: Binding = { id: ++bindingOrdinal, link, players: [...players], admissionPolicy, publicationSink: options.publicationSink, notificationSink: options.notificationSink, ledger, ingress: [], unsubscribe: [] }; bindings.add(binding);
       if (admissionPolicy === 'receive-time') replayVersion = 3;
       const detach = (): void => {
         // Finish the entire captured admission/control/tick batch before changing

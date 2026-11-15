@@ -1,5 +1,7 @@
 import { boundedHostBytes, isHostCommand, positiveSafeInteger, type HostCommand, type HostErrorCode, type HostResponse, type PortEndpoint } from '../shared/netSession';
 import { createPortLink } from './portLink';
+import { classifyStreamPacket } from './state/imageCodec';
+import { validStreamAttachmentOptions, type StreamAttachmentOptions } from '../shared/hostProcessProtocol';
 import type { ModeHost, ModeHostDeps, ModeRegistry, Unsubscribe } from './modes/contracts';
 
 export function createHostRuntime(registry: ModeRegistry, deps: ModeHostDeps, identity: { modeId: string; schemaVersion: number; simVersion: number; hostGeneration: number }) {
@@ -51,14 +53,14 @@ export function createHostRuntime(registry: ModeRegistry, deps: ModeHostDeps, id
         return { requestId, hostGeneration: generation, ok: true };
       } catch { return error('mode-error'); }
     },
-    attachPeer(peer: string, players: readonly number[], port: PortEndpoint): Unsubscribe {
-      if (disposed || !host || typeof peer !== 'string' || !peer.length || peer.length > 128 || !Array.isArray(players)
+    attachPeer(peer: string, players: readonly number[], port: PortEndpoint, options?: StreamAttachmentOptions): Unsubscribe {
+      if (!validStreamAttachmentOptions(options) || disposed || !host || typeof peer !== 'string' || !peer.length || peer.length > 128 || !Array.isArray(players)
         || !players.length || players.length > 16 || players.some(p => !Number.isSafeInteger(p) || p < 0 || p > 65535)
         || new Set(players).size !== players.length || (!peers.has(peer) && peers.size >= 16)) {
         try { port.close(); } catch { /* rejected transferred ownership */ } throw Error('peer unavailable');
       }
       peers.get(peer)?.();
-      const link = createPortLink(port, peer, { latestStreamKey: definition.latestStreamKey });
+      const link = createPortLink(port, peer, { latestStreamKey: options?.streamed ? bytes => classifyStreamPacket(bytes).stream : definition.latestStreamKey });
       let detach: Unsubscribe | undefined, offClose: Unsubscribe | undefined, closed = false;
       const cleanup = () => {
         if (closed) return; closed = true;
@@ -71,7 +73,7 @@ export function createHostRuntime(registry: ModeRegistry, deps: ModeHostDeps, id
       try {
         offClose = link.onClose(cleanup);
         if (closed) throw Error('peer closed during attachment');
-        detach = host.attach(link, [...players], 'receive-time');
+        detach = host.attach(link, [...players], 'receive-time', options);
         if (closed) { detach(); throw Error('peer closed during attachment'); }
       } catch (error) { cleanup(); throw error; }
       return cleanup;
