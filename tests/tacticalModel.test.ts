@@ -1,0 +1,201 @@
+import { describe, expect, it } from 'vitest';
+import { createCamera, pan, type Camera } from '../src/renderer/src/render/tactical/camera';
+import { createFeelTracker, feelReadout, feelRows, FEEL_WINDOW_TICKS, recordFeel } from '../src/renderer/src/render/tactical/feelModel';
+import {
+  asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, ringCrossesRect,
+  tacticalModel, wedgeSegments, type PrevBody, type TacticalModelInput
+} from '../src/renderer/src/render/tactical/tacticalModel';
+import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
+import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+
+const vp = { w: 1280, h: 720 };
+const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
+function input(st: TacticalState, cam: Camera, over: Partial<TacticalModelInput> = {}): TacticalModelInput {
+  return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console: 'helm', axes: { turn: 0, thrust: 0 }, ships: [0], paused: false, reserveRight: 0, ...over };
+}
+const pull = (r: number) => Math.hypot(...gravityAccel(r, 0));
+
+describe('gravity contours (H-1 spec §7 item 3)', () => {
+  it('inverts gravityAccel: the pull at each radius is the contour value', () => {
+    for (const a of [40, 10, 3]) expect(pull(contourRadius(a))).toBeCloseTo(a, 6);
+    expect(contourRadius(40)).toBeLessThan(contourRadius(10));
+  });
+  it('a ring is drawn only when it crosses the screen', () => {
+    expect(ringCrossesRect(640, 360, 100, 1280, 720)).toBe(true);
+    expect(ringCrossesRect(640, 360, 2000, 1280, 720)).toBe(false);    // encloses the screen
+    expect(ringCrossesRect(-500, 360, 100, 1280, 720)).toBe(false);    // wholly off to the left
+    const st = createTacticalState(4), cam = createCamera(0, 0, 0.12);
+    expect(tacticalModel(input(st, cam)).contours.map((c) => c.accel)).toEqual([40, 10, 3]);
+    const far = createCamera(2400, 0, 1.2);
+    expect(tacticalModel(input(st, far)).contours).toEqual([]);
+  });
+});
+
+describe('the lettered grid (H-1 spec §7 item 2)', () => {
+  it('names columns A.. from the west and rows 1.. from the north, 500-unit squares', () => {
+    expect(columnName(0)).toBe('A'); expect(columnName(11)).toBe('L'); expect(columnName(26)).toBe('AA');
+    const st = createTacticalState(4), cam = createCamera(0, 0, 0.12);
+    const g = tacticalModel(input(st, cam)).grid;
+    expect(g.spacing).toBe(500);
+    expect(g.columns.map((c) => c.text)).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']);
+    expect(g.rows.map((r) => r.text)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']);
+    expect(g.lines.length).toBe(2 * (2 * GRID_EXTENT / 500 + 1));
+  });
+  it('labels sit on the visible top and left edges and name the square under them', () => {
+    const st = createTacticalState(4), cam = createCamera(-2750, -2750, 1.0);   // the north-west corner: square A1
+    const g = tacticalModel(input(st, cam)).grid;
+    expect(g.columns[0]!.text).toBe('A'); expect(g.rows[0]!.text).toBe('1');
+    for (const c of g.columns) { expect(c.x).toBeGreaterThanOrEqual(0); expect(c.x).toBeLessThanOrEqual(1280); }
+    expect(g.columns[0]!.y).toBeGreaterThan(4);   // the grid's top edge is on screen, so the labels sit just under it
+  });
+  it('switches to 250-unit lines past zoom 0.6 and culls lines off screen', () => {
+    const st = createTacticalState(4), cam = createCamera(0, 0, 1.2);
+    const g = tacticalModel(input(st, cam)).grid;
+    expect(g.spacing).toBe(250);
+    expect(g.lines.every((l) => l.x1 >= 0 && l.x1 <= 1280 && l.y1 >= 0 && l.y1 <= 720 || l.y1 === l.y2 && l.y1 >= 0 && l.y1 <= 720)).toBe(true);
+    expect(g.lines.some((l) => !l.major)).toBe(true);
+    expect(g.columns.map((c) => c.text)).toEqual(['E', 'F', 'G', 'H']);   // ±533 units: F and G whole, 33-unit slivers of E and H (40 px)
+  });
+});
+
+describe('bodies and ships (H-1 spec §7 items 4 to 6)', () => {
+  it('culls asteroids off screen, dots below 2 px, skips none above 0.5 px', () => {
+    const st = createTacticalState(4);
+    const wide = tacticalModel(input(st, createCamera(0, 0, 0.12)));
+    expect(wide.asteroids.length).toBe(st.map.asteroids.length);   // every radius ≥ 15 is ≥ 1.8 px at 0.12
+    expect(wide.asteroids.filter((a) => a.dot).every((a) => a.r < 2)).toBe(true);
+    expect(wide.asteroids.some((a) => a.dot)).toBe(true);
+    const close = tacticalModel(input(st, createCamera(0, 0, 1.2)));
+    expect(close.asteroids.length).toBe(0);   // the belt is 1100+ out; the screen shows ±533
+    expect(close.planet).toEqual({ x: 640, y: 360, r: 70 * 1.2 });
+    expect(wide.edge!.r).toBeCloseTo(2800 * 0.12, 9);
+  });
+  it('a ship is a silhouette at 10 px across and up, a chevron below', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    const at = (z: number) => tacticalModel(input(st, createCamera(s.x, s.y, z))).ships[0]!;
+    expect(at(0.25).chevron).toBe(false);   // 40 units × 0.25 = 10 px
+    expect(at(0.24).chevron).toBe(true);
+    expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.5, shields: 2 });
+  });
+  it('the flight view draws only ship 0', () => {
+    const st = createTacticalState(4), cam = createCamera(0, 0, 0.12);
+    expect(tacticalModel(input(st, cam)).ships.map((s) => s.index)).toEqual([0]);
+    expect(tacticalModel(input(st, cam, { ships: [0, 1] })).ships.map((s) => s.index)).toEqual([0, 1]);
+  });
+  it('interpolates position by alpha and heading the short way round', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    Object.assign(s, { x: 100, y: 0, heading: 1, headingAcc: 0 });
+    const prev = [{ x: 0, y: 0, h: 255 }, { x: 0, y: 0, h: 0 }];
+    const b = interpolatedShip(st, prev, 0.5, 0);
+    expect(b.x).toBe(50); expect(b.h).toBe(256);
+  });
+});
+
+describe('the Helm layer (H-1 spec §7 item 7)', () => {
+  it('predicts 2 s at zoom 0.6 and up, rising to 8 s at 0.12, a point every 4 ticks', () => {
+    expect(pathSeconds(1.2)).toBe(2); expect(pathSeconds(0.6)).toBe(2); expect(pathSeconds(0.12)).toBe(8);
+    expect(pathSeconds(0.36)).toBeCloseTo(5, 12);
+    const st = createTacticalState(4), s = st.ships[0];
+    const near = tacticalModel(input(st, createCamera(s.x, s.y, 1.0))).helm!;
+    const far = tacticalModel(input(st, createCamera(s.x, s.y, 0.12))).helm!;
+    expect(near.path.length).toBe(30);    // 120 ticks / 4
+    expect(far.path.length).toBe(120);    // 480 ticks / 4
+  });
+  it('the path follows the current axes and ends at a solid contact', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    Object.assign(s, { x: 0, y: -400, vx: 0, vy: 0, heading: 128 });   // nose south, at the planet
+    const cam = createCamera(0, -400, 0.12);
+    const coast = tacticalModel(input(st, cam)).helm!.path, burn = tacticalModel(input(st, cam, { axes: { turn: 0, thrust: 1 } })).helm!;
+    expect(burn.path.length).toBeLessThan(coast.length);
+    expect(burn.thrust).toBe(1); expect(burn.turn).toBe(0);
+  });
+  it('draws the bearing ring at zoom 0.3 and up: 36 ticks, labels every 30 degrees, north up', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    const ring = tacticalModel(input(st, createCamera(s.x, s.y, 0.3))).helm!.ring!;
+    expect(ring.ticks.length).toBe(36);
+    expect(ring.labels.map((l) => l.text)).toEqual(['0', '30', '60', '90', '120', '150', '180', '210', '240', '270', '300', '330']);
+    expect(ring.labels[0]!.x).toBeCloseTo(640, 9); expect(ring.labels[0]!.y).toBeLessThan(360 - BEARING_RING_PX);
+    expect(ring.labels[3]!.x).toBeGreaterThan(640 + BEARING_RING_PX);   // 90 is east
+    expect(tacticalModel(input(st, createCamera(s.x, s.y, 0.29))).helm!.ring).toBeNull();
+  });
+  it('the weapons console has no Helm layer', () => {
+    const st = createTacticalState(4);
+    expect(tacticalModel(input(st, createCamera(0, 0), { console: 'weapons' })).helm).toBeNull();
+  });
+});
+
+describe('the overlay (H-1 spec §7 item 9)', () => {
+  it('points off-screen arrows at the own ship and the planet, with distances, clear of the readout', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    Object.assign(s, { x: 1500, y: 0 });
+    const cam = createCamera(0, 0, 1.0); pan(cam, 0, 1);   // free, about at the planet
+    const view = tacticalModel(input(st, cam, { reserveRight: 230 }));
+    const ship = view.arrows.find((a) => a.target === 'ship')!;
+    expect(ship.x).toBeCloseTo(1280 - 230 - 28, 9); expect(ship.angle).toBeCloseTo(Math.PI / 2, 2);
+    expect(ship.label).toMatch(/^SHIP 150\d$/);
+    expect(view.arrows.find((a) => a.target === 'planet')).toBeUndefined();   // on screen
+    expect(view.overlay.snapHint).toBe(true);
+    const followed = tacticalModel(input(st, createCamera(1500, 0, 1.0)));
+    expect(followed.arrows.map((a) => [a.target, a.distance])).toEqual([['planet', 1500]]);
+    expect(followed.overlay.snapHint).toBe(false);
+  });
+  it('shows the zoom and a scale bar no wider than 160 px', () => {
+    const st = createTacticalState(4);
+    const o = tacticalModel(input(st, createCamera(0, 0, 0.5))).overlay;
+    expect(o.zoomText).toBe('ZOOM 0.50');
+    expect(o.scaleBar).toEqual({ px: 125, units: 250 });
+    expect(tacticalModel(input(st, createCamera(0, 0, 0.12))).overlay.scaleBar.units).toBe(1000);
+  });
+});
+
+describe('the parallax star field (parent §10b layer 1)', () => {
+  it('moves the stars against the camera at STAR_PARALLAX px per unit, at any zoom, wrapped into one tile', () => {
+    expect(STAR_PARALLAX).toBe(0.02);
+    expect(starOffset(0, 0, vp)).toEqual({ x: 0, y: 0 });
+    expect(starOffset(1000, 0, vp)).toEqual({ x: 1280 - 20, y: 0 });       // the camera moves east 1000: the stars 20 px west
+    expect(starOffset(0, -2000, vp)).toEqual({ x: 0, y: 40 });             // north 2000: 40 px down
+    expect(starOffset(-64000 - 500, 0, vp).x).toBeCloseTo(10, 9);          // 1290 px wraps to 10
+    const st = createTacticalState(4), cam = createCamera(0, 0, 0.5);
+    const a = tacticalModel(input(st, cam)).stars;
+    pan(cam, -100, 0);                                                     // drag 100 px left: the centre moves 200 units east
+    const b = tacticalModel(input(st, cam)).stars;
+    expect(a).toEqual({ x: 0, y: 0 }); expect(b.x).toBeCloseTo(1280 - 4, 9); expect(b.y).toBe(0);
+    const zoomed = tacticalModel(input(st, createCamera(200, 0, 1.2))).stars;
+    expect(zoomed.x).toBeCloseTo(b.x, 9);                                  // independent of zoom
+  });
+});
+
+describe('shapes', () => {
+  it('the wedge has three room segments and asteroids have stable outlines', () => {
+    expect(wedgeSegments().map((w) => w.room)).toEqual([0, 1, 2]);
+    expect(asteroidShape(5)).toBe(asteroidShape(5));
+    expect(asteroidShape(5)).not.toEqual(asteroidShape(6));
+    expect(asteroidShape(9).every((k) => k >= 0.72 && k <= 1.08)).toBe(true);
+  });
+});
+
+describe('the feel panel (H-1 spec §9)', () => {
+  it('reads speed, skid, turn rate, gravity and the planet distance', () => {
+    const st = createTacticalState(4), s = st.ships[0], t = createFeelTracker();
+    Object.assign(s, { x: 0, y: -1000, vx: 30, vy: -40, heading: 0, headingAcc: 0 });   // nose north: 30 u/s to the right is skid
+    recordFeel(t, s, st.map.planet);
+    const r = feelReadout(t, s, st.map.planet);
+    expect(r.speed).toBeCloseTo(50, 9); expect(r.skid).toBeCloseTo(30, 9);
+    expect(r.gravity).toBeCloseTo(pull(1000), 9); expect(r.planet).toBeCloseTo(1000, 9);
+    expect(feelRows(r).map(([k]) => k)).toEqual(['SPEED', 'SKID', 'TURN', 'GRAVITY', 'PLANET r', 'MIN r 10s']);
+  });
+  it('a full turn reads 150 deg/s', () => {
+    const st = createTacticalState(4), t = createFeelTracker();
+    for (let k = 0; k < 30; k++) { stepSoloFlight(st, { turn: 1, thrust: 0 }); recordFeel(t, st.ships[0], st.map.planet); }
+    expect(feelReadout(t, st.ships[0], st.map.planet).turnRate).toBeCloseTo(150, 6);
+  });
+  it('keeps the least planet distance over the last 10 s only', () => {
+    const st = createTacticalState(4), s = st.ships[0], t = createFeelTracker();
+    s.x = 0; s.y = -200; recordFeel(t, s, st.map.planet);
+    s.y = -900;
+    for (let k = 1; k < FEEL_WINDOW_TICKS; k++) recordFeel(t, s, st.map.planet);
+    expect(feelReadout(t, s, st.map.planet).minPlanet).toBeCloseTo(200, 9);
+    recordFeel(t, s, st.map.planet);   // the 200 sample falls out of the window
+    expect(feelReadout(t, s, st.map.planet).minPlanet).toBeCloseTo(900, 9);
+  });
+});
