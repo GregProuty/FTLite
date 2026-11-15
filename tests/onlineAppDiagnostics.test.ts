@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { onlineAppFailureCode, onlineAppStderrDiagnostic } from '../scripts/network/online-app-diagnostics';
+import { onlineAppFailureCode, onlineAppStderrDiagnostic, onlineAppWaitDiagnostic } from '../scripts/network/online-app-diagnostics';
 
 const secret = 'seatToken=private-seat localTicket=private-ticket SDP=private-sdp candidate=192.0.2.9';
 function driver() {
@@ -30,6 +30,10 @@ function driver() {
   return {app,proc,error,contents};
 }
 describe('application driver diagnostics',()=>{
+  it('reports only enumerated wait role/phase context, including hostile last status values', () => {
+    expect(onlineAppWaitDiagnostic('guest idle', 'joining')).toEqual({ code: 'APP_WAIT_TIMEOUT', role: 'guest', expected: 'idle', actual: 'joining' });
+    expect(onlineAppWaitDiagnostic(secret, secret)).toEqual({ code: 'APP_WAIT_TIMEOUT', role: 'unknown', expected: 'unknown', actual: 'unknown' });
+  });
   it('allows only fixed launcher failure codes and enumerated stderr context',()=>{
     expect(onlineAppFailureCode(Error(secret))).toBe('online-application-gate-failed');
     expect(onlineAppFailureCode({message:secret,stack:secret})).toBe('online-application-gate-failed');

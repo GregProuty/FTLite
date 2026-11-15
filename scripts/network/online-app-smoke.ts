@@ -7,7 +7,7 @@ import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
 import { validateOnlineAppReport } from './online-app-report';
-import { onlineAppFailureCode, onlineAppStderrDiagnostic } from './online-app-diagnostics';
+import { onlineAppFailureCode, onlineAppStderrDiagnostic, onlineAppWaitDiagnostic } from './online-app-diagnostics';
 
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
@@ -22,6 +22,7 @@ async function main() {
   const timeout = () => { timedOut = true; deadline.abort(); };
   const watchdog = setTimeout(timeout, 90000);
   let injectedDeadline: ReturnType<typeof setTimeout> | undefined;
+  let waitFailure: ReturnType<typeof onlineAppWaitDiagnostic> | undefined;
   const source = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim(),
     dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', windowsHide: true }).trim(), digest: computeContentDigest(process.cwd()),
     artifactHashes:Object.fromEntries(['out/main/index.js','out/main/transportWindow.js','out/renderer/index.html','scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-observer.ts','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts']
@@ -29,7 +30,7 @@ async function main() {
   async function until(read: () => Promise<any>, predicate: (value: any) => boolean, label: string, ms = 10000) {
     const deadline = performance.now() + ms; let last;
     while (performance.now() < deadline) { if (timedOut) throw Error('launcher timeout'); last = await read(); if (predicate(last)) return last; await delay(40); }
-    console.error('APP_WAIT_TIMEOUT'); throw Error(label + ' timeout');
+    waitFailure = onlineAppWaitDiagnostic(label, last?.status?.phase); console.error(waitFailure); throw Error(label + ' timeout');
   }
   async function launch(profile: string) {
     if (typeof electron !== 'string') throw Error('Electron executable missing');
@@ -216,7 +217,7 @@ async function main() {
   const report = { version: 1, source, runtime: { electron: electronVersion, workerd: runtime?.workerdVersion, workerPid:runtime?.pid, workerExit: runtime?.exited(), temporaryRemoved: !existsSync(directory) },
     processes: processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination}) => ({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,cleanup})),
     cleanup: Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k => [k, cleanups.reduce((n,r)=>n+r[k],0)])),
-    runtimeHelper: runtime?.observation(), viewports, scenarios, checks, elapsedMs: Math.ceil(performance.now()-began), failure,
+    runtimeHelper: runtime?.observation(), viewports, scenarios, checks, elapsedMs: Math.ceil(performance.now()-began), failure, waitFailure,
     limits: ['loopback-only','no-TURN','no-independent-utility-lease','no-mirrors','no-rehost','no-WAN','no-two-machine'] };
   writeFileSync(reportPath, JSON.stringify(report,null,2)+'\n');
   if (failure) throw Error(failure);
