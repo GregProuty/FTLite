@@ -87,3 +87,47 @@ Confirmed. The drawn path's first point is now the interpolated glyph position, 
 
 ---
 
+# Round 2 (delta, reviewing aa1c15b, effort medium, 72 s, 285399 in / 238208 cached / 3349 out)
+
+Verdict: ready with P2s
+
+## Prior findings
+- R1-F1: resolved — The runtime gates charge and launch at tick time and suppresses a release unless a press was sent (runtime.ts:L221-L236). The checks match the sim's admission rules (weapons.ts:L33-L38; step.ts:L104-L112).
+- R1-F2: resolved — Tab and stand remove pending Weapons commands before the seat changes (runtime.ts:L276-L296); the sim clears Fire when Weapons is unattended (weapons.ts:L75).
+- R1-F3: resolved — Tab resets the wheel accumulator, and Tab or restart discards that frame's sampled drag and wheel before camera input is applied (runtime.ts:L280, L338-L352).
+- R1-F4: resolved — Arrows on each edge are ordered, spaced by the minimum gap, and shifted within the edge bounds (tacticalModel.ts:L202-L229). The added cases cover two to four clustered arrows (duelWeaponsView.test.ts:L77-L87).
+- R1-F5: still open — The first path point now matches the interpolated glyph, but subsequent points are still predicted from the current tick's missile (weaponsModel.ts:L82, L89-L91; missilePath.ts:L17-L23). At alpha below 1, the first segment includes the remaining fraction of the current tick plus the predictor's stride, so the path is not seeded from the drawn position as requested by plan L62. The new test checks only point zero (duelWeaponsView.test.ts:L127-L138).
+
+## Verified
+- The touched runtime command handling follows the sim's charge-before-launch order (runtime.ts:L221-L236; step.ts:L99-L112; weapons.ts:L72-L88).
+- The arrow spreading change remains opt-in for duel views (tacticalModel.ts:L289-L291; duelWeaponsView.test.ts:L89-L97).
+- The layer strokes the missile path from its first point (tacticalLayer.ts:L186-L191).
+
+## Not verified
+- Jest was not run, as requested; test outcomes were assessed from code and test text only.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. No new findings. Codex confirmed R1-F1 to R1-F4 resolved. Verdict: ready with P2s.
+
+## R1-F5 [P2]: Missile prediction starts from a different position than its glyph (still open, deferred)
+
+The re-raise is accurate: only the first point is the interpolated glyph, and the later points are predicted from the current tick's missile. I'm deferring it rather than fixing it:
+- **Same rule as the Helm path:** joining from the drawn position is the rule the Helm path already uses. The H-1a final review accepted it, since the path leads the glyph rather than lagging it.
+- **Small gap:** the gap is at most one tick of missile travel, inside the first segment.
+- **Wrong trajectory:** seeding the predictor from a mid-tick interpolated state would predict a path off the sim's 60 Hz tick grid, which the missile will not actually follow.
+
+It stays recorded for the manual visual gate.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+

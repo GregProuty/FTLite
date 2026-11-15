@@ -1,0 +1,39 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "The runtime gates charge and launch at tick time and suppresses a release unless a press was sent (runtime.ts:L221-L236). The checks match the sim's admission rules (weapons.ts:L33-L38; step.ts:L104-L112)."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Tab and stand remove pending Weapons commands before the seat changes (runtime.ts:L276-L296); the sim clears Fire when Weapons is unattended (weapons.ts:L75)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "Tab resets the wheel accumulator, and Tab or restart discards that frame's sampled drag and wheel before camera input is applied (runtime.ts:L280, L338-L352)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "Arrows on each edge are ordered, spaced by the minimum gap, and shifted within the edge bounds (tacticalModel.ts:L202-L229). The added cases cover two to four clustered arrows (duelWeaponsView.test.ts:L77-L87)."
+    },
+    {
+      "id": "R1-F5",
+      "result": "still open",
+      "note": "The first path point now matches the interpolated glyph, but subsequent points are still predicted from the current tick's missile (weaponsModel.ts:L82, L89-L91; missilePath.ts:L17-L23). At alpha below 1, the first segment includes the remaining fraction of the current tick plus the predictor's stride, so the path is not seeded from the drawn position as requested by plan L62. The new test checks only point zero (duelWeaponsView.test.ts:L127-L138)."
+    }
+  ],
+  "verified": [
+    "The touched runtime command handling follows the sim's charge-before-launch order (runtime.ts:L221-L236; step.ts:L99-L112; weapons.ts:L72-L88).",
+    "The arrow spreading change remains opt-in for duel views (tacticalModel.ts:L289-L291; duelWeaponsView.test.ts:L89-L97).",
+    "The layer strokes the missile path from its first point (tacticalLayer.ts:L186-L191)."
+  ],
+  "not_verified": [
+    "Jest was not run, as requested; test outcomes were assessed from code and test text only."
+  ]
+}
