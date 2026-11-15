@@ -1,0 +1,65 @@
+{
+  "verdict": "changes requested",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Spec L100 now requires re-blessing the hashes derived from the version change; flatten.ts:L50 includes SIM_VERSION."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Spec L87-L93 requires all ten seeds in the full-suite gate."
+    },
+    {
+      "id": "R1-F3",
+      "result": "still open",
+      "note": "The Helm avoidance rule in spec L36 cannot be implemented as stated: predict.ts:L21-L31 returns positions without a contact marker and never detects the map edge. Spec L38 also leaves the orbit radius band described only as the “open band between the belt gaps,” without a usable radial bound. Specify contact detection, edge detection, and the orbit radius bounds."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "Spec L46-L49 replaces the conflicting room assignments with one nearest-free-character rule and tie breaks."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "Spec L74-L81 defines an observable final-tick planet-contact attribution using the contact counter; tactical/duel.ts:L24-L29 confirms outcome is decided after contact damage."
+    },
+    {
+      "id": "R1-F6",
+      "result": "still open",
+      "note": "Spec L59-L61 requires the enemy’s distance to the asteroid it hit, but contacts.ts:L43-L45 records only an aggregate asteroidHits counter, and tactical/state.ts:L51-L56 has no asteroid-contact event or asteroid index. Add an event identifying the struck obstacle and positions needed for the distance test, or define a computable proxy."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "Spec L64 excludes ticks with a crew missile in flight from Weapons idle time."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "Spec L101 requires SIM_VERSION in both the duel golden and flattenDuel; duel/hash.ts:L8-L13 confirms it is absent today."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "Spec L66-L72 defines worker and completion events, resumed starts, joint finish credit, and accumulator ownership of previous workers."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "Spec L58 includes losses to the other missile, matching tactical/state.ts:L56."
+    }
+  ],
+  "verified": [
+    "The subject matches commit b92cad3; its ten-seed gate matches parent spec L309-L311.",
+    "Spec L100 matches flatten.ts:L50 and the stored-hash checks in tests/golden.test.ts:L27-L37.",
+    "Spec L66-L72 can attribute repair work from the per-player loop in duel/step.ts:L49-L60."
+  ],
+  "not_verified": [
+    "No tests were run; this was a read-only spec review.",
+    "The named review run directory was inaccessible, so its files could not be checked. The ledger and round-1 response supplied in the brief were used."
+  ]
+}

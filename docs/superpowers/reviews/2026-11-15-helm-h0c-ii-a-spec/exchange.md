@@ -123,3 +123,59 @@ Confirmed (`tactical/state.ts:L52-L56`). Added to the loss causes.
 
 ---
 
+# Round 2 (delta, reviewing b92cad3, effort medium, 102 s, 498230 in / 422400 cached / 4802 out)
+
+Verdict: changes requested
+
+## Prior findings
+- R1-F1: resolved — Spec L100 now requires re-blessing the hashes derived from the version change; flatten.ts:L50 includes SIM_VERSION.
+- R1-F2: resolved — Spec L87-L93 requires all ten seeds in the full-suite gate.
+- R1-F3: still open — The Helm avoidance rule in spec L36 cannot be implemented as stated: predict.ts:L21-L31 returns positions without a contact marker and never detects the map edge. Spec L38 also leaves the orbit radius band described only as the “open band between the belt gaps,” without a usable radial bound. Specify contact detection, edge detection, and the orbit radius bounds.
+- R1-F4: resolved — Spec L46-L49 replaces the conflicting room assignments with one nearest-free-character rule and tie breaks.
+- R1-F5: resolved — Spec L74-L81 defines an observable final-tick planet-contact attribution using the contact counter; tactical/duel.ts:L24-L29 confirms outcome is decided after contact damage.
+- R1-F6: still open — Spec L59-L61 requires the enemy’s distance to the asteroid it hit, but contacts.ts:L43-L45 records only an aggregate asteroidHits counter, and tactical/state.ts:L51-L56 has no asteroid-contact event or asteroid index. Add an event identifying the struck obstacle and positions needed for the distance test, or define a computable proxy.
+- R1-F7: resolved — Spec L64 excludes ticks with a crew missile in flight from Weapons idle time.
+- R1-F8: resolved — Spec L101 requires SIM_VERSION in both the duel golden and flattenDuel; duel/hash.ts:L8-L13 confirms it is absent today.
+- R1-F9: resolved — Spec L66-L72 defines worker and completion events, resumed starts, joint finish credit, and accumulator ownership of previous workers.
+- R1-F10: resolved — Spec L58 includes losses to the other missile, matching tactical/state.ts:L56.
+
+## Verified
+- The subject matches commit b92cad3; its ten-seed gate matches parent spec L309-L311.
+- Spec L100 matches flatten.ts:L50 and the stored-hash checks in tests/golden.test.ts:L27-L37.
+- Spec L66-L72 can attribute repair work from the per-player loop in duel/step.ts:L49-L60.
+
+## Not verified
+- No tests were run; this was a read-only spec review.
+- The named review run directory was inaccessible, so its files could not be checked. The ledger and round-1 response supplied in the brief were used.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json`. No new findings. Codex re-raised R1-F3 and R1-F6, and both re-raises are correct. Fixed again; 0 rejected, 0 deferred.
+
+## R1-F3 [P1]: The scripted flight and firing policy needs exact rules (still open, fixed again)
+
+Confirmed: `predictPath` returns positions only and never detects the edge (`predict.ts:L21-L31`). The avoid rule now tests each predicted position for a hazard itself:
+- the planet within `planet.r + SHIP_RADIUS + AVOID_MARGIN`;
+- any asteroid from `queryGrid` within `a.r + SHIP_RADIUS + AVOID_MARGIN`;
+- distance from the centre beyond `rMap − AVOID_MARGIN`.
+
+It turns directly away from the first hazard (toward the centre for the edge). The orbit band is now bounded outside the belt and inside the edge (`ORBIT_MIN ≥ BELT_OUTER + 200 = 1500`, `ORBIT_MAX ≤ R_MAP − 600 = 2200`), and `AVOID_MARGIN` joins the named constants.
+
+## R1-F6 [P1]: The bait proxy contradicts its telemetry definition (still open, fixed again)
+
+Confirmed: the sim records only aggregate hit counters (`contacts.ts:L43-L45`). The struck obstacle is now identified at the contact tick: the planet for a `planetHits` rise, or the asteroid nearest the enemy from `queryGrid` for an `asteroidHits` rise. The accumulator keeps the enemy's position at the stamped manoeuvre tick and compares its distance to that obstacle then and at contact.
+
+## Also changed
+
+- Change log entry for round 2.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-15-helm-h0c-ii-a-headless-gates-design.md
+
+<!-- end -->
+
+---
+

@@ -33,9 +33,14 @@ A deterministic headless crew for tests and telemetry only, never offered as a s
   - no `Date`;
   - randomness only from its own seeded stream (`createRng` from the sim's RNG helpers, seeded from the duel seed with a fixed salt, never `rng.tactical`).
 - **The Helm (player 0)**, a fixed priority list evaluated each tick; the first rule that applies sets `{turn, thrust}`:
-  1. *Avoid:* if `predictPath(state, 0, current axes, AVOID_TICKS, 4)` touches the planet, an asteroid or the map edge, turn toward the heading that points most directly away from the nearest such point (sign of the heading error, ties turn clockwise) with thrust 1.
+  1. *Avoid:* take the points of `predictPath(state, 0, current axes, AVOID_TICKS, 4)` (positions only) and test each in order for a *hazard*:
+     - the planet: distance to its centre below `planet.r + SHIP_RADIUS + AVOID_MARGIN`;
+     - an asteroid: any asteroid from `queryGrid(grid, x, y, SHIP_RADIUS + AVOID_MARGIN)` whose distance is below `a.r + SHIP_RADIUS + AVOID_MARGIN`;
+     - the edge: distance from the map centre above `rMap − AVOID_MARGIN`.
+
+     At the first hazard point, turn toward the heading pointing directly away from that hazard (from the planet's or asteroid's centre, or toward the map centre for the edge), by the sign of the heading error (ties turn clockwise), with thrust 1.
   2. *Line up:* if the gunner holds a full charge and the enemy is within `LASER_RANGE` but outside the laser arc, turn toward the enemy's bearing (sign of the bearing error), with thrust 0.
-  3. *Orbit:* otherwise, hold an orbit of radius `ORBIT_R` (seeded once per duel in `[ORBIT_MIN, ORBIT_MAX]`, inside the open band between the belt gaps). Steer so that the velocity heading is tangent to the circle (prograde, the direction the ship is already circling, or clockwise at rest). Thrust 1 when the speed is below the circular speed for that radius minus `SPEED_SLACK`, 0 otherwise, and −1 above it plus `SPEED_SLACK`.
+  3. *Orbit:* otherwise, hold an orbit of radius `ORBIT_R`, seeded once per duel in `[ORBIT_MIN, ORBIT_MAX]`. That band lies outside the belt and inside the edge: `ORBIT_MIN ≥ BELT_OUTER + 200` (1500) and `ORBIT_MAX ≤ R_MAP − 600` (2200). The plan picks the values within those bounds. Steer so that the velocity heading is tangent to the circle (prograde, the direction the ship is already circling, or clockwise at rest). Thrust 1 when the speed is below the circular speed for that radius minus `SPEED_SLACK`, 0 otherwise, and −1 above it plus `SPEED_SLACK`.
 
   Stabilise is not modelled separately: rule 3 releases turn when the heading error is under one heading step.
 - **The gunner (player 1):**
@@ -49,7 +54,7 @@ A deterministic headless crew for tests and telemetry only, never offered as a s
   - The assigned character stands, walks, holds Interact until the room's level reaches 0, then walks back to its own console and sits. The other character stays at its console.
 - **Walking:** the sim has no interior pathfinder today, so the pair adds a BFS over the Cutter's walkable tiles (doors held open) in `sim/duel/scripted.ts`. Each tick it produces `moveX`/`moveY` toward the centre of the next tile on the path, recomputing the path when the character leaves it. The route goes through door tiles only, with no diagonal through a wall corner.
 - **Commands and the seat rules:** stand and sit go out as ordinary commands. A sit is sent only when `consoleInReach`-equivalent conditions hold, and the pair never sends a weapon command from a character that is not seated at Weapons. Both characters stay present throughout, so no presence commands are needed.
-- **Tunable:** the pair's own constants (`AVOID_TICKS`, `ORBIT_MIN`, `ORBIT_MAX`, `SPEED_SLACK`, `MISSILE_GAP`) are named at the top of the file, separate from the game tuning; the plan sets their values from the prototype.
+- **Tunable:** the pair's own constants (`AVOID_TICKS`, `AVOID_MARGIN`, `ORBIT_MIN`, `ORBIT_MAX`, `SPEED_SLACK`, `MISSILE_GAP`) are named at the top of the file, separate from the game tuning; the plan sets their values from the prototype.
 
 ## 4. Telemetry (`sim/duel/telemetry.ts`)
 
@@ -58,7 +63,11 @@ Per duel, accumulated tick by tick from `d` and that tick's events (parent §13'
 - **Laser and missiles:** laser releases, hits, misses and shield layers stripped, per ship. Missiles launched, hits by room, and losses by cause (planet, asteroid, edge, expiry, own ship, the other missile), per ship.
 - **Contacts:** planet and asteroid contacts per ship. Baits **(rec.)**: an enemy planet or asteroid contact counts as a bait when it follows a crew manoeuvre within the previous 300 ticks.
   - A *crew manoeuvre* is a tick where the Helm's turn or thrust axis is non-zero and the enemy is within 900 u, stamped with its tick.
-  - The bait also requires that the distance from the enemy to the obstacle it then hits shrank over the window from the stamped tick to the contact.
+  - The bait also requires that the distance from the enemy to the obstacle it hit shrank over the window from the stamped tick to the contact. The sim records only hit counters, so the struck obstacle is identified at the contact tick:
+    - for a `planetHits` rise, the planet;
+    - for an `asteroidHits` rise, the asteroid nearest the enemy among those returned by `queryGrid` at its position.
+
+    The accumulator keeps the enemy's position at the stamped tick and compares its distance to that obstacle then and at the contact.
 - **Repairs:** repairs started and finished per player.
 - **Time away:** time away from each console, split into walking and repairing.
 - **Other:** console swaps; ticks the enemy spent in the crew's laser arc; ticks Weapons had nothing to do: someone is seated at Weapons, no crew missile is in flight (steering one is work), the charge is full or the laser is frozen, no launch is possible (`canLaunch` false, or the enemy is within `LASER_RANGE`), and the enemy is outside the laser arc.
@@ -123,3 +132,4 @@ A duel **ends from planet contact** when the losing ship (both, for a draw) took
 
 - 2026-11-15: written. It splits H-0c-ii into the headless gates (a) and the authority wiring (b, waits for Net-3).
 - 2026-11-15: refine round 1: sector goldens re-blessed in full and proved version-only by the untouched gameplay projections; the ten-seed gate always runs; exact pair rules and named constants; one repair-assignment rule; terminal-cause attribution; bait and idle definitions; repair-event semantics; `flattenDuel` gains `SIM_VERSION`; missile-to-missile losses.
+- 2026-11-15: refine round 2: avoidance hazard tests and the edge test are explicit (predictPath returns positions only); the orbit band is bounded outside the belt and inside the edge; the bait's struck obstacle is identified from the contact tick's counters and the grid.
