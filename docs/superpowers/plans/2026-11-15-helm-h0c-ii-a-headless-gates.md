@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** H-0's last row closes headless. A scripted pair (a deterministic Helm and gunner who walk to repairs and back) fights the hunter over seeds 1 to 10, telemetry records each duel, and a gate test that always runs proves parent §16's targets: median duel length 3 to 5 minutes, crew wins and crew losses both occur, the crew releases the laser and launches a missile in every duel, no duel ends from a planet contact in under 30 s, and every duel ends before the 15-minute cap. One game number moves to get there (hull 30 → 40). `SIM_VERSION` goes 35 → 36, `flattenDuel` starts with it, the sector goldens are re-blessed and proved version-only, and a duel golden pins the scripted duel at seed 1.
+**Goal:** H-0's last row closes headless. A scripted pair (a deterministic Helm and gunner who walk to repairs and back) fights the hunter over seeds 1 to 10, telemetry records each duel, and a gate test that always runs proves parent §16's targets: median duel length 3 to 5 minutes, crew wins and crew losses both occur, the crew releases the laser and launches a missile in every duel, no duel ends from a planet contact in under 30 s, and every duel ends before the 15-minute cap. One game number moves to get there (hull 30 → 40). `SIM_VERSION` goes 35 → 36, `flattenDuel` starts with it, the sector goldens are re-blessed only after a per-tick canonical trace (version excluded) proves the bump changed no gameplay tick, and a duel golden pins the scripted duel at seed 1.
 
 **Architecture:** Headless sim and tests only, on top of H-0c-i and H-1b:
 - `sim/duel/state.ts` and `step.ts` gain per-tick **repair events** (`d.events`), derived and not hashed; the repair behaviour is unchanged.
@@ -11,6 +11,7 @@
 - `tests/helpers/scriptedDuel.ts` (new) runs a duel to its end or the cap (`runDuel`) and formats the telemetry; `tests/duelGates.test.ts` is the gate; `scripts/duel-telemetry.ts` is the tuning tool.
 - `sim/tactical/tuning.ts`: `SHIP_HULL` 30 → 40.
 - `sim/tuning.ts`: `SIM_VERSION` 35 → 36; `sim/duel/hash.ts`: `flattenDuel` starts with `SIM_VERSION`.
+- `scripts/golden/canonical-trace.ts` (new): before the bump it records a hash of the canonical flattened state, version value zeroed, at every tick of every sector replay the goldens record (the bless replay and all 19 determinism-v2 schedules). After the bump it refuses, so nothing is blessed, unless the per-tick lists are identical. After the bless it checks that `basic.json` changed only in version, digest and hashes.
 - `scripts/bless-golden.ts` also writes the duel golden `tests/golden/duel-1.json`; the new `scripts/determinism/rebless-version.ts` moves `tests/fixtures/determinism-v2.json` to the new version and refuses to write unless only the version and hashes changed.
 
 **Nothing touches `authority/`, `net/contracts.ts`, `app/`, `render/` or any sector behaviour.** The one render-side test that pins the hull (`tests/duelReadout.test.ts`, `30/30`) is updated to `40/40`.
@@ -24,7 +25,7 @@
 - **Task 1:** repair events from `repairPhase` into `d.events`, and the telemetry accumulator.
 - **Task 2:** the scripted pair: the Helm's avoid / line up / orbit rules, the gunner's rules, nearest-free-character repair with BFS walking.
 - **Task 3:** the gate test over seeds 1 to 10, the run-and-format helper, `scripts/duel-telemetry.ts`, and the tuning that meets the gates (`SHIP_HULL` 30 → 40), with the passive-crew survival report.
-- **Task 4:** `SIM_VERSION` 35 → 36 with `flattenDuel` leading with it, the sector goldens re-blessed and proved version-only, the determinism fixture re-blessed version-only, the duel golden and the same-seed hash test, and the screenshot check.
+- **Task 4:** `SIM_VERSION` 35 → 36 with `flattenDuel` leading with it, a per-tick canonical trace proving the bump version-only before anything is blessed, the sector goldens re-blessed, the determinism fixture re-blessed version-only, the duel golden and the same-seed hash test, and the screenshot check.
 - **Not here (H-0c-ii-b, waits for Net-3):** the authority duel mode, the command-union amendment and the snapshot codec.
 
 ## Global Constraints
@@ -33,7 +34,8 @@
 - **No change to `authority/`, `net/contracts.ts`, `app/`, `render/` or any sector behaviour.** Sim changes are limited to the repair events, `SHIP_HULL`, `SIM_VERSION`, `flattenDuel` and the two new files (spec §7).
 - Tick rate 60, `DT` 1/60. Ship 0 is the crew's, ship 1 the hunter's. Player 0 starts at Navigation (the Helm, Cutter tile 27,6), player 1 at Weapons (tile 8,6). Repair points (`sim/duel/tuning.ts`): Weapons 8,7 in W; Shields 16,8 in R; Engines 2,6 in E. Commands carry `requestedTick = d.interior.tick` with a per-player sequence from 0.
 - Generated files are never hand-written: `tests/golden/basic.json` and `tests/golden/duel-1.json` come from `npm run bless`, and `tests/fixtures/determinism-v2.json` from `npx tsx scripts/determinism/rebless-version.ts`. The pinned gameplay projections (`tests/fixtures/net1a-baseline.json`, `tests/fixtures/net1a-gates.json`) are never re-blessed.
-- **Conflict note (spec §6):** Codex's Net-3 branch may also bump `SIM_VERSION` or re-bless goldens. Whichever merges second bumps again and re-runs Task 4's bless and re-bless steps (`npm run bless`, then `npx tsx scripts/determinism/rebless-version.ts`, which refuses unless the change is version-only).
+- **Conflict note (spec §6):** Codex's Net-3 branch may also bump `SIM_VERSION` or re-bless goldens. Whichever merges second bumps again and re-runs Task 4 Steps 3 and 5 to 8: the canonical-trace `baseline` *before* its bump, `check` after it, then `npm run bless`, `golden` and `npx tsx scripts/determinism/rebless-version.ts`.
+- **Commands need no shell features.** Every `Run:` line works as written in Windows PowerShell 5.1 and in Git Bash: no `&&`, pipes, redirection or shell variables. The scripts take their temp paths from `os.tmpdir()` themselves (`<tmp>/ftlite-canonical-trace/`). Only the manual screenshot step gives two forms, one per shell.
 - Commit with explicit paths only (`git add <paths>`), never `git add -A` or `git add .`: the owner keeps unrelated uncommitted files in this checkout. End every commit message with the Co-Authored-By trailer your own session instructs.
 - Run single test files with `npx vitest run <file>`. The full suite is `npm test` (1,969 tests and 1 skipped after this plan; 1,938 and 1 skipped before it). Typecheck is `npm run typecheck` (`tsc -b`; the web project includes `tests/` and `scripts/`).
 - Known flakes: `tests/authorityBoundary.test.ts` and `tests/run.test.ts` can time out under full-suite load. If one fails in `npm test`, rerun it alone; it is unrelated to this plan.
@@ -107,7 +109,11 @@ Each is marked **(rec.)** in the spec's sense: the recommendation, taken under t
 9. **The passive crew** (spec §5) **(rec.)**: both players send `presence {present: false}` on tick 0, so neither console is attended for the whole duel and both characters stay where they are.
 10. **The duel golden** (spec §6) **(rec.)**: seed 1 (a 262.9 s crew win), a hash every 600 ticks (26 hashes), written by `npm run bless` to `tests/golden/duel-1.json` as indented JSON with `simVersion`, `seed`, `outcome`, `ticks`, `finalHash`, `every` and `hashes`. The same-seed test steps two independent duels from seed 7 side by side and compares the hash after every tick.
 11. **The determinism fixture** (found by the prototype; not in the spec's re-bless list): `tests/fixtures/determinism-v2.json` (the Net-1b durability fixture) stores `simVersion` in every recorded checkpoint, so the bump fails `tests/determinismHarness.test.ts` ("snapshot sim version does not match"). Its capture script refuses to overwrite by design. The plan adds `scripts/determinism/rebless-version.ts`: it moves every checkpoint to the current version (init, snapshot header, the snapshot's flattened version value), re-executes the fixture's own schedules, and writes only if every canonical field except `$simVersion`, every sample's place and all 404 result and event boundaries are unchanged. It is not a projection fixture; `net1a-baseline.json` and `net1a-gates.json` are untouched.
-12. **Version-only proof for the sector golden**: Task 4 diffs the re-blessed `tests/golden/basic.json` against the committed one and fails if anything other than `simVersion`, `contentDigest`, the snapshots' flattened version value and the hashes changed (the prototype found 14,531 differing leaves, every one of those kinds). The pinned projection checks in `tests/golden.test.ts` and `tests/netParity.test.ts` pass untouched.
+12. **Version-only proof, per tick** (Codex plan review, P0): the sector hashes include `SIM_VERSION`, and the independent gameplay checks (the pinned projections in `tests/golden.test.ts`, the determinism fixture's samples) look only every 60 ticks, so a changed hash alone cannot prove that nothing between samples moved. `scripts/golden/canonical-trace.ts` closes that gap:
+    - `baseline`, run before `SIM_VERSION` changes, replays the bless replay (`scriptedSemanticReplay(2026, 4, 7200)`, all 7,200 ticks) and every determinism-v2 schedule (19 runs, 108,000 ticks, checkpoints moved to the running version first). For every tick it stores `hashF64` of `flatten(state)` with index 0 (the version) set to 0, and it keeps a copy of today's `basic.json`.
+    - `check`, run after the bump and before any bless, recomputes the same lists and exits 1 ("NOT version-only, bless nothing", naming the first differing tick of each replay) unless all 115,200 per-tick hashes are identical. It also refuses while the baseline is at the running version (the bump has not happened yet). The prototype checked that it bites: with `CREW_SPEED` 4 → 4.001 it failed at tick 1 of the golden and of the cutter runs, and at tick 24 of the skiff runs.
+    - `golden`, run after `npm run bless`, diffs the new `basic.json` against the copy and exits 1 if anything other than `simVersion`, `contentDigest`, the snapshots' flattened version value and the hashes changed (the prototype found 14,531 differing leaves, every one of those kinds).
+    - The pinned projection checks in `tests/golden.test.ts` and `tests/netParity.test.ts` still run and pass untouched.
 
 ## File structure
 
@@ -123,6 +129,7 @@ Each is marked **(rec.)** in the spec's sense: the recommendation, taken under t
 | `scripts/duel-telemetry.ts` | **Create:** the tuning tool |
 | `scripts/bless-golden.ts` | **Replace:** also writes the duel golden |
 | `scripts/determinism/rebless-version.ts` | **Create:** the version-only re-bless of the determinism fixture |
+| `scripts/golden/canonical-trace.ts` | **Create:** the per-tick, version-independent canonical trace (`baseline`, `check`, `golden`) |
 | `tests/helpers/scriptedDuel.ts` | **Create:** `runDuel`, `gateSummary`, `telemetryLine`, `median`, the gate and golden constants |
 | `tests/duelTelemetry.test.ts`, `tests/duelScripted.test.ts`, `tests/duelGates.test.ts`, `tests/duelGolden.test.ts` | **Create:** the tests |
 | `tests/duel.test.ts` | **Replace:** the `DuelState` shape test lists `events` (only change) |
@@ -1780,15 +1787,15 @@ git commit -m "feat(duel): the H-0 telemetry gates, the duel-telemetry tool and 
 ### Task 4: SIM_VERSION 36, the re-bless and the duel golden
 
 **Files:**
-- Create: `tests/duelGolden.test.ts`, `scripts/determinism/rebless-version.ts`
+- Create: `tests/duelGolden.test.ts`, `scripts/golden/canonical-trace.ts`, `scripts/determinism/rebless-version.ts`
 - Modify (whole file): `src/renderer/src/sim/tuning.ts` (`SIM_VERSION` only), `src/renderer/src/sim/duel/hash.ts`, `scripts/bless-golden.ts`
 - Generated: `tests/golden/basic.json`, `tests/golden/duel-1.json` (new), `tests/fixtures/determinism-v2.json`
 
 **Interfaces:**
-- Consumes: Task 3's `runDuel`, `CUTTER`, `DUEL_GOLDEN`, `DUEL_GOLDEN_SEED`, `DUEL_GOLDEN_EVERY`; `executeFixture`, `packFixture`, `unpackFixture`, `Fixture` (`scripts/determinism/fixture.ts`); `firstDifference` (`scripts/determinism/protocol.ts`); `computeContentDigest`.
-- Produces: `SIM_VERSION = 36`; `flattenDuel(d)[0] === SIM_VERSION`; the duel golden file.
+- Consumes: Task 3's `runDuel`, `CUTTER`, `DUEL_GOLDEN`, `DUEL_GOLDEN_SEED`, `DUEL_GOLDEN_EVERY`; `flatten` (`sim/flatten.ts`), `hashF64` (`src/shared/hash.ts`); `runSemanticReplay` (`tests/helpers/semanticReplay.ts`), `scriptedSemanticReplay` (`tests/helpers/script.ts`); `actions`, `coreFor`, `executeFixture`, `packFixture`, `unpackFixture`, `Fixture` (`scripts/determinism/fixture.ts`); `firstDifference` (`scripts/determinism/protocol.ts`); `computeContentDigest`.
+- Produces: `SIM_VERSION = 36`; `flattenDuel(d)[0] === SIM_VERSION`; the duel golden file; `scripts/golden/canonical-trace.ts` with the modes `baseline`, `check` and `golden` (decision 12).
 
-- [ ] **Step 1: Write the failing golden test**
+- [ ] **Step 1: Write the failing golden test and the canonical-trace script**
 
 Create `tests/duelGolden.test.ts`:
 
@@ -1837,12 +1844,125 @@ describe('the duel golden (spec §6)', () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+Create `scripts/golden/canonical-trace.ts`:
+
+```ts
+// Version-independent per-tick check for a SIM_VERSION bump (H-0c-ii-a plan, Task 4). The sector goldens hash
+// SIM_VERSION, and the independent gameplay checks sample only every 60 ticks, so a bump alone cannot prove that
+// nothing between samples changed. This script replays every sector replay the goldens record, hashing the canonical
+// flattened state at EVERY tick with the version value (flatten index 0) zeroed:
+//   - the golden replay `npm run bless` writes (scriptedSemanticReplay(2026, 4, 7200) on the starter layout);
+//   - every schedule of tests/fixtures/determinism-v2.json (its checkpoints moved to the current SIM_VERSION first).
+// Usage (no shell features needed; the temp folder comes from os.tmpdir()):
+//   npx tsx scripts/golden/canonical-trace.ts baseline   before the bump: records the trace and a copy of basic.json
+//   npx tsx scripts/golden/canonical-trace.ts check      after the bump, before any bless: exits 1 unless identical
+//   npx tsx scripts/golden/canonical-trace.ts golden     after `npm run bless`: basic.json differs only in version,
+//                                                        content digest and hashes
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { computeContentDigest } from '../../build/contentDigest';
+import { hashF64 } from '../../src/shared/hash';
+import { flatten } from '../../src/renderer/src/sim/flatten';
+import starter from '../../src/renderer/src/sim/ship/starter.json';
+import { parseShip } from '../../src/renderer/src/sim/ship/schema';
+import type { SimState } from '../../src/renderer/src/sim/state';
+import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
+import { runSemanticReplay } from '../../tests/helpers/semanticReplay';
+import { scriptedSemanticReplay } from '../../tests/helpers/script';
+import { actions, coreFor, unpackFixture, type Fixture } from '../determinism/fixture';
+
+const dir = join(tmpdir(), 'ftlite-canonical-trace'), traceFile = join(dir, 'trace.json'), basicCopy = join(dir, 'basic-before.json');
+const GOLDEN = 'tests/golden/basic.json', FIXTURE = 'tests/fixtures/determinism-v2.json';
+interface Trace { simVersion: number; golden: string[]; determinism: Record<string, string[]> }
+
+/** The canonical hash of a state with the version value zeroed. */
+function canonical(state: SimState): string {
+  const v = Float64Array.from(flatten(state));
+  v[0] = 0;
+  return hashF64(v);
+}
+
+function trace(): Trace {
+  const digest = computeContentDigest(process.cwd()), golden: string[] = [];
+  runSemanticReplay(parseShip(starter), scriptedSemanticReplay(2026, 4, 60 * 120, digest), 1, digest, (state) => golden.push(canonical(state)));
+  const fixture = unpackFixture(JSON.parse(readFileSync(FIXTURE, 'utf8')) as Fixture), determinism: Record<string, string[]> = {};
+  for (const run of fixture.runs) {
+    const cp = run.checkpoint, out: string[] = [];
+    cp.init.simVersion = cp.snapshot.header.simVersion = SIM_VERSION;
+    cp.snapshot.values[0] = SIM_VERSION;
+    const h = coreFor(run, digest);
+    try {
+      for (const action of actions(run)) {
+        h.core.replayFrame({ tick: h.state.tick, eventSequenceBefore: h.core.cursors().eventSequence, action, results: [], events: [] });
+        if (action.kind === 'tick') out.push(canonical(h.state));
+      }
+    } finally { h.core.dispose(); }
+    determinism[cp.init.runId] = out;
+  }
+  return { simVersion: SIM_VERSION, golden, determinism };
+}
+
+const counts = (t: Trace): string => {
+  const runs = Object.values(t.determinism);
+  return `golden ${t.golden.length} ticks, determinism-v2 ${runs.reduce((n, r) => n + r.length, 0)} ticks in ${runs.length} runs`;
+};
+
+function firstDiff(a: readonly string[] | undefined, b: readonly string[] | undefined): number {
+  if (!a || !b) return 0;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) return i;
+  return -1;
+}
+
+const mode = process.argv[2];
+if (mode === 'baseline') {
+  mkdirSync(dir, { recursive: true });
+  const t = trace();
+  writeFileSync(traceFile, JSON.stringify(t));
+  copyFileSync(GOLDEN, basicCopy);
+  console.log(`baseline at sim version ${t.simVersion}: ${counts(t)}; written to ${traceFile}`);
+} else if (mode === 'check') {
+  if (!existsSync(traceFile)) throw Error(`no baseline at ${traceFile}: run the baseline before the bump`);
+  const was = JSON.parse(readFileSync(traceFile, 'utf8')) as Trace, now = trace();
+  if (was.simVersion === now.simVersion) throw Error(`the baseline is already at sim version ${now.simVersion}: bump SIM_VERSION first`);
+  const problems: string[] = [];
+  const g = firstDiff(was.golden, now.golden);
+  if (g >= 0) problems.push(`golden replay differs at tick ${g + 1}`);
+  for (const runId of new Set([...Object.keys(was.determinism), ...Object.keys(now.determinism)])) {
+    const k = firstDiff(was.determinism[runId], now.determinism[runId]);
+    if (k >= 0) problems.push(`determinism-v2 ${runId} differs at its tick ${k + 1}`);
+  }
+  if (problems.length > 0) { console.error(`NOT version-only, bless nothing:\n${problems.join('\n')}`); process.exit(1); }
+  console.log(`per-tick canonical trace identical, sim version ${was.simVersion} → ${now.simVersion}: ${counts(now)}`);
+} else if (mode === 'golden') {
+  if (!existsSync(basicCopy)) throw Error(`no copy of ${GOLDEN} at ${basicCopy}: run the baseline before the bump`);
+  const a: unknown = JSON.parse(readFileSync(basicCopy, 'utf8')), b: unknown = JSON.parse(readFileSync(GOLDEN, 'utf8')), diffs: string[] = [];
+  const walk = (x: unknown, y: unknown, p: string): void => {
+    if (JSON.stringify(x) === JSON.stringify(y)) return;
+    if (x && y && typeof x === 'object' && typeof y === 'object') {
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) walk((x as Record<string, unknown>)[k], (y as Record<string, unknown>)[k], `${p}.${k}`);
+      return;
+    }
+    diffs.push(p);
+  };
+  walk(a, b, '');
+  const other = diffs.filter((p) => !/(simVersion|contentDigest|\.values\.0|\.hash|^\.hashes\.\d+|^\.finalHash)$/.test(p));
+  console.log(`${GOLDEN}: ${diffs.length} leaves differ, ${other.length} outside version, digest and hashes`);
+  if (other.length > 0) { console.error(other.slice(0, 10).join('\n')); process.exit(1); }
+} else throw Error('usage: npx tsx scripts/golden/canonical-trace.ts baseline|check|golden');
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run tests/duelGolden.test.ts`
 Expected: FAIL, 2 failed and 1 passed: the golden test with "AssertionError: expected false to be true // Object.is equality" (no `tests/golden/duel-1.json` yet) and the flatten test with "AssertionError: expected +0 to be 35 // Object.is equality" (the duel flatten still starts with the tactical tick). The same-seed test already passes.
 
-- [ ] **Step 3: Bump the version, lead the duel flatten with it, and extend the bless**
+- [ ] **Step 3: Record the per-tick baseline, before anything changes the version**
+
+Run: `npx tsx scripts/golden/canonical-trace.ts baseline`
+Expected: `baseline at sim version 35: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs; written to <tmp>/ftlite-canonical-trace/trace.json` (about 15 s). This must run on Task 3's code, before Step 4.
+
+- [ ] **Step 4: Bump the version, lead the duel flatten with it, and extend the bless**
 
 Replace the whole of `src/renderer/src/sim/tuning.ts` with:
 
@@ -2166,7 +2286,12 @@ writeFileSync(path, JSON.stringify(packFixture(fixture)));
 console.log(`re-blessed ${path}: sim version ${from} → ${SIM_VERSION}, ${now.samples.length} samples and ${now.boundaries.length} boundaries unchanged apart from the version and hashes`);
 ```
 
-- [ ] **Step 4: Re-bless the sector golden and write the duel golden**
+- [ ] **Step 5: Prove the bump is version-only at every tick, before blessing anything**
+
+Run: `npx tsx scripts/golden/canonical-trace.ts check`
+Expected: `per-tick canonical trace identical, sim version 35 → 36: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs`, exit 0. **If it exits 1 ("NOT version-only, bless nothing"), stop:** something besides the version changed sector gameplay. Bless nothing until that is fixed.
+
+- [ ] **Step 6: Re-bless the sector golden, write the duel golden, and diff the sector golden**
 
 Run: `npm run bless`
 Expected, the last two lines:
@@ -2175,24 +2300,15 @@ blessed tests/golden/basic.json: 120 checkpoints, final 2ec5ef23
 blessed tests/golden/duel-1.json: 26 checkpoints, 15772 ticks, outcome 1, final 99e38c36
 ```
 
-Prove the sector golden changed by the version only (no file is written):
+Run: `npx tsx scripts/golden/canonical-trace.ts golden`
+Expected: `tests/golden/basic.json: 14531 leaves differ, 0 outside version, digest and hashes`, exit 0.
 
-Run:
-```bash
-git show HEAD:tests/golden/basic.json > "${TMPDIR:-/tmp}/basic-before.json" && node -e "
-const fs = require('fs'), a = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')), b = JSON.parse(fs.readFileSync('tests/golden/basic.json', 'utf8'));
-const diffs = []; (function walk(x, y, p) { if (JSON.stringify(x) === JSON.stringify(y)) return; if (x && y && typeof x === 'object' && typeof y === 'object') { for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) walk(x[k], y[k], p + '.' + k); return; } diffs.push(p); })(a, b, '');
-const other = diffs.filter((p) => !/(simVersion|contentDigest|\.values\.0|\.hash|^\.hashes\.\d+|^\.finalHash)$/.test(p));
-console.log(diffs.length + ' leaves differ, ' + other.length + ' outside version, digest and hashes'); if (other.length) { console.log(other.slice(0, 10)); process.exit(1); }" "${TMPDIR:-/tmp}/basic-before.json"
-```
-Expected: `14531 leaves differ, 0 outside version, digest and hashes`, exit 0.
-
-- [ ] **Step 5: Re-bless the determinism fixture, version only**
+- [ ] **Step 7: Re-bless the determinism fixture, version only**
 
 Run: `npx tsx scripts/determinism/rebless-version.ts`
 Expected: `re-blessed tests/fixtures/determinism-v2.json: sim version 35 → 36, 1800 samples and 404 boundaries unchanged apart from the version and hashes` (about 10 s). A second run refuses: `tests/fixtures/determinism-v2.json is already at sim version 36`.
 
-- [ ] **Step 6: Run the golden, projection and determinism tests**
+- [ ] **Step 8: Run the golden, projection and determinism tests**
 
 Run: `npx vitest run tests/duelGolden.test.ts tests/golden.test.ts tests/netParity.test.ts tests/determinismHarness.test.ts tests/duel.test.ts tests/boundary.test.ts`
 Expected: PASS, 167 tests in 6 files (3 duel golden, 4 golden, 24 net parity, 14 determinism harness, 22 duel, 100 boundary). `tests/golden.test.ts`'s pinned gameplay projections (`net1a-baseline.json`, untouched) and `tests/netParity.test.ts` pass unedited.
@@ -2200,7 +2316,7 @@ Expected: PASS, 167 tests in 6 files (3 duel golden, 4 golden, 24 net parity, 14
 Run: `git status --short tests/fixtures`
 Expected: only ` M tests/fixtures/determinism-v2.json`.
 
-- [ ] **Step 7: Typecheck and run the full suite**
+- [ ] **Step 9: Typecheck and run the full suite**
 
 Run: `npm run typecheck`
 Expected: exit 0.
@@ -2208,16 +2324,16 @@ Expected: exit 0.
 Run: `npm test`
 Expected: every file passes, 1,969 tests and 1 skipped (see the known flakes in Global Constraints).
 
-- [ ] **Step 8: Check that the duel still boots (manual, outside the repo)**
+- [ ] **Step 10: Check that the duel still boots (manual, outside the repo)**
 
 Run: `npm run build`, then launch the built app with `FTLITE_MODE=duel` (PowerShell: `$env:FTLITE_MODE='duel'; npx electron .`; Git Bash: `FTLITE_MODE=duel npx electron .`), or use the visual-check method (`playwright-core` outside the repo, `_electron.launch({ executablePath: '<repo>/node_modules/electron/dist/electron.exe', args: ['<repo>'], env: { ...process.env, FTLITE_MODE: 'duel' } })`, then `page.screenshot`).
 
 Expected (the prototype's screenshot showed it): the Helm view boots with the readout column reading `CUTTER HULL 40/40` and `HUNTER HULL 40/40`; Tab, Space, F, X and Tab behave as in H-1b, with no page errors (the optional-art `ERR_FILE_NOT_FOUND` console errors are not from this plan). Delete any scratch files; commit nothing from this step.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/renderer/src/sim/tuning.ts src/renderer/src/sim/duel/hash.ts scripts/bless-golden.ts scripts/determinism/rebless-version.ts tests/duelGolden.test.ts tests/golden/basic.json tests/golden/duel-1.json tests/fixtures/determinism-v2.json
+git add src/renderer/src/sim/tuning.ts src/renderer/src/sim/duel/hash.ts scripts/bless-golden.ts scripts/golden/canonical-trace.ts scripts/determinism/rebless-version.ts tests/duelGolden.test.ts tests/golden/basic.json tests/golden/duel-1.json tests/fixtures/determinism-v2.json
 git commit -m "feat(duel): SIM_VERSION 36, the duel golden and the version-only re-bless (Helm H-0c-ii-a)"
 ```
 
@@ -2229,6 +2345,6 @@ git commit -m "feat(duel): SIM_VERSION 36, the duel golden and the version-only 
 
 - **H-0 is done headless:** the scripted duels, walking to repairs included, hit parent §16's telemetry targets, and the same-seed hash and golden replay pass. The roadmap's H-0 row can be marked complete apart from H-0c-ii-b.
 - **H-0c-ii-b** (waits for Net-3): the authority duel mode, the command-union amendment and the snapshot codec. When it lands, `flattenDuel` already carries `SIM_VERSION`, and the duel golden replays through the authority as well as directly.
-- **Conflict with Net-3:** whichever merges second bumps `SIM_VERSION` again and re-runs Task 4 Steps 4 and 5 (`npm run bless`, the version-only diff, `npx tsx scripts/determinism/rebless-version.ts`).
+- **Conflict with Net-3:** whichever merges second bumps `SIM_VERSION` again and re-runs Task 4 Steps 3 and 5 to 8: `npx tsx scripts/golden/canonical-trace.ts baseline` before its bump, `check` after it, then `npm run bless`, `golden`, and `npx tsx scripts/determinism/rebless-version.ts`.
 - **Tuning watch:** the crew's missiles rarely hit (the pair launches from beyond laser range and the belt eats them), and the hunter's lasers hit on every release. Neither is a gate, but the live H-2 telemetry should look at both before more numbers move. `npx tsx scripts/duel-telemetry.ts` prints everything parent §13 lists.
 - **The owner's check:** `npm run dev:duel`; the hulls read 40/40 and a solo duel runs longer than before.
