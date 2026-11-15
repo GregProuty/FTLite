@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { Position } from '../src/renderer/src/sim/components';
+import { Life, LifeState, Position } from '../src/renderer/src/sim/components';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand } from '../src/renderer/src/sim/duel/commands';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
@@ -18,6 +18,25 @@ const step = (d: DuelState, player: number, command: DuelCommand | null, held: H
 const put = (d: DuelState, pid: number, tx: number, ty: number): void => { const eid = d.interior.crew[pid]!; Position.x[eid] = tx + 0.5; Position.y[eid] = ty + 0.5; };
 
 describe('duel controls (H-1 spec §5)', () => {
+  it('a downed character can neither repair nor sit, and an offline console cannot be sat at (as the sim)', () => {
+    const d = createDuel(layout, 5);
+    step(d, 0, { kind: 'stand' }); put(d, 0, 1, 6);
+    d.tactical.ships[0].rooms[Room.Engines] = 1;
+    expect(repairInReach(d, 0)).toBe(Room.Engines);
+    const eid = d.interior.crew[0]!, was = Life.state[eid]!;
+    Life.state[eid] = LifeState.Downed;
+    expect(repairInReach(d, 0)).toBe(-1);
+    Life.state[eid] = was;
+    step(d, 1, { kind: 'stand' });                             // free the Weapons console
+    const w = d.interior.derived.stationTile[d.weapons]!, W = d.interior.derived.width;
+    put(d, 1, w % W, Math.floor(w / W));
+    expect(consoleInReach(d, 1)).toBe(d.weapons);
+    d.interior.stations.failed[d.weapons] = 1;
+    expect(consoleInReach(d, 1)).toBe(-1);
+    const results = step(d, 1, { kind: 'sit', station: d.weapons });
+    expect(results.map((r) => r.status)).not.toContain('applied');   // the sim agrees
+    disposeDuel(d);
+  });
   it('seatOf: player 0 at the Helm, player 1 at Weapons, standing after a stand', () => {
     const d = createDuel(layout, 5);
     expect([seatOf(d, 0), seatOf(d, 1)]).toEqual(['helm', 'weapons']);
