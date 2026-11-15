@@ -1,6 +1,6 @@
 # Net-3e: fenced recovery and internet verification
 
-Status: proposed slice details under the approved Net-3 parent design; [builder check complete](../reviews/2026-11-15-net-3e-builder-check.md), ready for design approval and implementation planning. Source baseline `f62cf4e`, runtime `33d674b`, branch `codex/net-3`. No product code, deployment or credentials changed for this document.
+Status: approved by the user ("go ahead") for implementation planning; [builder check complete](../reviews/2026-11-15-net-3e-builder-check.md). [Implementation plan](../plans/2026-11-15-net-3e-recovery-internet.md) prepared for review. Source baseline `f62cf4e`, runtime `33d674b`, branch `codex/net-3`. No product code, deployment or credentials changed for this document.
 
 ## Outcome and existing decisions
 
@@ -8,7 +8,7 @@ Finish the approved internet-session design: the authority must stop independent
 
 The parent authority is [Net-3](2026-11-14-net-3-internet-sessions-design.md), particularly sections 10–13. Preserve host authority, the WebRTC star, fixed post-start roster, manual re-hosting, command/held watermarks, compatibility checks, main-only credentials and the mode boundary. No automatic election, prediction, public matchmaking, new gameplay mode, WSS gameplay relay, or billing/quota expansion.
 
-Controller recommendation: deliver Net-3e in two verifiable stages. **Recovery** implements and proves utility fencing, mirrors and manual re-host locally. **Internet verification** wires TURN/HTTPS and produces a deployable candidate, then runs separately recorded deployed/relay/two-machine checks. These are stages of the same approved scope, not a declaration that local recovery completes Net-3e. Existing tools/dependencies stay pinned.
+Approved delivery approach: deliver Net-3e in two verifiable stages. **Recovery** implements and proves utility fencing, mirrors and manual re-host locally. **Internet verification** wires TURN/HTTPS and produces a deployable candidate, then runs separately recorded deployed/relay/two-machine checks. These are stages of the same approved scope, not a declaration that local recovery completes Net-3e. Existing tools/dependencies stay pinned.
 
 ## Approaches
 

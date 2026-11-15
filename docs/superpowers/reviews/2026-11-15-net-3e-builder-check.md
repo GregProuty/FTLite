@@ -10,4 +10,4 @@ The review specifically checked utility-originated renewal after server start/re
 
 Controller clarifications after the check: loopback development retains an explicit no-provider ICE path; HTTPS uses authenticated TURN; pending native registration must retain bounded early signalling under the original setup deadline. These clarify the existing ownership/budget requirements rather than change recovery policy.
 
-Design approval is still pending. This check does not claim implementation, deployment, live TURN, actual OS-suspend proof or two-machine internet readiness. Existing Net-3d validation remains unchanged.
+The user subsequently approved the design with "go ahead"; implementation planning is authorized. This check does not claim implementation, deployment, live TURN, actual OS-suspend proof or two-machine internet readiness. Existing Net-3d validation remains unchanged.
