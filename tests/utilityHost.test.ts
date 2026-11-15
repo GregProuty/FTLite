@@ -15,6 +15,7 @@ function harness() {
   const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost() {
     constructed++; let count = 0;
     return { completeBootstrap() {}, start(bytes) { count = bytes[0]!; }, checkpoint: () => new Uint8Array([count]), restore() {},
+      async captureCheckpoint(cause) { return { cause, capturedTick: 0, controlRevision: 0, bytes: new Uint8Array([count]) }; },
       pause() { count++; }, attach(_link, _players, _policy, options) { attachments.push(options); return () => {}; }, dispose() { disposed++; } };
   } };
   const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest,
@@ -22,6 +23,26 @@ function harness() {
   return { owner, messages, attachments, counters: () => [constructed, disposed], advance() { now++; } };
 }
 describe('utility trusted process boundary', () => {
+  it('stamps each mode notification freshly, copies bytes, and keeps only its newest replacement', () => {
+    const messages: any[] = [], candidate = { cause: 'periodic' as const, capturedTick: 0, controlRevision: 0, bytes: new Uint8Array([1]) };
+    let publish!: () => void;
+    const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost(deps) {
+      publish = () => deps.onCheckpoint?.(candidate);
+      return { completeBootstrap() {}, start() { publish(); }, restore() {}, checkpoint: () => candidate.bytes,
+        async captureCheckpoint() { publish(); return candidate; }, pause() {}, attach: () => () => {}, dispose() {} };
+    } };
+    const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest, clock: { nowMs: () => 0 },
+      scheduler: { schedule: () => () => {} }, onCrash() {} }, m => messages.push(m));
+    try {
+      owner.receive({ kind: 'initialize', ...identity }, []);
+      owner.receive({ kind: 'command', command: { kind: 'start', requestId: 1, hostGeneration: 7, initBytes: new Uint8Array([0]) } }, []);
+      candidate.bytes[0] = 2; publish(); candidate.bytes[0] = 3; publish(); candidate.bytes[0] = 4;
+      expect(messages.filter(m => m.kind === 'checkpoint')).toHaveLength(1);
+      expect(messages.find(m => m.kind === 'checkpoint').candidate.bytes).toEqual(new Uint8Array([1]));
+      owner.receive({ kind: 'ack-checkpoint', requestId: 2, hostGeneration: 7, captureId: 1 }, []);
+      expect(messages.filter(m => m.kind === 'checkpoint').at(-1).candidate).toMatchObject({ captureId: 3, bytes: new Uint8Array([3]) });
+    } finally { owner.dispose(); }
+  });
   it.each(['before-receipt', 'during-receipt'])('observes a missed %s expiry before applying a newer useful grant after utility timer starvation', edge => {
     let now = 0, nonce = 0, id = 0; const samples: number[] = [], scheduled: { delay: number; callback: () => void }[] = [], messages: any[] = [];
     const sessionLease = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) };
@@ -49,7 +70,9 @@ describe('utility trusted process boundary', () => {
     const sessionLease = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) };
     const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost(deps) {
       gate = deps.sessionGate!;
-      return { completeBootstrap() {}, start() {}, restore() {}, checkpoint: () => new Uint8Array([Number(gate.check().allowed)]), pause() {}, attach: () => () => {}, dispose() {} };
+      return { completeBootstrap() {}, start() {}, restore() {}, checkpoint: () => new Uint8Array([Number(gate.check().allowed)]),
+        async captureCheckpoint(cause) { return { cause, capturedTick: 0, controlRevision: 0, bytes: new Uint8Array([Number(gate.check().allowed)]) }; },
+        pause() {}, attach: () => () => {}, dispose() {} };
     } };
     const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest,
       clock: { nowMs: () => now }, leaseClock: { nowMs: () => now, epochMs: () => 100000 + now }, nonce: () => (++nonce).toString(16).padStart(32, '0'),
@@ -123,7 +146,9 @@ describe('utility trusted process boundary', () => {
     for (let i = 0; i < 10000; i++) Object.defineProperty(diagnostic, `key${i}`, { enumerable: true, get() { visited++; return i; } });
     const messages: any[] = [];
     const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost(deps) {
-      return { completeBootstrap() {}, start() { deps.onCrash({ checkpoint: new Uint8Array([1]), diagnostic }); }, checkpoint: () => new Uint8Array([1]), restore() {}, pause() {}, attach: () => () => {}, dispose() { disposed++; } };
+      return { completeBootstrap() {}, start() { deps.onCrash({ checkpoint: new Uint8Array([1]), diagnostic }); }, checkpoint: () => new Uint8Array([1]),
+        async captureCheckpoint(cause) { return { cause, capturedTick: 0, controlRevision: 0, bytes: new Uint8Array([1]) }; },
+        restore() {}, pause() {}, attach: () => () => {}, dispose() { disposed++; } };
     } };
     const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest,
       clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash() {} }, message => messages.push(message));

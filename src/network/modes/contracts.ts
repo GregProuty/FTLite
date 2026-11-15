@@ -2,6 +2,7 @@ import type { Link, MonotonicClock, Scheduler, Unsubscribe } from '../../rendere
 import type { AdmissionPolicy } from '../../renderer/src/net/receivePolicy';
 import type { StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 import type { SessionWorkGate } from '../../shared/sessionLease';
+import type { CaptureCause, ModeCheckpoint } from '../../shared/sessionCheckpoint';
 export type { StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 export type { AdmissionPolicy, Link, MonotonicClock, Scheduler, Unsubscribe };
 export interface ModeHost {
@@ -9,11 +10,13 @@ export interface ModeHost {
   start(initBytes: Uint8Array): void;
   attach(link: Link, players: readonly number[], policy: AdmissionPolicy, options?: StreamAttachmentOptions): Unsubscribe;
   checkpoint(): Uint8Array;
+  captureCheckpoint(cause: CaptureCause): Promise<ModeCheckpoint>;
   restore(bytes: Uint8Array): void;
   pause(reason: string): void;
   dispose(): void;
 }
 export interface ModeHostDeps {
+  onCheckpoint?(candidate: ModeCheckpoint): void;
   sessionGate?: SessionWorkGate;
   contentDigest: string; clock: MonotonicClock; scheduler: Scheduler;
   onCrash(record: { checkpoint: Uint8Array | null; diagnostic: unknown }): void;

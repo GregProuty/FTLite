@@ -8,6 +8,7 @@ import starter from '../../renderer/src/sim/ship/starter.json';
 import skiff from '../../renderer/src/sim/ship/skiff.json';
 import cutter from '../../renderer/src/sim/ship/cutter.json';
 import { boundedHostBytes } from '../../shared/netSession';
+import type { CaptureCause, ModeCheckpoint } from '../../shared/sessionCheckpoint';
 import { validStreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 import { createSectorStreamBinding } from './sectorStream';
 import { createSectorProducers } from './sectorProducers';
@@ -30,11 +31,21 @@ function createSectorHost(deps: ModeHostDeps): ModeHost {
   let producers: ReturnType<typeof createSectorProducers> | undefined;
   const attached = new Set<Unsubscribe>();
   const streamDisposals = new Set<Unsubscribe>();
+  const captures = new WeakMap<Checkpoint, ModeCheckpoint>();
+  function candidate(checkpoint: Checkpoint, cause: CaptureCause): ModeCheckpoint {
+    let value = captures.get(checkpoint);
+    if (!value) {
+      value = { capturedTick: checkpoint.snapshot.header.tick, controlRevision: checkpoint.controlRevision, cause, bytes: encode(checkpoint) };
+      captures.set(checkpoint, value);
+    }
+    return value;
+  }
   function replace(value: RunInit | Checkpoint, restore: boolean): void {
     if (disposed || attached.size) throw Error('detach producers before replacing sector');
     let nextPause: typeof pause;
     let nextProducers: ReturnType<typeof createSectorProducers>;
     const next = createAuthority({ ...deps, resolveLayout,
+      onCheckpoint: deps.onCheckpoint ? (checkpoint, cause) => { deps.onCheckpoint!(candidate(checkpoint, cause)); } : undefined,
       botControllers: () => nextProducers.controllers(),
       beforeControls: () => nextProducers.beforeControls(), beforeTick: tick => nextProducers.beforeTick(tick),
       onCrash(record) { let checkpoint: Uint8Array | null = null; try { checkpoint = encode(record.checkpoint); } catch { /* retain diagnostics */ }
@@ -67,6 +78,11 @@ function createSectorHost(deps: ModeHostDeps): ModeHost {
       attached.add(detach); return detach;
     },
     checkpoint() { if (!authority || disposed) throw Error('sector unavailable'); return encode(authority.checkpoint(producers!.controllers())); },
+    async captureCheckpoint(cause) {
+      if (!authority || disposed) throw Error('sector unavailable');
+      const captured = await authority.requestCheckpoint(cause);
+      return candidate(captured.checkpoint, captured.cause);
+    },
     pause(reason) { if (!authority || disposed || !reason.length || reason.length > 128) throw Error('sector unavailable'); pause?.({ paused: true, reason }); authority.pump(); },
     dispose() { if (disposed) return; disposed = true; try { producers?.dispose(); } finally { try { authority?.dispose(); } finally {
       authority = null; pause = undefined; attached.clear(); for (const release of streamDisposals) release(); streamDisposals.clear();

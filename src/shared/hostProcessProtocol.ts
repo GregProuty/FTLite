@@ -1,5 +1,17 @@
 import { boundedHostBytes, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostResponse } from './netSession';
 import { validateSessionLeaseIdentity, type SessionLeaseIdentity, type LeaseFenceReason } from './sessionLease';
+import { isCheckpointCandidate } from './sessionCheckpoint';
+
+/** Utility-private delivery; never accepted on the renderer command channel. */
+export function isCheckpointDelivery(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const m = value as Record<string, unknown>;
+  return positiveSafeInteger(m.hostGeneration) && (m.kind === 'checkpoint'
+    ? isCheckpointCandidate(m.candidate) && Object.keys(m).every(k => ['kind', 'hostGeneration', 'candidate'].includes(k))
+    : m.kind === 'captured' && positiveSafeInteger(m.requestId)
+      && (m.ok === true ? isCheckpointCandidate(m.candidate) : m.ok === false && m.candidate === undefined)
+      && Object.keys(m).every(k => ['kind', 'hostGeneration', 'requestId', 'ok', 'candidate'].includes(k)));
+}
 
 export function matchesSessionLease(value: unknown, identity: SessionLeaseIdentity): value is SessionLeaseIdentity {
   return validateSessionLeaseIdentity(value) && (Object.keys(identity) as (keyof SessionLeaseIdentity)[]).every(key => value[key] === identity[key]);

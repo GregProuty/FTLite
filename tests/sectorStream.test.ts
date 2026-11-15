@@ -321,6 +321,7 @@ describe('sector publication and acceptance boundary', () => {
     const runtime = createHostRuntime(createModeRegistry([{ modeId: 'counter', schemaVersion: 1, simVersion: 9,
       latestStreamKey() { throw Error('legacy classifier must not see stream framing'); },
       createHost: () => ({ completeBootstrap() {}, start() {}, restore() {}, pause() {}, checkpoint: () => new Uint8Array([1]), dispose() {},
+        async captureCheckpoint(cause) { return { cause, capturedTick: 0, controlRevision: 0, bytes: new Uint8Array([1]) }; },
         attach(link, _players, _policy, chosen) { selected = chosen; link.send('unreliable-latest', encodeOpaquePacket('input', 'held:0', 1, new Uint8Array([1]))); return () => {}; } }) }]),
       { contentDigest: options.contentDigest, clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash() {} }, { modeId: 'counter', schemaVersion: 1, simVersion: 9, hostGeneration: 1 });
     ownTestCleanup(() => runtime.dispose()); runtime.handle({ kind: 'start', requestId: 1, hostGeneration: 1, initBytes: new Uint8Array([1]) });

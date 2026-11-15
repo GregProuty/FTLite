@@ -25,6 +25,7 @@ const sources = {
   'src/shared/roomSession.ts': 'export const serviceProtocol = 2;\n',
   'src/shared/onlineSession.ts': 'export const onlineProtocol = 1;\n',
   'src/shared/sessionLease.ts': 'export type SessionWorkGate = { check(): boolean };\n',
+  'src/shared/sessionCheckpoint.ts': 'export type CaptureCause = "periodic";\n',
   'src/network/rtc/contracts.ts': 'export const limit = 4096;\n',
   'src/network/rtc/frames.ts': 'export const frame = 1;\n',
   'src/network/rtc/dataLink.ts': 'export const queue = 16;\n',

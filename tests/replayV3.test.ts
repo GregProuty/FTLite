@@ -7,6 +7,15 @@ import { encodeMessage } from '../src/renderer/src/net/codec';
 
 const moving: HeldInput = { moveX: 1, moveY: 0, interactHeld: true };
 const neutral: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+it('replays explicit exit-capture settlement and retains terminal producer watermarks', async () => {
+  const h = rig(); held(h, 1);
+  h.send({ kind: 'command', envelope: { runId: h.init.runId, id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'stand' } } }); h.pump();
+  const captured = await h.authority.requestCheckpoint('exit'); h.drain();
+  expect(captured.checkpoint).toMatchObject({ phase: 'paused', commandHighWater: [1], heldHighWater: [1], held: [neutral] });
+  expect(h.output.filter(m => m.kind === 'result').at(-1)!.result).toMatchObject({ id: { player: 0, sequence: 1 }, reason: 'unavailable' });
+  const replay = h.authority.replay(), actual = runReplay(LAYOUT, replay, h.init.contentDigest, undefined, { retainFrames: true });
+  expect(actual.frames).toEqual(replay.frames); expect(actual.checkpoint).toEqual(captured.checkpoint);
+});
 it.each([2, 3] as const)('preserves a pending trusted Resume across an ordinary legacy v%i seal', version => {
   const h = checkpointRig(), base = h.authority.replay();
   const frame = (action: unknown) => ({ tick: 0, eventSequenceBefore: 0, action, results: [], events: [] });

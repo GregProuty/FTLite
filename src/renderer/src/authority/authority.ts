@@ -1,6 +1,7 @@
 import type { AuthorityMessage, PublishedState, LifecyclePause, Link, MonotonicClock, RunInit, Scheduler, Unsubscribe } from '../net/contracts';
 import type { Replay } from '../sim/replay';
 import type { SessionWorkGate } from '../../../shared/sessionLease';
+import type { CaptureCause } from '../../../shared/sessionCheckpoint';
 import type { AdmissionPolicy } from '../net/receivePolicy';
 export type { AdmissionPolicy } from '../net/receivePolicy';
 export interface AttachOptions {
@@ -21,6 +22,7 @@ import { createAuthorityCore, type CrashRecord } from './core';
 export type { CrashRecord, JournalTick } from './core';
 
 export interface AuthorityDeps {
+  onCheckpoint?(checkpoint: Checkpoint, cause: CaptureCause): void;
   sessionGate?: SessionWorkGate;
   clock: MonotonicClock; scheduler: Scheduler; contentDigest: string;
   resolveLayout(id: string): ShipLayout; onCrash(record: CrashRecord): void;
@@ -33,6 +35,7 @@ export interface AuthorityDeps {
 /** Live Net-1a owner: closed held/command/contextual-callout ingress; durable restore belongs to Net-1b. */
 export interface Authority1a { attach(link: Link, players: readonly number[], options?: AttachOptions): Unsubscribe; start(init: RunInit): void; pump(): void; dispose(): void }
 export interface Authority extends Authority1a {
+  requestCheckpoint(cause: CaptureCause): Promise<{ checkpoint: Checkpoint; cause: CaptureCause }>;
   completeBootstrap(): void;
   checkpoint(botControllers: readonly CardUiState[]): Checkpoint;
   /** Restore paused with no attached producers. Retire old client/transport queues,
@@ -65,6 +68,7 @@ export function createAuthority(deps: AuthorityDeps): Authority {
       }
     },
     replay() { if (!core || disposed) throw new Error('authority unavailable'); return core.replay(); },
+    requestCheckpoint(cause) { if (!core || disposed) return Promise.reject(Error('authority unavailable')); return core.requestCheckpoint(cause); },
     completeBootstrap() { if (!core || disposed) throw Error('authority unavailable'); core.completeBootstrap(); },
     checkpoint(botControllers) { if (!core || disposed) throw new Error('authority unavailable'); return core.checkpoint(botControllers); },
     restore(checkpoint) {

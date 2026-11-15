@@ -32,6 +32,7 @@ const init = () => ({ runId: 'mode-test', layoutId: LAYOUT.id, layoutHash: deriv
 const minimal: ModeDefinition = { modeId: 'counter', schemaVersion: 7, simVersion: 9, createHost() {
   let value = 0;
   return { completeBootstrap() {}, start(bytes) { if (bytes.length !== 1) throw Error('invalid counter'); value = bytes[0]!; },
+    async captureCheckpoint(cause) { return { cause, capturedTick: 0, controlRevision: 0, bytes: new Uint8Array([value]) }; },
     restore(bytes) { if (bytes.length !== 1) throw Error('invalid counter'); value = bytes[0]!; }, checkpoint: () => new Uint8Array([value]),
     attach(_link, _players, policy) { if (policy !== 'receive-time') throw Error('wrong admission'); return () => {}; }, pause() { value++; }, dispose() {} };
 } };
@@ -67,7 +68,7 @@ describe('mode host runtime', () => {
     else { expect(decode(restored.checkpointBytes).snapshot.values).toEqual(decode(saved.checkpointBytes).snapshot.values); expect(decode(restored.checkpointBytes).paused).toBe(true); }
   });
   it('matches direct sector authority canonical state at completed ticks', () => {
-    const h = harness(), direct = createAuthority({ ...h.deps, resolveLayout: () => LAYOUT, onCrash() {} });
+    const h = harness(), direct = createAuthority({ ...h.deps, onCheckpoint: undefined, resolveLayout: () => LAYOUT, onCrash() {} });
     ownTestCleanup(() => direct.dispose()); direct.start(init());
     expect(h.command({ kind: 'start', initBytes: encode(init()) }).ok).toBe(true);
     // Both owners have an explicitly idle human; vacant sector seats now run bots.

@@ -5,7 +5,8 @@ import { hashState } from '../sim/hash';
 import { hashF64 } from '../../../shared/hash';
 import { assertSimStateLive, disposeSimState, type SimState } from '../sim/state';
 import { stepCommands } from '../sim/step';
-import { isPauseControl, type TickInput } from '../sim/commands';
+import { isPauseControl, visitRef, type TickInput } from '../sim/commands';
+import { isCaptureCause, urgentCapture, type CaptureCause } from '../../../shared/sessionCheckpoint';
 import { telemetryRecord } from '../sim/telemetry';
 import { createTickDriver } from './tickDriver';
 import { createLedger, type AdmittedEnvelope, type Ledger } from './ledger';
@@ -73,7 +74,59 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   let frames: ReplayFrame[] = [], activeFrame: ReplayFrame | null = null;
   const deferredDetaches = new Set<Unsubscribe>();
   let flushingDetaches = false;
-  let durableBaseline: Checkpoint;
+  let durableBaseline!: Checkpoint;
+  let captureCause: CaptureCause | undefined, capturing = false;
+  const captureWaiters: { resolve(value: { checkpoint: Checkpoint; cause: CaptureCause }): void; reject(error: Error): void }[] = [];
+  let observedVisit = JSON.stringify(visitRef(state)), observedRevision = controlRevision;
+  let observedPhase: PublishedState['phase'] = phase;
+  function queueCapture(cause: CaptureCause): void { captureCause = urgentCapture(captureCause, cause); }
+  function rejectCaptures(): void {
+    captureCause = undefined;
+    for (const waiter of captureWaiters.splice(0)) waiter.reject(Error('capture unavailable'));
+  }
+  function deliverCapture(checkpoint: Checkpoint, cause: CaptureCause): boolean {
+    // Own the bytes/state before any reentrant observer can mutate or admit input.
+    const captured = structuredClone(checkpoint), waiters = captureWaiters.slice();
+    captureCause = undefined;
+    try { deps.onCheckpoint?.(captured, cause); } catch {
+      // Encoding/delivery can fail independently of a valid live simulation.
+      // Retain the request, not another byte snapshot, for the next boundary.
+      captureCause = urgentCapture(captureCause, cause); return false;
+    }
+    captureWaiters.splice(0, waiters.length);
+    for (const waiter of waiters) waiter.resolve({ checkpoint: captured, cause });
+    return true;
+  }
+  function flushCapture(completedBaseline?: Checkpoint): void {
+    if (replaying || activeFrame || capturing || !captureCause) return;
+    if (disposed || phase === 'error') { rejectCaptures(); return; }
+    capturing = true;
+    try {
+      if (captureCause === 'exit') {
+        drainIngress(); lifecycle({ paused: true, reason: 'session-exit' }); applyControls(); rejectPending();
+      } else if (phase === 'paused' || phase === 'ended') {
+        // Stopped clocks cannot wait for another tick to finish admitted work.
+        drainIngress(); applyControls(); rejectPending();
+      }
+      if ((phase as PublishedState['phase']) === 'error' || disposed) { rejectCaptures(); return; }
+      // Never project pending ledger entries away to manufacture a valid save.
+      if (pending.length || inFlight.length || controlQueue.some(c => c.record.source === 'player')) return;
+      const cause = captureCause!;
+      const checkpoint = completedBaseline && cause === 'periodic' ? completedBaseline
+        : captureCheckpoint(deps.botControllers ? deps.botControllers() : botMemory);
+      if (!deliverCapture(checkpoint, cause)) { if (phase !== 'running') rejectCaptures(); return; }
+      observedPhase = phase; observedRevision = controlRevision; observedVisit = JSON.stringify(visitRef(state));
+    } catch { if (phase !== 'running' || disposed) rejectCaptures(); }
+    finally { capturing = false; }
+  }
+  function observeCaptureBoundary(): void {
+    if (!deps.onCheckpoint || replaying || phase === 'error') return;
+    const visit = JSON.stringify(visitRef(state));
+    if (visit !== observedVisit || phase === 'ended' && observedPhase !== 'ended') queueCapture('safe-point');
+    if (phase === 'paused' && observedPhase !== 'paused') queueCapture('pause');
+    else if (phase === 'paused' && controlRevision !== observedRevision) queueCapture('paused-control');
+    observedVisit = visit; observedPhase = phase; observedRevision = controlRevision;
+  }
   const replayBindings = new Map<number, Binding>();
   function begin(action: ReplayAction): void {
     if (activeFrame) throw new Error('nested replay boundary');
@@ -358,6 +411,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     publishCompletedState(true);
     complete();
     if (!replaying && controls.length >= 256) { rejectPending(); resetBaseline(); }
+    observeCaptureBoundary();
   }
   function executeTick(_nextTick: number, deadline: number): void {
     if (replaying) { drainIngress(); expireHeld(); flushCallouts(); }
@@ -385,6 +439,9 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     publishCompletedState();
     complete();
     if (!replaying && state.tick % 300 === 0) { applyControls(); rejectPending(); resetBaseline(); }
+    observeCaptureBoundary();
+    if (!replaying && deps.onCheckpoint && state.tick % 300 === 0) queueCapture('periodic');
+    flushCapture(state.tick % 300 === 0 ? durableBaseline : undefined);
   }
   function pump(): void {
     if (disposed || pumping) return;
@@ -402,12 +459,13 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       driver.pump();
       if (!replaying && frames.length > 4096) { applyControls(); rejectPending(); resetBaseline(); }
     } catch (error) { recordFault(error); }
-    finally { pumping = false; }
+    finally { pumping = false; observeCaptureBoundary(); flushCapture(); }
   }
   function recordFault(error: unknown): void {
     // Public checkpoint and attach frames can fail outside pump. Abandon their
     // incomplete frame before flushing cleanup, and preserve the durable baseline.
     activeFrame = null; phase = 'error'; driver.dispose(); flushDetaches(); applyControls(); let snapshotAfterFault: Snapshot | null = null;
+    rejectCaptures();
     try { snapshotAfterFault = saveSnapshot(state, deps.contentDigest); } catch { /* corrupted state */ }
     deps.onCrash({ replayVersion, init: structuredClone(deps.init), checkpoint: structuredClone(durableBaseline), frames: structuredClone(frames), lastPublishedSequence: publicationSequence, tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
   }
@@ -430,6 +488,8 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (!control.paused && !permitted()) return;
     lifecycle(control);
     });
+    observedPhase = phase; observedRevision = controlRevision; observedVisit = JSON.stringify(visitRef(state));
+    if (deps.onCheckpoint) deliverCapture(durableBaseline, 'initial');
   } catch (error) {
     disposed = true;
     // Attempt every release without hiding the construction error.
@@ -479,6 +539,14 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       }
     },
     pump, publishCompletedState, checkpoint: sealCheckpoint,
+    requestCheckpoint(cause: CaptureCause): Promise<{ checkpoint: Checkpoint; cause: CaptureCause }> {
+      if (!isCaptureCause(cause) || disposed || phase === 'error' || captureWaiters.length >= 64) return Promise.reject(Error('capture unavailable'));
+      queueCapture(cause);
+      const result = new Promise<{ checkpoint: Checkpoint; cause: CaptureCause }>((resolve, reject) => captureWaiters.push({ resolve, reject }));
+      // Calls from publication/result observers must leave the open journal frame.
+      queueMicrotask(() => { if (!pumping) flushCapture(); });
+      return result;
+    },
     completeBootstrap(): void {
       if (!bootstrap || disposed || pumping || activeFrame || !permitted(true)) throw Error('bootstrap unavailable');
       bootstrap = false;
@@ -535,6 +603,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     dispose(): void {
       if (disposed) return;
       disposed = true;
+      rejectCaptures();
       const errors: unknown[] = [];
       const cleanup = (action: () => void): void => { try { action(); } catch (error) { errors.push(error); } };
       cleanup(() => driver.dispose()); cleanup(() => unbindLifecycle?.());

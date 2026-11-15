@@ -1,6 +1,7 @@
 import type { MessagePortMain } from 'electron';
 import { boundedHostBytes, isHostCommand, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostCommandInput, type HostResponse } from '../../shared/netSession';
-import { isHostIdentity, isHostResponse, matchesIdentity, validPeer, validStreamAttachmentOptions, type HostIdentity, type StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
+import { isHostIdentity, isHostResponse, isCheckpointDelivery, matchesIdentity, validPeer, validStreamAttachmentOptions, type HostIdentity, type StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
+import { copyCheckpoint, isCaptureCause, type CaptureCause, type CheckpointCandidate } from '../../shared/sessionCheckpoint';
 import type { TransportController } from './rtcTransport';
 import { matchesSessionLease, isLeaseFenceReason } from '../../shared/hostProcessProtocol';
 import { validateSessionLeaseIdentity, validateLeaseRenewalRequest, type SessionLeaseIdentity, type LeaseRenewalRequest, type LeaseFenceReason } from '../../shared/sessionLease';
@@ -13,6 +14,9 @@ export interface HostProcessOptions extends HostIdentity {
   onCrash?(record: { checkpoint: Uint8Array | null; diagnostic: unknown }): void;
 }
 export interface HostProcessHandle {
+  onCheckpoint(callback: (candidate: CheckpointCandidate) => void): Unsubscribe;
+  ackCheckpoint(captureId: number): Promise<void>;
+  captureCheckpoint(cause: CaptureCause): Promise<CheckpointCandidate>;
   onLeaseRequest(callback: (request: LeaseRenewalRequest) => void): Unsubscribe;
   applyLease(request: LeaseRenewalRequest, grant: LeaseGrant): Promise<void>;
   invalidateLease(reason: LeaseFenceReason): Promise<void>;
@@ -50,8 +54,16 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
   let nextId = 0, disposal: Promise<void> | undefined, exitReason: string | undefined;
   const removers: Unsubscribe[] = [], exits = new Set<(reason: string) => void>(), ownedPorts = new Set<MessagePortMain>();
   const renewals = new Set<(request: LeaseRenewalRequest) => void>();
+  const checkpoints = new Set<(candidate: CheckpointCandidate) => void>();
+  let latestCheckpoint: CheckpointCandidate | undefined;
+  function adoptCheckpoint(candidate: CheckpointCandidate): void {
+    // Each handle owns one utility epoch. Requested and push deliveries share IDs.
+    if (latestCheckpoint && candidate.captureId <= latestCheckpoint.captureId) return;
+    latestCheckpoint = copyCheckpoint(candidate);
+    for (const cb of [...checkpoints]) { try { cb(copyCheckpoint(candidate)); } catch { /* isolate observers */ } }
+  }
   let renewal: LeaseRenewalRequest | undefined;
-  const pending = new Map<number, { kind: 'response' | 'attached'; resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+  const pending = new Map<number, { kind: 'response' | 'attached' | 'captured'; resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   let resolveReady!: (handle: HostProcessHandle) => void, rejectReady!: (error: Error) => void;
   const starting = new Promise<HostProcessHandle>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
   const readyTimer = setTimeout(() => stop('ready-timeout'), 5000);
@@ -59,6 +71,7 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
     if (stopped) return; stopped = true; stopping = true; exitReason = reason;
     clearTimeout(readyTimer);
     renewals.clear(); renewal = undefined;
+    checkpoints.clear(); latestCheckpoint = undefined;
     for (const remove of removers.splice(0)) { try { remove(); } catch { /* release remaining owners */ } }
     for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error(reason)); } pending.clear();
     for (const port of ownedPorts) close(port); ownedPorts.clear();
@@ -81,7 +94,7 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
       transport.connect(port2); ownedPorts.delete(port2);
     } catch { stop('transfer-failed'); }
   }
-  function send<T>(kind: 'response' | 'attached', message: (id: number) => unknown, ports?: MessagePortMain[]): Promise<T> {
+  function send<T>(kind: 'response' | 'attached' | 'captured', message: (id: number) => unknown, ports?: MessagePortMain[]): Promise<T> {
     if (stopped || (stopping && kind !== 'response')) return Promise.reject(Error('disposed'));
     if (pending.size >= 64 || nextId >= Number.MAX_SAFE_INTEGER) return Promise.reject(Error('request-capacity'));
     const id = ++nextId;
@@ -102,6 +115,21 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
     return send('response', requestId => ({ kind: 'command', command: { ...copy, requestId, hostGeneration: identity.hostGeneration } }));
   }
   const handle: HostProcessHandle = {
+    onCheckpoint(callback) {
+      if (stopped) return () => {};
+      if (checkpoints.size >= 64) throw Error('request-capacity');
+      checkpoints.add(callback); if (latestCheckpoint) callback(copyCheckpoint(latestCheckpoint));
+      return () => { checkpoints.delete(callback); };
+    },
+    ackCheckpoint(captureId) {
+      if (stopped || stopping || !positiveSafeInteger(captureId) || !latestCheckpoint || captureId > latestCheckpoint.captureId) return Promise.reject(Error('capture-unavailable'));
+      return send<HostResponse>('response', requestId => ({ kind: 'ack-checkpoint', requestId, hostGeneration: identity.hostGeneration, captureId }))
+        .then(reply => { if (!reply.ok) throw Error('capture-unavailable'); });
+    },
+    captureCheckpoint(cause) {
+      if (stopped || stopping || !isCaptureCause(cause)) return Promise.reject(Error('capture-unavailable'));
+      return send('captured', requestId => ({ kind: 'capture-checkpoint', requestId, hostGeneration: identity.hostGeneration, cause }));
+    },
     onLeaseRequest(callback) {
       if (stopped || !sessionLease) return () => {};
       if (renewals.size >= 64) throw Error('request-capacity');
@@ -157,6 +185,16 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
       if (!message || typeof message !== 'object') { stop('protocol-failure'); return; }
       const generation = message.kind === 'response' ? message.response?.hostGeneration : message.hostGeneration;
       if (positiveSafeInteger(generation) && generation !== identity.hostGeneration) return;
+      if (message.kind === 'checkpoint' || message.kind === 'captured') {
+        if (generation !== identity.hostGeneration || !isCheckpointDelivery(message)) { stop('protocol-failure'); return; }
+        if (message.kind === 'checkpoint') { adoptCheckpoint(message.candidate); return; }
+        const item = pending.get(message.requestId);
+        if (!item || item.kind !== 'captured') { stop('protocol-failure'); return; }
+        pending.delete(message.requestId); clearTimeout(item.timer);
+        if (message.ok) { adoptCheckpoint(message.candidate); item.resolve(copyCheckpoint(message.candidate)); }
+        else item.reject(Error('capture-unavailable'));
+        return;
+      }
       if (message.kind === 'lease-request') {
         const r = message.request;
         if (!sessionLease || !validateLeaseRenewalRequest(r)) { stop('protocol-failure'); return; }

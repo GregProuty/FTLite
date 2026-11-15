@@ -31,6 +31,29 @@ function harness() {
 }
 afterEach(() => vi.useRealTimers());
 describe('main host process owner', () => {
+  it('deduplicates private capture delivery, copies observer bytes and acknowledges only adopted IDs', async () => {
+    const h = harness(), starting = startHostProcess(identity, h.platform); await h.ready(); const owner = await starting;
+    const candidate = { captureId: 1, capturedTick: 0, controlRevision: 0, cause: 'initial', bytes: new Uint8Array([4]) };
+    h.utility.emit('message', { kind: 'checkpoint', hostGeneration: 7, candidate });
+    const seen: any[] = []; owner.onCheckpoint(c => { seen.push(c); c.bytes[0] = 99; });
+    const requested = owner.captureCheckpoint('exit');
+    const exit = { ...candidate, captureId: 2, cause: 'exit' };
+    h.utility.emit('message', { kind: 'checkpoint', hostGeneration: 7, candidate: exit });
+    h.utility.emit('message', { kind: 'captured', requestId: 1, hostGeneration: 7, ok: true, candidate: exit });
+    expect((await requested).bytes).toEqual(new Uint8Array([4]));
+    expect(seen.map(c => c.captureId)).toEqual([1, 2]);
+    const late: any[] = []; owner.onCheckpoint(c => late.push(c)); expect(late[0].bytes).toEqual(new Uint8Array([4]));
+    await expect(owner.ackCheckpoint(3)).rejects.toThrow('capture-unavailable');
+    const ack = owner.ackCheckpoint(2); expect(h.sent.at(-1)).toMatchObject({ kind: 'ack-checkpoint', captureId: 2 }); h.response(2); await ack;
+    const disposing = owner.dispose(); h.response(3); await disposing;
+  });
+  it.each([{ bytes: new Uint8Array(262145) }, { captureId: 0 }, { cause: 'unknown' }, { capturedTick: -1 }, { extra: true }])('rejects malformed private capture %j', bad => {
+    const h = harness(), starting = startHostProcess(identity, h.platform);
+    const rejected = expect(starting).rejects.toThrow('protocol-failure');
+    h.utility.emit('message', { kind: 'checkpoint', hostGeneration: 7, candidate: {
+      captureId: 1, capturedTick: 0, controlRevision: 0, cause: 'initial', bytes: new Uint8Array([4]), ...bad } });
+    return rejected;
+  });
   it('invalidates leased capability on both trusted suspend and resume and removes observers', async () => {
     const h = harness(), sessionLease = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) };
     const starting = startHostProcess({ ...identity, sessionLease }, h.platform); await h.ready(); const owner = await starting;

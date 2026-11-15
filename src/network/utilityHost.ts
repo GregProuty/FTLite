@@ -5,6 +5,7 @@ import type { ModeHostDeps, ModeRegistry, Unsubscribe } from './modes/contracts'
 import { validateSessionLeaseIdentity, validateLeaseRenewalRequest, type SessionClock, type SessionLeaseIdentity } from '../shared/sessionLease';
 import { createLeaseGate, type LeaseGate } from './session/leaseGate';
 import { validateLeaseGrant } from '../shared/roomSession';
+import { copyCheckpoint, isCaptureCause, isModeCheckpoint, type ModeCheckpoint, type CheckpointCandidate } from '../shared/sessionCheckpoint';
 
 export interface UtilityHostDeps extends ModeHostDeps { leaseClock?: SessionClock; nonce?(): string }
 
@@ -13,11 +14,28 @@ export function createUtilityHost(registry: ModeRegistry, deps: UtilityHostDeps,
   let runtime: ReturnType<typeof createHostRuntime> | undefined, identity: HostIdentity | undefined;
   let lease: LeaseGate | undefined, sessionLease: SessionLeaseIdentity | undefined;
   let forceClosed = false;
+  let nextCaptureId = 0, acknowledgedCapture = 0, captureRequests = 0;
+  let unacknowledged: CheckpointCandidate | undefined, replacement: CheckpointCandidate | undefined;
+  const stamped = new WeakMap<ModeCheckpoint, CheckpointCandidate>();
+  function deliver(candidate: CheckpointCandidate): void {
+    unacknowledged = candidate;
+    post({ kind: 'checkpoint', hostGeneration: identity!.hostGeneration, candidate: copyCheckpoint(candidate) });
+  }
+  function adopt(candidate: ModeCheckpoint, notification = false): CheckpointCandidate {
+    const known = stamped.get(candidate); if (known && !notification) return known;
+    if (disposed || !isModeCheckpoint(candidate) || nextCaptureId >= Number.MAX_SAFE_INTEGER) throw Error('capture unavailable');
+    const value = { ...copyCheckpoint(candidate), captureId: ++nextCaptureId };
+    stamped.set(candidate, value);
+    if (!unacknowledged) deliver(value);
+    else if (replacement?.cause !== 'exit') replacement = value;
+    return value;
+  }
   function settleClosedLease(): void { if (lease && !lease.check().allowed) runtime?.settleSessionFence(); }
   let disposed = false, transport: PortEndpoint | undefined, bridgeReady = false, highestRequest = 0;
   const removers: Unsubscribe[] = [];
   function dispose(): void {
     if (disposed) return; disposed = true;
+    unacknowledged = replacement = undefined;
     lease?.dispose();
     for (const off of removers.splice(0)) { try { off(); } catch { /* release all */ } }
     try { transport?.close(); } catch { /* release runtime */ }
@@ -71,13 +89,42 @@ export function createUtilityHost(registry: ModeRegistry, deps: UtilityHostDeps,
           runtime = createHostRuntime(registry, { ...deps, sessionGate: lease ? { check() {
             const current = lease!.check();
             return forceClosed ? { ...current, allowed: false, reason: 'lease-expired' as const } : current;
-          } } : undefined, onCrash: crash }, identity);
+          } } : undefined, onCrash: crash, onCheckpoint: candidate => { adopt(candidate, true); } }, identity);
           post({ kind: 'ready', protocolVersion: SESSION_PROTOCOL_VERSION, ...identity });
           lease?.renewNow();
         } catch { fatal('incompatible-identity'); }
         return;
       }
       if (!identity || !runtime) { rejectPorts(); fatal('uninitialized'); return; }
+      if (message.kind === 'capture-checkpoint' || message.kind === 'ack-checkpoint') {
+        rejectPorts();
+        if (!positiveSafeInteger(message.requestId) || message.hostGeneration !== identity.hostGeneration) { fatal('invalid-message'); return; }
+        const requestId = message.requestId, fresh = requestId > highestRequest;
+        highestRequest = Math.max(highestRequest, requestId);
+        const field = message.kind === 'capture-checkpoint' ? 'cause' : 'captureId';
+        const valid = fresh && !ports.length && Object.keys(message).every(k => ['kind', 'requestId', 'hostGeneration', field].includes(k));
+        if (message.kind === 'ack-checkpoint') {
+          const ok = valid && positiveSafeInteger(message.captureId) && message.captureId <= nextCaptureId;
+          if (ok && message.captureId > acknowledgedCapture) {
+            acknowledgedCapture = message.captureId;
+            if (unacknowledged && unacknowledged.captureId <= acknowledgedCapture) unacknowledged = undefined;
+            if (replacement && replacement.captureId <= acknowledgedCapture) replacement = undefined;
+            if (!unacknowledged && replacement) { const next = replacement; replacement = undefined; deliver(next); }
+          }
+          response(ok ? { requestId, hostGeneration: identity.hostGeneration, ok: true }
+            : { requestId, hostGeneration: identity.hostGeneration, ok: false, error: { code: 'unavailable', message: 'unavailable' } });
+        } else {
+          const finish = (candidate?: CheckpointCandidate) => {
+            if (!disposed) post({ kind: 'captured', requestId, hostGeneration: identity!.hostGeneration, ok: !!candidate,
+              ...(candidate ? { candidate: copyCheckpoint(candidate) } : {}) });
+          };
+          if (!valid || !isCaptureCause(message.cause) || captureRequests >= 64) { finish(); return; }
+          captureRequests++;
+          void runtime.captureCheckpoint(message.cause).then(candidate => { finish(adopt(candidate)); }, () => finish())
+            .catch(() => finish()).finally(() => { captureRequests--; });
+        }
+        return;
+      }
       if (['lease-grant', 'lease-invalidate', 'bootstrap-complete'].includes(message.kind)) {
         rejectPorts();
         if (!positiveSafeInteger(message.requestId) || message.hostGeneration !== identity.hostGeneration) { fatal('invalid-message'); return; }

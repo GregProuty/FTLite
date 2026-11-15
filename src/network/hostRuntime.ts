@@ -3,6 +3,7 @@ import { createPortLink } from './portLink';
 import { classifyStreamPacket } from './state/imageCodec';
 import { validStreamAttachmentOptions, type StreamAttachmentOptions } from '../shared/hostProcessProtocol';
 import type { ModeHost, ModeHostDeps, ModeRegistry, Unsubscribe } from './modes/contracts';
+import type { CaptureCause, ModeCheckpoint } from '../shared/sessionCheckpoint';
 
 export function createHostRuntime(registry: ModeRegistry, deps: ModeHostDeps, identity: { modeId: string; schemaVersion: number; simVersion: number; hostGeneration: number }) {
   const definition = registry.get(identity.modeId), generation = identity.hostGeneration;
@@ -14,6 +15,14 @@ export function createHostRuntime(registry: ModeRegistry, deps: ModeHostDeps, id
   function retire(owner: ModeHost | null): void { try { owner?.dispose(); } catch { /* disposal must release the rest of the runtime */ } }
   function dispose(): void { if (disposed) return; disposed = true; clearPeers(); const old = host; host = null; retire(old); }
   return {
+    async captureCheckpoint(cause: CaptureCause): Promise<ModeCheckpoint> {
+      if (disposed || !host) return Promise.reject(Error('capture unavailable'));
+      const owner = host;
+      return owner.captureCheckpoint(cause).then(candidate => {
+        if (disposed || host !== owner) throw Error('capture unavailable');
+        return candidate;
+      });
+    },
     settleSessionFence(): void { if (!disposed && host) host.pause('session-fenced'); },
     completeBootstrap(): void { if (disposed || !host || !deps.sessionGate?.check().allowed) throw Error('bootstrap unavailable'); host.completeBootstrap(); },
     handle(command: HostCommand): HostResponse {
@@ -32,17 +41,27 @@ export function createHostRuntime(registry: ModeRegistry, deps: ModeHostDeps, id
       try {
         if (command.kind === 'dispose') dispose();
         else if (command.kind === 'start' || command.kind === 'restore') {
-          const candidate = definition.createHost(deps);
-          if (disposed) { retire(candidate); return error('unavailable'); }
+          let installing = true, initial: ModeCheckpoint | undefined;
+          let candidate: ModeHost | undefined;
           try {
-            if (command.kind === 'start') candidate.start(new Uint8Array(command.initBytes));
-            else candidate.restore(new Uint8Array(command.checkpointBytes));
-          } catch (cause) { retire(candidate); throw cause; }
-          if (disposed) { retire(candidate); return error('unavailable'); }
-          clearPeers();
-          if (disposed) { retire(candidate); return error('unavailable'); }
-          const old = host; host = candidate; retire(old);
-          if (disposed) return error('unavailable');
+            candidate = definition.createHost({ ...deps, onCheckpoint: deps.onCheckpoint ? value => {
+              if (disposed) return;
+              if (installing) { if (initial?.cause !== 'exit') initial = value; }
+              else if (host === candidate) deps.onCheckpoint!(value);
+            } : undefined });
+            if (disposed) { retire(candidate); return error('unavailable'); }
+            try {
+              if (command.kind === 'start') candidate.start(new Uint8Array(command.initBytes));
+              else candidate.restore(new Uint8Array(command.checkpointBytes));
+            } catch (cause) { retire(candidate); throw cause; }
+            if (disposed) { retire(candidate); return error('unavailable'); }
+            clearPeers();
+            if (disposed) { retire(candidate); return error('unavailable'); }
+            const old = host; host = candidate; retire(old);
+            if (disposed) return error('unavailable');
+            installing = false;
+            if (initial) { const captured = initial; initial = undefined; try { deps.onCheckpoint?.(captured); } catch { /* isolate capture observer */ } }
+          } finally { installing = false; initial = undefined; }
         } else {
           if (!host) return error('unavailable');
           if (command.kind === 'pause') host.pause(command.reason);
