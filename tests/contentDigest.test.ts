@@ -23,6 +23,7 @@ const sources = {
   'src/network/modes/registry.ts': 'export const registered = true;\n',
   'src/shared/rtcSession.ts': 'export const rtcProtocol = 1;\n',
   'src/shared/roomSession.ts': 'export const serviceProtocol = 2;\n',
+  'src/shared/onlineSession.ts': 'export const onlineProtocol = 1;\n',
   'src/network/rtc/contracts.ts': 'export const limit = 4096;\n',
   'src/network/rtc/frames.ts': 'export const frame = 1;\n',
   'src/network/rtc/dataLink.ts': 'export const queue = 16;\n',

@@ -1,0 +1,90 @@
+import { SERVICE_ERROR_RETRYABLE, isRoomId, validateCompatibility, validateRoomSnapshot, type RoomCompatibility, type RoomSnapshot, type ServiceErrorCode } from './roomSession';
+import { rtcKeys, rtcRecord } from './rtcSession';
+
+/** Fixed public outcomes only. Provider messages and credential material stay in main. */
+export const ONLINE_ERROR_CODES = [
+  ...Object.keys(SERVICE_ERROR_RETRYABLE) as ServiceErrorCode[],
+  'online-disabled', 'invalid-action', 'invalid-status', 'invalid-port', 'busy', 'cancelled',
+  'storage-invalid', 'storage-read-failed', 'storage-write-failed', 'storage-clear-failed',
+  'transport-lost', 'host-lost', 'suspended', 'clock-discontinuity', 'retry-exhausted',
+] as const;
+export type OnlineErrorCode = typeof ONLINE_ERROR_CODES[number];
+export function isOnlineErrorCode(value: unknown): value is OnlineErrorCode {
+  return typeof value === 'string' && (ONLINE_ERROR_CODES as readonly string[]).includes(value);
+}
+export type OnlineAction =
+  | { type: 'host'; capacity: number }
+  | { type: 'join'; code: string }
+  | { type: 'ready'; ready: boolean }
+  | { type: 'remove-seat'; seatId: number }
+  | { type: 'view-state'; epoch: number; phase: 'synced' | 'running' | 'paused' | 'ended' }
+  | { type: 'reconnect' }
+  | { type: 'start' }
+  | { type: 'retry' }
+  | { type: 'leave' }
+  | { type: 'forget-seat' };
+export type OnlinePhase = 'idle' | 'creating' | 'joining' | 'lobby' | 'connecting' | 'syncing' | 'running' | 'paused' | 'reconnecting' | 'ended' | 'error';
+export interface OnlineStatus {
+  phase: OnlinePhase;
+  role: 'host' | 'guest' | null;
+  ownSeat: number | null;
+  snapshot: RoomSnapshot | null;
+  attachmentEpoch: number;
+  error: OnlineErrorCode | null;
+  retryAtMs: number | null;
+  persistent: boolean;
+  actions: readonly OnlineAction['type'][];
+}
+export interface OnlinePortDescriptor {
+  epoch: number; runId: string; hostGeneration: number; seatId: number; compatibility: RoomCompatibility;
+}
+export type OnlineResult = { ok: true } | { ok: false; code: OnlineErrorCode };
+
+const positive = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
+const natural = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+const seatId = (value: unknown): value is number => natural(value) && value < 4;
+const actionTypes: readonly OnlineAction['type'][] = ['host', 'join', 'ready', 'remove-seat', 'view-state', 'reconnect', 'start', 'retry', 'leave', 'forget-seat'];
+const phases: readonly OnlinePhase[] = ['idle', 'creating', 'joining', 'lobby', 'connecting', 'syncing', 'running', 'paused', 'reconnecting', 'ended', 'error'];
+/** Bound raw input first, then accept only the service's eight-character code alphabet. */
+export function validateOnlineAction(value: unknown): value is OnlineAction {
+  if (!rtcRecord(value)) return false;
+  switch (value.type) {
+    case 'host': return rtcKeys(value, ['type', 'capacity']) && positive(value.capacity) && value.capacity <= 4;
+    case 'join': return rtcKeys(value, ['type', 'code']) && typeof value.code === 'string' && value.code.length <= 32
+      && /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(value.code.trim().toUpperCase());
+    case 'ready': return rtcKeys(value, ['type', 'ready']) && typeof value.ready === 'boolean';
+    case 'remove-seat': return rtcKeys(value, ['type', 'seatId']) && seatId(value.seatId);
+    case 'view-state': return rtcKeys(value, ['type', 'epoch', 'phase']) && positive(value.epoch)
+      && ['synced', 'running', 'paused', 'ended'].includes(value.phase as string);
+    case 'reconnect': case 'start': case 'retry': case 'leave': case 'forget-seat': return rtcKeys(value, ['type']);
+    default: return false;
+  }
+}
+export function validateOnlineStatus(value: unknown): value is OnlineStatus {
+  return rtcRecord(value) && rtcKeys(value, ['phase', 'role', 'ownSeat', 'snapshot', 'attachmentEpoch', 'error', 'retryAtMs', 'persistent', 'actions'])
+    && phases.includes(value.phase as OnlinePhase) && (value.role === null || value.role === 'host' || value.role === 'guest')
+    && (value.ownSeat === null || seatId(value.ownSeat)) && (value.snapshot === null || validateRoomSnapshot(value.snapshot))
+    && (value.snapshot === null || value.ownSeat === null || (value.ownSeat as number) < (value.snapshot as RoomSnapshot).capacity)
+    && natural(value.attachmentEpoch) && (value.error === null || isOnlineErrorCode(value.error))
+    && (value.retryAtMs === null || (typeof value.retryAtMs === 'number' && Number.isFinite(value.retryAtMs) && value.retryAtMs >= 0))
+    && typeof value.persistent === 'boolean' && Array.isArray(value.actions) && value.actions.length <= actionTypes.length
+    && value.actions.every(type => actionTypes.includes(type)) && new Set(value.actions).size === value.actions.length;
+}
+/** Validate before detaching so unknown credential fields can never be copied to IPC. */
+export function copyOnlineStatus(value: OnlineStatus): OnlineStatus {
+  if (!validateOnlineStatus(value)) throw Error('invalid-status');
+  return structuredClone(value);
+}
+export function validateOnlinePortDescriptor(value: unknown): value is OnlinePortDescriptor {
+  return rtcRecord(value) && rtcKeys(value, ['epoch', 'runId', 'hostGeneration', 'seatId', 'compatibility'])
+    && positive(value.epoch) && isRoomId(value.runId) && positive(value.hostGeneration) && seatId(value.seatId)
+    && validateCompatibility(value.compatibility);
+}
+export function copyOnlinePortDescriptor(value: OnlinePortDescriptor): OnlinePortDescriptor {
+  if (!validateOnlinePortDescriptor(value)) throw Error('invalid-port');
+  return structuredClone(value);
+}
+export function validateOnlineResult(value: unknown): value is OnlineResult {
+  return rtcRecord(value) && (value.ok === true ? rtcKeys(value, ['ok'])
+    : value.ok === false && rtcKeys(value, ['ok', 'code']) && isOnlineErrorCode(value.code));
+}
