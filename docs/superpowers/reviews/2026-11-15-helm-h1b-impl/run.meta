@@ -1,0 +1,11 @@
+topic=helm-h1b-impl
+subject_kind=impl
+subject=package.json src/main/index.ts src/renderer/src/app/duel/controls.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/mode.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/main.ts src/renderer/src/render/duel/endScreen.ts src/renderer/src/render/duel/interiorModel.ts src/renderer/src/render/duel/interiorView.ts src/renderer/src/render/duel/readoutModel.ts src/renderer/src/render/duel/readoutPanel.ts src/renderer/src/render/tactical/fxModel.ts src/renderer/src/render/tactical/missilePath.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/render/tactical/weaponsModel.ts tests/duelControls.test.ts tests/duelInput.test.ts tests/duelInterior.test.ts tests/duelReadout.test.ts tests/duelRuntime.test.ts tests/duelWeaponsView.test.ts tests/flightRuntime.test.ts tests/tacticalCamera.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\helm-h1b
+base=master
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-15
+head_at_setup=8e7394c
