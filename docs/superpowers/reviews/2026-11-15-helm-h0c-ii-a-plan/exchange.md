@@ -61,3 +61,36 @@ Confirmed. Every Run line is now a plain `npx` or `npm` call that works in Power
 
 ---
 
+# Round 2 (delta, reviewing 0496acc, effort medium, 66 s, 262008 in / 218368 cached / 2820 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — The plan now records version-independent canonical hashes at every tick before the bump and compares all 115,200 ticks before blessing (plan L1880-L1903, L1924-L1935, L2289-L2292).
+- R1-F2: resolved — The replacement check uses a plain `npx tsx` command, with temporary paths chosen inside the script (plan L1875-L1876, L2303-L2304).
+
+## Verified
+- The trace uses the existing `runSemanticReplay` observer with `every = 1`; that observer runs after each replay tick (plan L1888; tests/helpers/semanticReplay.ts:L53-L58; src/renderer/src/authority/replay.ts:L85-L87).
+- The determinism trace uses the existing `actions` and `coreFor` interfaces and records each tick action (plan L1889-L1901; scripts/determinism/fixture.ts:L42-L49, L52-L74).
+- The sector flatten stores `SIM_VERSION` at index 0, which the trace zeroes before hashing (src/renderer/src/sim/flatten.ts:L45-L50; plan L1879-L1884).
+
+## Not verified
+- I did not execute the plan or run tests; the requested review was read-only.
+- The named run-directory ledger was inaccessible in this sandbox.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. No new findings. Codex confirmed R1-F1 and R1-F2 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
