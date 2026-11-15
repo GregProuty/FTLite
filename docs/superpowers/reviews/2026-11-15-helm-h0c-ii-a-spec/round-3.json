@@ -1,0 +1,26 @@
+{
+  "verdict": "changes requested",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F3",
+      "result": "still open",
+      "note": "Spec L38-L43 defines the hazard tests and orbit bounds, but multiple asteroids can qualify at the first predicted point without a selection rule. The orbit rule also gives no correction when the ship is inside or outside ORBIT_R; turning controls the ship's heading, while velocity changes through flight physics (physics.ts:L25-L54). The plan still has to choose materially different steering behavior."
+    },
+    {
+      "id": "R1-F6",
+      "result": "still open",
+      "note": "Spec L66-L70 selects the asteroid nearest the enemy after the contact tick. A tick can damage the ship against more than one asteroid: contacts.ts:L43-L45 increments asteroidHits for each damaging contact and moves the ship after each collision (contacts.ts:L9-L19). The final position and aggregate counter do not identify every asteroid struck, so bait attribution remains unreliable. Track the per-body graceUntil changes or emit contact events."
+    }
+  ],
+  "verified": [
+    "Spec L36-L39 now tests predicted positions for planet, asteroid and edge hazards; predict.ts:L21-L31 returns positions and stops at a solid contact.",
+    "Spec L43's orbit bounds use BELT_OUTER = 1300 and R_MAP = 2800 (tuning.ts:L11-L17).",
+    "Spec L67 correctly identifies a planet contact from planetHits; contacts.ts:L42 increments that counter.",
+    "The reviewed subject matches commit b77ace0; git diff b77ace0 reports no local change to it."
+  ],
+  "not_verified": [
+    "No tests were run, as requested.",
+    "The named review run directory was unavailable in this worktree; the supplied ledger and round-two response were used."
+  ]
+}
