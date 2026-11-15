@@ -1,6 +1,7 @@
 import type { MessagePortMain } from 'electron';
 import { boundedHostBytes, isHostCommand, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostCommandInput, type HostResponse } from '../../shared/netSession';
 import { isHostIdentity, isHostResponse, matchesIdentity, validPeer, validStreamAttachmentOptions, type HostIdentity, type StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
+import type { TransportController } from './rtcTransport';
 
 type Unsubscribe = () => void;
 export interface HostProcessOptions extends HostIdentity {
@@ -8,6 +9,7 @@ export interface HostProcessOptions extends HostIdentity {
   onCrash?(record: { checkpoint: Uint8Array | null; diagnostic: unknown }): void;
 }
 export interface HostProcessHandle {
+  readonly transport: TransportController;
   request(command: HostCommandInput): Promise<HostResponse>;
   attachPeer(peer: string, players: readonly number[], port: MessagePortMain, options?: StreamAttachmentOptions): Promise<void>;
   onExit(callback: (reason: string) => void): Unsubscribe;
@@ -16,7 +18,7 @@ export interface HostProcessHandle {
 /** Structural platform seam: tests exercise the same owner without loading native Electron. */
 export interface HostPlatform {
   spawn(): { postMessage(message: unknown, ports?: MessagePortMain[]): void; onMessage(cb: (message: any) => void): Unsubscribe; onExit(cb: () => void): Unsubscribe; kill(): void };
-  createTransport(identity: HostIdentity): { load(): Promise<void>; connect(port: MessagePortMain): void; onReady(cb: () => void): Unsubscribe; onExit(cb: () => void): Unsubscribe; dispose(): void };
+  createTransport(identity: HostIdentity): { controller: TransportController; load(): Promise<void>; connect(port: MessagePortMain): void; onReady(cb: () => void): Unsubscribe; onExit(cb: () => void): Unsubscribe; dispose(): void };
   createChannel(): { port1: MessagePortMain; port2: MessagePortMain };
   onSuspend(cb: () => void): Unsubscribe;
 }
@@ -85,6 +87,7 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
     return send('response', requestId => ({ kind: 'command', command: { ...copy, requestId, hostGeneration: identity.hostGeneration } }));
   }
   const handle: HostProcessHandle = {
+    transport: transport.controller,
     request,
     attachPeer(peer, players, port, options) {
       if (stopped || stopping) { close(port); return Promise.reject(Error('disposed')); }

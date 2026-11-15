@@ -20,6 +20,58 @@ export const RTC_AUTH_PREFIX = 'FTL-RTC-AUTH/1:';
 export const RTC_AUTH_BYTES = 4096;
 export const RTC_TICKET_BYTES = 512;
 
+/** Trusted main -> hidden configuration. Epoch time is converted exactly once in the receiver. */
+export interface RtcAttemptOptions {
+  attemptId: string; role: 'offerer' | 'answerer'; identity: RtcIdentity;
+  localTicket: string; expectedRemoteTicket: string; ticketExpiresAtEpochMs: number;
+  iceServers: readonly RTCIceServer[]; iceTransportPolicy?: 'all' | 'relay';
+}
+export const RTC_REQUEST_CHANNEL = 'net:rtc-request';
+export const RTC_RESPONSE_CHANNEL = 'net:rtc-response';
+export const RTC_MAX_ATTEMPTS = 4;
+export const RTC_OWNER_ATTEMPT_LIMIT = 4096;
+export type RtcRequest = { version: 1; hostGeneration: number; requestId: number } & (
+  | { kind: 'start'; options: RtcAttemptOptions }
+  | { kind: 'signal'; attemptId: string; attemptGeneration: number; signal: RtcSignal }
+  | { kind: 'close'; attemptId: string; attemptGeneration: number });
+export type RtcResponse = { version: 1; hostGeneration: number; requestId: number; attemptId: string } & (
+  | { kind: 'port-ready' | 'closed' | 'failed' | 'applied' }
+  | { kind: 'ready'; latestPayloadLimit: number }
+  | { kind: 'signal'; signal: RtcSignal });
+export function validRtcCap(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 4096 && (value as number) <= 16088;
+}
+export function isRtcAttemptOptions(value: unknown): value is RtcAttemptOptions {
+  if (!rtcRecord(value) || !Object.keys(value).every(key => ['attemptId','role','identity','localTicket','expectedRemoteTicket','ticketExpiresAtEpochMs','iceServers','iceTransportPolicy'].includes(key))) return false;
+  return rtcId(value.attemptId) && (value.role === 'offerer' || value.role === 'answerer') && isRtcIdentity(value.identity)
+    && rtcBoundedText(value.localTicket, RTC_TICKET_BYTES) && value.localTicket.length > 0
+    && rtcBoundedText(value.expectedRemoteTicket, RTC_TICKET_BYTES) && value.expectedRemoteTicket.length > 0
+    && typeof value.ticketExpiresAtEpochMs === 'number' && Number.isFinite(value.ticketExpiresAtEpochMs)
+    && !!copyRtcIceServers(value.iceServers as RTCIceServer[])
+    && (value.iceTransportPolicy === undefined || value.iceTransportPolicy === 'all' || value.iceTransportPolicy === 'relay');
+}
+export function isRtcRequest(value: unknown): value is RtcRequest {
+  if (!rtcRecord(value) || value.version !== 1 || !positive(value.hostGeneration) || !positive(value.requestId)) return false;
+  const stamp = ['version','hostGeneration','requestId','kind'];
+  if (value.kind === 'start') return rtcKeys(value, [...stamp,'options']) && isRtcAttemptOptions(value.options);
+  if (!rtcId(value.attemptId) || !positive(value.attemptGeneration)) return false;
+  if (value.kind === 'close') return rtcKeys(value, [...stamp,'attemptId','attemptGeneration']);
+  return value.kind === 'signal' && rtcKeys(value, [...stamp,'attemptId','attemptGeneration','signal'])
+    && isRtcSignal(value.signal) && value.signal.attemptId === value.attemptId;
+}
+export function isRtcResponse(value: unknown): value is RtcResponse {
+  if (!rtcRecord(value) || value.version !== 1 || !positive(value.hostGeneration) || !positive(value.requestId) || !rtcId(value.attemptId)) return false;
+  const stamp = ['version','hostGeneration','requestId','attemptId','kind'];
+  if (value.kind === 'port-ready' || value.kind === 'closed' || value.kind === 'failed' || value.kind === 'applied') return rtcKeys(value, stamp);
+  if (value.kind === 'ready') return rtcKeys(value, [...stamp,'latestPayloadLimit']) && validRtcCap(value.latestPayloadLimit);
+  return value.kind === 'signal' && rtcKeys(value, [...stamp,'signal']) && isRtcSignal(value.signal) && value.signal.attemptId === value.attemptId;
+}
+
+export function rtcLocalDeadline(epochDeadline: number, wallNow: number, monotonicNow: number): number {
+  if (![epochDeadline,wallNow,monotonicNow].every(Number.isFinite) || epochDeadline <= wallNow) throw Error('rtc-ticket-expired');
+  return monotonicNow + Math.min(RTC_SETUP_MS, epochDeadline - wallNow);
+}
+
 export const rtcRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 export const rtcKeys = (v: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(v).length === keys.length && keys.every(key => Object.hasOwn(v, key));
 export const rtcId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128;

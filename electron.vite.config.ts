@@ -6,7 +6,7 @@ const digest = JSON.stringify(computeContentDigest(import.meta.dirname));
 export default defineConfig({
   main: {
     define: { __GAMEPLAY_CONTENT_DIGEST__: digest },
-    build: { rollupOptions: { input: { index: resolve('src/main/index.ts'), authorityHost: resolve('src/utility/authorityHost.ts'), hostProcess: resolve('src/main/network/hostProcess.ts') }, output: { chunkFileNames: '[name].js' } } }
+    build: { rollupOptions: { input: { index: resolve('src/main/index.ts'), authorityHost: resolve('src/utility/authorityHost.ts'), hostProcess: resolve('src/main/network/hostProcess.ts'), rtcTransport: resolve('src/main/network/rtcTransport.ts') }, output: { chunkFileNames: '[name].js' } } }
   },
   preload: { build: { rollupOptions: { input: { index: resolve('src/preload/index.ts'), networkTransport: resolve('src/preload/networkTransport.ts') } } } },
   // Repo-root public/ is copied verbatim into out/renderer/ at build (assets, manifest, notices).

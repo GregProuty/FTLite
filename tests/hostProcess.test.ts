@@ -12,7 +12,7 @@ function harness() {
     spawn: () => ({ postMessage(message, transfer) { if (failTransfer && transfer?.length) throw Error('transfer'); sent.push(message); },
       onMessage(cb) { utility.on('message', cb); return () => utility.off('message', cb); },
       onExit(cb) { utility.on('exit', cb); return () => utility.off('exit', cb); }, kill() { utilityKilled++; } }),
-    createTransport: () => ({ async load() {}, connect() { if (failTransfer || failWindowTransfer) throw Error('transfer'); },
+    createTransport: () => ({ controller: { startAttempt: vi.fn(), receiveSignal: vi.fn(), onSignal: vi.fn(), closeAttempt: vi.fn(), dispose: vi.fn() }, async load() {}, connect() { if (failTransfer || failWindowTransfer) throw Error('transfer'); },
       onReady(cb) { transport.on('ready', cb); return () => transport.off('ready', cb); },
       onExit(cb) { transport.on('exit', cb); return () => transport.off('exit', cb); }, dispose() { windowClosed++; } }),
     createChannel: () => { const a = new Port(), b = new Port(); ports.push(a, b); return { port1: a, port2: b } as any; },

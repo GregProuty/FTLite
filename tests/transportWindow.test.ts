@@ -3,13 +3,17 @@ import { BrowserWindow, ipcMain, utilityProcess } from 'electron';
 import { createHostPlatform } from '../src/main/network/transportWindow';
 import { startHostProcess } from '../src/main/network/hostProcess';
 import { TRANSPORT_READY_CHANNEL } from '../src/shared/hostProcessProtocol';
+import { startGuestTransport } from '../src/main/network/rtcTransport';
+import { RTC_RESPONSE_CHANNEL, type RtcAttemptOptions } from '../src/shared/rtcSession';
 
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events');
   class Window extends EventEmitter {
     static latest: Window;
     destroyed = false;
-    webContents = Object.assign(new EventEmitter(), { mainFrame: {}, setWindowOpenHandler() {}, postMessage() {} });
+    sent: { channel: string; message: any; ports?: unknown[] }[] = [];
+    webContents = Object.assign(new EventEmitter(), { mainFrame: {}, setWindowOpenHandler() {},
+      postMessage: (channel: string, message: unknown, ports?: unknown[]) => { this.sent.push({ channel, message, ports }); } });
     constructor(readonly options: unknown) { super(); Window.latest = this; }
     isDestroyed() { return this.destroyed; }
     destroy() { this.destroyed = true; this.emit('closed'); }
@@ -52,6 +56,47 @@ describe('native utility termination ownership', () => {
   });
 });
 describe('hidden transport sender ownership', () => {
+  const attempt = (id: string): RtcAttemptOptions => ({ attemptId: id, role: 'offerer', identity: { ...identity, protocolVersion: 2,
+    runId: 'run', roomId: 'room', layoutHash: '1234abcd', localConnectionId: 'host', remoteConnectionId: id, seatGeneration: 1 },
+    localTicket: 'local', expectedRemoteTicket: 'remote', ticketExpiresAtEpochMs: Date.now() + 10000, iceServers: [] });
+  it('guest creates no utility, rejects unexpected sender/frame/ports, and window death closes every attempt', async () => {
+    const forks = vi.mocked(utilityProcess.fork).mock.calls.length, starting = startGuestTransport(identity);
+    await vi.waitFor(() => {
+      expect((BrowserWindow as any).latest.destroyed).toBe(false);
+    });
+    const window = (BrowserWindow as any).latest;
+    const source = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
+    ipcMain.emit(TRANSPORT_READY_CHANNEL, source, { protocolVersion: 2, ...identity });
+    const owner = await starting; expect(vi.mocked(utilityProcess.fork).mock.calls.length).toBe(forks);
+    const ports = [{ close: vi.fn() }, { close: vi.fn() }], starts = ports.map((port, n) => owner.startAttempt(attempt(`guest-${n}`), port as any));
+    const settled = Promise.allSettled(starts), request = window.sent[0].message;
+    const response = { version: 1, hostGeneration: 7, requestId: request.requestId, attemptId: 'guest-0', kind: 'port-ready' };
+    ipcMain.emit(RTC_RESPONSE_CHANNEL, { ...source, sender: {} }, response);
+    ipcMain.emit(RTC_RESPONSE_CHANNEL, { ...source, senderFrame: {} }, response);
+    const unexpected = { close: vi.fn() }; ipcMain.emit(RTC_RESPONSE_CHANNEL, { ...source, ports: [unexpected] }, response);
+    expect(unexpected.close).toHaveBeenCalledOnce();
+    ipcMain.emit(RTC_RESPONSE_CHANNEL, source, response);
+    ipcMain.emit(RTC_RESPONSE_CHANNEL, source, { ...response, kind: 'ready', latestPayloadLimit: 4096 });
+    await expect(starts[0]).resolves.toEqual({ latestPayloadLimit: 4096 });
+    window.webContents.emit('render-process-gone');
+    expect((await settled)[1]!.status).toBe('rejected'); expect(ports.every(p => p.close.mock.calls.length === 1)).toBe(true);
+    expect(window.destroyed).toBe(true); expect(ipcMain.listenerCount(RTC_RESPONSE_CHANNEL)).toBe(0); await owner.dispose();
+  });
+  it('disposing the exposed host transport triggers paired owner exit notification', async () => {
+    const transport = createHostPlatform().createTransport(identity), onExit = vi.fn(); transport.onExit(onExit);
+    await transport.controller.dispose(); expect(onExit).toHaveBeenCalledOnce();
+    expect((BrowserWindow as any).latest.destroyed).toBe(true);
+  });
+  it('cleans guest startup failure without spawning any authority utility', async () => {
+    const forks = vi.mocked(utilityProcess.fork).mock.calls.length;
+    const loading = vi.spyOn((BrowserWindow as any).prototype, 'loadFile').mockRejectedValueOnce(Error('load'));
+    try {
+      await expect(startGuestTransport(identity)).rejects.toThrow('transport-load-failed');
+      expect(vi.mocked(utilityProcess.fork).mock.calls.length).toBe(forks);
+      expect((BrowserWindow as any).latest.destroyed).toBe(true);
+      expect(ipcMain.listenerCount(TRANSPORT_READY_CHANNEL)).toBe(0); expect(ipcMain.listenerCount(RTC_RESPONSE_CHANNEL)).toBe(0);
+    } finally { loading.mockRestore(); }
+  });
   it('loads the fixed transport page from the development server', async () => {
     vi.stubEnv('ELECTRON_RENDERER_URL', 'http://localhost:5173/');
     const transport = createHostPlatform().createTransport(identity), window = (BrowserWindow as any).latest;
