@@ -11,7 +11,7 @@ export function computeContentDigest(root: string): string {
   });
   const paths = [
     ...walk('src/renderer/src/sim'), ...walk('src/renderer/src/authority'), ...walk('src/network/modes'), ...walk('src/network/rtc'), ...walk('src/network/state'), ...walk('src/network/session'),
-    'src/shared/intent.ts', 'src/shared/netSession.ts', 'src/shared/rtcSession.ts', 'src/shared/roomSession.ts', 'src/shared/onlineSession.ts', 'src/renderer/src/net/contracts.ts',
+    'src/shared/intent.ts', 'src/shared/netSession.ts', 'src/shared/rtcSession.ts', 'src/shared/roomSession.ts', 'src/shared/onlineSession.ts', 'src/shared/sessionLease.ts', 'src/renderer/src/net/contracts.ts',
     'src/renderer/src/net/codec.ts', 'src/renderer/src/net/receivePolicy.ts', 'src/renderer/src/clientControl/clientRun.ts', 'src/shared/hostProcessProtocol.ts'
   ].sort();
   const manifest = paths.map((path) => ({ path, hash: sha256(readFileSync(join(root, path), 'utf8').replace(/\r\n?/g, '\n')) }));
