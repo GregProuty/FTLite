@@ -38,6 +38,7 @@ export class Directory extends DurableObject<Env> {
       ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS directory_activations (room_id TEXT PRIMARY KEY, operation_id TEXT UNIQUE NOT NULL,
         previous_epoch TEXT NOT NULL, expected_generation INTEGER NOT NULL, target_generation INTEGER NOT NULL,
         expires_at INTEGER NOT NULL, active_deadline INTEGER NOT NULL, acknowledged INTEGER NOT NULL)`);
+      ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS directory_turn (day INTEGER PRIMARY KEY, attempts INTEGER NOT NULL)');
     });
   }
   fetch(): Response { return serviceError('unavailable', 503); }
@@ -122,6 +123,7 @@ export class Directory extends DurableObject<Env> {
         } catch { /* Unknown outcome retains the charge and mapping. */ }
       }
       this.ctx.storage.sql.exec('DELETE FROM directory_ip WHERE expires_at <= ?', now);
+      this.ctx.storage.sql.exec('DELETE FROM directory_turn WHERE day < ?', Math.floor(now / 86400000) - 1);
       await this.schedule();
     });
   }
@@ -150,7 +152,7 @@ export class Directory extends DurableObject<Env> {
   }
   private row(roomId: string): DirectoryRow | undefined { return this.ctx.storage.sql.exec<DirectoryRow>('SELECT * FROM directory_rooms WHERE room_id = ?', roomId).toArray()[0]; }
   private async schedule(): Promise<void> {
-    const row = this.ctx.storage.sql.exec<{ deadline: number | null }>('SELECT MIN(deadline) AS deadline FROM (SELECT deadline FROM directory_rooms UNION ALL SELECT expires_at AS deadline FROM directory_ip)').one();
+    const row = this.ctx.storage.sql.exec<{ deadline: number | null }>('SELECT MIN(deadline) AS deadline FROM (SELECT deadline FROM directory_rooms UNION ALL SELECT expires_at AS deadline FROM directory_ip UNION ALL SELECT (day + 2) * 86400000 AS deadline FROM directory_turn)').one();
     if (row.deadline !== null) await this.ctx.storage.setAlarm(Math.max(Date.now() + 1000, row.deadline));
     else await this.ctx.storage.deleteAlarm();
   }
@@ -220,5 +222,23 @@ export class Directory extends DurableObject<Env> {
       await this.schedule(); return result;
     });
   }
-  async reserveTurn(_authorization: { roomId: string; seatId: number; seatGeneration: number; connectionId: string }): Promise<DomainResult<void>> { return wrapDomain(() => failure('unavailable')); }
+  async reserveTurn(authorization: { roomId: string; seatId: number; seatGeneration: number; connectionId: string }): Promise<DomainResult<void>> {
+    return wrapDomain(async () => {
+      const { roomId, seatId, seatGeneration, connectionId } = authorization;
+      if (!isRoomId(roomId) || !isRoomId(connectionId) || !Number.isInteger(seatId) || seatId < 0 || seatId >= 4
+        || !Number.isSafeInteger(seatGeneration) || seatGeneration < 1) failure('invalid-request');
+      // Called by Room: no Room callback, no await inside admission, no refund.
+      this.ctx.storage.transactionSync(() => {
+        const row = this.row(roomId);
+        if (!row?.committed || !row.charged || (row.phase !== 'lobby' && row.phase !== 'active')) failure('unavailable');
+        const day = Math.floor(Date.now() / 86400000);
+        this.ctx.storage.sql.exec('DELETE FROM directory_turn WHERE day < ?', day - 1);
+        this.ctx.storage.sql.exec('INSERT OR IGNORE INTO directory_turn VALUES (?, 0)', day);
+        const count = this.ctx.storage.sql.exec<{ attempts: number }>('SELECT attempts FROM directory_turn WHERE day = ?', day).one().attempts;
+        if (count >= 1000) failure('rate-limited');
+        this.ctx.storage.sql.exec('UPDATE directory_turn SET attempts = attempts + 1 WHERE day = ?', day);
+      });
+      await this.schedule();
+    });
+  }
 }

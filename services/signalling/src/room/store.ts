@@ -74,6 +74,7 @@ export class RoomStore {
       this.sql.exec('CREATE TABLE IF NOT EXISTS room_accounting (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), epoch TEXT NOT NULL, retry_at INTEGER NOT NULL)');
       this.sql.exec('CREATE TABLE IF NOT EXISTS room_activation_grant (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), lease TEXT NOT NULL)');
       this.sql.exec('CREATE TABLE IF NOT EXISTS room_proposal_pending (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), operation_id TEXT NOT NULL, expires_at INTEGER NOT NULL)');
+      this.sql.exec('CREATE TABLE IF NOT EXISTS room_turn (seat_id INTEGER PRIMARY KEY, attempted_at INTEGER NOT NULL)');
     });
   }
   transaction<T>(body: () => T): T { return this.storage.transactionSync(body); }
@@ -180,6 +181,7 @@ export class RoomStore {
       this.sql.exec('DELETE FROM room_start'); this.sql.exec('DELETE FROM room_checkpoint');
       this.sql.exec('DELETE FROM room_accounting');
       this.sql.exec('DELETE FROM room_activation_grant'); this.sql.exec('DELETE FROM room_proposal_pending');
+      this.sql.exec('DELETE FROM room_turn');
       this.sql.exec('INSERT OR REPLACE INTO room_fence VALUES (1, ?)', epoch);
       return { kind: 'absent', epoch };
     });

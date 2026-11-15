@@ -10,6 +10,7 @@ import { SocketDelivery, type ConnectionRow, type LifecycleRequest } from './roo
 import { SignalCoordinator } from './room/signals';
 import { RoomLifecycle } from './room/lifecycle';
 import { RoomCheckpoints } from './room/checkpoints';
+import { RoomTurn } from './turn';
 import type { ReplyOutcome } from '../../../src/shared/roomSession';
 export class Room extends DurableObject<Env> {
   readonly store: RoomStore;
@@ -18,6 +19,7 @@ export class Room extends DurableObject<Env> {
   readonly signals: SignalCoordinator;
   readonly lifecycle: RoomLifecycle;
   readonly checkpoints: RoomCheckpoints;
+  readonly turn: RoomTurn;
   lifecycleRequest?: (connection: ConnectionRow, request: LifecycleRequest) => ReplyOutcome | Promise<ReplyOutcome>;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -27,6 +29,7 @@ export class Room extends DurableObject<Env> {
     this.signals = new SignalCoordinator(this.store, this.sockets);
     this.lifecycle = new RoomLifecycle(this.store, this.sockets, this.signals, env.DIRECTORY.get(env.DIRECTORY.idFromName('global')));
     this.checkpoints = new RoomCheckpoints(this.store, this.auth, this.lifecycle);
+    this.turn = new RoomTurn(this.store, this.auth, this.sockets, this.lifecycle, env);
     this.store.onFence = () => {
       this.signals.sweep();
       this.sockets.broadcast({ type: 'host-departed', hostGeneration: this.store.meta()!.host_generation });
@@ -43,6 +46,10 @@ export class Room extends DurableObject<Env> {
     };
   }
   async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === '/turn' && request.method === 'POST') {
+      try { return await this.turn.fetch(request); } catch (error) { return errorResponse(error); }
+      finally { if (!request.body?.locked) void request.body?.cancel().catch(() => {}); }
+    }
     if (new URL(request.url).pathname === '/checkpoint' && (request.method === 'PUT' || request.method === 'GET')) {
       try { return await this.checkpoints.fetch(request); } catch (error) { return errorResponse(error); }
       finally { if (!request.body?.locked) void request.body?.cancel().catch(() => {}); }

@@ -9,6 +9,7 @@ export { Directory } from './directory';
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>; DIRECTORY: DurableObjectNamespace<Directory>;
   IP_HASH_SALT?: string; ALLOWED_ORIGINS?: string;
+  TURN_KEY_ID?: string; TURN_KEY_API_TOKEN?: string;
 }
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -50,7 +51,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (operation === 'socket-ticket') return Response.json(unwrapDomain(await room.socketTicket(token!)), { headers: { 'Cache-Control': 'no-store' } });
   if (operation === 'socket') return room.fetch(new Request('https://room/socket', { headers: { Upgrade: request.headers.get('Upgrade') ?? '' } }));
   if (operation === 'checkpoint') return room.fetch(new Request('https://room/checkpoint', request));
-  // TURN authorization lands with its provider owner.
+  if (operation === 'turn') return room.fetch(new Request('https://room/turn', request));
   return serviceError('unavailable', 503);
 }
 export default {
