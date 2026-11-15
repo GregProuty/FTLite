@@ -50,14 +50,22 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
   const feel = createFeelTracker();
   const reasons = new Set<PauseReason>();
   let held: Axes = NO_AXES, sent: Axes = NO_AXES, lastTickTime: number | null = null;
-  const driver = createTickDriver({ nowMs: deps.now }, deps.scheduler, (_tick, tickTimeMs) => {
+  const onTick = (_tick: number, tickTimeMs: number): void => {
     state.ships.forEach((s, i) => { const p = prev[i]!; p.x = s.x; p.y = s.y; p.h = s.heading + s.headingAcc; });
     sent = held;
     stepSoloFlight(state, sent);
     recordFeel(feel, state.ships[0], state.map.planet);
     lastTickTime = tickTimeMs;
-  });
-  const sync = (): void => driver.setPaused(reasons.size > 0);
+  };
+  // A pause discards the driver, and with it any ticks already due: resuming starts a fresh driver at the current wall
+  // time, so a delayed frame that pauses (or a long blur) never catches up in a burst afterwards.
+  let driver: ReturnType<typeof createTickDriver> | null = createTickDriver({ nowMs: deps.now }, deps.scheduler, onTick);
+  let disposed = false;
+  const sync = (): void => {
+    if (disposed) return;
+    if (reasons.size > 0 && driver) { driver.dispose(); driver = null; }
+    else if (reasons.size === 0 && !driver) driver = createTickDriver({ nowMs: deps.now }, deps.scheduler, onTick);
+  };
   const computeAlpha = (): number => lastTickTime === null ? 1 : Math.max(0, Math.min(1, (deps.now() - lastTickTime) * TICK_HZ / 1000));
   let frameAlpha = 1, wheelAcc = 0, lastWheelAt = -Infinity;
   const alpha = (): number => frameAlpha;
@@ -69,7 +77,7 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
       held = helmAxes(k);
       for (let n = 0; n < k.presses.pause; n++) { if (reasons.has('user')) reasons.delete('user'); else reasons.add('user'); }
       sync();          // an Escape this frame pauses before any due tick runs
-      driver.pump();   // run any due ticks with this frame's held axes before drawing (a no-op while paused)
+      driver?.pump();   // run any due ticks with this frame's held axes before drawing (no driver while paused)
       frameAlpha = computeAlpha();
       if (k.presses.camera > 0) snapBack(camera);
       zoomBy(camera, vp, k.presses.zoomIn - k.presses.zoomOut);
@@ -85,6 +93,6 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
     resume(reason) { reasons.delete(reason); sync(); },
     paused: () => reasons.size > 0,
     reasons: () => reasons,
-    dispose() { driver.dispose(); }
+    dispose() { disposed = true; driver?.dispose(); driver = null; }
   };
 }

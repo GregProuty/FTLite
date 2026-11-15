@@ -159,6 +159,14 @@ describe('the launch mode (H-1 spec §3)', () => {
     rt.frame(1 / 60);
     expect(rt.paused()).toBe(true);
     expect(rt.state.tick).toBe(0);
+    now.t = 2000;   // a long pause
+    presses = { ...emptyPresses(), pause: 1 };
+    rt.frame(1 / 60);   // resume: the 30 ticks due before the pause are discarded, not run in a burst
+    expect(rt.paused()).toBe(false);
+    expect(rt.state.tick).toBe(0);
+    now.t = 2000 + 1000 / 60 + 1;
+    rt.frame(1 / 60);
+    expect(rt.state.tick).toBe(1);   // stepping resumes from the resume time
     rt.dispose();
   });
   it('wheel: a remainder older than 200 ms is dropped even when the next frame carries wheel input', () => {
