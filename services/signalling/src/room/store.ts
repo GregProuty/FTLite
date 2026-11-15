@@ -39,6 +39,21 @@ export class RoomStore {
       this.sql.exec(`CREATE TABLE IF NOT EXISTS room_tickets (seat_id INTEGER PRIMARY KEY, generation INTEGER NOT NULL,
         ticket_hash TEXT UNIQUE NOT NULL, connection_id TEXT UNIQUE NOT NULL, expires_at INTEGER NOT NULL, consumed INTEGER NOT NULL)`);
       this.sql.exec('CREATE TABLE IF NOT EXISTS room_fence (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), epoch TEXT NOT NULL)');
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_connections (socket_id TEXT PRIMARY KEY, connection_id TEXT UNIQUE,
+        seat_id INTEGER UNIQUE, generation INTEGER, auth_deadline INTEGER NOT NULL, last_request INTEGER NOT NULL,
+        last_sent INTEGER NOT NULL, last_ack INTEGER NOT NULL, auth_started INTEGER NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_credits (socket_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+        bytes INTEGER NOT NULL, PRIMARY KEY(socket_id, sequence))`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_socket_rates (seat_id INTEGER PRIMARY KEY, signal_tokens REAL NOT NULL,
+        signal_at INTEGER NOT NULL, ack_tokens REAL NOT NULL, ack_at INTEGER NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_attempts (attempt_id TEXT PRIMARY KEY, host_seat INTEGER NOT NULL,
+        guest_seat INTEGER NOT NULL, host_seat_generation INTEGER NOT NULL, guest_generation INTEGER NOT NULL,
+        host_generation INTEGER NOT NULL, host_connection TEXT NOT NULL, guest_connection TEXT NOT NULL,
+        host_ticket_hash TEXT NOT NULL, guest_ticket_hash TEXT NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+        host_ready INTEGER NOT NULL, guest_ready INTEGER NOT NULL, host_candidates INTEGER NOT NULL,
+        guest_candidates INTEGER NOT NULL, live INTEGER NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_link_pending (guest_seat INTEGER PRIMARY KEY, operation_id TEXT NOT NULL,
+        host_connection TEXT NOT NULL, guest_connection TEXT NOT NULL, expires_at INTEGER NOT NULL)`);
     });
   }
   transaction<T>(body: () => T): T { return this.storage.transactionSync(body); }
@@ -113,6 +128,9 @@ export class RoomStore {
       this.sql.exec('DELETE FROM room_tickets');
       this.sql.exec('DELETE FROM room_seats');
       this.sql.exec('DELETE FROM room_meta');
+      this.sql.exec('DELETE FROM room_socket_rates');
+      this.sql.exec('DELETE FROM room_attempts');
+      this.sql.exec('DELETE FROM room_link_pending');
       this.sql.exec('INSERT OR REPLACE INTO room_fence VALUES (1, ?)', epoch);
       return { kind: 'absent', epoch };
     });
@@ -130,7 +148,11 @@ export class RoomStore {
   }
   bumpRevision(): void { this.sql.exec('UPDATE room_meta SET roster_revision = roster_revision + 1 WHERE singleton = 1'); }
   async schedule(): Promise<void> {
-    const deadlines = this.sql.exec<{ deadline: number | null }>('SELECT MIN(deadline) AS deadline FROM (SELECT deadline FROM room_meta UNION ALL SELECT expires_at AS deadline FROM room_tickets)').one();
+    const deadlines = this.sql.exec<{ deadline: number | null }>(`SELECT MIN(deadline) AS deadline FROM (SELECT deadline FROM room_meta
+      UNION ALL SELECT expires_at AS deadline FROM room_tickets
+      UNION ALL SELECT auth_deadline AS deadline FROM room_connections WHERE seat_id IS NULL
+      UNION ALL SELECT expires_at AS deadline FROM room_link_pending
+      UNION ALL SELECT expires_at AS deadline FROM room_attempts WHERE live = 0 OR host_ready = 0 OR guest_ready = 0)`).one();
     if (deadlines.deadline !== null) await this.storage.setAlarm(Math.max(Date.now() + 1000, deadlines.deadline));
     else await this.storage.deleteAlarm();
   }

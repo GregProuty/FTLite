@@ -1,3 +1,4 @@
+import { connect } from './socket-helpers';
 import { env } from 'cloudflare:workers';
 import { evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { expect, it, vi } from 'vitest';
@@ -85,21 +86,12 @@ it('revalidates generation after ticket hashing and never resurrects pre-rejoin 
 });
 
 it('closes the replaced transport using a real accepted hibernating socket', async () => {
-  const host = await create();
-  const room = env.ROOMS.get(env.ROOMS.idFromName(host.snapshot.roomId));
-  await runInDurableObject(room, async (instance, state) => {
-    const pair = new WebSocketPair();
-    state.acceptWebSocket(pair[1]);
-    pair[1].serializeAttachment({ seatId: 0, seatGeneration: 1, connectionId: 'c'.repeat(32) });
-    pair[0].accept();
-    const closed = new Promise<number>(resolve => pair[0].addEventListener('close', event => resolve(event.code), { once: true }));
-    const session = unwrapDomain(await instance.join(compatibility, host.seatToken));
-    expect(session.seatGeneration).toBe(2);
-    expect(await closed).toBe(1000);
-    pair[0].close(1000);
-  });
+  const host = await create(), peer = await connect(host);
+  const response = await request(`/v2/rooms/${host.snapshot.joinCode}/join`, { compatibility }, { Authorization: `Bearer ${host.seatToken}` });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ seatGeneration: 2 });
+  await peer.until(() => peer.closes.includes(1000));
 });
-
 it('keeps ticket metadata bounded across concurrent issuance, expiry and rejoin', async () => {
   const host = await create();
   const path = `/v2/rooms/${host.snapshot.roomId}/socket-ticket`;
