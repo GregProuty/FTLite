@@ -22,9 +22,9 @@ export function launchMissile(state: TacticalState, i: number): void {
   s.magazine--; s.missilesLaunched++;
 }
 
-function end(state: TacticalState, i: number, cause: EndCause): void {
+function end(state: TacticalState, i: number, cause: EndCause, target = -1, room = -1): void {
   const m = state.missiles[i]!;
-  state.events.push({ kind: 'missileEnd', ship: i, cause, x: m.x, y: m.y });
+  state.events.push({ kind: 'missileEnd', ship: i, cause, target, room, x: m.x, y: m.y });
   if (cause !== 'ship') state.ships[i]!.missilesLost++;
   state.missiles[i] = null;
 }
@@ -53,8 +53,8 @@ function land(state: TacticalState, i: number, k: number): void {
   const m = state.missiles[i]!, target = state.ships[k]!, room = roomAtImpact(target, m.x, m.y) as 0 | 1 | 2;
   if (target.rooms[room] < 2) target.rooms[room]++;
   target.hull = Math.max(0, target.hull - MISSILE_HULL);
-  state.ships[i]!.missileHits++;
-  end(state, i, 'ship');
+  if (k !== i) state.ships[i]!.missileHits++;   // a self-hit is not a hit; the event's target tells them apart
+  end(state, i, 'ship', k, room);
 }
 
 /** Missile contacts in spec §4 order, per missile in owner order: statics and the edge, then ships by id, then the other

@@ -30,6 +30,16 @@ export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 
 /** Whether ship i's laser is fully charged. */
 export function laserFull(state: TacticalState, i: number): boolean { return state.ships[i]!.laserCharge >= LASER_CHARGE_UNITS; }
 
+/** Admission (spec §7 table; H-0c's duel step uses these to give reject reasons): laserCharge is accepted only with no missile in flight. */
+export function canCharge(state: TacticalState, i: number): boolean { return state.missiles[i] === null; }
+/** missileLaunch is accepted only with no missile in flight, a missile in the magazine and Weapons below level 2. */
+export function canLaunch(state: TacticalState, i: number): boolean {
+  const s = state.ships[i]!;
+  return state.missiles[i] === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2;
+}
+/** A lock target must be a Room index. */
+export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
+
 /** The laser cannot charge, hold or fire while its ship's missile flies or its Weapons console is empty (spec §7 table). */
 export function laserFrozen(state: TacticalState, i: number, input: ShipInput): boolean {
   return state.missiles[i] !== null || !input.weapons;
@@ -44,16 +54,18 @@ export function laserEligible(state: TacticalState, i: number, j: number): boole
 
 function fireLaser(state: TacticalState, i: number): void {
   const a = state.ships[i]!, j = 1 - i, b = state.ships[j]!, hit = laserEligible(state, i, j);
+  let stripped = false, room = -1;
   a.shots++;
   if (hit) {
     a.laserHits++;
-    if (b.shields > 0) { b.shields--; b.shieldClock = 0; a.layersStripped++; }
+    if (b.shields > 0) { b.shields--; b.shieldClock = 0; a.layersStripped++; stripped = true; }
     else {
+      room = a.lock;
       if (b.rooms[a.lock]! < 2) b.rooms[a.lock as 0 | 1 | 2]++;
       b.hull = Math.max(0, b.hull - LASER_HULL);
     }
   }
-  state.events.push({ kind: 'laser', ship: i, hit, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+  state.events.push({ kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
   a.laserCharge = 0; a.laserHold = 0;
 }
 
@@ -61,8 +73,8 @@ function fireLaser(state: TacticalState, i: number): void {
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.ships[i]!;
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
-  if (input.laserLock !== null && input.laserLock >= 0 && input.laserLock <= 2) s.lock = input.laserLock;
-  if (input.laserCharge !== null && state.missiles[i] === null) {
+  if (input.laserLock !== null && validLock(input.laserLock)) s.lock = input.laserLock;
+  if (input.laserCharge !== null && canCharge(state, i)) {
     if (input.laserCharge) s.fireHeld = true;
     else if (s.fireHeld) {
       s.fireHeld = false;
@@ -70,7 +82,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
       else { s.laserCharge = 0; s.laserHold = 0; }
     }
   }
-  if (input.missileLaunch && state.missiles[i] === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2) {
+  if (input.missileLaunch && canLaunch(state, i)) {
     launchMissile(state, i);
     s.fireHeld = false;
   }

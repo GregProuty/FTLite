@@ -101,3 +101,5 @@ export const HUNTER_MISSILE_COOLDOWN_TICKS = 1800;
 export const HUNTER_TRAIL_TICKS = 18;         // missile pursuit aims where the crew was 0.3 s ago
 export const HUNTER_WALK_TICKS = 360;         // 6 s stand-in for crossing its ship
 export const REPAIR_WORK_TICKS = 240;         // 4 s per damage level
+export const HUNTER_STANDOFF = 320;           // within this it stops pursuing and holds its nose on the crew
+export const HUNTER_BRAKE_SPEED = 40;         // and brakes (reverse thrust) when closing faster than this

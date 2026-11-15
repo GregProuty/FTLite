@@ -120,7 +120,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     expect(b.rooms).toEqual([1, 0, 0]);
     expect(b.hull).toBe(SHIP_HULL - 3);
     expect(st.ships[0].missileHits).toBe(1);
-    expect(st.events.some((e) => e.kind === 'missileEnd' && e.cause === 'ship')).toBe(true);
+    expect(st.events).toContainEqual(expect.objectContaining({ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: Room.Weapons }));
   });
   it('ignores its own ship for the first second, then can hit it', () => {
     const st = duel(), s = st.ships[0];
@@ -133,6 +133,8 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     resolveMissiles(st);
     expect(st.missiles[0]).toBeNull();
     expect(s.hull).toBe(SHIP_HULL - 3);
+    expect(s.missileHits).toBe(0);                                      // a self-hit is not a hit
+    expect(st.events.at(-1)).toMatchObject({ kind: 'missileEnd', cause: 'ship', target: 0 });
   });
   it('is destroyed by the planet, an asteroid or the map edge, and two missiles destroy each other', () => {
     const cases: [string, (st: TacticalState) => void][] = [

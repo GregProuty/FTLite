@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createTacticalState, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
-import { applyWeaponsInput, IDLE_INPUT, laserEligible, tickWeapons, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
+import { applyWeaponsInput, canCharge, canLaunch, IDLE_INPUT, laserEligible, tickWeapons, validLock, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { inArc, lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -39,7 +39,7 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     expect(b.shields).toBe(1);
     expect(b.hull).toBe(SHIP_HULL);
     expect(a.laserCharge).toBe(0);
-    expect(st.events).toContainEqual({ kind: 'laser', ship: 0, hit: true, x1: -600, y1: -300, x2: -300, y2: -300 });
+    expect(st.events).toContainEqual({ kind: 'laser', ship: 0, hit: true, stripped: true, room: -1, x1: -600, y1: -300, x2: -300, y2: -300 });
   });
   it('an early release discards the charge without a shot', () => {
     const st = duel(), a = st.ships[0];
@@ -59,6 +59,7 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     }
     expect(b.rooms[Room.Engines]).toBe(2);
     expect(b.hull).toBe(SHIP_HULL - 6);
+    expect(st.events.at(-1)).toMatchObject({ kind: 'laser', hit: true, stripped: false, room: Room.Engines });
   });
   it('misses outside the arc, out of range or without line of sight', () => {
     const st = duel(), a = st.ships[0];
@@ -120,6 +121,23 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     expect(a.laserCharge).toBe(charge);
     hold(st, 10);
     expect(a.laserCharge).toBeGreaterThan(charge);
+  });
+});
+
+describe('weapon admission (used by the duel step for reject reasons)', () => {
+  it('canCharge, canLaunch and validLock agree with what applyWeaponsInput accepts', () => {
+    const st = duel(), s = st.ships[0];
+    expect([canCharge(st, 0), canLaunch(st, 0)]).toEqual([true, true]);
+    s.rooms[Room.Weapons] = 2;
+    expect(canLaunch(st, 0)).toBe(false);
+    s.rooms[Room.Weapons] = 0; s.magazine = 0;
+    expect(canLaunch(st, 0)).toBe(false);
+    s.magazine = 1;
+    applyWeaponsInput(st, 0, input({ missileLaunch: true }));
+    expect([canCharge(st, 0), canLaunch(st, 0)]).toEqual([false, false]);
+    expect([validLock(0), validLock(2), validLock(1.5), validLock(-1), validLock(3)]).toEqual([true, true, false, false, false]);
+    applyWeaponsInput(st, 0, input({ laserLock: 1.5 }));
+    expect(s.lock).toBe(Room.Shields);                                  // a non-integer lock is ignored
   });
 });
 

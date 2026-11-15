@@ -18,6 +18,7 @@ function facing(): TacticalState {
 describe('hunter: flying (spec §9 Hunt)', () => {
   it('steers toward the lead point and thrusts only when roughly aligned', () => {
     const st = facing();
+    st.ships[1].x = -100;                                                // 500 away: outside the standoff, so it pursues
     expect(hunterThink(st).axes).toEqual({ turn: 0, thrust: 1 });      // crew dead ahead
     st.ships[1].heading = 0;                                             // facing north: the crew is anticlockwise (west)
     expect(hunterThink(st).axes).toEqual({ turn: -1, thrust: 0 });
@@ -35,6 +36,7 @@ describe('hunter: flying (spec §9 Hunt)', () => {
   });
   it('leads a moving crew by 0.5 s: a target straight ahead but moving south pulls the turn anticlockwise', () => {
     const st = facing();
+    st.ships[1].x = -100;                                                // outside the standoff
     st.ships[0].vy = 600;                                                // lead point (−600, 0): south-west of the enemy facing west
     expect(hunterThink(st).axes.turn).toBe(-1);
     st.ships[0].vy = -600;                                               // lead point north-west: clockwise
@@ -80,6 +82,25 @@ describe('hunter: flying (spec §9 Hunt)', () => {
       st.tick++;
     }
     expect(st.rng.s).toBe(expected.s);
+  });
+  it('inside the standoff: noses on the crew\'s current position, never thrusts forward, and brakes when closing fast', () => {
+    const st = facing(), me = st.ships[1];                               // 300 apart, inside 320
+    expect(hunterThink(st).axes).toEqual({ turn: 0, thrust: 0 });
+    st.ships[0].vy = 600;                                                // a moving crew: no lead inside the standoff
+    expect(hunterThink(st).axes.turn).toBe(0);
+    me.vx = -50;                                                         // closing at 50 u/s toward the crew (west)
+    expect(hunterThink(st).axes).toEqual({ turn: 0, thrust: -1 });
+    me.vx = -30;                                                         // closing slower than 40: coast
+    expect(hunterThink(st).axes.thrust).toBe(0);
+  });
+  it('rams far less against a crew that sits still than pure pursuit did', () => {
+    let rams = 0;
+    for (const seed of [1, 2, 3, 4]) {
+      const st = createTacticalState(seed);
+      for (let t = 0; t < 60 * 120 && st.outcome === Outcome.Running; t++) stepDuel(st, IDLE_INPUT);
+      rams += st.ships[0].shipHits;
+    }
+    expect(rams).toBeLessThan(8);                                        // pure pursuit: 10 to 20 per duel
   });
   it('turns away and thrusts when its straight path will pass near the planet', () => {
     const st = facing();

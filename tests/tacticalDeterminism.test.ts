@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createTacticalState, type Axes, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
+import { launchMissile } from '../src/renderer/src/sim/tactical/missiles';
+import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
+import { cloneTactical, createTacticalState, type Axes, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
 import { flattenTactical, hashTactical, MISSILE_SLOT } from '../src/renderer/src/sim/tactical/hash';
 import { predictPath } from '../src/renderer/src/sim/tactical/predict';
@@ -72,6 +75,38 @@ describe('predictPath stride (Helm H-0a final review)', () => {
   });
 });
 
+describe('cloneTactical', () => {
+  it('copies everything that moves: equal hash, independent state, and identical futures', () => {
+    const st = createTacticalState(13);
+    for (let t = 0; t < 900; t++) stepDuel(st, IDLE_INPUT);
+    const copy = cloneTactical(st);
+    expect(hashTactical(copy)).toBe(hashTactical(st));
+    for (let t = 0; t < 900; t++) { stepDuel(st, IDLE_INPUT); stepDuel(copy, IDLE_INPUT); }
+    expect(hashTactical(copy)).toBe(hashTactical(st));
+    const before = hashTactical(st);
+    copy.ships[0].rooms[0] = 2; copy.ships[0].graceUntil[0] = 99; copy.hunter.trail[0] = 1; copy.rng.s = 7;
+    expect(hashTactical(st)).toBe(before);
+  });
+  it('copies missiles and events by value, not by reference', () => {
+    const st = createTacticalState(13);
+    launchMissile(st, 0); launchMissile(st, 1);
+    st.events.push({ kind: 'laser', ship: 0, hit: true, stripped: false, room: 2, x1: 0, y1: 0, x2: 1, y2: 1 });
+    st.events.push({ kind: 'missileEnd', ship: 1, cause: 'ship', target: 0, room: 1, x: 5, y: 6 });
+    const copy = cloneTactical(st);
+    expect(copy.missiles).toEqual(st.missiles);
+    expect(copy.events).toEqual(st.events);
+    for (const k of [0, 1] as const) expect(copy.missiles[k]).not.toBe(st.missiles[k]);
+    expect(copy.events).not.toBe(st.events);
+    copy.events.forEach((e, k) => expect(e).not.toBe(st.events[k]));
+    const [m0x, m1age] = [st.missiles[0]!.x, st.missiles[1]!.age];
+    copy.missiles[0]!.x += 100; copy.missiles[1]!.age = 400;
+    (copy.events[0] as { hit: boolean }).hit = false; copy.events.push({ kind: 'missileEnd', ship: 0, cause: 'edge', target: -1, room: -1, x: 0, y: 0 });
+    expect([st.missiles[0]!.x, st.missiles[1]!.age]).toEqual([m0x, m1age]);
+    expect(st.events).toHaveLength(2);
+    expect((st.events[0] as { hit: boolean }).hit).toBe(true);
+  });
+});
+
 describe('flatten key guard', () => {
   // When this fails, add the new field to flattenTactical (hash.ts) and then update the lists below.
   it('Ship and TacticalState fields are exactly those flattenTactical knows', () => {
@@ -79,6 +114,9 @@ describe('flatten key guard', () => {
     expect(Object.keys(st.ships[0]).sort()).toEqual(['asteroidHits', 'fireHeld', 'graceUntil', 'heading', 'headingAcc', 'hull', 'laserCharge', 'laserHits', 'laserHold', 'layersStripped', 'lock', 'magazine', 'magazineClock', 'missileHits', 'missilesLaunched', 'missilesLost', 'planetHits', 'released', 'rooms', 'shieldClock', 'shields', 'shipHits', 'shots', 'skidBudget', 'skidSign', 'vx', 'vy', 'x', 'y']);
     expect(Object.keys(st).sort()).toEqual(['events', 'grid', 'hunter', 'map', 'missiles', 'outcome', 'rng', 'seed', 'ships', 'tick']);
     expect(Object.keys(st.hunter).sort()).toEqual(['fireAt', 'lastLaunch', 'mode', 'room', 'timer', 'trail', 'trailHead', 'working']);
+    const launched = createTacticalState(1);
+    launchMissile(launched, 0);                                          // a missile as the launcher makes it
+    expect(Object.keys(launched.missiles[0]!).sort()).toEqual(['age', 'heading', 'headingAcc', 'vx', 'vy', 'x', 'y']);   // MISSILE_SLOT covers these
     // 5 header values; per ship 30 scalars + one per graceUntil slot; 2 missile slots of MISSILE_SLOT; hunter 7 scalars + its trail.
     expect(flattenTactical(st).length).toBe(5 + 2 * (30 + st.map.asteroids.length + 2) + 2 * MISSILE_SLOT + 7 + st.hunter.trail.length);
   });

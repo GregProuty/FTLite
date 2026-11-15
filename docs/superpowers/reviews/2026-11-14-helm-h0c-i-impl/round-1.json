@@ -1,0 +1,39 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Reject weapon commands when the gunner is the empty-seat sentinel",
+      "claim": "With Weapons unattended, a command from player -1 is reported as applied even though no present player occupies Weapons and the tactical step ignores it.",
+      "evidence": "src/renderer/src/sim/duel/step.ts:L39 returns -1 for an unattended station; L105 checks only player !== gunner. A direct probe after player 1 stands reproduced applied results for player -1's lock, charge and launch, with no corresponding weapon action. This violates spec L273 and plan L45.",
+      "why": "The local DuelEnvelope accepts a numeric player ID, and admission currently confuses an invalid actor with the absence of an actor. Command results therefore disagree with execution.",
+      "fix": "Reject when gunner < 0 as well as when the player differs from gunner. Add a regression using player -1 with Weapons vacant and with its occupant away."
+    },
+    {
+      "severity": "P1",
+      "title": "Exercise populated missiles and events in the clone regression",
+      "claim": "The clone test does not verify independent copying of missile objects or event records.",
+      "evidence": "tests/tacticalDeterminism.test.ts:L80 creates seed 13 and advances 900 ticks before cloning at L82. A direct probe confirmed missiles=[null,null] and events=[] at that point. The mutations at L87 cover only rooms, graceUntil, trail and RNG. Replaying all its assertions with shallow missile/event copies still passed, leaving src/renderer/src/sim/tactical/state.ts:L107 and L109 unprotected.",
+      "why": "The test claims comprehensive independence but misses mutable objects needed by the upcoming snapshot and rollback integration. A shallow-copy regression would pass this test.",
+      "fix": "Populate both missile slots and representative laser/missileEnd events before cloning. Assert equal contents and distinct references, mutate the copied objects, and verify the originals remain unchanged. Retain the identical-future check."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "Reviewed master...2a49539. Current HEAD b745979 differs only in review bookkeeping; implementation and test files match the requested commit. No files were modified.",
+    "npx tsc --noEmit passed. Because tsconfig.json:L2 contains no files, also checked both referenced projects with --noEmit --incremental false --composite false --emitDeclarationOnly false; both passed. package.json:L6 defines no lint script.",
+    "The existing AST determinism guard passed for all ten changed simulation files; enforcement comes from tests/helpers/determinismGuard.ts:L20 and tests/boundary.test.ts:L27.",
+    "Seat batching, stands, presence, fixed lock→charge→launch folding, last-wins assignments, thrust=-moveY, repair-before-movement and tick advancement match the accepted ordering: duel/step.ts:L79, L89, L101, L112 and L115; plan L42–L59.",
+    "Repair checks presence, consciousness, standing, held Interact, same room and REACH; progress survives release and hits and clears on completion or level zero: duel/step.ts:L46–L60. A direct probe confirmed zero-walk Weapons repair completes on exactly tick 240.",
+    "Scratch reset matches the sector reset; skipped systems are not invoked. Movement reads initialized life, character and carrying fields. Cutter power usage is 9 of 10, so the stand handler's shedPower call is a no-op: duel/step.ts:L23, sim/step.ts:L36, commands.ts:L94, movement.ts:L61, power.ts:L64.",
+    "Map validation precedes interior allocation, and subsequent initialization failures dispose the interior: duel/state.ts:L33–L52. Shared entity allocation prevents live interiors from sharing component IDs: sim/state.ts:L72–L84.",
+    "The duel hash covers the mutable future-affecting fields on the supported Cutter paths: duel/hash.ts:L9–L12. Two simultaneously live duels produced equal hashes after every tick of a 900-tick probe. Populated missile/event cloning also passed direct independence checks against tactical/state.ts:L102.",
+    "Standoff distance, relative closing speed, reverse thrust and avoidance precedence match spec L202: tactical/hunter.ts:L66–L77. Event additions and self-hit accounting match the plan: tactical/weapons.ts:L56–L68, tactical/missiles.ts:L25 and L56."
+  ],
+  "not_verified": [
+    "Vitest execution was blocked before tests loaded: npx vitest run tests/duel.test.ts failed with spawn EPERM while esbuild loaded the configuration. Direct probes are not a substitute for the five targeted test files.",
+    "Cross-engine bit identity, sector golden traces and initialization-failure cleanup were not runtime-tested. No sector implementation, net/contracts.ts or authority files changed.",
+    "The requested review directory and ledger were absent. No prior IDs were supplied; no exchange file was written.",
+    "Beyond the reading manifest, inspected power.ts to resolve shedPower coupling; tactical/duel.ts and tactical/hash.ts to trace execution and hashing; package.json, tsconfig files and vitest.config.ts to establish verification coverage; and the boundary test/helper to run the existing AST guard. Also checked applicable AGENTS.md locations and read the required skill instructions."
+  ]
+}
