@@ -93,7 +93,7 @@ export function createHud(parent: Container, assets: GameAssets) {
 
   const players = [0, 1, 2, 3].map((i) => {
     const b = blockRect(i);
-    parent.addChild(panel(b.x, b.y, b.w, b.h).g);
+    const background = panel(b.x, b.y, b.w, b.h).g; parent.addChild(background);
     const root = new Container(); root.position.set(b.x + PAD, b.y); parent.addChild(root);
     const name = text(); const hp = bar(BLOCK_HP_W, 10); hp.root.position.set(BLOCK_HP_X, 10);
     const oxygen = icon('icon.oxygen'); if (oxygen) { oxygen.position.set(BLOCK_O2_X, 7); oxygen.visible = false; root.addChild(oxygen); }
@@ -121,7 +121,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       consoleTabs.visible = tabbed; tabRule.visible = tabbed;
       if (tabbed) tabRule.clear().rect(PAD, LINE + 1, r.w - 2 * PAD, 1).fill({ color: RULE });
     };
-    return { name, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleTabs, consoleRows, consoleSelector, footers, consoleBar, sizeCard };
+    return { root, background, name, hp, oxygen, line2, line3, line4, progress, consoleRoot, consoleTabs, consoleRows, consoleSelector, footers, consoleBar, sizeCard };
   });
 
   // The event card (spec Demo-x-b section 2, FTL's event window): over the world band, above the seated console cards.
@@ -174,7 +174,7 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.line2, [{ text: p.character.asset && p.character.complication ? `${p.character.asset} / ${p.character.complication}` : '', tint: DIM }]);
       return;
     }
-    ui.name.text = `P${i + 1} ${p.character.name}`; ui.name.tint = AMBER;
+    ui.name.text = `P${i + 1} ${p.character.name}${p.status === 'bot' ? ' BOT' : ''}`; ui.name.tint = AMBER;
     ui.hp.root.visible = true; ui.hp.set(p.health / 100, p.health > 50 ? BAR_ON : p.health > 25 ? AMBER : WARN);
     if (ui.oxygen) ui.oxygen.visible = p.lowOxygen;
     if (p.lifeText) { fillRow(ui.line2, [{ text: p.lifeText, tint: WARN }]); fillRow(ui.line3, []); }
@@ -278,7 +278,11 @@ export function createHud(parent: Container, assets: GameAssets) {
         const top = SUMMARY_TOP + (m.phase === 'lobby' ? LINE : 0), bottom = SUMMARY_TOP + 12 * LINE;
         summaryBack.clear().rect(INTERNAL_W / 2 - wide / 2 - 16, top - 6, wide + 32, Math.min(bottom, SUMMARY_TOP + (m.phase === 'lobby' ? 12 : m.summary!.length) * LINE) - top + 12).fill({ color: BACKDROP, alpha: BACKDROP_ALPHA }).stroke({ width: 2, color: RULE });
       }
-      m.players.forEach((p, i) => updatePlayer(players[i]!, p, i, m.phase));
+      players.forEach((slot, i) => {
+        const p = m.players[i]; slot.root.visible = slot.background.visible = !!p;
+        if (p) updatePlayer(slot, p, i, m.phase);
+        else { slot.name.text = ''; blank(slot); }
+      });
       updateCard(m);
       overlay.visible = m.credits !== null;
       if (m.credits) creditLines.forEach((t, i) => { t.text = m.credits![m.creditsScroll + i] ?? ''; });

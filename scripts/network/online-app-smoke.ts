@@ -1,4 +1,3 @@
-import { build } from 'vite';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -6,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
-import { startLocalRuntime } from '../../services/signalling/scripts/local-runtime';
+import { startOnlineAppRuntime } from './online-app-runtime';
 import { validateOnlineAppReport } from './online-app-report';
 import { onlineAppFailureCode, onlineAppStderrDiagnostic } from './online-app-diagnostics';
 
@@ -17,12 +16,15 @@ async function main() {
   const began = performance.now(), directory = mkdtempSync(join(tmpdir(), 'ftlite-online-app-'));
   const reportPath = resolve(process.argv.find(a => a.startsWith('--report-path='))?.slice(14) ?? '.superpowers/sdd/2026-11-15-net-3d-online-sector/online-app.json');
   const artifactDirectory = resolve(reportPath, '..'); mkdirSync(artifactDirectory, { recursive: true });
-  const processes: Application[] = [], scenarios: any[] = [], checks: string[] = [];
-  let runtime: Awaited<ReturnType<typeof startLocalRuntime>> | undefined, failure: string | undefined, timedOut = false, electronVersion:string|undefined;
-  const watchdog = setTimeout(() => { timedOut = true; }, 90000);
+  const processes: Application[] = [], scenarios: any[] = [], checks: string[] = [], viewports: any[] = [];
+  let runtime: ReturnType<typeof startOnlineAppRuntime> | undefined, failure: string | undefined, timedOut = false, electronVersion:string|undefined;
+  const deadline = new AbortController();
+  const timeout = () => { timedOut = true; deadline.abort(); };
+  const watchdog = setTimeout(timeout, 90000);
+  let injectedDeadline: ReturnType<typeof setTimeout> | undefined;
   const source = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim(),
     dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', windowsHide: true }).trim(), digest: computeContentDigest(process.cwd()),
-    artifactHashes:Object.fromEntries(['out/main/index.js','out/main/transportWindow.js','out/renderer/index.html','scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-observer.ts']
+    artifactHashes:Object.fromEntries(['out/main/index.js','out/main/transportWindow.js','out/renderer/index.html','scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-observer.ts','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts']
       .map(path=>[path,createHash('sha256').update(readFileSync(path)).digest('hex')])) };
   async function until(read: () => Promise<any>, predicate: (value: any) => boolean, label: string, ms = 10000) {
     const deadline = performance.now() + ms; let last;
@@ -75,6 +77,15 @@ async function main() {
     app.cleanup = await app.request('shutdown'); await Promise.race([app.exit,delay(1000)]); await kill(app);
     assert(app.exitCode===0,'graceful application exit was nonzero');
   }
+  async function viewportProof(app: Application, name: string) {
+    for (const small of [false, true]) {
+      await app.request('resize', { width: small ? 800 : 1280, height: small ? 600 : 720 });
+      const layout = await until(() => app.request('layout'), r => r.canvas.top >= r.menu.bottom && r.canvas.bottom <= r.height + 1 && r.canvas.width === r.width, 'reserved game viewport');
+      viewports.push({ name, small, ...layout });
+      await app.request('screenshot', { path: join(artifactDirectory, `${name}${small ? '-small' : ''}.png`) });
+    }
+    await app.request('resize', { width: 1280, height: 720 });
+  }
   const observation = (r: any) => r.observations.at(-1);
   async function matched(h: Application, g: Application) {
     return until(async () => { const [a,b] = await Promise.all([status(h),status(g)]); const host = observation(a), guest = observation(b);
@@ -92,7 +103,7 @@ async function main() {
     const generationBefore = first.status.snapshot.seats[seat].seatGeneration;
     await key(g,'F'); await key(g,'D',350);
     await until(()=>status(g),r=>observation(r).inputs.some((i:any)=>i.held?.moveX===1),'guest native keyboard input');
-    await g.request('screenshot',{path:join(artifactDirectory,`online-player${seat+1}.png`)});
+    await viewportProof(g, `online-player${seat+1}`);
     const initial = await matched(h,g);
     for(const app of [h,g]) {
       const resources=await app.request('resources');
@@ -110,7 +121,7 @@ async function main() {
     const commandProof = observation(await status(g));
     assert(commandProof.results.some((r:any)=>r.id.player===seat&&r.status==='applied'),'guest command application result');
     if(process.argv.includes('--inject-timeout')) {
-      const timer=setTimeout(()=>{timedOut=true;},250);
+      const timer=setTimeout(timeout,250);
       try { await until(()=>status(g),()=>false,'deliberately held launcher wait'); } finally { clearTimeout(timer); }
     }
     if(process.argv.includes('--inject-guest-failure')) { g.termination='fault'; await kill(g); throw Error('injected guest process death'); }
@@ -142,9 +153,11 @@ async function main() {
     return g;
   }
   try {
-    runtime = await startLocalRuntime(directory);
-    await build({ configFile: false, envDir: false, logLevel: 'warn', define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(source.digest) },
-      build: { outDir: join(directory, 'observer'), emptyOutDir: false, lib: { entry: resolve('scripts/network/online-app-observer.ts'), name: 'OnlineObserver', formats: ['iife'], fileName: () => 'observer.js' } } });
+    const hang = process.argv.includes('--inject-startup-timeout') ? 'startup' : process.argv.includes('--inject-build-timeout') ? 'observer-build' : undefined;
+    runtime = startOnlineAppRuntime(directory, source.digest, deadline.signal, hang, stage => {
+      if (hang === stage) injectedDeadline = setTimeout(timeout, 250);
+    });
+    await runtime.ready;
     const h = await launch('host'); let g = await launch('guest');
     await h.request('screenshot', { path: join(artifactDirectory, 'online-menu.png') });
     await g.request('click',{id:'join'}); await g.request('type',{id:'join-code',text:'00000000'}); await g.request('click',{id:'join-room'});
@@ -172,6 +185,8 @@ async function main() {
     await g.request('click',{id:'join-room'}); await phase(g,'joining'); await g.request('click',{id:'leave'}); await phase(g,'idle');
     await g.request('click',{id:'couch'}); await key(g,'E'); await delay(1300);
     const cancelled=await g.request('resources'); assert(cancelled.utilities.length===0&&cancelled.windows===1&&cancelled.listeners===0,'cancel retained transport resources');
+    await key(g, 'F'); await delay(200);
+    await viewportProof(g, 'couch');
     await g.request('click',{id:'leave-couch'}); checks.push('cancel-couch');
     // Cancellation can leave the service's disconnected reservation; host removes
     // it through the same real roster action before admitting the actual guest.
@@ -186,7 +201,7 @@ async function main() {
     g=await play(h,g,4);
   } catch (error) { failure = onlineAppFailureCode(error); }
   finally {
-    clearTimeout(watchdog);
+    clearTimeout(watchdog); clearTimeout(injectedDeadline);
     for (const app of processes) if (!app.exited) {
       app.termination='shutdown';
       try { app.cleanup = await app.request('shutdown'); await Promise.race([app.exit,delay(1000)]); } catch { console.error('APP_SHUTDOWN_OBSERVATION_FAILED'); }
@@ -201,7 +216,7 @@ async function main() {
   const report = { version: 1, source, runtime: { electron: electronVersion, workerd: runtime?.workerdVersion, workerPid:runtime?.pid, workerExit: runtime?.exited(), temporaryRemoved: !existsSync(directory) },
     processes: processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination}) => ({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,cleanup})),
     cleanup: Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k => [k, cleanups.reduce((n,r)=>n+r[k],0)])),
-    scenarios, checks, elapsedMs: Math.ceil(performance.now()-began), failure,
+    runtimeHelper: runtime?.observation(), viewports, scenarios, checks, elapsedMs: Math.ceil(performance.now()-began), failure,
     limits: ['loopback-only','no-TURN','no-independent-utility-lease','no-mirrors','no-rehost','no-WAN','no-two-machine'] };
   writeFileSync(reportPath, JSON.stringify(report,null,2)+'\n');
   if (failure) throw Error(failure);

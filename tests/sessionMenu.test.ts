@@ -2,11 +2,28 @@ import { expect, it, vi } from 'vitest';
 import { createSessionMenu } from '../src/renderer/src/render/sessionMenu';
 import type { OnlineStatus } from '../src/shared/onlineSession';
 class Element {
+  offsetHeight = 56;
   children: Element[] = []; textContent = ''; value = ''; disabled = false; hidden = false; type = ''; style = { cssText: '' }; attributes = new Map<string, string>(); listeners = new Map<string, (e: any) => void>();
   append(...items: Element[]) { this.children.push(...items); } replaceChildren(...items: Element[]) { this.children = items; } setAttribute(k: string, v: string) { this.attributes.set(k, v); } addEventListener(k: string, f: (e: any) => void) { this.listeners.set(k, f); } focus() {} remove() {}
   find(id: string): Element | undefined { return this.attributes.get('data-testid') === id ? this : this.children.map(c => c.find(id)).find(Boolean); }
   fire(type = 'click') { if (!this.disabled) this.listeners.get(type)?.({ preventDefault() {}, stopPropagation() {} }); }
 }
+it('reserves the measured strip height for online and couch, including wrapped controls', () => {
+  const root = new Element(); const menu = createSessionMenu({ root: root as unknown as HTMLElement, document: { createElement: () => new Element() } as unknown as Document, couch: vi.fn(), online: vi.fn(), pause: vi.fn(), inputBlocked: vi.fn() });
+  expect(menu.reservedHeight()).toBe(0); root.find('couch')!.fire(); expect(menu.reservedHeight()).toBe(56);
+  root.offsetHeight = 112; expect(menu.reservedHeight()).toBe(112);
+  root.find('leave-couch')!.fire(); expect(menu.reservedHeight()).toBe(0);
+  menu.setStatus({ phase: 'running', role: 'guest', ownSeat: 1, snapshot: null, attachmentEpoch: 1, error: null, retryAtMs: null, persistent: true, actions: [] });
+  expect(menu.reservedHeight()).toBe(112); menu.dispose();
+});
+it('counts down a shared epoch deadline despite unequal process performance origins', () => {
+  const root = new Element(); const menu = createSessionMenu({ root: root as unknown as HTMLElement, document: { createElement: () => new Element() } as unknown as Document, couch: vi.fn(), online: vi.fn(), pause: vi.fn(), inputBlocked: vi.fn() });
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1800000000000);
+  menu.setStatus({ phase: 'reconnecting', role: 'guest', ownSeat: 1, snapshot: null, attachmentEpoch: 1, error: null, retryAtMs: 1800000002500, persistent: true, actions: [] });
+  menu.frame(17); expect(root.find('reconnect-countdown')!.textContent).toContain('in 3s');
+  now.mockReturnValue(1800000002000); menu.frame(2017); expect(root.find('reconnect-countdown')!.textContent).toContain('in 1s');
+  now.mockRestore(); menu.dispose();
+});
 it('explains unavailable online in a connected but unconfigured app while leaving Couch playable', () => {
   const root = new Element(), couch = vi.fn();
   const menu = createSessionMenu({ root: root as unknown as HTMLElement, document: { createElement: () => new Element() } as unknown as Document, api: {} as any, couch, online: vi.fn(), pause: vi.fn(), inputBlocked: vi.fn() });

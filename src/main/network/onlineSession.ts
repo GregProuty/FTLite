@@ -256,7 +256,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
             retryable: true, ...((error as { retryAfterMs?: number })?.retryAfterMs === undefined ? {} : { retryAfterMs: (error as { retryAfterMs: number }).retryAfterMs }) });
           throw error;
         }
-      }, retryAtMs => emit({ phase: 'reconnecting', retryAtMs }));
+      }, retryAtMs => emit({ phase: 'reconnecting', retryAtMs: retryAtMs === null ? null : clock.epochMs() + Math.max(0, retryAtMs - clock.nowMs()) }));
     } finally { signal.removeEventListener('abort', cancel); }
   }
   async function perform(action: OnlineAction, signal: AbortSignal): Promise<void> {

@@ -94,9 +94,9 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
       const state = client?.state() ?? frozen; if (!state || !descriptor) return;
       if (client?.state()) points = client.presentation.sample(deps.now());
       const phase = lastPhase === 'ended' ? 'gameover' : lastPhase === 'paused' ? 'paused' : 'running';
-      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), client?.ui, points);
+      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), client?.ui ?? frozenUi, points);
       deps.hud?.update(buildHudModel(state, { mode: 'player', player: descriptor.seatId, ui: client?.ui ?? frozenUi }, {
-        slots: state.crew.map((_, pid) => ({ status: status?.snapshot?.seats.find(s => s.seatId === pid)?.connected || pid === descriptor!.seatId && !!client?.state() ? 'active' : 'reconnect', key: pid === descriptor!.seatId ? input.key : null })),
+        slots: state.crew.map((_, pid) => ({ status: status?.snapshot?.seats.find(s => s.seatId === pid)?.connected || pid === descriptor!.seatId && !!client?.state() ? 'active' : pid === descriptor!.seatId ? 'reconnect' : 'bot', key: pid === descriptor!.seatId ? input.key : null })),
         phase, message: `PLAYER ${descriptor.seatId + 1}${client?.state() ? '' : ' — CONNECTION LOST'}`, callouts, calloutFlash: flashingKinds(callouts, state.tick)
       }));
       for (const cue of CUE_ORDER) if (cues.has(cue)) deps.playCue?.(cue); cues.clear();

@@ -31,6 +31,7 @@ export interface OnlineStatus {
   snapshot: RoomSnapshot | null;
   attachmentEpoch: number;
   error: OnlineErrorCode | null;
+  /** Epoch deadline for display only; retry enforcement remains main-process monotonic. */
   retryAtMs: number | null;
   persistent: boolean;
   actions: readonly OnlineAction['type'][];

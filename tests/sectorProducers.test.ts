@@ -56,6 +56,16 @@ it('gives every vacant seat exactly one bot through published-state strict input
   for (const frame of admissions) if (frame.action.kind === 'admission')
     expect(frame.action.entries.every(entry => entry.admissionPolicy === undefined)).toBe(true);
 });
+it('retires an entire multi-seat human binding when seat 2 is replaced and restores bot 0', () => {
+  const h = harness(3), first = h.human([0, 2]); h.tick();
+  expect(h.checkpoint().heldHighWater).toEqual([0, 1, 0]);
+  const replacement = h.human([2]); h.tick();
+  expect(first.host.links).toHaveLength(0);
+  expect(h.checkpoint().heldHighWater).toEqual([1, 2, 0]);
+  first.off(); first.clientLink.close('stale-close'); h.tick();
+  expect(h.checkpoint().heldHighWater).toEqual([2, 3, 0]);
+  expect(replacement.host.links).toHaveLength(1);
+});
 
 it('suppresses only sparse human seats 0 and 2 and resumes each bot after loss', () => {
   const h = harness(4), zero = h.human([0]), two = h.human([2]);

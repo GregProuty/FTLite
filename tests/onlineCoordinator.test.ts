@@ -3,7 +3,7 @@ import { createOnlineSession } from '../src/main/network/onlineSession';
 import { sectorCompatibility } from '../src/main/network/onlineSector';
 import type { RoomServiceEvent } from '../src/network/session/serviceClient';
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-function harness(capacity = 1, ownSeat = 0) {
+function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0) {
   const events = new Set<(event: RoomServiceEvent) => void>(); const order: string[] = [], ports: any[] = [];
   let snapshot: any = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), joinCode: 'ABCDEFGH', compatibility: sectorCompatibility(capacity), capacity,
     hostSeatId: 0, hostGeneration: 1, phase: 'lobby', rosterRevision: 1, seats: Array.from({ length: capacity }, (_, seatId) => ({ seatId, seatGeneration: 1, occupied: true, connected: true, ready: false })) };
@@ -26,7 +26,7 @@ function harness(capacity = 1, ownSeat = 0) {
   const host = { transport: controller, request: vi.fn(async () => ({ ok: true as const, requestId: 1, hostGeneration: 1 })), attachPeer: vi.fn(async () => {}), onExit: vi.fn((cb: (reason: string) => void) => { hostExit = cb; return () => {}; }), dispose: vi.fn(async () => {}) };
   const platform = { createTransport: vi.fn(async () => transport), startHost: vi.fn(async () => host), channel: () => { const port1 = { close: vi.fn() }, port2 = { close: vi.fn() }; ports.push(port1, port2); return { port1, port2 } as any; }, publishPort: vi.fn(), onVisibleGone: () => () => {} };
   const owner = createOnlineSession({ config: { enabled: true, baseUrl: 'http://127.0.0.1:8787', allowInsecureLocalhost: true }, seatStore: store,
-    service: () => service, platform, clock: { nowMs: () => Date.now(), epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32) });
+    service: () => service, platform, clock: { nowMs: () => Date.now() - monotonicOrigin, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32) });
   const savedSeat = () => ({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: snapshot.roomId, joinCode: snapshot.joinCode, compatibility: snapshot.compatibility, seatId: ownSeat, seatGeneration: 1, seatToken: 't'.repeat(43) });
   const issue = (attemptId = '1'.repeat(32), guestSeatId = ownSeat === 0 ? 1 : ownSeat) => emit({ type: 'link-issued', link: { attemptId, role: ownSeat === 0 ? 'offerer' : 'answerer',
     identity: { ...snapshot.compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration: 1, seatGeneration: snapshot.seats[guestSeatId].seatGeneration,
@@ -219,4 +219,14 @@ describe('online coordinator ownership', () => {
     h.owner.subscribe(status => { if (!left && status.phase === 'idle') { left = true; void h.owner.dispatch({ type: 'leave' }); } });
     h.transportExit(); await new Promise<void>(resolve => setImmediate(resolve)); expect(h.service.join).toHaveBeenCalledOnce(); expect(h.owner.status().phase).toBe('idle'); await h.owner.dispose();
   });
+});
+
+it('publishes retry deadlines in shared epoch time without changing monotonic enforcement', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(1800000000000);
+  const h = harness(2, 1, 1799999995000); h.setSaved(h.savedSeat());
+  h.service.join.mockRejectedValueOnce({ code: 'unavailable', retryable: true, retryAfterMs: 8000 });
+  const result = h.owner.dispatch({ type: 'reconnect' }); await vi.advanceTimersByTimeAsync(0);
+  expect(h.owner.status().retryAtMs).toBe(1800000008000);
+  await vi.advanceTimersByTimeAsync(7999); expect(h.service.join).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1); expect(await result).toEqual({ ok: true }); await h.owner.dispose();
 });

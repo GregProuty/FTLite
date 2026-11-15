@@ -36,10 +36,11 @@ import { navigatorAtHelm } from './enemyWindowModel';
 import { shotResult, type ShotResult, type ShotTone } from './shotResult';
 import { bubbles, type Bubble, type Callout } from './calloutModel';
 
+export type HudSlotStatus = SlotStatus | 'bot';
 export type Viewer = { mode: 'couch'; ui: CardUiState } | { mode: 'player'; player: number; ui: CardUiState };
 /** Presentation data supplied by the session; never part of canonical simulation state. */
 export interface HudContext {
-  slots: readonly SlotInfo[];
+  slots: readonly (Omit<SlotInfo, 'status'> & { status: HudSlotStatus })[];
   phase: HudModel['phase'];
   message: string;
   credits?: { lines: readonly string[]; scroll: number } | null;
@@ -50,14 +51,14 @@ export interface HudContext {
 /** Detached data for the future player layout; seated is a station kind, as in HudPlayer. */
 export interface HudCrewStatus {
   pid: number; role: string; health: number; seated: number | null;
-  status: SlotStatus; offline: boolean; downed: boolean; life: number; callout: Bubble | null;
+  status: HudSlotStatus; offline: boolean; downed: boolean; life: number; callout: Bubble | null;
 }
 
 export type DeviceKind = 'kb0' | 'kb1' | 'pad' | null;
 export type HudAction = 'interact' | 'confirm' | 'cancel';
 export interface HudCharacter { name: string; asset: string; complication: string }
 export interface HudPlayer {
-  pid: number; status: SlotStatus; deviceKind: DeviceKind;
+  pid: number; status: HudSlotStatus; deviceKind: DeviceKind;
   health: number; life: number; bleed: number; lowOxygen: boolean; carrying: boolean; vote: string;   // vote: 'VOTE 1' or 'VOTE 2' while an event is open (spec Coop-ii section 3)   // carrying: a torpedo in hand (spec Coop-ii section 2)
   lifeText: string; skills: number[]; character: HudCharacter;
   interactPrompt: string; interactIcon: string | null;
@@ -529,7 +530,8 @@ export function buildHudModel(state: SimState | null, viewer: Viewer, context: H
   const players: HudPlayer[] = slots.map((slot, pid) => {
     const head = { pid, status: slot.status, deviceKind: slot.status === 'active' ? deviceKindOf(slot.key) : null };
     if (!state || pid >= state.playerCount) return { ...head, ...EMPTY, skills: [0, 0, 0, 0, 0, 0], character: describe(CHARACTERS[DEFAULT_CHARACTERS[pid] ?? RECRUIT]!) };
-    return { ...head, ...player(state, pid, ui) };
+    const body = player(state, pid, ui);
+    return { ...head, ...body, ...(slot.status === 'bot' ? { interactPrompt: '', confirmPrompt: '', cancelPrompt: '' } : {}) };
   });
   const threats: HudThreat[] = [];
   if (state) {

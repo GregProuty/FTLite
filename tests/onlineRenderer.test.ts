@@ -14,29 +14,56 @@ import { createRenderMemory } from '../src/renderer/src/render/memory';
 import type { GameAssets } from '../src/renderer/src/render/assets';
 import { Position, Stable } from '../src/renderer/src/sim/components';
 import { assertSimStateLive } from '../src/renderer/src/sim/state';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import { cardRows } from '../src/renderer/src/clientControl/cardController';
+import { doorsCursorTile } from '../src/renderer/src/render/hazardTiles';
 import { TILE_PX } from '../src/shared/resolution';
 const status: OnlineStatus = { phase: 'syncing', role: 'guest', ownSeat: 2, snapshot: null, attachmentEpoch: 1, error: null, retryAtMs: null, persistent: true, actions: ['leave'] };
-function rig() {
-  const state = makeState(3); quiet(state); let now = 0, cb = () => {};
+function rig(prepare?: (state: ReturnType<typeof makeState>) => void) {
+  const state = makeState(3); quiet(state); prepare?.(state); let now = 0, cb = () => {};
   const clock = { nowMs: () => now }, h = portEndpoint(), p = portEndpoint();
   const listeners = new Map<string, Set<(e: any) => void>>();
   const port = { postMessage: p.port.postMessage, close: p.port.close, start() {}, addEventListener(type: string, fn: (e: any) => void) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn); }, removeEventListener(type: string, fn: (e: any) => void) { listeners.get(type)?.delete(fn); } } as unknown as MessagePort;
   const options = { runId: 'online-test', contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: () => LAYOUT };
   const authority = createFixtureAuthority({ ...options, clock, init: { runId: options.runId, contentDigest: options.contentDigest, seed: 1, playerCount: 3, characters: [], unlocked: [], layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION }, scheduler: { schedule: () => () => {} }, onCrash(error) { throw error; } }, state);
   const binding = createSectorStreamBinding(createPortLink(h.port, 'visible'), { ...options, clock, latestPayloadLimit: 4096 });
-  const viewState = vi.fn(async (_epoch: number, _phase: string) => ({ ok: true as const })), draw = vi.fn(), resetInput = vi.fn();
+  const viewState = vi.fn(async (_epoch: number, _phase: string) => ({ ok: true as const })), draw = vi.fn(), resetInput = vi.fn(), update = vi.fn();
   let moveX = 0, sourceKey = 'kb:0', present = true;
   const saveProgress = vi.fn();
-  const session = createOnlineRendererSession({ ...options, ...{ saveProgress }, now: clock.nowMs, scheduler: { schedule(_delay, next) { cb = next; return () => { cb = () => {}; }; } }, sampleDevices: () => [...(present ? [{ key: sourceKey, moveX, moveY: 0, interact: false, confirm: false, cancel: false, any: moveX !== 0 }] : []), { key: 'kb:1', moveX: -1, moveY: 1, interact: true, confirm: true, cancel: true, any: true }], resetInput, renderer: { reset() {}, recordPrev() {}, draw }, hud: { update: vi.fn() }, api: { viewState } });
+  const session = createOnlineRendererSession({ ...options, ...{ saveProgress }, now: clock.nowMs, scheduler: { schedule(_delay, next) { cb = next; return () => { cb = () => {}; }; } }, sampleDevices: () => [...(present ? [{ key: sourceKey, moveX, moveY: 0, interact: false, confirm: false, cancel: false, any: moveX !== 0 }] : []), { key: 'kb:1', moveX: -1, moveY: 1, interact: true, confirm: true, cancel: true, any: true }], resetInput, renderer: { reset() {}, recordPrev() {}, draw }, hud: { update }, api: { viewState } });
   const descriptor: OnlinePortDescriptor = { epoch: 1, runId: options.runId, hostGeneration: 1, seatId: 2, compatibility: { protocolVersion: 2, modeId: 'sector', schemaVersion: 1, simVersion: SIM_VERSION, contentDigest: options.contentDigest, layoutHash: state.derived.layoutHash } };
   session.setStatus(status); session.attach(descriptor, port);
   authority.attach(binding.link, [2], { ...binding.attachOptions, admissionPolicy: 'receive-time' });
   const deliver = () => { for (const data of h.sent.splice(0)) for (const fn of [...listeners.get('message') ?? []]) fn({ data }); for (const data of p.sent.splice(0)) h.receive(data); authority.pump(); };
   const pump = () => { cb(); deliver(); };
   ownTestCleanup(() => { session.dispose(); binding.dispose(); });
-  return { state, session, authority, draw, viewState, resetInput, descriptor, port, deliver, pump, saveProgress, sent: p.sent, device(key: string, available = true) { sourceKey = key; present = available; }, setMove(v: number) { moveX = v; }, tick() { now += 17; authority.pump(); deliver(); }, disconnect() { for (const fn of [...listeners.get('close') ?? []]) fn({}); } };
+  return { state, session, authority, draw, update, viewState, resetInput, descriptor, port, deliver, pump, saveProgress, sent: p.sent, device(key: string, available = true) { sourceKey = key; present = available; }, setMove(v: number) { moveX = v; }, tick() { now += 17; authority.pump(); deliver(); }, disconnect() { for (const fn of [...listeners.get('close') ?? []]) fn({}); } };
 }
 describe('online renderer uses the real streaming client', () => {
+  it('retains a nondefault Doors selection in draws after main detaches the replica', () => {
+    const h = rig(state => sitDown(state, 2, state.derived.stationOfKind[StationKind.Doors]!)); h.deliver(); h.pump(); h.session.frame();
+    const ui = h.draw.mock.calls.at(-1)![3], station = h.state.derived.stationOfKind[StationKind.Doors]!;
+    const selection = { rowKey: cardRows(h.state, station)[3]!.key, page: 'main' as const };
+    ui.stations[station] = selection;
+    const expectedTile = h.state.derived.edgeTile[h.state.derived.doorEdges[3]!]!;
+    expect(doorsCursorTile(h.draw.mock.calls.at(-1)![0], ui)).toBe(expectedTile);
+    h.session.setStatus({ ...status, phase: 'reconnecting' }); h.session.frame();
+    expect(h.draw.mock.calls.at(-1)![3]?.stations[station]).toEqual(selection);
+    expect(doorsCursorTile(h.draw.mock.calls.at(-1)![0], h.draw.mock.calls.at(-1)![3])).toBe(expectedTile);
+    expect(h.draw.mock.calls.at(-1)![3]).not.toBe(ui);
+  });
+  it('shows vacant and disconnected crew as bots with health and without local input prompts', () => {
+    const h = rig(); h.deliver(); h.pump();
+    h.session.setStatus({ ...status, phase: 'running', snapshot: { seats: [
+      { seatId: 0, occupied: false, connected: false }, { seatId: 1, occupied: true, connected: false },
+      { seatId: 2, occupied: true, connected: true }
+    ] } as any }); h.session.frame();
+    expect(h.update.mock.calls.at(-1)![0].players.map((p: any) => p.status)).toEqual(['bot', 'bot', 'active']);
+    for (const p of h.update.mock.calls.at(-1)![0].players.slice(0, 2)) {
+      expect(p.health).toBeGreaterThan(0); expect(p.interactPrompt).toBe(''); expect(p.confirmPrompt).toBe(''); expect(p.cancelPrompt).toBe('');
+    }
+  });
   it('neutralizes a removed controller exactly once and stops production until a physical producer returns', () => {
     const h = rig(); h.device('gp:0'); h.setMove(1); h.deliver(); h.pump(); h.pump();
     expect(h.authority.checkpoint([]).held[2]!.moveX).toBe(1);

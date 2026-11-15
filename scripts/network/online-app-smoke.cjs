@@ -92,6 +92,13 @@ async function click(id) {
 async function command(message) {
   switch (message.command) {
     case 'status': return { ...await js(`(async () => ({status:(await window.ftlite.online.readStatus()).status, observations:window.onlineAppObservation(), keys:window.onlineAppKeys, text:document.body.innerText, hidden:document.hidden, focused:document.hasFocus()}))()`),electron:process.versions.electron };
+    case 'resize': {
+      if (![[1280,720],[800,600]].some(([w,h]) => message.width === w && message.height === h)) throw Error('invalid test size');
+      // Native stress viewport below the ordinary app minimum; production sizing
+      // and all renderer/layout/input code remain unchanged.
+      visible.setMinimumSize(640, 480); visible.setContentSize(message.width, message.height); await delay(150); return true;
+    }
+    case 'layout': return js(`(() => { const rect = e => { const r=e.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,width:r.width,height:r.height}; }; return {width:innerWidth,height:innerHeight,menu:rect(document.querySelector('[data-testid="session-menu"]')),canvas:rect(document.querySelector('canvas'))}; })()`);
     case 'click': await click(message.id); return true;
     case 'type': await click(message.id); visible.webContents.insertText(message.text); return true;
     case 'capacity': await click('capacity'); visible.webContents.sendInputEvent({type:'keyDown',keyCode:'Home'}); visible.webContents.sendInputEvent({type:'keyUp',keyCode:'Home'});
@@ -136,7 +143,7 @@ async function command(message) {
 // Hold the wrapper alive long enough to report actual utility exits at shutdown.
 app.on('window-all-closed', event => { if (stopping) event?.preventDefault?.(); });
 app.on('before-quit', event => { if(stopping) event.preventDefault(); });
-const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','screenshot','resources','transport-death','delay-next-transport','shutdown']);
+const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','resize','layout','screenshot','resources','transport-death','delay-next-transport','shutdown']);
 process.on('message', message => { void command(message).then(result => { if(message.command!=='shutdown') process.send?.({id:message.requestId,result}); })
   .catch(() => process.send?.({id:Number.isSafeInteger(message?.requestId)?message.requestId:0,error:'app-driver-command-failed',
     command:diagnosticCommands.has(message?.command)?message.command:'unknown'})); });

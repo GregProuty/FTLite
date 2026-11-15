@@ -74,7 +74,13 @@ async function start(): Promise<void> {
   });
   const offStatus = bridge?.onStatus(next => { status = next; online?.setStatus(next); menu.setStatus(next); });
   if (document.hidden || !document.hasFocus()) session.pause('initial-focus');
-  const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
+  const resize = (): void => {
+    const top = menu.reservedHeight();
+    renderer.app.canvas.style.cssText = `position:fixed;left:0;top:${top}px;display:block`;
+    renderer.resize(window.innerWidth, Math.max(1, window.innerHeight - top));
+  };
+  // Reflow can wrap the strip without a window resize (status/roster changes).
+  const menuResize = new ResizeObserver(resize); menuResize.observe(menuRoot);
   window.addEventListener('resize', resize); resize();
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
@@ -83,7 +89,7 @@ async function start(): Promise<void> {
   window.addEventListener('focus', () => session.resume('focus'));
   const offSuspend = window.ftlite?.onSuspend(() => session.pause('os-suspend'));
   const offResume = window.ftlite?.onResume(() => { if (session.mode === 'couch') session.resume('os-resume'); });
-  renderer.app.ticker.add(() => { session.frame(); menu.frame(performance.now()); });
-  window.addEventListener('beforeunload', () => { offPort?.(); offStatus?.(); offSuspend?.(); offResume?.(); menu.dispose(); session.dispose(); bridge?.dispose(); keyboard.destroy(); }, { once: true });
+  renderer.app.ticker.add(() => { session.frame(); menu.frame(); });
+  window.addEventListener('beforeunload', () => { offPort?.(); offStatus?.(); offSuspend?.(); offResume?.(); menuResize.disconnect(); menu.dispose(); session.dispose(); bridge?.dispose(); keyboard.destroy(); }, { once: true });
 }
 start().catch(showFatal);
