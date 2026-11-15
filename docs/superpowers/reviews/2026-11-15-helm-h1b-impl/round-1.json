@@ -1,0 +1,58 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Weapons queues commands the sim rejects",
+      "claim": "Space and F queue commands even when a missile is flying; F also queues with an empty magazine or level-2 Weapons damage.",
+      "evidence": "src/renderer/src/app/duel/runtime.ts:L282, L288; src/renderer/src/sim/duel/step.ts:L110-L111; src/renderer/src/sim/tactical/weapons.ts:L33-L38",
+      "why": "Ordinary solo input produces rejected commands, contrary to the client admission requirement.",
+      "fix": "Check canCharge and canLaunch when building the tick’s commands, accounting for commands already queued that tick; test unavailable states."
+    },
+    {
+      "severity": "P1",
+      "title": "Tab can invalidate commands queued before the switch",
+      "claim": "A Weapons command queued in one frame, followed by Tab before the next tick, is sent after that tick’s presence change and rejected as not-at-weapons.",
+      "evidence": "src/renderer/src/app/duel/runtime.ts:L217, L257-L263; src/renderer/src/sim/duel/step.ts:L93-L108",
+      "why": "This is possible when render frames outnumber sim ticks, and turns an ordinary press into a rejected command.",
+      "fix": "On Tab, remove or reconcile pending tactical commands from the character being left; add a two-frame, one-tick test."
+    },
+    {
+      "severity": "P1",
+      "title": "Sampled pointer input survives Tab and restart",
+      "claim": "The frame samples pointer movement before Tab or Enter clears the pointer, then applies that saved sample to the newly active or reset camera.",
+      "evidence": "plan L75, L80; src/renderer/src/app/duel/runtime.ts:L250-L252, L265-L266, L316-L326",
+      "why": "A drag or wheel event on the switch or restart frame moves a camera that should start from its retained or reset state.",
+      "fix": "Discard the frame’s sampled pointer delta after Tab or restart, and test both transitions with pending drag and wheel input."
+    },
+    {
+      "severity": "P1",
+      "title": "Three crowded arrows can overlap after spreading",
+      "claim": "The spread loop can alternate between two occupied positions and finish on an earlier arrow. For left-edge arrows at y=370, 371, and 372, it produces y=370, 350, and 370.",
+      "evidence": "src/renderer/src/render/tactical/tacticalModel.ts:L197-L208; tests/duelWeaponsView.test.ts:L69-L75",
+      "why": "The duel can show overlapping arrows and labels when three targets cluster on one edge; the test covers only two.",
+      "fix": "Choose an unoccupied edge position monotonically, with edge bounds, and test three and four clustered arrows."
+    },
+    {
+      "severity": "P2",
+      "title": "Missile prediction starts from a different position than its glyph",
+      "claim": "The path is predicted from the current sim missile while its visible origin is interpolated from the previous tick.",
+      "evidence": "plan L62; src/renderer/src/render/tactical/weaponsModel.ts:L82, L89-L90; src/renderer/src/render/tactical/missilePath.ts:L17-L23",
+      "why": "At alpha below 1, the first path segment spans extra movement and the predicted line shifts relative to the drawn missile.",
+      "fix": "Seed the displayed prediction from the interpolated missile state and add a test with alpha below 1."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "Static inspection found duel tick stamping, tick-0 player-1 absence, and per-player sequences in src/renderer/src/app/duel/runtime.ts:L211-L222.",
+    "The pause driver is disposed on pause and recreated on resume; the outcome stops stepping in src/renderer/src/app/duel/runtime.ts:L60-L76, L236.",
+    "Restart resets runtime state, cameras, events, and input; the boot rebuilds view caches in src/renderer/src/app/duel/runtime.ts:L244-L252 and src/renderer/src/app/duel/duelMode.ts:L70-L75.",
+    "The mode switch retains the sector path and adds duel boot separately in src/renderer/src/main.ts:L31-L64, L75-L90.",
+    "The interior fit and pooled display objects were inspected in src/renderer/src/render/duel/interiorModel.ts:L9-L16 and src/renderer/src/render/duel/interiorView.ts:L32-L70."
+  ],
+  "not_verified": [
+    "Jest/Vitest and the full suite were not run, as requested; test outcomes and browser rendering remain unverified.",
+    "Screenshot checks could not be inspected in this read-only review.",
+    "The stated review ledger was absent at docs/superpowers/reviews/2026-11-15-helm-h1b-impl/ledger.md in this worktree."
+  ]
+}
