@@ -10,8 +10,8 @@ export function computeContentDigest(root: string): string {
     return entry.isDirectory() ? walk(path) : /\.(?:ts|json)$/.test(entry.name) ? [path] : [];
   });
   const paths = [
-    ...walk('src/renderer/src/sim'), ...walk('src/renderer/src/authority'), ...walk('src/network/modes'),
-    'src/shared/intent.ts', 'src/shared/netSession.ts', 'src/renderer/src/net/contracts.ts',
+    ...walk('src/renderer/src/sim'), ...walk('src/renderer/src/authority'), ...walk('src/network/modes'), ...walk('src/network/rtc'),
+    'src/shared/intent.ts', 'src/shared/netSession.ts', 'src/shared/rtcSession.ts', 'src/renderer/src/net/contracts.ts',
     'src/renderer/src/net/codec.ts', 'src/renderer/src/net/receivePolicy.ts'
   ].sort();
   const manifest = paths.map((path) => ({ path, hash: sha256(readFileSync(join(root, path), 'utf8').replace(/\r\n?/g, '\n')) }));

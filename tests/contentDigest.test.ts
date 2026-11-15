@@ -20,7 +20,12 @@ const sources = {
   'src/renderer/src/authority/checkpoint.ts': 'export const checkpointVersion = 2;\n',
   'src/network/modes/sector.ts': 'export const mode = 1;\n',
   'src/network/modes/contracts.ts': 'export type ModeSchema = number;\n',
-  'src/network/modes/registry.ts': 'export const registered = true;\n'
+  'src/network/modes/registry.ts': 'export const registered = true;\n',
+  'src/shared/rtcSession.ts': 'export const rtcProtocol = 1;\n',
+  'src/network/rtc/contracts.ts': 'export const limit = 4096;\n',
+  'src/network/rtc/frames.ts': 'export const frame = 1;\n',
+  'src/network/rtc/dataLink.ts': 'export const queue = 16;\n',
+  'src/network/rtc/peer.ts': 'export const auth = 1;\n'
 };
 function fixture(entries = Object.entries(sources)): string {
   const root = mkdtempSync(join(tmpdir(), 'ftlite-digest-')); roots.push(root);
