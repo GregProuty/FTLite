@@ -5,14 +5,30 @@ import { disposeSimState, type SimState } from '../sim/state';
 import { loadSnapshot, restoreSnapshot, SNAPSHOT_FORMAT } from '../sim/snapshot';
 import { SIM_VERSION } from '../sim/tuning';
 import { hashF64 } from '../../../shared/hash';
-import { createCardUi, reconcileUi, reconcileCommandResult, type ClientActions } from './cardController';
+import { createCardUi, reconcileUi, reconcileCommandResult, type ClientActions, type CommandBudget } from './cardController';
+import { createCommandOutbox, type CommandOutbox, type OutboxState } from './commandOutbox';
+import type { AdmissionPolicy } from '../net/receivePolicy';
 
 export type ClientRun = ReturnType<typeof createClientRun>;
+export interface CommandProducerStatus {
+  state: 'waiting-state' | OutboxState;
+  pending: number;
+  canAllocate: boolean;
+  canControl: boolean;
+}
 
-export function createClientRun(link: Link, owned: readonly PlayerId[], options: { runId: string; contentDigest?: string; resolveLayout(id: string): ShipLayout }) {
+export function createClientRun(link: Link, owned: readonly PlayerId[], options: { runId: string; contentDigest?: string; resolveLayout(id: string): ShipLayout; admissionPolicy?: AdmissionPolicy }) {
   let replica: SimState | null = null, publication: PublishedState | null = null, lastEvent = 0, disposed = false;
   const ui = createCardUi(options.runId), results: CommandResult[] = [], events: AuthorityEvent[] = [];
   const auxiliarySequences: number[] = [];
+  const receiveTime = options.admissionPolicy === 'receive-time';
+  const outboxes = new Map<PlayerId, CommandOutbox>(), outboxStates = new Map<PlayerId, OutboxState>();
+  const commandBudget: CommandBudget | undefined = receiveTime ? (player, control, staged = 0) =>
+    !disposed && (outboxes.get(player)?.canAllocate(control, staged) ?? false) : undefined;
+  function flushCommands(): void {
+    for (const box of outboxes.values()) for (const envelope of box.takeSendable())
+      link.send('reliable-ordered', encodeMessage({ kind: 'command', envelope }));
+  }
   let startupSequence: number | null = null;
   const unsubscribe = link.onMessage((_kind, bytes) => {
     const message = decodeMessage(bytes);
@@ -35,11 +51,20 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       for (let player = 0; player < replica.playerCount; player++) {
         ui.players[player]!.heldSequence = Math.max(ui.players[player]!.heldSequence, next.heldHighWater[player]!);
         auxiliarySequences[player] = Math.max(auxiliarySequences[player] ?? 0, next.auxiliaryHighWater[player]!);
+        if (receiveTime && owned.includes(player)) {
+          const expected = next.commandHighWater[player]! + 1, box = outboxes.get(player);
+          if (box) outboxStates.set(player, box.reconcile(expected));
+          else { outboxes.set(player, createCommandOutbox(player, expected)); outboxStates.set(player, 'ready'); }
+        }
       }
       if (startupSequence === null) startupSequence = next.eventSequence;
+      if (receiveTime) flushCommands();
     } else if (message.kind === 'result' && message.runId === options.runId) {
+      const box = outboxes.get(message.result.id.player);
+      if (box) outboxStates.set(message.result.id.player, box.ack(message.result));
       reconcileCommandResult(ui, message.result);
       results.push(message.result); if (results.length > 1024) results.shift();
+      if (receiveTime) flushCommands();
     } else if (message.kind === 'event' && message.event.runId === options.runId && message.event.eventSequence > lastEvent) {
       lastEvent = message.event.eventSequence;
       if (events.length >= 1024) { events.length = 0; link.close('event-history-unavailable'); return; }
@@ -47,7 +72,13 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
     }
   });
   return {
-    state: () => replica, publication: () => publication, ui,
+    state: () => replica, publication: () => publication, ui, commandBudget,
+    commandStatus(player: PlayerId): CommandProducerStatus {
+      const box = outboxes.get(player), allowed = !disposed && owned.includes(player);
+      return { state: receiveTime ? outboxStates.get(player) ?? 'waiting-state' : 'ready', pending: box?.size() ?? 0,
+        canAllocate: allowed && (!receiveTime || (box?.canAllocate(false) ?? false)),
+        canControl: allowed && (!receiveTime || (box?.canAllocate(true) ?? false)) };
+    },
     takeEvents(): AuthorityEvent[] {
       if (!publication) return [];
       const ready: AuthorityEvent[] = [];
@@ -58,16 +89,21 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       return ready;
     }, takeResults: () => results.splice(0),
     callout(player: PlayerId): void {
-      if (disposed || !owned.includes(player)) return;
+      if (disposed || !owned.includes(player) || (receiveTime && !publication)) return;
       const sequence = (auxiliarySequences[player] ?? 0) + 1;
       if (!Number.isSafeInteger(sequence)) { link.close('auxiliary-sequence-exhausted'); return; }
       auxiliarySequences[player] = sequence;
       link.send('reliable-ordered', encodeMessage({ kind: 'callout', runId: options.runId, player, sequence, calloutKind: 'contextual' }));
     },
     send(actions: ClientActions): void {
-      if (disposed) return;
+      if (disposed || (receiveTime && !publication)) return;
       for (const frame of actions.held) if (owned.includes(frame.player)) link.send('unreliable-latest', encodeMessage({ kind: 'held', frame }));
-      for (const envelope of [...actions.commands].sort((a,b) => a.id.player-b.id.player || a.id.sequence-b.id.sequence)) if (owned.includes(envelope.id.player)) link.send('reliable-ordered', encodeMessage({ kind: 'command', envelope }));
+      for (const envelope of [...actions.commands].sort((a,b) => a.id.player-b.id.player || a.id.sequence-b.id.sequence)) if (owned.includes(envelope.id.player)) {
+        if (receiveTime) {
+          if (outboxStates.get(envelope.id.player) === 'ready') outboxes.get(envelope.id.player)!.enqueue(envelope);
+        } else link.send('reliable-ordered', encodeMessage({ kind: 'command', envelope }));
+      }
+      if (receiveTime) flushCommands();
     },
     dispose() {
       if (disposed) return;
@@ -76,6 +112,7 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       finally {
         if (replica) disposeSimState(replica);
         replica = null; publication = null; events.length = 0; results.length = 0;
+        outboxes.clear(); outboxStates.clear();
       }
     }
   };
