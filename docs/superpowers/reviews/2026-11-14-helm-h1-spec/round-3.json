@@ -1,0 +1,18 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R2-F1",
+      "result": "resolved",
+      "note": "Spec L141 explicitly permits the two tactical-sim changes required by spec L137."
+    }
+  ],
+  "verified": [
+    "Spec L137 places stepSoloFlight in the tactical sim and calls for exporting the existing static-contact pass; spec L141 names both as exceptions to the guarded-root placement rule.",
+    "The cited pass is currently private (src/renderer/src/sim/tactical/contacts.ts:L38-L45). The boundary test guards sim imports from app, render, and input (tests/boundary.test.ts:L12-L27; tests/helpers/determinismGuard.ts:L16-L17)."
+  ],
+  "not_verified": [
+    "No tests were run; this was a read-only review of the revised spec and cited source."
+  ]
+}

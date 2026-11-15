@@ -159,3 +159,33 @@ Confirmed. §9 adds `stepSoloFlight` and exports the static-contact pass (`conta
 
 ---
 
+# Round 3 (delta, reviewing 5fc7bc3, effort medium, 43 s, 129957 in / 100096 cached / 1943 out)
+
+Verdict: ready
+
+## Prior findings
+- R2-F1: resolved — Spec L141 explicitly permits the two tactical-sim changes required by spec L137.
+
+## Verified
+- Spec L137 places stepSoloFlight in the tactical sim and calls for exporting the existing static-contact pass; spec L141 names both as exceptions to the guarded-root placement rule.
+- The cited pass is currently private (src/renderer/src/sim/tactical/contacts.ts:L38-L45). The boundary test guards sim imports from app, render, and input (tests/boundary.test.ts:L12-L27; tests/helpers/determinismGuard.ts:L16-L17).
+
+## Not verified
+- No tests were run; this was a read-only review of the revised spec and cited source.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json` against the subject at `5fc7bc3`. No new findings. Codex confirmed R2-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+

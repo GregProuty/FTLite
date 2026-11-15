@@ -11,4 +11,4 @@
 | R1-F7 | P1 | Missile-path prediction lacks a testable contract | resolved | 0 | §7 missile-path predictor contract: inputs, constant steering, horizon min(remaining life,240) stride 4, flyMissile rules, stops at planet/asteroid/edge/expiry, tick-for-tick test; confirmed R2 |
 | R1-F8 | P1 | The Helm view omits required combat information | resolved | 0 | §7 lock marker on both consoles; readout shows crew and enemy hull (and enemy shields and rooms); confirmed R2 |
 | R1-F9 | P1 | The required planet-contact spark has no view rule | resolved | 0 | §7 render-side contact sparks from planetHits/asteroidHits/shipHits increases; confirmed R2 |
-| R2-F1 | P1 | Flight step contradicts the new-code boundary | fixed:R2 | 0 | §10 now names stepSoloFlight in sim/tactical/physics.ts and the exported static-contact pass as the guarded-root exception, under the determinism rules |
+| R2-F1 | P1 | Flight step contradicts the new-code boundary | resolved | 0 | §10 now names stepSoloFlight in sim/tactical/physics.ts and the exported static-contact pass as the guarded-root exception, under the determinism rules; confirmed R3 |

@@ -1,0 +1,13 @@
+kind=delta
+head=5fc7bc3
+thread_id=01a1dde9-3737-7f80-b317-a9ad0b43fe47
+effort=medium
+started_at=2026-11-15T06:33:30Z
+duration_s=43
+input_tokens=129957
+cached_input_tokens=100096
+output_tokens=1943
+reasoning_output_tokens=498
+exit=0
+parsed=1
+needs_judgment=
