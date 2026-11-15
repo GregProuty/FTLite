@@ -1,0 +1,340 @@
+import { createHash } from 'node:crypto';
+import type { MessagePortMain } from 'electron';
+import { RoomServiceClientError, type RoomServiceClient, type RoomServiceEvent } from '../../network/session/serviceClient';
+import { RTC_MAX_HEADER_BYTES, RTC_MAX_PACKET_BYTES } from '../../network/rtc/contracts';
+import { copyOnlineStatus, isOnlineErrorCode, validateOnlineAction, type OnlineAction, type OnlineErrorCode, type OnlinePortDescriptor, type OnlineResult, type OnlineStatus } from '../../shared/onlineSession';
+import { SERVICE_ERROR_RETRYABLE, type CommittedStart, type LeaseGrant, type RoomSnapshot, type SeatSession } from '../../shared/roomSession';
+import type { HostIdentity } from '../../shared/hostProcessProtocol';
+import type { HostProcessHandle } from './hostProcess';
+import type { TransportController } from './rtcTransport';
+import { resolveOnlineConfig, type OnlineConfig } from './onlineConfig';
+import { validateSavedSeat, type SavedSeatV1, type SeatStore } from './seatStore';
+import { createOnlinePeers, type OnlinePeer } from './onlinePeers';
+import { createOnlineRetry, onlineFault, type OnlineClock, type OnlineScheduler } from './onlineRetry';
+import { sectorCompatibility, sectorInit, sectorJoinCompatibilities, validateCommittedSectorStart } from './onlineSector';
+
+export type { OnlineClock, OnlineScheduler } from './onlineRetry';
+type Unsubscribe = () => void;
+export interface OwnedOnlineTransport { controller: TransportController; onExit(callback: () => void): Unsubscribe; dispose(): Promise<void> }
+export interface OnlinePlatform {
+  createTransport(identity: HostIdentity): Promise<OwnedOnlineTransport>;
+  startHost(identity: HostIdentity, signal: AbortSignal): Promise<HostProcessHandle>;
+  channel(): { port1: MessagePortMain; port2: MessagePortMain };
+  publishPort(descriptor: OnlinePortDescriptor, port: MessagePortMain): void;
+  onVisibleGone(callback: () => void): Unsubscribe;
+}
+export interface OnlineSessionDeps {
+  config: OnlineConfig; seatStore: SeatStore; service(): RoomServiceClient; platform: OnlinePlatform;
+  clock: OnlineClock; scheduler: OnlineScheduler; nonce(): string;
+}
+export interface OnlineSessionOwner {
+  dispatch(action: OnlineAction): Promise<OnlineResult>; status(): OnlineStatus;
+  subscribe(callback: (status: OnlineStatus) => void): Unsubscribe; suspend(): Promise<void>; dispose(): Promise<void>;
+}
+const codeOf = (error: unknown): OnlineErrorCode => {
+  const code = (error as { code?: unknown } | null)?.code;
+  return isOnlineErrorCode(code) ? code : 'unavailable';
+};
+const close = (port: MessagePortMain) => { try { port.close(); } catch {} };
+
+/** Main-only credentials and resource ownership. Renderer progress never grants gameplay authority. */
+export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner {
+  const { platform, scheduler, clock } = deps;
+  const config = deps.config.enabled ? resolveOnlineConfig({ packaged: false, localServiceUrl: deps.config.baseUrl }) : deps.config;
+  let disposed = false, epoch = 0, attachmentEpoch = 0, operation: AbortController | undefined;
+  let factories = 0, retiring: Promise<void> | undefined, disposal: Promise<void> | undefined, forgetting: Promise<OnlineResult> | undefined;
+  let saved: SavedSeatV1 | null = null, readyValue: boolean | undefined, readyWork: Promise<OnlineResult> | undefined;
+  let value: OnlineStatus = { phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, persistent: false, actions: [] };
+  const listeners = new Set<(status: OnlineStatus) => void>(), retry = createOnlineRetry(clock, scheduler);
+  type Context = { epoch: number; abort: AbortController; service: RoomServiceClient; seat?: SeatSession; transport?: OwnedOnlineTransport; host?: HostProcessHandle;
+    peers?: ReturnType<typeof createOnlinePeers>; removers: Unsubscribe[]; ports: Set<MessagePortMain>; timers: Set<unknown>;
+    starting?: Promise<void>; committedHash?: string; active: boolean; authorityReady?: boolean; recovering: boolean; attached: Set<string>;
+    synced?: () => void; syncedPromise?: Promise<void>; lease?: LeaseGrant; cleanup?: Promise<void> };
+  let context: Context | undefined;
+  const current = (c: Context) => !disposed && context === c && epoch === c.epoch && !c.abort.signal.aborted;
+  const check = (c: Context) => { if (!current(c)) throw c.abort.signal.reason ?? onlineFault('cancelled'); };
+  function emit(update: Partial<OnlineStatus> = {}) {
+    value = { ...value, ...update };
+    const idle = value.phase === 'idle' || value.phase === 'error';
+    value.actions = !config.enabled || disposed ? ['forget-seat'] : idle ? ['host', 'join', ...(saved ? ['reconnect', 'retry'] as const : []), 'forget-seat']
+      : value.phase === 'lobby' ? ['ready', ...(value.role === 'host' ? ['start', 'remove-seat'] as const : []), 'leave', 'forget-seat'] : ['leave', 'forget-seat'];
+    for (const cb of [...listeners]) { try { cb(copyOnlineStatus(value)); } catch {} }
+  }
+  function timer(c: Context, fn: () => void, ms: number) {
+    const id = scheduler.setTimeout(() => { c.timers.delete(id); if (current(c)) fn(); }, Math.max(0, ms)); c.timers.add(id); return id;
+  }
+  async function wait<T>(c: Context, promise: Promise<T>, timeout = 5000): Promise<T> {
+    check(c); let rejectAbort!: (reason: unknown) => void;
+    const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
+    const onAbort = () => rejectAbort(c.abort.signal.reason ?? onlineFault('cancelled'));
+    c.abort.signal.addEventListener('abort', onAbort, { once: true });
+    const timeoutId = scheduler.setTimeout(() => rejectAbort(onlineFault('timeout')), timeout);
+    try { const result = await Promise.race([promise, aborted]); check(c); return result; }
+    finally { scheduler.clearTimeout(timeoutId); c.abort.signal.removeEventListener('abort', onAbort); }
+  }
+  async function acquire<T extends { dispose(): Promise<void> }>(c: Context, factory: () => Promise<T>, adopt: (resource: T) => void): Promise<T> {
+    check(c); if (factories >= 4) throw onlineFault('capacity'); factories++;
+    const produced = Promise.resolve().then(() => { check(c); return factory(); }).then(async resource => {
+      if (!current(c)) { await resource.dispose(); throw onlineFault('cancelled'); }
+      adopt(resource); return resource;
+    }).finally(() => { factories--; });
+    return wait(c, produced);
+  }
+  function cleanup(c: Context): Promise<void> {
+    if (c.cleanup) return c.cleanup;
+    c.abort.abort(onlineFault('cancelled'));
+    for (const off of c.removers.splice(0)) { try { off(); } catch {} }
+    for (const id of c.timers) scheduler.clearTimeout(id); c.timers.clear();
+    for (const port of c.ports) close(port); c.ports.clear();
+    c.service.close();
+    c.cleanup = Promise.allSettled([c.peers?.dispose(), c.host?.dispose(), c.transport?.dispose()]).then(() => {});
+    return c.cleanup;
+  }
+  function stop(reason?: OnlineErrorCode, release = false): Promise<void> {
+    epoch++; operation?.abort(onlineFault('cancelled')); operation = undefined; retry.cancel(); readyValue = undefined; readyWork = undefined;
+    const old = context; context = undefined;
+    if (old && release && old.seat?.seatId === old.seat?.snapshot.hostSeatId && old.active) {
+      // Request is issued before closing its socket; cleanup does not wait on a lost server.
+      void old.service.request({ type: 'host-release' }).catch(() => {});
+    }
+    emit({ phase: reason ? 'error' : 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: reason ?? null, retryAtMs: null });
+    const pending = Promise.allSettled([retiring, old ? cleanup(old) : undefined]).then(() => {});
+    retiring = pending;
+    void pending.then(() => { if (retiring === pending) retiring = undefined; });
+    return pending;
+  }
+  function fail(c: Context, code: OnlineErrorCode) {
+    if (!current(c)) return;
+    const guest = c.seat && c.seat.seatId !== c.seat.snapshot.hostSeatId;
+    if (c.recovering) {
+      const serviceCode = code === 'transport-lost' ? 'unavailable' : code;
+      c.abort.abort(serviceCode in SERVICE_ERROR_RETRYABLE
+        ? new RoomServiceClientError({ code: serviceCode as keyof typeof SERVICE_ERROR_RETRYABLE, retryable: SERVICE_ERROR_RETRYABLE[serviceCode as keyof typeof SERVICE_ERROR_RETRYABLE] }) : onlineFault(code));
+      void cleanup(c); return;
+    }
+    if (guest && saved && (code === 'unavailable' || code === 'timeout' || code === 'transport-lost')) {
+      const retiredEpoch = epoch + 1;
+      void stop().then(() => { if (!disposed && epoch === retiredEpoch && !context && !operation) void dispatch({ type: 'retry' }); });
+    } else void stop(code);
+  }
+  function updateSnapshot(c: Context, snapshot: RoomSnapshot) {
+    check(c); sectorInit(snapshot); c.seat!.snapshot = structuredClone(snapshot);
+    if (snapshot.phase === 'lost' || snapshot.phase === 'ended') { fail(c, 'host-lost'); return; }
+    emit({ snapshot }); void c.peers?.reconcile();
+  }
+  function publish(c: Context, port: MessagePortMain) {
+    check(c); const s = c.seat!, snapshot = s.snapshot;
+    const descriptor: OnlinePortDescriptor = { epoch: ++attachmentEpoch, runId: snapshot.runId, hostGeneration: snapshot.hostGeneration, seatId: s.seatId, compatibility: snapshot.compatibility };
+    platform.publishPort(descriptor, port); c.ports.delete(port);
+    emit({ phase: 'syncing', attachmentEpoch, retryAtMs: null });
+  }
+  async function attach(c: Context, peer: OnlinePeer) {
+    if (!current(c) || !c.active || c.attached.has(peer.attemptId)) return;
+    const s = c.seat!;
+    if (s.seatId === s.snapshot.hostSeatId && !c.authorityReady) return;
+    c.attached.add(peer.attemptId); c.ports.add(peer.port);
+    try {
+      if (c.host) {
+        await wait(c, c.host.attachPeer(peer.attemptId, [peer.seatId], peer.port, { streamed: true, latestPayloadLimit: peer.latestPayloadLimit }));
+        c.ports.delete(peer.port);
+      } else publish(c, peer.port);
+      peer.transferred = true;
+    } catch (error) { close(peer.port); c.ports.delete(peer.port); if (current(c)) fail(c, codeOf(error)); }
+  }
+  function renew(c: Context, lease: LeaseGrant) {
+    check(c);
+    if (lease.expiresAtEpochMs <= clock.epochMs()) throw onlineFault('lease-expired');
+    c.lease = lease;
+    const mono = clock.nowMs(), wall = clock.epochMs();
+    timer(c, () => { if (c.lease === lease) fail(c, 'lease-expired'); }, lease.expiresAtEpochMs - wall);
+    timer(c, () => {
+      if (clock.nowMs() < mono || Math.abs((clock.epochMs() - wall) - (clock.nowMs() - mono)) > 2000) { fail(c, 'clock-discontinuity'); return; }
+      const nonce = deps.nonce();
+      void wait(c, c.service.request({ type: 'lease-renew', nonce })).then(reply => {
+        check(c); const next = reply.lease, s = c.seat!.snapshot;
+        if (next.nonce !== nonce || next.roomId !== s.roomId || next.hostGeneration !== s.hostGeneration || next.hostSeatId !== s.hostSeatId) throw onlineFault('lease-expired');
+        renew(c, next);
+      }).catch(error => { if (current(c)) fail(c, codeOf(error)); });
+    }, 5000);
+  }
+  function activate(c: Context, committed: CommittedStart): Promise<void> {
+    if (c.starting) {
+      if (c.committedHash !== committed.initHash) return Promise.reject(onlineFault('invalid-frame'));
+      return c.starting;
+    }
+    c.committedHash = committed.initHash;
+    c.starting = (async () => {
+      const init = await validateCommittedSectorStart(c.seat!.snapshot, committed); check(c);
+      c.active = true; c.seat!.snapshot = { ...c.seat!.snapshot, phase: 'active' }; emit({ snapshot: c.seat!.snapshot, phase: 'connecting' });
+      if (c.seat!.seatId === c.seat!.snapshot.hostSeatId) {
+        renew(c, committed.lease);
+        const identity = identityOf(c.seat!.snapshot);
+        const host = await acquire(c, () => platform.startHost(identity, c.abort.signal), host => { c.host = host; });
+        c.removers.push(host.onExit(() => fail(c, 'host-lost')));
+        const started = await wait(c, host.request({ kind: 'start', initBytes: new TextEncoder().encode(JSON.stringify(init)) }));
+        if (!started.ok) throw onlineFault('host-lost');
+        const { port1, port2 } = platform.channel(); c.ports.add(port1); c.ports.add(port2);
+        await wait(c, host.attachPeer('online-local', [c.seat!.seatId], port1, { streamed: true, latestPayloadLimit: RTC_MAX_PACKET_BYTES - RTC_MAX_HEADER_BYTES })); c.ports.delete(port1);
+        publish(c, port2);
+        c.authorityReady = true;
+      }
+      for (const peer of c.peers!.ready()) await attach(c, peer);
+    })();
+    return c.starting;
+  }
+  function event(c: Context, e: RoomServiceEvent) {
+    if (!current(c)) return;
+    try {
+      switch (e.type) {
+        case 'roster': updateSnapshot(c, e.snapshot); break;
+        case 'link-issued': c.peers!.issued(e.link); break;
+        case 'signal': c.peers!.signal(e.signal); break;
+        case 'link-state': if (e.state === 'closed') c.peers!.closed(e.attemptId); else c.peers!.serviceReady(e.attemptId); break;
+        case 'started': void activate(c, e).catch(error => { if (current(c)) fail(c, codeOf(error)); }); break;
+        case 'host-departed': case 'host-changed': fail(c, 'host-lost'); break;
+        case 'error': fail(c, e.error.code); break;
+      }
+    } catch (error) { fail(c, codeOf(error)); }
+  }
+  function identityOf(s: RoomSnapshot): HostIdentity { return { modeId: s.compatibility.modeId, schemaVersion: s.compatibility.schemaVersion,
+    simVersion: s.compatibility.simVersion, contentDigest: s.compatibility.contentDigest, hostGeneration: s.hostGeneration }; }
+  async function establish(action: Extract<OnlineAction, { type: 'host' | 'join' | 'reconnect' | 'retry' }>, signal: AbortSignal, recovering: boolean) {
+    if (!config.enabled) throw onlineFault('online-disabled');
+    const c: Context = { epoch: ++epoch, abort: new AbortController(), service: deps.service(), removers: [], ports: new Set(), timers: new Set(), active: false, recovering, attached: new Set() };
+    context = c;
+    const cancel = () => { c.abort.abort(signal.reason ?? onlineFault('cancelled')); void cleanup(c); };
+    signal.addEventListener('abort', cancel, { once: true }); c.removers.push(() => signal.removeEventListener('abort', cancel));
+    if (signal.aborted) { cancel(); throw signal.reason; }
+    emit({ phase: recovering ? 'reconnecting' : action.type === 'host' ? 'creating' : 'joining', role: null, ownSeat: null, snapshot: null, error: null, retryAtMs: null, attachmentEpoch: 0 });
+    try {
+      let seat: SeatSession;
+      if (action.type === 'host') seat = await wait(c, c.service.create(sectorCompatibility(action.capacity), action.capacity));
+      else if (action.type === 'join') {
+        const layouts = sectorJoinCompatibilities();
+        try { seat = await wait(c, c.service.join(action.code.trim().toUpperCase(), layouts[0]!)); }
+        catch (error) { if (codeOf(error) !== 'incompatible') throw error; seat = await wait(c, c.service.join(action.code.trim().toUpperCase(), layouts[1]!)); }
+      } else {
+        const credential = saved ?? await wait(c, deps.seatStore.load());
+        check(c);
+        if (!credential || !validateSavedSeat(credential) || credential.serviceOrigin !== config.baseUrl) throw onlineFault('storage-invalid');
+        saved = credential;
+        seat = await wait(c, c.service.join(credential.joinCode, credential.compatibility, credential.seatToken));
+        if (seat.snapshot.roomId !== credential.roomId || seat.seatId !== credential.seatId || seat.seatToken !== credential.seatToken) throw onlineFault('unauthorized');
+      }
+      check(c); sectorInit(seat.snapshot); c.seat = seat;
+      if (seat.snapshot.phase === 'lost' || seat.snapshot.phase === 'ended' || (seat.snapshot.phase === 'active' && seat.seatId === seat.snapshot.hostSeatId)) throw onlineFault('host-lost');
+      saved = { version: 1, serviceOrigin: config.baseUrl, roomId: seat.snapshot.roomId, joinCode: seat.snapshot.joinCode, compatibility: seat.snapshot.compatibility,
+        seatId: seat.seatId, seatGeneration: seat.seatGeneration, seatToken: seat.seatToken };
+      let persistent = true;
+      try { await wait(c, deps.seatStore.save(saved)); } catch (error) { check(c); if (codeOf(error) === 'cancelled') throw error; persistent = false; }
+      emit({ persistent, error: persistent ? null : 'storage-write-failed', role: seat.seatId === seat.snapshot.hostSeatId ? 'host' : 'guest', ownSeat: seat.seatId, snapshot: seat.snapshot });
+      const transport = await acquire(c, () => platform.createTransport(identityOf(seat.snapshot)), transport => { c.transport = transport; });
+      c.removers.push(transport.onExit(() => fail(c, 'transport-lost')));
+      c.peers = createOnlinePeers({ controller: transport.controller, service: c.service, ownSeat: seat.seatId, snapshot: () => c.seat!.snapshot, channel: () => platform.channel(),
+        onReady: peer => { void attach(c, peer); }, onLost: () => { if (seat.seatId !== seat.snapshot.hostSeatId) fail(c, 'transport-lost'); }, onFailure: () => fail(c, 'transport-lost') });
+      c.removers.push(c.service.onEvent(e => event(c, e)));
+      if (recovering) c.syncedPromise = new Promise(resolve => { c.synced = resolve; });
+      const snapshot = await wait(c, c.service.connect(seat)); check(c);
+      c.active = snapshot.phase === 'active'; updateSnapshot(c, snapshot); check(c);
+      emit({ phase: c.active ? 'connecting' : 'lobby' });
+      for (const peer of c.peers.ready()) await attach(c, peer);
+      if (recovering && c.active) await wait(c, c.syncedPromise!, 30000);
+      check(c); c.recovering = false;
+    } catch (error) { await cleanup(c); if (context === c) context = undefined; throw error; }
+  }
+  async function lifecycle(action: Extract<OnlineAction, { type: 'host' | 'join' | 'reconnect' | 'retry' }>, signal: AbortSignal) {
+    if (action.type !== 'retry' && action.type !== 'reconnect') return establish(action, signal, false);
+    const cancel = () => retry.cancel(); signal.addEventListener('abort', cancel, { once: true });
+    try {
+      await retry.run(async retrySignal => {
+        try { await establish(action, retrySignal, true); }
+        catch (error) {
+          const code = codeOf(error);
+          if (code === 'transport-lost' || code === 'timeout' || code === 'unavailable') throw new RoomServiceClientError({ code: code === 'transport-lost' ? 'unavailable' : code,
+            retryable: true, ...((error as { retryAfterMs?: number })?.retryAfterMs === undefined ? {} : { retryAfterMs: (error as { retryAfterMs: number }).retryAfterMs }) });
+          throw error;
+        }
+      }, retryAtMs => emit({ phase: 'reconnecting', retryAtMs }));
+    } finally { signal.removeEventListener('abort', cancel); }
+  }
+  async function perform(action: OnlineAction, signal: AbortSignal): Promise<void> {
+    if (action.type === 'host' || action.type === 'join' || action.type === 'reconnect' || action.type === 'retry') {
+      if (context) throw onlineFault('invalid-state'); await lifecycle(action, signal); return;
+    }
+    const c = context; if (!c?.seat) throw onlineFault('invalid-state'); check(c);
+    const snapshot = c.seat.snapshot, host = c.seat.seatId === snapshot.hostSeatId;
+    if (action.type === 'ready') { if (snapshot.phase !== 'lobby') throw onlineFault('invalid-state'); updateSnapshot(c, (await wait(c, c.service.request({ type: 'ready', ready: action.ready }))).snapshot); }
+    else if (action.type === 'remove-seat') {
+      if (!host || snapshot.phase !== 'lobby' || action.seatId === c.seat.seatId || !snapshot.seats[action.seatId]?.occupied) throw onlineFault('invalid-action');
+      updateSnapshot(c, (await wait(c, c.service.request({ type: 'remove-seat', seatId: action.seatId }))).snapshot);
+    } else if (action.type === 'start') {
+      if (!host || snapshot.phase !== 'lobby' || !snapshot.seats.every(s => !s.occupied || s.ready && s.connected) || !c.peers?.allReady()) throw onlineFault('invalid-state');
+      const bytes = Buffer.from(JSON.stringify(sectorInit(snapshot))), expectedRosterRevision = snapshot.rosterRevision;
+      const proposal = await wait(c, c.service.request({ type: 'start-propose', expectedRosterRevision, initBase64: bytes.toString('base64'), initHash: createHash('sha256').update(bytes).digest('hex') }));
+      const committed = await wait(c, c.service.request({ type: 'start-commit', proposalId: proposal.proposalId, expectedRosterRevision }));
+      await activate(c, committed);
+    } else throw onlineFault('invalid-action');
+  }
+  async function dispatch(action: OnlineAction): Promise<OnlineResult> {
+    if (!validateOnlineAction(action)) return { ok: false, code: 'invalid-action' };
+    if (action.type === 'leave' || action.type === 'forget-seat') {
+      if (forgetting) return forgetting;
+      const stopped = stop(undefined, true);
+      if (action.type === 'forget-seat') {
+        saved = null; emit({ persistent: false });
+        // Enqueue removal immediately after cancellation, before a replacement can enqueue a save.
+        const clear = deps.seatStore.clear();
+        const result = (async (): Promise<OnlineResult> => {
+          try { await Promise.all([stopped, clear]); return { ok: true }; }
+          catch { await stopped; emit({ error: 'storage-clear-failed' }); return { ok: false, code: 'storage-clear-failed' }; }
+        })();
+        forgetting = result; void result.then(() => { if (forgetting === result) forgetting = undefined; }); return result;
+      }
+      await stopped;
+      return { ok: true };
+    }
+    if (disposed || !config.enabled) return { ok: false, code: 'online-disabled' };
+    if (action.type === 'view-state') {
+      const c = context;
+      if (!c || !current(c) || !value.attachmentEpoch || action.epoch !== value.attachmentEpoch) return { ok: false, code: 'invalid-action' };
+      // This hint cancels only the connection watchdog. Native readiness and full-state ingress ACK stay independent.
+      c.synced?.(); c.synced = undefined;
+      emit({ phase: action.phase === 'synced' ? 'syncing' : action.phase }); return { ok: true };
+    }
+    if (action.type === 'ready' && readyWork) { readyValue = action.ready; return readyWork; }
+    if (operation || retiring || forgetting) return { ok: false, code: 'busy' };
+    const active = new AbortController(); operation = active;
+    const execute = async (): Promise<OnlineResult> => {
+      try {
+        if (action.type === 'ready') {
+          readyValue = action.ready;
+          while (readyValue !== undefined) { const next = readyValue; readyValue = undefined; await perform({ type: 'ready', ready: next }, active.signal); }
+        } else await perform(action, active.signal);
+        return active.signal.aborted ? { ok: false, code: 'cancelled' } : { ok: true };
+      } catch (error) {
+        const code = active.signal.aborted ? 'cancelled' : codeOf(error);
+        if (!active.signal.aborted && operation === active && !['invalid-action', 'invalid-state'].includes(code)) await stop(code);
+        return { ok: false, code };
+      } finally { if (operation === active) operation = undefined; }
+    };
+    const result = execute();
+    if (action.type === 'ready') { readyWork = result; void result.finally(() => { if (readyWork === result) readyWork = undefined; }); }
+    return result;
+  }
+  const offVisible = platform.onVisibleGone(() => { void owner.dispose(); });
+  const owner: OnlineSessionOwner = {
+    dispatch, status: () => copyOnlineStatus(value),
+    subscribe(cb) { if (disposed) return () => {}; if (listeners.size >= 64) throw onlineFault('capacity'); listeners.add(cb); return () => { listeners.delete(cb); }; },
+    suspend: () => stop('suspended'),
+    dispose() { if (disposal) return disposal; disposed = true; offVisible(); disposal = stop().then(() => { listeners.clear(); }); return disposal; }
+  };
+  emit();
+  // Loading the private seat changes availability only; a newer lifecycle owns any subsequent save.
+  const initialEpoch = epoch;
+  void deps.seatStore.load().then(seat => {
+    if (disposed || epoch !== initialEpoch || operation) return;
+    if (seat && (!validateSavedSeat(seat) || !config.enabled || seat.serviceOrigin !== config.baseUrl)) { emit({ error: 'storage-invalid' }); return; }
+    saved = seat; emit({ persistent: !!seat });
+  }).catch(error => { if (!disposed && epoch === initialEpoch && !operation) emit({ error: codeOf(error) }); });
+  return owner;
+}

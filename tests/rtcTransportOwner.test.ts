@@ -20,6 +20,15 @@ function harness() {
 afterEach(() => vi.useRealTimers());
 
 describe('main RTC transport owner', () => {
+  it('notifies once for pending and ready attempt retirement, including intentional close', async () => {
+    const h = harness(), lost = vi.fn(); h.owner.onAttemptClosed(lost);
+    const pending = h.owner.startAttempt(config('pending'), h.port()); const rejected = expect(pending).rejects.toThrow();
+    const first = h.requests.at(-1)!; h.reply(first, 'failed'); h.reply(first, 'failed'); await rejected;
+    const ready = h.owner.startAttempt(config('ready'), h.port()); const second = h.requests.at(-1)!;
+    h.reply(second, 'port-ready'); h.reply(second, 'ready', { latestPayloadLimit: 16088 }); await ready;
+    const closing = h.owner.closeAttempt('ready'); h.reply(h.requests.at(-1)!, 'closed'); await closing;
+    await h.owner.dispose(); expect(lost.mock.calls).toEqual([['pending'], ['ready']]);
+  });
   it('requires port readiness before native readiness and forwards the exact negotiated cap', async () => {
     const h = harness(), p = h.port(), started = h.owner.startAttempt(config(), p), request = h.requests[0]!;
     let ready = false; void started.then(() => { ready = true; });

@@ -1,0 +1,40 @@
+import { createHash } from 'node:crypto';
+import { validateRunInit } from '../../renderer/src/authority/checkpoint';
+import type { RunInit } from '../../renderer/src/net/contracts';
+import { DEFAULT_CHARACTERS } from '../../renderer/src/sim/characters';
+import { SIM_VERSION } from '../../renderer/src/sim/tuning';
+import { deriveLayout } from '../../renderer/src/sim/ship/derived';
+import { shipForCrew } from '../../renderer/src/sim/ship/fleet';
+import { parseShip } from '../../renderer/src/sim/ship/schema';
+import skiff from '../../renderer/src/sim/ship/skiff.json';
+import cutter from '../../renderer/src/sim/ship/cutter.json';
+import { validateInitBase64, validateLeaseGrant, validateRoomSnapshot, type CommittedStart, type RoomCompatibility, type RoomSnapshot } from '../../shared/roomSession';
+import { onlineFault } from './onlineRetry';
+
+const layouts = { skiff: parseShip(skiff), cutter: parseShip(cutter) };
+export function sectorCompatibility(capacity: number): RoomCompatibility {
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 4) throw onlineFault('invalid-request');
+  return { protocolVersion: 2, modeId: 'sector', schemaVersion: 1, simVersion: SIM_VERSION,
+    contentDigest: __GAMEPLAY_CONTENT_DIGEST__, layoutHash: deriveLayout(layouts[shipForCrew(capacity)]).layoutHash };
+}
+export function sectorJoinCompatibilities(): readonly RoomCompatibility[] { return [sectorCompatibility(2), sectorCompatibility(4)]; }
+export function sectorInit(snapshot: RoomSnapshot): RunInit {
+  if (!validateRoomSnapshot(snapshot)) throw onlineFault('invalid-frame');
+  const expected = sectorCompatibility(snapshot.capacity), layout = layouts[shipForCrew(snapshot.capacity)];
+  if (Object.entries(expected).some(([key, value]) => snapshot.compatibility[key as keyof RoomCompatibility] !== value)) throw onlineFault('incompatible');
+  return validateRunInit(layout, { runId: snapshot.runId, layoutId: layout.id, layoutHash: expected.layoutHash,
+    simVersion: SIM_VERSION, contentDigest: expected.contentDigest, seed: 2026, playerCount: snapshot.capacity,
+    characters: [...DEFAULT_CHARACTERS], unlocked: [] }, expected.contentDigest);
+}
+export async function validateCommittedSectorStart(snapshot: RoomSnapshot, committed: CommittedStart): Promise<RunInit> {
+  const expected = sectorInit(snapshot), lease = committed.lease;
+  if (!validateInitBase64(committed.initBase64) || !validateLeaseGrant(lease) || lease.roomId !== snapshot.roomId
+    || lease.hostGeneration !== snapshot.hostGeneration || lease.hostSeatId !== snapshot.hostSeatId) throw onlineFault('invalid-frame');
+  const bytes = Buffer.from(committed.initBase64, 'base64');
+  if (createHash('sha256').update(bytes).digest('hex') !== committed.initHash) throw onlineFault('hash-mismatch');
+  try {
+    const value = validateRunInit(layouts[shipForCrew(snapshot.capacity)], JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)), expected.contentDigest);
+    if (Object.keys(value).length !== Object.keys(expected).length || Object.entries(expected).some(([key, wanted]) => JSON.stringify(value[key as keyof RunInit]) !== JSON.stringify(wanted))) throw Error();
+    return value;
+  } catch { throw onlineFault('incompatible'); }
+}
