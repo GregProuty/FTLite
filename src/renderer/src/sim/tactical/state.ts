@@ -50,7 +50,7 @@ export const Outcome = { Running: 0, CrewWins: 1, EnemyWins: 2, Draw: 3 } as con
 
 /** Per-tick events for the views (shots and missile endings). Reset every tick and not hashed. */
 export type DuelEvent =
-  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it damaged, or −1 (a miss or a stripped layer). */
+  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer). */
   | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
   | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number };

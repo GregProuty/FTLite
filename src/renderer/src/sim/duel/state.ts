@@ -52,3 +52,6 @@ export function createDuel(layout: ShipLayout, seed: number): DuelState {
     throw err;
   }
 }
+
+/** Release the duel's interior entities and storage (idempotent, like disposeSimState). */
+export function disposeDuel(d: DuelState): void { disposeSimState(d.interior); }

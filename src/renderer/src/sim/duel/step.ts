@@ -1,7 +1,7 @@
 // One duel tick (spec ยง13 phase list). The sector step (sim/step.ts) is never called on the duel's interior; this runs
 // only the interior pieces the duel uses (sit, stand, Interact for repair, movement) and then the tactical stepDuel.
 import { NEUTRAL_INTENT, type Intent } from '../../../../shared/intent';
-import type { CommandEnvelope, HeldInput } from '../../net/contracts';
+import type { CommandEnvelope, CommandResult, HeldInput } from '../../net/contracts';
 import { applyConsoleCommand, applyInteractionCommands } from '../commands';
 import { Life, LifeState, Position, Seated } from '../components';
 import { roomAt } from '../grid';
@@ -71,24 +71,29 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
 export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   if (d.tactical.outcome !== Outcome.Running) return [];
   const st = d.interior, tick = st.tick, results: DuelResult[] = [];
+  const keep = (s: CommandResult['status']): DuelResult['status'] => (s === 'already-processed' ? 'rejected' : s);   // the duel step never produces already-processed
   const result = (env: DuelEnvelope, reason?: DuelReason): void => {
     results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status: 'applied' });
   };
   resetScratch(d);
 
   // Seat phase: sits (today's validation), then stands (today's handler), then presence.
+  const away = (e: DuelEnvelope): boolean => !d.present[e.id.player as 0 | 1];   // an away character stays exactly where it is (spec ง8)
   const sits = input.commands.filter((e) => e.command.kind === 'sit');
   const allowedSits = sits.filter((e) => e.command.kind === 'sit' && (e.command.station === d.nav || e.command.station === d.weapons));
   for (const e of sits) if (!allowedSits.includes(e)) result(e, 'not-in-duel');
-  applyInteractionCommands(st, allowedSits.map(sector));
-  for (const r of st.scratch.commandResults) results.push({ id: r.id, tick, status: r.status === 'applied' ? 'applied' : 'rejected', ...(r.reason ? { reason: r.reason } : {}) });
+  const liveSits = allowedSits.filter((e) => { if (!away(e)) return true; result(e, 'unavailable'); return false; });
+  applyInteractionCommands(st, liveSits.map(sector));
+  for (const r of st.scratch.commandResults) results.push({ id: r.id, tick, status: keep(r.status), ...(r.reason ? { reason: r.reason } : {}) });
   for (const e of input.commands) if (e.command.kind === 'stand') {
+    if (away(e)) { result(e, 'unavailable'); continue; }
     const r = applyConsoleCommand(st, sector(e));
-    results.push({ id: r.id, tick, status: r.status === 'applied' ? 'applied' : 'rejected', ...(r.reason ? { reason: r.reason } : {}) });
+    results.push({ id: r.id, tick, status: keep(r.status), ...(r.reason ? { reason: r.reason } : {}) });
   }
   for (const e of input.commands) if (e.command.kind === 'presence') {
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
-    d.present[e.id.player as 0 | 1] = e.command.present; result(e);
+    if ((e.id.player !== 0 && e.id.player !== 1) || typeof e.command.present !== 'boolean') { result(e, 'malformed'); continue; }
+    d.present[e.id.player] = e.command.present; result(e);
   }
 
   // Tactical commands, against the seats as they now stand. Within a tick they take effect in a fixed order, lock, then

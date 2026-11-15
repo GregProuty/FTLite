@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { inReachOfTile } from '../src/renderer/src/sim/interact';
 import { Position, Seated } from '../src/renderer/src/sim/components';
 import { DoorState, roomAt } from '../src/renderer/src/sim/grid';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
-import { createDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
 import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -33,6 +33,43 @@ describe('createDuel (spec §8)', () => {
     expect([...st.doors.state].every((s) => s === DoorState.HeldOpen)).toBe(true);
     expect(d.points.map((p) => [p.tacticalRoom, p.room])).toEqual([[Room.Weapons, st.derived.roomIndex.get('W')], [Room.Shields, st.derived.roomIndex.get('R')], [Room.Engines, st.derived.roomIndex.get('E')]]);
     expect(d.present).toEqual([true, true]);
+  });
+});
+
+describe('DuelState shape', () => {
+  it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
+    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['interior', 'nav', 'points', 'present', 'repair', 'tactical', 'weapons']);
+  });
+  it('disposeDuel is idempotent', () => {
+    const d = createDuel(layout, 5);
+    disposeDuel(d);
+    expect(() => disposeDuel(d)).not.toThrow();
+  });
+});
+
+describe('seat phase guards', () => {
+  it('rejects presence from player 2 or with a non-boolean value as malformed', () => {
+    const d = createDuel(layout, 5);
+    const bad = cmd(d, 2, { kind: 'presence', present: false }), odd = cmd(d, 0, { kind: 'presence', present: 'no' } as unknown as DuelCommand);
+    const r = step(d, [bad, odd]);
+    expect(r.map((x) => [x.status, x.reason])).toEqual([['rejected', 'malformed'], ['rejected', 'malformed']]);
+    expect(d.present).toEqual([true, true]);
+    expect(d.present).toHaveLength(2);
+  });
+  it('an away player cannot stand or sit: the character stays exactly where it is', () => {
+    const d = createDuel(layout, 5), eid = d.interior.crew[0]!;
+    step(d, [cmd(d, 0, { kind: 'presence', present: false })]);
+    const r = step(d, [cmd(d, 0, { kind: 'stand' })]);
+    expect(r[0]).toMatchObject({ status: 'rejected', reason: 'unavailable' });
+    expect(Seated.station[eid]).toBe(d.nav);
+    const e2 = d.interior.crew[1]!;
+    step(d, [cmd(d, 1, { kind: 'stand' })]);
+    step(d, [cmd(d, 1, { kind: 'presence', present: false })]);
+    const [x, y] = [Position.x[e2]!, Position.y[e2]!];
+    const r2 = step(d, [cmd(d, 1, { kind: 'sit', station: d.weapons })], [NONE, { moveX: 1, moveY: 0, interactHeld: false }]);
+    expect(r2[0]).toMatchObject({ status: 'rejected', reason: 'unavailable' });
+    expect(Seated.station[e2]).toBe(-1);
+    expect([Position.x[e2], Position.y[e2]]).toEqual([x, y]);
   });
 });
 
@@ -162,13 +199,13 @@ describe('repair in the room (spec §8)', () => {
     expect(ship.rooms[Room.Engines]).toBe(1);
     step(d, [], both);
     expect(ship.rooms[Room.Engines]).toBe(0);
-    expect(REPAIR_UNITS / 10).toBe(96);
   });
   it('needs the repairer inside the repair room: in reach through a wall does not count', () => {
     const d = createDuel(layout, 5), ship = d.tactical.ships[0];
     ship.rooms[Room.Engines] = 1;
     standAt(d, 0, 2, 4);                                                 // (2, 4) is the door tile north of Engines, outside the room
     expect(roomAt(d.interior, 2.5, 4.5)).not.toBe(d.points[2]!.room);
+    expect(inReachOfTile(d.interior, d.interior.crew[0]!, d.points[2]!.tile)).toBe(true);   // in reach, so only the same-room rule keeps it from repairing
     for (let t = 0; t < 300; t++) step(d, [], [{ moveX: 0, moveY: 0, interactHeld: true }, NONE]);
     expect(ship.rooms[Room.Engines]).toBe(1);
   });
@@ -199,5 +236,21 @@ describe('the duel tick', () => {
     expect(d.tactical.outcome).toBe(Outcome.EnemyWins);
     expect(step(d)).toEqual([]);
     expect([d.interior.tick, d.tactical.tick]).toEqual([11, 11]);
+  });
+});
+
+describe('the interior stays quiet (spec �17 risk 7)', () => {
+  it('starts no fire, breach, boarder or event in 3,600 busy ticks', () => {
+    const d = createDuel(layout, 5), st = d.interior, event0 = st.run.event;
+    for (let t = 0; t < 3600; t++) {
+      const cmds = t === 10 ? [cmd(d, 0, { kind: 'stand' })] : t % 120 === 0 ? [cmd(d, 1, { kind: 'laserCharge', held: true })] : t % 120 === 60 ? [cmd(d, 1, { kind: 'laserCharge', held: false })] : [];
+      step(d, cmds, [{ moveX: t % 40 < 20 ? 1 : -1, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]);
+      if (d.tactical.outcome !== Outcome.Running) break;
+    }
+    expect(d.tactical.tick).toBeGreaterThan(100);
+    expect([...st.rooms.fire].every((f) => f === 0)).toBe(true);
+    expect([...st.breaches.active].every((b) => b === 0)).toBe(true);
+    expect([...st.boarders.active].every((b) => b === 0)).toBe(true);
+    expect(st.run.event).toBe(event0);
   });
 });

@@ -15,4 +15,4 @@ export interface DuelEnvelope { id: { player: number; sequence: number }; reques
 /** Today's reasons plus the duel's own (spec §7 table, §13). */
 export type DuelReason = CommandReason | 'not-in-duel' | 'not-at-weapons' | 'missile-in-flight';
 
-export interface DuelResult { id: { player: number; sequence: number }; tick: number; status: 'applied' | 'rejected'; reason?: DuelReason }
+export interface DuelResult { id: { player: number; sequence: number }; tick: number; status: 'applied' | 'noop' | 'rejected'; reason?: DuelReason }
