@@ -36,7 +36,7 @@ export const SPAWN_CLEARANCE = 300;            // no asteroid surface within thi
 
 // Ships (§5)
 export const SHIP_RADIUS = 20;
-export const SHIP_HULL = 30;
+export const SHIP_HULL = 40;                  // H-0c-ii-a: 30 → 40 so the scripted duels last 3 to 5 minutes
 /** Engines damage level 0 / 1 / 2 scales thrust and turn rate (§5). */
 export const ENGINE_FACTOR: readonly number[] = [1, 0.6, 0.25];
 
