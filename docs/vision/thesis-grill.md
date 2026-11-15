@@ -288,3 +288,37 @@ Implications for the specs:
 - Amends Q11: the demo's inside link is no longer only "thin"; the crew walks the interior. Fires, oxygen, breaches and boarders stay out of the demo.
 - Amends Q21: repair is done in the room, not from the console. Amends Q24: in solo, Tab switches which character the owner controls.
 - "Tasks around the ship" beyond repair (per-room mini games, napkin) come with MG-X; the demo uses hold-to-repair.
+
+## Q28. What do 16 players look like? (architecture panel, 2026-11-15)
+
+**Owner answer (2026-11-15):** "either one capital ship or multiple ships, including PvP". **Answer: both shapes, and crews can fight each other.**
+
+Implications:
+- One encounter must hold several ships (an array of ship states, not one ship plus an enemy), and "who flies a ship" is a controller choice: a human crew, the hunter AI or a bot.
+- PvP means rival crews must not receive each other's private state (ship interiors, random-number streams). Publication needs per-crew projections, not one full-state broadcast to everyone.
+- Players are not ship seats: a crew table per ship, with player, bot or NPC controllers, and the session mapping players to crew.
+
+## Q29. Is the gravity-well fight the combat for the whole game?
+
+**Owner answer (2026-11-15):** "The gravity well is now the combat, but the players will be able to lock on to the enemy ship for the FTL view." **Answer: yes.** The tactical sim owns space (positions, arcs, missiles). Locking on to a target opens an FTL-style side view of that ship.
+
+Implications:
+- One combat model. Each ship has one systems record (rooms, power, shields, charge, damage) that its interior and the tactical layer both read and write. The sector game's scalar enemy retires.
+- The FTL view of a locked target is a view of that target's real ship state, so the enemy ship becomes a full ship state with an interior.
+
+## Q30. Can players move between ships?
+
+**Owner answer (2026-11-15):** "Yes." Boarding parties, transfers and split crews are in scope.
+
+Implications:
+- Crew members belong to a ship (an `aboard` link), not to a player index, and boarding moves a crew row between ships.
+- An encounter can hold more than one player-crewed ship at once.
+
+## Q31. Does the owner's playtest gate gameplay features?
+
+**Owner answer (2026-11-15):** "Yes." **Answer: tier the process.** Contract changes (commands, snapshot and save formats, the authority, determinism rules) keep the full spec, review, plan, review, build and review cycle. Content, tuning, views and mini-game feel get a one-page spec, a build, one review, and the owner's playtest as the gate.
+
+**Claude's recommendations taken on the panel's remaining questions (the owner may overturn them):**
+- Campaign saves get their own versioned format with migrations, written at beats (in port, after a jump), not mid-combat. Strict tick snapshots stay for checkpoints and replays.
+- The sector run is frozen as a legacy mode and test harness; it is not ported to the new layers.
+- Passengers, spectators and bot or language-model crew stay possible: a connection with no crew body stays legal, and bots can connect as their own binding.
