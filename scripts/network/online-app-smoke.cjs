@@ -93,7 +93,7 @@ async function command(message) {
   switch (message.command) {
     case 'status': return { ...await js(`(async () => ({status:(await window.ftlite.online.readStatus()).status, observations:window.onlineAppObservation(), keys:window.onlineAppKeys, text:document.body.innerText, hidden:document.hidden, focused:document.hasFocus()}))()`),electron:process.versions.electron };
     case 'resize': {
-      if (![[1280,720],[800,600]].some(([w,h]) => message.width === w && message.height === h)) throw Error('invalid test size');
+      if (![[1280,720],[640,480]].some(([w,h]) => message.width === w && message.height === h)) throw Error('invalid test size');
       // Native stress viewport below the ordinary app minimum; production sizing
       // and all renderer/layout/input code remain unchanged.
       visible.setMinimumSize(640, 480); visible.setContentSize(message.width, message.height); await delay(150); return true;

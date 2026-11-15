@@ -79,7 +79,7 @@ async function main() {
   }
   async function viewportProof(app: Application, name: string) {
     for (const small of [false, true]) {
-      await app.request('resize', { width: small ? 800 : 1280, height: small ? 600 : 720 });
+      await app.request('resize', { width: small ? 640 : 1280, height: small ? 480 : 720 });
       const layout = await until(() => app.request('layout'), r => r.canvas.top >= r.menu.bottom && r.canvas.bottom <= r.height + 1 && r.canvas.width === r.width, 'reserved game viewport');
       viewports.push({ name, small, ...layout });
       await app.request('screenshot', { path: join(artifactDirectory, `${name}${small ? '-small' : ''}.png`) });
