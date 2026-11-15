@@ -117,7 +117,7 @@ Draw order, as parent §10b:
      - It stops, keeping the final point, at the first planet or asteroid contact, at the map edge, or at expiry. It ignores ships.
      - Test: for 120 ticks of free flight with a constant steering value, its per-tick positions (stride 1) equal `flyMissile`'s exactly; and it ends at the planet when aimed at it.
 8. **Effects** from `events`: a laser shot draws a 0.15 s beam (white on a hit, grey on a miss) **(rec.)**. A missile ending draws a 0.3 s burst. **Contact sparks** (parent §12) come from a render-side detector, since the sim emits no contact events: each tick the runtime compares each ship's `planetHits`, `asteroidHits` and `shipHits` with the previous tick's values, and an increase draws a 0.3 s spark at that ship's position (orange for the planet, grey for an asteroid, white for the other ship) **(rec.)**.
-9. **Screen-space overlay** (the console HUD): off-screen arrows (own ship, enemy, planet, missile) with distances; the zoom level; a scale bar; the "C: snap back" hint while panned. A side readout panel shows the crew ship's hull and the enemy's hull (parent §10b: "both hulls"), the crew ship's shield pips, its three room levels and repair progress, and the enemy's shield pips and room levels; at Weapons also the charge bar, hold timer and magazine. It also shows the other character's status (at Helm, at Weapons, walking, repairing, away).
+9. **Screen-space overlay** (the console HUD): off-screen arrows (own ship, enemy, planet, missile) with distances; the zoom level; a scale bar; the "C: snap back" hint while panned. A side readout panel shows the crew ship's hull and the enemy's hull (parent §10b: "both hulls"), the crew ship's shield pips, its three room levels and repair progress, and the enemy's shield pips and room levels; at Weapons also the charge bar, hold timer and magazine. It also shows the other character as two rows **(rec.)**: present or away, and where (at Helm, at Weapons, walking, repairing). In solo the other character is always away, so position is what tells the player where they left them.
 
 ## 8. The interior view (`render/duel/interiorView.ts`)
 
@@ -126,11 +126,13 @@ When the active character stands, the screen shows the Cutter interior **(rec.)*
 - **Fit:** the ship is fitted into a band of the 1280×720 screen that leaves a 220-px readout column on the right **(rec.)**. Today's `worldFit` fits only the sector band, so the duel uses its own fit with the same rules: centred, never upscaled above 1×.
 - **Damage overlay:** each repair point's room is tinted by its tactical room's damage level, with a marker on the repair tile, and a progress ring fills while someone repairs. The two role consoles are outlined: highlighted when free, dimmed when occupied by the other character.
 - **Readout column:** the same ship readout as the consoles (hull, shields, rooms, repair), plus a strip that tells the player about the ship outside:
-  - "Helm empty: coasting" or "Helm: other character";
-  - "Weapons empty" or "Weapons: other character";
-  - the enemy's distance and bearing;
-  - "incoming missile" when the enemy's missile is within 600.
-- **Shake** **(rec.)**: a hit on the crew ship (a laser hit or a missile landing) shakes the interior and the console views for 0.2 s, so a standing player feels the fight.
+  - `HELM CREWED` or `HELM EMPTY`, with `COASTING` under it when empty;
+  - `WEAPONS CREWED` or `WEAPONS EMPTY`;
+  - `ENEMY` (distance) and `BEARING`;
+  - `MISSILE INBOUND` when the enemy's missile is within 600.
+
+  These labels are short so they fit the 220-px column at 2× m5x7 **(rec.)**. A console counts as crewed only when a present character sits at it, so in solo a console left by Tab shows as empty.
+- **Shake** **(rec.)**: a hit on the crew ship (any enemy laser hit, including one that only strips a shield layer, or a missile landing on it) shakes the interior and the console views for 0.2 s, so a standing player feels the fight.
 
 ## 9. The dev flight view (`?mode=flight`)
 
@@ -172,3 +174,4 @@ Each part follows the standing order: plan, refine, build subagent-driven, refin
 - 2026-11-14: refine round 1: solo start makes player 1 away on tick 0 (and on restart); commands use the duel's tick; restart recreates the driver and resets every cache; pause reasons; current axes as a model input; single-ship flight step; warm-up allocation rule; missile-path predictor contract; lock marker on both consoles and both hulls in the readout; contact sparks.
 - 2026-11-14: refine round 2: §10 names the two tactical-sim changes (stepSoloFlight, exported static-contact pass) as the exception to new code living outside the guarded roots.
 - 2026-11-14: from the H-1a prototype: §11 names `stepSoloFlight` (not `stepFlight`); grid labels always name the 500-unit squares; `dev:*` scripts run `scripts/dev-mode.ts`.
+- 2026-11-15: from the H-1b prototype: short readout-strip labels that fit the 220-px column; the other character shown as presence plus position; a shield-only laser hit counts for the shake.
