@@ -72,3 +72,36 @@ Mutation check: removing the velocity lead, reading the newest trail slot, an ex
 
 ---
 
+# Round 2 (delta, reviewing 66ffb96, effort medium, 59 s, 164305 in / 119424 cached / 1545 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — tests/tacticalWeapons.test.ts:74–90 now checks planet and asteroid blockers with targets explicitly in arc and range, then verifies an actual release misses without damage. This exercises weapons.ts:42 rather than stopping at the range check.
+- R1-F2: resolved — tests/tacticalWeapons.test.ts:138–154 accumulates 450 recharge units, checks preservation throughout 600 disabled ticks, and verifies repair resumes through the exact layer-completion tick, matching weapons.ts:86–87 and spec L101.
+- R1-F3: resolved — tests/tacticalHunter.test.ts:36–82 adds moving-target steering, delayed-position assertions across multiple buffer wraps, and reference RNG comparisons for scheduling, waiting, cancellation and rescheduling. These directly exercise hunter.ts:58–59, L69 and L82–84.
+
+## Verified
+- HEAD is 66ffb96064f4589dd53c9e92ad479489632cee61; the implementation delta changes only the two supplied test files.
+- Static inspection found the added assertions address all three prior gaps and agree with spec L101, L140 and L201–202. No regressions found in the touched regions.
+
+## Not verified
+- Both single-file Vitest runs failed before executing tests because esbuild process spawning returned EPERM. Test passes and reported mutation results were not independently reproduced.
+- The working-tree ledger read was denied; its committed HEAD version was checked instead. Unchanged implementation was not re-reviewed.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `66ffb96`. No new findings. Codex confirmed R1-F1, R1-F2 and R1-F3 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
