@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { nextInt } from '../src/shared/rng';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
 import { hunterThink, pursuitTurn } from '../src/renderer/src/sim/tactical/hunter';
@@ -31,6 +32,54 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     st.hunter.trail.fill(0);
     for (let k = 0; k < st.hunter.trail.length; k += 2) { st.hunter.trail[k] = -300; st.hunter.trail[k + 1] = 0; }   // the crew was due south
     expect(hunterThink(st).steer).toBe(1);
+  });
+  it('leads a moving crew by 0.5 s: a target straight ahead but moving south pulls the turn anticlockwise', () => {
+    const st = facing();
+    st.ships[0].vy = 600;                                                // lead point (−600, 0): south-west of the enemy facing west
+    expect(hunterThink(st).axes.turn).toBe(-1);
+    st.ships[0].vy = -600;                                               // lead point north-west: clockwise
+    expect(hunterThink(st).axes.turn).toBe(1);
+  });
+  it('steers its missile at exactly where the crew was 18 calls ago, across several trail wraps', () => {
+    const st = facing();
+    st.missiles[1] = { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 };   // pointing north
+    const steers: number[] = [];
+    for (let k = 0; k < 72; k++) {
+      st.ships[0].x = Math.floor(k / 18) % 2 === 0 ? -200 : -400;     // 18 calls east of the missile, 18 west, and so on
+      steers.push(hunterThink(st).steer);
+      st.tick++;
+    }
+    expect(steers.slice(18, 36)).toEqual(new Array(18).fill(1));       // reads calls 0..17: east
+    expect(steers.slice(36, 54)).toEqual(new Array(18).fill(-1));      // reads calls 18..35: west
+    expect(steers.slice(54, 72)).toEqual(new Array(18).fill(1));
+  });
+  it('draws exactly one jitter per scheduled release, none while it waits, and redraws after a cancel', () => {
+    const st = facing(), me = st.ships[1];
+    me.fireHeld = true; me.laserCharge = LASER_CHARGE_UNITS;
+    let seed = 1;
+    while (nextInt({ s: seed }, HUNTER_JITTER_TICKS + 1) < 3) seed++;   // a seed whose first jitter is at least 3 ticks
+    st.rng.s = seed;
+    const expected = { s: seed }, j = nextInt(expected, HUNTER_JITTER_TICKS + 1);
+    expect(hunterThink(st).laserCharge).toBe(null);                      // scheduled, not yet released
+    expect(st.rng.s).toBe(expected.s);                                    // exactly one draw
+    expect(st.hunter.fireAt).toBe(st.tick + j);
+    st.tick++;
+    expect(hunterThink(st).laserCharge).toBe(null);
+    expect(st.rng.s).toBe(expected.s);                                    // waiting draws nothing
+    st.ships[0].x = 0;                                                    // the crew leaves the arc (behind the enemy): cancel
+    hunterThink(st);
+    expect(st.hunter.fireAt).toBe(-1);
+    expect(st.rng.s).toBe(expected.s);
+    st.ships[0].x = -600;                                                 // back in arc: a fresh draw
+    hunterThink(st);
+    nextInt(expected, HUNTER_JITTER_TICKS + 1);
+    expect(st.rng.s).toBe(expected.s);
+    for (let t = 0; t <= HUNTER_JITTER_TICKS && st.hunter.fireAt >= 0; t++) {
+      if (st.tick >= st.hunter.fireAt) { expect(hunterThink(st).laserCharge).toBe(false); break; }
+      expect(hunterThink(st).laserCharge).toBe(null);
+      st.tick++;
+    }
+    expect(st.rng.s).toBe(expected.s);
   });
   it('turns away and thrusts when its straight path will pass near the planet', () => {
     const st = facing();
