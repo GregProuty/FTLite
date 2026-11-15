@@ -43,7 +43,11 @@ A deterministic headless crew for tests and telemetry only, never offered as a s
   3. *Orbit:* otherwise, hold an orbit of radius `ORBIT_R`, seeded once per duel in `[ORBIT_MIN, ORBIT_MAX]`. That band lies outside the belt and inside the edge: `ORBIT_MIN ≥ BELT_OUTER + 200` (1500) and `ORBIT_MAX ≤ R_MAP − 600` (2200). The plan picks the values within those bounds. Let `r` be the ship's distance from the planet and `t` the prograde tangent direction (the direction the ship is already circling, or clockwise at rest).
      - *Desired velocity direction:* `t` rotated toward the planet by `clamp(ORBIT_GAIN · (r − ORBIT_R), −30°, +30°)`. Outside the radius it points inward, and inside it points outward.
      - *Turn:* the Helm turns its nose toward the desired direction (sign of the heading error, ties clockwise).
-     - *Thrust:* +1 when the nose is within 45° of the desired direction and either the speed is below `circularSpeed(r) − SPEED_SLACK` or the velocity direction is more than 10° off the desired direction. −1 when the nose is within 45° of the desired direction and the speed is above `circularSpeed(r) + SPEED_SLACK`. Otherwise 0.
+     - *Thrust*, checked in this order, first match wins:
+       1. 0 when the nose is more than 45° off the desired direction;
+       2. −1 when the speed is above `circularSpeed(r) + SPEED_SLACK` (too fast always brakes first);
+       3. +1 when the speed is below `circularSpeed(r) − SPEED_SLACK`, or the velocity direction is more than 10° off the desired direction;
+       4. 0 otherwise.
 
      Thrust thus bends the velocity toward the desired direction, which is how the radius is corrected; turning alone changes only the heading.
 
@@ -140,3 +144,4 @@ A duel **ends from planet contact** when the losing ship (both, for a draw) took
 - 2026-11-15: refine round 1: sector goldens re-blessed in full and proved version-only by the untouched gameplay projections; the ten-seed gate always runs; exact pair rules and named constants; one repair-assignment rule; terminal-cause attribution; bait and idle definitions; repair-event semantics; `flattenDuel` gains `SIM_VERSION`; missile-to-missile losses.
 - 2026-11-15: refine round 2: avoidance hazard tests and the edge test are explicit (predictPath returns positions only); the orbit band is bounded outside the belt and inside the edge; the bait's struck obstacle is identified from the contact tick's counters and the grid.
 - 2026-11-15: refine round 3: hazard selection order and tie break; orbit radius correction via a desired velocity direction and thrust; bait attribution from per-body graceUntil changes (every asteroid struck in a tick).
+- 2026-11-15: ruling after round 4: the orbit thrust rule is an ordered list (off-nose 0, too fast −1, slow or off-course +1, else 0).
