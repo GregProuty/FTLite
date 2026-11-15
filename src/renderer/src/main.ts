@@ -12,6 +12,8 @@ import { loadProgress, saveProgress } from './app/progressStore';
 import { createAudio } from './app/audio';
 import { EMPTY_PROGRESS } from './sim/progress';
 import { CREDITS } from './render/credits.generated';
+import { readMode, readSeed } from './app/duel/mode';
+import { startFlightMode } from './app/duel/flightMode';
 
 declare global { interface Window { ftlite?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void } } }
 
@@ -25,7 +27,8 @@ ${err instanceof Error ? err.message : String(err)}`;
   document.body.replaceChildren(pre);
 }
 
-async function start(): Promise<void> {
+/** Today's sector game (unchanged; H-1 spec §3: the default mode). */
+async function startSector(): Promise<void> {
   const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff) };   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
@@ -57,5 +60,19 @@ async function start(): Promise<void> {
   window.ftlite?.onResume(() => session.resume('os-resume'));
   renderer.app.ticker.add(() => session.frame());
   window.addEventListener('beforeunload', () => session.dispose(), { once: true });
+}
+
+/** The dev flight view (H-1 spec §9): the renderer and its letterbox, but no sector session. */
+async function startFlight(seed: number): Promise<void> {
+  const assets = await loadAssets('./assets/manifest.json');
+  const renderer = await createRenderer(assets);
+  const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
+  window.addEventListener('resize', resize); resize();
+  startFlightMode({ renderer, seed, lifecycle: window.ftlite });
+}
+
+/** One mode per launch (H-1 spec §3): `?mode=flight`, or today's sector game. */
+function start(): Promise<void> {
+  return readMode(location.search) === 'flight' ? startFlight(readSeed(location.search)) : startSector();
 }
 start().catch(showFatal);

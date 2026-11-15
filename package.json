@@ -5,6 +5,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:flight": "tsx scripts/dev-mode.ts flight",
     "build": "electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
