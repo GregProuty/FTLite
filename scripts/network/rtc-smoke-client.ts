@@ -200,7 +200,7 @@ function installPage() {
       raw.send(kind, bytes);
     } };
     controls = { ack: 0, 'full-received': 0, refresh: 0 };
-    client = createSectorRemoteClient(observed, [player], { runId: init.runId, resolveLayout: () => layout,
+    client = createSectorRemoteClient(observed, [player], { runId: event.data.runId ?? init.runId, resolveLayout: () => layout,
       contentDigest: init.contentDigest, clock: { nowMs: () => performance.now() } });
     raw.onClose(() => { closed = true; stop(); });
     report({ kind: 'subscribed', player, canAllocate: client.commandStatus(player).canAllocate });
