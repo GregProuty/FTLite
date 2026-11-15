@@ -229,3 +229,35 @@ This is exact for several contacts in a tick and needs no sim change. The bait's
 
 ---
 
+# Round 4 (delta, reviewing 8e32b8c, effort high, 96 s, 249965 in / 201472 cached / 4724 out)
+
+Verdict: changes requested
+
+## Prior findings
+- R1-F3: still open — The revised orbit rule leaves two thrust choices valid at once: with the nose within 45°, speed above circularSpeed(r) + SPEED_SLACK, and velocity more than 10° off the desired direction, both +1 and −1 apply (spec L46). Specify which takes precedence; the choices produce different flight paths.
+- R1-F6: resolved — The revised bait rule identifies every body struck in a tick through per-body graceUntil and applies the distance test to that body (spec L69-L76). The source confirms the grace update and body indexing (contacts.ts:L16-L18, L42-L45; state.ts:L18-L20).
+
+## Verified
+- The revised hazard order and asteroid tie break are explicit (spec L36-L41); predictPath returns positions and stops at first solid contact (predict.ts:L21-L30).
+- The proposed orbit correction uses thrust to change velocity, consistent with flyShip (spec L43-L48; physics.ts:L25-L54).
+
+## Not verified
+- The ten-seed gates and tuning were not run; this was a read-only spec review, and the requested constraints prohibit running Jest.
+- The run directory ledger could not be read because access was denied; the ledger and round response supplied in the prompt were used.
+
+---
+
+# Round 4 response (no subject change)
+
+Reviewed `round-4.json`. No new findings. Codex confirmed R1-F6 resolved. R1-F3 went contested on its third miss: the orbit thrust rule lets +1 and −1 both apply when the ship is too fast and its velocity is more than 10° off the desired direction. The claim is correct (spec L46). It goes to a ruling.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+

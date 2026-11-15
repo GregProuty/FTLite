@@ -1,0 +1,24 @@
+{
+  "verdict": "changes requested",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F3",
+      "result": "still open",
+      "note": "The revised orbit rule leaves two thrust choices valid at once: with the nose within 45°, speed above circularSpeed(r) + SPEED_SLACK, and velocity more than 10° off the desired direction, both +1 and −1 apply (spec L46). Specify which takes precedence; the choices produce different flight paths."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "The revised bait rule identifies every body struck in a tick through per-body graceUntil and applies the distance test to that body (spec L69-L76). The source confirms the grace update and body indexing (contacts.ts:L16-L18, L42-L45; state.ts:L18-L20)."
+    }
+  ],
+  "verified": [
+    "The revised hazard order and asteroid tie break are explicit (spec L36-L41); predictPath returns positions and stops at first solid contact (predict.ts:L21-L30).",
+    "The proposed orbit correction uses thrust to change velocity, consistent with flyShip (spec L43-L48; physics.ts:L25-L54)."
+  ],
+  "not_verified": [
+    "The ten-seed gates and tuning were not run; this was a read-only spec review, and the requested constraints prohibit running Jest.",
+    "The run directory ledger could not be read because access was denied; the ledger and round response supplied in the prompt were used."
+  ]
+}
