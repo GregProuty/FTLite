@@ -1,7 +1,7 @@
 // TEST ONLY executable wrapper. Loads the unchanged compiled production app.
 const electron = require('electron');
 const { app, BrowserWindow, utilityProcess, ipcMain, powerMonitor } = electron;
-process.on('uncaughtException',error=>{console.error('application driver uncaught exception: '+error.stack);app.exit(1);});
+process.on('uncaughtException',()=>{console.error('APP_DRIVER_UNCAUGHT');app.exit(1);});
 const { resolve, join, sep } = require('node:path');
 const { readFileSync, writeFileSync } = require('node:fs');
 const observeNative = require('./rtc-smoke-native.cjs');
@@ -47,8 +47,9 @@ utilityProcess.fork = (...args) => {
 };
 app.on('browser-window-created', (_, window) => {
   const hidden = !!visible; if (!visible) visible = window;
-  window.webContents.on('preload-error', (_, path, error) => console.error('APP preload error ' + error.message));
-  window.webContents.on('console-message', details => { if (details.level === 'error') console.error('APP page error ' + details.message.slice(0,250)); });
+  const diagnosticContext={role,page:hidden?'transport':'application'};
+  window.webContents.on('preload-error', () => console.error('APP_PRELOAD_ERROR',diagnosticContext));
+  window.webContents.on('console-message', details => { if (details.level === 'error') console.error('APP_PAGE_ERROR',diagnosticContext); });
   const record = { window, hidden, closed: false }; windows.push(record);
   window.once('closed', () => { record.closed = true; });
   const originalLoad = window.loadFile.bind(window);
@@ -135,8 +136,10 @@ async function command(message) {
 // Hold the wrapper alive long enough to report actual utility exits at shutdown.
 app.on('window-all-closed', event => { if (stopping) event?.preventDefault?.(); });
 app.on('before-quit', event => { if(stopping) event.preventDefault(); });
+const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','screenshot','resources','transport-death','delay-next-transport','shutdown']);
 process.on('message', message => { void command(message).then(result => { if(message.command!=='shutdown') process.send?.({id:message.requestId,result}); })
-  .catch(error => process.send?.({id:message.requestId,error: String(error.message).slice(0,200)})); });
+  .catch(() => process.send?.({id:Number.isSafeInteger(message?.requestId)?message.requestId:0,error:'app-driver-command-failed',
+    command:diagnosticCommands.has(message?.command)?message.command:'unknown'})); });
 require(role==='incompatible' ? join(directory,'incompatible-build/main/index.js') : '../../out/main/index.js');
 
 

@@ -8,6 +8,7 @@ import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startLocalRuntime } from '../../services/signalling/scripts/local-runtime';
 import { validateOnlineAppReport } from './online-app-report';
+import { onlineAppFailureCode, onlineAppStderrDiagnostic } from './online-app-diagnostics';
 
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
@@ -26,7 +27,7 @@ async function main() {
   async function until(read: () => Promise<any>, predicate: (value: any) => boolean, label: string, ms = 10000) {
     const deadline = performance.now() + ms; let last;
     while (performance.now() < deadline) { if (timedOut) throw Error('launcher timeout'); last = await read(); if (predicate(last)) return last; await delay(40); }
-    console.error('WAIT FAILED', label, JSON.stringify(last?.status ? {phase:last.status.phase,error:last.status.error,keys:last.keys,hidden:last.hidden,focused:last.focused,inputs:last.observations?.at(-1)?.inputs.slice(-4)} : last)); throw Error(label + ' timeout');
+    console.error('APP_WAIT_TIMEOUT'); throw Error(label + ' timeout');
   }
   async function launch(profile: string) {
     if (typeof electron !== 'string') throw Error('Electron executable missing');
@@ -44,9 +45,12 @@ async function main() {
       });
     } };
     child.on('message', (message: any) => { const item = pending.get(message.id); if (!item) return; pending.delete(message.id); clearTimeout(item.timer);
-      message.error ? item.reject(Error(message.error)) : item.resolve(message.result); });
+      message.error ? item.reject(Error('app-driver-command-failed')) : item.resolve(message.result); });
     child.on('error',()=>{for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('application process error'));}pending.clear();});
-    child.stderr!.on('data', data => { const text = String(data); if (!/disk_cache|gpu|DevTools|Autofill/.test(text)) process.stderr.write(text); });
+    // Native Electron diagnostics can also contain raw page/exception payloads.
+    // Consume every chunk, but report only one fixed category and validated role.
+    let stderrReported=false;
+    child.stderr!.on('data', () => { if(!stderrReported){stderrReported=true;console.error(onlineAppStderrDiagnostic(profile));} });
     record.exit = new Promise(done => child.once('exit', code => { record.exited = true; record.exitCode=code; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('application exited')); } pending.clear(); done(); }));
     processes.push(record);
     const initial=await until(async () => { try { return await record.request('status'); } catch (error) { if (record.exited) throw error; return null; } }, value => !!value?.status && value.text.includes('Couch play'), profile + ' app ready');
@@ -180,12 +184,12 @@ async function main() {
     const sparse=(await status(h)).status.snapshot;
     assert(sparse.capacity===4&&sparse.seats[0].occupied&&!sparse.seats[1].occupied&&sparse.seats[2].occupied&&!sparse.seats[3].occupied,'sparse 0/2 roster');
     g=await play(h,g,4);
-  } catch (error) { failure = error instanceof Error ? error.message : 'application gate failed'; }
+  } catch (error) { failure = onlineAppFailureCode(error); }
   finally {
     clearTimeout(watchdog);
     for (const app of processes) if (!app.exited) {
       app.termination='shutdown';
-      try { app.cleanup = await app.request('shutdown'); await Promise.race([app.exit,delay(1000)]); } catch (error) { console.error('shutdown observation failed:',String(error)); }
+      try { app.cleanup = await app.request('shutdown'); await Promise.race([app.exit,delay(1000)]); } catch { console.error('APP_SHUTDOWN_OBSERVATION_FAILED'); }
       try { await kill(app); } catch { failure??='owned Electron cleanup failed'; }
     }
     try { await runtime?.dispose(); } catch { failure ??= 'workerd cleanup failed'; }
@@ -203,7 +207,7 @@ async function main() {
   if (failure) throw Error(failure);
   validateOnlineAppReport(report); console.log('ACTUAL TWO-PROCESS ONLINE APPLICATION PASS');
 }
-main().catch(error => { console.error(error.message); process.exitCode=1; });
+main().catch(error => { console.error(onlineAppFailureCode(error)); process.exitCode=1; });
 
 
 

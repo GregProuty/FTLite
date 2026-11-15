@@ -89,3 +89,26 @@ Automatic approval review rejected both resolved-path/equality-checked PowerShel
 Loopback, one Windows machine and test-only occlusion handling are explicit. NOT RUN: independent utility lease gate, checkpoint mirroring, explicit rehost/recovery, deployed service, live TURN/forced relay, WAN, two physical machines. Packaged online remains disabled. Parent owns validation/rulings/ledger and full root/service/acceptance/engine/regression evidence, plus independent review. No subagents were dispatched, no merge/deploy performed, no prior plan artifacts changed, no owner checkout altered.
 
 Self-review checked actual application composition, no credential logging, real layouts and native input, ordering evidence, source identity, incompatible artifact isolation, asynchronous IPC errors, expected restart vs graceful exits, transferred port accounting, bounded fault cleanup, exact temp deletion guards and staying out of controller-owned docs. Remaining concerns are the explicitly retained exploratory temp root and the observed top-strip overlap for final review.
+
+## Review fix round 1: fixed diagnostics and hostile-input regression
+
+Important review finding confirmed: the wrapper printed `error.stack`, raw preload/page messages and raw driver-command error text; the launcher could also forward child stderr and exception text. The initial no-credential diagnostic claim above applies to retained final evidence, not to those pre-fix exception paths. This round closes those paths rather than relying on ordinary runs containing no sensitive error text.
+
+Changes: wrapper emits only `APP_DRIVER_UNCAUGHT`, `APP_PRELOAD_ERROR` and `APP_PAGE_ERROR`, with validated role and fixed application/transport page context where applicable. Driver failures use `app-driver-command-failed`, numeric request ID and an enumerated command name (otherwise `unknown`). Launcher ignores raw child stderr content and emits one `APP_NATIVE_STDERR` diagnostic with allowlisted role; it normalizes driver error responses and shutdown/wait diagnostics. New `online-app-diagnostics.ts` accepts only an exact finite list of known failure codes; unexpected exceptions become `online-application-gate-failed` in terminal output and report failure fields. No exception stack/message, arbitrary page/preload path or arbitrary command string is reflected.
+
+Meaningful regression `tests/onlineAppDiagnostics.test.ts` executes the actual CJS wrapper in a VM with mocked native boundaries, then invokes its registered uncaught/preload/page/driver-command callbacks with synthetic credential-bearing errors/messages. It asserts exact fixed output, preserves known context and exit 1, and checks the launcher failure/role allowlists. It does not exercise an alternate networking composition.
+
+RED command: `npx vitest run tests/onlineAppDiagnostics.test.ts` — exit 1, **3 tests failed**. Actual captured output contained the synthetic seat token/ticket/SDP/candidate text through uncaught stack, preload/page diagnostics and driver response. Adding the launcher-helper regression before implementation also failed module loading as expected.
+
+GREEN command: `npx vitest run tests/onlineAppDiagnostics.test.ts tests/onlineAppReport.test.ts` — exit 0, **26 tests passed across 2 files** (diagnostics 4, report 22). `npm run typecheck` — exit 0, no diagnostics. Scoped `git diff --check` — exit 0; ordinary LF/CRLF notices only.
+
+Affected native probe only:
+
+```text
+npx tsx scripts/network/online-app-smoke.ts --inject-transport-failure --report-path=.superpowers/sdd/2026-11-15-net-3d-online-sector/review-round1/report.json
+Exit 1 as required; failure "injected transport death"; elapsed 14,581 ms.
+Actual workerd exit and exact temporary-root removal true; utility exits 1/1.
+Remaining windows/ports/listeners/peers zero; 6 observed main ports released.
+```
+
+This fault run exercised the sanitized native-stderr and shutdown-error paths (`APP_NATIVE_STDERR` with role `guest`, `APP_SHUTDOWN_OBSERVATION_FAILED`). Guest shutdown raced the deliberately destroyed transport and used the existing owned-process fallback; every recorded Electron process exit was observed. The raw native exception was not logged. Probe JSON/log remain in the ignored review-round1 workspace; this commit includes source/tests/report only, per controller instruction. Full normal gameplay, broad suites, deferred admission/watchdog minors, parent docs and the policy-rejected exploratory temp directory were untouched.
