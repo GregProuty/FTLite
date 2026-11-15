@@ -41,7 +41,7 @@
 
 Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→4→5→6→7. No parallel mutations to shared interface files.
 
-### Task1: safe session contracts, configuration and saved seat
+### Task 1: safe session contracts, configuration and saved seat
 
 **Files:** create `src/shared/onlineSession.ts`, `src/main/network/seatStore.ts`, `src/main/network/onlineConfig.ts`; tests `tests/onlineSessionContract.test.ts`, `tests/seatStore.test.ts`, `tests/onlineConfig.test.ts`; update `build/contentDigest.ts`, `tests/contentDigest.test.ts`.
 
@@ -58,7 +58,7 @@ Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→
 - [ ] **Run green plus root typecheck and digest tests.** Assert packaged mode ignores online URL and rejects nonloopback/credentials/query/path. No new dependency.
 - [ ] **Commit** only task files: `feat(net): define private online session boundary and seat store`.
 
-### Task2: sector bot/human producer handoff
+### Task 2: sector bot/human producer handoff
 
 **Files:** create `src/network/modes/sectorProducers.ts`; modify `src/network/modes/sector.ts`; tests `tests/sectorProducers.test.ts`, existing `tests/checkpointBots.test.ts` and mode/runtime tests as needed. Do not put bot logic in generic hostRuntime.
 
@@ -70,7 +70,7 @@ Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→
 - [ ] **Run green**, mode/host runtime tests and `npm run typecheck`; confirm fake second mode unchanged and offline headless checkpoint tests still pass.
 - [ ] **Commit:** `feat(net): hand sector seats between humans and bots at boundaries`.
 
-### Task3: enforce stream synchronization and focus neutralization
+### Task 3: enforce stream synchronization and focus neutralization
 
 **Files:** modify `src/network/state/sender.ts`, `src/network/modes/sectorStream.ts`, `src/renderer/src/clientControl/clientRun.ts`; tests `tests/stateStream.test.ts`, `tests/sectorStream.test.ts`, create `tests/onlineNeutralization.test.ts`.
 
@@ -82,7 +82,7 @@ Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→
 - [ ] **Run green**, existing outbox/receive-time tests and root typecheck. Confirm local strict loopback unchanged.
 - [ ] **Commit:** `fix(net): gate streamed input on sync and neutralize reliably`.
 
-### Task4: main session coordinator and bounded reconnect
+### Task 4: main session coordinator and bounded reconnect
 
 **Files:** create `src/main/network/onlineSession.ts`, `onlinePeers.ts`, `onlineRetry.ts`, `onlineSector.ts`; modify `src/main/network/rtcTransport.ts` for attempt-loss subscription; tests `tests/onlineCoordinator.test.ts`, `tests/onlinePeers.test.ts`, `tests/onlineRetry.test.ts`, `tests/onlineSector.test.ts` plus existing RTC controller tests/mocks. Consume Task1/2/3, existing service client/hostProcess/rtcTransport.
 
@@ -99,7 +99,7 @@ Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→
 - [ ] **Run green and typecheck.** Check runtime seam signatures against Task5 consumer before committing; update plan interfaces if exact Electron structural types require a narrow adapter, never let test mocks define a different lifecycle.
 - [ ] **Commit:** `feat(net): coordinate local online rooms and guest reconnect`.
 
-### Task5: application main/preload wiring and IPC ownership
+### Task 5: application main/preload wiring and IPC ownership
 
 **Files:** create `src/main/network/onlinePlatform.ts`, `onlineIpc.ts`; modify `src/main/index.ts`, `src/preload/index.ts`, `electron.vite.config.ts` only as needed; tests `tests/onlineIpc.test.ts`, `tests/onlinePlatform.test.ts`. No arbitrary new main entrypoint for gameplay.
 
@@ -111,7 +111,7 @@ Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→
 - [ ] **Run green**, both typechecks and root build. Verify compiled entry includes production modules, sandbox/contextIsolation remains intact, no raw ipcRenderer/fs exposed.
 - [ ] **Commit:** `feat(net): wire online sessions through trusted Electron IPC`.
 
-### Task6: visible Host/Join menu, online input and presentation
+### Task 6: visible Host/Join menu, online input and presentation
 
 **Files:** create `src/renderer/src/app/onlineSession.ts`, `app/sessionRouter.ts`, `input/onlineInput.ts`, `render/sessionMenu.ts`; modify `src/renderer/src/main.ts`, `render/renderer.ts`, `render/crewSprites.ts`, existing session dependency type only if needed; tests `tests/onlineRenderer.test.ts`, `tests/onlineInput.test.ts`, `tests/sessionRouter.test.ts`, `tests/sessionMenu.test.ts`. Retain existing `app/session.ts` and couch tests.
 
@@ -125,7 +125,7 @@ Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→
 - [ ] **Run green**, existing session/HUD/input tests, root typecheck/build; inspect actual application menu visually during Task7, not only snapshots of strings.
 - [ ] **Commit:** `feat(ui): add online lobby and assigned-seat sector play`.
 
-### Task7: two-process application proof and final validation
+### Task 7: two-process application proof and final validation
 
 **Files:** create `scripts/network/online-app-smoke.ts`, `online-app-smoke.cjs`, `online-app-report.ts`, optional narrowly scoped test-driver preload; reuse local worker launcher from `room-service-smoke.ts` through a small shared helper if needed. Modify `package.json` with `test:online-app-runtime`; document in `services/signalling/README.md` and `docs/superpowers/reviews/2026-11-15-net-3d-validation.md`. Production app menus/coordinator must be the exercised paths.
 
@@ -142,4 +142,4 @@ Paths above are under `src/` unless stated otherwise. Sequence: Task1→2→3→
 
 Coverage: identity/config/persistence(Task1); sector lifecycle/bot memory(Task2); authority ACK/focus guarantees(Task3); room/start/retry/lease-local lifecycle(Task4); sender checks/resource ownership(Task5); menu/input/HUD/presentation/couch(Task6); actual application and regressions(Task7). All five Review Focus cases have owning tests. Existing service schema unchanged; no new discovery API. Deferred3e durability is displayed honestly and packaged online remains disabled.
 
-Preserve the previously selected subagent execution method. This new plan and slice-specific product choices are prepared for review before implementation; no product code changed in the planning commit.
+User approved this plan and design for subagent execution. No product code changed in the planning commit.

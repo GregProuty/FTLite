@@ -1,6 +1,6 @@
 # Net-3d: playable online sector sessions
 
-Status: slice design under the approved Net-3 architecture; builder check complete, ready for plan review. Continues source `7598a47`, evidence `49bcf2a`, on `codex/net-3`. These are controller implementation choices, not new user requirements.
+Status: approved by the user for subagent execution; builder check complete. Continues source `7598a47`, evidence `49bcf2a`, on `codex/net-3`. Slice details originated as controller implementation choices and were included in the approved design.
 
 ## Outcome and boundaries
 
