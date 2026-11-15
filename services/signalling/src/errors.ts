@@ -12,6 +12,7 @@ const STATUS: Partial<Record<ServiceErrorCode, number>> = {
   'invalid-request': 400, unauthorized: 401, forbidden: 403, 'not-found': 404,
   conflict: 409, incompatible: 409, 'invalid-state': 409, 'stale-generation': 409,
   'stale-connection': 409, 'ticket-used': 409, 'ticket-expired': 409,
+  'hash-mismatch': 400, 'lease-expired': 409, 'no-checkpoint': 409,
   capacity: 429, 'rate-limited': 429, unavailable: 503, 'too-large': 413, timeout: 408,
 };
 class DomainFailure extends Error {

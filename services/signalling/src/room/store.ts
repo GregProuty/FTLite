@@ -14,6 +14,11 @@ export type SeatRow = {
   connected: number; ready: number; ticket_eligible: number;
 }
 export type TicketRow = { seat_id: number; generation: number; ticket_hash: string; connection_id: string; expires_at: number; consumed: number };
+export type ActivationRow = { singleton: number; operation_id: string; previous_epoch: string; expected_generation: number; target_generation: number;
+  kind: 'start' | 'rehost'; request_key: string; connection_id: string; seat_id: number; seat_generation: number;
+  revision: number; expires_at: number; state: 'prepared' | 'committed' | 'acknowledged' | 'fenced'; active_deadline: number; nonce: string };
+export type LeaseRow = { singleton: number; nonce: string; expires_at: number; connection_id: string; seat_generation: number };
+export type ProposalRow = { singleton: number; proposal_id: string; revision: number; expires_at: number; init_base64: string; init_hash: string };
 export function compatibilityKey(c: RoomCompatibility): string {
   return JSON.stringify([c.protocolVersion, c.modeId, c.schemaVersion, c.simVersion, c.contentDigest, c.layoutHash]);
 }
@@ -25,6 +30,7 @@ function reservationKey(r: Reservation): string {
 /** All authority lives here. Callers may compose synchronous transactions, never await inside them. */
 export class RoomStore {
   readonly sql: SqlStorage;
+  onFence?: () => void;
   constructor(readonly storage: DurableObjectStorage) {
     this.sql = storage.sql;
     initializeServiceSchema(storage);
@@ -54,10 +60,27 @@ export class RoomStore {
         guest_candidates INTEGER NOT NULL, live INTEGER NOT NULL)`);
       this.sql.exec(`CREATE TABLE IF NOT EXISTS room_link_pending (guest_seat INTEGER PRIMARY KEY, operation_id TEXT NOT NULL,
         host_connection TEXT NOT NULL, guest_connection TEXT NOT NULL, expires_at INTEGER NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_proposal (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), proposal_id TEXT NOT NULL,
+        revision INTEGER NOT NULL, expires_at INTEGER NOT NULL, init_base64 TEXT NOT NULL, init_hash TEXT NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_activation (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), operation_id TEXT NOT NULL,
+        previous_epoch TEXT NOT NULL, expected_generation INTEGER NOT NULL, target_generation INTEGER NOT NULL, kind TEXT NOT NULL,
+        request_key TEXT NOT NULL, connection_id TEXT NOT NULL, seat_id INTEGER NOT NULL, seat_generation INTEGER NOT NULL,
+        revision INTEGER NOT NULL, expires_at INTEGER NOT NULL, state TEXT NOT NULL, active_deadline INTEGER NOT NULL, nonce TEXT NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_lease (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), nonce TEXT NOT NULL,
+        expires_at INTEGER NOT NULL, connection_id TEXT NOT NULL, seat_generation INTEGER NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_start (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), proposal_id TEXT NOT NULL,
+        revision INTEGER NOT NULL, init_base64 TEXT NOT NULL, init_hash TEXT NOT NULL, roster TEXT NOT NULL, first_lease TEXT NOT NULL, active_deadline INTEGER NOT NULL)`);
+      this.sql.exec(`CREATE TABLE IF NOT EXISTS room_checkpoint (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), metadata TEXT NOT NULL, payload BLOB NOT NULL)`);
+      this.sql.exec('CREATE TABLE IF NOT EXISTS room_accounting (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), epoch TEXT NOT NULL, retry_at INTEGER NOT NULL)');
+      this.sql.exec('CREATE TABLE IF NOT EXISTS room_activation_grant (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), lease TEXT NOT NULL)');
+      this.sql.exec('CREATE TABLE IF NOT EXISTS room_proposal_pending (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), operation_id TEXT NOT NULL, expires_at INTEGER NOT NULL)');
     });
   }
   transaction<T>(body: () => T): T { return this.storage.transactionSync(body); }
   meta(): RoomMeta | undefined { return this.sql.exec<RoomMeta>('SELECT * FROM room_meta WHERE singleton = 1').toArray()[0]; }
+  activation(): ActivationRow | undefined { return this.sql.exec<ActivationRow>('SELECT * FROM room_activation').toArray()[0]; }
+  lease(): LeaseRow | undefined { return this.sql.exec<LeaseRow>('SELECT * FROM room_lease').toArray()[0]; }
+  proposal(): ProposalRow | undefined { return this.sql.exec<ProposalRow>('SELECT * FROM room_proposal').toArray()[0]; }
   seats(): SeatRow[] { return this.sql.exec<SeatRow>('SELECT * FROM room_seats ORDER BY seat_id').toArray(); }
   seatByHash(hash: string): SeatRow | undefined { return this.sql.exec<SeatRow>('SELECT * FROM room_seats WHERE token_hash = ?', hash).toArray()[0]; }
   seat(id: number): SeatRow | undefined { return this.sql.exec<SeatRow>('SELECT * FROM room_seats WHERE seat_id = ?', id).toArray()[0]; }
@@ -99,8 +122,10 @@ export class RoomStore {
   }
   expire(): void {
     const m = this.meta();
-    if (m && m.deadline <= Date.now()) this.reconcileExpiry(m.epoch, Date.now());
+    if (m) this.reconcileExpiry(m.epoch, Date.now());
     this.sql.exec('DELETE FROM room_tickets WHERE expires_at <= ?', Date.now());
+    this.sql.exec('DELETE FROM room_proposal WHERE expires_at <= ?', Date.now());
+    this.sql.exec('DELETE FROM room_proposal_pending WHERE expires_at <= ?', Date.now());
   }
   requireConfirmed(): RoomMeta {
     const m = this.meta() ?? failure('not-found');
@@ -115,8 +140,28 @@ export class RoomStore {
         this.sql.exec('INSERT OR IGNORE INTO room_fence VALUES (1, ?)', epoch);
         return { kind: 'absent', epoch };
       }
+      const op = this.activation(), lease = this.lease();
+      const pending = op && (op.state === 'prepared' || op.state === 'committed');
+      if (pending && (epoch === op.operation_id || epoch === m.epoch)) {
+        const deadline = Math.min(m.deadline, op.expires_at, op.state === 'committed' ? lease?.expires_at ?? 0 : Infinity);
+        if (deadline > now) return { kind: 'live', epoch, generation: epoch === op.operation_id ? op.target_generation : m.host_generation, phase: m.phase, deadline };
+        this.fence(now, op.kind === 'start' && op.state === 'prepared' ? 'ended' : 'lost');
+        // The prepared nonce is also the reserved epoch, even if its response was lost.
+        if (epoch === op.operation_id) this.sql.exec('UPDATE room_meta SET epoch = ?, host_generation = ? WHERE singleton = 1', epoch, op.target_generation);
+        return { kind: 'fenced', epoch, generation: epoch === op.operation_id ? op.target_generation : m.host_generation,
+          phase: this.meta()!.phase as 'lost' | 'ended', retainUntilEpochMs: this.meta()!.retain_until };
+      }
+      if (op?.state === 'fenced' && epoch === op.operation_id && m.epoch !== epoch) {
+        return { kind: 'fenced', epoch, generation: op.target_generation, phase: m.phase as 'lost' | 'ended', retainUntilEpochMs: m.retain_until };
+      }
       if (m.epoch !== epoch) return { kind: 'live', epoch: m.epoch, generation: m.host_generation, phase: m.phase, deadline: m.deadline };
-      if (m.phase === 'active') failure('unavailable'); // Task4 owns live leases/activations.
+      if (m.phase === 'active') {
+        const deadline = Math.min(m.deadline, lease?.expires_at ?? 0);
+        if (deadline > now) return { kind: 'live', epoch, generation: m.host_generation, phase: m.phase, deadline };
+        this.fence(deadline, m.deadline <= now ? 'ended' : 'lost');
+        return { kind: 'fenced', epoch, generation: m.host_generation, phase: this.meta()!.phase as 'lost' | 'ended', retainUntilEpochMs: this.meta()!.retain_until };
+      }
+      if ((m.phase === 'lost' || m.phase === 'ended') && m.deadline > now) return { kind: 'fenced', epoch, generation: m.host_generation, phase: m.phase, retainUntilEpochMs: m.retain_until };
       if (m.deadline > now) return { kind: 'live', epoch, generation: m.host_generation, phase: m.phase, deadline: m.deadline };
       if (m.phase === 'lobby') {
         const retainUntil = m.deadline + RETENTION_MS;
@@ -131,9 +176,30 @@ export class RoomStore {
       this.sql.exec('DELETE FROM room_socket_rates');
       this.sql.exec('DELETE FROM room_attempts');
       this.sql.exec('DELETE FROM room_link_pending');
+      this.sql.exec('DELETE FROM room_proposal'); this.sql.exec('DELETE FROM room_activation'); this.sql.exec('DELETE FROM room_lease');
+      this.sql.exec('DELETE FROM room_start'); this.sql.exec('DELETE FROM room_checkpoint');
+      this.sql.exec('DELETE FROM room_accounting');
+      this.sql.exec('DELETE FROM room_activation_grant'); this.sql.exec('DELETE FROM room_proposal_pending');
       this.sql.exec('INSERT OR REPLACE INTO room_fence VALUES (1, ?)', epoch);
       return { kind: 'absent', epoch };
     });
+  }
+  fence(now: number, phase: 'lost' | 'ended' = 'lost'): void {
+    let changed = false;
+    this.transaction(() => {
+      const m = this.meta(); if (!m) return;
+      this.sql.exec('INSERT OR REPLACE INTO room_accounting VALUES (1, ?, ?)', m.epoch, Date.now() + 5000);
+      if (m.phase === 'lost' || m.phase === 'ended') {
+        this.sql.exec("UPDATE room_activation SET state = 'fenced' WHERE state IN ('prepared', 'committed')"); return;
+      }
+      this.sql.exec('UPDATE room_meta SET phase = ?, deadline = ?, retain_until = ?, roster_revision = roster_revision + 1 WHERE singleton = 1', phase, now + RETENTION_MS, now + RETENTION_MS);
+      changed = true;
+      this.sql.exec("UPDATE room_activation SET state = 'fenced'");
+      this.sql.exec('DELETE FROM room_lease'); this.sql.exec('DELETE FROM room_proposal');
+      this.sql.exec('DELETE FROM room_link_pending');
+    });
+    if (changed) this.onFence?.();
+    this.sql.exec('UPDATE room_attempts SET live = 0');
   }
   /** Internal primitive; websocket host/lobby authorization belongs to the caller. */
   revokeSeat(seatId: number): void {
@@ -148,12 +214,20 @@ export class RoomStore {
   }
   bumpRevision(): void { this.sql.exec('UPDATE room_meta SET roster_revision = roster_revision + 1 WHERE singleton = 1'); }
   async schedule(): Promise<void> {
-    const deadlines = this.sql.exec<{ deadline: number | null }>(`SELECT MIN(deadline) AS deadline FROM (SELECT deadline FROM room_meta
-      UNION ALL SELECT expires_at AS deadline FROM room_tickets
-      UNION ALL SELECT auth_deadline AS deadline FROM room_connections WHERE seat_id IS NULL
-      UNION ALL SELECT expires_at AS deadline FROM room_link_pending
-      UNION ALL SELECT expires_at AS deadline FROM room_attempts WHERE live = 0 OR host_ready = 0 OR guest_ready = 0)`).one();
-    if (deadlines.deadline !== null) await this.storage.setAlarm(Math.max(Date.now() + 1000, deadlines.deadline));
+    // workerd limits compound SELECT terms; scalar bounded aggregates avoid that limit.
+    const values = [
+      'SELECT MIN(deadline) AS deadline FROM room_meta',
+      'SELECT MIN(expires_at) AS deadline FROM room_tickets',
+      'SELECT MIN(auth_deadline) AS deadline FROM room_connections WHERE seat_id IS NULL',
+      'SELECT MIN(expires_at) AS deadline FROM room_link_pending',
+      'SELECT MIN(expires_at) AS deadline FROM room_proposal',
+      'SELECT MIN(expires_at) AS deadline FROM room_lease',
+      'SELECT MIN(retry_at) AS deadline FROM room_accounting',
+      'SELECT MIN(expires_at) AS deadline FROM room_proposal_pending',
+      "SELECT MIN(expires_at) AS deadline FROM room_activation WHERE state IN ('prepared', 'committed')",
+      'SELECT MIN(expires_at) AS deadline FROM room_attempts WHERE live = 0 OR host_ready = 0 OR guest_ready = 0',
+    ].map(query => this.sql.exec<{ deadline: number | null }>(query).one().deadline).filter((value): value is number => value !== null);
+    if (values.length) await this.storage.setAlarm(Math.max(Date.now() + 1000, Math.min(...values)));
     else await this.storage.deleteAlarm();
   }
 }

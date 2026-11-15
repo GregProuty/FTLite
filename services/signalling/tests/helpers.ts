@@ -7,6 +7,7 @@ beforeEach(async () => {
   const directory = env.DIRECTORY.get(env.DIRECTORY.idFromName('global'));
   await runInDurableObject(directory, (_, { storage }) => {
     storage.sql.exec('DELETE FROM directory_rooms');
+    storage.sql.exec('DELETE FROM directory_activations');
     storage.sql.exec('DELETE FROM directory_ip');
   });
 });

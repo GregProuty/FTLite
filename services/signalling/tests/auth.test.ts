@@ -1,5 +1,6 @@
 import { connect } from './socket-helpers';
 import { env } from 'cloudflare:workers';
+import { started } from './lifecycle-helpers';
 import { evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { expect, it, vi } from 'vitest';
 import { compatibility, create, request } from './helpers';
@@ -55,10 +56,10 @@ it('stores only hashed tokens/tickets and permits at most one current ticket bef
 });
 
 it('rejects new humans in frozen/retained rooms while keeping reserved-token rejoin', async () => {
-  const host = await create();
-  const room = env.ROOMS.get(env.ROOMS.idFromName(host.snapshot.roomId));
   for (const phase of ['active', 'lost', 'ended']) {
-    await runInDurableObject(room, (_, { storage }) => storage.sql.exec('UPDATE room_meta SET phase = ?', phase));
+    const { host } = await started();
+    const room = env.ROOMS.get(env.ROOMS.idFromName(host.snapshot.roomId));
+    if (phase !== 'active') await runInDurableObject(room, instance => instance.store.fence(Date.now(), phase as 'lost' | 'ended'));
     expect((await request(`/v2/rooms/${host.snapshot.joinCode}/join`, { compatibility })).status).toBe(409);
     expect((await request(`/v2/rooms/${host.snapshot.joinCode}/join`, { compatibility }, { Authorization: `Bearer ${host.seatToken}` })).status).toBe(200);
   }

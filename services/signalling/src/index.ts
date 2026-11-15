@@ -49,7 +49,8 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (operation === 'join') return Response.json(unwrapDomain(await room.join(body!.compatibility as Parameters<Room['join']>[0], token)), { headers: { 'Cache-Control': 'no-store' } });
   if (operation === 'socket-ticket') return Response.json(unwrapDomain(await room.socketTicket(token!)), { headers: { 'Cache-Control': 'no-store' } });
   if (operation === 'socket') return room.fetch(new Request('https://room/socket', { headers: { Upgrade: request.headers.get('Upgrade') ?? '' } }));
-  // TURN and checkpoint authorization land with their owners.
+  if (operation === 'checkpoint') return room.fetch(new Request('https://room/checkpoint', request));
+  // TURN authorization lands with its provider owner.
   return serviceError('unavailable', 503);
 }
 export default {

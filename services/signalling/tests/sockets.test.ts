@@ -46,9 +46,9 @@ it('rejoin and host removal fence old sockets without letting old close clear re
   expect(await hp.reply(1)).toMatchObject({ outcome: { kind: 'snapshot', snapshot: { seats: [{}, { occupied: false }, {}, {}] } } });
   await current.until(() => current.closes.length === 1);
 });
-it('keeps lifecycle requests unavailable with correlated errors', async () => {
+it('correlates invalid lifecycle transitions in the lobby', async () => {
   const peer = await connect(await create()); peer.send({ type: 'host-release', requestId: 1 });
-  expect(await peer.reply(1)).toMatchObject({ outcome: { kind: 'error', error: { code: 'unavailable' } } });
+  expect(await peer.reply(1)).toMatchObject({ outcome: { kind: 'error', error: { code: 'invalid-state' } } });
 });
 it('rejects an expired ticket and binary frame without granting seat authority', async () => {
   const host = await create(), t = await ticket(host), response = await upgrade(host); expect(response.status).toBe(101);

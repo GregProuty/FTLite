@@ -145,10 +145,10 @@ it('expires committed lobbies into reserved-token retention and deletes only aft
   expect(await runInDurableObject(room, (_, { storage }) => storage.sql.exec('SELECT COUNT(*) AS n FROM room_seats').one())).toEqual({ n: 0 });
 });
 
-it('keeps activation and TURN admission unavailable until their acknowledgement/provider tasks', async () => {
+it('rejects activation of absent mappings and keeps TURN unavailable until its provider task', async () => {
   const d = directory();
-  await expect(async () => await call(d.reserveActivation('a'.repeat(32), 'b'.repeat(32), 'c'.repeat(32), 1, 2))).rejects.toThrow('unavailable');
-  await expect(async () => await call(d.commitActivation('a'.repeat(32), 'b'.repeat(32), 'c'.repeat(32), 2, Date.now() + 1000))).rejects.toThrow('unavailable');
+  await expect(async () => await call(d.reserveActivation('a'.repeat(32), 'b'.repeat(32), 'c'.repeat(32), 1, 2))).rejects.toThrow('not-found');
+  await expect(async () => await call(d.commitActivation('a'.repeat(32), 'b'.repeat(32), 'c'.repeat(32), 2, Date.now() + 1000))).rejects.toThrow('conflict');
   await expect(async () => await call(d.reserveTurn({ roomId: 'a'.repeat(32), seatId: 0, seatGeneration: 1, connectionId: 'c'.repeat(32) }))).rejects.toThrow('unavailable');
 });
 

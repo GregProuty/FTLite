@@ -8,12 +8,16 @@ import { RoomStore, type SeatRow } from './room/store';
 import { RoomAuth } from './room/auth';
 import { SocketDelivery, type ConnectionRow, type LifecycleRequest } from './room/sockets';
 import { SignalCoordinator } from './room/signals';
+import { RoomLifecycle } from './room/lifecycle';
+import { RoomCheckpoints } from './room/checkpoints';
 import type { ReplyOutcome } from '../../../src/shared/roomSession';
 export class Room extends DurableObject<Env> {
   readonly store: RoomStore;
   readonly auth: RoomAuth;
   readonly sockets: SocketDelivery;
   readonly signals: SignalCoordinator;
+  readonly lifecycle: RoomLifecycle;
+  readonly checkpoints: RoomCheckpoints;
   lifecycleRequest?: (connection: ConnectionRow, request: LifecycleRequest) => ReplyOutcome | Promise<ReplyOutcome>;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -21,6 +25,14 @@ export class Room extends DurableObject<Env> {
     this.auth = new RoomAuth(this.store);
     this.sockets = new SocketDelivery(this.store, ctx);
     this.signals = new SignalCoordinator(this.store, this.sockets);
+    this.lifecycle = new RoomLifecycle(this.store, this.sockets, this.signals, env.DIRECTORY.get(env.DIRECTORY.idFromName('global')));
+    this.checkpoints = new RoomCheckpoints(this.store, this.auth, this.lifecycle);
+    this.store.onFence = () => {
+      this.signals.sweep();
+      this.sockets.broadcast({ type: 'host-departed', hostGeneration: this.store.meta()!.host_generation });
+    };
+    this.lifecycleRequest = (connection, request) => this.lifecycle.request(connection, request);
+    this.sockets.onRosterChange = () => this.lifecycle.rosterChanged();
     this.sockets.onRetire = connection => this.signals.retire(connection);
     this.sockets.onRequest = (connection, request) => {
       if (request.type === 'link-request') return this.signals.issue(connection, request.guestSeatId);
@@ -31,12 +43,16 @@ export class Room extends DurableObject<Env> {
     };
   }
   async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === '/checkpoint' && (request.method === 'PUT' || request.method === 'GET')) {
+      try { return await this.checkpoints.fetch(request); } catch (error) { return errorResponse(error); }
+      finally { if (!request.body?.locked) void request.body?.cancel().catch(() => {}); }
+    }
     if (request.method !== 'GET' || new URL(request.url).pathname !== '/socket' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return serviceError('unavailable', 503);
     try { return await this.sockets.upgrade(); } catch (error) { return errorResponse(error); }
   }
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> { await this.sockets.message(socket, message); }
-  webSocketClose(socket: WebSocket): void { const id = this.sockets.id(socket); if (id) this.sockets.close(id, 1000); this.sockets.roster(); }
-  webSocketError(socket: WebSocket): void { const id = this.sockets.id(socket); if (id) this.sockets.close(id); this.sockets.roster(); }
+  async webSocketClose(socket: WebSocket): Promise<void> { const id = this.sockets.id(socket); if (id) this.sockets.close(id, 1000); this.sockets.roster(); await this.store.schedule(); }
+  async webSocketError(socket: WebSocket): Promise<void> { const id = this.sockets.id(socket); if (id) this.sockets.close(id); this.sockets.roster(); await this.store.schedule(); }
   async initialize(reservation: Reservation, hostTokenHash: string): Promise<DomainResult<RoomSnapshot>> {
     return wrapDomain(async () => {
       if (!this.ctx.id.equals(this.env.ROOMS.idFromName(reservation.roomId))) failure('conflict');
@@ -82,5 +98,9 @@ export class Room extends DurableObject<Env> {
       return receipt;
     });
   }
-  async alarm(): Promise<void> { this.sockets.sweep(); this.signals.sweep(); await this.store.schedule(); }
+  async alarm(): Promise<void> {
+    this.sockets.sweep(); this.signals.sweep();
+    // Expected accounting failures retain the durable retry; programming/storage exceptions still escape.
+    try { await wrapDomain(() => this.lifecycle.recover()); } finally { await this.store.schedule(); }
+  }
 }
