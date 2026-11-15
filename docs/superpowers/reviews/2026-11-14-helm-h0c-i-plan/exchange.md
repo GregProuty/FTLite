@@ -64,3 +64,38 @@ Confirmed. `disposeSimState` exists (`sim/state.ts:L93`), and `createDuel` could
 
 ---
 
+# Round 2 (delta, reviewing ca3ed6d, effort medium, 50 s, 173633 in / 119680 cached / 1627 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Plan L50 explicitly states and justifies canonical lock → charge → launch ordering as an envelope-order exception. Plan L1842–L1849 preserves within-kind order, matching execution at L1160–L1171. Tests at L1484–L1500 cover effects in both envelope orders.
+- R1-F2: resolved — Plan L835–L839 now calls launchMissile and inspects its actual output while retaining the flattened-length assertion. The constructor exists with the required signature and fields at src/renderer/src/sim/tactical/missiles.ts:L15–L22.
+- R1-F3: resolved — Plan L1716–L1719 validates the map before interior allocation; L1720–L1734 catches subsequent construction failures, disposes the interior, and rethrows. The disposer releases entities and component cells at src/renderer/src/sim/state.ts:L81–L100.
+
+## Verified
+- HEAD is ca3ed6d8c61c12a550c1753424d04d00896f0c9c; the actual diff matches the supplied delta.
+- Canonical weapon ordering matches the existing handler at src/renderer/src/sim/tactical/weapons.ts:L64–L75 and explicitly documents the deviation from spec L280.
+- The changed constructor and missile guard use existing exported interfaces; no additional blocking regression found in the reviewed delta.
+
+## Not verified
+- Tests, strict TypeScript compilation, and the determinism guard were not executed; verification was static under the read-only constraints.
+- The responder's mutation-test claim was not reproduced. Merely restoring envelope-order iteration at plan L1842 would still fold commands into the same ShipInput and retain canonical execution.
+- The on-disk review ledger was inaccessible; the supplied ledger and round-1 response were used.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `ca3ed6d`. No new findings. Codex confirmed R1-F1, R1-F2 and R1-F3 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
