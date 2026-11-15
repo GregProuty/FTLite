@@ -1,0 +1,99 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P0",
+      "title": "Sector goldens cannot change only in version fields",
+      "claim": "The required version bump necessarily changes stored sector hashes, so the stated re-bless diff is impossible.",
+      "evidence": "spec L76-L77, L94; src/renderer/src/sim/flatten.ts:L45-L50; src/shared/hash.ts:L3-L10; tests/golden.test.ts:L27-L31",
+      "why": "The golden test compares hashes computed from a flattened state containing SIM_VERSION. Changing 35 to 36 changes those hashes even when gameplay is identical.",
+      "fix": "Require version fields and their derived hashes to be re-blessed. Prove the version-only gameplay change by comparing all other canonical values and gameplay traces."
+    },
+    {
+      "severity": "P0",
+      "title": "The runtime fallback drops the binding ten-seed gate",
+      "claim": "The proposed default three-seed smoke run would leave seeds 4 to 10 unchecked in the full suite.",
+      "evidence": "spec L64-L70, L93; docs/superpowers/specs/2026-11-14-helm-demo-design.md:L309-L311",
+      "why": "The parent makes the seeds 1 to 10 result an H-0 gate.",
+      "fix": "Keep all ten seeds in the required gate run. If needed, add a separate three-seed smoke test without substituting it for the gate."
+    },
+    {
+      "severity": "P1",
+      "title": "The scripted flight and firing policy needs exact rules",
+      "claim": "The Helm’s orbit, alignment and avoidance choices and the gunner’s missile cadence and release rule leave multiple materially different implementations.",
+      "evidence": "spec L30, L35-L40, L43; src/renderer/src/sim/tactical/weapons.ts:L48-L52, L72-L96; src/renderer/src/sim/tactical/predict.ts:L21-L30",
+      "why": "The plan writer cannot derive one deterministic policy or expected gate results from phrases such as “brings the nose round” and “every so often.”",
+      "fix": "Specify the state transitions, numerical thresholds, turn and thrust choices, line-of-sight rule, missile interval, priority order and tie breaks, with the pair’s tunable constants named."
+    },
+    {
+      "severity": "P1",
+      "title": "Repair assignment contradicts the nearest-character rule",
+      "claim": "The spec assigns Engines to the Helm while also requiring the nearest character to take a repair.",
+      "evidence": "spec L41; docs/superpowers/specs/2026-11-14-helm-demo-design.md:L183-L189",
+      "why": "The parent’s walk distances put the gunner about 6 tiles from Engines and the Helm about 27 tiles away. The two rules select different repairers.",
+      "fix": "Choose one assignment rule and specify priority and tie breaks when several rooms are damaged."
+    },
+    {
+      "severity": "P1",
+      "title": "A planet-contact ending has no defined attribution",
+      "claim": "The gate asks whether a duel ended from planet contact, but the proposed telemetry observes contact counters while the outcome is decided after all damage in the tick.",
+      "evidence": "spec L50, L64-L69; src/renderer/src/sim/tactical/contacts.ts:L38-L55; src/renderer/src/sim/tactical/duel.ts:L22-L29",
+      "why": "A planet hit and another lethal hit can occur in one tick. A counter change and final outcome do not identify which damage caused the ending.",
+      "fix": "Define terminal-cause precedence and record the necessary per-damage event, or state an explicit observable proxy for this gate."
+    },
+    {
+      "severity": "P1",
+      "title": "The bait proxy contradicts its telemetry definition",
+      "claim": "The proposed count requires proximity and turning at contact, while the stated bait measure requires a preceding manoeuvre within five seconds that brought the hunter toward the obstacle.",
+      "evidence": "spec L50; docs/superpowers/specs/2026-11-14-helm-demo-design.md:L285-L286",
+      "why": "The proxy can count unrelated contacts and miss contacts after the crew stops turning.",
+      "fix": "Define a tick-stamped manoeuvre condition, its direction test and the 300-tick window; then count qualifying enemy contacts against that definition."
+    },
+    {
+      "severity": "P1",
+      "title": "Weapons can have work while its missile is in flight",
+      "claim": "The proposed “nothing to do” condition counts missile flight as idle even though the gunner steers that missile.",
+      "evidence": "spec L53; docs/vision/thesis-grill.md:L183-L189; src/renderer/src/sim/tactical/duel.ts:L22-L23; src/renderer/src/sim/tactical/missiles.ts:L32-L43",
+      "why": "This overstates idle time during one of the gunner’s required activities.",
+      "fix": "Exclude ticks with an attended missile in flight, and specify the remaining idle predicate precisely."
+    },
+    {
+      "severity": "P1",
+      "title": "The duel hash does not include SIM_VERSION",
+      "claim": "The spec says SIM_VERSION is hashed into every flattened state, but neither tactical nor duel flattening includes it.",
+      "evidence": "spec L25, L76-L78; src/renderer/src/sim/duel/hash.ts:L8-L13; src/renderer/src/sim/tactical/hash.ts:L15-L28",
+      "why": "The new duel golden would not distinguish a version change unless its fixture checks the version separately.",
+      "fix": "Include SIM_VERSION in flattenDuel, or require and verify an explicit version field in the duel golden."
+    },
+    {
+      "severity": "P1",
+      "title": "Per-player repair start and finish events need semantics",
+      "claim": "The proposed events do not define a start after interrupted work or who receives finish credit when two players repair together.",
+      "evidence": "spec L51, L55-L58; src/renderer/src/sim/duel/step.ts:L46-L60",
+      "why": "The existing repair phase reduces each player to a per-room holder count, so those per-player transitions cannot be inferred from its current data alone.",
+      "fix": "Define start and finish attribution, including resumed and joint work, and specify whether previous holder state lives in the duel state or is derived by the telemetry accumulator."
+    },
+    {
+      "severity": "P2",
+      "title": "Missile-to-missile losses are omitted",
+      "claim": "The telemetry cause list omits the existing `missile` ending cause.",
+      "evidence": "spec L49; src/renderer/src/sim/tactical/state.ts:L52-L56; src/renderer/src/sim/tactical/missiles.ts:L76-L80",
+      "why": "Those losses would have no specified bucket in the per-ship totals.",
+      "fix": "Add missile-to-missile collision to the loss causes."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The headless duel step and local command envelope exist without an authority-mode or command-union change: spec L14-L16, src/renderer/src/sim/duel/commands.ts:L1-L13, src/renderer/src/sim/duel/step.ts:L17-L17.",
+    "A separate seeded RNG helper exists, and the guarded sim roots include sim/duel: src/shared/rng.ts:L1-L21, tests/boundary.test.ts:L12-L28.",
+    "The sim has a reachability BFS but no path-returning helper found in the requested sim/headless search: src/renderer/src/sim/ship/reachability.ts:L1-L19; the fallback BFS in spec L42 is appropriate.",
+    "Walking repairs are supported by the current phase order, held interaction, same-room reach check and open doors: src/renderer/src/sim/duel/state.ts:L33-L49, src/renderer/src/sim/duel/step.ts:L46-L60, L118-L125.",
+    "Tactical laser and missile-ending events are cleared each tick and omitted from tactical hashing: src/renderer/src/sim/tactical/duel.ts:L15-L18, src/renderer/src/sim/tactical/hash.ts:L1-L3.",
+    "The numerical §16 gates are transcribed in the spec: spec L7-L12, L64-L69; docs/superpowers/specs/2026-11-14-helm-demo-design.md:L309-L311."
+  ],
+  "not_verified": [
+    "The review ledger was absent from this checkout; the request identifies this as round 1 and supplies no awaited IDs.",
+    "No test suite, ten-seed simulation, runtime measurement or screenshot check was run, as requested.",
+    "Additional source ranges in reachability.ts, movement.ts, interact.ts, contacts.ts, geometry.ts, app/duel/controls.ts, tacticalDeterminism.test.ts and src/shared/hash.ts were read to verify the path, movement, telemetry and hash findings. No other paths were explored."
+  ]
+}
