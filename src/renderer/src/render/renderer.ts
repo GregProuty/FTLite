@@ -20,6 +20,7 @@ import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowR
 import { EnemyRoom } from '../sim/enemy';
 import { createCalloutLayer } from './callouts';
 import type { Bubble } from './calloutModel';
+import type { PresentationPoint } from '../../../network/state/timeline';
 
 
 export interface Renderer {
@@ -27,7 +28,7 @@ export interface Renderer {
   resize(winW: number, winH: number): void;
   reset(): void;
   recordPrev(state: SimState): void;
-  draw(state: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: CardUiState): void;
+  draw(state: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: CardUiState, presentation?: readonly PresentationPoint[]): void;
 }
 
 export async function createRenderer(assets: GameAssets): Promise<Renderer> {
@@ -63,7 +64,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
     },
-    draw(state, alpha, bubbles = [], ui) {
+    draw(state, alpha, bubbles = [], ui, presentation) {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
@@ -78,7 +79,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       consoleDesks.draw(state);
       magazine.draw(state);
       effects.draw(state, ui);
-      crew.draw(state, alpha);
+      crew.draw(state, alpha, presentation);
       boarders.draw(state, dt);
       callouts.draw(state, bubbles, { scale: fit.scale, x: fit.x + shake.x, y: fit.y + shake.y });
     }

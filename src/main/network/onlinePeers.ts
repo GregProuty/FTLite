@@ -9,6 +9,7 @@ export interface OnlinePeersDeps {
   controller: TransportController; service: RoomServiceClient; ownSeat: number; snapshot(): RoomSnapshot;
   channel(): { port1: MessagePortMain; port2: MessagePortMain };
   onReady(peer: OnlinePeer): void; onLost(seatId: number): void; onFailure(): void;
+  onChange?(): void;
 }
 const close = (port: MessagePortMain) => { try { port.close(); } catch {} };
 /** Bounded private peer ownership. Issuance is serialized because equal seat generations do not identify a seat. */
@@ -21,6 +22,7 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
   function retire(peer: Entry) {
     if (peers.get(peer.seatId) !== peer) return;
     peers.delete(peer.seatId); if (!peer.transferred) close(peer.port);
+    if (!disposed) deps.onChange?.();
     void deps.controller.closeAttempt(peer.attemptId).catch(() => {});
   }
   function lost(attemptId: string) {
@@ -50,6 +52,8 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
     const { port1, port2 } = deps.channel();
     const peer: Entry = { seatId, seatGeneration: link.identity.seatGeneration, attemptId: link.attemptId, port: port2, latestPayloadLimit: 0, ready: false, serviceReady: false, transferred: false };
     peers.set(seatId, peer);
+    deps.onChange?.();
+    if (!current(peer)) { close(port1); return; }
     // Do not await here: service signal events may follow immediately in the same dispatch turn.
     try {
       void deps.controller.startAttempt({ ...link, iceServers: [] }, port1).then(async ready => {
@@ -57,7 +61,7 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
         peer.latestPayloadLimit = ready.latestPayloadLimit;
         await deps.service.request({ type: 'link-ready', attemptId: peer.attemptId });
         if (!current(peer)) return;
-        peer.ready = true; deps.onReady(peer);
+        peer.ready = true; deps.onChange?.(); if (current(peer)) deps.onReady(peer);
       }).catch(() => { if (current(peer)) lost(peer.attemptId); });
     } catch { close(port1); lost(peer.attemptId); }
   }
@@ -100,10 +104,10 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
   }
   return {
     issued, reconcile, closed: lost,
-    serviceReady(attemptId: string) { const peer = [...peers.values()].find(p => p.attemptId === attemptId); if (peer) peer.serviceReady = true; },
+    serviceReady(attemptId: string) { const peer = [...peers.values()].find(p => p.attemptId === attemptId); if (peer && !peer.serviceReady) { peer.serviceReady = true; deps.onChange?.(); } },
     signal(signal: RtcSignal) { const peer = [...peers.values()].find(p => p.attemptId === signal.attemptId && p.seatGeneration === signal.seatGeneration); if (peer) forward(peer, () => deps.controller.receiveSignal(signal)); },
     ready(): readonly OnlinePeer[] { return [...peers.values()].filter(p => p.ready); },
-    allReady() { const s = deps.snapshot(); return s.seats.every(seat => { const peer = peers.get(seat.seatId); return !seat.occupied || seat.seatId === deps.ownSeat || !!peer?.ready && peer.serviceReady; }); },
+    allReady() { const s = deps.snapshot(); return !disposed && s.seats.every(seat => { const peer = peers.get(seat.seatId); return !seat.occupied || seat.connected && (seat.seatId === deps.ownSeat || !!peer?.ready && peer.serviceReady && peer.seatGeneration === seat.seatGeneration); }); },
     async dispose() { if (disposed) return; disposed = true; for (const off of removers) off(); for (const peer of [...peers.values()]) retire(peer); }
   };
 }

@@ -32,7 +32,7 @@ it('serializes equal-generation host issuance, waits for service route readiness
   const reconciling = peers.reconcile(); void peers.reconcile(); await Promise.resolve(); expect(requests).toEqual([1]); finish(); await reconciling;
   await vi.waitFor(() => expect(peers.ready()).toHaveLength(2)); expect(peers.ready().map(p => p.seatId)).toEqual([1, 2]);
   expect(peers.allReady()).toBe(false); peers.serviceReady('1'); peers.serviceReady('2'); expect(peers.allReady()).toBe(true);
-  snapshot.seats[1].seatGeneration = 2; peersDeps.service.request = async () => { throw { code: 'invalid-state' }; };
+  snapshot.seats[1].seatGeneration = 2; expect(peers.allReady()).toBe(false); peersDeps.service.request = async () => { throw { code: 'invalid-state' }; };
   await peers.reconcile(); expect(fatal).not.toHaveBeenCalled(); expect(peers.ready().map(p => p.seatId)).toEqual([2]);
   await peers.dispose();
 });

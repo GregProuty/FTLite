@@ -56,8 +56,9 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   function emit(update: Partial<OnlineStatus> = {}) {
     value = { ...value, ...update };
     const idle = value.phase === 'idle' || value.phase === 'error';
+    const canStart = value.role === 'host' && value.phase === 'lobby' && !!value.snapshot?.seats.every(s => !s.occupied || s.ready && s.connected) && !!context?.peers?.allReady();
     value.actions = !config.enabled || disposed ? ['forget-seat'] : idle ? ['host', 'join', ...(saved ? ['reconnect', 'retry'] as const : []), 'forget-seat']
-      : value.phase === 'lobby' ? ['ready', ...(value.role === 'host' ? ['start', 'remove-seat'] as const : []), 'leave', 'forget-seat'] : ['leave', 'forget-seat'];
+      : value.phase === 'lobby' ? ['ready', ...(canStart ? ['start'] as const : []), ...(value.role === 'host' ? ['remove-seat'] as const : []), 'leave', 'forget-seat'] : ['leave', 'forget-seat'];
     for (const cb of [...listeners]) { try { cb(copyOnlineStatus(value)); } catch {} }
   }
   function timer(c: Context, fn: () => void, ms: number) {
@@ -231,6 +232,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
       const transport = await acquire(c, () => platform.createTransport(identityOf(seat.snapshot)), transport => { c.transport = transport; });
       c.removers.push(transport.onExit(() => fail(c, 'transport-lost')));
       c.peers = createOnlinePeers({ controller: transport.controller, service: c.service, ownSeat: seat.seatId, snapshot: () => c.seat!.snapshot, channel: () => platform.channel(),
+        onChange: () => { if (current(c)) emit(); },
         onReady: peer => { void attach(c, peer); }, onLost: () => { if (seat.seatId !== seat.snapshot.hostSeatId) fail(c, 'transport-lost'); }, onFailure: () => fail(c, 'transport-lost') });
       c.removers.push(c.service.onEvent(e => event(c, e)));
       if (recovering) c.syncedPromise = new Promise(resolve => { c.synced = resolve; });

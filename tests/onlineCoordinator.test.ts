@@ -36,6 +36,26 @@ function harness(capacity = 1, ownSeat = 0) {
 }
 afterEach(() => vi.useRealTimers());
 describe('online coordinator ownership', () => {
+  it('publishes Start capability only after human, native and service readiness and revokes it on loss or generation replacement', async () => {
+    const h = harness(2), native = deferred<any>(); let attempt = '1'.repeat(32);
+    h.controller.startAttempt.mockReturnValue(native.promise);
+    const original = h.service.request.getMockImplementation();
+    h.service.request.mockImplementation(async (op: any) => { if (op.type === 'link-request') { h.issue(attempt); return { kind: 'attempt', attemptId: attempt }; } return original(op); });
+    await h.owner.dispatch({ type: 'host', capacity: 2 }); expect(h.owner.status().actions).not.toContain('start');
+    h.snapshot.seats.forEach((seat: any) => { seat.ready = true; }); h.emit({ type: 'roster', snapshot: h.snapshot });
+    expect(h.owner.status().actions).not.toContain('start');
+    native.resolve({ latestPayloadLimit: 16088 }); await vi.waitFor(() => expect(h.order).toContain('link-ready'));
+    expect(h.owner.status().actions).not.toContain('start');
+    const pushed: boolean[] = []; const off = h.owner.subscribe(s => { pushed.push(s.actions.includes('start')); });
+    h.emit({ type: 'link-state', attemptId: attempt, state: 'ready' }); expect(h.owner.status().actions).toContain('start'); expect(pushed.at(-1)).toBe(true);
+    h.nativeClosed(attempt); expect(h.owner.status().actions).not.toContain('start'); expect(pushed.at(-1)).toBe(false);
+    attempt = '2'.repeat(32); h.snapshot.rosterRevision++; h.emit({ type: 'roster', snapshot: h.snapshot });
+    await vi.waitFor(() => expect(h.controller.startAttempt).toHaveBeenCalledTimes(2)); h.emit({ type: 'link-state', attemptId: attempt, state: 'ready' });
+    await vi.waitFor(() => expect(h.owner.status().actions).toContain('start'));
+    attempt = '3'.repeat(32); h.snapshot.seats[1].seatGeneration++; h.snapshot.rosterRevision++; h.emit({ type: 'roster', snapshot: h.snapshot });
+    expect(h.owner.status().actions).not.toContain('start'); h.emit({ type: 'link-state', attemptId: '2'.repeat(32), state: 'ready' }); expect(h.owner.status().actions).not.toContain('start');
+    off(); await h.owner.dispose();
+  });
   it('offers Reconnect only after a saved seat is known', async () => {
     const h = harness(); await Promise.resolve(); expect(h.owner.status().actions).not.toContain('reconnect');
     await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'leave' }); expect(h.owner.status().actions).toContain('reconnect');

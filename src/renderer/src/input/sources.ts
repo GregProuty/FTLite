@@ -21,6 +21,8 @@ export function createKeyboardSources(target: Window) {
   const held = new Set<string>();
   const presses = new Map<string, number>();   // keydown events (not auto-repeat) per code since the last sample
   const down = (e: KeyboardEvent): void => {
+    const element = e.target as Element | null;
+    if (element?.closest?.('input, select, textarea, button, [contenteditable="true"]')) return;
     if (!e.repeat) presses.set(e.code, (presses.get(e.code) ?? 0) + 1);
     held.add(e.code);
     if (e.code.startsWith('Arrow') || e.code === 'Backspace' || e.code === 'Slash') e.preventDefault();   // Slash: no browser quick-find
@@ -29,6 +31,7 @@ export function createKeyboardSources(target: Window) {
   const blur = (): void => { held.clear(); presses.clear(); };
   target.addEventListener('keydown', down); target.addEventListener('keyup', up); target.addEventListener('blur', blur);
   return {
+    reset: blur,
     sample(): SourceSample[] {
       const count = (code: string): number => presses.get(code) ?? 0;
       const out: SourceSample[] = CLUSTERS.map((c) => {

@@ -23,7 +23,7 @@ export interface SessionDeps {
   /** The ship, or the ship for the run's player count (spec Demo-x-a section 3). */
   layout: ShipLayout | ((playerCount: number) => ShipLayout);
   sampleDevices(): SourceSample[];
-  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: import('../clientControl/cardController').CardUiState): void } | null;
+  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: import('../clientControl/cardController').CardUiState, presentation?: readonly import('../../../network/state/timeline').PresentationPoint[]): void } | null;
   hud: { update(m: HudModel): void } | null;
   now(): number;
   scheduler?: Scheduler;

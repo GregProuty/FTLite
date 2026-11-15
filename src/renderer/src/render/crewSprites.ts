@@ -10,13 +10,14 @@ import { facingFromDelta, MOVE_EPS_PX } from './facing';
 import { featureReady } from './fallback';
 import { syncCache } from './cache';
 import { drawTorpedo } from './torpedoLayer';
+import type { PresentationPoint } from '../../../network/state/timeline';
 
 export const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
 const DEAD_TINT = 0x777777;
 const SCALE = TILE_PX / 16;
 const ANCHOR_X = 0.5, ANCHOR_Y = 0.75;   // spec §2: feet at the bottom of the 0.6-tile collision box
 
-export interface CrewLayer { container: Container; draw(state: SimState, alpha: number): void }
+export interface CrewLayer { container: Container; draw(state: SimState, alpha: number, presentation?: readonly PresentationPoint[]): void }
 
 interface CrewSprite { sprite: AnimatedSprite; anim: string | null }
 
@@ -35,9 +36,9 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
   };
 
   /** Interpolated draw position, and the movement since the last drawn frame (not since the last tick: a paused sim must read as idle). */
-  const interpolated = (eid: number, alpha: number): { x: number; y: number; dx: number; dy: number } => {
+  const interpolated = (eid: number, alpha: number, point?: PresentationPoint): { x: number; y: number; dx: number; dy: number } => {
     const id = Stable.id[eid]!, p = memory.prev.get(id) ?? { x: Position.x[eid]!, y: Position.y[eid]! };
-    const x = p.x + (Position.x[eid]! - p.x) * alpha, y = p.y + (Position.y[eid]! - p.y) * alpha;
+    const x = point?.x ?? p.x + (Position.x[eid]! - p.x) * alpha, y = point?.y ?? p.y + (Position.y[eid]! - p.y) * alpha;
     const last = memory.lastDrawn.get(id) ?? { x, y };
     memory.lastDrawn.set(id, { x, y });
     return { x, y, dx: x - last.x, dy: y - last.y };
@@ -52,14 +53,15 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
 
   return {
     container,
-    draw(state, alpha) {
+    draw(state, alpha, presentation) {
+      const pointFor = (eid: number) => presentation?.find(point => point.id === `crew:${state.crew.indexOf(eid)}`);
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
       if (carried.parent !== container) container.addChild(carried); else container.setChildIndex(carried, container.children.length - 1);
       syncCache(torps, liveIds, () => { const g = new Graphics(); drawTorpedo(g, 0, 0, 20); carried.addChild(g); return g; }, (g) => { g.destroy(); });
       if (!useArt) {
         syncCache(circles, liveIds, () => { const g = new Graphics(); container.addChild(g); return g; }, (g, id) => { g.destroy(); memory.prev.delete(id); memory.lastDrawn.delete(id); });
         for (const eid of state.crew) {
-          const g = circles.get(Stable.id[eid]!)!, { x, y } = interpolated(eid, alpha), life = Life.state[eid];
+          const g = circles.get(Stable.id[eid]!)!, { x, y } = interpolated(eid, alpha, pointFor(eid)), life = Life.state[eid];
           g.clear().circle(0, 0, CREW_HALF * TILE_PX).fill({ color: life === LifeState.Dead ? DEAD_TINT : CREW_COLORS[Owner.pid[eid]! % 4]!, alpha: life === LifeState.Downed ? 0.5 : 1 });
           g.position.set(x * TILE_PX, y * TILE_PX);
           drawCarried(state, eid, Owner.pid[eid]!, x, y);
@@ -70,7 +72,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         () => { const s = new AnimatedSprite([assets.texture('crew.idle.s')]); s.anchor.set(ANCHOR_X, ANCHOR_Y); s.scale.set(SCALE); container.addChild(s); return { sprite: s, anim: null }; },
         (cs, id) => { cs.sprite.destroy(); memory.prev.delete(id); memory.lastDrawn.delete(id); memory.facing.delete(id); });
       for (const eid of state.crew) {
-        const id = Stable.id[eid]!, cs = sprites.get(id)!, { x, y, dx, dy } = interpolated(eid, alpha);
+        const id = Stable.id[eid]!, cs = sprites.get(id)!, { x, y, dx, dy } = interpolated(eid, alpha, pointFor(eid));
         const facing: Facing8 = facingFromDelta(dx, dy, memory.facing.get(id) ?? 's');
         memory.facing.set(id, facing);
         const life = Life.state[eid];
