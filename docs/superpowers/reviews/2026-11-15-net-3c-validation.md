@@ -1,6 +1,6 @@
-# Net-3c validation (in progress)
+# Net-3c validation (final review pending)
 
-Branch: `codex/net-3`; isolated worktree `C:/Users/djuar/.codex/worktrees/56fc/FTLite`. Base `39b5dc1`. This report is incomplete until all seven tasks and final review finish. No deployment or internet-demo readiness is claimed.
+Branch: `codex/net-3`; isolated worktree `C:/Users/djuar/.codex/worktrees/56fc/FTLite`. Base `39b5dc1`. All seven implementation tasks and their reviews are complete. Final whole-slice review remains pending. No deployment or internet-demo readiness is claimed.
 
 ## Completed task gates
 
@@ -23,9 +23,31 @@ Task4 source `7d5e685` plus fixes `ba07dfa`/`811f3ee` implements server-side sta
 
 Task5 source `a8fecc9` adds TURN brokerage, durable seat/daily quotas and provider validation. Full service213/213 before final OPEN-transport check; final focused57/57, typecheck and dry-run109.50 KiB pass. Independent review approved with no blocking findings; one minor test-only pending-header-abort warning remains to attribute precisely, without suppression. Runtime tests use synthetic credentials and fail-closed official interception (`msw2.14.7`, `@msw/cloudflare0.1.0`, service-only compatible pins). Workerd's unsupported redirect-error mode is replaced with manual/no-follow handling, verified by a zero-second-origin-call test. Live TURN was not called.
 
-Task6 source `3d53f51` (report `5fe40e3`) adds the generic client and compatibility-digest coverage. Focused root256/256 (43 client cases), actual workerd integration3/3, root/service typechecks pass. Independent review is pending. Tests exercise real room/lifecycle/TURN/checkpoint flow with the production client and an actual Worker transport adapter; unit cases cover correlation, limits, event-before-reply ordering, callback and late-await cleanup, byte/deadline bounds and redaction.
+Task6 source `3d53f51` (report `5fe40e3`) plus fix `8957723` adds the generic client and compatibility-digest coverage. Initial focused root256/256 and workerd integration3/3 passed. Review found legitimate fenced-generation rosters were rejected and unresolved asynchronous socket factories escaped the operation cap. Fixes passed80 client/digest tests (49 client), four actual workerd integration tests and both typechecks; scoped re-review approved. Lost/ended generation advancement invalidates work without granting authority, and late socket factories stay counted until actual settlement.
 
-Task7, final root/native regressions and whole-slice review are pending. Worker-to-native-RTC composition is not yet complete. The utility-side lease gate remains outside this slice.
+Task7 source `5635798` and evidence `bafc5be` complete the actual local Worker-to-native-RTC/gameplay proof. Task review approved with no blocking findings. Three real pairs cover independent guest and host replacement; consumed-ticket replay and obsolete routes reject. Both native peers and service readiness precede committed start, which precedes utility creation/attachment. Actual game publication, validated ACK, owned command and exact authority equality share the service runId. Four fault probes (page, workerd, timeout, missing evidence) each exit1 and observe workerd/Electron exit plus temporary-directory removal.
+
+## Fresh parent verification
+
+Source `bafc5be`, 2026-11-15. Logs and JSON are in `.superpowers/sdd/2026-11-15-net-3c-signalling-service/final-validation/`. Build once, then run native launchers directly; no duplicated production builds.
+
+| Gate | Result | Wall seconds |
+|---|---|---:|
+|Full root `npm test`|158 files,2231 tests passed|56.151|
+|Full service `npm --prefix services/signalling test`|14 files,218 tests passed|21.376|
+|Root typecheck|Passed|0.495|
+|Service typecheck|Passed|1.762|
+|Worker dry-run build|Passed; no deployment|1.725|
+|Production app build|Passed|3.884|
+|Existing host native gate|15 checks;8/8 utility exits; profile removed|4.256|
+|Existing RTC native gate|17 checks;3/3 utility exits; profile removed|10.027|
+|New local service/native gate|Three pairs; real gameplay; workerd/Electron exits and exact temp removal|4.241|
+
+Final native JSON independently records order15/16 native readiness,17 service readiness,19 committed start,20 authority creation,21 attachment. The same-source four fault runs were reviewed from Task7 evidence and were not redundantly repeated. Gameplay serialization/admission is unchanged, so acceptance/engine gates were not repeated; the inherited acceptance timing limit below remains open.
+
+Final review should triage the known MSW abort warning. Fresh audit also reports two moderate dev-tool findings in the service's initial Vitest4.1.0/@vitest/mocker pins; exact audit JSON is retained. [Redirect-mock advisory](https://github.com/advisories/GHSA-82fw-gwwq-j7x9) and [manual-mock advisory](https://github.com/advisories/GHSA-qxg6-89mg-rqv8) concern exposed dev-server mock registration. Registry metadata identifies compatible patched4.1.12, published2026-10-15. No production mock endpoint is added by this service. A service-only patch update is authorized for the final combined fix if needed; root framework remains unchanged.
+
+The utility-side lease gate, UI/reconnect orchestration and deployed internet proof remain outside this slice.
 
 No cloud login, deployment, account changes, secret reads/copies or live TURN issuance occurred. WAN, forced relay and two physical computers remain untested. UI/reconnect and utility lease enforcement belong to later slices.
 
