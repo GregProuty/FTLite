@@ -160,4 +160,62 @@ describe('validated state receiver', () => {
     const receiver = createStateReceiver({ clock: { nowMs: () => 0 }, close: () => {}, accept: image => { if (image.sequence === 1) receiver.receive(encodeStatePacket(encodeFull(img(2)), 2)); return 'accepted'; }, sendControl: bytes => { controls.push(decodeControl(bytes)); return true; }, onAcknowledged: image => ready.push(image.sequence) });
     receiver.receive(encodeStatePacket(encodeFull(img(1)), 1)); expect(ready).toEqual([2]); expect(controls.filter(c => c.kind === 'ack').map(c => c.sequence)).toEqual([2]);
   });
+  it('does not apply older or duplicate state reentering an in-flight acceptance', () => {
+    for (const nestedSequence of [1, 2]) {
+      const applied: number[] = [], ready: number[] = [], controls: ReturnType<typeof decodeControl>[] = []; let nested = false;
+      const receiver = createStateReceiver({ clock: { nowMs: () => 0 }, close: () => {}, accept: image => {
+        applied.push(image.sequence);
+        if (!nested) { nested = true; receiver.receive(encodeStatePacket(encodeFull(img(nestedSequence)), 2)); }
+        return 'accepted';
+      }, sendControl: bytes => { controls.push(decodeControl(bytes)); return true; }, onAcknowledged: image => ready.push(image.sequence) });
+      receiver.receive(encodeStatePacket(encodeFull(img(2)), 1));
+      expect(applied).toEqual([2]); expect(ready).toEqual([2]);
+      expect(controls.filter(c => c.kind === 'ack').map(c => c.sequence)).toEqual([2]);
+      expect(controls.filter(c => c.kind === 'full-received').map(c => c.sequence)).toEqual([2, nestedSequence]);
+    }
+  });
+  it('notifies successful ACK readiness despite duplicate or stale traffic during transmission', () => {
+    for (const nestedSequence of [1, 2]) {
+      const applied: number[] = [], ready: number[] = [], controls: ReturnType<typeof decodeControl>[] = [];
+      const receiver = createStateReceiver({ clock: { nowMs: () => 0 }, close: () => {}, accept: image => { applied.push(image.sequence); return 'accepted'; }, sendControl: bytes => {
+        const control = decodeControl(bytes); controls.push(control);
+        if (control.kind === 'ack') receiver.receive(encodeStatePacket(encodeFull(img(nestedSequence)), 2));
+        return true;
+      }, onAcknowledged: image => ready.push(image.sequence) });
+      receiver.receive(encodeStatePacket(encodeFull(img(2)), 1));
+      expect(applied).toEqual([2]); expect(ready).toEqual([2]);
+      expect(controls.filter(c => c.kind === 'ack').map(c => c.sequence)).toEqual([2]);
+    }
+  });
+  it('keeps ignored or rejected nested acceptance from superseding accepted state', () => {
+    for (const result of ['ignored', 'rejected'] as const) {
+      const applied: number[] = [], ready: number[] = [], acknowledgements: number[] = [];
+      const receiver = createStateReceiver({ clock: { nowMs: () => 0 }, close: () => {}, accept: image => {
+        if (image.sequence === 2) return result;
+        applied.push(image.sequence); receiver.receive(encodeStatePacket(encodeFull(img(2)), 2)); return 'accepted';
+      }, sendControl: bytes => { const control = decodeControl(bytes); if (control.kind === 'ack') acknowledgements.push(control.sequence); return true; }, onAcknowledged: image => ready.push(image.sequence) });
+      receiver.receive(encodeStatePacket(encodeFull(img(1)), 1));
+      expect(applied).toEqual([1]); expect(acknowledgements).toEqual([1]); expect(ready).toEqual([1]);
+    }
+  });
+  it('suppresses older readiness when newer state is accepted during ACK transmission', () => {
+    const applied: number[] = [], ready: number[] = [];
+    const receiver = createStateReceiver({ clock: { nowMs: () => 0 }, close: () => {}, accept: image => { applied.push(image.sequence); return 'accepted'; }, sendControl: bytes => {
+      const control = decodeControl(bytes);
+      if (control.kind === 'ack' && control.sequence === 1) receiver.receive(encodeStatePacket(encodeFull(img(2)), 2));
+      return true;
+    }, onAcknowledged: image => ready.push(image.sequence) });
+    receiver.receive(encodeStatePacket(encodeFull(img(1)), 1)); expect(applied).toEqual([1, 2]); expect(ready).toEqual([2]);
+  });
+  it('releases in-flight ordering after ignored or rejected acceptance', () => {
+    for (const result of ['ignored', 'rejected'] as const) {
+      const applied: number[] = [], ready: number[] = [];
+      const receiver = createStateReceiver({ clock: { nowMs: () => 0 }, close: () => {}, accept: image => {
+        if (image.sequence === 2) { receiver.receive(encodeStatePacket(encodeFull(img(1)), 2)); return result; }
+        applied.push(image.sequence); return 'accepted';
+      }, sendControl: () => true, onAcknowledged: image => ready.push(image.sequence) });
+      receiver.receive(encodeStatePacket(encodeFull(img(2)), 1)); expect(applied).toEqual([]); expect(ready).toEqual([]);
+      receiver.receive(encodeStatePacket(encodeFull(img(1)), 3)); expect(applied).toEqual([1]); expect(ready).toEqual([1]);
+    }
+  });
 });

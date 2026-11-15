@@ -11,8 +11,8 @@ export interface StateReceiverOptions {
 }
 export function createStateReceiver(options: StateReceiverOptions) {
   const images = new ImageStore(), nextSequence = options.nextTransportSequence ?? createTransportSequence();
-  let disposed = false, highest = 0, invalidFulls = 0, lastRefresh = -Infinity, resyncs = 0, revision = 0;
-  function dispose(): void { disposed = true; images.clear(); revision++; }
+  let disposed = false, highest = 0, acceptingSequence = 0, invalidFulls = 0, lastRefresh = -Infinity, resyncs = 0;
+  function dispose(): void { disposed = true; images.clear(); acceptingSequence = 0; }
   function fail(): void { if (disposed) return; dispose(); options.close('state-stream-invalid'); }
   function control(kind: StateControl['kind'], sequence: number): boolean { return !disposed && options.sendControl(encodeControl({ kind, sequence }, nextSequence())); }
   function recover(full: boolean): void {
@@ -25,11 +25,10 @@ export function createStateReceiver(options: StateReceiverOptions) {
   return {
     receive(packet: Uint8Array): void {
       if (disposed) return;
-      const current = ++revision;
       try {
         const bytes = decodeStatePacket(packet), header = inspectState(bytes);
         if (header.kind === 'full') control('full-received', header.sequence);
-        if (disposed || current !== revision || header.kind === 'delta' && header.sequence <= highest) return;
+        if (disposed || header.kind === 'delta' && header.sequence <= Math.max(highest, acceptingSequence)) return;
         let image: StateImage;
         try { image = decodeState(bytes, images.get(header.baseSequence)); }
         catch (error) {
@@ -37,14 +36,21 @@ export function createStateReceiver(options: StateReceiverOptions) {
           else fail();
           return;
         }
-        if (header.sequence <= highest) return;
+        if (header.sequence <= Math.max(highest, acceptingSequence)) return;
         // Neither acceptance nor notification callbacks can mutate the baseline.
-        const result = options.accept(copyImage(image));
-        if (disposed || current !== revision) return;
+        // An in-flight callback may already have applied this image. Block older
+        // nested acceptance without committing ignored/rejected images as bases.
+        const previousAccepting = acceptingSequence; acceptingSequence = image.sequence;
+        let result: ReturnType<StateReceiverOptions['accept']>;
+        try { result = options.accept(copyImage(image)); }
+        finally { acceptingSequence = disposed ? 0 : previousAccepting; }
+        if (disposed || image.sequence <= highest) return;
         if (result === 'ignored') return;
         if (result !== 'accepted') { recover(header.kind === 'full'); return; }
         highest = image.sequence; images.put(image);
-        if (control('ack', image.sequence) && !disposed && current === revision) options.onAcknowledged?.(copyImage(image));
+        // Duplicate traffic cannot revoke successful readiness; only a newer
+        // accepted image or disposal supersedes this acknowledgement.
+        if (control('ack', image.sequence) && !disposed && highest === image.sequence) options.onAcknowledged?.(copyImage(image));
       } catch { fail(); }
     },
     dispose,
