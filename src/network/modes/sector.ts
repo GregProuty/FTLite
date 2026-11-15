@@ -52,6 +52,7 @@ function createSectorHost(deps: ModeHostDeps): ModeHost {
     old?.dispose();
   }
   return {
+    completeBootstrap() { if (!authority || disposed) throw Error('sector unavailable'); authority.completeBootstrap(); },
     start(bytes) { const value = decode(bytes) as RunInit; const init = validateRunInit(resolveLayout(value?.layoutId), value, deps.contentDigest); replace(init, false); },
     restore(bytes) { const value = decode(bytes) as Checkpoint; const cp = validateCheckpoint(resolveLayout(value?.init?.layoutId), value, deps.contentDigest); replace(cp, true); },
     attach(link, players, policy, options) {

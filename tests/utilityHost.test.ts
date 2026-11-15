@@ -3,13 +3,18 @@ import { createUtilityHost } from '../src/network/utilityHost';
 import { createModeRegistry } from '../src/network/modes/registry';
 import type { ModeDefinition } from '../src/network/modes/contracts';
 import { portEndpoint } from './helpers/portEndpoint';
+import type { SessionWorkGate } from '../src/shared/sessionLease';
+import { sectorMode } from '../src/network/modes/sector';
+import { LAYOUT } from './helpers/sim';
+import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
+import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 
 const identity = { protocolVersion: 2, modeId: 'counter', schemaVersion: 1, simVersion: 9, contentDigest: 'a'.repeat(64), hostGeneration: 7 };
 function harness() {
   const messages: any[] = [], attachments: unknown[] = []; let constructed = 0, disposed = 0, now = 0;
   const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost() {
     constructed++; let count = 0;
-    return { start(bytes) { count = bytes[0]!; }, checkpoint: () => new Uint8Array([count]), restore() {},
+    return { completeBootstrap() {}, start(bytes) { count = bytes[0]!; }, checkpoint: () => new Uint8Array([count]), restore() {},
       pause() { count++; }, attach(_link, _players, _policy, options) { attachments.push(options); return () => {}; }, dispose() { disposed++; } };
   } };
   const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest,
@@ -17,6 +22,54 @@ function harness() {
   return { owner, messages, attachments, counters: () => [constructed, disposed], advance() { now++; } };
 }
 describe('utility trusted process boundary', () => {
+  it.each(['before-receipt', 'during-receipt'])('observes a missed %s expiry before applying a newer useful grant after utility timer starvation', edge => {
+    let now = 0, nonce = 0, id = 0; const samples: number[] = [], scheduled: { delay: number; callback: () => void }[] = [], messages: any[] = [];
+    const sessionLease = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) };
+    const owner = createUtilityHost(createModeRegistry([sectorMode]), { contentDigest: __GAMEPLAY_CONTENT_DIGEST__,
+      clock: { nowMs: () => now }, leaseClock: { nowMs: () => samples.length ? (now = samples.shift()!) : now, epochMs: () => 100000 + now }, nonce: () => (++nonce).toString(16).padStart(32, '0'),
+      scheduler: { schedule(delay, callback) { scheduled.push({ delay, callback }); return () => {}; } }, onCrash() {} }, m => messages.push(m));
+    owner.receive({ kind: 'initialize', ...identity, modeId: 'sector', simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, sessionLease }, []);
+    const privateMessage = (kind: string, extra: object) => owner.receive({ kind, requestId: ++id, hostGeneration: 7, ...extra }, []);
+    const grant = () => { const request = messages.filter(m => m.kind === 'lease-request').at(-1).request;
+      privateMessage('lease-grant', { request, grant: { roomId: sessionLease.roomId, hostGeneration: 7, hostSeatId: 0, nonce: request.nonce, expiresAtEpochMs: 100000 + now + 15000 } }); };
+    const command = (extra: object) => owner.receive({ kind: 'command', command: { requestId: ++id, hostGeneration: 7, ...extra } }, []);
+    command({ kind: 'start', initBytes: new TextEncoder().encode(JSON.stringify({ runId: sessionLease.runId, layoutId: LAYOUT.id, layoutHash: deriveLayout(LAYOUT).layoutHash,
+      simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 7, playerCount: 1, characters: [0], unlocked: [] })) });
+    grant(); privateMessage('bootstrap-complete', { sessionLease });
+    now = 5000; scheduled.find(s => s.delay === 5000)!.callback();
+    // No authority scheduler callback occurs between the old expiry and receipt.
+    now = 13000;
+    if (edge === 'during-receipt') { now = 11999; samples.push(11999, 11999, 13000); }
+    grant(); command({ kind: 'checkpoint' });
+    const cp = JSON.parse(new TextDecoder().decode(messages.at(-1).response.checkpointBytes));
+    expect(cp.phase).toBe('paused'); expect(cp.snapshot.header.tick).toBe(0); owner.dispose();
+  });
+  it('owns renewal stamps, accepts synchronous current grants and rejects late/foreign private replies', () => {
+    let now = 0, gate!: SessionWorkGate, nonce = 0; const messages: any[] = [];
+    const sessionLease = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) };
+    const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost(deps) {
+      gate = deps.sessionGate!;
+      return { completeBootstrap() {}, start() {}, restore() {}, checkpoint: () => new Uint8Array([Number(gate.check().allowed)]), pause() {}, attach: () => () => {}, dispose() {} };
+    } };
+    const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest,
+      clock: { nowMs: () => now }, leaseClock: { nowMs: () => now, epochMs: () => 100000 + now }, nonce: () => (++nonce).toString(16).padStart(32, '0'),
+      scheduler: { schedule: () => () => {} }, onCrash() {} }, message => { messages.push(message); });
+    owner.receive({ kind: 'initialize', ...identity, sessionLease }, []);
+    const renewal = messages.find(m => m.kind === 'lease-request')?.request; expect(renewal).toMatchObject(sessionLease);
+    owner.receive({ kind: 'command', command: { kind: 'start', requestId: 1, hostGeneration: 7, initBytes: new Uint8Array([0]) } }, []);
+    expect(gate.check().allowed).toBe(false);
+    const grant = { roomId: sessionLease.roomId, hostGeneration: 7, hostSeatId: 0, nonce: renewal.nonce, expiresAtEpochMs: 115000 };
+    owner.receive({ kind: 'lease-grant', requestId: 2, hostGeneration: 7, request: renewal, grant }, []);
+    expect(gate.check().allowed).toBe(true);
+    owner.receive({ kind: 'lease-invalidate', requestId: 3, hostGeneration: 7, sessionLease: { ...sessionLease, utilityEpoch: 'd'.repeat(32) }, reason: 'suspended' }, []);
+    expect(gate.check().allowed).toBe(true); expect(messages.at(-1).response.ok).toBe(false);
+    now = 12000; owner.receive({ kind: 'lease-grant', requestId: 4, hostGeneration: 7, request: renewal, grant }, []);
+    expect(gate.check().allowed).toBe(false); expect(messages.at(-1).response.ok).toBe(false); owner.dispose();
+  });
+  it('fails a leased initialize closed when utility-only clock/nonce dependencies are absent', () => {
+    const h = harness(); h.owner.receive({ kind: 'initialize', ...identity, sessionLease: { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) } }, []);
+    expect(h.messages.at(-1).kind).toBe('fatal');
+  });
   it('forwards validated stream options to the mode and rejects invalid caps before attachment', () => {
     const h = harness(); h.owner.receive({ kind: 'initialize', ...identity }, []);
     const bridge = portEndpoint(); h.owner.receive({ kind: 'transport', ...identity }, [bridge.port]); bridge.receive({ kind: 'transport-ready', ...identity });
@@ -70,7 +123,7 @@ describe('utility trusted process boundary', () => {
     for (let i = 0; i < 10000; i++) Object.defineProperty(diagnostic, `key${i}`, { enumerable: true, get() { visited++; return i; } });
     const messages: any[] = [];
     const mode: ModeDefinition = { modeId: 'counter', schemaVersion: 1, simVersion: 9, createHost(deps) {
-      return { start() { deps.onCrash({ checkpoint: new Uint8Array([1]), diagnostic }); }, checkpoint: () => new Uint8Array([1]), restore() {}, pause() {}, attach: () => () => {}, dispose() { disposed++; } };
+      return { completeBootstrap() {}, start() { deps.onCrash({ checkpoint: new Uint8Array([1]), diagnostic }); }, checkpoint: () => new Uint8Array([1]), restore() {}, pause() {}, attach: () => () => {}, dispose() { disposed++; } };
     } };
     const owner = createUtilityHost(createModeRegistry([mode]), { contentDigest: identity.contentDigest,
       clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash() {} }, message => messages.push(message));

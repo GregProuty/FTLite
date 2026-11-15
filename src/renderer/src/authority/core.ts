@@ -55,7 +55,9 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   const recoveredPlayers = new Set<number>();
   let pauseReason: string | null = null, tickTimeMs: number | null = null;
   let controlResults: CommandResult[] = [];
-  let phase: PublishedState['phase'] = state.ended ? 'ended' : 'running', pauseOwner: number | null = null;
+  let phase: PublishedState['phase'] = state.ended ? 'ended' : deps.sessionGate ? 'paused' : 'running', pauseOwner: number | null = null;
+  if (deps.sessionGate && !state.ended) pauseReason = 'session-bootstrap';
+  let bootstrap = !!deps.sessionGate && !restored, fenced = false, fencePending = false, settlingFence = false;
   let disposed = false, pumping = false;
   let previousCues = cueCounters(state), completedHash = hashState(state);
   const auxiliarySequences = heldSequences.map(() => 0);
@@ -82,6 +84,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (phase !== 'error') frame.after = { tick: state.tick, hash: completedHash, phase, eventSequence, publicationSequence, controlRevision };
     if (phase !== 'error') inFlight = [];
     activeFrame = null;
+    settleFence();
     flushDetaches();
     return frame;
   }
@@ -125,7 +128,45 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     begin({ kind: 'seal' });
     for (const entry of pending) result(entry.binding, { id: entry.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
     pending = [];
+    for (const entry of controlQueue) if (entry.record.source === 'player') result(entry.binding!, {
+      id: entry.record.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' });
+    // A seal settles deferred player controls as well as simulation commands.
+    controlQueue = controlQueue.filter(entry => entry.record.source === 'lifecycle');
     complete();
+  }
+  function lifecycle(control: LifecyclePause): void {
+    begin({ kind: 'lifecycle', order: ++receiveOrder, ordinal: ++lifecycleOrdinal, control: { ...control } });
+    controlQueue.push({ record: { source: 'lifecycle', order: receiveOrder, ordinal: lifecycleOrdinal, control: { ...control } } });
+    complete();
+  }
+  function settleFence(): void {
+    if (!fencePending || activeFrame || settlingFence || disposed) return;
+    settlingFence = true; fencePending = false;
+    try {
+      rejectPending();
+      pendingCallouts.clear();
+      // Existing watchdog/lifecycle records make offline replay independent of a live lease.
+      replayVersion = 3;
+      neutralizeExpired(held.map((_, player) => player));
+      lifecycle({ paused: true, reason: 'session-fenced' });
+      applyControls();
+    } finally { settlingFence = false; }
+  }
+  function permitted(allowBootstrap = false): boolean {
+    if (replaying || !deps.sessionGate) return true;
+    let allowed = false;
+    try { allowed = deps.sessionGate.check().allowed === true; } catch { /* permission failures always close */ }
+    if (!allowed) {
+      if (!fenced) { fenced = true; fencePending = true; }
+      settleFence(); return false;
+    }
+    if (fencePending || settlingFence) return false;
+    if (fenced) { driver.resetPausedEpoch(); fenced = false; }
+    return allowBootstrap || !bootstrap;
+  }
+  function rejectIngress(binding: Binding, message: ClientMessage): void {
+    if (message.kind === 'command') send(binding, { kind: 'result', runId: deps.init.runId,
+      result: { id: message.envelope.id, tick: state.tick, status: 'rejected', reason: 'unavailable' } }, true, false);
   }
   function captureCheckpointWithBots(botControllers: readonly CardUiState[]): void {
     // Pending ledger entries are sealed below; validate UI against a detached empty ledger first.
@@ -144,7 +185,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     ticks = []; controls = []; controlResults = [];
     durableBaseline = captureCheckpoint(); frames = [];
   }
-  function send(binding: Binding, message: AuthorityMessage, reliable = false): void {
+  function send(binding: Binding, message: AuthorityMessage, reliable = false, journal = true): void {
     if (message.kind === 'result') {
       if (binding.admissionPolicy === 'receive-time') {
         const invalid = message.result.reason === 'unowned' || message.result.reason === 'wrong-run' || message.result.reason === 'malformed';
@@ -152,7 +193,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
         message = { ...message, result: { ...message.result, admission: { expectedSequence: high + 1,
           disposition: !invalid && message.result.id.sequence <= high ? 'terminal' : 'retryable' } } };
       }
-      activeFrame?.results.push(structuredClone(message.result));
+      if (journal) activeFrame?.results.push(structuredClone(message.result));
     }
     if (binding.notificationSink && (message.kind === 'result' || message.kind === 'event')) {
       const covering = activeFrame?.action.kind === 'tick' || activeFrame?.action.kind === 'controls';
@@ -216,8 +257,19 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     }
     if (expired.length) neutralizeExpired(expired);
   }
-  function drainIngress(): void {
-    const incoming = [...bindings].flatMap((binding) => binding.ingress.splice(0).map((entry) => ({ ...entry, binding }))).sort((a, b) => a.order - b.order);
+  function drainIngress(batch?: (Binding['ingress'][number] & { binding: Binding })[]): void {
+    const incoming = batch ?? [...bindings].flatMap((binding) => binding.ingress.splice(0).map((entry) => ({ ...entry, binding }))).sort((a, b) => a.order - b.order);
+    // Each leased admission is its own completed journal boundary. A synchronous
+    // result observer may fence the session before the next queued envelope.
+    if (!batch && deps.sessionGate && !replaying && incoming.length) {
+      for (const entry of incoming) drainIngress([entry]);
+      return;
+    }
+    if (!permitted()) {
+      for (const { binding, message } of incoming) rejectIngress(binding, message);
+      if (incoming.length) { begin({ kind: 'cursor', receiveOrder }); complete(); }
+      return;
+    }
     const recorded = incoming.filter(entry => entry.message.kind !== 'callout');
     if (recorded.length) begin({ kind: 'admission', entries: recorded.map(({ binding, message, order }) => ({ binding: binding.id, players: [...binding.players], message: message as Exclude<ClientMessage, { kind: 'callout' }>, order,
       ...(binding.admissionPolicy === 'receive-time' ? { admissionPolicy: binding.admissionPolicy, effectiveTick: state.tick } : {}) })) });
@@ -250,6 +302,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (incoming.some(entry => entry.message.kind === 'callout')) { begin({ kind: 'cursor', receiveOrder }); complete(); }
   }
   function applyControls(): void {
+    if (!settlingFence && !permitted() && !controlQueue.every(entry => entry.record.source === 'lifecycle' && entry.record.control.paused)) return;
     const queue = controlQueue.sort((a, b) => a.record.order - b.record.order); controlQueue = [];
     recoveredPlayers.clear();
     if (!queue.length) return;
@@ -287,11 +340,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (!replaying && controls.length >= 256) { rejectPending(); resetBaseline(); }
   }
   function executeTick(_nextTick: number, deadline: number): void {
-    // Producer opportunities happen outside execution; absent or failed producers never gate ticks.
-    try { if (!replaying) deps.beforeTick?.(state.tick, deadline); } catch { /* producer failed: run with admitted input */ }
-    drainIngress();
-    expireHeld();
-    flushCallouts();
+    if (replaying) { drainIngress(); expireHeld(); flushCallouts(); }
     // Controls received here wait for the next pump; they cannot leak into the sim phase.
     const frozen = pending; pending = [];
     const input: TickInput = { held: held.map((h) => ({ ...h })), commands: [] };
@@ -321,7 +370,9 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (disposed || pumping) return;
     pumping = true;
     try {
+      if (!permitted()) { drainIngress(); applyControls(); return; }
       try { deps.beforeControls?.(); } catch { /* absent producer never prevents authority progress */ }
+      if (!permitted()) { drainIngress(); applyControls(); return; }
       drainIngress();
       expireHeld();
       // Accrue through this boundary before any pause control changes the active epoch.
@@ -340,7 +391,12 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     try { snapshotAfterFault = saveSnapshot(state, deps.contentDigest); } catch { /* corrupted state */ }
     deps.onCrash({ init: structuredClone(deps.init), checkpoint: structuredClone(durableBaseline), frames: structuredClone(frames), lastPublishedSequence: publicationSequence, tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
   }
-  const driver = createTickDriver(deps.clock, { schedule: (delay) => deps.scheduler.schedule(delay, pump) }, executeTick);
+  const driver = createTickDriver(deps.clock, { schedule: (delay) => deps.scheduler.schedule(delay, pump) }, executeTick, (_tick, deadline) => {
+    if (!permitted()) return false;
+    try { deps.beforeTick?.(state.tick, deadline); } catch { /* producer failure cannot bypass permission */ }
+    drainIngress(); expireHeld(); flushCallouts();
+    return permitted();
+  });
   let unbindLifecycle: void | Unsubscribe = undefined;
   try {
     if (phase === 'ended') driver.dispose();
@@ -351,9 +407,8 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (disposed || phase === 'ended' || phase === 'error') return;
     if (typeof control.paused !== 'boolean' || !control.reason || control.reason.length > 128) throw new Error('invalid lifecycle control');
     if (controlQueue.length >= 256 || !Number.isSafeInteger(lifecycleOrdinal + 1)) throw new Error('lifecycle control capacity');
-    begin({ kind: 'lifecycle', order: ++receiveOrder, ordinal: ++lifecycleOrdinal, control: { ...control } });
-    controlQueue.push({ record: { source: 'lifecycle', order: receiveOrder, ordinal: lifecycleOrdinal, control: { ...control } } });
-    complete();
+    if (!control.paused && !permitted()) return;
+    lifecycle(control);
     });
   } catch (error) {
     disposed = true;
@@ -390,6 +445,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       try {
       binding.unsubscribe.push(link.onMessage((_kind, bytes) => {
         try { const message = decodeMessage(bytes); if (message.kind === 'state' || message.kind === 'result' || message.kind === 'event') { link.close('invalid-client-message'); return; }
+          if (!permitted()) { rejectIngress(binding, message); return; }
           if (binding.ingress.length >= 256) { link.close('ingress-overflow'); return; } binding.ingress.push({ message, order: ++receiveOrder,
             ...(admissionPolicy === 'receive-time' && message.kind === 'held' ? { receivedAt: deps.clock.nowMs() } : {}) });
         } catch { link.close('malformed'); }
@@ -403,6 +459,11 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       }
     },
     pump, publishCompletedState, checkpoint: sealCheckpoint,
+    completeBootstrap(): void {
+      if (!bootstrap || disposed || pumping || activeFrame || !permitted(true)) throw Error('bootstrap unavailable');
+      bootstrap = false;
+      lifecycle({ paused: false, reason: 'session-bootstrap' }); applyControls();
+    },
     replay(): Replay { return structuredClone({ version: replayVersion, init: deps.init, initial: durableBaseline.snapshot, checkpoint: durableBaseline, frames }); },
     replayFrame(frame: ReplayFrame): ReplayFrame {
       if (disposed || activeFrame || frame.tick !== state.tick || frame.eventSequenceBefore < eventSequence) throw new Error('invalid replay boundary');

@@ -1,4 +1,12 @@
 import { boundedHostBytes, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostResponse } from './netSession';
+import { validateSessionLeaseIdentity, type SessionLeaseIdentity, type LeaseFenceReason } from './sessionLease';
+
+export function matchesSessionLease(value: unknown, identity: SessionLeaseIdentity): value is SessionLeaseIdentity {
+  return validateSessionLeaseIdentity(value) && (Object.keys(identity) as (keyof SessionLeaseIdentity)[]).every(key => value[key] === identity[key]);
+}
+export function isLeaseFenceReason(value: unknown): value is LeaseFenceReason {
+  return ['lease-expired', 'service-fenced', 'suspended', 'resumed', 'clock-discontinuity', 'disposed'].includes(value as string);
+}
 
 /** Trusted host attachment only; never part of gameplay or renderer IPC payloads. */
 export interface StreamAttachmentOptions { streamed?: boolean; latestPayloadLimit?: number }

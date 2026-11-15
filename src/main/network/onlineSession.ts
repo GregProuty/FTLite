@@ -17,6 +17,7 @@ export type { OnlineClock, OnlineScheduler } from './onlineRetry';
 type Unsubscribe = () => void;
 export interface OwnedOnlineTransport { controller: TransportController; onExit(callback: () => void): Unsubscribe; dispose(): Promise<void> }
 export interface OnlinePlatform {
+  startLeasedHost(identity: HostIdentity, signal: AbortSignal, sessionLease: import('../../shared/sessionLease').SessionLeaseIdentity): Promise<HostProcessHandle>;
   createTransport(identity: HostIdentity): Promise<OwnedOnlineTransport>;
   startHost(identity: HostIdentity, signal: AbortSignal): Promise<HostProcessHandle>;
   channel(): { port1: MessagePortMain; port2: MessagePortMain };

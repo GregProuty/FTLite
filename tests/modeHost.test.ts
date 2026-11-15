@@ -31,11 +31,20 @@ const init = () => ({ runId: 'mode-test', layoutId: LAYOUT.id, layoutHash: deriv
   contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 7, playerCount: 1, characters: [0], unlocked: [] });
 const minimal: ModeDefinition = { modeId: 'counter', schemaVersion: 7, simVersion: 9, createHost() {
   let value = 0;
-  return { start(bytes) { if (bytes.length !== 1) throw Error('invalid counter'); value = bytes[0]!; },
+  return { completeBootstrap() {}, start(bytes) { if (bytes.length !== 1) throw Error('invalid counter'); value = bytes[0]!; },
     restore(bytes) { if (bytes.length !== 1) throw Error('invalid counter'); value = bytes[0]!; }, checkpoint: () => new Uint8Array([value]),
     attach(_link, _players, policy) { if (policy !== 'receive-time') throw Error('wrong admission'); return () => {}; }, pause() { value++; }, dispose() {} };
 } };
 describe('mode host runtime', () => {
+  it('releases bootstrap only once after start and never after restore', () => {
+    const h = harness(); let allowed = false;
+    const host = sectorMode.createHost({ ...h.deps, sessionGate: { check: () => ({ allowed, revision: 0, reason: null }) } });
+    ownTestCleanup(() => host.dispose()); host.start(encode(init()));
+    expect(() => host.completeBootstrap()).toThrow(); allowed = true; host.completeBootstrap();
+    expect(() => host.completeBootstrap()).toThrow();
+    const cp = host.checkpoint(); host.restore(cp); expect(() => host.completeBootstrap()).toThrow();
+    expect(decode(host.checkpoint()).phase).toBe('paused');
+  });
   it('rejects unknown/duplicate modes and wrong compatibility before construction', () => {
     let constructed = 0; const mode = { ...minimal, createHost() { constructed++; return minimal.createHost({} as ModeHostDeps); } };
     expect(() => createModeRegistry([mode, mode])).toThrow();

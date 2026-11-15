@@ -3,6 +3,7 @@ import { copyOnlinePortDescriptor, ONLINE_PORT_CHANNEL } from '../../shared/onli
 import { startHostProcess } from './hostProcess';
 import { createHostPlatform } from './transportWindow';
 import type { OnlinePlatform } from './onlineSession';
+import { validateSessionLeaseIdentity } from '../../shared/sessionLease';
 
 /** Own the native window as well as its controller, including death after readiness. */
 export function createOnlinePlatform(win: BrowserWindow): OnlinePlatform {
@@ -42,6 +43,10 @@ export function createOnlinePlatform(win: BrowserWindow): OnlinePlatform {
       };
     },
     startHost: (identity, signal) => startHostProcess({ ...identity, signal }, native),
+    async startLeasedHost(identity, signal, sessionLease) {
+      if (!validateSessionLeaseIdentity(sessionLease) || sessionLease.hostGeneration !== identity.hostGeneration) throw Error('invalid-lease');
+      return startHostProcess({ ...identity, signal, sessionLease }, native);
+    },
     channel: () => native.createChannel(),
     publishPort(descriptor, port) {
       try {

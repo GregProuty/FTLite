@@ -1,15 +1,24 @@
 import { createHostRuntime } from './hostRuntime';
 import { boundedHostBytes, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostCommand, type HostResponse, type PortEndpoint } from '../shared/netSession';
-import { isHostIdentity, matchesIdentity, validPeer, validStreamAttachmentOptions, type HostIdentity } from '../shared/hostProcessProtocol';
+import { isHostIdentity, matchesIdentity, matchesSessionLease, isLeaseFenceReason, validPeer, validStreamAttachmentOptions, type HostIdentity } from '../shared/hostProcessProtocol';
 import type { ModeHostDeps, ModeRegistry, Unsubscribe } from './modes/contracts';
+import { validateSessionLeaseIdentity, validateLeaseRenewalRequest, type SessionClock, type SessionLeaseIdentity } from '../shared/sessionLease';
+import { createLeaseGate, type LeaseGate } from './session/leaseGate';
+import { validateLeaseGrant } from '../shared/roomSession';
+
+export interface UtilityHostDeps extends ModeHostDeps { leaseClock?: SessionClock; nonce?(): string }
 
 /** Generic utility control plane. The entry, not a caller, supplies registry/digest/clock. */
-export function createUtilityHost(registry: ModeRegistry, deps: ModeHostDeps, post: (message: unknown) => void) {
+export function createUtilityHost(registry: ModeRegistry, deps: UtilityHostDeps, post: (message: unknown) => void) {
   let runtime: ReturnType<typeof createHostRuntime> | undefined, identity: HostIdentity | undefined;
+  let lease: LeaseGate | undefined, sessionLease: SessionLeaseIdentity | undefined;
+  let forceClosed = false;
+  function settleClosedLease(): void { if (lease && !lease.check().allowed) runtime?.settleSessionFence(); }
   let disposed = false, transport: PortEndpoint | undefined, bridgeReady = false, highestRequest = 0;
   const removers: Unsubscribe[] = [];
   function dispose(): void {
     if (disposed) return; disposed = true;
+    lease?.dispose();
     for (const off of removers.splice(0)) { try { off(); } catch { /* release all */ } }
     try { transport?.close(); } catch { /* release runtime */ }
     runtime?.dispose();
@@ -45,18 +54,60 @@ export function createUtilityHost(registry: ModeRegistry, deps: ModeHostDeps, po
       const rejectPorts = () => { for (const port of ports) { try { port.close(); } catch { /* malformed transfer */ } } };
       if (disposed || !message || typeof message !== 'object') { rejectPorts(); fatal('invalid-message'); return; }
       if (message.kind === 'initialize') {
+        const suppliedLease: unknown = message.sessionLease;
         rejectPorts();
         if (identity || ports.length || message.protocolVersion !== SESSION_PROTOCOL_VERSION || !isHostIdentity(message)
           || message.contentDigest !== deps.contentDigest) { fatal('incompatible-identity'); return; }
         try {
           identity = { modeId: message.modeId, schemaVersion: message.schemaVersion, simVersion: message.simVersion,
             contentDigest: deps.contentDigest, hostGeneration: message.hostGeneration };
-          runtime = createHostRuntime(registry, { ...deps, onCrash: crash }, identity);
+          if (suppliedLease !== undefined) {
+            if (!validateSessionLeaseIdentity(suppliedLease) || suppliedLease.hostGeneration !== identity.hostGeneration
+              || !deps.leaseClock || !deps.nonce) throw Error('invalid lease identity');
+            sessionLease = { ...suppliedLease };
+            lease = createLeaseGate({ identity: sessionLease, clock: deps.leaseClock, scheduler: deps.scheduler, nonce: deps.nonce,
+              onRenew: request => { settleClosedLease(); post({ kind: 'lease-request', hostGeneration: identity!.hostGeneration, request }); } });
+          }
+          runtime = createHostRuntime(registry, { ...deps, sessionGate: lease ? { check() {
+            const current = lease!.check();
+            return forceClosed ? { ...current, allowed: false, reason: 'lease-expired' as const } : current;
+          } } : undefined, onCrash: crash }, identity);
           post({ kind: 'ready', protocolVersion: SESSION_PROTOCOL_VERSION, ...identity });
+          lease?.renewNow();
         } catch { fatal('incompatible-identity'); }
         return;
       }
       if (!identity || !runtime) { rejectPorts(); fatal('uninitialized'); return; }
+      if (['lease-grant', 'lease-invalidate', 'bootstrap-complete'].includes(message.kind)) {
+        rejectPorts();
+        if (!positiveSafeInteger(message.requestId) || message.hostGeneration !== identity.hostGeneration) { fatal('invalid-message'); return; }
+        const requestId = message.requestId;
+        let ok = false;
+        if (requestId > highestRequest && !ports.length && lease && sessionLease) {
+          const fields = message.kind === 'lease-grant' ? ['request', 'grant'] : message.kind === 'lease-invalidate' ? ['sessionLease', 'reason'] : ['sessionLease'];
+          if (Object.keys(message).every(k => ['kind', 'requestId', 'hostGeneration', ...fields].includes(k))) try {
+            if (message.kind === 'lease-grant' && validateLeaseRenewalRequest(message.request) && validateLeaseGrant(message.grant)) {
+              // Observe an expired old grant before a useful newer reply replaces it.
+              const before = lease.check(); settleClosedLease();
+              ok = lease.accept(message.request, message.grant);
+              // Expiry can also occur inside accept's own clock sample. Its close
+              // plus accept advances two revisions; deliver that missed fence to
+              // the mode before exposing the fresh permission to any work.
+              if (ok && before.allowed && lease.check().revision > before.revision + 1) {
+                forceClosed = true;
+                try { runtime.settleSessionFence(); } finally { forceClosed = false; }
+              }
+            }
+            else if (matchesSessionLease(message.sessionLease, sessionLease)) {
+              if (message.kind === 'lease-invalidate' && isLeaseFenceReason(message.reason)) { lease.invalidate(message.reason); settleClosedLease(); ok = true; }
+              else if (message.kind === 'bootstrap-complete') { runtime.completeBootstrap(); ok = true; }
+            }
+          } catch { lease.invalidate('service-fenced'); ok = false; }
+        }
+        highestRequest = Math.max(highestRequest, requestId);
+        response(ok ? { requestId, hostGeneration: identity.hostGeneration, ok: true }
+          : { requestId, hostGeneration: identity.hostGeneration, ok: false, error: { code: 'unavailable', message: 'unavailable' } }); return;
+      }
       if (message.kind === 'transport') {
         if (transport || ports.length !== 1 || !matchesIdentity(message, identity)) { rejectPorts(); fatal('invalid-transport'); return; }
         transport = ports[0]!;

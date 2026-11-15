@@ -95,9 +95,12 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
   const unsettledFactories = new Set<AbortController>();
   let checkpointBodies = 0;
   let handshake: { resolve(snapshot: RoomSnapshot): void; reject(error: Error): void; timer: unknown } | undefined;
-  type Pending = { operation: RoomOperation; hostGeneration: number; bytes: number; stale: boolean; timer: unknown;
+  type Pending = { operation: RoomOperation; hostGeneration: number; bytes: number; stale: boolean; timer: unknown; offAbort?(): void;
     resolve(outcome: ReplyOutcome): void; reject(error: Error): void };
   const pending = new Map<number, Pending>();
+  // Aborting retires local work, not the server operation. Keep only bounded IDs
+  // so late replies can be ACKed without reviving their correlation or grant.
+  const abortedRequests = new Set<number>();
   // Retain routing metadata only; ephemeral authentication tickets go directly to subscribers.
   const links = new Map<string, { identity: RtcIdentity; role: 'offerer' | 'answerer' }>();
   // Issuance can retire before its reply arrives. Retain only validated IDs and
@@ -121,7 +124,8 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     const old = socket; socket = undefined;
     try { old?.close(); } catch {}
     if (handshake) { clock.clearTimeout(handshake.timer); handshake.reject(error); handshake = undefined; }
-    for (const p of pending.values()) { clock.clearTimeout(p.timer); p.reject(error); }
+    for (const p of pending.values()) { clock.clearTimeout(p.timer); p.offAbort?.(); p.reject(error); }
+    abortedRequests.clear();
     pending.clear(); pendingBytes = 0; links.clear(); issued.clear(); sequence = 0; nextId = 1;
     token = undefined; session = undefined;
   }
@@ -279,9 +283,11 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       } else if (payload.type === 'authenticated') throw fault('invalid-frame');
       else if (payload.type === 'reply') {
         const p = pending.get(payload.requestId);
-        if (!p) throw fault('invalid-frame');
-        if (!p.stale) validateReply(p, payload.outcome);
-        completedReply = { id: payload.requestId, pending: p, outcome: payload.outcome };
+        if (!p) { if (!abortedRequests.delete(payload.requestId)) throw fault('invalid-frame'); }
+        else {
+          if (!p.stale) validateReply(p, payload.outcome);
+          completedReply = { id: payload.requestId, pending: p, outcome: payload.outcome };
+        }
       } else event(payload);
       if (closed || stamp !== generation) return;
       sequence = envelope.sequence; send({ type: 'ack', sequence });
@@ -290,7 +296,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       }
       if (completedReply) {
         const { id, pending: p, outcome } = completedReply;
-        pending.delete(id); pendingBytes -= p.bytes; clock.clearTimeout(p.timer); forgetIssuance(p);
+        pending.delete(id); pendingBytes -= p.bytes; clock.clearTimeout(p.timer); p.offAbort?.(); forgetIssuance(p);
         if (!p.stale) {
           if (outcome.kind === 'error') p.reject(new RoomServiceClientError(outcome.error));
           else p.resolve(copy(outcome));
@@ -442,10 +448,11 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       throw error instanceof RoomServiceClientError ? error : fault('unavailable');
     }
   }
-  function request<T extends RoomOperation>(operation: T): Promise<RoomReply<T>> {
+  function request<T extends RoomOperation>(operation: T, options?: { signal?: AbortSignal }): Promise<RoomReply<T>> {
     try {
+      if (options?.signal?.aborted) throw fault('stale-connection');
       requireSession(); if (!authenticated) throw fault('invalid-state');
-      if (pending.size >= MAX_PENDING) throw fault('capacity');
+      if (pending.size + abortedRequests.size >= MAX_PENDING) throw fault('capacity');
       const text = JSON.stringify({ ...operation, requestId: nextId });
       const frame = parseClientFrame(text);
       if (!frame || !('requestId' in frame) || Object.hasOwn(operation, 'requestId')) throw fault('invalid-request');
@@ -456,8 +463,15 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       if (frame.type === 'rehost-claim' && frame.expectedHostGeneration !== session!.snapshot.hostGeneration) throw fault('stale-generation');
       const id = nextId++;
       return new Promise<ReplyOutcome>((resolve, reject) => {
+        const signal = options?.signal;
+        const abort = () => {
+          const p = pending.get(id); if (!p) return;
+          pending.delete(id); pendingBytes -= p.bytes; clock.clearTimeout(p.timer); p.offAbort?.(); forgetIssuance(p);
+          abortedRequests.add(id); reject(fault('stale-connection'));
+        };
         pending.set(id, { operation: copy(operation), hostGeneration: session!.snapshot.hostGeneration, bytes, stale: false,
-          resolve, reject, timer: clock.setTimeout(() => fail('timeout'), DEADLINE_MS) }); pendingBytes += bytes;
+          resolve, reject, offAbort: () => signal?.removeEventListener('abort', abort), timer: clock.setTimeout(() => fail('timeout'), DEADLINE_MS) }); pendingBytes += bytes;
+        signal?.addEventListener('abort', abort, { once: true });
         try { send(frame); } catch { fail('unavailable'); }
       }) as Promise<RoomReply<T>>;
     } catch (error) { return Promise.reject(error instanceof RoomServiceClientError ? error : fault('invalid-request')); }

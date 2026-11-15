@@ -19,6 +19,11 @@ function harness() {
   return { win, wc, raw, events: transportEvents, platform: createOnlinePlatform(win as any) };
 }
 describe('native online platform ownership', () => {
+  it('rejects missing or foreign lease identity at the leased-only entry', async () => {
+    const h = harness(), signal = new AbortController().signal;
+    await expect(h.platform.startLeasedHost(identity, signal, undefined as any)).rejects.toThrow('invalid-lease');
+    await expect(h.platform.startLeasedHost(identity, signal, { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), utilityEpoch: 'c'.repeat(32), hostGeneration: 2, hostSeatId: 0 })).rejects.toThrow('invalid-lease');
+  });
   it('retains native window exit observation after readiness and disposes exactly once', async () => {
     const h = harness(), pending = h.platform.createTransport(identity);
     h.events.emit('ready'); const owned = await pending, lost = vi.fn(); owned.onExit(lost);

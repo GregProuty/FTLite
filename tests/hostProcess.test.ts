@@ -16,7 +16,8 @@ function harness() {
       onReady(cb) { transport.on('ready', cb); return () => transport.off('ready', cb); },
       onExit(cb) { transport.on('exit', cb); return () => transport.off('exit', cb); }, dispose() { windowClosed++; } }),
     createChannel: () => { const a = new Port(), b = new Port(); ports.push(a, b); return { port1: a, port2: b } as any; },
-    onSuspend(cb) { suspend.on('suspend', cb); return () => suspend.off('suspend', cb); }
+    onSuspend(cb) { suspend.on('suspend', cb); return () => suspend.off('suspend', cb); },
+    onResume(cb) { suspend.on('resume', cb); return () => suspend.off('resume', cb); }
   };
   const ready = async (overrides = {}) => {
     await Promise.resolve(); await Promise.resolve();
@@ -30,6 +31,27 @@ function harness() {
 }
 afterEach(() => vi.useRealTimers());
 describe('main host process owner', () => {
+  it('invalidates leased capability on both trusted suspend and resume and removes observers', async () => {
+    const h = harness(), sessionLease = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) };
+    const starting = startHostProcess({ ...identity, sessionLease }, h.platform); await h.ready(); const owner = await starting;
+    h.suspend.emit('suspend'); expect(h.sent.at(-1)).toMatchObject({ kind: 'lease-invalidate', reason: 'suspended' }); h.response(1);
+    h.suspend.emit('resume'); expect(h.sent.at(-1)).toMatchObject({ kind: 'lease-invalidate', reason: 'resumed' }); h.response(2);
+    const disposing = owner.dispose(); h.response(3); await disposing; expect(h.suspend.eventNames()).toEqual([]);
+  });
+  it('retains only the latest renewal before readiness and retires stale replies locally', async () => {
+    const h = harness(), sessionLease = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), hostGeneration: 7, hostSeatId: 0, utilityEpoch: 'c'.repeat(32) };
+    const p = startHostProcess({ ...identity, sessionLease }, h.platform);
+    const first = { ...sessionLease, nonce: 'd'.repeat(32) }, second = { ...sessionLease, nonce: 'e'.repeat(32) };
+    h.utility.emit('message', { kind: 'lease-request', hostGeneration: 7, request: first });
+    h.utility.emit('message', { kind: 'lease-request', hostGeneration: 7, request: second });
+    await h.ready(); const owner = await p, requests: unknown[] = []; owner.onLeaseRequest(r => requests.push(r));
+    expect(requests).toEqual([second]);
+    const grant = { roomId: sessionLease.roomId, hostGeneration: 7, hostSeatId: 0, nonce: first.nonce, expiresAtEpochMs: 15000 };
+    await expect(owner.applyLease(first, grant)).rejects.toThrow('stale-lease');
+    const applying = owner.applyLease(second, { ...grant, nonce: second.nonce }); expect(h.sent.at(-1).kind).toBe('lease-grant'); h.response(1); await applying;
+    const completing = owner.completeBootstrap(); expect(h.sent.at(-1).kind).toBe('bootstrap-complete'); h.response(2); await completing;
+    const disposing = owner.dispose(); h.response(3); await disposing;
+  });
   it('forwards trusted streaming and actual RTC cap while rejecting missing caps before transfer', async () => {
     const h = harness(), starting = startHostProcess(identity, h.platform); await h.ready(); const owner = await starting;
     const bad = new Port(); await expect(owner.attachPeer('p', [0], bad as any, { streamed: true })).rejects.toThrow('invalid-peer'); expect(bad.closed).toBe(true);

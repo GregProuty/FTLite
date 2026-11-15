@@ -97,6 +97,7 @@ export function createHostPlatform(): HostPlatform {
       };
     },
     createChannel: () => new MessageChannelMain(),
-    onSuspend(cb) { powerMonitor.on('suspend', cb); return () => { powerMonitor.off('suspend', cb); }; }
+    onSuspend(cb) { powerMonitor.on('suspend', cb); return () => { powerMonitor.off('suspend', cb); }; },
+    onResume(cb) { powerMonitor.on('resume', cb); return () => { powerMonitor.off('resume', cb); }; }
   };
 }

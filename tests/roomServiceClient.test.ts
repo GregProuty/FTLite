@@ -34,6 +34,19 @@ async function connected(r = rig()) {
   return r;
 }
 describe('generic room service client', () => {
+  it('aborts local renewal correlation without undoing the sent request or killing the next renewal', async () => {
+    const { c, socket } = await connected(); const abort = new AbortController();
+    vi.useFakeTimers();
+    const first = c.request({ type: 'lease-renew', nonce: '4'.repeat(32) }, { signal: abort.signal });
+    const rejected = expect(first).rejects.toThrow('stale-connection'); abort.abort(); await rejected;
+    await vi.advanceTimersByTimeAsync(6000); expect(socket.closed).toBe(false);
+    const second = c.request({ type: 'host-release' });
+    socket.reply(1, { kind: 'lease', lease: { roomId: snapshot.roomId, hostGeneration: 1, hostSeatId: 0, nonce: '4'.repeat(32), expiresAtEpochMs: Date.now() + 15000 } });
+    socket.reply(2, { kind: 'void' }); await expect(second).resolves.toEqual({ kind: 'void' });
+    expect(socket.closed).toBe(false); expect(socket.frames().filter(f => f.type === 'lease-renew')).toHaveLength(1);
+    await expect(c.request({ type: 'lease-renew', nonce: '5'.repeat(32) }, { signal: abort.signal })).rejects.toThrow('stale-connection');
+    expect(socket.frames().filter(f => f.type === 'lease-renew')).toHaveLength(1);
+  });
   it.each(['http://example.com', 'https://user:pass@service', 'https://service?q=x', 'https://service/#x', 'http://127.1', 'https://service/prefix'])('rejects unsafe service base %s', baseUrl => {
     expect(() => createRoomServiceClient({ baseUrl, fetch: globalThis.fetch, createWebSocket: () => new Socket(), clock })).toThrow('invalid-request');
   });

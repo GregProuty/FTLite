@@ -3,7 +3,8 @@ import { TICK_HZ } from '../sim/tuning';
 
 /** A range keeps its original wall deadlines even when a later epoch is paused. */
 interface DeadlineRange { epoch: number; first: number; last: number }
-export function createTickDriver(clock: MonotonicClock, scheduler: Scheduler, onTick: (nextTick: number, tickTimeMs: number) => void) {
+export function createTickDriver(clock: MonotonicClock, scheduler: Scheduler, onTick: (nextTick: number, tickTimeMs: number) => void,
+  beforeTick?: (nextTick: number, tickTimeMs: number) => boolean) {
   let sampled = clock.nowMs();
   if (!Number.isFinite(sampled) || sampled < 0) throw new Error('invalid initial clock');
   let epoch = sampled, ordinal = 1, nextTick = 0, debt = 0, pausedAt = sampled;
@@ -35,6 +36,8 @@ export function createTickDriver(clock: MonotonicClock, scheduler: Scheduler, on
       accrue();
       for (let count = 0; !disposed && !paused && debt > 0 && count < 120; count++) {
         const range = ranges[0]!, deadline = range.epoch + range.first * 1000 / TICK_HZ;
+        if (beforeTick && !beforeTick(nextTick, deadline)) break;
+        if (disposed || paused) break;
         range.first++; debt--;
         if (range.first > range.last) ranges.shift();
         onTick(nextTick++, deadline);
@@ -54,6 +57,13 @@ export function createTickDriver(clock: MonotonicClock, scheduler: Scheduler, on
       if (!pumping) schedule();
     },
     lagTicks: () => debt,
+    resetPausedEpoch(): void {
+      if (disposed) return;
+      const now = clock.nowMs();
+      if (!Number.isFinite(now) || now < 0) throw Error('invalid clock epoch');
+      sampled = epoch = pausedAt = now; ordinal = 1; debt = 0; ranges.length = 0; paused = true;
+      if (!pumping) schedule();
+    },
     dispose(): void { disposed = true; cancel?.(); cancel = null; ranges.length = 0; }
   };
 }

@@ -14,6 +14,8 @@ export function createHostRuntime(registry: ModeRegistry, deps: ModeHostDeps, id
   function retire(owner: ModeHost | null): void { try { owner?.dispose(); } catch { /* disposal must release the rest of the runtime */ } }
   function dispose(): void { if (disposed) return; disposed = true; clearPeers(); const old = host; host = null; retire(old); }
   return {
+    settleSessionFence(): void { if (!disposed && host) host.pause('session-fenced'); },
+    completeBootstrap(): void { if (disposed || !host || !deps.sessionGate?.check().allowed) throw Error('bootstrap unavailable'); host.completeBootstrap(); },
     handle(command: HostCommand): HostResponse {
       const raw = command as unknown as Record<string, unknown> | null;
       if (!positiveSafeInteger(raw?.requestId)) return { requestId: null, hostGeneration: generation, ok: false, error: { code: 'invalid-command', message: 'invalid-command' } };

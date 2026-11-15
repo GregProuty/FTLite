@@ -2,13 +2,21 @@ import type { MessagePortMain } from 'electron';
 import { boundedHostBytes, isHostCommand, positiveSafeInteger, SESSION_PROTOCOL_VERSION, type HostCommandInput, type HostResponse } from '../../shared/netSession';
 import { isHostIdentity, isHostResponse, matchesIdentity, validPeer, validStreamAttachmentOptions, type HostIdentity, type StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 import type { TransportController } from './rtcTransport';
+import { matchesSessionLease, isLeaseFenceReason } from '../../shared/hostProcessProtocol';
+import { validateSessionLeaseIdentity, validateLeaseRenewalRequest, type SessionLeaseIdentity, type LeaseRenewalRequest, type LeaseFenceReason } from '../../shared/sessionLease';
+import { validateLeaseGrant, type LeaseGrant } from '../../shared/roomSession';
 
 type Unsubscribe = () => void;
 export interface HostProcessOptions extends HostIdentity {
+  sessionLease?: SessionLeaseIdentity;
   signal?: AbortSignal;
   onCrash?(record: { checkpoint: Uint8Array | null; diagnostic: unknown }): void;
 }
 export interface HostProcessHandle {
+  onLeaseRequest(callback: (request: LeaseRenewalRequest) => void): Unsubscribe;
+  applyLease(request: LeaseRenewalRequest, grant: LeaseGrant): Promise<void>;
+  invalidateLease(reason: LeaseFenceReason): Promise<void>;
+  completeBootstrap(): Promise<void>;
   readonly transport: TransportController;
   request(command: HostCommandInput): Promise<HostResponse>;
   attachPeer(peer: string, players: readonly number[], port: MessagePortMain, options?: StreamAttachmentOptions): Promise<void>;
@@ -21,11 +29,15 @@ export interface HostPlatform {
   createTransport(identity: HostIdentity): { controller: TransportController; load(): Promise<void>; connect(port: MessagePortMain): void; onReady(cb: () => void): Unsubscribe; onExit(cb: () => void): Unsubscribe; dispose(): void };
   createChannel(): { port1: MessagePortMain; port2: MessagePortMain };
   onSuspend(cb: () => void): Unsubscribe;
+  onResume?(cb: () => void): Unsubscribe;
 }
 const close = (port: MessagePortMain) => { try { port.close(); } catch { /* a transferred endpoint may already be detached */ } };
 
 export async function startHostProcess(options: HostProcessOptions, suppliedPlatform?: HostPlatform): Promise<HostProcessHandle> {
   if (!isHostIdentity(options)) throw Error('invalid-identity');
+  if (options.sessionLease !== undefined && (!validateSessionLeaseIdentity(options.sessionLease)
+    || options.sessionLease.hostGeneration !== options.hostGeneration)) throw Error('invalid-lease');
+  const sessionLease = options.sessionLease && { ...options.sessionLease };
   if (options.signal?.aborted) throw Error('cancelled');
   const platform = suppliedPlatform ?? (await import('./transportWindow')).createHostPlatform();
   if (options.signal?.aborted) throw Error('cancelled');
@@ -37,6 +49,8 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
   let stopped = false, stopping = false, ready = false, utilityReady = false, windowReady = false, bridgeReady = false, connected = false;
   let nextId = 0, disposal: Promise<void> | undefined, exitReason: string | undefined;
   const removers: Unsubscribe[] = [], exits = new Set<(reason: string) => void>(), ownedPorts = new Set<MessagePortMain>();
+  const renewals = new Set<(request: LeaseRenewalRequest) => void>();
+  let renewal: LeaseRenewalRequest | undefined;
   const pending = new Map<number, { kind: 'response' | 'attached'; resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   let resolveReady!: (handle: HostProcessHandle) => void, rejectReady!: (error: Error) => void;
   const starting = new Promise<HostProcessHandle>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
@@ -44,6 +58,7 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
   function stop(reason: string): void {
     if (stopped) return; stopped = true; stopping = true; exitReason = reason;
     clearTimeout(readyTimer);
+    renewals.clear(); renewal = undefined;
     for (const remove of removers.splice(0)) { try { remove(); } catch { /* release remaining owners */ } }
     for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error(reason)); } pending.clear();
     for (const port of ownedPorts) close(port); ownedPorts.clear();
@@ -87,6 +102,23 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
     return send('response', requestId => ({ kind: 'command', command: { ...copy, requestId, hostGeneration: identity.hostGeneration } }));
   }
   const handle: HostProcessHandle = {
+    onLeaseRequest(callback) {
+      if (stopped || !sessionLease) return () => {};
+      if (renewals.size >= 64) throw Error('request-capacity');
+      renewals.add(callback); if (renewal) callback({ ...renewal });
+      return () => { renewals.delete(callback); };
+    },
+    applyLease(request, grant) {
+      if (!renewal || !validateLeaseRenewalRequest(request) || !validateLeaseGrant(grant)
+        || Object.keys(renewal).some(k => request[k as keyof LeaseRenewalRequest] !== renewal![k as keyof LeaseRenewalRequest])) return Promise.reject(Error('stale-lease'));
+      renewal = undefined;
+      return privateRequest('lease-grant', { request: { ...request }, grant: { ...grant } });
+    },
+    invalidateLease(reason) {
+      if (!isLeaseFenceReason(reason)) return Promise.reject(Error('invalid-lease'));
+      renewal = undefined; return privateRequest('lease-invalidate', { sessionLease, reason });
+    },
+    completeBootstrap() { return privateRequest('bootstrap-complete', { sessionLease }); },
     transport: transport.controller,
     request,
     attachPeer(peer, players, port, options) {
@@ -113,6 +145,11 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
       return disposal;
     }
   };
+  function privateRequest(kind: string, data: object): Promise<void> {
+    if (!sessionLease || stopped || stopping) return Promise.reject(Error('lease-unavailable'));
+    return send<HostResponse>('response', requestId => ({ kind, requestId, hostGeneration: identity.hostGeneration, ...data }))
+      .then(reply => { if (!reply.ok) throw Error('lease-unavailable'); });
+  }
   removers.push(utility.onExit(() => stop('utility-exit')), transport.onExit(() => stop('transport-exit')),
     transport.onReady(() => { windowReady = true; connect(); checkReady(); }),
     utility.onMessage(message => {
@@ -120,6 +157,15 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
       if (!message || typeof message !== 'object') { stop('protocol-failure'); return; }
       const generation = message.kind === 'response' ? message.response?.hostGeneration : message.hostGeneration;
       if (positiveSafeInteger(generation) && generation !== identity.hostGeneration) return;
+      if (message.kind === 'lease-request') {
+        const r = message.request;
+        if (!sessionLease || !validateLeaseRenewalRequest(r)) { stop('protocol-failure'); return; }
+        const { nonce: _nonce, ...leaseIdentity } = r;
+        if (!matchesSessionLease(leaseIdentity, sessionLease!) || Object.keys(message).some(k => !['kind', 'hostGeneration', 'request'].includes(k))) { stop('protocol-failure'); return; }
+        renewal = { ...r };
+        for (const cb of [...renewals]) { try { cb({ ...r }); } catch { /* isolate private observers */ } }
+        return;
+      }
       if (message.kind === 'ready') {
         if (utilityReady || !matchesIdentity(message, identity)) { stop('incompatible-ready'); return; }
         utilityReady = true; connect(); checkReady(); return;
@@ -147,15 +193,19 @@ export async function startHostProcess(options: HostProcessOptions, suppliedPlat
       if (message.kind === 'attached') { if (message.ok) item.resolve(undefined); else item.reject(Error('peer-unavailable')); }
       else item.resolve(response);
     }), platform.onSuspend(() => {
+      if (sessionLease && ready && !stopping) { void handle.invalidateLease('suspended').catch(() => stop('suspend-failed')); return; }
       if (ready && !stopping) void request({ kind: 'pause', reason: 'system-suspend' }).then(response => { if (!response.ok) stop('suspend-failed'); }, () => stop('suspend-failed'));
       else stop('system-suspend');
     }));
+  if (platform.onResume) removers.push(platform.onResume(() => {
+    if (sessionLease && ready && !stopping) void handle.invalidateLease('resumed').catch(() => stop('resume-failed'));
+  }));
   const abort = () => stop('cancelled');
   options.signal?.addEventListener('abort', abort, { once: true });
   removers.push(() => options.signal?.removeEventListener('abort', abort));
   if (options.signal?.aborted) abort();
   if (!stopped) {
-    try { utility.postMessage({ kind: 'initialize', protocolVersion: SESSION_PROTOCOL_VERSION, ...identity }); }
+    try { utility.postMessage({ kind: 'initialize', protocolVersion: SESSION_PROTOCOL_VERSION, ...identity, ...(sessionLease ? { sessionLease } : {}) }); }
     catch { stop('initialize-failed'); }
     if (!stopped) void transport.load().catch(() => stop('transport-load-failed'));
   }
