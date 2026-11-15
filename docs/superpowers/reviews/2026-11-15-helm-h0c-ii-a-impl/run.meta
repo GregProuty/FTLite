@@ -1,0 +1,11 @@
+topic=helm-h0c-ii-a-impl
+subject_kind=impl
+subject=scripts/bless-golden.ts scripts/determinism/rebless-version.ts scripts/duel-telemetry.ts scripts/golden/canonical-trace.ts src/renderer/src/sim/duel/hash.ts src/renderer/src/sim/duel/scripted.ts src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/telemetry.ts src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tuning.ts tests/duel.test.ts tests/duelGates.test.ts tests/duelGolden.test.ts tests/duelReadout.test.ts tests/duelScripted.test.ts tests/duelTelemetry.test.ts tests/fixtures/determinism-v2.json tests/golden/basic.json tests/golden/duel-1.json tests/helpers/scriptedDuel.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\helm-h0c-ii-a
+base=master
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-15
+head_at_setup=dbfbaf8
