@@ -12,7 +12,15 @@ const sources = {
   'src/renderer/src/sim/ship/cutter.json': '{"width":12}\n',
   'src/shared/intent.ts': 'export type Intent = number;\n',
   'src/renderer/src/net/contracts.ts': 'export type Message = string;\n',
-  'src/renderer/src/net/codec.ts': 'export const protocol = 1;\n'
+  'src/renderer/src/net/codec.ts': 'export const protocol = 1;\n',
+  'src/shared/netSession.ts': 'export const protocol = 2;\n',
+  'src/renderer/src/net/receivePolicy.ts': 'export const age = 120;\n',
+  'src/renderer/src/authority/core.ts': 'export const execution = 1;\n',
+  'src/renderer/src/authority/ledger.ts': 'export const admission = 1;\n',
+  'src/renderer/src/authority/checkpoint.ts': 'export const checkpointVersion = 2;\n',
+  'src/network/modes/sector.ts': 'export const mode = 1;\n',
+  'src/network/modes/contracts.ts': 'export type ModeSchema = number;\n',
+  'src/network/modes/registry.ts': 'export const registered = true;\n'
 };
 function fixture(entries = Object.entries(sources)): string {
   const root = mkdtempSync(join(tmpdir(), 'ftlite-digest-')); roots.push(root);
