@@ -12,6 +12,13 @@ import { CUTTER_REPAIR_POINTS } from './tuning';
 
 export interface RepairPoint { tacticalRoom: number; room: number; tile: number }
 
+/** Per-tick repair events (H-0c-ii-a spec §4), for telemetry and views. Derived, not state: cleared every tick and not
+ *  hashed. `repairWork`: a player added repair work to a tactical Room this tick. `repairDone`: the Room's level dropped
+ *  this tick; `players` names everyone who worked on it this tick, ascending. */
+export type RepairEvent =
+  | { kind: 'repairWork'; player: number; room: number }
+  | { kind: 'repairDone'; room: number; players: number[] };
+
 export interface DuelState {
   interior: SimState;
   tactical: TacticalState;
@@ -23,6 +30,8 @@ export interface DuelState {
   points: RepairPoint[];
   /** Station indices of the two consoles that are roles (spec §8). */
   nav: number; weapons: number;
+  /** This tick's repair events, in the order repairPhase makes them (every repairWork, then any repairDone in Room order). */
+  events: RepairEvent[];
 }
 
 /**
@@ -46,7 +55,7 @@ export function createDuel(layout: ShipLayout, seed: number): DuelState {
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
-    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons };
+    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, events: [] };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;

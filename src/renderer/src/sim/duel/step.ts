@@ -43,30 +43,31 @@ function attendant(d: DuelState, station: number): number {
 function conscious(d: DuelState, pid: number): boolean { return Life.state[d.interior.crew[pid]!] === LifeState.Conscious; }
 function seated(d: DuelState, pid: number): boolean { return Seated.station[d.interior.crew[pid]!]! >= 0; }
 
-/** Each standing, present, conscious player holding Interact inside a damaged room's repair room and in reach of its point. */
+/** Each standing, present, conscious player holding Interact inside a damaged room's repair room and in reach of its
+ *  point. Pushes a repairWork event per worker and a repairDone event per room whose level drops (H-0c-ii-a spec §4). */
 function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
-  const crewShip = d.tactical.ships[0], holders = [0, 0, 0];
+  const crewShip = d.tactical.ships[0], workers: number[][] = [[], [], []];
   for (let pid = 0; pid < 2; pid++) {
     if (!d.present[pid as 0 | 1] || !conscious(d, pid) || seated(d, pid) || !(held[pid] ?? NO_HELD).interactHeld) continue;
     const eid = d.interior.crew[pid]!, here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!);
     const point = d.points.find((p) => crewShip.rooms[p.tacticalRoom]! > 0 && p.room === here && inReachOfTile(d.interior, eid, p.tile));
-    if (point) holders[point.tacticalRoom]!++;
+    if (point) { workers[point.tacticalRoom]!.push(pid); d.events.push({ kind: 'repairWork', player: pid, room: point.tacticalRoom }); }
   }
   for (const p of d.points) {
-    const r = p.tacticalRoom as 0 | 1 | 2, n = holders[r]!;
+    const r = p.tacticalRoom as 0 | 1 | 2, n = workers[r]!.length;
     if (crewShip.rooms[r] === 0) { d.repair[r] = 0; continue; }
     if (n === 0) continue;
     d.repair[r] += n === 1 ? REPAIR_RATE_SOLO : n * REPAIR_RATE_TEAM;
-    if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; d.repair[r] = 0; }
+    if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; d.repair[r] = 0; d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
   }
 }
 
 /**
- * Spec §13, in order: scratch reset; seat phase (sit through today's interaction validation, only at the two role
- * consoles; stand through today's handler; then presence); tactical commands validated against the seats after the
- * seat phase and folded into the crew's ShipInput; repair; movement for standing present players; the tactical
- * stepDuel; the interior tick. Commands apply in the order given (the authority's envelope order). Returns one result
- * per command, sorted by player then sequence. Does nothing once the duel has ended.
+ * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
+ * only at the two role consoles; stand through today's handler; then presence); tactical commands validated against the
+ * seats after the seat phase and folded into the crew's ShipInput; repair, with its events; movement for standing
+ * present players; the tactical stepDuel; the interior tick. Commands apply in the order given (the authority's
+ * envelope order). Returns one result per command, sorted by player then sequence. Does nothing once the duel has ended.
  */
 export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   if (d.tactical.outcome !== Outcome.Running) return [];
@@ -76,6 +77,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status: 'applied' });
   };
   resetScratch(d);
+  d.events = [];
 
   // Seat phase: sits (today's validation), then stands (today's handler), then presence.
   const away = (e: DuelEnvelope): boolean => !d.present[e.id.player as 0 | 1];   // an away character stays exactly where it is (spec §8)

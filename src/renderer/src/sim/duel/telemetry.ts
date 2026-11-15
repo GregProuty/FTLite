@@ -1,0 +1,171 @@
+// Duel telemetry (H-0c-ii-a spec §4, parent §13's list): accumulated tick by tick from the duel state after each
+// stepDuelTick, that tick's events and the input it was given. Pure apart from its own accumulator; it never changes
+// the duel. Counter diffs (contact counters, launches, graceUntil) are taken against the accumulator's copy of the
+// tick before.
+import { Seated } from '../components';
+import { inArc } from '../tactical/geometry';
+import { Outcome } from '../tactical/state';
+import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
+import { canLaunch, laserFull } from '../tactical/weapons';
+import type { DuelState } from './state';
+import type { DuelInput } from './step';
+
+/** A crew manoeuvre counts toward a bait for this many ticks (spec §4). */
+export const BAIT_WINDOW_TICKS = 300;
+/** A crew manoeuvre needs the enemy within this distance (u). */
+export const BAIT_RANGE = 900;
+
+export type TerminalCause = 'planet' | 'asteroid' | 'ship' | 'laser' | 'missile';
+export type MissileLoss = 'planet' | 'asteroid' | 'edge' | 'expired' | 'own' | 'missile';
+
+export interface ShipTelemetry {
+  laserReleases: number; laserHits: number; laserMisses: number; layersStripped: number;
+  missilesLaunched: number;
+  /** Missile hits on the other ship by the Room struck (Weapons, Shields, Engines). */
+  missileHitsByRoom: [number, number, number];
+  missileLosses: Record<MissileLoss, number>;
+  planetContacts: number; asteroidContacts: number;
+}
+
+export interface PlayerTelemetry {
+  repairsStarted: number; repairsFinished: number;
+  /** Ticks standing (away from any console), split into walking and repairing. */
+  walkingTicks: number; repairingTicks: number;
+}
+
+export interface DuelTelemetry {
+  ticks: number;
+  outcome: number;
+  ships: [ShipTelemetry, ShipTelemetry];
+  players: [PlayerTelemetry, PlayerTelemetry];
+  /** Enemy planet and asteroid contacts that followed a crew manoeuvre (spec §4 baits). */
+  baits: number;
+  consoleSwaps: number;
+  /** Ticks the Helm and the Weapons console were empty (nobody present seated there). */
+  helmEmptyTicks: number; weaponsEmptyTicks: number;
+  /** Ticks the enemy was inside the crew's laser arc and range. */
+  enemyInArcTicks: number;
+  /** Ticks Weapons had nothing to do (spec §4 idle predicate). */
+  weaponsIdleTicks: number;
+  /** For each ship whose hull reached 0 on the final tick, what hit it that tick; empty for a ship still flying. */
+  terminal: [TerminalCause[], TerminalCause[]];
+  /** The accumulator's copy of the tick before. */
+  prev: { counters: number[][]; grace: [Int32Array, Int32Array]; work: [number, number]; seat: [number, number]; lastConsole: [number, number] };
+  /** The last crew manoeuvre: its tick (−1 for none) and the enemy's position then. */
+  manoeuvre: { tick: number; x: number; y: number };
+}
+
+function shipTelemetry(): ShipTelemetry {
+  return {
+    laserReleases: 0, laserHits: 0, laserMisses: 0, layersStripped: 0, missilesLaunched: 0, missileHitsByRoom: [0, 0, 0],
+    missileLosses: { planet: 0, asteroid: 0, edge: 0, expired: 0, own: 0, missile: 0 }, planetContacts: 0, asteroidContacts: 0
+  };
+}
+
+const counters = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.planetHits, s.asteroidHits, s.shipHits, s.missilesLaunched]);
+const seats = (d: DuelState): [number, number] => [Seated.station[d.interior.crew[0]!]!, Seated.station[d.interior.crew[1]!]!];
+
+export function createTelemetry(d: DuelState): DuelTelemetry {
+  const seat = seats(d);
+  return {
+    ticks: 0, outcome: d.tactical.outcome, ships: [shipTelemetry(), shipTelemetry()],
+    players: [0, 1].map(() => ({ repairsStarted: 0, repairsFinished: 0, walkingTicks: 0, repairingTicks: 0 })) as [PlayerTelemetry, PlayerTelemetry],
+    baits: 0, consoleSwaps: 0, helmEmptyTicks: 0, weaponsEmptyTicks: 0, enemyInArcTicks: 0, weaponsIdleTicks: 0, terminal: [[], []],
+    prev: { counters: counters(d), grace: [new Int32Array(d.tactical.ships[0].graceUntil), new Int32Array(d.tactical.ships[1].graceUntil)], work: [-1, -1], seat, lastConsole: seat },
+    manoeuvre: { tick: -1, x: 0, y: 0 }
+  };
+}
+
+function dist(ax: number, ay: number, bx: number, by: number): number { const dx = ax - bx, dy = ay - by; return Math.sqrt(dx * dx + dy * dy); }
+
+/** The player present and seated at station i, or −1. */
+function attendant(d: DuelState, i: number): number {
+  const pid = d.interior.stations.occupant[i]!;
+  return pid >= 0 && d.present[pid as 0 | 1] ? pid : -1;
+}
+
+/** Fold one finished tick into the accumulator: call right after stepDuelTick(d, input) with the same input. A call
+ *  after the duel has ended (stepDuelTick did nothing) is ignored. */
+export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): void {
+  const tac = d.tactical, tick = tac.tick - 1;   // the tick that just ran
+  if (tick < t.ticks) return;
+  t.ticks = tac.tick; t.outcome = tac.outcome;
+  const now = counters(d), [crew, enemy] = tac.ships;
+
+  // Weapons and missiles, from the tick's events.
+  const laserOn = [false, false], missileOn = [false, false];
+  for (const e of tac.events) {
+    const s = t.ships[e.ship as 0 | 1]!;
+    if (e.kind === 'laser') {
+      s.laserReleases++;
+      if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[1 - e.ship] = true; } else s.laserMisses++;
+    } else if (e.cause === 'ship') {
+      missileOn[e.target] = true;
+      if (e.target === e.ship) s.missileLosses.own++; else s.missileHitsByRoom[e.room as 0 | 1 | 2]++;
+    } else s.missileLosses[e.cause]++;
+  }
+  for (let i = 0; i < 2; i++) t.ships[i]!.missilesLaunched += now[i]![3]! - t.prev.counters[i]![3]!;
+
+  // Contacts and baits. The struck bodies are exactly those whose graceUntil was set this tick.
+  const struck: number[][] = [[], []];
+  for (let i = 0; i < 2; i++) {
+    const g = tac.ships[i]!.graceUntil, old = t.prev.grace[i]!, set = tick + CONTACT_GRACE_TICKS;
+    for (let k = 0; k < g.length; k++) if (g[k] !== old[k] && g[k] === set) struck[i]!.push(k);
+    t.ships[i]!.planetContacts += now[i]![0]! - t.prev.counters[i]![0]!;
+    t.ships[i]!.asteroidContacts += now[i]![1]! - t.prev.counters[i]![1]!;
+  }
+  const m = t.manoeuvre, ship = tac.map.asteroids.length + 1;
+  if (m.tick >= 0 && tick - m.tick <= BAIT_WINDOW_TICKS) for (const k of struck[1]!) {
+    if (k === ship) continue;
+    const b = k === 0 ? tac.map.planet : tac.map.asteroids[k - 1]!;
+    if (dist(enemy.x, enemy.y, b.x, b.y) < dist(m.x, m.y, b.x, b.y)) t.baits++;
+  }
+  const helm = attendant(d, d.nav);
+  if (helm >= 0) {
+    const h = input.held[helm];
+    if (h && (h.moveX !== 0 || h.moveY !== 0) && dist(crew.x, crew.y, enemy.x, enemy.y) <= BAIT_RANGE) { m.tick = tick; m.x = enemy.x; m.y = enemy.y; }
+  }
+
+  // Repairs: a start is the first tick of work on a room after not working on it; a finish credits every named player.
+  const work: [number, number] = [-1, -1];
+  for (const e of d.events) {
+    if (e.kind === 'repairWork') work[e.player as 0 | 1] = e.room;
+    else for (const p of e.players) t.players[p as 0 | 1]!.repairsFinished++;
+  }
+  const seat = seats(d);
+  for (let pid = 0; pid < 2; pid++) {
+    const p = t.players[pid]!;
+    if (work[pid]! >= 0 && work[pid] !== t.prev.work[pid]) p.repairsStarted++;
+    if (seat[pid]! < 0) { if (work[pid]! >= 0) p.repairingTicks++; else p.walkingTicks++; }
+    if (seat[pid]! >= 0 && t.prev.seat[pid]! < 0) { if (seat[pid] !== t.prev.lastConsole[pid]) t.consoleSwaps++; t.prev.lastConsole[pid as 0 | 1] = seat[pid]!; }
+  }
+
+  // Consoles, the arc and the idle predicate.
+  const gunner = attendant(d, d.weapons);
+  if (helm < 0) t.helmEmptyTicks++;
+  if (gunner < 0) t.weaponsEmptyTicks++;
+  const ex = enemy.x - crew.x, ey = enemy.y - crew.y, inRange = ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE;
+  const arc = inRange && inArc(crew.heading, ex, ey, LASER_ARC_COS);
+  if (arc) t.enemyInArcTicks++;
+  if (gunner >= 0 && tac.missiles[0] === null && laserFull(tac, 0) && (!canLaunch(tac, 0) || inRange) && !arc) t.weaponsIdleTicks++;
+
+  // Terminal cause: what hit each ship whose hull reached 0 on the final tick.
+  if (tac.outcome !== Outcome.Running) for (let i = 0; i < 2; i++) {
+    if (tac.ships[i]!.hull > 0) continue;
+    const c: TerminalCause[] = [], was = t.prev.counters[i]!, is = now[i]!;
+    if (is[0]! > was[0]!) c.push('planet');
+    if (is[1]! > was[1]!) c.push('asteroid');
+    if (is[2]! > was[2]!) c.push('ship');
+    if (laserOn[i]) c.push('laser');
+    if (missileOn[i]) c.push('missile');
+    t.terminal[i as 0 | 1] = c;
+  }
+
+  t.prev = { counters: now, grace: [new Int32Array(crew.graceUntil), new Int32Array(enemy.graceUntil)], work, seat, lastConsole: t.prev.lastConsole };
+}
+
+/** True when the duel ended from a planet contact: the losing ship (both, for a draw) took one on its final tick. */
+export function endedFromPlanet(t: DuelTelemetry): boolean {
+  const losers = t.outcome === Outcome.Draw ? [0, 1] : t.outcome === Outcome.CrewWins ? [1] : t.outcome === Outcome.EnemyWins ? [0] : [];
+  return losers.length > 0 && losers.every((i) => t.terminal[i]!.includes('planet'));
+}

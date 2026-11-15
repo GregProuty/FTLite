@@ -38,7 +38,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['interior', 'nav', 'points', 'present', 'repair', 'tactical', 'weapons']);
+    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['events', 'interior', 'nav', 'points', 'present', 'repair', 'tactical', 'weapons']);
   });
   it('disposeDuel is idempotent', () => {
     const d = createDuel(layout, 5);
