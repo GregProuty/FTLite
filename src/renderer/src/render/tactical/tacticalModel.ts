@@ -20,6 +20,9 @@ export const SHIP_CHEVRON_PX = 10, CHEVRON_SIZE = 14;
 export const PATH_NEAR_S = 2, PATH_FAR_S = 8, PATH_NEAR_ZOOM = 0.6, PATH_FAR_ZOOM = 0.12, PATH_STRIDE = 4;
 export const BEARING_RING_ZOOM = 0.3, BEARING_RING_PX = 120;
 export const ARROW_MARGIN = 28;
+/** Off-screen arrows on one edge closer than this are spread apart along it so their labels never overlap: labels sit
+ *  beside arrows on the left and right edges (one text line apart) and under or over them on the top and bottom. */
+export const ARROW_GAP_SIDE = 20, ARROW_GAP_TOP = 110;
 const SCALE_STEPS: readonly number[] = [50, 100, 200, 250, 500, 1000, 2000];
 export const SCALE_BAR_MAX_PX = 160;
 /** The star field's parallax (parent §10b layer 1): screen pixels the stars move per world unit the camera centre moves,
@@ -75,6 +78,8 @@ export interface TacticalModelInput {
   paused: boolean;
   /** Screen pixels on the right kept clear of off-screen arrows (the readout panel). */
   reserveRight: number;
+  /** Spread crowded off-screen arrows apart (the duel views set it; the flight view keeps H-1a's exact positions). */
+  spreadArrows?: boolean;
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -167,7 +172,8 @@ function gridDraw(cam: Camera, vp: Viewport): GridDraw {
   return { spacing, lines, columns, rows };
 }
 
-function ringDraw(x: number, y: number): RingDraw {
+/** The bearing ring about a screen point: ticks every 10°, labels every 30° (north 0). */
+export function ringDraw(x: number, y: number): RingDraw {
   const r = BEARING_RING_PX, ticks: RingDraw['ticks'] = [], labels: Label[] = [];
   for (let deg = 0; deg < 360; deg += 10) {
     const a = (deg * Math.PI) / 180, sx = Math.sin(a), sy = -Math.cos(a), major = deg % 30 === 0, len = major ? 10 : 5;
@@ -187,6 +193,41 @@ function edgePoint(vp: Viewport, reserveRight: number, x: number, y: number): { 
 }
 
 const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'MISSILE' };
+
+/**
+ * Keep arrows on the same edge at least the label gap apart. Each edge's arrows are sorted along it and pushed on, from the
+ * end nearer the edge's middle, by the minimum gap from the one before; any overrun past the edge's far end is shifted back.
+ * Arrows that already clear each other do not move.
+ */
+export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number): void {
+  const m = ARROW_MARGIN, top = m, bottom = vp.h - m, right = vp.w - reserveRight - m;
+  const groups = new Map<string, { flat: boolean; list: ArrowDraw[] }>();
+  for (const a of arrows) {
+    const flat = Math.abs(a.y - top) < 0.5 || Math.abs(a.y - bottom) < 0.5, key = flat ? `y${Math.round(a.y)}` : `x${Math.round(a.x)}`;
+    const g = groups.get(key) ?? { flat, list: [] };
+    g.list.push(a); groups.set(key, g);
+  }
+  for (const { flat, list } of groups.values()) {
+    if (list.length < 2) continue;
+    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, lo = flat ? m : top, hi = flat ? right : bottom, mid = (lo + hi) / 2;
+    const get = (a: ArrowDraw): number => (flat ? a.x : a.y), set = (a: ArrowDraw, v: number): void => { if (flat) a.x = v; else a.y = v; };
+    const dir = list.reduce((t, a) => t + get(a), 0) / list.length > mid ? -1 : 1;   // spread toward the edge's middle
+    const order = [...list].sort((p, q) => (get(p) - get(q)) * dir);
+    const start = dir > 0 ? lo : hi, end = dir > 0 ? hi : lo;
+    let prev: number | null = null;
+    for (const a of order) {
+      let v = get(a);
+      if (prev !== null) v = dir > 0 ? Math.max(v, prev + gap) : Math.min(v, prev - gap);
+      v = dir > 0 ? Math.max(v, start) : Math.min(v, start);
+      set(a, v); prev = v;
+    }
+    let bound = end;   // past the far end: shift back, keeping the gaps
+    for (let i = order.length - 1; i >= 0; i--) {
+      const a = order[i]!, v = dir > 0 ? Math.min(get(a), bound) : Math.max(get(a), bound);
+      set(a, v); bound = v - dir * gap;
+    }
+  }
+}
 
 export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   const { state, prev, alpha, camera: cam, viewport: vp } = input;
@@ -247,6 +288,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = state.missiles[0];
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
+  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight);
 
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {

@@ -1,10 +1,11 @@
-// The launch mode (H-1 spec §3): `?mode=flight` starts the dev flight view; anything else, or none, starts today's
-// sector game unchanged. H-1b adds `duel`. `?seed=<n>` overrides the default seed.
-export type AppMode = 'sector' | 'flight';
+// The launch mode (H-1 spec §3): `?mode=flight` starts the dev flight view and `?mode=duel` the solo duel; anything
+// else, or none, starts today's sector game unchanged. `?seed=<n>` overrides the default seed.
+export type AppMode = 'sector' | 'flight' | 'duel';
 export const DEFAULT_SEED = 2026;
 
 export function readMode(search: string): AppMode {
-  return new URLSearchParams(search).get('mode') === 'flight' ? 'flight' : 'sector';
+  const mode = new URLSearchParams(search).get('mode');
+  return mode === 'flight' || mode === 'duel' ? mode : 'sector';
 }
 
 /** A whole number from 0 to 2^31 − 1, or the default. */
