@@ -59,6 +59,13 @@ describe('authenticated RTC peer attempts', () => {
     let configuration:RTCConfiguration|undefined;const a=setup({iceTransportPolicy:'relay',createConnection:(config:RTCConfiguration)=>{configuration=config;return new Connection();}});expect(configuration?.iceTransportPolicy).toBe('relay');a.peer.close('done');
     let called=false;const b=setup({iceTransportPolicy:'unknown',createConnection:()=>{called=true;return new Connection();}});expect(await b.outcome).toEqual({error:'rtc-config-invalid'});expect(called).toBe(false);
   });
+  it.each([{ticket:'\0'.repeat(496),bytes:4096,allowed:true},{ticket:'\0'.repeat(496)+'x',bytes:4097,allowed:false},{ticket:'\0'.repeat(512),bytes:4192,allowed:false}])('bounds serialized auth envelope at $bytes bytes before native send', async ({ticket,bytes,allowed}) => {
+    // Fixed JSON overhead is1120 bytes for these max-length printable IDs; each NUL encodes as six ASCII bytes.
+    const boundedIdentity={...identity,modeId:'m'.repeat(128),runId:'r'.repeat(128),roomId:'o'.repeat(128),localConnectionId:'h'.repeat(128),remoteConnectionId:'g'.repeat(128)};
+    const s=setup({attemptId:'t'.repeat(128),identity:boundedIdentity,localTicket:ticket});const [r,l]=s.connection.channels;r!.open();l!.open();
+    if(allowed){expect(r!.sent).toHaveLength(1);expect(new TextEncoder().encode(r!.sent[0] as string).byteLength).toBe(bytes);s.peer.close('done');}
+    else{expect(r!.sent).toHaveLength(0);expect(await s.outcome).toEqual({error:'rtc-auth-failed'});expect(s.connection.connectionState).toBe('closed');expect(s.connection.listeners.size+r!.listeners.size+l!.listeners.size).toBe(0);expect(s.jobs.size).toBe(0);r!.open();l!.open();expect(r!.sent).toHaveLength(0);}
+  });
   it('exposes Link only after both open channels and mutual ticket acknowledgement, preserving first packet', async () => {
     const s=setup(); let ready=false; void s.peer.ready.then(()=>{ready=true;});
     const [r,l]=s.connection.channels; r!.open(); r!.receive(hello()); await tick(); expect(ready).toBe(false); expect(r!.sent).toHaveLength(0);

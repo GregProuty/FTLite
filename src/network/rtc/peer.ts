@@ -86,7 +86,13 @@ export function createRtcPeer({attemptId,role,identity: suppliedIdentity,localTi
     chain=chain.then(async()=>{if(!alive())return;try{await work();}catch{fail('rtc-negotiation-failed');}});
     return chain;
   }
-  function sendAuth(value: unknown) { try{reliable!.send(RTC_AUTH_PREFIX+JSON.stringify(value));}catch{fail('rtc-auth-failed');} }
+  function sendAuth(value: unknown) {
+    try {
+      const message=RTC_AUTH_PREFIX+JSON.stringify(value);
+      if(!rtcBoundedText(message,RTC_AUTH_BYTES)){fail('rtc-auth-failed');return;}
+      reliable!.send(message);
+    }catch{fail('rtc-auth-failed');}
+  }
   function completeAuth() {
     if(closed || link || !reliable || !latest || reliable.readyState!=='open' || latest.readyState!=='open')return;
     if(!validTime()){fail('rtc-auth-failed');return;}
