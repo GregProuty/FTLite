@@ -1,0 +1,70 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Flight step contradicts the new-code boundary",
+      "claim": "The flight section requires new functions in the guarded tactical sim, while the architecture section says all new code goes outside guarded roots.",
+      "evidence": "spec L137 requires `stepSoloFlight` in the tactical sim and an export from `contacts.ts`; spec L141 says new code goes in app and render directories and that none of it is under guarded roots; src/renderer/src/sim/tactical/contacts.ts:L38-L45 contains the currently private static-contact pass.",
+      "why": "The H-1a plan cannot follow both placement rules as written.",
+      "fix": "Make §10 explicitly allow the two specified tactical-sim changes in §9, while keeping renderer and app code outside guarded roots."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Spec L43 sends player 1 away as a replayable tick-0 command on every duel, including restarts at L54."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Spec L100 supplies effective current axes to the model and defines when the runtime records them."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "Spec L137 defines a ship-0-only step with static contacts and excludes ship 1 from stepping, collisions and drawing."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "Spec L42 uses the duel tick for commands; L53-L56 recreate the driver and duel and reset view and input state."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "Spec L45-L51 separates pause reasons and makes focus clear only `blur`."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "Spec L143 tests allocation after warm-up and rebuilds the interior view on restart."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "Spec L113-L118 defines predictor inputs, steering, horizon, sampling, termination and comparison tests."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "Spec L112 puts the lock marker on both consoles; L120 names both hull readouts."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "Spec L119 defines counter-based contact sparks and their placement, colour and duration."
+    }
+  ],
+  "verified": [
+    "The tick-0 presence command in spec L43 is processed before tactical attendance is determined in src/renderer/src/sim/duel/step.ts:L93-L103.",
+    "The proposed single-ship step in spec L137 addresses the two-ship behavior in src/renderer/src/sim/tactical/physics.ts:L57-L61 and src/renderer/src/sim/tactical/contacts.ts:L47-L53.",
+    "The predictor rules in spec L113-L118 match missile movement and contact order in src/renderer/src/sim/tactical/missiles.ts:L32-L44 and L60-L80.",
+    "The warm-up rationale in spec L143 matches first-draw object creation in src/renderer/src/render/roomIcons.ts:L72-L81 and src/renderer/src/render/crewSprites.ts:L55-L71."
+  ],
+  "not_verified": [
+    "The run-dir ledger could not be read because filesystem access was denied; the ledger supplied in the request was used.",
+    "No tests were run for this read-only spec review."
+  ]
+}

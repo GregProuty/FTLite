@@ -107,3 +107,55 @@ Confirmed: `DuelEvent` has no contact kind (`tactical/state.ts:L51-L56`). §7's 
 
 ---
 
+# Round 2 (delta, reviewing f347115, effort medium, 86 s, 262041 in / 206208 cached / 3987 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Flight step contradicts the new-code boundary
+The flight section requires new functions in the guarded tactical sim, while the architecture section says all new code goes outside guarded roots. · spec L137 requires `stepSoloFlight` in the tactical sim and an export from `contacts.ts`; spec L141 says new code goes in app and render directories and that none of it is under guarded roots; src/renderer/src/sim/tactical/contacts.ts:L38-L45 contains the currently private static-contact pass. · The H-1a plan cannot follow both placement rules as written. · Make §10 explicitly allow the two specified tactical-sim changes in §9, while keeping renderer and app code outside guarded roots.
+
+## Prior findings
+- R1-F1: resolved — Spec L43 sends player 1 away as a replayable tick-0 command on every duel, including restarts at L54.
+- R1-F2: resolved — Spec L100 supplies effective current axes to the model and defines when the runtime records them.
+- R1-F3: resolved — Spec L137 defines a ship-0-only step with static contacts and excludes ship 1 from stepping, collisions and drawing.
+- R1-F4: resolved — Spec L42 uses the duel tick for commands; L53-L56 recreate the driver and duel and reset view and input state.
+- R1-F5: resolved — Spec L45-L51 separates pause reasons and makes focus clear only `blur`.
+- R1-F6: resolved — Spec L143 tests allocation after warm-up and rebuilds the interior view on restart.
+- R1-F7: resolved — Spec L113-L118 defines predictor inputs, steering, horizon, sampling, termination and comparison tests.
+- R1-F8: resolved — Spec L112 puts the lock marker on both consoles; L120 names both hull readouts.
+- R1-F9: resolved — Spec L119 defines counter-based contact sparks and their placement, colour and duration.
+
+## Verified
+- The tick-0 presence command in spec L43 is processed before tactical attendance is determined in src/renderer/src/sim/duel/step.ts:L93-L103.
+- The proposed single-ship step in spec L137 addresses the two-ship behavior in src/renderer/src/sim/tactical/physics.ts:L57-L61 and src/renderer/src/sim/tactical/contacts.ts:L47-L53.
+- The predictor rules in spec L113-L118 match missile movement and contact order in src/renderer/src/sim/tactical/missiles.ts:L32-L44 and L60-L80.
+- The warm-up rationale in spec L143 matches first-draw object creation in src/renderer/src/render/roomIcons.ts:L72-L81 and src/renderer/src/render/crewSprites.ts:L55-L71.
+
+## Not verified
+- The run-dir ledger could not be read because filesystem access was denied; the ledger supplied in the request was used.
+- No tests were run for this read-only spec review.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json`. 1 accepted, 0 rejected, 0 deferred. Codex confirmed R1-F1 to R1-F9 resolved.
+
+## R2-F1 [P1]: Flight step contradicts the new-code boundary
+
+Confirmed. §9 adds `stepSoloFlight` and exports the static-contact pass (`contacts.ts:L38-L45`), both under the guarded `sim/` root, while §10 said all new code sits outside the guarded roots. §10 now names these two sim changes as the one exception. They follow the guarded roots' rules: deterministic arithmetic only, and no imports from render, app or input. All other new code stays in `app/` and `render/`.
+
+## Also changed
+
+- Change log entry for round 2.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-14-helm-h1-views-design.md
+
+<!-- end -->
+
+---
+

@@ -138,7 +138,7 @@ One `TacticalState` from the seed. `stepFlight` advances both ships and resolves
 
 ## 10. Architecture and boundaries
 
-- **New code** goes in `src/renderer/src/app/duel/` (runtime, input, mode boot) and `src/renderer/src/render/tactical/` and `render/duel/` (camera, models, layers, interior view, readouts). None of it is under the determinism-guarded roots. The guarded `sim/` code never imports it (the boundary test enforces this).
+- **New code** goes in `src/renderer/src/app/duel/` (runtime, input, mode boot) and `src/renderer/src/render/tactical/` and `render/duel/` (camera, models, layers, interior view, readouts). None of it is under the determinism-guarded roots. The guarded `sim/` code never imports it (the boundary test enforces this). **The one exception is in the sim itself:** §9's `stepSoloFlight` (new, in `sim/tactical/physics.ts`) and exporting `contacts.ts`'s existing per-ship static-contact pass. Both live under the guarded roots and follow their rules: deterministic arithmetic only, no imports from render, app or input.
 - **Pure models and thin layers:** every new view has a pure `*Model.ts`, unit-tested in Vitest's node environment, and a Pixi layer that only draws the model. Display objects are created once and reused (pooled BitmapText, `Graphics.clear()` and redraw).
 - **Allocation test** **(rec.)**: a test runs each new layer through a warm-up of 2 frames, then 60 steady-state frames, and asserts the display-object count does not change after warm-up. The reused interior layers (room icons, crew sprites) create their objects on their first draw, so the interior view counts as built after its warm-up. A restart destroys and rebuilds it (§4).
 - **The runtime is testable headless:** it takes `now`, `scheduler`, `sampleKeys` and `samplePointer` as dependencies. Tests drive it with a fake clock and scripted keys: Tab switches presence, an E press sits, Space charges and fires, the duel ends and restarts.
@@ -170,3 +170,4 @@ Each part follows the standing order: plan, refine, build subagent-driven, refin
 
 - 2026-11-14: written for H-1 under the standing order.
 - 2026-11-14: refine round 1: solo start makes player 1 away on tick 0 (and on restart); commands use the duel's tick; restart recreates the driver and resets every cache; pause reasons; current axes as a model input; single-ship flight step; warm-up allocation rule; missile-path predictor contract; lock marker on both consoles and both hulls in the readout; contact sparks.
+- 2026-11-14: refine round 2: §10 names the two tactical-sim changes (stepSoloFlight, exported static-contact pass) as the exception to new code living outside the guarded roots.
