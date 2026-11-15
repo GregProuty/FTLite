@@ -32,6 +32,9 @@ export class Room extends DurableObject<Env> {
     this.turn = new RoomTurn(this.store, this.auth, this.sockets, this.lifecycle, env);
     this.store.onFence = () => {
       this.signals.sweep();
+      // A provisional rehost may have changed both generation and host seat.
+      // Publish the complete non-authoritative fence before its departure.
+      this.sockets.roster();
       this.sockets.broadcast({ type: 'host-departed', hostGeneration: this.store.meta()!.host_generation });
     };
     this.lifecycleRequest = (connection, request) => this.lifecycle.request(connection, request);

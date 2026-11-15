@@ -93,7 +93,11 @@ export class SocketDelivery {
       this.send(row, payload);
     }
   }
-  roster(): void { if (this.store.meta()) this.broadcast({ type: 'roster', snapshot: this.store.snapshot() }); }
+  roster(): void {
+    // Local commit is provisional until Directory acknowledges it. Publishing
+    // its active snapshot would bypass the host-changed/grant boundary.
+    if (this.store.meta() && this.store.activation()?.state !== 'committed') this.broadcast({ type: 'roster', snapshot: this.store.snapshot() });
+  }
   takeRate(row: ConnectionRow, ack: boolean): boolean {
     const now = Date.now(), field = ack ? 'ack' : 'signal', rate = ack ? 120 : 30, burst = rate * 2;
     this.store.sql.exec('INSERT OR IGNORE INTO room_socket_rates VALUES (?, 60, ?, 240, ?)', row.seat_id!, now, now);
@@ -117,6 +121,7 @@ export class SocketDelivery {
           const pending = this.row(row.socket_id);
           if (!pending || pending.seat_id !== null || pending.auth_deadline <= Date.now()) failure('timeout');
           this.store.requireConfirmed();
+          if (this.store.activation()?.state === 'committed') failure('unavailable');
           const t = this.store.sql.exec<TicketRow>('SELECT * FROM room_tickets WHERE ticket_hash = ? AND connection_id = ?', hash, frame.connectionId).toArray()[0] ?? failure('unauthorized');
           if (t.expires_at <= Date.now()) failure('ticket-expired');
           if (t.consumed) failure('ticket-used');
@@ -131,6 +136,8 @@ export class SocketDelivery {
       if (!result.ok) { this.close(row.socket_id); return; }
       const authenticated = this.row(row.socket_id);
       if (!authenticated) return; // Retirement may win after the transaction's promise resolves.
+      // Activation may commit while the domain promise resolves after auth SQL.
+      if (this.store.activation()?.state === 'committed') { this.close(row.socket_id); return; }
       this.send(authenticated, { type: 'authenticated', session: { snapshot: this.store.snapshot(), seatId: authenticated.seat_id!, seatGeneration: authenticated.generation! } });
       this.onRosterChange?.(); this.roster(); await this.store.schedule(); return;
     }

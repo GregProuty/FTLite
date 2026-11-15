@@ -234,7 +234,7 @@ it('retains an exact activation tuple when an earlier capacity refusal arrives a
   hp.send({ type: 'rehost-claim', requestId: 6, expectedHostGeneration: 2, nonce: 'f'.repeat(32) });
   expect(await hp.reply(6)).toMatchObject({ outcome: { kind: 'lease', lease: { hostGeneration: 3 } } });
 });
-it('fences an unacknowledged start when a required ready route is replaced during Directory acknowledgement', async () => {
+it('refuses provisional link issuance and fences a start when a required ready route retires during Directory acknowledgement', async () => {
   const host = await create(2), guest = await join(host), hp = await connect(host), gp = await connect(guest), { h } = await links(hp, gp);
   hp.send({ type: 'link-ready', requestId: 2, attemptId: h.attemptId }); await hp.reply(2);
   gp.send({ type: 'link-ready', requestId: 1, attemptId: h.attemptId }); await gp.reply(1);
@@ -256,7 +256,8 @@ it('fences an unacknowledged start when a required ready route is replaced durin
     const rejected = expect(pending).rejects.toThrow('invalid-state');
     try {
       await seen;
-      expect(await room.signals.issue(sender, 1)).toMatchObject({ kind: 'attempt' });
+      await expect(room.signals.issue(sender, 1)).rejects.toThrow('unavailable');
+      room.signals.invalidate(room.signals.rows().find(a => a.attempt_id === h.attemptId)!);
       expect(room.store.snapshot().rosterRevision).toBe(revision);
       expect(room.signals.allGuestsReady()).toBe(false);
       release(); await rejected;

@@ -44,6 +44,121 @@ function latestSnapshot(events: RoomServiceEvent[], initial: RoomSnapshot) {
   return initial;
 }
 
+it.each(['held', 'lost', 'timely'] as const)('keeps provisional rehost private across guest retirement and %s Directory acknowledgement', async mode => {
+  const host = client(), claimant = client(), spare = client();
+  const hs = await host.c.create(compatibility, 3);
+  const gs = await claimant.c.join(hs.snapshot.joinCode, compatibility);
+  const ss = await spare.c.join(hs.snapshot.joinCode, compatibility);
+  await host.c.connect(hs); await claimant.c.connect(gs); await spare.c.connect(ss);
+  for (const [peer, seat] of [[claimant, gs], [spare, ss]] as const) {
+    const link = await host.c.request({ type: 'link-request', guestSeatId: seat.seatId });
+    await host.c.request({ type: 'link-ready', attemptId: link.attemptId });
+    await peer.c.request({ type: 'link-ready', attemptId: link.attemptId });
+    await peer.c.request({ type: 'ready', ready: true });
+  }
+  const ready = await host.c.request({ type: 'ready', ready: true });
+  const proposal = await host.c.request({ type: 'start-propose', expectedRosterRevision: ready.snapshot.rosterRevision,
+    initBase64: btoa('provisional-proof'), initHash: await hashBytes(new TextEncoder().encode('provisional-proof')) });
+  await host.c.request({ type: 'start-commit', proposalId: proposal.proposalId, expectedRosterRevision: ready.snapshot.rosterRevision });
+  const bytes = new Uint8Array([8, 4]), metadata: SessionCheckpointMetadata = { version: 1, protocolVersion: 2,
+    roomId: hs.snapshot.roomId, runId: hs.snapshot.runId, compatibility, hostGeneration: 1,
+    checkpointSequence: 1, capturedTick: 5, payloadSha256: await hashBytes(bytes) };
+  await host.c.putCheckpoint(metadata, bytes); await host.c.request({ type: 'host-release' });
+  const stub = env.ROOMS.get(env.ROOMS.idFromName(hs.snapshot.roomId));
+  let release = () => {}, entered = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await runInDurableObject(stub, room => {
+    const real = room.lifecycle.directory;
+    Object.defineProperty(room.lifecycle, 'directory', { configurable: true, value: {
+      releaseFenced: (...args: Parameters<typeof real.releaseFenced>) => real.releaseFenced(...args),
+      fenceActivation: (...args: Parameters<typeof real.fenceActivation>) => real.fenceActivation(...args),
+      reserveActivation: (...args: Parameters<typeof real.reserveActivation>) => real.reserveActivation(...args),
+      commitActivation: async (...args: Parameters<typeof real.commitActivation>) => {
+        const result = await real.commitActivation(...args); entered = true;
+        if (mode !== 'lost') { await gate; return result; }
+        return { ok: false, error: { code: 'unavailable', retryable: true } };
+      },
+    } });
+  });
+  const claim = claimant.c.request({ type: 'rehost-claim', expectedHostGeneration: 1, nonce: 'a'.repeat(32) });
+  void claim.catch(() => {});
+  try {
+    await until(() => entered);
+    if (mode === 'lost') await expect(claim).rejects.toThrow('unavailable');
+    await runInDurableObject(stub, room => {
+      expect(room.store.activation()?.state).toBe('committed');
+      expect(room.store.snapshot()).toMatchObject({ phase: 'active', hostGeneration: 2, hostSeatId: gs.seatId });
+    });
+    spare.c.close();
+    await runInDurableObject(stub, room => {
+      const row = room.sockets.rows().find(r => r.seat_id === ss.seatId);
+      if (row) room.sockets.close(row.socket_id, 1000);
+      room.sockets.roster();
+    });
+    // A request/reply round trip drains prior roster publication on this socket.
+    await expect(host.c.request({ type: 'lease-renew', nonce: 'b'.repeat(32) })).rejects.toThrow('forbidden');
+    expect(host.events.filter(e => e.type === 'error')).toEqual([]);
+    expect(claimant.events.filter(e => e.type === 'error')).toEqual([]);
+    expect(host.events.some(e => e.type === 'roster' && e.snapshot.hostGeneration === 2)).toBe(false);
+    await expect(claimant.c.request({ type: 'link-request', guestSeatId: hs.seatId })).rejects.toThrow('unavailable');
+    const retry = client();
+    await expect(retry.c.join(hs.snapshot.joinCode, compatibility, ss.seatToken)).rejects.toThrow('unavailable');
+    await expect(retry.c.connect(ss)).rejects.toThrow('unavailable');
+    if (mode === 'timely') {
+      release();
+      expect((await claim).lease).toMatchObject({ hostGeneration: 2, hostSeatId: gs.seatId });
+      await until(() => host.events.some(e => e.type === 'host-changed'));
+      expect(latestSnapshot(host.events, hs.snapshot)).toMatchObject({ phase: 'active', hostGeneration: 2, hostSeatId: gs.seatId });
+      expect([...host.events, ...claimant.events].filter(e => e.type === 'error')).toEqual([]);
+      expect(await host.c.getCheckpoint()).toEqual({ metadata, bytes });
+      return;
+    }
+    await runInDurableObject(stub, room => {
+      room.store.sql.exec('UPDATE room_lease SET expires_at = ?', Date.now() - 1);
+      room.store.expire();
+      Object.defineProperty(room.lifecycle, 'directory', { value: env.DIRECTORY.get(env.DIRECTORY.idFromName('global')) });
+    });
+    release();
+    if (mode === 'held') await expect(claim).rejects.toThrow('stale-generation');
+    await runInDurableObject(stub, room => room.alarm());
+    await until(() => latestSnapshot(host.events, hs.snapshot).hostGeneration === 2);
+    for (const peer of [host, claimant]) {
+      expect(peer.events.filter(e => e.type === 'error')).toEqual([]);
+      expect(peer.events.some(e => e.type === 'host-changed')).toBe(false);
+      expect(latestSnapshot(peer.events, hs.snapshot)).toMatchObject({ phase: 'lost', hostGeneration: 2, hostSeatId: gs.seatId });
+      expect(await peer.c.getCheckpoint()).toEqual({ metadata, bytes });
+    }
+    const next = await host.c.request({ type: 'rehost-claim', expectedHostGeneration: 2, nonce: 'c'.repeat(32) });
+    expect(next.lease).toMatchObject({ hostGeneration: 3, hostSeatId: hs.seatId });
+    await until(() => claimant.events.some(e => e.type === 'host-changed' && e.snapshot.hostGeneration === 3));
+    expect(claimant.events.filter(e => e.type === 'error')).toEqual([]);
+  } finally {
+    release();
+    await runInDurableObject(stub, room => { Object.defineProperty(room.lifecycle, 'directory', { value: env.DIRECTORY.get(env.DIRECTORY.idFromName('global')) }); });
+  }
+});
+
+it('settles a real asynchronously retired issuance reply while keeping both production clients connected', async () => {
+  const host = client(), guest = client(), hs = await host.c.create(compatibility, 2);
+  const gs = await guest.c.join(hs.snapshot.joinCode, compatibility);
+  await host.c.connect(hs); await guest.c.connect(gs);
+  const stub = env.ROOMS.get(env.ROOMS.idFromName(hs.snapshot.roomId));
+  await runInDurableObject(stub, room => {
+    const real = room.sockets.onRequest!;
+    room.sockets.onRequest = async (connection, request) => {
+      const outcome = await real(connection, request);
+      if (outcome.kind === 'attempt') room.signals.invalidate(room.signals.rows().find(a => a.attempt_id === outcome.attemptId)!);
+      return outcome;
+    };
+  });
+  const result = await host.c.request({ type: 'link-request', guestSeatId: gs.seatId });
+  await until(() => guest.events.some(e => e.type === 'link-state' && e.state === 'closed'));
+  expect(host.events.filter(e => e.type === 'link-issued' || e.type === 'link-state').map(e => e.type)).toEqual(['link-issued', 'link-state']);
+  await expect(host.c.request({ type: 'link-ready', attemptId: result.attemptId })).rejects.toThrow('stale-generation');
+  await host.c.request({ type: 'ready', ready: true }); await guest.c.request({ type: 'ready', ready: true });
+  expect([...host.events, ...guest.events].filter(e => e.type === 'error')).toEqual([]);
+});
+
 it('drives real public endpoints through production clients: unequal-generation RTC, start, TURN, checkpoint, lease and rehost', async () => {
   const host = client(), guest = client();
   const first = await host.c.create(compatibility, 2);

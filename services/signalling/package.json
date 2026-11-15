@@ -14,7 +14,7 @@
     "@msw/cloudflare": "0.1.0",
     "msw": "2.14.7",
     "typescript": "5.8.3",
-    "vitest": "4.1.0",
+    "vitest": "4.1.12",
     "wrangler": "4.156.0"
   }
 }

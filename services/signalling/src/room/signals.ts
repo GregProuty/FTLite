@@ -57,6 +57,7 @@ export class SignalCoordinator {
   async issue(sender: ConnectionRow, guestSeat: number): Promise<ReplyOutcome> {
     this.sweep();
     const observed = this.store.requireConfirmed(); this.sockets.current(sender);
+    if (this.store.activation()?.state === 'committed') failure('unavailable');
     if (sender.seat_id !== observed.host_seat_id) failure('forbidden');
     if (guestSeat === observed.host_seat_id) failure('invalid-request');
     const seat = this.store.seat(guestSeat), guest = seat?.connection_id ? this.sockets.byConnection(seat.connection_id) : undefined;
@@ -72,6 +73,7 @@ export class SignalCoordinator {
       const attempt = this.store.transaction(() => {
         this.sockets.current(sender); this.sockets.current(guest);
         const m = this.store.requireConfirmed();
+        if (this.store.activation()?.state === 'committed') failure('unavailable');
         if (m.phase !== 'lobby' && m.phase !== 'active') failure('invalid-state');
         if (m.host_generation !== observed.host_generation || m.host_seat_id !== sender.seat_id) failure('stale-generation');
         const pending = this.store.sql.exec<{ operation_id: string; expires_at: number }>('SELECT operation_id, expires_at FROM room_link_pending WHERE guest_seat = ?', guestSeat).toArray()[0];

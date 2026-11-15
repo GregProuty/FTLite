@@ -100,6 +100,13 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
   const pending = new Map<number, Pending>();
   // Retain routing metadata only; ephemeral authentication tickets go directly to subscribers.
   const links = new Map<string, { identity: RtcIdentity; role: 'offerer' | 'answerer' }>();
+  // Issuance can retire before its reply arrives. Retain only validated IDs and
+  // eligible pending requests, never routing/tickets. At most 64 IDs x 64
+  // pending references, all bounded by the existing five-second request life.
+  const issued = new Map<string, Set<Pending>>();
+  function forgetIssuance(p: Pending) {
+    for (const [id, eligible] of issued) { eligible.delete(p); if (!eligible.size) issued.delete(id); }
+  }
 
   function assertCurrent(expected: number, expectedAuthority?: number) {
     if (closed || expected !== generation) throw fault('stale-connection');
@@ -115,7 +122,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     try { old?.close(); } catch {}
     if (handshake) { clock.clearTimeout(handshake.timer); handshake.reject(error); handshake = undefined; }
     for (const p of pending.values()) { clock.clearTimeout(p.timer); p.reject(error); }
-    pending.clear(); pendingBytes = 0; links.clear(); sequence = 0; nextId = 1;
+    pending.clear(); pendingBytes = 0; links.clear(); issued.clear(); sequence = 0; nextId = 1;
     token = undefined; session = undefined;
   }
   function dispatch(event: RoomServiceEvent) {
@@ -168,7 +175,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     socket.send(text);
   }
   function invalidateAuthority(nextHostGeneration: number, preserveLifecycle = true) {
-    authority++; links.clear();
+    authority++; links.clear(); issued.clear();
     for (const p of pending.values()) {
       if (preserveLifecycle && p.operation.type === 'rehost-claim' && p.operation.expectedHostGeneration + 1 === nextHostGeneration) continue;
       if (preserveLifecycle && p.operation.type === 'host-release' && p.hostGeneration === nextHostGeneration) continue;
@@ -185,7 +192,10 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       if ((p.operation.type === 'lease-renew' || p.operation.type === 'rehost-claim') && outcome.lease.nonce !== p.operation.nonce) throw fault('invalid-frame');
       if (p.operation.type === 'rehost-claim' && outcome.lease.hostGeneration !== p.operation.expectedHostGeneration + 1) throw fault('invalid-frame');
     }
-    if (outcome.kind === 'attempt' && !links.has(outcome.attemptId)) throw fault('invalid-frame');
+    if (outcome.kind === 'attempt') {
+      if (!issued.get(outcome.attemptId)?.has(p)) throw fault('invalid-frame');
+      issued.delete(outcome.attemptId); // One issuance can settle only one request.
+    }
   }
   function event(payload: RoomServiceEvent) {
     const current = requireSession().snapshot;
@@ -225,7 +235,15 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
           || identity.remoteConnectionId === connectionId || payload.link.ticketExpiresAtEpochMs <= clock.nowMs()
           || (role === 'answerer' ? identity.seatGeneration !== session!.seatGeneration || session!.seatId === current.hostSeatId
             : session!.seatId !== current.hostSeatId || !current.seats.some(s => s.seatId !== current.hostSeatId && s.occupied && s.seatGeneration === identity.seatGeneration))
-          || links.size >= 4 || links.has(payload.link.attemptId)) throw fault('invalid-frame');
+          || links.size >= 4 || links.has(payload.link.attemptId) || issued.has(payload.link.attemptId)) throw fault('invalid-frame');
+        if (role === 'offerer') {
+          const eligible = new Set([...pending.values()].filter(p => !p.stale && p.hostGeneration === identity.hostGeneration
+            && p.operation.type === 'link-request' && current.seats[p.operation.guestSeatId]?.seatGeneration === identity.seatGeneration));
+          if (eligible.size) {
+            if (issued.size >= MAX_PENDING) throw fault('invalid-frame');
+            issued.set(payload.link.attemptId, eligible);
+          }
+        }
         links.set(payload.link.attemptId, { identity: copy(identity), role }); break;
       }
       case 'signal': if (!validSignal(payload.signal, false)) throw fault('invalid-frame'); break;
@@ -272,7 +290,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       }
       if (completedReply) {
         const { id, pending: p, outcome } = completedReply;
-        pending.delete(id); pendingBytes -= p.bytes; clock.clearTimeout(p.timer);
+        pending.delete(id); pendingBytes -= p.bytes; clock.clearTimeout(p.timer); forgetIssuance(p);
         if (!p.stale) {
           if (outcome.kind === 'error') p.reject(new RoomServiceClientError(outcome.error));
           else p.resolve(copy(outcome));

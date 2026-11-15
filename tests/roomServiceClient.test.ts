@@ -91,6 +91,74 @@ describe('generic room service client', () => {
     socket.event({ type: 'signal', signal: { attemptId: '5'.repeat(32), roomId: snapshot.roomId, hostGeneration: 1, seatGeneration: 1, from: '4'.repeat(32), to: '3'.repeat(32), kind: 'candidate', candidate: null } });
     expect(seen).toEqual(['link-issued', 'signal']); expect(socket.frames().at(-1)).toEqual({ type: 'ack', sequence: 3 });
   });
+  it('settles overlapping retired issuance replies without reviving routes or disturbing a live attempt', async () => {
+    const { c, socket } = await connected();
+    const a = c.request({ type: 'link-request', guestSeatId: 1 }), b = c.request({ type: 'link-request', guestSeatId: 1 });
+    void a.catch(() => {}); void b.catch(() => {});
+    const identity = { ...compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration: 1, seatGeneration: 1,
+      localConnectionId: '3'.repeat(32), remoteConnectionId: '4'.repeat(32) };
+    for (const id of ['5', '6']) {
+      socket.event({ type: 'link-issued', link: { attemptId: id.repeat(32), role: 'offerer', identity,
+        localTicket: 'L'.repeat(43), expectedRemoteTicket: 'R'.repeat(43), ticketExpiresAtEpochMs: Date.now() + 30000 } });
+      if (id === '5') socket.event({ type: 'link-state', attemptId: id.repeat(32), state: 'closed' });
+    }
+    socket.reply(2, { kind: 'attempt', attemptId: '6'.repeat(32) });
+    socket.reply(1, { kind: 'attempt', attemptId: '5'.repeat(32) });
+    await expect(a).resolves.toEqual({ kind: 'attempt', attemptId: '5'.repeat(32) });
+    await expect(b).resolves.toEqual({ kind: 'attempt', attemptId: '6'.repeat(32) });
+    expect(socket.closed).toBe(false);
+    await expect(c.request({ type: 'link-ready', attemptId: '5'.repeat(32) })).rejects.toThrow('stale-generation');
+    const live = c.request({ type: 'link-ready', attemptId: '6'.repeat(32) });
+    socket.reply(3, { kind: 'void' }); await live;
+    expect(socket.frames().filter(f => f.type === 'link-ready')).toHaveLength(1);
+  });
+  it.each(['never-issued', 'issued-before-request', 'reused'])('rejects %s attempt evidence', async mode => {
+    const { c, socket } = await connected();
+    const identity = { ...compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration: 1, seatGeneration: 1,
+      localConnectionId: '3'.repeat(32), remoteConnectionId: '4'.repeat(32) };
+    const issued = () => socket.event({ type: 'link-issued', link: { attemptId: '5'.repeat(32), role: 'offerer', identity,
+      localTicket: 'L'.repeat(43), expectedRemoteTicket: 'R'.repeat(43), ticketExpiresAtEpochMs: Date.now() + 30000 } });
+    if (mode === 'issued-before-request') issued();
+    const a = c.request({ type: 'link-request', guestSeatId: 1 });
+    if (mode === 'reused') {
+      const b = c.request({ type: 'link-request', guestSeatId: 1 });
+      issued(); socket.reply(1, { kind: 'attempt', attemptId: '5'.repeat(32) }); await a;
+      socket.reply(2, { kind: 'attempt', attemptId: '5'.repeat(32) });
+      await expect(b).rejects.toThrow('invalid-frame');
+    } else {
+      socket.reply(1, { kind: 'attempt', attemptId: '5'.repeat(32) }); await expect(a).rejects.toThrow('invalid-frame');
+    }
+    expect(socket.closed).toBe(true);
+  });
+  it.each(['settle', 'cancel', 'overflow'] as const)('bounds retired issuance evidence and cleans it on %s', async mode => {
+    const { c, socket } = await connected();
+    const identity = { ...compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration: 1, seatGeneration: 1,
+      localConnectionId: '3'.repeat(32), remoteConnectionId: '4'.repeat(32) };
+    const issue = (n: number) => {
+      const attemptId = n.toString(16).padStart(32, '0');
+      socket.event({ type: 'link-issued', link: { attemptId, role: 'offerer', identity,
+        localTicket: 'L'.repeat(43), expectedRemoteTicket: 'R'.repeat(43), ticketExpiresAtEpochMs: Date.now() + 30000 } });
+      socket.event({ type: 'link-state', attemptId, state: 'closed' });
+    };
+    const pending = c.request({ type: 'link-request', guestSeatId: 1 }); void pending.catch(() => {});
+    for (let n = 1; n <= 64; n++) issue(n);
+    expect(socket.closed).toBe(false);
+    if (mode === 'overflow') {
+      issue(65); await expect(pending).rejects.toThrow('invalid-frame'); expect(socket.closed).toBe(true); return;
+    }
+    if (mode === 'settle') {
+      socket.reply(1, { kind: 'error', error: { code: 'conflict', retryable: false } });
+      await expect(pending).rejects.toThrow('conflict');
+    } else {
+      socket.event({ type: 'host-departed', hostGeneration: 1 });
+      await expect(pending).rejects.toThrow('stale-generation');
+      socket.reply(1, { kind: 'error', error: { code: 'conflict', retryable: false } });
+    }
+    const next = c.request({ type: 'link-request', guestSeatId: 1 });
+    // The next ID fits only if settlement/cancellation freed the old evidence.
+    issue(65); socket.reply(2, { kind: 'attempt', attemptId: '41'.padStart(32, '0') });
+    await expect(next).resolves.toMatchObject({ kind: 'attempt' }); expect(socket.closed).toBe(false);
+  });
   it('accepts host-changed before the matching claim reply and rejects other old-generation work', async () => {
     const { c, socket } = await connected(), nonce = '6'.repeat(32);
     const p = c.request({ type: 'rehost-claim', expectedHostGeneration: 1, nonce });

@@ -225,6 +225,10 @@ it('covers stalled provider response bytes with the same five-second deadline', 
   expect(Date.now() - begin).toBeLessThan(6000); expect(Date.now() - begin).toBeGreaterThanOrEqual(4900); await expect.poll(() => cancelled, { timeout: 1000 }).toBe(true);
 }, 8000);
 it('aborts a stalled provider at five seconds without refunding its quota', async () => {
+  // MSW 2.14.7 RequestHandler.run's abort listener returns the promise from
+  // runScheduledCleanups (RequestHandler.ts:358-360,535). Workerd warns that it
+  // ignores that return value; our listener below returns void. Keep the upstream
+  // diagnostic visible while asserting real abort/deadline/quota behavior.
   const host = await create(); await connect(host); let aborted = false;
   network.use(http.post(endpoint, async ({ request: outgoing }) => {
     await new Promise<void>(resolve => outgoing.signal.addEventListener('abort', () => { aborted = true; resolve(); }, { once: true }));

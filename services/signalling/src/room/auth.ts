@@ -10,6 +10,7 @@ export class RoomAuth {
     this.store.expire();
     return this.store.transaction(() => {
       const m = this.store.requireConfirmed();
+      if (this.store.activation()?.state === 'committed') failure('unavailable');
       if (compatibilityKey(JSON.parse(m.compatibility)) !== compatibilityKey(compatibility)) failure('incompatible');
       const retired = existingHash ? this.store.seatByHash(existingHash) : undefined;
       if (existingHash && !retired) failure('unauthorized');
@@ -32,6 +33,7 @@ export class RoomAuth {
     const hashed = await tokenHash(ticket);
     const result = this.store.transaction(() => {
       const seat = this.authenticateHash(hash);
+      if (this.store.activation()?.state === 'committed') failure('unavailable');
       if (seat.generation !== observed.generation) failure('stale-generation');
       if (!seat.ticket_eligible || seat.connection_id !== null) failure('ticket-used');
       const expiresAtEpochMs = Date.now() + 30_000;
