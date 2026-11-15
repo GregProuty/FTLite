@@ -59,12 +59,18 @@ describe('camera zoom', () => {
     expect(after.x).toBeCloseTo(before.x, 6); expect(after.y).toBeCloseTo(before.y, 6);
     expect(cam.anchor).toBeNull();
   });
-  it('a following camera zooms about the followed body (the screen centre)', () => {
-    const cam = createCamera(50, 50);
-    zoomBy(cam, vp, 1, { x: 1000, y: 100 });
-    expect(cam.anchor).toBeNull();
-    run(cam, 0.3, { x: 50, y: 50 });
+  it('a following camera zooms about the followed body, not the cursor, and keeps following', () => {
+    const cam = createCamera(50, 50), at = { x: 1000, y: 100 }, before = screenToWorld(cam, vp, at.x, at.y);
+    zoomBy(cam, vp, 1, at);
+    expect(cam.anchor).toBeNull(); expect(cam.follow).toBe('ship');
+    updateCamera(cam, vp, 0.05, { x: 50, y: 50 });
+    expect(cam.zoom).toBeGreaterThan(ZOOM_DEFAULT); expect(cam.zoom).toBeLessThan(cam.targetZoom);   // mid-ease
     expect(worldToScreen(cam, vp, 50, 50)).toEqual({ x: 640, y: 360 });
+    const mid = screenToWorld(cam, vp, at.x, at.y);
+    expect(Math.hypot(mid.x - before.x, mid.y - before.y)).toBeGreaterThan(20);   // the point under the cursor moved: no cursor anchor
+    run(cam, 0.3, { x: 80, y: 20 });   // the body moves on: the camera still follows it
+    expect(worldToScreen(cam, vp, 80, 20)).toEqual({ x: 640, y: 360 });
+    expect(cam.zoom).toBe(cam.targetZoom);
   });
 });
 
