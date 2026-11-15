@@ -217,3 +217,47 @@ Confirmed. §10 now defines the public exterior fields as an explicit allowlist:
 
 ---
 
+# Round 3 (delta, reviewing a215757, effort medium, 78 s, 305835 in / 252928 cached / 3666 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R3-F1 The full Space projection conflicts with the exterior allowlist
+R-6 publishes the full Space partition, including per-ship AI controller rows, while the new allowlist says no other information about a rival ship is public. · spec L65, L222, L238-L239; src/renderer/src/sim/tactical/hash.ts:L25-L27 · A plan writer cannot implement both the full-Space layout and the stated privacy test. Today's tactical serialization includes the hunter's mode, room and timing state. · Define a projected Space field list and redact per-ship AI state outside it. Apply the allowlist test to the decoded Space partition as well as ship blocks and other publication channels.
+
+## Prior findings
+- R2-F1: resolved — R-2 now specifies a duel migration oracle and a versioned re-bless instead of requiring a byte-identical canonical array (spec L95-L98, L269).
+- R2-F2: resolved — Migration comparisons now exclude the version field and separately require old version plus one (spec L179; src/renderer/src/sim/canonicalFields.ts:L29; src/renderer/src/sim/duel/hash.ts:L11-L12).
+- R2-F3: resolved — The public exterior allowlist explicitly includes room damage, so the privacy assertion no longer rejects the specified summary (spec L223, L238-L239).
+
+## Verified
+- Checked the revision diff and current R-2, migration, projection and milestone text at commit a215757 (spec L90-L110, L170-L183, L216-L243, L266-L274).
+- Checked the relevant source serialization and binding owner answers (src/renderer/src/sim/tactical/hash.ts:L15-L27; src/renderer/src/sim/duel/hash.ts:L11-L12; docs/vision/thesis-grill.md:L292-L319).
+
+## Not verified
+- The working-tree review ledger was inaccessible; its committed copy at a215757 was read instead.
+- No tests were run under the read-only review constraint.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json`. 1 accepted, 0 rejected, 0 deferred. Codex confirmed R2-F1 to R2-F3 resolved.
+
+## R3-F1 [P1]: The full Space projection conflicts with the exterior allowlist
+
+Confirmed: the tactical flatten includes the hunter state (`tactical/hash.ts:L25-L27`). §10 now publishes a **projected space partition**: the map, every ship's kinematics, and the missile pool (position, velocity, heading, owner, age). The AI controller rows (mode, target, timers, random state) of ships the recipient does not control are redacted to 0; only the host sees them. The allowlist now covers the space partition, and the privacy test decodes every partition, space included. It asserts that no AI controller row or random-number state of a ship the recipient does not control appears anywhere.
+
+## Also changed
+
+- Change log entry for round 3.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-15-engine-refactor-design.md
+
+<!-- end -->
+
+---
+

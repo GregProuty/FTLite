@@ -1,0 +1,38 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "The full Space projection conflicts with the exterior allowlist",
+      "claim": "R-6 publishes the full Space partition, including per-ship AI controller rows, while the new allowlist says no other information about a rival ship is public.",
+      "evidence": "spec L65, L222, L238-L239; src/renderer/src/sim/tactical/hash.ts:L25-L27",
+      "why": "A plan writer cannot implement both the full-Space layout and the stated privacy test. Today's tactical serialization includes the hunter's mode, room and timing state.",
+      "fix": "Define a projected Space field list and redact per-ship AI state outside it. Apply the allowlist test to the decoded Space partition as well as ship blocks and other publication channels."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R2-F1",
+      "result": "resolved",
+      "note": "R-2 now specifies a duel migration oracle and a versioned re-bless instead of requiring a byte-identical canonical array (spec L95-L98, L269)."
+    },
+    {
+      "id": "R2-F2",
+      "result": "resolved",
+      "note": "Migration comparisons now exclude the version field and separately require old version plus one (spec L179; src/renderer/src/sim/canonicalFields.ts:L29; src/renderer/src/sim/duel/hash.ts:L11-L12)."
+    },
+    {
+      "id": "R2-F3",
+      "result": "resolved",
+      "note": "The public exterior allowlist explicitly includes room damage, so the privacy assertion no longer rejects the specified summary (spec L223, L238-L239)."
+    }
+  ],
+  "verified": [
+    "Checked the revision diff and current R-2, migration, projection and milestone text at commit a215757 (spec L90-L110, L170-L183, L216-L243, L266-L274).",
+    "Checked the relevant source serialization and binding owner answers (src/renderer/src/sim/tactical/hash.ts:L15-L27; src/renderer/src/sim/duel/hash.ts:L11-L12; docs/vision/thesis-grill.md:L292-L319)."
+  ],
+  "not_verified": [
+    "The working-tree review ledger was inaccessible; its committed copy at a215757 was read instead.",
+    "No tests were run under the read-only review constraint."
+  ]
+}

@@ -219,7 +219,7 @@ Only then is the new schema blessed, as a `SIM_VERSION` bump.
 - **Per-crew projections for PvP (Q28)** **(rec.)**:
   - **Layout.** Every projection image has the same fixed layout:
     - a projection header;
-    - the full `space` partition;
+    - the **projected `space` partition**: the map, every ship's kinematics, and the missile pool (position, velocity, heading, owner, age). Per-ship AI controller rows (the hunter's mode, target, timers and random state) are redacted to 0 for every ship the recipient does not control. Only the host sees them;
     - then, for each ship slot in order, an exterior-summary block (hull, shield layers, room damage levels, kinematics) and an interior block.
 
     The interior block holds that ship's interior without its random-number state. It is filled for the recipient's own ship and for a locked target, and otherwise holds the redaction value 0 with a per-slot `visible = 0` flag.
@@ -235,8 +235,8 @@ Only then is the new schema blessed, as a `SIM_VERSION` bump.
   - notifications;
   - checkpoints (host-only, never sent to clients in PvP);
   - flight-recorder and history exports (host-side; an export for a player applies that player's projection).
-- **Public exterior fields are an explicit allowlist** **(rec.)**: `active`, ship class id, hull, shield layers, room damage levels (one per tactical room), and the kinematics (position, velocity, heading). Nothing else about a ship is public.
-- **The R-6 privacy test inspects every channel.** It records everything a rival connection receives over a scripted PvP fight, including values, metadata, events and notifications. It asserts that, for any ship whose interior is not visible to that recipient, only allowlisted exterior fields appear, and that the ship's random-number state never appears at all.
+- **Public fields are an explicit allowlist, covering the space partition too** **(rec.)**. Space: the map, kinematics and the missile pool, as listed above. A ship: `active`, ship class id, hull, shield layers, room damage levels (one per tactical room), and the kinematics (position, velocity, heading). Nothing else about a ship is public.
+- **The R-6 privacy test inspects every channel.** It records everything a rival connection receives over a scripted PvP fight, including values, metadata, events and notifications. It decodes every partition, the space partition included, and asserts that for any ship whose interior is not visible to that recipient, only allowlisted fields appear. It also asserts that no AI controller row or random-number state of a ship the recipient does not control appears anywhere.
 - **Seats belong to players, not crew slots.** The seat token and "rejoin your own seat" map to a player id. The Session maps the player to a crew row.
 - **Connections with no crew body stay legal:** spectators, passengers (panel wild card). **Bots** may attach as their own connection.
 - **A bounded history ring:** the authority keeps its rotated 5-second segments (checkpoint plus frames) in a small ring instead of dropping them. That gives a flight recorder, kill-cams and bug reports (panel wild card).
@@ -301,3 +301,4 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
 - 2026-11-15: written from the architecture panel and grill Q28 to Q31; waits for Net-3.
 - 2026-11-15: refine round 1: R-3 migration proof; pre-refactor oracle with results, events and bindings plus an alias table; R-2 storage-only, with the full interior link split out as R-2b; the hashed player binding; projection format, fixed layout, header and hash; one visibility policy for every channel; canonical slot order, stable ids and random streams for N ships; the module-contract migration staged by milestone; the R-1 lifecycle and Net-3 mode adapter.
 - 2026-11-15: refine round 2: R-2 is a proved schema migration, not byte-identical; migration comparisons exclude the version field and check old + 1; public exterior fields are an explicit allowlist for the privacy test.
+- 2026-11-15: refine round 3: the projected space partition redacts AI controller rows of ships the recipient does not control; the allowlist and privacy test cover the space partition.

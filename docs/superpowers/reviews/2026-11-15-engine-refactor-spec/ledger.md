@@ -12,6 +12,7 @@
 | R1-F8 | P1 | Canonical order for N ships and transfers is undefined | resolved | 0 | see response-1.md; confirmed R2 |
 | R1-F9 | P1 | No milestone delivers the module-derived state contract | resolved | 0 | see response-1.md; confirmed R2 |
 | R1-F10 | P1 | The generic rules interface omits the ModeHost adapter boundary | resolved | 0 | see response-1.md; confirmed R2 |
-| R2-F1 | P0 | R-2 cannot keep the duel canonical array byte-identical | fixed:R2 | 0 | see response-2.md |
-| R2-F2 | P0 | The R-3 and R-4 migration comparisons include a field that must change | fixed:R2 | 0 | see response-2.md |
-| R2-F3 | P1 | The R-6 privacy assertion rejects its own exterior summary | fixed:R2 | 0 | see response-2.md |
+| R2-F1 | P0 | R-2 cannot keep the duel canonical array byte-identical | resolved | 0 | see response-2.md; confirmed R3 |
+| R2-F2 | P0 | The R-3 and R-4 migration comparisons include a field that must change | resolved | 0 | see response-2.md; confirmed R3 |
+| R2-F3 | P1 | The R-6 privacy assertion rejects its own exterior summary | resolved | 0 | see response-2.md; confirmed R3 |
+| R3-F1 | P1 | The full Space projection conflicts with the exterior allowlist | fixed:R3 | 0 | projected space partition: map, kinematics, missile pool; AI controller rows of ships the recipient doesn't control redacted; allowlist and privacy test decode the space partition too |
