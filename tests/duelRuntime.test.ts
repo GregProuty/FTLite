@@ -215,6 +215,18 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.cameras.weapons.follow).toBe('ship');
     rt.dispose();
   });
+  it('F then a Space release before one tick: the sim fires the full charge, then launches (charge before launch)', () => {
+    const { rt, time, hold, press, tick, ticks } = rig();
+    press('switch'); tick();
+    hold({ fireHeld: true }); press('fireDown'); tick(); ticks(240);
+    const ship = rt.duel.tactical.ships[0];
+    expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);
+    press('launch'); rt.frame(1 / 60);                          // F first...
+    hold({ fireHeld: false }); press('fireUp'); rt.frame(1 / 60);   // ...then the release, both before the tick
+    time.advance(TICK_MS); rt.frame(1 / 60);
+    expect([ship.shots, ship.missilesLaunched]).toEqual([1, 1]);
+    rt.dispose();
+  });
   it('the Weapons camera follows the missile at its interpolated (drawn) position', () => {
     const { rt, time, press, tick, ticks } = rig();
     press('switch'); tick();

@@ -222,15 +222,18 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     for (const c of pending) {
       const k = c.command;
       if (k.kind === 'laserCharge') {
-        if (launched || !canCharge(d.tactical, 0)) { chargeSent = false; continue; }   // a missile flies or launches now: Fire is let go
+        // The sim applies charge before launch within a tick (lock, charge, launch), so a launch in this tick never voids a
+        // charge command; only a missile already flying does.
+        if (!canCharge(d.tactical, 0)) { chargeSent = false; continue; }
         if (!k.held && !chargeSent) continue;   // a release for a press that was never sent
         chargeSent = k.held;
       } else if (k.kind === 'missileLaunch') {
         if (launched || !canLaunch(d.tactical, 0)) continue;
-        launched = true; chargeSent = false;   // a launch lets go of Fire
+        launched = true;
       }
       commands.push(envelope(c.player, k));
     }
+    if (launched) chargeSent = false;   // the launch lets go of Fire, after any charge command this tick
     const sentSwitch = switching;
     pending = [];
     const held: HeldInput[] = [NEUTRAL, NEUTRAL];
