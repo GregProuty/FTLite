@@ -170,10 +170,13 @@ describe('sector publication and acceptance boundary', () => {
     expect(client.takeEvents()).toEqual([message.event]); expect(wire.reasons).toEqual([]);
   });
   it('requires trusted streaming selection and negotiated payload cap on mode attachment', () => {
-    const f = fixture(), mode = sectorMode.createHost({ contentDigest: options.contentDigest, clock: f.clock, scheduler: { schedule: () => () => {} }, onCrash() {} }); ownTestCleanup(() => mode.dispose());
+    let pump = () => {};
+    const f = fixture(), mode = sectorMode.createHost({ contentDigest: options.contentDigest, clock: f.clock,
+      scheduler: { schedule: (_, callback) => { pump = callback; return () => {}; } }, onCrash() {} }); ownTestCleanup(() => mode.dispose());
     mode.start(new TextEncoder().encode(JSON.stringify(f.init)));
     expect(() => mode.attach(endpoint().link, [0], 'receive-time', { streamed: true })).toThrow();
     const wire = endpoint(); mode.attach(wire.link, [0], 'receive-time', { streamed: true, latestPayloadLimit: 4096 });
+    pump(); // Queued ownership is installed at a completed authority boundary.
     expect(classifyStreamPacket(wire.sent[0]!.bytes).stream).toBe('state');
     mode.dispose(); expect(wire.listeners()).toBe(0);
   });

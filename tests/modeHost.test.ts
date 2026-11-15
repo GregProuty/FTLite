@@ -13,6 +13,7 @@ import { portEndpoint } from './helpers/portEndpoint';
 import { encodeMessage, decodeMessage } from '../src/renderer/src/net/codec';
 import { createPortLink } from '../src/network/portLink';
 import type { HostCommand } from '../src/shared/netSession';
+import { createCardUiState } from '../src/renderer/src/clientControl/cardController';
 
 const encode = (x: unknown) => new TextEncoder().encode(JSON.stringify(x));
 const decode = (x: Uint8Array) => JSON.parse(new TextDecoder().decode(x));
@@ -60,9 +61,13 @@ describe('mode host runtime', () => {
     const h = harness(), direct = createAuthority({ ...h.deps, resolveLayout: () => LAYOUT, onCrash() {} });
     ownTestCleanup(() => direct.dispose()); direct.start(init());
     expect(h.command({ kind: 'start', initBytes: encode(init()) }).ok).toBe(true);
+    // Both owners have an explicitly idle human; vacant sector seats now run bots.
+    h.runtime.attachPeer('idle', [0], portEndpoint().port);
+    const directLink = createPortLink(portEndpoint().port, 'idle-direct'); ownTestCleanup(() => directLink.close('done'));
+    direct.attach(directLink, [0], { admissionPolicy: 'receive-time' });
     h.advance(1000 / 60 * 10 + 0.01); direct.pump();
     const saved = h.command({ kind: 'checkpoint' }); if (!saved.ok || !saved.checkpointBytes) throw Error('missing checkpoint');
-    expect(decode(saved.checkpointBytes)).toEqual(direct.checkpoint([]));
+    expect(decode(saved.checkpointBytes)).toEqual(direct.checkpoint([createCardUiState(init().runId, 1)]));
   });
   it('rejects content/layout/oversized init and invalid restore while preserving the previous owner and ports', () => {
     const h = harness();
@@ -134,8 +139,11 @@ describe('mode host runtime', () => {
   it('cleans attachment that synchronously closes while publishing the initial state', () => {
     const h = harness(); h.command({ kind: 'start', initBytes: encode(init()) }); const p = portEndpoint();
     p.port.postMessage = () => { p.port.close(); };
-    expect(() => h.runtime.attachPeer('peer', [0], p.port)).toThrow(); expect(p.listeners).toBe(0);
+    h.runtime.attachPeer('peer', [0], p.port);
+    h.advance(0); // The producer binds and publishes at the next safe boundary.
+    expect(p.closed).toBe(true); expect(p.listeners).toBe(0);
     const replacement = portEndpoint(); expect(() => h.runtime.attachPeer('peer', [0], replacement.port)).not.toThrow();
+    h.advance(0); expect(replacement.sent.length).toBeGreaterThan(0); expect(replacement.closed).toBe(false);
   });
   it('never invents a correlation ID for malformed unstamped commands', () => {
     const h = harness(minimal);

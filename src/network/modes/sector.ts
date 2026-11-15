@@ -10,6 +10,7 @@ import cutter from '../../renderer/src/sim/ship/cutter.json';
 import { boundedHostBytes } from '../../shared/netSession';
 import { validStreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 import { createSectorStreamBinding } from './sectorStream';
+import { createSectorProducers } from './sectorProducers';
 import type { ModeDefinition, ModeHost, ModeHostDeps, Unsubscribe } from './contracts';
 
 const layouts = new Map([starter, skiff, cutter].map(json => { const layout = parseShip(json); return [layout.id, layout]; }));
@@ -26,22 +27,28 @@ function encode(value: unknown): Uint8Array {
 function createSectorHost(deps: ModeHostDeps): ModeHost {
   let authority: Authority | null = null, disposed = false, count = 0;
   let pause: ((control: LifecyclePause) => void) | undefined;
-  let botMemory: Checkpoint['botControllers'] = [];
+  let producers: ReturnType<typeof createSectorProducers> | undefined;
   const attached = new Set<Unsubscribe>();
   const streamDisposals = new Set<Unsubscribe>();
   function replace(value: RunInit | Checkpoint, restore: boolean): void {
     if (disposed || attached.size) throw Error('detach producers before replacing sector');
     let nextPause: typeof pause;
+    let nextProducers: ReturnType<typeof createSectorProducers>;
     const next = createAuthority({ ...deps, resolveLayout,
+      botControllers: () => nextProducers.controllers(),
+      beforeControls: () => nextProducers.beforeControls(), beforeTick: tick => nextProducers.beforeTick(tick),
       onCrash(record) { let checkpoint: Uint8Array | null = null; try { checkpoint = encode(record.checkpoint); } catch { /* retain diagnostics */ }
-        deps.onCrash({ checkpoint, diagnostic: { replayVersion: 3, ...record } }); },
+        try { nextProducers?.dispose(); } finally { deps.onCrash({ checkpoint, diagnostic: { replayVersion: 3, ...record } }); } },
       bindLifecyclePause(request) { nextPause = request; return () => { if (nextPause === request) nextPause = undefined; }; }
     });
-    try { if (restore) next.restore(value as Checkpoint); else next.start(value as RunInit); }
-    catch (error) { next.dispose(); throw error; }
+    const init = restore ? (value as Checkpoint).init : value as RunInit;
+    nextProducers = createSectorProducers({ authority: next, runId: init.runId, playerCount: init.playerCount,
+      contentDigest: deps.contentDigest, resolveLayout, restoredControllers: restore ? (value as Checkpoint).botControllers : undefined });
+    try { if (restore) next.restore(value as Checkpoint); else next.start(init); }
+    catch (error) { nextProducers.dispose(); next.dispose(); throw error; }
     const old = authority; authority = next; pause = nextPause;
-    count = restore ? (value as Checkpoint).init.playerCount : (value as RunInit).playerCount;
-    botMemory = restore ? structuredClone((value as Checkpoint).botControllers) : [];
+    count = init.playerCount;
+    producers?.dispose(); producers = nextProducers;
     old?.dispose();
   }
   return {
@@ -52,17 +59,17 @@ function createSectorHost(deps: ModeHostDeps): ModeHost {
       if (!validStreamAttachmentOptions(options)) throw Error('invalid stream attachment');
       const stream = options?.streamed ? createSectorStreamBinding(link, { ...deps, resolveLayout, latestPayloadLimit: options.latestPayloadLimit! }) : undefined;
       let off: Unsubscribe;
-      try { off = authority.attach(stream?.link ?? link, players, { admissionPolicy: policy, ...stream?.attachOptions }); }
+      try { off = producers!.attachHuman(stream?.link ?? link, players, { admissionPolicy: policy, ...stream?.attachOptions }); }
       catch (error) { stream?.dispose(); throw error; }
       if (stream) streamDisposals.add(stream.dispose);
       const detach = () => { if (!attached.delete(detach)) return; try { off(); } finally { if (stream) { streamDisposals.delete(stream.dispose); stream.dispose(); } } };
       attached.add(detach); return detach;
     },
-    checkpoint() { if (!authority || disposed) throw Error('sector unavailable'); return encode(authority.checkpoint(botMemory)); },
+    checkpoint() { if (!authority || disposed) throw Error('sector unavailable'); return encode(authority.checkpoint(producers!.controllers())); },
     pause(reason) { if (!authority || disposed || !reason.length || reason.length > 128) throw Error('sector unavailable'); pause?.({ paused: true, reason }); authority.pump(); },
-    dispose() { if (disposed) return; disposed = true; try { authority?.dispose(); } finally {
+    dispose() { if (disposed) return; disposed = true; try { producers?.dispose(); } finally { try { authority?.dispose(); } finally {
       authority = null; pause = undefined; attached.clear(); for (const release of streamDisposals) release(); streamDisposals.clear();
-    } }
+    } } }
   };
 }
 export const sectorMode: ModeDefinition = {
