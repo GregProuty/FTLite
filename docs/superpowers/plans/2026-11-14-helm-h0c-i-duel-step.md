@@ -47,7 +47,7 @@ Nothing in the sector run imports `sim/duel/` or changes behaviour, so no `SIM_V
    - `laserCharge` while a missile flies → `missile-in-flight`;
    - `missileLaunch` that `canLaunch` refuses → `unavailable`.
 
-   Several accepted commands of one kind in a tick: the last one wins.
+   Several accepted commands of one kind in a tick: the last one wins. **Across kinds, they take effect in a fixed order (lock, then charge, then launch) whatever their envelope order**, because `applyWeaponsInput` applies them in that order; admission is checked in the same order, so every result matches what happens. This is a deliberate exception to "commands apply in envelope order": a launch and a release sent in the same tick both apply, the release firing first.
 4. **Held axes:** the Helm's turn is `moveX`, and thrust is `−moveY`, because W gives `moveY −1` (up the screen) and means forward. The gunner's missile steering is `moveX`.
 5. **Repair** uses whole units, like the other clocks: 960 units per level. One repairer adds 4 per tick (240 ticks = 4 s); two or more on the same point each add 5, which is today's `TEAM_MULT` 1.25 × 4, so two finish in 96 ticks. A repairer counts only if:
    - present, conscious, standing and holding Interact;
@@ -736,6 +736,7 @@ Replace the whole of `tests/tacticalDeterminism.test.ts` with:
 ```ts
 import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
+import { launchMissile } from '../src/renderer/src/sim/tactical/missiles';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { cloneTactical, createTacticalState, type Axes, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
@@ -832,8 +833,8 @@ describe('flatten key guard', () => {
     expect(Object.keys(st).sort()).toEqual(['events', 'grid', 'hunter', 'map', 'missiles', 'outcome', 'rng', 'seed', 'ships', 'tick']);
     expect(Object.keys(st.hunter).sort()).toEqual(['fireAt', 'lastLaunch', 'mode', 'room', 'timer', 'trail', 'trailHead', 'working']);
     const launched = createTacticalState(1);
-    launched.missiles[0] = { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 };
-    expect(Object.keys(launched.missiles[0]).sort()).toEqual(['age', 'heading', 'headingAcc', 'vx', 'vy', 'x', 'y']);   // MISSILE_SLOT covers these
+    launchMissile(launched, 0);                                          // a missile as the launcher makes it
+    expect(Object.keys(launched.missiles[0]!).sort()).toEqual(['age', 'heading', 'headingAcc', 'vx', 'vy', 'x', 'y']);   // MISSILE_SLOT covers these
     // 5 header values; per ship 30 scalars + one per graceUntil slot; 2 missile slots of MISSILE_SLOT; hunter 7 scalars + its trail.
     expect(flattenTactical(st).length).toBe(5 + 2 * (30 + st.map.asteroids.length + 2) + 2 * MISSILE_SLOT + 7 + st.hunter.trail.length);
   });
@@ -1407,7 +1408,7 @@ git commit -m "feat(tactical): telemetry fields on events, admission predicates,
 - Produces:
   - `REPAIR_UNITS`, `REPAIR_RATE_SOLO`, `REPAIR_RATE_TEAM`, `CUTTER_REPAIR_POINTS`.
   - `DuelCommand`, `DuelEnvelope`, `DuelReason`, `DuelResult`.
-  - `interface DuelState`, `RepairPoint`, and `createDuel(layout: ShipLayout, seed: number): DuelState`, which throws on an invalid map or repair point.
+  - `interface DuelState`, `RepairPoint`, and `createDuel(layout: ShipLayout, seed: number): DuelState`, which throws on an invalid map or a repair point outside its room (and, defensively, on a missing role console, which `parseShip` already rules out by requiring one station per kind). It validates the map before allocating the interior, and disposes the interior (`disposeSimState`) if a later check throws.
   - `interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }` and `stepDuelTick(d: DuelState, input: DuelInput): DuelResult[]`.
   - `flattenDuel(d): Float64Array` and `hashDuel(d): string`.
 
@@ -1479,6 +1480,24 @@ describe('consoles are roles (spec §8, §13)', () => {
     expect(d.tactical.ships[0].laserCharge).toBe(LASER_CHARGE_UNITS);
     step(d, [cmd(d, 1, { kind: 'laserCharge', held: false })]);
     expect(d.tactical.ships[0].shots).toBe(1);
+  });
+  it('weapon commands take effect lock, then charge, then launch, whatever their envelope order', () => {
+    for (const launchFirst of [true, false]) {
+      const d = createDuel(layout, 5), s = d.tactical.ships[0];
+      s.fireHeld = true; s.laserCharge = LASER_CHARGE_UNITS;            // a full charge, held
+      const launch = cmd(d, 1, { kind: 'missileLaunch' }), release = cmd(d, 1, { kind: 'laserCharge', held: false });
+      const results = step(d, launchFirst ? [launch, release] : [release, launch]);
+      expect(results.map((r) => r.status), String(launchFirst)).toEqual(['applied', 'applied']);
+      expect([s.shots, s.missilesLaunched], String(launchFirst)).toEqual([1, 1]);   // the release fired, then the missile launched
+    }
+    for (const lockFirst of [true, false]) {
+      const d = createDuel(layout, 5), [s, e] = d.tactical.ships;
+      Object.assign(e, { x: s.x + hx(s.heading) * 300, y: s.y + hy(s.heading) * 300, shields: 0 });   // dead ahead, shields down
+      s.fireHeld = true; s.laserCharge = LASER_CHARGE_UNITS;
+      const lock = cmd(d, 1, { kind: 'laserLock', room: Room.Engines }), release = cmd(d, 1, { kind: 'laserCharge', held: false });
+      step(d, lockFirst ? [lock, release] : [release, lock]);
+      expect(e.rooms, String(lockFirst)).toEqual([0, 0, 1]);           // the new lock applied before the shot
+    }
   });
   it('rejects a bad lock, a charge while a missile flies, and a launch it cannot make', () => {
     const d = createDuel(layout, 5);
@@ -1666,7 +1685,7 @@ Create `src/renderer/src/sim/duel/state.ts`:
 import { RECRUIT } from '../characters';
 import { DoorState, roomAt } from '../grid';
 import type { ShipLayout } from '../ship/schema';
-import { createSimState, type SimState } from '../state';
+import { createSimState, disposeSimState, type SimState } from '../state';
 import { StationKind } from '../stationKinds';
 import { sitDown } from '../stations';
 import { validateMap } from '../tactical/map';
@@ -1694,21 +1713,26 @@ export interface DuelState {
  * map must validate. Throws if the map or a repair point is invalid, so a bad seed or layout fails loudly.
  */
 export function createDuel(layout: ShipLayout, seed: number): DuelState {
-  const interior = createSimState(layout, 2, seed, [RECRUIT, RECRUIT]);
-  interior.doors.state.fill(DoorState.HeldOpen);
-  const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
-  if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
-  sitDown(interior, 0, nav);
-  sitDown(interior, 1, weapons);
   const tactical = createTacticalState(seed);
   const problems = validateMap(tactical.map);
   if (problems.length > 0) throw new Error(`invalid duel map for seed ${seed}: ${problems[0]}`);
-  const points = CUTTER_REPAIR_POINTS.map((p) => {
-    const room = interior.derived.roomIndex.get(p.room) ?? -1, [tx, ty] = p.tile;
-    if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
-    return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
-  });
-  return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons };
+  const interior = createSimState(layout, 2, seed, [RECRUIT, RECRUIT]);
+  try {
+    interior.doors.state.fill(DoorState.HeldOpen);
+    const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
+    if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
+    sitDown(interior, 0, nav);
+    sitDown(interior, 1, weapons);
+    const points = CUTTER_REPAIR_POINTS.map((p) => {
+      const room = interior.derived.roomIndex.get(p.room) ?? -1, [tx, ty] = p.tile;
+      if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
+      return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
+    });
+    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons };
+  } catch (err) {
+    disposeSimState(interior);   // release its entities and component storage before rethrowing
+    throw err;
+  }
 }
 ```
 
@@ -1736,6 +1760,8 @@ import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
 
 const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+/** The fixed order weapon commands take effect in within one tick. */
+const WEAPON_ORDER = ['laserLock', 'laserCharge', 'missileLaunch'] as const;
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -1808,10 +1834,12 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     d.present[e.id.player as 0 | 1] = e.command.present; result(e);
   }
 
-  // Tactical commands, against the seats as they now stand.
+  // Tactical commands, against the seats as they now stand. Within a tick they take effect in a fixed order, lock, then
+  // charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
+  // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false };
-  for (const e of input.commands) {
+  for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
     if (c.kind !== 'laserLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
@@ -1863,7 +1891,7 @@ export function hashDuel(d: DuelState): string { return hashF64(flattenDuel(d));
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/duel.test.ts tests/boundary.test.ts`
-Expected: PASS (15 duel tests; the boundary test now also checks the five `sim/duel/` files).
+Expected: PASS (16 duel tests; the boundary test now also checks the five `sim/duel/` files).
 
 - [ ] **Step 8: Run the full suite and the typecheck**
 
