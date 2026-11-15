@@ -8,11 +8,14 @@ import { computeContentDigest } from '../../build/contentDigest';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import { executeFixture, packFixture, unpackFixture, type Fixture } from './fixture';
 import { firstDifference } from './protocol';
+import { blessRefusal, readMarkerVersion } from '../golden/blessGuard';
 
 const path = 'tests/fixtures/determinism-v2.json';
 const old = unpackFixture(JSON.parse(readFileSync(path, 'utf8')) as Fixture);
 const from = old.runs[0]!.checkpoint.init.simVersion;
 if (from === SIM_VERSION) throw Error(`${path} is already at sim version ${SIM_VERSION}`);
+const refusal = blessRefusal({ storedVersion: from, currentVersion: SIM_VERSION, markerVersion: readMarkerVersion(), versionOnly: true });
+if (refusal) throw Error(refusal);
 const fixture = structuredClone(old);
 for (const run of fixture.runs) {
   const cp = run.checkpoint;

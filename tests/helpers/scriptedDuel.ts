@@ -36,7 +36,13 @@ export function runDuel(seed: number, crew: 'scripted' | 'passive', cap = CAP_TI
   try {
     while (d.tactical.outcome === Outcome.Running && d.interior.tick < cap) {
       const input = crew === 'scripted' ? scriptedInput(pair, d) : passiveInput(d);
-      stepDuelTick(d, input);
+      const results = stepDuelTick(d, input);
+      if (crew === 'scripted') for (const r of results) {
+        if (r.status !== 'applied') {
+          const env = input.commands.find((e) => e.id.player === r.id.player && e.id.sequence === r.id.sequence);
+          throw Error(`seed ${seed} tick ${d.interior.tick}: scripted command ${JSON.stringify(env?.command)} (player ${r.id.player} #${r.id.sequence}) was ${r.status}${r.reason ? `: ${r.reason}` : ''}`);
+        }
+      }
       recordTick(t, d, input);
       if (hashEvery > 0 && d.interior.tick % hashEvery === 0) hashes.push(hashDuel(d));
     }

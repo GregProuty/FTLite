@@ -19,6 +19,7 @@ import starter from '../../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import type { SimState } from '../../src/renderer/src/sim/state';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
+import { clearMarker, writeMarker } from './blessGuard';
 import { runSemanticReplay } from '../../tests/helpers/semanticReplay';
 import { scriptedSemanticReplay } from '../../tests/helpers/script';
 import { actions, coreFor, unpackFixture, type Fixture } from '../determinism/fixture';
@@ -73,6 +74,7 @@ if (mode === 'baseline') {
   copyFileSync(GOLDEN, basicCopy);
   console.log(`baseline at sim version ${t.simVersion}: ${counts(t)}; written to ${traceFile}`);
 } else if (mode === 'check') {
+  clearMarker();
   if (!existsSync(traceFile)) throw Error(`no baseline at ${traceFile}: run the baseline before the bump`);
   const was = JSON.parse(readFileSync(traceFile, 'utf8')) as Trace, now = trace();
   if (was.simVersion === now.simVersion) throw Error(`the baseline is already at sim version ${now.simVersion}: bump SIM_VERSION first`);
@@ -84,6 +86,7 @@ if (mode === 'baseline') {
     if (k >= 0) problems.push(`determinism-v2 ${runId} differs at its tick ${k + 1}`);
   }
   if (problems.length > 0) { console.error(`NOT version-only, bless nothing:\n${problems.join('\n')}`); process.exit(1); }
+  writeMarker(now.simVersion, was.simVersion);
   console.log(`per-tick canonical trace identical, sim version ${was.simVersion} → ${now.simVersion}: ${counts(now)}`);
 } else if (mode === 'golden') {
   if (!existsSync(basicCopy)) throw Error(`no copy of ${GOLDEN} at ${basicCopy}: run the baseline before the bump`);
