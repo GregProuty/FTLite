@@ -63,3 +63,35 @@ Confirmed. The input test now fires keyup for Tab, Space, the arrows and Backspa
 
 ---
 
+# Round 2 (delta, reviewing a2cca5e, effort medium, 49 s, 235377 in / 188672 cached / 2256 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — The model computes a camera-dependent parallax offset, the layer applies it to a tiled star field, and tests cover pan, wrap, and zoom independence (plan L1035–1049, L1187–1190, L1540–1548, L1603–1611, L1644–1648).
+- R1-F2: resolved — The runtime pans before wheel zoom, preserving the cursor anchor for a combined gesture; the new test checks the free camera and anchor (plan L1922–1930, L2030–2034).
+- R1-F3: resolved — The test now checks preventDefault on both keydown and keyup for every protected key, matching the handlers (plan L529–538, L747–756).
+
+## Verified
+- The parallax change satisfies the parent background requirement (parent spec L232; plan L1187–1190, L1603–1611, L1644–1648).
+- The three fixes are consistent with the camera and input code in the current plan (plan L644–657, L673–695, L747–756, L2025–2034).
+
+## Not verified
+- I did not execute the plan’s tests or typecheck; this was a read-only review of the plan at a2cca5e.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. No new findings. Codex confirmed R1-F1 to R1-F3 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
