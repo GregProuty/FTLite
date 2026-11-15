@@ -174,13 +174,15 @@ export function createHud(parent: Container, assets: GameAssets) {
       fillRow(ui.line2, [{ text: p.character.asset && p.character.complication ? `${p.character.asset} / ${p.character.complication}` : '', tint: DIM }]);
       return;
     }
-    ui.name.text = `P${i + 1} ${p.character.name}${p.status === 'bot' ? ' BOT' : ''}`; ui.name.tint = AMBER;
+    ui.name.text = `P${i + 1} ${p.status === 'bot' ? 'BOT' : p.character.name}`; ui.name.tint = AMBER;
     ui.hp.root.visible = true; ui.hp.set(p.health / 100, p.health > 50 ? BAR_ON : p.health > 25 ? AMBER : WARN);
     if (ui.oxygen) ui.oxygen.visible = p.lowOxygen;
     if (p.lifeText) { fillRow(ui.line2, [{ text: p.lifeText, tint: WARN }]); fillRow(ui.line3, []); }
     else if (p.seated !== null) {
       fillRow(ui.line2, [{ text: STATION_NAMES[p.seated]!, tint: DIM }]);
       fillRow(ui.line3, [{ glyph: glyphName('cancel', p.deviceKind), text: p.cancelPrompt }]);
+    } else if (p.status === 'bot') {
+      fillRow(ui.line2, [{ text: p.character.name, tint: DIM }]); fillRow(ui.line3, []);
     } else {
       fillRow(ui.line2, p.interactPrompt || !p.carrying ? [{ glyph: p.interactPrompt ? glyphName('interact', p.deviceKind) : null, icon: p.interactIcon, text: p.interactPrompt }] : [{ text: 'Carrying a torpedo', tint: DIM }]);   // spec Coop-ii section 2
       fillRow(ui.line3, [{ glyph: p.confirmPrompt ? glyphName('confirm', p.deviceKind) : null, icon: p.confirmIcon, text: p.confirmPrompt }]);
