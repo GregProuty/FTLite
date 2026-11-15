@@ -68,7 +68,7 @@ Encounter   the live 60 Hz scene                                hashed, snapshot
   - **Ship slots:** an encounter has `capacity` ship slots, numbered 0 to capacity−1. Each slot is serialised in slot order whether it is in use or not.
   - **Empty slots:** an inactive slot is written as `active = 0` with every field 0, so nothing in it depends on history.
   - **Inside a slot:** the ship module's declared field order, then the crew table in crew-slot order.
-  - **Missile pool:** missiles live in a fixed pool, written in pool-slot order with an `owner` ship slot. A new missile takes the lowest free pool slot.
+  - **Missile pool:** missiles live in a fixed pool, written in pool-slot order. Each slot has an `active` flag and an `owner` ship slot, and an empty slot is `active = 0` with every field 0. A new missile takes the lowest free pool slot.
   - **Stable ids:** one encounter-level monotonic counter allocates them, whichever ship a crew row is on. A transfer keeps the id.
   - **Random streams:** at creation, the encounter's master stream draws one seed per ship slot, in slot order, and per ship one seed per named stream, in a fixed name order. Systems draw in phase-list order, ships in ascending slot order.
   - **Versioning:** the manifest that lists all of this is part of `SIM_VERSION`. Changing it is a version bump, proved by §9's migration proof.
@@ -219,7 +219,7 @@ Only then is the new schema blessed, as a `SIM_VERSION` bump.
 - **Per-crew projections for PvP (Q28)** **(rec.)**:
   - **Layout.** Every projection image has the same fixed layout:
     - a projection header;
-    - the **projected `space` partition**: the map, every ship's kinematics, and the missile pool (position, velocity, heading, owner, age). Per-ship AI controller rows (the hunter's mode, target, timers and random state) are redacted to 0 for every ship the recipient does not control. Only the host sees them;
+    - the **projected `space` partition**: the map, every ship's kinematics, and the missile pool (per slot: an `active` flag, then position, velocity, heading, owner and age; every field 0 when the slot is empty). Per-ship AI controller rows (the hunter's mode, target, timers and random state) are redacted to 0 for every ship the recipient does not control. Only the host sees them;
     - then, for each ship slot in order, an exterior-summary block (hull, shield layers, room damage levels, kinematics) and an interior block.
 
     The interior block holds that ship's interior without its random-number state. It is filled for the recipient's own ship and for a locked target, and otherwise holds the redaction value 0 with a per-slot `visible = 0` flag.
@@ -302,3 +302,4 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
 - 2026-11-15: refine round 1: R-3 migration proof; pre-refactor oracle with results, events and bindings plus an alias table; R-2 storage-only, with the full interior link split out as R-2b; the hashed player binding; projection format, fixed layout, header and hash; one visibility policy for every channel; canonical slot order, stable ids and random streams for N ships; the module-contract migration staged by milestone; the R-1 lifecycle and Net-3 mode adapter.
 - 2026-11-15: refine round 2: R-2 is a proved schema migration, not byte-identical; migration comparisons exclude the version field and check old + 1; public exterior fields are an explicit allowlist for the privacy test.
 - 2026-11-15: refine round 3: the projected space partition redacts AI controller rows of ships the recipient does not control; the allowlist and privacy test cover the space partition.
+- 2026-11-15: refine round 4: missile pool slots carry an active flag, with all fields 0 when empty, in both the canonical and the projected layout.

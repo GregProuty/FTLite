@@ -261,3 +261,45 @@ Confirmed: the tactical flatten includes the hunter state (`tactical/hash.ts:L25
 
 ---
 
+# Round 4 (delta, reviewing 69110ed, effort medium, 67 s, 187013 in / 160128 cached / 3134 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R4-F1 The projected missile pool has no occupancy encoding
+The new projected Space field list omits a way to distinguish an empty missile slot from an occupied one. · spec L71-L71, L222-L222; src/renderer/src/sim/tactical/state.ts:L33-L34, L58-L62; src/renderer/src/sim/tactical/hash.ts:L7-L12 · Missile slots can be null, and ship slot 0 is a valid owner. The current canonical missile encoding uses a presence flag. A plan writer must guess how clients identify occupied slots in the fixed-length projection. · Specify a presence flag for each projected missile slot, with all remaining fields zero when the slot is empty.
+
+## Prior findings
+- R3-F1: resolved — The revised layout projects Space and redacts AI controller rows for ships the recipient does not control; the allowlist and privacy test now cover the decoded Space partition (spec L222, L238-L239).
+
+## Verified
+- The revision is commit 69110ed; the diff changes only the stated networking lines and change log.
+- The AI controller data identified in R3-F1 is present in today's tactical flatten (src/renderer/src/sim/tactical/hash.ts:L25-L27), and spec L222 now excludes its values for rival ships.
+- The revised privacy test explicitly decodes the Space partition (spec L239).
+
+## Not verified
+- Runtime projection behavior was not verified; the refactor is a design spec, and the requested review is read-only with no Jest run.
+
+---
+
+# Round 4 response (spec revised)
+
+Reviewed `round-4.json`. 1 accepted, 0 rejected, 0 deferred. Codex confirmed R3-F1 resolved.
+
+## R4-F1 [P1]: The projected missile pool has no occupancy encoding
+
+Confirmed (`tactical/state.ts:L33-L34`, `tactical/hash.ts:L7-L12`). Each missile-pool slot now carries an `active` flag, and an empty slot is `active = 0` with every field 0. This holds in both the canonical layout (§3) and the projected space partition (§10).
+
+## Also changed
+
+- Change log entry for round 4.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-15-engine-refactor-design.md
+
+<!-- end -->
+
+---
+

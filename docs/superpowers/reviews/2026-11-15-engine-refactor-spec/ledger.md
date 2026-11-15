@@ -15,4 +15,5 @@
 | R2-F1 | P0 | R-2 cannot keep the duel canonical array byte-identical | resolved | 0 | see response-2.md; confirmed R3 |
 | R2-F2 | P0 | The R-3 and R-4 migration comparisons include a field that must change | resolved | 0 | see response-2.md; confirmed R3 |
 | R2-F3 | P1 | The R-6 privacy assertion rejects its own exterior summary | resolved | 0 | see response-2.md; confirmed R3 |
-| R3-F1 | P1 | The full Space projection conflicts with the exterior allowlist | fixed:R3 | 0 | projected space partition: map, kinematics, missile pool; AI controller rows of ships the recipient doesn't control redacted; allowlist and privacy test decode the space partition too |
+| R3-F1 | P1 | The full Space projection conflicts with the exterior allowlist | resolved | 0 | projected space partition: map, kinematics, missile pool; AI controller rows of ships the recipient doesn't control redacted; allowlist and privacy test decode the space partition too; confirmed R4 |
+| R4-F1 | P1 | The projected missile pool has no occupancy encoding | fixed:R4 | 0 | missile pool slots carry an active flag, all fields 0 when empty, in the canonical (§3) and projected (§10) layouts |
