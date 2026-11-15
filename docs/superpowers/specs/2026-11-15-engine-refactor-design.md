@@ -92,7 +92,10 @@ Encounter   the live 60 Hz scene                                hashed, snapshot
 - **Space owns position and flight:** bodies, headings, gravity, contacts, missiles, arcs and line of sight.
 - **Each ShipState owns its systems:** one systems record per ship holding room damage levels, power allocation, shield layers, weapon charge and hold, magazine and hull. The interior and the tactical layer both read and write that one record.
   - Today's `Ship.rooms`, `shields`, `laserCharge`, `magazine` and `hull` in `TacticalState` move into it. The tactical layer keeps only kinematics plus a ship index.
-  - **R-2 only moves the storage** **(rec.)**. The duel keeps today's rules: three repair points acting on room damage, interior power not coupled to the fight. Tactical serialisation emits the moved fields in today's order, so the duel's canonical array, hash and golden are byte-identical.
+  - **R-2 changes storage, not rules** **(rec.)**. The duel keeps today's rules: three repair points acting on room damage, interior power not coupled to the fight. But slots, the missile pool's `owner` field and `active` flags change the canonical array, so R-2 is a **schema migration**, proved like R-4 (§9):
+    - Record a pre-R-2 oracle over the duel golden and the ten gate seeds: named tactical and duel fields, command results, events and telemetry, per tick.
+    - Check the post-R-2 run through an alias table, with the new fields (`active`, `owner`) declared added.
+    - Then re-bless the duel golden as a `SIM_VERSION` bump. The gate outcomes must stay identical.
   - **The full interior link is a separate gameplay milestone, R-2b.** Interior power allocation drives shields and engines, and repair acts on the same numbers the fight uses (Q11, Q27). It changes gameplay, so it has new expected outcomes: re-run gates, a re-blessed duel golden, and the owner's playtest.
 - **Arrays, not pairs.** About 31 two-ship assumptions in 16 files become arrays plus an explicit target index:
   - `ships: [Ship, Ship]`, `missiles: [m, m]`, `present: [b, b]`;
@@ -172,6 +175,8 @@ The ledger, tick driver, journal, checkpoint cadence and publication stay as the
   1. Before the change, record per tick the named canonical values of every retained field, every command result, and every telemetry counter.
   2. After the change, check two things at every tick: the retained named values are equal, and the new event-derived telemetry record equals the old counters.
   3. Only then bless the new schema, as a `SIM_VERSION` bump.
+
+  Every migration comparison (here and in §9) **excludes the version field** (`$simVersion`, and `SIM_VERSION` at the head of the duel hash). It then checks separately that the new version is exactly the old one plus 1.
 - **The version stays in the hash** **(rec.; the skeptic dissented)**, together with the existing guarded version-only re-bless. That guard is reserved for changes that leave the canonical array identical apart from the version.
 - **One command blesses every pinned artifact** **(rec.)**. Today `npm run bless` regenerates only `basic.json` and `duel-1.json`; `determinism-v2.json` and `net1a-baseline.json` each have their own procedure.
   - `net1a-baseline.json` is labelled "immutable gameplay scenarios" from SIM 34. It is retired to an opt-in historical check (`--baseline`). Its role as an independent gameplay oracle passes to the equivalence check of §9 and to the per-tick canonical trace.
@@ -230,7 +235,8 @@ Only then is the new schema blessed, as a `SIM_VERSION` bump.
   - notifications;
   - checkpoints (host-only, never sent to clients in PvP);
   - flight-recorder and history exports (host-side; an export for a player applies that player's projection).
-- **The R-6 privacy test inspects every channel.** It records everything a rival connection receives over a scripted PvP fight, including values, metadata, events and notifications, and asserts that no field of the other crew's interior or random-number state appears unless that interior is visible.
+- **Public exterior fields are an explicit allowlist** **(rec.)**: `active`, ship class id, hull, shield layers, room damage levels (one per tactical room), and the kinematics (position, velocity, heading). Nothing else about a ship is public.
+- **The R-6 privacy test inspects every channel.** It records everything a rival connection receives over a scripted PvP fight, including values, metadata, events and notifications. It asserts that, for any ship whose interior is not visible to that recipient, only allowlisted exterior fields appear, and that the ship's random-number state never appears at all.
 - **Seats belong to players, not crew slots.** The seat token and "rejoin your own seat" map to a player id. The Session maps the player to a crew row.
 - **Connections with no crew body stay legal:** spectators, passengers (panel wild card). **Bots** may attach as their own connection.
 - **A bounded history ring:** the authority keeps its rotated 5-second segments (checkpoint plus frames) in a small ring instead of dropping them. That gives a flight recorder, kill-cams and bug reports (panel wild card).
@@ -260,7 +266,7 @@ Every milestone is a contract change (Q31), so it runs the full spec, review, pl
 |---|---|---|---|
 | R-0 | **Guards** | Merge `hash-completeness`. One bless command for every pinned artifact; retire `net1a-baseline` to `--baseline` | the completeness test fails on an added field; bless regenerates everything |
 | R-1 | **Generic authority** (was H-0c-ii-b) | `EncounterRules`, `createEncounterAuthority` and `defineEncounterMode` (§6 lifecycle); sector rules wrap today's step; the duel as a registered Net-3 mode on the module contract; one command union and result type; the bounded history ring | sector goldens byte-identical; start, checkpoint and restore round trips for sector and duel; the duel runs behind the authority over loopback and Net-3; the module completeness test for the duel |
-| R-2 | **N-ship space + systems record (storage only)** | ship slots, a missile pool and a target index; one systems record per ship, holding today's duel rules unchanged; `ShipClassDef`/`WeaponDef` | the duel's canonical array, hash and golden are byte-identical; gates unchanged |
+| R-2 | **N-ship space + systems record (storage only, rules unchanged)** | ship slots, a missile pool and a target index; one systems record per ship, holding today's duel rules unchanged; `ShipClassDef`/`WeaponDef` | the duel migration oracle (§5): fields, results, events and telemetry per tick, with the version excluded; identical gate outcomes; then a re-blessed duel golden and a version bump |
 | R-2b | **Full interior link** (gameplay) | interior power drives shields and engines; repair acts on the shared systems record | new expected outcomes: gates re-run, duel golden re-blessed, owner playtest |
 | R-3 | **Telemetry and notices out of the hash** | per-tick events; Session telemetry record | the migration proof of §7 (retained fields, results and telemetry equal per tick), then a version bump |
 | R-4 | **ShipState extraction + crew table** | systems take ShipState; legacy SimState wraps one ship; crew table with controllers and the hashed binding (§4); bitECS retired | the pre-refactor oracle of §9: fields, command results, events and bindings per tick |
@@ -294,3 +300,4 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
 
 - 2026-11-15: written from the architecture panel and grill Q28 to Q31; waits for Net-3.
 - 2026-11-15: refine round 1: R-3 migration proof; pre-refactor oracle with results, events and bindings plus an alias table; R-2 storage-only, with the full interior link split out as R-2b; the hashed player binding; projection format, fixed layout, header and hash; one visibility policy for every channel; canonical slot order, stable ids and random streams for N ships; the module-contract migration staged by milestone; the R-1 lifecycle and Net-3 mode adapter.
+- 2026-11-15: refine round 2: R-2 is a proved schema migration, not byte-identical; migration comparisons exclude the version field and check old + 1; public exterior fields are an explicit allowlist for the privacy test.

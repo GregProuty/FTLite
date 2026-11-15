@@ -145,3 +145,75 @@ R-1's acceptance adds start, checkpoint and restore round trips for sector and d
 
 ---
 
+# Round 2 (delta, reviewing ac05a6e, effort medium, 127 s, 427896 in / 351104 cached / 6222 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P0] R2-F1 R-2 cannot keep the duel canonical array byte-identical
+R-2 adds canonical ship-slot and missile-owner data while requiring the duel's canonical array, hash and golden to remain byte-identical. · spec L67-L71, L95, L263; src/renderer/src/sim/tactical/hash.ts:L15-L24; src/renderer/src/sim/tactical/state.ts:L33-L34 · Today's missile slots encode no owner or ship-active flag. The new pool needs an owner because its slot no longer identifies the firing ship. Serializing these fields changes the array. · Specify a compatibility serialization for the two-ship duel that preserves the old array, or make R-2 a schema migration with an appropriate equivalence proof and new golden.
+
+### [P0] R2-F2 The R-3 and R-4 migration comparisons include a field that must change
+Both proofs compare every retained or old canonical field while requiring a SIM_VERSION bump. · spec L171-L175, L198-L209; src/renderer/src/sim/canonicalFields.ts:L29; src/renderer/src/sim/duel/hash.ts:L11-L12 · SIM_VERSION is the first canonical field. The stated comparisons cannot pass across the required bump. · Explicitly exclude or normalize the version field in both migration comparisons, while checking that the new version has the intended value.
+
+### [P1] R2-F3 The R-6 privacy assertion rejects its own exterior summary
+The projection always publishes rival room damage levels, but the privacy test forbids every field of a rival interior unless that interior is visible. · spec L218-L220, L233 · Room damage is an interior field, so a correct unlocked projection would fail the stated test. · Define an explicit public exterior-field allowlist and assert that no other rival interior fields or RNG state reach any channel without visibility.
+
+## Prior findings
+- R1-F1: resolved — R-3 now has a separate migration proof and reserves the version-only guard for version-only changes (spec L171-L175). The new proof has the version-field defect reported above.
+- R1-F2: resolved — The R-4 oracle now covers fields, command results, events, cues and player-to-stable-ID bindings, with alias coverage checks (spec L198-L207). Its version-field defect is reported above.
+- R1-F3: resolved — R-2 is storage-only and the gameplay link is assigned to R-2b (spec L95-L96). The separate canonical-byte contradiction is reported above.
+- R1-F4: resolved — Crew controllers are authoritative hashed Encounter state; the Session binding is a validated mirror (spec L85).
+- R1-F5: resolved — The projection header, manifest version and projected-value hash are specified separately from host-only full-state diagnostics (spec L222-L223).
+- R1-F6: resolved — Fixed projection slots and redaction values keep image length stable across visibility changes (spec L215-L225).
+- R1-F7: resolved — The visibility policy now covers images, metadata, events, results, notifications, checkpoints and exports (spec L226-L233). The test assertion conflict is reported above.
+- R1-F8: resolved — The revision defines fixed ship and crew-slot order, empty slots, missile allocation, stable IDs and RNG draw ordering (spec L67-L74).
+- R1-F9: resolved — Module-contract migration is assigned to R-1, R-2, R-4 and R-5, with an added-field acceptance check at each step (spec L123-L130).
+- R1-F10: resolved — R-1 now assigns codecs, attachment validation, producers and publication to a ModeDefinition adapter and requires lifecycle round trips (spec L147-L155).
+
+## Verified
+- The reviewed subject is at ac05a6e; the revised sections and diff match the supplied round-2 scope.
+- Net-3 StateImage supports fixed-length value arrays and mode-owned metadata; its sender uses acknowledged baselines for deltas (codex/net-3:src/network/state/imageCodec.ts:L3, L47-L50; codex/net-3:src/network/state/sender.ts:L19-L29).
+- Net-3 ModeHost exposes the lifecycle the revised adapter targets (codex/net-3:src/network/modes/contracts.ts:L6-L23).
+- The binding grill answers require multiple ships, PvP privacy, lock-on views, transfers and a playtest gate (docs/vision/thesis-grill.md Q28-Q31).
+
+## Not verified
+- The review ledger files were inaccessible in this read-only sandbox; the ledger and round-1 response supplied in the prompt were used.
+- No test suite was run, as requested. This is a design and source review, not an implementation verification.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json`. 3 accepted (2 P0, 1 P1), 0 rejected, 0 deferred. Codex confirmed the round-1 fixes.
+
+## R2-F1 [P0]: R-2 cannot keep the duel canonical array byte-identical
+
+Confirmed. Slots, the missile pool's `owner` and the `active` flags add canonical values (`tactical/hash.ts:L15-L24`), so my round-1 "byte-identical" claim was wrong. R-2 is now a **schema migration** with the rules unchanged, proved like R-4:
+1. Record a pre-R-2 oracle over the duel golden and the ten gate seeds: named fields, command results, events and telemetry, per tick.
+2. Check the post-R-2 run through an alias table, with `active` and `owner` declared added.
+3. Re-bless the duel golden as a version bump.
+
+Gate outcomes must stay identical. §5 and the R-2 row are updated.
+
+## R2-F2 [P0]: The R-3 and R-4 migration comparisons include a field that must change
+
+Confirmed (`canonicalFields.ts:L29`, `duel/hash.ts:L11-L12`). Every migration comparison now excludes the version field (`$simVersion`, and `SIM_VERSION` at the head of the duel hash), then checks separately that the new version is exactly the old one plus 1. This is stated once in §7 and applies to R-2, R-3 and R-4.
+
+## R2-F3 [P1]: The R-6 privacy assertion rejects its own exterior summary
+
+Confirmed. §10 now defines the public exterior fields as an explicit allowlist: `active`, ship class id, hull, shield layers, room damage levels and kinematics. For a ship whose interior a recipient cannot see, the privacy test asserts that only allowlisted fields reach any channel, and that the ship's random-number state never does.
+
+## Also changed
+
+- Change log entry for round 2.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-15-engine-refactor-design.md
+
+<!-- end -->
+
+---
+
