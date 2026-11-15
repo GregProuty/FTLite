@@ -15,6 +15,7 @@ import { canSwap, swapSlot, selectorList, weaponRef } from '../sim/weapons';
 import { warnedTargets, targetRef, weaponsTargetSlot, scienceTargetSlot } from '../sim/debrisTargets';
 import { upgradeRows, REACTOR_ROW, BACK_ROW, canUpgrade, canBuyReactor } from '../sim/power';
 import { doorsCursorCount, doorsCursorTarget } from '../sim/doors';
+import type { AdmissionPolicy } from '../net/receivePolicy';
 
 export interface CardUiState {
   runId: RunId;
@@ -98,7 +99,7 @@ export function reconcileCardUi(view: SimState, ui: CardUiState): void {
   ui.navigationVisit = visit;
 }
 /** Publications reconcile lifecycle/acknowledgments without advancing repeat. */
-export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water: readonly number[]): void {
+export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water: readonly number[], admissionPolicy: AdmissionPolicy = 'strict'): void {
   if (ui.runId !== runId) Object.assign(ui, createCardUiState(runId, view.playerCount));
   while (ui.stations.length < view.derived.stationKind.length) ui.stations.push({ rowKey: null, page: 'main' });
   for (let p = 0; p < view.playerCount; p++) {
@@ -113,8 +114,9 @@ export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water
       }
     }
     producer.seat = seat;
-    // Admission high-water alone is insufficient: pause can publish an unexecuted tick.
-    if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || ((water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
+    // Receive-time sender ticks do not identify execution. That client retires
+    // a matching executed result only after a publication covers its actual tick.
+    if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || (admissionPolicy === 'strict' && (water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
   }
   while (ui.groupBar.length < view.groups.tab.length) ui.groupBar.push(false);
   reconcileCardUi(view, ui);

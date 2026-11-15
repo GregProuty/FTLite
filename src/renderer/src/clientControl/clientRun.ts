@@ -23,11 +23,22 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
   const auxiliarySequences: number[] = [];
   const receiveTime = options.admissionPolicy === 'receive-time';
   const outboxes = new Map<PlayerId, CommandOutbox>(), outboxStates = new Map<PlayerId, OutboxState>();
+  const voteExecutions = new Map<PlayerId, { sequence: number; tick: number }>();
   const commandBudget: CommandBudget | undefined = receiveTime ? (player, control, staged = 0) =>
     !disposed && (outboxes.get(player)?.canAllocate(control, staged) ?? false) : undefined;
   function flushCommands(): void {
     for (const box of outboxes.values()) for (const envelope of box.takeSendable())
       link.send('reliable-ordered', encodeMessage({ kind: 'command', envelope }));
+  }
+  function reconcileVoteExecutions(): void {
+    if (!publication) return;
+    for (const [player, executed] of voteExecutions) {
+      const producer = ui.players[player];
+      if (!producer?.pendingVote || producer.pendingVoteSequence !== executed.sequence) voteExecutions.delete(player);
+      else if (publication.tick > executed.tick && publication.commandHighWater[player]! >= executed.sequence) {
+        producer.pendingVote = null; voteExecutions.delete(player);
+      }
+    }
   }
   let startupSequence: number | null = null;
   const unsubscribe = link.onMessage((_kind, bytes) => {
@@ -45,7 +56,8 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
         if (replica) disposeSimState(replica);
         replica = replacement;
       } else restoreSnapshot(replica, next.snapshot, options.contentDigest);
-      publication = next; reconcileUi(replica, ui, next.runId, next.commandHighWater);
+      publication = next; reconcileUi(replica, ui, next.runId, next.commandHighWater, options.admissionPolicy);
+      if (receiveTime) reconcileVoteExecutions();
       // A replacement starts after the authority's admitted IDs; an existing
       // producer may already have newer input in flight and must never rewind.
       for (let player = 0; player < replica.playerCount; player++) {
@@ -63,6 +75,12 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       const box = outboxes.get(message.result.id.player);
       if (box) outboxStates.set(message.result.id.player, box.ack(message.result));
       reconcileCommandResult(ui, message.result);
+      if (receiveTime) {
+        const result = message.result, producer = ui.players[result.id.player];
+        if ((result.status === 'applied' || result.status === 'noop') && producer?.pendingVote && producer.pendingVoteSequence === result.id.sequence)
+          voteExecutions.set(result.id.player, { sequence: result.id.sequence, tick: result.tick });
+        reconcileVoteExecutions();
+      }
       results.push(message.result); if (results.length > 1024) results.shift();
       if (receiveTime) flushCommands();
     } else if (message.kind === 'event' && message.event.runId === options.runId && message.event.eventSequence > lastEvent) {
@@ -112,7 +130,7 @@ export function createClientRun(link: Link, owned: readonly PlayerId[], options:
       finally {
         if (replica) disposeSimState(replica);
         replica = null; publication = null; events.length = 0; results.length = 0;
-        outboxes.clear(); outboxStates.clear();
+        outboxes.clear(); outboxStates.clear(); voteExecutions.clear();
       }
     }
   };

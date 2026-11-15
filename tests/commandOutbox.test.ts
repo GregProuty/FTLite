@@ -3,7 +3,7 @@ import { createCommandOutbox } from '../src/renderer/src/clientControl/commandOu
 import { createCardUi, pauseActions, reconcileUi, translateTick } from '../src/renderer/src/clientControl/cardController';
 import { NEUTRAL_FRAME } from '../src/renderer/src/clientControl/inputFrame';
 import type { CommandEnvelope, CommandResult } from '../src/renderer/src/net/contracts';
-import { makeState, placeDebris, setEvent } from './helpers/sim';
+import { makeState, placeDebris, quiet, setEvent } from './helpers/sim';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { createClientRun } from '../src/renderer/src/clientControl/clientRun';
@@ -147,6 +147,87 @@ describe('receive-time client opt in', () => {
       h.received.length = 0;
       h.client.send({ held: [{ runId: 'run', player: 0, tick: 1, sequence: 2, held: { moveX: 1, moveY: 0, interactHeld: false } }], commands: [] });
       h.transport.drain(); expect(h.received.filter(m => m.kind === 'held')).toHaveLength(1);
+    } finally { h.dispose(); }
+  });
+});
+
+/** Actual authority time advances while the tick-zero input waits in transport. */
+function delayedVoteRig() {
+  const owner = makeState(2); quiet(owner); setEvent(owner, 4);
+  let now = 0, delayResults = false;
+  const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__ }, {
+    impairment: packet => delayResults && packet.kind === 'reliable-ordered' && packet.peer === pair.authorityLink.peer ? { delayDrains: 4 } : {}
+  });
+  const pair = transport.connectLocal();
+  const client = createClientRun(pair.clientLink, [0], { runId: 'delayed-vote', resolveLayout: () => LAYOUT, admissionPolicy: 'receive-time' });
+  const authority = createFixtureAuthority({ clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, resolveLayout: () => LAYOUT,
+    contentDigest: __GAMEPLAY_CONTENT_DIGEST__, onCrash(record) { throw new Error(record.error); },
+    init: { runId: 'delayed-vote', layoutId: LAYOUT.id, layoutHash: owner.derived.layoutHash, simVersion: SIM_VERSION,
+      contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 1, playerCount: 2, characters: [], unlocked: [] } }, owner);
+  authority.attach(pair.authorityLink, [0], { admissionPolicy: 'receive-time' }); transport.drain();
+  return { owner, client, transport,
+    press() {
+      const actions = translateTick(client.state()!, client.ui, [{ ...NEUTRAL_FRAME, confirmPresses: 1 }], client.state()!.tick, [0], client.commandBudget);
+      client.send(actions); return actions.commands[0]!;
+    },
+    pause(paused: boolean) { client.send(pauseActions(client.ui, 0, client.state()!.tick, paused, client.commandBudget)); },
+    pump(time = now) { now = time; authority.pump(); },
+    delayResults() { delayResults = true; },
+    observe(cb: (message: ReturnType<typeof decodeMessage>) => void) { return pair.clientLink.onMessage((_channel, bytes) => cb(decodeMessage(bytes))); },
+    dispose() { client.dispose(); authority.dispose(); pair.host.close('test-end'); pair.client.close('test-end'); }
+  };
+}
+
+describe('receive-time vote execution evidence', () => {
+  for (const order of ['result-first', 'state-first'] as const) it(`preserves delayed paused votes and retires only with execution result plus state (${order})`, () => {
+    const h = delayedVoteRig();
+    try {
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 0 }); h.pause(true);
+      h.pump(100); expect(h.owner.tick).toBe(6); // no client delivery yet
+      h.transport.drain(); h.pump(); h.transport.drain();
+      expect(h.client.publication()).toMatchObject({ tick: 6, phase: 'paused', commandHighWater: [2, 0] });
+      expect(h.owner.run.vote[0]).toBe(-1);
+      expect(h.client.ui.players[0]!.pendingVote?.choice).toBe(0);
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 1 });
+      expect(h.client.ui.players[0]!.pendingVoteSequence).toBe(3);
+      h.pause(false); h.transport.drain(); h.pump(); h.transport.drain();
+      expect(h.client.publication()).toMatchObject({ tick: 6, phase: 'running' });
+      expect(h.owner.run.vote[0]).toBe(-1); expect(h.client.ui.players[0]!.pendingVote?.choice).toBe(1);
+
+      const observed: { sequence: number; publicationTick: number; pending: number | null }[] = [];
+      h.observe(message => {
+        if (message.kind === 'result' && [1, 3].includes(message.result.id.sequence) && message.result.status === 'applied')
+          observed.push({ sequence: message.result.id.sequence, publicationTick: h.client.publication()!.tick, pending: h.client.ui.players[0]!.pendingVote?.choice ?? null });
+      });
+      if (order === 'state-first') h.delayResults();
+      h.pump(117); h.transport.drain();
+      expect(h.owner.run.vote[0]).toBe(1); expect(h.client.state()!.run.vote[0]).toBe(1);
+      if (order === 'state-first') {
+        expect(observed).toEqual([]); expect(h.client.publication()!.tick).toBe(7);
+        expect(h.client.ui.players[0]!.pendingVote?.choice).toBe(1);
+        for (let n = 0; n < 4; n++) h.transport.drain();
+        expect(observed).toEqual([{ sequence: 1, publicationTick: 7, pending: 1 }, { sequence: 3, publicationTick: 7, pending: null }]);
+      } else {
+        // Both result callbacks precede the tick-7 state. The old vote cannot
+        // retire the newest ID; the matching applied result alone cannot either.
+        expect(observed).toEqual([{ sequence: 1, publicationTick: 6, pending: 1 }, { sequence: 3, publicationTick: 6, pending: 1 }]);
+      }
+      expect(h.client.ui.players[0]!.pendingVote).toBeNull();
+    } finally { h.dispose(); }
+  });
+
+  it('ignores delayed execution results when a newer optimistic vote is pending', () => {
+    const h = delayedVoteRig();
+    try {
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 0 });
+      h.transport.drain(); h.delayResults(); h.pump(17); h.transport.drain();
+      expect(h.client.publication()!.tick).toBe(1); expect(h.client.state()!.run.vote[0]).toBe(0);
+      expect(h.client.ui.players[0]!.pendingVote?.choice).toBe(0);
+      expect(h.press().command).toMatchObject({ kind: 'vote', choice: 1 });
+      expect(h.client.ui.players[0]!.pendingVoteSequence).toBe(2);
+      for (let n = 0; n < 4; n++) h.transport.drain();
+      expect(h.client.takeResults()).toContainEqual(expect.objectContaining({ id: { player: 0, sequence: 1 }, status: 'applied' }));
+      expect(h.client.ui.players[0]!.pendingVote?.choice).toBe(1); expect(h.client.ui.players[0]!.pendingVoteSequence).toBe(2);
     } finally { h.dispose(); }
   });
 });
