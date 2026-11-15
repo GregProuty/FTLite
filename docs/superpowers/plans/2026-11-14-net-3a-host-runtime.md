@@ -94,12 +94,16 @@
 
 **Files:** scripts/network/host-smoke.ts/cjs and minimal fixture/transport-page support, package.json script `test:host-runtime`, docs/gates.md.
 
-- [ ] Launch real Electron in an isolated temporary profile, nodeIntegration off, dedicated transport window and utility process. Remove inherited ELECTRON_RUN_AS_NODE/crashpad pipe from the child environment. No user profile/credential access. Child failure, page exception, timeout and missing utility output must exit nonzero.
-- [ ] Run a host-human producer over actual MessagePorts with receive-time admission. Deliberately stall only the visible test renderer for500ms while the utility authority advances; afterward delayed valid held/commands apply, watchdog prevented stuck input, and no authority tick waited for input.
-- [ ] Check checkpoint detach/recreate, producer sequences, injected utility/transport exit, stale message after restart, two successive hosts without leaked handles, and mode mismatch. Exercise suspension logic through explicit test hooks; label actual OS suspension NOT RUN unless performed.
-- [ ] Run full tests/typecheck/build, unchanged acceptance/golden/tactical tests and `npm run test:host-runtime`; record timing against the combined-tree baseline without silently changing ceilings. Run cross-engine determinism if serialized/canonical/replay code changed. No re-bless or claim of internet connectivity.
-- [ ] Obtain whole-slice review. Net-3a is complete only with real utility/port evidence, not unit mocks. Next plan is Net-3b WebRTC and state streaming; Net-3c service construction/deployment remains separate.
+- [x] Launch real Electron in an isolated temporary profile, nodeIntegration off, dedicated transport window and utility process. Remove inherited ELECTRON_RUN_AS_NODE/crashpad pipe from the child environment. No user profile/credential access. Child failure, page exception, timeout and missing utility output must exit nonzero.
+- [x] Run a host-human producer over actual MessagePorts with receive-time admission. Deliberately stall only the visible test renderer for500ms while the utility authority advances; afterward delayed valid held/commands apply, watchdog prevented stuck input, and no authority tick waited for input.
+- [x] Check checkpoint detach/recreate, producer sequences, injected utility/transport exit, stale message after restart, two successive hosts without leaked handles, and mode mismatch. Exercise suspension logic through explicit test hooks; label actual OS suspension NOT RUN unless performed.
+- [x] Run full tests/typecheck/build, unchanged acceptance/golden/tactical tests and `npm run test:host-runtime`; record timing against the combined-tree baseline without silently changing ceilings. Run cross-engine determinism if serialized/canonical/replay code changed. No re-bless or claim of internet connectivity.
+- [x] Obtain whole-slice review. Net-3a is complete only with real utility/port evidence, not unit mocks. Next plan is Net-3b WebRTC and state streaming; Net-3c service construction/deployment remains separate.
 
 ## Coverage and boundaries
 
 Design section2 prerequisites belong to completed preflight. Sections3/4 process and mode compatibility -> tasks3–5; section6 receive-time semantics -> tasks1/2/5; process transport bounds from section7 -> task3. Sections5 and8–12 require later slices (online menu, RTC/state deltas, Worker, rejoin/mirror/leases). This plan intentionally provides the process/input foundation only; it does not mark the whole Net-3 design complete.
+
+## Completion evidence
+
+All five tasks completed and independently reviewed at executable source `6d93ea3`. See [validation](../reviews/2026-11-14-net-3a-validation.md) and [final review](../reviews/2026-11-14-net-3a-final-review.md). The 30s acceptance timing ceiling remains unmet; same-machine prior-source comparison does not demonstrate a new regression. No threshold was changed. Net-3a stays on `codex/net-3` for the next slice; this does not claim internet-demo readiness.
