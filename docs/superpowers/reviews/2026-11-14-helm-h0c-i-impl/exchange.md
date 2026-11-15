@@ -61,3 +61,36 @@ Confirmed. At the clone point the existing test had no missiles and no events, s
 
 ---
 
+# Round 2 (delta, reviewing 600fcf0, effort medium, 35 s, 118061 in / 79104 cached / 1071 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — duel/step.ts:L108 rejects an absent gunner before admitting weapon commands. tests/duel.test.ts:L155-L160 covers player -1 issuing all three commands after stand and presence=false, checking rejection and unchanged weapon state.
+- R1-F2: resolved — tests/tacticalDeterminism.test.ts:L90-L106 populates both missiles and both event variants, checks equal contents and distinct object references, and verifies copy mutations leave originals unchanged. The identical-future check remains at L79-L88.
+
+## Verified
+- HEAD is 600fcf0162b3b50170cc2416711310eff02ba23d; the three-file delta matches the supplied diff.
+- The admission guard matches spec L273 and plan L45, preserving stale-tick precedence at src/renderer/src/sim/duel/step.ts:L107.
+- The strengthened clone assertions cover the independent copies implemented at src/renderer/src/sim/tactical/state.ts:L107-L109. No new defect found in the reviewed delta.
+
+## Not verified
+- Both focused Vitest commands failed before tests ran: esbuild startup returned spawn EPERM. Runtime results and reported mutation checks were not independently verified.
+- The on-disk review ledger could not be read because access was denied; the supplied ledger and response were used.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `600fcf0`. No new findings. Codex confirmed R1-F1 and R1-F2 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
