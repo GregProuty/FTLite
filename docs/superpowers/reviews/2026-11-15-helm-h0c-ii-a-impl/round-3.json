@@ -1,0 +1,20 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Both version-bump write paths invoke the per-tick comparison before writing (scripts/bless-golden.ts:L18-L26; scripts/determinism/rebless-version.ts:L18-L38). The guard refuses a failed comparison (scripts/golden/blessGuard.ts:L13-L17)."
+    }
+  ],
+  "verified": [
+    "The live check passed: 7,200 golden ticks and 108,000 fixture ticks across 19 runs matched from SIM_VERSION 35 to 36 (scripts/golden/versionOnly.ts:L37-L54, L73-L85).",
+    "A missing or same-version baseline is refused, and differing ticks are reported (scripts/golden/versionOnly.ts:L73-L85).",
+    "The touched code passes git diff --check."
+  ],
+  "not_verified": [
+    "The two large fixture diffs were not spot-checked: the requested bash pipeline failed to start in this environment.",
+    "The test suite was not rerun in this review."
+  ]
+}

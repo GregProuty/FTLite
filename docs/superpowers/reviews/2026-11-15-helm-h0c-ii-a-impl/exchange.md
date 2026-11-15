@@ -119,3 +119,35 @@ Confirmed: the marker was accepted solely by `SIM_VERSION` (`blessGuard.ts:L14-L
 
 ---
 
+# Round 3 (delta, reviewing 2683c44, effort medium, 86 s, 322005 in / 291840 cached / 3450 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Both version-bump write paths invoke the per-tick comparison before writing (scripts/bless-golden.ts:L18-L26; scripts/determinism/rebless-version.ts:L18-L38). The guard refuses a failed comparison (scripts/golden/blessGuard.ts:L13-L17).
+
+## Verified
+- The live check passed: 7,200 golden ticks and 108,000 fixture ticks across 19 runs matched from SIM_VERSION 35 to 36 (scripts/golden/versionOnly.ts:L37-L54, L73-L85).
+- A missing or same-version baseline is refused, and differing ticks are reported (scripts/golden/versionOnly.ts:L73-L85).
+- The touched code passes git diff --check.
+
+## Not verified
+- The two large fixture diffs were not spot-checked: the requested bash pipeline failed to start in this environment.
+- The test suite was not rerun in this review.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json`. No new findings. Codex confirmed R1-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
