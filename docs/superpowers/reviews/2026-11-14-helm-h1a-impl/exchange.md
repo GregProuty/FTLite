@@ -58,3 +58,48 @@ Confirmed: `lastWheelAt` was updated before the idle check, so a frame with whee
 
 ---
 
+# Round 2 (delta, reviewing 54dd9b5, effort medium, 62 s, 163211 in / 134144 cached / 3022 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Late Escape frame catches up all queued ticks on resume
+Pausing a delayed frame prevents ticks immediately, but leaves them queued; resuming runs them in a burst. · spec L45-L46; src/renderer/src/app/duel/runtime.ts:L70-L73; src/renderer/src/authority/tickDriver.ts:L47-L54; tests/flightRuntime.test.ts:L149-L163 · After a 500 ms stall, Escape holds the ship at tick 0, but resuming can advance it 30 ticks in one frame. The new test ends before resume. · Discard the local driver's queued debt when entering pause, without changing authority code, and test a delayed Escape followed by resume.
+
+## Prior findings
+- R1-F1: resolved — Escape is applied before the pump, so due ticks do not run in the pause frame; src/renderer/src/app/duel/runtime.ts:L70-L73.
+- R1-F2: resolved — The idle gap clears the remainder before the new wheel sample is accumulated; src/renderer/src/app/duel/runtime.ts:L77-L81.
+
+## Verified
+- HEAD is 54dd9b5, with no uncommitted changes to the reviewed runtime or test files.
+- The delayed Escape test checks tick 0 while paused; tests/flightRuntime.test.ts:L149-L163.
+- The wheel test covers a 300 ms gap with no intervening frame; tests/flightRuntime.test.ts:L164-L171.
+
+## Not verified
+- Jest was not run, as requested.
+- The review directory is deleted in this worktree, so its files could not be read or updated.
+
+---
+
+# Round 2 response (code fixed)
+
+Reviewed `round-2.json`. 1 accepted, 0 rejected, 0 deferred. Codex confirmed R1-F1 and R1-F2 resolved.
+
+## R2-F1 [P1]: Late Escape frame catches up all queued ticks on resume
+
+Confirmed against `authority/tickDriver.ts`: `setPaused(true)` keeps the debt already accrued, and `setPaused(false)` resumes and pumps it. The driver has no call to drop that debt, and `authority/` must not change in H-1. The runtime now disposes its driver whenever a pause reason is set and creates a fresh one at the current wall time when the last reason clears, so nothing queued survives a pause. `frame()` pumps only when a driver exists, and `dispose()` sets a flag so a later resume cannot recreate one. The Escape test is extended: 30 ticks due, Escape, a 1.5 s pause, then resume runs no ticks, and stepping restarts one tick after the resume.
+
+## Also changed
+
+- Verified with `npm run typecheck` (clean) and `npm test` (all passing).
+
+## Files changed
+
+- src/renderer/src/app/duel/runtime.ts
+- tests/flightRuntime.test.ts
+
+<!-- end -->
+
+---
+
