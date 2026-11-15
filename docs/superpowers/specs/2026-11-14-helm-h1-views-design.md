@@ -30,7 +30,7 @@ It is not the networked demo (H-2) and does not wire the duel into the authority
   - `duel` starts the solo duel;
   - anything else (or none) starts today's sector game, unchanged.
 
-  `src/main/index.ts` appends `?mode=<value>` to the page URL when the environment variable `FTLITE_MODE` is set (dev `loadURL` and packaged `loadFile` alike). `package.json` gains `dev:flight` and `dev:duel` scripts that set it. A title-screen choice comes later, with the networked demo.
+  `src/main/index.ts` appends `?mode=<value>` to the page URL when the environment variable `FTLITE_MODE` is set (dev `loadURL` and packaged `loadFile` alike). `package.json` gains a `dev:flight` script (H-1a) and a `dev:duel` script (H-1b). Each runs `tsx scripts/dev-mode.ts <mode>`, which sets the variable and starts `electron-vite dev`, because an npm script cannot set an environment variable portably on Windows without adding a dependency **(rec.)**. A title-screen choice comes later, with the networked demo.
 - **One mode per launch** **(rec.)**: the duel modes do not create the sector session at all, so nothing in today's game changes. Both duel modes reuse `createRenderer`'s Pixi application, stage and letterbox, but hide its sector children (world, enemy window, projectiles, callouts, HUD) and add their own scene container.
 - **Seed**: `?seed=<n>` overrides the default (2026); restarting after a duel ends uses seed + 1 **(rec.)**.
 
@@ -101,7 +101,7 @@ A pure model (`tacticalModel.ts`) turns `(tactical state, previous positions, al
 
 Draw order, as parent §10b:
 1. **Background:** near-black space and a static seeded star field (render-only randomness) **(rec.)**.
-2. **The lettered grid:** 500-unit squares, or 250 when zoomed in past 0.6. Columns are A, B, C… from the west edge of the map, rows 1, 2, 3… from the north. Labels sit at the visible top and left edges.
+2. **The lettered grid:** 500-unit squares covering ±3000 units (12 × 12: columns A to L from the west, rows 1 to 12 from the north). Zoomed in past 0.6, faint 250-unit lines are added inside the squares, but the **labels always name the 500-unit squares**, so a call-out ("they're in D4") means the same square at every zoom **(rec.)**. Labels sit at the visible top and left edges.
 3. **Gravity contours:** rings at 40, 10 and 3 u/s². Their radii come from inverting `gravityAccel` numerically at startup (render code may use `Math.pow`; the determinism guard covers only sim, authority, net, clientControl and events).
 4. **The map edge circle.**
 5. **Bodies:** the planet as a shaded disc. Asteroids are rough polygons seeded by index. Below a minimum on-screen radius of 2 px they draw as a dot, or are skipped below 0.5 px.
@@ -148,7 +148,7 @@ One `TacticalState` from the seed. `stepFlight` advances both ships and resolves
 
 | # | Part | Delivers |
 |---|---|---|
-| H-1a | **Flight** | Mode flag and `dev:flight`; the local runtime with `stepFlight`; keyboard and pointer input; the camera; the tactical model and layer (grid, contours, edge, bodies, ship, Helm layer, overlay); the feel panel |
+| H-1a | **Flight** | Mode flag and `dev:flight`; the local runtime with the single-ship step (`stepSoloFlight`, §9); keyboard and pointer input; the camera; the tactical model and layer (grid, contours, edge, bodies, ship, Helm layer, overlay); the feel panel |
 | H-1b | **Duel** | `dev:duel`; the runtime on `stepDuelTick`; duel commands and Tab presence; the Weapons layer and missile-path predictor; the interior view and readouts; event effects and shake; the end screen and restart |
 
 Each part follows the standing order: plan, refine, build subagent-driven, refine the implementation, merge. H-1a goes first, so the owner can fly before the duel lands.
@@ -171,3 +171,4 @@ Each part follows the standing order: plan, refine, build subagent-driven, refin
 - 2026-11-14: written for H-1 under the standing order.
 - 2026-11-14: refine round 1: solo start makes player 1 away on tick 0 (and on restart); commands use the duel's tick; restart recreates the driver and resets every cache; pause reasons; current axes as a model input; single-ship flight step; warm-up allocation rule; missile-path predictor contract; lock marker on both consoles and both hulls in the readout; contact sparks.
 - 2026-11-14: refine round 2: §10 names the two tactical-sim changes (stepSoloFlight, exported static-contact pass) as the exception to new code living outside the guarded roots.
+- 2026-11-14: from the H-1a prototype: §11 names `stepSoloFlight` (not `stepFlight`); grid labels always name the 500-unit squares; `dev:*` scripts run `scripts/dev-mode.ts`.
