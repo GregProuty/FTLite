@@ -2,6 +2,7 @@
  * awaited: an untrusted stream's cancel promise must not extend that deadline. */
 export async function readBoundedBody(request: Request, maxBytes: number, timeoutMs = 5000): Promise<Uint8Array> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || !Number.isFinite(timeoutMs) || timeoutMs <= 0) throw Error('invalid-request');
+  const expiresAt = Date.now() + timeoutMs;
   const length = request.headers.get('Content-Length');
   if (length !== null && (!/^\d+$/.test(length) || !Number.isSafeInteger(Number(length)))) {
     void request.body?.cancel().catch(() => {});
@@ -16,15 +17,26 @@ export async function readBoundedBody(request: Request, maxBytes: number, timeou
   let timer: ReturnType<typeof setTimeout> | undefined;
   let total = 0;
   let active = true;
+  let reads = 0, emptyReads = 0;
   // A single allocation bounds retained bytes and avoids an unbounded list of
   // tiny (or empty) chunks supplied by an adversarial stream.
   const bytes = new Uint8Array(maxBytes);
   const deadline = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Error('timeout')), timeoutMs); });
+  const checkDeadline = (): void => { if (!active || Date.now() >= expiresAt) throw Error('timeout'); };
   const consume = async (): Promise<Uint8Array> => {
     for (;;) {
+      checkDeadline();
       const { done, value } = await reader.read();
-      if (!active) throw Error('timeout');
+      checkDeadline();
+      // Workers clocks advance on I/O, not necessarily in a microtask loop.
+      // Yield even at EOF before accepting success, and periodically while
+      // productive immediate reads would otherwise starve the deadline timer.
+      if (done || ++reads % 64 === 0) {
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        checkDeadline();
+      }
       if (done) return bytes.slice(0, total);
+      if (value.byteLength === 0 && ++emptyReads > 64) throw Error('invalid-request');
       if (value.byteLength > maxBytes - total) throw Error('too-large');
       bytes.set(value, total); total += value.byteLength;
     }

@@ -1,6 +1,28 @@
 import { env } from 'cloudflare:workers';
 import { evictDurableObject, runInDurableObject, SELF, listDurableObjectIds } from 'cloudflare:test';
 import { expect, it } from 'vitest';
+import { initializeServiceSchema } from '../src/storage';
+
+it('initializes a singleton schema row idempotently through the shared storage initializer', async () => {
+  const stub = env.PROBE.get(env.PROBE.newUniqueId());
+  await runInDurableObject(stub, (_, { storage }) => {
+    initializeServiceSchema(storage);
+    initializeServiceSchema(storage);
+    expect(storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'service_schema'").toArray())
+      .toEqual([{ name: 'service_schema' }]);
+    expect(storage.sql.exec('SELECT * FROM service_schema').toArray()).toEqual([{ singleton: 1, version: 1 }]);
+  });
+});
+
+it('rejects an unsupported durable schema without replacing its stored version', async () => {
+  const stub = env.PROBE.get(env.PROBE.newUniqueId());
+  await runInDurableObject(stub, (_, { storage }) => {
+    storage.sql.exec('CREATE TABLE service_schema (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), version INTEGER NOT NULL)');
+    storage.sql.exec('INSERT INTO service_schema VALUES (1, 2)');
+    expect(() => initializeServiceSchema(storage)).toThrow('unsupported-schema');
+    expect(storage.sql.exec('SELECT * FROM service_schema').toArray()).toEqual([{ singleton: 1, version: 2 }]);
+  });
+});
 
 it('fails closed on public and internal routes without allocating a Room or Directory', async () => {
   for (const path of ['/v2/rooms', '/v2/rooms/ABCD0123/join', '/v2/rooms/' + 'a'.repeat(32) + '/socket-ticket', '/internal/initialize', '/unknown']) {

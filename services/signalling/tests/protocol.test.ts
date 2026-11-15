@@ -119,6 +119,30 @@ describe('bounded request reading', () => {
     const stream = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array(1)); }, cancel() { return new Promise(() => {}); } });
     await expect(readBoundedBody(request(stream), 4, 10)).rejects.toThrow('timeout');
   });
+  it('rejects a stream of immediately available empty chunks with bounded work', async () => {
+    let pulls = 0, cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) { if (++pulls <= 1024) c.enqueue(new Uint8Array()); else c.close(); },
+      cancel() { cancelled = true; },
+    });
+    await expect(readBoundedBody(request(stream), 4)).rejects.toThrow('invalid-request');
+    // One extra pull may have been prefetched by ReadableStream.
+    expect(pulls).toBeLessThanOrEqual(66);
+    expect(cancelled).toBe(true);
+  });
+  it('enforces the deadline while nonempty immediately resolved reads would starve timers', async () => {
+    let pulls = 0, cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) { if (++pulls <= 65_536) c.enqueue(new Uint8Array([1])); else c.close(); },
+      cancel() { cancelled = true; },
+    });
+    await expect(readBoundedBody(request(stream), 65_536, 1).then(() => 'unexpected success')).rejects.toThrow('timeout');
+    expect(pulls).toBeLessThan(65_536);
+    expect(cancelled).toBe(true);
+    const afterCancellation = pulls;
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(pulls).toBe(afterCancellation);
+  });
 });
 
 it('generates wire-shaped secrets, hashes rather than stores secrets, and normalizes valid join codes', async () => {
