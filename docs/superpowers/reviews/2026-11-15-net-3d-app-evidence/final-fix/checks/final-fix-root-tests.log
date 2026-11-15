@@ -1,0 +1,296 @@
+
+> ftlite@0.0.1 test
+> vitest run
+
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ✓ tests/gate-duo.test.ts (3 tests) 21795ms
+   ✓ demo gate: two bots keep both crew healthy for five minutes > seed 1  7900ms
+   ✓ demo gate: two bots keep both crew healthy for five minutes > seed 2  7474ms
+   ✓ demo gate: two bots keep both crew healthy for five minutes > seed 3  6421ms
+ ✓ tests/gate-skiff.test.ts (3 tests) 21839ms
+   ✓ gate-skiff: two bots keep both crew alive on the Skiff for five minutes > seed 1  7919ms
+   ✓ gate-skiff: two bots keep both crew alive on the Skiff for five minutes > seed 2  7390ms
+   ✓ gate-skiff: two bots keep both crew alive on the Skiff for five minutes > seed 3  6529ms
+ ✓ tests/gate-jump.test.ts (1 test) 23391ms
+   ✓ jump gate: a scripted navigator jumps the quiet ship through every sector > seed 1, two Recruits: eighteen jumps with waits for fuel, the final beacon and the Warden arriving, both alive, within 18 x (charge + 10) + 12 waits seconds  23390ms
+ ✓ tests/gate-run.test.ts (1 test) 25025ms
+   ✓ run gate: a scripted navigator resolves an event, buys a hull repair and reaches the Warden > seed 1, two Recruits: the final beacon and the Warden arriving, every arrival paid, the event's 40, 30 spent, hull full  25024ms
+ ✓ tests/gate-survival.test.ts (3 tests) 29157ms
+   ✓ increment 1 gate: two bots survive five minutes > seed 1  10469ms
+   ✓ increment 1 gate: two bots survive five minutes > seed 2  9467ms
+   ✓ increment 1 gate: two bots survive five minutes > seed 3  9219ms
+ ✓ tests/combatTempo.test.ts (9 tests) 30439ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 1: an ignored first enemy costs 15 to 30 hull in its first 60 s  2449ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 1: with the starting loadout and the bot gunner the first enemy dies or flees in 40 to 80 s  3472ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 1: a sector-3 enemy against the gunner and no upgrades is survived  3908ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 2: an ignored first enemy costs 15 to 30 hull in its first 60 s  2212ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 2: with the starting loadout and the bot gunner the first enemy dies or flees in 40 to 80 s  3650ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 2: a sector-3 enemy against the gunner and no upgrades is survived  5106ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 3: an ignored first enemy costs 15 to 30 hull in its first 60 s  1838ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 3: with the starting loadout and the bot gunner the first enemy dies or flees in 40 to 80 s  3398ms
+   ✓ combat tempo (spec Demo-xiii section 4) > seed 3: a sector-3 enemy against the gunner and no upgrades is survived  4405ms
+ ✓ tests/gate-cutter.test.ts (3 tests) 30873ms
+   ✓ gate-cutter: two bots survive five minutes on the cutter > seed 1  11276ms
+   ✓ gate-cutter: two bots survive five minutes on the cutter > seed 2  9663ms
+   ✓ gate-cutter: two bots survive five minutes on the cutter > seed 3  9934ms
+ ✓ tests/onlineAppRuntime.test.ts (2 tests) 4842ms
+   ✓ bounds an unresolved actual startup and observes owned process cleanup  3018ms
+   ✓ bounds an unresolved actual observer-build and observes owned process cleanup  1823ms
+ ✓ tests/run.test.ts (52 tests) 14010ms
+   ✓ run: charge and Navigation input > the charge grows DT/60 per tick to 1 and stays, seated or not; a Confirm edge on the ready tick jumps; after a jump the end-of-tick charge is 0  1025ms
+   ✓ asteroid fields (spec Demo-viii section 1) > a jump to an Asteroid node: pending with no enemy arrival; the field starts at +8 s with a rock on the start tick; no enemy ever  2224ms
+   ✓ asteroid fields (spec Demo-viii section 1) > spawns every 6 s +/- 20% for 60 s, then stops; clears at +72 s with +20 scrap, the drive boost and a win  2955ms
+   ✓ asteroid fields (spec Demo-viii section 1) > an early jump: no reward, the rocks left behind, the field clock stopped; endField sets the encounter over  1920ms
+   ✓ the evasive manoeuvre (spec Coop-ii section 1, amendments D1-D3) > the captain bot never starts one  2859ms
+   ✓ sectors, fuel and waiting (spec Loop-i sections 1 and 2, amendments S1-S3) > fuel sources: a cleared asteroid field gives FIELD_FUEL  1617ms
+ ✓ tests/bot.test.ts (14 tests) 6453ms
+   ✓ the captain bot (spec Demo-i section 6) > (1) sits at Navigation by tick 1200, jumps by 1500, stands within 120 ticks of the jump; pid 1 never sits; a fire is ignored  880ms
+   ✓ the captain bot (spec Demo-i section 6) > (3) never buys at a shop: jumps on, scrap is 100 + scrapPerJump(2) = 118 at the next arrival  1450ms
+   ✓ the captain bot (spec Demo-i section 6) > (7) leaves a failed Navigation console to the repair, and does not sit at it while it is failed; it is repaired powered  1489ms
+   ✓ bots and crew votes (spec Coop-ii amendment D6) > two bots resolve an event by votes and jump on with the second confirmation  1447ms
+   ✓ the captain bot on the sector map (spec Loop-i section 5) > waits for help only when out of fuel, and then always waits  459ms
+ ✓ tests/snapshot.test.ts (49 tests) 13255ms
+   ✓ snapshot > weapons charge and fire script is deterministic and survives a mid-charge save/load  774ms
+   ✓ snapshot > property: same seed and intents give the same hash  1817ms
+   ✓ snapshot > property: save at tick N, load, continue equals an uninterrupted run  2028ms
+   ✓ snapshot > property: fuzzed intents never produce NaN or out-of-range values  1559ms
+   ✓ snapshot > a run saved inside an active Engineering productivity window continues like an uninterrupted run through the window expiry  348ms
+   ✓ snapshot > a run saved mid Build Up continues like an uninterrupted run through at least two phase changes  3144ms
+   ✓ snapshot > a run saved with an idle streak in progress and a Downed crew member continues through a new longest streak and the bleed-out like an uninterrupted run  1301ms
+   ✓ snapshot > a run saved mid-fight (after 60 ticks of melee) continues to the kill and the cooldown re-arm like the uninterrupted run  327ms
+   ✓ snapshot > a run saved mid-charge continues to the same jump when the client restores its separate row memory  733ms
+   ✓ snapshot: encounters (spec Demo-vi section 2) > a run saved after a won encounter with the drive boosted continues like the uninterrupted run through the jump  868ms
+ ✓ tests/gate-boarding.test.ts (3 tests) 13086ms
+   ✓ boarding gate: two bots clear a forced boarding at 1:00 with the ship otherwise quiet > seed 1  4595ms
+   ✓ boarding gate: two bots clear a forced boarding at 1:00 with the ship otherwise quiet > seed 2  4152ms
+   ✓ boarding gate: two bots clear a forced boarding at 1:00 with the ship otherwise quiet > seed 3  4338ms
+ ✓ tests/netParity.test.ts (24 tests) 3139ms
+   ✓ independent Net-1a baseline oracle > golden-2026-four-7200  2510ms
+ ✓ tests/eventList.test.ts (15 tests) 2299ms
+   ✓ the bots and the new events (spec Loop-v section 3) > bots resolve every event with its safe choice and never start a fight  2112ms
+ ✓ tests/progression.test.ts (14 tests) 3069ms
+   ✓ quirk > 5 Old Drive: the charge takes 75 s; the ready tick is 4500  3030ms
+ ✓ tests/gate-warden.test.ts (2 tests) 11005ms
+   ✓ Warden gate: a scripted gunner destroys the Warden and wins the run > seed 1: the starting loadout (Pulse Laser only) wins  6632ms
+   ✓ Warden gate: a scripted gunner destroys the Warden and wins the run > seed 1: with one loot weapon (a Heavy Laser in slot 1) it wins in fewer shots and less time  4372ms
+ ✓ tests/director.test.ts (35 tests) 40981ms
+   ✓ soak > 20 sim minutes with an unkillable bot crew: every phase twice, no stall past 60 s, no Relax past 60 s, stress within 0..1  40164ms
+   ✓ a peaceful start (spec Loop-i section 4b) > nothing spawns, arrives or boards at a peaceful beacon over 300 s, even with every clock due; the drive still charges  511ms
+ ✓ tests/roomServiceClient.test.ts (56 tests) 2651ms
+ ✓ tests/twoSeats.test.ts (27 tests) 1914ms
+   ✓ P1: the captain bot keeps the old charge wait at a calm beacon (spec Demo-xi amendment 10) > with a full drive at the start the captain bot does not leave before JUMP_CHARGE_TIME seconds, then does  1124ms
+   ✓ P2: fire burns systems (spec Demo-xi section 5, amendment 3) > in the running sim an untended fire fails its room's console in roughly 20 to 30 s; one put out early does nothing  416ms
+ ✓ tests/contentDigest.test.ts (32 tests) 2049ms
+ ✓ tests/power.test.ts (19 tests) 1949ms
+   ✓ bonus bars and shedding > property: with an engineer of level 3, 4, 7 or 8, random inputs, sits, stands and downings keep usage within capacity, coolant within the pool and levels within maxLevel  1906ms
+ ✓ tests/acceptance.test.ts (6 tests) 20482ms
+   ✓ runAcceptance > equals an independent bot loop for 2 players, seed 1, half a minute, and is repeatable  1706ms
+   ✓ runAcceptance > a run that ends early reports its real reason and a shorter duration  4898ms
+   ✓ the live run (spec Demo-i section 8) > seed 1, five minutes: the captain bot reaches node 3 at two players and at four (spec Demo-ii section 3); four players end running with nobody dead  13710ms
+ ✓ tests/interact.test.ts (23 tests) 2025ms
+   ✓ repair skill > level 10 repairs a fire and a power failure in 3.75 s and a breach in 5 s; two holders leave no residue; revive is unchanged  439ms
+   ✓ hands together (spec Coop-i section 2, amendments C3 and C5) > a breach and a failed station the same: 2.5 times one person  402ms
+ ✓ tests/botGunner.test.ts (12 tests) 1593ms
+   ✓ the bot gunner (spec Demo-xiii section 3) > a seated Science bot scans the enemy ship  476ms
+   ✓ the gunner leaves the guns (spec Demo-xiii amendment 2) > a hurt gunner heals in the Medbay first, then takes the guns  523ms
+ ✓ tests/authorityBoundary.test.ts (3 tests) 1695ms
+   ✓ keeps fixture adoption and publication outside the production composition graph  924ms
+   ✓ keeps all eight gates, parity, acceptance and golden on the shared byte runner  763ms
+ ✓ tests/enemy.test.ts (60 tests) 1992ms
+   ✓ combat gate: a level-2 Weapons operator strips the shield layer with one untuned beam, then lands seven hits, inside the window > seven shots, seven hits (one strip, six hull hits and the fires they start), destroyed before departTick  1339ms
+ ✓ tests/console.test.ts (36 tests) 1524ms
+   ✓ Engineering console > property: random Engineering inputs over 60 s keep coolant within the pool, heat within range, levels within maxLevel and the capacity, checked every hazard tick  883ms
+ ✓ tests/authorityClock.test.ts (18 tests) 1148ms
+   ✓ authority retained clock > keeps fractional deadlines and yields identical gameplay across pump batch sizes  412ms
+ ✓ tests/characters.test.ts (12 tests) 1243ms
+   ✓ trait effects > Quick Hands with Repair 3 repairs a fire and a power failure in 6 / 1.475 s and a breach in 8 / 1.475 s; Lindqvist (Repair 0, no repair trait) adds 1 x; revive is unchanged  451ms
+   ✓ determinism with the four characters > two runs and a snapshot round-trip at tick 300 agree after 600 ticks, with a live fire, Okoro repairing it and the director running  667ms
+ ✓ tests/session.test.ts (35 tests) 1137ms
+   ✓ session > crash payload carries a rolling baseline and semantic inputs since it  395ms
+   ✓ session > baseline plus recorded semantic inputs replays to the pre-fault state  313ms
+ ✓ tests/determinismHarness.test.ts (14 tests) 1408ms
+   ✓ independently recorded semantic schedule coverage > losslessly compresses expected canonical fields without compressing away changing values  518ms
+   ✓ independently recorded semantic schedule coverage > cutter executes meaningful non-neutral command and held coverage through production replay  463ms
+   ✓ independently recorded semantic schedule coverage > skiff executes meaningful non-neutral command and held coverage through production replay  360ms
+ ✓ tests/simDisposal.test.ts (15 tests) 1106ms
+   ✓ simulation ownership > bounds 2,000 four-crew lifetimes without changing a live sentinel  844ms
+ ✓ tests/scan.test.ts (16 tests) 837ms
+ ✓ tests/onlineCoordinator.test.ts (27 tests) 1101ms
+   ✓ online coordinator ownership > bounds unresolved native factories across cancellation generations  311ms
+ ✓ tests/boarders.test.ts (23 tests) 803ms
+ ✓ tests/telemetry.test.ts (21 tests) 679ms
+   ✓ telemetry: event counters > repairs count each kind once on completion, even with two holders  459ms
+ ✓ tests/authorityEvents.test.ts (9 tests) 605ms
+   ✓ headless consumers drain ephemeral events throughout a long cue-producing run  380ms
+ ✓ tests/skiff.test.ts (10 tests) 833ms
+   ✓ the Skiff (spec Demo-x-a section 2) > loads a torpedo by itself while the Helm is manned, on either tab, and offers no magazine pickup  491ms
+ ✓ tests/sectorProducers.test.ts (13 tests) 757ms
+   ✓ restores actual controller cursor/repeat memory and reconciles abandoned sequences before continuing  424ms
+ ✓ tests/boundary.test.ts (95 tests) 652ms
+ ✓ tests/weapons.test.ts (43 tests) 543ms
+   ✓ properties > stock stays in 0..TORP_CAP, loaded is 0 or 1, stock only falls by one at a load completion, and draws equal shots  399ms
+ ✓ tests/hud.test.ts (64 tests) 423ms
+ ✓ tests/oxygen.test.ts (16 tests) 833ms
+   ✓ oxygen > property: mass balance and bounds hold for random states (incl. simultaneous venting)  703ms
+ ✓ tests/torpedoes.test.ts (12 tests) 396ms
+ ✓ tests/cutter.test.ts (7 tests) 396ms
+   ✓ the cutter ship > runs 600 ticks with two bots without throwing  387ms
+ ✓ tests/replayV3.test.ts (12 tests) 275ms
+ ✓ tests/checkpointBots.test.ts (3 tests) 278ms
+ ✓ tests/doors.test.ts (9 tests) 324ms
+ ✓ tests/restoreRecovery.test.ts (14 tests) 359ms
+ ✓ tests/sectorStream.test.ts (33 tests) 288ms
+ ✓ tests/authority.test.ts (14 tests) 348ms
+ ✓ tests/movement.test.ts (15 tests) 217ms
+ ✓ tests/tacticalFlight.test.ts (18 tests) 230ms
+ ✓ tests/checkpointV2.test.ts (17 tests) 237ms
+ ✓ tests/botSelfPreservationUnit.test.ts (9 tests) 241ms
+ ✓ tests/onlineNeutralization.test.ts (12 tests) 206ms
+ ✓ tests/events.test.ts (31 tests) 231ms
+ ✓ tests/networkBoundary.test.ts (32 tests) 202ms
+ ✓ tests/eventCard.test.ts (8 tests) 170ms
+ ✓ tests/authorityDisconnect.test.ts (14 tests) 178ms
+ ✓ tests/stateStream.test.ts (25 tests) 137ms
+ ✓ tests/finalBattle.test.ts (11 tests) 154ms
+ ✓ tests/remoteAdmission.test.ts (21 tests) 133ms
+ ✓ tests/replayV2.test.ts (10 tests) 125ms
+ ✓ tests/science.test.ts (10 tests) 149ms
+ ✓ tests/consoleGroups.test.ts (14 tests) 136ms
+ ✓ tests/onlinePeers.test.ts (6 tests) 127ms
+ ✓ tests/seatStore.test.ts (18 tests) 114ms
+ ✓ tests/xp.test.ts (9 tests) 97ms
+ ✓ tests/authorityIngress.test.ts (2 tests) 105ms
+ ✓ tests/heat.test.ts (14 tests) 102ms
+ ✓ tests/modeHost.test.ts (14 tests) 90ms
+ ✓ tests/cardController.test.ts (12 tests) 69ms
+ ✓ tests/transportWindow.test.ts (8 tests) 62ms
+ ✓ tests/tacticalMap.test.ts (5 tests) 83ms
+ ✓ tests/authorityRecovery.test.ts (9 tests) 73ms
+ ✓ tests/hudFit.test.ts (17 tests) 68ms
+ ✓ tests/productive.test.ts (7 tests) 70ms
+ ✓ tests/finalBattleHud.test.ts (6 tests) 61ms
+ ✓ tests/commandOutbox.test.ts (11 tests) 66ms
+ ✓ tests/lifeSupport.test.ts (4 tests) 72ms
+ ✓ tests/fire.test.ts (6 tests) 68ms
+ ✓ tests/map.test.ts (10 tests) 66ms
+ ✓ tests/onlineRenderer.test.ts (9 tests) 170ms
+ ✓ tests/botClient.test.ts (6 tests) 75ms
+ ✓ tests/shotResult.test.ts (6 tests) 67ms
+ ✓ tests/evadeRow.test.ts (4 tests) 58ms
+ ✓ tests/crashRecordV2.test.ts (2 tests) 71ms
+ ✓ tests/onlineAppDiagnostics.test.ts (4 tests) 72ms
+ ✓ tests/semanticScience.test.ts (10 tests) 59ms
+ ✓ tests/notice.test.ts (27 tests) 57ms
+ ✓ tests/debris.test.ts (31 tests) 63ms
+ ✓ tests/semanticWeapons.test.ts (14 tests) 57ms
+ ✓ tests/snapshotV2.test.ts (48 tests) 51ms
+ ✓ tests/combat.test.ts (14 tests) 62ms
+ ✓ tests/rtcDataLink.test.ts (18 tests) 54ms
+ ✓ tests/loopback.test.ts (18 tests) 77ms
+ ✓ tests/pacing.test.ts (5 tests) 54ms
+ ✓ tests/rng.test.ts (6 tests) 40ms
+ ✓ tests/semanticNavigation.test.ts (13 tests) 44ms
+ ✓ tests/crew.test.ts (11 tests) 42ms
+ ✓ tests/checkpointStartup.test.ts (4 tests) 41ms
+ ✓ tests/tacticalDeterminism.test.ts (8 tests) 30ms
+ ✓ tests/semanticInteraction.test.ts (12 tests) 32ms
+ ✓ tests/roomIcons.test.ts (8 tests) 31ms
+ ✓ tests/ship.test.ts (21 tests) 26ms
+ ✓ tests/roomTargeting.test.ts (7 tests) 28ms
+ ✓ tests/golden.test.ts (4 tests) 63ms
+ ✓ tests/eventDefs.test.ts (13 tests) 29ms
+stdout | tests/spike-bitecs.test.ts > bitecs 0.4.0 behaviour (spike) > recycles removed entity ids and reports them non-existent until re-added
+bitecs recycled id: true
+
+stdout | tests/spike-bitecs.test.ts > bitecs 0.4.0 behaviour (spike) > measures snapshot size and hash time for the record (spec §11 spike criterion)
+snapshot 5280 bytes, hashState 0.0223 ms
+
+ ✓ tests/spike-bitecs.test.ts (2 tests) 29ms
+ ✓ tests/calloutModel.test.ts (8 tests) 27ms
+ ✓ tests/netCodec.test.ts (72 tests) 28ms
+ ✓ tests/onlineBridge.test.ts (7 tests) 24ms
+ ✓ tests/renderPure.test.ts (19 tests) 30ms
+ ✓ tests/rtcPeer.test.ts (57 tests) 20ms
+ ✓ tests/portLink.test.ts (16 tests) 28ms
+ ✓ tests/netLedger.test.ts (5 tests) 25ms
+ ✓ tests/canonicalAccess.test.ts (5 tests) 23ms
+ ✓ tests/state.test.ts (9 tests) 26ms
+ ✓ tests/projectileModel.test.ts (10 tests) 22ms
+ ✓ tests/threatColour.test.ts (1 test) 21ms
+ ✓ tests/hudViewer.test.ts (13 tests) 27ms
+ ✓ tests/breach.test.ts (3 tests) 19ms
+ ✓ tests/hostProcess.test.ts (16 tests) 17ms
+ ✓ tests/medbay.test.ts (2 tests) 19ms
+ ✓ tests/enemyWindowModel.test.ts (17 tests) 21ms
+ ✓ tests/utilityHost.test.ts (10 tests) 16ms
+ ✓ tests/render.test.ts (4 tests) 22ms
+ ✓ tests/tacticalHeadings.test.ts (6 tests) 13ms
+ ✓ tests/rtcBridge.test.ts (9 tests) 16ms
+ ✓ tests/semanticEngineering.test.ts (7 tests) 15ms
+ ✓ tests/rtcTransportOwner.test.ts (9 tests) 14ms
+node.exe : stderr | tests/assets.test.ts > asset manifest > every required file exists; optional files absent are 
+reported as warnings
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (stderr | tests/...ted as warnings:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+optional art not yet present (placeholders in use): art/tiles/breach.png, art/tiles/floor_damaged.png, 
+art/crew/body_base.png, art/crew/sit.png, art/fx/vent.png, art/fx/arc.png, art/icons/hazards.png
+
+ ✓ tests/assets.test.ts (6 tests) 13ms
+ ✓ tests/manifest.test.ts (11 tests) 12ms
+ ✓ tests/onlineIpc.test.ts (14 tests) 12ms
+ ✓ tests/determinismGuard.test.ts (17 tests) 19ms
+ ✓ tests/onlineSector.test.ts (2 tests) 13ms
+ ✓ tests/tacticalContacts.test.ts (5 tests) 12ms
+ ✓ tests/stateImage.test.ts (9 tests) 12ms
+ ✓ tests/onlinePlatform.test.ts (6 tests) 11ms
+ ✓ tests/semanticDoors.test.ts (3 tests) 11ms
+ ✓ tests/onlineRetry.test.ts (4 tests) 8ms
+ ✓ tests/consoleModel.test.ts (7 tests) 10ms
+ ✓ tests/boarderModel.test.ts (2 tests) 7ms
+ ✓ tests/rtcRuntimeGate.test.ts (53 tests) 11ms
+ ✓ tests/roomServiceRuntimeGate.test.ts (41 tests) 6ms
+ ✓ tests/audioCues.test.ts (7 tests) 8ms
+ ✓ tests/hudSlots.test.ts (1 test) 18ms
+ ✓ tests/skills.test.ts (4 tests) 8ms
+ ✓ tests/onlineSessionContract.test.ts (38 tests) 8ms
+ ✓ tests/sessionMenu.test.ts (7 tests) 6ms
+ ✓ tests/layout.test.ts (7 tests) 13ms
+ ✓ tests/rtcFrames.test.ts (12 tests) 10ms
+ ✓ tests/deviceManager.test.ts (7 tests) 3ms
+ ✓ tests/presentationTimeline.test.ts (11 tests) 8ms
+ ✓ tests/doorModel.test.ts (7 tests) 5ms
+ ✓ tests/onlineAppReport.test.ts (31 tests) 4ms
+ ✓ tests/telemetryStore.test.ts (4 tests) 5ms
+ ✓ tests/sessionRouter.test.ts (1 test) 4ms
+ ✓ tests/credits.test.ts (6 tests) 5ms
+ ✓ tests/gateTrace.test.ts (7 tests) 4ms
+ ✓ tests/inputTimeline.test.ts (3 tests) 4ms
+ ✓ tests/intents.test.ts (6 tests) 4ms
+ ✓ tests/wallModel.test.ts (4 tests) 4ms
+ ✓ tests/onlineConfig.test.ts (16 tests) 4ms
+ ✓ tests/doorAnim.test.ts (6 tests) 5ms
+ ✓ tests/hash.test.ts (3 tests) 3ms
+ ✓ tests/intent.test.ts (4 tests) 4ms
+ ✓ tests/stick.test.ts (4 tests) 3ms
+ ✓ tests/plainWords.test.ts (5 tests) 3ms
+ ✓ tests/boarderLayer.test.ts (1 test) 8ms
+ ✓ tests/onlineInput.test.ts (3 tests) 4ms
+ ✓ tests/isolatedBuildReporter.test.ts (2 tests) 4ms
+ ✓ tests/platformPort.test.ts (2 tests) 3ms
+ ✓ tests/playtest.test.ts (2 tests) 3ms
+ ✓ tests/worldFit.test.ts (3 tests) 2ms
+ ✓ tests/smoke.test.ts (1 test) 2ms
+ ✓ tests/memory.test.ts (1 test) 2ms
+ ✓ tests/build-output.test.ts (1 test) 2ms
+
+ Test Files  179 passed (179)
+      Tests  2474 passed (2474)
+   Start at  13:25:04
+   Duration  58.19s (transform 3.52s, setup 21.43s, collect 34.43s, tests 355.73s, environment 26ms, prepare 18.67s)
+

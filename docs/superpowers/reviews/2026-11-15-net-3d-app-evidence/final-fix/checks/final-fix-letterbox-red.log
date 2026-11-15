@@ -1,0 +1,62 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ❯ tests/letterbox.test.ts (4 tests | 3 failed) 5ms
+   × fits the entire game scene inside a 1280x663 reserved viewport 4ms
+     → expected -29 to be greater than or equal to 0
+   × fits the entire game scene inside a 800x543 reserved viewport 0ms
+     → expected -240 to be greater than or equal to 0
+   × fits the entire game scene inside a 640x365 reserved viewport 0ms
+     → expected -320 to be greater than or equal to 0
+   ✓ preserves half-step pixel scaling when the full scene fits at native size 0ms
+node.exe : 
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/letterbox.test.ts > fits the entire game scene inside a 1280x663 reserved viewport
+AssertionError: expected -29 to be greater than or equal to 0
+ ❯ tests/letterbox.test.ts:7:70
+      5|   const fit = computeLetterbox(width, height, 1280, 720);
+      6|   expect(fit.scale).toBeGreaterThan(0);
+      7|   expect(fit.offsetX).toBeGreaterThanOrEqual(0); expect(fit.offsetY).t…
+       |                                                                      ^
+      8|   expect(fit.offsetX + 1280 * fit.scale).toBeLessThanOrEqual(width);
+      9|   expect(fit.offsetY + 720 * fit.scale).toBeLessThanOrEqual(height);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/letterbox.test.ts > fits the entire game scene inside a 800x543 reserved viewport
+AssertionError: expected -240 to be greater than or equal to 0
+ ❯ tests/letterbox.test.ts:7:23
+      5|   const fit = computeLetterbox(width, height, 1280, 720);
+      6|   expect(fit.scale).toBeGreaterThan(0);
+      7|   expect(fit.offsetX).toBeGreaterThanOrEqual(0); expect(fit.offsetY).t…
+       |                       ^
+      8|   expect(fit.offsetX + 1280 * fit.scale).toBeLessThanOrEqual(width);
+      9|   expect(fit.offsetY + 720 * fit.scale).toBeLessThanOrEqual(height);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/letterbox.test.ts > fits the entire game scene inside a 640x365 reserved viewport
+AssertionError: expected -320 to be greater than or equal to 0
+ ❯ tests/letterbox.test.ts:7:23
+      5|   const fit = computeLetterbox(width, height, 1280, 720);
+      6|   expect(fit.scale).toBeGreaterThan(0);
+      7|   expect(fit.offsetX).toBeGreaterThanOrEqual(0); expect(fit.offsetY).t…
+       |                       ^
+      8|   expect(fit.offsetX + 1280 * fit.scale).toBeLessThanOrEqual(width);
+      9|   expect(fit.offsetY + 720 * fit.scale).toBeLessThanOrEqual(height);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 1 passed (4)
+   Start at  13:30:06
+   Duration  655ms (transform 200ms, setup 320ms, collect 10ms, tests 5ms, environment 0ms, prepare 78ms)
+

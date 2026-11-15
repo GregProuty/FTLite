@@ -1,0 +1,211 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ❯ tests/sessionMenu.test.ts (7 tests | 1 failed) 9ms
+   × reserves the measured strip height for online and couch, including wrapped controls 5ms
+     → menu.reservedHeight is not a function
+   ✓ counts down a shared epoch deadline despite unequal process performance origins 1ms
+   ✓ explains unavailable online in a connected but unconfigured app while leaving Couch playable 0ms
+   ✓ keeps a compact failure strip over the last game even when main clears the attachment epoch 0ms
+   ✓ offers accessible capacity/code forms and deduplicates Join until settlement 1ms
+   ✓ gates lobby capabilities and labels reconnect as a seat, with actionable compatibility errors 0ms
+   ✓ requires ready occupied humans and host capability before Start, and permits leaving during a pending Join 1ms
+ ❯ tests/onlineAppReport.test.ts (29 tests | 7 failed) 10ms
+   × actual online app report admission > rejects invalid post-rejoin generation undefined 6ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation NaN 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation Infinity 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation 2.5 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation 9007199254740992 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects a report declaring failure despite complete observations 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > requires hashes for the actual application and launcher artifacts 0ms
+     → expected [Function] to throw an error
+   ✓ actual online app report admission > accepts complete observed evidence 0ms
+   ✓ actual online app report admission > rejects missing source 0ms
+   ✓ actual online app report admission > rejects missing processes 0ms
+   ✓ actual online app report admission > rejects missing cleanup 0ms
+   ✓ actual online app report admission > rejects missing scenarios 0ms
+   ✓ actual online app report admission > rejects missing runtime 0ms
+   ✓ actual online app report admission > rejects missing acks proof 0ms
+   ✓ actual online app report admission > rejects missing commands proof 0ms
+   ✓ actual online app report admission > rejects missing matched proof 0ms
+   ✓ actual online app report admission > rejects missing fullReceipts proof 0ms
+   ✓ actual online app report admission > rejects false ownership 0ms
+   ✓ actual online app report admission > rejects false ackBeforeInput 0ms
+   ✓ actual online app report admission > rejects false botTakeover 0ms
+   ✓ actual online app report admission > rejects false pausedReconnect 0ms
+   ✓ actual online app report admission > rejects false blurNeutral 0ms
+   ✓ actual online app report admission > exit zero alone is insufficient 0ms
+   ✓ actual online app report admission > rejects missing actual cleanup 0ms
+   ✓ actual online app report admission > rejects shared processes 0ms
+   ✓ actual online app report admission > rejects unchanged seat generation 0ms
+   ✓ actual online app report admission > rejects an unexpected process exit 0ms
+   ✓ actual online app report admission > rejects unobserved native window exits 0ms
+   ✓ actual online app report admission > rejects native peers with no closure or owning-window destruction 0ms
+ ❯ tests/sectorProducers.test.ts (13 tests | 1 failed) 407ms
+   ✓ gives every vacant seat exactly one bot through published-state strict input 36ms
+   × retires an entire multi-seat human binding when seat 2 is replaced and restores bot 0 23ms
+     → expected false to be true // Object.is equality
+   ✓ suppresses only sparse human seats 0 and 2 and resumes each bot after loss 12ms
+   ✓ settles an admitted pending command and clears held movement before bot takeover 8ms
+   ✓ hands human to bot to human with current watermarks and ignores stale detach closures 8ms
+   ✓ coalesces replacement and close callbacks while paused without advancing simulation 8ms
+   ✓ queues replacements requested during a synchronous initial publication outside its journal frame 3ms
+   ✓ restores actual controller cursor/repeat memory and reconciles abandoned sequences before continuing 218ms
+   ✓ captures live sector controllers in initial and periodic crash baselines and regular mode checkpoints 84ms
+   ✓ closes queued human links on disposal without ever binding or producing 1ms
+   ✓ coalesces superseded pending links immediately while binding only at the safe boundary 3ms
+   ✓ retires a bot candidate if another publication observer disposes the manager during binding 2ms
+   ✓ releases every sector producer when initial publication faults the authority 2ms
+ ❯ tests/onlineRenderer.test.ts (9 tests | 2 failed) 114ms
+   × online renderer uses the real streaming client > retains a nondefault Doors selection in draws after main detaches the replica 20ms
+     → expected undefined to deeply equal { rowKey: 'door:3', page: 'main' }
+   × online renderer uses the real streaming client > shows vacant and disconnected crew as bots with health and without local input prompts 7ms
+     → expected [ 'reconnect', 'reconnect', 'active' ] to deeply equal [ 'bot', 'bot', 'active' ]
+   ✓ online renderer uses the real streaming client > neutralizes a removed controller exactly once and stops production until a physical producer returns 14ms
+   ✓ online renderer uses the real streaming client > waits for validated state ACK, maps physical zero only to seat two, and blur neutralizes once without pause 9ms
+   ✓ online renderer uses the real streaming client > draws detached presentation without changing confirmed data and freezes after replica disposal 7ms
+   ✓ online renderer uses the real streaming client > uses delayed draw coordinates in the actual crew layer without modifying Position or snapshots 14ms
+   ✓ online renderer uses the real streaming client > uses owned pause commands, reserves bounded outbox capacity and never writes couch progression 32ms
+   ✓ online renderer uses the real streaming client > neutralizes menu blocking once and rejects stale attachment epochs without replacing a live client 8ms
+   ✓ online renderer uses the real streaming client > replaces the client, UI and frozen ownership; new attachment cannot send abandoned pending commands 3ms
+node.exe : 
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 
+undefined
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation NaN
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 
+Infinity
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 2.5
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 
+9007199254740992
+AssertionError: expected [Function] to throw an error
+ ❯ tests/onlineAppReport.test.ts:17:46
+     15|   it.each([undefined, NaN, Infinity, 2.5, Number.MAX_SAFE_INTEGER + 1]…
+     16|     const r: any = fixture(); r.scenarios[0].generationAfter = generat…
+     17|     expect(() => validateOnlineAppReport(r)).toThrow();
+       |                                              ^
+     18|   });
+     19|   it('rejects a report declaring failure despite complete observations…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects a report declaring failure despite 
+complete observations
+AssertionError: expected [Function] to throw an error
+ ❯ tests/onlineAppReport.test.ts:20:90
+     18|   });
+     19|   it('rejects a report declaring failure despite complete observations…
+     20|     expect(() => validateOnlineAppReport({ ...fixture(), failure: 'lau…
+       |                                                                                          ^
+     21|   });
+     22|   it('requires hashes for the actual application and launcher artifact…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > requires hashes for the actual application 
+and launcher artifacts
+AssertionError: expected [Function] to throw an error
+ ❯ tests/onlineAppReport.test.ts:23:54
+     21|   });
+     22|   it('requires hashes for the actual application and launcher artifact…
+     23|     expect(() => validateOnlineAppReport(fixture())).toThrow();
+       |                                                      ^
+     24|   });
+     25|   it('accepts complete observed evidence', () => expect(() => validate…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  tests/onlineRenderer.test.ts > online renderer uses the real streaming client > retains a nondefault Doors 
+selection in draws after main detaches the replica
+AssertionError: expected undefined to deeply equal { rowKey: 'door:3', page: 'main' }
+
+- Expected: 
+{
+  "page": "main",
+  "rowKey": "door:3",
+}
+
++ Received: 
+undefined
+
+ ❯ tests/onlineRenderer.test.ts:45:55
+     43|     ui.stations[0] = { rowKey: 'door:3', page: 'main' };
+     44|     h.session.setStatus({ ...status, phase: 'reconnecting' }); h.sessi…
+     45|     expect(h.draw.mock.calls.at(-1)![3]?.stations[0]).toEqual({ rowKey…
+       |                                                       ^
+     46|     expect(h.draw.mock.calls.at(-1)![3]).not.toBe(ui);
+     47|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+ FAIL  tests/onlineRenderer.test.ts > online renderer uses the real streaming client > shows vacant and disconnected 
+crew as bots with health and without local input prompts
+AssertionError: expected [ 'reconnect', 'reconnect', 'active' ] to deeply equal [ 'bot', 'bot', 'active' ]
+
+- Expected
++ Received
+
+  [
+-   "bot",
+-   "bot",
++   "reconnect",
++   "reconnect",
+    "active",
+  ]
+
+ ❯ tests/onlineRenderer.test.ts:54:78
+     52|       { seatId: 2, occupied: true, connected: true }
+     53|     ] } as any }); h.session.frame();
+     54|     expect(h.update.mock.calls.at(-1)![0].players.map((p: any) => p.st…
+       |                                                                              ^
+     55|     for (const p of h.update.mock.calls.at(-1)![0].players.slice(0, 2)…
+     56|       expect(p.health).toBeGreaterThan(0); expect(p.interactPrompt).to…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+ FAIL  tests/sectorProducers.test.ts > retires an entire multi-seat human binding when seat 2 is replaced and restores 
+bot 0
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/sectorProducers.test.ts:69:109
+     67|   expect(replacement.host.links).toHaveLength(1);
+     68|   replacement.client.callout(2); h.transport.drain(); h.pump();
+     69|   expect(h.checkpoint().recentResults.some(r => r.result.id.player ===…
+       |                                                                                                             ^
+     70| });
+     71| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/11]⎯
+
+ FAIL  tests/sessionMenu.test.ts > reserves the measured strip height for online and couch, including wrapped controls
+TypeError: menu.reservedHeight is not a function
+ ❯ tests/sessionMenu.test.ts:13:15
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/11]⎯
+
+
+ Test Files  4 failed (4)
+      Tests  11 failed | 47 passed (58)
+   Start at  13:20:28
+   Duration  1.91s (transform 773ms, setup 1.30s, collect 1.71s, tests 540ms, environment 0ms, prepare 320ms)
+

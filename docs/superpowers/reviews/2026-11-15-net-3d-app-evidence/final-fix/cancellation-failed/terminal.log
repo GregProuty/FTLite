@@ -1,0 +1,10 @@
+node.exe : APP_WAIT_TIMEOUT
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (APP_WAIT_TIMEOUT:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{ code: 'APP_NATIVE_STDERR', role: 'guest' }
+APP_SHUTDOWN_OBSERVATION_FAILED
+online-application-gate-failed
