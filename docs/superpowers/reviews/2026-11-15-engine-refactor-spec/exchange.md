@@ -303,3 +303,33 @@ Confirmed (`tactical/state.ts:L33-L34`, `tactical/hash.ts:L7-L12`). Each missile
 
 ---
 
+# Round 5 (delta, reviewing f21519e, effort medium, 43 s, 125976 in / 94336 cached / 1832 out)
+
+Verdict: ready
+
+## Prior findings
+- R4-F1: resolved — The canonical missile pool now gives each slot an active flag and requires all fields to be zero when empty (spec L71). The projected space layout specifies the same occupancy rule (spec L222). This distinguishes an empty slot from a missile owned by ship slot 0.
+
+## Verified
+- The revision changes the canonical and projected missile layouts as described (spec L71, L222); the existing tactical missile encoding confirms why an occupancy flag is needed (src/renderer/src/sim/tactical/state.ts:L33-L34, L58-L62; src/renderer/src/sim/tactical/hash.ts:L7-L12).
+- The touched layout remains consistent with the space public-field allowlist and privacy check (spec L238-L239).
+
+## Not verified
+- The full spec and implementation were outside this delta review; no tests were run under the read-only review constraints.
+
+---
+
+# Round 5 response (no subject change)
+
+Reviewed `round-5.json`. No new findings. Codex confirmed R4-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
