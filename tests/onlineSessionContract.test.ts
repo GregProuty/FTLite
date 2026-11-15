@@ -29,6 +29,20 @@ describe('bounded online renderer boundary', () => {
   it('rejects credentials, unknown fields and invalid nested roster fields', () => {
     for (const value of [ { ...status(), seatToken: 'secret' }, { ...status(), error: 'secret exception' }, { ...status(), attachmentEpoch: -1 }, { ...status(), attachmentEpoch: Number.MAX_SAFE_INTEGER+1 }, { ...status(), retryAtMs: Infinity }, { ...status(), ownSeat: 4 }, { ...status(), actions: ['launch'] }, { ...status(), actions: ['leave','leave'] }, { ...status(), snapshot: {...snapshot, seatToken:'secret'} }, { ...status(), snapshot: {...snapshot, seats:[{...snapshot.seats[0],seatToken:'secret'},snapshot.seats[1]]} }, { ...status(), snapshot: {...snapshot, compatibility:{...snapshot.compatibility,token:'secret'}} } ]) expect(validateOnlineStatus(value)).toBe(false);
   });
+  it.each(['actions', 'seats'] as const)('rejects credential properties attached to the %s array', location => {
+    const value = status();
+    const array = location === 'actions' ? value.actions : value.snapshot!.seats;
+    Object.assign(array, { seatToken: 'private-test-value' });
+    expect(validateOnlineStatus(value)).toBe(false);
+    expect(() => copyOnlineStatus(value)).toThrow('invalid-status');
+  });
+  it.each(['actions', 'seats'] as const)('rejects holes in the %s array', location => {
+    const value = status();
+    const array = location === 'actions' ? value.actions : value.snapshot!.seats;
+    delete (array as unknown[])[0];
+    expect(validateOnlineStatus(value)).toBe(false);
+    expect(() => copyOnlineStatus(value)).toThrow('invalid-status');
+  });
   it('returns detached status copies and rejects unsafe data before copying', () => {
     const original = status(), copied = copyOnlineStatus(original);
     copied.snapshot!.seats[0]!.ready = true;

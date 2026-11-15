@@ -43,6 +43,11 @@ export type OnlineResult = { ok: true } | { ok: false; code: OnlineErrorCode };
 const positive = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
 const natural = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 const seatId = (value: unknown): value is number => natural(value) && value < 4;
+/** Element validators skip holes and extra properties; only dense index keys may cross IPC. */
+function hasOnlyArrayIndices(value: readonly unknown[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === value.length && keys.every((key, index) => key === String(index));
+}
 const actionTypes: readonly OnlineAction['type'][] = ['host', 'join', 'ready', 'remove-seat', 'view-state', 'reconnect', 'start', 'retry', 'leave', 'forget-seat'];
 const phases: readonly OnlinePhase[] = ['idle', 'creating', 'joining', 'lobby', 'connecting', 'syncing', 'running', 'paused', 'reconnecting', 'ended', 'error'];
 /** Bound raw input first, then accept only the service's eight-character code alphabet. */
@@ -63,12 +68,13 @@ export function validateOnlineAction(value: unknown): value is OnlineAction {
 export function validateOnlineStatus(value: unknown): value is OnlineStatus {
   return rtcRecord(value) && rtcKeys(value, ['phase', 'role', 'ownSeat', 'snapshot', 'attachmentEpoch', 'error', 'retryAtMs', 'persistent', 'actions'])
     && phases.includes(value.phase as OnlinePhase) && (value.role === null || value.role === 'host' || value.role === 'guest')
-    && (value.ownSeat === null || seatId(value.ownSeat)) && (value.snapshot === null || validateRoomSnapshot(value.snapshot))
+    && (value.ownSeat === null || seatId(value.ownSeat))
+    && (value.snapshot === null || (validateRoomSnapshot(value.snapshot) && hasOnlyArrayIndices(value.snapshot.seats)))
     && (value.snapshot === null || value.ownSeat === null || (value.ownSeat as number) < (value.snapshot as RoomSnapshot).capacity)
     && natural(value.attachmentEpoch) && (value.error === null || isOnlineErrorCode(value.error))
     && (value.retryAtMs === null || (typeof value.retryAtMs === 'number' && Number.isFinite(value.retryAtMs) && value.retryAtMs >= 0))
     && typeof value.persistent === 'boolean' && Array.isArray(value.actions) && value.actions.length <= actionTypes.length
-    && value.actions.every(type => actionTypes.includes(type)) && new Set(value.actions).size === value.actions.length;
+    && hasOnlyArrayIndices(value.actions) && value.actions.every(type => actionTypes.includes(type)) && new Set(value.actions).size === value.actions.length;
 }
 /** Validate before detaching so unknown credential fields can never be copied to IPC. */
 export function copyOnlineStatus(value: OnlineStatus): OnlineStatus {
