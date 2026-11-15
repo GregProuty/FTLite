@@ -275,3 +275,34 @@ Given by Claude under the owner's standing order (2026-11-14: "If any decisions 
 
 ---
 
+# Round 5 (delta, reviewing 4982ed1, effort high, 68 s, 163641 in / 142592 cached / 3153 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F3: resolved — The orbit thrust rule now has an explicit first-match order, so the formerly overlapping too-fast and off-course conditions produce one command (spec L46-L50).
+
+## Verified
+- The round 5 diff changes the orbit thrust rule to the precedence stated in the ruling (spec L46-L50, L147).
+- The scripted pair remains test-only, and the ten-seed gates remain stated in the spec (spec L29-L30, L104-L112; parent spec L285, L311).
+- The cited source still provides position-only path predictions and the weapon eligibility and command behavior used by the pair (tactical/predict.ts:L21-L31; tactical/weapons.ts:L48-L52, L72-L96).
+
+## Not verified
+- Whether the eventual implementation meets the seed 1–10 gates; no simulation or Jest suite was run under the read-only review constraint.
+
+---
+
+# Round 5 response (no subject change)
+
+Reviewed `round-5.json`. No new findings. Codex confirmed R1-F3 resolved by the ruling fix. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
