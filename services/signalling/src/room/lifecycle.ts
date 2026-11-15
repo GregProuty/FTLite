@@ -28,10 +28,10 @@ export class RoomLifecycle {
     this.sockets.current(connection);
     if (connection.seat_id !== this.store.requireConfirmed().host_seat_id) failure('forbidden');
   }
-  ready(connection: ConnectionRow, revision: number): void {
+  ready(connection: ConnectionRow, revision: number, phase: 'lobby' | 'active' = 'lobby'): void {
     this.host(connection);
     const m = this.store.requireConfirmed();
-    if (m.phase !== 'lobby') failure('invalid-state');
+    if (m.phase !== phase) failure('invalid-state');
     if (revision !== m.roster_revision) failure('conflict');
     if (this.store.seats().some(s => s.token_hash && (!s.connected || !s.ready)) || !this.signals.allGuestsReady()) failure('invalid-state');
   }
@@ -140,8 +140,8 @@ export class RoomLifecycle {
       const reservation = await this.directory.reserveActivation(this.store.meta()!.room_id, op.previous_epoch, op.operation_id, op.expected_generation, op.target_generation);
       current = this.currentOperation(op, connection);
       if (!reservation.ok) {
-        // A definitive admission refusal performed no reservation. Unknown transport outcomes retain the operation.
-        if (current.state === 'prepared' && (reservation.error.code === 'capacity' || reservation.error.code === 'conflict' || reservation.error.code === 'not-found')) this.store.sql.exec('DELETE FROM room_activation WHERE operation_id = ?', op.operation_id);
+        // Another exact retry may already have reserved this tuple while this refusal
+        // was in flight. Keep it for exact recovery or expiry plus terminal fencing.
         unwrapDomain(reservation);
       }
       const reserved = unwrapDomain(reservation);
@@ -172,7 +172,12 @@ export class RoomLifecycle {
       current = this.currentOperation(op, connection);
       unwrapDomain(await this.directory.commitActivation(this.store.meta()!.room_id, op.operation_id, op.operation_id, op.target_generation, current.active_deadline));
       current = this.currentOperation(op, connection);
-      if (op.kind === 'start' && this.store.meta()!.roster_revision !== op.revision) { this.store.fence(Date.now()); failure('conflict'); }
+      if (op.kind === 'start') {
+        // Pair replacement changes readiness without changing the roster revision.
+        // Recheck all current endpoints after the final external acknowledgement.
+        try { this.ready(connection, op.revision, 'active'); }
+        catch (error) { this.store.fence(Date.now()); throw error; }
+      }
       if (current.state === 'committed') {
         this.store.sql.exec("UPDATE room_activation SET state = 'acknowledged' WHERE operation_id = ? AND state = 'committed'", op.operation_id);
         const outcome = this.outcome(op, connection);

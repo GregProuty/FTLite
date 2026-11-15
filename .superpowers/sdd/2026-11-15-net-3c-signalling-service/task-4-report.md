@@ -89,3 +89,35 @@ Worker forwards `/v2/rooms/{roomId}/checkpoint` to Room only after existing rout
 ## Self-review and concerns
 
 Reviewed awaits and operation stamps, synchronous SQL transaction boundaries, stale epoch/generation handling, charge arithmetic, singleton/count/byte bounds, retained-token access, and the actual service diff. All required local gates pass. No unresolved architecture blocker is known; parent independent review remains the next step. Accounting outages intentionally fail closed and can temporarily retain charges or refuse a retained activation until recovery. No backend test establishes the future utility authority gate or online-demo readiness.
+
+## Task 4 review fix round 1
+
+Base: `c5d46ff` (implementation `7d5e685` plus parent documentation). Addressed both parent findings without changing Directory's terminal barrier or adding RPCs/schema.
+
+1. A delayed capacity/conflict/not-found refusal no longer deletes the persisted activation tuple. An independently accepted exact retry can have reserved that same tuple after the first call observed refusal. The refusal is still returned to its caller, while exact recovery can finish the reservation. Otherwise the bounded pending deadline fences the operation and the existing terminal barrier completes accounting before a different claim replaces it. Thus a capacity refusal may leave the current claim pending until exact retry or terminal expiry; it cannot discard ambiguous operation history.
+2. Final start acknowledgement now uses the same current host, connected/ready occupied-seat, roster-revision and fully ready route predicate as proposal/commit, with an explicit `active` phase allowance for the unacknowledged commit. A route replacement can change required readiness without changing roster revision. Failed final validation irrevocably fences Room authority before returning the fixed failure; no `started` grant is broadcast.
+
+RED command, from `services/signalling`:
+
+```text
+npm test -- tests/activationRaces.test.ts -t 'earlier capacity|ready route is replaced'
+Test Files  1 failed (1)
+Tests       2 failed | 15 skipped (17)
+```
+
+The first regression exercised real Directory capacity refusal, freed one charged slot, performed a second real exact reservation, delayed both replies, then delivered the refusal first. Room's operation ID became `undefined` on the reviewed implementation. The second replaced a ready host/guest link using real `SignalCoordinator.issue` during delayed real Directory acknowledgement; roster revision stayed unchanged and the reviewed implementation incorrectly returned `kind: started`.
+
+GREEN commands:
+
+```text
+npm test -- tests/activationRaces.test.ts tests/lifecycle.test.ts tests/checkpoints.test.ts
+Test Files  3 passed (3)
+Tests       34 passed (34)
+Duration    7.61s
+
+npm run typecheck
+tsc --noEmit
+exit 0
+```
+
+The refusal regression also verifies the successful epoch survives hibernation, releases its charge, and permits a fresh generation-3 claim. The replaced-route regression verifies both endpoints receive no started event, the Room operation is fenced/lost, and alarm accounting releases the charge. No full service/root/native suite or deployment was run in this scoped review round. Self-review checked the preserved tuple/deadline/terminal path and the active-phase readiness predicate; no remaining blocker is known.

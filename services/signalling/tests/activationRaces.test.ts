@@ -3,7 +3,9 @@ import { evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { expect, it } from 'vitest';
 import { prepared, started } from './lifecycle-helpers';
 import { checkpointRequest, dispatch, getCheckpoint } from './checkpoint-helpers';
-import { stub } from './socket-helpers';
+import { stub, create, connect, join } from './socket-helpers';
+import { links } from './signal-helpers';
+import { tokenHash } from '../src/crypto';
 import { unwrapDomain } from '../src/errors';
 const directory = () => env.DIRECTORY.get(env.DIRECTORY.idFromName('global'));
 async function account(roomId: string) { return runInDurableObject(directory(), (_, state) => state.storage.sql.exec('SELECT epoch, generation, phase, charged FROM directory_rooms WHERE room_id = ?', roomId).one()); }
@@ -192,4 +194,78 @@ it('keeps the original twenty-four-hour run deadline through rehost', async () =
   hp.send({ type: 'host-release', requestId: 4 }); await hp.reply(4);
   hp.send({ type: 'rehost-claim', requestId: 5, expectedHostGeneration: 1, nonce: 'e'.repeat(32) }); expect(await hp.reply(5)).toMatchObject({ outcome: { kind: 'lease' } });
   expect(await runInDurableObject(stub(host), room => room.store.meta()!.deadline)).toBe(deadline);
+});
+it('retains an exact activation tuple when an earlier capacity refusal arrives around a later real reservation', async () => {
+  const { host, hp } = await lost(); await fillCharged(100);
+  await runInDurableObject(stub(host), async room => {
+    const real = room.lifecycle.directory;
+    let releaseA!: () => void, releaseB!: () => void, enteredA!: () => void, enteredB!: () => void, calls = 0;
+    const gateA = new Promise<void>(r => { releaseA = r; }), gateB = new Promise<void>(r => { releaseB = r; });
+    const seenA = new Promise<void>(r => { enteredA = r; }), seenB = new Promise<void>(r => { enteredB = r; });
+    Object.defineProperty(room.lifecycle, 'directory', { configurable: true, value: {
+      fenceActivation: (...args: Parameters<typeof real.fenceActivation>) => real.fenceActivation(...args),
+      commitActivation: (...args: Parameters<typeof real.commitActivation>) => real.commitActivation(...args),
+      reserveActivation: async (...args: Parameters<typeof real.reserveActivation>) => {
+        const call = ++calls, value = await real.reserveActivation(...args);
+        if (call === 1) { expect(value).toMatchObject({ ok: false, error: { code: 'capacity' } }); enteredA(); await gateA; }
+        else { expect(value.ok).toBe(true); enteredB(); await gateB; }
+        return value;
+      },
+    } });
+    const sender = room.sockets.rows().find(r => r.seat_id === 0)!;
+    const claim = { type: 'rehost-claim' as const, requestId: 5, expectedHostGeneration: 1, nonce: 'e'.repeat(32) };
+    const first = room.lifecycle.request(sender, claim), refused = expect(first).rejects.toThrow('capacity');
+    let second: Promise<unknown> | undefined;
+    try {
+      await seenA;
+      await runInDurableObject(directory(), (_, state) => { state.storage.sql.exec('DELETE FROM directory_rooms WHERE room_id = ?', '0'.repeat(32)); });
+      second = room.lifecycle.request(sender, { ...claim, requestId: 6 }).then(value => value, error => ({ error: String(error) }));
+      await seenB;
+      const operationId = room.store.activation()!.operation_id;
+      releaseA(); await refused;
+      expect(room.store.activation()?.operation_id).toBe(operationId);
+      releaseB(); expect(await second).toMatchObject({ kind: 'lease', lease: { hostGeneration: 2 } });
+    } finally { releaseA(); releaseB(); await second; Object.defineProperty(room.lifecycle, 'directory', { value: real }); }
+  });
+  expect(await account(host.snapshot.roomId)).toMatchObject({ charged: 1, generation: 2 });
+  await evictDurableObject(stub(host));
+  hp.send({ type: 'host-release', requestId: 5 }); expect(await hp.reply(5)).toMatchObject({ outcome: { kind: 'void' } });
+  expect(await account(host.snapshot.roomId)).toMatchObject({ charged: 0, generation: 2 });
+  hp.send({ type: 'rehost-claim', requestId: 6, expectedHostGeneration: 2, nonce: 'f'.repeat(32) });
+  expect(await hp.reply(6)).toMatchObject({ outcome: { kind: 'lease', lease: { hostGeneration: 3 } } });
+});
+it('fences an unacknowledged start when a required ready route is replaced during Directory acknowledgement', async () => {
+  const host = await create(2), guest = await join(host), hp = await connect(host), gp = await connect(guest), { h } = await links(hp, gp);
+  hp.send({ type: 'link-ready', requestId: 2, attemptId: h.attemptId }); await hp.reply(2);
+  gp.send({ type: 'link-ready', requestId: 1, attemptId: h.attemptId }); await gp.reply(1);
+  hp.send({ type: 'ready', requestId: 3, ready: true }); await hp.reply(3);
+  gp.send({ type: 'ready', requestId: 2, ready: true }); await gp.reply(2);
+  const revision = await runInDurableObject(stub(host), room => room.store.snapshot().rosterRevision);
+  hp.send({ type: 'start-propose', requestId: 4, expectedRosterRevision: revision, initBase64: btoa('opaque'), initHash: await tokenHash('opaque') });
+  const proposalId = (await hp.reply(4) as any).outcome.proposalId;
+  await runInDurableObject(stub(host), async room => {
+    const real = room.lifecycle.directory;
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>(r => { release = r; }), seen = new Promise<void>(r => { entered = r; });
+    Object.defineProperty(room.lifecycle, 'directory', { configurable: true, value: {
+      reserveActivation: (...args: Parameters<typeof real.reserveActivation>) => real.reserveActivation(...args),
+      commitActivation: async (...args: Parameters<typeof real.commitActivation>) => { const value = await real.commitActivation(...args); entered(); await gate; return value; },
+    } });
+    const sender = room.sockets.rows().find(r => r.seat_id === 0)!;
+    const pending = room.lifecycle.request(sender, { type: 'start-commit', requestId: 5, proposalId, expectedRosterRevision: revision });
+    const rejected = expect(pending).rejects.toThrow('invalid-state');
+    try {
+      await seen;
+      expect(await room.signals.issue(sender, 1)).toMatchObject({ kind: 'attempt' });
+      expect(room.store.snapshot().rosterRevision).toBe(revision);
+      expect(room.signals.allGuestsReady()).toBe(false);
+      release(); await rejected;
+      expect(room.store.activation()?.state).toBe('fenced');
+      expect(room.store.snapshot().phase).toBe('lost');
+    } finally { release(); Object.defineProperty(room.lifecycle, 'directory', { value: real }); }
+  });
+  expect(hp.messages.some(m => m.payload.type === 'started')).toBe(false);
+  expect(gp.messages.some(m => m.payload.type === 'started')).toBe(false);
+  await runInDurableObject(stub(host), room => room.alarm());
+  expect(await account(host.snapshot.roomId)).toMatchObject({ charged: 0 });
 });
