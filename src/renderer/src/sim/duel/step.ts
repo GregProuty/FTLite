@@ -78,7 +78,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   resetScratch(d);
 
   // Seat phase: sits (today's validation), then stands (today's handler), then presence.
-  const away = (e: DuelEnvelope): boolean => !d.present[e.id.player as 0 | 1];   // an away character stays exactly where it is (spec ง8)
+  const away = (e: DuelEnvelope): boolean => !d.present[e.id.player as 0 | 1];   // an away character stays exactly where it is (spec ยง8)
   const sits = input.commands.filter((e) => e.command.kind === 'sit');
   const allowedSits = sits.filter((e) => e.command.kind === 'sit' && (e.command.station === d.nav || e.command.station === d.weapons));
   for (const e of sits) if (!allowedSits.includes(e)) result(e, 'not-in-duel');

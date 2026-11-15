@@ -239,7 +239,7 @@ describe('the duel tick', () => {
   });
 });
 
-describe('the interior stays quiet (spec ง17 risk 7)', () => {
+describe('the interior stays quiet (spec ยง17 risk 7)', () => {
   it('starts no fire, breach, boarder or event in 3,600 busy ticks', () => {
     const d = createDuel(layout, 5), st = d.interior, event0 = st.run.event;
     for (let t = 0; t < 3600; t++) {
