@@ -1,0 +1,50 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Rapid Tab followed by X or E loses the seat command",
+      "claim": "The runtime can queue a stand or sit after Tab but before the next tick. The sim processes seat commands before the queued presence change, so it rejects the command because the newly active character is still away.",
+      "evidence": "plan L2603-L2619 queues Tab presence and subsequent seat commands for the next tick; src/renderer/src/sim/duel/step.ts:L80-L96 validates sits and stands against presence before applying presence commands. The runtime tests put a tick between Tab and X (plan L2201-L2203).",
+      "why": "At render rates above 60 fps, an ordinary quick Tab–X or Tab–E can silently lose the action until the key is released and pressed again.",
+      "fix": "Keep sit and stand edges pending until the Tab presence tick has run, then stamp and send them on the following tick. Add a scripted test with Tab and X or E sampled in separate frames before one tick."
+    },
+    {
+      "severity": "P1",
+      "title": "Shared arrow spreading changes the H-1a flight view",
+      "claim": "The replacement tactical model spreads off-screen arrows for every caller, including flight mode, although the review requires the flight view to retain its H-1a behavior.",
+      "evidence": "plan L995-L1006 and L1062-L1067 add unconditional spreading; src/renderer/src/app/duel/flightMode.ts:L57-L60 calls that model with ship 0; the H-1a model returns arrows without spreading at src/renderer/src/render/tactical/tacticalModel.ts:L245-L253.",
+      "why": "When the flight camera is panned so the ship and planet crowd one edge, their arrow positions change.",
+      "fix": "Apply spreading only for duel views, such as when the model input includes ship 1, and retain the original flight arrow positions."
+    },
+    {
+      "severity": "P1",
+      "title": "The repair acceptance test teleports to the target",
+      "claim": "No headless runtime test walks a character to a damaged room and then repairs it using scripted keys, as the H-1b acceptance spec requires.",
+      "evidence": "spec L161 requires headless runtime coverage through scripted keys; plan L2201-L2208 uses put() to place the gunner beside the Weapons repair point, while plan L2217-L2224 tests walking separately without repair.",
+      "why": "Both tests can pass while the walk-to-repair interaction is broken.",
+      "fix": "Add a runtime test that uses scripted WASD input to walk from a console to a Shields or Engines repair point, then holds E and verifies repair progress."
+    },
+    {
+      "severity": "P2",
+      "title": "Restart retains the previous seed's star field",
+      "claim": "The tactical layer is created once with the initial seed; restart only resets its drawings and never regenerates its seeded stars.",
+      "evidence": "spec L55 requires view-owned caches to reset on restart, and spec L103 calls for a seeded star field; plan L1155-L1161 builds the stars once, plan L2977 passes the initial seed, and plan L3013-L3016 calls reset() without recreating the layer.",
+      "why": "A duel restarted with seed + 1 displays stars generated for the old duel.",
+      "fix": "Recreate the tactical layer with runtime.seed on an epoch change, or add a reseed method that redraws its star field."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "At fd651f7, createDuel, disposeDuel, stepDuelTick, DuelEnvelope and DuelResult have the shapes used by the plan (src/renderer/src/sim/duel/state.ts:L15-L57; src/renderer/src/sim/duel/step.ts:L17-L17,L71-L71; src/renderer/src/sim/duel/commands.ts:L5-L18).",
+    "The predictor's shallow state copy is sufficient for flyMissile as written: flyMissile mutates only the copied missile, while touchesSolid reads the map and grid (plan L589-L600; src/renderer/src/sim/tactical/missiles.ts:L33-L44; src/renderer/src/sim/tactical/predict.ts:L10-L19).",
+    "The interior layers expose the methods the plan calls, and the view uses a separate RenderMemory and a 1060-pixel fit band (plan L220-L233,L301-L339; src/renderer/src/render/tiles.ts:L11-L16; src/renderer/src/render/roomIcons.ts:L66-L69; src/renderer/src/render/memory.ts:L4-L19).",
+    "The normal restart path disposes the old duel, resets sequences, input and interpolation state, preserves the pacer's pause-reason set, and creates a fresh driver (plan L2591-L2599; plan L2415-L2431).",
+    "The planned main.ts retains the existing sector startup body, and package.json adds the duel script without removing the existing scripts (plan L3105-L3138,L3214-L3253; src/renderer/src/main.ts:L30-L63; package.json:L6-L19)."
+  ],
+  "not_verified": [
+    "Tests, typecheck, build and screenshots were not run: this review was read-only, and the request prohibits running the Jest suite.",
+    "The review ledger is absent in this checkout. No review round was posted because file modification was prohibited.",
+    "Narrow supporting reads outside the manifest covered seat validation, station power, panel return type and Cutter tile layout; no broader repository exploration was performed."
+  ]
+}

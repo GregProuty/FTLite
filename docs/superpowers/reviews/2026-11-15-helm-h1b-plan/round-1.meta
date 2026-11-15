@@ -1,0 +1,13 @@
+kind=full
+head=e51eb19
+thread_id=01a1de42-2e34-7bd3-94c4-5f8dc96a4b55
+effort=high
+started_at=2026-11-15T08:10:41Z
+duration_s=362
+input_tokens=4050535
+cached_input_tokens=3865088
+output_tokens=17010
+reasoning_output_tokens=10792
+exit=0
+parsed=1
+needs_judgment=
