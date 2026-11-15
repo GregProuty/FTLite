@@ -242,4 +242,68 @@ describe('generic room service client', () => {
     r.socket.event({ type: 'authenticated', session: { snapshot, seatId: 0, seatGeneration: 1 } });
     await expect(replacement).resolves.toEqual(snapshot);
   });
+  it('adopts a fenced lost generation without granting authority or disconnecting', async () => {
+    const { c, socket } = await connected(), events: string[] = [];
+    c.onEvent(e => events.push(e.type));
+    const stale = c.request({ type: 'rehost-claim', expectedHostGeneration: 1, nonce: 'a'.repeat(32) });
+    socket.event({ type: 'roster', snapshot: { ...snapshot, phase: 'lost', hostGeneration: 2, hostSeatId: 1, rosterRevision: 2 } });
+    await expect(stale).rejects.toThrow('stale-generation'); expect(socket.closed).toBe(false);
+    expect(events).toEqual(['roster']);
+    socket.reply(1, { kind: 'error', error: { code: 'lease-expired', retryable: false } });
+    const next = c.request({ type: 'rehost-claim', expectedHostGeneration: 2, nonce: 'b'.repeat(32) });
+    const lease = { roomId: snapshot.roomId, hostGeneration: 3, hostSeatId: 0, nonce: 'b'.repeat(32), expiresAtEpochMs: Date.now() + 15000 };
+    socket.event({ type: 'host-changed', snapshot: { ...snapshot, phase: 'active', hostGeneration: 3, rosterRevision: 2 }, lease });
+    socket.reply(2, { kind: 'lease', lease }); await expect(next).resolves.toEqual({ kind: 'lease', lease });
+  });
+  it.each(['timeout', 'supersede'])('counts unsettled socket factories across %s and closes late results before freeing admission', async mode => {
+    vi.useFakeTimers();
+    const factories: { resolve(socket: Socket): void; reject(error: Error): void }[] = [];
+    const c = createRoomServiceClient({ baseUrl: 'https://service', clock,
+      fetch: async () => Response.json({ ticket: 'S'.repeat(43), connectionId: '3'.repeat(32), expiresAtEpochMs: Date.now() + 5000 }),
+      createWebSocket: () => new Promise<Socket>((resolve, reject) => { factories.push({ resolve, reject }); }),
+    }); clients.push(c);
+    const pending: Promise<RoomSnapshot>[] = [];
+    for (let i = 0; i < 4; i++) {
+      const p = c.connect(session); void p.catch(() => {}); pending.push(p);
+      await vi.advanceTimersByTimeAsync(1); expect(factories).toHaveLength(i + 1);
+      if (mode === 'timeout') { await vi.advanceTimersByTimeAsync(5001); await expect(p).rejects.toThrow('timeout'); }
+    }
+    const refused = c.connect(session); void refused.catch(() => {});
+    await vi.advanceTimersByTimeAsync(1); expect(factories).toHaveLength(4);
+    await expect(refused).rejects.toThrow('capacity');
+    if (mode === 'supersede') for (const p of pending) await expect(p).rejects.toThrow('stale-connection');
+    const late = new Socket(); factories[0]!.resolve(late);
+    await vi.advanceTimersByTimeAsync(0); expect(late.closed).toBe(true); expect(late.sent).toEqual([]);
+    const admitted = c.connect(session); void admitted.catch(() => {});
+    await vi.advanceTimersByTimeAsync(1); expect(factories).toHaveLength(5);
+    // A late rejection also releases its reserved slot, without an unhandled rejection.
+    factories[1]!.reject(Error('synthetic-late-factory-rejection'));
+    await vi.advanceTimersByTimeAsync(0);
+    const last = c.connect(session); void last.catch(() => {});
+    await vi.advanceTimersByTimeAsync(1); expect(factories).toHaveLength(6);
+    await expect(admitted).rejects.toThrow('stale-connection');
+    c.close(); await expect(last).rejects.toThrow('stale-connection');
+    await vi.advanceTimersByTimeAsync(0); expect(vi.getTimerCount()).toBe(0);
+    for (const factory of factories.slice(2)) {
+      const socket = new Socket(); factory.resolve(socket); await vi.advanceTimersByTimeAsync(0); expect(socket.closed).toBe(true);
+    }
+    await expect(c.connect(session)).rejects.toThrow('invalid-state'); expect(factories).toHaveLength(6);
+  });
+  it('releases socket-factory admission when the factory throws synchronously', async () => {
+    vi.useFakeTimers(); let calls = 0;
+    const c = createRoomServiceClient({ baseUrl: 'https://service', clock,
+      fetch: async () => Response.json({ ticket: 'S'.repeat(43), connectionId: '3'.repeat(32), expiresAtEpochMs: Date.now() + 5000 }),
+      createWebSocket: () => { calls++; throw Error('synthetic-factory-failure'); },
+    }); clients.push(c);
+    for (let i = 0; i < 6; i++) {
+      const p = c.connect(session); void p.catch(() => {}); await vi.advanceTimersByTimeAsync(1);
+      await expect(p).rejects.toThrow('unavailable');
+    }
+    expect(calls).toBe(6); expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each(['lobby', 'active'] as const)('rejects a generation-advancing %s roster without an authoritative host-change event', async phase => {
+    const { c, socket } = await connected(); const p = c.request({ type: 'host-release' });
+    socket.event({ type: 'roster', snapshot: { ...snapshot, phase, hostGeneration: 2, rosterRevision: 2 } });
+    await expect(p).rejects.toThrow('invalid-frame'); expect(socket.closed).toBe(true);
+  });
 });

@@ -90,6 +90,9 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
   let sequence = 0, nextId = 1, pendingBytes = 0;
   const listeners = new Set<(event: RoomServiceEvent) => void>(), removers: (() => void)[] = [];
   const http = new Map<AbortController, { authority?: number; deadline: number }>();
+  // Factories cannot be cancelled through this interface. Keep their admission
+  // across connection generations until the underlying operation truly settles.
+  const unsettledFactories = new Set<AbortController>();
   let checkpointBodies = 0;
   let handshake: { resolve(snapshot: RoomSnapshot): void; reject(error: Error): void; timer: unknown } | undefined;
   type Pending = { operation: RoomOperation; hostGeneration: number; bytes: number; stale: boolean; timer: unknown;
@@ -106,6 +109,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     generation++; authority++; authenticated = false; connectionId = undefined;
     for (const controller of http.keys()) controller.abort(error);
     http.clear();
+    for (const controller of unsettledFactories) controller.abort(error);
     for (const remove of removers.splice(0)) remove();
     const old = socket; socket = undefined;
     try { old?.close(); } catch {}
@@ -163,11 +167,11 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     if (!socket || socket.readyState !== 1 || !Number.isFinite(socket.bufferedAmount) || socket.bufferedAmount + utf8.encode(text).byteLength > MAX_PENDING_BYTES) throw fault('capacity');
     socket.send(text);
   }
-  function invalidateAuthority(nextHostGeneration: number) {
+  function invalidateAuthority(nextHostGeneration: number, preserveLifecycle = true) {
     authority++; links.clear();
     for (const p of pending.values()) {
-      if (p.operation.type === 'rehost-claim' && p.operation.expectedHostGeneration + 1 === nextHostGeneration) continue;
-      if (p.operation.type === 'host-release' && p.hostGeneration === nextHostGeneration) continue;
+      if (preserveLifecycle && p.operation.type === 'rehost-claim' && p.operation.expectedHostGeneration + 1 === nextHostGeneration) continue;
+      if (preserveLifecycle && p.operation.type === 'host-release' && p.hostGeneration === nextHostGeneration) continue;
       p.stale = true; p.reject(fault('stale-generation'));
     }
     for (const [controller, work] of http) if (work.authority !== undefined) controller.abort(fault('stale-generation'));
@@ -186,9 +190,18 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
   function event(payload: RoomServiceEvent) {
     const current = requireSession().snapshot;
     switch (payload.type) {
-      case 'roster':
+      case 'roster': {
         if (payload.snapshot.rosterRevision < current.rosterRevision) throw fault('invalid-frame');
-        rememberSnapshot(payload.snapshot); break;
+        const next = payload.snapshot;
+        if (next.hostGeneration > current.hostGeneration && (next.phase === 'lost' || next.phase === 'ended')) {
+          if (!compatibleSnapshot(next) || !next.seats[session!.seatId]?.occupied
+            || next.seats[session!.seatId]?.seatGeneration !== session!.seatGeneration) throw fault('invalid-frame');
+          // A failed activation burns its target generation without a grant.
+          // Adopt its fence, rejecting even the matching claim as obsolete.
+          invalidateAuthority(next.hostGeneration, false); session!.snapshot = copy(next);
+        } else rememberSnapshot(next);
+        break;
+      }
       case 'host-changed': {
         const next = payload.snapshot;
         if (!compatibleSnapshot(next) || next.hostGeneration !== current.hostGeneration + 1 || next.rosterRevision < current.rosterRevision
@@ -304,7 +317,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
   }
   async function httpRequest<T>(path: string, init: RequestInit, consume: (response: Response, controller: AbortController) => Promise<T>, expected = generation, authorityStamp?: number): Promise<T> {
     assertCurrent(expected, authorityStamp);
-    if (http.size >= 4) throw fault('capacity');
+    if (http.size + unsettledFactories.size >= 4) throw fault('capacity');
     const controller = new AbortController(), deadline = clock.nowMs() + DEADLINE_MS;
     http.set(controller, { authority: authorityStamp, deadline });
     const check = () => {
@@ -373,7 +386,8 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       const ticket = await json(`/v2/rooms/${session!.snapshot.roomId}/socket-ticket`, {}, validateSocketTicket, stamp, token);
       assertCurrent(stamp);
       if (ticket.expiresAtEpochMs <= clock.nowMs()) throw fault('ticket-expired');
-      const controller = new AbortController(); http.set(controller, { deadline: ticket.expiresAtEpochMs });
+      if (http.size + unsettledFactories.size >= 4) throw fault('capacity');
+      const controller = new AbortController(); unsettledFactories.add(controller);
       let rejectSocket!: (error: unknown) => void;
       const aborted = new Promise<never>((_, reject) => { rejectSocket = reject; });
       const onAbort = () => rejectSocket(controller.signal.reason);
@@ -381,11 +395,15 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       const timer = clock.setTimeout(() => controller.abort(fault('timeout')), Math.min(DEADLINE_MS, ticket.expiresAtEpochMs - clock.nowMs()));
       let produced: RoomServiceSocket;
       try {
-        produced = await Promise.race([Promise.resolve(options.createWebSocket(`${wsBase}/v2/rooms/${session!.snapshot.roomId}/socket`)).then(created => {
-          if (controller.signal.aborted || closed || stamp !== generation) { try { created.close(); } catch {} throw fault('stale-connection'); }
-          return created;
-        }), aborted]);
-      } finally { clock.clearTimeout(timer); controller.signal.removeEventListener('abort', onAbort); http.delete(controller); }
+        let creating: Promise<RoomServiceSocket>;
+        try {
+          creating = Promise.resolve(options.createWebSocket(`${wsBase}/v2/rooms/${session!.snapshot.roomId}/socket`)).then(created => {
+            if (controller.signal.aborted || closed || stamp !== generation) { try { created.close(); } catch {} throw fault('stale-connection'); }
+            return created;
+          }).finally(() => { unsettledFactories.delete(controller); });
+        } catch (error) { unsettledFactories.delete(controller); throw error; }
+        produced = await Promise.race([creating, aborted]);
+      } finally { clock.clearTimeout(timer); controller.signal.removeEventListener('abort', onAbort); }
       assertCurrent(stamp);
       socket = produced; connectionId = ticket.connectionId;
       const ready = new Promise<RoomSnapshot>((resolve, reject) => { handshake = { resolve, reject, timer: clock.setTimeout(() => fail('timeout'), Math.min(DEADLINE_MS, ticket.expiresAtEpochMs - clock.nowMs())) }; });

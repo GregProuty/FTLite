@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { evictDurableObject } from 'cloudflare:test';
+import { evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import worker from '../src/index';
 import { createRoomServiceClient, type RoomServiceClient, type RoomServiceEvent, type RoomServiceSocket } from '../../../src/network/session/serviceClient';
 import { isRtcAttemptOptions, type RtcSignal } from '../../../src/shared/rtcSession';
@@ -104,4 +104,49 @@ it.each(['malformed', 'replay'])('real service rejects %s frames and production 
   raw().send(mode === 'malformed' ? '{"type":"ready","requestId":2,"ready":true,"extra":1}' : '{"type":"ready","requestId":1,"ready":true}');
   await until(() => events.some(e => e.type === 'error'));
   await expect(c.request({ type: 'ready', ready: false })).rejects.toThrow('invalid-state');
+});
+
+it('keeps the production client connected across actual expired rehost fencing and its lost-generation roster', async () => {
+  const { c, events } = client(), session = await c.create(compatibility, 1);
+  await c.connect(session);
+  const ready = await c.request({ type: 'ready', ready: true });
+  const proposed = await c.request({ type: 'start-propose', expectedRosterRevision: ready.snapshot.rosterRevision,
+    initBase64: btoa('fencing-proof'), initHash: await hashBytes(new TextEncoder().encode('fencing-proof')) });
+  await c.request({ type: 'start-commit', expectedRosterRevision: ready.snapshot.rosterRevision, proposalId: proposed.proposalId });
+  const bytes = new Uint8Array([7, 3]), metadata: SessionCheckpointMetadata = { version: 1, protocolVersion: 2,
+    roomId: session.snapshot.roomId, runId: session.snapshot.runId, compatibility, hostGeneration: 1,
+    checkpointSequence: 1, capturedTick: 5, payloadSha256: await hashBytes(bytes) };
+  await c.putCheckpoint(metadata, bytes); await c.request({ type: 'host-release' });
+  const stub = env.ROOMS.get(env.ROOMS.idFromName(session.snapshot.roomId));
+  await runInDurableObject(stub, room => {
+    const real = room.lifecycle.directory;
+    Object.defineProperty(room.lifecycle, 'directory', { configurable: true, value: {
+      releaseFenced: (...args: Parameters<typeof real.releaseFenced>) => real.releaseFenced(...args),
+      fenceActivation: (...args: Parameters<typeof real.fenceActivation>) => real.fenceActivation(...args),
+      reserveActivation: async (...args: Parameters<typeof real.reserveActivation>) => {
+        await real.reserveActivation(...args);
+        return { ok: false, error: { code: 'unavailable', retryable: true } };
+      },
+    } });
+  });
+  try {
+    await expect(c.request({ type: 'rehost-claim', expectedHostGeneration: 1, nonce: 'd'.repeat(32) })).rejects.toThrow('unavailable');
+    await runInDurableObject(stub, room => {
+      expect(room.store.activation()?.state).toBe('prepared');
+      room.store.sql.exec('UPDATE room_activation SET expires_at = ?', Date.now() - 1);
+      room.store.expire(); expect(room.store.activation()?.state).toBe('fenced');
+      Object.defineProperty(room.lifecycle, 'directory', { value: env.DIRECTORY.get(env.DIRECTORY.idFromName('global')) });
+    });
+    await evictDurableObject(stub, { webSockets: 'hibernate' });
+    await runInDurableObject(stub, room => room.alarm());
+    await until(() => events.some(e => e.type === 'roster' && e.snapshot.hostGeneration === 2 && e.snapshot.phase === 'lost') || events.some(e => e.type === 'error'));
+    expect(events.filter(e => e.type === 'error')).toEqual([]);
+    expect(events.some(e => e.type === 'host-changed')).toBe(false);
+    expect(latestSnapshot(events, session.snapshot)).toMatchObject({ hostGeneration: 2, phase: 'lost' });
+    expect(await c.getCheckpoint()).toEqual({ metadata, bytes });
+    await expect(c.request({ type: 'lease-renew', nonce: 'e'.repeat(32) })).rejects.toThrow('lease-expired');
+    const claim = await c.request({ type: 'rehost-claim', expectedHostGeneration: 2, nonce: 'f'.repeat(32) });
+    expect(claim.lease.hostGeneration).toBe(3);
+    expect(events.some(e => e.type === 'host-changed' && e.snapshot.hostGeneration === 3)).toBe(true);
+  } finally { await runInDurableObject(stub, room => { Object.defineProperty(room.lifecycle, 'directory', { value: env.DIRECTORY.get(env.DIRECTORY.idFromName('global')) }); }); }
 });

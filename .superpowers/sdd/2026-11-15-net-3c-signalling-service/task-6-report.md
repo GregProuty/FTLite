@@ -238,3 +238,104 @@ exit 0
 ```
 
 Git reported its existing LF-to-CRLF working-copy normalization notices when staging; no whitespace errors were reported. Final test/typecheck runs reported no warnings/errors. No optional full-root, full-service, native, build, cloud, account, deployment, billing, or DNS actions were performed. Parent owns broad final regressions/native proof and independent review. This task proves service-client composition in actual local workerd; it does not claim native RTC, utility 12-second gating, WAN, forced TURN, automatic recovery, or online-demo readiness.
+
+## Review fix round 1 (base `4a28ebd`)
+
+Both Important review findings were verified against the current client and service lifecycle before changes.
+
+1. Failed/expired rehost recovery can terminally fence a prepared activation, burn its target generation in Directory, and publish a higher-generation `lost` roster from `RoomLifecycle.release()` without a lease/`host-changed` event. The client now permits monotonic host-generation advancement only in a compatible `lost` or `ended` roster whose own occupied seat/generation still matches. It invalidates obsolete HTTP/routes/pending work, including the failed claim, adopts the fenced snapshot, and dispatches that roster without fabricating a host grant. Generation-advancing lobby/active rosters still fail closed. This handles both a prepared fence retaining the prior host seat and an unacknowledged committed fence whose host seat already changed.
+
+2. An async socket factory has no cancellation method in the public interface. Timeout/supersede/close now aborts the caller's wait while an independent `unsettledFactories` set retains admission until the underlying factory truly resolves or rejects. Combined HTTP and outstanding-factory admission is four; admission precedes launch. Synchronous throws release the slot explicitly. Late stale sockets are closed in the fulfillment handler before `finally` releases capacity; late rejections also release it. Connection generation changes never clear this set. Close remains terminal, removes its timers/listeners, and can retain at most four externally unresolved factory continuations.
+
+API unchanged. Task 7 should additionally close native attempts when a roster transitions to `lost`/`ended`, including a generation advanced by terminal fencing. Such a roster is an authority invalidation, never permission to host. The next explicit rehost claim uses that roster's latest `hostGeneration`.
+
+Added six focused root cases: fenced lost-generation continuation and obsolete claim rejection; retained factory admission through timeout and supersede; synchronous factory failure cleanup; and rejection of higher-generation lobby/active rosters. The factory cases also prove the fifth factory is never invoked while four remain unsettled, a late closed result and a late rejection each release admission, and close leaves no timers or further launches.
+
+The new actual-runtime integration starts/checkpoints/releases a one-seat room through the production client, uses a test-only wrapper that performs the real Directory reservation then returns a fixed unavailable result, expires the persisted prepared operation, hibernates the actual socket/Room, and invokes the real Room alarm/recovery. It observes generation 2's lost roster with no client error or `host-changed`, successfully reads the saved generation-1 checkpoint, gets `lease-expired` on renewal, and explicitly rehosts from generation 2 to a granted generation 3. No fake Room or fabricated service success response is used.
+
+RED commands and observations (before production changes; skipped test-name lines omitted):
+
+```text
+> npx vitest run tests/roomServiceClient.test.ts -t "fenced lost generation|counts unsettled"
+RUN v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+FAIL adopts a fenced lost generation without granting authority or disconnecting
+AssertionError: expected [Function] to throw error including 'stale-generation' but got 'invalid-frame'
+Expected: "stale-generation"
+Received: "invalid-frame"
+FAIL counts unsettled socket factories across timeout and closes late results before freeing admission
+FAIL counts unsettled socket factories across supersede and closes late results before freeing admission
+AssertionError: expected [ { resolve: [Function], …(1) }, …(4) ] to have a length of 4 but got 5
+Expected: 4
+Received: 5
+Test Files 1 failed (1)
+Tests 3 failed | 43 skipped (46)
+Duration 757ms
+exit 1
+
+> npm --prefix services/signalling test -- tests/clientIntegration.test.ts -t "actual expired rehost fencing"
+> ftlite-signalling@0.0.1 test
+> vitest run tests/clientIntegration.test.ts -t actual expired rehost fencing
+RUN v4.1.0 C:/Users/djuar/.codex/worktrees/56fc/FTLite/services/signalling
+FAIL keeps the production client connected across actual expired rehost fencing and its lost-generation roster
+AssertionError: expected [ { type: 'error', error: { …(2) } } ] to deeply equal []
+Expected: []
+Received: [{type:'error',error:{code:'invalid-frame',retryable:false}}]
+Test Files 1 failed (1)
+Tests 1 failed | 3 skipped (4)
+Duration 2.76s
+exit 1
+```
+
+Initial test construction also exposed two harness issues before these definitive RED runs: waiting on the unexpectedly admitted fifth factory hung until test timeout, so the regression now asserts its invocation count before awaiting the refusal; and the first runtime Directory wrapper omitted the real `fenceActivation` forwarding method, so it was added before observing the intended `invalid-frame` failure. Neither was a production fix or an omitted final failure.
+
+Focused GREEN after the production fix:
+
+```text
+> npx vitest run tests/roomServiceClient.test.ts -t "fenced lost generation|counts unsettled"
+✓ tests/roomServiceClient.test.ts (46 tests | 43 skipped) 77ms
+Test Files 1 passed (1)
+Tests 3 passed | 43 skipped (46)
+exit 0
+
+> npm --prefix services/signalling test -- tests/clientIntegration.test.ts -t "actual expired rehost fencing"
+Test Files 1 passed (1)
+Tests 1 passed | 3 skipped (4)
+exit 0
+```
+
+Final covering GREEN after all round-1 test additions (08:51:32/33 local runtime output):
+
+```text
+> npx vitest run tests/roomServiceClient.test.ts tests/contentDigest.test.ts
+RUN v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+✓ tests/contentDigest.test.ts (31 tests) 1439ms
+✓ tests/roomServiceClient.test.ts (49 tests) 2222ms
+Test Files 2 passed (2)
+Tests 80 passed (80)
+Duration 3.14s
+exit 0
+
+> npm --prefix services/signalling test -- tests/clientIntegration.test.ts
+> ftlite-signalling@0.0.1 test
+> vitest run tests/clientIntegration.test.ts
+RUN v4.1.0 C:/Users/djuar/.codex/worktrees/56fc/FTLite/services/signalling
+Test Files 1 passed (1)
+Tests 4 passed (4)
+Duration 3.92s
+exit 0
+
+> npm run typecheck
+> ftlite@0.0.1 typecheck
+> tsc -b
+exit 0
+
+> npm --prefix services/signalling run typecheck
+> ftlite-signalling@0.0.1 typecheck
+> tsc --noEmit
+exit 0
+
+> git diff --check
+exit 0
+```
+
+Self-review confirmed the factory set survives all detach paths, every factory settlement (including synchronous throws) frees its slot exactly once, stale closure precedes slot release, fenced rosters cannot return a successful grant, and the next real explicit claim remains usable. No full-root/native/service-wide/cloud actions or additional files were changed in this round.
