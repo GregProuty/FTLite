@@ -1,0 +1,47 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Make the laser occlusion test reach the line-of-sight check",
+      "claim": "The purported blocked-laser case passes because the target is out of range, so it does not exercise laser occlusion.",
+      "evidence": "tests/tacticalWeapons.test.ts:72 places ships 600 units apart. src/renderer/src/sim/tactical/weapons.ts:41 rejects distances above 450 before evaluating lineOfSight at L42. Removing that lineOfSight call in memory left all 52 test bodies passing under the Node assertion harness. Spec L140 requires occlusion.",
+      "why": "The geometry tests verify the helper, but cannot detect the laser firing through obstacles because its caller stops using that helper.",
+      "fix": "Use an in-range, in-arc blocked fixture, such as ships at (-200, 0) and (200, 0), and release a full charge. Assert a miss and unchanged target damage; include an asteroid-blocked case."
+    },
+    {
+      "severity": "P1",
+      "title": "Test shield-clock preservation with nonzero progress",
+      "claim": "The level-2 shield test freezes an already-zero clock and never checks repair resumption, so resetting instead of preserving progress passes.",
+      "evidence": "tests/tacticalWeapons.test.ts:118 reaches two layers, then L119 disables recharge without giving the clock nonzero progress; L121 consequently captures zero. src/renderer/src/sim/tactical/weapons.ts:86-L87 implements the behavior required by spec L101. An in-memory mutation resetting shieldClock whenever Shields is level 2 left all 52 test bodies passing.",
+      "why": "Losing accumulated recharge during damage or repair violates an explicit state-preservation rule and would escape the current regression tests.",
+      "fix": "Accumulate nonzero recharge before setting Shields to level 2, assert that exact value throughout the freeze, then repair to level 1 and verify resumed increments and the exact layer-completion tick."
+    },
+    {
+      "severity": "P1",
+      "title": "Exercise the hunter's temporal and RNG invariants",
+      "claim": "The hunter tests do not establish their claimed lead time, 18-tick history delay, or single jitter draw.",
+      "evidence": "tests/tacticalHunter.test.ts:12-L13 gives the lead test stationary ships; L93 fills every trail entry identically; L61 checks only that RNG changed. The relevant implementation is src/renderer/src/sim/tactical/hunter.ts:58-L59, L69 and L82. Independently removing the velocity lead, reading the newest trail slot, or adding an extra nextInt draw left all 52 test bodies passing in the in-memory harness. Spec L201-L202 requires all three invariants.",
+      "why": "These regressions change pursuit behavior and the deterministic RNG sequence while preserving every current assertion.",
+      "fix": "Use a moving target whose lead changes the expected steering; feed distinguishable positions through multiple ring-buffer wraps and assert the exact 18-tick delay; compare RNG state against exactly one nextInt call and assert no further draws while a release remains scheduled. Cover cancellation and rescheduling."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "Implementation and tests match requested commit 4fac7ec; current HEAD bc9dd45 adds only review metadata. No files were modified.",
+    "npx tsc --noEmit succeeded. Both referenced projects also passed explicit checks with --noEmit --composite false --incremental false --emitDeclarationOnly false.",
+    "All 52 test bodies in the five manifested test files passed an in-memory Node assertion harness. The actual deterministicViolations helper passed all eight changed sim files (tests/helpers/determinismGuard.ts:20).",
+    "Weapons transition rows and command-before-movement ordering were traced through weapons.ts:61, weapons.ts:80 and duel.ts:18. Missile contacts and expiry precede weapon clocks at duel.ts:25-L26.",
+    "Missile contact precedence, shield bypass, room selection, age-60 exemption and end-of-tick-480 expiry match the accepted rules (missiles.ts:36, L53, L62-L80). Direct probes confirmed immunity at age 60 and self-hit at age 61.",
+    "Direct probes confirmed in-range planet occlusion, preservation and resumption of nonzero shield progress, and the hunter's 18-tick trail across wraps (weapons.ts:42, L87; hunter.ts:58-L59).",
+    "Hunter repair priority, console attendance, dead-astern turn, lock selection and cooldown after an actual launch match the specified behavior (hunter.ts:20, L37-L52, L62, L76; duel.ts:19-L21).",
+    "All seven current Missile fields affect the hash; Ship and Hunter fields are represented, with events deliberately excluded (state.ts:34; hash.ts:12-L28). Across 59,013 paired ticks over ten seeds, flattened states matched and inspected dynamic scalars remained finite and free of negative zero."
+  ],
+  "not_verified": [
+    "Actual Vitest execution was blocked by spawn EPERM during configuration loading. A native-loader retry failed on extensionless build/contentDigest resolution. The Node harness does not establish Vitest runner integration.",
+    "Cross-runtime bitwise replay compatibility was not tested; deterministic execution checks used one Node runtime.",
+    "The review directory and ledger were absent, so prior review history could not be inspected. No awaited finding IDs were supplied.",
+    "Read package.json, tsconfig.json, tsconfig.web.json, tsconfig.node.json and vitest.config.ts beyond the manifest to establish typecheck scope and diagnose test startup. package.json defines no lint command; no broader lint-config search was performed.",
+    "sed failed under the sandbox; line-numbered PowerShell range reads were used instead."
+  ]
+}
