@@ -5,11 +5,11 @@ import { createTacticalState, type DuelEvent, type TacticalState } from '../src/
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { LASER_RANGE, MISSILE_LIFE_TICKS, MISSILE_RADIUS, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
-import { createCamera, type Camera } from '../src/renderer/src/render/tactical/camera';
+import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, resetFx, shakeOffset, SHAKE_S, stepFx, TRAIL_POINTS, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { MISSILE_PATH_MAX_TICKS, predictMissilePath } from '../src/renderer/src/render/tactical/missilePath';
 import { createTacticalLayer, starField } from '../src/renderer/src/render/tactical/tacticalLayer';
-import { ARROW_GAP_SIDE, tacticalModel, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
+import { ARROW_GAP_SIDE, ARROW_MARGIN, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
 import { ARC_HALF, bearingDeg, combatModel, segmentCentre, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
 
 const vp = { w: 1280, h: 720 };
@@ -74,6 +74,18 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(enemy.x).toBe(planet.x);   // both on the left edge
     expect(Math.abs(enemy.y - planet.y)).toBeGreaterThanOrEqual(ARROW_GAP_SIDE);
   });
+  for (const n of [2, 3, 4]) {
+    it(`spreadArrows keeps ${n} clustered arrows at least a gap apart and on the edge`, () => {
+      const mk = (ys: number[]): ArrowDraw[] => ys.map((y, i) => ({ target: 'ship', x: ARROW_MARGIN, y, angle: 0, distance: i, label: `a${i}` }));
+      for (const base of [370, 40, 670]) {   // mid edge, near the top end, past the bottom end (shifted back)
+        const arrows = mk(Array.from({ length: n }, (_, i) => base + i));
+        spreadArrows(arrows, vp, 236);
+        const ys = arrows.map((a) => a.y).sort((a, b) => a - b);
+        for (let i = 1; i < ys.length; i++) expect(ys[i]! - ys[i - 1]!).toBeGreaterThanOrEqual(ARROW_GAP_SIDE);
+        for (const y of ys) { expect(y).toBeGreaterThanOrEqual(ARROW_MARGIN); expect(y).toBeLessThanOrEqual(vp.h - ARROW_MARGIN); }
+      }
+    });
+  }
   it('without the option (the flight view) every arrow keeps its H-1a position exactly', () => {
     const st = createTacticalState(11), cam = createCamera(2600, 0);
     Object.assign(st.ships[0], { x: 2600, y: 0 }); Object.assign(st.ships[1], { x: 0, y: 40 });
@@ -111,6 +123,19 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(c.missiles[0]!.trail).toHaveLength(TRAIL_POINTS);
     expect(c.weapons!.missilePath.length).toBeGreaterThan(10);
     expect(c.weapons!.missileOrigin).toEqual({ x: c.missiles[0]!.x, y: c.missiles[0]!.y });
+  });
+  it('the predicted path starts at the interpolated glyph, not the tick position (alpha < 1)', () => {
+    const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), fx = createFx();
+    launchMissile(st, 0);
+    const p0 = { ...st.missiles[0]! };
+    for (let k = 0; k < 10; k++) flyMissile(st, 0, 0);
+    const before = { ...st.missiles[0]! };
+    const missilePrev: (PrevBody | null)[] = [{ x: p0.x, y: p0.y, h: p0.heading + p0.headingAcc }, null];
+    const c = combatModel({ ...input(st, cam, 'weapons', fx), alpha: 0.4, missilePrev, steer: 0 });
+    expect(c.weapons!.missilePath[0]).toEqual({ x: c.missiles[0]!.x, y: c.missiles[0]!.y });
+    const raw = worldToScreen(cam, vp, before.x, before.y);
+    expect(Math.hypot(c.missiles[0]!.x - raw.x, c.missiles[0]!.y - raw.y)).toBeGreaterThan(1);   // the glyph is not at the tick position
+    expect(st.missiles[0]).toEqual(before);
   });
 });
 

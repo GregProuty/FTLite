@@ -194,18 +194,39 @@ function edgePoint(vp: Viewport, reserveRight: number, x: number, y: number): { 
 
 const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'MISSILE' };
 
-/** Move each arrow that crowds an earlier one on the same edge along that edge, toward the edge's middle. */
+/**
+ * Keep arrows on the same edge at least the label gap apart. Each edge's arrows are sorted along it and pushed on, from the
+ * end nearer the edge's middle, by the minimum gap from the one before; any overrun past the edge's far end is shifted back.
+ * Arrows that already clear each other do not move.
+ */
 export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number): void {
-  const m = ARROW_MARGIN, top = m, bottom = vp.h - m, midX = (vp.w - reserveRight) / 2, midY = vp.h / 2;
-  arrows.forEach((a, k) => {
-    const flat = Math.abs(a.y - top) < 0.5 || Math.abs(a.y - bottom) < 0.5, gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE;
-    for (let n = 0; n < k; n++) {
-      const clash = arrows.slice(0, k).find((o) => flat ? Math.abs(o.y - a.y) < 0.5 && Math.abs(o.x - a.x) < gap : Math.abs(o.x - a.x) < 0.5 && Math.abs(o.y - a.y) < gap);
-      if (!clash) break;
-      if (flat) a.x = clash.x + (clash.x > midX ? -gap : gap);
-      else a.y = clash.y + (clash.y > midY ? -gap : gap);
+  const m = ARROW_MARGIN, top = m, bottom = vp.h - m, right = vp.w - reserveRight - m;
+  const groups = new Map<string, { flat: boolean; list: ArrowDraw[] }>();
+  for (const a of arrows) {
+    const flat = Math.abs(a.y - top) < 0.5 || Math.abs(a.y - bottom) < 0.5, key = flat ? `y${Math.round(a.y)}` : `x${Math.round(a.x)}`;
+    const g = groups.get(key) ?? { flat, list: [] };
+    g.list.push(a); groups.set(key, g);
+  }
+  for (const { flat, list } of groups.values()) {
+    if (list.length < 2) continue;
+    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, lo = flat ? m : top, hi = flat ? right : bottom, mid = (lo + hi) / 2;
+    const get = (a: ArrowDraw): number => (flat ? a.x : a.y), set = (a: ArrowDraw, v: number): void => { if (flat) a.x = v; else a.y = v; };
+    const dir = list.reduce((t, a) => t + get(a), 0) / list.length > mid ? -1 : 1;   // spread toward the edge's middle
+    const order = [...list].sort((p, q) => (get(p) - get(q)) * dir);
+    const start = dir > 0 ? lo : hi, end = dir > 0 ? hi : lo;
+    let prev: number | null = null;
+    for (const a of order) {
+      let v = get(a);
+      if (prev !== null) v = dir > 0 ? Math.max(v, prev + gap) : Math.min(v, prev - gap);
+      v = dir > 0 ? Math.max(v, start) : Math.min(v, start);
+      set(a, v); prev = v;
     }
-  });
+    let bound = end;   // past the far end: shift back, keeping the gaps
+    for (let i = order.length - 1; i >= 0; i--) {
+      const a = order[i]!, v = dir > 0 ? Math.min(get(a), bound) : Math.max(get(a), bound);
+      set(a, v); bound = v - dir * gap;
+    }
+  }
 }
 
 export function tacticalModel(input: TacticalModelInput): TacticalDraw {

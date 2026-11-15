@@ -21,7 +21,7 @@ export interface WeaponsDraw {
   ownArc: ArcDraw; enemyArc: ArcDraw | null; ring: RingDraw | null;
   /** The enemy's bearing and range from the own ship, and whether the laser would hit now (top centre of the view). */
   info: Label; inArc: boolean;
-  /** In missile mode: the missile's predicted path from its drawn position. */
+  /** In missile mode: the missile's predicted path, its first point the drawn glyph position. */
   missilePath: Point[]; missileOrigin: Point | null;
 }
 export interface LockDraw { x: number; y: number; r: number; room: number; label: Label }
@@ -86,8 +86,9 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
       info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}`, x: (vp.w - input.reserveRight) / 2, y: 12 },
       inArc,
-      missilePath: flying ? predictMissilePath(state, flying, input.steer).map((q) => toS(q.x, q.y)) : [],
-      missileOrigin: drawn ? toS(drawn.x, drawn.y) : null
+      missileOrigin: drawn ? toS(drawn.x, drawn.y) : null,
+      // The path starts at the drawn (interpolated) glyph and continues through the sim's predicted points.
+      missilePath: flying && drawn ? [toS(drawn.x, drawn.y), ...predictMissilePath(state, flying, input.steer).map((q) => toS(q.x, q.y))] : []
     };
   }
 

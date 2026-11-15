@@ -5,6 +5,7 @@ import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
 import type { DuelCommand, DuelEnvelope, DuelResult } from '../../sim/duel/commands';
+import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
 import { stepDuelTick } from '../../sim/duel/step';
 import type { ShipLayout } from '../../sim/ship/schema';
@@ -182,6 +183,7 @@ export interface DuelRuntime {
   dispose(): void;
 }
 
+const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 const shipBody = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
@@ -214,7 +216,21 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const commands: DuelEnvelope[] = [];
     const envelope = (player: number, command: DuelCommand): DuelEnvelope => ({ id: { player, sequence: seq[player]!++ }, requestedTick: d.interior.tick, command });
     if (firstTick) { commands.push(envelope(1, { kind: 'presence', present: false })); firstTick = false; }   // the solo start rule (spec §4)
-    for (const c of pending) commands.push(envelope(c.player, c.command));
+    // Weapons commands go out only when the sim would accept them (spec §7 table; canCharge / canLaunch), judged against the
+    // state this tick will see. `chargeSent` is the truth about what the sim holds: a release goes out only after a press did.
+    let launched = false;
+    for (const c of pending) {
+      const k = c.command;
+      if (k.kind === 'laserCharge') {
+        if (launched || !canCharge(d.tactical, 0)) { chargeSent = false; continue; }   // a missile flies or launches now: Fire is let go
+        if (!k.held && !chargeSent) continue;   // a release for a press that was never sent
+        chargeSent = k.held;
+      } else if (k.kind === 'missileLaunch') {
+        if (launched || !canLaunch(d.tactical, 0)) continue;
+        launched = true; chargeSent = false;   // a launch lets go of Fire
+      }
+      commands.push(envelope(c.player, k));
+    }
     const sentSwitch = switching;
     pending = [];
     const held: HeldInput[] = [NEUTRAL, NEUTRAL];
@@ -255,6 +271,10 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
   function play(k: KeySample): KeySample {
     if (k.presses.switch > 0) {   // Tab: presence false for the character left, true for the one taken, same tick; nothing carries over
+      // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them. A
+      // charge already sent needs no release: the sim lets go of Fire when the seat empties, so chargeSent just resets.
+      pending = pending.filter((c) => !isWeaponsCommand(c.command));
+      cameraInput.reset();
       for (let n = 0; n < k.presses.switch; n++) {
         queue({ kind: 'presence', present: false });
         active = active === 0 ? 1 : 0;
@@ -270,7 +290,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.interact > 0 && repairInReach(d, active) < 0) { const c = consoleInReach(d, active); if (c >= 0) queue({ kind: 'sit', station: c }); }
       return k;
     }
-    if (p.stand > 0) { queue({ kind: 'stand' }); chargeSent = false; return k; }
+    if (p.stand > 0) { pending = pending.filter((c) => !isWeaponsCommand(c.command)); queue({ kind: 'stand' }); chargeSent = false; return k; }   // the stand empties the seat first, as a Tab does
     if (seat === 'helm') { if (p.camera > 0) snapBack(cameras.helm); return k; }
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0) {
@@ -279,8 +299,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       queue({ kind: 'laserLock', room });
     }
-    const down = (): void => { queue({ kind: 'laserCharge', held: true }); chargeSent = true; };
-    const up = (): void => { queue({ kind: 'laserCharge', held: false }); chargeSent = false; };
+    const down = (): void => queue({ kind: 'laserCharge', held: true });
+    const up = (): void => queue({ kind: 'laserCharge', held: false });   // onTick drops it when no press was sent
     if (p.fireDown > 0 && p.fireUp > 0) { if (k.fireHeld) { up(); down(); } else { down(); up(); } }
     else if (p.fireDown > 0) down();
     else if (p.fireUp > 0) up();
@@ -314,16 +334,19 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     alpha: () => frameAlpha,
     frame(dt) {
       let k = deps.sampleKeys();
-      const p = deps.samplePointer();
+      const sampled = deps.samplePointer();
+      let pointer = sampled;
       pacer.toggleUser(k.presses.pause);
-      if (ended()) { if (k.presses.confirm > 0) { restart(); k = IDLE_KEYS(); } }
-      else if (pacer.reasons.size === 0) k = play(k);   // while paused, gameplay presses are dropped; the camera still moves
+      // A Tab or a restart changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
+      const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0 }; };
+      if (ended()) { if (k.presses.confirm > 0) { restart(); k = IDLE_KEYS(); moved(); } }
+      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k); }   // while paused, gameplay presses are dropped; the camera still moves
       activeHeld = { moveX: k.moveX, moveY: k.moveY, interactHeld: k.interactHeld };
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
       const view = seatOf(d, active), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : null;
-      if (cam) cameraInput.apply(cam, k, p);
+      if (cam) cameraInput.apply(cam, k, pointer);
       for (const c of [cameras.helm, cameras.weapons]) {
         if (c.follow === 'missile' && !d.tactical.missiles[0]) followBody(c, 'ship');   // the followed missile ended
         // A followed missile is tracked at its interpolated (drawn) position, as the ship is (H-1 spec §6).

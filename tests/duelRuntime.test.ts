@@ -49,7 +49,7 @@ function rig(seed = 5) {
   /** One frame, then one tick's worth of wall time with a frame after it (so the press is sent on exactly one tick). */
   const tick = (): void => { rt.frame(1 / 60); time.advance(TICK_MS); rt.frame(1 / 60); };
   const ticks = (n: number): void => { for (let k = 0; k < n; k++) tick(); };
-  return { time, rt, hold, press, tick, ticks, cleared: () => cleared };
+  return { time, rt, hold, press, tick, ticks, pointer, cleared: () => cleared };
 }
 const put = (rt: ReturnType<typeof rig>['rt'], pid: number, tx: number, ty: number): void => {
   const eid = rt.duel.interior.crew[pid]!; Position.x[eid] = tx + 0.5; Position.y[eid] = ty + 0.5;
@@ -287,6 +287,81 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.duel.interior.tick).toBe(1);   // a fresh epoch: no burst for the time spent on the end screen
     expect(rt.lastResults().map((r) => [r.id.player, r.id.sequence, r.tick])).toEqual([[1, 0, 0]]);
     expect(rt.duel.present).toEqual([true, false]);
+    rt.dispose();
+  });
+});
+
+describe('weapons commands match the sim (H-1b impl review)', () => {
+  const rejected = (rt: ReturnType<typeof rig>['rt']): string[] => rt.lastResults().filter((r) => r.status === 'rejected').map((r) => String(r.reason));
+  it('Space while the missile flies sends nothing the sim would reject', () => {
+    const { rt, hold, press, tick, ticks } = rig();
+    press('switch'); tick(); press('launch'); tick(); ticks(2);
+    expect(rt.duel.tactical.missiles[0]).not.toBeNull();
+    hold({ fireHeld: true }); press('fireDown'); tick();
+    expect(rejected(rt)).toEqual([]); expect(rt.lastResults()).toEqual([]);
+    expect(rt.duel.tactical.ships[0].fireHeld).toBe(false);
+    hold({ fireHeld: false }); press('fireUp'); tick();
+    expect(rt.lastResults()).toEqual([]);
+    rt.dispose();
+  });
+  it('F with an empty magazine or Weapons damage 2 sends nothing', () => {
+    const { rt, press, tick } = rig();
+    press('switch'); tick();
+    rt.duel.tactical.ships[0].magazine = 0;
+    press('launch'); tick();
+    expect(rt.lastResults()).toEqual([]); expect(rt.duel.tactical.missiles[0]).toBeNull();
+    rt.duel.tactical.ships[0].magazine = 2; rt.duel.tactical.ships[0].rooms[Room.Weapons] = 2;
+    press('launch'); tick();
+    expect(rt.lastResults()).toEqual([]); expect(rt.duel.tactical.missiles[0]).toBeNull();
+    rt.dispose();
+  });
+  it('a release goes out only after a press did', () => {
+    const { rt, hold, press, tick } = rig();
+    press('switch'); tick();
+    press('fireUp'); tick();   // no press was ever sent
+    expect(rt.lastResults()).toEqual([]);
+    hold({ fireHeld: true }); press('fireDown'); tick();
+    hold({ fireHeld: false }); press('fireUp'); tick();
+    expect(rt.lastResults().map((r) => r.status)).toEqual(['applied']);
+    rt.dispose();
+  });
+  it('F then Tab in two frames before one tick: no not-at-weapons rejection, nothing stuck', () => {
+    const { time, rt, hold, press, tick } = rig();
+    press('switch'); tick();
+    hold({ fireHeld: true }); press('fireDown'); tick();
+    expect(rt.duel.tactical.ships[0].fireHeld).toBe(true);
+    press('launch'); rt.frame(1 / 60);
+    press('switch'); rt.frame(1 / 60);
+    time.advance(TICK_MS); rt.frame(1 / 60);
+    expect(rejected(rt)).toEqual([]);
+    expect(rt.active()).toBe(0);   // Tab back to the pilot
+    expect(rt.duel.tactical.ships[0].fireHeld).toBe(false);   // the empty seat let go of Fire
+    expect(rt.duel.tactical.missiles[0]).toBeNull();
+    tick(); expect(rejected(rt)).toEqual([]);
+    rt.dispose();
+  });
+});
+
+describe('pointer input never survives a Tab or a restart (H-1b impl review)', () => {
+  it('Tab: the drag and wheel sampled that frame do not touch the camera now active', () => {
+    const { rt, press, pointer, tick } = rig();
+    press('switch'); tick(); press('switch'); tick();   // settle; Helm active again
+    const cam = rt.cameras.weapons, before = { cx: cam.centreX, cy: cam.centreY, tz: cam.targetZoom, follow: cam.follow };
+    Object.assign(pointer, { x: 300, y: 200, wheel: 3, dragX: 80, dragY: 40 });
+    press('switch'); rt.frame(1 / 60);
+    expect(rt.active()).toBe(1);
+    expect({ cx: cam.centreX, cy: cam.centreY, tz: cam.targetZoom, follow: cam.follow }).toEqual(before);
+    rt.dispose();
+  });
+  it('restart: the drag and wheel sampled with Enter do not touch the reset camera', () => {
+    const { rt, press, pointer, ticks } = rig();
+    rt.duel.tactical.outcome = Outcome.CrewWins; ticks(1);
+    expect(rt.ended()).toBe(true);
+    Object.assign(pointer, { x: 300, y: 200, wheel: 3, dragX: 80, dragY: 40 });
+    press('confirm'); rt.frame(1 / 60);
+    expect(rt.epoch()).toBe(1);
+    const cam = rt.cameras.helm;
+    expect(cam.follow).toBe('ship'); expect(cam.targetZoom).toBeCloseTo(ZOOM_DEFAULT, 12);
     rt.dispose();
   });
 });

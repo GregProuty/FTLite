@@ -184,8 +184,8 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         missileGlyph(combat, m.x, m.y, m.angle, colour);
       }
       if (wd && wd.missileOrigin && wd.missilePath.length > 0) {
-        combat.moveTo(wd.missileOrigin.x, wd.missileOrigin.y);
-        for (const p of wd.missilePath) combat.lineTo(p.x, p.y);
+        combat.moveTo(wd.missilePath[0]!.x, wd.missilePath[0]!.y);
+        for (const p of wd.missilePath.slice(1)) combat.lineTo(p.x, p.y);
         combat.stroke({ width: 1, color: MISSILE_PATH, alpha: 0.7 });
         const end = wd.missilePath[wd.missilePath.length - 1]!;
         combat.circle(end.x, end.y, 3).stroke({ width: 1, color: MISSILE_PATH });
