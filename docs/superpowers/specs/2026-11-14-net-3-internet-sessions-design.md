@@ -2,7 +2,7 @@
 
 Status: implementation design under the approved Net-0 decision; builder check complete, ready for slice planning. Written 2026-11-14 after Net-1b merged as `3047027`, alongside Helm H-0a. This specifies the next implementation; no transport or deployment is claimed complete.
 
-Implementation update, 2026-11-15: Net-3a and Net-3b are implemented and reviewed on `codex/net-3`; [Net-3b evidence](../reviews/2026-11-15-net-3b-validation.md) covers actual local RTC, streaming and cleanup. Net-3c service integration is next. The branch is not yet merged, the inherited acceptance timing target remains unmet, and deployment/internet-demo readiness is not claimed.
+Implementation update, 2026-11-15: Net-3a, Net-3b and Net-3c are implemented and reviewed on `codex/net-3`; [Net-3c evidence](../reviews/2026-11-15-net-3c-validation.md) covers the actual local service/native RTC/gameplay composition. [Net-3d design](2026-11-15-net-3d-online-sector-design.md) and its [implementation plan](../plans/2026-11-15-net-3d-online-sector.md) are prepared for review. The branch is not yet merged, the inherited acceptance timing target remains unmet, and deployment/internet-demo readiness is not claimed.
 
 ## 1. Outcome and scope
 
