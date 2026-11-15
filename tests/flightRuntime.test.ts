@@ -146,6 +146,30 @@ describe('the launch mode (H-1 spec §3)', () => {
     expect(rt.camera.targetZoom).toBeCloseTo(ZOOM_DEFAULT, 12);   // 60 + 60 would have been a notch
     rt.dispose();
   });
+  it('an Escape in a late frame pauses before the due ticks run', () => {
+    const now = { t: 0 };
+    let presses = emptyPresses();
+    const rt = createFlightRuntime({
+      now: () => now.t, scheduler: { schedule: () => () => {} }, seed: 5, viewport: { w: 1280, h: 720 },
+      sampleKeys: () => { const k = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses }; presses = emptyPresses(); return k; },
+      samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 })
+    });
+    now.t = 500;   // 30 ticks due; the scheduler never fires
+    presses = { ...emptyPresses(), pause: 1 };
+    rt.frame(1 / 60);
+    expect(rt.paused()).toBe(true);
+    expect(rt.state.tick).toBe(0);
+    rt.dispose();
+  });
+  it('wheel: a remainder older than 200 ms is dropped even when the next frame carries wheel input', () => {
+    const { time, input, rt } = rig();
+    time.advance(50);
+    input.pointer = { ...input.pointer, x: 100, y: 100, wheel: 60 }; rt.frame(1 / 60);
+    time.advance(300);   // no frames in between
+    input.pointer = { ...input.pointer, wheel: 60 }; rt.frame(1 / 60);
+    expect(rt.camera.targetZoom).toBeCloseTo(ZOOM_DEFAULT, 12);   // 60 + 60 would have been a notch out
+    rt.dispose();
+  });
   it('frame() pumps due ticks before drawing; one alpha per frame feeds the camera and the draw', () => {
     const calls: number[] = [];
     const now = { t: 0 };

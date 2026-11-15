@@ -67,15 +67,16 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
     frame(dt) {
       const k = deps.sampleKeys(), p = deps.samplePointer(), vp = deps.viewport;
       held = helmAxes(k);
-      driver.pump();   // run any due ticks with this frame's held axes before drawing
-      frameAlpha = computeAlpha();
       for (let n = 0; n < k.presses.pause; n++) { if (reasons.has('user')) reasons.delete('user'); else reasons.add('user'); }
-      sync();
+      sync();          // an Escape this frame pauses before any due tick runs
+      driver.pump();   // run any due ticks with this frame's held axes before drawing (a no-op while paused)
+      frameAlpha = computeAlpha();
       if (k.presses.camera > 0) snapBack(camera);
       zoomBy(camera, vp, k.presses.zoomIn - k.presses.zoomOut);
       pan(camera, p.dragX, p.dragY);   // before the wheel: pan clears the zoom anchor, so a drag and a wheel in one frame still zoom about the cursor
       const t = deps.now();
-      if (p.wheel !== 0) lastWheelAt = t; else if (t - lastWheelAt > WHEEL_IDLE_MS) wheelAcc = 0;
+      if (t - lastWheelAt > WHEEL_IDLE_MS) wheelAcc = 0;   // check the idle gap before recording this frame's wheel
+      if (p.wheel !== 0) lastWheelAt = t;
       const w = accumulateWheel(wheelAcc, p.wheel); wheelAcc = w.acc;
       zoomBy(camera, vp, w.notches, p.x !== null && p.y !== null ? { x: p.x, y: p.y } : null);
       updateCamera(camera, vp, dt, followTarget(state, prev, frameAlpha, camera.follow));
