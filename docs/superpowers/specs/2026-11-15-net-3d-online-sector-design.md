@@ -1,6 +1,6 @@
 # Net-3d: playable online sector sessions
 
-Status: approved by the user for subagent execution; builder check complete. Continues source `7598a47`, evidence `49bcf2a`, on `codex/net-3`. Slice details originated as controller implementation choices and were included in the approved design.
+Status: implemented and reviewed on codex/net-3; final runtime source33d674b. See [validation](../reviews/2026-11-15-net-3d-validation.md). Branch/worktree preserved, no merge/deployment. Approved by the user for subagent execution; builder check complete. Continues source `7598a47`, evidence `49bcf2a`, on `codex/net-3`. Slice details originated as controller implementation choices and were included in the approved design.
 
 ## Outcome and boundaries
 

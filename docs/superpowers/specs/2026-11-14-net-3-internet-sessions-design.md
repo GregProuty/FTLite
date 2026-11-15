@@ -1,8 +1,8 @@
 # Net-3: Internet sessions
 
-Status: implementation design under the approved Net-0 decision; builder check complete, ready for slice planning. Written 2026-11-14 after Net-1b merged as `3047027`, alongside Helm H-0a. This specifies the next implementation; no transport or deployment is claimed complete.
+Status: approved implementation design under the Net-0 decision; builder check complete. Written 2026-11-14 after Net-1b merged as 3047027, alongside Helm H-0a. Current implementation and remaining deployment scope are recorded below.
 
-Implementation update, 2026-11-15: Net-3a, Net-3b and Net-3c are implemented and reviewed on `codex/net-3`; [Net-3c evidence](../reviews/2026-11-15-net-3c-validation.md) covers the actual local service/native RTC/gameplay composition. [Net-3d design](2026-11-15-net-3d-online-sector-design.md) and its [implementation plan](../plans/2026-11-15-net-3d-online-sector.md) are prepared for review. The branch is not yet merged, the inherited acceptance timing target remains unmet, and deployment/internet-demo readiness is not claimed.
+Implementation update, 2026-11-15: Net-3a through Net-3d are implemented and reviewed on `codex/net-3`. [Net-3d validation](../reviews/2026-11-15-net-3d-validation.md) proves two actual local app processes, assigned-seat controls, bots/reconnect, and bounded native cleanup. Final runtime source `33d674b`; root2,479/service222 tests pass, acceptance28.205s meets the unchanged30s target, and three-engine replay passes. The branch remains unmerged. Net-3e still owns independent utility fencing, mirrors/rehost, deployment and live TURN/WAN/two-machine proof; internet-demo readiness is not claimed.
 
 ## 1. Outcome and scope
 

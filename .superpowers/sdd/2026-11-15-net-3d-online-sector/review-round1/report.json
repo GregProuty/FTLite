@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "source": {
+    "revision": "eb176de9a21797eb12c5294df16f27bc782d15ea",
+    "dirty": true,
+    "digest": "f8c6bdd8d9b88e9932ea91508750e2ebe972eca135320f1508d2a25bac736128",
+    "artifactHashes": {
+      "out/main/index.js": "0573dfffc1b4b172ccb4d9b46ff5beaa98ce88bb8d721a029679445e99e2ab54",
+      "out/main/transportWindow.js": "b1beb8a051b02ea886159d9bd6d643f756658154038843ecd9b2b520670febd6",
+      "out/renderer/index.html": "89a0212fccbb2a5e9af3f81732a240d7811e305bf0ef4d56ac8a39f9e108396f",
+      "scripts/network/online-app-smoke.ts": "f2af4949dc6edccba3687cfcd73973fc342c31347dc4da5ea1a76ec27980fb91",
+      "scripts/network/online-app-smoke.cjs": "02ce0e4829fdb3ac94eef17b3dfeeae8138070d320be8965d4d86551948d6fb1",
+      "scripts/network/online-app-observer.ts": "102c310829e1362d691d9d0ea189d6f7faee59a7acbd15e5883af9d61a011497"
+    }
+  },
+  "runtime": {
+    "electron": "37.10.3",
+    "workerd": "1.20261023.1",
+    "workerPid": 23636,
+    "workerExit": true,
+    "temporaryRemoved": true
+  },
+  "processes": [
+    {
+      "pid": 25816,
+      "profile": "host",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 1,
+        "utilityExits": 1,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 2,
+        "nativeWindowExits": 2,
+        "nativePeersObserved": 1,
+        "nativePeerCloses": 1,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [
+          8016
+        ],
+        "observedMainPorts": 6
+      }
+    },
+    {
+      "pid": 20420,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "shutdown",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [],
+        "windows": 2,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [],
+            "timers": 0,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 2
+      }
+    },
+    {
+      "pid": 14188,
+      "profile": "incompatible",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 0,
+        "nativeWindowExits": 0,
+        "nativePeersObserved": 0,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 0
+      }
+    }
+  ],
+  "cleanup": {
+    "utilities": 1,
+    "utilityExits": 1,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 2,
+    "nativeWindowExits": 2,
+    "nativePeersObserved": 1,
+    "nativePeerCloses": 1,
+    "nativePeersEndedWithWindow": 0,
+    "observedMainPorts": 6
+  },
+  "scenarios": [],
+  "checks": [
+    "bad-code",
+    "incompatible",
+    "cancel-couch"
+  ],
+  "elapsedMs": 14581,
+  "failure": "injected transport death",
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-independent-utility-lease",
+    "no-mirrors",
+    "no-rehost",
+    "no-WAN",
+    "no-two-machine"
+  ]
+}
