@@ -1,6 +1,6 @@
 # Net-3e: fenced recovery and internet verification
 
-Status: approved by the user ("go ahead") for implementation planning; [builder check complete](../reviews/2026-11-15-net-3e-builder-check.md). [Implementation plan](../plans/2026-11-15-net-3e-recovery-internet.md) prepared for review. Source baseline `f62cf4e`, runtime `33d674b`, branch `codex/net-3`. No product code, deployment or credentials changed for this document.
+Status: approved by the user ("go ahead") for implementation; [builder check complete](../reviews/2026-11-15-net-3e-builder-check.md). [Implementation plan](../plans/2026-11-15-net-3e-recovery-internet.md) approved for continuous execution ("continue until done"). Source baseline `f62cf4e`, runtime `33d674b`, branch `codex/net-3`. No product code, deployment or credentials changed for this document.
 
 ## Outcome and existing decisions
 
