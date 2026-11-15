@@ -38,7 +38,7 @@ function createSectorHost(deps: ModeHostDeps): ModeHost {
       botControllers: () => nextProducers.controllers(),
       beforeControls: () => nextProducers.beforeControls(), beforeTick: tick => nextProducers.beforeTick(tick),
       onCrash(record) { let checkpoint: Uint8Array | null = null; try { checkpoint = encode(record.checkpoint); } catch { /* retain diagnostics */ }
-        try { nextProducers?.dispose(); } finally { deps.onCrash({ checkpoint, diagnostic: { replayVersion: 3, ...record } }); } },
+        try { nextProducers?.dispose(); } finally { deps.onCrash({ checkpoint, diagnostic: { ...record } }); } },
       bindLifecyclePause(request) { nextPause = request; return () => { if (nextPause === request) nextPause = undefined; }; }
     });
     const init = restore ? (value as Checkpoint).init : value as RunInit;

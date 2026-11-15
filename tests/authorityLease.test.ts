@@ -9,7 +9,9 @@ import { createLeaseGate } from '../src/network/session/leaseGate';
 import type { LeaseRenewalRequest } from '../src/shared/sessionLease';
 import type { AuthorityDeps, AttachOptions } from '../src/renderer/src/authority/authority';
 import type { PublishedState } from '../src/renderer/src/net/contracts';
-import { runReplay } from '../src/renderer/src/authority/replay';
+import { runReplay, parseReplay } from '../src/renderer/src/authority/replay';
+import { createClientRun } from '../src/renderer/src/clientControl/clientRun';
+import { createBotClient } from '../src/renderer/src/clientControl/botClient';
 
 function rig(hooks: Partial<AuthorityDeps> = {}, publicationSink?: (state: PublishedState) => void, notificationSink?: AttachOptions['notificationSink']) {
   let now = 0, nonce = 0, request!: LeaseRenewalRequest;
@@ -24,7 +26,7 @@ function rig(hooks: Partial<AuthorityDeps> = {}, publicationSink?: (state: Publi
     init: { runId: 'lease', layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 1, playerCount: 1, characters: [], unlocked: [] }
   }, state);
   authority.attach(pair.authorityLink, [0], { admissionPolicy: 'receive-time', publicationSink, notificationSink }); transport.drain();
-  return { authority, state, gate, messages, at(t: number) { now = t; },
+  return { authority, state, gate, messages, pair, transport, at(t: number) { now = t; },
     grant() { gate.renewNow(); gate.accept(request, { roomId: request.roomId, hostGeneration: 1, hostSeatId: 0, nonce: request.nonce, expiresAtEpochMs: 100000 + now + 15000 }); },
     pump() { authority.pump(); transport.drain(); },
     send(sequence: number, command: any = { kind: 'stand' }) { pair.clientLink.send('reliable-ordered', encodeMessage({ kind: 'command', envelope: { runId: 'lease', id: { player: 0, sequence }, requestedTick: state.tick, command } })); transport.drain(); },
@@ -34,6 +36,62 @@ function rig(hooks: Partial<AuthorityDeps> = {}, publicationSink?: (state: Publi
 }
 
 describe('authority utility lease enforcement', () => {
+  it('records a fence from the final control callback without publishing Resume', () => {
+    const publications: PublishedState[] = [];
+    const h = rig({}, state => publications.push(state), message => {
+      if (message.kind === 'result' && message.result.status === 'applied') h.gate.invalidate('service-fenced');
+    });
+    h.grant(); h.authority.completeBootstrap(); publications.length = 0;
+    h.send(1, { kind: 'setPaused', paused: false }); h.pump();
+    expect(publications.every(state => state.phase === 'paused')).toBe(true);
+    const replay = h.authority.replay();
+    expect(replay.frames).toContainEqual(expect.objectContaining({ action: { kind: 'controls', processedCount: 1, fenced: true } }));
+    expect(runReplay(LAYOUT, replay, __GAMEPLAY_CONTENT_DIGEST__).checkpoint).toEqual(h.authority.checkpoint([])); h.dispose();
+  });
+  it.each(['invalidate', 'expire', 'reentrant-ingress'])('settles the remaining player controls when a result callback closes permission: %s', closure => {
+    const outcomes: any[] = [], publications: PublishedState[] = [];
+    const h = rig({}, state => publications.push(state), message => {
+      if (message.kind !== 'result') return;
+      outcomes.push(message.result);
+      if (message.result.id.sequence !== 1 || message.result.status !== 'applied') return;
+      if (closure === 'expire') h.at(12000); else h.gate.invalidate('service-fenced');
+      if (closure === 'reentrant-ingress') h.send(3);
+    });
+    h.grant(); h.authority.completeBootstrap(); publications.length = 0;
+    h.send(1, { kind: 'setPaused', paused: false }); h.send(2, { kind: 'setPaused', paused: false }); h.pump();
+    expect(outcomes.find(r => r.id.sequence === 2)).toMatchObject({ status: 'rejected', reason: 'unavailable' });
+    expect(publications.every(state => state.phase === 'paused')).toBe(true);
+    const cp = h.authority.checkpoint([]);
+    expect(cp.controlRevision).toBe(3); // bootstrap, first valid control, trusted fence pause
+    expect(cp.phase).toBe('paused'); expect(cp.commandHighWater).toEqual([2]); expect(cp.snapshot.header.tick).toBe(0);
+    const replay = h.authority.replay(); expect(replay.version).toBe(4);
+    expect(replay.frames).toContainEqual(expect.objectContaining({ action: { kind: 'controls', processedCount: 1, fenced: true } }));
+    expect(runReplay(LAYOUT, replay, __GAMEPLAY_CONTENT_DIGEST__).checkpoint).toEqual(cp);
+    for (const version of [2, 3]) expect(() => parseReplay(LAYOUT, { ...replay, version }, __GAMEPLAY_CONTENT_DIGEST__)).toThrow();
+    for (const extra of [{ processedCount: -1 }, { processedCount: 1.5 }, { processedCount: 99 }, { fenced: false }, { extra: 1 }]) {
+      const bad = structuredClone(replay), frame = bad.frames.find(f => f.action.kind === 'controls' && 'fenced' in f.action)!;
+      Object.assign(frame.action, extra); expect(() => runReplay(LAYOUT, bad, __GAMEPLAY_CONTENT_DIGEST__)).toThrow();
+    }
+    h.dispose();
+  });
+  it('rejects actual bot decisions queued before expiry without advancing bot held or command watermarks', () => {
+    const h = rig(), client = createClientRun(h.pair.clientLink, [0], { runId: 'lease', resolveLayout: () => LAYOUT });
+    const bot = createBotClient(0, client);
+    try {
+      h.grant(); h.authority.completeBootstrap(); h.authority.publishCompletedState(); h.transport.drain();
+      client.send(bot.decide(0)); h.transport.drain(); h.at(17); h.pump();
+      // A published unresolved event makes the real bot issue a vote command,
+      // so this covers command admission as well as its ordinary held frame.
+      h.state.run.event = 0; h.state.run.eventChoice = -1; h.state.run.vote.fill(-1);
+      h.authority.publishCompletedState(); h.transport.drain();
+      const before = h.authority.checkpoint([]); expect(before.heldHighWater[0]).toBeGreaterThan(0);
+      const queued = bot.decide(h.state.tick); expect(queued.held).toHaveLength(1); expect(queued.commands.length).toBeGreaterThan(0); client.send(queued); h.transport.drain();
+      h.at(12000); h.pump(); const after = h.authority.checkpoint([]);
+      expect(after.snapshot.header.tick).toBe(before.snapshot.header.tick);
+      expect(after.commandHighWater).toEqual(before.commandHighWater); expect(after.heldHighWater).toEqual(before.heldHighWater);
+      expect(after.held).toEqual([{ moveX: 0, moveY: 0, interactHeld: false }]); expect(after.phase).toBe('paused');
+    } finally { client.dispose(); h.dispose(); }
+  });
   it('starts paused, rejects closed ingress and requires a useful grant for bootstrap', () => {
     const h = rig(); h.send(1, { kind: 'setPaused', paused: false }); h.at(5000); h.pump();
     expect(h.state.tick).toBe(0); expect(h.authority.checkpoint([]).commandHighWater).toEqual([0]);

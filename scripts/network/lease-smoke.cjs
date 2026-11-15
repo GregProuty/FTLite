@@ -98,7 +98,7 @@ if (process.parentPort) {
     try {
       const running = await start('running');
       if (probe === 'fault') throw Error('injected-fault');
-      if (probe === 'timeout') await new Promise(() => {});
+      if (probe === 'timeout' || probe === 'cleanup-timeout') await new Promise(() => {});
       const delayed = await start('delayed'), delayedRequest = delayed.current;
       await running.host.applyLease(running.current, grant(running.current)); await running.host.completeBootstrap();
       const channel = new MessageChannelMain(); ports.push(channel.port1);

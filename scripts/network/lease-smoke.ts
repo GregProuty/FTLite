@@ -1,37 +1,56 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
 import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
+import { createLauncherDeadline, stopOwnedProcess, removeOwnedDirectory } from './lease-smoke-lifecycle';
 
 const arg = (key: string) => process.argv.find(value => value.startsWith(`--${key}=`))?.slice(key.length + 3);
 const reportPath = arg('report-path');
 const probe = arg('probe') ?? 'normal';
-if (!['normal', 'fault', 'timeout'].includes(probe)) throw Error('invalid-probe');
+if (!['normal', 'fault', 'timeout', 'cleanup-timeout'].includes(probe)) throw Error('invalid-probe');
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-async function killOwned(child: ChildProcess): Promise<void> {
-  if (!child.pid || child.exitCode !== null || child.signalCode) return;
-  if (process.platform === 'win32') await new Promise<void>((resolveKill, reject) => {
-    const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-    killer.once('error', reject); killer.once('exit', () => resolveKill());
-  }); else child.kill('SIGKILL');
-  if (child.exitCode === null && !child.signalCode) await new Promise<void>((done, reject) => {
-    const timer = setTimeout(() => reject(Error('owned-process-exit-timeout')), 3000);
-    child.once('exit', () => { clearTimeout(timer); done(); });
-  });
+function association() {
+  const source = ['src/utility/authorityHost.ts', 'src/network/utilityHost.ts', 'src/network/hostRuntime.ts', 'src/network/session/leaseGate.ts',
+    'src/network/modes/sector.ts', 'src/network/modes/contracts.ts', 'src/shared/sessionLease.ts', 'src/shared/hostProcessProtocol.ts',
+    'src/main/network/hostProcess.ts', 'src/main/network/transportWindow.ts', 'src/main/network/onlinePlatform.ts',
+    'src/renderer/src/authority/core.ts', 'src/renderer/src/authority/tickDriver.ts', 'src/renderer/src/authority/authority.ts',
+    'src/renderer/src/authority/replay.ts', 'src/renderer/src/sim/replay.ts', 'electron.vite.config.ts', 'build/contentDigest.ts',
+    'scripts/network/lease-smoke.ts', 'scripts/network/lease-smoke.cjs', 'scripts/network/lease-smoke-lifecycle.ts'];
+  const artifacts = ['out/main', 'out/renderer/assets'].flatMap(directory => readdirSync(directory).filter(name => name.endsWith('.js')).map(name => `${directory}/${name}`));
+  artifacts.push('out/preload/networkTransport.js', 'out/renderer/networkTransport.html');
+  const hashes = (paths: string[]) => Object.fromEntries(paths.sort().map(path => [path, createHash('sha256').update(readFileSync(path)).digest('hex')]));
+  return { commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 1000, windowsHide: true }).trim(),
+    sourceFiles: hashes(source), artifactFiles: hashes(artifacts) };
 }
 async function main(): Promise<void> {
   const started = performance.now(), directory = mkdtempSync(join(tmpdir(), 'ftlite-lease-smoke-'));
+  const budgetMs = probe === 'cleanup-timeout' ? 5000 : 60000, deadline = createLauncherDeadline(started + budgetMs);
   let child: ChildProcess | undefined, status = 'FAIL', diagnostic = 'launcher-failure', details: any = null;
   let processCleanup = false, tempCleanup = false;
+  let provenance: ReturnType<typeof association> | undefined, sourceDigest: string | undefined;
+  const ownedPids = (): number[] => existsSync(join(directory, 'owned-pids.json')) ? JSON.parse(readFileSync(join(directory, 'owned-pids.json'), 'utf8')) : [];
+  function report(): void {
+    const value = { status, diagnostic, kind: 'controlled-grant-injection', realService: 'NOT RUN', osSuspend: 'NOT RUN',
+      sourceDigest, provenance, probe, budgetMs, durationMs: Math.round(performance.now() - started), processCleanup, tempCleanup, details };
+    if (reportPath) writeFileSync(resolve(reportPath), JSON.stringify(value, null, 2) + '\n');
+    console.log(JSON.stringify({ status, diagnostic, probe, processCleanup, tempCleanup, durationMs: value.durationMs }));
+  }
+  // Last-resort whole-launcher bound also covers unexpected async cleanup hangs.
+  const watchdog = setTimeout(() => {
+    status = 'FAIL'; diagnostic = 'launcher-deadline';
+    try { child?.kill('SIGKILL'); for (const pid of ownedPids()) if (Number.isSafeInteger(pid) && pid > 0) { try { process.kill(pid, 'SIGKILL'); } catch {} } } catch {}
+    try { report(); } finally { process.exit(1); }
+  }, deadline.remaining());
   try {
     const layout = parseShip(starter), contentDigest = computeContentDigest(process.cwd());
+    sourceDigest = contentDigest; provenance = association();
     const init = { runId: randomBytes(16).toString('hex'), layoutId: layout.id, layoutHash: deriveLayout(layout).layoutHash,
       simVersion: SIM_VERSION, contentDigest, seed: 7, playerCount: 2, characters: [0, 0], unlocked: [] };
     writeFileSync(join(directory, 'fixture.json'), JSON.stringify({ init }));
@@ -40,7 +59,7 @@ async function main(): Promise<void> {
     child = spawn(electron, [resolve('scripts/network/lease-smoke.cjs'), `--lease-smoke-dir=${directory}`,
       `--user-data-dir=${join(directory, 'profile')}`, `--lease-probe=${probe}`], { env, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] });
     await new Promise<void>((done, reject) => {
-      const budget = probe === 'timeout' ? 2500 : Math.max(1, 55000 - (performance.now() - started));
+      const budget = probe === 'timeout' || probe === 'cleanup-timeout' ? Math.min(2500, deadline.remaining(2000)) : deadline.remaining(10000);
       const timer = setTimeout(() => reject(Error('launcher-timeout')), budget);
       child!.once('error', () => { clearTimeout(timer); reject(Error('native-launch-failed')); });
       child!.once('exit', (code, signal) => { clearTimeout(timer); code === 0 && !signal ? done() : reject(Error('native-probe-failed')); });
@@ -54,17 +73,29 @@ async function main(): Promise<void> {
     diagnostic = error instanceof Error && allowed.includes(error.message) ? error.message : 'launcher-failure';
     if (existsSync(join(directory, 'native-report.json'))) details = JSON.parse(readFileSync(join(directory, 'native-report.json'), 'utf8'));
   } finally {
-    if (child) await killOwned(child);
-    const pids: number[] = existsSync(join(directory, 'owned-pids.json')) ? JSON.parse(readFileSync(join(directory, 'owned-pids.json'), 'utf8')) : [];
-    processCleanup = (!child?.pid || !alive(child.pid)) && pids.every(pid => !alive(pid));
-    const target = resolve(directory), prefix = resolve(tmpdir()) + sep;
-    if (!target.startsWith(prefix) || !target.slice(prefix.length).startsWith('ftlite-lease-smoke-')) throw Error('invalid-owned-cleanup');
-    if (!processCleanup) throw Error('owned-process-leak');
-    rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); tempCleanup = !existsSync(target);
-    const report = { status, diagnostic, kind: 'controlled-grant-injection', realService: 'NOT RUN', osSuspend: 'NOT RUN',
-      sourceDigest: computeContentDigest(process.cwd()), probe, durationMs: Math.round(performance.now() - started), processCleanup, tempCleanup, details };
-    if (reportPath) writeFileSync(resolve(reportPath), JSON.stringify(report, null, 2) + '\n');
-    console.log(JSON.stringify({ status, diagnostic, probe, processCleanup, tempCleanup, durationMs: report.durationMs }));
+    try {
+      if (child) try {
+        await stopOwnedProcess(child, deadline, probe !== 'cleanup-timeout' ? undefined : target => {
+          // Test-only slow killer: do the real owned-tree kill, then deliberately
+          // keep its wrapper alive to prove the killer's own wait is bounded.
+          if (process.platform !== 'win32') target.kill('SIGKILL');
+          return spawn(process.execPath, ['-e', process.platform === 'win32'
+            ? "require('node:child_process').spawn('taskkill',['/PID',process.argv[1],'/T','/F'],{windowsHide:true,stdio:'ignore'}).once('exit',()=>setInterval(()=>{},1000))"
+            : 'setInterval(()=>{},1000)', String(target.pid)], { windowsHide: true, stdio: 'ignore' });
+        });
+      } catch { status = 'FAIL'; diagnostic = 'cleanup-timeout'; }
+      processCleanup = (!child?.pid || !alive(child.pid)) && ownedPids().every(pid => !alive(pid));
+      const target = resolve(directory), prefix = resolve(tmpdir()) + sep;
+      if (!target.startsWith(prefix) || !target.slice(prefix.length).startsWith('ftlite-lease-smoke-')) throw Error('invalid-owned-cleanup');
+      if (!processCleanup) throw Error('owned-process-leak');
+      await removeOwnedDirectory(target, deadline); tempCleanup = !existsSync(target);
+    } catch (error) {
+      status = 'FAIL'; diagnostic = error instanceof Error && ['invalid-owned-cleanup', 'owned-process-leak', 'cleanup-timeout'].includes(error.message) ? error.message : 'cleanup-failure';
+    }
+    // Do not disarm the absolute deadline: a timed-out filesystem operation or
+    // child handle may still be alive. Unref lets a fully cleaned launcher exit
+    // immediately, while any remaining owned handle is still bounded by it.
+    report(); watchdog.unref();
     if (status !== 'PASS' || !processCleanup || !tempCleanup) process.exitCode = 1;
   }
 }

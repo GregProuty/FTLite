@@ -7,6 +7,17 @@ import { encodeMessage } from '../src/renderer/src/net/codec';
 
 const moving: HeldInput = { moveX: 1, moveY: 0, interactHeld: true };
 const neutral: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+it.each([2, 3] as const)('retains v%i playback when explicitly upgrading its unchanged action journal to v4', version => {
+  const h = version === 2 ? checkpointRig() : rig();
+  h.send({ kind: 'command', envelope: { runId: h.init.runId, id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'setPaused', paused: true } } }); h.pump();
+  const legacy = h.authority.replay(); expect(legacy.version).toBe(version);
+  const upgraded = { ...legacy, version: 4 as const };
+  expect(runReplay(LAYOUT, upgraded, h.init.contentDigest)).toEqual(runReplay(LAYOUT, legacy, h.init.contentDigest));
+  const controls = upgraded.frames.find(f => f.action.kind === 'controls')!;
+  for (const action of [{ kind: 'controls', processedCount: 0 }, { kind: 'controls', fenced: true }]) {
+    expect(() => parseReplay(LAYOUT, { ...upgraded, frames: [{ ...controls, action }] }, h.init.contentDigest)).toThrow(/control fence/);
+  }
+});
 function rig() { const h = checkpointRig(); h.detach(); h.authority.attach(h.pair.authorityLink, [0], { admissionPolicy: 'receive-time' }); h.drain(); return h; }
 function held(h: ReturnType<typeof rig>, sequence: number, value = moving, tick = 0) { h.send({ kind: 'held', frame: { runId: h.init.runId, player: 0, sequence, tick, held: value } }); }
 it('expires remote held at 250ms and replays explicit watchdog effects without wall time', () => {

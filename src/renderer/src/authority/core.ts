@@ -23,6 +23,7 @@ interface Binding extends Pick<AttachOptions, 'publicationSink' | 'notificationS
 export type JournalControl = { source: 'player'; order: number; envelope: CommandEnvelope } | { source: 'lifecycle'; order: number; ordinal: number; control: LifecyclePause };
 export interface JournalTick { tick: number; input: TickInput; heldSequences: readonly number[]; results: readonly CommandResult[]; controls: readonly JournalControl[] }
 export interface CrashRecord {
+  replayVersion: 2 | 3 | 4;
   init: RunInit; checkpoint: Checkpoint; frames: ReplayFrame[]; lastPublishedSequence: number;
   tick: number; seed: number; error: string; baseline: Snapshot;
   baselineHighWater: readonly number[]; baselineHeldSequences: readonly number[];
@@ -68,7 +69,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
   let ticks: JournalTick[] = [];
   let botMemory: CardUiState[] = [];
   let bindingOrdinal = 0, replaying = false;
-  let replayVersion: 2 | 3 = 2;
+  let replayVersion: 2 | 3 | 4 = 2;
   let frames: ReplayFrame[] = [], activeFrame: ReplayFrame | null = null;
   const deferredDetaches = new Set<Unsubscribe>();
   let flushingDetaches = false;
@@ -146,7 +147,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       rejectPending();
       pendingCallouts.clear();
       // Existing watchdog/lifecycle records make offline replay independent of a live lease.
-      replayVersion = 3;
+      if (replayVersion === 2) replayVersion = 3;
       neutralizeExpired(held.map((_, player) => player));
       lifecycle({ paused: true, reason: 'session-fenced' });
       applyControls();
@@ -301,9 +302,10 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     if (recorded.length) complete();
     if (incoming.some(entry => entry.message.kind === 'callout')) { begin({ kind: 'cursor', receiveOrder }); complete(); }
   }
-  function applyControls(): void {
+  function applyControls(replayCutoff?: number): void {
     if (!settlingFence && !permitted() && !controlQueue.every(entry => entry.record.source === 'lifecycle' && entry.record.control.paused)) return;
     const queue = controlQueue.sort((a, b) => a.record.order - b.record.order); controlQueue = [];
+    if (replayCutoff !== undefined && (!Number.isSafeInteger(replayCutoff) || replayCutoff < 0 || replayCutoff > queue.length)) throw Error('invalid replay control cutoff');
     recoveredPlayers.clear();
     if (!queue.length) return;
     const nested = activeFrame !== null;
@@ -317,8 +319,11 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     // Checkpoint the completed boundary instead of growing that journal forever.
     // Portable history is rotated only after a complete boundary, below.
     let paused = false, owner: number | null = null, reason: string | null = null;
+    let processedCount = 0;
     for (const entry of queue) {
       const record = entry.record;
+      if (replayCutoff !== undefined ? processedCount === replayCutoff
+        : (record.source === 'player' || !record.control.paused) && !permitted()) break;
       const value = record.source === 'lifecycle' ? record.control.paused : isPauseControl(record.envelope) && record.envelope.command.paused;
       if (value) {
         paused = true; owner = record.source === 'player' ? record.envelope.id.player : null;
@@ -330,6 +335,17 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
         const outcome: CommandResult = { id: record.envelope.id, tick: state.tick, status: 'applied' };
         controlResults.push(outcome); result(entry.binding!, outcome);
       }
+      processedCount++;
+    }
+    // Permission may close from the final result callback too. Complete the
+    // accepted prefix without publishing Resume; the following existing seal
+    // and trusted lifecycle records settle the suffix and publish the pause.
+    if (replayCutoff !== undefined || !settlingFence && queue.some(entry => entry.record.source === 'player' || !entry.record.control.paused) && !permitted()) {
+      activeFrame!.action = { kind: 'controls', processedCount, fenced: true };
+      replayVersion = 4;
+      controlQueue.unshift(...queue.slice(processedCount));
+      complete();
+      return;
     }
     phase = paused ? 'paused' : 'running'; pauseOwner = owner; pauseReason = reason;
     emit({ kind: 'pause', paused, owner, reason: reason ?? 'resume' });
@@ -389,7 +405,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
     // incomplete frame before flushing cleanup, and preserve the durable baseline.
     activeFrame = null; phase = 'error'; driver.dispose(); flushDetaches(); applyControls(); let snapshotAfterFault: Snapshot | null = null;
     try { snapshotAfterFault = saveSnapshot(state, deps.contentDigest); } catch { /* corrupted state */ }
-    deps.onCrash({ init: structuredClone(deps.init), checkpoint: structuredClone(durableBaseline), frames: structuredClone(frames), lastPublishedSequence: publicationSequence, tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
+    deps.onCrash({ replayVersion, init: structuredClone(deps.init), checkpoint: structuredClone(durableBaseline), frames: structuredClone(frames), lastPublishedSequence: publicationSequence, tick: state.tick, seed: deps.init.seed, error: String(error), baseline, baselineHighWater, baselineHeldSequences, baselineControlRevision, baselineLifecycleOrdinal, baselineHeld, baselineControlState, ticks, snapshotAfterFault });
   }
   const driver = createTickDriver(deps.clock, { schedule: (delay) => deps.scheduler.schedule(delay, pump) }, executeTick, (_tick, deadline) => {
     if (!permitted()) return false;
@@ -423,7 +439,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       if (admissionPolicy !== 'strict' && admissionPolicy !== 'receive-time') throw new Error('invalid admission policy');
       if (disposed || players.some((p) => !Number.isInteger(p) || p < 0 || p >= state.playerCount || [...bindings].some((b) => b.players.includes(p))) || new Set(players).size !== players.length) throw new Error('invalid player ownership');
       const binding: Binding = { id: ++bindingOrdinal, link, players: [...players], admissionPolicy, publicationSink: options.publicationSink, notificationSink: options.notificationSink, ledger, ingress: [], unsubscribe: [] }; bindings.add(binding);
-      if (admissionPolicy === 'receive-time') replayVersion = 3;
+      if (admissionPolicy === 'receive-time' && replayVersion === 2) replayVersion = 3;
       const detach = (): void => {
         // Finish the entire captured admission/control/tick batch before changing
         // ownership. Replay sees the outer outcome first, then this detach.
@@ -486,7 +502,7 @@ function createLiveAuthorityCore(deps: AuthorityDeps & { init: RunInit }, state:
       } else if (action.kind === 'lifecycle') {
         begin(action); receiveOrder = Math.max(receiveOrder, action.order); lifecycleOrdinal = action.ordinal;
         controlQueue.push({ record: { source: 'lifecycle', order: action.order, ordinal: action.ordinal, control: action.control } }); complete();
-      } else if (action.kind === 'controls') applyControls();
+      } else if (action.kind === 'controls') applyControls(action.fenced ? action.processedCount : undefined);
       else if (action.kind === 'tick') {
         if (phase !== 'running' || !replayDataEqual(action.input.held, held) || JSON.stringify(action.heldSequences) !== JSON.stringify(heldSequences)) throw new Error('replay held divergence');
         executeTick(state.tick, 0);
