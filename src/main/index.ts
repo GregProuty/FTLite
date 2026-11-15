@@ -27,7 +27,7 @@ function createWindow(): void {
       event.preventDefault();
     }
   });
-  // FTLITE_MODE (H-1 spec §3): `flight` opens the dev flight view; the renderer reads it as `?mode=`.
+  // FTLITE_MODE (H-1 spec §3): `flight` opens the dev flight view and `duel` the solo duel; the renderer reads it as `?mode=`.
   const mode = process.env['FTLITE_MODE'];
   if (process.env['ELECTRON_RENDERER_URL']) {
     const url = new URL(process.env['ELECTRON_RENDERER_URL']);

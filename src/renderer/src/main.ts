@@ -14,6 +14,7 @@ import { EMPTY_PROGRESS } from './sim/progress';
 import { CREDITS } from './render/credits.generated';
 import { readMode, readSeed } from './app/duel/mode';
 import { startFlightMode } from './app/duel/flightMode';
+import { startDuelMode } from './app/duel/duelMode';
 
 declare global { interface Window { ftlite?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void } } }
 
@@ -71,8 +72,19 @@ async function startFlight(seed: number): Promise<void> {
   startFlightMode({ renderer, seed, lifecycle: window.ftlite });
 }
 
-/** One mode per launch (H-1 spec §3): `?mode=flight`, or today's sector game. */
+/** The solo duel (H-1 spec §4, §11a): the renderer and its letterbox, the Cutter, but no sector session. */
+async function startDuel(seed: number): Promise<void> {
+  const layout = parseShip(cutter);   // throws with a clear message on invalid ship data (spec §9)
+  const assets = await loadAssets('./assets/manifest.json');
+  const renderer = await createRenderer(assets);
+  const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
+  window.addEventListener('resize', resize); resize();
+  startDuelMode({ renderer, seed, layout, lifecycle: window.ftlite });
+}
+
+/** One mode per launch (H-1 spec §3): `?mode=flight`, `?mode=duel`, or today's sector game. */
 function start(): Promise<void> {
-  return readMode(location.search) === 'flight' ? startFlight(readSeed(location.search)) : startSector();
+  const mode = readMode(location.search);
+  return mode === 'flight' ? startFlight(readSeed(location.search)) : mode === 'duel' ? startDuel(readSeed(location.search)) : startSector();
 }
 start().catch(showFatal);

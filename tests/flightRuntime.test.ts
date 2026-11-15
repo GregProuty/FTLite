@@ -125,9 +125,9 @@ describe('the flight runtime (H-1 spec §4, §9)', () => {
 });
 
 describe('the launch mode (H-1 spec §3)', () => {
-  it('flight only for ?mode=flight; anything else is the sector game', () => {
-    expect(readMode('?mode=flight')).toBe('flight');
-    expect(readMode('')).toBe('sector'); expect(readMode('?mode=duel')).toBe('sector'); expect(readMode('?mode=FLIGHT')).toBe('sector');
+  it('flight for ?mode=flight, the duel for ?mode=duel; anything else is the sector game', () => {
+    expect(readMode('?mode=flight')).toBe('flight'); expect(readMode('?mode=duel&seed=3')).toBe('duel');
+    expect(readMode('')).toBe('sector'); expect(readMode('?mode=DUEL')).toBe('sector'); expect(readMode('?mode=FLIGHT')).toBe('sector'); expect(readMode('?mode=solo')).toBe('sector');
   });
   it('?seed overrides the default with a whole number', () => {
     expect(readSeed('')).toBe(DEFAULT_SEED); expect(readSeed('?mode=flight&seed=42')).toBe(42);
