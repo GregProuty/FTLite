@@ -50,8 +50,10 @@ export const Outcome = { Running: 0, CrewWins: 1, EnemyWins: 2, Draw: 3 } as con
 
 /** Per-tick events for the views (shots and missile endings). Reset every tick and not hashed. */
 export type DuelEvent =
-  | { kind: 'laser'; ship: number; hit: boolean; x1: number; y1: number; x2: number; y2: number }
-  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; x: number; y: number };
+  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it damaged, or −1 (a miss or a stripped layer). */
+  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
+  /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
+  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number };
 
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
@@ -92,6 +94,19 @@ export function createTacticalState(seed: number): TacticalState {
     tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies)],
     missiles: [null, null], hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: []
+  };
+}
+
+/** Deep copy of the whole tactical state for snapshots, rollback and replay checks. The map and broad-phase grid are
+ *  immutable after creation and are shared. Any new nested state must be copied here; the clone test guards it. */
+export function cloneTactical(s: TacticalState): TacticalState {
+  const h = s.hunter;
+  return {
+    ...s, rng: { s: s.rng.s },
+    ships: [cloneShip(s.ships[0]), cloneShip(s.ships[1])],
+    missiles: [s.missiles[0] ? { ...s.missiles[0] } : null, s.missiles[1] ? { ...s.missiles[1] } : null],
+    hunter: { ...h, trail: new Float64Array(h.trail) },
+    events: s.events.map((e) => ({ ...e }))
   };
 }
 

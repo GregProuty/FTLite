@@ -7,8 +7,8 @@ import { segmentNear, sideOf } from './geometry';
 import { queryGrid } from './grid';
 import { HunterMode, Room, type TacticalState } from './state';
 import {
-  HUNTER_AVOID_MARGIN, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_MISSILE_RANGE,
-  HUNTER_THRUST_COS, HUNTER_TRAIL_TICKS, HUNTER_WALK_TICKS, LASER_RANGE, REPAIR_WORK_TICKS
+  HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_MISSILE_RANGE,
+  HUNTER_STANDOFF, HUNTER_THRUST_COS, HUNTER_TRAIL_TICKS, HUNTER_WALK_TICKS, LASER_RANGE, REPAIR_WORK_TICKS
 } from './tuning';
 import { laserEligible, laserFull, type ShipInput } from './weapons';
 
@@ -66,9 +66,16 @@ export function hunterThink(state: TacticalState): ShipInput {
     const threat = threatAhead(state);
     if (threat) input.axes = { turn: -sideOf(me.heading, threat.x - me.x, threat.y - me.y) || 1, thrust: 1 };
     else {
-      const dx = crew.x + crew.vx * HUNTER_LEAD_S - me.x, dy = crew.y + crew.vy * HUNTER_LEAD_S - me.y;
-      const aligned = hx(me.heading) * dx + hy(me.heading) * dy >= HUNTER_THRUST_COS * Math.sqrt(dx * dx + dy * dy);
-      input.axes = { turn: pursuitTurn(me.heading, dx, dy), thrust: aligned ? 1 : 0 };
+      const cx = crew.x - me.x, cy = crew.y - me.y, dist = Math.sqrt(cx * cx + cy * cy);
+      if (dist <= HUNTER_STANDOFF) {
+        // Standoff (spec §9): nose on the crew's current position, no forward thrust, brake when closing fast.
+        const closing = dist > 0 ? ((me.vx - crew.vx) * cx + (me.vy - crew.vy) * cy) / dist : 0;
+        input.axes = { turn: pursuitTurn(me.heading, cx, cy), thrust: closing > HUNTER_BRAKE_SPEED ? -1 : 0 };
+      } else {
+        const dx = cx + crew.vx * HUNTER_LEAD_S, dy = cy + crew.vy * HUNTER_LEAD_S;
+        const aligned = hx(me.heading) * dx + hy(me.heading) * dy >= HUNTER_THRUST_COS * Math.sqrt(dx * dx + dy * dy);
+        input.axes = { turn: pursuitTurn(me.heading, dx, dy), thrust: aligned ? 1 : 0 };
+      }
     }
   }
   if (!weapons) { h.fireAt = -1; return input; }
