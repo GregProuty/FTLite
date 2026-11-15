@@ -17,9 +17,11 @@ Controller decisions are reflected in the slice design: creation confirms Room s
 
 ## Remaining evidence
 
-Task3 source `d6992d0` implements authenticated hibernating sockets and pair signalling: full service suite119/119 (41 new focused cases), typecheck and local dry-run pass,66.72 KiB bundle. Independent review is pending. Coverage includes consumed-ticket persistence, per-event/outbound SQL authority, queue credits/ACK bounds, candidate aggregate limits, unequal pair generations, independent endpoint replacement and asynchronous hashing cancellation.
+Task3 source `d6992d0` plus fix `3f89833` implements authenticated hibernating sockets and pair signalling: full service suite119/119 before review; focused44/44 after fixes, typecheck passes, pre-fix local dry-run66.72 KiB. Independent review found ready-after-closed on failed notification and forwarded-envelope expansion escaping correlation. Both were fixed and scoped re-review approved with no new findings. Regressions verify survivor never receives ready after cancellation, oversized forwarding returns a correlated error without touching recipient credits or closing it, and subsequent valid forwarding succeeds. Coverage also includes consumed-ticket persistence, per-event/outbound SQL authority, queue/ACK bounds, aggregate candidate limits, unequal generations, independent replacement and asynchronous hashing cancellation.
 
-Tasks4-7, final root/native regressions and whole-slice review are pending. Lifecycle/checkpoint/TURN, generic service client and Worker-to-native-RTC composition are not yet complete.
+Task4 source `7d5e685` implements server-side start/leases/checkpoints/rehost and terminal activation fencing. Full service154/154 (32 task cases), typecheck and local dry-run99.88 KiB pass. Independent review is pending. Tests interrupt reserve/commit/ack/fence steps, race retained rehosts at capacity, reject delayed old receipts, retain accounting retries across hibernation, and preserve prior checkpoint bytes on failed writes.
+
+Tasks5-7, final root/native regressions and whole-slice review are pending. TURN, generic service client and Worker-to-native-RTC composition are not yet complete. The utility-side lease gate remains outside this slice.
 
 No cloud login, deployment, account changes, secret reads/copies or live TURN issuance occurred. WAN, forced relay and two physical computers remain untested. UI/reconnect and utility lease enforcement belong to later slices.
 
