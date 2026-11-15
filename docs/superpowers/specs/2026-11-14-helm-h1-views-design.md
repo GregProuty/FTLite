@@ -38,15 +38,22 @@ It is not the networked demo (H-2) and does not wire the duel into the authority
 
 Until H-0c-ii puts the duel behind the authority, the renderer steps the duel itself **(rec.)**. This is the one deliberate departure from parent §11a, which says solo runs over loopback; H-0c-ii replaces the runtime's stepping with the loopback authority and keeps everything above it.
 
-- **Clock:** a `createTickDriver` with `performance.now()` and a `setTimeout` scheduler, as the sector session uses. Each tick builds the `DuelInput` from the input layer (§5) and calls `stepDuelTick`. The flight mode calls `stepFlight` instead.
+- **Clock:** a `createTickDriver` with `performance.now()` and a `setTimeout` scheduler, as the sector session uses. Each tick builds the `DuelInput` from the input layer (§5) and calls `stepDuelTick`. The flight mode calls the single-ship step of §9 instead.
+- **Tick numbers:** commands carry `requestedTick = d.interior.tick` (the duel's own tick, which `stepDuelTick` checks), never the driver's tick count. The driver only paces the steps.
+- **Solo start** **(rec.)**: the owner starts as player 0 at the Helm. Player 1 starts *away*. On the very first tick of every duel (including after a restart), the runtime adds `presence {present: false}` for player 1 ahead of any other command, so the gunner's console counts as empty until the first Tab. This is replayable: it is an ordinary command in tick 0's input.
 - **Interpolation:** the runtime keeps the previous tick's positions of both ships and any missiles, and the crew positions (the interior already interpolates with `RenderMemory`). The views draw at `alpha = (now − lastTickTime) · 60 / 1000`, clamped to 0..1, as the sector `localRuntime` does.
-- **Pause** **(rec.)**:
-  - window blur, `visibilitychange` to hidden and system suspend pause the driver;
-  - focus resumes it;
-  - Escape toggles pause, with a paused banner.
+- **Pause** **(rec.)**: the runtime keeps a set of pause reasons: `user`, `blur`, `hidden` and `suspend`. The driver runs only while the set is empty.
+  - Escape toggles `user`, and a paused banner shows while `user` is set.
+  - Window blur adds `blur`; focus removes only `blur`.
+  - `visibilitychange` to hidden adds `hidden`; visible removes it.
+  - System suspend adds `suspend`; resume removes it.
 
-  Pausing never sends presence. Presence is only Tab in solo (parent §11a).
-- **End:** when `tactical.outcome` is not Running, the runtime stops stepping. The view shows "Victory", "Defeat" or "Both ships lost", the duel length, and "Enter: new duel (seed n+1)". Restart disposes the old duel (`disposeDuel`) and creates a new one.
+  So regaining focus never undoes an Escape pause. Pausing never sends presence. Presence is only Tab in solo (parent §11a).
+- **End:** when `tactical.outcome` is not Running, the runtime stops stepping. The view shows "Victory", "Defeat" or "Both ships lost", the duel length, and "Enter: new duel (seed n+1)".
+- **Restart** (Enter on the end screen) **(rec.)**: it starts a fresh duel from scratch.
+  - Dispose the tick driver and the old duel (`disposeDuel`), create the new duel and a new driver, and apply the solo start rule above.
+  - Reset every view-owned cache: both console cameras to their defaults, missile trails, queued effects and shakes, previous positions for interpolation, `RenderMemory`, and the interior view, which is destroyed and rebuilt (§8).
+  - Clear the keyboard's held state and edge counters, and reset command sequences to 0.
 - **Events:** each tick's `tactical.events` (laser shots, missile endings) are queued for the views to animate (§7, §8).
 
 ## 5. Input (`app/duel/input.ts`)
@@ -90,7 +97,7 @@ As parent §10a, made concrete:
 
 ## 7. The console map views (`render/tactical/`)
 
-A pure model (`tacticalModel.ts`) turns `(tactical state, previous positions, alpha, camera, console)` into draw lists. A thin Pixi layer (`tacticalLayer.ts`) draws them with `Graphics` and pooled `BitmapText`. It allocates no display objects per frame (tested as `render.test.ts` tests today's layers).
+A pure model (`tacticalModel.ts`) turns `(tactical state, previous positions, alpha, camera, console, current axes)` into draw lists. *Current axes* are the effective inputs the runtime last sent to the sim: the Helm's `{turn, thrust}` (zero when the Helm is empty) and the gunner's missile steering (zero when Weapons is empty). The runtime records them each tick when it builds the `DuelInput`, or the flight step's axes, and exposes them to the views. A thin Pixi layer (`tacticalLayer.ts`) draws them with `Graphics` and pooled `BitmapText`. It allocates no display objects per frame (tested as `render.test.ts` tests today's layers).
 
 Draw order, as parent §10b:
 1. **Background:** near-black space and a static seeded star field (render-only randomness) **(rec.)**.
@@ -100,10 +107,17 @@ Draw order, as parent §10b:
 5. **Bodies:** the planet as a shaded disc. Asteroids are rough polygons seeded by index. Below a minimum on-screen radius of 2 px they draw as a dot, or are skipped below 0.5 px.
 6. **Ships:** the crew ship in cyan, the enemy in red **(rec.)**. Each is a wedge silhouette whose three room segments are tinted by damage level (0 none, 1 amber, 2 red), with shield rings (one per layer). Below 10 px across, a ship becomes a fixed-size chevron along its heading. Missiles are small triangles with fading trails (the last 30 interpolated positions, kept by the view).
 7. **Console layers:**
-   - **Helm:** the predicted path, from `predictPath` with the current axes: 2 s at zoom ≥ 0.6, rising linearly to 8 s at zoom 0.12, sampled every 4 ticks. Also a velocity vector, a heading line, the thrust and turn indicators, and a bearing ring (0 to 359, north 0, ticks every 10°, labels every 30°) when zoom ≥ 0.3.
-   - **Weapons:** the bearing ring, the own laser arc (±60°, range 450) filled faintly, and the enemy's arc dimmer. Also the lock marker on the enemy's locked room, the bearing and range to the enemy, and in missile mode the missile's predicted path. That path comes from a pure missile-path predictor added to `render/tactical/`, which reimplements `flyMissile`'s thrust and gravity on a copy and is tested to match the sim tick for tick.
-8. **Effects** from `events`: a laser shot draws a 0.15 s beam (white on a hit, grey on a miss) **(rec.)**. A missile ending draws a 0.3 s burst.
-9. **Screen-space overlay** (the console HUD): off-screen arrows (own ship, enemy, planet, missile) with distances; the zoom level; a scale bar; the "C: snap back" hint while panned. A side readout panel shows hull, shield pips, the three room levels and repair progress; at Weapons also the charge bar, hold timer and magazine. It also shows the other character's status (at Helm, at Weapons, walking, repairing, away).
+   - **Helm:** the predicted path, from `predictPath` with the current Helm axes: 2 s at zoom ≥ 0.6, rising linearly to 8 s at zoom 0.12, sampled every 4 ticks. Also a velocity vector, a heading line, the thrust and turn indicators, and a bearing ring (0 to 359, north 0, ticks every 10°, labels every 30°) when zoom ≥ 0.3.
+   - **Weapons:** the bearing ring, the own laser arc (±60°, range 450) filled faintly, and the enemy's arc dimmer. Also the bearing and range to the enemy, and in missile mode the missile's predicted path.
+   - **Both consoles:** the lock marker on the enemy's locked room (parent §7a: "shown on the enemy ship on both screens").
+   - **The missile-path predictor** (`render/tactical/missilePath.ts`, pure) **(rec.)**:
+     - Inputs: a copy of the missile, its owner's map, and the current steering axis, assumed held constant.
+     - Horizon: the missile's remaining life (`MISSILE_LIFE_TICKS − age`), capped at 240 ticks, with a point every 4 ticks.
+     - It applies `flyMissile`'s rules exactly: turn at `MISSILE_TURN_STEPS_PER_TICK` by the sign of the steering, thrust while `age ≤ MISSILE_FUEL_TICKS`, gravity, no drag.
+     - It stops, keeping the final point, at the first planet or asteroid contact, at the map edge, or at expiry. It ignores ships.
+     - Test: for 120 ticks of free flight with a constant steering value, its per-tick positions (stride 1) equal `flyMissile`'s exactly; and it ends at the planet when aimed at it.
+8. **Effects** from `events`: a laser shot draws a 0.15 s beam (white on a hit, grey on a miss) **(rec.)**. A missile ending draws a 0.3 s burst. **Contact sparks** (parent §12) come from a render-side detector, since the sim emits no contact events: each tick the runtime compares each ship's `planetHits`, `asteroidHits` and `shipHits` with the previous tick's values, and an increase draws a 0.3 s spark at that ship's position (orange for the planet, grey for an asteroid, white for the other ship) **(rec.)**.
+9. **Screen-space overlay** (the console HUD): off-screen arrows (own ship, enemy, planet, missile) with distances; the zoom level; a scale bar; the "C: snap back" hint while panned. A side readout panel shows the crew ship's hull and the enemy's hull (parent §10b: "both hulls"), the crew ship's shield pips, its three room levels and repair progress, and the enemy's shield pips and room levels; at Weapons also the charge bar, hold timer and magazine. It also shows the other character's status (at Helm, at Weapons, walking, repairing, away).
 
 ## 8. The interior view (`render/duel/interiorView.ts`)
 
@@ -120,12 +134,13 @@ When the active character stands, the screen shows the Cutter interior **(rec.)*
 
 ## 9. The dev flight view (`?mode=flight`)
 
-One `TacticalState` from the seed, stepped with `stepFlight`. The keyboard drives ship 0's axes; ship 1 is moved out of play (parked at the map edge, unpowered) **(rec.)**. The screen is the Helm map view with its overlay, and a **feel panel** in place of the combat readout: speed, sideways (skid) speed, turn rate, gravity at the ship, distance to the planet, and the last 10 s's minimum planet distance. These are the numbers parent §6's feel targets talk about. Tuning stays in `sim/tactical/tuning.ts`, changed by editing and restarting **(rec.)**. A live tuning panel can come later if the owner wants one.
+One `TacticalState` from the seed. `stepFlight` advances both ships and resolves ship-to-ship contact, so the flight view uses a **single-ship step** **(rec.)**, added to the tactical sim as `stepSoloFlight(state, axes, tuning?)`. It runs `flyShip` on ship 0, then ship 0's static contacts only (planet and asteroids; `contacts.ts` exports its existing per-ship static pass for this), then advances the tick. Ship 1 is never stepped, never collides and is not drawn in the flight view. The keyboard drives ship 0's axes. The screen is the Helm map view with its overlay, and a **feel panel** in place of the combat readout: speed, sideways (skid) speed, turn rate, gravity at the ship, distance to the planet, and the last 10 s's minimum planet distance. These are the numbers parent §6's feel targets talk about. Tuning stays in `sim/tactical/tuning.ts`, changed by editing and restarting **(rec.)**. A live tuning panel can come later if the owner wants one.
 
 ## 10. Architecture and boundaries
 
 - **New code** goes in `src/renderer/src/app/duel/` (runtime, input, mode boot) and `src/renderer/src/render/tactical/` and `render/duel/` (camera, models, layers, interior view, readouts). None of it is under the determinism-guarded roots. The guarded `sim/` code never imports it (the boundary test enforces this).
-- **Pure models and thin layers:** every view has a pure `*Model.ts`, unit-tested in Vitest's node environment, and a Pixi layer that only draws the model. Display objects are created once per layer and reused (pooled BitmapText, `Graphics.clear()` and redraw); a test runs each layer for 60 frames and asserts no display objects are created after construction.
+- **Pure models and thin layers:** every new view has a pure `*Model.ts`, unit-tested in Vitest's node environment, and a Pixi layer that only draws the model. Display objects are created once and reused (pooled BitmapText, `Graphics.clear()` and redraw).
+- **Allocation test** **(rec.)**: a test runs each new layer through a warm-up of 2 frames, then 60 steady-state frames, and asserts the display-object count does not change after warm-up. The reused interior layers (room icons, crew sprites) create their objects on their first draw, so the interior view counts as built after its warm-up. A restart destroys and rebuilds it (§4).
 - **The runtime is testable headless:** it takes `now`, `scheduler`, `sampleKeys` and `samplePointer` as dependencies. Tests drive it with a fake clock and scripted keys: Tab switches presence, an E press sits, Space charges and fires, the duel ends and restarts.
 - **`main.ts`** only reads the mode and calls `startSector(...)` (today's body, moved into a function) or `startDuelMode(...)`.
 
@@ -154,3 +169,4 @@ Each part follows the standing order: plan, refine, build subagent-driven, refin
 ## Change log
 
 - 2026-11-14: written for H-1 under the standing order.
+- 2026-11-14: refine round 1: solo start makes player 1 away on tick 0 (and on restart); commands use the duel's tick; restart recreates the driver and resets every cache; pause reasons; current axes as a model input; single-ship flight step; warm-up allocation rule; missile-path predictor contract; lock marker on both consoles and both hulls in the readout; contact sparks.

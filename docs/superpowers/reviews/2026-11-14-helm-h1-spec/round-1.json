@@ -1,0 +1,88 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P0",
+      "title": "The inactive solo character starts present",
+      "claim": "The spec sends presence changes only on Tab, but the duel starts with both characters present. Before the first Tab, the unattended gunner still operates Weapons.",
+      "evidence": "spec L48, L78; src/renderer/src/sim/duel/state.ts:L49; src/renderer/src/sim/duel/step.ts:L37, L102; parent spec L252-L253",
+      "why": "This violates the binding solo rule that the station left without a player is away and unattended.",
+      "fix": "Specify a replayable solo initialization that makes player 1 away before the first duel tick, and apply it again on restart."
+    },
+    {
+      "severity": "P1",
+      "title": "The tactical model has no current control axes",
+      "claim": "The declared model inputs omit the held Helm axes needed for its predicted path. TacticalState does not store those axes.",
+      "evidence": "spec L93, L103; src/renderer/src/sim/tactical/state.ts:L11, L67; src/renderer/src/sim/duel/step.ts:L115",
+      "why": "An implementer must invent how the model receives the prediction input, including the neutral axes when the pilot is away.",
+      "fix": "Add effective current Helm axes to the model input and define when the runtime samples them."
+    },
+    {
+      "severity": "P1",
+      "title": "The flight view cannot park an inert second ship",
+      "claim": "The proposed flight mode uses stepFlight while parking ship 1 at the edge, but stepFlight advances both ships and resolves their contacts. Tactical ships have damage levels, not an unpowered or inactive flag.",
+      "evidence": "spec L121-L123; src/renderer/src/sim/tactical/physics.ts:L57-L61; src/renderer/src/sim/tactical/contacts.ts:L47-L52; src/renderer/src/sim/tactical/state.ts:L11-L30",
+      "why": "Gravity and edge forces move the hidden ship, and it can eventually collide with the playable ship.",
+      "fix": "Specify a true single-ship flight step or an explicit inactive-ship rule in the tactical sim, including collision exclusion."
+    },
+    {
+      "severity": "P1",
+      "title": "Restart does not define a new tick epoch or view reset",
+      "claim": "Restart creates a new duel but does not say whether it recreates the tick driver. A retained driver keeps its increasing tick number while the new interior starts at tick 0; commands using the driver number would be rejected as stale. Camera, trails, queued effects and interpolation also lack reset rules.",
+      "evidence": "spec L49, L72, L89, L101; src/renderer/src/authority/tickDriver.ts:L9, L40; src/renderer/src/sim/duel/state.ts:L37; src/renderer/src/sim/duel/step.ts:L73, L94",
+      "why": "The advertised Enter-to-restart path can lose its first commands and display state from the previous duel.",
+      "fix": "Require disposal and recreation of the tick driver on restart, use the new interior tick for command admission, and reset every view-owned cache and input edge."
+    },
+    {
+      "severity": "P1",
+      "title": "Focus can undo an Escape pause",
+      "claim": "The pause rules say focus resumes the driver and Escape toggles pause, without separating a user pause from blur, hidden-window and suspend pauses.",
+      "evidence": "spec L43-L48; src/renderer/src/main.ts:L53-L57",
+      "why": "After an Escape pause, a blur and focus cycle could resume play without another Escape press.",
+      "fix": "Define separate pause reasons and resume only when all active reasons are cleared; focus must clear only the focus-related reason."
+    },
+    {
+      "severity": "P1",
+      "title": "The interior cannot meet the stated construction-only allocation test",
+      "claim": "The spec requires every view to create all display objects at layer construction, while its interior reuses layers that create icons and crew display objects on their first update or draw.",
+      "evidence": "spec L110, L128; src/renderer/src/render/roomIcons.ts:L72-L81; src/renderer/src/render/crewSprites.ts:L55-L60, L69-L71",
+      "why": "The required 60-frame test fails on the first frame even if the existing layers are reused correctly.",
+      "fix": "Define an initial build or warm-up phase, then assert no new display objects during steady-state frames; specify how restart handles those caches."
+    },
+    {
+      "severity": "P1",
+      "title": "Missile-path prediction lacks a testable contract",
+      "claim": "The predictor is said to copy thrust and gravity, but its horizon, sample interval, assumed future steering, and behavior at impacts or expiry are unspecified.",
+      "evidence": "spec L104; src/renderer/src/sim/tactical/missiles.ts:L32-L44, L60-L80",
+      "why": "Two implementations can draw different paths and both claim to match flyMissile, while contact and lifetime handling remain untested.",
+      "fix": "Specify predictor inputs, steering assumption, tick horizon and stride, and termination at each missile end condition; state exactly what the tick-for-tick comparison covers."
+    },
+    {
+      "severity": "P1",
+      "title": "The Helm view omits required combat information",
+      "claim": "The parent requires the locked enemy room on both screens and both hull values in the overlay. The H-1 Helm list does not include the lock marker, and its readout names only an unspecified hull.",
+      "evidence": "spec L103-L106; parent spec L138, L241",
+      "why": "A plan following the H-1 list can omit information the parent says both stations must show.",
+      "fix": "Explicitly place the locked-room marker in both console models and name own and enemy hull values in the overlay."
+    },
+    {
+      "severity": "P1",
+      "title": "The required planet-contact spark has no view rule",
+      "claim": "The parent's look specification includes a planet-contact spark, but the H-1 effects list covers only lasers and missile endings. Tactical events contain neither ship contact nor planet contact.",
+      "evidence": "spec L105; parent spec L265; src/renderer/src/sim/tactical/state.ts:L51-L56",
+      "why": "The effect will be missed unless the plan invents a way to detect the contact from published state.",
+      "fix": "Specify a render-side contact detector using successive planet-hit counters and positions, or add an explicit tactical event and its drawing rule."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "Both console cameras are ship-centred with the parent's zoom limits, follow, pan and snap behavior: spec L85-L89; parent spec L210-L224.",
+    "The key table covers the duel command kinds and the parent's Weapons keys: spec L56-L80; src/renderer/src/sim/duel/commands.ts:L5-L13; parent spec L165.",
+    "The listed interior layers can be constructed separately from createRenderer and accept SimState for drawing: spec L110; src/renderer/src/render/renderer.ts:L44-L52; src/renderer/src/render/tiles.ts:L11-L16; src/renderer/src/render/effects.ts:L18-L20.",
+    "Render, app and input are outside the determinism guard's roots; the boundary test also follows imports from guarded modules: spec L98, L127; tests/boundary.test.ts:L12-L27; tests/helpers/determinismGuard.ts:L16-L17."
+  ],
+  "not_verified": [
+    "No build, runtime screenshot check or test suite was run; this was a read-only review of commit aff9bf3.",
+    "To verify the flight collision, seating and interior-layer findings, I also read contacts.ts, stations.ts, commands.ts, state.ts, roomIconModel.ts and consoleModel.ts beyond the reading manifest. No other files were explored."
+  ]
+}
