@@ -27,6 +27,7 @@ const sources = {
   'src/network/rtc/frames.ts': 'export const frame = 1;\n',
   'src/network/rtc/dataLink.ts': 'export const queue = 16;\n',
   'src/network/rtc/peer.ts': 'export const auth = 1;\n',
+  'src/network/session/serviceClient.ts': 'export const signallingAdmission = 1;\n',
   'src/network/modes/sectorStream.ts': 'export const sectorStream = 1;\n',
   'src/network/state/imageCodec.ts': 'export const image = 1;\n',
   'src/network/state/sender.ts': 'export const sender = 1;\n',

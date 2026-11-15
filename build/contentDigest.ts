@@ -10,7 +10,7 @@ export function computeContentDigest(root: string): string {
     return entry.isDirectory() ? walk(path) : /\.(?:ts|json)$/.test(entry.name) ? [path] : [];
   });
   const paths = [
-    ...walk('src/renderer/src/sim'), ...walk('src/renderer/src/authority'), ...walk('src/network/modes'), ...walk('src/network/rtc'), ...walk('src/network/state'),
+    ...walk('src/renderer/src/sim'), ...walk('src/renderer/src/authority'), ...walk('src/network/modes'), ...walk('src/network/rtc'), ...walk('src/network/state'), ...walk('src/network/session'),
     'src/shared/intent.ts', 'src/shared/netSession.ts', 'src/shared/rtcSession.ts', 'src/shared/roomSession.ts', 'src/renderer/src/net/contracts.ts',
     'src/renderer/src/net/codec.ts', 'src/renderer/src/net/receivePolicy.ts', 'src/renderer/src/clientControl/clientRun.ts', 'src/shared/hostProcessProtocol.ts'
   ].sort();
