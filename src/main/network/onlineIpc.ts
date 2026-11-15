@@ -8,7 +8,10 @@ const invalidStatus = (): OnlineStatus => ({ phase: 'error', role: null, ownSeat
   attachmentEpoch: 0, error: 'invalid-status', retryAtMs: null, persistent: false, actions: [] });
 /** One visible session owner. No renderer can select another owner or invoke an arbitrary channel. */
 export function registerOnlineIpc(win: BrowserWindow, owner: OnlineSessionOwner): Unsubscribe {
-  if (registered || win.isDestroyed() || !win.isVisible()) throw Error('online-registration-invalid');
+  // Windows may not show the newly constructed application window until loading.
+  // Registration is main-owned; each invocation still checks visibility and exact sender/frame.
+  if (registered || win.isDestroyed()) throw Error('online-registration-invalid');
+  const contents = win.webContents;
   registered = win;
   let removed = false, revision = 1;
   const safe = (value: OnlineStatus): OnlineStatus => { try { return copyOnlineStatus(value); } catch { return invalidStatus(); } };
@@ -52,7 +55,7 @@ export function registerOnlineIpc(win: BrowserWindow, owner: OnlineSessionOwner)
     if (removed) return; removed = true; registered = undefined;
     for (const channel of [...Object.values(ONLINE_CHANNELS), ONLINE_STATUS_CHANNEL]) ipcMain.removeHandler(channel);
     unsubscribe(); powerMonitor.off('suspend', suspend); powerMonitor.off('resume', resume);
-    win.off('closed', remove); win.webContents.off('render-process-gone', remove);
+    win.off('closed', remove); contents.off('render-process-gone', remove);
     void owner.dispose().catch(() => {});
   }
   powerMonitor.on('suspend', suspend); powerMonitor.on('resume', resume);

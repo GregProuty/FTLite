@@ -41,4 +41,22 @@ Request caps include 8,192-byte small JSON, 98,304-byte WebSocket frames, 65,536
 
 Deployment is **NOT RUN**. It requires a separately authorized Cloudflare account/project, appropriate Worker and SQLite DO bindings/migrations, allowed origins, quotas/budget review and server-only configuration. Variable names are `IP_HASH_SALT`, `ALLOWED_ORIGINS`, `TURN_KEY_ID`, and `TURN_KEY_API_TOKEN`. `.dev.vars.example` is intentionally ignored by the repository's `.dev.vars.*` rule and may contain only these names/comments; it is not a committed secret template. No provider credentials are needed for either local gate.
 
-Internet/WAN, forced relay, two physical computers and live TURN remain **NOT RUN**. Net-3d/3e still own online UI, token storage, automatic retry/reconnect/rehost, live mirror orchestration and the utility's request-start-plus-12-second lease gate. This slice is not an online demo. Unchanged acceptance/engine fixtures are not rerun solely for this service gate; the inherited 30-second acceptance timing limitation remains recorded in the root validation documentation.
+Internet/WAN, forced relay, two physical computers and live TURN remain **NOT RUN**. Net-3e still owns independent utility lease enforcement, live checkpoint mirroring and explicit rehost. The application path is restricted to development builds with an explicitly configured loopback service; packaged online remains disabled.
+
+The Net-3d application gate runs the compiled application index in separate Electron processes and temporary profiles against this actual local service:
+
+```powershell
+npm run test:online-app-runtime
+# After one build, retain redacted evidence and actual rendered menu/game PNGs:
+npx tsx scripts/network/online-app-smoke.ts --report-path=artifacts/online-app.json
+# Each deliberate failure must return nonzero and report cleanup:
+npx tsx scripts/network/online-app-smoke.ts --inject-guest-failure --report-path=artifacts/guest-failure.json
+npx tsx scripts/network/online-app-smoke.ts --inject-transport-failure --report-path=artifacts/transport-failure.json
+npx tsx scripts/network/online-app-smoke.ts --inject-timeout --report-path=artifacts/timeout.json
+```
+
+The normal budget is 90 seconds. Native mouse/keyboard actions exercise Host, Join, Ready, Start, guest input, pause, saved-token process restart, bot takeover, paused reconnect, cancellation and Couch return. Both Skiff capacity 2 and Cutter capacity 4 run; the latter briefly uses a third production application to occupy seat 1, removes it through the host menu, then plays with humans at logical seats 0/2 and bots at 1/3. An isolated copy of the compiled application with a deliberately different digest proves incompatible admission; bad code must allocate no transport or utility.
+
+All driver/observer code lives under `scripts/network`, is absent from packaged entries and requires an exact isolated profile. The observer reads the actual renderer port and native RTC lifecycle; it never supplies a state, ACK, command or alternate coordinator. The Windows gate disables Chromium native-window occlusion calculation so visible automation windows receive input, while retaining the application's focus/visibility guards. Native minimize/restore exercises loss of focus/visibility without replacing DOM properties. Screenshots use Chromium's actual rendered page. Only the visible application processes use visible startup; helpers use hidden startup.
+
+JSON admission requires source revision/artifact hashes, distinct Electron PIDs, full-state receipt and validated ACK before guest input, command results, canonical publication agreement, generations, both layouts and observed exits. Native `RTCPeerConnection.close()` observations are distinguished from resources released by a confirmed owning-window destruction. Unexpected exit zero alone is insufficient. Every normal/fault/timeout invocation removes only its own checked temporary root, and fallback termination targets only its recorded child PID/tree. No `.env`, credentials, deployment, TURN, WAN, independent utility fencing, checkpoint recovery or two-machine proof is involved.

@@ -12,9 +12,9 @@ import { powerMonitor } from 'electron';
 const status = () => ({ phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, persistent: false, actions: ['host'] } as const);
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const off of cleanups.splice(0)) off(); });
-function harness() {
+function harness(visible = true) {
   const webContents = Object.assign(new EventEmitter(), { mainFrame: {}, isDestroyed: () => false, send: vi.fn() });
-  const win = Object.assign(new EventEmitter(), { webContents, isDestroyed: (): boolean => false, isVisible: (): boolean => true });
+  const win = Object.assign(new EventEmitter(), { webContents, isDestroyed: (): boolean => false, isVisible: (): boolean => visible });
   const listeners = new Set<(value: any) => void>();
   const owner: OnlineSessionOwner = { dispatch: vi.fn(async () => ({ ok: true as const })), status: vi.fn(status),
     subscribe: cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, suspend: vi.fn(async () => {}), dispose: vi.fn(async () => {}) };
@@ -24,6 +24,13 @@ function harness() {
   return { win, owner, webContents, listeners, off, event, invoke };
 }
 describe('registered visible online IPC', () => {
+  it('registers its trusted application window before the OS shows it, but admits actions only once visible', async () => {
+    const h = harness(false);
+    expect(await h.invoke('host', { type: 'host', capacity: 2 })).toEqual({ ok: false, code: 'unauthorized' });
+    h.win.isVisible = () => true;
+    expect(await h.invoke('host', { type: 'host', capacity: 2 })).toEqual({ ok: true });
+    expect(await h.invoke('host', { type: 'host', capacity: 2 }, { ...h.event, sender: {} } as any)).toEqual({ ok: false, code: 'unauthorized' });
+  });
   const actions = [{ type: 'host', capacity: 2 }, { type: 'join', code: 'ABCD1234' }, { type: 'ready', ready: false }, { type: 'remove-seat', seatId: 1 }, { type: 'view-state', epoch: 1, phase: 'synced' }, ...['reconnect', 'start', 'retry', 'leave', 'forget-seat'].map(type => ({ type }))];
   it.each(actions)('denies unknown windows, hidden transports, subframes and port injection for $type', async action => {
     const h = harness();
@@ -63,5 +70,10 @@ describe('registered visible online IPC', () => {
       expect(h.win.listenerCount('closed')).toBe(0); expect(h.webContents.listenerCount('render-process-gone')).toBe(0);
       expect(powerMonitor.listenerCount('suspend')).toBe(before.suspend); expect(powerMonitor.listenerCount('resume')).toBe(before.resume);
     }
+  });
+  it('cleans IPC after native BrowserWindow getters are destroyed', () => {
+    const h=harness(); Object.defineProperty(h.win,'webContents',{get(){throw Error('Object has been destroyed');}});
+    expect(()=>h.win.emit('closed')).not.toThrow(); expect(h.owner.dispose).toHaveBeenCalledOnce();
+    expect(native.handlers.size).toBe(0); expect(h.webContents.listenerCount('render-process-gone')).toBe(0);
   });
 });

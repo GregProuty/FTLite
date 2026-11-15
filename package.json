@@ -12,6 +12,7 @@
     "test:host-runtime": "electron-vite build && tsx scripts/network/host-smoke.ts",
     "test:rtc-runtime": "electron-vite build && tsx scripts/network/rtc-smoke.ts",
     "test:room-service-runtime": "electron-vite build && tsx scripts/network/room-service-smoke.ts",
+    "test:online-app-runtime": "electron-vite build && tsx scripts/network/online-app-smoke.ts",
     "test:signalling": "npm --prefix services/signalling test",
     "typecheck:signalling": "npm --prefix services/signalling run typecheck",
     "build:signalling": "npm --prefix services/signalling run build",

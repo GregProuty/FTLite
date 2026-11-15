@@ -35,6 +35,7 @@ export function createHostPlatform(): HostPlatform {
         nodeIntegration: false, backgroundThrottling: false, webSecurity: true
       } });
       const ready = new Set<() => void>(), exited = new Set<() => void>();
+      const contents = window.webContents;
       let disposed = false, announced = false;
       const controller = createRtcTransport(identity, {
         send(message, ports) {
@@ -62,7 +63,7 @@ export function createHostPlatform(): HostPlatform {
         if (disposed) return; disposed = true;
         void controller.dispose();
         ipcMain.off(TRANSPORT_READY_CHANNEL, announce); ready.clear(); exited.clear();
-        window.off('closed', exit); window.webContents.off('render-process-gone', exit);
+        window.off('closed', exit); contents.off('render-process-gone', exit);
         if (!window.isDestroyed()) window.destroy();
       }
       const announce = (event: IpcMainEvent, message: unknown) => {

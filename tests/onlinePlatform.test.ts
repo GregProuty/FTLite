@@ -54,4 +54,10 @@ describe('native online platform ownership', () => {
     h.wc.emit('render-process-gone'); h.win.emit('closed'); expect(lost).toHaveBeenCalledOnce(); off();
     expect(h.win.listenerCount('closed')).toBe(0); expect(h.wc.listenerCount('render-process-gone')).toBe(0);
   });
+  it('handles native closed after BrowserWindow webContents getter is destroyed', () => {
+    const h=harness(), lost=vi.fn(), off=h.platform.onVisibleGone(lost);
+    Object.defineProperty(h.win,'webContents',{get(){throw Error('Object has been destroyed');}});
+    expect(()=>h.win.emit('closed')).not.toThrow(); expect(lost).toHaveBeenCalledOnce();
+    off(); expect(h.wc.listenerCount('render-process-gone')).toBe(0);
+  });
 });

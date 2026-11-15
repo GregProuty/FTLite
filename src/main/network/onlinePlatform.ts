@@ -55,7 +55,8 @@ export function createOnlinePlatform(win: BrowserWindow): OnlinePlatform {
     },
     onVisibleGone(callback) {
       let done = false;
-      const off = () => { win.off('closed', gone); win.webContents.off('render-process-gone', gone); };
+      const contents = win.webContents;
+      const off = () => { win.off('closed', gone); contents.off('render-process-gone', gone); };
       const gone = () => { if (!done) { done = true; off(); callback(); } };
       win.on('closed', gone); win.webContents.on('render-process-gone', gone);
       if (win.isDestroyed() || win.webContents.isDestroyed()) gone();
