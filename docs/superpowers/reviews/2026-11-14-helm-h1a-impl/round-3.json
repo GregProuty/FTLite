@@ -1,0 +1,20 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R2-F1",
+      "result": "resolved",
+      "note": "Pausing disposes the driver and its queued ticks; resuming creates a driver at the current time. The extended test covers a delayed Escape, a long pause, and the first tick after resume (src/renderer/src/app/duel/runtime.ts:L62-L80; tests/flightRuntime.test.ts:L149-L170)."
+    }
+  ],
+  "verified": [
+    "The new driver starts with a fresh clock epoch, while the sim state remains in the runtime (src/renderer/src/authority/tickDriver.ts:L7-L9; src/renderer/src/app/duel/runtime.ts:L47-L67).",
+    "Disposal prevents a later resume from recreating the driver (src/renderer/src/app/duel/runtime.ts:L63-L67, L92-L96).",
+    "The touched code has no whitespace errors (`git diff --check 54dd9b5..HEAD`)."
+  ],
+  "not_verified": [
+    "Jest was not run, as requested; the test assertions were reviewed from source.",
+    "The review exchange directory is absent from the worktree. Its committed ledger was readable with `git show`."
+  ]
+}

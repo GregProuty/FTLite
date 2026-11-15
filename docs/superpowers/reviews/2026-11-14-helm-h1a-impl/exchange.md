@@ -103,3 +103,35 @@ Confirmed against `authority/tickDriver.ts`: `setPaused(true)` keeps the debt al
 
 ---
 
+# Round 3 (delta, reviewing 9a871c1, effort medium, 51 s, 163916 in / 120448 cached / 2410 out)
+
+Verdict: ready
+
+## Prior findings
+- R2-F1: resolved — Pausing disposes the driver and its queued ticks; resuming creates a driver at the current time. The extended test covers a delayed Escape, a long pause, and the first tick after resume (src/renderer/src/app/duel/runtime.ts:L62-L80; tests/flightRuntime.test.ts:L149-L170).
+
+## Verified
+- The new driver starts with a fresh clock epoch, while the sim state remains in the runtime (src/renderer/src/authority/tickDriver.ts:L7-L9; src/renderer/src/app/duel/runtime.ts:L47-L67).
+- Disposal prevents a later resume from recreating the driver (src/renderer/src/app/duel/runtime.ts:L63-L67, L92-L96).
+- The touched code has no whitespace errors (`git diff --check 54dd9b5..HEAD`).
+
+## Not verified
+- Jest was not run, as requested; the test assertions were reviewed from source.
+- The review exchange directory is absent from the worktree. Its committed ledger was readable with `git show`.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json`. No new findings. Codex confirmed R2-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
