@@ -87,10 +87,15 @@ interface WheelEventLike { clientX: number; clientY: number; deltaY: number; del
 
 export interface PointerSource { sample(): PointerSample; clear(): void; destroy(): void }
 
-/** Wheel notches from a summed deltaY: one notch per 100 px (a mouse wheel click), at least one for any scroll. */
-export function wheelNotches(deltaY: number): number {
-  if (deltaY === 0) return 0;
-  return -Math.sign(deltaY) * Math.max(1, Math.round(Math.abs(deltaY) / 100));
+/** Pixels of wheel delta per zoom notch (a mouse wheel click). */
+export const WHEEL_NOTCH_PX = 100;
+/** Milliseconds without wheel input after which the remainder is dropped. */
+export const WHEEL_IDLE_MS = 200;
+/** Adds one frame's summed deltaY to the accumulator and emits whole notches (wheel down zooms out, so negative), keeping the remainder. */
+export function accumulateWheel(acc: number, deltaY: number): { notches: number; acc: number } {
+  const total = acc + deltaY;
+  const n = Math.trunc(total / WHEEL_NOTCH_PX);
+  return { notches: n === 0 ? 0 : -n, acc: total - n * WHEEL_NOTCH_PX };
 }
 
 /** `toInternal` maps a client position to internal pixels (the letterbox inverse). Buttons 2 (right) and 1 (middle) drag. */

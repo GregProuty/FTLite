@@ -66,10 +66,10 @@ describe('the flight runtime (H-1 spec §4, §9)', () => {
     expect(rt.state.tick).toBe(1);
     const s = rt.state.ships[0];
     expect(rt.prev[0]!.x).not.toBe(s.x);   // the spawn orbits, so the ship moved on tick 0
-    time.advance(1000 / 60 / 2);
+    time.advance(1000 / 60 / 2); rt.frame(1 / 60);
     expect(rt.alpha()).toBeGreaterThan(0.45); expect(rt.alpha()).toBeLessThanOrEqual(0.55);
     rt.pause('user');
-    time.advance(1000);
+    time.advance(1000); rt.frame(1 / 60);
     expect(rt.alpha()).toBe(1);
     rt.dispose();
   });
@@ -132,5 +132,38 @@ describe('the launch mode (H-1 spec §3)', () => {
   it('?seed overrides the default with a whole number', () => {
     expect(readSeed('')).toBe(DEFAULT_SEED); expect(readSeed('?mode=flight&seed=42')).toBe(42);
     expect(readSeed('?seed=-3')).toBe(DEFAULT_SEED); expect(readSeed('?seed=1.5')).toBe(DEFAULT_SEED); expect(readSeed('?seed=99999999999')).toBe(DEFAULT_SEED);
+  });
+  it('wheel: small trackpad deltas accumulate to one notch; the remainder resets after 200 ms idle', () => {
+    const { time, input, rt } = rig();
+    time.advance(50);
+    for (let i = 0; i < 30; i++) { input.pointer = { ...input.pointer, x: 100, y: 100, wheel: -4 }; rt.frame(1 / 60); time.advance(16); }
+    expect(rt.camera.targetZoom).toBeCloseTo(ZOOM_DEFAULT * ZOOM_STEP, 12);   // 120 px: exactly one notch in
+    input.pointer = { ...input.pointer, wheel: 120 }; rt.frame(1 / 60);   // acc -20 -> 100 -> one notch out
+    expect(rt.camera.targetZoom).toBeCloseTo(ZOOM_DEFAULT, 12);
+    input.pointer = { ...input.pointer, wheel: 60 }; rt.frame(1 / 60);
+    time.advance(300); rt.frame(1 / 60);   // idle: acc dropped
+    input.pointer = { ...input.pointer, wheel: 60 }; rt.frame(1 / 60);
+    expect(rt.camera.targetZoom).toBeCloseTo(ZOOM_DEFAULT, 12);   // 60 + 60 would have been a notch
+    rt.dispose();
+  });
+  it('frame() pumps due ticks before drawing; one alpha per frame feeds the camera and the draw', () => {
+    const calls: number[] = [];
+    const now = { t: 0 };
+    const rt = createFlightRuntime({
+      now: () => now.t, scheduler: { schedule: () => () => {} }, seed: 5, viewport: { w: 1280, h: 720 },
+      sampleKeys: () => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }),
+      samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 })
+    });
+    void calls;
+    now.t = 1000 / 60 + 5;   // past the first deadline; the scheduler never fires
+    expect(rt.state.tick).toBe(0);
+    rt.frame(1 / 60);
+    expect(rt.state.tick).toBeGreaterThan(0);
+    expect(rt.alpha()).toBeLessThan(1);
+    const a = rt.alpha(); now.t += 1; expect(rt.alpha()).toBe(a);   // fixed for the frame
+    const s = rt.state.ships[0], p = rt.prev[0]!;
+    const ix = p.x + (s.x - p.x) * a, iy = p.y + (s.y - p.y) * a;
+    expect(Math.hypot(rt.camera.centreX - ix, rt.camera.centreY - iy)).toBeLessThan(25);
+    rt.dispose();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDuelKeyboard, createPointerSource, helmAxes, wheelNotches, type EventSource } from '../src/renderer/src/app/duel/input';
+import { createDuelKeyboard, createPointerSource, helmAxes, accumulateWheel, type EventSource } from '../src/renderer/src/app/duel/input';
 
 /** A fake event target: records listeners and dispatches plain objects to them. */
 function fakeTarget() {
@@ -94,8 +94,13 @@ describe('pointer source (H-1 spec §5)', () => {
     expect(p.sample().dragX).toBe(5);
     const menu = { preventDefault: vi.fn() }; t.fire('contextmenu', menu); expect(menu.preventDefault).toHaveBeenCalled();
   });
-  it('wheel notches: one per 100 px, at least one, scrolling up zooms in', () => {
-    expect(wheelNotches(0)).toBe(0);
-    expect(wheelNotches(-100)).toBe(1); expect(wheelNotches(300)).toBe(-3); expect(wheelNotches(4)).toBe(-1);
+  it('wheel accumulator: small deltas sum to whole notches, remainder carries, scrolling up zooms in', () => {
+    expect(accumulateWheel(0, 0)).toEqual({ notches: 0, acc: 0 });
+    expect(accumulateWheel(0, -100).notches).toBe(1); expect(accumulateWheel(0, 300).notches).toBe(-3);
+    expect(accumulateWheel(0, 4)).toEqual({ notches: 0, acc: 4 });
+    let acc = 0, total = 0;
+    for (let i = 0; i < 30; i++) { const r = accumulateWheel(acc, 4); acc = r.acc; total += r.notches; }
+    expect(total).toBe(-1); expect(acc).toBe(20);
+    const r = accumulateWheel(60, 150); expect(r.notches).toBe(-2); expect(r.acc).toBe(10);
   });
 });

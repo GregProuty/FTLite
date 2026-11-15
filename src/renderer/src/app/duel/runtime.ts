@@ -8,7 +8,7 @@ import { TICK_HZ } from '../../sim/tuning';
 import { createCamera, pan, snapBack, updateCamera, zoomBy, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/tactical/feelModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { helmAxes, wheelNotches, type KeySample, type PointerSample } from './input';
+import { accumulateWheel, helmAxes, WHEEL_IDLE_MS, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
 
@@ -31,7 +31,7 @@ export interface FlightRuntime {
   axes(): Axes;
   readonly camera: Camera;
   readonly feel: FeelTracker;
-  /** Render interpolation: (now − last tick time) · 60 / 1000, clamped to 0..1; 1 before the first tick. */
+  /** Render interpolation, fixed once per frame(): (now − last tick time) · 60 / 1000, clamped to 0..1; 1 before the first tick. */
   alpha(): number;
   /** One render frame: input, pause toggles and the camera. `dt` in seconds. */
   frame(dt: number): void;
@@ -58,20 +58,27 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
     lastTickTime = tickTimeMs;
   });
   const sync = (): void => driver.setPaused(reasons.size > 0);
-  const alpha = (): number => lastTickTime === null ? 1 : Math.max(0, Math.min(1, (deps.now() - lastTickTime) * TICK_HZ / 1000));
+  const computeAlpha = (): number => lastTickTime === null ? 1 : Math.max(0, Math.min(1, (deps.now() - lastTickTime) * TICK_HZ / 1000));
+  let frameAlpha = 1, wheelAcc = 0, lastWheelAt = -Infinity;
+  const alpha = (): number => frameAlpha;
   return {
     state, prev, camera, feel, alpha,
     axes: () => sent,
     frame(dt) {
       const k = deps.sampleKeys(), p = deps.samplePointer(), vp = deps.viewport;
       held = helmAxes(k);
+      driver.pump();   // run any due ticks with this frame's held axes before drawing
+      frameAlpha = computeAlpha();
       for (let n = 0; n < k.presses.pause; n++) { if (reasons.has('user')) reasons.delete('user'); else reasons.add('user'); }
       sync();
       if (k.presses.camera > 0) snapBack(camera);
       zoomBy(camera, vp, k.presses.zoomIn - k.presses.zoomOut);
       pan(camera, p.dragX, p.dragY);   // before the wheel: pan clears the zoom anchor, so a drag and a wheel in one frame still zoom about the cursor
-      zoomBy(camera, vp, wheelNotches(p.wheel), p.x !== null && p.y !== null ? { x: p.x, y: p.y } : null);
-      updateCamera(camera, vp, dt, followTarget(state, prev, alpha(), camera.follow));
+      const t = deps.now();
+      if (p.wheel !== 0) lastWheelAt = t; else if (t - lastWheelAt > WHEEL_IDLE_MS) wheelAcc = 0;
+      const w = accumulateWheel(wheelAcc, p.wheel); wheelAcc = w.acc;
+      zoomBy(camera, vp, w.notches, p.x !== null && p.y !== null ? { x: p.x, y: p.y } : null);
+      updateCamera(camera, vp, dt, followTarget(state, prev, frameAlpha, camera.follow));
     },
     pause(reason) { reasons.add(reason); sync(); },
     resume(reason) { reasons.delete(reason); sync(); },
