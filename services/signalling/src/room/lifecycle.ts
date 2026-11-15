@@ -172,13 +172,14 @@ export class RoomLifecycle {
       current = this.currentOperation(op, connection);
       unwrapDomain(await this.directory.commitActivation(this.store.meta()!.room_id, op.operation_id, op.operation_id, op.target_generation, current.active_deadline));
       current = this.currentOperation(op, connection);
-      if (op.kind === 'start') {
-        // Pair replacement changes readiness without changing the roster revision.
-        // Recheck all current endpoints after the final external acknowledgement.
-        try { this.ready(connection, op.revision, 'active'); }
-        catch (error) { this.store.fence(Date.now()); throw error; }
-      }
       if (current.state === 'committed') {
+        if (op.kind === 'start') {
+          // Pair replacement changes readiness without changing the roster revision.
+          // Only the first acknowledgement validates initial readiness; an exact
+          // retry may return after another caller activated and replaced a route.
+          try { this.ready(connection, op.revision, 'active'); }
+          catch (error) { this.store.fence(Date.now()); throw error; }
+        }
         this.store.sql.exec("UPDATE room_activation SET state = 'acknowledged' WHERE operation_id = ? AND state = 'committed'", op.operation_id);
         const outcome = this.outcome(op, connection);
         if (outcome.kind === 'started') this.sockets.broadcast({ type: 'started', initBase64: outcome.initBase64, initHash: outcome.initHash, lease: outcome.lease });

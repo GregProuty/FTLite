@@ -269,3 +269,46 @@ it('fences an unacknowledged start when a required ready route is replaced durin
   await runInDurableObject(stub(host), room => room.alarm());
   expect(await account(host.snapshot.roomId)).toMatchObject({ charged: 0 });
 });
+it('keeps an acknowledged start active when a delayed exact commit returns after legitimate route replacement', async () => {
+  const host = await create(2), guest = await join(host), hp = await connect(host), gp = await connect(guest), { h } = await links(hp, gp);
+  hp.send({ type: 'link-ready', requestId: 2, attemptId: h.attemptId }); await hp.reply(2);
+  gp.send({ type: 'link-ready', requestId: 1, attemptId: h.attemptId }); await gp.reply(1);
+  hp.send({ type: 'ready', requestId: 3, ready: true }); await hp.reply(3);
+  gp.send({ type: 'ready', requestId: 2, ready: true }); await gp.reply(2);
+  const revision = await runInDurableObject(stub(host), room => room.store.snapshot().rosterRevision);
+  hp.send({ type: 'start-propose', requestId: 4, expectedRosterRevision: revision, initBase64: btoa('opaque'), initHash: await tokenHash('opaque') });
+  const proposalId = (await hp.reply(4) as any).outcome.proposalId;
+  await runInDurableObject(stub(host), async room => {
+    const real = room.lifecycle.directory;
+    let release!: () => void, entered!: () => void, calls = 0;
+    const gate = new Promise<void>(r => { release = r; }), seen = new Promise<void>(r => { entered = r; });
+    Object.defineProperty(room.lifecycle, 'directory', { configurable: true, value: {
+      reserveActivation: (...args: Parameters<typeof real.reserveActivation>) => real.reserveActivation(...args),
+      commitActivation: async (...args: Parameters<typeof real.commitActivation>) => {
+        const call = ++calls, value = await real.commitActivation(...args);
+        if (call === 1) { entered(); await gate; }
+        return value;
+      },
+    } });
+    const sender = room.sockets.rows().find(r => r.seat_id === 0)!;
+    const commit = { type: 'start-commit' as const, requestId: 5, proposalId, expectedRosterRevision: revision };
+    const delayed = room.lifecycle.request(sender, commit).then(value => value, error => ({ error: String(error) }));
+    try {
+      await seen;
+      const firstSuccess = await room.lifecycle.request(sender, { ...commit, requestId: 6 });
+      expect(firstSuccess).toMatchObject({ kind: 'started' });
+      expect(room.store.activation()?.state).toBe('acknowledged');
+      expect(await room.signals.issue(sender, 1)).toMatchObject({ kind: 'attempt' });
+      expect(room.signals.allGuestsReady()).toBe(false);
+      release(); expect(await delayed).toEqual(firstSuccess);
+      expect(room.store.activation()?.state).toBe('acknowledged');
+      expect(room.store.snapshot().phase).toBe('active');
+    } finally { release(); await delayed; Object.defineProperty(room.lifecycle, 'directory', { value: real }); }
+  });
+  await gp.until(() => gp.messages.some(m => m.payload.type === 'link-state' && m.payload.state === 'closed'));
+  expect(hp.messages.filter(m => m.payload.type === 'started')).toHaveLength(1);
+  expect(gp.messages.filter(m => m.payload.type === 'started')).toHaveLength(1);
+  expect(hp.messages.some(m => m.payload.type === 'host-departed')).toBe(false);
+  expect(gp.messages.some(m => m.payload.type === 'host-departed')).toBe(false);
+  expect(await account(host.snapshot.roomId)).toMatchObject({ charged: 1, phase: 'active' });
+});

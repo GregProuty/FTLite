@@ -121,3 +121,32 @@ exit 0
 ```
 
 The refusal regression also verifies the successful epoch survives hibernation, releases its charge, and permits a fresh generation-3 claim. The replaced-route regression verifies both endpoints receive no started event, the Room operation is fenced/lost, and alarm accounting releases the charge. No full service/root/native suite or deployment was run in this scoped review round. Self-review checked the preserved tuple/deadline/terminal path and the active-phase readiness predicate; no remaining blocker is known.
+
+## Task 4 review fix round 2
+
+Base: `ba07dfa`. The prior final-ack readiness fix also ran after another overlapping exact commit had already transitioned the persisted operation to `acknowledged`. A legitimate subsequent link replacement therefore let the delayed caller fence an already-running session. Moved readiness validation and its failure fencing inside the refreshed `current.state === 'committed'` branch, directly alongside the first acknowledgement transition. There is no await between that validation and the transition. Already-acknowledged exact retries still revalidate current operation, connection and live lease, and return the immutable original grant without reapplying initial link readiness.
+
+RED evidence:
+
+```text
+npm test -- tests/activationRaces.test.ts -t 'keeps an acknowledged start active'
+Test Files  1 failed (1)
+Tests       1 failed | 17 skipped (18)
+```
+
+The real-runtime regression overlaps two exact commits, delays A's real Directory acknowledgement, allows B to activate successfully, replaces the ready route through real signalling, then resumes A. Before the fix A returned `Error: invalid-state` instead of B's original started result.
+
+GREEN evidence:
+
+```text
+npm test -- tests/activationRaces.test.ts tests/lifecycle.test.ts
+Test Files  2 passed (2)
+Tests       28 passed (28)
+Duration    4.56s
+
+npm run typecheck
+tsc --noEmit
+exit 0
+```
+
+The regression verifies both callers receive the identical original grant, only one started event reaches each endpoint, Room remains active/acknowledged, Directory stays charged, and no host-departed event is emitted. The earlier unacknowledged-route replacement rejection regression remains passing. Checkpoint files were untouched; no checkpoint/broad/root/native rerun or deployment was performed in this scoped round. Self-review confirmed the refreshed state guard encloses both validation and the first transition. No remaining blocker is known.
