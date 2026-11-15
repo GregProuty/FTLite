@@ -69,3 +69,38 @@ Confirmed. The tactical layer gains `reseed(seed)`, which redraws the stars once
 
 ---
 
+# Round 2 (delta, reviewing a1924bc, effort medium, 57 s, 247881 in / 184448 cached / 2709 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Seat commands queued after Tab are deferred until the presence tick completes, then sent on the next tick (plan L2642-L2672). The new tests sample Tab then X or E in separate frames before that tick (plan L2257-L2274).
+- R1-F2: resolved — Arrow spreading is opt-in (plan L1091), and the duel boot enables it (plan L3110-L3114). The flight caller does not enable it (flightMode.ts:L57-L60).
+- R1-F3: resolved — The new test walks the gunner from Weapons into Engines using scripted movement, then holds E and checks repair progress without repositioning the character (plan L2241-L2255).
+- R1-F4: resolved — The layer redraws stars for a new seed in its existing Graphics (plan L1193-L1200, L1349-L1351), and the duel boot calls reseed on restart (plan L3098-L3101).
+
+## Verified
+- HEAD is a1924bc; git diff --check for the subject passed.
+- The seat-command deferral matches the sim’s seat-before-presence order (step.ts:L80-L96; plan L2642-L2672).
+- The changed arrow behavior leaves the flight caller’s model input unchanged (flightMode.ts:L57-L60; plan L1091).
+
+## Not verified
+- I did not run tests or typecheck; this was a read-only review of the plan.
+- The named review-run files were inaccessible in this checkout, so I used the ledger and response supplied in the brief.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. No new findings. Codex confirmed R1-F1 to R1-F4 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+

@@ -1,0 +1,35 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Seat commands queued after Tab are deferred until the presence tick completes, then sent on the next tick (plan L2642-L2672). The new tests sample Tab then X or E in separate frames before that tick (plan L2257-L2274)."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Arrow spreading is opt-in (plan L1091), and the duel boot enables it (plan L3110-L3114). The flight caller does not enable it (flightMode.ts:L57-L60)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The new test walks the gunner from Weapons into Engines using scripted movement, then holds E and checks repair progress without repositioning the character (plan L2241-L2255)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "The layer redraws stars for a new seed in its existing Graphics (plan L1193-L1200, L1349-L1351), and the duel boot calls reseed on restart (plan L3098-L3101)."
+    }
+  ],
+  "verified": [
+    "HEAD is a1924bc; git diff --check for the subject passed.",
+    "The seat-command deferral matches the sim’s seat-before-presence order (step.ts:L80-L96; plan L2642-L2672).",
+    "The changed arrow behavior leaves the flight caller’s model input unchanged (flightMode.ts:L57-L60; plan L1091)."
+  ],
+  "not_verified": [
+    "I did not run tests or typecheck; this was a read-only review of the plan.",
+    "The named review-run files were inaccessible in this checkout, so I used the ledger and response supplied in the brief."
+  ]
+}
