@@ -23,6 +23,8 @@ export const ONLINE_RECOVERY_ARTIFACTS = [...ONLINE_APP_ARTIFACTS, 'scripts/netw
 export function validateOnlineRecoveryReport(value: unknown): void {
   const r = value as any, fail = () => { throw Error('missing or invalid actual recovery evidence'); };
   const positive = (n: unknown) => Number.isSafeInteger(n) && (n as number) > 0;
+  const natural = (n: unknown) => Number.isSafeInteger(n) && (n as number) >= 0;
+  const same = (a: unknown,b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const hash = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
   if (!r || r.version !== 1 || r.failure != null || r.driverFailure != null || !['skiff','cutter','paused','upload','race','stale'].includes(r.scenario)
     || !/^[a-f0-9]{40}$/.test(r.source?.revision ?? '') || !hash(r.source?.digest) || typeof r.source?.dirty !== 'boolean'
@@ -36,6 +38,16 @@ export function validateOnlineRecoveryReport(value: unknown): void {
       || p.termination === 'restart' && (!Array.isArray(p.resourcesBeforeForcedExit?.utilities) || !Array.isArray(p.forcedUtilityExits)
         || p.resourcesBeforeForcedExit.utilities.some((u:any)=>!positive(u.pid)||!p.forcedUtilityExits.some((e:any)=>e.pid===u.pid&&e.exited===true))))) fail();
   const c = r.cleanup;
+  const counters = ['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'];
+  const processCleanups = r.processes.filter((p:any)=>p.termination==='shutdown').map((p:any)=>p.cleanup);
+  for(const q of processCleanups) {
+    if(counters.some(k=>!natural(q[k])) || ['windows','ports','listeners','peers'].some(k=>q[k]!==0)
+      || q.utilities!==q.utilityExits || q.nativeWindows!==q.nativeWindowExits
+      || q.nativePeersObserved!==q.nativePeerCloses+q.nativePeersEndedWithWindow
+      || !Array.isArray(q.utilityPids) || q.utilityPids.length!==q.utilities || q.utilityPids.some((pid:any)=>!positive(pid))
+      || new Set(q.utilityPids).size!==q.utilityPids.length) fail();
+  }
+  if(!c || counters.some(k=>!natural(c[k]) || c[k]!==processCleanups.reduce((sum:number,q:any)=>sum+q[k],0))) fail();
   if (!c || !positive(c.utilities) || c.utilities !== c.utilityExits || ['windows','ports','listeners','peers'].some(k => c[k] !== 0)
     || !positive(c.nativeWindows) || c.nativeWindows !== c.nativeWindowExits || !positive(c.nativePeersObserved)
     || c.nativePeerCloses + c.nativePeersEndedWithWindow !== c.nativePeersObserved || !positive(c.observedMainPorts)) fail();
@@ -47,14 +59,35 @@ export function validateOnlineRecoveryReport(value: unknown): void {
     || !hash(p.restored?.botMemoryHash) || ['commandHighWater','heldHighWater'].some(k => !Array.isArray(p.restored[k]) || p.restored[k].length < 2 || p.restored[k].some((n: any) => !Number.isSafeInteger(n) || n < 0))
     || ['serviceBytesRestored','fullAck','ackBeforeInput','ownership','pausedBaselineCommitted','explicitResume'].some(k => p[k] !== true) || p.autoResume !== false
     || p.agreement?.runId !== p.runId || typeof p.agreement?.hash !== 'string' || !positive(p.agreement?.tick)) fail();
-  if(!hash(p.restored.snapshotHash) || p.pausedBaseline?.snapshotHash!==p.restored.snapshotHash) fail();
+  if(p.committed.hostGeneration!==p.hostGenerationBefore || p.restored.payloadSha256!==p.committed.payloadSha256 || p.restored.runId!==p.runId
+    || !hash(p.restored.snapshotHash) || p.pausedBaseline?.snapshotHash!==p.restored.snapshotHash
+    || p.pausedBaseline.runId!==p.runId || p.pausedBaseline.tick!==p.restored.tick || p.pausedBaseline.phase!=='paused'
+    || ['commandHighWater','heldHighWater'].some(k=>!same(p.pausedBaseline[k],p.restored[k]))
+    || ![2,4].includes(p.capacity) || !positive(p.seat) || p.seat>=p.capacity || p.restored.commandHighWater.length!==p.capacity || p.restored.heldHighWater.length!==p.capacity
+    || p.initialCommittedTick!==0 || p.periodicCapturedTick!==300 || p.oldHostRejoinedSeat!==0
+    || !positive(p.seatGenerationBefore) || !positive(p.seatGenerationAfter) || p.seatGenerationAfter<=p.seatGenerationBefore) fail();
+  const observations=p.observations?.afterResume;
+  if(!Array.isArray(observations) || observations.length!==2 || observations.some((o:any,index:number)=>!positive(o.firstAckOrder)
+    || !positive(o.firstInputOrder) || o.firstInputOrder<=o.firstAckOrder || !Array.isArray(o.inputs) || !o.inputs.length
+    || o.inputs.some((i:any)=>i.player!==(index===0?p.seat:0) || !positive(i.order) || i.order<=o.firstAckOrder)
+    || Math.min(...o.inputs.map((i:any)=>i.order))!==o.firstInputOrder)) fail();
   validateRecoveryMemory(p.restored,p.pausedBaseline);
+  if(r.scenario==='upload') {
+    const rollback=p.pendingRollback;
+    if(!rollback || rollback.restoredTick!==p.restored.tick || !positive(rollback.pending?.tick) || rollback.pending.tick<=p.restored.tick
+      || !hash(rollback.pending.payloadSha256) || rollback.pending.payloadSha256===p.committed.payloadSha256 || rollback.pending.runId!==p.runId) fail();
+  }
   if (r.scenario === 'stale') {
     const f = p.oldHostFence;
-    if (!f || !Number.isFinite(f.mainBlockedMs) || f.mainBlockedMs <= 12000 || ['utilityAlive','lastAdvanceBeforeDeadline','closedAdmission','noOldCommit','lateReplyRejected','serverExpired'].some(k => f[k] !== true)) fail();
+    if (p.suspendHook!==true || !f || !Number.isFinite(f.mainBlockedMs) || f.mainBlockedMs <= 12000 || ['utilityAlive','lastAdvanceBeforeDeadline','closedAdmission','noOldCommit','lateReplyRejected','serverExpired'].some(k => f[k] !== true)) fail();
     if(!Array.isArray(r.instrumentation)||!r.instrumentation.length || r.instrumentation.some((i:any)=>i.sourceSha256!==r.source.artifactHashes['out/main/authorityHost.js'] || !hash(i.observedSha256) || i.transformSha256!==r.source.artifactHashes['scripts/network/online-recovery-instrument.cjs'])) fail();
     const e=f.evidence;
-    if(!Number.isFinite(e?.deadlineMs) || ['tick','ingress','control'].some(k=>!positive(e.permissions?.[k]?.allowed) || !Number.isFinite(e.permissions[k].lastAllowedMs) || e.permissions[k].lastAllowedMs>=e.deadlineMs || e.permissions[k].postDeadlineAllowed!==0)
+    const lease=e?.acceptedLease;
+    if(!lease || ['startedMs','acceptedMs','acceptedEpochMs','expiresAtEpochMs','deadlineMs'].some(k=>!Number.isFinite(lease[k]))
+      || lease.startedMs<0 || lease.acceptedMs<lease.startedMs || lease.acceptedMs>=lease.deadlineMs
+      || lease.deadlineMs!==Math.min(lease.startedMs+12000,lease.acceptedMs+lease.expiresAtEpochMs-lease.acceptedEpochMs)
+      || e.deadlineMs!==lease.deadlineMs) fail();
+    if(e?.errors!==0 || !Number.isFinite(e?.deadlineMs) || ['tick','ingress','control'].some(k=>!positive(e.permissions?.[k]?.allowed) || !Number.isFinite(e.permissions[k].lastAllowedMs) || e.permissions[k].lastAllowedMs>=e.deadlineMs || e.permissions[k].postDeadlineAllowed!==0)
       || !positive(e.permissions.ingress.denied) || !positive(e.permissions.control.denied)) fail();
   }
   if (['stale','race'].includes(r.scenario)) {

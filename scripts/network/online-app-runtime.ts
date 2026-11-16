@@ -1,9 +1,25 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { createLauncherDeadline, stopOwnedProcess, type LauncherDeadline } from './lease-smoke-lifecycle';
 
 export type RuntimeStage = 'startup' | 'observer-build' | 'ready';
 const delay = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+/** A command cap never extends the shared deadline or consumes its cleanup reserve. */
+export async function waitForAppRequest<T>(work: Promise<T>, deadline: LauncherDeadline, signal?: AbortSignal, reserveMs=10000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort = () => {};
+  try {
+    const budget=Math.min(5000,deadline.remaining(reserveMs));
+    if(signal?.aborted || budget<=0) {void work.catch(()=>{});throw Error('launcher timeout');}
+    return await Promise.race([work,new Promise<never>((_,reject)=>{
+      abort=()=>reject(Error('launcher timeout'));
+      signal?.addEventListener('abort',abort,{once:true});
+      timer=setTimeout(()=>reject(Error('application driver timeout')),budget);
+    })]);
+  } finally {if(timer)clearTimeout(timer);signal?.removeEventListener('abort',abort);}
+}
 
 /** Own the uncancellable Vite/Miniflare awaits behind an interruptible process boundary. */
 export function startOnlineAppRuntime(directory: string, digest: string, signal: AbortSignal,
@@ -43,28 +59,25 @@ export function startOnlineAppRuntime(directory: string, digest: string, signal:
     get baseUrl() { return baseUrl; }, get pid() { return workerPid; }, get workerdVersion() { return workerdVersion; },
     exited: () => workerExited,
     observation: () => ({ pid: child.pid, exited, exitCode, forced, stage }),
-    dispose(): Promise<void> {
+    dispose(deadline: LauncherDeadline = createLauncherDeadline(performance.now()+11000)): Promise<void> {
       return disposal ??= (async () => {
         signal.removeEventListener('abort', aborted);
         if (child.connected) { try { child.send({ type: 'shutdown' }, () => {}); } catch {} }
-        await Promise.race([exit, delay(2000)]);
+        await Promise.race([exit, delay(Math.min(2000,deadline.remaining(8000)))]);
         if (!exited && child.pid) {
           forced = true;
-          if (process.platform === 'win32') {
-            await new Promise<void>((done, reject) => {
-              const kill = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-              const timer = setTimeout(() => { kill.kill(); reject(Error('owned runtime cleanup failed')); }, 5000);
-              kill.once('error', () => { clearTimeout(timer); reject(Error('owned runtime cleanup failed')); });
-              kill.once('exit', () => { clearTimeout(timer); done(); });
-            });
-          } else { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }
+          await stopOwnedProcess(child,createLauncherDeadline(performance.now()+deadline.remaining(2000)), target=>{
+            if(process.platform==='win32') return spawn('taskkill',['/PID',String(target.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+            try {process.kill(-target.pid!,'SIGKILL');}catch{} return undefined;
+          });
         }
-        await Promise.race([exit, delay(2000)]);
+        await deadline.wait(exit,'owned runtime cleanup failed',2000);
         if (!exited) throw Error('owned runtime cleanup failed');
         // Forced process-tree termination has no worker IPC callback. Confirm the
         // exact worker PID captured at spawn has disappeared before claiming exit.
         if (workerPid && !workerExited) {
-          for (let i = 0; i < 40 && alive(workerPid); i++) await delay(50);
+          const workerDeadline=createLauncherDeadline(performance.now()+Math.min(2000,deadline.remaining(1500)));
+          while(alive(workerPid) && workerDeadline.remaining()>0) await workerDeadline.wait(delay(50),'owned runtime cleanup failed');
           workerExited = !alive(workerPid);
           if (!workerExited) throw Error('owned runtime cleanup failed');
         }

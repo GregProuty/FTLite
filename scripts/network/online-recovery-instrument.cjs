@@ -5,6 +5,10 @@ module.exports = function instrument(source) {
     if(source.split(needle).length!==2) throw Error('instrumentation-source-mismatch');
     source=source.replace(needle,replacement);
   }
+  once('pending = { request: { ...request }, started: current.mono };',
+    'pending = { request: { ...request }, started: current.mono };\n      globalThis.__recoveryLease?.({ kind: "request", nonce: request.nonce, startedMs: pending.started });');
+  once('    pending = void 0;\n    permission = { deadline, expiresAtEpochMs: grant.expiresAtEpochMs };',
+    '    globalThis.__recoveryLease?.({ kind: "accepted", startedMs: pending.started, acceptedMs: current.mono, acceptedEpochMs: current.epoch, expiresAtEpochMs: grant.expiresAtEpochMs, deadlineMs: deadline });\n    pending = void 0;\n    permission = { deadline, expiresAtEpochMs: grant.expiresAtEpochMs };');
   once('function permitted(allowBootstrap = false) {','function permitted(allowBootstrap = false, observedBoundary = "control") {');
   once('let allowed = false;\n    try {\n      allowed = deps.sessionGate.check().allowed === true;',
     'const observedCheckMs = performance.now();\n    let allowed = false;\n    try {\n      allowed = deps.sessionGate.check().allowed === true;');

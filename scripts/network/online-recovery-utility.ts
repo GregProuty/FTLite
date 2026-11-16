@@ -21,6 +21,16 @@ export function reconciledMemory(checkpoint:any) {
 export function observeUtility(parent: any, path: string) {
   const layouts = [parseShip(skiff),parseShip(cutter)], requests = new Map<string,number>(), grants = new Map<number,number>();
   const evidence: any = { pid:process.pid, requests:0, grants:0, tick:0, phase:'paused', lastAdvanceMs:0, afterDeadlineInputs:0, unavailableResults:0, lateReplyRejected:0, errors:0 };
+  (globalThis as any).__recoveryLease = (event:any) => {
+    if(event.kind==='request') {
+      requests.set(event.nonce,event.startedMs); evidence.requests++;
+      while(requests.size>8) requests.delete(requests.keys().next().value!);
+    } else if(event.kind==='accepted') {
+      const {kind,...lease}=event;
+      evidence.acceptedLease=lease;
+      evidence.deadlineMs=event.deadlineMs;
+    }
+  };
   (globalThis as any).__recoveryPermission = (event:any) => {
     const key=event.boundary;
     const boundary=(evidence.permissions??={})[key]??={allowed:0,denied:0,postDeadlineAllowed:0,lastAllowedMs:0};
@@ -38,10 +48,9 @@ export function observeUtility(parent: any, path: string) {
   };
   const send = parent.postMessage.bind(parent);
   parent.postMessage = (message: any) => {
-    if(message.kind==='lease-request') { requests.set(message.request.nonce,performance.now()); evidence.requests++; while(requests.size>8) requests.delete(requests.keys().next().value!); }
     if(message.kind==='response' && grants.has(message.response.requestId)) {
       const start = grants.get(message.response.requestId)!; grants.delete(message.response.requestId);
-      if(message.response.ok) { evidence.grants++; evidence.deadlineMs=start+12000; }
+      if(message.response.ok) { evidence.grants++; if(!evidence.acceptedLease || evidence.acceptedLease.startedMs!==start) evidence.errors++; }
       else if(performance.now()>=start+12000) { evidence.lateReplyRejected++; writeFileSync(path+'.late.json',JSON.stringify(evidence)); }
       save();
     }
@@ -49,7 +58,11 @@ export function observeUtility(parent: any, path: string) {
   };
   parent.on('message',(event:any)=>{
     const message=event.data;
-    if(message.kind==='lease-grant') grants.set(message.requestId,requests.get(message.request.nonce) ?? -12000);
+    if(message.kind==='lease-grant') {
+      const started=requests.get(message.request.nonce);
+      if(started===undefined) evidence.errors++;
+      else grants.set(message.requestId,started);
+    }
     if(message.kind==='initialize') { evidence.utilityEpoch=message.sessionLease.utilityEpoch; evidence.hostGeneration=message.hostGeneration; save(); }
     if(message.kind!=='attach') return;
     const port=event.ports[0], post=port.postMessage.bind(port), images=new ImageStore();

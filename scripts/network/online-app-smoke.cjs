@@ -172,6 +172,7 @@ async function command(message) {
     case 'hold-restore': holdRestore=true; return true;
     case 'release-restore': restoreRelease?.(); return true;
     case 'suspend-hook': powerMonitor.emit('suspend'); return true;
+    case 'ignore-driver': ignoreDriver=true; return true;
     case 'resize': {
       if (![[1280,720],[640,480]].some(([w,h]) => message.width === w && message.height === h)) throw Error('invalid test size');
       // Native stress viewport below the ordinary app minimum; production sizing
@@ -227,7 +228,8 @@ async function command(message) {
 app.on('window-all-closed', event => { if (stopping) event?.preventDefault?.(); });
 app.on('before-quit', event => { if(stopping) event.preventDefault(); });
 const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','resize','layout','screenshot','resources','resource-counts','transport-death','delay-next-transport','shutdown','hold-upload','hold-restore','release-restore','block-next-grant','suspend-hook']);
-process.on('message', message => { void command(message).then(result => { if(message.command!=='shutdown') process.send?.({id:message.requestId,result}); })
+let ignoreDriver=false;
+process.on('message', message => { if(ignoreDriver)return; void command(message).then(result => { if(message.command!=='shutdown') process.send?.({id:message.requestId,result}); })
   .catch(error => process.send?.({id:Number.isSafeInteger(message?.requestId)?message.requestId:0,error:'app-driver-command-failed',
     command:diagnosticCommands.has(message?.command)?message.command:'unknown',reason:['native-click-not-delivered','native-click-wrong-control'].includes(error?.message)?error.message:'command-failed'})); });
 require(role==='incompatible' ? join(directory,'incompatible-build/main/index.js') : '../../out/main/index.js');
