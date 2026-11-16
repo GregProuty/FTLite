@@ -1,4 +1,4 @@
-import { build } from 'vite';
+import { buildOnlineObservers } from './online-observer-build';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { startLocalRuntime } from '../../services/signalling/scripts/local-runtime';
@@ -28,10 +28,7 @@ const startup = (async () => {
   send({ type: 'runtime-ready', baseUrl: runtime.baseUrl, workerdVersion: runtime.workerdVersion });
   send({ type: 'stage', stage: 'observer-build' });
   if (hang === 'observer-build') await unresolved();
-  await build({ configFile: false, envDir: false, logLevel: 'warn', define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(digest) },
-    build: { outDir: join(directory, 'observer'), emptyOutDir: false, lib: { entry: resolve('scripts/network/online-app-observer.ts'), name: 'OnlineObserver', formats: ['iife'], fileName: () => 'observer.js' } } });
-  await build({ configFile:false, envDir:false, logLevel:'warn', define:{ __GAMEPLAY_CONTENT_DIGEST__:JSON.stringify(digest) },
-    build:{ outDir:join(directory,'observer'),emptyOutDir:false,target:'node22',lib:{entry:resolve('scripts/network/online-recovery-utility.ts'),formats:['cjs'],fileName:()=>'utility.cjs'},rollupOptions:{external:['node:fs']} } });
+  await buildOnlineObservers(directory,digest);
   send({ type: 'stage', stage: 'ready' });
   send({ type: 'ready', baseUrl: runtime.baseUrl, workerdVersion: runtime.workerdVersion });
 })();

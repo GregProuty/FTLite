@@ -128,7 +128,7 @@ app.on('browser-window-created', (_, window) => {
       await window.webContents.debugger.sendCommand('Runtime.addBinding',{name:'onlineNativeClosed'});
       window.webContents.debugger.on('message',(_,method,params)=>{if(method==='Runtime.bindingCalled'&&params.name==='onlineNativeClosed') nativeClosed.set(record,JSON.parse(params.payload));});
     }
-    await window.webContents.executeJavaScript(hidden ? `(${observeNative.toString()})();
+    await window.webContents.executeJavaScript(hidden ? `(${observeNative.toString()})({forceRelay:${app.commandLine.hasSwitch('internet-force-relay')}});
       window.RTCPeerConnection = new Proxy(window.RTCPeerConnection,{construct(Target,args){const pc=Reflect.construct(Target,args),close=pc.close.bind(pc);pc.close=()=>{close();window.rtcNative.status().then(s=>window.onlineNativeClosed(JSON.stringify(s)));};return pc;}}); void 0;`
       : readFileSync(join(directory, 'observer/observer.js'), 'utf8'));
     const post = window.webContents.mainFrame.postMessage.bind(window.webContents.mainFrame);

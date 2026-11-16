@@ -14,6 +14,8 @@
     "test:room-service-runtime": "electron-vite build && tsx scripts/network/room-service-smoke.ts",
     "test:online-app-runtime": "electron-vite build && tsx scripts/network/online-app-smoke.ts",
     "test:online-recovery-runtime": "electron-vite build && tsx scripts/network/online-recovery-smoke.ts",
+    "test:internet-app-runtime": "tsx scripts/network/internet-app-smoke.ts",
+    "package:candidate": "electron-builder --win --dir --publish never -c.win.signAndEditExecutable=false",
     "test:signalling": "npm --prefix services/signalling test",
     "typecheck:signalling": "npm --prefix services/signalling run typecheck",
     "build:signalling": "npm --prefix services/signalling run build",

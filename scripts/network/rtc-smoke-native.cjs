@@ -1,7 +1,7 @@
 // Installed only by this gate in the production hidden page before any attempt.
 // Every connection/channel and operation below delegates to Chromium's native
 // implementation. The wrappers observe lifecycle and label deliberate faults.
-module.exports = function observeNativeRtc() {
+module.exports = function observeNativeRtc(options = {}) {
   const Original = window.RTCPeerConnection, pcs = [], timers = new Set();
   const originalTimeout = window.setTimeout.bind(window), originalClear = window.clearTimeout.bind(window);
   window.setTimeout = (callback, ms, ...args) => {
@@ -19,6 +19,7 @@ module.exports = function observeNativeRtc() {
   let drop = false, reorder = false, held, closeFragment = false, faultPc;
   const faults = { dropped: 0, reordered: 0, closedMidTransfer: 0 };
   window.RTCPeerConnection = new Proxy(Original, { construct(Target, args) {
+    if (options.forceRelay === true) args = [{ ...args[0], iceTransportPolicy: 'relay' }];
     const pc = Reflect.construct(Target, args), record = { pc, channels: [], listenerCount: listeners(pc) }; pcs.push(record);
     function channel(dc) {
       if (record.channels.some(value => value.dc === dc)) return dc;
@@ -56,7 +57,7 @@ module.exports = function observeNativeRtc() {
     async status() {
       const connections = [];
       for (const item of pcs) {
-        let direct = false, selected = false, lossAvailable = false;
+        let direct = false, selected = false, lossAvailable = false, localType = null, remoteType = null;
         if (item.pc.connectionState !== 'closed') {
           const stats = await item.pc.getStats();
           stats.forEach(record => {
@@ -64,11 +65,13 @@ module.exports = function observeNativeRtc() {
             const pair = stats.get(record.selectedCandidatePairId);
             if (!pair || pair.state !== 'succeeded') return;
             selected = true;
+            localType = stats.get(pair.localCandidateId)?.candidateType ?? null;
+            remoteType = stats.get(pair.remoteCandidateId)?.candidateType ?? null;
             direct = stats.get(pair.localCandidateId)?.candidateType !== 'relay' && stats.get(pair.remoteCandidateId)?.candidateType !== 'relay';
             lossAvailable = typeof pair.packetsLost === 'number';
           });
         }
-        connections.push({ state: item.pc.connectionState, selected, direct, lossAvailable, listeners: item.listenerCount(),
+        connections.push({ state: item.pc.connectionState, selected, direct, lossAvailable, localType, remoteType, policy: item.pc.getConfiguration().iceTransportPolicy, listeners: item.listenerCount(),
           channels: item.channels.map(({ dc, listenerCount, sent, received, maxBytes }) => ({ label: dc.label, state: dc.readyState,
             ordered: dc.ordered, maxRetransmits: dc.maxRetransmits, maxPacketLifeTime: dc.maxPacketLifeTime,
             listeners: listenerCount(), sent, received, maxBytes })) });
