@@ -3,9 +3,9 @@
 // is caught at the first tick it shows, naming the fields; and the version rules (a bump is the baseline plus 1, a
 // same-version check needs the same version) hold.
 import { describe, expect, it } from 'vitest';
-import { aliasPlan, duelSchema, judgeDuelOracle, MIGRATIONS, ORACLE_RUNS, recordRun, runDifferences, versionOffset, type Migration, type OracleRunSpec, type OracleTrace } from '../scripts/golden/duelOracle';
+import { aliasPlan, duelSchema, goldenRefusal, GOLDEN_RUN_ID, judgeDuelOracle, MIGRATIONS, ORACLE_RUNS, recordRun, runDifferences, versionOffset, type DuelGoldenCheckpoints, type Migration, type OracleRunSpec, type OracleTrace } from '../scripts/golden/duelOracle';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
-import { CUTTER } from './helpers/scriptedDuel';
+import { CUTTER, runDuel } from './helpers/scriptedDuel';
 
 const none: Migration = { change: 'none', rename: () => undefined, derived: [], added: [] };
 const SHORT: OracleRunSpec = { id: 'scripted-3', seed: 3, crew: 'scripted', cap: 240 };
@@ -82,10 +82,18 @@ describe('the per-tick record', () => {
     expect(diff).toHaveLength(1);
     expect(diff[0]).toMatch(/^scripted-3: first difference at tick 1 \(fields\); fields that differ during the run: space\.ships\.0\.x, space\.ships\.1\.x$/);
   }, 30_000);
+  it('records hashDuel at the duel golden cadence, and throws when the schema does not name every flattened value', () => {
+    const r = recordRun({ id: 'scripted-1', seed: 1, crew: 'scripted', cap: 1300 });
+    expect(r.hashes).toHaveLength(2);   // ticks 600 and 1200, as runDuel(1, 'scripted', 1300, 600) would record
+    expect(runDuel(1, 'scripted', 1300, 600).hashes).toEqual(r.hashes);
+    const short = (d: Parameters<typeof duelSchema>[0]) => { const s = duelSchema(d); return { names: s.names.slice(0, -1), counts: s.counts.slice(0, -1) }; };
+    expect(() => recordRun({ ...SHORT, cap: 2 }, undefined, short)).toThrow(/the duel schema names \d+ values, flattenDuel writes \d+ after SIM_VERSION/);
+  }, 30_000);
 });
 
 describe('the judge', () => {
-  const trace = (over: Partial<OracleTrace> = {}): OracleTrace => ({ simVersion: 37, cwd: '/repo', head: 'abc', runs: [], ...over });
+  const stored: DuelGoldenCheckpoints = { simVersion: 37, seed: 1, every: 600, ticks: 1250, outcome: 1, hashes: ['h1', 'h2'] };
+  const trace = (over: Partial<OracleTrace> = {}): OracleTrace => ({ simVersion: 37, cwd: '/repo', head: 'abc', runs: [], golden: { ...stored }, ...over });
   const rerun = () => { throw new Error('not reached'); };
   it('refuses without a baseline, from another repo root, and on a version that is not the baseline plus 1', () => {
     expect(judgeDuelOracle(undefined, rerun, '/repo', 'bump', 38).message).toMatch(/no duel oracle baseline/);
@@ -97,13 +105,28 @@ describe('the judge', () => {
   it('re-runs every run in the baseline schema, through the migration only for a bump', () => {
     const runs = ORACLE_RUNS.map((s) => ({ id: s.id, names: ['a'], counts: [1], ticks: 2, outcome: 1, perTick: ['x', 'y'], chains: ['c'] }));
     const seen: (string | undefined)[] = [], migration: Migration = { ...none, change: 'R-test' };
-    const ok = judgeDuelOracle(trace({ runs }), (spec, schema) => { seen.push(schema.migration?.change); return { problems: [], run: runs.find((r) => r.id === spec.id)! }; }, '/repo', 'bump', 38, { 37: migration });
+    const ok = judgeDuelOracle(trace({ runs }), (spec, schema) => { seen.push(schema.migration?.change); return { problems: [], run: runs.find((r) => r.id === spec.id)! }; }, '/repo', 'bump', 38, { 37: migration }, stored);
     expect(ok.ok).toBe(true);
     expect(ok.message).toMatch(/20 runs, 40 ticks, 1 named fields, .* through the 37 → 38 alias table \(R-test\)/);
     expect(seen).toEqual(ORACLE_RUNS.map(() => 'R-test'));
     const bad = judgeDuelOracle(trace({ runs }), (spec) => ({ problems: [], run: { ...runs.find((r) => r.id === spec.id)!, perTick: ['x', 'z'], chains: ['d'] } }), '/repo', 'same', 37);
     expect(bad.ok).toBe(false);
     expect(bad.message).toMatch(/scripted-1: first difference at tick 2 \(fields\); fields that differ during the run: a/);
+  });
+  it('a bump ties the baseline to the stored duel golden: version, checkpoints, ticks and outcome; an old baseline is refused', () => {
+    const runs = ORACLE_RUNS.map((s) => okRun(s.id)), echo = (spec: OracleRunSpec) => ({ problems: [] as string[], run: runs.find((x) => x.id === spec.id)! });
+    expect(judgeDuelOracle(trace({ runs }), echo, '/repo', 'bump', 38, {}, stored).ok).toBe(true);   // the happy path
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'bump', 38, {}, undefined).message).toMatch(/no stored duel golden/);
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'bump', 38, {}, { ...stored, simVersion: 36 }).message).toMatch(/baseline is at sim version 37, the stored tests\/golden\/duel-1\.json at 36/);
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'bump', 38, {}, { ...stored, simVersion: 38 }).message).toMatch(/at 38: the baseline must be recorded at the stored golden's version/);
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'bump', 38, {}, { ...stored, hashes: ['h1', 'X'] }).message).toMatch(/does not record what .* pins: first checkpoint difference at tick 1200/);
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'bump', 38, {}, { ...stored, hashes: ['h1'] }).message).toMatch(/at tick 1200/);
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'bump', 38, {}, { ...stored, ticks: 1251 }).message).toMatch(/ended at tick 1250 with outcome 1, .* at tick 1251 with outcome 1/);
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'bump', 38, {}, { ...stored, outcome: 2 }).message).toMatch(/with outcome 2/);
+    expect(judgeDuelOracle(trace({ runs, golden: undefined }), rerun, '/repo', 'bump', 38, {}, stored).message).toMatch(/re-record the duel oracle baseline/);
+    expect(goldenRefusal(trace({ golden: { ...stored, every: 300 } }), stored)).toMatch(/every 300\) is not the stored golden's/);
+    expect(goldenRefusal(trace(), stored)).toBeUndefined();
+    expect(GOLDEN_RUN_ID).toBe('scripted-1');
   });
   const okRun = (id: string) => ({ id, names: ['a'], counts: [1], ticks: 2, outcome: 1, perTick: ['x', 'y'], chains: ['c'] });
   it('applies no alias table at the same version', () => {

@@ -22,10 +22,27 @@ describe('the bless guard', () => {
   it('a mixed state, one golden already at the new version and another artifact not, still requires the comparison', () => {
     for (const storedVersions of [[37, 36, 36], [37, 37, 36], [36, 37, 37], [37, undefined, 36]]) {
       const verify = vi.fn(() => bad);
-      expect(blessRefusal({ storedVersions, currentVersion: 37, verify, duel: () => ok }), JSON.stringify(storedVersions)).toMatch(/36 → 37/);
+      expect(blessRefusal({ storedVersions, currentVersion: 37, verify, duel: () => ok, fresh: true }), JSON.stringify(storedVersions)).toMatch(/36 → 37/);
       expect(verify).toHaveBeenCalledTimes(1);
     }
-    expect(blessRefusal({ storedVersions: [37, 37, undefined], currentVersion: 37, verify: () => bad, duel: () => ok })).toBeUndefined();
+    expect(blessRefusal({ storedVersions: [37, 37, undefined], currentVersion: 37, verify: () => bad, duel: () => ok, fresh: true })).toBeUndefined();
+  });
+  it('refuses a bump from goldens two versions back (or more) before running either proof', () => {
+    for (const storedVersions of [[36, 36, 36], [37, 36, 37], [38, 37, 35]]) {
+      const verify = vi.fn(() => ok), duel = vi.fn(() => ok);
+      expect(blessRefusal({ storedVersions, currentVersion: 38, verify, duel }), JSON.stringify(storedVersions)).toMatch(/a bump must come from sim version 37, but artifacts are stored at (36|35)/);
+      expect(verify).not.toHaveBeenCalled();
+      expect(duel).not.toHaveBeenCalled();
+    }
+    expect(blessRefusal({ storedVersions: [39, 39, 39], currentVersion: 38, verify: () => ok, duel: () => ok })).toMatch(/stored at 39/);
+  });
+  it('refuses when a pinned artifact is missing unless --fresh is given, naming it', () => {
+    const verify = vi.fn(() => ok), duel = vi.fn(() => ok), names = ['basic.json', 'duel-1.json', 'determinism-v2.json'];
+    expect(blessRefusal({ storedVersions: [37, undefined, 37], currentVersion: 38, verify, duel, names })).toMatch(/pinned artifact\(s\) missing \(duel-1\.json\)[\s\S]*--fresh/);
+    expect(blessRefusal({ storedVersions: [undefined, undefined, undefined], currentVersion: 38, verify, duel, names })).toMatch(/missing \(basic\.json, duel-1\.json, determinism-v2\.json\)/);
+    expect(verify).not.toHaveBeenCalled();
+    expect(blessRefusal({ storedVersions: [undefined, undefined, undefined], currentVersion: 38, verify, duel, fresh: true })).toBeUndefined();
+    expect(blessRefusal({ storedVersions: [38, undefined, 38], currentVersion: 38, verify, duel, fresh: true })).toBeUndefined();
   });
   it('a bump also needs the duel migration oracle: a sector proof alone never re-blesses duel-1.json', () => {
     const duelBad = { ok: false, message: 'scripted-4: first difference at tick 812 (fields)' };
@@ -40,7 +57,7 @@ describe('the bless guard', () => {
   it('npm run bless passes the real duel oracle, re-run on every bump', () => {
     const source = readFileSync('scripts/bless-golden.ts', 'utf8');
     expect(source).toMatch(/import \{ verifyDuelOracle \} from '\.\/golden\/duelOracle';/);
-    expect(source).toMatch(/blessRefusal\(\{ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly, duel: verifyDuelOracle \}\)/);
+    expect(source).toMatch(/blessRefusal\(\{ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly, duel: verifyDuelOracle, fresh: process\.argv\.includes\('--fresh'\), names: \[BASIC, DUEL_GOLDEN, DETERMINISM_FIXTURE\] \}\)/);
   });
 });
 

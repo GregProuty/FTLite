@@ -12,13 +12,16 @@
 // result, event or telemetry difference at any tick. R-2 drops no field, so there is no dropped list yet: a milestone
 // that drops fields (R-3) adds one, left out of the record when its baseline is taken. The version is excluded from the
 // values (the duel hash's leading SIM_VERSION and the interior's $simVersion) and checked on its own: a bump must be
-// exactly the baseline's version plus 1. No side effects on import: duel-oracle.ts is the CLI, and bless-golden.ts
+// exactly the baseline's version plus 1. The baseline is also tied to the pinned duel golden: it records hashDuel at the
+// golden's cadence (DUEL_GOLDEN_EVERY) in the golden's run (scripted, seed 1), and a bump is refused unless those
+// checkpoints, the tick count, the outcome and the version equal tests/golden/duel-1.json's, so a baseline taken after
+// an unblessed same-version rule change cannot pass the bump off as migration-only. No side effects on import: duel-oracle.ts is the CLI, and bless-golden.ts
 // re-runs verifyDuelOracle() on every bump, so nothing from an earlier run is trusted.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalFields } from '../../src/renderer/src/sim/canonicalFields';
-import { flattenDuel } from '../../src/renderer/src/sim/duel/hash';
+import { flattenDuel, hashDuel } from '../../src/renderer/src/sim/duel/hash';
 import { DUEL_MODULES } from '../../src/renderer/src/sim/duel/modules';
 import { createScriptedPair, scriptedInput } from '../../src/renderer/src/sim/duel/scripted';
 import { createDuel, disposeDuel, type DuelState } from '../../src/renderer/src/sim/duel/state';
@@ -27,7 +30,7 @@ import { createTelemetry, recordTick } from '../../src/renderer/src/sim/duel/tel
 import type { SimModule } from '../../src/renderer/src/sim/module';
 import { Outcome } from '../../src/renderer/src/sim/tactical/state';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
-import { CAP_TICKS, CUTTER, GATE_SEEDS, passiveInput } from '../../tests/helpers/scriptedDuel';
+import { CAP_TICKS, CUTTER, DUEL_GOLDEN, DUEL_GOLDEN_EVERY, DUEL_GOLDEN_SEED, GATE_SEEDS, passiveInput } from '../../tests/helpers/scriptedDuel';
 import { dir, repoRoot, type VersionOnlyResult } from './versionOnly';
 
 export const ORACLE_FILE = join(dir, 'duel-oracle.json');
@@ -45,7 +48,14 @@ export const ORACLE_RUNS: readonly OracleRunSpec[] = [
 /** One run: its field schema (version fields left out), its length, and per tick three digests (fields, results and
  *  events, telemetry) as 24 hex characters; then one running digest per field over the whole run. */
 export interface OracleRun { id: string; names: string[]; counts: number[]; ticks: number; outcome: number; perTick: string[]; chains: string[] }
-export interface OracleTrace { simVersion: number; cwd: string; head: string; runs: OracleRun[] }
+/** The duel golden's checkpoints (tests/golden/duel-1.json, or the baseline's record of the same run): hashDuel every
+ *  `every` ticks of the scripted pair at `seed`, with the run's length and outcome. */
+export interface DuelGoldenCheckpoints { simVersion: number; seed: number; every: number; ticks: number; outcome: number; hashes: string[] }
+/** `golden` ties the baseline to the pinned duel golden: the baseline's own scripted run at DUEL_GOLDEN_SEED, hashed at
+ *  the golden's cadence. A baseline without it predates the tie and is refused. */
+export interface OracleTrace { simVersion: number; cwd: string; head: string; runs: OracleRun[]; golden?: DuelGoldenCheckpoints }
+/** The id of the oracle run that is the duel golden's run. */
+export const GOLDEN_RUN_ID = `scripted-${DUEL_GOLDEN_SEED}`;
 
 /** How a schema change maps the baseline's (old) named fields onto the current (new) ones. */
 export interface Migration {
@@ -168,21 +178,25 @@ const hex = (h: number): string => h.toString(16).padStart(8, '0');
 
 /**
  * Run one duel to its end (or the gate cap), recording every tick. `names` / `counts` are the schema the record is
- * kept in (the baseline's, or the current one for a baseline); `plan` turns the current values into it.
+ * kept in (the baseline's, or the current one for a baseline); `plan` turns the current values into it. `schemaOf`
+ * (tests only) replaces duelSchema; a schema that does not name every flattened value throws.
  */
-export function recordRun(spec: OracleRunSpec, schema?: { names: readonly string[]; counts: readonly number[]; migration?: Migration }): { run: OracleRun; problems: string[] } {
+export function recordRun(spec: OracleRunSpec, schema?: { names: readonly string[]; counts: readonly number[]; migration?: Migration },
+  schemaOf: (d: DuelState) => { names: string[]; counts: number[] } = duelSchema): { run: OracleRun; problems: string[]; hashes?: string[] } {
   const d = createDuel(CUTTER, spec.seed), pair = createScriptedPair(spec.seed), t = createTelemetry(d);
   try {
-    const now = duelSchema(d), target = schema ?? now;
+    const now = schemaOf(d), target = schema ?? now;
     const plan = aliasPlan(target.names, target.counts, now.names, now.counts, schema?.migration);
     const kept = target.names.map((n, k) => ({ n, c: target.counts[k]! })).filter((f) => !VERSION_FIELDS.includes(f.n));
     const versionAt = versionOffset(now.names, now.counts);
-    const chains = kept.map(() => SEED), perTick: string[] = [];
+    const flatCount = now.counts.reduce((a, b) => a + b, 0), chains = kept.map(() => SEED), perTick: string[] = [], hashes: string[] = [];
     if (plan.problems.length === 0) while (d.tactical.outcome === Outcome.Running && d.interior.tick < (spec.cap ?? CAP_TICKS)) {
       const input = spec.crew === 'scripted' ? scriptedInput(pair, d) : passiveInput(d);
       const results = stepDuelTick(d, input);
       recordTick(t, d, input);
       const all = flattenDuel(d);
+      // The schema must name every flattened value (the leading SIM_VERSION aside), or trailing values would drop out of every digest.
+      if (flatCount !== all.length - 1) throw new Error(`${spec.id} tick ${d.interior.tick}: the duel schema names ${flatCount} values, flattenDuel writes ${all.length - 1} after SIM_VERSION`);
       if (all[0] !== SIM_VERSION || all[1 + versionAt] !== SIM_VERSION) throw new Error(`${spec.id} tick ${d.interior.tick}: a version value is not SIM_VERSION`);
       const values = plan.build(all.subarray(1));
       let h = SEED, i = 0;
@@ -192,9 +206,10 @@ export function recordRun(spec: OracleRunSpec, schema?: { names: readonly string
         chains[k] = c;
       });
       if (i !== values.length) throw new Error(`${spec.id}: ${values.length} values for a ${i}-value schema`);
+      if (d.interior.tick % DUEL_GOLDEN_EVERY === 0) hashes.push(hashDuel(d));   // the duel golden's checkpoint cadence
       perTick.push(hex(h) + mixText(JSON.stringify([results, d.tactical.events, d.events])) + mixText(JSON.stringify(t, plain)));
     }
-    return { problems: plan.problems, run: { id: spec.id, names: kept.map((f) => f.n), counts: kept.map((f) => f.c), ticks: d.interior.tick, outcome: d.tactical.outcome, perTick, chains: chains.map(hex) } };
+    return { problems: plan.problems, hashes, run: { id: spec.id, names: kept.map((f) => f.n), counts: kept.map((f) => f.c), ticks: d.interior.tick, outcome: d.tactical.outcome, perTick, chains: chains.map(hex) } };
   } finally { disposeDuel(d); }
 }
 
@@ -204,7 +219,27 @@ function gitHead(): string {
 
 /** The baseline: every run in the current schema. */
 export function oracleTrace(): OracleTrace {
-  return { simVersion: SIM_VERSION, cwd: repoRoot(), head: gitHead(), runs: ORACLE_RUNS.map((spec) => recordRun(spec).run) };
+  let golden: DuelGoldenCheckpoints | undefined;
+  const runs = ORACLE_RUNS.map((spec) => {
+    const r = recordRun(spec);
+    if (spec.id === GOLDEN_RUN_ID) golden = { simVersion: SIM_VERSION, seed: spec.seed, every: DUEL_GOLDEN_EVERY, ticks: r.run.ticks, outcome: r.run.outcome, hashes: r.hashes ?? [] };
+    return r.run;
+  });
+  if (!golden) throw new Error(`ORACLE_RUNS has no ${GOLDEN_RUN_ID} run: the baseline cannot be tied to the duel golden`);
+  return { simVersion: SIM_VERSION, cwd: repoRoot(), head: gitHead(), runs, golden };
+}
+
+/** Why the baseline does not record the behaviour the stored duel golden pins, or undefined when it does. */
+export function goldenRefusal(was: OracleTrace, stored: DuelGoldenCheckpoints | undefined): string | undefined {
+  if (!stored) return `no stored duel golden at ${DUEL_GOLDEN}: the baseline cannot be tied to it`;
+  if (stored.simVersion !== was.simVersion) return `the duel oracle baseline is at sim version ${was.simVersion}, the stored ${DUEL_GOLDEN} at ${stored.simVersion}: the baseline must be recorded at the stored golden's version`;
+  const g = was.golden;
+  if (!g || !Array.isArray(g.hashes)) return `the duel oracle baseline (HEAD ${was.head}) records no duel golden checkpoints: re-record the duel oracle baseline (\`duel-oracle.ts baseline\`) at the stored golden's commit`;
+  if (g.simVersion !== stored.simVersion || g.seed !== stored.seed || g.every !== stored.every) return `the duel oracle baseline's golden run (version ${g.simVersion}, seed ${g.seed}, every ${g.every}) is not the stored golden's (version ${stored.simVersion}, seed ${stored.seed}, every ${stored.every})`;
+  const n = Math.max(g.hashes.length, stored.hashes.length);
+  for (let at = 0; at < n; at++) if (g.hashes[at] !== stored.hashes[at]) return `the duel oracle baseline does not record what ${DUEL_GOLDEN} pins: first checkpoint difference at tick ${(at + 1) * g.every} (an unblessed same-version change before the baseline?)`;
+  if (g.ticks !== stored.ticks || g.outcome !== stored.outcome) return `the duel oracle baseline's golden run ended at tick ${g.ticks} with outcome ${g.outcome}, ${DUEL_GOLDEN} at tick ${stored.ticks} with outcome ${stored.outcome}`;
+  return undefined;
 }
 
 export const oracleCounts = (t: OracleTrace): string => `${t.runs.length} runs, ${t.runs.reduce((n, r) => n + r.ticks, 0)} ticks, ${t.runs[0]?.names.length ?? 0} named fields per tick`;
@@ -226,11 +261,13 @@ export function runDifferences(was: OracleRun, now: OracleRun): string[] {
 /** Compare a baseline with the current code (pure apart from `rerun`). `mode` 'bump' requires SIM_VERSION to be the
  *  baseline's plus 1 and applies MIGRATIONS[baseline]; 'same' requires the same version and no migration. */
 export function judgeDuelOracle(was: OracleTrace | undefined, rerun: (spec: OracleRunSpec, schema: { names: readonly string[]; counts: readonly number[]; migration?: Migration }) => { run: OracleRun; problems: string[] },
-  root: string, mode: 'bump' | 'same', version = SIM_VERSION, migrations: Readonly<Record<number, Migration>> = MIGRATIONS): VersionOnlyResult {
+  root: string, mode: 'bump' | 'same', version = SIM_VERSION, migrations: Readonly<Record<number, Migration>> = MIGRATIONS, stored?: DuelGoldenCheckpoints): VersionOnlyResult {
   if (!was) return { ok: false, message: `no duel oracle baseline at ${ORACLE_FILE}: run \`duel-oracle.ts baseline\` before the change` };
   if (was.cwd !== root) return { ok: false, message: `the duel oracle baseline was recorded from ${was.cwd} (HEAD ${was.head}), not from ${root}: record it again here` };
   if (mode === 'bump' && version !== was.simVersion + 1) return { ok: false, message: `the duel oracle baseline is at sim version ${was.simVersion}; a bump must be to ${was.simVersion + 1}, not ${version}` };
   if (mode === 'same' && version !== was.simVersion) return { ok: false, message: `the duel oracle baseline is at sim version ${was.simVersion}, the code at ${version}: use \`check\` for a bump` };
+  // A bump re-blesses duel-1.json, so the baseline must record exactly what the stored golden pins.
+  if (mode === 'bump') { const g = goldenRefusal(was, stored); if (g) return { ok: false, message: g }; }
   const migration = mode === 'bump' ? migrations[was.simVersion] : undefined, problems: string[] = [];
   const specs = new Map(ORACLE_RUNS.map((s) => [s.id, s]));
   if (was.runs.map((r) => r.id).join(',') !== ORACLE_RUNS.map((s) => s.id).join(',')) problems.push('the baseline records other runs than ORACLE_RUNS');
@@ -249,7 +286,10 @@ export function judgeDuelOracle(was: OracleTrace | undefined, rerun: (spec: Orac
 
 const readBaseline = (): OracleTrace | undefined => existsSync(ORACLE_FILE) ? JSON.parse(readFileSync(ORACLE_FILE, 'utf8')) as OracleTrace : undefined;
 
-/** The bump proof `npm run bless` re-runs: the recorded baseline against the current code, through MIGRATIONS. */
-export function verifyDuelOracle(): VersionOnlyResult { return judgeDuelOracle(readBaseline(), recordRun, repoRoot(), 'bump'); }
+const readStoredGolden = (): DuelGoldenCheckpoints | undefined => existsSync(DUEL_GOLDEN) ? JSON.parse(readFileSync(DUEL_GOLDEN, 'utf8')) as DuelGoldenCheckpoints : undefined;
+
+/** The bump proof `npm run bless` re-runs: the recorded baseline, tied to the stored duel golden, against the current
+ *  code through MIGRATIONS. */
+export function verifyDuelOracle(): VersionOnlyResult { return judgeDuelOracle(readBaseline(), recordRun, repoRoot(), 'bump', SIM_VERSION, MIGRATIONS, readStoredGolden()); }
 /** The same-version proof for a refactor that must not change the duel at all. */
 export function verifyDuelUnchanged(): VersionOnlyResult { return judgeDuelOracle(readBaseline(), recordRun, repoRoot(), 'same'); }

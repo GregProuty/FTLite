@@ -4,7 +4,8 @@
 //   version change is in progress, and the bless is refused unless the per-tick canonical comparison
 //   (scripts/golden/versionOnly.ts, re-run here) proves the sector version-only AND the duel migration oracle
 //   (scripts/golden/duelOracle.ts, re-run here) proves every duel run unchanged per tick, through its alias table when
-//   the duel's schema changed; a same-version bless is a deliberate gameplay change. All three are computed and
+//   the duel's schema changed (a bump must be one version step, and the duel baseline must match the stored duel-1.json);
+//   a missing pinned artifact is refused unless `--fresh` is given; a same-version bless is a deliberate gameplay change. All three are computed and
 //   validated in memory first and written only when every one is staged, so a staging failure writes nothing; a write failure can leave a mixed-version set, which the next run guards again. tests/fixtures/net1a-baseline.json is a retired
 //   historical oracle and is never written: `npm run bless -- --baseline` only checks it and writes nothing.
 //   tests/fixtures/net1a-gates.json is never written.
@@ -33,7 +34,8 @@ if (process.argv.includes('--baseline')) {
 }
 
 const stored = [readStoredVersion(BASIC, basicVersionFromText), readStoredVersion(DUEL_GOLDEN, duelVersionFromText), existsSync(DETERMINISM_FIXTURE) ? storedFixtureVersion() : undefined];
-const refusal = blessRefusal({ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly, duel: verifyDuelOracle });
+// --fresh: create a missing pinned artifact from scratch (no bump proof can run without it); otherwise a missing one is refused.
+const refusal = blessRefusal({ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly, duel: verifyDuelOracle, fresh: process.argv.includes('--fresh'), names: [BASIC, DUEL_GOLDEN, DETERMINISM_FIXTURE] });
 if (refusal) { console.error(refusal); process.exit(1); }
 
 const messages = writeAllOrNothing([

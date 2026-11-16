@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { basicVersionFromText, duelVersionFromText } from '../scripts/golden/storedVersion';
-import { canonical, canonicalValues, dirFor, judgeUnchanged, judgeVersionOnly, type Trace } from '../scripts/golden/versionOnly';
+import { canonical, canonicalValues, dirFor, judgeUnchanged, judgeVersionOnly, type BasicCheckpoints, type Trace } from '../scripts/golden/versionOnly';
 import { makeState } from './helpers/sim';
 import { disposeSimState } from '../src/renderer/src/sim/state';
 import { Health } from '../src/renderer/src/sim/components';
@@ -61,12 +61,23 @@ describe('the same-version check can fail', () => {
 });
 
 describe('the bump check', () => {
+  const at36 = (over: Partial<Trace> = {}): Trace => mk({ simVersion: 36, basic: { simVersion: 36, hashes: ['h1', 'h2'], finalHash: 'f' }, ...over });
+  const stored: BasicCheckpoints = { simVersion: 36, hashes: ['h1', 'h2'], finalHash: 'f' };
   it('passes a version-only move, fails a changed tick, a stale baseline and another repo root', () => {
-    expect(judgeVersionOnly(mk({ simVersion: 36 }), () => mk(), ROOT).ok).toBe(true);
-    expect(judgeVersionOnly(mk({ simVersion: 36 }), () => mk({ golden: ['a', 'b', 'Z'] }), ROOT).message).toMatch(/tick 3/);
-    expect(judgeVersionOnly(mk(), () => mk(), ROOT).message).toMatch(/stale/);
-    expect(judgeVersionOnly(mk({ simVersion: 36, cwd: '/x' }), () => mk(), ROOT).ok).toBe(false);
-    expect(judgeVersionOnly(undefined, () => mk(), ROOT).ok).toBe(false);
+    expect(judgeVersionOnly(at36(), () => mk(), ROOT, stored).ok).toBe(true);
+    expect(judgeVersionOnly(at36(), () => mk({ golden: ['a', 'b', 'Z'] }), ROOT, stored).message).toMatch(/tick 3/);
+    expect(judgeVersionOnly(mk({ basic: { ...stored, simVersion: 37 } }), () => mk(), ROOT, { ...stored, simVersion: 37 }).message).toMatch(/stale/);
+    expect(judgeVersionOnly(at36({ cwd: '/x' }), () => mk(), ROOT, stored).ok).toBe(false);
+    expect(judgeVersionOnly(undefined, () => mk(), ROOT, stored).ok).toBe(false);
+  });
+  it('ties the baseline to the stored basic.json: its version, checkpoints and final hash, and refuses an old baseline', () => {
+    const rerun = () => { throw new Error('not reached'); };
+    expect(judgeVersionOnly(at36(), rerun, ROOT, undefined).message).toMatch(/no stored sector golden/);
+    expect(judgeVersionOnly(at36(), rerun, ROOT, { ...stored, simVersion: 35 }).message).toMatch(/baseline is at sim version 36, the stored .* at 35/);
+    expect(judgeVersionOnly(at36(), rerun, ROOT, { ...stored, hashes: ['h1', 'X'] }).message).toMatch(/does not record what .* pins: first checkpoint difference at checkpoint 2/);
+    expect(judgeVersionOnly(at36(), rerun, ROOT, { ...stored, hashes: ['h1', 'h2', 'h3'] }).message).toMatch(/checkpoint 3/);
+    expect(judgeVersionOnly(at36(), rerun, ROOT, { ...stored, finalHash: 'g' }).message).toMatch(/final hash f/);
+    expect(judgeVersionOnly(at36({ basic: undefined }), rerun, ROOT, stored).message).toMatch(/re-record the canonical-trace baseline/);
   });
 });
 

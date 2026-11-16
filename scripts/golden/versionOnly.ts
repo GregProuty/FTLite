@@ -6,7 +6,9 @@
 //   - every schedule of tests/fixtures/determinism-v2.json (its checkpoints moved to the current SIM_VERSION first).
 // No side effects on import. canonical-trace.ts is the CLI; bless-golden.ts calls verifyVersionOnly() right before it
 // writes. verifyUnchanged() is the same comparison for a refactor that keeps SIM_VERSION (engine refactor R-1): the
-// per-tick canonical trace must be identical at the same version.
+// per-tick canonical trace must be identical at the same version. A bump also ties the baseline to the pinned
+// tests/golden/basic.json: the baseline records the golden replay's hashState every BASIC_EVERY ticks and its final hash,
+// and the bump is refused unless they and the version equal basic.json's.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -30,7 +32,14 @@ export const dir = dirFor(repoRoot());
 export const TRACE_FILE = join(dir, 'trace.json');
 export const basicCopy = join(dir, 'basic-before.json');
 const FIXTURE = 'tests/fixtures/determinism-v2.json';
-export interface Trace { simVersion: number; cwd?: string; head?: string; golden: string[]; determinism: Record<string, string[]> }
+/** basic.json's checkpoints (the stored golden, or the baseline's record of the same replay): hashState every
+ *  BASIC_EVERY ticks and the final hash, at `simVersion`. */
+export interface BasicCheckpoints { simVersion: number; hashes: string[]; finalHash: string }
+/** `basic` ties the baseline to the pinned sector golden; a baseline without it predates the tie and is refused. */
+export interface Trace { simVersion: number; cwd?: string; head?: string; golden: string[]; determinism: Record<string, string[]>; basic?: BasicCheckpoints }
+/** The sector golden's checkpoint cadence (the `every` bless-golden.ts passes to runSemanticReplay). */
+export const BASIC_EVERY = 60;
+const BASIC = 'tests/golden/basic.json';
 export interface VersionOnlyResult { ok: boolean; message: string }
 
 /** The canonical hash of flattened values with the version value (index 0) zeroed. */
@@ -50,8 +59,10 @@ function gitHead(): string {
 }
 
 export function trace(): Trace {
-  const digest = computeContentDigest(process.cwd()), golden: string[] = [];
-  runSemanticReplay(parseShip(starter), scriptedSemanticReplay(2026, 4, 60 * 120, digest), 1, digest, (state) => golden.push(canonical(state)));
+  const digest = computeContentDigest(process.cwd()), golden: string[] = [], ticks: number[] = [];
+  const g = runSemanticReplay(parseShip(starter), scriptedSemanticReplay(2026, 4, 60 * 120, digest), 1, digest, (state) => { golden.push(canonical(state)); ticks.push(state.tick); });
+  // The same replay basic.json records, at its cadence: every=1 hashes every observed tick, so keep basic.json's ticks.
+  const basic: BasicCheckpoints = { simVersion: SIM_VERSION, hashes: g.hashes.filter((_, k) => ticks[k]! % BASIC_EVERY === 0), finalHash: g.finalHash };
   const fixture = unpackFixture(JSON.parse(readFileSync(FIXTURE, 'utf8')) as Fixture), determinism: Record<string, string[]> = {};
   for (const run of fixture.runs) {
     const cp = run.checkpoint, out: string[] = [];
@@ -66,7 +77,7 @@ export function trace(): Trace {
     } finally { h.core.dispose(); }
     determinism[cp.init.runId] = out;
   }
-  return { simVersion: SIM_VERSION, cwd: repoRoot(), head: gitHead(), golden, determinism };
+  return { simVersion: SIM_VERSION, cwd: repoRoot(), head: gitHead(), golden, determinism, basic };
 }
 
 export const counts = (t: Trace): string => {
@@ -87,11 +98,26 @@ function rootRefusal(was: Trace, root: string): VersionOnlyResult | undefined {
 }
 const recorded = (was: Trace): string => ` (baseline HEAD ${was.head ?? 'unknown'})`;
 
-/** The bump comparison against a (lazily taken) fresh trace. Pure: `was` undefined means no baseline. */
-export function judgeVersionOnly(was: Trace | undefined, nowTrace: () => Trace, root: string): VersionOnlyResult {
+/** Why the baseline does not record what the stored basic.json pins, or undefined when it does. */
+export function basicRefusal(was: Trace, stored: BasicCheckpoints | undefined): string | undefined {
+  if (!stored) return `no stored sector golden at ${BASIC}: the baseline cannot be tied to it`;
+  if (stored.simVersion !== was.simVersion) return `the canonical-trace baseline is at sim version ${was.simVersion}, the stored ${BASIC} at ${stored.simVersion}: the baseline must be recorded at the stored golden's version`;
+  const b = was.basic;
+  if (!b || !Array.isArray(b.hashes)) return `the canonical-trace baseline (HEAD ${was.head ?? 'unknown'}) records no ${BASIC} checkpoints: re-record the canonical-trace baseline (\`canonical-trace.ts baseline\`) at the stored golden's commit`;
+  const n = Math.max(b.hashes.length, stored.hashes.length);
+  for (let k = 0; k < n; k++) if (b.hashes[k] !== stored.hashes[k]) return `the canonical-trace baseline does not record what ${BASIC} pins: first checkpoint difference at checkpoint ${k + 1} (an unblessed same-version change before the baseline?)`;
+  if (b.simVersion !== stored.simVersion || b.finalHash !== stored.finalHash) return `the canonical-trace baseline's final hash ${b.finalHash} (version ${b.simVersion}) is not ${BASIC}'s ${stored.finalHash}`;
+  return undefined;
+}
+
+/** The bump comparison against a (lazily taken) fresh trace. Pure: `was` undefined means no baseline; `stored` is
+ *  basic.json's checkpoints (undefined when it is missing), which the baseline must equal. */
+export function judgeVersionOnly(was: Trace | undefined, nowTrace: () => Trace, root: string, stored: BasicCheckpoints | undefined): VersionOnlyResult {
   if (!was) return { ok: false, message: `no baseline at ${TRACE_FILE}: run \`canonical-trace.ts baseline\` before the bump` };
   const refused = rootRefusal(was, root);
   if (refused) return refused;
+  const tie = basicRefusal(was, stored);
+  if (tie) return { ok: false, message: tie };
   const now = nowTrace();
   if (was.simVersion === now.simVersion) return { ok: false, message: `the baseline is already at sim version ${now.simVersion}: it is stale or SIM_VERSION was not bumped` };
   const problems = differences(was, now);
@@ -112,14 +138,21 @@ export function judgeUnchanged(was: Trace | undefined, nowTrace: () => Trace, ro
 }
 
 const readBaseline = (): Trace | undefined => existsSync(TRACE_FILE) ? JSON.parse(readFileSync(TRACE_FILE, 'utf8')) as Trace : undefined;
+/** basic.json's checkpoints, undefined when the file is missing. */
+export function readStoredBasic(path = BASIC): BasicCheckpoints | undefined {
+  if (!existsSync(path)) return undefined;
+  const j = JSON.parse(readFileSync(path, 'utf8')) as { replay?: { init?: { simVersion?: number } }; hashes?: string[]; finalHash?: string };
+  return { simVersion: j.replay?.init?.simVersion ?? 0, hashes: j.hashes ?? [], finalHash: j.finalHash ?? '' };
+}
 
 /**
  * Re-run the per-tick comparison now: the pre-bump baseline in the temp folder against a fresh trace of the current
- * code. Not ok when there is no baseline, when it is from another repo root, when it is already at the current
+ * code. Not ok when there is no baseline, when it is from another repo root, when it does not record what the stored
+ * basic.json pins (version, checkpoints and final hash), when it is already at the current
  * SIM_VERSION (stale), or when any tick differs. Nothing is trusted from an earlier run.
  */
 export function verifyVersionOnly(): VersionOnlyResult {
-  return judgeVersionOnly(readBaseline(), trace, repoRoot());
+  return judgeVersionOnly(readBaseline(), trace, repoRoot(), readStoredBasic());
 }
 
 export function differences(was: Trace, now: Trace): string[] {
