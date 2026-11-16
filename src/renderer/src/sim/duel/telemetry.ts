@@ -4,7 +4,7 @@
 // tick before.
 import { Seated } from '../components';
 import { inArc } from '../tactical/geometry';
-import { Outcome } from '../tactical/state';
+import { missileOf, Outcome, targetOf } from '../tactical/state';
 import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
 import { canLaunch, laserFull } from '../tactical/weapons';
 import type { DuelState } from './state';
@@ -62,7 +62,7 @@ function shipTelemetry(): ShipTelemetry {
   };
 }
 
-const counters = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.planetHits, s.asteroidHits, s.shipHits, s.missilesLaunched]);
+const counters = (d: DuelState): number[][] => d.tactical.ships.map((s, i) => [s.planetHits, s.asteroidHits, s.shipHits, d.tactical.systems[i]!.missilesLaunched]);
 const seats = (d: DuelState): [number, number] => [Seated.station[d.interior.crew[0]!]!, Seated.station[d.interior.crew[1]!]!];
 
 export function createTelemetry(d: DuelState): DuelTelemetry {
@@ -98,7 +98,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
       s.laserReleases++;
-      if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[1 - e.ship] = true; } else s.laserMisses++;
+      if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[targetOf(tac, e.ship)] = true; } else s.laserMisses++;
     } else if (e.cause === 'ship') {
       missileOn[e.target] = true;
       if (e.target === e.ship) s.missileLosses.own++; else s.missileHitsByRoom[e.room as 0 | 1 | 2]++;
@@ -114,9 +114,9 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     t.ships[i]!.planetContacts += now[i]![0]! - t.prev.counters[i]![0]!;
     t.ships[i]!.asteroidContacts += now[i]![1]! - t.prev.counters[i]![1]!;
   }
-  const m = t.manoeuvre, ship = tac.map.asteroids.length + 1;
+  const m = t.manoeuvre, asteroids = tac.map.asteroids.length;
   if (m.tick >= 0 && tick - m.tick <= BAIT_WINDOW_TICKS) for (const k of struck[1]!) {
-    if (k === ship) continue;
+    if (k > asteroids) continue;   // a ship body: only the planet and asteroids can be baits
     const b = k === 0 ? tac.map.planet : tac.map.asteroids[k - 1]!;
     if (dist(enemy.x, enemy.y, b.x, b.y) < dist(m.x, m.y, b.x, b.y)) t.baits++;
   }
@@ -147,11 +147,11 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   const ex = enemy.x - crew.x, ey = enemy.y - crew.y, inRange = ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE;
   const arc = inRange && inArc(crew.heading, ex, ey, LASER_ARC_COS);
   if (arc) t.enemyInArcTicks++;
-  if (gunner >= 0 && tac.missiles[0] === null && laserFull(tac, 0) && (!canLaunch(tac, 0) || inRange) && !arc) t.weaponsIdleTicks++;
+  if (gunner >= 0 && missileOf(tac, 0) === null && laserFull(tac, 0) && (!canLaunch(tac, 0) || inRange) && !arc) t.weaponsIdleTicks++;
 
   // Terminal cause: what hit each ship whose hull reached 0 on the final tick.
   if (tac.outcome !== Outcome.Running) for (let i = 0; i < 2; i++) {
-    if (tac.ships[i]!.hull > 0) continue;
+    if (tac.systems[i]!.hull > 0) continue;
     const c: TerminalCause[] = [], was = t.prev.counters[i]!, is = now[i]!;
     if (is[0]! > was[0]!) c.push('planet');
     if (is[1]! > was[1]!) c.push('asteroid');

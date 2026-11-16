@@ -21,7 +21,7 @@ describe('duel controls (H-1 spec §5)', () => {
   it('a downed character can neither repair nor sit, and an offline console cannot be sat at (as the sim)', () => {
     const d = createDuel(layout, 5);
     step(d, 0, { kind: 'stand' }); put(d, 0, 1, 6);
-    d.tactical.ships[0].rooms[Room.Engines] = 1;
+    d.tactical.systems[0].rooms[Room.Engines] = 1;
     expect(repairInReach(d, 0)).toBe(Room.Engines);
     const eid = d.interior.crew[0]!, was = Life.state[eid]!;
     Life.state[eid] = LifeState.Downed;
@@ -48,7 +48,7 @@ describe('duel controls (H-1 spec §5)', () => {
     const d = createDuel(layout, 5);
     step(d, 0, { kind: 'stand' }); put(d, 0, 1, 6);            // Engines room, next to its repair point (2, 6)
     expect(repairInReach(d, 0)).toBe(-1);                         // nothing damaged
-    d.tactical.ships[0].rooms[Room.Engines] = 1;
+    d.tactical.systems[0].rooms[Room.Engines] = 1;
     expect(repairInReach(d, 0)).toBe(Room.Engines);
     step(d, 0, null, [{ moveX: 0, moveY: 0, interactHeld: true }, NONE]);
     expect(d.repair[Room.Engines]).toBe(REPAIR_RATE_SOLO);        // the sim agrees: holding E there repairs

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Position } from '../src/renderer/src/sim/components';
-import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
+import { missileOf, Outcome, removeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { emptyPresses, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
@@ -100,7 +100,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   it('walking by scripted keys from the Weapons console to the Engines repair point and holding E repairs it', () => {
     const { rt, hold, press, tick, ticks } = rig();
     press('switch'); tick(); press('stand'); tick();   // the gunner stands up at the Weapons console (8, 6)
-    rt.duel.tactical.ships[0].rooms[Room.Engines] = 1;
+    rt.duel.tactical.systems[0].rooms[Room.Engines] = 1;
     const eid = rt.duel.interior.crew[1]!;
     expect([Position.x[eid], Position.y[eid]]).toEqual([8.5, 6.5]);
     hold({ moveX: -1 }); ticks(100);                   // west along row 6: the door at 6, the Aft Passage, the door at 4, into Engines
@@ -136,7 +136,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const { rt, hold, press, tick, ticks } = rig();
     press('switch'); tick(); press('stand'); tick();   // the gunner stands up at Weapons
     expect(rt.view()).toBe('interior');
-    rt.duel.tactical.ships[0].rooms[Room.Weapons] = 1;
+    rt.duel.tactical.systems[0].rooms[Room.Weapons] = 1;
     put(rt, 1, 8, 6);                                  // beside the Weapons console and in reach of the Weapons repair point (8, 7)
     hold({ interactHeld: true }); press('interact'); tick();
     expect(rt.view()).toBe('interior');                // no sit: holding E repairs
@@ -144,7 +144,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.otherStatus()).toBe('AT HELM');
     ticks(9);
     expect(rt.duel.repair[Room.Weapons]).toBe(10 * REPAIR_RATE_SOLO);
-    hold({ interactHeld: false }); rt.duel.tactical.ships[0].rooms[Room.Weapons] = 0;
+    hold({ interactHeld: false }); rt.duel.tactical.systems[0].rooms[Room.Weapons] = 0;
     press('interact'); tick();
     expect(rt.view()).toBe('weapons');                 // nothing to repair now: the same press sits
     rt.dispose();
@@ -161,7 +161,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   it('Space charges and its release fires at full charge; E and Q cycle the lock', () => {
     const { rt, hold, press, tick, ticks } = rig();
     press('switch'); tick();
-    const ship = rt.duel.tactical.ships[0];
+    const ship = rt.duel.tactical.systems[0];
     expect(ship.lock).toBe(Room.Shields);
     press('interact'); tick(); expect(ship.lock).toBe(Room.Engines);
     press('interact'); tick(); expect(ship.lock).toBe(Room.Weapons);
@@ -181,37 +181,37 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     press('switch'); tick();
     hold({ fireHeld: true }); press('fireDown'); ticks(30);
     hold({ fireHeld: false }); press('fireUp'); tick();
-    expect([rt.duel.tactical.ships[0].shots, rt.duel.tactical.ships[0].laserCharge]).toEqual([0, 0]);
+    expect([rt.duel.tactical.systems[0].shots, rt.duel.tactical.systems[0].laserCharge]).toEqual([0, 0]);
     rt.dispose();
   });
   it('a blur that swallows the Space release still lets go of the charge (H-1a review carry-over)', () => {
     const { rt, hold, press, tick } = rig();
     press('switch'); tick();
     hold({ fireHeld: true }); press('fireDown'); tick();
-    expect(rt.duel.tactical.ships[0].fireHeld).toBe(true);
+    expect(rt.duel.tactical.systems[0].fireHeld).toBe(true);
     rt.pause('blur'); hold({ fireHeld: false }); tick();   // the keyboard was cleared: no keyup, no fireUp edge
-    expect(rt.duel.tactical.ships[0].fireHeld).toBe(true);   // paused: nothing sent yet
+    expect(rt.duel.tactical.systems[0].fireHeld).toBe(true);   // paused: nothing sent yet
     rt.resume('blur'); tick();
     expect(rt.lastResults().map((r) => r.status)).toEqual(['applied']);
-    expect(rt.duel.tactical.ships[0].fireHeld).toBe(false);
+    expect(rt.duel.tactical.systems[0].fireHeld).toBe(false);
     rt.dispose();
   });
   it('F launches a missile, A/D steer it, C toggles the Weapons camera to the missile and back', () => {
     const { rt, hold, press, tick, ticks } = rig();
     press('switch'); tick();
     press('launch'); tick();
-    expect(rt.duel.tactical.missiles[0]).not.toBeNull();
-    const h0 = rt.duel.tactical.missiles[0]!.heading;
+    expect(missileOf(rt.duel.tactical, 0)).not.toBeNull();
+    const h0 = missileOf(rt.duel.tactical, 0)!.heading;
     hold({ moveX: 1 }); ticks(10);
     expect(rt.steer()).toBe(1);
-    expect(rt.duel.tactical.missiles[0]!.heading).not.toBe(h0);
+    expect(missileOf(rt.duel.tactical, 0)!.heading).not.toBe(h0);
     press('camera'); tick();
     expect(rt.cameras.weapons.follow).toBe('missile');
     expect(rt.cameras.helm.follow).toBe('ship');   // each console keeps its own camera
     press('camera'); tick();
     expect(rt.cameras.weapons.follow).toBe('ship');
     press('camera'); tick();
-    rt.duel.tactical.missiles[0] = null; tick();      // the followed missile ended: back to the ship
+    removeMissile(rt.duel.tactical, 0); tick();      // the followed missile ended: back to the ship
     expect(rt.cameras.weapons.follow).toBe('ship');
     rt.dispose();
   });
@@ -219,7 +219,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const { rt, time, hold, press, tick, ticks } = rig();
     press('switch'); tick();
     hold({ fireHeld: true }); press('fireDown'); tick(); ticks(240);
-    const ship = rt.duel.tactical.ships[0];
+    const ship = rt.duel.tactical.systems[0];
     expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);
     press('launch'); rt.frame(1 / 60);                          // F first...
     hold({ fireHeld: false }); press('fireUp'); rt.frame(1 / 60);   // ...then the release, both before the tick
@@ -236,7 +236,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     time.advance(TICK_MS * 0.4); rt.frame(1 / 60);   // part-way to the next tick
     const a = rt.alpha();
     expect(a).toBeGreaterThan(0.05); expect(a).toBeLessThan(0.95);
-    const m = interpolatedMissile(rt.duel.tactical, rt.missilePrev, a, 0)!, raw = rt.duel.tactical.missiles[0]!;
+    const m = interpolatedMissile(rt.duel.tactical, rt.missilePrev, a, 0)!, raw = missileOf(rt.duel.tactical, 0)!;
     expect(Math.hypot(m.x - raw.x, m.y - raw.y)).toBeGreaterThan(1);   // the drawn position differs from the tick position
     expect(rt.cameras.weapons.centreX).toBeCloseTo(m.x, 6); expect(rt.cameras.weapons.centreY).toBeCloseTo(m.y, 6);
     rt.dispose();
@@ -281,7 +281,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   it('the duel ends, stepping stops, and Enter restarts with seed + 1, a fresh tick epoch and the solo start again', () => {
     const { time, rt, press, tick, cleared } = rig(7);
     press('switch'); tick(); press('zoomIn'); tick();
-    rt.duel.tactical.ships[1].hull = 0; tick();
+    rt.duel.tactical.systems[1].hull = 0; tick();
     expect(rt.duel.tactical.outcome).toBe(Outcome.CrewWins);
     expect(rt.ended()).toBe(true);
     const stopped = rt.duel.interior.tick;
@@ -308,10 +308,10 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
   it('Space while the missile flies sends nothing the sim would reject', () => {
     const { rt, hold, press, tick, ticks } = rig();
     press('switch'); tick(); press('launch'); tick(); ticks(2);
-    expect(rt.duel.tactical.missiles[0]).not.toBeNull();
+    expect(missileOf(rt.duel.tactical, 0)).not.toBeNull();
     hold({ fireHeld: true }); press('fireDown'); tick();
     expect(rejected(rt)).toEqual([]); expect(rt.lastResults()).toEqual([]);
-    expect(rt.duel.tactical.ships[0].fireHeld).toBe(false);
+    expect(rt.duel.tactical.systems[0].fireHeld).toBe(false);
     hold({ fireHeld: false }); press('fireUp'); tick();
     expect(rt.lastResults()).toEqual([]);
     rt.dispose();
@@ -319,12 +319,12 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
   it('F with an empty magazine or Weapons damage 2 sends nothing', () => {
     const { rt, press, tick } = rig();
     press('switch'); tick();
-    rt.duel.tactical.ships[0].magazine = 0;
+    rt.duel.tactical.systems[0].magazine = 0;
     press('launch'); tick();
-    expect(rt.lastResults()).toEqual([]); expect(rt.duel.tactical.missiles[0]).toBeNull();
-    rt.duel.tactical.ships[0].magazine = 2; rt.duel.tactical.ships[0].rooms[Room.Weapons] = 2;
+    expect(rt.lastResults()).toEqual([]); expect(missileOf(rt.duel.tactical, 0)).toBeNull();
+    rt.duel.tactical.systems[0].magazine = 2; rt.duel.tactical.systems[0].rooms[Room.Weapons] = 2;
     press('launch'); tick();
-    expect(rt.lastResults()).toEqual([]); expect(rt.duel.tactical.missiles[0]).toBeNull();
+    expect(rt.lastResults()).toEqual([]); expect(missileOf(rt.duel.tactical, 0)).toBeNull();
     rt.dispose();
   });
   it('a release goes out only after a press did', () => {
@@ -341,14 +341,14 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
     const { time, rt, hold, press, tick } = rig();
     press('switch'); tick();
     hold({ fireHeld: true }); press('fireDown'); tick();
-    expect(rt.duel.tactical.ships[0].fireHeld).toBe(true);
+    expect(rt.duel.tactical.systems[0].fireHeld).toBe(true);
     press('launch'); rt.frame(1 / 60);
     press('switch'); rt.frame(1 / 60);
     time.advance(TICK_MS); rt.frame(1 / 60);
     expect(rejected(rt)).toEqual([]);
     expect(rt.active()).toBe(0);   // Tab back to the pilot
-    expect(rt.duel.tactical.ships[0].fireHeld).toBe(false);   // the empty seat let go of Fire
-    expect(rt.duel.tactical.missiles[0]).toBeNull();
+    expect(rt.duel.tactical.systems[0].fireHeld).toBe(false);   // the empty seat let go of Fire
+    expect(missileOf(rt.duel.tactical, 0)).toBeNull();
     tick(); expect(rejected(rt)).toEqual([]);
     rt.dispose();
   });

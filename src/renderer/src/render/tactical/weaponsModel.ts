@@ -2,6 +2,7 @@
 // marker on the enemy's locked room (both consoles, parent §7a), the Weapons layer (bearing ring, both laser arcs, the
 // enemy's bearing and range, the missile's predicted path) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
+import { missileOf, targetOf } from '../../sim/tactical/state';
 import { laserEligible } from '../../sim/tactical/weapons';
 import { LASER_ARC_COS, LASER_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
@@ -55,7 +56,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   const { state, prev, alpha, camera: cam, viewport: vp } = input, z = cam.zoom;
   const toS = (x: number, y: number): Point => worldToScreen(cam, vp, x, y);
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
-  const enemy = interpolatedShip(state, prev, alpha, 1), enemyS = toS(enemy.x, enemy.y);
+  const target = targetOf(state, 0), enemy = interpolatedShip(state, prev, alpha, target), enemyS = toS(enemy.x, enemy.y);
   const onScreen = (p: Point, r: number): boolean => p.x + r >= 0 && p.x - r <= vp.w && p.y + r >= 0 && p.y - r <= vp.h;
 
   const missiles: MissileDraw[] = [];
@@ -68,7 +69,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
 
   // The lock marker sits on the enemy's locked room segment, or on the chevron when the ship is drawn as one.
   let lock: LockDraw | null = null;
-  const room = state.ships[0].lock;
+  const room = state.systems[0].lock;
   if (onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {
     const chevron = 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, a = headingAngle(enemy.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx;
     const c = chevron ? { f: 0, s: 0 } : segmentCentre(room), k = SHIP_RADIUS * z;
@@ -78,11 +79,11 @@ export function combatModel(input: CombatModelInput): CombatDraw {
 
   let weapons: WeaponsDraw | null = null;
   if (input.console === 'weapons') {
-    const dx = enemy.x - own.x, dy = enemy.y - own.y, range = Math.round(Math.sqrt(dx * dx + dy * dy)), inArc = laserEligible(state, 0, 1);
-    const flying = state.missiles[0], drawn = interpolatedMissile(state, input.missilePrev, alpha, 0);
+    const dx = enemy.x - own.x, dy = enemy.y - own.y, range = Math.round(Math.sqrt(dx * dx + dy * dy)), inArc = laserEligible(state, 0, target);
+    const flying = missileOf(state, 0), drawn = interpolatedMissile(state, input.missilePrev, alpha, 0);
     weapons = {
       ownArc: { x: ownS.x, y: ownS.y, r: LASER_RANGE * z, angle: headingAngle(own.h), half: ARC_HALF },
-      enemyArc: input.ships.includes(1) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
+      enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
       info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}`, x: (vp.w - input.reserveRight) / 2, y: 12 },
       inArc,

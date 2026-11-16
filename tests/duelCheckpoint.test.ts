@@ -6,7 +6,7 @@ import { duelRules } from '../src/renderer/src/authority/duelRules';
 import { runModeReplay, replayMode } from '../src/renderer/src/authority/replay';
 import { MAX_HOST_BYTES } from '../src/shared/netSession';
 import type { DuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
-import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { Outcome, placeMissile, removeMissile } from '../src/renderer/src/sim/tactical/state';
 import { jsonModeCodecs } from '../src/network/modes/encounterMode';
 import { createDriver, duelCore, duelInit, resolveCutter, stepScripted, throughBytes, type DuelCore } from './helpers/duelAuthority';
 import type { ReplayFrame } from '../src/renderer/src/sim/replay';
@@ -36,8 +36,8 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
       runToEnd(reference, createDriver(SEED), referenceHashes);
       runToEnd(split, driver, splitHashes, [], SPLIT);
       const at = split.state.duel;
-      expect(at.tactical.missiles.some((m) => m !== null), 'a missile in flight at the split').toBe(true);
-      expect(at.tactical.ships[0].rooms.some((r) => r > 0), 'a damaged crew room at the split').toBe(true);
+      expect(at.tactical.missiles.some((m) => m.active), 'a missile in flight at the split').toBe(true);
+      expect(at.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at the split').toBe(true);
       expect(at.repair.some((r) => r > 0), 'a repair in progress at the split').toBe(true);
       const cp = throughBytes(split.core.captureCheckpoint());
       expect(cp.snapshot.header.tick).toBe(SPLIT);
@@ -101,8 +101,8 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
     try {
       runToEnd(h, driver, [], [], 2400);
       const t = h.state.duel.tactical, third = 1 / 3;
-      for (const [i, ship] of t.ships.entries()) { ship.rooms = [2, 2, 2]; ship.x += third; ship.y -= third; ship.vx = third * (i + 1); }
-      t.missiles = [0, 1].map((i) => ({ x: 1234.567891234567 + i, y: -987.6543210987654, vx: third, vy: -third, heading: 17, headingAcc: third, age: 211 })) as typeof t.missiles;
+      for (const [i, ship] of t.ships.entries()) { t.systems[i]!.rooms = [2, 2, 2]; ship.x += third; ship.y -= third; ship.vx = third * (i + 1); }
+      for (const i of [0, 1]) { removeMissile(t, i); placeMissile(t, i, { x: 1234.567891234567 + i, y: -987.6543210987654, vx: third, vy: -third, heading: 17, headingAcc: third, age: 211 }); }
       h.state.duel.repair = [959, 481, 7];
       const cp = h.core.captureCheckpoint(), bytes = jsonModeCodecs(duelRules, resolveCutter, 'duel').encodeCheckpoint(cp);
       expect(bytes.length).toBeLessThan(MAX_HOST_BYTES);

@@ -52,7 +52,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('the nearest free character (the gunner, 5 tiles away) walks to an Engines repair, fixes it and sits again', () => {
-    const d = createDuel(layout, 1), pair = createScriptedPair(1), ship = d.tactical.ships[0];
+    const d = createDuel(layout, 1), pair = createScriptedPair(1), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
     let stood = -1, done = -1, sat = -1;
     for (let k = 0; k < 900 && sat < 0; k++) {

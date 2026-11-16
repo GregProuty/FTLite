@@ -10,7 +10,7 @@ import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
 import { stepDuelTick } from '../../sim/duel/step';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { stepSoloFlight } from '../../sim/tactical/physics';
-import { createTacticalState, NO_AXES, Outcome, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { TICK_HZ } from '../../sim/tuning';
 import { createCamera, followBody, pan, snapBack, updateCamera, zoomBy, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/tactical/feelModel';
@@ -187,7 +187,7 @@ const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || 
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 const shipBody = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
-const missileBody = (m: TacticalState['missiles'][number]): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
+const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
 const hitCounts = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.planetHits, s.asteroidHits, s.shipHits]);
 
 export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
@@ -201,7 +201,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera() };
   const capture = (): void => {
     prev = d.tactical.ships.map(shipBody);
-    missilePrev = d.tactical.missiles.map(missileBody);
+    missilePrev = d.tactical.ships.map((_, i) => missileBody(missileOf(d.tactical, i)));   // by owner, as interpolatedMissile reads it
     crewPrev = d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
   };
   const freshCameras = (): void => { const s = d.tactical.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y) }; };
@@ -298,7 +298,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0) {
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'laserLock')?.command;
-      let room = last && last.kind === 'laserLock' ? last.room : d.tactical.ships[0].lock;
+      let room = last && last.kind === 'laserLock' ? last.room : d.tactical.systems[0].lock;
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       queue({ kind: 'laserLock', room });
     }
@@ -311,7 +311,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (p.launch > 0) queue({ kind: 'missileLaunch' });
     if (p.camera > 0) {
       const cam = cameras.weapons;
-      snapBack(cam, d.tactical.missiles[0] && cam.follow !== 'missile' ? 'missile' : 'ship');
+      snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship');
     }
     return k;
   }
@@ -351,7 +351,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       const view = seatOf(d, active), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : null;
       if (cam) cameraInput.apply(cam, k, pointer);
       for (const c of [cameras.helm, cameras.weapons]) {
-        if (c.follow === 'missile' && !d.tactical.missiles[0]) followBody(c, 'ship');   // the followed missile ended
+        if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');   // the followed missile ended
         // A followed missile is tracked at its interpolated (drawn) position, as the ship is (H-1 spec §6).
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);
         updateCamera(c, deps.viewport, dt, target);

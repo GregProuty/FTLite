@@ -1,7 +1,7 @@
 // The duel's view effects (H-1 spec §7 item 8, §8 shake): laser beams, missile bursts and contact sparks from each tick's
 // events, the shake when the crew ship is hit, and the missile trails. Pure and view-owned: never sent to the sim, never
 // hashed; a restart resets it. Times are render seconds.
-import type { DuelEvent, TacticalState } from '../../sim/tactical/state';
+import { CREW_SLOT, missileOf, type DuelEvent, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import type { Point } from './camera';
 import type { PrevBody } from './tacticalModel';
@@ -29,9 +29,11 @@ export interface FxState {
 export function createFx(): FxState { return { items: [], shake: 0, shakeT: 0, trails: [[], []] }; }
 export function resetFx(fx: FxState): void { fx.items.length = 0; fx.shake = 0; fx.shakeT = 0; fx.trails[0].length = 0; fx.trails[1].length = 0; }
 
-/** Whether an event is a hit on the crew ship (ship 0): an enemy laser hit, or any missile landing on it. */
+/** Whether an event is a hit on the crew ship (CREW_SLOT): a laser hit from another ship, or any missile landing on it.
+ *  Laser events carry no target until R-3/R-5 (adding one changes the duel oracle's event digest), so a laser hit from
+ *  any non-crew ship counts as a hit on the crew; with two ships that is exactly the enemy's. */
 export function hitsCrew(e: ViewEvent): boolean {
-  return (e.kind === 'laser' && e.ship === 1 && e.hit) || (e.kind === 'missileEnd' && e.cause === 'ship' && e.target === 0);
+  return (e.kind === 'laser' && e.ship !== CREW_SLOT && e.hit) || (e.kind === 'missileEnd' && e.cause === 'ship' && e.target === CREW_SLOT);
 }
 
 /** Queue one tick's events as effects; a hit on the crew ship (re)starts the shake. */
@@ -58,9 +60,9 @@ export function shakeOffset(fx: FxState): Point {
   return { x: Math.round(Math.sin(fx.shakeT * 95) * k), y: Math.round(Math.cos(fx.shakeT * 71) * k) };
 }
 
-/** A missile's interpolated position, or null when none flies. */
+/** Ship i's missile's interpolated position, or null when none flies. `missilePrev` is by owner (ship slot). */
 export function interpolatedMissile(state: TacticalState, missilePrev: readonly (PrevBody | null)[], alpha: number, i: number): PrevBody | null {
-  const m = state.missiles[i];
+  const m = missileOf(state, i);
   if (!m) return null;
   const p = missilePrev[i], h1 = m.heading + m.headingAcc, a = Math.min(1, Math.max(0, alpha));
   if (!p) return { x: m.x, y: m.y, h: h1 };

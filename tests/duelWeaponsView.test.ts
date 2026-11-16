@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Container } from 'pixi.js';
 import { flyMissile, launchMissile } from '../src/renderer/src/sim/tactical/missiles';
-import { createTacticalState, type DuelEvent, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, type DuelEvent, missileOf, removeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { LASER_RANGE, MISSILE_LIFE_TICKS, MISSILE_RADIUS, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
@@ -24,13 +24,13 @@ describe('the missile-path predictor (H-1 spec §7)', () => {
     it(`matches flyMissile tick for tick over 120 ticks of free flight (steer ${steer})`, () => {
       const st = createTacticalState(11);
       launchMissile(st, 0);
-      const m0 = { ...st.missiles[0]! };
-      const path = predictMissilePath(st, st.missiles[0]!, steer, 1);
-      expect(st.missiles[0]).toEqual(m0);   // the state's missile is never touched
+      const m0 = { ...missileOf(st, 0)! };
+      const path = predictMissilePath(st, missileOf(st, 0)!, steer, 1);
+      expect(missileOf(st, 0)).toEqual(m0);   // the state's missile is never touched
       expect(path.length).toBeGreaterThanOrEqual(120);
       for (let t = 0; t < 120; t++) {
         flyMissile(st, 0, steer);
-        expect(path[t]).toEqual({ x: st.missiles[0]!.x, y: st.missiles[0]!.y });
+        expect(path[t]).toEqual({ x: missileOf(st, 0)!.x, y: missileOf(st, 0)!.y });
       }
     });
   }
@@ -46,8 +46,8 @@ describe('the missile-path predictor (H-1 spec §7)', () => {
   it('the horizon is the remaining life, capped at 240 ticks, a point every 4 ticks', () => {
     const st = createTacticalState(11);
     launchMissile(st, 0);
-    expect(predictMissilePath(st, st.missiles[0]!, 0)).toHaveLength(MISSILE_PATH_MAX_TICKS / 4);
-    const old = { ...st.missiles[0]!, age: MISSILE_LIFE_TICKS - 30 };
+    expect(predictMissilePath(st, missileOf(st, 0)!, 0)).toHaveLength(MISSILE_PATH_MAX_TICKS / 4);
+    const old = { ...missileOf(st, 0)!, age: MISSILE_LIFE_TICKS - 30 };
     const short = predictMissilePath(st, old, 0, 1);
     expect(short).toHaveLength(30);
   });
@@ -103,12 +103,12 @@ describe('the combat model (H-1 spec §7)', () => {
     const st = createTacticalState(11), e = st.ships[1], cam = createCamera(e.x, e.y, 1);
     Object.assign(e, { heading: 64, headingAcc: 0 });   // nose east
     for (const console of ['helm', 'weapons'] as const) {
-      st.ships[0].lock = 0;
+      st.systems[0].lock = 0;
       let c = combatModel(input(st, cam, console));
       const nose = segmentCentre(0);
       expect(c.lock!.x).toBeCloseTo(640 + nose.f * SHIP_RADIUS, 9); expect(c.lock!.y).toBeCloseTo(360, 9);
       expect(c.lock!.label.text).toBe('LOCK WEAPONS');
-      st.ships[0].lock = 2;
+      st.systems[0].lock = 2;
       c = combatModel(input(st, cam, console));
       expect(c.lock!.x).toBeLessThan(640); expect(c.lock!.label.text).toBe('LOCK ENGINES');
       expect(c.weapons === null).toBe(console === 'helm');
@@ -117,7 +117,7 @@ describe('the combat model (H-1 spec §7)', () => {
   it('missile mode: the missile, its trail and its predicted path from its drawn position', () => {
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), fx = createFx();
     launchMissile(st, 0);
-    for (let k = 0; k < 40; k++) { const p = { ...st.missiles[0]! }; flyMissile(st, 0, 1); recordTrails(fx, st, [{ x: p.x, y: p.y, h: p.heading + p.headingAcc }, null], 1); }
+    for (let k = 0; k < 40; k++) { const p = { ...missileOf(st, 0)! }; flyMissile(st, 0, 1); recordTrails(fx, st, [{ x: p.x, y: p.y, h: p.heading + p.headingAcc }, null], 1); }
     const c = combatModel({ ...input(st, cam, 'weapons', fx), steer: 1 });
     expect(c.missiles).toHaveLength(1);
     expect(c.missiles[0]!.trail).toHaveLength(TRAIL_POINTS);
@@ -127,15 +127,15 @@ describe('the combat model (H-1 spec §7)', () => {
   it('the predicted path starts at the interpolated glyph, not the tick position (alpha < 1)', () => {
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), fx = createFx();
     launchMissile(st, 0);
-    const p0 = { ...st.missiles[0]! };
+    const p0 = { ...missileOf(st, 0)! };
     for (let k = 0; k < 10; k++) flyMissile(st, 0, 0);
-    const before = { ...st.missiles[0]! };
+    const before = { ...missileOf(st, 0)! };
     const missilePrev: (PrevBody | null)[] = [{ x: p0.x, y: p0.y, h: p0.heading + p0.headingAcc }, null];
     const c = combatModel({ ...input(st, cam, 'weapons', fx), alpha: 0.4, missilePrev, steer: 0 });
     expect(c.weapons!.missilePath[0]).toEqual({ x: c.missiles[0]!.x, y: c.missiles[0]!.y });
     const raw = worldToScreen(cam, vp, before.x, before.y);
     expect(Math.hypot(c.missiles[0]!.x - raw.x, c.missiles[0]!.y - raw.y)).toBeGreaterThan(1);   // the glyph is not at the tick position
-    expect(st.missiles[0]).toEqual(before);
+    expect(missileOf(st, 0)).toEqual(before);
   });
 });
 
@@ -172,10 +172,10 @@ describe('the view effects (H-1 spec §7 item 8, §8 shake)', () => {
     launchMissile(st, 0);
     for (let k = 0; k < 45; k++) { flyMissile(st, 0, 0); recordTrails(fx, st, [null, null], 1); }
     expect(fx.trails[0]).toHaveLength(TRAIL_POINTS);
-    expect(fx.trails[0][TRAIL_POINTS - 1]).toEqual({ x: st.missiles[0]!.x, y: st.missiles[0]!.y });
+    expect(fx.trails[0][TRAIL_POINTS - 1]).toEqual({ x: missileOf(st, 0)!.x, y: missileOf(st, 0)!.y });
     recordTrails(fx, st, [null, null], 1);
     expect(fx.trails[0]).toHaveLength(TRAIL_POINTS);   // no move, no new point
-    st.missiles[0] = null; recordTrails(fx, st, [null, null], 1);
+    removeMissile(st, 0); recordTrails(fx, st, [null, null], 1);
     expect(fx.trails[0]).toEqual([]);
   });
 });
