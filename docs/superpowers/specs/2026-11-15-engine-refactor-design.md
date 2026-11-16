@@ -145,8 +145,9 @@ interface EncounterRules<State, Init, ControllerMemory> {
   dispose(state: State): void;                            // today: disposeSimState
   assertLive(state: State): void;                         // today: assertSimStateLive
   playerCount(state: State): number;
+  tick(state: State): number;                             // today: state.tick, read by core.ts:133-138, 261-268, 426-429
   step(state: State, input: FrozenTickInput): CommandResult[];
-  terminal(state: State): { ended: boolean; endRecord?: unknown };  // today: state.ended + telemetryRecord on end
+  terminal(state: State): { ended: boolean; endRecord: EndRecord | null };  // today: state.ended + telemetryRecord on end
   safePointKey(state: State): string;                      // today: visitRef, for safe-point checkpoint captures
   callouts(state: State, player: number): Callout | null;  // today: calloutFor + the crew-dead check
   cues(prev: CueBaseline, state: State): Cue[];
@@ -157,14 +158,21 @@ interface EncounterRules<State, Init, ControllerMemory> {
 }
 ```
 
+Rules for three of these hooks:
+- **`tick`.** For the duel, `tick` returns `interior.tick`. `stepDuelTick` advances the interior tick and the tactical tick together, once per call, so they are always equal. The duel restore validates that equality and rejects a snapshot where they differ.
+- **`EndRecord`.** The authority's `ended` event becomes mode-tagged: `{ mode: string, record: EndRecord | null }`, where `EndRecord` is a discriminated union validated by the codec. The sector record is today's strict `TelemetryRecord`, unchanged (`net/contracts.ts:81-87`, `codec.ts:80-100`). The duel record is the duel telemetry summary from `sim/duel/telemetry.ts`: outcome, ticks, terminal cause, shots and hits, missiles, repairs. A mode with nothing to report sends `record: null`, which the codec accepts.
+- **Layout resolution.** The generic authority keeps the merged `resolveLayout` dependency (`authority/authority.ts:24-33,56-61,74-79`) and passes it to the rules' `create`, `restore` and `validateCheckpoint`. The sector rules use it as today. The duel rules resolve the Cutter through the same resolver.
+
 Every call `authority/core.ts` makes into sector code today goes through one of these hooks: `visitRef` (`core.ts:118,124`), `calloutFor` (`:292-294`), `telemetryRecord` (`:437`), `state.ended`, `playerCount` and `layout` (`:44,164`), `assertSimStateLive` and `disposeSimState` (`:37,612`), and `saveSnapshot`. Bot controller memory (today the sector `CardUiState[]` in the checkpoint) becomes an opaque per-mode `ControllerMemory` blob that the mode's checkpoint validator checks.
 
 The ledger, tick driver, journal, checkpoint cadence and publication stay as they are, with Net-3's input-tick window and delta sender.
 
 **Lifecycle and the adapter to Net-3's modes** (delivered in R-1):
 - **The generic authority.** `createEncounterAuthority(rules, deps)` exposes exactly the merged `Authority` surface (`authority/authority.ts:47-55`), generic over the rules: `start`, `restore`, `attach`, `checkpoint`, `requestCheckpoint`, `completeBootstrap`, `replay`, `pump`, `dispose`.
-  - Its deps are the merged ones, unchanged: `contentDigest`, clock, scheduler, `onCrash`, `onCheckpoint`, the **session lease gate** (bootstrap pause, fence, `resetPausedEpoch`; `core.ts:60-62,213-224`), the producer hooks (`beforeControls`, `beforeTick`, `botControllers`) and `bindLifecyclePause`. Pause stays injected (`sector.ts:53,86`), not a method.
+  - Its deps are the merged ones, unchanged: `resolveLayout`, `contentDigest`, clock, scheduler, `onCrash`, `onCheckpoint`, the **session lease gate** (bootstrap pause, fence, `resetPausedEpoch`; `core.ts:60-62,213-224`), the producer hooks (`beforeControls`, `beforeTick`, `botControllers`) and `bindLifecyclePause`. Pause stays injected (`sector.ts:53,86`), not a method.
   - The replay V2/V3/V4 frame semantics (fence, watchdog, seal) are preserved exactly. R-1 runs the cross-engine determinism check and the native host gates on every change.
+  - **Replays become mode-aware.** A replay records its `mode`; when the field is absent, the mode is `sector`, so existing V2/V3/V4 files parse unchanged. `parseReplay` and `runReplay` (`authority/replay.ts:29-33,44-64,77-81`; `sim/replay.ts:25-30`) look up the mode's rules and use its init, checkpoint, snapshot and command validators instead of the sector ones.
+  - **Observable check:** the existing sector replay tests pass unchanged, and a recorded duel replay re-runs to the same final hash.
 - **What each mode owns:**
   - the byte codecs for its init and checkpoint (validate, decode, encode, within Net-3's payload bounds);
   - attachment validation (which player ids are legal);
@@ -172,11 +180,26 @@ The ledger, tick driver, journal, checkpoint cadence and publication stay as the
   - its stream publication adapter (the equivalent of `sectorStream`), which turns a published state into Net-3 `StateImage`s.
 - **The mode factory.** A small `defineEncounterMode({ modeId, schemaVersion, rules, codecs, producers, publication })` builds a Net-3 `ModeDefinition` whose `ModeHost` has the merged lifecycle (`src/network/modes/contracts.ts:8-17`):
   - `start(bytes)`, `restore(bytes)`, `completeBootstrap()`, `attach`;
-  - async `captureCheckpoint(cause): Promise<ModeCheckpoint>`;
+  - synchronous `checkpoint(): Uint8Array`, which encodes the current checkpoint now and throws if it would exceed `MAX_HOST_BYTES`. `hostRuntime` calls it directly (`hostRuntime.ts:65-71`);
+  - async `captureCheckpoint(cause): Promise<ModeCheckpoint>`, the safe-point capture used for uploads;
   - `pause(reason: string)`, `dispose`.
 
   It also keeps the sector host's behaviour: it refuses to replace itself while anything is attached, and it caches checkpoint candidates and crash checkpoints (`sector.ts:35-52`). `modes/sector.ts` is rewritten as one call to it.
-- **The duel needs a snapshot format (an R-1 deliverable).** Today the duel has `cloneTactical` but no serialisation: nothing restores tactical or duel state. R-1 adds a duel snapshot codec (flatten and unflatten for space, the interior, presence and repair) and a duel checkpoint schema, within `MAX_HOST_BYTES` (256 KiB, `shared/netSession.ts:3`).
+- **The duel needs a snapshot format (an R-1 deliverable).** Today the duel has `cloneTactical` but no serialisation: nothing restores tactical or duel state. R-1 adds a duel snapshot codec and checkpoint schema **(rec.)**:
+  - **Header:** `{ snapshotFormat: 1, simVersion, contentDigest, layoutId, layoutHash, seed }`.
+  - **Stored values:**
+    - the interior, through today's sector snapshot path (`flatten`/`unflatten` of the interior `SimState`);
+    - the tactical state in `flattenTactical`'s order: ships, missiles, hunter, tick, outcome and the tactical random-number state;
+    - `present` and `repair`.
+  - **Regenerated, not stored:**
+    - the map, rebuilt from `seed` with `generateMap`; its validation must pass, and the stored map hash must match;
+    - the broad-phase grid;
+    - the repair points, from the Cutter layout;
+    - `Derived`, from the layout.
+  - **Not stored:** per-tick `events` and `d.events`, which are cleared every tick.
+  - **Validation on restore:** header versions, digest and layout; the value count; the interior and tactical ticks being equal; and the restored duel's `hashDuel` equalling the hash recorded in the checkpoint.
+  - **Continuation proof:** run a duel N ticks, checkpoint it, restore, run M more ticks, and compare per-tick hashes with an uninterrupted run of N + M ticks. They must be identical.
+  - **Size:** a test encodes a checkpoint at the duel's largest state (both missiles in flight, all rooms damaged, mid-repair) and asserts it is under `MAX_HOST_BYTES` (256 KiB, `shared/netSession.ts:3`). The duel's canonical state is a few thousand values, so it is expected to be well under.
 - **R-1 acceptance:**
   - For both sector and duel, start → captureCheckpoint → restore round trips reproduce identical hashes, at the utility and `hostRuntime` level. This is the same level as Net-3's `host-smoke` gate: registering the duel mode in `authorityHost.ts` and driving it through `hostRuntime` over loopback.
   - Attach and detach work over loopback.
@@ -287,7 +310,11 @@ Only then is the new schema blessed, as a `SIM_VERSION` bump.
   - The cap of 4 is hard-coded in `ROOM_MAX_PLAYERS` (`roomSession.ts:4`), `seatId < 4` (`seatStore.ts:42`), the deployed signalling Worker (`services/signalling/src/index.ts:32`, `directory.ts:47`) and `MAX_PLAYERS = 4` (`shared/intent.ts:2`, checkpoint and replay schemas). Raising it means a service redeploy.
 - **Connections with no crew body** (spectators, passengers) are a later protocol change. Today `validPeer` (`hostProcessProtocol.ts:68`), `attachPeer` (`hostRuntime.ts:79`) and the sector attach (`sector.ts:70`) reject zero-player bindings; only `core.attach` accepts one (`core.ts:504`). The service has no spectator identity.
 - **Bots** already attach as their own loopback binding, standing in for a vacant player id (`sectorProducers.ts:34-49,82-85`). Independent bot bindings that don't occupy a player seat come with the seat work above.
-- **A bounded history ring:** the authority keeps its rotated segments (checkpoint plus frames) in a small ring instead of dropping them. That gives a flight recorder, kill-cams and bug reports (panel wild card).
+- **A bounded history ring** (milestone R-8, not R-1): the authority keeps its rotated segments (checkpoint plus frames) in a ring instead of dropping them. That gives a flight recorder, kill-cams and bug reports (panel wild card). R-1 must only keep segment rotation intact. Bounds **(rec.)**:
+  - the newest 6 segments (about 30 s), at most 4 MiB encoded in total, with the oldest evicted first;
+  - a single segment over 1 MiB is not kept, and a counter records it;
+  - export is host-side only, written to a file by a dev command, never over the IPC crash channel;
+  - a test exceeds each bound (segment count, total bytes, one oversized segment) and checks eviction.
   - Segments are about 5 seconds: they rotate at `tick % 300`, and earlier when controls reach 256 or frames exceed 4,096 (`core.ts:413,441,460`). Today `resetBaseline` drops `frames` and `ticks` (`core.ts:243-244`).
   - Crash diagnostics crossing IPC are capped at 64 KiB / 4,096 nodes, and anything over becomes `null` (`utilityHost.ts:45-66`), so a ring export needs its own bounded channel.
 
@@ -315,7 +342,7 @@ Every milestone is a contract change (Q31), so it runs the full spec, review, pl
 | # | Milestone | Delivers | Proof |
 |---|---|---|---|
 | R-0 | **Guards** | Merge `hash-completeness` (it merges cleanly onto `a5b772f`). Its fuller duel hash changes the duel golden, so R-0 bumps `SIM_VERSION` to 37, with the guarded version-only re-bless for the sector goldens and determinism fixture. One bless command for every pinned artifact; retire `net1a-baseline` to `--baseline` | the completeness test fails on an added field; bless regenerates everything |
-| R-1 | **Generic authority** (was H-0c-ii-b) | `EncounterRules`, `createEncounterAuthority` and `defineEncounterMode` (§6 lifecycle); sector rules wrap today's step; the duel as a registered Net-3 mode on the module contract; one command union and result type; the bounded history ring | sector goldens byte-identical; start, checkpoint and restore round trips for sector and duel; the duel runs behind the authority over loopback and Net-3; the module completeness test for the duel |
+| R-1 | **Generic authority** (was H-0c-ii-b) | `EncounterRules`, `createEncounterAuthority` and `defineEncounterMode` (§6 lifecycle); sector rules wrap today's step; the duel snapshot codec and checkpoint; the duel as a registered mode in `authorityHost.ts` on the module contract; mode-tagged end records; mode-aware replays; one command union and result type | sector goldens byte-identical; existing sector replay tests unchanged; start → captureCheckpoint → restore round trips for sector and duel at the `hostRuntime` level; the duel continuation proof and size test; a duel replay re-runs to the same hash; the module completeness test for the duel |
 | R-2 | **N-ship space + systems record (storage only, rules unchanged)** | ship slots, a missile pool and a target index; one systems record per ship, holding today's duel rules unchanged; `ShipClassDef`/`WeaponDef` | the duel migration oracle (§5): fields, results, events and telemetry per tick, with the version excluded; identical gate outcomes; then a re-blessed duel golden and a version bump |
 | R-2b | **Full interior link** (gameplay) | interior power drives shields and engines; repair acts on the shared systems record | new expected outcomes: gates re-run, duel golden re-blessed, owner playtest |
 | R-3 | **Telemetry and notices out of the hash** | per-tick events; Session telemetry record | the migration proof of §7 (retained fields, results and telemetry equal per tick), then a version bump |
@@ -323,7 +350,7 @@ Every milestone is a contract change (Q31), so it runs the full spec, review, pl
 | R-5 | **Encounter with ships[]** | an encounter holding 2 to 4 ShipStates; the hunter's ship becomes a real ShipState; boarding moves crew rows; FTL lock-on view | a duel against a full enemy interior; a scripted boarding test |
 | R-6 | **Projections** (deferred: PvP is out of scope) | fixed-layout per-crew images over Net-3 with the projection header and hash; the per-recipient visibility policy for every channel | the all-channel privacy test of §10; lock-on acquire and loss, and transfer, keep deltas working |
 | R-7 | **Campaign + save** | Campaign layer, deed log, save format with `saveVersion` and migrations | a save written before a code change loads after it |
-| R-8 | **Content seams** (light) | string ids, `contentRefs` test, station registry, scenario launcher, tuning overrides | adding a console kind touches the registry plus its own files |
+| R-8 | **Content seams and the flight recorder** (light) | string ids, `contentRefs` test, station registry, scenario launcher, tuning overrides; the bounded history ring (§10) | adding a console kind touches the registry plus its own files |
 
 R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtest wait on them. R-2b follows H-2, gated by the owner's playtest. R-3 to R-8 follow in order of the game milestones that need them:
 - R-3 before MG-1a;
@@ -338,7 +365,7 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
 
 1. **The refactor eats the time meant for "is it fun?"** Mitigation: R-1 and R-2 are the only steps before H-2, and the owner's playtest gates everything after them. The other steps land just in time for the milestones that need them.
 2. **Equivalence is proved by a mapping that can itself be wrong.** Mitigation: the alias table is generated from the module field declarations plus an explicit rename list, and the check fails on unmapped or duplicate fields. The oracle also compares command results, events and bindings, not only state values, so a wrong mapping that leaves behaviour intact is the only kind that can pass, and that kind is harmless.
-3. **Net-3's projections (R-6) grow the sender.** Mitigation: projections are images like any other; the delta sender, the payload limits and the full fallback are reused. Only "which image goes to which connection" is new.
+3. **Net-3's projections (R-6, deferred with PvP) are more than an image choice.** They need new image metadata, a new client acceptance path, filtering at `emit`, and a re-host checkpoint policy (§10). The delta sender, payload limits and full fallback are reused. None of it is built while PvP is out of scope.
 4. **N ships multiply the step cost.** Mitigation: at about 4 to 7 µs per ship per tick at idle, 4 ships stay under 0.1 ms. Step cost under combat load is measured before R-5 merges.
 
 ## 14. Open questions (defaults taken meanwhile)
@@ -360,3 +387,12 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
   - §10: corrected the sender model (already one encoder per connection), image metadata and acceptance, `emit` filtering, checkpoints and re-host in PvP as an open R-6 problem, the seat, zero-body and bot facts, and history segments.
   - R-0 bumps SIM to 37; risk 0 covers version skew.
 - 2026-11-15: PvP is out of scope for now (owner). R-6 and the projection and visibility design are deferred and kept as notes; co-op multi-ship stays in scope.
+- 2026-11-15: refine (Net-3 corrections) round 1:
+  - the synchronous `checkpoint()` in the mode lifecycle;
+  - a `tick` hook, with the duel's interior and tactical ticks kept equal;
+  - mode-tagged `EndRecord`;
+  - `resolveLayout` kept as a dependency;
+  - the duel snapshot header, field manifest, regeneration, validation, continuation proof and size test;
+  - mode-aware replays;
+  - the history ring moved to R-8 with bounds and a test;
+  - risk 3 revised.
