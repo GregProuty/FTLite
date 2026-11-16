@@ -4,7 +4,7 @@
 
 **Goal:** Build Art-i sections 5-8 for the ship interior (sector ship view and duel interior): a multiply colour grade with the alert pulse and the vacuum tint, additive posterised lights, pooled code particles, impact feel (white flash, art-pixel shake, hitstop, lingering smoke, the `ftlite-feel` setting) and ambient life (console screen blink, room lamps, wall-vent steam, a drifting starfield).
 
-**Architecture:** Pure models carry every rule and are unit-tested without Pixi: `feel.ts` (setting and multipliers), `presentClock.ts` (the hitstop clock), `impactModel.ts` (hit signals, flash, shake), `gradeModel.ts` (grade and its two adapters), `lightsModel.ts` (glows, lamps, blink, stars), `particles/random.ts` + `particles/emitter.ts` (the seeded pooled emitter) and `particles/sources.ts` (every emitter's signal, the working derivations, vents). One thin Pixi composite, `interiorFeel.ts`, owns the containers, the presentation clock and the emitter for one interior; `renderer.ts` (sector) and `duel/interiorView.ts` (duel) each create one, insert its containers in the spec's order and pass each frame's signals. The old sector shake, the red impact flash, the red low-O2 tint and the breach vent-puff sprite are removed.
+**Architecture:** Pure models carry every rule and are unit-tested without Pixi: `feel.ts` (setting and multipliers), `presentClock.ts` (the hitstop clock), `impactModel.ts` (hit signals, flash, shake), `gradeModel.ts` (grade and its two adapters), `lightsModel.ts` (glows, lamps, blink, stars), `particles/random.ts` + `particles/emitter.ts` (the seeded pooled emitter) and `particles/sources.ts` (every emitter's signal, the working derivations, vents). One thin Pixi composite, `interiorFeel.ts`, owns the containers, the presentation clock and the emitter for one interior; `renderer.ts` (sector) and `duel/interiorView.ts` (duel) each create one, insert its containers in the spec's order and pass each frame's signals. The old sector shake, the red impact flash, the red low-O2 tint and the breach vent-puff sprite are removed. Task 5 first puts the console desks on the art-pixel grid (a section 4 leftover), so the screen-blink cursor sits on it. The presentation clock holds while the game is paused, and a duel restart destroys the old interior's feel with it.
 
 **Tech Stack:** Electron 37, PixiJS 8.19.0, TypeScript 5.8, vitest 3.2.7.
 
@@ -25,38 +25,42 @@
 
 ## Prototype verification
 
-Every task's code below was written and run in a scratch worktree outside the repo (`../ftlite-art-i-b-proto`, branch `art-i-b-proto`, based on master `0c194e7`, with the signalling junction), then removed:
+Every task's code below was written and run in a scratch worktree outside the repo (`../ftlite-art-i-b-proto`, branch `art-i-b-proto`, based on master `0c194e7`, with the signalling junction), then removed. The review round 1 fixes (R1-F1 to R1-F6: the breach debris during the hitstop, the non-overlapping grade cover, the art-pixel starfield, the console desks on the grid, `InteriorFeel.destroy`, the paused presentation dt) were applied to every task's code in a second scratch worktree (`../ftlite-art-i-b-fix`, branch `art-i-b-fix`, on master `753bb0c`, the same code as `0c194e7` outside `docs/`), run again and the code below replaced with what ran:
 
 | Task | Prototype-verified | Evidence |
 |---|---|---|
 | 1 feel, clock, impact model | yes | `feel` 12 passed |
-| 2 grade model | yes | `gradeModel` 8 passed |
+| 2 grade model | yes | `gradeModel` 9 passed |
 | 3 particle emitter | yes | `particles` 8 passed |
 | 4 particle sources, working, vents | yes | `particleSources` 10, `memory` 1 passed |
-| 5 lights and ambient model | yes | `lightsModel` 6 passed |
-| 6 the interior feel composite | yes | `interiorFeel` 6 passed |
-| 7 sector wiring and the feel boot | yes | `feelBoot` 2, `projectileModel` 10, `tileLayer` 4, `renderPure` 19, `duelWeaponsView` 21 passed |
-| 8 duel wiring | yes | `duelInterior` 4 passed |
-| 9 final | yes | full suite 3455 passed (baseline 3381, +74); `npx tsc -b` clean; `npm run build` ok; the four screenshots written and inspected |
+| 5 console desks on the art-pixel grid | yes | `consoleModel` 8, `console` 36, `consoleGroups` 14 passed |
+| 6 lights and ambient model | yes | `lightsModel` 6 passed |
+| 7 the interior feel composite | yes | `interiorFeel` 9 passed |
+| 8 sector wiring and the feel boot | yes | `feelBoot` 2, `projectileModel` 10, `tileLayer` 4, `renderPure` 19, `duelWeaponsView` 21, `session` 36, `onlineRenderer` 11 passed |
+| 9 duel wiring | yes | `duelInterior` 4 passed |
+| 10 final | yes | full suite 3461 passed in 244 files (baseline 3381, +80); `npx tsc -b` clean; `npm run build` ok; the four screenshots were written and inspected in the first prototype (the fixes change no screenshot setup) |
 
 ## Decisions
 
 1. **Blend modes need no import.** In `node_modules/pixi.js` 8.19.0, `lib/rendering/renderers/gl/state/mapWebGLBlendModesToPixi.mjs` maps `normal`, `add` (`ONE, ONE`), `multiply` (`DST_COLOR, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA`), `screen`, `none`, `erase`, `min`, `max` natively (the WebGPU map `GpuBlendModesToPixi.mjs` has `multiply` too). `BlendModePipe` only switches to a filter pass for names registered by the `pixi.js/advanced-blend-modes` extension. So `'multiply'` and `'add'` work with no extra import. With premultiplied alpha the multiply gives `dst × (1 − a + a × c)`, so a Graphics' `alpha` is the grade strength and its `tint` the colour. `Container.localBlendMode` defaults to `'inherit'`, so children take the container's mode unless they set their own: the `grade` container is `'multiply'` and its vacuum child sets `'normal'`; the `lights` container is `'add'`. The prototype rendered both in the Electron screenshots.
 2. **Container placement.** The four spec containers are inserted at the top level in the spec's exact orders. The pieces the spec's list does not name go inside listed containers so the top-level order stays exact: `fixtures` (screen blink and lamp fixtures, normal blend) is the last child of the console desks container; the normal particles and the white flash are the last children of `effects.above` (where the old red `impactLayer` was); the additive particles are the last child of `lights` (after the glows). Starfield: sector `app.stage.addChildAt(starfield, 0)`, so the stage reads starfield, world, enemy window, projectiles, callouts, HUD (the duel mode already hides every visible stage child, the starfield included); duel `interior.container` holds `[starfield, world]`. The starfield draws in internal pixels inside `WORLD_BAND` (sector) or `INTERIOR_BAND` (duel).
-3. **Grade model.** `gradeModel(input, t)` returns `{ ambient, alert, pulse, vacuum }` (spec section 5). `AMBIENT_STRENGTH` 0.3, `ALERT_MAX_STRENGTH` 0.35, `ALERT_PERIOD_S` 1.6, alert at `hullFraction ≤ 0.5` or any fire. `LOW_O2_THRESHOLD` 0.98 and `LOW_O2_MAX_ALPHA` 0.6 move from `effects.ts` to `gradeModel.ts`. Adapters: `sectorGradeInput(state)` = `state.hull / HULL_MAX`, `state.rooms.fire.some(f > 0)`, `state.rooms.o2[r] / state.derived.volume[r]` (exactly what `effects.ts` read); `duelGradeInput(d)` = `d.tactical.systems[CREW_SLOT].hull / SHIP_CLASSES[ship.cls].hull` (`sim/tactical/defs.ts`), fire false, `o2` empty. The grade covers floor and door tiles whole and each wall tile's floor parts and band (`gradeCover`, from `wallPicture`), never the empty half-tiles facing space, so the starfield there is untouched. Ambient and alert share one `GraphicsContext` filled white and differ by `tint` and `alpha`. The vacuum tint (role `vacuum`, normal blend, `LOW_O2_MAX_ALPHA × (1 − frac)`) replaces `effects.ts`'s `o2Layer`, which is deleted.
-4. **Presentation clock.** One `PresentClock` per interior, inside `interiorFeel.ts` (so the sector renderer and each duel interior view each have one). `advance(dt)` returns the presentation seconds (dt minus any hitstop used); `hitstop(s)` keeps the longer stop. Particles step by it (a 0 step neither emits nor moves), the shake decays by it, and on the frame the clock stops every playing `AnimatedSprite` under the view's world (fire, arcs, crew walk) is `stop()`ped and the same ones `play()`ed when it runs again. The ambient life (alert pulse, screen blink, lamp flicker, fire-light flicker, vent puffs, starfield) also runs on it, so a hitstop holds the whole picture. The sim, crew interpolation, door slides (`tiles.update` keeps the real `dt`), projectiles, the enemy window and the flash's tick count never read it.
+3. **Grade model.** `gradeModel(input, t)` returns `{ ambient, alert, pulse, vacuum }` (spec section 5). `AMBIENT_STRENGTH` 0.3, `ALERT_MAX_STRENGTH` 0.35, `ALERT_PERIOD_S` 1.6, alert at `hullFraction ≤ 0.5` or any fire. `LOW_O2_THRESHOLD` 0.98 and `LOW_O2_MAX_ALPHA` 0.6 move from `effects.ts` to `gradeModel.ts`. Adapters: `sectorGradeInput(state)` = `state.hull / HULL_MAX`, `state.rooms.fire.some(f > 0)`, `state.rooms.o2[r] / state.derived.volume[r]` (exactly what `effects.ts` read); `duelGradeInput(d)` = `d.tactical.systems[CREW_SLOT].hull / SHIP_CLASSES[ship.cls].hull` (`sim/tactical/defs.ts`), fire false, `o2` empty. The grade covers floor and door tiles whole and each wall tile's floor parts and band (`gradeCover`, from `wallPicture`), never the empty half-tiles facing space, so the starfield there is untouched. `wallPicture`'s floor quarters overlap its floor halves and its band crosses them, and a multiply painted twice darkens twice (so would the duel flash built from the same cover), so `gradeCover` paints every part onto one art-pixel mask of the whole ship and returns the mask as non-overlapping row runs, each merged downward while the rows below repeat it exactly (review R1-F2; `tests/gradeModel.test.ts` paints the cover back onto art-pixel cells and checks no cell is covered twice and the union is unchanged, on the Cutter and the Skiff). Ambient and alert share one `GraphicsContext` filled white and differ by `tint` and `alpha`. The vacuum tint (role `vacuum`, normal blend, `LOW_O2_MAX_ALPHA × (1 − frac)`) replaces `effects.ts`'s `o2Layer`, which is deleted.
+4. **Presentation clock.** One `PresentClock` per interior, inside `interiorFeel.ts` (so the sector renderer and each duel interior view each have one). `advance(dt)` returns the presentation seconds (dt minus any hitstop used); `hitstop(s)` keeps the longer stop. Particles step by it (a 0 step neither emits nor moves), the shake decays by it, and on the frame the clock stops every playing `AnimatedSprite` under the view's world (fire, arcs, crew walk) is `stop()`ped and the same ones `play()`ed when it runs again. The ambient life (alert pulse, screen blink, lamp flicker, fire-light flicker, vent puffs, starfield) also runs on it, so a hitstop holds the whole picture. The sim, crew interpolation, door slides (`tiles.update` keeps the real `dt`), projectiles, the enemy window and the flash's tick count never read it. While the game is paused the views pass a presentation dt of 0 (Decision 17), so the clock and everything on it hold.
 5. **Hit signals.** Sector: the sim stamps `rooms.impactTick[r] = state.tick` and then increments `state.tick` (`sim/debris.ts:117`, `sim/step.ts:66`), so at draw time `impactTick === tick` never holds (today's red flash computed `age = tick − impactTick ≥ 1`). `sectorHits(impactTick, tick, seen)` therefore reports the rooms whose `impactTick` changed since the last drawn frame and is at most `HIT_FRESH_TICKS` (10) old; the first frame of a run (`seen` null) reports none, so a run reset or snapshot load never replays an old impact. The renderer keeps `seen` and clears it in `reset()`. Duel: `duelHit(events) = events.some(hitsCrew)` over the frame's drained view events (`runtime.drainEvents()`, the same array `pushEvents` gets); `InteriorView.draw` gains an optional fifth parameter `events` and `duelMode.ts` passes it.
 6. **The white flash.** `FLASH_ALPHA` 0.85 in role `flash`, on for `FLASH_TICKS` 2 sim ticks counted from the tick the hit was seen (sector: the hit rooms' tiles; duel: the whole `gradeCover` at `DUEL_FLASH_SHARE` 0.5), times `feelScale().flash`. The hitstop does not extend it. It replaces the red `impactLayer` in `effects.ts`, which is deleted with `IMPACT_*`.
 7. **The shake.** `SHAKE_ART_PX` 6 decaying linearly over `SHAKE_SECONDS` 0.25 s, times `feelScale().shake`; a new hit restarts it unless a stronger one is running. The offset is `round(sin(t × 90) × a)` and `round(cos(t × 77) × a)` whole art pixels (the old wobble frequencies) times `artPx = 2 × fit.scale` (one art pixel in internal pixels). Sector: it moves the world, the projectiles container and the callouts, as before; `projectileModel.SHAKE_*` and the shake in `projectiles.ts` are deleted and `ProjectileLayer.draw` returns `void`. Duel: it moves only `interior.world`; `duelMode.ts` sets the scene's fx shake to zero while the view is `'interior'` and keeps `shakeOffset(fx)` for the Helm and Weapons views (so `fxModel.ts` and its tests are unchanged). `HITSTOP_SECONDS` 0.06 times `feelScale().hitstop`.
 8. **Lingering smoke.** 3 s (`SMOKE_SECONDS`) at `HIT_SMOKE_RATE` 6/s: sector from random tiles of each hit room; duel from one interior floor tile chosen by the particle generator (`emitter.random`) at the hit.
 9. **Feel setting plumbing.** `render/feel.ts` (pure: `FEEL_KEY`, `parseFeel`, `nextFeel`, `feelScale`, `loadFeel`/`saveFeel` with try/catch around the storage getter and the call). `app/feelBoot.ts` `installFeel(target, { storage, keys, dev, log })` sets the stored value once and, when `dev`, adds a `keydown` listener for `F9` that cycles, applies and saves it. `main.ts` calls it through `bootFeel(renderer)` right after each of the three `createRenderer` calls (app, `?mode=flight`, `?mode=duel`) with `storage: () => localStorage`, `keys: window`, `dev: import.meta.env.DEV` (how `hudModel.ts` detects dev builds; Vite sets it false in `npm run build`). `Renderer` gains `feel()` and `setFeel()`; `createInteriorView(assets, stageScale, feel)` takes the getter, which `duelMode.ts` passes as `renderer.feel`. F9 is unused elsewhere (grep).
 10. **The emitter.** `createEmitter(seed, cap = 600)`: particles in spawn order, each holding a pool slot; spawning at the cap drops the oldest (index 0) and reuses its slot; sources emit `rate × dt` through per-key carries that are dropped when a key is absent. Colour `ramp[min(len − 1, floor(age / life × len))]`; drawn corner `2 × round((p − size) / 2)`, centred. The seed is `hashString(layoutHash)` (FNV-1a) into mulberry32; the composite re-creates the emitter when the layout hash changes. `particleLayer.ts` creates all 600 `Sprite(Texture.WHITE)` up front in the normal container (so the display tree never grows: `tests/duelInterior.test.ts` checks that), moves a slot's sprite to the additive container when its particle is additive, and hides the rest. The file is `random.ts`, not `rng.ts`, because the render guard forbids a module named `rng`.
-11. **Emitters and their signals (real names).** Fire: `fireTiles(d.roomTiles[r], state.rooms.fire[r], FIRE_CAP)` per burning room, embers (additive, `fire` ramp white to red) 5/s and smoke (`vent` ramp greys) 1.5/s per tile. Sparks (additive, `electric`): `state.stations.failed[i] === 1` at `d.stationTile[i]` (sector), and each `d.points` entry whose `d.tactical.systems[0].rooms[p.tacticalRoom] > 0` at `p.tile` (duel), 8/s; they add to the `fx.arc` sprite. Venting: every `state.breaches.active[s] === 1`, from `breachFloorNeighbour(d, s)` toward `d.siteTile[s]` (the hole), 16/s. Debris: 14 particles on the frame `breaches.active[s]` goes 0 to 1 (`breachOpenings`, null on a run's first frame). Working: sector `interactTarget(state, pid).kind` in `TargetKind.Fire` (index = room), `TargetKind.Breach` (index = site), `TargetKind.Power` (index = station), with the progress fields `state.rooms.fireRepair[room]`, `state.breaches.repair[site]`, `state.stations.repair[i]` sampled into `RenderMemory.repair` (`{ last, prev }`, shifted when `state.tick` changes) and compared; duel `d.events` entries `{ kind: 'repairWork', player, room }` (cleared each tick by `stepDuelTick`, so they are the latest tick's) at the matching `d.points` tile. Foam (`vent` whites) at a fire's nearest burning tile, sparks otherwise. A working crew member's sprite is lifted 2 world units for the second half of every 0.25 s (`bobOffset`), through a new optional `bob` parameter on `CrewLayer.draw` indexed by `Owner.pid`.
+11. **Emitters and their signals (real names).** Fire: `fireTiles(d.roomTiles[r], state.rooms.fire[r], FIRE_CAP)` per burning room, embers (additive, `fire` ramp white to red) 5/s and smoke (`vent` ramp greys) 1.5/s per tile. Sparks (additive, `electric`): `state.stations.failed[i] === 1` at `d.stationTile[i]` (sector), and each `d.points` entry whose `d.tactical.systems[0].rooms[p.tacticalRoom] > 0` at `p.tile` (duel), 8/s; they add to the `fx.arc` sprite. Venting: every `state.breaches.active[s] === 1`, from `breachFloorNeighbour(d, s)` toward `d.siteTile[s]` (the hole), 16/s. Debris: 14 particles on the frame `breaches.active[s]` goes 0 to 1 (`breachOpenings`, null on a run's first frame), spawned whatever that frame's presentation dt: the hit that opens a breach starts the hitstop on the same frame, so its pdt is 0, and `emitter.step(0)` neither ages nor moves them, so the debris holds through the hitstop and then flies (review R1-F1). Working: sector `interactTarget(state, pid).kind` in `TargetKind.Fire` (index = room), `TargetKind.Breach` (index = site), `TargetKind.Power` (index = station), with the progress fields `state.rooms.fireRepair[room]`, `state.breaches.repair[site]`, `state.stations.repair[i]` sampled into `RenderMemory.repair` (`{ last, prev }`, shifted when `state.tick` changes) and compared; duel `d.events` entries `{ kind: 'repairWork', player, room }` (cleared each tick by `stepDuelTick`, so they are the latest tick's) at the matching `d.points` tile. Foam (`vent` whites) at a fire's nearest burning tile, sparks otherwise. A working crew member's sprite is lifted 2 world units for the second half of every 0.25 s (`bobOffset`), through a new optional `bob` parameter on `CrewLayer.draw` indexed by `Owner.pid`.
 12. **Decision 18 (g) of Art-i-a: the vent-puff sprite is replaced.** The rotated `vent.puff` AnimatedSprite per breach is deleted from `effects.ts`; a breach now shows its decal (or fallback square), damaged floor, the venting stream and the opening debris. The `vent.puff` manifest entry and the `vent` feature in `FEATURE_NAMES` stay (credits and the manifest tests are unchanged; nothing draws it), and `hazardTiles.ventRotation` stays (still tested in `renderPure`). The open-airlock oxygen specks (`ventParticles`) are unchanged. Decision 18 (f) (the old whole-internal-pixel shake) is replaced by Decision 7.
 13. **Lights.** `glowRuns(radius)` makes a posterised disc of art pixels in 3 alpha steps (0.14, 0.26, 0.42) by distance third, merged into row runs; each kind is one shared white `GraphicsContext` (radius 5 art px console, 8 fire, 4 lamp), each light a `Graphics` on it with `tint` and `alpha`. Console: `consoles(state)` (one per desk), tint `screenA`, alpha 0.5 free, 0.85 occupied, 0 down. Fire: tint `RAMP.fire[2]`, alpha stepping 0.45/0.6/0.75 ten times a second per tile. Lamp: tint `lampOn` alpha 0.9 in alert; else `lampOff` alpha 0.55, dark while its flicker schedule says so.
-14. **Ambient.** Screen blink: the spec's "screens blink between `screenA` and `screenB`" would erase the console state colours (amber free, dim amber occupied, red down, spec Demo-xii), so a 2 × 1 art-pixel readout cursor on each powered console's screen blinks between `screenA` and `screenB` at 1-2 Hz (rate and phase from `hash2(seed, station)`), and a down console does not blink. Lamps: on each room's top-left floor tile (`min(roomTiles[r])`), `LAMP_OFFSET` 6 world units in, a 2 × 2 art-pixel fixture (`lampOn`, `lampOff`, or `wallShadow` while flickered dark) plus its glow; the flicker period is 3-7 s with 0.14 s dark in two drops. Vents: wall tiles with a floor 4-neighbour where `hashU32(hashString(layoutHash), tile) % 8 === 0`; the puff leaves the wall band's floor-side edge (tile centre ± 6) toward the first floor neighbour in up, left, right, down order; one puff of 7 particles every 4-8 s per vent. Starfield: 48 far and 20 near stars, 2 internal pixels square (one art pixel at world scale 1) on even internal pixels, drifting left at 8 and 20 internal px/s (4 and 10 art px/s at 2 px per art pixel) and wrapping inside the band; colours `RAMP.vent[3]` (far) and `RAMP.vent[1]` (near).
+14. **Ambient.** Screen blink: the spec's "screens blink between `screenA` and `screenB`" would erase the console state colours (amber free, dim amber occupied, red down, spec Demo-xii), so a 2 × 1 art-pixel readout cursor on each powered console's screen blinks between `screenA` and `screenB` at 1-2 Hz (rate and phase from `hash2(seed, station)`), and a down console does not blink. The cursor sits one art pixel in from the screen's start and inside the screen, which Task 5 puts on the art-pixel grid first (Decision 19). Lamps: on each room's top-left floor tile (`min(roomTiles[r])`), `LAMP_OFFSET` 6 world units in, a 2 × 2 art-pixel fixture (`lampOn`, `lampOff`, or `wallShadow` while flickered dark) plus its glow; the flicker period is 3-7 s with 0.14 s dark in two drops. Vents: wall tiles with a floor 4-neighbour where `hashU32(hashString(layoutHash), tile) % 8 === 0`; the puff leaves the wall band's floor-side edge (tile centre ± 6) toward the first floor neighbour in up, left, right, down order; one puff of 7 particles every 4-8 s per vent. Starfield: 48 far and 20 near stars, one art pixel square, drifting left at 4 and 10 art px/s and wrapping inside the band; colours `RAMP.vent[3]` (far) and `RAMP.vent[1]` (near). The starfield draws in internal pixels, where one art pixel of the ship is `frame.artPx` = 2 × `fit.scale` (whole screen pixels, from Art-i-a's snapped fit), so `stars(seed, band, t, artPx)` makes each star `artPx` square at whole multiples of `artPx` from the band's corner and moves the layers at 4 × and 10 × `artPx` per second (review R1-F3).
 15. **Screenshots** reuse the Art-i-a harness approach (Art-i-a Decisions 16-17: a gitignored Vite page in `.art/shots/`, Electron via the `SHOT` environment variable, `about:blank` loaded before the viewport is emulated) with two changes: the page sets up the four looks (duel normal; duel alert = crew hull at 40 % plus Engines damaged; sector Skiff alert = hull 40 plus a fire; sector Skiff vacuum = breach site 0 open with its room at 25 % oxygen), and the server uses port **5299**, because during planning port 5199 was still held by a leftover Art-i-a harness Vite process started from `.worktrees/art-i-a` (left running; not this plan's to stop).
-16. **Test count.** New tests: `feel` 12, `feelBoot` 2, `gradeModel` 8, `particles` 8, `particleSources` 10, `lightsModel` 6, `interiorFeel` 6, `duelInterior` +1, `artGuards` +21 (2 per new render file × 10, 1 for `app/feelBoot.ts`): **+74**.
+16. **Test count.** New tests: `feel` 12, `feelBoot` 2, `gradeModel` 9, `particles` 8, `particleSources` 10, `lightsModel` 6, `interiorFeel` 9, `consoleModel` +1 (7 to 8), `session` +1 (35 to 36), `duelInterior` +1, `artGuards` +21 (2 per new render file × 10, 1 for `app/feelBoot.ts`): **+80**. New test files: 7 (the suite goes from 237 to 244 files).
+17. **Paused presentation (review R1-F6).** The presentation clock must not run while the game is paused (particles, the alert pulse, the lamp flicker, the blink and the starfield would carry on over a paused ship). Duel: `InteriorView.draw` gains a sixth parameter `presentDt` (default `dt`) that only the interior feel reads, and `duelMode.ts` passes `runtime.paused() ? 0 : dt` (the same rule `stepFx` already uses); the tiles and boarders keep the real `dt`. Sector: the session already knows its phase, so `Renderer.draw` gains an optional sixth parameter `paused` (default `false`) and the feel gets `paused ? 0 : dt`; `app/session.ts` passes `phase === 'paused'` (with `undefined` for the presentation points it never passed), `app/onlineSession.ts` passes its own `phase === 'paused'` (from the publication's phase), and the `SessionDeps.renderer.draw` type gains the parameter. This is a renderer-side signature only: no sim, command, snapshot or network contract changes (`src/network` is untouched). The door slides, projectiles and the enemy window keep the real `dt` while paused, as today. A zero dt is not a hitstop: `AnimatedSprite`s (fire, arcs) keep playing while paused, as they do today.
+18. **Destroying an interior feel (review R1-F5).** `InteriorFeel.destroy()` destroys every Graphics the feel made with no options (so each one's own context goes too: a parent's `destroy({ children: true })` passes options, and Pixi 8.19's `Graphics.destroy` then leaves an owned context; it never destroys a context it was given), then the four shared `GraphicsContext`s (the cover and the console, fire and lamp glows). `InteriorView.destroy` calls `fx.destroy()` before `container.destroy({ children: true })`, so a duel restart (which destroys the interior view and builds a new one) frees them. The sector renderer builds its one feel at boot and never replaces it; a layout change (a new ship) clears and refills the same cover context and destroys and rebuilds only the glow Graphics on the shared glow contexts, so nothing leaks there (`tests/interiorFeel.test.ts` checks a layout change leaves exactly the new layout's glows, and that `destroy` frees the shared contexts). `Renderer` has no destroy, so the sector feel needs none.
+19. **Console desks on the art-pixel grid (review R1-F4).** Art-i-a's grid work did not cover `consoleModel.ts` (`DESK_W` was `round(19.2)` = 19, `SCREEN_D` 3, the outline 1 wide), so the cursor (Decision 14) could not sit on the grid inside the screen. Task 5 sets `DESK_W` 20, `DESK_D` 10 (unchanged), `SCREEN_D` 2, `SCREEN_INSET` 2 and `DESK_OUTLINE_W` 2 (drawn with alignment 1, inside the desk) before the cursor task; `WALL_GAP` stays 10. Every desk, screen and outline band of every side and flush case is then on the grid (`tests/consoleModel.test.ts`).
 
 ## File Structure
 
@@ -74,15 +78,17 @@ Every task's code below was written and run in a scratch worktree outside the re
 | `src/renderer/src/render/interiorFeel.ts` | create | The per-interior composite (Pixi). |
 | `src/renderer/src/app/feelBoot.ts` | create | Boot read and the F9 dev cycle. |
 | `src/renderer/src/render/memory.ts` | modify (rewrite) | `repair` watch in RenderMemory. |
+| `src/renderer/src/render/consoleModel.ts`, `consoleLayer.ts` | modify | Desks, screens and the outline on the art-pixel grid (Decision 19). |
+| `src/renderer/src/app/session.ts`, `app/onlineSession.ts` | modify | Pass the paused phase to `Renderer.draw` (Decision 17). |
 | `src/renderer/src/render/projectileModel.ts`, `projectiles.ts` | modify | Old shake removed. |
 | `src/renderer/src/render/effects.ts` | modify (rewrite) | o2Layer, impactLayer and vent puffs removed. |
 | `src/renderer/src/render/crewSprites.ts` | modify | `bob` parameter. |
-| `src/renderer/src/render/renderer.ts` | modify (rewrite) | Sector wiring, `feel()`/`setFeel()`. |
+| `src/renderer/src/render/renderer.ts` | modify (rewrite) | Sector wiring, `feel()`/`setFeel()`, the `paused` draw parameter. |
 | `src/renderer/src/main.ts` | modify | `bootFeel` after each `createRenderer`. |
-| `src/renderer/src/render/duel/interiorView.ts` | modify (rewrite) | Duel wiring, `events` and `feel` parameters. |
-| `src/renderer/src/app/duel/duelMode.ts` | modify | Passes events and the feel; scene shake only outside the interior. |
+| `src/renderer/src/render/duel/interiorView.ts` | modify (rewrite) | Duel wiring, `events`, `presentDt` and `feel` parameters; destroys its feel. |
+| `src/renderer/src/app/duel/duelMode.ts` | modify | Passes events, the paused presentation dt and the feel; scene shake only outside the interior. |
 | `tests/feel.test.ts`, `tests/gradeModel.test.ts`, `tests/particles.test.ts`, `tests/particleSources.test.ts`, `tests/lightsModel.test.ts`, `tests/interiorFeel.test.ts`, `tests/feelBoot.test.ts` | create | New tests. |
-| `tests/projectileModel.test.ts`, `tests/duelInterior.test.ts` | modify | Old shake constants dropped; duel order and hit test. |
+| `tests/projectileModel.test.ts`, `tests/duelInterior.test.ts`, `tests/consoleModel.test.ts`, `tests/session.test.ts` | modify | Old shake constants dropped; duel order and hit test; desk grid numbers and the grid test; the paused draw flag. |
 
 ---
 
@@ -108,7 +114,7 @@ Expected: `✓ built in ...` and no error.
 - [ ] **Step 0.3: Record the baseline**
 
 Run (with no other build or test run going on the machine): `npx vitest run 2>&1 | tail -5`
-Expected: `Test Files 237 passed (237)` and `Tests 3381 passed (3381)` on master `0c194e7` (adjust if master moved). Write down the total. **0 failed is required.** If anything fails, stop and report it before Task 1; it is not a flake. (On the planning machine a run made while `npm run build` and another session's tests were running hit five 5 s timeouts in `authorityBoundary`, `director`, `run` and `snapshot`; the same files passed alone and the full suite passed on an idle machine. Run the baseline on an idle machine.)
+Expected: `Test Files 237 passed (237)` and `Tests 3381 passed (3381)` on master `0c194e7` and on `753bb0c` (which changes only `docs/`; adjust if master moved). Write down the total. **0 failed is required.** If anything fails, stop and report it before Task 1; it is not a flake. (On the planning machine a run made while `npm run build` and another session's tests were running hit five 5 s timeouts in `authorityBoundary`, `director`, `run` and `snapshot`; the same files passed alone and the full suite passed on an idle machine. Run the baseline on an idle machine.)
 
 ---
 
@@ -436,6 +442,7 @@ git commit -m "feat(art-i-b): feel setting, presentation clock and impact model"
 ```ts
 import { describe, it, expect } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { SHIP_CLASSES } from '../src/renderer/src/sim/tactical/defs';
@@ -444,7 +451,9 @@ import { TILE_PX } from '../src/shared/resolution';
 import {
   ALERT_MAX_STRENGTH, AMBIENT_STRENGTH, alertStrength, cellAt, duelGradeInput, gradeCover, gradeModel, LAMP_OFFSET, lampPoints, LOW_O2_MAX_ALPHA, LOW_O2_THRESHOLD, sectorGradeInput
 } from '../src/renderer/src/render/gradeModel';
+import { wallPicture } from '../src/renderer/src/render/wallModel';
 import { cutterState } from './helpers/sim';
+import { createSimState } from './helpers/simLifetime';
 import { onGrid } from './helpers/artGrid';
 
 const calm = { hullFraction: 1, fire: false, o2: [1, 1, 1] };
@@ -496,13 +505,33 @@ describe('the grade adapters (Art-i spec section 5)', () => {
 });
 
 describe('what the grade covers and where the lamps sit (Art-i spec sections 5 and 8)', () => {
-  it('covers floor and door tiles whole and wall tiles by their floor parts and band, on the art-pixel grid', () => {
+  it('the cover is on the art-pixel grid and merged into fewer rectangles than open tiles; off the map is space', () => {
     const s = cutterState(), rows = s.layout.rows, cover = gradeCover(rows, s.derived.width, s.derived.height);
     for (const r of cover) expect(onGrid(r), JSON.stringify(r)).toBe(true);
     let open = 0;
     for (let y = 0; y < s.derived.height; y++) for (let x = 0; x < s.derived.width; x++) { const c = cellAt(rows, x, y); if (c === 'floor' || c === 'door') open++; }
-    expect(cover.filter((r) => r.w === TILE_PX && r.h === TILE_PX).length).toBeGreaterThanOrEqual(open);
+    expect(cover.length).toBeLessThan(open);                                // runs merge across tiles and down rows
     expect(cellAt(rows, -1, 0)).toBe('space');
+  });
+  it('covers each art pixel at most once: exactly the floor and door tiles and each wall tile\'s floor parts and band', () => {
+    for (const ship of [cutter, skiff]) {
+      const s = createSimState(parseShip(ship), 2, 1), rows = s.layout.rows, { width, height } = s.derived;
+      const paint = (x: number, y: number, w: number, h: number, into: Map<string, number>): void => {
+        for (let j = y; j < y + h; j += 2) for (let i = x; i < x + w; i += 2) into.set(`${i},${j}`, (into.get(`${i},${j}`) ?? 0) + 1);
+      };
+      const got = new Map<string, number>();
+      for (const r of gradeCover(rows, width, height)) paint(r.x, r.y, r.w, r.h, got);
+      expect([...got.values()].every((n) => n === 1)).toBe(true);             // no art pixel painted twice
+      const want = new Map<string, number>(), c = (x: number, y: number) => cellAt(rows, x, y);
+      for (let ty = 0; ty < height; ty++) for (let tx = 0; tx < width; tx++) {
+        const k = c(tx, ty), x = tx * TILE_PX, y = ty * TILE_PX;
+        if (k === 'floor' || k === 'door') paint(x, y, TILE_PX, TILE_PX, want);
+        if (k !== 'wall') continue;
+        const p = wallPicture(c(tx, ty - 1), c(tx + 1, ty), c(tx, ty + 1), c(tx - 1, ty), c(tx + 1, ty - 1), c(tx + 1, ty + 1), c(tx - 1, ty + 1), c(tx - 1, ty - 1));
+        for (const r of [...p.floor, ...p.band]) paint(x + r.x, y + r.y, r.w, r.h, want);
+      }
+      expect([...got.keys()].sort()).toEqual([...want.keys()].sort());         // the same union as the wall picture's parts
+    }
   });
   it('a lamp per room on its top-left floor tile, a fixed art-pixel offset in', () => {
     const s = cutterState(), d = s.derived, lamps = lampPoints(d.roomTiles, d.width);
@@ -581,16 +610,42 @@ export function cellAt(rows: readonly string[], x: number, y: number): Cell {
   return c === '' || c === ' ' ? 'space' : c === '#' ? 'wall' : c === '+' ? 'door' : 'floor';
 }
 
+/** World units per art pixel (TILE_PX 32 shows 16 px art at 2x). */
+const ART = 2;
+
 /** What the grade covers, in ship world units: every floor and door tile whole, and each wall tile's floor parts and
- *  band (never the empty halves that face space, so the starfield there stays untinted). */
+ *  band (never the empty halves that face space, so the starfield there stays untinted). The rectangles never overlap:
+ *  wallPicture's floor quarters overlap its halves and its band crosses them, and a multiply (or the duel flash drawn
+ *  from this cover) painted twice would darken twice. So every part is painted onto an art-pixel mask of the whole
+ *  ship and the mask is read back as row runs, a run merged downward while the rows below repeat it exactly. */
 export function gradeCover(rows: readonly string[], width: number, height: number): DoorRect[] {
-  const out: DoorRect[] = [], c = (x: number, y: number): Cell => cellAt(rows, x, y);
+  const c = (x: number, y: number): Cell => cellAt(rows, x, y), per = TILE_PX / ART, W = width * per, H = height * per;
+  const mask = new Uint8Array(W * H);
+  const paint = (x: number, y: number, w: number, h: number): void => {
+    for (let j = y / ART; j < (y + h) / ART; j++) mask.fill(1, j * W + x / ART, j * W + (x + w) / ART);
+  };
   for (let ty = 0; ty < height; ty++) for (let tx = 0; tx < width; tx++) {
     const k = c(tx, ty), x = tx * TILE_PX, y = ty * TILE_PX;
     if (k === 'space') continue;
-    if (k !== 'wall') { out.push({ x, y, w: TILE_PX, h: TILE_PX }); continue; }
+    if (k !== 'wall') { paint(x, y, TILE_PX, TILE_PX); continue; }
     const p = wallPicture(c(tx, ty - 1), c(tx + 1, ty), c(tx, ty + 1), c(tx - 1, ty), c(tx + 1, ty - 1), c(tx + 1, ty + 1), c(tx - 1, ty + 1), c(tx - 1, ty - 1));
-    for (const r of [...p.floor, ...p.band]) out.push({ x: x + r.x, y: y + r.y, w: r.w, h: r.h });
+    for (const r of [...p.floor, ...p.band]) paint(x + r.x, y + r.y, r.w, r.h);
+  }
+  const out: DoorRect[] = [];
+  let open = new Map<number, DoorRect>();   // the runs of the row above, by start * W + end: a run that repeats grows down
+  for (let j = 0; j < H; j++) {
+    const next = new Map<number, DoorRect>();
+    for (let i = 0; i < W; ) {
+      if (!mask[j * W + i]) { i++; continue; }
+      let e = i;
+      while (e < W && mask[j * W + e]) e++;
+      const key = i * W + e, above = open.get(key);
+      if (above) above.h += ART;
+      else out.push({ x: i * ART, y: j * ART, w: (e - i) * ART, h: ART });
+      next.set(key, above ?? out[out.length - 1]!);
+      i = e;
+    }
+    open = next;
   }
   return out;
 }
@@ -608,12 +663,12 @@ export function lampPoints(roomTiles: readonly (readonly number[])[], width: num
 }
 ```
 
-(`effects.ts` still exports its own `LOW_O2_THRESHOLD` and `LOW_O2_MAX_ALPHA` until Task 7 deletes them; the values are the same.)
+(`effects.ts` still exports its own `LOW_O2_THRESHOLD` and `LOW_O2_MAX_ALPHA` until Task 8 deletes them; the values are the same.)
 
 - [ ] **Step 4: Run the tests**
 
 Run: `npx vitest run tests/gradeModel.test.ts tests/artGuards.test.ts`
-Expected: PASS, `gradeModel` 8 tests; `artGuards` gains 2.
+Expected: PASS, `gradeModel` 9 tests; `artGuards` gains 2.
 
 - [ ] **Step 5: Commit**
 
@@ -1288,15 +1343,153 @@ git commit -m "feat(art-i-b): particle sources, working-crew derivations and wal
 
 ---
 
-### Task 5: Lights and ambient model
+### Task 5: Console desks on the art-pixel grid
+
+**Files:**
+- Modify: `src/renderer/src/render/consoleModel.ts`
+- Modify: `src/renderer/src/render/consoleLayer.ts`
+- Test: `tests/consoleModel.test.ts` (modify)
+
+**Interfaces:**
+- Consumes: `onGrid`, `strokeBand` (`tests/helpers/artGrid.ts`, Art-i-a).
+- Produces: `DESK_W = 20`, `DESK_D = 10`, `SCREEN_D = 2`, `SCREEN_INSET = 2`, `DESK_OUTLINE_W = 2` (new export) in `consoleModel.ts`; `deskPicture` unchanged in shape, its desk and screen now on the art-pixel grid for every side and flush case (Decision 19). `WALL_GAP` stays 10. Task 6's `screenCursor` relies on the screen being on the grid and one art pixel deep.
+
+- [ ] **Step 1: Write the failing test** — in `tests/consoleModel.test.ts`, replace the import line
+
+```ts
+import { consoleLook, consoleSide, deskPicture, consoles, DESK_FILL, DESK_OUTLINE, DESK_W, DESK_D, SCREEN_LIT, SCREEN_DIM, SCREEN_DOWN, WALL_GAP } from '../src/renderer/src/render/consoleModel';
+```
+
+with
+
+```ts
+import { consoleLook, consoleSide, deskPicture, consoles, DESK_FILL, DESK_OUTLINE, DESK_OUTLINE_W, DESK_W, DESK_D, SCREEN_D, SCREEN_LIT, SCREEN_DIM, SCREEN_DOWN, WALL_GAP, type Side } from '../src/renderer/src/render/consoleModel';
+```
+
+after `import { cutterState, RECRUITS } from './helpers/sim';` add
+
+```ts
+import { onGrid, strokeBand } from './helpers/artGrid';
+```
+
+and replace the first test (it pinned the old, off-grid `Math.round(0.6 * TILE_PX)` = 19)
+
+```ts
+  it('a desk about 0.6 tile wide and 0.3 deep, dark with a dark outline', () => {
+    expect(DESK_W).toBe(Math.round(0.6 * TILE_PX)); expect(DESK_D).toBe(Math.round(0.3 * TILE_PX));
+    expect(DESK_FILL).toBe(0x2b3647); expect(DESK_OUTLINE).toBe(0x1b1b1b);
+  });
+```
+
+with
+
+```ts
+  it('a desk about 0.6 tile wide and 0.3 deep in whole art pixels, dark with a dark outline', () => {
+    expect([DESK_W, DESK_D, SCREEN_D, DESK_OUTLINE_W]).toEqual([20, 10, 2, 2]);   // 10 x 5 art pixels, a one-art-pixel screen and outline (Art-i spec section 4)
+    expect(Math.abs(DESK_W / TILE_PX - 0.6)).toBeLessThan(0.05); expect(Math.abs(DESK_D / TILE_PX - 0.3)).toBeLessThan(0.05);
+    expect(DESK_FILL).toBe(0x2b3647); expect(DESK_OUTLINE).toBe(0x1b1b1b);
+  });
+  it('every desk and screen is on the art-pixel grid, the outline band too, and the screen sits inside the outline (Art-i spec section 4)', () => {
+    for (const side of ['n', 'e', 's', 'w'] as Side[]) for (const flush of [true, false]) {
+      const p = deskPicture(side, flush, 'free'), at = `${side} ${flush}`;
+      expect(onGrid(p.desk), `${at} desk ${JSON.stringify(p.desk)}`).toBe(true);
+      expect(onGrid(p.screen), `${at} screen ${JSON.stringify(p.screen)}`).toBe(true);
+      const band = strokeBand(p.desk, DESK_OUTLINE_W, 1);
+      expect(onGrid(band.outer) && onGrid(band.inner), at).toBe(true);
+      expect(band.outer).toEqual(p.desk);                                       // alignment 1: painted inside the desk
+      const s = p.screen, i = band.inner;
+      expect(s.x >= i.x && s.y >= i.y && s.x + s.w <= i.x + i.w && s.y + s.h <= i.y + i.h, at).toBe(true);
+      expect(Math.min(s.w, s.h)).toBe(SCREEN_D);
+    }
+  });
+```
+
+(The other `consoleModel` tests stay: the north desk at `x: (TILE_PX - DESK_W) / 2 | 0` = 6, `y: -WALL_GAP`, the south and east desks reaching `TILE_PX + WALL_GAP`, the west desk at `x: 0`, all still hold.)
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `npx vitest run tests/consoleModel.test.ts`
+Expected: FAIL in 2 tests: `expected [ 19, 10, 3, undefined ] to deeply equal [ 20, 10, 2, 2 ]` and `n true desk {"x":6,"y":-10,"w":19,"h":10}: expected false to be true`; the other 6 pass.
+
+- [ ] **Step 3: Put the desk on the grid in `src/renderer/src/render/consoleModel.ts`** (three edits)
+
+Replace
+
+```ts
+export const DESK_W = Math.round(0.6 * T), DESK_D = Math.round(0.3 * T), SCREEN_D = 3;
+```
+
+with
+
+```ts
+/** Whole art pixels (Art-i spec section 4: 2 world units each, even offsets): a desk 10 x 5 art pixels (about 0.6 x 0.3
+ *  tile), a screen one art pixel deep, inset one art pixel, and a one-art-pixel outline drawn inside the desk. */
+export const DESK_W = 20, DESK_D = 10, SCREEN_D = 2, SCREEN_INSET = 2, DESK_OUTLINE_W = 2;
+```
+
+Replace
+
+```ts
+  const x = Math.floor((T - DESK_W) / 2), y = flush ? -WALL_GAP : 0;
+```
+
+with
+
+```ts
+  const x = (T - DESK_W) / 2, y = flush ? -WALL_GAP : 0;   // 6 and -10 (or 0): even, so the desk is on the art-pixel grid
+```
+
+Replace
+
+```ts
+  const screen: DoorRect = { x: x + 2, y: y + 2, w: DESK_W - 4, h: SCREEN_D };   // drawn for the north side, then turned
+```
+
+with
+
+```ts
+  const screen: DoorRect = { x: x + SCREEN_INSET, y: y + SCREEN_INSET, w: DESK_W - 2 * SCREEN_INSET, h: SCREEN_D };   // drawn for the north side, then turned
+```
+
+- [ ] **Step 4: Draw the outline one art pixel wide in `src/renderer/src/render/consoleLayer.ts`** (two edits)
+
+Replace `import { consoles } from './consoleModel';` with `import { consoles, DESK_OUTLINE_W } from './consoleModel';`.
+
+Replace
+
+```ts
+        g.rect(c.x + p.desk.x, c.y + p.desk.y, p.desk.w, p.desk.h).fill(p.fill).stroke({ width: 1, color: p.outline, alignment: 1 });
+```
+
+with
+
+```ts
+        g.rect(c.x + p.desk.x, c.y + p.desk.y, p.desk.w, p.desk.h).fill(p.fill).stroke({ width: DESK_OUTLINE_W, color: p.outline, alignment: 1 });   // one art pixel, inside the desk (Art-i spec section 4)
+```
+
+- [ ] **Step 5: Run the tests and types**
+
+Run: `npx vitest run tests/consoleModel.test.ts tests/console.test.ts tests/consoleGroups.test.ts tests/artGuards.test.ts && npx tsc -b; echo "tsc exit=$?"`
+Expected: PASS, `consoleModel` 8, `console` 36, `consoleGroups` 14; `artGuards` unchanged (no new file); `tsc exit=0`. `grep -rn "DESK_W\|DESK_D\|SCREEN_D" src tests --include=*.ts` shows only `consoleModel.ts` and `tests/consoleModel.test.ts` (nothing else pinned the old sizes).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/renderer/src/render/consoleModel.ts src/renderer/src/render/consoleLayer.ts tests/consoleModel.test.ts
+git commit -m "fix(art-i-b): console desks, screens and outline on the art-pixel grid" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 6: Lights and ambient model
 
 **Files:**
 - Create: `src/renderer/src/render/lightsModel.ts`
 - Test: `tests/lightsModel.test.ts` (create)
 
 **Interfaces:**
-- Consumes: Task 3 `hash2`; `DoorRect`; `Band` (`render/worldFit.ts`).
-- Produces: `interface GlowRun extends DoorRect { alpha: number }`; `GLOW_STEPS = [0.14, 0.26, 0.42]`; `glowRuns(radius): GlowRun[]`; `CONSOLE_GLOW`, `FIRE_GLOW`, `LAMP_ALERT = 0.9`, `LAMP_CALM = 0.55`; `consoleGlow(look: 'free' | 'occupied' | 'down'): number`; `fireGlow(seed, tile, t): number`; `lampLit(seed, room, t): boolean`; `lampLight(alert, lit): { on: boolean; alpha: number }`; `screenPhase(seed, station, t): 'A' | 'B'`; `screenCursor(x, y, screen: DoorRect): DoorRect`; `STAR_LAYERS`; `interface Star { x; y; layer }`; `stars(seed, band: Band, t): Star[]`.
+- Consumes: Task 3 `hash2`; `DoorRect`; `Band` (`render/worldFit.ts`); Task 5 `deskPicture` and `Side` (`render/consoleModel.ts`, tests only: the cursor is checked on every desk's screen).
+- Produces: `interface GlowRun extends DoorRect { alpha: number }`; `GLOW_STEPS = [0.14, 0.26, 0.42]`; `glowRuns(radius): GlowRun[]`; `CONSOLE_GLOW`, `FIRE_GLOW`, `LAMP_ALERT = 0.9`, `LAMP_CALM = 0.55`; `consoleGlow(look: 'free' | 'occupied' | 'down'): number`; `fireGlow(seed, tile, t): number`; `lampLit(seed, room, t): boolean`; `lampLight(alert, lit): { on: boolean; alpha: number }`; `screenPhase(seed, station, t): 'A' | 'B'`; `screenCursor(x, y, screen: DoorRect): DoorRect` (`screen` on the art-pixel grid, Task 5); `STAR_LAYERS` (speeds in art px/s); `interface Star { x; y; layer }`; `stars(seed, band: Band, t, artPx): Star[]`.
 
 - [ ] **Step 1: Write the failing test** — create `tests/lightsModel.test.ts`:
 
@@ -1307,6 +1500,7 @@ import {
 } from '../src/renderer/src/render/lightsModel';
 import { WORLD_BAND } from '../src/renderer/src/render/worldFit';
 import { INTERIOR_BAND } from '../src/renderer/src/render/duel/interiorModel';
+import { deskPicture, type Side } from '../src/renderer/src/render/consoleModel';
 import { onGrid } from './helpers/artGrid';
 
 describe('posterised glows (Art-i spec section 5)', () => {
@@ -1348,24 +1542,27 @@ describe('lamps, screens and stars (Art-i spec section 8)', () => {
       expect(flips).toBeGreaterThanOrEqual(19); expect(flips).toBeLessThanOrEqual(41);   // 2 flips a cycle, 1 to 2 cycles a second, 10 s
     }
   });
-  it('the screen cursor is 2 x 1 art pixels on the grid, inside the screen strip', () => {
-    for (const s of [{ x: 8, y: -8, w: 15, h: 3 }, { x: 23, y: 8, w: 3, h: 15 }, { x: 8, y: 27, w: 15, h: 3 }]) {
-      const c = screenCursor(64, 96, s);
+  it('the screen cursor is 2 x 1 art pixels on the grid, inside the screen of every desk', () => {
+    for (const side of ['n', 'e', 's', 'w'] as Side[]) for (const flush of [true, false]) {
+      const s = deskPicture(side, flush, 'free').screen, c = screenCursor(64, 96, s);
       expect(onGrid(c), JSON.stringify(c)).toBe(true);
-      expect(c.x >= 64 + s.x && c.x + c.w <= 64 + s.x + s.w + 1).toBe(true);
+      expect(c.w * c.h).toBe(8);
+      expect(c.x >= 64 + s.x && c.x + c.w <= 64 + s.x + s.w && c.y >= 96 + s.y && c.y + c.h <= 96 + s.y + s.h, `${side} ${flush} ${JSON.stringify(c)}`).toBe(true);
     }
   });
-  it('the starfield: two layers drifting left at 4 and 10 art px/s, one art pixel, inside the band, on even pixels', () => {
-    expect(STAR_LAYERS.map((l) => l.speed / 2)).toEqual([4, 10]);
-    for (const band of [WORLD_BAND, INTERIOR_BAND]) {
-      for (const t of [0, 1.3, 17.77]) for (const s of stars(3, band, t)) {
-        expect(s.x >= band.x && s.x + 2 <= band.x + band.w && s.y >= band.y && s.y + 2 <= band.y + band.h).toBe(true);
-        expect(s.x % 2 === 0 && s.y % 2 === 0).toBe(true);
+  it('the starfield: two layers drifting left at 4 and 10 art px/s, one art pixel, inside the band, on whole art pixels', () => {
+    expect(STAR_LAYERS.map((l) => l.speed)).toEqual([4, 10]);
+    const whole = (v: number): boolean => Math.abs(v - Math.round(v)) < 1e-9;
+    for (const artPx of [2, 4 / 3, 1.31, 1]) for (const band of [WORLD_BAND, INTERIOR_BAND]) {
+      for (const t of [0, 1.3, 17.77]) for (const s of stars(3, band, t, artPx)) {
+        expect(s.x >= band.x && s.x + artPx <= band.x + band.w + 1e-9 && s.y >= band.y && s.y + artPx <= band.y + band.h + 1e-9).toBe(true);
+        expect(whole((s.x - band.x) / artPx) && whole((s.y - band.y) / artPx), `${artPx} ${JSON.stringify(s)}`).toBe(true);
       }
+      const a = stars(3, band, 10, artPx), b = stars(3, band, 11, artPx);
+      const moved = a.map((s, k) => ({ layer: s.layer, dx: s.x - b[k]!.x, dy: s.y - b[k]!.y })).filter((m) => Math.abs(m.dx) < band.w / 2);
+      expect(moved.length).toBeGreaterThan(60);
+      for (const m of moved) { expect(m.dy).toBe(0); expect(Math.abs(m.dx - STAR_LAYERS[m.layer]!.speed * artPx)).toBeLessThanOrEqual(artPx + 1e-9); }
     }
-    const a = stars(3, WORLD_BAND, 10), b = stars(3, WORLD_BAND, 11);
-    const moved = a.map((s, k) => ({ layer: s.layer, dx: s.x - b[k]!.x, dy: s.y - b[k]!.y })).filter((m) => Math.abs(m.dx) < 100);
-    for (const m of moved) { expect(m.dy).toBe(0); expect(Math.abs(m.dx - STAR_LAYERS[m.layer]!.speed)).toBeLessThanOrEqual(2); }
   });
 });
 ```
@@ -1438,24 +1635,27 @@ export function screenPhase(seed: number, station: number, t: number): 'A' | 'B'
   return Math.floor((t * hz + phase) * 2) % 2 === 0 ? 'A' : 'B';
 }
 
-/** The blinking readout on a console screen: 2 x 1 art pixels (1 x 2 on a side wall) at the screen's first even
- *  corner, in ship world units. `screen` is tile-local (consoleModel's deskPicture), `x`/`y` the tile's origin. */
+/** The blinking readout on a console screen: 2 x 1 art pixels (1 x 2 on a side wall), one art pixel in from the
+ *  screen's start, in ship world units. `screen` is tile-local and on the art-pixel grid (consoleModel's deskPicture,
+ *  one art pixel deep), `x`/`y` the tile's origin, so the cursor is on the grid and inside the screen. */
 export function screenCursor(x: number, y: number, screen: DoorRect): DoorRect {
-  const even = (v: number): number => 2 * Math.ceil(v / 2), wide = screen.w >= screen.h;
-  return { x: even(x + screen.x + 1), y: even(y + screen.y), w: wide ? 4 : 2, h: wide ? 2 : 4 };
+  return screen.w >= screen.h
+    ? { x: x + screen.x + 2, y: y + screen.y, w: 4, h: 2 }
+    : { x: x + screen.x, y: y + screen.y + 2, w: 2, h: 4 };
 }
 
-/** The starfield: two layers drifting left at 4 and 10 art pixels a second (2 internal pixels per art pixel), stars one
- *  art pixel square on even internal pixels, wrapping inside the band. */
-export const STAR_LAYERS = [{ count: 48, speed: 8 }, { count: 20, speed: 20 }] as const;
+/** The starfield: two layers drifting left at 4 and 10 art pixels a second, stars one art pixel square on whole art
+ *  pixels from the band's corner, wrapping inside the band. The band is in internal pixels, so `artPx` is the size of
+ *  one art pixel there: 2 x the world scale (the snapped fit makes it whole screen pixels, Art-i spec section 4). */
+export const STAR_LAYERS = [{ count: 48, speed: 4 }, { count: 20, speed: 10 }] as const;
 export interface Star { x: number; y: number; layer: number }
-export function stars(seed: number, band: Band, t: number): Star[] {
-  const out: Star[] = [];
+export function stars(seed: number, band: Band, t: number, artPx: number): Star[] {
+  const out: Star[] = [], snap = (v: number): number => artPx * Math.floor(v / artPx);
   STAR_LAYERS.forEach((l, layer) => {
     for (let k = 0; k < l.count; k++) {
-      const x0 = hash2(seed, layer * 1000 + k * 2) * band.w, y0 = hash2(seed, layer * 1000 + k * 2 + 1) * (band.h - 2);
-      const x = (((x0 - l.speed * t) % band.w) + band.w) % band.w;
-      out.push({ x: band.x + 2 * Math.floor(Math.min(x, band.w - 2) / 2), y: band.y + 2 * Math.floor(y0 / 2), layer });
+      const x0 = hash2(seed, layer * 1000 + k * 2) * band.w, y0 = hash2(seed, layer * 1000 + k * 2 + 1) * (band.h - artPx);
+      const x = (((x0 - l.speed * artPx * t) % band.w) + band.w) % band.w;
+      out.push({ x: band.x + snap(Math.min(x, band.w - artPx)), y: band.y + snap(y0), layer });
     }
   });
   return out;
@@ -1476,7 +1676,7 @@ git commit -m "feat(art-i-b): posterised glows, lamp flicker, screen blink and s
 
 ---
 
-### Task 6: The interior feel composite (Pixi)
+### Task 7: The interior feel composite (Pixi)
 
 **Files:**
 - Create: `src/renderer/src/render/particles/particleLayer.ts`
@@ -1484,23 +1684,28 @@ git commit -m "feat(art-i-b): posterised glows, lamp flicker, screen blink and s
 - Test: `tests/interiorFeel.test.ts` (create)
 
 **Interfaces:**
-- Consumes: everything from Tasks 1-5; `consoles` (`render/consoleModel.ts`); `fireTiles`; `ROLE`, `RAMP`.
+- Consumes: everything from Tasks 1-6; `consoles` (`render/consoleModel.ts`); `fireTiles`; `ROLE`, `RAMP`.
 - Produces:
   - `particleLayer.ts`: `interface ParticleLayer { normal: Container; add: Container; draw(particles: readonly Particle[]): void }`; `createParticleLayer(cap = PARTICLE_CAP)`.
-  - `interiorFeel.ts`: `type FeelHit = { rooms: readonly number[] } | { whole: true } | null`; `interface FeelFrame { state: SimState; grade: GradeInput; hit: FeelHit; sparks: readonly { key: string; x: number; y: number }[]; working: readonly Working[]; artPx: number }`; `interface InteriorFeel { starfield: Container; grade: Container; fixtures: Graphics; above: Container; lights: Container; time(): number; draw(frame: FeelFrame, dt: number): { shake: { x: number; y: number }; bob: number[] }; reset(): void }`; `createInteriorFeel(opts: { world: Container; band: Band; feel: () => FeelSetting }): InteriorFeel`. Children used by tests: `grade.children` = `[ambient, alert, vacuum]`; `above.children` = `[normal particles, flash]`; `lights.children` = `[glows, additive particles]`.
+  - `interiorFeel.ts`: `type FeelHit = { rooms: readonly number[] } | { whole: true } | null`; `interface FeelFrame { state: SimState; grade: GradeInput; hit: FeelHit; sparks: readonly { key: string; x: number; y: number }[]; working: readonly Working[]; artPx: number }`; `interface InteriorFeel { starfield: Container; grade: Container; fixtures: Graphics; above: Container; lights: Container; time(): number; draw(frame: FeelFrame, dt: number): { shake: { x: number; y: number }; bob: number[] }; reset(): void; destroy(): void }` (`dt` is the presentation dt: 0 while paused, Decision 17; `destroy` per Decision 18); `createInteriorFeel(opts: { world: Container; band: Band; feel: () => FeelSetting }): InteriorFeel`. Children used by tests: `grade.children` = `[ambient, alert, vacuum]`; `above.children` = `[normal particles, flash]`; `lights.children` = `[glows, additive particles]`.
 
 - [ ] **Step 1: Write the failing test** — create `tests/interiorFeel.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { AnimatedSprite, Container, Graphics, Texture } from 'pixi.js';
+import { AnimatedSprite, Container, Graphics, Texture, type Sprite } from 'pixi.js';
+import skiff from '../src/renderer/src/sim/ship/skiff.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createInteriorFeel, type FeelFrame } from '../src/renderer/src/render/interiorFeel';
 import type { FeelSetting } from '../src/renderer/src/render/feel';
-import { sectorGradeInput } from '../src/renderer/src/render/gradeModel';
+import { lampPoints, sectorGradeInput } from '../src/renderer/src/render/gradeModel';
+import { consoles } from '../src/renderer/src/render/consoleModel';
+import { DEBRIS_COUNT } from '../src/renderer/src/render/particles/sources';
 import { WORLD_BAND } from '../src/renderer/src/render/worldFit';
 import { FLASH_ALPHA, HITSTOP_SECONDS } from '../src/renderer/src/render/impactModel';
 import { HULL_MAX } from '../src/renderer/src/sim/tuning';
 import { cutterState } from './helpers/sim';
+import { createSimState } from './helpers/simLifetime';
 
 const count = (c: Container): number => c.children.reduce((n, k) => n + 1 + count(k as Container), 0);
 const make = (feel: FeelSetting = 'full') => { const world = new Container(); return { world, f: createInteriorFeel({ world, band: WORLD_BAND, feel: () => feel }) }; };
@@ -1576,6 +1781,41 @@ describe('the interior light and feel layers (Art-i spec sections 5-8)', () => {
     const visible = (c: Container): number => c.children.filter((k) => k.visible).length;
     expect(visible(f.lights.children[1] as Container)).toBeGreaterThan(0);   // additive embers and sparks
     expect(visible(f.above.children[0] as Container)).toBeGreaterThan(0);    // normal smoke
+  });
+  it('a hit that opens a breach throws its debris although the hitstop holds that frame', () => {
+    const { f } = make(), s = cutterState(), site = 0, room = s.derived.siteRoom[site]!;
+    f.draw(frame(s), 1 / 60);
+    s.tick = 10; s.breaches.active[site] = 1;
+    f.draw(frame(s, { hit: { rooms: [room] } }), 1 / 60);                       // the hitstop starts here: this frame's pdt is 0
+    for (let k = 0; k < 4; k++) f.draw(frame(s), 1 / 60);                    // the clock runs again on the fourth frame
+    const shown = (f.above.children[0] as Container).children.filter((k) => k.visible).length;
+    expect(shown).toBeGreaterThanOrEqual(DEBRIS_COUNT);
+  });
+  it('a zero presentation dt (the game paused) freezes the particles and the alert pulse', () => {
+    const { f } = make(), s = cutterState();
+    s.rooms.fire[1] = 8; s.hull = HULL_MAX / 2;
+    for (let k = 0; k < 40; k++) f.draw(frame(s), 1 / 60);
+    const look = (): string => JSON.stringify({
+      t: f.time(), alert: (f.grade.children[1] as Graphics).alpha,
+      dots: [f.above.children[0], f.lights.children[1]].flatMap((c) => (c as Container).children.filter((k) => k.visible).map((k) => [k.x, k.y, (k as Sprite).tint]))
+    });
+    const before = look();
+    expect(JSON.parse(before).dots.length).toBeGreaterThan(0);
+    for (let k = 0; k < 30; k++) f.draw(frame(s), 0);
+    expect(look()).toBe(before);
+    f.draw(frame(s), 1 / 60);
+    expect(look()).not.toBe(before);                                           // and it runs on when the game resumes
+  });
+  it('a layout change rebuilds the glows without leftovers; destroy frees the shared contexts', () => {
+    const { f } = make(), s = cutterState(), other = createSimState(parseShip(skiff), 2, 1);
+    const glows = f.lights.children[0] as Container, expected = consoles(s).length + lampPoints(s.derived.roomTiles, s.derived.width).length;
+    f.draw(frame(s), 1 / 60); f.draw(frame(other), 1 / 60); f.draw(frame(s), 1 / 60);
+    expect(glows.children).toHaveLength(expected);
+    const shared = [(f.grade.children[0] as Graphics).context, ...glows.children.map((g) => (g as Graphics).context)];
+    expect(shared.some((c) => c.destroyed)).toBe(false);
+    f.destroy();
+    expect(shared.every((c) => c.destroyed)).toBe(true);
+    expect([f.grade.children.length, glows.children.length]).toEqual([0, 0]);
   });
 });
 ```
@@ -1673,9 +1913,12 @@ export interface InteriorFeel {
   lights: Container;
   /** Presentation seconds (frozen by the hitstop). */
   time(): number;
-  /** Returns the shake offset for the world (and, in the sector, the projectiles and callouts), and each player's bob. */
+  /** Returns the shake offset for the world (and, in the sector, the projectiles and callouts), and each player's bob.
+   *  `dt` is the presentation dt: the views pass 0 while the game is paused, so everything here holds. */
   draw(frame: FeelFrame, dt: number): { shake: { x: number; y: number }; bob: number[] };
   reset(): void;
+  /** Destroys this feel's Graphics and its shared GraphicsContexts; call it before destroying the view's containers. */
+  destroy(): void;
 }
 
 const GLOW = { console: 5, fire: 8, lamp: 4 } as const;
@@ -1770,7 +2013,7 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
 
       // Particles (section 6) and steam (section 8), on the presentation clock.
       const opened = breachOpenings(state.breaches.active, breachSeen); breachSeen = opened.seen;
-      if (pdt > 0) for (const s of opened.opened) debrisBurst(emitter, state, s);
+      for (const s of opened.opened) debrisBurst(emitter, state, s);   // even at pdt 0: the hit that opens a breach starts the hitstop this frame, and a 0 step holds the debris until the clock runs
       smokes = smokes.filter((s) => t < s.until);
       if (pdt > 0) stepVents(emitter, vents, puffs, t);
       emitter.step(pdt, [...fireSources(state), ...sparkSources(frame.sparks), ...ventingSources(state), ...workSources(frame.working), ...hitSmokeSources(smokes, t, d.width)]);
@@ -1805,7 +2048,7 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
 
       // The starfield (section 8).
       starG.clear();
-      for (const s of stars(seed, opts.band, t)) starG.rect(s.x, s.y, 2, 2).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);
+      for (const s of stars(seed, opts.band, t, frame.artPx)) starG.rect(s.x, s.y, frame.artPx, frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
 
       stepShake(shake, pdt);
       const bob: number[] = [];
@@ -1816,6 +2059,14 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
       clock.reset(); Object.assign(shake, createShake()); emitter.clear(); smokes = []; breachSeen = null; puffs = [];
       flashTick = Number.NEGATIVE_INFINITY; flash.visible = false;
       if (wasStopped) { wasStopped = false; freezeAnimations(opts.world, held, false); }
+    },
+    destroy() {
+      // Every Graphics first, with no options so each owned context goes too (a parent's destroy({ children: true })
+      // passes options, which leaves owned contexts), and a Graphics never destroys a context it was given; then the
+      // shared contexts. The duel builds a new interior on every restart, and these would otherwise outlive it.
+      for (const g of [ambient, alert, vacuum, fixtures, flash, starG, ...consoleGlows, ...lampGlows, ...fireGlows.values()]) g.destroy();
+      consoleGlows = []; lampGlows = []; fireGlows.clear(); held.clear();
+      coverCtx.destroy(); ctx.console.destroy(); ctx.fire.destroy(); ctx.lamp.destroy();
     }
   };
 }
@@ -1826,7 +2077,7 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
 - [ ] **Step 5: Run the tests**
 
 Run: `npx vitest run tests/interiorFeel.test.ts tests/artGuards.test.ts && npx tsc -b; echo "tsc exit=$?"`
-Expected: PASS, `interiorFeel` 6; `artGuards` gains 4; `tsc exit=0`. (An `AnimatedSprite` in a node test must be made with `autoUpdate: false`: `play()` with the shared ticker calls `requestAnimationFrame`, which node lacks.)
+Expected: PASS, `interiorFeel` 9; `artGuards` gains 4; `tsc exit=0`. (An `AnimatedSprite` in a node test must be made with `autoUpdate: false`: `play()` with the shared ticker calls `requestAnimationFrame`, which node lacks.)
 
 - [ ] **Step 6: Commit**
 
@@ -1837,7 +2088,7 @@ git commit -m "feat(art-i-b): interior feel composite (grade, lights, particles,
 
 ---
 
-### Task 7: Sector wiring, the old shake and flash removed, the feel at boot
+### Task 8: Sector wiring, the old shake and flash removed, the feel at boot
 
 **Files:**
 - Modify: `src/renderer/src/render/projectileModel.ts:9`
@@ -1847,11 +2098,12 @@ git commit -m "feat(art-i-b): interior feel composite (grade, lights, particles,
 - Modify (replace the whole file): `src/renderer/src/render/renderer.ts`
 - Create: `src/renderer/src/app/feelBoot.ts`
 - Modify: `src/renderer/src/main.ts`
-- Test: `tests/feelBoot.test.ts` (create); `tests/projectileModel.test.ts` (modify)
+- Modify: `src/renderer/src/app/session.ts`, `src/renderer/src/app/onlineSession.ts`
+- Test: `tests/feelBoot.test.ts` (create); `tests/projectileModel.test.ts`, `tests/session.test.ts` (modify)
 
 **Interfaces:**
-- Consumes: Task 6 `createInteriorFeel`; Task 1 `sectorHits`, `FeelSetting`, `DEFAULT_FEEL`, `loadFeel`, `saveFeel`, `nextFeel`, `FeelStorage`; Task 2 `sectorGradeInput`; Task 4 `failedStationPoints`, `sectorWorking`, `watchRepair`.
-- Produces: `Renderer.feel(): FeelSetting`, `Renderer.setFeel(s): void`; `ProjectileLayer.draw(...)` now returns `void`; `CrewLayer.draw(state, alpha, presentation?, bob?: readonly (number | undefined)[])`; `app/feelBoot.ts`: `interface FeelTarget { feel(); setFeel(s) }`, `interface KeySource { addEventListener(type: 'keydown', cb: (e: { code: string }) => void): void }`, `installFeel(target, { storage, keys, dev, log? }): void`. `effects.ts` no longer exports `LOW_O2_THRESHOLD`, `LOW_O2_COLOR` or `LOW_O2_MAX_ALPHA` (nothing else imported them: `grep -rn "LOW_O2_" src tests` shows only `hudModel.ts`'s own `HUD_LOW_O2_FRAC` and `gradeModel.ts`).
+- Consumes: Task 7 `createInteriorFeel`; Task 1 `sectorHits`, `FeelSetting`, `DEFAULT_FEEL`, `loadFeel`, `saveFeel`, `nextFeel`, `FeelStorage`; Task 2 `sectorGradeInput`; Task 4 `failedStationPoints`, `sectorWorking`, `watchRepair`.
+- Produces: `Renderer.feel(): FeelSetting`, `Renderer.setFeel(s): void`; `Renderer.draw(state, alpha, bubbles?, ui?, presentation?, paused?: boolean)` (the feel gets a 0 presentation dt while `paused`, Decision 17; `SessionDeps.renderer.draw` gains the same parameter and both sessions pass their paused phase); `ProjectileLayer.draw(...)` now returns `void`; `CrewLayer.draw(state, alpha, presentation?, bob?: readonly (number | undefined)[])`; `app/feelBoot.ts`: `interface FeelTarget { feel(); setFeel(s) }`, `interface KeySource { addEventListener(type: 'keydown', cb: (e: { code: string }) => void): void }`, `installFeel(target, { storage, keys, dev, log? }): void`. `effects.ts` no longer exports `LOW_O2_THRESHOLD`, `LOW_O2_COLOR` or `LOW_O2_MAX_ALPHA` (nothing else imported them: `grep -rn "LOW_O2_" src tests` shows only `hudModel.ts`'s own `HUD_LOW_O2_FRAC` and `gradeModel.ts`).
 
 - [ ] **Step 1: Write the failing test** — create `tests/feelBoot.test.ts`:
 
@@ -2216,7 +2468,9 @@ export interface Renderer {
   setFeel(setting: FeelSetting): void;
   reset(): void;
   recordPrev(state: SimState): void;
-  draw(state: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: CardUiState, presentation?: readonly PresentationPoint[]): void;
+  /** `paused`: the session is paused (Art-i spec section 7): the light and feel get a presentation dt of 0, so the particles,
+   *  the alert pulse and the ambient life hold; the doors, projectiles and enemy window keep the real dt as before. */
+  draw(state: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: CardUiState, presentation?: readonly PresentationPoint[], paused?: boolean): void;
 }
 
 export async function createRenderer(assets: GameAssets): Promise<Renderer> {
@@ -2261,7 +2515,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
     },
-    draw(state, alpha, bubbles = [], ui, presentation) {
+    draw(state, alpha, bubbles = [], ui, presentation, paused = false) {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
@@ -2278,7 +2532,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       // Light and feel (Art-i spec sections 5-8): this frame's hit rooms, the working crew, the failed stations.
       const hits = sectorHits(state.rooms.impactTick, state.tick, seenImpact); seenImpact = hits.seen;
       watchRepair(memory.repair, state);
-      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working: sectorWorking(state, memory.repair), artPx: 2 * fit.scale }, dt);
+      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working: sectorWorking(state, memory.repair), artPx: 2 * fit.scale }, paused ? 0 : dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);   // the shake moves the world and the projectiles, as before
       crew.draw(state, alpha, presentation, bob);
       boarders.draw(state, dt);
@@ -2309,21 +2563,85 @@ function bootFeel(renderer: Renderer): void {
 
 In `startApp`, `startFlight` and `startDuel`, add the line `  bootFeel(renderer);` directly after `  const renderer = await createRenderer(assets);` (three places).
 
-- [ ] **Step 11: Run the tests and types**
+- [ ] **Step 11: Tell the renderer when the run is paused** (Decision 17; four edits and one test)
 
-Run: `npx vitest run tests/feelBoot.test.ts tests/projectileModel.test.ts tests/tileLayer.test.ts tests/renderPure.test.ts tests/duelInterior.test.ts tests/duelWeaponsView.test.ts tests/interiorFeel.test.ts tests/artGuards.test.ts && npx tsc -b; echo "tsc exit=$?"`
-Expected: PASS (`feelBoot` 2, `projectileModel` 10, `tileLayer` 4, `renderPure` 19, `duelInterior` 3, `duelWeaponsView` 21, `interiorFeel` 6, `artGuards` +1 for `app/feelBoot.ts`); `tsc exit=0`. Check `grep -rn "SHAKE_ASTEROID_PX\|impactLayer\|o2Layer\|vent.puff'" src/renderer/src/render/*.ts` prints only `assetNames.ts` and `fallback.ts` (the manifest names, Decision 12).
+In `tests/session.test.ts`, add this test inside `describe('session', ...)` directly before `  it('after a fault, frames keep running without touching the corrupt state', () => {`:
 
-- [ ] **Step 12: Commit**
+```ts
+  it('tells the renderer when the run is paused, so the light and feel hold (Art-i spec section 7)', () => {
+    let t = 0, samples: SourceSample[] = [];
+    const paused: (boolean | undefined)[] = [];
+    const session = createSession({
+      layout: LAYOUT, sampleDevices: () => samples, hud: null, now: () => (t += 20), saveCrash: () => {},
+      renderer: { reset() {}, recordPrev() {}, draw(...args: unknown[]) { paused.push(args[5] as boolean | undefined); } }
+    });
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: true, confirm: false, cancel: false, any: true }]; session.frame();
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: true, cancel: false, any: true }]; session.frame();
+    samples = []; for (let k = 0; k < 5; k++) session.frame();
+    expect(session.phase).toBe('running'); expect(paused.at(-1)).toBe(false);
+    session.pause(); session.frame();
+    expect(session.phase).toBe('paused'); expect(paused.at(-1)).toBe(true);
+    session.resume(); session.frame();
+    expect(paused.at(-1)).toBe(false);
+  });
+```
+
+Run: `npx vitest run tests/session.test.ts -t "paused, so the light"`
+Expected: FAIL, `expected undefined to be false` (the session passes no sixth argument yet).
+
+In `src/renderer/src/app/session.ts`, replace
+
+```ts
+  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: import('../clientControl/cardController').CardUiState, presentation?: readonly import('../../../network/state/timeline').PresentationPoint[]): void } | null;
+```
+
+with
+
+```ts
+  renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: import('../clientControl/cardController').CardUiState, presentation?: readonly import('../../../network/state/timeline').PresentationPoint[], paused?: boolean): void } | null;
+```
+
+and replace
+
+```ts
+      draw(view, alpha) { deps.renderer?.draw(view, alpha, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : [], runtime?.ui); }
+```
+
+with
+
+```ts
+      draw(view, alpha) { deps.renderer?.draw(view, alpha, phase === 'running' || phase === 'paused' ? bubbles(view, callouts, view.tick) : [], runtime?.ui, undefined, phase === 'paused'); }
+```
+
+In `src/renderer/src/app/onlineSession.ts`, replace
+
+```ts
+      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), ui, points);
+```
+
+with
+
+```ts
+      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), ui, points, phase === 'paused');
+```
+
+(`phase` there is the line above's `lastPhase === 'ended' ? 'gameover' : lastPhase === 'paused' ? 'paused' : 'running'`, from the publication.)
+
+- [ ] **Step 12: Run the tests and types**
+
+Run: `npx vitest run tests/feelBoot.test.ts tests/projectileModel.test.ts tests/tileLayer.test.ts tests/renderPure.test.ts tests/duelInterior.test.ts tests/duelWeaponsView.test.ts tests/interiorFeel.test.ts tests/session.test.ts tests/onlineRenderer.test.ts tests/artGuards.test.ts && npx tsc -b; echo "tsc exit=$?"`
+Expected: PASS (`feelBoot` 2, `projectileModel` 10, `tileLayer` 4, `renderPure` 19, `duelInterior` 3, `duelWeaponsView` 21, `interiorFeel` 9, `session` 36, `onlineRenderer` 11, `artGuards` +1 for `app/feelBoot.ts`); `tsc exit=0`. Check `grep -rn "SHAKE_ASTEROID_PX\|impactLayer\|o2Layer\|vent.puff'" src/renderer/src/render/*.ts` prints only `assetNames.ts` and `fallback.ts` (the manifest names, Decision 12).
+
+- [ ] **Step 13: Commit**
 
 ```bash
-git add src/renderer/src/render/projectileModel.ts src/renderer/src/render/projectiles.ts src/renderer/src/render/effects.ts src/renderer/src/render/crewSprites.ts src/renderer/src/render/renderer.ts src/renderer/src/app/feelBoot.ts src/renderer/src/main.ts tests/feelBoot.test.ts tests/projectileModel.test.ts
+git add src/renderer/src/render/projectileModel.ts src/renderer/src/render/projectiles.ts src/renderer/src/render/effects.ts src/renderer/src/render/crewSprites.ts src/renderer/src/render/renderer.ts src/renderer/src/app/feelBoot.ts src/renderer/src/main.ts src/renderer/src/app/session.ts src/renderer/src/app/onlineSession.ts tests/feelBoot.test.ts tests/projectileModel.test.ts tests/session.test.ts
 git commit -m "feat(art-i-b): light and feel in the sector ship view; the art-pixel shake and white flash replace the old ones; ftlite-feel at boot" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 8: Duel interior wiring
+### Task 9: Duel interior wiring
 
 **Files:**
 - Modify (replace the whole file): `src/renderer/src/render/duel/interiorView.ts`
@@ -2331,8 +2649,8 @@ git commit -m "feat(art-i-b): light and feel in the sector ship view; the art-pi
 - Test: `tests/duelInterior.test.ts` (modify)
 
 **Interfaces:**
-- Consumes: Task 6 `createInteriorFeel`; Task 1 `duelHit`, `DEFAULT_FEEL`, `FeelSetting`; Task 2 `duelGradeInput`; Task 4 `damagedRepairPoints`, `duelWorking`; Task 7 `Renderer.feel`, the crew `bob` parameter.
-- Produces: `createInteriorView(assets, stageScale = () => 1, feel = () => DEFAULT_FEEL)`; `InteriorView.draw(d, crewPrev, alpha, dt, events?: readonly ViewEvent[])`.
+- Consumes: Task 7 `createInteriorFeel`; Task 1 `duelHit`, `DEFAULT_FEEL`, `FeelSetting`; Task 2 `duelGradeInput`; Task 4 `damagedRepairPoints`, `duelWorking`; Task 8 `Renderer.feel`, the crew `bob` parameter.
+- Produces: `createInteriorView(assets, stageScale = () => 1, feel = () => DEFAULT_FEEL)`; `InteriorView.draw(d, crewPrev, alpha, dt, events?: readonly ViewEvent[], presentDt?: number)` (`presentDt` defaults to `dt`; Decision 17); `InteriorView.destroy` destroys its feel first (Decision 18).
 
 - [ ] **Step 1: Write the failing test** — in `tests/duelInterior.test.ts`, after `import { TILE_PX } from '../src/shared/resolution';` add
 
@@ -2399,8 +2717,10 @@ export interface InteriorView {
   world: Container;
   memory: RenderMemory;
   /** `crewPrev`: each player's character position at the previous tick, in tiles, for interpolation. `events`: the view
-   *  events drained this frame (the feed the tactical effects read); a hit on the crew ship flashes and shakes the interior. */
-  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[]): void;
+   *  events drained this frame (the feed the tactical effects read); a hit on the crew ship flashes and shakes the interior.
+   *  `presentDt`: the light and feel's seconds this frame (Art-i spec section 7), 0 while the duel is paused so the
+   *  particles, the pulse and the ambient life hold; it defaults to `dt`, which the tiles and boarders keep. */
+  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number): void;
   destroy(): void;
 }
 
@@ -2428,7 +2748,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   desks.container.addChild(fx.fixtures); effects.above.addChild(fx.above);
   return {
     container, world, memory,
-    draw(d, crewPrev, alpha, dt, events = []) {
+    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt) {
       const st = d.interior, fit = duelFit(st.derived.width, st.derived.height, stageScale());
       world.scale.set(fit.scale);
       st.crew.forEach((eid, pid) => { const p = crewPrev[pid]; if (p) memory.prev.set(Stable.id[eid]!, p); });
@@ -2448,17 +2768,17 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
       });
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
-      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale }, dt);
+      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale }, presentDt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
       crew.draw(st, alpha, undefined, bob);
       boarders.draw(st, dt);
     },
-    destroy() { memory.reset(); container.destroy({ children: true }); }
+    destroy() { memory.reset(); fx.destroy(); container.destroy({ children: true }); }   // the feel first: it frees its shared GraphicsContexts
   };
 }
 ```
 
-- [ ] **Step 4: Pass the events and the feel in `src/renderer/src/app/duel/duelMode.ts`** (five edits)
+- [ ] **Step 4: Pass the events, the paused presentation dt and the feel in `src/renderer/src/app/duel/duelMode.ts`** (five edits)
 
 Replace `  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale);` with `  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel);`.
 
@@ -2477,7 +2797,7 @@ with
     pushEvents(fx, events);
 ```
 
-Replace `    if (view === 'interior') interior.draw(d, runtime.crewPrev, alpha, dt);` with `    if (view === 'interior') interior.draw(d, runtime.crewPrev, alpha, dt, events);`.
+Replace `    if (view === 'interior') interior.draw(d, runtime.crewPrev, alpha, dt);` with `    if (view === 'interior') interior.draw(d, runtime.crewPrev, alpha, dt, events, runtime.paused() ? 0 : dt);   // Art-i spec section 7: the light and feel hold while paused` (the presentation dt follows the same rule as `stepFx` above it; Decision 17).
 
 Replace
 
@@ -2505,7 +2825,7 @@ git commit -m "feat(art-i-b): light and feel in the duel interior; the interior 
 
 ---
 
-### Task 9: Final verification and screenshots
+### Task 10: Final verification and screenshots
 
 **Files:**
 - Create (gitignored, never committed): `.art/shots/index.html`, `.art/shots/main.ts`, `.art/shots/vite.config.mjs`, `.art/shots/shot.cjs`, `.art/shots/all.mjs`
@@ -2518,7 +2838,7 @@ git commit -m "feat(art-i-b): light and feel in the duel interior; the interior 
 - [ ] **Step 1: Full suite**
 
 Run (on an idle machine): `npm run build 2>&1 | tail -1 && npx vitest run 2>&1 | tail -5`
-Expected: `✓ built in ...`; then `Test Files 244 passed (244)` and `Tests 3455 passed (3455)`, i.e. the Step 0 baseline plus **74** (Decision 16). 0 failed.
+Expected: `✓ built in ...`; then `Test Files 244 passed (244)` and `Tests 3461 passed (3461)`, i.e. the Step 0 baseline plus **80** (Decision 16). 0 failed.
 
 - [ ] **Step 2: Types, build and the unchanged sim**
 
@@ -2711,13 +3031,14 @@ Nothing to commit in this task. Report: the totals against the baseline, `tsc` a
 2. **Section 8, console screen blink.** Blinking whole screens between `screenA` and `screenB` would erase the console state colours from spec Demo-xii (amber free, dim occupied, red down). The plan blinks a 2 × 1 art-pixel cursor on powered screens (Decision 14).
 3. **Section 6, sector working.** Repair progress is per target, so two unseated crew whose `interactTarget` is the same fire, breach or station both count as working while only one holds Interact (the sim's `scratch.activeThisTick` would tell them apart but is not replicated to online clients). Accepted as written; `tests/particleSources.test.ts` seats the second player to test one worker.
 4. **Section 7, what the hitstop freezes.** The spec names particles, sprite animation and the shake. The plan also runs the ambient life (alert pulse, blink, lamp and fire-light flicker, vent puffs, starfield) on the presentation clock, so the whole picture holds (Decision 4).
-5. **Section 8, starfield star size.** "Stars of one art pixel" depends on the world scale (the Cutter's sector fit is 0.5-0.655). The starfield lives in internal pixels under the world, so the plan uses 2 internal pixels (one art pixel at scale 1) and the speeds in internal pixels (Decision 14).
-6. **Section 4 leftover, consoles.** `consoleModel.ts` desk and screen geometry is still off the art-pixel grid (`DESK_W` 19, `SCREEN_D` 3; Art-i-a's grid work did not cover consoles). The blink cursor rounds to even units; the desks themselves are unchanged here.
+5. **Section 8, starfield star size (no longer a deviation).** "Stars of one art pixel" depends on the world scale (the Cutter's sector fit is 0.5-0.655). The starfield lives in internal pixels under the world, so the plan passes the frame's `artPx` (2 × `fit.scale`) into `stars`: each star is one art pixel at the current scale, on whole art pixels in the band, drifting at 4 and 10 art px/s as the spec says (Decision 14; review R1-F3 replaced the first draft's fixed 2 internal pixels).
+6. **Section 4 leftover, consoles.** `consoleModel.ts` desk and screen geometry was still off the art-pixel grid (`DESK_W` 19, `SCREEN_D` 3, a 1-wide outline; Art-i-a's grid work did not cover consoles). Task 5 finishes section 4 for them (`DESK_W` 20, `SCREEN_D` 2, even insets, a 2-wide outline inside the desk; `WALL_GAP` unchanged), so the blink cursor sits on the grid inside every screen (Decision 19; review R1-F4).
 
 ## Self-review against the spec
 
-- Section 5 (light and colour grade): containers and both exact orders — Tasks 7 (sector) and 8 (duel), Decision 2; basic blend modes, no advanced import — Decision 1, Task 6 test; `gradeModel` return shape, ambient, alert (hull ≤ 0.5 or fire, pulse formula, 0.35), vacuum (0.98, 0.6 × (1 − frac), `vacuum` role replacing the red o2Layer) — Task 2, Tasks 6-7; both adapters with real fields — Task 2; lights at consoles (brighter when occupied), fire tiles (flickering) and lamps on the top-left floor tile — Tasks 2, 5, 6; duel labels and markers above the lights, damage tint above the grade — Task 8.
-- Section 6 (particles): pooled Sprites in two containers, 1-3 art-pixel squares, snapped positions, ramp stepping, 600 cap oldest first — Tasks 3 and 6; own generator from the layout hash, never the sim RNG — Task 3, the guard; embers and smoke, sparks (failed stations, damaged duel repair rooms, adding to fx.arc), venting toward the hole and opening debris, crew working (bob at 4 Hz, sparks, foam) with both derivations — Tasks 4, 6, 7, 8.
-- Section 7 (impact feel): hit signals — Task 1 (and Decision 5 on the sector tick); white flash 2 ticks, duel whole interior at half — Tasks 1, 6; shake 6 art px over 0.25 s in whole art pixels replacing `SHAKE_*` and the duel interior fxModel shake, moving the right containers — Tasks 1, 7, 8; hitstop 60 ms freezing particles, animation and shake but not the sim, interpolation or the flash count — Tasks 1, 6; smoke 3 s — Tasks 4, 6; `ftlite-feel` with `feelScale`, boot read in try/catch, F9 in dev only — Tasks 1, 7.
-- Section 8 (ambient): screen blink at 1-2 Hz (as a cursor, Decision 14), lamp flicker when not in alert, wall-vent steam every 4-8 s at `hash mod 8 = 0`, the two-layer starfield under the world in the band at 4 and 10 art px/s — Tasks 4, 5, 6, 7, 8.
-- Testing and gates: every unit test the spec lists (gradeModel cases, both adapters, emitter cap/determinism/snapping/ramp, working derivations, feelScale, hitstop timing) — Tasks 1-6; existing tests pass with the shake test updated — Task 7; SIM_VERSION and goldens unchanged, screenshots of duel normal and alert and sector alert and vacuum — Task 9.
+- Section 5 (light and colour grade): containers and both exact orders — Tasks 8 (sector) and 9 (duel), Decision 2; basic blend modes, no advanced import — Decision 1, Task 7 test; `gradeModel` return shape, ambient, alert (hull ≤ 0.5 or fire, pulse formula, 0.35), vacuum (0.98, 0.6 × (1 − frac), `vacuum` role replacing the red o2Layer) — Task 2, Tasks 7-8; both adapters with real fields — Task 2; lights at consoles (brighter when occupied), fire tiles (flickering) and lamps on the top-left floor tile — Tasks 2, 6, 7; the multiply never paints an art pixel twice (non-overlapping cover) — Task 2, Decision 3; duel labels and markers above the lights, damage tint above the grade — Task 9.
+- Section 6 (particles): pooled Sprites in two containers, 1-3 art-pixel squares, snapped positions, ramp stepping, 600 cap oldest first — Tasks 3 and 7; own generator from the layout hash, never the sim RNG — Task 3, the guard; embers and smoke, sparks (failed stations, damaged duel repair rooms, adding to fx.arc), venting toward the hole and opening debris (shown even when the opening hit starts the hitstop, Decision 11), crew working (bob at 4 Hz, sparks, foam) with both derivations — Tasks 4, 7, 8, 9.
+- Section 7 (impact feel): hit signals — Task 1 (and Decision 5 on the sector tick); white flash 2 ticks, duel whole interior at half — Tasks 1, 7; shake 6 art px over 0.25 s in whole art pixels replacing `SHAKE_*` and the duel interior fxModel shake, moving the right containers — Tasks 1, 8, 9; hitstop 60 ms freezing particles, animation and shake but not the sim, interpolation or the flash count — Tasks 1, 7; smoke 3 s — Tasks 4, 7; `ftlite-feel` with `feelScale`, boot read in try/catch, F9 in dev only — Tasks 1, 8; the presentation clock holds while the game is paused (sector and duel) — Tasks 8, 9, Decision 17; a duel restart frees the feel's shared contexts — Tasks 7, 9, Decision 18.
+- Section 4 leftover: the console desks, screens and outline on the art-pixel grid — Task 5, Decision 19.
+- Section 8 (ambient): screen blink at 1-2 Hz (as a cursor on the grid, inside every screen, Decision 14), lamp flicker when not in alert, wall-vent steam every 4-8 s at `hash mod 8 = 0`, the two-layer starfield under the world in the band, one art pixel at the current world scale, at 4 and 10 art px/s — Tasks 4, 6, 7, 8, 9.
+- Testing and gates: every unit test the spec lists (gradeModel cases, both adapters, emitter cap/determinism/snapping/ramp, working derivations, feelScale, hitstop timing) — Tasks 1-7; existing tests pass with the shake test and the desk size test updated — Tasks 5, 8; the suite grows by 80 (Decision 16), SIM_VERSION and goldens unchanged, screenshots of duel normal and alert and sector alert and vacuum — Task 10.
