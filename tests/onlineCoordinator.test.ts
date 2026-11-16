@@ -4,13 +4,13 @@ import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
 import { sectorCompatibility } from '../src/main/network/onlineSector';
 import type { RoomServiceEvent } from '../src/network/session/serviceClient';
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0) {
+function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0, serviceOrigin = 'http://127.0.0.1:8787') {
   const events = new Set<(event: RoomServiceEvent) => void>(); const order: string[] = [], ports: any[] = [];
   let snapshot: any = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), joinCode: 'ABCDEFGH', compatibility: sectorCompatibility(capacity), capacity,
     hostSeatId: 0, hostGeneration: 1, phase: 'lobby', rosterRevision: 1, seats: Array.from({ length: capacity }, (_, seatId) => ({ seatId, seatGeneration: 1, occupied: true, connected: true, ready: false })) };
   const session = () => ({ snapshot: structuredClone(snapshot), seatId: ownSeat, seatGeneration: snapshot.seats[ownSeat].seatGeneration, seatToken: 't'.repeat(43) });
   let committed: any, serverMirror: any = null, diskMirror: any = null; const emit = (event: any) => { for (const cb of [...events]) cb(event); };
-  const service: any = { putCheckpoint: vi.fn(async (metadata: any, bytes: Uint8Array) => { serverMirror = structuredClone({ metadata, bytes }); }), getCheckpoint: vi.fn(async () => { if (!serverMirror) throw { code: 'no-checkpoint' }; return structuredClone(serverMirror); }), create: vi.fn(async () => { order.push('create'); return session(); }), join: vi.fn(async () => session()), connect: vi.fn(async () => { order.push('connect'); return structuredClone(snapshot); }), close: vi.fn(),
+  const service: any = { connectionIdentity: () => ({ roomId: snapshot.roomId, hostGeneration: snapshot.hostGeneration, seatId: ownSeat, seatGeneration: snapshot.seats[ownSeat].seatGeneration, connectionId: 'c'.repeat(32) }), getTurn: vi.fn(async () => ({ iceServers: [{ urls: ['turn:example.test:3478'], credential: 'test', username: 'test' }], expiresAtEpochMs: Date.now() + 3600000 })), putCheckpoint: vi.fn(async (metadata: any, bytes: Uint8Array) => { serverMirror = structuredClone({ metadata, bytes }); }), getCheckpoint: vi.fn(async () => { if (!serverMirror) throw { code: 'no-checkpoint' }; return structuredClone(serverMirror); }), create: vi.fn(async () => { order.push('create'); return session(); }), join: vi.fn(async () => session()), connect: vi.fn(async () => { order.push('connect'); return structuredClone(snapshot); }), close: vi.fn(),
     onEvent: (cb: any) => { events.add(cb); return () => events.delete(cb); }, request: vi.fn(async (op: any) => {
       order.push(op.type);
       if (op.type === 'ready') { snapshot = { ...snapshot, rosterRevision: snapshot.rosterRevision + 1, seats: snapshot.seats.map((s: any) => s.seatId === ownSeat ? { ...s, ready: op.ready } : s) }; return { kind: 'snapshot', snapshot }; }
@@ -33,7 +33,7 @@ function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0) {
     request: vi.fn(async (request: any) => { latestCapture = initialOnlineCheckpoint(JSON.parse(new TextDecoder().decode(request.initBytes))); capture(latestCapture); return { ok: true as const, requestId: 1, hostGeneration: 1 }; }),
     attachPeer: vi.fn(async () => {}), onExit: vi.fn((cb: (reason: string) => void) => { hostExit = cb; return () => {}; }), dispose: vi.fn(async () => { clearInterval(renewalTimer); }) };
   const platform = { startLeasedHost: vi.fn(async (_identity: any, _signal: AbortSignal, lease: any) => { leaseIdentity = lease; return host; }), createTransport: vi.fn(async () => transport), channel: () => { const port1 = { close: vi.fn() }, port2 = { close: vi.fn() }; ports.push(port1, port2); return { port1, port2 } as any; }, publishPort: vi.fn(), onVisibleGone: () => () => {} };
-  const owner = createOnlineSession({ config: { enabled: true, baseUrl: 'http://127.0.0.1:8787', allowInsecureLocalhost: true }, seatStore: store, mirrorStore,
+  const owner = createOnlineSession({ config: { enabled: true, baseUrl: serviceOrigin, allowInsecureLocalhost: serviceOrigin.startsWith('http:'), iceMode: serviceOrigin.startsWith('http:') ? 'loopback' : 'turn' }, seatStore: store, mirrorStore,
     service: () => service, platform, clock: { nowMs: () => Date.now() - monotonicOrigin, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32) });
   const savedSeat = () => ({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: snapshot.roomId, joinCode: snapshot.joinCode, compatibility: snapshot.compatibility, seatId: ownSeat, seatGeneration: 1, seatToken: 't'.repeat(43) });
   const issue = (attemptId = '1'.repeat(32), guestSeatId = ownSeat === 0 ? 1 : ownSeat) => emit({ type: 'link-issued', link: { attemptId, role: ownSeat === 0 ? 'offerer' : 'answerer',
@@ -273,4 +273,13 @@ it('publishes retry deadlines in shared epoch time without changing monotonic en
   expect(h.owner.status().retryAtMs).toBe(1800000008000);
   await vi.advanceTimersByTimeAsync(7999); expect(h.service.join).toHaveBeenCalledOnce();
   await vi.advanceTimersByTimeAsync(1); expect(await result).toEqual({ ok: true }); await h.owner.dispose();
+});
+
+it('retains HTTPS configuration through main revalidation and acquires TURN before native setup', async () => {
+  const h = harness(2, 1, 0, 'https://service.example');
+  expect(await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH' })).toEqual({ ok: true });
+  h.issue(); await vi.waitFor(() => expect(h.controller.startAttempt).toHaveBeenCalledOnce());
+  expect(h.service.getTurn).toHaveBeenCalledOnce();
+  expect(h.controller.startAttempt.mock.calls[0][0]).toMatchObject({ iceServers: [{ credential: 'test' }], iceTransportPolicy: 'all' });
+  await h.owner.dispose();
 });

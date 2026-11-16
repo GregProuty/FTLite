@@ -10,6 +10,7 @@ import type { TransportController } from './rtcTransport';
 import { resolveOnlineConfig, type OnlineConfig } from './onlineConfig';
 import { validateSavedSeat, type SavedSeatV1, type SeatStore } from './seatStore';
 import { createOnlinePeers, type OnlinePeer } from './onlinePeers';
+import { createOnlineIce, type OnlineIce } from './onlineIce';
 import { createOnlineRetry, onlineFault, type OnlineClock, type OnlineScheduler } from './onlineRetry';
 import { sectorCompatibility, sectorInit, sectorJoinCompatibilities, validateCommittedSectorStart, validateSectorMirror } from './onlineSector';
 import { createOnlineMirrors, type OnlineMirrors } from './onlineMirrors';
@@ -43,7 +44,8 @@ const close = (port: MessagePortMain) => { try { port.close(); } catch {} };
 /** Main-only credentials and resource ownership. Renderer progress never grants gameplay authority. */
 export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner {
   const { platform, scheduler, clock } = deps;
-  const config = deps.config.enabled ? resolveOnlineConfig({ packaged: false, localServiceUrl: deps.config.baseUrl }) : deps.config;
+  const resolved = deps.config.enabled ? resolveOnlineConfig({ packaged: false, ...(deps.config.iceMode === 'loopback' ? { localServiceUrl: deps.config.baseUrl } : { serviceUrl: deps.config.baseUrl }) }) : deps.config;
+  const config: OnlineConfig = resolved.enabled && deps.config.enabled && (resolved.iceMode !== deps.config.iceMode || resolved.allowInsecureLocalhost !== deps.config.allowInsecureLocalhost) ? { enabled: false } : resolved;
   let disposed = false, epoch = 0, attachmentEpoch = 0, operation: AbortController | undefined;
   let factories = 0, retiring: Promise<void> | undefined, disposal: Promise<void> | undefined, forgetting: Promise<OnlineResult> | undefined;
   let saved: SavedSeatV1 | null = null, readyValue: boolean | undefined, readyWork: Promise<OnlineResult> | undefined;
@@ -52,7 +54,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   let value: OnlineStatus = { phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: false, actions: [] };
   const listeners = new Set<(status: OnlineStatus) => void>(), retry = createOnlineRetry(clock, scheduler);
   type Context = { epoch: number; abort: AbortController; service: RoomServiceClient; seat?: SeatSession; transport?: OwnedOnlineTransport; host?: HostProcessHandle;
-    peers?: ReturnType<typeof createOnlinePeers>; removers: Unsubscribe[]; gameRemovers: Unsubscribe[]; ports: Set<MessagePortMain>; timers: Set<unknown>;
+    peers?: ReturnType<typeof createOnlinePeers>; ice?: OnlineIce; removers: Unsubscribe[]; gameRemovers: Unsubscribe[]; ports: Set<MessagePortMain>; timers: Set<unknown>;
     gameEpoch: number; gameRetiring?: Promise<void>; claiming?: boolean; claimSnapshot?: RoomSnapshot;
     starting?: Promise<void>; committedHash?: string; active: boolean; authorityReady?: boolean; recovering: boolean; attached: Set<string>;
     synced?: () => void; syncedPromise?: Promise<void>; lease?: LeaseGrant; cleanup?: Promise<void>; mirrors?: OnlineMirrors; renewal?: AbortController; explicitStart?: boolean; captureWork?: Promise<void>; graceful?: Promise<void> };
@@ -95,6 +97,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     if (c.cleanup) return c.cleanup;
     c.abort.abort(onlineFault('cancelled'));
     c.renewal?.abort(); c.mirrors?.dispose();
+    c.ice?.dispose();
     for (const off of c.removers.splice(0)) { try { off(); } catch {} }
     for (const off of c.gameRemovers.splice(0)) { try { off(); } catch {} }
     for (const id of c.timers) scheduler.clearTimeout(id); c.timers.clear();
@@ -117,13 +120,13 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     void pending.then(() => { if (retiring === pending) retiring = undefined; });
     return pending;
   }
-  function fail(c: Context, code: OnlineErrorCode) {
+  function fail(c: Context, code: OnlineErrorCode, cause?: RoomServiceClientError) {
     if (!current(c)) return;
     const guest = c.seat && c.seat.seatId !== c.seat.snapshot.hostSeatId;
     if (c.recovering) {
       const serviceCode = code === 'transport-lost' ? 'unavailable' : code;
-      c.abort.abort(serviceCode in SERVICE_ERROR_RETRYABLE
-        ? new RoomServiceClientError({ code: serviceCode as keyof typeof SERVICE_ERROR_RETRYABLE, retryable: SERVICE_ERROR_RETRYABLE[serviceCode as keyof typeof SERVICE_ERROR_RETRYABLE] }) : onlineFault(code));
+      c.abort.abort(cause ?? (serviceCode in SERVICE_ERROR_RETRYABLE
+        ? new RoomServiceClientError({ code: serviceCode as keyof typeof SERVICE_ERROR_RETRYABLE, retryable: SERVICE_ERROR_RETRYABLE[serviceCode as keyof typeof SERVICE_ERROR_RETRYABLE] }) : onlineFault(code)));
       void cleanup(c); return;
     }
     if (c.seat && (c.active || value.phase === 'saved' || value.phase === 'rehosting') && ['host-lost', 'lease-expired', 'transport-lost', 'suspended', 'clock-discontinuity', 'unavailable', 'timeout'].includes(code)) {
@@ -147,6 +150,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   }
   function retireGame(c: Context): Promise<void> {
     c.gameEpoch++;
+    c.ice?.invalidate();
     const host = c.host, transport = c.transport, peers = c.peers;
     c.host = undefined; c.transport = undefined; c.peers = undefined; c.active = false; c.authorityReady = false; c.starting = undefined;
     c.renewal?.abort(); c.renewal = undefined; c.lease = undefined;
@@ -167,9 +171,13 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     await c.gameRetiring; check(c);
     const seat = c.seat!, transport = await acquire(c, () => platform.createTransport(identityOf(seat.snapshot)), resource => { c.transport = resource; });
     c.gameRemovers.push(transport.onExit(() => { if (c.transport === transport) fail(c, 'transport-lost'); }));
+    if (!config.enabled) throw onlineFault('online-disabled');
+    c.ice ??= createOnlineIce({ service: c.service, clock, mode: config.iceMode });
     const peers = createOnlinePeers({ controller: transport.controller, service: c.service, ownSeat: seat.seatId, snapshot: () => c.seat!.snapshot, channel: () => platform.channel(),
+      ice: c.ice, clock, scheduler, iceOwner: () => { const owner = c.service.connectionIdentity(); if (!owner) throw onlineFault('stale-connection'); return owner; },
       onChange: () => { if (current(c) && c.peers === peers) emit(); }, onReady: peer => { if (c.peers === peers) void attach(c, peer); },
-      onLost: () => { if (c.peers === peers && seat.seatId !== c.seat!.snapshot.hostSeatId) fail(c, 'transport-lost'); }, onFailure: () => { if (c.peers === peers) fail(c, 'transport-lost'); } });
+      onLost: () => { if (c.peers === peers && seat.seatId !== c.seat!.snapshot.hostSeatId) fail(c, 'transport-lost'); },
+      onFailure: error => { if (c.peers === peers) fail(c, error ? codeOf(error) : 'transport-lost', error instanceof RoomServiceClientError ? error : undefined); } });
     c.peers = peers;
   }
   function publish(c: Context, port: MessagePortMain) {

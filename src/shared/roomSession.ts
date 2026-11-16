@@ -31,6 +31,7 @@ export interface LinkIssued {
   localTicket: string; expectedRemoteTicket: string; ticketExpiresAtEpochMs: number;
 }
 export interface TurnCredentials { iceServers: RtcIceServerConfig[]; expiresAtEpochMs: number }
+export interface RoomConnectionIdentity { roomId: string; hostGeneration: number; seatId: number; seatGeneration: number; connectionId: string }
 export interface CommittedStart { initBase64: string; initHash: string; lease: LeaseGrant }
 
 /** Only these fixed codes cross an untrusted boundary; no exception/provider messages. */
@@ -134,6 +135,9 @@ const link = shape({ attemptId: isRoomId, role: literal('offerer', 'answerer'), 
   localTicket: isRoomToken, expectedRemoteTicket: isRoomToken, ticketExpiresAtEpochMs: positive });
 export function validateTurnCredentials(value: unknown): value is TurnCredentials {
   return shape({ iceServers: servers => Array.isArray(servers) && servers.length > 0 && !!copyRtcIceServers(servers), expiresAtEpochMs: positive })(value);
+}
+export function validateRoomConnectionIdentity(value: unknown): value is RoomConnectionIdentity {
+  return shape({ roomId: isRoomId, hostGeneration: positive, seatId: seatId, seatGeneration: positive, connectionId: isRoomId })(value);
 }
 const serviceErrorShape = shape({ code: value => typeof value === 'string' && Object.hasOwn(SERVICE_ERROR_RETRYABLE, value), retryable: bool }, { retryAfterMs: natural });
 export function validateServiceError(value: unknown): value is ServiceError {

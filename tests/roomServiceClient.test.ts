@@ -34,6 +34,13 @@ async function connected(r = rig()) {
   return r;
 }
 describe('generic room service client', () => {
+  it('exposes a detached authenticated connection identity and clears it on socket loss', async () => {
+    const r = rig(); expect(r.c.connectionIdentity()).toBeNull(); await connected(r);
+    const identity = r.c.connectionIdentity();
+    expect(identity).toEqual({ roomId: snapshot.roomId, hostGeneration: 1, seatId: 0, seatGeneration: 1, connectionId: '3'.repeat(32) });
+    identity!.seatId = 3; expect(r.c.connectionIdentity()!.seatId).toBe(0);
+    r.socket.emit('close'); expect(r.c.connectionIdentity()).toBeNull(); r.c.close(); expect(r.c.connectionIdentity()).toBeNull();
+  });
   it.each(['get', 'put'] as const)('aborts the owned checkpoint %s request without closing authenticated service', async method => {
     let signal: AbortSignal | undefined;
     const { c, socket } = await connected(rig(async (url, init) => {

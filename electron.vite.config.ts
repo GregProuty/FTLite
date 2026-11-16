@@ -7,7 +7,7 @@ ensureIsolatedBuildReporterOutput();
 const digest = JSON.stringify(computeContentDigest(import.meta.dirname));
 export default defineConfig({
   main: {
-    define: { __GAMEPLAY_CONTENT_DIGEST__: digest },
+    define: { __GAMEPLAY_CONTENT_DIGEST__: digest, __FTLITE_PACKAGED_SERVICE_ORIGIN__: JSON.stringify(process.env['FTLITE_PACKAGED_SERVICE_ORIGIN'] ?? '') },
     build: { rollupOptions: { input: { index: resolve('src/main/index.ts'), authorityHost: resolve('src/utility/authorityHost.ts'), hostProcess: resolve('src/main/network/hostProcess.ts'), rtcTransport: resolve('src/main/network/rtcTransport.ts') }, output: { chunkFileNames: '[name].js' } } }
   },
   // Sandboxed preloads cannot require a relative shared chunk. Inline each entry's validators.

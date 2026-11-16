@@ -50,6 +50,13 @@ function authenticate(s: ReturnType<typeof setup>) {
 }
 
 describe('authenticated RTC peer attempts', () => {
+  it('copies ephemeral ICE servers into native all-candidate configuration without exposing credentials in diagnostics', () => {
+    const servers = [{ urls: ['turn:example.test:3478?transport=udp', 'turns:example.test:5349?transport=tcp'], username: 'ephemeral', credential: 'test-password' }];
+    let config: RTCConfiguration | undefined;
+    const s = setup({ iceServers: servers, createConnection: (value: RTCConfiguration) => { config = value; return new Connection(); } });
+    expect(config).toEqual({ iceServers: servers, iceTransportPolicy: 'all' }); servers[0]!.credential = 'changed';
+    expect(config!.iceServers![0]!.credential).toBe('test-password'); expect(JSON.stringify(s.peer.diagnostics())).not.toContain('test-password'); s.peer.close('done');
+  });
   it('creates exact reliable/latest channels and emits host offer only after native local description', async () => {
     const s=setup(); await tick(); expect(s.connection.channels.map(c=>c.label)).toEqual(['ftl-reliable-v1','ftl-latest-v1']);
     expect(s.connection.options).toEqual([{ordered:true},{ordered:false,maxRetransmits:0}]);

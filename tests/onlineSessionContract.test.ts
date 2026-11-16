@@ -11,6 +11,13 @@ const snapshot: RoomSnapshot = {
 const status = (): OnlineStatus => ({ phase: 'lobby', role: 'host', ownSeat: 0, snapshot: structuredClone(snapshot), attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: true, actions: ['ready', 'start', 'leave'] });
 
 describe('bounded online renderer boundary', () => {
+  it.each(['iceServers', 'credential', 'username', 'candidate', 'sdp', 'serviceUrl', 'iceTransportPolicy', 'connectionId'])('rejects private transport field %s in actions and public status', field => {
+    for (const value of [{ ...status(), [field]: 'private' }, { ...status(), snapshot: { ...snapshot, [field]: 'private' } }, { ...status(), mirror: { ...status().mirror, [field]: 'private' } }]) {
+      expect(validateOnlineStatus(value)).toBe(false);
+    }
+    expect(validateOnlineAction({ type: 'host', capacity: 2, [field]: 'private' })).toBe(false);
+    expect(() => copyOnlineStatus({ ...status(), [field]: 'private' })).toThrow('invalid-status');
+  });
   it('accepts named rehost and saved transitions without payloads or privileged Resume', () => {
     expect(validateOnlineAction({ type: 'rehost' })).toBe(true);
     for (const extra of [{ bytes: [1] }, { seatToken: 'secret' }, { hostGeneration: 2 }]) expect(validateOnlineAction({ type: 'rehost', ...extra })).toBe(false);

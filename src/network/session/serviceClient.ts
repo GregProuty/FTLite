@@ -2,7 +2,7 @@ import {
   ROOM_CHECKPOINT_BYTES, ROOM_CHECKPOINT_METADATA_BYTES, ROOM_SMALL_BODY_BYTES,
   SERVICE_ERROR_RETRYABLE, isRoomToken, parseBoundedJson, parseClientFrame, parseServerEnvelope,
   validateCheckpointMetadata, validateCompatibility, validateSeatSession, validateServiceError,
-  validateSocketTicket, validateTurnCredentials,
+  validateSocketTicket, validateTurnCredentials, validateRoomConnectionIdentity, type RoomConnectionIdentity,
   type LeaseGrant, type ReplyOutcome, type RequestFrame, type RoomCompatibility, type RoomSnapshot,
   type SeatSession, type SeatSessionView, type ServerPayload, type ServiceError, type ServiceErrorCode,
   type SessionCheckpointMetadata,
@@ -515,6 +515,11 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
   }
   return {
     create, join, connect, request, getTurn, putCheckpoint, getCheckpoint,
+    connectionIdentity(): RoomConnectionIdentity | null {
+      if (closed || !authenticated || !session || !connectionId) return null;
+      const value = { roomId: session.snapshot.roomId, hostGeneration: session.snapshot.hostGeneration, seatId: session.seatId, seatGeneration: session.seatGeneration, connectionId };
+      return validateRoomConnectionIdentity(value) ? value : null;
+    },
     /** Synchronous dispatch allows native start IPC to precede later signal IPC. */
     onEvent(callback: (event: RoomServiceEvent) => void): () => void {
       if (closed) return () => {};

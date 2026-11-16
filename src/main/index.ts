@@ -11,6 +11,7 @@ import { createSeatStore } from './network/seatStore';
 import { createMirrorStore } from './network/mirrorStore';
 import { validateSectorMirror } from './network/onlineSector';
 import { createRoomServiceClient } from '../network/session/serviceClient';
+declare const __FTLITE_PACKAGED_SERVICE_ORIGIN__: string;
 
 function createWindow(): void {
   const packaged = app.isPackaged;
@@ -31,7 +32,8 @@ function createWindow(): void {
   });
   // Capture one configured origin and native networking implementation for this owner.
   const nativeFetch = globalThis.fetch, NativeWebSocket = globalThis.WebSocket;
-  const configured = resolveOnlineConfig({ packaged, localServiceUrl: process.env['FTLITE_LOCAL_SERVICE_URL'] });
+  const configured = resolveOnlineConfig({ packaged, localServiceUrl: process.env['FTLITE_LOCAL_SERVICE_URL'], serviceUrl: process.env['FTLITE_SERVICE_URL'],
+    packagedServiceOrigin: packaged ? __FTLITE_PACKAGED_SERVICE_ORIGIN__ : undefined });
   const config = typeof nativeFetch === 'function' && typeof NativeWebSocket === 'function' ? configured : { enabled: false } as const;
   const scheduler = { setTimeout: (callback: () => void, ms: number) => setTimeout(callback, ms),
     clearTimeout: (handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>) };
