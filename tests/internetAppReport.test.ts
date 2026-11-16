@@ -43,3 +43,5 @@ it('keeps a loopback rehearsal out of every internet gate',()=>{const r=run();r.
 it('accepts bounded retained inputs without losing the observed first ACK/input ordering',()=>{const r=run();r.peers[0].firstInputOrder=2;r.peers[0].inputs[0].order=10;expect(()=>validateInternetRun(r)).not.toThrow();});
 it('rejects credentials hidden in older recovery evidence',()=>{const r=fixture();r.localRecovery.report.seatToken='private';expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it('accepts the production 32-bit canonical publication hash width',()=>{const r=run();for(const p of r.peers)p.publications[0].hash='c7e5cfd9';expect(()=>validateInternetRun(r)).not.toThrow();});
+it('accepts actual tick-zero bootstrap followed by gameplay',()=>{const r=run();for(const p of r.peers)p.publications.unshift({...publication(),tick:0,sequence:1});expect(()=>validateInternetRun(r)).not.toThrow();});
+it('rejects only tick-zero bootstrap as gameplay',()=>{const r=run();for(const p of r.peers)p.publications[0].tick=0;expect(()=>validateInternetRun(r)).toThrow('internet-evidence-invalid');});
