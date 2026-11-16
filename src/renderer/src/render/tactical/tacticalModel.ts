@@ -3,7 +3,7 @@
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
 import { gravityAccel } from '../../sim/tactical/physics';
 import { predictPath } from '../../sim/tactical/predict';
-import { missileOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT, R_MAP, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 
@@ -284,7 +284,8 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${ARROW_NAMES[target]} ${distance}` });
   };
   if (input.ships.includes(0)) arrow('ship', own.x, own.y, cam.centreX, cam.centreY);
-  if (input.ships.includes(1)) { const en = interpolatedShip(state, prev, alpha, 1); arrow('enemy', en.x, en.y, own.x, own.y); }
+  const foe = targetOf(state, CREW_SLOT);   // the crew's locked target (engine refactor Decision 15)
+  if (input.ships.includes(foe)) { const en = interpolatedShip(state, prev, alpha, foe); arrow('enemy', en.x, en.y, own.x, own.y); }
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
