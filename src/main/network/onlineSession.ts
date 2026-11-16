@@ -61,6 +61,8 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   let context: Context | undefined;
   const current = (c: Context) => !disposed && context === c && epoch === c.epoch && !c.abort.signal.aborted;
   const check = (c: Context) => { if (!current(c)) throw c.abort.signal.reason ?? onlineFault('cancelled'); };
+  const gameCurrent = (c: Context, generation: number) => current(c) && c.gameEpoch === generation;
+  const checkGame = (c: Context, generation: number) => { check(c); if (c.gameEpoch !== generation) throw onlineFault('cancelled'); };
   function emit(update: Partial<OnlineStatus> = {}) {
     if (update.mirror) mirrorReceipt = update.mirror.receivedAgeMs === null ? null : clock.nowMs() - update.mirror.receivedAgeMs;
     value = { ...value, ...update };
@@ -87,7 +89,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   async function acquire<T extends { dispose(): Promise<void> }>(c: Context, factory: () => Promise<T>, adopt: (resource: T) => void): Promise<T> {
     check(c); if (factories >= 4) throw onlineFault('capacity'); factories++;
     const gameEpoch = c.gameEpoch;
-    const produced = Promise.resolve().then(() => { check(c); return factory(); }).then(async resource => {
+    const produced = Promise.resolve().then(() => { checkGame(c, gameEpoch); return factory(); }).then(async resource => {
       if (!current(c) || c.gameEpoch !== gameEpoch) { await resource.dispose(); throw onlineFault('cancelled'); }
       adopt(resource); return resource;
     }).finally(() => { factories--; });
@@ -168,8 +170,10 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     void mirrors(c).refresh().catch(() => {});
   }
   async function setupPeers(c: Context) {
-    await c.gameRetiring; check(c);
+    const gameEpoch = c.gameEpoch;
+    await c.gameRetiring; checkGame(c, gameEpoch);
     const seat = c.seat!, transport = await acquire(c, () => platform.createTransport(identityOf(seat.snapshot)), resource => { c.transport = resource; });
+    checkGame(c, gameEpoch);
     c.gameRemovers.push(transport.onExit(() => { if (c.transport === transport) fail(c, 'transport-lost'); }));
     if (!config.enabled) throw onlineFault('online-disabled');
     c.ice ??= createOnlineIce({ service: c.service, clock, mode: config.iceMode });
@@ -188,16 +192,16 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   }
   async function attach(c: Context, peer: OnlinePeer) {
     if (!current(c) || !c.active || c.attached.has(peer.attemptId)) return;
-    const s = c.seat!;
+    const s = c.seat!, gameEpoch = c.gameEpoch;
     if (s.seatId === s.snapshot.hostSeatId && !c.authorityReady) return;
     c.attached.add(peer.attemptId); c.ports.add(peer.port);
     try {
       if (c.host) {
         await wait(c, c.host.attachPeer(peer.attemptId, [peer.seatId], peer.port, { streamed: true, latestPayloadLimit: peer.latestPayloadLimit }));
-        c.ports.delete(peer.port);
+        checkGame(c, gameEpoch); c.ports.delete(peer.port);
       } else publish(c, peer.port);
       peer.transferred = true;
-    } catch (error) { close(peer.port); c.ports.delete(peer.port); if (current(c)) fail(c, codeOf(error)); }
+    } catch (error) { close(peer.port); c.ports.delete(peer.port); if (gameCurrent(c, gameEpoch)) fail(c, codeOf(error)); }
   }
   function mirrors(c: Context): OnlineMirrors {
     if (c.mirrors) return c.mirrors;
@@ -306,24 +310,32 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
           if (e.snapshot.roomId !== c.seat!.snapshot.roomId || e.snapshot.runId !== c.seat!.snapshot.runId) throw onlineFault('invalid-frame');
           c.claimSnapshot = structuredClone(e.snapshot);
           if (c.claiming) { c.seat!.snapshot = structuredClone(e.snapshot); emit({ snapshot: e.snapshot }); }
-          else void followHost(c, e.snapshot).catch(error => { if (current(c)) savedState(c, codeOf(error)); });
+          else void followHost(c, e.snapshot);
           break;
         case 'error': fail(c, e.error.code); break;
       }
     } catch (error) { fail(c, codeOf(error)); }
   }
   async function followHost(c: Context, snapshot: RoomSnapshot) {
-    await retireGame(c); check(c); resetMirrors(c);
+    const retired = retireGame(c), gameEpoch = c.gameEpoch;
+    resetMirrors(c);
+    // Adopt the generation before yielding, so another event cannot follow an older snapshot.
     c.seat!.snapshot = structuredClone(snapshot);
     emit({ phase: 'reconnecting', snapshot, role: c.seat!.seatId === snapshot.hostSeatId ? 'host' : 'guest', attachmentEpoch: 0, error: null });
-    if (c.seat!.seatId === snapshot.hostSeatId || snapshot.phase !== 'active') { savedState(c); return; }
-    const seat = await wait(c, c.service.join(saved!.joinCode, saved!.compatibility, saved!.seatToken));
-    if (seat.seatId !== c.seat!.seatId || seat.snapshot.roomId !== snapshot.roomId || seat.snapshot.runId !== snapshot.runId || seat.seatToken !== saved!.seatToken) throw onlineFault('unauthorized');
-    c.seat = seat; await setupPeers(c);
-    const actual = await wait(c, c.service.connect(seat)); updateSnapshot(c, actual); check(c);
-    if (actual.phase !== 'active' || actual.hostSeatId === seat.seatId) { savedState(c); return; }
-    c.active = true; await mirrors(c).refresh(); check(c);
-    emit({ phase: 'connecting' }); for (const peer of c.peers?.ready() ?? []) await attach(c, peer);
+    try {
+      await retired; checkGame(c, gameEpoch);
+      if (c.seat!.seatId === snapshot.hostSeatId || snapshot.phase !== 'active') { savedState(c); return; }
+      const seat = await wait(c, c.service.join(saved!.joinCode, saved!.compatibility, saved!.seatToken)); checkGame(c, gameEpoch);
+      if (seat.seatId !== c.seat!.seatId || seat.snapshot.roomId !== snapshot.roomId || seat.snapshot.runId !== snapshot.runId || seat.seatToken !== saved!.seatToken) throw onlineFault('unauthorized');
+      c.seat = seat; await setupPeers(c); checkGame(c, gameEpoch);
+      const actual = await wait(c, c.service.connect(seat)); checkGame(c, gameEpoch); updateSnapshot(c, actual); checkGame(c, gameEpoch);
+      if (actual.phase !== 'active' || actual.hostSeatId === seat.seatId) { savedState(c); return; }
+      c.active = true; await mirrors(c).refresh(); checkGame(c, gameEpoch);
+      emit({ phase: 'connecting' });
+      for (const peer of c.peers?.ready() ?? []) { await attach(c, peer); checkGame(c, gameEpoch); }
+    } catch (error) {
+      if (gameCurrent(c, gameEpoch)) savedState(c, codeOf(error));
+    }
   }
   function validateRecovery(c: Context, mirror: SessionMirror): Uint8Array {
     validateMirror(mirror, value => validateSectorMirror(value, c.seat!.snapshot.capacity));

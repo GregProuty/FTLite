@@ -16,7 +16,7 @@ type Owned={child:ChildProcess,pid:number,exited:boolean,exitCode:number|null,do
 async function main() {
   const args=new Map<string,string>();
   for(const arg of process.argv.slice(2)) {const at=arg.indexOf('=');const key=at<0?arg:arg.slice(0,at),value=at<0?'true':arg.slice(at+1);if(args.has(key))throw Error('arguments-invalid');args.set(key,value);}
-  const allowed=['--service-origin','--force-relay','--report-path','--candidate-manifest','--role','--machine-label','--network-label','--capture-after-ms','--local-verification','--inject-preparation-read-failure','--inject-preparation-timeout','--inject-cleanup-stop-failure'];
+  const allowed=['--service-origin','--force-relay','--report-path','--candidate-manifest','--role','--machine-label','--network-label','--capture-after-ms','--local-verification','--local-delayed-shutdown','--inject-preparation-read-failure','--inject-preparation-timeout','--inject-cleanup-stop-failure'];
   if([...args.keys()].some(k=>!allowed.includes(k)))throw Error('arguments-invalid');
   const origin=args.get('--service-origin'),config=resolveOnlineConfig({packaged:false,serviceUrl:origin});
   if(!config.enabled || !args.get('--report-path') || args.has('--force-relay')&&args.get('--force-relay')!=='true')throw Error('arguments-invalid');
@@ -26,7 +26,7 @@ async function main() {
   const captureAfter=Number(args.get('--capture-after-ms')??180000);
   if(!Number.isSafeInteger(captureAfter)||captureAfter<30000||captureAfter>540000)throw Error('arguments-invalid');
   const injected=[...args.keys()].some(k=>k.startsWith('--inject-'));
-  const local=args.has('--local-verification');if(local&&(manual||args.has('--force-relay')))throw Error('arguments-invalid');
+  const local=args.has('--local-verification');if(args.has('--local-delayed-shutdown')&&!local)throw Error('arguments-invalid');if(local&&(manual||args.has('--force-relay')))throw Error('arguments-invalid');
   const began=performance.now(),budgetMs=injected?20000:manual?captureAfter+30000:90000,deadline=createLauncherDeadline(began+budgetMs);
   const reportPath=resolve(args.get('--report-path')!);mkdirSync(dirname(reportPath),{recursive:true});
   const directory=mkdtempSync(join(tmpdir(),'ftlite-internet-app-')),owned:Owned[]=[],peers:any[]=[];
@@ -57,7 +57,7 @@ async function main() {
     p.child.on('exit',()=>{for(const q of pending.values())q.reject(Error('driver-exited'));pending.clear();});
     p.request=async(command,data={})=>{
       if(!p.child.connected||p.exited||deadline.remaining(cleaning?8000:10000)<=0)throw Error('driver-timeout');
-      const key=++id;const work=new Promise((resolve,reject)=>{pending.set(key,{resolve,reject});try{p.child.send({...data,command,requestId:key},error=>{if(error){pending.delete(key);reject(Error('driver-failed'));}});}catch{pending.delete(key);reject(Error('driver-failed'));}});
+      const key=++id;const work=new Promise((resolve,reject)=>{pending.set(key,{resolve,reject});try{p.child.send({...data,...(command==='shutdown'?{shutdownBudgetMs:Math.max(0,Math.min(4500,deadline.remaining(cleaning?8000:10000)-250))}:{}),command,requestId:key},error=>{if(error){pending.delete(key);reject(Error('driver-failed'));}});}catch{pending.delete(key);reject(Error('driver-failed'));}});
       return waitForAppRequest(work,deadline,undefined,cleaning?8000:10000).finally(()=>pending.delete(key));
     };
     await until(async()=>{try{return await p.request!('status');}catch{if(p.exited)throw Error('driver-exited');return null;}},v=>v?.electron==='37.10.3'&&v?.text?.includes('Couch play'));return p;
@@ -106,6 +106,7 @@ async function main() {
       await pause(6000);await click(guest,'pause');await phase(host,'paused');
       await until(async()=>[await host.request!('status'),await guest.request!('status')],v=>{const a=v[0].mirrorProof.receipts.at(-1),b=v[1].mirrorProof.receipts.at(-1);return a&&b&&a.capturedTick>0&&JSON.stringify(a)===JSON.stringify(b);});
       peers.push(await capture(host),await capture(guest));
+      if(args.has('--local-delayed-shutdown'))await host.request!('delay-exit-commit');
     }
   }catch(error){failure=stage==='preparation'?(error instanceof Error&&error.message==='preparation-timeout'?'preparation-timeout':'preparation-failed'):'native-gameplay-failed';}
   finally {
@@ -118,6 +119,7 @@ async function main() {
     try {const target=resolve(directory),prefix=resolve(tmpdir())+sep;if(!target.startsWith(prefix)||!target.slice(prefix.length).startsWith('ftlite-internet-app-'))throw Error('cleanup-target-invalid');await removeOwnedDirectory(target,deadline);}catch{cleanupFailed=true;}
   }
   for(const peer of peers){const p=owned.find(p=>p.kind===peer.role)!;peer.cleanup={pid:p.pid,exited:p.exited,exitCode:p.exitCode,...p.cleanup};}
+  if(args.has('--local-delayed-shutdown')&&!failure) {const host=owned.find(p=>p.kind==='host');if(!host?.cleanup?.shutdownComplete||host.cleanup.exitCommitDelayMs<2500||host.cleanup.shutdownElapsedMs<2500)failure='delayed-shutdown-proof-failed';}
   if(cleanupFailed)failure??='cleanup-failed';
   const report={version:1,identity,serviceOrigin:local?runtime?.baseUrl??'http://127.0.0.1:1':config.baseUrl,forceRelay:args.has('--force-relay'),mode:manual?'single-device':'local-pair',machineLabel,networkLabel,failure,cleanupFailed,temporaryRemoved:!existsSync(directory),directoryCleanupAttempted,elapsedMs:Math.round(performance.now()-began),budgetMs,processes:owned.filter(p=>p.kind==='preparation').map(p=>({pid:p.pid,exited:p.exited,exitCode:p.exitCode,kind:p.kind})),peers};
   if(!failure)try{if(local){validateLocalInternetDriverRun(report);if(!runtime?.exited()||!runtime.observation().exited||runtime.observation().exitCode!==0)throw Error('runtime-cleanup-failed');}else validateInternetRun(report);}catch{report.failure='internet-evidence-invalid';}

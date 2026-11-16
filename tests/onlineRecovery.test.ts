@@ -131,6 +131,46 @@ describe('manual committed-session recovery', () => {
     expect(r.authorities).toHaveLength(0); expect(p.service.request.mock.calls.some((c: any) => c[0].type === 'rehost-claim')).toBe(false);
     expect(p.service.putCheckpoint).not.toHaveBeenCalled();
   });
+  it.each(['factory-resolve', 'factory-reject', 'join', 'connect', 'mirror'] as const)('ignores obsolete follow continuation at %s after the newer host connects', async boundary => {
+    const r = room(), p = r.player(); await p.owner.dispatch({ type: 'reconnect' });
+    const gate = deferred<any>(), oldTransport = { ...p.transport, dispose: vi.fn(async () => {}) };
+    const newerTransport = { ...p.transport, dispose: vi.fn(async () => {}) };
+    let oldSeat: any;
+    if (boundary.startsWith('factory')) p.platform.createTransport.mockImplementationOnce(() => gate.promise).mockResolvedValue(newerTransport);
+    else if (boundary === 'join') p.service.join.mockImplementationOnce(() => gate.promise);
+    else if (boundary === 'connect') p.service.connect.mockImplementationOnce(() => gate.promise);
+    else p.service.getCheckpoint.mockImplementationOnce(() => gate.promise);
+    r.snapshot.phase = 'active'; r.snapshot.hostGeneration = 4;
+    oldSeat = { snapshot: structuredClone(r.snapshot), seatId: 1, seatGeneration: 1, seatToken: 't'.repeat(43) };
+    r.emit({ type: 'host-changed', snapshot: r.snapshot });
+    await vi.waitFor(() => expect(boundary === 'join' ? p.service.join.mock.calls.length : boundary === 'connect' ? p.service.connect.mock.calls.length : boundary === 'mirror' ? p.service.getCheckpoint.mock.calls.length : p.platform.createTransport.mock.calls.length).toBeGreaterThanOrEqual(boundary.startsWith('factory') ? 1 : 2));
+    if (!boundary.startsWith('factory')) p.platform.createTransport.mockResolvedValue(newerTransport);
+    r.snapshot.hostGeneration = 5; r.emit({ type: 'host-changed', snapshot: r.snapshot });
+    await vi.waitFor(() => expect(p.owner.status()).toMatchObject({ phase: 'connecting', snapshot: { hostGeneration: 5 } }));
+    const statuses: string[] = []; const off = p.owner.subscribe(s => statuses.push(s.phase));
+    if (boundary === 'factory-reject') gate.resolve(Promise.reject({ code: 'unavailable' }));
+    else gate.resolve(boundary === 'factory-resolve' ? oldTransport : boundary === 'join' ? oldSeat : boundary === 'connect' ? oldSeat.snapshot : r.committed());
+    await new Promise(done => setTimeout(done, 20)); off();
+    expect(p.owner.status()).toMatchObject({ phase: 'connecting', snapshot: { hostGeneration: 5 } });
+    expect(statuses).not.toContain('saved'); expect(newerTransport.dispose).not.toHaveBeenCalled();
+    if (boundary === 'factory-resolve') expect(oldTransport.dispose).toHaveBeenCalledOnce();
+    expect((p.platform.createTransport.mock.calls.at(-1) as any)[0].hostGeneration).toBe(5);
+  });
+  it('keeps a genuine current follow failure visible and recoverable', async () => {
+    const r = room(), p = r.player(); await p.owner.dispatch({ type: 'reconnect' });
+    p.platform.createTransport.mockRejectedValueOnce({ code: 'unavailable' });
+    r.snapshot.phase = 'active'; r.snapshot.hostGeneration = 4; r.emit({ type: 'host-changed', snapshot: r.snapshot });
+    await vi.waitFor(() => expect(p.owner.status()).toMatchObject({ phase: 'saved', error: 'unavailable', snapshot: { hostGeneration: 4 } }));
+  });
+  it.each(['join', 'connect'] as const)('cancels host follow while awaiting %s without reviving the session', async boundary => {
+    const r = room(), p = r.player(); await p.owner.dispatch({ type: 'reconnect' }); const gate = deferred<any>();
+    p.service[boundary].mockImplementationOnce(() => gate.promise);
+    r.snapshot.phase = 'active'; r.snapshot.hostGeneration = 4; r.emit({ type: 'host-changed', snapshot: r.snapshot });
+    await vi.waitFor(() => expect(p.service[boundary].mock.calls).toHaveLength(2));
+    await p.owner.dispatch({ type: 'forget-seat' });
+    gate.resolve(boundary === 'join' ? { snapshot: structuredClone(r.snapshot), seatId: 1, seatGeneration: 1, seatToken: 't'.repeat(43) } : structuredClone(r.snapshot));
+    await new Promise(done => setTimeout(done, 20)); expect(p.owner.status().phase).toBe('idle'); expect(p.platform.publishPort).not.toHaveBeenCalled();
+  });
   it('restoration discards old-generation pending upload and resets its sequence despite a larger private sequence', async () => {
     const r = room(), p = r.player(); p.setDisk({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: r.snapshot.roomId, committed: r.committed(), pending: r.wrap(r.cp, 3, 900) });
     await p.owner.dispatch({ type: 'reconnect' }); await p.owner.dispatch({ type: 'rehost' });

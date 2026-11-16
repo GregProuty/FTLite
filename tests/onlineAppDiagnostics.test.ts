@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { onlineAppFailureCode, onlineAppStderrDiagnostic, onlineAppWaitDiagnostic } from '../scripts/network/online-app-diagnostics';
 
 const secret = 'seatToken=private-seat localTicket=private-ticket SDP=private-sdp candidate=192.0.2.9';
-function driver(slowClose=false) {
+function driver(closeAfter=0) {
   let liveWindows=1;
   const app = Object.assign(new EventEmitter(), { isPackaged: false, setPath: vi.fn(), disableHardwareAcceleration: vi.fn(), exit: vi.fn(),
     commandLine: { appendSwitch: vi.fn(), getSwitchValue: (key: string) => ({ 'online-app-dir': resolve('test-profile'),
@@ -26,16 +26,29 @@ function driver(slowClose=false) {
       if(name === './online-app-click.cjs') return ()=>{};
       if(name === '../../out/main/index.js') return {};
       throw Error('unexpected test import');
-    }, process:proc, console:{error}, setTimeout, Buffer,
+    }, process:proc, console:{error}, setTimeout, performance, Buffer,
   });
   const contents = Object.assign(new EventEmitter(), { executeJavaScript:vi.fn().mockRejectedValue(Error(secret)) });
-  const window = Object.assign(new EventEmitter(), { webContents:contents,loadFile:vi.fn(),destroy:()=>{if(slowClose)setTimeout(()=>{liveWindows=0;window.emit('closed');},30);else{liveWindows=0;window.emit('closed');}},isDestroyed:()=>false });
+  const window = Object.assign(new EventEmitter(), { webContents:contents,loadFile:vi.fn(),destroy:()=>{if(closeAfter)setTimeout(()=>{liveWindows=0;window.emit('closed');},closeAfter);else{liveWindows=0;window.emit('closed');}},isDestroyed:()=>false });
   app.emit('browser-window-created',{},window);
   return {app,proc,error,contents};
 }
+afterEach(() => vi.useRealTimers());
 describe('application driver diagnostics',()=>{
+  it('allows the full save window plus native retirement before successful shutdown',async()=>{
+    vi.useFakeTimers();const h=driver(3400);h.proc.emit('message',{command:'shutdown',requestId:9,shutdownBudgetMs:4500});
+    await vi.advanceTimersByTimeAsync(3000);expect(h.proc.send).not.toHaveBeenCalled();expect(h.app.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);expect(h.proc.send.mock.calls[0]![0].result.windows).toBe(0);
+    h.proc.send.mock.calls[0]![1]();expect(h.app.exit).toHaveBeenCalledWith(0);
+  });
+  it('reports remaining resources and fails within the supplied launcher budget',async()=>{
+    vi.useFakeTimers();const h=driver(99999);h.proc.emit('message',{command:'shutdown',requestId:9,shutdownBudgetMs:700});
+    await vi.advanceTimersByTimeAsync(720);expect(h.proc.send).toHaveBeenCalledOnce();
+    expect(h.proc.send.mock.calls[0]![0].result).toMatchObject({windows:1,shutdownComplete:false});
+    h.proc.send.mock.calls[0]![1]();expect(h.app.exit).toHaveBeenCalledWith(1);
+  });
   it('observes delayed window retirement before reporting cleanup even with no utility',async()=>{
-    const h=driver(true);h.proc.emit('message',{command:'shutdown',requestId:9});
+    const h=driver(30);h.proc.emit('message',{command:'shutdown',requestId:9});
     await vi.waitFor(()=>expect(h.proc.send).toHaveBeenCalled());
     expect(h.proc.send.mock.calls[0]![0].result.windows).toBe(0);
   });

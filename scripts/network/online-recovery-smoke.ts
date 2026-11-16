@@ -1,8 +1,8 @@
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime, waitForAppRequest } from './online-app-runtime';
@@ -17,13 +17,14 @@ type Application = { child: ChildProcess; pid: number; profile: string; exited: 
 async function main() {
   const scenario = process.argv.find(a => a.startsWith('--scenario='))?.slice(11) ?? 'skiff';
   let proof: any;
-  let failureCategory: string | undefined, stage = 'startup', utilityFailure: unknown, instrumentation: any[]=[], driverFailure: unknown, firstDriverFailure: unknown;
+  let failureCategory: string | undefined, stage = 'preparation', utilityFailure: unknown, instrumentation: any[]=[], driverFailure: unknown, firstDriverFailure: unknown;
   const began = performance.now(), directory = mkdtempSync(join(tmpdir(), 'ftlite-online-recovery-'));
   const unresponsiveProbe=process.argv.includes('--inject-unresponsive-cleanup');
-  const budgetMs=unresponsiveProbe?20000:90000;
+  const preparationProbe=process.argv.some(a=>['--inject-git-timeout','--inject-git-failure','--inject-preparation-read-failure'].includes(a));
+  const budgetMs=unresponsiveProbe||preparationProbe?20000:90000;
   const ownedDeadline=createLauncherDeadline(began+budgetMs);
   const reportPath = resolve(process.argv.find(a => a.startsWith('--report-path='))?.slice(14) ?? '.superpowers/sdd/2026-11-15-net-3e-recovery-internet/recovery.json');
-  const artifactDirectory = resolve(reportPath, '..'); mkdirSync(artifactDirectory, { recursive: true });
+  const artifactDirectory = resolve(reportPath, '..');
   const processes: Application[] = [], viewports: any[] = [];
   let runtime: ReturnType<typeof startOnlineAppRuntime> | undefined, failure: string | undefined, timedOut = false, electronVersion:string|undefined;
   const deadline = new AbortController();
@@ -32,10 +33,22 @@ async function main() {
   const watchdog = setTimeout(timeout, budgetMs-10000); // same absolute deadline, ten-second cleanup reserve
   let injectedDeadline: ReturnType<typeof setTimeout> | undefined;
   let waitFailure: ReturnType<typeof onlineAppWaitDiagnostic> | undefined;
-  const source = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim(),
-    dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', windowsHide: true }).trim(), digest: computeContentDigest(process.cwd()),
-    artifactHashes:Object.fromEntries([...new Set([...ONLINE_RECOVERY_ARTIFACTS,...readdirSync('out',{recursive:true}).filter(p=>/\.(js|html)$/.test(String(p))).map(p=>'out/'+String(p).replaceAll('\\','/'))])]
-      .map(path=>[path,createHash('sha256').update(readFileSync(path)).digest('hex')])) };
+  let source: any = null, directoryCleanupAttempted = false, cleanupFailed = false;
+  const preparationProcesses: {child: ChildProcess; pid?: number; exited: boolean; forced: boolean; code: number | null; done: Promise<void>}[] = [];
+  async function git(args: string[]) {
+    if (!ownedDeadline.remaining(10000)) throw Error('preparation-timeout');
+    const inject = preparationProcesses.length === 0;
+    const child = inject && process.argv.includes('--inject-git-timeout')
+      ? spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {windowsHide:true,stdio:['ignore','pipe','ignore']})
+      : spawn('git', inject && process.argv.includes('--inject-git-failure') ? ['rev-parse','--verify','refs/ftlite-deliberately-missing'] : args, {windowsHide:true,stdio:['ignore','pipe','ignore']});
+    const record = {child,pid:child.pid,exited:false,forced:false,code:null as number|null,done:Promise.resolve()};
+    record.done = new Promise<void>((done,reject)=>{child.once('error',()=>reject(Error('preparation-failed')));child.once('exit',code=>{record.exited=true;record.code=code;});child.once('close',()=>done());});
+    void record.done.catch(()=>{});preparationProcesses.push(record);
+    let output='',overflow=false;
+    child.stdout!.on('data',(chunk:Buffer)=>{if(Buffer.byteLength(output)+chunk.byteLength>1048576)overflow=true;else if(!overflow)output+=chunk.toString('utf8');});
+    await ownedDeadline.wait(record.done,'preparation-timeout',10000);
+    if(record.code!==0||overflow)throw Error('preparation-failed');return output.trim();
+  }
   async function until(read: () => Promise<any>, predicate: (value: any) => boolean, label: string, ms = 10000) {
     const deadline = performance.now() + ms; let last;
     while (performance.now() < deadline) { if (timedOut) throw Error('launcher timeout'); last = await read(); if (predicate(last)) return last; await delay(40); }
@@ -56,7 +69,7 @@ async function main() {
       const work=new Promise((resolve, reject) => {
         pending.set(key, { resolve, reject });
         const failed=()=>{const item=pending.get(key);if(item){pending.delete(key);item.reject(Error('application IPC disconnected'));}};
-        try { child.send({ ...data, requestId: key, command },error=>{if(error)failed();}); } catch { failed(); }
+        try { child.send({ ...data, ...(command==='shutdown'?{shutdownBudgetMs:Math.max(0,Math.min(4500,ownedDeadline.remaining(cleaning?8000:10000)-250))}:{}), requestId: key, command },error=>{if(error)failed();}); } catch { failed(); }
       });
       return waitForAppRequest(work,ownedDeadline,cleaning?undefined:deadline.signal,cleaning?8000:10000)
         .catch(error=>{if(pending.has(key))driverFailure={profile,command,code:'DRIVER_TIMEOUT'};throw error;}).finally(()=>pending.delete(key));
@@ -112,6 +125,14 @@ async function main() {
   }
   async function key(g: Application, key: string, duration = 100) { await g.request('key',{key,down:true}); await delay(duration); await g.request('key',{key,down:false}); }
   try {
+    mkdirSync(artifactDirectory, { recursive: true });
+    const revision=await git(['rev-parse','HEAD']),dirty=!!await git(['status','--porcelain']);
+    if(process.argv.includes('--inject-preparation-read-failure'))readFileSync(join(directory,'missing-build-artifact.js'));
+    source={revision,dirty,digest:computeContentDigest(process.cwd()),
+      artifactHashes:Object.fromEntries([...new Set([...ONLINE_RECOVERY_ARTIFACTS,...readdirSync('out',{recursive:true}).filter(p=>/\.(js|html)$/.test(String(p))).map(p=>'out/'+String(p).replaceAll('\\','/'))])]
+        .map(path=>{if(!ownedDeadline.remaining(10000))throw Error('preparation-timeout');return [path,createHash('sha256').update(readFileSync(path)).digest('hex')];}))};
+    if(!ownedDeadline.remaining(10000))throw Error('preparation-timeout');
+    stage='startup';
     const hang = process.argv.includes('--inject-startup-timeout') ? 'startup' : process.argv.includes('--inject-build-timeout') ? 'observer-build' : undefined;
     runtime = startOnlineAppRuntime(directory, source.digest, deadline.signal, hang, stage => { if (hang === stage) injectedDeadline = setTimeout(timeout,250); });
     await runtime.ready;
@@ -254,7 +275,7 @@ async function main() {
     stage='idle-resources';
     for(const app of [h,g]) await until(()=>app.request('resource-counts'),r=>r.windows===1 && r.utilities.every((u:any)=>u.exited) && r.listeners===0 && r.ports===0,'idle resource release',5000);
     proof.menuClicks=await Promise.all([h,g,...(contender?[contender]:[])].map(async app=>({role:app.profile,clicks:(await status(app)).recovery.clicks})));
-  } catch(error) { failure=onlineAppFailureCode(error); firstDriverFailure=driverFailure; failureCategory=error instanceof SyntaxError?'invalid-observation-json':(error as any)?.code==='ENOENT'?'missing-observation-file':'gate-failure'; console.error('RECOVERY_FAILED',{stage,category:failureCategory,assertion:assertionFailure,driver:firstDriverFailure}); }
+  } catch(error) { failure=stage==='preparation'?(error instanceof Error && error.message==='preparation-timeout'?'preparation-timeout':'preparation-failed'):onlineAppFailureCode(error); firstDriverFailure=driverFailure; failureCategory=error instanceof SyntaxError?'invalid-observation-json':(error as any)?.code==='ENOENT'?'missing-observation-file':'gate-failure'; console.error('RECOVERY_FAILED',{stage,category:failureCategory,assertion:assertionFailure,driver:firstDriverFailure}); }
   finally {
     clearTimeout(watchdog); clearTimeout(injectedDeadline);
     cleaning=true;
@@ -267,17 +288,25 @@ async function main() {
       } catch { console.error('APP_SHUTDOWN_OBSERVATION_FAILED'); if(unresponsiveProbe)app.termination='fault'; }
       try { await kill(app); } catch { failure??='owned Electron cleanup failed'; }
     })),(async()=>{try { await runtime?.dispose(ownedDeadline); } catch { failure??='workerd cleanup failed'; }})()]);
-    instrumentation=readdirSync(directory).filter(p=>p.endsWith('.instrumentation.json')).map(p=>({file:p,...JSON.parse(readFileSync(join(directory,p),'utf8'))}));
+    for(const record of preparationProcesses) {
+      try {record.forced=!!record.pid&&!record.exited;await stopOwnedProcess(record.child,ownedDeadline);if(record.pid)await ownedDeadline.wait(record.done,'cleanup-timeout',2000);}
+      catch {cleanupFailed=true;failure??='preparation cleanup failed';}
+    }
+    try { instrumentation=readdirSync(directory).filter(p=>p.endsWith('.instrumentation.json')).map(p=>({file:p,...JSON.parse(readFileSync(join(directory,p),'utf8'))})); } catch {cleanupFailed=true;failure??='instrumentation cleanup failed';}
+    directoryCleanupAttempted=true;
+    try {
     const target=resolve(directory),prefix=resolve(tmpdir())+sep;
     if(!target.startsWith(prefix) || !target.slice(prefix.length).startsWith('ftlite-online-recovery-')) throw Error('invalid exact cleanup target');
-    try { await removeOwnedDirectory(target,ownedDeadline); } catch { failure??='exact temporary cleanup failed'; }
+    await removeOwnedDirectory(target,ownedDeadline); } catch { cleanupFailed=true;failure??='exact temporary cleanup failed'; }
   }
   const cleanups=processes.flatMap(p=>p.cleanup?[p.cleanup]:[]);
-  const report={version:1,scenario,source,runtime:{electron:electronVersion,workerd:runtime?.workerdVersion,workerPid:runtime?.pid,workerExit:runtime?.exited(),temporaryRemoved:!existsSync(directory)},
+  const report={version:1,scenario,source,temporaryName:basename(directory),directoryCleanupAttempted,cleanupFailed,
+    preparationProcesses:preparationProcesses.map(({pid,exited,forced,code})=>({kind:'git',pid,exited,forced,code})),nativeAllocated:!!runtime||processes.length>0,runtime:{electron:electronVersion,workerd:runtime?.workerdVersion,workerPid:runtime?.pid,workerExit:runtime?.exited(),temporaryRemoved:!existsSync(directory)},
     processes:processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination,forcedUtilityExits})=>({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,forcedUtilityExits,cleanup})),
     cleanup:Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k=>[k,cleanups.reduce((n,r)=>n+r[k],0)])),
     runtimeHelper:runtime?.observation(),instrumentation,viewports,proof,budgetMs,elapsedMs:Math.ceil(performance.now()-began),failure,assertionFailure,failureCategory,stage,utilityFailure,driverFailure:failure?firstDriverFailure:undefined,waitFailure,limits:['loopback-only','no-TURN','no-WAN','no-two-machine','OS-suspend-NOT-RUN']};
-  writeFileSync(reportPath,JSON.stringify(report,null,2)+'\n');
+  try {writeFileSync(reportPath,JSON.stringify(report,null,2)+'\n');}
+  catch {console.error('RECOVERY_REPORT_WRITE_FAILED');console.log(JSON.stringify(report));failure??='report-write-failed';}
   if(failure) throw Error(failure);
   validateOnlineRecoveryReport(report); console.log('ACTUAL APPLICATION RECOVERY PASS',scenario);
 }

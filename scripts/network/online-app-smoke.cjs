@@ -20,7 +20,7 @@ app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const windows = [], utilities = [], channels = [], nativeClosed = new Map();
 const mirrorReceipts = [];
 const recovery = { gets: [], puts: [], restores: [], captures: [], phases: [], invalidations: [], clicks: [], heldUploads: 0 };
-let holdUploads = false, holdRestore = false, restoreRelease, blockNextGrant = false;
+let delayedExitCommit = false, holdUploads = false, holdRestore = false, restoreRelease, blockNextGrant = false;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function checkpointProof(bytes) {
   const b = Buffer.from(bytes), cp = JSON.parse(b.toString());
@@ -34,6 +34,9 @@ globalThis.fetch = async (url, init) => {
   if (checkpoint && init?.method === 'PUT' && holdUploads) {
     recovery.heldUploads++; recovery.pending = checkpointProof(init.body);
     await new Promise((_, reject) => { const abort = () => reject(Error('held-upload-aborted')); if(init.signal?.aborted) abort(); else init.signal?.addEventListener('abort', abort, { once: true }); });
+  }
+  if(checkpoint && init?.method === 'PUT' && stopping && delayedExitCommit) {
+    delayedExitCommit=false;const began=performance.now();await delay(2600);recovery.exitCommitDelayMs=performance.now()-began;
   }
   const response = await nativeFetch(url, init);
   if (checkpoint && response.ok) {
@@ -167,6 +170,7 @@ async function command(message) {
   switch (message.command) {
     case 'status': return { ...await js(`(async () => ({status:(await window.ftlite.online.readStatus()).status, observations:window.onlineAppObservation(), keys:window.onlineAppKeys, text:document.body.innerText, hidden:document.hidden, focused:document.hasFocus()}))()`),electron:process.versions.electron,
       recovery, mirrorProof: { receipts: mirrorReceipts, utilities: utilities.map(({ runId, utilityEpoch, hostGeneration, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit }) => ({ runId, utilityEpoch, hostGeneration, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit })) } };
+    case 'delay-exit-commit': delayedExitCommit=true; return true;
     case 'hold-upload': holdUploads=true; return true;
     case 'block-next-grant': blockNextGrant=true; return true;
     case 'hold-restore': holdRestore=true; return true;
@@ -204,12 +208,15 @@ async function command(message) {
     case 'delay-next-transport': delayNextTransport=true; return true;
     case 'shutdown': {
       stopping = true;
-      for(const record of windows.filter(r=>r.hidden&&!r.closed)) {
-        const data = await record.window.webContents.executeJavaScript('window.rtcNative.status()'); nativeClosed.set(record,data);
-      }
+      // 3s production save + bounded native retirement; caller supplies only its
+      // remaining request budget, leaving termination/removal reserve outside.
+      const budget = Number.isFinite(message.shutdownBudgetMs) ? Math.max(0, Math.min(4500, message.shutdownBudgetMs)) : 4500;
+      const stopAt = performance.now() + budget;
+      const snapshots=windows.filter(r=>r.hidden&&!r.closed).map(record=>record.window.webContents.executeJavaScript('window.rtcNative.status()').then(data=>nativeClosed.set(record,data)));
+      if(snapshots.length)await Promise.race([Promise.allSettled(snapshots),delay(Math.min(250,Math.max(0,stopAt-performance.now())))]);
       if(visible&&!visible.isDestroyed()) visible.destroy();
-      for(let i=0;i<100 && (utilities.some(r=>!r.exited) || BrowserWindow.getAllWindows().length || channels.some(r=>!r.released)
-        || ['online:status','net:rtc-response','net:transport-ready'].some(k=>ipcMain.listenerCount(k)>0));i++) await delay(20);
+      while(performance.now()<stopAt && (utilities.some(r=>!r.exited) || BrowserWindow.getAllWindows().length || channels.some(r=>!r.released)
+        || ['online:status','net:rtc-response','net:transport-ready'].some(k=>ipcMain.listenerCount(k)>0))) await delay(Math.min(20,Math.max(0,stopAt-performance.now())));
       const result = { utilities: utilities.length, utilityExits: utilities.filter(r=>r.exited).length,
         windows: BrowserWindow.getAllWindows().length, ports: channels.filter(r=>!r.released).length,
         listeners: ['online:status','net:rtc-response','net:transport-ready'].reduce((n,k)=>n+ipcMain.listenerCount(k),0),
@@ -219,7 +226,10 @@ async function command(message) {
         nativePeersEndedWithWindow:[...nativeClosed].flatMap(([owner,r])=>owner.closed?(r?.connections??[]).filter(p=>p.state!=='closed'):[]).length,
         peers:[...nativeClosed].flatMap(([owner,r])=>owner.closed?[]:r?.connections??[]).filter(r=>r.state!=='closed').length,
         utilityPids:utilities.map(r=>r.pid),observedMainPorts:channels.length };
-      process.send?.({id:message.requestId,result},()=>app.exit(0)); return;
+      result.shutdownComplete = result.utilities === result.utilityExits && result.windows === 0 && result.ports === 0 && result.listeners === 0 && result.peers === 0;
+      result.exitCommitDelayMs = recovery.exitCommitDelayMs ?? 0;
+      result.shutdownElapsedMs = budget - Math.max(0,stopAt-performance.now());
+      process.send?.({id:message.requestId,result},()=>app.exit(result.shutdownComplete ? 0 : 1)); return;
     }
     default: throw Error('unknown driver command');
   }
@@ -227,7 +237,7 @@ async function command(message) {
 // Hold the wrapper alive long enough to report actual utility exits at shutdown.
 app.on('window-all-closed', event => { if (stopping) event?.preventDefault?.(); });
 app.on('before-quit', event => { if(stopping) event.preventDefault(); });
-const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','resize','layout','screenshot','resources','resource-counts','transport-death','delay-next-transport','shutdown','hold-upload','hold-restore','release-restore','block-next-grant','suspend-hook']);
+const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','resize','layout','screenshot','resources','resource-counts','transport-death','delay-next-transport','shutdown','delay-exit-commit','hold-upload','hold-restore','release-restore','block-next-grant','suspend-hook']);
 let ignoreDriver=false;
 process.on('message', message => { if(ignoreDriver)return; void command(message).then(result => { if(message.command!=='shutdown') process.send?.({id:message.requestId,result}); })
   .catch(error => process.send?.({id:Number.isSafeInteger(message?.requestId)?message.requestId:0,error:'app-driver-command-failed',
