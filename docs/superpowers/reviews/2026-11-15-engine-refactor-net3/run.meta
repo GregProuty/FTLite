@@ -1,0 +1,11 @@
+topic=engine-refactor-net3
+subject_kind=spec
+subject=docs/superpowers/specs/2026-11-15-engine-refactor-design.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=3
+effort=high
+confirm=0
+verify=
+created=2026-11-15
+head_at_setup=cdbb842
