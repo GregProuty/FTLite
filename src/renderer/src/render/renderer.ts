@@ -26,6 +26,8 @@ import type { PresentationPoint } from '../../../network/state/timeline';
 export interface Renderer {
   app: Application; world: Container; hud: Container; assets: GameAssets;
   resize(winW: number, winH: number): void;
+  /** The letterbox stage scale set by the last resize (1 before the first); the duel interior reads it for its fit (Art-i spec section 4). */
+  stageScale(): number;
   reset(): void;
   recordPrev(state: SimState): void;
   draw(state: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: CardUiState, presentation?: readonly PresentationPoint[]): void;
@@ -51,7 +53,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const consoleDesks = createConsoleLayer();   // spec Demo-xii section 1: a desk at every station, under the crew
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
   world.addChild(tiles.container, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above);
-  let lastDraw: number | null = null;
+  let lastDraw: number | null = null, stage = 1;
 
   return {
     app, world, hud, assets,
@@ -59,7 +61,9 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const lb = computeLetterbox(winW, winH, INTERNAL_W, INTERNAL_H);
       app.renderer.resize(winW, winH);
       app.stage.scale.set(lb.scale); app.stage.position.set(lb.offsetX, lb.offsetY);
+      if (lb.scale !== stage) { stage = lb.scale; projectiles.reset(); }   // the snapped fit moves the ship: shots in flight cached paths to the old room centres (presentation only)
     },
+    stageScale: () => stage,
     reset() { memory.reset(); projectiles.reset(); enemyWindow.reset(); anim = freshWindowAnim(); lastDraw = null; },   // session.start (a new run); the app has no runtime snapshot load
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });
@@ -68,7 +72,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
-      const fit = worldFit(d.width, d.height); world.scale.set(fit.scale);
+      const fit = worldFit(d.width, d.height, stage); world.scale.set(fit.scale);
       anim = stepWindowAnim(anim, state);
       const view = enemyWindowModel(state, state.tick + alpha, anim), shown = windowShown(state, view);
       enemyWindow.draw(view, shown, dt, hitFlashOf(state, view));

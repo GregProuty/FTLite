@@ -74,7 +74,7 @@ describe('projectile model (spec Demo-vii section 2)', () => {
     expect(shouldReset(100, 101, 0, 4)).toBe(true);
   });
   it('roomCentrePx maps a room centre through worldFit into internal pixels', () => {
-    const s = cutterState(), fit = worldFit(s.derived.width, s.derived.height), E = room(s, 'E');
+    const s = cutterState(), fit = worldFit(s.derived.width, s.derived.height, 1), E = room(s, 'E');
     const c = roomCentrePx(s.derived, E, fit);
     expect(c.x).toBeCloseTo(fit.x + 2.5 * 32 * fit.scale, 9);            // Engines spans x 1..3, centre 2.5 tiles
     expect(c.y).toBeCloseTo(fit.y + 6.5 * 32 * fit.scale, 9);            // rows 5..7, centre 6.5 tiles
