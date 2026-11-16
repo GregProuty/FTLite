@@ -1,0 +1,12 @@
+topic=mac-1-spec
+subject_kind=spec
+subject=docs/superpowers/specs/2026-11-16-mac-1-apple-silicon-design.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=3
+effort=high
+confirm=0
+verify=
+created=2026-11-16
+head_at_setup=9237d6a
+format=
