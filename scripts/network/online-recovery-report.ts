@@ -5,7 +5,7 @@ export function validateOnlineRecoveryReport(value: unknown): void {
   const r = value as any, fail = () => { throw Error('missing or invalid actual recovery evidence'); };
   const positive = (n: unknown) => Number.isSafeInteger(n) && (n as number) > 0;
   const hash = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
-  if (!r || r.version !== 1 || r.failure != null || !['skiff','cutter','paused','upload','race','stale'].includes(r.scenario)
+  if (!r || r.version !== 1 || r.failure != null || r.driverFailure != null || !['skiff','cutter','paused','upload','race','stale'].includes(r.scenario)
     || !/^[a-f0-9]{40}$/.test(r.source?.revision ?? '') || !hash(r.source?.digest) || typeof r.source?.dirty !== 'boolean'
     || ONLINE_RECOVERY_ARTIFACTS.some(k => !hash(r.source?.artifactHashes?.[k]))
     || r.runtime?.electron !== '37.10.3' || r.runtime?.workerd !== '1.20261023.1' || !positive(r.runtime.workerPid)

@@ -253,7 +253,7 @@ async function main() {
   const report={version:1,scenario,source,runtime:{electron:electronVersion,workerd:runtime?.workerdVersion,workerPid:runtime?.pid,workerExit:runtime?.exited(),temporaryRemoved:!existsSync(directory)},
     processes:processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination,forcedUtilityExits})=>({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,forcedUtilityExits,cleanup})),
     cleanup:Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k=>[k,cleanups.reduce((n,r)=>n+r[k],0)])),
-    runtimeHelper:runtime?.observation(),instrumentation,viewports,proof,elapsedMs:Math.ceil(performance.now()-began),failure,assertionFailure,failureCategory,stage,utilityFailure,driverFailure,waitFailure,limits:['loopback-only','no-TURN','no-WAN','no-two-machine','OS-suspend-NOT-RUN']};
+    runtimeHelper:runtime?.observation(),instrumentation,viewports,proof,elapsedMs:Math.ceil(performance.now()-began),failure,assertionFailure,failureCategory,stage,utilityFailure,driverFailure:failure?driverFailure:undefined,waitFailure,limits:['loopback-only','no-TURN','no-WAN','no-two-machine','OS-suspend-NOT-RUN']};
   writeFileSync(reportPath,JSON.stringify(report,null,2)+'\n');
   if(failure) throw Error(failure);
   validateOnlineRecoveryReport(report); console.log('ACTUAL APPLICATION RECOVERY PASS',scenario);

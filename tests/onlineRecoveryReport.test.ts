@@ -23,6 +23,7 @@ it('rejects stale ownership', () => { const r = fixture(); r.proof.hostGeneratio
 it.each(['workerExit', 'temporaryRemoved'])('rejects absent %s', key => { const r = fixture(); delete r.runtime[key]; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it('rejects missing process exit', () => { const r = fixture(); r.processes[0].exited = false; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it('rejects declared failure', () => { const r = fixture(); r.failure = 'failure'; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
+it('rejects a declared driver failure despite complete proof',()=>{const r=fixture();r.driverFailure={code:'DRIVER_TIMEOUT'};expect(()=>validateOnlineRecoveryReport(r)).toThrow();});
 it('rejects missing artifact provenance', () => { const r = fixture(); r.source.artifactHashes = {}; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it('rejects a contender with no observed outcome', () => { const r = fixture(); delete r.proof.contenders[0].outcome; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it('rejects socket loss substituted for live utility fencing', () => { const r = fixture(); r.proof.oldHostFence.utilityAlive = false; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
