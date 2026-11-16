@@ -1,0 +1,11 @@
+topic=engine-r1b-impl
+subject_kind=impl
+subject=src/network/modes/duel.ts src/network/modes/duelStream.ts src/network/modes/sectorStream.ts src/network/modes/streamBinding.ts src/renderer/src/app/session.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/authority/duelRules.ts src/renderer/src/authority/replay.ts src/renderer/src/net/codec.ts src/renderer/src/net/contracts.ts src/renderer/src/sim/duel/hash.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/snapshot.ts src/renderer/src/sim/duel/summary.ts src/renderer/src/sim/module.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/state.ts src/utility/authorityHost.ts src/utility/authorityModes.ts tests/codecModeWire.test.ts tests/duelCheckpoint.test.ts tests/duelMode.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/helpers/duelAuthority.ts tests/networkBoundary.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\engine-r1b
+base=1a0df0a
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm run build && npm test
+created=2026-11-16
+head_at_setup=76b3472
