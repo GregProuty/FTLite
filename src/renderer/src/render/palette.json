@@ -1,0 +1,49 @@
+{
+  "name": "Apollo (placeholder, Art-i-a)",
+  "source": "https://lospec.com/palette-list/apollo",
+  "colours": [
+    "#172038", "#253a5e", "#3c5e8b", "#4f8fba", "#73bed3", "#a4dddb",
+    "#19332d", "#25562e", "#468232", "#75a743", "#a8ca58", "#d0da91",
+    "#4d2b32", "#7a4841", "#ad7757", "#c09473", "#d7b594", "#e7d5b3",
+    "#341c27", "#602c2c", "#884b2b", "#be772b", "#de9e41", "#e8c170",
+    "#241527", "#411d31", "#752438", "#a53030", "#cf573c", "#da863e",
+    "#1e1d39", "#402751", "#7a367b", "#a23e8c", "#c65197", "#df84a5",
+    "#090a14", "#10141f", "#151d28", "#202e37", "#394a50", "#577277",
+    "#819796", "#a8b5b2", "#c7cfcc", "#ebede9"
+  ],
+  "roles": {
+    "background": "#090a14",
+    "floor": "#c7cfcc",
+    "floorSeam": "#a8b5b2",
+    "wall": "#394a50",
+    "wallLight": "#577277",
+    "wallShadow": "#202e37",
+    "doorFill": "#de9e41",
+    "doorOutline": "#151d28",
+    "space": "#090a14",
+    "ambient": "#a8b5b2",
+    "alert": "#a53030",
+    "vacuum": "#4f8fba",
+    "flash": "#ebede9",
+    "lampOn": "#e8c170",
+    "lampOff": "#577277",
+    "screenA": "#73bed3",
+    "screenB": "#4f8fba",
+    "lowO2": "#cf573c",
+    "impact": "#cf573c",
+    "doorSealed": "#cf573c",
+    "heldTick": "#e8c170",
+    "spaceGap": "#090a14",
+    "fireFallback": "#da863e",
+    "breach": "#a53030",
+    "airlockOutline": "#73bed3",
+    "ventSpeck": "#ebede9",
+    "failed": "#e8c170"
+  },
+  "ramps": {
+    "fire": ["#ebede9", "#e8c170", "#de9e41", "#be772b", "#cf573c", "#a53030", "#602c2c", "#577277"],
+    "plasma": ["#ebede9", "#a4dddb", "#73bed3", "#4f8fba", "#3c5e8b", "#253a5e", "#172038"],
+    "electric": ["#ebede9", "#a4dddb", "#73bed3", "#7a367b", "#402751"],
+    "vent": ["#ebede9", "#c7cfcc", "#a8b5b2", "#819796", "#577277"]
+  }
+}
