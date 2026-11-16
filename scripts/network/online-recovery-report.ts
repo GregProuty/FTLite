@@ -28,12 +28,13 @@ export function validateOnlineRecoveryReport(value: unknown): void {
     || !/^[a-f0-9]{40}$/.test(r.source?.revision ?? '') || !hash(r.source?.digest) || typeof r.source?.dirty !== 'boolean'
     || ONLINE_RECOVERY_ARTIFACTS.some(k => !hash(r.source?.artifactHashes?.[k]))
     || r.runtime?.electron !== '37.10.3' || r.runtime?.workerd !== '1.20261023.1' || !positive(r.runtime.workerPid)
-    || r.runtime.workerExit !== true || r.runtime.temporaryRemoved !== true || !positive(r.runtimeHelper?.pid) || r.runtimeHelper.exited !== true
+    || r.runtime.workerExit !== true || r.runtime.temporaryRemoved !== true || !positive(r.runtimeHelper?.pid) || r.runtimeHelper.exited !== true || r.runtimeHelper.exitCode!==0
     || !positive(r.elapsedMs) || r.elapsedMs > 90000) fail();
   if (!Array.isArray(r.processes) || r.processes.length < 2 || new Set(r.processes.map((p: any) => p.pid)).size !== r.processes.length
     || r.processes.some((p: any) => !positive(p.pid) || p.exited !== true || !Number.isInteger(p.exitCode)
       || !['shutdown','restart'].includes(p.termination) || p.termination === 'shutdown' && (p.exitCode !== 0 || !p.cleanup)
-      || p.termination === 'restart' && !p.resourcesBeforeForcedExit)) fail();
+      || p.termination === 'restart' && (!Array.isArray(p.resourcesBeforeForcedExit?.utilities) || !Array.isArray(p.forcedUtilityExits)
+        || p.resourcesBeforeForcedExit.utilities.some((u:any)=>!positive(u.pid)||!p.forcedUtilityExits.some((e:any)=>e.pid===u.pid&&e.exited===true))))) fail();
   const c = r.cleanup;
   if (!c || !positive(c.utilities) || c.utilities !== c.utilityExits || ['windows','ports','listeners','peers'].some(k => c[k] !== 0)
     || !positive(c.nativeWindows) || c.nativeWindows !== c.nativeWindowExits || !positive(c.nativePeersObserved)

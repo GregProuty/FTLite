@@ -24,6 +24,8 @@ it('rejects auto-resume', () => { const r = fixture(); r.proof.autoResume = true
 it('rejects stale ownership', () => { const r = fixture(); r.proof.hostGenerationAfter = 1; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it.each(['workerExit', 'temporaryRemoved'])('rejects absent %s', key => { const r = fixture(); delete r.runtime[key]; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it('rejects missing process exit', () => { const r = fixture(); r.processes[0].exited = false; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
+it('rejects a killed authority without its exact utility exit observation',()=>{const r=fixture();r.processes[0]={pid:10,profile:'host',exited:true,exitCode:1,termination:'restart',resourcesBeforeForcedExit:{utilities:[{pid:12}]}};expect(()=>validateOnlineRecoveryReport(r)).toThrow();});
+it('rejects an unexpected runtime helper exit',()=>{const r=fixture();r.runtimeHelper.exitCode=1;expect(()=>validateOnlineRecoveryReport(r)).toThrow();});
 it('rejects declared failure', () => { const r = fixture(); r.failure = 'failure'; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it('rejects a declared driver failure despite complete proof',()=>{const r=fixture();r.driverFailure={code:'DRIVER_TIMEOUT'};expect(()=>validateOnlineRecoveryReport(r)).toThrow();});
 it('rejects missing artifact provenance', () => { const r = fixture(); r.source.artifactHashes = {}; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
