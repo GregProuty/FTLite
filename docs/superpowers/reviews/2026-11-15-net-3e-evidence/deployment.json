@@ -1,0 +1,20 @@
+{
+  "workerName": "ftlite-signalling-dev",
+  "serviceOrigin": "https://ftlite-signalling-dev.gprout009.workers.dev",
+  "accountId": "ffb0dfdd5fa8ccc1da8801ee4e95b752",
+  "deploymentId": "f39f2950-7e0f-4696-a8ea-048d06d14417",
+  "versionId": "2e51684e-42d4-4ba2-9897-08577653135f",
+  "createdOn": "2026-11-16T05:41:31.643648Z",
+  "initialVersionId": "c0a47252-9465-4325-9397-e1adb99713b5",
+  "bundleSha256": "fda351cb27f57961b61616324012f1d33969226b5356d51d8ad2749dc657eb33",
+  "configSha256": "b9faa6b032720827399ddac179f1fe4021f33a6ee9c0a21d5420cac93a3212bc",
+  "operatorConfirmedArtifact": true,
+  "priorDeployment": null,
+  "provisionedSecretNames": [
+    "IP_HASH_SALT",
+    "ALLOWED_ORIGINS",
+    "TURN_KEY_ID",
+    "TURN_KEY_API_TOKEN"
+  ],
+  "pendingSecretNames": []
+}

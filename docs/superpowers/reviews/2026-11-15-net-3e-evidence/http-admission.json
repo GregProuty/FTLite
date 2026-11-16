@@ -1,0 +1,16 @@
+{
+  "serviceOrigin": "https://ftlite-signalling-dev.gprout009.workers.dev",
+  "checkedAt": "2026-11-16T05:39:09.756Z",
+  "createStatus": 200,
+  "joinStatus": 200,
+  "distinctSeats": true,
+  "privateNoStore": true,
+  "unauthorizedCheckpointStatus": 401,
+  "unauthorizedCode": "unauthorized",
+  "socketTicketStatus": 200,
+  "ticketPresent": true,
+  "limits": [
+    "HTTP admission only; no gameplay or relay proof",
+    "test lobby expires under existing retention"
+  ]
+}
