@@ -51,7 +51,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 2. **What moves** (spec §5): `hull`, `rooms`, `shields`, `shieldClock`, `laserCharge`, `laserHold`, `fireHeld`, `lock`, `magazine`, `magazineClock` and the weapon counters (`shots`, `laserHits`, `layersStripped`, `missilesLaunched`, `missileHits`, `missilesLost`). The body keeps position, heading, contact grace, the contact counters and the stabilise state. The record adds `cls` (its class) and `target`.
 3. **Ship slots** **(rec.)**: `Slots<T> = [T, T, ...T[]]` (an encounter always has the crew's ship and one other, so `ships[0]` and `ships[1]` stay non-optional). The slot count is part of the state's shape, like the asteroid count: `ships.length` is a canonical identity field, and `createTacticalState(seed, slots = 2)` fills the duel's two slots and leaves any further slot inactive, holding zeros (R-5 fills them). Inactive slots are skipped by flight, contacts, weapons, missile landings and the outcome; the validator requires their values to be zeros. The crew wins when every other active ship's hull is gone (for the duel: the hunter's).
 4. **Contact grace for N ships** **(rec.)**: `graceUntil` has `asteroids + slots` entries; ship k's body in ship i's array is `asteroids + 1 + (k < i ? k : k − 1)` (`shipBody`), so for the duel's two slots the layout is exactly today's and the telemetry accumulator's copies keep their shape. Contacts run per active slot in slot order: its statics, then every later active ship, which is today's order for two (ship 0's statics, the pair, ship 1's statics).
-5. **The missile pool** **(rec.)**: one entry per ship slot, `{ active, owner, x, y, vx, vy, heading, headingAcc, age }` (9 values: fields `missiles.<k>.active`, `.owner`, `.flight`). A launch takes the ship's own entry or the first free one; a missile that ends frees and zeroes its entry. At most one in flight per ship, as today (the validator refuses two for one owner). Missiles are flown and resolved **in owner order** (`missileOf(state, i)` for each slot), not in entry order, so the resolution order (and so who meets whom first) is exactly today's whatever entry a missile sits in. In the gate runs the enemy's missile sits in entry 0 for 7,331 ticks, so the owner mapping is exercised, not just declared.
+5. **The missile pool** **(rec.)**: one entry per ship slot, `{ active, owner, x, y, vx, vy, heading, headingAcc, age }` (9 values: fields `missiles.<k>.active`, `.owner`, `.flight`). A launch takes the ship's own entry or the first free one; a missile that ends frees and zeroes its entry. At most one in flight per ship, as today (the validator refuses two for one owner). Missiles are flown and resolved **in owner order** (`missileOf(state, i)` for each slot), not in entry order, so the resolution order (and so who meets whom first) is exactly today's whatever entry a missile sits in. In the gate runs the enemy's missile sits in entry 0 for 7,331 ticks, so the owner mapping is exercised, not just declared; and two targeted tests pin owner-order resolution with the entries swapped (two missiles expiring on one tick end ship 0's first, and two touching missiles end each other in owner order with both entries freed), so a refactor that resolved in entry order fails them even where the 20 runs have no such tick.
 6. **The target index** (spec §5: "weapons fire at the ship's locked target"): `systems[i].target`; the duel's are 0 → 1 and 1 → 0. The laser, the hunter, the scripted pair, telemetry and the views use it. `laserEligible` is false for a target that is not another active slot.
 7. **Definitions** (spec §5): `ShipClassDef` (hull, radius, thrust, reverse share, turn, engine factors, shields, `power`, weapon slots, AI profile) and `WeaponDef` (`LaserDef`, `MissileDef`), frozen, in `sim/tactical/defs.ts`. Today's numbers are the `cutter` and `hunter` entries; `tuning.ts` keeps the numbers as their inputs, so the change is golden-neutral and the views keep reading `tuning.ts` (identical values). `power` is `null` (not coupled until R-2b). A slot names its class by `systems[i].cls`, an index into `SHIP_CLASSES` (hashed). The hunter's own AI tuning (`HUNTER_*`) stays in `tuning.ts`.
 8. **One hunter brain** **(rec.)**: `state.hunter` stays one record per encounter; `stepDuel` drives it for the active slot whose class's AI profile is `'hunter'` (`hunterSlot`), against that slot's target. R-5 gives every ship its own.
@@ -59,8 +59,10 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 10. **The migration oracle** (spec §5, §7, §9): its runs are the scripted pair at the ten gate seeds (seed 1 is the duel golden's run) and the same seeds with a passive crew: 20 runs, 205,178 ticks at 37. Per tick it records three digests: the 304 named canonical fields (the modules' fields as `<module>.<field>`, the interior expanded into its sector field names, `interior.$simVersion` and the duel hash's leading `SIM_VERSION` left out), the command results with the tactical and repair events, and the telemetry accumulator; and per field a running digest over the run, which names the fields that differ. The baseline lives in the canonical trace's temp folder (keyed by the repo root), so a different checkout cannot reuse it. The alias table is `MIGRATIONS[<baseline version>]`: renames, derived old fields (the old per-ship missile slot is the pool entry that ship owns), and fields declared added; a version with no entry maps every field to itself. The check fails on any old field unmapped, any new field mapped from two old ones or neither mapped nor declared added, any count change, and any per-tick difference. `check` requires the code's version to be exactly the baseline's plus 1; `same` requires the same version.
 11. **R-2's alias table** (37 → 38): `space.ships.<i>.<moved field>` → `ship.systems.<i>.<field>`; `space.missiles.<i>` (presence then flight) is derived from the pool entry with `active` 1 and `owner` i (zeros when there is none); declared added: `space.ships.length`, `space.ships.<i>.active`, `space.missiles.<k>.active` and `.owner`, `ship.systems.<i>.cls` and `.target`. Nothing is dropped, so R-2 has no dropped list (R-3, which drops telemetry fields, adds one).
 12. **Closing the bless guard** (R-0's deferred item): `blessRefusal` takes a **required** `duel` proof beside the sector `verify`, and on a bump runs both, the duel one only after the sector one passes; a failure of either refuses the whole bless, so `duel-1.json` is never re-blessed on a bump without the oracle. `npm run bless` passes `verifyDuelOracle`, which re-runs all 20 duels against the recorded baseline (nothing from an earlier run is trusted); with no baseline, a baseline from another repo root, or a version that is not the baseline's plus 1, it refuses. A test pins the wiring in `scripts/bless-golden.ts`, and typecheck refuses a call without `duel`. The cost: **every later bump records `duel-oracle.ts baseline` beside `canonical-trace.ts baseline`** (with no `MIGRATIONS` entry it is a version-only duel check). A same-version bless stays R-0's deliberate-gameplay path, unchanged.
-13. **The test migration is a codemod** **(rec.)**: Task 2 moves about 120 test accesses of a ship's systems fields onto `state.systems[i]` with a type-aware script run once from `out/` (never committed): for `X.<field>` where `X` is typed `Ship`, it rebinds a variable used only for systems fields (`= st.ships[0]` becomes `= st.systems[0]`) and otherwise reads `<base>.systems[<i>]` in place; then missile slot reads and writes become `missileOf` / `placeMissile` / `removeMissile`. Three edits it cannot make are given by hand. During Task 2, `systems` holds the same objects as `ships`, so the moved tests prove the seam is golden-neutral before any storage changes.
+13. **The test migration is a codemod** **(rec.)**: Task 2 moves about 120 test accesses of a ship's systems fields onto `state.systems[i]` with a type-aware script run once from `out/` (never committed): for `X.<field>` where `X` is typed `Ship`, it rebinds a variable used only for systems fields (`= st.ships[0]` becomes `= st.systems[0]`) and otherwise reads `<base>.systems[<i>]` in place; then missile slot reads and writes become `missileOf` / `placeMissile` / `removeMissile`. Three edits it cannot make are given by hand. Its import merge sorts names with `localeCompare(…, 'en')`, so its output (and the exact old texts that later tasks match against it) does not depend on the executor's locale. During Task 2, `systems` holds the same objects as `ships`, so the moved tests prove the seam is golden-neutral before any storage changes.
 14. **The gate outcomes** are compared as the gate test's printed telemetry: every line for the ten scripted seeds and the ten passive ones is identical before and after (only the test's timing changes).
+15. **Pairs kept on purpose** (a deviation from spec §5 L105-108, which lists `present: [b, b]` and the two-ship models among the pairs that become arrays): **duel presence is per player**, not per ship (two players), so `DuelState.present` and the presence module's `present.0` / `present.1` stay a pair. **`DuelTelemetry` stays a crew-and-enemy record of the duel until R-5** gives encounters N ships: `DuelTelemetry.ships`, `.terminal` and `.prev.grace` are pairs, and `sim/duel/telemetry.ts` keeps `[crew, enemy] = tac.ships` (L93), `laserOn` / `missileOn = [false, false]` (L96) and its `for (let i = 0; i < 2; i++)` loops (L107, L111, L153); with it `DuelEndSummary`'s pairs (`sim/duel/summary.ts`) and the mode memory's `two(…)` schemas (`authority/duelCheckpoint.ts`). The H-1 views keep their two missile trails (`render/tactical/fxModel.ts` L74, `weaponsModel.ts` L63) and the crew-and-enemy readout. Each reads the target through `targetOf` where it means "the other ship".
+16. **The duel's slot identity is validated on restore** **(rec.)**: `validateDuelSnapshot` requires, by field name, `ships.length` 2, both slots active, `systems.<i>.cls` equal to `DUEL_CLASSES[i]` (the Cutter, the hunter) and `systems.<i>.target` equal to `1 − i`, so a forged checkpoint cannot restore a duel with the hunter's slot emptied, its class swapped (no hunter brain would fly it) or a ship locked on itself. A test also holds the declared-added fields to those values at every tick of the duel golden's full scripted run (15,772 ticks), which the oracle's alias table only declares.
 
 ## File structure
 
@@ -75,14 +77,14 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 | `src/renderer/src/sim/tactical/hash.ts` | **Modify, then replace:** the `space` and `ship` modules, flatten, clone, validation |
 | `src/renderer/src/sim/tactical/physics.ts`, `contacts.ts`, `missiles.ts`, `weapons.ts`, `duel.ts` | **Replace:** active slots, the target, the pool by owner, the definitions |
 | `src/renderer/src/sim/tactical/hunter.ts`, `predict.ts` | **Modify:** a slot and its target; the class |
-| `src/renderer/src/sim/duel/modules.ts`, `snapshot.ts` | **Modify:** the `ship` module in `DUEL_MODULES`; the snapshot validates it |
+| `src/renderer/src/sim/duel/modules.ts`, `snapshot.ts` | **Modify:** the `ship` module in `DUEL_MODULES`; the snapshot validates it and the duel's slot identity |
 | `src/renderer/src/sim/duel/step.ts`, `telemetry.ts`, `scripted.ts` | **Modify:** read the systems record, the target and `missileOf` |
 | `src/renderer/src/sim/tuning.ts` | **Modify:** `SIM_VERSION` 38 |
 | `src/renderer/src/authority/duelCheckpoint.ts` | **Modify:** the telemetry's body count from the state |
 | `src/renderer/src/app/duel/controls.ts`, `runtime.ts`; `src/renderer/src/render/duel/interiorModel.ts`, `readoutModel.ts`; `src/renderer/src/render/tactical/fxModel.ts`, `tacticalModel.ts`, `weaponsModel.ts`, `missilePath.ts` | **Modify:** the H-1 views read the systems record, the target and `missileOf` |
 | `tests/duelOracle.test.ts`, `tests/tacticalSlots.test.ts` | **Create:** the oracle's own tests; N-ship space, the pool and the definitions |
 | `tests/blessGuard.test.ts`, `tests/duelModules.test.ts` | **Replace:** the guard's duel proof; the modules over slots |
-| `tests/helpers/scriptedDuel.ts` and 17 other test files | **Modify:** `passiveInput` exported; the systems record, the pool and the slot API |
+| `tests/helpers/scriptedDuel.ts` and 17 other test files (`tests/duelCheckpoint.test.ts` again in Task 3, for the pool's `active` flag) | **Modify:** `passiveInput` exported; the systems record, the pool and the slot API |
 | `tests/golden/basic.json`, `tests/golden/duel-1.json`, `tests/fixtures/determinism-v2.json` | **Regenerated by `npm run bless`** (Task 4) |
 
 ---
@@ -1539,11 +1541,11 @@ for (const sf of program.getSourceFiles()) {
     if (imp) {
       const names = imp[1].split(',').map((n) => n.trim()).filter(Boolean);
       for (const n of used) if (!names.includes(n)) names.push(n);
-      const sorted = names.sort((a, b) => a.replace(/^type /, '').localeCompare(b.replace(/^type /, '')));
+      const sorted = names.sort((a, b) => a.replace(/^type /, '').localeCompare(b.replace(/^type /, ''), 'en'));
       text = text.replace(imp[0], `import { ${sorted.join(', ')} } from '../src/renderer/src/sim/tactical/state';`);
     } else {
       const lines = text.split('\n'), last = lines.reduce((k, l, i) => (l.startsWith('import ') ? i : k), -1);
-      lines.splice(last + 1, 0, `import { ${[...used].sort().join(', ')} } from '../src/renderer/src/sim/tactical/state';`);
+      lines.splice(last + 1, 0, `import { ${[...used].sort((a, b) => a.localeCompare(b, 'en')).join(', ')} } from '../src/renderer/src/sim/tactical/state';`);
       text = lines.join('\n');
     }
   }
@@ -1679,7 +1681,7 @@ git commit -q -m "refactor(duel): read ship systems, missiles and the target thr
 **Files:**
 - Create: `src/renderer/src/sim/tactical/defs.ts`, `tests/tacticalSlots.test.ts`
 - Replace: `src/renderer/src/sim/tactical/state.ts`, `hash.ts`, `physics.ts`, `contacts.ts`, `missiles.ts`, `weapons.ts`, `duel.ts`; `tests/duelModules.test.ts`
-- Modify: `src/renderer/src/sim/tactical/hunter.ts`, `predict.ts`; `src/renderer/src/render/tactical/missilePath.ts`; `src/renderer/src/sim/duel/modules.ts`, `snapshot.ts`; `src/renderer/src/authority/duelCheckpoint.ts`; `src/renderer/src/sim/tuning.ts`; `scripts/golden/duelOracle.ts`; `tests/duelOracle.test.ts`, `tests/duelSnapshot.test.ts`, `tests/tacticalDeterminism.test.ts`, `tests/tacticalFlight.test.ts`, `tests/tacticalMissiles.test.ts`, `tests/tacticalSoloFlight.test.ts`
+- Modify: `src/renderer/src/sim/tactical/hunter.ts`, `predict.ts`; `src/renderer/src/render/tactical/missilePath.ts`; `src/renderer/src/sim/duel/modules.ts`, `snapshot.ts`; `src/renderer/src/authority/duelCheckpoint.ts`; `src/renderer/src/sim/tuning.ts`; `scripts/golden/duelOracle.ts`; `tests/duelOracle.test.ts`, `tests/duelCheckpoint.test.ts`, `tests/duelSnapshot.test.ts`, `tests/tacticalDeterminism.test.ts`, `tests/tacticalFlight.test.ts`, `tests/tacticalMissiles.test.ts`, `tests/tacticalSoloFlight.test.ts`
 
 **Interfaces:**
 - Consumes: Task 2's seam (`systems`, `missileOf`, `placeMissile`, `removeMissile`, `targetOf`); Task 1's oracle and baselines.
@@ -1701,8 +1703,13 @@ Create `tests/tacticalSlots.test.ts`:
 import { describe, expect, it } from 'vitest';
 import { CUTTER_CLASS, DUEL_CLASSES, HUNTER_CLASS, LASER, MISSILE, SHIP_CLASSES, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { hunterSlot, stepDuel } from '../src/renderer/src/sim/tactical/duel';
-import { launchMissile } from '../src/renderer/src/sim/tactical/missiles';
+import { launchMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
+import { flattenTactical, TACTICAL_MODULES } from '../src/renderer/src/sim/tactical/hash';
+import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
+import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
+import { CUTTER } from './helpers/scriptedDuel';
 import { classOf, createTacticalState, emptyMissile, missileOf, placeMissile, removeMissile, shipBody, targetOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import {
   ENGINE_FACTOR, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, MAGAZINE, MISSILE_HULL, MISSILE_LIFE_TICKS, SHIELD_LAYERS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK
@@ -1799,6 +1806,46 @@ describe('the missile pool (spec §5: at most one in flight per ship)', () => {
     expect(st.missiles[0]).toMatchObject({ active: true, owner: 1 });
     expect(() => placeMissile(st, 2, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 })).toThrow(/no free missile pool entry/);
   });
+  it('resolves missiles in owner order, whatever entry they sit in: two expiring on one tick end in owner order', () => {
+    const st = createTacticalState(5);
+    launchMissile(st, 1); launchMissile(st, 0);                           // ship 1's missile in entry 0, ship 0's in entry 1
+    expect(st.missiles.map((m) => m.owner)).toEqual([1, 0]);
+    Object.assign(missileOf(st, 1)!, { x: -300, y: 600, vx: 0, vy: 0, age: MISSILE_LIFE_TICKS });   // open space, both at the end of their life
+    Object.assign(missileOf(st, 0)!, { x: -300, y: 700, vx: 0, vy: 0, age: MISSILE_LIFE_TICKS });
+    st.events = [];
+    resolveMissiles(st);
+    expect(st.events.map((e) => (e.kind === 'missileEnd' ? [e.ship, e.cause] : null))).toEqual([[0, 'expired'], [1, 'expired']]);
+    expect(st.missiles.every((m) => !m.active)).toBe(true);
+  });
+  it('two touching missiles end each other in owner order, whatever entry they sit in, and both entries are freed', () => {
+    const st = createTacticalState(5);
+    launchMissile(st, 1); launchMissile(st, 0);
+    Object.assign(missileOf(st, 1)!, { x: -300, y: 600, vx: 0, vy: 0, age: 100 });
+    Object.assign(missileOf(st, 0)!, { x: -295, y: 600, vx: 0, vy: 0, age: 100 });   // 5 apart: inside two missile radii
+    st.events = [];
+    resolveMissiles(st);
+    expect(st.events.map((e) => (e.kind === 'missileEnd' ? [e.ship, e.cause] : null))).toEqual([[0, 'missile'], [1, 'missile']]);
+    expect(st.missiles).toEqual([emptyMissile(), emptyMissile()]);
+  });
+});
+
+describe('the declared-added fields (new in the R-2 alias table)', () => {
+  it('hold the duel values at every tick of a full scripted run: two slots, both active, the Cutter and the hunter, each on the other', () => {
+    const d = createDuel(CUTTER, 1), pair = createScriptedPair(1), at = new Map<string, number>();
+    let offset = 0;
+    for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { at.set(f.name, offset); offset += f.count; }
+    const names = ['ships.length', 'ships.0.active', 'ships.1.active', 'systems.0.cls', 'systems.1.cls', 'systems.0.target', 'systems.1.target'];
+    let ticks = 0, wrong = 0;
+    try {
+      while (d.tactical.outcome === 0) {
+        stepDuelTick(d, scriptedInput(pair, d));
+        const v = flattenTactical(d.tactical);
+        if (names.map((n) => v[at.get(n)!]).join() !== '2,1,1,0,1,1,0') wrong++;
+        ticks++;
+      }
+    } finally { disposeDuel(d); }
+    expect([ticks, wrong]).toEqual([15772, 0]);
+  }, 60_000);
 });
 ```
 
@@ -1969,6 +2016,22 @@ describe('the duel modules (spec §6 module contract)', () => {
 });
 ```
 
+In `tests/duelCheckpoint.test.ts`, replace:
+
+```ts
+      const at = split.state.duel;
+      expect(at.tactical.missiles.some((m) => m !== null), 'a missile in flight at the split').toBe(true);
+      expect(at.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at the split').toBe(true);
+```
+
+with:
+
+```ts
+      const at = split.state.duel;
+      expect(at.tactical.missiles.some((m) => m.active), 'a missile in flight at the split').toBe(true);
+      expect(at.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at the split').toBe(true);
+```
+
 In `tests/duelSnapshot.test.ts`, replace:
 
 ```ts
@@ -2040,7 +2103,9 @@ with:
         [`${slot}.flight`, 5, 1e300, /headingAcc/], [`${slot}.owner`, 0, 5, /owner is not an active ship slot/],
         [`${free}.flight`, 2, 0.25, /a free entry holds values/], [`${free}.owner`, 0, 1, /a free entry holds values/],
         ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
-        ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/]
+        ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/],
+        ['systems.0.cls', 0, 1, /duel slot identity/], ['systems.1.cls', 0, 0, /duel slot identity/],
+        ['systems.0.target', 0, 0, /duel slot identity/], ['systems.1.target', 0, 1, /duel slot identity/]
       ];
 ```
 
@@ -2055,6 +2120,10 @@ with:
 
 ```ts
       }
+      const empty = structuredClone(good);   // slot 1 inactive and zeros, no missiles: internally consistent, but not the duel
+      for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) if (/^(ships|systems)\.1\.|^missiles\./.test(f.name)) empty.values.fill(0, names.get(f.name)!, names.get(f.name)! + f.count);
+      empty.header.hash = hashF64(Float64Array.from(empty.values));
+      expect(() => validateDuelSnapshot(CUTTER, empty, DIGEST)).toThrow(/duel slot identity/);
       const twice = structuredClone(good);   // the free entry claims the flying missile's owner: two missiles for one ship
       twice.values[names.get(`${free}.active`)!] = 1; twice.values[names.get(`${free}.owner`)!] = owner; twice.header.hash = hashF64(Float64Array.from(twice.values));
       expect(() => validateDuelSnapshot(CUTTER, twice, DIGEST)).toThrow(new RegExp(`ship ${owner} has two missiles in flight`));
@@ -2195,17 +2264,112 @@ with:
 In `tests/tacticalSoloFlight.test.ts`, replace:
 
 ```ts
-    Object.assign(st.ships[1], { x: 0, y: 80, vx: 0, vy: 0 });
-    hitStatics(st, st.ships[0]);
-    expect(st.ships[0].planetHits).toBe(1);
+describe('stepSoloFlight (H-1 spec §9)', () => {
+  it('flies ship 0 and advances the tick; ship 1 never moves', () => {
+    const st = createTacticalState(7), before = plain(cloneShip(st.ships[1]));
+    const x0 = st.ships[0].x, y0 = st.ships[0].y;
+    for (let t = 0; t < 120; t++) stepSoloFlight(st, { turn: 0, thrust: 1 });
 ```
 
 with:
 
 ```ts
+describe('stepSoloFlight (H-1 spec §9)', () => {
+  it('flies ship 0 and advances the tick; ship 1 never moves', () => {
+    const st = createTacticalState(7), before = plain(cloneShip(st.ships[1])), beforeSystems = structuredClone(st.systems[1]);
+    const x0 = st.ships[0].x, y0 = st.ships[0].y;
+    for (let t = 0; t < 120; t++) stepSoloFlight(st, { turn: 0, thrust: 1 });
+```
+
+In `tests/tacticalSoloFlight.test.ts`, replace:
+
+```ts
+    expect(Math.hypot(st.ships[0].x - x0, st.ships[0].y - y0)).toBeGreaterThan(100);
+    expect(plain(st.ships[1])).toEqual(before);
+  });
+```
+
+with:
+
+```ts
+    expect(Math.hypot(st.ships[0].x - x0, st.ships[0].y - y0)).toBeGreaterThan(100);
+    expect(plain(st.ships[1])).toEqual(before);
+    expect(st.systems[1]).toEqual(beforeSystems);
+  });
+```
+
+In `tests/tacticalSoloFlight.test.ts`, replace:
+
+```ts
+    Object.assign(st.ships[0], { x: -600, y: -300, vx: 200, vy: 0, heading: 64 });
+    Object.assign(st.ships[1], { x: -560, y: -300, vx: 0, vy: 0, heading: 192 });
+    const before = plain(cloneShip(st.ships[1]));
+    for (let t = 0; t < 60; t++) stepSoloFlight(st, { turn: 0, thrust: 0 });
+    expect(st.ships[0].shipHits).toBe(0);
+```
+
+with:
+
+```ts
+    Object.assign(st.ships[0], { x: -600, y: -300, vx: 200, vy: 0, heading: 64 });
+    Object.assign(st.ships[1], { x: -560, y: -300, vx: 0, vy: 0, heading: 192 });
+    const before = plain(cloneShip(st.ships[1])), beforeSystems = structuredClone(st.systems[1]);
+    for (let t = 0; t < 60; t++) stepSoloFlight(st, { turn: 0, thrust: 0 });
+    expect(st.ships[0].shipHits).toBe(0);
+```
+
+In `tests/tacticalSoloFlight.test.ts`, replace:
+
+```ts
+    expect(st.ships[0].x).toBeGreaterThan(-500);
+    expect(plain(st.ships[1])).toEqual(before);
+  });
+```
+
+with:
+
+```ts
+    expect(st.ships[0].x).toBeGreaterThan(-500);
+    expect(plain(st.ships[1])).toEqual(before);
+    expect(st.systems[1]).toEqual(beforeSystems);
+  });
+```
+
+In `tests/tacticalSoloFlight.test.ts`, replace:
+
+```ts
+    }
+    expect(plain(a.ships[0])).toEqual(plain(b.ships[0]));
+  });
+```
+
+with:
+
+```ts
+    }
+    expect(plain(a.ships[0])).toEqual(plain(b.ships[0]));
+    expect(a.systems[0]).toEqual(b.systems[0]);
+  });
+```
+
+In `tests/tacticalSoloFlight.test.ts`, replace:
+
+```ts
+    Object.assign(st.ships[0], { x: 0, y: -80, vx: 0, vy: 0 });
+    Object.assign(st.ships[1], { x: 0, y: 80, vx: 0, vy: 0 });
+    hitStatics(st, st.ships[0]);
+    expect(st.ships[0].planetHits).toBe(1);
+    expect(st.ships[1].planetHits).toBe(0);
+```
+
+with:
+
+```ts
+    Object.assign(st.ships[0], { x: 0, y: -80, vx: 0, vy: 0 });
     Object.assign(st.ships[1], { x: 0, y: 80, vx: 0, vy: 0 });
     hitStatics(st, 0);
     expect(st.ships[0].planetHits).toBe(1);
+    expect(st.ships[1].planetHits).toBe(0);
 ```
 
 In `tests/duelOracle.test.ts`, replace:
@@ -3472,6 +3636,23 @@ with:
 In `src/renderer/src/sim/duel/snapshot.ts`, replace:
 
 ```ts
+import { createTacticalState } from '../tactical/state';
+import { tacticalLength, validateTacticalValues } from '../tactical/hash';
+import { REPAIR_UNITS } from './tuning';
+```
+
+with:
+
+```ts
+import { createTacticalState } from '../tactical/state';
+import { DUEL_CLASSES } from '../tactical/defs';
+import { TACTICAL_MODULES, tacticalLength, validateTacticalValues } from '../tactical/hash';
+import { REPAIR_UNITS } from './tuning';
+```
+
+In `src/renderer/src/sim/duel/snapshot.ts`, replace:
+
+```ts
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
   validateTacticalValues(tactical, values, 1);   // bounds and slot invariants, before anything is allocated
   for (let k = 1 + space; k < interiorAt; k++) {
@@ -3482,6 +3663,14 @@ with:
 ```ts
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
   if (validateTacticalValues(tactical, values, 1) !== 1 + space) throw new Error('duel snapshot tactical length does not match');   // bounds and slot invariants, before anything is allocated
+  // The duel's slot identity: exactly its two slots, both active, the Cutter and the hunter, each locked on the other.
+  const at = new Map<string, number>();
+  let offset = 1;
+  for (const m of TACTICAL_MODULES) for (const f of m.fields(tactical)) { at.set(f.name, offset); offset += f.count; }
+  const slotValue = (name: string): number => values[at.get(name)!]!;
+  if (slotValue('ships.length') !== DUEL_CLASSES.length
+    || DUEL_CLASSES.some((cls, i) => slotValue(`ships.${i}.active`) !== 1 || slotValue(`systems.${i}.cls`) !== cls || slotValue(`systems.${i}.target`) !== 1 - i))
+    throw new Error('duel snapshot duel slot identity does not match: two active slots, the Cutter and the hunter, each locked on the other');
   for (let k = 1 + space; k < interiorAt; k++) {
 ```
 
@@ -3575,7 +3764,7 @@ Run: `npm run typecheck`
 Expected: exit 0.
 
 Run: `npx vitest run tests/tactical tests/duel tests/flightRuntime.test.ts tests/utilityHost.test.ts tests/codecModeWire.test.ts tests/boundary.test.ts`
-Expected: FAIL, 1 failed and 446 passed (447 tests in 35 files). The one failure is `tests/duelGolden.test.ts` > "replays the scripted pair at its seed to the recorded hashes": the golden is stored at sim version 37 and the duel's canonical array changed; Task 4 re-blesses it. Every other duel test passes, the gates included.
+Expected: FAIL, 1 failed and 449 passed (450 tests in 35 files). The one failure is `tests/duelGolden.test.ts` > "replays the scripted pair at its seed to the recorded hashes": the golden is stored at sim version 37 and the duel's canonical array changed; Task 4 re-blesses it. Every other duel test passes, the gates included.
 
 - [ ] **Step 6: The migration proofs**
 
@@ -3588,7 +3777,7 @@ Expected: `per-tick canonical trace identical, sim version 37 → 38: golden 720
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/defs.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/physics.ts src/renderer/src/sim/tactical/contacts.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/duel.ts src/renderer/src/sim/tactical/hunter.ts src/renderer/src/sim/tactical/predict.ts src/renderer/src/render/tactical/missilePath.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/snapshot.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/sim/tuning.ts scripts/golden/duelOracle.ts tests/tacticalSlots.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/tacticalDeterminism.test.ts tests/tacticalFlight.test.ts tests/tacticalMissiles.test.ts tests/tacticalSoloFlight.test.ts tests/duelOracle.test.ts
+git add src/renderer/src/sim/tactical/defs.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/physics.ts src/renderer/src/sim/tactical/contacts.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/duel.ts src/renderer/src/sim/tactical/hunter.ts src/renderer/src/sim/tactical/predict.ts src/renderer/src/render/tactical/missilePath.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/snapshot.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/sim/tuning.ts scripts/golden/duelOracle.ts tests/tacticalSlots.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/tacticalDeterminism.test.ts tests/tacticalFlight.test.ts tests/tacticalMissiles.test.ts tests/tacticalSoloFlight.test.ts tests/duelOracle.test.ts tests/duelCheckpoint.test.ts
 git commit -q -m "feat(sim): N-ship space, the per-ship systems record and ship and weapon definitions; SIM_VERSION 38 (engine refactor R-2)"
 ```
 
@@ -3630,7 +3819,7 @@ Run: `npm run build`
 Expected: exit 0.
 
 Run: `npm test`
-Expected: every file passes, 3,160 tests in 231 files (master 6a8db43 has 3,144 in 229; the two new test files add 16) (see the known flakes in Global Constraints).
+Expected: every file passes, 3,163 tests in 231 files (master 6a8db43 has 3,144 in 229; the two new test files add 19) (see the known flakes in Global Constraints).
 
 Run: `npx vitest run tests/duelGates.test.ts`
 Expected: PASS, 12 tests in 1 file. The gate outcomes are identical to master's: its printed telemetry is exactly these lines (recorded at master 6a8db43; the ten scripted duels, the gate summary, then the ten passive crews):
