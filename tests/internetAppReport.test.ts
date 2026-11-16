@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { validateInternetAppReport, validateInternetRun, validateLocalInternetDriverRun, INTERNET_ARTIFACTS } from '../scripts/network/internet-app-report';
 const sha = 'a'.repeat(64), runId = 'b'.repeat(32);
 const recovery = JSON.parse(readFileSync('.superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-7-evidence/recovery-skiff.json','utf8'));
-const identity = () => ({ revision:'c'.repeat(40), digest:recovery.source.digest, packageSha256:sha,workerBundleSha256:sha,workerConfigSha256:sha, artifacts:Object.fromEntries(INTERNET_ARTIFACTS.map(k=>[k,sha])), versions:{electron:'37.10.3',wrangler:'4.156.0',workerd:'1.20261023.1',protocol:2,sim:35,checkpoint:2,replay:[2,3,4]} });
+const identity = () => ({ revision:'c'.repeat(40), digest:recovery.source.digest, packageSha256:sha,workerBundleSha256:sha,workerConfigSha256:sha, artifacts:Object.fromEntries(INTERNET_ARTIFACTS.map(k=>[k,recovery.source.artifactHashes[k]])), versions:{electron:'37.10.3',wrangler:'4.156.0',workerd:'1.20261023.1',protocol:2,sim:35,checkpoint:2,replay:[2,3,4]} });
 const ref = () => ({path:'evidence/run.json',sha256:sha});
 const publication = () => ({runId,sequence:10,tick:320,hash:'f'.repeat(8),phase:'paused',commandHighWater:[2,3],heldHighWater:[4,5]});
 const peer = (seat:number) => ({role:seat===0?'host':'guest',seat,runId,hostGeneration:1,checkpoint:{runId,hostGeneration:1,checkpointSequence:3,capturedTick:320,payloadSha256:sha},errors:0,fullReceipts:1,firstAckOrder:1,firstInputOrder:2,
@@ -38,6 +38,7 @@ it.each([
   ['unreferenced proof',(r:any)=>r.deployedService.evidence=[]],
   ['wrong deployed artifact',(r:any)=>r.deployedService.deployment.bundleSha256='d'.repeat(64)],
   ['wrong deployed origin',(r:any)=>r.deployedService.deployment.serviceOrigin='https://other.example'],
+  ['local recovery from different runtime bytes',(r:any)=>r.localRecovery.report.source.artifactHashes['out/main/index.js']='d'.repeat(64)],
   ['raw diagnostic',(r:any)=>r.forcedRelayGameplay.report.peers[0].routes[0].address='192.0.2.1'],
 ])('rejects %s',(_name,mutate)=>{const r=fixture();mutate(r);expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it('admits a single device only as an independent local result',()=>expect(()=>validateInternetRun(run(1))).not.toThrow());

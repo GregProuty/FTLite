@@ -79,7 +79,7 @@ export function validateInternetAppReport(value:unknown):void {
         const shape={status:z.literal('PASS'),evidence:evidence.min(1),report:z.unknown()};
         const g=(name==='deployedService'?z.object({...shape,deployment}).strict():z.object(shape).strict()).parse(raw);
         if(name==='deployedService'){const d=(g as any).deployment;if(d.bundleSha256!==base.identity.workerBundleSha256||d.configSha256!==base.identity.workerConfigSha256||d.serviceOrigin!==(g.report as any).serviceOrigin)fail();}
-        if(name==='localRecovery') {validateOnlineRecoveryReport(g.report);if((g.report as any).source.digest!==base.identity.digest)fail();}
+        if(name==='localRecovery') {validateOnlineRecoveryReport(g.report);const source=(g.report as any).source;if(source.digest!==base.identity.digest||INTERNET_ARTIFACTS.some(k=>source.artifactHashes[k]!==base.identity.artifacts[k]))fail();}
         else {const r=parseRun(g.report);if(r.mode!=='local-pair'||!same(r.identity,base.identity)||(name==='forcedRelayGameplay'&&!r.forceRelay))fail();}
       }
     }
