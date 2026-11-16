@@ -58,7 +58,7 @@ describe('application driver diagnostics',()=>{
     const h=driver();h.proc.emit('message',{command:'status',requestId:7});h.proc.emit('message',{command:secret,requestId:8});
     await vi.waitFor(()=>expect(h.proc.send).toHaveBeenCalledTimes(2));
     expect(h.proc.send.mock.calls.map(([message])=>message)).toEqual(expect.arrayContaining([
-      {id:7,error:'app-driver-command-failed',command:'status'}, {id:8,error:'app-driver-command-failed',command:'unknown'}
+      {id:7,error:'app-driver-command-failed',command:'status',reason:'command-failed'}, {id:8,error:'app-driver-command-failed',command:'unknown',reason:'command-failed'}
     ]));
     expect(JSON.stringify(h.proc.send.mock.calls)).not.toContain('private');
   });

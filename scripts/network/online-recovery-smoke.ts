@@ -17,7 +17,7 @@ type Application = { child: ChildProcess; pid: number; profile: string; exited: 
 async function main() {
   const scenario = process.argv.find(a => a.startsWith('--scenario='))?.slice(11) ?? 'skiff';
   let proof: any;
-  let failureCategory: string | undefined, stage = 'startup', utilityFailure: unknown, instrumentation: any[]=[], driverFailure: unknown;
+  let failureCategory: string | undefined, stage = 'startup', utilityFailure: unknown, instrumentation: any[]=[], driverFailure: unknown, firstDriverFailure: unknown;
   const began = performance.now(), directory = mkdtempSync(join(tmpdir(), 'ftlite-online-recovery-'));
   const ownedDeadline=createLauncherDeadline(began+90000);
   const reportPath = resolve(process.argv.find(a => a.startsWith('--report-path='))?.slice(14) ?? '.superpowers/sdd/2026-11-15-net-3e-recovery-internet/recovery.json');
@@ -55,7 +55,7 @@ async function main() {
       });
     } };
     child.on('message', (message: any) => { const item = pending.get(message.id); if (!item) return; pending.delete(message.id); clearTimeout(item.timer);
-      if(message.error) { driverFailure={profile,command:message.command,code:'DRIVER_COMMAND_FAILED'}; item.reject(Error('app-driver-command-failed')); } else item.resolve(message.result); });
+      if(message.error) { driverFailure={profile,command:message.command,reason:message.reason,code:'DRIVER_COMMAND_FAILED'}; item.reject(Error('app-driver-command-failed')); } else item.resolve(message.result); });
     child.on('error',()=>{for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('application process error'));}pending.clear();});
     // Native Electron diagnostics can also contain raw page/exception payloads.
     // Consume every chunk, but report only one fixed category and validated role.
@@ -238,7 +238,7 @@ async function main() {
     stage='idle-resources';
     for(const app of [h,g]) await until(()=>app.request('resource-counts'),r=>r.windows===1 && r.utilities.every((u:any)=>u.exited) && r.listeners===0 && r.ports===0,'idle resource release',5000);
     proof.menuClicks=await Promise.all([h,g,...(contender?[contender]:[])].map(async app=>({role:app.profile,clicks:(await status(app)).recovery.clicks})));
-  } catch(error) { failure=onlineAppFailureCode(error); failureCategory=error instanceof SyntaxError?'invalid-observation-json':(error as any)?.code==='ENOENT'?'missing-observation-file':'gate-failure'; console.error('RECOVERY_FAILED',{stage,category:failureCategory,assertion:assertionFailure}); }
+  } catch(error) { failure=onlineAppFailureCode(error); firstDriverFailure=driverFailure; failureCategory=error instanceof SyntaxError?'invalid-observation-json':(error as any)?.code==='ENOENT'?'missing-observation-file':'gate-failure'; console.error('RECOVERY_FAILED',{stage,category:failureCategory,assertion:assertionFailure,driver:firstDriverFailure}); }
   finally {
     clearTimeout(watchdog); clearTimeout(injectedDeadline);
     for(const app of processes) if(!app.exited) {
@@ -256,7 +256,7 @@ async function main() {
   const report={version:1,scenario,source,runtime:{electron:electronVersion,workerd:runtime?.workerdVersion,workerPid:runtime?.pid,workerExit:runtime?.exited(),temporaryRemoved:!existsSync(directory)},
     processes:processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination,forcedUtilityExits})=>({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,forcedUtilityExits,cleanup})),
     cleanup:Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k=>[k,cleanups.reduce((n,r)=>n+r[k],0)])),
-    runtimeHelper:runtime?.observation(),instrumentation,viewports,proof,elapsedMs:Math.ceil(performance.now()-began),failure,assertionFailure,failureCategory,stage,utilityFailure,driverFailure:failure?driverFailure:undefined,waitFailure,limits:['loopback-only','no-TURN','no-WAN','no-two-machine','OS-suspend-NOT-RUN']};
+    runtimeHelper:runtime?.observation(),instrumentation,viewports,proof,elapsedMs:Math.ceil(performance.now()-began),failure,assertionFailure,failureCategory,stage,utilityFailure,driverFailure:failure?firstDriverFailure:undefined,waitFailure,limits:['loopback-only','no-TURN','no-WAN','no-two-machine','OS-suspend-NOT-RUN']};
   writeFileSync(reportPath,JSON.stringify(report,null,2)+'\n');
   if(failure) throw Error(failure);
   validateOnlineRecoveryReport(report); console.log('ACTUAL APPLICATION RECOVERY PASS',scenario);
