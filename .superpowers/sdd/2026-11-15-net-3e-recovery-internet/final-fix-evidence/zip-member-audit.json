@@ -1,0 +1,24 @@
+[
+  {
+    "path": "dist/net-3e-final-candidate.zip",
+    "bytes": 142823174,
+    "sha256": "882476a79956a4525aab1d15f115722fab940ebcacc48f7869b4c7aa76e0e5d4",
+    "exactPaths": true,
+    "noDuplicates": true,
+    "memberHashes": {
+      "FTLite.exe": "6de18f4b10d1e4aec3d904e6c2e049688d43d981dbc164c54bc9e0a7da275277",
+      "resources/app.asar": "481400b796b40041774d9aa0eb11cffc90b458bd66d43a348dda8f73dab7dd8d"
+    }
+  },
+  {
+    "path": "dist/net-3e-final-rollback-disabled.zip",
+    "bytes": 142823135,
+    "sha256": "9af99a9c451c280132c7312b52e81c3a452d9bffd03b5b29783aca1b09ea5962",
+    "exactPaths": true,
+    "noDuplicates": true,
+    "memberHashes": {
+      "FTLite.exe": "f004293e3a08781f38027d2406757bc2be28012aaf0e1444b24a86bef2bbb87a",
+      "resources/app.asar": "4214f9df4013207a5081a8843817d18eff7b6b77824fb6333afc34be21fc4256"
+    }
+  }
+]

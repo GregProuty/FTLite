@@ -1,0 +1,27 @@
+﻿[
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/internet-app-smoke.ts --local-verification --service-origin=https://ftlite-signalling-dev.gprout009.workers.dev --candidate-manifest=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/candidate.json --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/internet-driver-loopback.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/internet-app-smoke.ts --local-verification --local-delayed-shutdown --service-origin=https://ftlite-signalling-dev.gprout009.workers.dev --candidate-manifest=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/candidate.json --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/internet-delayed-shutdown.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-app-smoke.ts --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/online-app.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/rtc-config-smoke.ts --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/native-config.json"
+    },
+    {
+        "expectedExit":  1,
+        "exitCode":  1,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-recovery-smoke.ts --inject-unresponsive-cleanup --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/recovery-unresponsive-cleanup.json"
+    }
+]

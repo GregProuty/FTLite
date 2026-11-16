@@ -1,21 +1,21 @@
 # Net-3e release candidate and proposed Task 9 action
 
-This is a local unsigned Windows x64 candidate. **Deployment, live TURN, forced-relay gameplay, two physical devices and actual OS suspend are NOT RUN.** No internet-readiness claim is made. Final hashes and verification are retained under `.superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-8-evidence/` and summarized in `task-8-report.md`. The controller owns Task 8 independent review and the subsequent whole-slice review before external authorization.
+This is a local unsigned Windows x64 candidate. **Deployment, live TURN, forced-relay gameplay, two physical devices and actual OS suspend are NOT RUN.** No internet-readiness claim is made. Final hashes and verification are retained under `.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/` and summarized in `final-fix-report.md`. The whole-slice findings have one combined fix wave; the controller owns its scoped re-review before external authorization.
 
-Current candidate manifest/driver source is `b125547cacb5f4c43b651931f5e6503d10e72694`; use `task-8-evidence/fix-1/candidate.json`. Its 47 runtime files remain byte-identical to the original `0e9d024` candidate; all 265 current source files match. The fix changes report admission/launcher preparation only. `fix-1/audit.json` records full 22-executable equality and the original native report revisions, without claiming a rerun. Archive size is 142,824,997 bytes. There are 2,253 audited ASAR entries. These are ignored local distribution artifacts, with committed hashes:
+Current candidate manifest/driver source is `65b92a3d29fdf87bc719658cd071395224182546`; use `final-fix-evidence/candidate.json`. This rebuild changes `out/main/index.js` to fence obsolete host-follow continuations. The other 46 runtime files and gameplay digest match the historical candidate. The six recovery gates and actual-app checks are freshly executed against these bytes; historical results are preserved separately. Archive size is 142,823,174 bytes, with 2,253 audited ASAR entries. Both rebuilt ZIPs have exact unique paths and independently verified EXE/ASAR members in `zip-member-audit.json`. The reusable manifest tool's automatic ZIP-member binding remains a deferred minor; preserve this independent check on future packaging. These ignored distribution artifacts have committed hashes:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `dist/net-3e-candidate.zip` | `557c8dc18ef4225f4f8e538422d9df1067ca74230504a4f70da7b378e98dd202` |
-| Candidate `FTLite.exe` | `7d3402a21c49ac3201ea899d80d161a2ee1eaaea9f143f57270c58c65228ca08` |
-| Candidate `resources/app.asar` | `4623e37d2d6b44748a450238ab03ceff3197f0216bcc7686e4f7221e26e31e47` |
-| `dist/net-3e-rollback-disabled.zip` | `51b0e93e51eb3da0b0f8c1dd41d9df86036caea4497a3cd8bfd09720ae4906d5` |
+| `dist/net-3e-final-candidate.zip` | `882476a79956a4525aab1d15f115722fab940ebcacc48f7869b4c7aa76e0e5d4` |
+| Candidate `FTLite.exe` | `6de18f4b10d1e4aec3d904e6c2e049688d43d981dbc164c54bc9e0a7da275277` |
+| Candidate `resources/app.asar` | `481400b796b40041774d9aa0eb11cffc90b458bd66d43a348dda8f73dab7dd8d` |
+| `dist/net-3e-final-rollback-disabled.zip` | `9af99a9c451c280132c7312b52e81c3a452d9bffd03b5b29783aca1b09ea5962` |
 | Prepared Worker `index.js` | `fda351cb27f57961b61616324012f1d33969226b5356d51d8ad2749dc657eb33` |
 | Source/deployment `wrangler.jsonc` | `b9faa6b032720827399ddac179f1fe4021f33a6ee9c0a21d5420cac93a3212bc` |
 
 The final audit executes the resolver extracted from each actual packaged main bundle in an isolated VM. It observes disabled default, enabled explicit candidate origin, and rejected ambient development overrides in both packaged configurations. It also checks absence of the release origin in renderer/preload output. This is compiled-package configuration proof, not a claim that the unsigned installed UI was manually playtested.
 
-The intended canonical origin is now part of candidate identity. Every external report and the deployment attestation must match it. Manifest generation and launcher preparation also compare both manifest origin fields and the requested origin with compiled main; changing metadata cannot redirect the driver. Historical recovery reuse requires complete executable-set/hash equality plus explicit report/candidate revision provenance. The original manifests/reports remain unchanged as historical evidence; current admission uses the fix-1 metadata/readiness files.
+The intended canonical origin is now part of candidate identity. Every external report and the deployment attestation must match it. Manifest generation and launcher preparation also compare both manifest origin fields and the requested origin with compiled main; changing metadata cannot redirect the driver. Historical recovery reuse requires complete executable-set/hash equality plus explicit report/candidate revision provenance. The original manifests/reports remain unchanged as historical evidence; current admission uses the final-fix metadata/readiness files. The historical main bundle cannot attest to this changed runtime. Unchanged service, simulation and engine evidence retains explicit historical provenance in `unchanged-runtime-provenance.json`.
 
 ## Build and package
 
@@ -25,7 +25,7 @@ Root lockfile pins Electron 37.10.3, electron-vite 5.0.0, root Vitest 3.2.7; the
 $env:FTLITE_PACKAGED_SERVICE_ORIGIN='https://ftlite-signalling-dev.gprout009.workers.dev'
 npm run build
 $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win --dir --publish never '--config.win.signAndEditExecutable=false' '--config.directories.output=dist/net-3e-candidate'
+npx electron-builder --win --dir --publish never '--config.win.signAndEditExecutable=false' '--config.directories.output=dist/net-3e-final-candidate'
 $env:WRANGLER_SEND_METRICS='false'
 npm run build:signalling
 ```

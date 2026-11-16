@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "scenario": "skiff",
+  "source": null,
+  "temporaryName": "ftlite-online-recovery-HwBQ3T",
+  "directoryCleanupAttempted": true,
+  "cleanupFailed": false,
+  "preparationProcesses": [
+    {
+      "kind": "git",
+      "pid": 29592,
+      "exited": true,
+      "forced": false,
+      "code": 0
+    },
+    {
+      "kind": "git",
+      "pid": 20676,
+      "exited": true,
+      "forced": false,
+      "code": 0
+    }
+  ],
+  "nativeAllocated": false,
+  "runtime": {
+    "temporaryRemoved": true
+  },
+  "processes": [],
+  "cleanup": {
+    "utilities": 0,
+    "utilityExits": 0,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 0,
+    "nativeWindowExits": 0,
+    "nativePeersObserved": 0,
+    "nativePeerCloses": 0,
+    "nativePeersEndedWithWindow": 0,
+    "observedMainPorts": 0
+  },
+  "instrumentation": [],
+  "viewports": [],
+  "budgetMs": 20000,
+  "elapsedMs": 80,
+  "failure": "preparation-failed",
+  "failureCategory": "missing-observation-file",
+  "stage": "preparation",
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-WAN",
+    "no-two-machine",
+    "OS-suspend-NOT-RUN"
+  ]
+}

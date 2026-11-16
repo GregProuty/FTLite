@@ -1,0 +1,11 @@
+{
+  "helper": {
+    "pid": 31380,
+    "exited": true,
+    "exitCode": 0,
+    "forced": false,
+    "stage": "ready"
+  },
+  "workerPid": 34940,
+  "workerExited": true
+}
