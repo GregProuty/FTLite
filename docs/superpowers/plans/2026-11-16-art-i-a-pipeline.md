@@ -35,9 +35,9 @@ Every task's code below was written and run in a scratch worktree (`../ftlite-ar
 | 2 snapped fit | yes | `worldFit` 12, `layout` 7, `projectileModel` 10, `duelInterior` 3 passed |
 | 3 door and wall grid | yes | `doorModel` 8, `wallModel` 10, `consoleModel` 7 passed |
 | 4 paid manifest | yes | `paidManifest` 11, `manifest` 11, `credits` 6, `assets` 6, `renderPure` 19 passed; `npm run credits` left both generated files with no diff |
-| 5 tiles + effects | yes | `tileLayer` 2, `artGuards` 67 (with 60 render files) passed |
+| 5 tiles + effects | yes | `tileLayer` 2, `artGuards` 67 (with 60 render files) passed; the pngjs/scripts guard (+79) was added in plan review round 1 and not run in the prototype |
 | 6 import script | yes | `artImport` 10 passed; CLI exit 1 on a missing folder, exit 0 on the empty list |
-| 7 final | yes | full suite 3294 tests (3292 passed, 1 environment failure, 1 skipped); `npx tsc -b` clean; `npm run build` ok; all four screenshots written by the harness |
+| 7 final | yes | full suite 3294 tests (3292 passed, 1 failure from the missing signalling junction that Step 0.1 now adds, 1 skipped); `npx tsc -b` clean; `npm run build` ok; all four screenshots written by the harness |
 
 After all six tasks `npx tsc -b` was clean and the suite grew by 111 tests over the prototype's baseline.
 
@@ -61,6 +61,8 @@ After all six tasks `npx tsc -b` was clean and the suite grew by 111 tests over 
 15. **Import output:** 8-bit RGBA PNGs from `pngjs` `PNG.sync.write` with fixed options (deterministic). Alpha < 128 becomes `0,0,0,0`; the rest opaque in the nearest palette colour (OKLab squared distance, first colour wins a tie, a per-RGB cache). Contact sheet: every output at 2x, stacked top to bottom with a 4 px gap, on the `background` role, written last.
 16. **Screenshots:** the sector game is now reachable only through Multiplayer → Host (main menu, master 2871669), which needs the local room service. Task 7 therefore uses a throwaway, gitignored harness in `.art/shots/` (a Vite page that draws the real `createRenderer` + `createSimState` or `createInteriorView` + `createDuel`, and an Electron script that emulates the viewport size with CDP and captures it). Emulating 1920 × 1080 gives stage 1.5 and 2560 × 1440 stage 2 on any monitor. The duel interior shot uses the same harness (the duel only shows its interior when the active character stands, which the harness gets for free); `FTLITE_MODE=duel` remains the owner's manual check.
 17. **Electron binary:** `npm ci` in a fresh worktree may skip Electron's install script (npm `allow-scripts`), leaving `node_modules/electron/dist` without `electron.exe`. Builds and tests do not need it; Task 7 uses the main checkout's `C:\Users\djuar\FTLite\node_modules\electron\dist\electron.exe`. Electron must get its arguments through the `SHOT` environment variable: a URL on Electron's command line makes it ignore the script.
+18. **Left for Art-i-b (stated deviations from spec section 1):** (f) the existing sector shake (`projectiles.ts`, whole internal pixels, 3-4 px) and the duel interior shake stay as they are, so while a shake runs at stage 1.5 the world is briefly off whole screen pixels; Art-i-b section 7 replaces both with whole-art-pixel steps. (g) The `vent.puff` sprite keeps its quarter-turn rotation (`ventRotation`, multiples of 90 degrees, which keep the pixel grid) until Art-i-b replaces it with particles. The bible says so.
+19. **Value hierarchy and the placeholder floor:** the bible keeps the spec's "calm, dark mid-tones" rule. The Art-i-a placeholder floor (`c7cfcc`, matching today's `c9cdd6`) is lighter than that rule on purpose, to keep today's look; Art-ii's pack palette brings floors down to dark mid-tones.
 
 ## File Structure
 
@@ -106,9 +108,10 @@ cd /c/Users/djuar/FTLite
 git worktree add .worktrees/art-i-a -b art-i-a master
 cd .worktrees/art-i-a
 npm ci --no-audit --no-fund
+powershell -NoProfile -Command "New-Item -ItemType Junction -Path 'C:\Users\djuar\FTLite\.worktrees\art-i-a\services\signalling\node_modules' -Target 'C:\Users\djuar\FTLite\services\signalling\node_modules' | Out-Null"
 ```
 
-Expected: `Preparing worktree (new branch 'art-i-a')`, then npm finishes (an `allow-scripts` warning about esbuild or electron is harmless; see Decision 17).
+Expected: `Preparing worktree (new branch 'art-i-a')`, then npm finishes (an `allow-scripts` warning about esbuild or electron is harmless; see Decision 17). The junction gives the worktree the signalling service's `node_modules` (miniflare), which `tests/onlineAppRuntime.test.ts` needs; without it that test fails in every `.worktrees/` checkout. Before `git worktree remove` at the end of the branch, delete this junction and the root `node_modules` junction if any (`Remove-Item` on the junction path itself, never `-Recurse` into its target).
 
 - [ ] **Step 0.2: Build once** (one test reads `out/main/authorityHost.js`)
 
@@ -118,7 +121,7 @@ Expected: ends with `✓ built in` and no error.
 - [ ] **Step 0.3: Record the baseline**
 
 Run: `npx vitest run 2>&1 | tail -6`
-Expected: a summary like `Test Files 235 passed | 1 skipped` / `Tests N passed | 1 skipped (M)`. Write down `M` (the total) and the passed and failed counts. On the planning machine (master 2871669, before building `out/`) it was `Tests 1 failed | 3181 passed | 1 skipped (3183)`; the failures were environment-only: `tests/onlineRecoveryInstrumentation.test.ts` (needs `out/`, fixed by Step 0.2) and `tests/onlineAppRuntime.test.ts > bounds an unresolved actual observer-build...` (times out as `online-application-gate-failed` on a loaded machine). Any failure present here is a baseline failure, not a regression.
+Expected: a summary like `Test Files 235 passed | 1 skipped` / `Tests N passed | 1 skipped (M)`. Write down `M` (the total) and the passed and failed counts. Expect **0 failed** after Step 0.1 (signalling junction) and Step 0.2 (`out/` built). On the planning machine (master 2871669, without the junction and before building `out/`) there were failures in 2 test files out of 3183 tests: `tests/onlineRecoveryInstrumentation.test.ts` (needs `out/`, fixed by Step 0.2) and `tests/onlineAppRuntime.test.ts` (needs the signalling junction, fixed by Step 0.1). If any failure remains here, stop and report it before Task 1; it is not an expected flake.
 
 ---
 
@@ -316,7 +319,7 @@ Source: Art-i spec (`docs/superpowers/specs/2026-11-16-art-i-demo-polish-design.
 - Every procedural rectangle, stroke and particle is a whole number of art pixels: even world units, at even offsets.
   A stroke counts by the band it paints, not its path: Pixi 8 paints `alignment × width` inside the path and the rest outside,
   so the door panels use a 2-unit stroke with alignment 1 (inside) on an even rectangle.
-- No sprite is rotated, and none is scaled except by whole numbers (the world scale is snapped so that one art pixel is a whole number of screen pixels; see `snapWorldScale` in `src/renderer/src/render/worldFit.ts`).
+- No sprite is rotated except by quarter turns (today only the vent puff, until Art-i-b replaces it), and none is scaled except by whole numbers (the world scale is snapped so that one art pixel is a whole number of screen pixels; see `snapWorldScale` in `src/renderer/src/render/worldFit.ts`).
 - Wall band: `PANEL_THICK` 12 units (6 art pixels) at `BAND` 10 from the tile edge, the same line and thickness as a door's panels.
 
 ## House palette
@@ -335,7 +338,7 @@ Source: Art-i spec (`docs/superpowers/specs/2026-11-16-art-i-demo-polish-design.
 
 ## Value hierarchy
 
-- Floors and walls are calm mid-tones with low saturation; they are the stage, not the actors.
+- Floors and walls are calm, dark mid-tones with low saturation; they are the stage, not the actors. (The Art-i-a placeholder floor, `c7cfcc`, is lighter than this on purpose, to keep today's look; Art-ii's pack palette brings floors down to dark mid-tones.)
 - Crew, consoles and hazards (fire, breaches, sparks) carry the strongest saturation and contrast, so the eye finds them first.
 - Floors get only a quiet one-art-pixel `floorSeam` panel line per tile.
 
@@ -1331,6 +1334,14 @@ describe('the renderer never reads the sim RNG (Art-i spec, top)', () => {
     expect(source.match(/\.rng\b/g) ?? []).toEqual([]);
   });
 });
+
+describe('pngjs and scripts/ never reach the renderer (Art-i spec section 3)', () => {
+  const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => { const p = join(dir, n); return statSync(p).isDirectory() ? walk(p) : p.endsWith('.ts') ? [p] : []; });
+  for (const file of [...walk(RENDER), ...walk(join(RENDER, '..', 'app'))]) it(`${file.replaceAll('\\', '/')} imports neither pngjs nor scripts/`, () => {
+    const source = readFileSync(file, 'utf8');
+    expect(moduleSpecifiers(source).filter((s) => s === 'pngjs' || /(^|\/)scripts\//.test(s))).toEqual([]);
+  });
+});
 ```
 
 Create `tests/tileLayer.test.ts`:
@@ -1365,16 +1376,17 @@ describe('the tile layer floor art hook', () => {
   it('with house.floor.0 to 3 loaded every floor tile and wall-tile floor part gets a 2x sprite on the art-pixel grid', () => {
     const s = cutterState(), layer = createTileLayer(assets(true), createRenderMemory());
     layer.update(s, 0);
-    const sprites = floorArt(layer).children as Sprite[];
+    const sprites = [...floorArt(layer).children] as Sprite[];
+    const n = sprites.length;
     const floorTiles = s.layout.rows.join('').split('').filter((c) => c !== ' ' && c !== '#').length;
     expect(sprites.length).toBeGreaterThanOrEqual(floorTiles);
     for (const sp of sprites) {
       expect(sp.scale.x).toBe(2); expect(sp.scale.y).toBe(2);
       expect(sp.x % 2).toBe(0); expect(sp.y % 2).toBe(0);
-      expect(sp.texture.frame.width * 2 % 2).toBe(0);
+      expect(sp.texture.frame.width * 2).toBeLessThanOrEqual(32); expect(sp.texture.frame.height * 2).toBeLessThanOrEqual(32);
     }
     layer.build(s);   // a rebuild replaces the sprites rather than adding more
-    expect(floorArt(layer).children).toHaveLength(sprites.length);
+    expect(floorArt(layer).children.length).toBe(n);
   });
 });
 ```
@@ -1560,7 +1572,7 @@ export function createTileLayer(assets: GameAssets, _memory: RenderMemory): Tile
 - [ ] **Step 6: Run the tests**
 
 Run: `npx vitest run tests/artGuards.test.ts tests/tileLayer.test.ts tests/duelInterior.test.ts tests/effects.test.ts`
-Expected: all pass. `artGuards` has 7 tests plus one per `.ts` file under `src/renderer/src/render/` (60 files, 67 tests, in the prototype); `tileLayer` 2; `duelInterior` 3. (If `tests/effects.test.ts` does not exist vitest reports only the others; that is fine.)
+Expected: all pass. `artGuards` has 7 tests, plus one RNG test per `.ts` file under `src/renderer/src/render/` (60 files in the prototype), plus one pngjs/scripts test per `.ts` file under `src/renderer/src/render/` and `src/renderer/src/app/` (60 + 19 in the prototype): 146 tests when those folders hold 60 and 19 files; `tileLayer` 2; `duelInterior` 3. (If `tests/effects.test.ts` does not exist vitest reports only the others; that is fine.)
 
 Run: `npx tsc -b`
 Expected: no output.
@@ -1943,7 +1955,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 1: Full suite**
 
 Run: `npm run build && npx vitest run 2>&1 | tail -6`
-Expected: the total equals the Step 0 baseline total plus the new tests: palette 5, worldFit +9 (12 replace 3), doorModel +1 (8 replace 7), wallModel +6 (10 replace 4), paidManifest 11, tileLayer 2, artGuards 7 + one per `.ts` under `src/renderer/src/render/` (60 in the prototype, so 67), artImport 10: **+111** when the render folder holds 60 files (adjust by the difference in that file count if master added render files since). The pass and fail counts match the baseline apart from the added passes; any baseline environment failure (Step 0.3) may recur.
+Expected: the total equals the Step 0 baseline total plus the new tests: palette 5, worldFit +9 (12 replace 3), doorModel +1 (8 replace 7), wallModel +6 (10 replace 4), paidManifest 11, tileLayer 2, artGuards 7 + one per `.ts` under `src/renderer/src/render/` (60 in the prototype) + one per `.ts` under `render/` and `app/` (60 + 19), so 146, artImport 10: **+190** when the render folder holds 60 files and the app folder 19 (adjust by the differences in those file counts if master changed them since). The pass and fail counts match the baseline apart from the added passes: 0 failed.
 
 - [ ] **Step 2: Types, build and guards**
 
