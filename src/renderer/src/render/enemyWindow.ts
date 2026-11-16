@@ -10,7 +10,7 @@ export interface EnemyWindowOptions { fontFamily: string; fire: { textures: Text
 
 import { TEXT, DIM, WARN, AMBER, GOOD, FONT_SIZE, BAR_OFF, CELL_EDGE } from './theme';
 import { drawPanel } from './panel';
-import { DOOR_FILL, DOOR_OUTLINE } from './doorModel';
+import { ROLE } from './palette';   // the door colours are palette roles (Art-i spec section 4)
 const FAINT = CELL_EDGE;
 const PANEL = 0x10131a, HULL = 0x3b4352, HULL_EDGE = 0x22262f, FLOOR = 0x5d6675, FLOOR_DAMAGED = 0x7a6a52, FLOOR_DOWN = 0x7a2a2a, FLOOR_ION = 0x2f5f9a, ION_TEXT = 0x8fd0ff, WALL = 0x14171d;
 const SHIELD = 0x6fc3ff, RETICLE = AMBER, CREW = 0xc0396b, CREW_HEAD = 0xf0c8a0, FLAME = 0xff8c1a, FLAME_CORE = 0xffd060, HOLE = 0x05060a;
@@ -87,7 +87,7 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
         for (let p = 0; p < 3; p++) { const a = ((clock * 1.7 + p / 3) % 1), d = 6 + a * 14; const ox = side === 'left' ? -d : side === 'right' ? d : (p - 1) * 4, oy = side === 'top' ? -d : side === 'bottom' ? d : (p - 1) * 4; g.rect(hx + ox - 1, hy + oy - 1, 2, 2).fill({ color: DIM, alpha: 1 - a }); }
       }
     });
-    for (const d of ENEMY_LAYOUT.doors) { const x = sr.x + (d.x + 1) * ENEMY_TILE - 3, y = sr.y + d.y * ENEMY_TILE + 4, h = (ENEMY_TILE - 8) / 2; g.rect(x, y, 6, h).fill(DOOR_FILL).stroke({ width: 1, color: DOOR_OUTLINE }); g.rect(x, y + h, 6, h).fill(DOOR_FILL).stroke({ width: 1, color: DOOR_OUTLINE }); }   // FTL-style doors on the shared wall (spec Demo-x-c section 2)
+    for (const d of ENEMY_LAYOUT.doors) { const x = sr.x + (d.x + 1) * ENEMY_TILE - 3, y = sr.y + d.y * ENEMY_TILE + 4, h = (ENEMY_TILE - 8) / 2; g.rect(x, y, 6, h).fill(ROLE.doorFill).stroke({ width: 1, color: ROLE.doorOutline }); g.rect(x, y + h, 6, h).fill(ROLE.doorFill).stroke({ width: 1, color: ROLE.doorOutline }); }   // FTL-style doors on the shared wall (spec Demo-x-c section 2)
     for (const c of ENEMY_LAYOUT.consoles) g.rect(sr.x + c.x * ENEMY_TILE + 8, sr.y + c.y * ENEMY_TILE + 4, ENEMY_TILE - 16, 7).fill(0x2b3240).stroke({ width: 1, color: 0x8fb4d0 });
   }
 

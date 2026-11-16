@@ -6,7 +6,8 @@ import type { RenderMemory } from './memory';
 import { airlockDraw, airlockOutward } from './hazardTiles';
 import { advanceDoor, doorTarget, DOOR_ANIM_SECONDS } from './doorAnim';
 import { wallPicture, type Cell } from './wallModel';
-import { doorPicture, doorLook, HELD_TICK, SPACE_GAP, type DoorPicture, type DoorRect } from './doorModel';
+import { doorPicture, doorLook, PANEL_STROKE, type DoorPicture, type DoorRect } from './doorModel';
+import { ROLE } from './palette';
 
 export interface TileLayer { container: Container; build(state: SimState): void; update(state: SimState, dtSeconds: number): void }
 
@@ -37,14 +38,14 @@ export function createTileLayer(_assets: GameAssets, _memory: RenderMemory): Til
 
   const at = (x: number, y: number, r: DoorRect) => doors.rect(x + r.x, y + r.y, r.w, r.h);
   function draw(x: number, y: number, p: DoorPicture): void {
-    if (p.gap) at(x, y, p.gap).fill(SPACE_GAP);
+    if (p.gap) at(x, y, p.gap).fill(ROLE.spaceGap);
     if (p.floor) at(x, y, p.floor).fill(FLOOR);
     for (const j of p.jambs) at(x, y, j).fill(p.outline);
-    for (const r of p.panels) at(x, y, r).fill(p.fill).stroke({ width: 1, color: p.outline, alignment: 1 });
+    for (const r of p.panels) at(x, y, r).fill(p.fill).stroke({ width: PANEL_STROKE, color: p.outline, alignment: 1 });
     for (const s of p.stripes) at(x, y, s).fill(p.outline);
     if (p.seam) at(x, y, p.seam).fill(p.outline);
     if (p.bar) at(x, y, p.bar).fill(p.outline);
-    for (const t of p.ticks) at(x, y, t).fill(HELD_TICK);
+    for (const t of p.ticks) at(x, y, t).fill(ROLE.heldTick);
   }
   const step = (m: Map<number, number>, k: number, target: 0 | 1, dt: number): number => { const v = advanceDoor(m.get(k) ?? target, target, dt, DOOR_ANIM_SECONDS); m.set(k, v); return v; };
 
