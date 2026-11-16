@@ -13,10 +13,14 @@ const packagePath=args.get('--package-path'),appDirectory=args.get('--app-direct
 if(!packagePath||!appDirectory||!output)throw Error('candidate-arguments-invalid');
 const serviceOrigin='https://ftlite-signalling-dev.gprout009.workers.dev';
 const asarPath=appDirectory+'/resources/app.asar';
+const main=asar.extractFile(asarPath,normalize('out/main/index.js')).toString('utf8');
+const originDefinitions=[...main.matchAll(/packagedServiceOrigin:\s*packaged\s*\?\s*("[^"]*")\s*:\s*void 0/g)];
+if(originDefinitions.length!==1||JSON.parse(originDefinitions[0]![1]!)!==serviceOrigin)throw Error('packaged-origin-invalid');
 const entries:string[]=asar.listPackage(asarPath).map((p:string)=>p.replaceAll('\\','/').replace(/^\//,''));
 if(entries.some(p=>/(^|\/)\.env|(^|\/)\.dev\.vars|(^|\/)(\.superpowers|test-results|scripts|tests|profiles)(\/|$)/i.test(p)))throw Error('package-content-invalid');
 const files=(root:string)=>readdirSync(root,{recursive:true,withFileTypes:true}).filter(d=>d.isFile()).map(d=>(d.parentPath+'/'+d.name).replaceAll('\\','/'));
 const artifacts=Object.fromEntries(files('out').filter(p=>!p.endsWith('/.gitkeep')).sort().map(p=>{const bytes=asar.extractFile(asarPath,normalize(p));if(sha(bytes)!==hash(p))throw Error('package-build-mismatch');return [p,sha(bytes)];}));
+if(Object.keys(artifacts).filter(p=>/^out\/(preload|renderer)\//.test(p)&&/\.(js|html)$/.test(p)).some(p=>readFileSync(p,'utf8').includes(serviceOrigin)))throw Error('renderer-origin-invalid');
 const sourceFiles=Object.fromEntries([...['src','scripts','build'].flatMap(files),...['package.json','package-lock.json','electron.vite.config.ts','electron-builder.yml']].sort().map(p=>[p,hash(p)]));
 const rootLock=JSON.parse(readFileSync('package-lock.json','utf8')),serviceLock=JSON.parse(readFileSync('services/signalling/package-lock.json','utf8'));
 const versions=(lock:any,names:string[])=>Object.fromEntries(names.map(name=>[name,lock.packages['node_modules/'+name].version]));
