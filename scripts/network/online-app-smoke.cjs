@@ -186,8 +186,9 @@ async function command(message) {
     }
     case 'layout': return js(`(() => { const rect = e => { const r=e.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,width:r.width,height:r.height}; }; return {width:innerWidth,height:innerHeight,menu:rect(document.querySelector('[data-testid="session-menu"]')),canvas:rect(document.querySelector('canvas'))}; })()`);
     case 'click': await click(message.id); return true;
-    // The main menu (2026-11-16) keeps Host, Join and the saved-seat actions on its Multiplayer page.
-    case 'open-multiplayer': if (await js(`!!document.querySelector('[data-testid="multiplayer"]')`)) await click('multiplayer'); return true;
+    // The main menu (2026-11-16) keeps Host, Join and the saved-seat actions on its Multiplayer page. Callers are on the
+    // home page; click() throws 'unavailable control' when the Multiplayer button is missing.
+    case 'open-multiplayer': await click('multiplayer'); return true;
     case 'type': await click(message.id); visible.webContents.insertText(message.text); return true;
     case 'capacity': await click('capacity'); visible.webContents.sendInputEvent({type:'keyDown',keyCode:'Home'}); visible.webContents.sendInputEvent({type:'keyUp',keyCode:'Home'});
       for(let i=1;i<message.value;i++){ visible.webContents.sendInputEvent({type:'keyDown',keyCode:'Down'}); visible.webContents.sendInputEvent({type:'keyUp',keyCode:'Down'}); }
@@ -241,7 +242,7 @@ async function command(message) {
 // Hold the wrapper alive long enough to report actual utility exits at shutdown.
 app.on('window-all-closed', event => { if (stopping) event?.preventDefault?.(); });
 app.on('before-quit', event => { if(stopping) event.preventDefault(); });
-const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','resize','layout','screenshot','resources','resource-counts','transport-death','delay-next-transport','shutdown','delay-exit-commit','hold-upload','hold-restore','release-restore','block-next-grant','suspend-hook']);
+const diagnosticCommands=new Set(['status','click','open-multiplayer','type','capacity','key','focus','blur','resize','layout','screenshot','resources','resource-counts','transport-death','delay-next-transport','shutdown','delay-exit-commit','hold-upload','hold-restore','release-restore','block-next-grant','suspend-hook']);
 let ignoreDriver=false;
 process.on('message', message => { if(ignoreDriver)return; void command(message).then(result => { if(message.command!=='shutdown') process.send?.({id:message.requestId,result}); })
   .catch(error => process.send?.({id:Number.isSafeInteger(message?.requestId)?message.requestId:0,error:'app-driver-command-failed',

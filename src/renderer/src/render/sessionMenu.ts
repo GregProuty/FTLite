@@ -1,5 +1,5 @@
-import type { OnlineErrorCode, OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
-import type { ControlSection } from '../app/controls';
+import { FULLSCREEN_KEY, type OnlineErrorCode, type OnlinePreloadApi, type OnlineResult, type OnlineStatus } from '../../../shared/onlineSession';
+import type { ControlSection } from '../app/controlsList';
 import { VOLUME_STEPS } from '../app/settingsStore';
 type MenuApi = Pick<OnlinePreloadApi, 'host' | 'join' | 'ready' | 'start' | 'removeSeat' | 'reconnect' | 'rehost' | 'retry' | 'leave' | 'forgetSeat'>;
 /** What Settings can change (main menu spec): the sound volume (saved by the caller), the window's fullscreen state
@@ -30,7 +30,7 @@ export function createSessionMenu(deps: MenuDeps) {
   let status: OnlineStatus | null = null, page: Page = 'home', fullscreen: boolean | null = null;
   let pending = false, disposed = false, localError = '', hadView = false;
   let operation = 0, countdown: HTMLElement | null = null, mirrorLabel: HTMLElement | null = null, receiptAt = 0;
-  let recovering = false;
+  let recovering = false, leaving = false;   // leaving: Leave was pressed; the idle status that follows returns home
   const { root, document: doc } = deps;
   root.setAttribute('aria-label', 'FTLite session menu'); root.setAttribute('data-testid', 'session-menu');
   function node(tag: string, text = '', id?: string) {
@@ -128,7 +128,7 @@ export function createSessionMenu(deps: MenuDeps) {
       if (status?.actions.includes('retry')) button(panel, 'retry', 'Retry', () => { void invoke(() => deps.api!.retry()); }, can('retry'));
       if (status?.actions.includes('reconnect')) button(panel, 'reconnect', 'Reconnect saved seat', () => { void invoke(() => deps.api!.reconnect()); }, can('reconnect'));
       if (status?.actions.includes('forget-seat')) button(panel, 'forget-seat', 'Forget saved seat', () => { void invoke(() => deps.api!.forgetSeat(), false, true); }, !!deps.api);
-      if (status?.actions.includes('leave')) button(panel, 'leave', status.phase === 'ended' ? 'Return to menu' : 'Leave', () => { void invoke(() => deps.api!.leave(), false, true).then(() => { if (status?.phase === 'idle') { deps.home?.(); hadView = false; page = 'home'; render(); } }); }, !!deps.api);
+      if (status?.actions.includes('leave')) button(panel, 'leave', status.phase === 'ended' ? 'Return to menu' : 'Leave', () => { leaving = true; void invoke(() => deps.api!.leave(), false, true).then(() => { if (status?.phase === 'idle' && page === 'session') { leaving = false; deps.home?.(); hadView = false; page = 'home'; render(); } }); }, !!deps.api);
       if (!pending && status?.actions.includes('join')) button(panel, 'try-code', 'Try another code', () => { hadView = false; page = 'join'; render(); });
       if (!pending && (!status || status.phase === 'idle' || status.phase === 'error')) button(panel, 'home', 'Return to menu', () => { deps.home?.(); hadView = false; page = 'home'; render(); });
     }
@@ -151,7 +151,7 @@ export function createSessionMenu(deps: MenuDeps) {
       if (!fs || fullscreen === null) return;
       void fs.set(!fullscreen).then(on => { fullscreen = on; if (page === 'settings') render(); }, () => {});
     }, !!fs && fullscreen !== null);
-    panel.append(node('p', 'F11 also toggles fullscreen.', 'fullscreen-note'));
+    panel.append(node('p', `${FULLSCREEN_KEY} also toggles fullscreen.`, 'fullscreen-note'));
     const controls = node('div', '', 'controls');
     controls.append(node('h3', 'Controls'));
     for (const section of settings?.controls ?? []) {
@@ -174,7 +174,9 @@ export function createSessionMenu(deps: MenuDeps) {
   render();
   return {
     reservedHeight() { return page === 'session' && hadView ? root.offsetHeight : 0; },
-    setStatus(next: OnlineStatus) { status = next; receiptAt = performance.now(); if (['saved', 'rehosting', 'reconnecting'].includes(next.phase)) recovering = true; if (next.phase === 'idle' || next.phase === 'running') recovering = false; if (next.attachmentEpoch > 0) hadView = true; if (page !== 'single' && next.phase !== 'idle') page = 'session'; if (next.phase === 'idle' && page === 'session' && !pending && !hadView) page = 'home'; render(); },
+    setStatus(next: OnlineStatus) { status = next; receiptAt = performance.now(); if (['saved', 'rehosting', 'reconnecting'].includes(next.phase)) recovering = true; if (next.phase === 'idle' || next.phase === 'running') recovering = false; if (next.attachmentEpoch > 0) hadView = true; if (page !== 'single' && next.phase !== 'idle') page = 'session'; if (next.phase === 'idle' && page === 'session' && !pending && !hadView) page = 'home'; if (next.phase === 'idle' && leaving && page === 'session' && !pending) { leaving = false; deps.home?.(); hadView = false; page = 'home'; } if (page !== 'settings') render(); },   // a status push changes nothing on Settings: keep its controls (an open select) intact
+    /** The window resized (F11 or the Settings toggle changes fullscreen): refresh the Fullscreen label. */
+    windowResized() { if (page === 'settings') readFullscreen(); },
     /** Single player has ended (M in the duel): show the main menu again. */
     leaveSingle() { if (page === 'single') { page = 'home'; render(); } },
     home() { if (!status || status.phase === 'idle' || status.phase === 'error') { deps.home?.(); hadView = false; page = 'home'; localError = ''; render(); } },

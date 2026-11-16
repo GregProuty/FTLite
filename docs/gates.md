@@ -1,5 +1,7 @@
 # Increment gates
 
+**2026-11-16: keyboard and mouse only.** Couch play and gamepads were removed (`docs/superpowers/specs/2026-11-16-main-menu-kbm-design.md`). Unchecked couch, second-keyboard-cluster and gamepad items below are retired as of that date, not pending; checked entries stay as the historical record. The couch checklist `docs/playtest.md` now runs as a two-computer Multiplayer session.
+
 ## Increment 0: headless harness
 - [x] `npm test` passes: golden replay, same-seed hash property, snapshot round trip.
 - [x] `npm run bless` twice in a row leaves `tests/golden/basic.json` unchanged (verified with `cmp`).
@@ -10,9 +12,9 @@
   - Final results (both bots conscious at 300 s): seed 1: health 46/46, max simultaneous hazards 1, 1 repair episode; seed 2: 55/55, max 2, 2 episodes; seed 3: 19/19, max 2, 2 episodes. Seed 3 has a thin margin.
   - The gate also asserts that every fire-repair attempt has the repairer inside the burning room (`roomAt(crew) === target.index`): 0 violations on all seeds.
 - [x] Mass-balance and branching-graph oxygen tests pass (part of `npm test`, 141 tests).
-- [ ] Manual playtest (`npm run dev`): two keyboard players (WASD+E/F/Q, arrows+Enter/RShift/Backspace) survive 5 minutes; both repaired at least one fire and one breach; one revive happened (let a player stand in a fire until Downed). Date and notes: pending human playtest.
+- [ ] (Retired 2026-11-16: couch play removed.) Manual playtest (`npm run dev`): two keyboard players (WASD+E/F/Q, arrows+Enter/RShift/Backspace) survive 5 minutes; both repaired at least one fire and one breach; one revive happened (let a player stand in a fire until Downed). Date and notes: pending human playtest.
 - [ ] Pause on alt-tab and on minimise confirmed; sim clock does not advance while paused. (pending human playtest)
-- [ ] Gamepad spike (spec §11): with `npm run dev`, then with `npm run dist` installed build:
+- [ ] (Retired 2026-11-16: gamepads removed.) Gamepad spike (spec §11): with `npm run dev`, then with `npm run dist` installed build:
   - [ ] Xbox-style pad joins with A, moves, interacts; unplug mid-run shows RECONNECT, replug + any button reclaims.
   - [ ] PlayStation-style pad: same.
   - [ ] A third pad model: same (name it).
@@ -463,7 +465,7 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
 - [x] Gates before -> after (min health, seeds 1/2/3); every gate passes, every figure unchanged and no floor lowered (the bots never fire, so room targeting and Piloting do not reach them): `gate-survival` 77.7 / 47.8 / 68.9, `gate-cutter` 59.1 / 61.5 / 65.6, `gate-boarding` 22.3 / 24.0 / 29.6, `gate-duo` 81.8 / 42.5 / 49.3 (min hull 68 / 84 / 68), `gate-skiff` 42.8 / 15.0 / 26.1 (min hull 60 / 80 / 76); `gate-jump`, `gate-run` and `gate-warden` (the scripted gunner aims at the Shields room, its evasion now from Piloting, up throughout as the engines were) pass with their pinned figures. `npm run acceptance 5 1` is byte-identical to the previous master.
 - [x] Golden re-blessed once (SIM_VERSION 31: Piloting adds a fourth enemy system to the state): final hash 9fd7a233 -> 6a27bf82.
 - [x] Visual check by Claude, 2026-11-12 (Playwright on the built app at 1280 x 720, two keyboard players on the Skiff; a temporary build-only hook placed the crew, set door states, brought the enemy and the event, damaged the enemy; removed and rebuilt before the commit). The lobby card reads `Ship: Skiff (2 crew)` in amber over ten bright lines on a dark backdrop, the 3x banner clear of everything. Seated, P1's card `HELM | WEAPONS` and P2's `SCIENCE | ENGINEERING | DOORS` sit side by side under the ship, the selected row on its dark amber bar; Engineering's eight rows show the green and outlined cells; the map fills the right column on the Helm tab. Doors: closed amber panel pairs in the wall line, sealed red with the bar, held open with ticks, the open Engines airlock dark between its jambs. In the fight (P1 on the Weapons tab) the enemy ship fills the 400 x 340 window bow-left; Down walks the reticle Hold, Weapons, Piloting, Engines, Shields and back to the Hold; with Piloting down, a fire in the Hold and Shields ionised, the rows read `Piloting room  DOWN 45s` and `Shields room  100%  ION 10s`, the threats `Enemy 85% shields 1/1` over `Down: piloting`, and a shot at the Weapons room left it at 50 % with `BREACH: Weapons` under the ship. The `Sensor ghost` card sits over the band with its title in amber, two text rows and two numbered choices; the notice reads `1 Hunt it (50%)  /  2 Run silent`. Nothing overlapped or clipped. Screenshots: `C:\Users\djuar\AppData\Local\Temp\claude\86da55dbee83ee65\b0d62506-f1e2-4b2f-8539-6778ff35b15b\scratchpad\drive\ftl-look`.
-- [ ] Manual, the user: readable from the couch; looks closer to FTL.
+- [ ] Manual, the user: readable at playing distance; looks closer to FTL. (Was "from the couch"; couch play removed 2026-11-16.)
 - [x] `npm run typecheck`, `npm test`, `npm run build` pass on the final commit.
 
 ## Demo-xi: two seats that play (2026-11-13)
@@ -474,7 +476,7 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
   - `gate-jump` (the scripted navigator): end tick 65298 -> 56995, waits 6 unchanged: P1, no charge wait at the three calm arrivals (the start and two sector arrivals).
 - [x] Golden re-blessed once (SIM_VERSION 32: run.navSig/navSelect/navIndex and run.arrivalTick in the state, the full start drive, fire heat): final hash 6a27bf82 -> 85dc14ae.
 - [ ] Claude's second playtest: two seated players jump, vote and shop without standing; a fire left alone fails its console.
-- [ ] Manual, the user: the couch checklist `docs/playtest.md` sections 1 to 4.
+- [ ] Manual, the user: the playtest checklist (now Multiplayer, 2026-11-16) `docs/playtest.md` sections 1 to 4.
 
 ## Demo-xiii: combat tempo (2026-11-13)
 - Step 1, the bot gunner (spec Demo-xiii section 3, amendments 1 and 2). Gates before -> after (min health, seeds 1/2/3); every gate passes, no floor lowered or raised, no gate setup changed:
@@ -498,14 +500,14 @@ players  seed  ended-at  reason   first-down        first-death  longest-idle   
   - The other lever tried: `ENEMY_FIRE_INTERVAL` 20 -> 12 (hull 4 per hit, the faster Pulse): the ignored first enemy costs 12 / 12 / 12 / 12 / 16 / 12 hull in 60 s on seeds 1-6, below the band (the two-crew multiplier 1.4 makes it 16.8 s between shots), so the damage per hit was chosen (amendment 5).
 - [x] `npm test` passes (1203 tests, 1194 after step 1, 1182 before). Golden re-blessed once (SIM_VERSION 33): final hash 85dc14ae -> 0661052e. Typecheck clean on both configs.
 - [ ] Claude's full-run playtest on the Skiff: the first fight feels urgent; a fire or a breach during it forces a choice.
-- [ ] Manual, the user: the couch checklist.
+- [ ] Manual, the user: the playtest checklist (now Multiplayer, 2026-11-16).
 
 ## Demo-xiv: the gunner sees the frequency (2026-11-13)
 - [x] `npm test` passes (1221 tests, 1203 before): the last-shot selector and damage (weapons, snapshot round trip and hash), the shot-result strings for every kind and their fit, the marked selector, `freq ?`, `Match freq N`, the footer result line, the enemy window's shot line and corner, the threats rows' fit rule. Typecheck clean on both configs.
 - [x] Golden re-blessed once (SIM_VERSION 34: `weapons.lastShotSelector`, `weapons.lastShotDamage`): final hash 0661052e -> 0a644af3.
 - [x] Gates re-recorded, unchanged (the new fields are write-only in the sim): `gate-skiff` 60.9 / 25.3 / 67.8 (min hull 54 / 42 / 90), `gate-duo` 27.2 / 57.5 / 57.7 (min hull 20 / 68 / 58); every other gate passes with its pinned figures. No floor moved.
 - [x] Claude's visual check: a stripped shot's reason, a matched hit, the marked selector (spec amendment 12).
-- [ ] Manual, the user: the couch checklist; the gunner reads the frequency and the shot results without being told.
+- [ ] Manual, the user: the playtest checklist (now Multiplayer, 2026-11-16); the gunner reads the frequency and the shot results without being told.
 
 ## Net-1a task 1: pinned offline baseline (2026-11-13)
 
@@ -659,7 +661,7 @@ Fresh final gates supersede the earlier source-7567633 measurements above:
 | Electron 37.10.3 / Chromium 138.0.7204.251 | Same vectors and boundaries match; 18.0203s |
 | Firefox 160.0 | Same vectors and boundaries match; 22.8393s |
 | Actual injected Chromium page failure | Correct nonzero exit 1 |
-| Couch UI smoke | Keyboard + virtual gamepad: two crew, movement, pause/resume, one completion, restart; zero renderer exceptions |
+| Couch UI smoke (retired 2026-11-16 with its script `scripts/determinism/ui-*`) | Keyboard + virtual gamepad: two crew, movement, pause/resume, one completion, restart; zero renderer exceptions |
 
 The fresh smoke ran couch-1 tick 46 through couch-2 tick 42 with Skiff, two crew and hull 100. Running, paused, game-over and restarted screenshots were inspected. Physical controllers, actual OS minimize/suspend, Safari/JSC, ARM and other operating systems remain **NOT RUN**. No internet transport or two-machine session is provided by Net-1b.
 

@@ -29,7 +29,9 @@ A views and menu change. Light process: this page, the build, one review, and th
      preload call. It shows the window's current state and is not saved: the packaged app starts fullscreen and F11
      still toggles it.
    - **Controls**: a read-only list of the keyboard and mouse bindings, built from the input code's own tables
-     (`app/duel/input.ts` for single player, `input/sources.ts` for multiplayer), so it cannot drift.
+     (`app/duel/input.ts` for single player, `input/sources.ts` for multiplayer, `FULLSCREEN_KEY` in
+     `shared/onlineSession.ts` for the key the main process toggles fullscreen on), so it cannot drift. The two mouse rows
+     (wheel zooms, right or middle drag pans) are written by hand in `app/controlsList.ts`.
    - **Back**.
 
 ## Removed

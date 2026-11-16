@@ -2,6 +2,7 @@
 // (the duel's PRESS_CODES and held keys, the sector's one keyboard cluster), so the list cannot drift from the bindings.
 import { FIRE_HELD, INTERACT_HELD, MOVE_CODES, PRESS_CODES, type KeyAction } from './duel/input';
 import { SECTOR_KEYS } from '../input/sources';
+import { FULLSCREEN_KEY } from '../../../shared/onlineSession';
 
 export interface ControlRow { keys: string; action: string }
 export interface ControlSection { title: string; rows: ControlRow[] }
@@ -37,6 +38,7 @@ function codesFor(action: KeyAction): string[] {
 
 export function controlSections(): ControlSection[] {
   const move = [MOVE_CODES.up, MOVE_CODES.left, MOVE_CODES.down, MOVE_CODES.right].map(keyLabel).join(' ');
+  // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
   const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, thrust and turn; at Weapons, steer the missile' }];
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
     const keys = codesFor(action).map(keyLabel).join(' / ');
@@ -53,5 +55,5 @@ export function controlSections(): ControlSection[] {
     { keys: keyLabel(k.cancel), action: 'Cancel' },
     { keys: keyLabel(k.callout), action: 'Call out to the crew' }
   ];
-  return [{ title: 'Single player', rows: duel }, { title: 'Multiplayer', rows: sector }, { title: 'Anywhere', rows: [{ keys: 'F11', action: 'Toggle fullscreen' }] }];
+  return [{ title: 'Single player', rows: duel }, { title: 'Multiplayer', rows: sector }, { title: 'Anywhere', rows: [{ keys: FULLSCREEN_KEY, action: 'Toggle fullscreen' }] }];
 }

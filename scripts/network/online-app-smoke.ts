@@ -199,7 +199,8 @@ async function main() {
     await g.request('click',{id:'single-player'}); await delay(1300);
     const cancelled=await g.request('resources'); assert(cancelled.utilities.length===0&&cancelled.windows===1&&cancelled.listeners===0,'cancel retained transport resources');
     await viewportProof(g, 'single');
-    await key(g, 'Escape'); await delay(100); await key(g, 'M'); await delay(300); checks.push('cancel-single');
+    await key(g, 'Escape'); await delay(100); await key(g, 'M');
+    await until(() => g.request('status'), r => r.text.includes('Single player'), 'single returns to menu'); checks.push('cancel-single');
     // Cancellation can leave the service's disconnected reservation; host removes
     // it through the same real roster action before admitting the actual guest.
     if((await status(h)).status.snapshot.seats[1].occupied) await h.request('click',{id:'remove-seat-1'});

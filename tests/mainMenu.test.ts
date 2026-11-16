@@ -3,7 +3,7 @@
 // toggles fullscreen live and lists the real bindings.
 import { describe, expect, it, vi } from 'vitest';
 import { createSessionMenu } from '../src/renderer/src/render/sessionMenu';
-import { controlSections, keyLabel } from '../src/renderer/src/app/controls';
+import { controlSections, keyLabel } from '../src/renderer/src/app/controlsList';
 import { FIRE_HELD, INTERACT_HELD, MOVE_CODES, PRESS_CODES } from '../src/renderer/src/app/duel/input';
 import { SECTOR_KEYS } from '../src/renderer/src/input/sources';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, SETTINGS_KEY, VOLUME_STEPS } from '../src/renderer/src/app/settingsStore';
@@ -51,6 +51,19 @@ describe('multiplayer', () => {
   });
 });
 
+describe('leaving an online game', () => {
+  it('returns home when the idle status arrives after Leave has settled', async () => {
+    const home = vi.fn(), leave = vi.fn(async () => ({ ok: true as const }));
+    const { root, menu } = make({ api: { leave } as never, home });
+    const running: OnlineStatus = { ...idle, phase: 'running', role: 'host', ownSeat: 0, attachmentEpoch: 1, actions: ['leave'] };
+    menu.setStatus(running); root.find('leave')!.fire(); expect(leave).toHaveBeenCalledOnce();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(home).not.toHaveBeenCalled();   // still running when the request settled
+    menu.setStatus({ ...idle, actions: ['host', 'join', 'reconnect', 'retry'] });
+    expect(home).toHaveBeenCalledOnce(); expect(buttons(root)).toEqual(HOME); menu.dispose();
+  });
+});
+
 describe('single player', () => {
   it('hides the menu, keeps online input blocked and ignores online status, then returns home', () => {
     const single = vi.fn(), inputBlocked = vi.fn(), { root, menu } = make({ single, inputBlocked });
@@ -83,6 +96,16 @@ describe('settings', () => {
     expect(root.find('fullscreen')!.textContent).toBe('Fullscreen: On'); expect(root.find('volume')!.value).toBe('0');
     expect(text(root.find('controls')!)).toContain('Tab'); expect(text(root.find('controls')!)).toContain('Switch');
     root.find('back')!.fire(); expect(buttons(root)).toEqual(HOME); menu.dispose();
+  });
+  it('keeps the Settings page intact across status pushes and re-reads fullscreen when the window resizes', async () => {
+    let full = false; const get = vi.fn(async () => full);
+    const { root, menu } = make({ settings: { volume: () => 1, setVolume: vi.fn(), fullscreen: { get, set: vi.fn() }, controls: [] } });
+    root.find('settings')!.fire(); await Promise.resolve(); await Promise.resolve();
+    const select = root.find('volume'); menu.setStatus(idle); expect(root.find('volume')).toBe(select);
+    full = true; menu.windowResized(); await Promise.resolve(); await Promise.resolve();
+    expect(get).toHaveBeenCalledTimes(2); expect(root.find('fullscreen')!.textContent).toBe('Fullscreen: On');
+    menu.setStatus({ ...idle, phase: 'lobby', actions: ['leave'] }); expect(root.find('volume')).toBeUndefined();   // a session still takes over
+    root.find('back'); menu.windowResized(); expect(get).toHaveBeenCalledTimes(2); menu.dispose();
   });
   it('disables fullscreen without the preload window bridge', () => {
     const { root, menu } = make({ settings: { volume: () => 1, setVolume: vi.fn(), controls: [] } });

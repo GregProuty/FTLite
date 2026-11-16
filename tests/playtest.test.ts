@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
-// The couch playtest checklist for the Skiff (rewritten 2026-11-13, replacing the Demo-i script).
-describe('docs/playtest.md (the couch checklist)', () => {
+// The playtest checklist for the Skiff (rewritten 2026-11-13; a two-computer Multiplayer session since 2026-11-16).
+describe('docs/playtest.md (the playtest checklist)', () => {
   const lines = readFileSync('docs/playtest.md', 'utf8').split(/\r?\n/);
   it('has the header fields', () => {
     for (const f of ['Date:', 'Players (who sat where):', 'Seed', 'Build (commit):']) expect(lines.some((l) => l.startsWith(f)), f).toBe(true);

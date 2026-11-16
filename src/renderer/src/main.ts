@@ -7,7 +7,7 @@ import { createHud } from './render/hud';
 import { createKeyboardSources } from './input/sources';
 import { createAudio } from './app/audio';
 import { loadSettings, saveSettings } from './app/settingsStore';
-import { controlSections } from './app/controls';
+import { controlSections } from './app/controlsList';
 import { DEFAULT_SEED, readMode, readSeed } from './app/duel/mode';
 import { startFlightMode } from './app/duel/flightMode';
 import { startDuelMode } from './app/duel/duelMode';
@@ -86,6 +86,7 @@ async function startApp(): Promise<void> {
   // Reflow can wrap the strip without a window resize (status/roster changes).
   const menuResize = new ResizeObserver(resize); menuResize.observe(menuRoot);
   window.addEventListener('resize', resize); resize();
+  window.addEventListener('resize', () => menu?.windowResized());   // F11 fullscreen changes keep the Settings label true
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
