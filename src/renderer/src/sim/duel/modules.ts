@@ -1,0 +1,79 @@
+// The duel on the sim module contract (engine refactor spec §6, R-1): space (the tactical state), presence, repair and
+// the interior wrapper, in canonical order after SIM_VERSION. flattenDuel, the duel snapshot and its restore all come
+// from this list; tests/duelModules.test.ts holds every DuelState and TacticalState member to a field or an exclusion.
+import { flatten, unflatten } from '../flatten';
+import { validateCanonicalValues } from '../snapshotValidation';
+import { canonicalFields } from '../canonicalFields';
+import { flag, flattenModule, moduleLength, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
+import { spaceModule } from '../tactical/hash';
+import type { DuelState } from './state';
+
+/** Who is at the keyboard (spec §8 "present or away"). */
+export const presenceModule: SimModule<DuelState> = {
+  id: 'presence',
+  fields: () => PRESENCE,
+  notSnapshotted: {},
+  commands: ['presence'],
+  reasons: ['stale-tick', 'malformed']
+};
+const PRESENCE: ModuleField<DuelState>[] = [0, 1].map((p) => flag(`present.${p}`, (d) => d.present[p as 0 | 1], (d, v) => { d.present[p as 0 | 1] = v; }));
+
+/** Repair progress per tactical Room, in REPAIR_UNITS. */
+export const repairModule: SimModule<DuelState> = {
+  id: 'repair',
+  fields: () => REPAIR,
+  notSnapshotted: {},
+  commands: [],
+  reasons: []
+};
+const REPAIR: ModuleField<DuelState>[] = [vector('repair', 3, (d) => d.repair)];
+
+/** The Cutter interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
+export const interiorModule: SimModule<DuelState> = {
+  id: 'interior',
+  fields(d) {
+    const fields = canonicalFields(d.interior.layout, d.interior.playerCount), last = fields[fields.length - 1]!, count = last.offset + last.count;
+    return [{
+      name: 'interior', count,
+      read(s, out) { for (const v of flatten(s.interior)) out.push(v); },
+      write(s, values, offset) {
+        const slice = Array.from({ length: count }, (_, k) => values[offset + k]!);
+        validateCanonicalValues(s.interior.layout, s.interior.derived, s.interior.playerCount, slice);
+        unflatten(s.interior, Float64Array.from(slice));
+      }
+    }];
+  },
+  notSnapshotted: {},
+  commands: ['sit', 'stand'],
+  reasons: ['not-in-duel', 'unavailable', 'invalid-seat', 'stale-target', 'stale-tick']
+};
+
+/** The DuelState members that are not module state, each with its reason. */
+export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
+  points: 'the repair points, resolved from the Cutter layout by createDuel',
+  nav: 'the Navigation station index, from the layout',
+  weapons: 'the Weapons station index, from the layout',
+  events: 'per-tick repair events, cleared every tick'
+};
+
+/** The duel's modules in canonical order, each with the part of the DuelState it owns. */
+export const DUEL_MODULES: readonly { module: SimModule<never>; state(d: DuelState): unknown; path: string }[] = [
+  { module: spaceModule as SimModule<never>, state: (d) => d.tactical, path: 'tactical' },
+  { module: presenceModule as SimModule<never>, state: (d) => d, path: '' },
+  { module: repairModule as SimModule<never>, state: (d) => d, path: '' },
+  { module: interiorModule as SimModule<never>, state: (d) => d, path: '' }
+];
+
+/** Every module's values after SIM_VERSION, in order. */
+export function flattenDuelModules(d: DuelState, out: number[]): void {
+  for (const { module, state } of DUEL_MODULES) flattenModule(module as SimModule<unknown>, state(d), out);
+}
+/** The number of values after SIM_VERSION. */
+export function duelModulesLength(d: DuelState): number {
+  let n = 0; for (const { module, state } of DUEL_MODULES) n += moduleLength(module as SimModule<unknown>, state(d)); return n;
+}
+/** Write every module's values back from `values[offset]`; returns the offset after them. */
+export function unflattenDuelModules(d: DuelState, values: ArrayLike<number>, offset: number): number {
+  for (const { module, state } of DUEL_MODULES) offset = unflattenModule(module as SimModule<unknown>, state(d), values, offset);
+  return offset;
+}
