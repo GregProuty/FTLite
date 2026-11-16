@@ -4,6 +4,22 @@ import { DEBRIS_SLOTS, SKILL_COUNT, BOARDER_SLOTS, SECTOR_COLUMNS, NODE_STRIDE, 
 import { STATION_COUNT } from './stationKinds';
 import { ENEMY_SYSTEM_COUNT } from './enemy';
 
+/**
+ * SimState members deliberately outside the canonical flatten (so outside the hash and the snapshot), by dotted path.
+ * tests/simStateCompleteness.test.ts fails when a SimState member is neither a canonical field nor listed here, so a
+ * new field must be added to canonicalFields() below (and its snapshotValidation rule) or here, with a reason.
+ */
+export const NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
+  layout: 'static input; identified by the $layoutId / $layoutHash header fields',
+  derived: 'computed from layout by deriveLayout()',
+  world: 'the bitECS world; crew component cells are serialised per player as crew.<pid>.*',
+  crew: 'entity ids, not state; the crew is serialised by player index (crew.<pid>.*) with the $crewCount header',
+  injectionScratch: 'per-step scratch: oxygen injection requested for the next hazard step',
+  scratch: 'tick-scoped scratch, cleared at the start of every step',
+  'weapons.target': 'serialised as the virtual weapons.$targetKind / $targetId / $targetRoom fields',
+  'science.target': 'serialised as the virtual science.$targetKind / $targetId / $targetRoom fields',
+};
+
 export interface CanonicalField { name: string; count: number; offset: number; array: boolean; parts: string[] }
 
 const cache = new WeakMap<ShipLayout, Map<string, CanonicalField[]>>();

@@ -39,4 +39,13 @@ describe('the duel golden (spec §6)', () => {
     expect(flattenDuel(d)[0]).toBe(SIM_VERSION);
     disposeDuel(d);
   });
+  it('covers the whole interior canonical state, not hand-picked fields: fire, oxygen and power changes all change it', () => {
+    const d = createDuel(CUTTER, 1);
+    try {
+      const h0 = hashDuel(d);
+      d.interior.rooms.fire[0] = 0.5; const h1 = hashDuel(d); expect(h1).not.toBe(h0);
+      d.interior.rooms.o2[1]! -= 1; const h2 = hashDuel(d); expect(h2).not.toBe(h1);
+      d.interior.power.capacity += 1; expect(hashDuel(d)).not.toBe(h2);
+    } finally { disposeDuel(d); }
+  });
 });
