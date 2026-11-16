@@ -169,3 +169,56 @@ Confirmed. `recordTick` skips only ticks that did not advance (`telemetry.ts:87-
 
 ---
 
+# Round 3 (delta, reviewing b75a06f, effort medium, 69 s, 194902 in / 162145 cached / 4833 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R3-F1 The meaning of decidedTick is off by one from the new checkpoint rule ticks = decidedTick − baseTick
+The spec defines decidedTick as 'the encounter tick on which this round was decided'. Today the deciding step runs at interior tick D and still increments the tick (step.ts:L73 returns early only on later calls, L126 increments). recordTick then sets t.ticks = tac.tick, which is D+1 (telemetry.ts:L90-92). So the frozen accumulator counts D+1 − baseTick. If decidedTick is read as D, the tick the step ran on (which is also the tick stamped on that step's results, step.ts:L74-76), the validator rule 'ticks = decidedTick − baseTick' rejects every end-card checkpoint by one. That includes the safe point at duel:<round>:true. The snapshot validator's range 'between baseTick and the tick' accepts either reading, so it does not settle the question. · spec L228 (decidedTick definition), L230 (range check), L265 (ticks = decidedTick − baseTick), L274; step.ts:L74, L126; telemetry.ts:L90-92; duelCheckpoint.ts:L99 (today ticks === header.tick, which is the post-step tick) · The planner has to pick one reading. One choice makes the end-card capture/restore test (L256) and every decided-round checkpoint fail validation. · Define decidedTick as the encounter tick right after the deciding step, that is, the snapshot tick of the first decided publication and of the duel:<round>:true safe point. Equivalently, state the rule as 'ticks = decidedTick + 1 − baseTick' with decidedTick being the step's tick. Pin it with a validator test on the decision-tick safe point.
+
+### [P2] R3-F2 Peer loss while the duel is already paused leaves the steward's presence command pending for the whole outage
+The R1-F7 fix waits for the steward's presence command to be applied before it calls pause('peer-lost'). If a player has already paused with Escape when the guest's link drops, nothing steps. The core still admits the presence command into pending while paused (core.ts:L360, L371; ledger.ts:L87), but it is never applied. The manager then never sees an applied result. Meanwhile capture refuses while anything is pending (core.ts:L127), so 'paused-control' captures and Net-3e mirrors stop for the outage. That is the exact failure the revised text says it avoids. The spec does not cover this case. It also does not say what the manager does if the presence result is rejected (for example stale-tick, step.ts:L95), rather than applied. · spec L196 (pause only once presence has an applied result), L198 (test asserts a pause capture during the outage), L201 (Escape pause exists); core.ts:L127, L140-141, L360-371; ledger.ts:L85-87; step.ts:L94-97 · The guest-loss recovery promise (a pause checkpoint or mirror during the outage) does not hold in a reachable state, and the planner has to invent the manager's behaviour on a non-applied result. · State it: if the authority is already paused when a remote attachment detaches, the steward defers its presence command until the next resume, or the manager skips it. In that case no peer-lost pause is requested, because the run is already paused. On a rejected presence result the manager still requests the pause (or the steward retries once at the next boundary). Add the already-paused case to the L198 test.
+
+## Prior findings
+- R1-F7: resolved — The trigger, origin and order are specified: a remote detach attaches the steward, and the manager requests pause('peer-lost') only after the presence command is applied. The local-port exception and the test assertions are present (spec L190-198). A residual edge, the already-paused case and a rejected result, is raised as a new P2.
+- R2-F1: resolved — The accumulator freezes after the deciding tick (L256). decidedTick is added to the round module, the snapshot validator, MIGRATIONS[38] and the memory note (L228, L230, L265, L274, L286), and the end-card capture/restore test is specified. A remaining off-by-one in the definition of decidedTick against the rule ticks = decidedTick − baseTick is raised as a new P2.
+
+## Verified
+- recordTick today skips only non-advancing ticks and recomputes terminal causes whenever the outcome is not Running (telemetry.ts:L89-92, L145-161), so the freeze stated at spec L256 is the needed change
+- Today the checkpoint validator requires telemetry ticks to equal the header tick and the outcome to agree with the snapshot (duelCheckpoint.ts:L99-101); the revised rule at spec L265-266 keeps the outcome agreement
+- The capture refusal while anything is pending (core.ts:L127) is cited correctly for the R1-F7 rationale at spec L196
+- MIGRATIONS[38] and the canonical-field list both name the four round fields consistently (spec L286); the memory schema note matches the new rule (L274)
+- Presence is applied on a decided round (L248), so the steward's command gets a result on the end card and the peer-lost wait still finishes there
+
+## Not verified
+- Whether the tactical tick (tac.tick) and the interior tick advance in lockstep on the deciding step. The off-by-one finding assumes stepDuel increments the tactical tick as the interior tick does at step.ts:L126; stepDuel itself was not read
+- The ordering of the steward's pending presence false against the rejoining client's presence true in the same tick, beyond step.ts:L94-97 applying them in envelope order
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json`. The reviewer confirmed R1-F7 and R2-F1 resolved. 2 accepted (both P2), 0 rejected, 0 deferred.
+
+## R3-F1 [P2]: decidedTick off by one
+
+Confirmed: the deciding step increments the tick (`step.ts:126`), and the accumulator records `tac.tick` after it (`telemetry.ts:90-92`). `decidedTick` is now defined as the tick right after the deciding step, which is the snapshot tick of the first decided publication and of the `duel:<round>:true` safe point. So `ticks = decidedTick − baseTick` holds exactly, and a validator test pins it on that safe point.
+
+## R3-F2 [P2]: peer loss while already paused
+
+Confirmed. If the run is already paused, the steward defers its presence command until the next resume, and no `peer-lost` pause is requested. If the presence command is rejected (for example `stale-tick`), it is retried once at the next boundary, and the pause is requested anyway if the retry fails too. Both cases are added to the test.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-16-helm-h2-networked-duel-design.md
+
+<!-- end -->
+
+---
+

@@ -194,8 +194,10 @@ The plan's evidence records both figures before and after the cache.
   - At the next completed boundary, it sends `presence {present: false}` once through the normal ledger, and otherwise nothing.
   - It holds no memory, so `DuelControllers` stays empty (`duelCheckpoint.ts:20-21`).
 - **Peer loss.** When a `'remote'` attachment detaches, the manager attaches the steward, which submits `presence {present: false}` for the lost seat. The manager calls `pause('peer-lost')` only once that presence command has an applied result, at least one tick later (rec.). A lifecycle pause applied before the command executes would leave it pending for the whole outage, and capture refuses while anything is pending (`core.ts:127`), so there would be no pause checkpoint or Net-3e mirror.
+  - **Already paused** (a player pressed Escape): nothing steps, so the presence command would never apply. The steward then defers its presence command until the next resume, and the manager requests no `peer-lost` pause, because the run is already paused (rec.).
+  - **Presence rejected** (for example `stale-tick`, `step.ts:95`): the steward retries once at the next boundary; if that is rejected too, the manager requests the pause anyway, so a lost peer always ends in a pause.
   - The host's own renderer port closing (`'local'`, for example a reload) gets a steward but **no** pause: the host's machine is still there.
-  - A test pins the order and the local-port exception. It asserts that the presence command's applied tick comes before the pause boundary, and that a pause capture is delivered during the outage.
+  - A test pins the order and the local-port exception. It asserts that the presence command's applied tick comes before the pause boundary, and that a pause capture is delivered during the outage. It also covers the already-paused case (no pending command, captures continue, no `peer-lost` pause) and the rejected-presence case.
 - **Rejoin.** It retires the steward and waits for the existing full-state ACK gate (`streamBinding.ts:48-53`, `66`). The returning client then sends `presence {present: true}` as its first command.
 
 **Guest loss.** The host pauses, as above **(rec.)**: in a two-person duel, a lost partner is no moment to keep fighting the hunter alone. The host can still press Escape and fly on alone. The guest's renderer freezes its last view under "CONNECTION LOST — RECONNECTING" and enters Net-3d's bounded retry (1, 2, 4, 8 s, within a 30 s window). Rejoining never unpauses; either player presses Escape to resume (Net-3d rule).
@@ -225,7 +227,7 @@ The duel's mirror goes through the duel adapter's `validateMirror` (`duelRules.v
 - `round`: 0 for the first round;
 - `helmPlayer`: from the init;
 - `baseTick`: the encounter tick on which this round began.
-- `decidedTick`: the encounter tick on which this round was decided, or −1 while it runs.
+- `decidedTick`: the encounter tick right after the deciding step, or −1 while the round runs. It equals the snapshot tick of the first decided publication and of the `duel:<round>:true` safe point; the deciding step itself ran on `decidedTick − 1` and its results carry that tick (`step.ts:74,126`). The frozen accumulator's `ticks` is `tac.tick` after that step (`telemetry.ts:90-92`), so the rule below holds exactly. A validator test pins it on the decision-tick safe point.
 
 The round seed is the tactical state's own `seed`, already hashed in the space module (`snapshot.ts:73` checks `values[2]`). With this module, the step, the snapshot and `rules.restore` read the round, its seed and `helmPlayer` from state. That matters because `rules.step` and `rules.restore` receive no init (`rules.ts:39`, `52`), and replays cover the round state automatically. Publications carry the round state, so a client that joins or reconnects late knows the round and the seating without seeing any `round` event. `validateDuelSnapshot` checks the module: `round` is a non-negative safe integer, `helmPlayer` is 0 or 1, `baseTick` is at most the tick, and `decidedTick` is −1 while the outcome is Running, otherwise between `baseTick` and the tick.
 
@@ -472,3 +474,4 @@ H-2a is the bulk. If it is too big for one plan, its builder splits it at the se
   - F10: the §16 rule printed verbatim, a guest-Helm round in each checklist, command delay to the result.
   - F11: citations, `seed` and `paused()`, Escape on the end card, LAN step 3.
 - 2026-11-16: refine round 2: the peer-lost pause waits for the steward's presence result; the telemetry accumulator freezes on a decided round, the round module keeps `decidedTick`, and the checkpoint rule changes to match.
+- 2026-11-16: refine round 3: `decidedTick` is the tick after the deciding step; peer loss while already paused defers presence and requests no pause; a rejected presence retries once, then pauses anyway.
