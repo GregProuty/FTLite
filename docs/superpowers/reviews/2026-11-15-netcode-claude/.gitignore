@@ -1,0 +1,5 @@
+*.jsonl
+.round-*.attempt*
+!fixture-*.jsonl
+.netcode.diff
+*.stderr
