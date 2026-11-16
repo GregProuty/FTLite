@@ -38,7 +38,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const root = new Container(), scene = new Container();
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '';
   const layer = createTacticalLayer({ fontFamily: font, viewport, seed: deps.seed, pauseText: `PAUSED   ESC: RESUME${exitHint}` });
-  let interior: InteriorView = createInteriorView(renderer.assets);
+  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale);
   const panel = createReadoutPanel({ fontFamily: font }), end = createEndScreen({ fontFamily: font });
   const paused = new BitmapText({ text: `PAUSED   ESC: RESUME${exitHint}`, style: { fontFamily: font, fontSize: FONT_SIZE * 1.5 } });
   paused.tint = TEXT; paused.anchor.set(0.5, 0.5); paused.position.set((INTERNAL_W - READOUT_COLUMN) / 2, 80); paused.visible = false;
@@ -77,7 +77,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     if (runtime.epoch() !== epoch) {   // a restart (spec §4): every view-owned cache starts again
       epoch = runtime.epoch();
       resetFx(fx); layer.reset(); layer.reseed(runtime.seed);   // the next duel's star field
-      interior.destroy(); interior = createInteriorView(renderer.assets); scene.addChildAt(interior.container, 1);
+      interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale); scene.addChildAt(interior.container, 1);
     }
     const d = runtime.duel, view = runtime.view(), alpha = runtime.alpha(), userPaused = runtime.reasons().has('user');
     pushEvents(fx, runtime.drainEvents());

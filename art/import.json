@@ -1,0 +1,4 @@
+{
+  "$comment": "npm run art:import (Art-i spec section 3). Each output: pack = the pack PNG relative to FTLITE_ASSETS (else C:\\Users\\djuar\\FTLite-assets); frames = rectangles in that PNG, in sheet order; output = the sheet to write, under public/assets/paid/; columns = frames per sheet row. Example: { \"pack\": \"SomeInteriorPack/floors.png\", \"frames\": [{ \"x\": 0, \"y\": 0, \"w\": 16, \"h\": 16 }, { \"x\": 16, \"y\": 0, \"w\": 16, \"h\": 16 }], \"output\": \"public/assets/paid/interior/floor.png\", \"columns\": 4 }. Art-ii fills this list when the pack is bought.",
+  "outputs": []
+}

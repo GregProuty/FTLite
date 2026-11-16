@@ -29,7 +29,8 @@ export interface InteriorView {
 /** The room tint by damage level (amber, red), and darker shades of both for the marker and its label on the light floor. */
 const TINT: readonly number[] = [0, AMBER, WARN], MARK: readonly number[] = [0, 0x8a5a00, 0xa8281c];
 
-export function createInteriorView(assets: GameAssets): InteriorView {
+/** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1. */
+export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1): InteriorView {
   const container = new Container(), world = new Container();
   container.addChild(world);
   const memory = createRenderMemory();
@@ -46,7 +47,7 @@ export function createInteriorView(assets: GameAssets): InteriorView {
   return {
     container, world, memory,
     draw(d, crewPrev, alpha, dt) {
-      const st = d.interior, fit = duelFit(st.derived.width, st.derived.height);
+      const st = d.interior, fit = duelFit(st.derived.width, st.derived.height, stageScale());
       world.scale.set(fit.scale); world.position.set(fit.x, fit.y);
       st.crew.forEach((eid, pid) => { const p = crewPrev[pid]; if (p) memory.prev.set(Stable.id[eid]!, p); });
       tiles.update(st, dt); icons.update(st); desks.draw(st); effects.draw(st);

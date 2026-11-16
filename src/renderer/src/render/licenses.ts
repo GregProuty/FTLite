@@ -1,11 +1,12 @@
 /** The §12 allow-list, SPDX-style. The single place the licence rule lives in code. */
-export const LICENSES = ['CC0-1.0', 'CC-BY-3.0', 'CC-BY-4.0', 'OGA-BY-3.0', 'OFL-1.1', 'original', 'CC-BY-SA-4.0'] as const;
+export const LICENSES = ['CC0-1.0', 'CC-BY-3.0', 'CC-BY-4.0', 'OGA-BY-3.0', 'OFL-1.1', 'original', 'CC-BY-SA-4.0', 'paid'] as const;
 export type License = (typeof LICENSES)[number];
 
 /** Author string every piece drawn from scratch carries. Change it here and in the manifest together. */
 export const OWNER_AUTHOR = 'FTLite project owner';
 
-export const LICENSE_URLS: Readonly<Record<Exclude<License, 'original'>, string>> = {
+/** Public licence texts. `original` (the owner's own) and `paid` (each store's own commercial licence, Art-i spec section 2) have none. */
+export const LICENSE_URLS: Readonly<Record<Exclude<License, 'original' | 'paid'>, string>> = {
   'CC0-1.0': 'https://creativecommons.org/publicdomain/zero/1.0/',
   'CC-BY-3.0': 'https://creativecommons.org/licenses/by/3.0/',
   'CC-BY-4.0': 'https://creativecommons.org/licenses/by/4.0/',

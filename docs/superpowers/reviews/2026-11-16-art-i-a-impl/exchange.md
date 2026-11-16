@@ -1,0 +1,86 @@
+# Codex review exchange: art-i-a-impl
+
+Subject: `.gitignore art/import.json docs/art/bible.md package-lock.json package.json scripts/art-import.ts scripts/art/importCore.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/render/assetNames.ts src/renderer/src/render/creditsText.ts src/renderer/src/render/doorModel.ts src/renderer/src/render/duel/interiorModel.ts src/renderer/src/render/duel/interiorView.ts src/renderer/src/render/effects.ts src/renderer/src/render/effectsShapes.ts src/renderer/src/render/enemyWindow.ts src/renderer/src/render/fallback.ts src/renderer/src/render/licenses.ts src/renderer/src/render/manifest.ts src/renderer/src/render/palette.json src/renderer/src/render/palette.ts src/renderer/src/render/renderer.ts src/renderer/src/render/tiles.ts src/renderer/src/render/wallModel.ts src/renderer/src/render/worldFit.ts tests/artGuards.test.ts tests/artImport.test.ts tests/doorModel.test.ts tests/duelInterior.test.ts tests/helpers/artGrid.ts tests/layout.test.ts tests/manifest.test.ts tests/paidManifest.test.ts tests/palette.test.ts tests/projectileModel.test.ts tests/tileLayer.test.ts tests/wallModel.test.ts tests/worldFit.test.ts` (impl). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing a74bcaf, effort high, 288 s, 2389486 in / 2267976 cached / 26861 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R1-F1 art:import: a corrupt pack PNG crashes instead of being listed, and duplicate output paths silently overwrite each other
+During validation, readPng is called on every existing pack without a try/catch. A truncated or non-PNG file therefore throws out of runImport, so the CLI dies with a stack trace instead of the one-line problem list the spec describes. Separately, two outputs that resolve to the same path both pass validation; the second writeFileSync overwrites the first while both sheets still appear on the contact sheet. 'Nothing written on failure' still holds, because all writes come after validation. · .superpowers/sdd/art-i-a-branch.diff L262-264 (importCore: `existsSync(packPath)` then `const img = readPng(packPath)` with no catch); L271-274 (each output is written in turn with no check for a repeated resolved path); L259-260 (the only output check is the paid/ prefix); spec L39 ('each produce one line; the script lists every problem and exits 1'). This is also the Task 6 minor in progress.md L278. · Art-ii is the first real user of this script. A bad download or a copy-paste slip in art/import.json then gives a crash or a silently missing sheet rather than a clear problem line. It does not block Art-i-a, because the committed list is empty. · In the validation loop, wrap the read: `try { img = readPng(packPath) } catch (e) { problems.push(`outputs[${i}]: pack file ${o.pack} is not a readable PNG (${(e as Error).message})`); return; }`. Keep a `Map<string, number>` of resolved output paths and push `outputs[${i}]: output ${o.output} is also written by outputs[${j}]` when one repeats. Optionally refuse outputs that do not end in `.png`. Add one test for each.
+
+### [P2] R1-F2 artImport tests: the tie-break assertion cannot fail, and the packing test checks only the sheet size
+The 'ties go to the earlier palette colour' check uses a palette of two identical colours, `[0x808080, 0x808080]`. Either index returns 0x808080, so a last-wins bug would still pass. The packing test asserts only the 16x16 sheet size, so a frame written to the wrong cell, or a swapped x/y in the cell maths, would also pass. · artImport.test.ts in the diff L1269-1270 (`createRemap([0x808080, 0x808080])` then `toBe(0x808080)`); L1300-1305 (the packing test checks only `[sheet.width, sheet.height]`). The implementation itself is correct: diff L194 uses a strict `d < bestD`, so the first colour wins a tie, and L231 places frame i at cell `(i % columns) * cw, floor(i / columns) * ch`. Spec L40 (ties broken by palette order) and L43 (tests for the remap). · The test that claims to cover a spec rule cannot detect its violation. I put it at P2 rather than P1 because I checked the current code by reading it and it is right. · Split the nearest-colour search out of createRemap into `nearestIndex(labs: Lab[], lab: Lab): number` and test an exact tie with hand-built Lab values, e.g. `nearestIndex([[0,0,0],[2,0,0]], [1,0,0]) === 0`. In the packing test, give each frame a distinct opaque colour and assert the top-left pixel of cells (0,0), (1,0) and (0,1).
+
+### [P3] R1-F3 Floor-art sub-textures are not destroyed on a rebuild, and the door-floor skip has no test
+floorSprite makes a new Texture on the shared source for every floor part. The rebuild path calls `c.destroy()` with no options, so those sub-Textures are never destroyed; in Pixi 8 a Texture also registers a listener on its source, so they accumulate on every layout change. Separately, tileLayer.test checks the sprite count only with a loose lower bound, and nothing tests that a door tile's floor fill is skipped when floor art is ready. · tiles.ts in the diff L1016 (`new Texture({ source: tex.source, frame: ... })` for each part); L1028 (`for (const c of floorArt.removeChildren()) c.destroy();`); L1052 (`if (p.floor && !art)`); tileLayer.test.ts in the diff L1712-1714 (`toBeGreaterThanOrEqual(floorTiles)`). Task 5 minors are in progress.md L277. · The leak only grows on a layout change, which is rare, and the art path is off until Art-ii, so nothing is visible today. It will matter once paid floors ship. · Use `c.destroy({ texture: true, textureSource: false })` (or cache one sub-Texture per name and part). In tileLayer.test, assert the exact sprite count for the Cutter, and assert that with art on the `doors` Graphics draws no full-tile floor rectangle on a door tile.
+
+### [P3] R1-F4 The shadowing test's title claims a paid-over-free case that it never builds
+The test titled 'refuses a paid file that shadows a free entry by binding its name' builds a free/free clash (font.m5x7) and a paid/paid clash (house.floor.2), but never the paid-over-free case the spec rule is about. The rule itself is generic, so the code is correct. · paidManifest.test.ts in the diff L1574-1578; manifest.ts in the diff L786-790 (the generic owner map); spec L31. Task 4 minor in progress.md L276. · A misleading title on a spec-rule test. · Add a free `raw/` entry that binds `house.floor.0` next to the `paid` entry and expect `/house\.floor\.0 is already bound/`, or rename the test.
+
+## Verified
+- Determinism boundary: the diff touches only .gitignore, art/, docs/art/, package.json, scripts/art*, src/renderer/src/app/duel/duelMode.ts, src/renderer/src/render/** and tests/** (all `diff --git` headers in the diff). Nothing changes under sim/, authority/, network/ or src/shared/. Renderer files import sim modules only for types and constants (doorModel imports sim/grid DoorState). The artGuards rng test walks every render .ts file (diff L1215-1221).
+- pngjs and scripts stay out of the renderer: importCore imports the renderer's palette.ts and palette.json, never the reverse (diff L151-152). The artGuards test checks render/ and app/ for pngjs and scripts/ specifiers (diff L1224-1229). pngjs 7.0.0 and @types/pngjs 6.0.5 are devDependencies (diff L104, L109). scripts/** is type-checked by tsconfig.web.json include L9.
+- Snapped fit: snapWorldScale matches spec L47 including the 1e-9 guard (diff L1152-1156). fitInBand rounds x and y through Math.round(v*stage)/stage (diff L1164). worldFit and duelFit both take a required stage argument (diff L1169, L464). By hand I recomputed the Cutter at stage 1 = {0.5, 328, 104} and the duel at stage 1 and 1.5 = {1, 66, 152} (66*1.5 = 99, 152*1.5 = 228).
+- Fit integration: renderer.resize stores lb.scale and calls projectiles.reset() only when the scale changes (renderer.ts:L63-64). draw passes the stage to worldFit (renderer.ts:L75). The same fit object goes to projectiles.draw (L79) and, with the shake added, to callouts.draw (L88). stageScale is an arrow function, so duelMode can pass `renderer.stageScale` unbound (renderer.ts:L66; duelMode.ts:L41 and L80, including the restart path). interiorView reads the getter every frame (interiorView.ts:L50). No other worldFit, duelFit, toLocal or world-transform consumer exists in src/ (grep).
+- Below stage 1: letterbox.ts:L5 returns the raw fit when it is under 1. snapWorldScale then keeps fit 1 for the duel (n=1, 1/(2s) < 0.75) and the spec formula applies to the sector, so neither path divides by zero or returns 0. onScreen works for non-half stages. offsetX and offsetY are floored integers (letterbox.ts:L6).
+- Door geometry matches plan Decision 7 (diff L395-433). PANEL_THICK 12 / BAND 10. panelWidth = 2*round(8(1-p)), panels drawn when w > 0. Jambs {0,8,2,16} and {30,8,2,16}. Seam {16,10,2,12}. Bar {10,14,12,4}. Ticks {2,8,2,16} and {28,8,2,16}. Stripes start at even offsets because the panels are even. The panel stroke is PANEL_STROKE 2 with alignment 1, and node_modules/pixi.js FillTypes.d.ts confirms 1 means inside in Pixi 8.19. The seam overlaps the right panel's inside stroke, so the closed seam does not flicker when panels meet at small progress.
+- Walls: light and shadow are computed per segment as in Decision 8 (diff L1112-1123), and the draw order is band, shadow, light (tiles.ts in the diff L1040-1042). Every edge lies inside the tile on its own band (the wallModel test sweeps 4^5 neighbourhoods, diff L1772-1778), so no edge is drawn over a neighbour's band or a door. consoleModel.WALL_GAP follows automatically (11 to 10, consoleModel.ts:L17). The desk sits flush below the band and does not cover the shadow edge.
+- Floor seams: added to floor and door tiles only, never to wall-tile floor parts (diff L1019-1023, L1035, L1039). On door tiles the door picture's floor fill covers them when art is off (tiles.ts:L64), as Decision 9 says. Floor-art hook: assets.ts:L76 lists every optional name that was never bound as missing, so with no paid entries featureReady('houseFloor') is false and the procedural path runs. With art on, door tiles get a whole-tile sprite in build and the door floor fill is skipped (tiles.ts:L64).
+- Effects: all shapes now come from effectsShapes helpers and palette roles (diff L555-607, L628-645). The airlock outline is a 2-wide alignment-1 stroke on the tile grown by 2, so it paints -2..0 outside the tile. Vent specks are 4x4 around a centre rounded to an even unit. effects.ts, tiles.ts, doorModel.ts and wallModel.ts carry no 0x literal (the artGuards grep test, diff L1189-1191). enemyWindow reads ROLE.doorFill and ROLE.doorOutline (diff L660, L679), and no remaining code imports the removed DOOR_FILL, SEALED_FILL, HELD_TICK, SPACE_GAP, FLOOR or WALL (grep).
+- Palette: palette.json has 46 colours in the order plan Decision 1 gives, and every role and ramp matches Decisions 2-3 entry by entry (diff L808-852). parsePalette rejects a missing role, an unknown role, a colour not in the palette, a ramp outside 5-8 colours and a bad hex (diff L883-902).
+- Paid manifest: the file regex now accepts paid/ (diff L753). The superRefine rules are paid if and only if the file is under paid/, required false, an http(s) source, a retrieved date and a credit line (diff L772-778). The duplicate-name rule skips entries that already failed the name-or-sheet rule (diff L786). For free entries the notices still go through the unchanged non-paid branches (creditsText.ts:L16, L22), so free output is byte-identical; Task 4 recorded `npm run credits` with no diff. buildCreditLines needs no change (creditsText.ts:L38). LICENSE_URLS excludes paid and original (licenses.ts:L9). .gitignore adds public/assets/paid/ and .art/ (diff L15-17). house.floor.0-3 are optional and grouped as the houseFloor feature (diff L337, L708).
+- Import script: validation runs before any write and returns early on any problem (diff L269). Alpha below 128 becomes 0,0,0,0, otherwise the pixel is opaque and set to the nearest palette colour in OKLab with first-wins ties (diff L194, L200-205). Output is fixed 8-bit RGBA from pngjs (diff L214-217). The contact sheet is at 2x on ROLE.background with a 4 px gap. The CLI sets exitCode 1 on problems and 0 on the empty list (diff L132-137). A missing source folder is a problem even with an empty list (Decision 14, accepted).
+- Per-task minors triage (progress.md L273-278): none must be fixed before merge. Task 6's corrupt PNG, duplicate outputs and vacuous tie test are the P2s above. Task 5's sub-texture leak and loose bound are the P3 above. Task 4's misleading test title is the P3 above. Task 4's frame-plus-animation name clash within one entry is harmless, because the loader binds textures and animations in separate maps (assets.ts:L74). The rest are wording and duplication nits.
+- Commit trailers: Tasks 5-6 say Sonnet 5.5 where plan L24 names the Opus line. This does not matter for merge. The trailer records which agent wrote the code, and honest attribution beats matching a template. The plan's constraint should say 'the model that did the work' next time.
+
+## Not verified
+- `tsc --noEmit` / `npx tsc -b` was not run: this session has Read, Grep and Glob only, with no shell. Task 7 in progress.md L279 records tsc clean, build ok and 3376 tests passing. I found no stale import of removed exports by grep.
+- The commit trailers themselves were not read from git log (no shell). I relied on the brief and progress.md L278.
+- Pixi 8's painted output for a 2- or 4-wide panel with a 2-wide inside stroke (where the inner rectangle collapses) was not checked on screen. By the geometry it should stay inside the rectangle.
+- Renderer.stageScale() and the projectile reset on a stage change have no unit test (Pixi/DOM). I verified them only by reading renderer.ts:L56-66.
+- Visual look at stage 1, 1.5 and 2 (wall edges, door slide, seams, enemy-window door colours) was not viewed. Task 7's screenshots in C:\Users\djuar\FTLite-shots\art-i-a are outside the reading manifest and were not opened; the owner's look-check is the gate.
+- package-lock.json was excluded from the diff, so the pinned pngjs and @types/pngjs resolutions were not checked.
+
+---
+
+# Round 1 response (fixes in 16d4add)
+
+Reviewed `round-1.json` against the branch at `a74bcaf`. 4 accepted, 0 rejected, 0 deferred. All four repeat minors recorded in the task reviews (progress.md L276-L278); the reviewer found no P0 or P1.
+
+## R1-F1 [P2]: art:import crashes on a corrupt pack and lets duplicate outputs overwrite each other
+
+Confirmed: importCore called `readPng` inside validation with no catch, and only checked the paid/ prefix. In 16d4add an unreadable pack becomes a problem line, a repeated resolved output path becomes a problem line, and each has a test asserting the message and that nothing was written. The existing multi-problem test was given distinct output paths so its expected list is unchanged.
+
+## R1-F2 [P2]: the tie-break test cannot fail, and the packing test checks only size
+
+Confirmed: `createRemap([0x808080, 0x808080])` passes for either winner. `nearestIndex(labs, lab)` is now exported (strict `<`, first index wins) and tested on an exact tie in both orders. The packing test gives frames distinct palette colours and asserts the top-left pixel of cells (0,0), (1,0) and (0,1).
+
+## R1-F3 [P3]: floor-art sub-textures leak on rebuild; the door-floor skip is untested
+
+Confirmed: tiles.ts destroyed the sprites with no options. They are now destroyed with their textures but not the shared source. tileLayer.test asserts the exact sprite count and that door tiles get no floor fill when floor art is on.
+
+## R1-F4 [P3]: the shadowing test never builds the paid-over-free case
+
+Confirmed. A free raw/ entry and a paid entry both binding `house.floor.0` are now refused in paidManifest.test.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- scripts/art/importCore.ts
+- src/renderer/src/render/tiles.ts
+- tests/artImport.test.ts
+- tests/paidManifest.test.ts
+- tests/tileLayer.test.ts
+
+<!-- end -->
+
+---
+

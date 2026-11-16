@@ -38,12 +38,13 @@ describe('the screen layout', () => {
       for (let a = 0; a < 3; a++) for (let b = a + 1; b < 3; b++) expect(overlaps(cards[a]!, cards[b]!)).toBe(false);
     }
   });
-  it('our ships fit the narrower band: the cutter at about 21 px a tile, the Skiff at full size', () => {
-    for (const l of [LAYOUT, CUTTER, parseShip(skiff)]) {
-      const f = worldFit(l.width, l.height);
-      expect(inside({ x: f.x, y: f.y, w: l.width * TILE_PX * f.scale, h: l.height * TILE_PX * f.scale }, band), l.width + 'x' + l.height).toBe(true);
+  it('our ships fit the narrower band at every stage scale: the cutter at about 21 px a tile at stage 1.5 (16 snapped at stage 1), the Skiff at full size', () => {
+    for (const l of [LAYOUT, CUTTER, parseShip(skiff)]) for (const stage of [1, 1.5, 2, 2.5, 3]) {
+      const f = worldFit(l.width, l.height, stage);
+      expect(inside({ x: f.x, y: f.y, w: l.width * TILE_PX * f.scale, h: l.height * TILE_PX * f.scale }, band), `${l.width}x${l.height} stage ${stage}`).toBe(true);
     }
-    expect(Math.round(TILE_PX * worldFit(CUTTER.width, CUTTER.height).scale)).toBe(21);
+    expect(Math.round(TILE_PX * worldFit(CUTTER.width, CUTTER.height, 1.5).scale)).toBe(21);
+    expect(TILE_PX * worldFit(CUTTER.width, CUTTER.height, 1).scale).toBe(16);
   });
   it('the enemy ship drawn 1.6x larger, inside the window with its shield rings above the charge bar', () => {
     expect(ENEMY_TILE / OLD_ENEMY_TILE).toBe(1.6);

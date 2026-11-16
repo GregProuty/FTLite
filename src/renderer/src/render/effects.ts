@@ -8,11 +8,13 @@ import type { RenderMemory } from './memory';
 import { fireTiles, breachOrientation, ventRotation, breachDamagedTiles, airlockDraw, airlockOutward, ventParticles, doorsCursorTile } from './hazardTiles';
 import { featureReady } from './fallback';
 import { syncCache } from './cache';
+import { ROLE } from './palette';
+import { airlockOutlineBand, breachRect, failedRect, fireFallbackRect, ventSpeckRect } from './effectsShapes';
 
 export const LOW_O2_THRESHOLD = 0.98;
-export const LOW_O2_COLOR = 0xd13a3a;
+export const LOW_O2_COLOR = ROLE.lowO2;   // Art-i spec section 4: the palette role (Art-i-b turns it into the vacuum grade)
 export const LOW_O2_MAX_ALPHA = 0.6;
-const IMPACT_FLASH_TICKS = 18, IMPACT_COLOR = 0xff6b5a, IMPACT_MAX_ALPHA = 0.7;
+const IMPACT_FLASH_TICKS = 18, IMPACT_COLOR = ROLE.impact, IMPACT_MAX_ALPHA = 0.7;
 const SCALE = TILE_PX / 16;
 
 export interface EffectsLayer { below: Container; above: Container; draw(state: SimState, ui?: CardUiState): void }
@@ -67,7 +69,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
           const [tx, ty] = tileXY(w, t); s.position.set(tx * TILE_PX, ty * TILE_PX); fireLayer.addChild(s); return s;
         }, (s) => s.destroy());
       } else {
-        for (const t of wanted) { const [tx, ty] = tileXY(w, t); fallback.rect(tx * TILE_PX + 4, ty * TILE_PX + 4, TILE_PX - 8, TILE_PX - 8).fill({ color: 0xff8c1a, alpha: 0.8 }); }
+        for (const t of wanted) { const [tx, ty] = tileXY(w, t), r = fireFallbackRect(tx, ty); fallback.rect(r.x, r.y, r.w, r.h).fill({ color: ROLE.fireFallback, alpha: 0.8 }); }
       }
       // Breaches: decal on the site wall tile, puff oriented away from the room, damaged floor on the room-side neighbours.
       for (let s = 0; s < d.siteTile.length; s++) {
@@ -76,7 +78,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
         if (art.breach) {
           if (!decals[s]) { const sp = new Sprite(assets.texture(`breach.${breachOrientation(d, s)}`)); sp.scale.set(SCALE); sp.position.set(tx * TILE_PX, ty * TILE_PX); breachLayer.addChild(sp); decals[s] = sp; }
           decals[s]!.visible = active;
-        } else if (active) fallback.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill(0xff3030);
+        } else if (active) { const r = breachRect(tx, ty); fallback.rect(r.x, r.y, r.w, r.h).fill(ROLE.breach); }
         if (art.vent) {
           if (!puffs[s]) {
             const a = assets.animation('vent.puff');
@@ -90,8 +92,8 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
       outline.clear();
       const sel = doorsCursorTile(state, ui);
       if (sel >= 0) {
-        const [tx, ty] = tileXY(w, sel), pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(state.tick * 0.2));
-        outline.rect(tx * TILE_PX - 2, ty * TILE_PX - 2, TILE_PX + 4, TILE_PX + 4).stroke({ color: 0x4fc3f7, width: 3, alpha: pulse });   // drawn just outside the tile: it stays visible on amber airlock leaves
+        const [tx, ty] = tileXY(w, sel), pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(state.tick * 0.2)), band = airlockOutlineBand(tx, ty);
+        outline.rect(band.rect.x, band.rect.y, band.rect.w, band.rect.h).stroke({ color: ROLE.airlockOutline, width: band.width, alignment: band.alignment, alpha: pulse });   // painted just outside the tile: it stays visible on amber airlock leaves
       }
       // Open airlocks: oxygen specks streaming outward while the room still holds air.
       ventLayer.clear();
@@ -100,7 +102,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
         const out = airlockOutward(d, k), [tx, ty] = tileXY(w, d.airlockTile[k]!);
         for (const p of ventParticles(out, k, state.tick)) {
           const cx = (tx + 0.5 + out.dx * (0.5 + p.along) + (out.dx === 0 ? p.side : 0)) * TILE_PX, cy = (ty + 0.5 + out.dy * (0.5 + p.along) + (out.dy === 0 ? p.side : 0)) * TILE_PX;
-          ventLayer.rect(cx - 2, cy - 2, 4, 4).fill({ color: 0xd8ecff, alpha: p.alpha });
+          const r = ventSpeckRect(cx, cy); ventLayer.rect(r.x, r.y, r.w, r.h).fill({ color: ROLE.ventSpeck, alpha: p.alpha });
         }
       }
       // Failed stations: arc animation on the console tile, or a yellow square.
@@ -113,7 +115,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
           const [tx, ty] = tileXY(w, t); s.position.set(tx * TILE_PX, ty * TILE_PX); failLayer.addChild(s); return s;
         }, (s) => s.destroy());
       } else {
-        for (const t of failedTiles) { const [tx, ty] = tileXY(w, t); fallback.rect(tx * TILE_PX + 8, ty * TILE_PX + 8, TILE_PX - 16, TILE_PX - 16).fill({ color: 0xffd23a, alpha: 0.9 }); }
+        for (const t of failedTiles) { const [tx, ty] = tileXY(w, t), r = failedRect(tx, ty); fallback.rect(r.x, r.y, r.w, r.h).fill({ color: ROLE.failed, alpha: 0.9 }); }
       }
     }
   };

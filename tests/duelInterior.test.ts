@@ -35,7 +35,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     const d = createDuel(layout, 5), view = createInteriorView(assets);
     d.tactical.systems[0].rooms[Room.Shields] = 2;
     view.draw(d, crewAt(d), 1, 1 / 60);
-    const fit = duelFit(d.interior.derived.width, d.interior.derived.height);
+    const fit = duelFit(d.interior.derived.width, d.interior.derived.height, 1);
     expect(fit).toEqual({ scale: 1, x: 66, y: 152 });   // the 29 × 13 Cutter is 928 × 416 px: centred in 1060 × 720, never upscaled
     expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 152, 1]);
     expect(fit.x + 29 * TILE_PX).toBeLessThanOrEqual(INTERIOR_BAND.w);

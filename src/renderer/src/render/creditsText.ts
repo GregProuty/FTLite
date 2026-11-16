@@ -13,13 +13,13 @@ export function buildNotices(m: Manifest, readLicenseFile: (path: string) => str
   const third = m.filter((e) => e.license !== 'original');
   const licences = [...new Set(third.map((e) => e.license))].sort();
   for (const lic of licences) {
-    out.push(`== ${lic} (${LICENSE_URLS[lic as keyof typeof LICENSE_URLS]}) ==`, '');
+    out.push(lic === 'paid' ? '== paid (commercial licences) ==' : `== ${lic} (${LICENSE_URLS[lic as keyof typeof LICENSE_URLS]}) ==`, '');
     for (const g of groups(third.filter((e) => e.license === lic))) {
       const e = g.entries[0]!;
       out.push(e.credit ?? `${e.title} by ${e.author}`);
       out.push(`  Title: ${e.title}`, `  Author: ${e.author}`, `  Source: ${e.source}`);
       if (e.archived) out.push(`  Archived: ${e.archived}`);
-      out.push(`  Licence: ${lic} ${e.licenseUrl ?? LICENSE_URLS[lic as keyof typeof LICENSE_URLS]}`);
+      out.push(lic === 'paid' ? `  Licence: paid (commercial licence, ${e.licenseUrl ?? e.source})` : `  Licence: ${lic} ${e.licenseUrl ?? LICENSE_URLS[lic as keyof typeof LICENSE_URLS]}`);   // Art-i spec section 2
       out.push(`  Modifications: ${e.modifications}${e.editedBy ? ` (edited by ${e.editedBy})` : ''}`);
       if (e.retrieved) out.push(`  Retrieved: ${e.retrieved}`);
       out.push(`  Files: ${g.entries.map((x) => x.file).sort().join(', ')}`, '');
