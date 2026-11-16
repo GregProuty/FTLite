@@ -3,7 +3,7 @@ import { createOnlineRendererSession } from '../src/renderer/src/app/onlineSessi
 import { createPortLink } from '../src/network/portLink';
 import { createSectorStreamBinding } from '../src/network/modes/sectorStream';
 import { createFixtureAuthority } from './helpers/authorityFixture';
-import { makeState, LAYOUT, quiet } from './helpers/sim';
+import { makeState, LAYOUT, CUTTER, cutterState, quiet } from './helpers/sim';
 import { ownTestCleanup } from './helpers/simLifetime';
 import { portEndpoint } from './helpers/portEndpoint';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
@@ -41,6 +41,43 @@ function rig(prepare?: (state: ReturnType<typeof makeState>) => void) {
   return { state, session, authority, draw, update, viewState, resetInput, descriptor, port, deliver, pump, saveProgress, sent: p.sent, device(key: string, available = true) { sourceKey = key; present = available; }, setMove(v: number) { moveX = v; }, tick() { now += 17; authority.pump(); deliver(); }, disconnect() { for (const fn of [...listeners.get('close') ?? []]) fn({}); } };
 }
 describe('online renderer uses the real streaming client', () => {
+  it('replaces a three-crew Cutter with four crew after a valid full state, retaining the old view until then', () => {
+    const clock = { nowMs: () => 0 }, draw = vi.fn(), viewState = vi.fn(async () => ({ ok: true as const }));
+    const options = { contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: () => CUTTER };
+    const session = createOnlineRendererSession({ ...options, now: clock.nowMs, scheduler: { schedule: () => () => {} },
+      sampleDevices: () => [], resetInput() {}, renderer: { reset() {}, recordPrev() {}, draw }, hud: { update() {} }, api: { viewState } });
+    ownTestCleanup(() => session.dispose());
+    function attachCrew(playerCount: number, epoch: number) {
+      const state = cutterState(1, playerCount); quiet(state);
+      const runId = `replacement-${epoch}`, h = portEndpoint(), p = portEndpoint(), listeners = new Map<string, Set<(event: any) => void>>();
+      const port = { postMessage: p.port.postMessage, close: p.port.close, start() {},
+        addEventListener(type: string, cb: (event: any) => void) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(cb); },
+        removeEventListener(type: string, cb: (event: any) => void) { listeners.get(type)?.delete(cb); } } as unknown as MessagePort;
+      const authority = createFixtureAuthority({ ...options, clock, init: { runId, contentDigest: options.contentDigest, seed: 1, playerCount,
+        characters: [], unlocked: [], layoutId: CUTTER.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION },
+        scheduler: { schedule: () => () => {} }, onCrash(record) { throw record; } }, state);
+      const binding = createSectorStreamBinding(createPortLink(h.port, 'replacement'), { ...options, clock, latestPayloadLimit: 4096 });
+      ownTestCleanup(() => binding.dispose());
+      session.setStatus({ ...status, ownSeat: 0, attachmentEpoch: epoch });
+      session.attach({ epoch, runId, hostGeneration: 1, seatId: 0, compatibility: { protocolVersion: 2, modeId: 'sector', schemaVersion: 1,
+        simVersion: SIM_VERSION, contentDigest: options.contentDigest, layoutHash: state.derived.layoutHash } }, port);
+      authority.attach(binding.link, [0], { ...binding.attachOptions, admissionPolicy: 'receive-time' });
+      return () => {
+        for (const data of h.sent.splice(0)) for (const cb of [...listeners.get('message') ?? []]) cb({ data });
+        for (const data of p.sent.splice(0)) h.receive(data);
+        authority.pump(); session.frame();
+      };
+    }
+    const first = attachCrew(3, 1); first(); first();
+    expect(viewState).toHaveBeenCalledWith(1, 'synced');
+    session.setStatus({ ...status, phase: 'saved', ownSeat: 0 }); session.frame();
+    const frozen = draw.mock.calls.at(-1)![0]; expect(frozen.playerCount).toBe(3);
+    const second = attachCrew(4, 2); session.frame();
+    expect(draw.mock.calls.at(-1)![0]).toBe(frozen); expect(() => assertSimStateLive(frozen)).not.toThrow();
+    expect(() => { second(); second(); }).not.toThrow();
+    expect(viewState).toHaveBeenCalledWith(2, 'synced'); expect(viewState).toHaveBeenCalledWith(2, 'running');
+    expect(draw.mock.calls.at(-1)![0].playerCount).toBe(4); expect(() => assertSimStateLive(frozen)).toThrow('disposed');
+  });
   it('freezes saved presentation and preserves it while a replacement awaits first valid full state', () => {
     const h = rig(); h.deliver(); h.pump(); h.session.frame(); const previousTick = h.draw.mock.calls.at(-1)![0].tick;
     h.session.setStatus({ ...status, phase: 'saved' }); h.setMove(1); h.pump(); h.session.frame();

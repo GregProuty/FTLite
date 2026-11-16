@@ -42,7 +42,7 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
     if (publication.publicationSequence !== lastSequence) {
       if (lastSequence === 0) { points = []; callouts = []; }
       // This allocation belongs to this session, never to the disposable replica.
-      if (!frozen || frozen.derived.layoutHash !== publication.snapshot.header.layoutHash) { if (frozen) disposeSimState(frozen); frozen = loadSnapshot(deps.resolveLayout(publication.snapshot.header.layoutId), publication.snapshot, deps.contentDigest); }
+      if (!frozen || frozen.derived.layoutHash !== publication.snapshot.header.layoutHash || frozen.playerCount !== publication.snapshot.header.playerCount) { if (frozen) disposeSimState(frozen); frozen = loadSnapshot(deps.resolveLayout(publication.snapshot.header.layoutId), publication.snapshot, deps.contentDigest); }
       else restoreSnapshot(frozen, publication.snapshot, deps.contentDigest);
       lastSequence = publication.publicationSequence;
     }

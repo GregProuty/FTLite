@@ -71,3 +71,16 @@ Task 6 can invoke `window.ftlite.online.rehost()` through the existing named pre
 Filesystem writes and already accepted service commits cannot be undone by cancellation. The existing serial file ownership and late-write/Forget fencing remain in force. Pending local data is labelled and never imported into an existing room; no export feature was added.
 
 Protocol2, SIM_VERSION35, checkpoint2 and existing replay2/3/conditional replay4 ruling remain unchanged. No gameplay re-bless, acceptance threshold change, HTTPS capability, live TURN, secrets, cloud action, deployment, merge, push, owner-checkout edit or unrelated cleanup occurred.
+
+## Review fix round 1 (base `b067fa6`)
+
+Addressed the Important finding in `task-5-review.md`: matching layout hashes alone do not permit reusing a frozen allocation across different crew counts. The renderer now also compares `playerCount`. It retains the old view before a valid replacement publication, then allocates the correctly sized state and disposes the old frozen allocation.
+
+Added a regression that uses real authority publications and streaming client/ACK flow to replace a three-crew Cutter with a four-crew Cutter in the same renderer. It asserts that the old frozen view remains live while the new attachment awaits state, replacement processing does not throw, the new attachment reports both synced and running, the draw has four crew, and the former frozen allocation is disposed.
+
+- **RED 16:40:50:** `npx vitest run tests/onlineRenderer.test.ts -t 'three-crew Cutter'` — one failure / ten skipped, with the expected `snapshot player count does not match live state` exception from the first replacement state.
+- **Initial GREEN 16:41:01:** `npx vitest run tests/onlineRenderer.test.ts tests/sessionMenu.test.ts tests/sessionRouter.test.ts tests/onlineBridge.test.ts` — 27 passed across four files. The following `npm run typecheck` found a missing required HUD fixture and an extra direct `runId` property on streaming-binding options. Both fixture declarations were corrected; production behavior was unchanged.
+- **Final GREEN 16:41:19:** the same four-file command — **27/27 passed** (renderer11, menu8, router1, bridge7).
+- **Final `npm run typecheck`: PASS.** `git diff --check` and the staged diff check found no whitespace errors; only the controller progress file's LF/CRLF advisory was emitted by the unstaged check.
+
+Self-reviewed the one-condition production change and the replacement-publication lifetime assertions. Only renderer source, its test, and this report are included in the fix commit. No full-suite, build or native rerun was requested or performed for this scoped round. The minor restored-tick message issue remains recorded for Task 6 UI verification, as directed by the controller. `progress.md` remains untouched and unstaged.
