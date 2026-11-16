@@ -1,0 +1,61 @@
+{
+  "revision": "59e9e74e51b1b9fb459775b3886d89d2c9bca0e0",
+  "launcherSha256": "42148329d1c4d010c6309796c37e80a6a14f72fd5c05068a89a2cb4a8d5ff4b5",
+  "testsSha256": "135b4c6620e48ff6f0425d17cdc858a791b3b1cdf4ec76b442b0048ab0170e18",
+  "nativeHashesMatched": 24,
+  "mismatches": [],
+  "reports": {
+    "native-config.json": {
+      "sha256": "602342bac908a230e64bb362a70cc0d5d6cbca80120d09c9ae551a110c32e79b",
+      "failure": null,
+      "elapsedMs": 480,
+      "pids": [
+        16572,
+        22236,
+        24752
+      ],
+      "allExitsObserved": true,
+      "exactTemporaryAbsent": true,
+      "cleanupFailed": false
+    },
+    "preparation-failure.json": {
+      "sha256": "9de956e0188f03308397e04f7327f4d41bdd9d6b08680a496544e2a766befa7c",
+      "failure": "preparation-failed",
+      "elapsedMs": 72,
+      "pids": [
+        25084,
+        24768
+      ],
+      "allExitsObserved": true,
+      "exactTemporaryAbsent": true,
+      "cleanupFailed": false
+    },
+    "preparation-timeout.json": {
+      "sha256": "38572148d9c705b8f240048e1deb84bc191e1293ba52b239488bc559540e0eed",
+      "failure": "preparation-timeout",
+      "elapsedMs": 15099,
+      "pids": [
+        32516
+      ],
+      "allExitsObserved": true,
+      "exactTemporaryAbsent": true,
+      "cleanupFailed": false
+    },
+    "stop-failure.json": {
+      "sha256": "78c2e4adfbdc4cd8582b694348678f23137d2c1d8a35054e701ecfb019e2cd2c",
+      "failure": "preparation-failed",
+      "elapsedMs": 71,
+      "pids": [
+        35160,
+        25400
+      ],
+      "allExitsObserved": true,
+      "exactTemporaryAbsent": true,
+      "cleanupFailed": true
+    }
+  },
+  "ownedPidProbe": {
+    "method": "PowerShell Get-Process -Id, performed after all four retained probes",
+    "observedLive": 0
+  }
+}

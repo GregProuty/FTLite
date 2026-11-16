@@ -56,3 +56,29 @@ The final recovery report records45 artifact hashes; native config records24. Al
 Self-review covered source/config precedence, all owner fields, stale/late/cancel paths, retained cooldown, pending-port retirement, start-before-signal ordering, setup/native deadlines, serialized signal bounds, strict visible boundaries, and exact staging. No known functional defect remains from this task; controller review is still required. Only the main-owned cache and ephemeral native configuration hold credentials. Existing service authentication/provider URL filtering/quotas remain authoritative and unchanged. No long-lived secrets, root.env, cloud/account/deployment/upgrade, owner checkout, merge or push was touched.
 
 No HTTPS network endpoint, live TURN route, WAN, two physical machines or actual OS sleep was tested. No internet-readiness claim is made. Protocol2, SIM35, checkpoint2 and existing replay compatibility remain unchanged. Broader final gates belong to Task8.
+
+
+## Review fix round 1 ? protected native probe preparation
+
+The Important launcher issue in `task-7-review.md` is addressed by source/test commit `59e9e74` (base `4722fbc`); scoped re-review remains pending. No product source, service code, build artifacts, quotas, recovery behavior or shared cleanup helper changed.
+
+All post-allocation Git, directory enumeration, artifact reads/hashes and digest preparation now execute inside the cleanup scope. Git uses tracked asynchronous child processes with bounded output. Both Git and native work consume the SAME absolute20000ms budget with5000ms reserved for cleanup; there is no renewed per-command budget. Actual child exit and closed stdio are observed. Every child-stop failure is caught without skipping other owned processes, and directory cleanup runs in an independent finally. Reports preserve the first fixed failure, separately record cleanup failure, and retain owned PIDs/exits plus exact temporary basename/removal/cleanup-attempt evidence on negative paths too.
+
+The focused test uses a missing file inside the newly owned directory to reproduce a build-read error safely; it does not rename/remove the real `out` tree. A spawned Node process that remains alive substitutes only for the owned Git invocation and exercises the real deadline/termination path. A labelled stop-error injection runs after the actual child exit, exercising the rejected-stop handling without intentionally leaking a process. All negative unit tests stop before native allocation and therefore do not require an existing product build.
+
+RED command: `npx vitest run tests/rtcConfigSmoke.test.ts` ?3 failures: the original launcher did not recognize these negative controls and exited0 instead of1. This initial RED establishes the missing test controls/report behavior; it is not claimed as an observed original leaked-directory run. GREEN command: `npx vitest run tests/rtcConfigSmoke.test.ts tests/leaseSmokeCleanup.test.ts` ?5/5 PASS,16.56s. The tests inspect real child exit1, fixed failure code, original20000ms budget, elapsed time below that budget, all owned PID exits/current absence, and absence of the exact owned directory. The slow substitute also proves work reaches the15000ms cutoff rather than failing early. The combined preparation/stop-error case preserves `preparation-failed`, reports `cleanupFailed:true`, and still removes the directory.
+
+`npm run typecheck` PASS. Direct coverage for the launcher/test files (which are outside the product tsconfig): `npx tsc --noEmit --target ES2023 --module ESNext --moduleResolution bundler --strict --skipLibCheck --types node --allowSyntheticDefaultImports scripts/network/rtc-config-smoke.ts tests/rtcConfigSmoke.test.ts` PASS. `git diff --check` PASS.
+
+Final retained commands used `npx tsx scripts/network/rtc-config-smoke.ts` plus the following arguments; artifacts are in `task-7-evidence/fix-1/`:
+
+| Arguments before `--report-path=.../FILE` | FILE | Exit/result | Elapsed | Owned exits |
+| --- | --- | --- | --- | --- |
+| none | native-config.json |0/PASS |480ms |3/3 (2 Git,1 Electron) |
+| `--inject-preparation-read-failure` | preparation-failure.json |1/expected preparation-failed |72ms |2/2 Git |
+| `--inject-git-timeout` | preparation-timeout.json |1/expected preparation-timeout |15099ms |1/1 forced Git substitute |
+| `--inject-preparation-read-failure --inject-cleanup-stop-failure` | stop-failure.json |1/expected preparation-failed; cleanupFailed:true |71ms |2/2 Git |
+
+Every retained probe attempted cleanup and removed its exact temporary directory; a subsequent `Get-Process -Id` check found0 live owned PIDs across all8 recorded allocations. Native configuration still proves real Chromium `all`/`relay` wiring,2 peers closed/0 windows, no SDP/gathering, and no relay route. The final native report pins full revision `59e9e74` and24/24 artifact hashes match current files. `fix-1/audit.json` pins the full revision, launcher/test SHA-256, all four report hashes, exact directory absence and process observations; negative preparation reports intentionally have `source:null` because source preparation did not finish. The audit supplies their external source pin.
+
+The existing Worker async-event warning remains recorded only; it was not investigated or changed in this launcher fix. No Worker suite, product build, loopback recovery, full suite, acceptance or engines was rerun because their source did not change. Previous Task7 loopback evidence remains at `ca80604`; this fix does not relabel it as a rerun. No external endpoint/provider call, deployment, root.env, unrelated temporary directory, owner checkout, merge or push was involved.
