@@ -27,7 +27,7 @@ export interface DuelRun { seed: number; telemetry: DuelTelemetry; finalHash: st
 /** Both players go away on tick 0, so neither console is attended for the whole duel. */
 function passiveInput(d: DuelState): DuelInput {
   if (d.interior.tick !== 0) return { held: [], commands: [] };
-  return { held: [], commands: [0, 1].map((player) => ({ id: { player, sequence: 0 }, requestedTick: 0, command: { kind: 'presence' as const, present: false } })) };
+  return { held: [], commands: [0, 1].map((player) => ({ runId: 'duel', id: { player, sequence: 0 }, requestedTick: 0, command: { kind: 'presence' as const, present: false } })) };
 }
 
 /** Run one duel to its end or the cap. `hashEvery` > 0 records hashDuel after every that many ticks. */

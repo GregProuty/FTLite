@@ -16,7 +16,7 @@ import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 let seq = 0;
-const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope => ({ id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command });
+const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope => ({ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command });
 function step(d: DuelState, commands: DuelEnvelope[] = [], held: HeldInput[] = [NONE, NONE]) { return stepDuelTick(d, { held, commands }); }
 /** Stand player pid up and put them at tile (tx, ty) of the interior, as if they had walked there. */
 function standAt(d: DuelState, pid: number, tx: number, ty: number): void {

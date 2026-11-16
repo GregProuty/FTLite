@@ -16,7 +16,7 @@ const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const HOLD: HeldInput = { moveX: 0, moveY: 0, interactHeld: true };
 let seq = 0;
-const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope => ({ id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command });
+const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope => ({ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command });
 /** One tick, folded into the telemetry when one is given. */
 function step(d: DuelState, t: DuelTelemetry | null, commands: DuelEnvelope[] = [], held: HeldInput[] = [NONE, NONE]): void {
   const input: DuelInput = { held, commands };

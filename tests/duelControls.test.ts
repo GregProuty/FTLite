@@ -14,7 +14,7 @@ const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 let seq = 0;
 const step = (d: DuelState, player: number, command: DuelCommand | null, held: HeldInput[] = [NONE, NONE]) =>
-  stepDuelTick(d, { held, commands: command ? [{ id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command }] : [] });
+  stepDuelTick(d, { held, commands: command ? [{ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command }] : [] });
 const put = (d: DuelState, pid: number, tx: number, ty: number): void => { const eid = d.interior.crew[pid]!; Position.x[eid] = tx + 0.5; Position.y[eid] = ty + 0.5; };
 
 describe('duel controls (H-1 spec §5)', () => {
