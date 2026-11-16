@@ -22,6 +22,7 @@ function driver() {
       if(name === 'node:fs') return {readFileSync,writeFileSync:vi.fn()};
       if(name === 'node:crypto') return {createHash};
       if(name === './rtc-smoke-native.cjs') return ()=>{};
+      if(name === './online-app-click.cjs') return ()=>{};
       if(name === '../../out/main/index.js') return {};
       throw Error('unexpected test import');
     }, process:proc, console:{error}, setTimeout, Buffer,

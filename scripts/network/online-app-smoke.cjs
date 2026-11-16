@@ -6,6 +6,7 @@ const { resolve, join, sep } = require('node:path');
 const { readFileSync, writeFileSync } = require('node:fs');
 const { createHash } = require('node:crypto');
 const observeNative = require('./rtc-smoke-native.cjs');
+const clickVerified = require('./online-app-click.cjs');
 const directory = app.commandLine.getSwitchValue('online-app-dir');
 const role = app.commandLine.getSwitchValue('online-app-role');
 const profile = app.commandLine.getSwitchValue('user-data-dir');
@@ -18,7 +19,7 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const windows = [], utilities = [], channels = [], nativeClosed = new Map();
 const mirrorReceipts = [];
-const recovery = { gets: [], puts: [], restores: [], captures: [], phases: [], invalidations: [], heldUploads: 0 };
+const recovery = { gets: [], puts: [], restores: [], captures: [], phases: [], invalidations: [], clicks: [], heldUploads: 0 };
 let holdUploads = false, holdRestore = false, restoreRelease, blockNextGrant = false;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function checkpointProof(bytes) {
@@ -148,10 +149,19 @@ app.on('browser-window-created', (_, window) => {
 const js = source => visible.webContents.executeJavaScript(source);
 const delay = ms => new Promise(done => setTimeout(done, ms));
 async function click(id) {
-  const point = await js(`(() => { const e = document.querySelector('[data-testid="${id}"]'); if (!e || e.disabled) throw Error('unavailable control: ${id}'); const r=e.getBoundingClientRect(); return {x:Math.round(r.x+r.width/2), y:Math.round(r.y+r.height/2)}; })()`);
-  visible.focus(); visible.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
-  visible.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
-  await delay(60);
+  const attempts=await clickVerified({
+    prepare:async()=>{
+      visible.focus();
+      return js(`(() => { const id=${JSON.stringify(id)}, e=document.querySelector('[data-testid="'+id+'"]'); if(!e||e.disabled) throw Error('unavailable control');
+        window.onlineDriverHit='miss'; const listener=event=>{const target=event.target.closest?.('[data-testid]'); window.onlineDriverHit=target?.dataset.testid===id?'target':event.target.closest?.('button,input,select')?'other':'miss';};
+        window.onlineDriverClickListener=listener;document.addEventListener('click',listener,true);
+        const r=e.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};})()`);
+    },
+    send:point=>{visible.webContents.sendInputEvent({type:'mouseDown',...point,button:'left',clickCount:1});visible.webContents.sendInputEvent({type:'mouseUp',...point,button:'left',clickCount:1});},
+    settle:()=>delay(60),
+    observed:()=>js(`(() => {document.removeEventListener('click',window.onlineDriverClickListener,true);delete window.onlineDriverClickListener;return window.onlineDriverHit;})()`)
+  });
+  recovery.clicks.push({id,attempts});if(recovery.clicks.length>64)recovery.clicks.shift();
 }
 async function command(message) {
   switch (message.command) {

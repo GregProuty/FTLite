@@ -18,7 +18,7 @@ export function validateRecoveryMemory(before:any,after:any): string[] {
     return 'reconciled-counters';
   });
 }
-export const ONLINE_RECOVERY_ARTIFACTS = [...ONLINE_APP_ARTIFACTS, 'scripts/network/online-recovery-smoke.ts', 'scripts/network/online-recovery-report.ts', 'scripts/network/online-recovery-utility.ts', 'scripts/network/online-recovery-utility.cjs', 'scripts/network/online-recovery-instrument.cjs', 'src/main/network/onlineExit.ts'];
+export const ONLINE_RECOVERY_ARTIFACTS = [...ONLINE_APP_ARTIFACTS, 'scripts/network/online-app-click.cjs', 'scripts/network/online-recovery-smoke.ts', 'scripts/network/online-recovery-report.ts', 'scripts/network/online-recovery-utility.ts', 'scripts/network/online-recovery-utility.cjs', 'scripts/network/online-recovery-instrument.cjs', 'src/main/network/onlineExit.ts'];
 /** Individual, bounded real-app passes. The validation document must list every required scenario. */
 export function validateOnlineRecoveryReport(value: unknown): void {
   const r = value as any, fail = () => { throw Error('missing or invalid actual recovery evidence'); };
