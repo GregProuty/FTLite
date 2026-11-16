@@ -1,37 +1,59 @@
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
 import { airlockDraw, airlockOutward } from './hazardTiles';
 import { advanceDoor, doorTarget, DOOR_ANIM_SECONDS } from './doorAnim';
-import { wallPicture, type Cell } from './wallModel';
+import { floorSeams, houseFloorName, wallPicture, type Cell } from './wallModel';
 import { doorPicture, doorLook, PANEL_STROKE, type DoorPicture, type DoorRect } from './doorModel';
+import { featureReady } from './fallback';
 import { ROLE } from './palette';
 
 export interface TileLayer { container: Container; build(state: SimState): void; update(state: SimState, dtSeconds: number): void }
 
-export const FLOOR = 0xc9cdd6, WALL = 0x3b4150;
+/** World units per art pixel: art is drawn at 16 px a tile and shown at 2x (Art-i spec section 1). */
+const ART = TILE_PX / 16;
 
-/** Flat floors and walls, built once per layout; doors and airlocks redrawn every frame from the door model (spec Demo-x-c section 2), their slide driven by the door animation. */
-export function createTileLayer(_assets: GameAssets, _memory: RenderMemory): TileLayer {
+/**
+ * Floors and walls, built once per layout; doors and airlocks redrawn every frame from the door model (spec Demo-x-c section 2), their slide driven by the door animation.
+ * Art-i spec section 4: colours are palette roles; walls get a light top-left edge and a shadow bottom-right edge; floors a one-art-pixel seam;
+ * when the houseFloor feature is ready the floors draw house.floor.N instead of the procedural plating (walls stay procedural thin bands).
+ */
+export function createTileLayer(assets: GameAssets, _memory: RenderMemory): TileLayer {
   const container = new Container();
-  const base = new Graphics(), doors = new Graphics();
-  container.addChild(base, doors);
+  const floorArt = new Container(), base = new Graphics(), doors = new Graphics();
+  container.addChild(floorArt, base, doors);
+  const art = featureReady(new Set(assets.missing), 'houseFloor');
   let builtFor: string | null = null;
   const doorProgress = new Map<number, number>(), lockProgress = new Map<number, number>();
+
+  /** A floor sprite covering `r` (tile-local world units) of the tile at (x, y), cut from the matching part of the 16 px art. */
+  function floorSprite(tile: number, x: number, y: number, r: DoorRect): void {
+    const tex = assets.texture(houseFloorName(tile)), f = tex.frame;
+    const part = new Texture({ source: tex.source, frame: new Rectangle(f.x + r.x / ART, f.y + r.y / ART, r.w / ART, r.h / ART) });
+    const s = new Sprite(part); s.scale.set(ART); s.position.set(x + r.x, y + r.y); floorArt.addChild(s);
+  }
+  function floor(tile: number, x: number, y: number, r: DoorRect, seams: boolean): void {
+    if (art) { floorSprite(tile, x, y, r); return; }
+    base.rect(x + r.x, y + r.y, r.w, r.h).fill(ROLE.floor);
+    if (seams) for (const s of floorSeams()) base.rect(x + s.x, y + s.y, s.w, s.h).fill(ROLE.floorSeam);
+  }
 
   function build(state: SimState): void {
     const d = state.derived, rows = state.layout.rows;
     base.clear();
+    for (const c of floorArt.removeChildren()) c.destroy();
     const cell = (x: number, y: number): Cell => { const c = rows[y]?.charAt(x) ?? ' '; return c === '' || c === ' ' ? 'space' : c === '#' ? 'wall' : c === '+' ? 'door' : 'floor'; };
     for (let ty = 0; ty < d.height; ty++) for (let tx = 0; tx < d.width; tx++) {
-      const c = cell(tx, ty), x = tx * TILE_PX, y = ty * TILE_PX;
+      const c = cell(tx, ty), x = tx * TILE_PX, y = ty * TILE_PX, tile = ty * d.width + tx;
       if (c === 'space') continue;
-      if (c !== 'wall') { base.rect(x, y, TILE_PX, TILE_PX).fill(FLOOR); continue; }
+      if (c !== 'wall') { floor(tile, x, y, { x: 0, y: 0, w: TILE_PX, h: TILE_PX }, true); continue; }
       const p = wallPicture(cell(tx, ty - 1), cell(tx + 1, ty), cell(tx, ty + 1), cell(tx - 1, ty), cell(tx + 1, ty - 1), cell(tx + 1, ty + 1), cell(tx - 1, ty + 1), cell(tx - 1, ty - 1));   // thin walls, as thick as a door (the user, 2026-11-13)
-      for (const r of p.floor) base.rect(x + r.x, y + r.y, r.w, r.h).fill(FLOOR);
-      for (const r of p.band) base.rect(x + r.x, y + r.y, r.w, r.h).fill(WALL);
+      for (const r of p.floor) floor(tile, x, y, r, false);
+      for (const r of p.band) base.rect(x + r.x, y + r.y, r.w, r.h).fill(ROLE.wall);
+      for (const r of p.shadow) base.rect(x + r.x, y + r.y, r.w, r.h).fill(ROLE.wallShadow);
+      for (const r of p.light) base.rect(x + r.x, y + r.y, r.w, r.h).fill(ROLE.wallLight);
     }
     builtFor = d.layoutHash; doorProgress.clear(); lockProgress.clear();
   }
@@ -39,7 +61,7 @@ export function createTileLayer(_assets: GameAssets, _memory: RenderMemory): Til
   const at = (x: number, y: number, r: DoorRect) => doors.rect(x + r.x, y + r.y, r.w, r.h);
   function draw(x: number, y: number, p: DoorPicture): void {
     if (p.gap) at(x, y, p.gap).fill(ROLE.spaceGap);
-    if (p.floor) at(x, y, p.floor).fill(FLOOR);
+    if (p.floor && !art) at(x, y, p.floor).fill(ROLE.floor);   // with floor art the doorway shows the art drawn under it
     for (const j of p.jambs) at(x, y, j).fill(p.outline);
     for (const r of p.panels) at(x, y, r).fill(p.fill).stroke({ width: PANEL_STROKE, color: p.outline, alignment: 1 });
     for (const s of p.stripes) at(x, y, s).fill(p.outline);
