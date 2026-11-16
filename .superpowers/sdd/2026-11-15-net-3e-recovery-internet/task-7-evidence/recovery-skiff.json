@@ -1,0 +1,1580 @@
+{
+  "version": 1,
+  "scenario": "skiff",
+  "source": {
+    "revision": "ca8060496b1b8499d469d977c07a56be12cfa947",
+    "dirty": true,
+    "digest": "0f3d25b24a4b22b74e932ef1870ee5468dda68ce03bd46e8dfbde4a30470702b",
+    "artifactHashes": {
+      "out/main/index.js": "4eab09bdda7b5478014d57364e1590780826a16badcea30c94f8f1d8c74e3ef7",
+      "out/main/authorityHost.js": "1a35cbb1ca75b52c6ec3e878bdb60410f11245602b9e1678c4b98c1d050dc052",
+      "out/main/hostProcess.js": "1e5a1d3dcf5161404ffecb442d01f2dfca2cbac8ed908151ac0aff46ad3827f8",
+      "out/main/transportWindow.js": "5639d26c0b68a6bce01abaa341d3a80ed4d77d22dbdfc6f7221f1b1d945cb3d2",
+      "out/renderer/index.html": "781cc9ee18e00418f706eb2d64f06899bdd65eb914cae83a7b64213a54c3ab45",
+      "scripts/network/online-app-smoke.ts": "0d0f42f970702af2931ee8b0cc1e69db299dc24c5b08549dd78d05ddf3cbda81",
+      "scripts/network/online-app-smoke.cjs": "03399244fd24735cf87327d4fd9f3278d883516afc9b7db2e0c0224eb20f2c0e",
+      "scripts/network/online-app-click.cjs": "47d48d86aec2c73ec0a84a3acc443b355a4a5583657a4851019bd2a9aeb3f0a1",
+      "scripts/network/online-app-observer.ts": "102c310829e1362d691d9d0ea189d6f7faee59a7acbd15e5883af9d61a011497",
+      "scripts/network/online-app-runtime.ts": "d074499f5ded65ead91a9231afd3807cd1976828721b90a569773f035a77556b",
+      "scripts/network/online-app-runtime-worker.ts": "c1536138fe9f49e8c3843060886a48851cfa117e7700b929c2c705dd935fa13c",
+      "src/main/index.ts": "c46df99d969145c687186cf3196cb6a3e5d462144656396f6c7ff8be4ff7cdd8",
+      "src/main/network/onlineSession.ts": "2b2992a70b0af518d7b907e8014b9d11ec6e10416852cd3270a381cbefa06612",
+      "src/main/network/onlineMirrors.ts": "c74bd1aff40655e8a546e284ee72ae6dffc6bfe3a9113e687bba997f96af09c6",
+      "src/main/network/mirrorStore.ts": "ac3d3c637525abb283111358b6119bea9f72677574c64cb2aee0269dafab259d",
+      "src/main/network/onlinePlatform.ts": "b697b5446155010e7bc7a6d5c6a7efdd8005718607d9aa13cca6b936910f6b0f",
+      "src/main/network/onlineSector.ts": "004843dcc7e69e68fa5ddaa5e8bf0cc894f6b4d242827e74aae2a83e2eba6377",
+      "src/main/network/hostProcess.ts": "64e53ffb9bd6fc6300199a928a70f820790fa4f83401927261cd8fdffa8698c6",
+      "src/shared/onlineSession.ts": "e65f32dcf9f9f5857769f2afdfb7035e13ab66d4b177a64edd7e53e967ce0c3b",
+      "src/network/session/serviceClient.ts": "198bb9f1487f487c422fa48e879151aecc90cc4b9de3a2a8ac556b277fce925c",
+      "src/network/utilityHost.ts": "16d00281f21bba20e35d0f9198cc49ac9d247e7922aea76bf747ee38e54163ad",
+      "src/network/modes/sector.ts": "b475d7d26fbdf0817d4296335d2dcb246efb4baa7d4eb9e1cda391d5dc944ac2",
+      "scripts/network/online-recovery-smoke.ts": "3a952e248de4a2daa5ac19b9fff3a2859876ef568291c011dbc02c14dafe2aed",
+      "scripts/network/online-recovery-report.ts": "2341bae5981c21ae3e53aa5cabd79b49d934fd5d6d80db375a3970540d9bb18c",
+      "scripts/network/online-recovery-utility.ts": "26813ab81e1a541259c25727f79dbe30eb877f7887a850c899377578ec7d2d09",
+      "scripts/network/online-recovery-utility.cjs": "c25b17970f991d91191dc53d67f6d63291631c59f69070130319a38789ec3d62",
+      "scripts/network/online-recovery-instrument.cjs": "2aaa51ae207d6db3a6301ab0709bf9e306bbac99ac341f152823f71bdef2be63",
+      "src/main/network/onlineExit.ts": "d50b6dc903efa564cce3efa60a65a0a4fdc8fd2a288183c0113af486d32ab8b6",
+      "out/main/cutter.js": "5f2709687dfd4baca44953be62b5d0a68676c136034dfa15dba27241a16ab329",
+      "out/main/hostProcessProtocol.js": "be82845b380168b7b8332bf08d28de2de9951edefb1b6dfecc13a3949c6078f0",
+      "out/main/rtcTransport.js": "cc7212ec8e12f0a9b0699f672016677ea817b588bb9e38f9ab7a9448e71cc937",
+      "out/preload/index.js": "e628a2f384b9f5503a91060170e16a8cd22621d9268dea8987b009444eff071f",
+      "out/preload/networkTransport.js": "3c1160797156658f26e13dd2609d316e4b308c01d82ae106a679d7ab8002dc82",
+      "out/renderer/networkTransport.html": "9f14f15a6ad9268960de62e4ccefc1773c564ccccec71be885d3098b57c3744b",
+      "out/renderer/assets/bridge-Sxw1vNWZ.js": "81c517fa0acf857af3531665b25cd45b61695a887e0c18a2912e9c95803a86c5",
+      "out/renderer/assets/browserAll-B2_AilG7.js": "c2481699d0d2e82e64f19f0c71df235bb42a37b9a1a4ab64b65556b14d163d8e",
+      "out/renderer/assets/BufferResource-Cu8Spt_i.js": "79c8b4f6a92f7573fc92a1c51053a117cd123827fcb0235e1913a0461e83dd91",
+      "out/renderer/assets/CanvasRenderer-RWsRAM1s.js": "7309f81d19e97de023e5be40a01445a59fc3c70be11676775c0f2bb0926808ae",
+      "out/renderer/assets/Filter-BGeiUxn2.js": "ae7071f7e18ee92a1fe0b5b2efb68d5a9f8f6c5bb6d5af79eb805e1d0e3911b6",
+      "out/renderer/assets/index-2PjRlZky.js": "380420c3e6663a487cb88f5808712966ab83475c96e1c5a62e1b554f242d858f",
+      "out/renderer/assets/networkTransport-BhUuKAjb.js": "94e1f327ec3df5f03c3c95e2011bffb058db2b5acf00cea913d50677636a5596",
+      "out/renderer/assets/RenderTargetSystem-Lq0l92wQ.js": "4875117a895c1fe00092185c5b299433249d10bea4a3b132f2a5013e431f488d",
+      "out/renderer/assets/WebGLRenderer-OL-hqlXN.js": "865b76d4c0c8266f743dc5f12dd57fb45ffec8eb0a21dd8ab3d5fce7b2db6f8e",
+      "out/renderer/assets/WebGPURenderer-DuEyeTMA.js": "a42b357ef30ffb7252b982474540cbbb62ef6e1d85760aef009ada53de3c376d",
+      "out/renderer/assets/webworkerAll-toDlD6XG.js": "2a83357e64209ab82a6d29e8dffe91d18995cac3cbc01fe2688ad714c9e16c24"
+    }
+  },
+  "runtime": {
+    "electron": "37.10.3",
+    "workerd": "1.20261023.1",
+    "workerPid": 31928,
+    "workerExit": true,
+    "temporaryRemoved": true
+  },
+  "processes": [
+    {
+      "pid": 15528,
+      "profile": "host",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "restart",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [
+          {
+            "pid": 23160,
+            "exited": false,
+            "producerChanges": [
+              {
+                "kind": "start"
+              }
+            ]
+          }
+        ],
+        "windows": 3,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [
+              {
+                "state": "connected",
+                "selected": true,
+                "direct": true,
+                "lossAvailable": false,
+                "listeners": 4,
+                "channels": [
+                  {
+                    "label": "ftl-reliable-v1",
+                    "state": "open",
+                    "ordered": true,
+                    "maxRetransmits": null,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 7,
+                    "received": 121,
+                    "maxBytes": 5909
+                  },
+                  {
+                    "label": "ftl-latest-v1",
+                    "state": "open",
+                    "ordered": false,
+                    "maxRetransmits": 0,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 111,
+                    "received": 140,
+                    "maxBytes": 1254
+                  }
+                ]
+              }
+            ],
+            "timers": 1,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          },
+          {
+            "connections": [],
+            "timers": 0,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 4
+      },
+      "forcedUtilityExits": [
+        {
+          "pid": 23160,
+          "exited": true
+        }
+      ]
+    },
+    {
+      "pid": 25572,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "resourcesBeforeForcedExit": {
+        "utilities": [
+          {
+            "pid": 17600,
+            "exited": true
+          }
+        ],
+        "windows": 1,
+        "ports": 0,
+        "listeners": 0
+      },
+      "forcedUtilityExits": [
+        {
+          "pid": 17600,
+          "exited": true
+        }
+      ],
+      "cleanup": {
+        "utilities": 1,
+        "utilityExits": 1,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 3,
+        "nativeWindowExits": 3,
+        "nativePeersObserved": 1,
+        "nativePeerCloses": 1,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [
+          17600
+        ],
+        "observedMainPorts": 8
+      }
+    },
+    {
+      "pid": 30700,
+      "profile": "host",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "resourcesBeforeForcedExit": {
+        "utilities": [],
+        "windows": 1,
+        "ports": 0,
+        "listeners": 0
+      },
+      "forcedUtilityExits": [],
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 1,
+        "nativeWindowExits": 1,
+        "nativePeersObserved": 0,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 2
+      }
+    }
+  ],
+  "cleanup": {
+    "utilities": 1,
+    "utilityExits": 1,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 4,
+    "nativeWindowExits": 4,
+    "nativePeersObserved": 1,
+    "nativePeerCloses": 1,
+    "nativePeersEndedWithWindow": 0,
+    "observedMainPorts": 10
+  },
+  "runtimeHelper": {
+    "pid": 26516,
+    "exited": true,
+    "exitCode": 0,
+    "forced": false,
+    "stage": "ready"
+  },
+  "instrumentation": [
+    {
+      "file": "guest-utility-0.json.instrumentation.json",
+      "sourceSha256": "1a35cbb1ca75b52c6ec3e878bdb60410f11245602b9e1678c4b98c1d050dc052",
+      "observedSha256": "cf65e41969d4806835d0dcc5fb04f6220e3a7901a96ec6149960df9fb2ad50aa",
+      "transformSha256": "2aaa51ae207d6db3a6301ab0709bf9e306bbac99ac341f152823f71bdef2be63"
+    },
+    {
+      "file": "host-utility-0.json.instrumentation.json",
+      "sourceSha256": "1a35cbb1ca75b52c6ec3e878bdb60410f11245602b9e1678c4b98c1d050dc052",
+      "observedSha256": "cf65e41969d4806835d0dcc5fb04f6220e3a7901a96ec6149960df9fb2ad50aa",
+      "transformSha256": "2aaa51ae207d6db3a6301ab0709bf9e306bbac99ac341f152823f71bdef2be63"
+    }
+  ],
+  "viewports": [
+    {
+      "name": "skiff-saved",
+      "small": false,
+      "width": 1280,
+      "height": 720,
+      "menu": {
+        "top": 0,
+        "bottom": 163,
+        "width": 1280,
+        "height": 163
+      },
+      "canvas": {
+        "top": 163,
+        "bottom": 720,
+        "width": 1280,
+        "height": 557
+      }
+    },
+    {
+      "name": "skiff-saved",
+      "small": true,
+      "width": 640,
+      "height": 480,
+      "menu": {
+        "top": 0,
+        "bottom": 230,
+        "width": 640,
+        "height": 230
+      },
+      "canvas": {
+        "top": 230,
+        "bottom": 480,
+        "width": 640,
+        "height": 250
+      }
+    },
+    {
+      "name": "skiff-rehosting",
+      "small": false,
+      "width": 1280,
+      "height": 720,
+      "menu": {
+        "top": 0,
+        "bottom": 110,
+        "width": 1280,
+        "height": 110
+      },
+      "canvas": {
+        "top": 110,
+        "bottom": 720,
+        "width": 1280,
+        "height": 610
+      }
+    },
+    {
+      "name": "skiff-rehosting",
+      "small": true,
+      "width": 640,
+      "height": 480,
+      "menu": {
+        "top": 0,
+        "bottom": 213,
+        "width": 640,
+        "height": 213
+      },
+      "canvas": {
+        "top": 213,
+        "bottom": 480,
+        "width": 640,
+        "height": 267
+      }
+    },
+    {
+      "name": "skiff-paused",
+      "small": false,
+      "width": 1280,
+      "height": 720,
+      "menu": {
+        "top": 0,
+        "bottom": 110,
+        "width": 1280,
+        "height": 110
+      },
+      "canvas": {
+        "top": 110,
+        "bottom": 720,
+        "width": 1280,
+        "height": 610
+      }
+    },
+    {
+      "name": "skiff-paused",
+      "small": true,
+      "width": 640,
+      "height": 480,
+      "menu": {
+        "top": 0,
+        "bottom": 216,
+        "width": 640,
+        "height": 216
+      },
+      "canvas": {
+        "top": 216,
+        "bottom": 480,
+        "width": 640,
+        "height": 264
+      }
+    }
+  ],
+  "proof": {
+    "runId": "f42f894970df7d496f012201253961ec",
+    "capacity": 2,
+    "seat": 1,
+    "layout": "skiff",
+    "hostGenerationBefore": 1,
+    "hostGenerationAfter": 2,
+    "utilityEpochBefore": "fa6b44a4dd005a25f63fd23026670f97",
+    "utilityEpochAfter": "45baeb7301677f0fcd2e68967620d964",
+    "committed": {
+      "version": 1,
+      "protocolVersion": 2,
+      "roomId": "a43eedae87a77a5e0020a9d88a64f2f8",
+      "runId": "f42f894970df7d496f012201253961ec",
+      "hostGeneration": 1,
+      "compatibility": {
+        "protocolVersion": 2,
+        "modeId": "sector",
+        "schemaVersion": 1,
+        "simVersion": 35,
+        "contentDigest": "0f3d25b24a4b22b74e932ef1870ee5468dda68ce03bd46e8dfbde4a30470702b",
+        "layoutHash": "5b84bc40"
+      },
+      "checkpointSequence": 3,
+      "capturedTick": 300,
+      "payloadSha256": "115117d1449a66c956f207a45974c405955a078eccfd6d8d78475514514ad77b"
+    },
+    "restored": {
+      "payloadSha256": "115117d1449a66c956f207a45974c405955a078eccfd6d8d78475514514ad77b",
+      "runId": "f42f894970df7d496f012201253961ec",
+      "tick": 300,
+      "phase": "running",
+      "commandHighWater": [
+        0,
+        5
+      ],
+      "heldHighWater": [
+        0,
+        124
+      ],
+      "botMemoryHash": "55c4891e1972a58712d4593eb8b2ef8761d31005980756fb5f76f53536f8a1b6",
+      "botMemory": [
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [],
+          "groupBar": [],
+          "navigationVisit": null
+        },
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [],
+          "groupBar": [],
+          "navigationVisit": null
+        }
+      ],
+      "reconciledBotMemory": [
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 6,
+              "heldSequence": 124,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [
+            {
+              "rowKey": "jump:4",
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            }
+          ],
+          "groupBar": [
+            false,
+            false
+          ],
+          "navigationVisit": {
+            "sector": 0,
+            "beacon": 0,
+            "arrivalTick": 0
+          }
+        },
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 6,
+              "heldSequence": 124,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [
+            {
+              "rowKey": "jump:4",
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            }
+          ],
+          "groupBar": [
+            false,
+            false
+          ],
+          "navigationVisit": {
+            "sector": 0,
+            "beacon": 0,
+            "arrivalTick": 0
+          }
+        }
+      ],
+      "snapshotHash": "6a864ecd0efb3d7b4285145359810e54e1885a2aba46033aa247fde6a8f5439b"
+    },
+    "serviceBytesRestored": true,
+    "fullAck": true,
+    "ackBeforeInput": true,
+    "ownership": true,
+    "pausedBaselineCommitted": true,
+    "explicitResume": true,
+    "autoResume": false,
+    "agreement": {
+      "runId": "f42f894970df7d496f012201253961ec",
+      "tick": 324,
+      "sequence": 334,
+      "hash": "7354f550",
+      "phase": "running",
+      "layout": "skiff",
+      "playerCount": 2,
+      "commandHighWater": [
+        0,
+        6
+      ],
+      "heldHighWater": [
+        6,
+        127
+      ]
+    },
+    "initialCommittedTick": 0,
+    "periodicCapturedTick": 300,
+    "oldHostRejoinedSeat": 0,
+    "seatGenerationBefore": 1,
+    "seatGenerationAfter": 2,
+    "observations": {
+      "restored": {
+        "descriptor": {
+          "epoch": 2,
+          "runId": "f42f894970df7d496f012201253961ec",
+          "hostGeneration": 2,
+          "seatId": 1,
+          "compatibility": {
+            "protocolVersion": 2,
+            "modeId": "sector",
+            "schemaVersion": 1,
+            "simVersion": 35,
+            "contentDigest": "0f3d25b24a4b22b74e932ef1870ee5468dda68ce03bd46e8dfbde4a30470702b",
+            "layoutHash": "5b84bc40"
+          }
+        },
+        "publications": [
+          {
+            "runId": "f42f894970df7d496f012201253961ec",
+            "tick": 300,
+            "sequence": 308,
+            "hash": "c4075a8b",
+            "phase": "paused",
+            "layout": "skiff",
+            "playerCount": 2,
+            "commandHighWater": [
+              0,
+              5
+            ],
+            "heldHighWater": [
+              0,
+              124
+            ]
+          }
+        ],
+        "inputs": [],
+        "results": [],
+        "acks": 1,
+        "fullReceipts": 1,
+        "firstAckOrder": 3,
+        "firstInputOrder": 0,
+        "closed": false,
+        "errors": 0,
+        "order": 3
+      },
+      "afterResume": [
+        {
+          "descriptor": {
+            "epoch": 2,
+            "runId": "f42f894970df7d496f012201253961ec",
+            "hostGeneration": 2,
+            "seatId": 1,
+            "compatibility": {
+              "protocolVersion": 2,
+              "modeId": "sector",
+              "schemaVersion": 1,
+              "simVersion": 35,
+              "contentDigest": "0f3d25b24a4b22b74e932ef1870ee5468dda68ce03bd46e8dfbde4a30470702b",
+              "layoutHash": "5b84bc40"
+            }
+          },
+          "publications": [
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 300,
+              "sequence": 308,
+              "hash": "c4075a8b",
+              "phase": "paused",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                5
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 300,
+              "sequence": 309,
+              "hash": "c4075a8b",
+              "phase": "paused",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                5
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 300,
+              "sequence": 310,
+              "hash": "c4075a8b",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 303,
+              "sequence": 313,
+              "hash": "cf429219",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 306,
+              "sequence": 316,
+              "hash": "afcec264",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 309,
+              "sequence": 319,
+              "hash": "3f5afa56",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 312,
+              "sequence": 322,
+              "hash": "1076f428",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                1,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 315,
+              "sequence": 325,
+              "hash": "21c7bf15",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                2,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 318,
+              "sequence": 328,
+              "hash": "ec26cecd",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                3,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 321,
+              "sequence": 331,
+              "hash": "c0e39439",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                4,
+                125
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 324,
+              "sequence": 334,
+              "hash": "7354f550",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                6,
+                127
+              ]
+            }
+          ],
+          "inputs": [
+            {
+              "kind": "command",
+              "player": 1,
+              "sequence": 6,
+              "command": "setPaused",
+              "reliable": true,
+              "order": 7
+            },
+            {
+              "kind": "held",
+              "player": 1,
+              "sequence": 125,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 23
+            },
+            {
+              "kind": "held",
+              "player": 1,
+              "sequence": 126,
+              "held": {
+                "moveX": 1,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 26
+            },
+            {
+              "kind": "held",
+              "player": 1,
+              "sequence": 127,
+              "held": {
+                "moveX": 1,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 29
+            },
+            {
+              "kind": "held",
+              "player": 1,
+              "sequence": 128,
+              "held": {
+                "moveX": 1,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 30
+            },
+            {
+              "kind": "held",
+              "player": 1,
+              "sequence": 129,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 33
+            }
+          ],
+          "results": [
+            {
+              "id": {
+                "player": 1,
+                "sequence": 6
+              },
+              "tick": 300,
+              "status": "applied",
+              "admission": {
+                "expectedSequence": 7,
+                "disposition": "terminal"
+              }
+            }
+          ],
+          "acks": 11,
+          "fullReceipts": 3,
+          "firstAckOrder": 3,
+          "firstInputOrder": 7,
+          "closed": false,
+          "errors": 0,
+          "order": 33
+        },
+        {
+          "descriptor": {
+            "epoch": 1,
+            "runId": "f42f894970df7d496f012201253961ec",
+            "hostGeneration": 2,
+            "seatId": 0,
+            "compatibility": {
+              "protocolVersion": 2,
+              "modeId": "sector",
+              "schemaVersion": 1,
+              "simVersion": 35,
+              "contentDigest": "0f3d25b24a4b22b74e932ef1870ee5468dda68ce03bd46e8dfbde4a30470702b",
+              "layoutHash": "5b84bc40"
+            }
+          },
+          "publications": [
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 300,
+              "sequence": 309,
+              "hash": "c4075a8b",
+              "phase": "paused",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                5
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 300,
+              "sequence": 310,
+              "hash": "c4075a8b",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 303,
+              "sequence": 313,
+              "hash": "cf429219",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 306,
+              "sequence": 316,
+              "hash": "afcec264",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 309,
+              "sequence": 319,
+              "hash": "3f5afa56",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                0,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 312,
+              "sequence": 322,
+              "hash": "1076f428",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                1,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 315,
+              "sequence": 325,
+              "hash": "21c7bf15",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                2,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 318,
+              "sequence": 328,
+              "hash": "ec26cecd",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                3,
+                124
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 321,
+              "sequence": 331,
+              "hash": "c0e39439",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                4,
+                125
+              ]
+            },
+            {
+              "runId": "f42f894970df7d496f012201253961ec",
+              "tick": 324,
+              "sequence": 334,
+              "hash": "7354f550",
+              "phase": "running",
+              "layout": "skiff",
+              "playerCount": 2,
+              "commandHighWater": [
+                0,
+                6
+              ],
+              "heldHighWater": [
+                6,
+                127
+              ]
+            }
+          ],
+          "inputs": [
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 1,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 10
+            },
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 2,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 11
+            },
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 3,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 16
+            },
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 4,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 19
+            },
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 5,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 22
+            },
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 6,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 25
+            },
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 7,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 28
+            },
+            {
+              "kind": "held",
+              "player": 0,
+              "sequence": 8,
+              "held": {
+                "moveX": 0,
+                "moveY": 0,
+                "interactHeld": false
+              },
+              "reliable": false,
+              "order": 29
+            }
+          ],
+          "results": [],
+          "acks": 10,
+          "fullReceipts": 2,
+          "firstAckOrder": 3,
+          "firstInputOrder": 10,
+          "closed": false,
+          "errors": 0,
+          "order": 31
+        }
+      ]
+    },
+    "mirrorReceipts": [
+      {
+        "runId": "f42f894970df7d496f012201253961ec",
+        "hostGeneration": 1,
+        "checkpointSequence": 2,
+        "capturedTick": 0,
+        "payloadSha256": "7a07a0fd8e7c9337e5b08212607b439c989b824b25d2b1eb6812b331425bded7"
+      },
+      {
+        "runId": "f42f894970df7d496f012201253961ec",
+        "hostGeneration": 1,
+        "checkpointSequence": 3,
+        "capturedTick": 300,
+        "payloadSha256": "115117d1449a66c956f207a45974c405955a078eccfd6d8d78475514514ad77b"
+      },
+      {
+        "runId": "f42f894970df7d496f012201253961ec",
+        "hostGeneration": 2,
+        "checkpointSequence": 2,
+        "capturedTick": 300,
+        "payloadSha256": "6fe24c8224b9a55986a4a935ffdc6a1d9cff5fa3fa44b333d0e226518bf175e0"
+      }
+    ],
+    "pausedBaseline": {
+      "payloadSha256": "6fe24c8224b9a55986a4a935ffdc6a1d9cff5fa3fa44b333d0e226518bf175e0",
+      "runId": "f42f894970df7d496f012201253961ec",
+      "tick": 300,
+      "phase": "paused",
+      "commandHighWater": [
+        0,
+        5
+      ],
+      "heldHighWater": [
+        0,
+        124
+      ],
+      "botMemoryHash": "55c4891e1972a58712d4593eb8b2ef8761d31005980756fb5f76f53536f8a1b6",
+      "botMemory": [
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [],
+          "groupBar": [],
+          "navigationVisit": null
+        },
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [],
+          "groupBar": [],
+          "navigationVisit": null
+        }
+      ],
+      "reconciledBotMemory": [
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 6,
+              "heldSequence": 124,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [
+            {
+              "rowKey": "jump:4",
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            }
+          ],
+          "groupBar": [
+            false,
+            false
+          ],
+          "navigationVisit": {
+            "sector": 0,
+            "beacon": 0,
+            "arrivalTick": 0
+          }
+        },
+        {
+          "runId": "f42f894970df7d496f012201253961ec",
+          "players": [
+            {
+              "nextSequence": 1,
+              "heldSequence": 0,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            },
+            {
+              "nextSequence": 6,
+              "heldSequence": 124,
+              "heldDir": 0,
+              "repeat": 0,
+              "lastTick": -1,
+              "seat": -1,
+              "pendingVoteSequence": 0,
+              "pendingVoteTick": -1,
+              "pendingVote": null
+            }
+          ],
+          "stations": [
+            {
+              "rowKey": "jump:4",
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            },
+            {
+              "rowKey": null,
+              "page": "main"
+            }
+          ],
+          "groupBar": [
+            false,
+            false
+          ],
+          "navigationVisit": {
+            "sector": 0,
+            "beacon": 0,
+            "arrivalTick": 0
+          }
+        }
+      ],
+      "snapshotHash": "6a864ecd0efb3d7b4285145359810e54e1885a2aba46033aa247fde6a8f5439b"
+    },
+    "memoryReconciliation": [
+      "unchanged",
+      "unchanged"
+    ],
+    "menuClicks": [
+      {
+        "role": "host",
+        "clicks": [
+          {
+            "id": "reconnect",
+            "attempts": 1
+          },
+          {
+            "id": "leave",
+            "attempts": 1
+          }
+        ]
+      },
+      {
+        "role": "guest",
+        "clicks": [
+          {
+            "id": "join",
+            "attempts": 1
+          },
+          {
+            "id": "join-code",
+            "attempts": 1
+          },
+          {
+            "id": "join-room",
+            "attempts": 1
+          },
+          {
+            "id": "ready",
+            "attempts": 1
+          },
+          {
+            "id": "rehost",
+            "attempts": 1
+          },
+          {
+            "id": "pause",
+            "attempts": 1
+          },
+          {
+            "id": "pause",
+            "attempts": 1
+          },
+          {
+            "id": "leave",
+            "attempts": 1
+          }
+        ]
+      }
+    ]
+  },
+  "budgetMs": 90000,
+  "elapsedMs": 20537,
+  "stage": "idle-resources",
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-WAN",
+    "no-two-machine",
+    "OS-suspend-NOT-RUN"
+  ]
+}
