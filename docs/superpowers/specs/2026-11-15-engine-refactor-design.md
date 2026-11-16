@@ -168,7 +168,7 @@ Rules for three of these hooks:
     | { mode: 'duel'; record: DuelEndSummary | null };
   ```
 
-  - **The duel summary** is a plain, frozen value computed once when the duel ends: `{ outcome, ticks, terminal: [cause, cause], laserReleases: [n, n], laserHits: [n, n], missilesLaunched: [n, n], missileHits: [n, n], repairsFinished: [n, n] }`, all integers, with causes from a fixed enum. It is not the live accumulator.
+  - **The duel summary** is a plain, frozen value computed once when the duel ends: `{ outcome, ticks, terminal: [TerminalCause[], TerminalCause[]], laserReleases: [n, n], laserHits: [n, n], missilesLaunched: [n, n], missileHits: [n, n], repairsFinished: [n, n] }`, all integers, with causes from a fixed enum. `terminal` keeps the accumulator's arrays as they are, because one tick can kill a ship several ways (`duel/telemetry.ts:50-55, 152-161`). Each array lists the causes in the accumulator's order, with no duplicates, and is empty for a ship that survived; the codec validates that. It is not the live accumulator.
   - **The duel telemetry accumulator** (`sim/duel/telemetry.ts`, with its previous-tick and manoeuvre state) is mode memory. It is not hashed. It is saved in the duel checkpoint as its own versioned, codec-validated blob next to `ControllerMemory`, and restored with it, so a restored duel's end summary equals an uninterrupted run's. The continuation proof below compares the end summaries too.
 - **Layout resolution.** The generic authority keeps the merged `resolveLayout` dependency (`authority/authority.ts:24-33,56-61,74-79`) and passes it as the explicit argument of the rules' `create`, `restore` and `validateCheckpoint` (see their signatures). The sector rules use it as today. The duel rules resolve the Cutter through the same resolver.
 
@@ -207,7 +207,7 @@ The ledger, tick driver, journal, checkpoint cadence and publication stay as the
     - `Derived`, from the layout.
   - **Not stored:** per-tick `events` and `d.events`, which are cleared every tick.
   - **Validation on restore:** header versions, digest and layout; the value count; the interior and tactical ticks being equal; and the restored duel's `hashDuel` equalling the hash recorded in the checkpoint.
-  - **Continuation proof:** run a duel N ticks, checkpoint it, restore, run M more ticks, and compare per-tick hashes with an uninterrupted run of N + M ticks. They must be identical.
+  - **Continuation proof:** run a duel N ticks, checkpoint it, restore, run M more ticks, and compare with an uninterrupted run of N + M ticks. The per-tick hashes must be identical, and so must the `DuelEndSummary` when the duel ends within the run (choose M so it does).
   - **Size:** a test encodes a checkpoint at the duel's largest state (both missiles in flight, all rooms damaged, mid-repair) and asserts it is under `MAX_HOST_BYTES` (256 KiB, `shared/netSession.ts:3`). The duel's canonical state is a few thousand values, so it is expected to be well under.
 - **R-1 acceptance:**
   - For both sector and duel, start → captureCheckpoint → restore round trips reproduce identical hashes, at the utility and `hostRuntime` level. This is the same level as Net-3's `host-smoke` gate: registering the duel mode in `authorityHost.ts` and driving it through `hostRuntime` over loopback.
@@ -406,3 +406,4 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
   - the history ring moved to R-8 with bounds and a test;
   - risk 3 revised.
 - 2026-11-15: refine (Net-3 corrections) round 2: `EndRecord` tagged on the wrapper, with a frozen `DuelEndSummary`; the duel telemetry accumulator saved as a checkpoint blob; `mapHash` in the header with its calculation and check; `resolveLayout` added to the rules signatures.
+- 2026-11-15: refine (Net-3 corrections) round 3: `DuelEndSummary.terminal` keeps per-ship cause arrays; the continuation proof also compares end summaries.

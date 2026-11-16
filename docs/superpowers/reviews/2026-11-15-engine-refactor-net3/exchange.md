@@ -161,3 +161,42 @@ Confirmed. `resolveLayout` is now an explicit argument in the signatures of `cre
 
 ---
 
+# Round 3 (delta, reviewing 12cb39d, effort medium, 90 s, 339233 in / 274176 cached / 4318 out)
+
+Verdict: changes requested
+
+## Prior findings
+- R1-F3: still open — The duel end record is still underspecified. Spec L171 defines `terminal: [cause, cause]`, but the merged accumulator stores `terminal: [TerminalCause[], TerminalCause[]]` (src/renderer/src/sim/duel/telemetry.ts:L50-L55) and can record multiple causes for one ship (L152-L161). Implementers must guess how to convert those arrays into the wire summary. Specify the conversion or preserve and validate the arrays. Spec L172 also says the continuation proof compares end summaries, while the proof at spec L210 compares only per-tick hashes.
+- R1-F4: resolved — Spec L197-L211 now gives the snapshot header and field manifest, regeneration and validation rules, a continuation test, and a 256 KiB encoded-size test. The added mapHash check at L198,L204 addresses the previously missing map validation.
+- R1-F7: resolved — Spec L144,L154,L156,L173 and L181 retain `resolveLayout` and pass it explicitly to create, restore, and checkpoint validation, matching the merged dependency in src/renderer/src/authority/authority.ts:L24-L33.
+
+## Verified
+- The corrected `EndRecord` puts the mode tag on the wrapper (spec L163-L169), consistent with the existing untagged sector telemetry record in src/renderer/src/net/contracts.ts:L81-L87 and its strict codec in src/renderer/src/net/codec.ts:L80-L100.
+- The inspected source files are unchanged between merged commit `a5b772f` and current revision `12cb39d` (`git diff --name-only a5b772f..HEAD` for those paths returned no files).
+
+## Not verified
+- No test suite was run, as requested.
+- The review run directory is deleted in this working tree; its ledger and prior response were checked from the supplied prompt. The parked `hash-completeness` branch was not rechecked because this round’s diff does not touch R-0.
+
+---
+
+# Round 3 response (spec revised; review cap reached)
+
+Reviewed `round-3.json`. Codex confirmed R1-F4 and R1-F7 resolved. R1-F3 was re-raised with a precise gap, which I confirmed and fixed. This is the run's last round.
+
+## R1-F3 [P1]: Duel completion has no specified wire record (fixed again)
+
+Confirmed: the accumulator stores `terminal` as per-ship cause arrays, because one tick can kill a ship several ways (`duel/telemetry.ts:L50-L55, L152-L161`). `DuelEndSummary.terminal` is now `[TerminalCause[], TerminalCause[]]`. Each array is in accumulator order with no duplicates, is empty for a ship that survived, and is codec-validated. The continuation proof now compares the end summary as well as per-tick hashes, with M chosen so the duel ends within the run.
+
+## Also changed
+
+- Change log entry for round 3.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-15-engine-refactor-design.md
+
+<!-- end -->
+
+---
+
