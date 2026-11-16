@@ -1,0 +1,11 @@
+topic=engine-r2-plan
+subject_kind=plan
+subject=docs/superpowers/plans/2026-11-16-engine-r2-n-ship-space.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-16
+head_at_setup=899f4dc
