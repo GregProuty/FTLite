@@ -39,6 +39,13 @@ export function toOklab(r: number, g: number, b: number): Lab {
   return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
 }
 
+/** Index of the Lab triple nearest `lab` by squared distance; strictly-less comparison, so a tie goes to the earlier index. */
+export function nearestIndex(labs: readonly Lab[], lab: Lab): number {
+  let best = 0, bestD = Infinity;
+  labs.forEach(([l, a, bb], i) => { const d = (lab[0] - l) ** 2 + (lab[1] - a) ** 2 + (lab[2] - bb) ** 2; if (d < bestD) { bestD = d; best = i; } });
+  return best;
+}
+
 /** Nearest palette colour in OKLab by squared distance; a tie goes to the colour earlier in the palette. Returns the colour as a number. */
 export function createRemap(colours: readonly number[]): (r: number, g: number, b: number) => number {
   const labs = colours.map((c) => toOklab((c >> 16) & 255, (c >> 8) & 255, c & 255));
@@ -46,9 +53,7 @@ export function createRemap(colours: readonly number[]): (r: number, g: number, 
   return (r, g, b) => {
     const key = (r << 16) | (g << 8) | b, hit = cache.get(key);
     if (hit !== undefined) return hit;
-    const [L, A, B] = toOklab(r, g, b);
-    let best = 0, bestD = Infinity;
-    labs.forEach(([l, a, bb], i) => { const d = (L - l) ** 2 + (A - a) ** 2 + (B - bb) ** 2; if (d < bestD) { bestD = d; best = i; } });
+    const best = nearestIndex(labs, toOklab(r, g, b));
     cache.set(key, colours[best]!); return colours[best]!;
   };
 }
@@ -113,12 +118,18 @@ export function runImport(run: ImportRun): ImportResult {
   const paidRoot = resolve(run.repoRoot, 'public', 'assets', 'paid') + sep;
   const haveSource = existsSync(run.sourceRoot);
   if (!haveSource) problems.push(`source folder ${run.sourceRoot} does not exist (set FTLITE_ASSETS)`);
+  const written_by = new Map<string, number>();
   parsed.data.outputs.forEach((o, i) => {
-    if (!resolve(run.repoRoot, o.output).startsWith(paidRoot)) problems.push(`outputs[${i}]: output ${o.output} is outside public/assets/paid/`);
+    const outPath = resolve(run.repoRoot, o.output);
+    if (!outPath.startsWith(paidRoot)) problems.push(`outputs[${i}]: output ${o.output} is outside public/assets/paid/`);
+    const earlier = written_by.get(outPath);
+    if (earlier !== undefined) problems.push(`outputs[${i}]: output ${o.output} is also written by outputs[${earlier}]`); else written_by.set(outPath, i);
     if (!haveSource) return;
     const packPath = join(run.sourceRoot, o.pack);
     if (!existsSync(packPath)) { problems.push(`outputs[${i}]: pack file ${o.pack} not found in ${run.sourceRoot}`); return; }
-    const img = readPng(packPath); sources[i] = img;
+    let img: Image;
+    try { img = readPng(packPath); } catch (e) { problems.push(`outputs[${i}]: pack file ${o.pack} is not a readable PNG (${e instanceof Error ? e.message : String(e)})`); return; }
+    sources[i] = img;
     o.frames.forEach((f, j) => {
       if (f.x + f.w > img.width || f.y + f.h > img.height) problems.push(`outputs[${i}].frames[${j}]: rectangle ${f.x},${f.y} ${f.w}x${f.h} is outside ${o.pack} (${img.width}x${img.height})`);
     });

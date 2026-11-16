@@ -43,7 +43,7 @@ export function createTileLayer(assets: GameAssets, _memory: RenderMemory): Tile
   function build(state: SimState): void {
     const d = state.derived, rows = state.layout.rows;
     base.clear();
-    for (const c of floorArt.removeChildren()) c.destroy();
+    for (const c of floorArt.removeChildren()) c.destroy({ texture: true, textureSource: false });   // the per-part sub-textures go; the shared source stays
     const cell = (x: number, y: number): Cell => { const c = rows[y]?.charAt(x) ?? ' '; return c === '' || c === ' ' ? 'space' : c === '#' ? 'wall' : c === '+' ? 'door' : 'floor'; };
     for (let ty = 0; ty < d.height; ty++) for (let tx = 0; tx < d.width; tx++) {
       const c = cell(tx, ty), x = tx * TILE_PX, y = ty * TILE_PX, tile = ty * d.width + tx;

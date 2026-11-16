@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRemap, encodePng, readPng, remapPixels, runImport, sourceFolder, toOklab, type Image } from '../scripts/art/importCore';
+import { createRemap, encodePng, nearestIndex, readPng, remapPixels, runImport, sourceFolder, toOklab, type Image } from '../scripts/art/importCore';
 import { PALETTE } from '../src/renderer/src/render/palette';
 const committed = JSON.parse(readFileSync('art/import.json', 'utf8')) as { outputs: unknown[] };
 
@@ -30,9 +30,12 @@ describe('the OKLab remap', () => {
     const remap = createRemap(colours);
     expect(remap(0, 0, 0)).toBe(0x000000); expect(remap(255, 255, 255)).toBe(0xffffff); expect(remap(250, 10, 10)).toBe(0xff0000);
     expect(remap(30, 30, 30)).toBe(0x000000); expect(remap(220, 220, 220)).toBe(0xffffff);
-    const twins = createRemap([0x808080, 0x808080]);   // equal distance: the first wins
-    expect(twins(128, 128, 128)).toBe(0x808080);
     expect(toOklab(255, 255, 255)[0]).toBeCloseTo(1, 4); expect(toOklab(0, 0, 0)[0]).toBeCloseTo(0, 9);
+  });
+  it('nearestIndex: an exact tie goes to the earlier index, in either order', () => {
+    expect(nearestIndex([[0, 0, 0], [2, 0, 0]], [1, 0, 0])).toBe(0);
+    expect(nearestIndex([[2, 0, 0], [0, 0, 0]], [1, 0, 0])).toBe(0);
+    expect(nearestIndex([[0, 0, 0], [2, 0, 0], [1, 0, 0]], [1, 0, 0])).toBe(2);   // a strictly nearer later entry still wins
   });
   it('makes alpha 0 or 255 at the 128 threshold and every opaque pixel a palette colour', () => {
     const img = rgba(4, 1, (x) => [200, 10 * x, 30, [0, 127, 128, 255][x]!]);
@@ -62,10 +65,17 @@ describe('runImport', () => {
     expect([...contact.data.subarray(0, 4)]).toEqual([(bg >> 16) & 255, (bg >> 8) & 255, bg & 255, 255]);   // pixel (0,0) of the pack has alpha 40: the background shows
   });
   it('packs frames by columns with cells as large as the largest frame', () => {
-    const r = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [output({ frames: [{ x: 0, y: 0, w: 8, h: 8 }, { x: 8, y: 8, w: 4, h: 4 }, { x: 0, y: 8, w: 8, h: 8 }], columns: 2 })] } });
+    // each frame is a distinct opaque palette colour so the remap leaves it unchanged and the packing position is visible
+    const [red, green, blue] = PALETTE.colours;
+    expect(new Set([red, green, blue]).size).toBe(3);
+    const colourPack = rgba(32, 16, (x, y) => { const c = x < 8 && y < 8 ? red : x >= 8 && x < 12 && y >= 8 && y < 12 ? green : x < 8 && y >= 8 ? blue : undefined; return c === undefined ? [0, 0, 0, 0] : [(c >> 16) & 255, (c >> 8) & 255, c & 255, 255]; });
+    writeFileSync(join(source, 'Pack', 'colours.png'), encodePng(colourPack));
+    const r = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [output({ pack: 'Pack/colours.png', frames: [{ x: 0, y: 0, w: 8, h: 8 }, { x: 8, y: 8, w: 4, h: 4 }, { x: 0, y: 8, w: 8, h: 8 }], columns: 2 })] } });
     expect(r.problems).toEqual([]);
     const sheet = readPng(r.written[0]!);
     expect([sheet.width, sheet.height]).toEqual([16, 16]);
+    const px = (x: number, y: number): number => { const i = (y * sheet.width + x) * 4; expect(sheet.data[i + 3]).toBe(255); return (sheet.data[i]! << 16) | (sheet.data[i + 1]! << 8) | sheet.data[i + 2]!; };
+    expect(px(0, 0)).toBe(red); expect(px(8, 0)).toBe(green); expect(px(0, 8)).toBe(blue);
   });
   it('is deterministic: the same input bytes give the same output bytes', () => {
     const a = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [output()] } });
@@ -81,7 +91,7 @@ describe('runImport', () => {
   it('a missing pack file, a frame outside its image and an output outside public/assets/paid/: every problem listed, nothing written', () => {
     const r = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [
       output({ pack: 'Pack/missing.png' }),
-      output({ frames: [{ x: 0, y: 0, w: 16, h: 16 }, { x: 24, y: 8, w: 16, h: 16 }] }),
+      output({ frames: [{ x: 0, y: 0, w: 16, h: 16 }, { x: 24, y: 8, w: 16, h: 16 }], output: 'public/assets/paid/pack/other.png' }),
       output({ output: 'public/assets/raw/sheet.png' }),
       output({ output: 'public/assets/paid/../escape.png' })
     ] } });
@@ -91,6 +101,18 @@ describe('runImport', () => {
       'outputs[2]: output public/assets/raw/sheet.png is outside public/assets/paid/',
       'outputs[3]: output public/assets/paid/../escape.png is outside public/assets/paid/'
     ]);
+    expect(r.written).toEqual([]); expect(existsSync(join(repo, 'public'))).toBe(false); expect(existsSync(join(repo, '.art'))).toBe(false);
+  });
+  it('a pack file that is not a PNG is reported, not thrown, and nothing is written', () => {
+    writeFileSync(join(source, 'Pack', 'bad.png'), 'this is not a png');
+    const r = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [output(), output({ pack: 'Pack/bad.png', output: 'public/assets/paid/pack/bad.png' })] } });
+    expect(r.problems).toHaveLength(1);
+    expect(r.problems[0]).toMatch(/^outputs\[1\]: pack file Pack\/bad\.png is not a readable PNG \(.+\)$/);
+    expect(r.written).toEqual([]); expect(existsSync(join(repo, 'public'))).toBe(false); expect(existsSync(join(repo, '.art'))).toBe(false);
+  });
+  it('two outputs writing the same file are reported and nothing is written', () => {
+    const r = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [output(), output({ output: 'public/assets/paid/pack/../pack/sheet.png' })] } });
+    expect(r.problems).toEqual(['outputs[1]: output public/assets/paid/pack/../pack/sheet.png is also written by outputs[0]']);
     expect(r.written).toEqual([]); expect(existsSync(join(repo, 'public'))).toBe(false); expect(existsSync(join(repo, '.art'))).toBe(false);
   });
   it('a malformed config is reported, not thrown', () => {

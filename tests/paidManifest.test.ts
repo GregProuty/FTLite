@@ -46,6 +46,8 @@ describe('no two entries bind the same name', () => {
   it('refuses a paid file that shadows a free entry by binding its name', () => {
     const free = { ...font, file: 'raw/a.ttf' }, shadow = { ...paid, sheet: { frameW: 16, frameH: 16, frames: {}, animations: {} }, name: undefined };
     expect(() => parseManifest([free, { ...free, file: 'raw/b.ttf' }])).toThrow(/name font\.m5x7 is already bound by raw\/a\.ttf/);
+    const freeFloor = { ...font, file: 'raw/house/floor0.png', name: 'house.floor.0' };
+    expect(() => parseManifest([freeFloor, paid])).toThrow(/house\.floor\.0 is already bound by raw\/house\/floor0\.png/);
     expect(() => parseManifest([paid, { ...shadow, file: 'paid/other.png', sheet: { ...shadow.sheet, frames: { 'house.floor.2': 0 } } }])).toThrow(/house\.floor\.2 is already bound/);
   });
   it('the real manifest binds every name once', () => {
