@@ -8,6 +8,8 @@ const add = (kind: Kind, ...ns: string[]): void => { for (const n of ns) names[n
 
 // tiles (Cozy Space Interiors)
 add('required', 'floor.0', 'floor.1', 'floor.2', 'floor.3', 'wall.flat', 'wall.plain', 'wall.vent', 'wall.pipes', 'wall.screen', 'door.closed', 'door.sealed', 'door.open');
+// house floor art (Art-i spec section 2): a paid pack, absent on a fresh clone, so the procedural plating draws instead
+add('optional', 'house.floor.0', 'house.floor.1', 'house.floor.2', 'house.floor.3');
 // hazards
 add('required', 'fire.loop');                                                  // Reactorcore
 add('optional', 'breach.h', 'breach.v', 'floor.damaged.0', 'floor.damaged.1', 'vent.puff', 'fx.arc');   // in-house

@@ -10,7 +10,7 @@ const sheet = z.object({
 const nineSlice = z.object({ left: z.number().int().min(0), top: z.number().int().min(0), right: z.number().int().min(0), bottom: z.number().int().min(0) });
 
 const entry = z.object({
-  file: z.string().regex(/^(raw|art)\/[^\s]+$/, 'file must be a path under raw/ or art/ (relative to public/assets)'),
+  file: z.string().regex(/^(raw|art|paid)\/[^\s]+$/, 'file must be a path under raw/, art/ or paid/ (relative to public/assets)'),
   title: z.string().min(1), author: z.string().min(1), source: z.string().min(1),
   archived: z.string().url().optional(),
   license: z.enum(LICENSES, { errorMap: () => ({ message: `license must be one of ${LICENSES.join(', ')}` }) }),
@@ -41,11 +41,25 @@ const entry = z.object({
     if (e.modifications === 'none') fail('derived art/ files must describe their modifications');
     if (!e.editedBy) fail('derived art/ files must name editedBy');
   }
+  // Paid packs (Art-i spec section 2): the files are gitignored, so a fresh clone must run without them.
+  if ((e.license === 'paid') !== e.file.startsWith('paid/')) fail('licence paid and a file under paid/ go together');
+  if (e.license === 'paid') {
+    if (e.required) fail('paid entries must be required: false (a fresh clone has no paid/ files)');
+    if (!/^https?:\/\/\S+$/.test(e.source)) fail('paid entries need source = the store page URL');
+    if (!e.retrieved) fail('paid entries need retrieved = the purchase date');
+    if (!e.credit) fail('paid entries need a credit line');
+  }
 });
 
 const manifest = z.array(entry).superRefine((all, ctx) => {
-  const seen = new Set<string>();
+  const seen = new Set<string>(), owner = new Map<string, string>();
   for (const e of all) { if (seen.has(e.file)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${e.file}: listed twice` }); seen.add(e.file); }
+  // No two entries bind one name (Art-i spec section 2): a paid file replaces free art by taking over its entry's name, never by shadowing it.
+  for (const e of all) for (const n of (e.name === undefined) === (e.sheet === undefined) ? [] : boundNames(e)) {   // an entry with neither or both already failed above
+    const first = owner.get(n);
+    if (first !== undefined && first !== e.file) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${e.file}: name ${n} is already bound by ${first}` });
+    else owner.set(n, e.file);
+  }
 });
 
 export type ManifestEntry = z.infer<typeof entry>;

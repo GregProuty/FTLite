@@ -12,3 +12,7 @@ dist
 
 # Local git worktrees
 .worktrees/
+
+# Paid art packs (never commit; the manifest entries are committed) and the art import contact sheet (Art-i spec sections 2-3)
+public/assets/paid/
+.art/
