@@ -199,3 +199,57 @@ Confirmed. doorModel.ts:L5 holds SEALED_FILL, HELD_TICK and SPACE_GAP, and effec
 
 ---
 
+# Round 3 (delta, reviewing 1e285dc, effort medium, 45 s, 73298 in / 49551 cached / 4380 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R3-F1 A 2-unit airlock outline at offset −2 lands on odd world units under Pixi's default centred stroke
+Section 4 says the airlock outline becomes a 2-unit stroke at offset −2, but it does not give the stroke alignment. Pixi 8 centres a stroke on the path by default (alignment 0.5). A rect at tx·TILE_PX − 2 stroked 2 wide therefore covers −3..−1, which is off the art-pixel grid. The even-x/y/w/h rect test would still pass, because it checks the path rect and not the painted band. · spec L58 ('the airlock outline becomes a 2-unit stroke at offset −2'); render/effects.ts:L94 (rect(tx*TILE_PX − 2, …, TILE_PX + 4, …).stroke({ width: 3 }) with no alignment); compare render/tiles.ts:L43, where the door panel stroke sets alignment: 1 explicitly · The fix for R2-F1 leaves the one stroked effect half an art pixel off the grid. The test that should catch this checks the wrong quantity, so the miss would ship silently. · Give the alignment in the spec: 'a 2-unit stroke with alignment 1 (inside) on the rect at offset −2, covering −2..0 outside the tile', or a centred stroke on a rect at offset −1. Have the test check the painted band (rect offset adjusted by alignment × width), not just the path rect.
+
+### [P3] R3-F2 The door seam is off the grid today and the spec does not say where it moves
+The closed-door seam is {x: HALF − 1, w: 2}, so it starts at 15. The new sweep test over every doorPicture rect will fail on it, but section 4's list (jambs, ticks, seal bar, outline) does not name the seam or say how to re-centre it: 14..16, 16..18, or 4 wide at 14. The spec also says 'the effects' shape helpers', but effects.ts draws every shape inline and has no helpers to test. · render/doorModel.ts:L31 (seam x: HALF − 1); spec L58 (list of door parts; 'the effects' shape helpers'); render/effects.ts:L70, L79, L94, L103, L116 (inline Graphics calls) · These are small choices, but fresh subagents would each make them differently. · Add the seam to the list, for example 'seam 2 wide at x = HALF (the right panel's edge)'. Name the pure helpers the plan extracts from effects.ts (for example fireFallbackRect, breachRect, ventSpeckRect, failedRect, airlockOutlineRect) and say the vent speck centre is rounded to an even world unit.
+
+## Prior findings
+- R1-F5: resolved — PANEL_THICK 12 / BAND 10 sums to TILE_PX. The quantised slide w = 2·round(HALF(1−p)/2) is even in 0..16, so both the panel at 0 and the panel at T − w sit on even x, and stripes at r.x + 4 step 6 stay even. Jambs, ticks, bar and outline stroke are required even. The sweep test over progress, looks and slides covers the continuous case. The remaining seam detail is noted as a P3.
+- R2-F1: resolved — The role list now covers doorSealed, heldTick, spaceGap, fireFallback, breach, airlockOutline, ventSpeck, failed, lowO2 and impact, which matches every literal in doorModel.ts:L5 and effects.ts:L13, L15, L70, L79, L94, L103 and L116. The no-0x grep covers tiles.ts:L13 (FLOOR, WALL) as well. The even-grid rule is extended to effects. The new stroke-alignment gap is raised separately.
+
+## Verified
+- doorModel.ts:L8: PANEL_THICK = round(32/3) = 11 and BAND = floor(21/2) = 10 today, so spec L58's 'today they are 11 and 10' is correct, and 12 + 10 + 10 = 32
+- doorModel.ts:L23-24: the quantised w is even and always ≥ 2 when non-zero, so the existing w ≥ 0.5 guard still works
+- doorModel.ts:L34: stripes start at r.x + 4, step 6, are 2 wide, at y r.y + 2 with h r.h − 4 = 8. All even once panels are even
+- tiles.ts:L43: the panel outline is already an inside stroke (alignment 1), so an even width keeps it on the grid
+- Every 0x literal in tiles.ts, doorModel.ts and effects.ts maps to a role in spec L60's list
+- enemyWindow.ts:L13 imports DOOR_FILL and DOOR_OUTLINE (tactical view, out of scope). The exports can stay as role reads without a 0x literal, so there is no conflict
+
+## Not verified
+- Whether wallModel.ts has any 0x literals or odd rects beyond those cited in round 1 (not re-read; outside the diff)
+- Whether duel/interiorView.ts draws doors or effects through other code paths that the grep test and even-grid tests would miss (not read this round)
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `1e285dc`. 2 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F5 and R2-F1 as resolved.
+
+## R3-F1 [P2]: The 2-unit airlock outline at offset −2 lands on odd world units
+
+Confirmed. effects.ts:L94 strokes with no alignment, while tiles.ts:L43 sets `alignment: 1` explicitly. Section 4 now specifies alignment 1 (inside) on the rectangle at offset −2, so the stroke paints −2..0, and the test checks the painted band rather than the path.
+
+## R3-F2 [P3]: The door seam is off the grid and the effects have no helpers
+
+Confirmed. doorModel.ts:L31 has the seam at x = HALF − 1, and effects.ts draws every shape inline. Section 4 puts the seam 2 wide at x = HALF, names the pure helpers the plan extracts (fireFallbackRect, breachRect, ventSpeckRect, failedRect, airlockOutlineBand), and rounds the vent speck centre to an even world unit.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-16-art-i-demo-polish-design.md
+
+<!-- end -->
+
+---
+
