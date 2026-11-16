@@ -72,3 +72,36 @@ The check catches real changes: an extra `alarm` cue failed at `golden[2]`, and 
 
 ---
 
+# Round 2 (delta, reviewing 458f03e, effort medium, 100 s, 516228 in / 438528 cached / 4345 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — R-1a requires R-0 and checks for `same` before starting (plan L23, L31, L108-L111). R-0 specifies that mode (R-0 plan L626-L629, L645).
+- R1-F2: resolved — The factory rejects mismatched IDs, and the test uses matching `sector-copy` rules and checks the replay mode (plan L4271-L4275, L4305-L4312, L4407-L4410).
+- R1-F3: resolved — Task 1 records a pre-refactor boundary trace; Task 3 compares it after the refactor (plan L113-L115, L198-L255, L4559-L4560). It covers results, events, publications, checkpoints, replays, lease behavior, and a crash record.
+
+## Verified
+- The trace masks the content digest when hashing checkpoint and replay data (plan L141-L144); snapshots store that digest in their header (src/renderer/src/sim/snapshot.ts:L23-L28). Its baseline path is ignored by Git.
+- Recent netcode review commit 3f6a38b changes `src/main/network/onlinePeers.ts` and `onlineSession.ts`, outside R-1a’s edit list. Earlier netcode commits touched `authority/core.ts` and `network/modes/sector.ts`, which R-1a Task 1 and Task 3 replace (plan L91-L92, L4480-L4481); those merged changes are the source this plan must preserve.
+
+## Not verified
+- No tests or build gates were run in this read-only review. R-0 is specified as a prerequisite but is not merged in this checkout, so the new trace cannot be executed here.
+- Future edits by the active netcode session could not be predicted from the commit log.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. No new findings. Codex confirmed R1-F1 to R1-F3 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
