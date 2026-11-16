@@ -96,6 +96,9 @@ describe('the duel snapshot (spec §6)', () => {
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST)).toThrow(/presence|repair/);
       }
       expect(created).not.toHaveBeenCalled();
+      // Positive control: the spy does intercept snapshot.ts's createDuel, so the assertion above can fail.
+      disposeDuel(loadDuelSnapshot(CUTTER, good, DIGEST));
+      expect(created).toHaveBeenCalledTimes(1);
       created.mockRestore();
     } finally { disposeDuel(d); }
   });
