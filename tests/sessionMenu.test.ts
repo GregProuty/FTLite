@@ -18,6 +18,9 @@ it('shows committed receipt age and pending rollback warning with explicit Re-ho
   root.find('rehost')!.fire(); root.find('rehost')!.fire(); expect(rehost).toHaveBeenCalledOnce(); await Promise.resolve(); await Promise.resolve();
   menu.setStatus({ ...status, phase: 'rehosting', actions: ['leave', 'forget-seat'], error: null }); expect(root.find('status')!.textContent).toContain('Restoring');
   menu.setStatus({ ...status, phase: 'paused', error: null }); expect(root.find('status')!.textContent).toContain('Restored at tick 1800'); root.find('pause')!.fire(); expect(pause).toHaveBeenCalledOnce();
+  menu.setStatus({ ...status, phase: 'running', error: null });
+  menu.setStatus({ ...status, phase: 'paused', error: null, mirror: { ...status.mirror, committed: { capturedTick: 2100 } as any } });
+  expect(root.find('status')!.textContent).not.toContain('Restored at tick 2100');
   menu.dispose();
 });
 it('reserves the measured strip height for online and couch, including wrapped controls', () => {

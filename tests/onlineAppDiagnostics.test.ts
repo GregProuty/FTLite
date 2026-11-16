@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -19,6 +20,7 @@ function driver() {
       if(name === 'electron') return {app, BrowserWindow: {}, MessageChannelMain: Channel, utilityProcess:{fork:vi.fn()}, ipcMain:new EventEmitter(), powerMonitor:new EventEmitter()};
       if(name === 'node:path') return {resolve,join,sep:process.platform === 'win32' ? '\\' : '/'};
       if(name === 'node:fs') return {readFileSync,writeFileSync:vi.fn()};
+      if(name === 'node:crypto') return {createHash};
       if(name === './rtc-smoke-native.cjs') return ()=>{};
       if(name === '../../out/main/index.js') return {};
       throw Error('unexpected test import');

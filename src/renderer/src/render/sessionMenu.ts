@@ -121,7 +121,7 @@ export function createSessionMenu(deps: MenuDeps) {
   render();
   return {
     reservedHeight() { return page === 'couch' || page === 'session' && hadView ? root.offsetHeight : 0; },
-    setStatus(next: OnlineStatus) { status = next; receiptAt = performance.now(); if (['saved', 'rehosting', 'reconnecting'].includes(next.phase)) recovering = true; if (next.phase === 'idle') recovering = false; if (next.attachmentEpoch > 0) hadView = true; if (page !== 'couch' && next.phase !== 'idle') page = 'session'; if (next.phase === 'idle' && page === 'session' && !pending && !hadView) page = 'home'; render(); },
+    setStatus(next: OnlineStatus) { status = next; receiptAt = performance.now(); if (['saved', 'rehosting', 'reconnecting'].includes(next.phase)) recovering = true; if (next.phase === 'idle' || next.phase === 'running') recovering = false; if (next.attachmentEpoch > 0) hadView = true; if (page !== 'couch' && next.phase !== 'idle') page = 'session'; if (next.phase === 'idle' && page === 'session' && !pending && !hadView) page = 'home'; render(); },
     home() { if (!status || status.phase === 'idle' || status.phase === 'error') { deps.home?.(); hadView = false; page = 'home'; localError = ''; render(); } },
     frame(_monotonicNow?: number) { updateReceipt(); if (countdown && status?.retryAtMs !== null && status?.retryAtMs !== undefined) countdown.textContent = `Retrying saved seat in ${Math.max(0, Math.ceil((status.retryAtMs - Date.now()) / 1000))}s…`; },
     dispose() { disposed = true; root.replaceChildren(); deps.inputBlocked(true); }

@@ -4,6 +4,7 @@ const { app, BrowserWindow, utilityProcess, ipcMain, powerMonitor } = electron;
 process.on('uncaughtException',()=>{console.error('APP_DRIVER_UNCAUGHT');app.exit(1);});
 const { resolve, join, sep } = require('node:path');
 const { readFileSync, writeFileSync } = require('node:fs');
+const { createHash } = require('node:crypto');
 const observeNative = require('./rtc-smoke-native.cjs');
 const directory = app.commandLine.getSwitchValue('online-app-dir');
 const role = app.commandLine.getSwitchValue('online-app-role');
@@ -17,6 +18,31 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const windows = [], utilities = [], channels = [], nativeClosed = new Map();
 const mirrorReceipts = [];
+const recovery = { gets: [], puts: [], restores: [], captures: [], phases: [], invalidations: [], heldUploads: 0 };
+let holdUploads = false, holdRestore = false, restoreRelease, blockNextGrant = false;
+const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+function checkpointProof(bytes) {
+  const b = Buffer.from(bytes), cp = JSON.parse(b.toString());
+  return { payloadSha256: hash(b), runId: cp.init.runId, tick: cp.snapshot.header.tick, phase: cp.phase,
+    commandHighWater: cp.commandHighWater, heldHighWater: cp.heldHighWater, botMemoryHash: hash(JSON.stringify(cp.botControllers)), snapshotHash: hash(JSON.stringify(cp.snapshot)) };
+}
+const nativeFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  const checkpoint = new URL(url).pathname.endsWith('/checkpoint');
+  if (checkpoint && init?.method === 'PUT' && holdUploads) {
+    recovery.heldUploads++; recovery.pending = checkpointProof(init.body);
+    await new Promise((_, reject) => { const abort = () => reject(Error('held-upload-aborted')); if(init.signal?.aborted) abort(); else init.signal?.addEventListener('abort', abort, { once: true }); });
+  }
+  const response = await nativeFetch(url, init);
+  if (checkpoint && response.ok) {
+    if(init?.method === 'PUT') recovery.puts.push(checkpointProof(init.body));
+    else {
+      const proof = checkpointProof(await response.clone().arrayBuffer()); recovery.gets.push(proof);
+      if(holdRestore) { holdRestore=false; await new Promise(done => { restoreRelease=done; }); }
+    }
+  }
+  return response;
+};
 let visible, stopping = false, delayNextTransport = false;
 const originalChannel = electron.MessageChannelMain;
 // Electron exports nonconfigurable constructors. Observe the native port methods
@@ -35,23 +61,38 @@ for(const method of ['start','postMessage','close']) {
 function transferred(ports) { for (const port of ports ?? []) track(port).released=true; }
 const fork = utilityProcess.fork;
 utilityProcess.fork = (...args) => {
+  if(app.commandLine.hasSwitch('recovery-observe-utility')) args=[resolve(__dirname,'online-recovery-utility.cjs'),[join(directory,'observer/utility.cjs'),join(directory,`${role}-utility-${utilities.length}.json`),args[0]],args[2]];
   const child = fork(...args), record = { child, exited: false, pid: null, producerChanges: [] }; utilities.push(record);
   child.once('spawn', () => { record.pid = child.pid; });
   child.once('exit', () => { record.exited = true; });
   child.on('message', message => {
     if (message?.kind !== 'checkpoint') return;
     const candidate = message.candidate;
+    if(candidate?.bytes) { recovery.captures.push({ cause: candidate.cause, ...checkpointProof(candidate.bytes) }); if(recovery.captures.length>64) recovery.captures.shift(); }
     if (candidate?.cause === 'initial' && candidate.capturedTick === 0) record.initialCaptureTick = 0;
     if (candidate?.cause === 'periodic' && candidate.capturedTick === 300) record.periodicCapturedTick = 300;
   });
   const post = child.postMessage.bind(child);
   child.postMessage = (message, ports) => {
-    if (message?.kind === 'initialize') record.runId = message.sessionLease?.runId;
+    const delayedGrant=message?.kind === 'lease-grant' && blockNextGrant;
+    if(message?.kind === 'lease-grant' && blockNextGrant) {
+      blockNextGrant=false; const started=performance.now();
+      writeFileSync(join(directory,`${role}-block.json`),JSON.stringify({startedEpochMs:Date.now(),pid:process.pid,utilityPid:record.pid,lastPut:recovery.puts.at(-1)}));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,25000);
+      recovery.mainBlockedMs=performance.now()-started;
+    }
+    if (message?.kind === 'initialize') { record.runId = message.sessionLease?.runId; record.utilityEpoch = message.sessionLease?.utilityEpoch; record.hostGeneration = message.hostGeneration; }
+    if (message?.kind === 'command' && message.command?.kind === 'restore') recovery.restores.push(checkpointProof(message.command.checkpointBytes));
+    if (message?.kind === 'lease-invalidate') recovery.invalidations.push(message.reason);
     if (message?.kind === 'bootstrap-complete') record.bootstrapAfterCommit = record.initialCaptureTick === 0
       && mirrorReceipts.some(m => m.runId === record.runId && m.capturedTick === 0);
     // Only lifecycle kind and logical seat, never credentials or payload bytes.
     if (message?.kind === 'command') record.producerChanges.push({ kind: message.command?.kind, seatId: message.command?.seatId, player: message.command?.player, human: message.command?.human });
-    const result=post(message, ports);transferred(ports);return result;
+    const result=post(message, ports);transferred(ports);
+    // Keep main's queued timeout/teardown callbacks blocked until the old utility
+    // has independently examined the deliberately late real-service reply.
+    if(delayedGrant) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,500);
+    return result;
   };
   return child;
 };
@@ -62,6 +103,7 @@ app.on('browser-window-created', (_, window) => {
     const send = window.webContents.send.bind(window.webContents);
     window.webContents.send = (channel, value) => {
       const m = channel === 'online:status' && value?.status?.mirror?.committed;
+      if(channel === 'online:status' && recovery.phases.at(-1) !== value?.status?.phase) recovery.phases.push(value.status.phase);
       if (m && !mirrorReceipts.some(old => old.runId === m.runId && old.hostGeneration === m.hostGeneration && old.checkpointSequence === m.checkpointSequence)) {
         mirrorReceipts.push({ runId: m.runId, hostGeneration: m.hostGeneration, checkpointSequence: m.checkpointSequence, capturedTick: m.capturedTick, payloadSha256: m.payloadSha256 });
         if (mirrorReceipts.length > 64) mirrorReceipts.shift();
@@ -113,7 +155,12 @@ async function click(id) {
 async function command(message) {
   switch (message.command) {
     case 'status': return { ...await js(`(async () => ({status:(await window.ftlite.online.readStatus()).status, observations:window.onlineAppObservation(), keys:window.onlineAppKeys, text:document.body.innerText, hidden:document.hidden, focused:document.hasFocus()}))()`),electron:process.versions.electron,
-      mirrorProof: { receipts: mirrorReceipts, utilities: utilities.map(({ runId, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit }) => ({ runId, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit })) } };
+      recovery, mirrorProof: { receipts: mirrorReceipts, utilities: utilities.map(({ runId, utilityEpoch, hostGeneration, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit }) => ({ runId, utilityEpoch, hostGeneration, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit })) } };
+    case 'hold-upload': holdUploads=true; return true;
+    case 'block-next-grant': blockNextGrant=true; return true;
+    case 'hold-restore': holdRestore=true; return true;
+    case 'release-restore': restoreRelease?.(); return true;
+    case 'suspend-hook': powerMonitor.emit('suspend'); return true;
     case 'resize': {
       if (![[1280,720],[640,480]].some(([w,h]) => message.width === w && message.height === h)) throw Error('invalid test size');
       // Native stress viewport below the ordinary app minimum; production sizing
@@ -139,6 +186,8 @@ async function command(message) {
       windows: windows.filter(r => !r.closed).length, ports: channels.filter(r => !r.released).length,
       native: await Promise.all(windows.filter(r => r.hidden && !r.closed).map(async r => { const value=await r.window.webContents.executeJavaScript('window.rtcNative.status()');nativeClosed.set(r,value);return value; })),
       listeners: ['net:rtc-response','net:transport-ready'].reduce((n,k)=>n+ipcMain.listenerCount(k),0) };
+    case 'resource-counts': return {utilities:utilities.map(r=>({pid:r.pid,exited:r.exited})),windows:windows.filter(r=>!r.closed).length,ports:channels.filter(r=>!r.released).length,
+      listeners:['net:rtc-response','net:transport-ready'].reduce((n,k)=>n+ipcMain.listenerCount(k),0)};
     case 'transport-death': windows.find(r => r.hidden && !r.closed)?.window.destroy(); return true;
     case 'delay-next-transport': delayNextTransport=true; return true;
     case 'shutdown': {
@@ -165,7 +214,7 @@ async function command(message) {
 // Hold the wrapper alive long enough to report actual utility exits at shutdown.
 app.on('window-all-closed', event => { if (stopping) event?.preventDefault?.(); });
 app.on('before-quit', event => { if(stopping) event.preventDefault(); });
-const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','resize','layout','screenshot','resources','transport-death','delay-next-transport','shutdown']);
+const diagnosticCommands=new Set(['status','click','type','capacity','key','focus','blur','resize','layout','screenshot','resources','resource-counts','transport-death','delay-next-transport','shutdown','hold-upload','hold-restore','release-restore','block-next-grant','suspend-hook']);
 process.on('message', message => { void command(message).then(result => { if(message.command!=='shutdown') process.send?.({id:message.requestId,result}); })
   .catch(() => process.send?.({id:Number.isSafeInteger(message?.requestId)?message.requestId:0,error:'app-driver-command-failed',
     command:diagnosticCommands.has(message?.command)?message.command:'unknown'})); });

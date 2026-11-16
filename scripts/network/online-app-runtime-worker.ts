@@ -30,6 +30,8 @@ const startup = (async () => {
   if (hang === 'observer-build') await unresolved();
   await build({ configFile: false, envDir: false, logLevel: 'warn', define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(digest) },
     build: { outDir: join(directory, 'observer'), emptyOutDir: false, lib: { entry: resolve('scripts/network/online-app-observer.ts'), name: 'OnlineObserver', formats: ['iife'], fileName: () => 'observer.js' } } });
+  await build({ configFile:false, envDir:false, logLevel:'warn', define:{ __GAMEPLAY_CONTENT_DIGEST__:JSON.stringify(digest) },
+    build:{ outDir:join(directory,'observer'),emptyOutDir:false,target:'node22',lib:{entry:resolve('scripts/network/online-recovery-utility.ts'),formats:['cjs'],fileName:()=>'utility.cjs'},rollupOptions:{external:['node:fs']} } });
   send({ type: 'stage', stage: 'ready' });
   send({ type: 'ready', baseUrl: runtime.baseUrl, workerdVersion: runtime.workerdVersion });
 })();
