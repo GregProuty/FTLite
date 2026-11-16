@@ -8,7 +8,8 @@
 //   historical oracle and is never written: `npm run bless -- --baseline` only checks it and writes nothing.
 //   tests/fixtures/net1a-gates.json is never written.
 import { computeContentDigest } from '../build/contentDigest';
-import { writeFileSync, mkdirSync, existsSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { basicVersionFromText, duelVersionFromText, readStoredVersion } from './golden/storedVersion';
 import { blessRefusal, writeAllOrNothing } from './golden/blessGuard';
 import { verifyVersionOnly } from './golden/versionOnly';
 import { checkNet1aBaseline } from './golden/baselineCheck';
@@ -29,14 +30,7 @@ if (process.argv.includes('--baseline')) {
   process.exit(0);
 }
 
-/** basic.json is large; its simVersion is in the first bytes. */
-function basicVersion(): number | undefined {
-  if (!existsSync(BASIC)) return undefined;
-  const fd = openSync(BASIC, 'r'), buf = Buffer.alloc(4096);
-  try { return Number(/"simVersion":(\d+)/.exec(buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)))?.[1] ?? NaN) || undefined; } finally { closeSync(fd); }
-}
-const duelVersion = (): number | undefined => existsSync(DUEL_GOLDEN) ? (JSON.parse(readFileSync(DUEL_GOLDEN, 'utf8')) as { simVersion: number }).simVersion : undefined;
-const stored = [basicVersion(), duelVersion(), existsSync(DETERMINISM_FIXTURE) ? storedFixtureVersion() : undefined];
+const stored = [readStoredVersion(BASIC, basicVersionFromText), readStoredVersion(DUEL_GOLDEN, duelVersionFromText), existsSync(DETERMINISM_FIXTURE) ? storedFixtureVersion() : undefined];
 const refusal = blessRefusal({ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly });
 if (refusal) { console.error(refusal); process.exit(1); }
 

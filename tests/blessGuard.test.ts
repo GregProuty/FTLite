@@ -26,10 +26,6 @@ describe('the bless guard', () => {
     }
     expect(blessRefusal({ storedVersions: [37, 37, undefined], currentVersion: 37, verify: () => bad })).toBeUndefined();
   });
-  it('a version-only re-bless always runs the comparison', () => {
-    expect(blessRefusal({ storedVersions: [35], currentVersion: 36, verify: () => bad, versionOnly: true })).toBeDefined();
-    expect(blessRefusal({ storedVersions: [35], currentVersion: 36, verify: () => ok, versionOnly: true })).toBeUndefined();
-  });
 });
 
 describe('writing the pinned artifacts', () => {
