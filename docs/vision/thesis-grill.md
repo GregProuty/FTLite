@@ -298,6 +298,8 @@ Implications:
 - PvP means rival crews must not receive each other's private state (ship interiors, random-number streams). Publication needs per-crew projections, not one full-state broadcast to everyone.
 - Players are not ship seats: a crew table per ship, with player, bot or NPC controllers, and the session mapping players to crew.
 
+**Amended (owner, 2026-11-15):** "lets keep pvp out of scope for now". Several ships and a capital ship stay in scope as co-op. Rival crews, and the per-crew projections they need, are deferred.
+
 ## Q29. Is the gravity-well fight the combat for the whole game?
 
 **Owner answer (2026-11-15):** "The gravity well is now the combat, but the players will be able to lock on to the enemy ship for the FTL view." **Answer: yes.** The tactical sim owns space (positions, arcs, missiles). Locking on to a target opens an FTL-style side view of that ship.

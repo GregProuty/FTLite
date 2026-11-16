@@ -1,12 +1,17 @@
 # Engine Refactor: Layers for Outlaw Crew (design)
 
-Status: written 2026-11-15 at the owner's request ("lets wait until the netcode is finished then we can start on the engine refactor, write a spec"). **Nothing in this spec is built until Codex's Net-3 is merged to master.** Choices marked **(rec.)** are Claude's, taken under the standing order; the owner can overturn any of them.
+Status: written 2026-11-15 at the owner's request ("lets wait until the netcode is finished then we can start on the engine refactor, write a spec"). Net-3 merged to master at `a5b772f` (2026-11-15); this spec was then checked against the merged code and corrected (change log). Choices marked **(rec.)** are Claude's, taken under the standing order; the owner can overturn any of them.
 
 Sources:
 - the architecture panel review (six reviewers, 2026-11-15: https://claude.ai/artifact/FWghLqRGR1X16ud5cHJWM6);
 - the owner's answers to the grill, Q28 to Q31, in `docs/vision/thesis-grill.md`;
 - the Outlaw Crew direction, `docs/superpowers/specs/2026-11-13-outlaw-crew-direction.md`;
-- Net-3 as built on branch `codex/net-3`: `src/network/modes/` (`ModeDefinition`, `ModeHost`, registry) and `src/network/state/` (`StateImage`, delta sender).
+- Net-3 as merged on master `a5b772f`:
+  - `src/network/modes/` (`ModeDefinition`, `ModeHost`, registry, the sector mode, `sectorStream`);
+  - `src/network/state/` (`StateImage`, image codec, per-connection sender and receiver);
+  - `src/network/hostRuntime.ts`, `src/utility/authorityHost.ts`, `src/main/network/*`;
+  - `authority/{core,ledger,checkpoint}.ts`.
+- **Content digest.** It now covers `authority/`, `network/{modes,state,rtc,session}`, `clientRun.ts`, the codec, `receivePolicy` and the shared session files (`build/contentDigest.ts:12-16`). Every R-1 edit therefore changes room compatibility and invalidates saved online mirrors. Goldens are unaffected because `golden.test.ts` re-stamps the digest.
 
 ## 1. Why
 
@@ -25,7 +30,7 @@ FTLite's foundation is right: a deterministic fixed-tick sim, owned random strea
 **The duel works around all of this by hand.** It hand-picks interior fields to hash (`sim/duel/hash.ts`), duplicates the scratch reset, fakes a sector envelope (`runId: 'duel'`), and keeps its own result types.
 
 The owner's answers make the wider structure necessary:
-- **Q28:** 16 players means one capital ship *or* several ships, *including PvP*.
+- **Q28:** 16 players means one capital ship *or* several ships, *including PvP* (PvP amended to out of scope for now, 2026-11-15).
 - **Q29:** the gravity-well fight is *the* combat, and locking on to a target opens an FTL-style view of that ship.
 - **Q30:** players can move between ships.
 
@@ -34,7 +39,7 @@ None of these fit one ship per run with crew indexed by seat.
 ## 2. Goals and non-goals
 
 **Goals**
-1. An encounter holds **N ships** (capital ship, convoy, PvP), each a full ship state with an interior, flown by a human crew, the hunter AI or a bot.
+1. An encounter holds **N ships** (capital ship, convoy; PvP later), each a full ship state with an interior, flown by a human crew, the hunter AI or a bot.
 2. **People are separate from ships:** a crew table per ship with a controller (player, bot or NPC), so crew can board and transfer.
 3. **One combat model** (Q29): space and the ships' systems are shared by the tactical layer and the interiors, and the FTL lock-on view shows a target's real state.
 4. The authority runs any encounter through **one generic core**, inside Net-3's mode layer. There is no mode switch inside the authority.
@@ -105,7 +110,7 @@ Encounter   the live 60 Hz scene                                hashed, snapshot
   Weapons fire at the ship's **locked target**, not at "the other ship". A missile pool replaces one missile per ship, with at most one in flight per ship **(rec.)**, as today.
 - **Definitions, not constants.** `ShipClassDef` (hull, thrust, turn, radius, shields, power, slots, AI profile) and `WeaponDef` (laser, missile) replace the one-off constants in `sim/tactical/tuning.ts`. Today's numbers become the `cutter` and `hunter` entries, so the change is golden-neutral.
 - **FTL lock-on view.** A seat that locks a target opens an FTL-style side view of the target's ShipState interior (rooms, damage, fires and crew). It is the old enemy window drawn from real state.
-- **PvP visibility** **(rec.)**: a rival crew's interior is only visible through a lock-on, drawn from that crew's projection (§10). It shows room damage and systems, not the rival's random-number state.
+- **PvP visibility** **(rec.; deferred with PvP)**: a rival crew's interior is only visible through a lock-on, drawn from that crew's projection (§10). It shows room damage and systems, not the rival's random-number state.
 - **The sector game's scalar enemy** (`sim/enemy.ts`, `state.enemy`) is not used by the new encounters. It stays only in the frozen legacy sector run (§9).
 
 ## 6. Modules and the generic authority
@@ -135,27 +140,48 @@ interface SimModule<S, C> {
 **Generic authority.** `createAuthority` takes a rules object instead of importing the sector sim:
 
 ```ts
-interface EncounterRules<State, Init> {
+interface EncounterRules<State, Init, ControllerMemory> {
   create(init: Init): State;
+  dispose(state: State): void;                            // today: disposeSimState
+  assertLive(state: State): void;                         // today: assertSimStateLive
+  playerCount(state: State): number;
   step(state: State, input: FrozenTickInput): CommandResult[];
-  snapshot(state: State): Snapshot;  restore(snapshot: Snapshot): State;
-  hash(state: State): string;
-  validateCommand(state: State, envelope: CommandEnvelope): CommandReason | null;
+  terminal(state: State): { ended: boolean; endRecord?: unknown };  // today: state.ended + telemetryRecord on end
+  safePointKey(state: State): string;                      // today: visitRef, for safe-point checkpoint captures
+  callouts(state: State, player: number): Callout | null;  // today: calloutFor + the crew-dead check
   cues(prev: CueBaseline, state: State): Cue[];
+  snapshot(state: State, contentDigest: string): Snapshot;  restore(snapshot: Snapshot): State;
+  hash(state: State): string;
+  validateCheckpoint(bytes: unknown, contentDigest: string): Checkpoint<Init, ControllerMemory>;
+  commandCodec: CommandCodec;                               // validates envelopes for the ledger (see Commands)
 }
 ```
+
+Every call `authority/core.ts` makes into sector code today goes through one of these hooks: `visitRef` (`core.ts:118,124`), `calloutFor` (`:292-294`), `telemetryRecord` (`:437`), `state.ended`, `playerCount` and `layout` (`:44,164`), `assertSimStateLive` and `disposeSimState` (`:37,612`), and `saveSnapshot`. Bot controller memory (today the sector `CardUiState[]` in the checkpoint) becomes an opaque per-mode `ControllerMemory` blob that the mode's checkpoint validator checks.
 
 The ledger, tick driver, journal, checkpoint cadence and publication stay as they are, with Net-3's input-tick window and delta sender.
 
 **Lifecycle and the adapter to Net-3's modes** (delivered in R-1):
-- **The generic authority.** `createEncounterAuthority(rules, deps)` returns `{ start(init), restore(checkpoint), attach(link, players, policy, options), checkpoint(), pause(control), pump(), dispose() }`. That is the same lifecycle as today's sector `Authority`, with sector types replaced by the rules' `Init` and `State`.
+- **The generic authority.** `createEncounterAuthority(rules, deps)` exposes exactly the merged `Authority` surface (`authority/authority.ts:47-55`), generic over the rules: `start`, `restore`, `attach`, `checkpoint`, `requestCheckpoint`, `completeBootstrap`, `replay`, `pump`, `dispose`.
+  - Its deps are the merged ones, unchanged: `contentDigest`, clock, scheduler, `onCrash`, `onCheckpoint`, the **session lease gate** (bootstrap pause, fence, `resetPausedEpoch`; `core.ts:60-62,213-224`), the producer hooks (`beforeControls`, `beforeTick`, `botControllers`) and `bindLifecyclePause`. Pause stays injected (`sector.ts:53,86`), not a method.
+  - The replay V2/V3/V4 frame semantics (fence, watchdog, seal) are preserved exactly. R-1 runs the cross-engine determinism check and the native host gates on every change.
 - **What each mode owns:**
   - the byte codecs for its init and checkpoint (validate, decode, encode, within Net-3's payload bounds);
   - attachment validation (which player ids are legal);
   - its producers (bots, and the local input hooks);
   - its stream publication adapter (the equivalent of `sectorStream`), which turns a published state into Net-3 `StateImage`s.
-- **The mode factory.** A small `defineEncounterMode({ modeId, schemaVersion, rules, codecs, producers, publication })` builds a Net-3 `ModeDefinition` with the `ModeHost` lifecycle (start, restore, attach, checkpoint, pause, dispose). `modes/sector.ts` is rewritten as one call to it.
-- **R-1 acceptance:** for both sector and duel, start → checkpoint → restore round trips reproduce identical hashes, and attach/detach works over loopback and over Net-3.
+- **The mode factory.** A small `defineEncounterMode({ modeId, schemaVersion, rules, codecs, producers, publication })` builds a Net-3 `ModeDefinition` whose `ModeHost` has the merged lifecycle (`src/network/modes/contracts.ts:8-17`):
+  - `start(bytes)`, `restore(bytes)`, `completeBootstrap()`, `attach`;
+  - async `captureCheckpoint(cause): Promise<ModeCheckpoint>`;
+  - `pause(reason: string)`, `dispose`.
+
+  It also keeps the sector host's behaviour: it refuses to replace itself while anything is attached, and it caches checkpoint candidates and crash checkpoints (`sector.ts:35-52`). `modes/sector.ts` is rewritten as one call to it.
+- **The duel needs a snapshot format (an R-1 deliverable).** Today the duel has `cloneTactical` but no serialisation: nothing restores tactical or duel state. R-1 adds a duel snapshot codec (flatten and unflatten for space, the interior, presence and repair) and a duel checkpoint schema, within `MAX_HOST_BYTES` (256 KiB, `shared/netSession.ts:3`).
+- **R-1 acceptance:**
+  - For both sector and duel, start → captureCheckpoint → restore round trips reproduce identical hashes, at the utility and `hostRuntime` level. This is the same level as Net-3's `host-smoke` gate: registering the duel mode in `authorityHost.ts` and driving it through `hostRuntime` over loopback.
+  - Attach and detach work over loopback.
+  - The online duel UI and session are **not** part of R-1. Only the sector mode is wired through main and the renderer today (`authorityHost.ts:11`; `main/network/onlineSector.ts`; renderer `app/onlineSession.ts:5,85`; `RoomCompatibility` needs a sector `layoutHash`). That wiring belongs to H-2.
+  - A utility's mode identity is fixed at `initialize`, and a room's mode at creation (`utilityHost.ts:77-81`). Switching encounter kinds therefore means a new host generation and a new room.
 
 **This plugs into Net-3, it doesn't replace it:**
 - Each `ModeDefinition` (`src/network/modes/contracts.ts`) wraps one `EncounterRules`, the way `modes/sector.ts` wraps the sector authority today.
@@ -163,8 +189,14 @@ The ledger, tick driver, journal, checkpoint cadence and publication stay as the
 
 **Commands.**
 - One namespaced command union: each module owns its kinds.
-- One `CommandResult` type for everything. The duel's `DuelResult` and `DuelReason` merge into it.
-- Reasons are the shared base list plus the reasons each module declares.
+- **The ledger takes the mode's command codec** **(rec.)** instead of importing the sector message codec (`ledger.ts:1`). An envelope that fails the mode's codec is rejected `malformed`, as today.
+- **One `CommandResult` type for everything.**
+  - The duel's `DuelResult` and `DuelReason` merge into it.
+  - It keeps today's statuses, including `already-processed`.
+  - It keeps the wire-only `admission { expectedSequence, disposition }` that `commandOutbox.ts:47-51` depends on, which must never enter the ledger's result cache (`ledger.ts`).
+  - The duel envelope gains the `runId` the shared envelope has (`sim/duel/commands.ts:13`).
+- **Reasons** are the shared base list plus the reasons each module declares. `COMMAND_REASONS` is a closed `z.enum` inside the result schema (`net/codec.ts:61-63`), so the duel's `not-in-duel`, `not-at-weapons` and `missile-in-flight` join that enum in R-1.
+- **There is no pre-step command validator today.** Validation happens inside the step, so `EncounterRules` adds none. Admission checks stay in the ledger, and rule checks stay in `step`.
 - Every command carries the target `ship` where it applies. Direction amendment 8 already allows this addition.
 
 ## 7. Hashing and the goldens
@@ -216,7 +248,8 @@ Only then is the new schema blessed, as a `SIM_VERSION` bump.
 ## 10. Networking integration (after Net-3)
 
 - **Partitions in the state image.** An encounter's `StateImage` (`src/network/state/imageCodec.ts`) carries the encounter as ordered partitions: `space`, then `ship:<k>` for each ship, then `director`. Each partition has its own offset, which the image metadata records. Deltas keep working because the image length is fixed by capacities, not occupancy.
-- **Per-crew projections for PvP (Q28)** **(rec.)**:
+- **PvP is out of scope for now** (owner, 2026-11-15: "lets keep pvp out of scope for now"). Everything from here to the end of the visibility policy below is kept as design notes for when PvP returns; it is not built. Co-op crews, on one capital ship or several ships, all see the full state as they do today.
+- **Per-crew projections for PvP (Q28)** **(rec.; deferred with PvP)**:
   - **Layout.** Every projection image has the same fixed layout:
     - a projection header;
     - the **projected `space` partition**: the map, every ship's kinematics, and the missile pool (per slot: an `active` flag, then position, velocity, heading, owner and age; every field 0 when the slot is empty). Per-ship AI controller rows (the hunter's mode, target, timers and random state) are redacted to 0 for every ship the recipient does not control. Only the host sees them;
@@ -225,21 +258,38 @@ Only then is the new schema blessed, as a `SIM_VERSION` bump.
     The interior block holds that ship's interior without its random-number state. It is filled for the recipient's own ship and for a locked target, and otherwise holds the redaction value 0 with a per-slot `visible = 0` flag.
   - **Length never changes.** Because the length is fixed by capacity, acquiring or losing a lock-on, or transferring between ships, changes values only. Deltas against the last acknowledged baseline keep working.
   - **Header.** The projection header carries only the projection id, encounter tick, slot visibility flags and the **projection hash**: a hash the host computes over the projected values. It carries no random-number state, full-state fields or full-state hash.
+  - **What changes in Net-3's stream.** Today each image's metadata is the whole `PublishedState` minus its values (`sectorStream.ts:36`): the full-state `hash`, every player's command and held high-water marks, and `pauseOwner`. Clients reject an image unless its `hash` equals `hashF64(values)` and it passes `validateSnapshot` against the layout (`sectorStream.ts:28-29`). R-6 therefore needs:
+    - new projected-image metadata: the projection header, plus only the recipient's own high-water marks;
+    - a new client acceptance path that checks the projection hash and the projection manifest.
+
+    The stream epoch (from runId, layout, `controlRevision` and phase, `sectorStream.ts:23-25`) must not include projection fields, so a lock-on never forces a full image.
   - **Desync checks.** Clients check the projection hash, and each Net-3 image carries its own projection manifest version. Full-state hashes and desync diagnostics stay on the host.
-  - **Sharing and cost.** Co-op crews on one ship share one projection. The sender encodes once per distinct projection, not per player, which changes Net-3's sender from "one image to all connections" to "one image per projection".
+  - **Sharing and cost.** Today each streamed connection already has its own `createStateSender` and runs `publicationToImage` itself (`sectorStream.ts:76-125`); the core hands each binding its own cloned publication (`core.ts:274`). Projections fit that model: each connection's encoder takes its crew's projection. Encoding once per projection is an optimisation, a projection-keyed image cache shared by connections. Delta baselines stay per connection, by design (`sender.ts:21-27`).
   - **Visibility changes are tested:** acquire lock-on, lose lock-on, transfer between ships, and a rival ship destroyed.
 - **One per-recipient visibility policy** **(rec.)** governs every path information can take to a connection:
   - state images and their metadata;
-  - authority events and cues (an event naming a private interior goes only to recipients who can see that interior);
+  - authority events and cues. Today `emit` broadcasts every event to every binding (`core.ts:287`), so the policy filters at `emit`, not only at the stream. An event naming a private interior goes only to recipients who can see that interior;
   - command results (to their owner only, as today);
   - notifications;
-  - checkpoints (host-only, never sent to clients in PvP);
+  - checkpoints (see below);
   - flight-recorder and history exports (host-side; an export for a player applies that player's projection).
+- **Checkpoints and re-host in PvP are an open design problem for R-6.** Net-3 lets any seat re-host: guests pull and keep the full checkpoint (`main/network/onlineSession.ts:433`, `onlineMirrors.ts`, served by `services/signalling/src/room/checkpoints.ts:43-44`). A full checkpoint holds every rival interior and random stream. R-6 must choose one of:
+  - host-only re-host in PvP rooms;
+  - checkpoints encrypted to the host role;
+  - partitioned per-crew saves that a re-host reassembles.
+
+  Co-op rooms keep today's behaviour.
 - **Public fields are an explicit allowlist, covering the space partition too** **(rec.)**. Space: the map, kinematics and the missile pool, as listed above. A ship: `active`, ship class id, hull, shield layers, room damage levels (one per tactical room), and the kinematics (position, velocity, heading). Nothing else about a ship is public.
 - **The R-6 privacy test inspects every channel.** It records everything a rival connection receives over a scripted PvP fight, including values, metadata, events and notifications. It decodes every partition, the space partition included, and asserts that for any ship whose interior is not visible to that recipient, only allowlisted fields appear. It also asserts that no AI controller row or random-number state of a ship the recipient does not control appears anywhere.
-- **Seats belong to players, not crew slots.** The seat token and "rejoin your own seat" map to a player id. The Session maps the player to a crew row.
-- **Connections with no crew body stay legal:** spectators, passengers (panel wild card). **Bots** may attach as their own connection.
-- **A bounded history ring:** the authority keeps its rotated 5-second segments (checkpoint plus frames) in a small ring instead of dropping them. That gives a flight recorder, kill-cams and bug reports (panel wild card).
+- **Seats belong to players, not crew slots.** The seat token and "rejoin your own seat" should map to a player id, and the Session maps the player to a crew row. **Today this needs protocol, service and schema work, not just a Session mirror** (R-6 or later):
+  - A seat is `seatId` + `seatGeneration` + token (`seatStore.ts:8-11`), and today seat = player id = crew index (`onlineSession.ts:200,274`).
+  - The player count is fixed at room capacity (`roomSession.ts:109`).
+  - The cap of 4 is hard-coded in `ROOM_MAX_PLAYERS` (`roomSession.ts:4`), `seatId < 4` (`seatStore.ts:42`), the deployed signalling Worker (`services/signalling/src/index.ts:32`, `directory.ts:47`) and `MAX_PLAYERS = 4` (`shared/intent.ts:2`, checkpoint and replay schemas). Raising it means a service redeploy.
+- **Connections with no crew body** (spectators, passengers) are a later protocol change. Today `validPeer` (`hostProcessProtocol.ts:68`), `attachPeer` (`hostRuntime.ts:79`) and the sector attach (`sector.ts:70`) reject zero-player bindings; only `core.attach` accepts one (`core.ts:504`). The service has no spectator identity.
+- **Bots** already attach as their own loopback binding, standing in for a vacant player id (`sectorProducers.ts:34-49,82-85`). Independent bot bindings that don't occupy a player seat come with the seat work above.
+- **A bounded history ring:** the authority keeps its rotated segments (checkpoint plus frames) in a small ring instead of dropping them. That gives a flight recorder, kill-cams and bug reports (panel wild card).
+  - Segments are about 5 seconds: they rotate at `tick % 300`, and earlier when controls reach 256 or frames exceed 4,096 (`core.ts:413,441,460`). Today `resetBaseline` drops `frames` and `ticks` (`core.ts:243-244`).
+  - Crash diagnostics crossing IPC are capped at 64 KiB / 4,096 nodes, and anything over becomes `null` (`utilityHost.ts:45-66`), so a ring export needs its own bounded channel.
 
 ## 11. Content and tools
 
@@ -264,25 +314,27 @@ Every milestone is a contract change (Q31), so it runs the full spec, review, pl
 
 | # | Milestone | Delivers | Proof |
 |---|---|---|---|
-| R-0 | **Guards** | Merge `hash-completeness`. One bless command for every pinned artifact; retire `net1a-baseline` to `--baseline` | the completeness test fails on an added field; bless regenerates everything |
+| R-0 | **Guards** | Merge `hash-completeness` (it merges cleanly onto `a5b772f`). Its fuller duel hash changes the duel golden, so R-0 bumps `SIM_VERSION` to 37, with the guarded version-only re-bless for the sector goldens and determinism fixture. One bless command for every pinned artifact; retire `net1a-baseline` to `--baseline` | the completeness test fails on an added field; bless regenerates everything |
 | R-1 | **Generic authority** (was H-0c-ii-b) | `EncounterRules`, `createEncounterAuthority` and `defineEncounterMode` (§6 lifecycle); sector rules wrap today's step; the duel as a registered Net-3 mode on the module contract; one command union and result type; the bounded history ring | sector goldens byte-identical; start, checkpoint and restore round trips for sector and duel; the duel runs behind the authority over loopback and Net-3; the module completeness test for the duel |
 | R-2 | **N-ship space + systems record (storage only, rules unchanged)** | ship slots, a missile pool and a target index; one systems record per ship, holding today's duel rules unchanged; `ShipClassDef`/`WeaponDef` | the duel migration oracle (§5): fields, results, events and telemetry per tick, with the version excluded; identical gate outcomes; then a re-blessed duel golden and a version bump |
 | R-2b | **Full interior link** (gameplay) | interior power drives shields and engines; repair acts on the shared systems record | new expected outcomes: gates re-run, duel golden re-blessed, owner playtest |
 | R-3 | **Telemetry and notices out of the hash** | per-tick events; Session telemetry record | the migration proof of §7 (retained fields, results and telemetry equal per tick), then a version bump |
 | R-4 | **ShipState extraction + crew table** | systems take ShipState; legacy SimState wraps one ship; crew table with controllers and the hashed binding (§4); bitECS retired | the pre-refactor oracle of §9: fields, command results, events and bindings per tick |
 | R-5 | **Encounter with ships[]** | an encounter holding 2 to 4 ShipStates; the hunter's ship becomes a real ShipState; boarding moves crew rows; FTL lock-on view | a duel against a full enemy interior; a scripted boarding test |
-| R-6 | **Projections** | fixed-layout per-crew images over Net-3 with the projection header and hash; the per-recipient visibility policy for every channel | the all-channel privacy test of §10; lock-on acquire and loss, and transfer, keep deltas working |
+| R-6 | **Projections** (deferred: PvP is out of scope) | fixed-layout per-crew images over Net-3 with the projection header and hash; the per-recipient visibility policy for every channel | the all-channel privacy test of §10; lock-on acquire and loss, and transfer, keep deltas working |
 | R-7 | **Campaign + save** | Campaign layer, deed log, save format with `saveVersion` and migrations | a save written before a code change loads after it |
 | R-8 | **Content seams** (light) | string ids, `contentRefs` test, station registry, scenario launcher, tuning overrides | adding a console kind touches the registry plus its own files |
 
 R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtest wait on them. R-2b follows H-2, gated by the owner's playtest. R-3 to R-8 follow in order of the game milestones that need them:
 - R-3 before MG-1a;
 - R-4 and R-5 before CB-1;
-- R-6 before PvP;
+- R-6 deferred until PvP returns;
 - R-7 before OW-0;
 - R-8 alongside MG-1b and EV-0.
 
 ## 13. Risks
+
+0. **Version skew with the deployed package.** The deployed Net-3 candidate is SIM 35, master is SIM 36, and R-0 makes it 37. Master builds can't join rooms made by the deployed package, so the owner redeploys a build before the H-2 playtest. Every R-1 edit also changes the content digest (sources, above), which breaks room compatibility with earlier builds.
 
 1. **The refactor eats the time meant for "is it fun?"** Mitigation: R-1 and R-2 are the only steps before H-2, and the owner's playtest gates everything after them. The other steps land just in time for the milestones that need them.
 2. **Equivalence is proved by a mapping that can itself be wrong.** Mitigation: the alias table is generated from the module field declarations plus an explicit rename list, and the check fails on unmapped or duplicate fields. The oracle also compares command results, events and bindings, not only state values, so a wrong mapping that leaves behaviour intact is the only kind that can pass, and that kind is harmless.
@@ -303,3 +355,8 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
 - 2026-11-15: refine round 2: R-2 is a proved schema migration, not byte-identical; migration comparisons exclude the version field and check old + 1; public exterior fields are an explicit allowlist for the privacy test.
 - 2026-11-15: refine round 3: the projected space partition redacts AI controller rows of ships the recipient does not control; the allowlist and privacy test cover the space partition.
 - 2026-11-15: refine round 4: missile pool slots carry an active flag, with all fields 0 when empty, in both the canonical and the projected layout.
+- 2026-11-15: checked against Net-3 as merged (`a5b772f`):
+  - §6: the merged `Authority` and `ModeHost` lifecycle and deps (checkpoint capture, bootstrap, session lease gate, injected pause); `EncounterRules` gains the hooks the core uses today; the mode command codec feeds the ledger; reason enum, `admission` and `runId` notes; a duel snapshot codec as an R-1 deliverable; R-1 is "over Net-3" at the `hostRuntime` level only.
+  - §10: corrected the sender model (already one encoder per connection), image metadata and acceptance, `emit` filtering, checkpoints and re-host in PvP as an open R-6 problem, the seat, zero-body and bot facts, and history segments.
+  - R-0 bumps SIM to 37; risk 0 covers version skew.
+- 2026-11-15: PvP is out of scope for now (owner). R-6 and the projection and visibility design are deferred and kept as notes; co-op multi-ship stays in scope.
