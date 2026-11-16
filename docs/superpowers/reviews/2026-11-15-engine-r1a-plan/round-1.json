@@ -1,0 +1,41 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "The final canonical trace gate cannot run",
+      "claim": "Task 3 invokes an unsupported `same` mode. The available `check` mode also rejects a baseline recorded at the unchanged sim version.",
+      "evidence": "plan L4346-L4349; scripts/golden/canonical-trace.ts:L13-L39; scripts/golden/versionOnly.ts:L73-L76",
+      "why": "The required per-tick preservation gate fails even if the refactor is correct.",
+      "fix": "Add a same-version comparison mode to the trace script and use it in Task 3, or specify another executable comparison against the Task 1 baseline."
+    },
+    {
+      "severity": "P1",
+      "title": "The factory test accepts conflicting mode identities",
+      "claim": "The test registers `sector-copy` with rules whose `modeId` is `sector`; the factory permits that mismatch, while the core labels replays from the rules.",
+      "evidence": "plan L4080-L4083, L4201-L4203, L4267-L4268, L1354; plan L746-L747",
+      "why": "The alternate-mode test passes while its host identity and replay identity disagree, so it does not prove correct mode wiring.",
+      "fix": "Require `options.modeId === rules.modeId` in `defineEncounterMode`; give the test rules a matching mode ID and assert the resulting replay identity."
+    },
+    {
+      "severity": "P1",
+      "title": "The new authority equivalence test compares the core with itself",
+      "claim": "The test compares `createAuthority` with `createEncounterAuthority(sectorRules)`, but the plan implements the former as a direct call to the latter. Its per-tick oracle checks hashes only.",
+      "evidence": "plan L135-L144, L1466-L1467, L55-L57, L4346-L4349; src/renderer/src/authority/core.ts:L416-L444",
+      "why": "A shared regression in admission, lease fencing, checkpoint cadence, or event ordering could satisfy the new equality test without changing a tick hash.",
+      "fix": "Pin a pre-refactor authority boundary trace from master, including results, events, publications, and checkpoints across lease and replay scenarios, and compare the generic core against it."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The plan file matches commit e5aa9cc, and the scoped authority, mode, codec, and session files have no committed changes between e5aa9cc and HEAD.",
+    "The planned sector rule hooks correspond to existing step, snapshot, hash, cue, callout, telemetry, init, and checkpoint helpers: plan L727-L777; src/renderer/src/sim/step.ts:L30; src/renderer/src/authority/checkpoint.ts:L42-L48.",
+    "The planned host lifecycle matches the current ModeHost surface, including synchronous `checkpoint` and async `captureCheckpoint`: plan L4240-L4264; src/network/modes/contracts.ts:L8-L17; src/network/hostRuntime.ts:L18-L25,L65-L71.",
+    "The online renderer ignores the `ended` record payload, while the local session's planned edit unwraps it: src/renderer/src/app/onlineSession.ts:L53-L59; plan L1780-L1787.",
+    "The content digest includes the changed authority, mode, and codec paths: build/contentDigest.ts:L13-L15. Recent netcode review changes are in main networking and renderer main files outside the plan's edit list."
+  ],
+  "not_verified": [
+    "No tests or build gates were run, as requested.",
+    "The stated review run directory and ledger are absent from this read-only checkout and from the cited commit, so earlier round output could not be inspected."
+  ]
+}

@@ -22,6 +22,7 @@
 
 ## Scope
 
+- **Prerequisite: R-0 merged** (`2026-11-16-engine-r0-guards.md`). Task 1 Step 1 stops the plan if R-0's `canonical-trace.ts same` mode is missing.
 - **Task 1:** the generic authority: rules, sector rules, the generic core and authority, the mode codec in the ledger, mode-aware replays, the tagged end record.
 - **Task 2:** one command union and result type: the duel's commands, envelope `runId`, results and reasons join the shared ones.
 - **Task 3:** `defineEncounterMode`; the sector mode as one call; the refactor's gates (canonical trace, host runtime, cross-engine determinism, full suite).
@@ -29,6 +30,7 @@
 
 ## Global Constraints
 
+- **Prerequisite: R-0 is merged** (SIM 37, the one bless command, `canonical-trace.ts same`). Do not start this plan on a checkout without it.
 - Determinism guard (`tests/boundary.test.ts`) scans `sim/`, `authority/`, `net/`, `clientControl/`, `headless/`, `events/` and `src/shared/`: only `Math.abs`, `ceil`, `floor`, `round`, `min`, `max`, `sign`, `imul` and `sqrt`; no platform globals; randomness only through `src/shared/rng.ts`. Files under `sim/` import nothing from `authority/`, `clientControl/`, `app/` or `render/`.
 - The network boundary (`tests/networkBoundary.test.ts`): a file under `src/network/` may import renderer code only if it is a mode file; `modes/encounterMode.ts` joins the sector files on that list.
 - **The sector must not change.** No step of this plan writes `tests/golden/*` or `tests/fixtures/*`, and the existing replay, golden, determinism, ledger, authority and Net-3 tests run unedited, except `tests/netCodec.test.ts` and `tests/sectorStream.test.ts`, whose `ended` events gain the end record's mode tag (spec §6).
@@ -54,7 +56,11 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 8. **The sector core keeps its layout** (found by the prototype): `createAuthorityCore` validated checkpoints against the live state's layout, whatever `resolveLayout` its callers passed (some pass one fixed layout), so its wrapper passes `() => state.layout` to the generic core.
 9. **Replays** (spec §6): `replayMode(value)` is the `mode` field, or `'sector'` when absent; `parseEncounterReplay` refuses a replay whose mode is not the rules' (`replay mode does not match`). The core records `mode` only for a non-sector mode, so sector replays are byte-identical to before. R-1b adds the lookup that picks the rules by mode.
 10. **Where the mode factory lives** **(rec.)**: `src/network/modes/encounterMode.ts`, on the network boundary's list of mode files (it composes the renderer-side authority). Its errors carry the mode id (`sector unavailable`, `invalid sector ownership`, `detach producers before replacing sector`, `sector payload exceeds limit`), so the sector's messages are unchanged. `jsonModeCodecs` is today's sector byte codec over any rules.
-11. **The proof that the sector did not change** **(rec.)**: `canonical-trace.ts baseline` before Task 1 and `same` after Task 3 compare the canonical hash of every tick of the bless replay and all 19 determinism-v2 schedules (115,200 ticks); the goldens and the fixture are compared by the unedited tests and by `git status`; Net-3's `test:host-runtime` and the cross-engine `test:determinism` run at the end.
+11. **The proof that the sector did not change** **(rec.)**: two oracles recorded from the authority as it stands *before* Task 1, and compared after Task 3 (Codex plan review F3: after the refactor `createAuthority` *is* `createEncounterAuthority(sectorRules)`, so comparing the two proves nothing, and the canonical trace sees hashes only).
+    - `canonical-trace.ts baseline` / `same`: the canonical hash of every tick of the bless replay and all 19 determinism-v2 schedules (115,200 ticks).
+    - `authority-trace.ts baseline` / `same` (new, `scripts/golden/authority-trace.ts`, baseline in the git-ignored `out/authority-trace/`): the authority's whole boundary through its public sector entry points, which exist unchanged on both sides. Scenarios: the golden replay through the replay executor (every frame's results, events and outcome); a live host with a strict and a receive-time binding (`setPaused` on and off, a stale tick, a cached duplicate, a conflicting duplicate, a sequence gap, a duplicate while pending, held input, a callout, the 300-tick boundary, a requested capture, a sealed checkpoint, and the V3 replay it recorded, re-run); the session lease gate (bootstrap pause, `completeBootstrap`, a fence while a lifecycle resume is queued, reopening through `resetPausedEpoch`, and the V4 replay that records, re-run); and an injected link failure that produces a crash record. It records every command result (player, sequence, status, reason, admission), every event with its payload, every publication (sequence, tick, channel, phase, hash, pause fields, high-water marks), every checkpoint capture (cause, tick and a hash of the bytes), the crash record's hash, and each replay's version, frame count and re-run hashes. The content digest is masked (it covers the authority's own sources). The prototype proved it bites: an extra `alarm` cue at tick 100 failed at `golden[2]`, and suppressing one player's callouts failed at `live[36]`.
+    - The goldens and the fixture are compared by the unedited tests and by `git status`; Net-3's `test:host-runtime` and the cross-engine `test:determinism` run at the end. The `createAuthority` / `createEncounterAuthority` test stays as a wiring check.
+12. **One mode identity** (Codex plan review F2): `defineEncounterMode` throws unless `options.modeId === rules.modeId`, because Net-3 routes hosts by the option and the core stamps replays with the rules' id. The factory test runs the sector's rules under `sector-copy` with a matching `modeId`, checks its replays say `sector-copy`, and checks a mismatch throws.
 
 ## File structure
 
@@ -73,6 +79,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 | `src/renderer/src/sim/duel/commands.ts`, `sim/duel/step.ts`, `sim/duel/scripted.ts`, `app/duel/runtime.ts` | **Replace:** the duel on the shared command, envelope and result types |
 | `src/network/modes/encounterMode.ts` | **Create:** `defineEncounterMode`, `jsonModeCodecs`, `EncounterProducers`, `StreamBinding` |
 | `src/network/modes/sector.ts` | **Replace:** one `defineEncounterMode` call |
+| `scripts/golden/authority-trace.ts` | **Create:** the pre-refactor authority boundary trace (`baseline`, `same`) |
 | `tests/encounterAuthority.test.ts`, `tests/commandUnion.test.ts`, `tests/encounterMode.test.ts` | **Create:** the tests |
 | `tests/netCodec.test.ts`, `tests/sectorStream.test.ts` | **Replace:** the `ended` events carry the mode tag (only change) |
 | `tests/duel.test.ts`, `tests/duelControls.test.ts`, `tests/duelInterior.test.ts`, `tests/duelReadout.test.ts`, `tests/duelTelemetry.test.ts`, `tests/helpers/scriptedDuel.ts` | **Replace:** duel envelopes carry `runId` (only change) |
@@ -83,7 +90,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 ### Task 1: The generic authority
 
 **Files:**
-- Create: `src/renderer/src/authority/rules.ts`, `src/renderer/src/authority/sectorRules.ts`, `tests/encounterAuthority.test.ts`
+- Create: `scripts/golden/authority-trace.ts`, `src/renderer/src/authority/rules.ts`, `src/renderer/src/authority/sectorRules.ts`, `tests/encounterAuthority.test.ts`
 - Modify (whole file): `src/renderer/src/net/contracts.ts`, `src/renderer/src/net/codec.ts`, `src/renderer/src/authority/ledger.ts`, `src/renderer/src/authority/core.ts`, `src/renderer/src/authority/authority.ts`, `src/renderer/src/authority/replay.ts`, `src/renderer/src/sim/replay.ts`, `src/renderer/src/app/session.ts`, `tests/netCodec.test.ts`, `tests/sectorStream.test.ts`
 
 **Interfaces:**
@@ -98,7 +105,190 @@ Each is the recommendation, taken under the standing order; the owner can overtu
   - `contracts.ts`: `SectorCommand`, `DuelCommand`, `Command`, `CommandEnvelope<C>`, `COMMAND_REASONS` (plus the three duel reasons), `EndRecord`, `Checkpoint<Init, CM, S>` (with optional `modeMemory`), `PublishedState<S>`, `AuthorityMessage<S>`.
   - `ledger.ts`: `createLedger(owned, playerLimit = MAX_PLAYERS, codec: CommandCodec<unknown> = sectorCodec)`.
 
-- [ ] **Step 1: Record the per-tick canonical trace before anything changes**
+- [ ] **Step 0: Check the prerequisite (R-0 merged)**
+
+Run: `npx tsx scripts/golden/canonical-trace.ts`
+Expected: FAIL (exit 1) with the usage line `usage: npx tsx scripts/golden/canonical-trace.ts baseline|check|golden|same`. **If the usage line has no `same`, stop: R-0 is not merged.**
+
+- [ ] **Step 1: Record both pre-refactor oracles before anything changes**
+
+Create `scripts/golden/authority-trace.ts`:
+
+```ts
+// The authority boundary trace (engine refactor R-1, Codex plan review F3): everything the sector authority shows the
+// outside world, recorded from the authority as it stands BEFORE a refactor and compared after it. The per-tick
+// canonical trace (canonical-trace.ts) proves the sim state; this proves the boundary: every command result (with
+// admission metadata), every event with its payload, every publication (sequence, tick, channel, phase, hash), every
+// checkpoint capture (cause and bytes hash), the crash record and the replay a run records. It uses only the public
+// sector entry points (createAuthority, runReplay), which exist unchanged before and after R-1. The content digest is
+// masked: it covers the authority's own sources, so a refactor changes it by design.
+// Usage (no shell features; the baseline lives in the git-ignored out/ folder):
+//   npx tsx scripts/golden/authority-trace.ts baseline   before the refactor: records out/authority-trace/baseline.json
+//   npx tsx scripts/golden/authority-trace.ts same       after it: exits 1 on the first difference
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { computeContentDigest } from '../../build/contentDigest';
+import { createAuthority } from '../../src/renderer/src/authority/authority';
+import { runReplay } from '../../src/renderer/src/authority/replay';
+import type { ChannelKind, ClientMessage, CommandEnvelope, Link, PublishedState } from '../../src/renderer/src/net/contracts';
+import { decodeMessage, encodeMessage } from '../../src/renderer/src/net/codec';
+import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
+import { parseShip } from '../../src/renderer/src/sim/ship/schema';
+import starter from '../../src/renderer/src/sim/ship/starter.json';
+import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
+import { scriptedSemanticReplay } from '../../tests/helpers/script';
+
+const DIR = 'out/authority-trace', FILE = `${DIR}/baseline.json`;
+const LAYOUT = parseShip(starter), digest = computeContentDigest(process.cwd());
+/** A short hash of a value's JSON with the content digest masked: every source edit changes the digest, never the boundary. */
+const sha = (value: unknown): string => createHash('sha256').update(JSON.stringify(value).replaceAll(digest, '<content-digest>')).digest('hex').slice(0, 16);
+type Entry = Record<string, unknown>;
+
+function publication(state: PublishedState, channel: ChannelKind): Entry {
+  return { pub: state.publicationSequence, tick: state.tick, channel, phase: state.phase, hash: state.hash, pauseOwner: state.pauseOwner, pauseReason: state.pauseReason,
+    controlRevision: state.controlRevision, highWater: [state.commandHighWater, state.heldHighWater, state.auxiliaryHighWater], eventSequence: state.eventSequence };
+}
+/** A link that records everything the authority sends, decoded, and lets the scenario deliver client messages. */
+function recordingLink(name: string, out: Entry[], failSends = { after: Infinity }) {
+  const listeners = new Set<(kind: ChannelKind, bytes: Uint8Array) => void>(), closes = new Set<(reason: string) => void>();
+  let sends = 0;
+  const link: Link = { peer: name, caps: { unreliable: true, maxDatagram: 16088, hidesPeerIp: true, p2p: false },
+    send(kind, bytes) {
+      if (++sends > failSends.after) throw new Error('injected send failure');
+      const m = decodeMessage(bytes);
+      if (m.kind === 'state') out.push({ link: name, ...publication(m.state, kind) });
+      else if (m.kind === 'result') out.push({ link: name, channel: kind, result: m.result });
+      else if (m.kind === 'event') out.push({ link: name, channel: kind, event: m.event });
+    },
+    onMessage(cb) { listeners.add(cb); return () => { listeners.delete(cb); }; },
+    onClose(cb) { closes.add(cb); return () => { closes.delete(cb); }; },
+    close(reason) { out.push({ link: name, closed: reason }); for (const cb of [...closes]) cb(reason); },
+    stats: () => ({ rttMs: 0, lossPct: 0, relayed: false, bufferedBytes: 0 }) };
+  return { link, deliver(message: ClientMessage, kind: ChannelKind = 'reliable-ordered') { for (const cb of [...listeners]) cb(kind, encodeMessage(message)); } };
+}
+function init(players: number, seed: number, runId: string) {
+  return { runId, layoutId: LAYOUT.id, layoutHash: deriveLayout(LAYOUT).layoutHash, simVersion: SIM_VERSION, contentDigest: digest, seed, playerCount: players, characters: Array(players).fill(0), unlocked: [] };
+}
+function host(out: Entry[], gate?: { allowed: boolean }) {
+  let now = 0; const callbacks = new Set<() => void>();
+  let pause: ((control: { paused: boolean; reason: string }) => void) | undefined;
+  const authority = createAuthority({ contentDigest: digest, resolveLayout: () => LAYOUT, clock: { nowMs: () => now },
+    scheduler: { schedule(_delay, cb) { callbacks.add(cb); return () => { callbacks.delete(cb); }; } },
+    onCrash(record) { out.push({ crash: sha({ ...record, error: record.error }), error: record.error, tick: record.tick, replayVersion: record.replayVersion, frames: record.frames.length }); },
+    onCheckpoint(cp, cause) { out.push({ capture: cause, tick: cp.snapshot.header.tick, bytes: sha(cp) }); },
+    ...(gate ? { sessionGate: { check: () => ({ allowed: gate.allowed, revision: 0, reason: null }) } } : {}),
+    bindLifecyclePause(request) { pause = request; return () => { pause = undefined; }; } });
+  return { authority, lifecycle: (paused: boolean, reason: string) => pause?.({ paused, reason }),
+    tick(n: number) { for (let k = 0; k < n; k++) { now += 1000 / 60; for (const cb of [...callbacks]) { callbacks.delete(cb); cb(); } authority.pump(); } } };
+}
+const command = (runId: string, player: number, sequence: number, requestedTick: number, c: CommandEnvelope['command']): ClientMessage =>
+  ({ kind: 'command', envelope: { runId, id: { player, sequence }, requestedTick, command: c } });
+const tickOf = (out: Entry[]): number => { for (let k = out.length - 1; k >= 0; k--) if (typeof out[k]!.tick === 'number' && 'pub' in out[k]!) return out[k]!.tick as number; return 0; };
+function replayRoundTrip(out: Entry[], replay: unknown): void {
+  const r = replay as { version: number; frames: unknown[] };
+  out.push({ replay: r.version, frames: r.frames.length, bytes: sha(replay) });
+  const result = runReplay(LAYOUT, replay, digest, undefined, { retainFrames: true });
+  out.push({ rerun: result.hashes.length, last: result.hashes.at(-1) ?? null, results: sha(result.results), events: sha(result.events), checkpoint: sha(result.checkpoint) });
+}
+
+/** The scenarios, in order; each returns its entries. */
+async function scenarios(): Promise<Record<string, Entry[]>> {
+  const all: Record<string, Entry[]> = {};
+
+  // 1. The golden replay run through the authority's replay executor: every frame's results, events and outcome.
+  const golden: Entry[] = all.golden = [];
+  const replay = scriptedSemanticReplay(2026, 4, 60 * 120, digest);
+  const result = runReplay(LAYOUT, replay, digest, undefined, { retainTrace: false, onFrame(frame) {
+    if (frame.results.length || frame.events.length || frame.action.kind === 'tick' && frame.tick % 60 === 59) golden.push({ tick: frame.tick, action: frame.action.kind, results: frame.results, events: frame.events, after: frame.after ?? null });
+  } });
+  golden.push({ checkpoint: sha(result.checkpoint) });
+
+  // 2. A live host with a strict and a receive-time binding: setPaused, stale-tick, duplicates, gaps and conflicts,
+  //    held input, a 300-tick boundary, a requested capture, an end of the session, and the replay it recorded.
+  const live: Entry[] = all.live = [];
+  const h = host(live), id = 'trace-live';
+  h.authority.start(init(2, 11, id));
+  const strict = recordingLink('strict', live), late = recordingLink('receive-time', live);
+  h.authority.attach(strict.link, [0], { admissionPolicy: 'strict' }); h.authority.attach(late.link, [1], { admissionPolicy: 'receive-time' });
+  h.tick(5);
+  strict.deliver(command(id, 0, 1, tickOf(live), { kind: 'setPaused', paused: true })); h.tick(3);
+  strict.deliver(command(id, 0, 2, tickOf(live), { kind: 'setPaused', paused: false })); h.tick(3);
+  strict.deliver(command(id, 0, 3, 0, { kind: 'stand' }));                                  // stale tick
+  strict.deliver(command(id, 0, 3, 0, { kind: 'stand' }));                                  // the same envelope again
+  strict.deliver(command(id, 0, 3, 0, { kind: 'moveTo', tile: 3 }));                        // a conflicting duplicate
+  strict.deliver(command(id, 0, 9, tickOf(live), { kind: 'stand' }));                       // a sequence gap
+  strict.deliver(command(id, 0, 4, tickOf(live), { kind: 'stand' }));
+  strict.deliver(command(id, 0, 4, tickOf(live), { kind: 'stand' }));                       // a duplicate while still pending
+  late.deliver(command(id, 1, 1, Math.max(0, tickOf(live) - 2), { kind: 'stand' }));        // receive-time admission metadata
+  late.deliver({ kind: 'held', frame: { runId: id, player: 1, tick: tickOf(live), sequence: 1, held: { moveX: 1, moveY: 0, interactHeld: false } } }, 'unreliable-latest');
+  late.deliver({ kind: 'callout', runId: id, player: 1, sequence: 1, calloutKind: 'contextual' });
+  h.tick(310);
+  const captured = await h.authority.requestCheckpoint('safe-point');
+  live.push({ requested: captured.cause, tick: captured.checkpoint.snapshot.header.tick, bytes: sha(captured.checkpoint) });
+  live.push({ sealed: sha(h.authority.checkpoint([])) });
+  replayRoundTrip(live, h.authority.replay());
+  h.authority.dispose();
+
+  // 3. The session lease gate: bootstrap pause, completeBootstrap, a fence while a lifecycle resume is queued (the
+  //    seal that discards it makes the replay V4), resetPausedEpoch on reopening, then a crash.
+  const lease: Entry[] = all.lease = [];
+  const gate = { allowed: false }, g = host(lease, gate), lid = 'trace-lease';
+  g.authority.start(init(1, 5, lid));
+  const seat = recordingLink('seat', lease, { after: Infinity });
+  g.authority.attach(seat.link, [0], { admissionPolicy: 'receive-time' });
+  g.tick(3);
+  gate.allowed = true; g.authority.completeBootstrap(); g.tick(30);
+  g.lifecycle(true, 'focus'); g.tick(2);
+  g.lifecycle(false, 'focus'); gate.allowed = false; g.tick(4);          // the resume is queued, then the gate closes
+  seat.deliver(command(lid, 0, 1, tickOf(lease), { kind: 'stand' })); g.tick(2);
+  gate.allowed = true; g.tick(5);
+  seat.deliver(command(lid, 0, 2, tickOf(lease), { kind: 'setPaused', paused: false })); g.tick(20);
+  replayRoundTrip(lease, g.authority.replay());
+  g.authority.dispose();
+
+  const crash: Entry[] = all.crash = [];
+  const c = host(crash), cid = 'trace-crash', failing = { after: Infinity };
+  c.authority.start(init(1, 9, cid));
+  const doomed = recordingLink('doomed', crash, failing);
+  c.authority.attach(doomed.link, [0], { admissionPolicy: 'strict' });
+  c.tick(20); failing.after = 0; c.tick(3);
+  c.authority.dispose();
+  return all;
+}
+
+function firstDifference(a: unknown, b: unknown, path: string): string | null {
+  if (JSON.stringify(a) === JSON.stringify(b)) return null;
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) { const d = firstDifference((a as Entry)[k], (b as Entry)[k], `${path}.${k}`); if (d) return d; }
+  }
+  return `${path}: ${JSON.stringify(a)?.slice(0, 160)} → ${JSON.stringify(b)?.slice(0, 160)}`;
+}
+const counts = (t: Record<string, Entry[]>): string => Object.entries(t).map(([k, v]) => `${k} ${v.length}`).join(', ');
+
+async function main(): Promise<void> {
+  const mode = process.argv[2], now = await scenarios();
+  if (mode === 'baseline') {
+    mkdirSync(DIR, { recursive: true });
+    writeFileSync(FILE, JSON.stringify({ simVersion: SIM_VERSION, scenarios: now }));
+    console.log(`authority trace baseline: ${counts(now)} entries; written to ${FILE}`);
+  } else if (mode === 'same') {
+    if (!existsSync(FILE)) { console.error(`no authority trace baseline at ${FILE}: run \`authority-trace.ts baseline\` before the refactor`); process.exit(1); }
+    const was = (JSON.parse(readFileSync(FILE, 'utf8')) as { scenarios: Record<string, Entry[]> }).scenarios;
+    for (const name of new Set([...Object.keys(was), ...Object.keys(now)])) {
+      const a = was[name] ?? [], b = now[name] ?? [];
+      for (let k = 0; k < Math.max(a.length, b.length); k++) {
+        const d = firstDifference(a[k], b[k], `${name}[${k}]`);
+        if (d) { console.error(`authority boundary CHANGED at ${d}`); process.exit(1); }
+      }
+    }
+    console.log(`authority boundary unchanged: ${counts(now)} entries`);
+  } else throw Error('usage: npx tsx scripts/golden/authority-trace.ts baseline|same');
+}
+main().catch((error: unknown) => { console.error(error); process.exit(1); });
+```
+
+Run: `npx tsx scripts/golden/authority-trace.ts baseline`
+Expected: `authority trace baseline: golden 134, live 666, lease 47, crash 23 entries; written to out/authority-trace/baseline.json`, exit 0 (about 5 s).
 
 Run: `npx tsx scripts/golden/canonical-trace.ts baseline`
 Expected: `baseline at sim version 37: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs` and the trace file's path, exit 0.
@@ -2358,7 +2548,7 @@ Expected: exit 0.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/renderer/src/authority/rules.ts src/renderer/src/authority/sectorRules.ts src/renderer/src/authority/core.ts src/renderer/src/authority/authority.ts src/renderer/src/authority/replay.ts src/renderer/src/authority/ledger.ts src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/replay.ts src/renderer/src/app/session.ts tests/encounterAuthority.test.ts tests/netCodec.test.ts tests/sectorStream.test.ts
+git add scripts/golden/authority-trace.ts src/renderer/src/authority/rules.ts src/renderer/src/authority/sectorRules.ts src/renderer/src/authority/core.ts src/renderer/src/authority/authority.ts src/renderer/src/authority/replay.ts src/renderer/src/authority/ledger.ts src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/replay.ts src/renderer/src/app/session.ts tests/encounterAuthority.test.ts tests/netCodec.test.ts tests/sectorStream.test.ts
 git commit -q -m "feat(authority): the generic authority over EncounterRules, the sector rules, the mode codec and mode-aware replays (engine refactor R-1a)"
 ```
 
@@ -4067,6 +4257,7 @@ import { createSectorProducers } from '../src/network/modes/sectorProducers';
 import { createSectorStreamBinding } from '../src/network/modes/sectorStream';
 import type { ModeDefinition, ModeHostDeps } from '../src/network/modes/contracts';
 import { sectorRules } from '../src/renderer/src/authority/sectorRules';
+import { createAuthority, createEncounterAuthority } from '../src/renderer/src/authority/authority';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { LAYOUT } from './helpers/sim';
@@ -4077,10 +4268,16 @@ import type { Link } from '../src/renderer/src/net/contracts';
 const encode = (x: unknown) => new TextEncoder().encode(JSON.stringify(x));
 const decode = (x: Uint8Array) => JSON.parse(new TextDecoder().decode(x));
 const resolveLayout = (id: string) => { if (id !== LAYOUT.id) throw Error('unknown layout'); return LAYOUT; };
-const copy = defineEncounterMode({ modeId: 'sector-copy', schemaVersion: 1, simVersion: SIM_VERSION, rules: sectorRules, resolveLayout,
-  codecs: jsonModeCodecs(sectorRules, resolveLayout, 'sector-copy'),
+/** The sector's rules under another mode id: the rules carry the id the core stamps on replays. */
+const copyRules = { ...sectorRules, modeId: 'sector-copy' };
+const copy = defineEncounterMode({ modeId: 'sector-copy', schemaVersion: 1, simVersion: SIM_VERSION, rules: copyRules, resolveLayout,
+  codecs: jsonModeCodecs(copyRules, resolveLayout, 'sector-copy'),
   producers: ({ authority, init, contentDigest, restoredControllers }) => createSectorProducers({ authority, runId: init.runId, playerCount: init.playerCount, contentDigest, resolveLayout, restoredControllers }),
   publication: (link, options) => createSectorStreamBinding(link, options) });
+function copyOptions() {
+  return { schemaVersion: 1, simVersion: SIM_VERSION, resolveLayout, codecs: jsonModeCodecs(sectorRules, resolveLayout, 'x'),
+    producers: () => { throw new Error('unused'); }, publication: () => { throw new Error('unused'); } };
+}
 const init = () => ({ runId: 'factory', layoutId: LAYOUT.id, layoutHash: deriveLayout(LAYOUT).layoutHash, simVersion: SIM_VERSION,
   contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed: 9, playerCount: 2, characters: [0, 0], unlocked: [] });
 function harness(mode: ModeDefinition) {
@@ -4104,6 +4301,15 @@ describe('defineEncounterMode', () => {
     const [x, y] = await Promise.all([a.runtime.captureCheckpoint('periodic'), b.runtime.captureCheckpoint('periodic')]);
     expect(decode(y.bytes)).toEqual(decode(x.bytes));
     expect(y.capturedTick).toBe(x.capturedTick);
+  });
+  it('one mode identity: the factory refuses rules with another mode id, and replays carry the rules\' id', () => {
+    expect(() => defineEncounterMode({ ...copyOptions(), modeId: 'sector-copy', rules: sectorRules })).toThrow(/mode id sector-copy does not match its rules \(sector\)/);
+    const deps = { contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash() {} };
+    const renamed = createEncounterAuthority(copyRules, deps), sector = createAuthority(deps);
+    ownTestCleanup(() => { renamed.dispose(); sector.dispose(); });
+    renamed.start(init()); sector.start(init());
+    expect(renamed.replay().mode).toBe('sector-copy');
+    expect(sector.replay()).not.toHaveProperty('mode');
   });
   it('keeps the merged host lifecycle: no replacement while attached, bounded payloads, validated ownership', () => {
     const h = harness(copy), deps = h.deps, host = copy.createHost(deps);
@@ -4199,6 +4405,8 @@ const distinctPlayers = (players: readonly number[], count: number): boolean =>
   players.length > 0 && !players.some(p => !Number.isInteger(p) || p < 0 || p >= count) && new Set(players).size === players.length;
 
 export function defineEncounterMode<T extends EncounterTypes>(options: EncounterModeOptions<T>): ModeDefinition {
+  // One identity: the core labels replays with rules.modeId, Net-3 routes hosts by options.modeId.
+  if (options.modeId !== options.rules.modeId) throw new Error(`mode id ${options.modeId} does not match its rules (${options.rules.modeId})`);
   const { modeId: label, rules, resolveLayout, codecs } = options, validPlayers = options.validPlayers ?? distinctPlayers;
   function createHost(deps: ModeHostDeps): ModeHost {
     let authority: Authority<T> | null = null, disposed = false, count = 0;
@@ -4341,12 +4549,15 @@ describe('generic host import boundary', () => {
 - [ ] **Step 3: Run the factory test and Net-3's mode, producer, stream, capture and utility tests**
 
 Run: `npx vitest run tests/encounterMode.test.ts tests/modeHost.test.ts tests/sectorProducers.test.ts tests/sectorStream.test.ts tests/sessionCapture.test.ts tests/utilityHost.test.ts tests/hostProcess.test.ts tests/networkBoundary.test.ts`
-Expected: PASS, 151 tests in 8 files.
+Expected: PASS, 152 tests in 8 files.
 
 - [ ] **Step 4: Prove the sector unchanged at every tick**
 
 Run: `npx tsx scripts/golden/canonical-trace.ts same`
 Expected: `per-tick canonical trace unchanged at sim version 37: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs`, exit 0.
+
+Run: `npx tsx scripts/golden/authority-trace.ts same`
+Expected: `authority boundary unchanged: golden 134, live 666, lease 47, crash 23 entries`, exit 0. **If it exits 1 ("authority boundary CHANGED at …"), stop:** the generic core changed what the sector authority shows the world.
 
 - [ ] **Step 5: Typecheck, the host-runtime gate, the full suite and the cross-engine check**
 
@@ -4357,7 +4568,7 @@ Run: `npm run test:host-runtime`
 Expected: `ACTUAL host runtime PASS: Electron 37.10.3; 15 checks; 8/8 utility exits` (it builds first; about 30 s), exit 0.
 
 Run: `npm test`
-Expected: every file passes, 3,093 tests in 222 files at master cabc521 (12 more than after R-0: the three new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
+Expected: every file passes, 3,094 tests in 222 files at master 3e3055d (12 more than after R-0: the three new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
 
 Run: `npm run test:determinism -- --output-dir=out/r1a-determinism`
 Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS` for Node and `1800 samples PASS` for Electron (and Firefox where it is installed). The output-dir flag (read by scripts/determinism/run.ts) sends its evidence logs to the git-ignored out/ folder instead of the tracked default under .superpowers/sdd/, so this step leaves git status unchanged apart from the files the commits name.

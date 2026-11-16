@@ -22,6 +22,7 @@
 
 ## Scope
 
+- **Prerequisite: R-1a merged** (`2026-11-16-engine-r1a-generic-authority.md`, itself on R-0). Task 1 Step 0 stops the plan if R-1a's mode factory is missing.
 - **Task 1:** the sim module contract and the duel on it (space, presence, repair, interior), with the completeness test.
 - **Task 2:** the duel snapshot codec: header, stored and regenerated values, validation.
 - **Task 3:** the duel rules, checkpoint, end summary and codec; mode-aware replay lookup; the continuation proof, replays and the size test.
@@ -30,6 +31,7 @@
 
 ## Global Constraints
 
+- **Prerequisite: R-1a is merged** (the generic authority, `defineEncounterMode`, `scripts/golden/authority-trace.ts`). Do not start this plan on a checkout without it.
 - Determinism guard (`tests/boundary.test.ts`): `sim/module.ts`, `sim/duel/modules.ts`, `snapshot.ts`, `summary.ts`, `authority/duelRules.ts` and `duelCheckpoint.ts` fall under it: only `Math.abs`, `ceil`, `floor`, `round`, `min`, `max`, `sign`, `imul` and `sqrt`; no platform globals; randomness only through `src/shared/rng.ts`. Files under `sim/` import nothing from `authority/`, `clientControl/`, `app/` or `render/`.
 - The network boundary (`tests/networkBoundary.test.ts`): `modes/streamBinding.ts`, `modes/duel.ts` and `modes/duelStream.ts` join the mode files that may import renderer code.
 - **The duel's gameplay and the sector must not change.** `tests/golden/duel-1.json`, `tests/golden/basic.json` and `tests/fixtures/*` are not written; the duel golden passes unedited, which proves the module-derived `flattenDuel` writes the same values in the same order.
@@ -96,10 +98,18 @@ Each is the recommendation, taken under the standing order; the owner can overtu
   - `duel/modules.ts`: `presenceModule`, `repairModule`, `interiorModule: SimModule<DuelState>`; `DUEL_NOT_SNAPSHOTTED`; `DUEL_MODULES: { module; state(d); path }[]`; `flattenDuelModules`, `duelModulesLength`, `unflattenDuelModules`.
   - `duel/hash.ts`: `flattenDuel`, `hashDuel` (same values as before); `mapHash(map: MapDef): string`.
 
-- [ ] **Step 1: Record the per-tick canonical trace before anything changes (the sector's reference for this plan)**
+- [ ] **Step 0: Check the prerequisite (R-1a merged)**
+
+Run: `npx vitest run tests/encounterMode.test.ts`
+Expected: PASS, 3 tests in 1 file. **If the file does not exist or fails, stop: R-1a is not merged.**
+
+- [ ] **Step 1: Record both oracles before anything changes (the sector's reference for this plan)**
 
 Run: `npx tsx scripts/golden/canonical-trace.ts baseline`
 Expected: `baseline at sim version 37: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs` and the trace file's path, exit 0.
+
+Run: `npx tsx scripts/golden/authority-trace.ts baseline`
+Expected: `authority trace baseline: golden 134, live 666, lease 47, crash 23 entries; written to out/authority-trace/baseline.json`, exit 0.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -2415,12 +2425,15 @@ describe('generic host import boundary', () => {
 - [ ] **Step 3: Run the mode tests and Net-3's tests**
 
 Run: `npx vitest run tests/duelMode.test.ts tests/sectorStream.test.ts tests/modeHost.test.ts tests/sectorProducers.test.ts tests/sessionCapture.test.ts tests/utilityHost.test.ts tests/hostProcess.test.ts tests/encounterMode.test.ts tests/networkBoundary.test.ts`
-Expected: PASS, 157 tests in 9 files. `tests/sectorStream.test.ts` runs unedited on the moved binding.
+Expected: PASS, 158 tests in 9 files. `tests/sectorStream.test.ts` runs unedited on the moved binding.
 
 - [ ] **Step 4: The sector is still unchanged at every tick**
 
 Run: `npx tsx scripts/golden/canonical-trace.ts same`
 Expected: `per-tick canonical trace unchanged at sim version 37: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs`, exit 0.
+
+Run: `npx tsx scripts/golden/authority-trace.ts same`
+Expected: `authority boundary unchanged: golden 134, live 666, lease 47, crash 23 entries`, exit 0 (the codec, replay and stream changes leave the sector's boundary as R-1a left it).
 
 - [ ] **Step 5: Typecheck, the host-runtime gate, the full suite and the cross-engine check**
 
@@ -2431,7 +2444,7 @@ Run: `npm run test:host-runtime`
 Expected: `ACTUAL host runtime PASS: Electron 37.10.3; 15 checks; 8/8 utility exits` (it builds the utility with both modes registered), exit 0.
 
 Run: `npm test`
-Expected: every file passes, 3,121 tests in 226 files at master cabc521 (28 more than after R-1a: the four new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
+Expected: every file passes, 3,122 tests in 226 files at master 3e3055d (28 more than after R-1a: the four new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
 
 Run: `npm run test:determinism -- --output-dir=out/r1b-determinism`
 Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS` for Node and `1800 samples PASS` for Electron (and Firefox where it is installed). The output-dir flag (read by scripts/determinism/run.ts) sends its evidence logs to the git-ignored out/ folder instead of the tracked default under .superpowers/sdd/, so this step leaves git status unchanged apart from the files the commits name.
