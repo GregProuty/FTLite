@@ -29,3 +29,24 @@ Permission evidence observes the exact gate request-start and accepted deadline,
 Committed restore input bytes and canonical snapshot remain exact. For dormant, empty bot UI only, expected first-publication initialization is computed with existing reconciliation and compared in full, with producer counters checked against authority watermarks. Populated decision/cursor/repeat memory remains exact. This distinguishes initialization from lost bot memory; unexplained changes reject the report.
 
 Recovery and cleanup share one absolute deadline, including driver requests, runtime disposal, termination and temporary removal. A two-unresponsive-app negative probe verifies this composition. The detailed review and corrected evidence are in the Task 6 workspace reports. Earlier undiagnosed native Leave failures remain disclosed; passing later runs do not establish their cause.
+
+## Decision register and cost if wrong
+
+This register preserves every implementation ruling in ledger order. The workspace and evidence remain available for review.
+
+| Decision | Reason | Cost if wrong |
+| --- | --- | --- |
+| Reuse the verified isolated worktree and installed dependencies. | Preserve the existing reviewed network work and avoid the owner's unrelated checkout. | Reproduce verification with a clean dependency install if environment drift is discovered. |
+| Retain reports and evidence instead of deleting the skill workspace. | The approved plan explicitly requires source-pinned evidence. | Additional repository storage; evidence can later be archived deliberately. |
+| Reuse the completed Net-3d source baseline, then run focused and final regression checks. | Intervening baseline changes were documentation only. | Repeat baseline verification if the source association is disproved. |
+| Allow optional next-tick/time arguments to `beforeTick`. | Producers need the opportunity before advancement; existing zero-argument callbacks remain compatible. | Adjust callback consumers if an untested caller relies on a different timing contract. |
+| Keep equivalent boundary tests in `authorityLease.test.ts`; add the missing real-bot case. | Behavior coverage matters more than the planned filename. | Move or expand tests if discoverability obscures missing coverage. |
+| Introduce conditional replay v4 for interrupted controls and queued lifecycle Resume removal. | Legacy whole-drain actions cannot represent an externally fenced prefix. | Maintain the new parser/playback contract and backward compatibility. |
+| Add optional abort signals to checkpoint PUT/GET and filesystem injection for mirror tests. | Ownership changes must cancel local I/O; uncertain server acceptance still needs reconciliation. | Repair cancellation/reconciliation if an outstanding accepted request is mishandled. |
+| Retain the winning authenticated connection after a confirmed claim. | Rejoining replaces the connection and fences the new host. | A misclassified uncertain claim could require another explicit re-host attempt; service state remains authoritative. |
+| Observe actual utility gate admission rather than scheduled or publication time. | Catch-up schedules and asynchronous publication cannot prove the execution deadline. | Update the test-only instrumentation and rerun the stale-host proof if its source anchors cease to match. |
+| Reconcile only dormant, empty bot UI initialization and compare every resulting field. | Existing first-publication initialization differs from the exact checkpoint input; populated bot memory must stay exact. | Narrow or remove that exception and rerun recovery proof if a real memory regression was masked. |
+
+Task 8's historical native results are reused only with explicit revision provenance and complete executable-byte equality. The tooling-only fixes do not constitute new native executions. The external deployment, relay and two-machine gates remain unrun until Task 9.
+
+The final review's reusable ZIP-member check is deferred as a Minor tooling improvement. Both rebuilt distribution archives instead receive an explicit independent check of exact unique paths and EXE/ASAR member hashes against their audited unpacked applications. If this decision is wrong, a future packaging run that omits that independent check could pair stale ZIP contents with fresh metadata; the current archives have that check and are not known to differ. Preserve the check until the reusable tool enforces it.
