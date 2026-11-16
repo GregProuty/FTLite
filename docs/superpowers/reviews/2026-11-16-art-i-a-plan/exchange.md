@@ -92,3 +92,41 @@ Confirmed: artGuards walked only the RNG imports. A new describe block checks ev
 
 ---
 
+# Round 2 (delta, reviewing 48e70d5, effort medium, 47 s, 77161 in / 54689 cached / 2459 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Decision 18 (plan L64) now states deviation (f): the sector shake and the duel interior shake stay on whole internal pixels until Art-i-b section 7. It also states deviation (g): vent.puff keeps its quarter-turn ventRotation. The bible pixel rule (plan L322) now allows quarter turns and names the vent puff, so it matches effects.ts:L84.
+- R1-F2: resolved — The bible value hierarchy (plan L341) keeps the spec's 'calm, dark mid-tones' and notes that the c7cfcc placeholder is lighter on purpose. Decision 19 (plan L65) records the same.
+- R1-F3: resolved — Step 0.1 (plan L111) adds the services/signalling node_modules junction and says to remove it with Remove-Item and no -Recurse. Step 0.3 (plan L124) expects 0 failed, says to stop and report on any failure, and states the counts as '2 test files out of 3183 tests'. Task 7 Step 1 (plan L1958) expects 0 failed. The flake wording is gone.
+- R1-F4: resolved — plan L1379-1380 copies the children with a spread and records n before the rebuild. plan L1389 compares the post-rebuild length with n. plan L1386 replaces the always-true modulo check with frame width and height ×2 ≤ 32. This passes for the 16 px test frames (plan L1360).
+- R1-F5: resolved — A new describe block (plan L1338-1344) walks render/ and app/ (join(RENDER,'..','app')). Its imports are already present at plan L1293-1295. moduleSpecifiers covers import/export declarations, dynamic import() and require (tests/helpers/determinismGuard.ts:L4-15). The renderer only mentions 'scripts/' inside comments and string literals (credits.generated.ts:L1, creditsText.ts:L12), which the AST walk ignores, so the guard passes today.
+
+## Verified
+- The app folder holds 19 .ts files today (Glob of src/renderer/src/app/**/*.ts), which matches the plan's '60 + 19' at L1575 and L1958.
+- Count arithmetic: artGuards is 7 + 60 + 79 = 146 (plan L1575). Task 7 total: 5 + 9 + 1 + 6 + 11 + 2 + 146 + 10 = 190 (plan L1958). The prototype table note '+79' (plan L38) agrees.
+- The new guard's regex /(^|\/)scripts\// does not hit any current module specifier in src/renderer/src. The only 'scripts/' matches are in comments and strings (credits.generated.ts:L1, creditsText.ts:L12, sim/tactical/headings.ts:L1).
+- The prototype table row 7 (plan L40) is consistent with the Step 0 change: it attributes the historical failure to the missing junction that Step 0.1 now adds.
+- No contradiction between Decision 18/19 and the unchanged Global Constraints (L13-27) or File Structure (L67-101). Neither change touches sim, SIM_VERSION or goldens.
+
+## Not verified
+- I did not check that the junction target C:\Users\djuar\FTLite\services\signalling\node_modules exists in the main checkout; the review constraints forbid reading node_modules.
+- I did not run the new pngjs/scripts guard or the revised tileLayer test (read-only review; the plan says the guard was not prototype-run).
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `48e70d5`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F5 as resolved, with no new findings.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
