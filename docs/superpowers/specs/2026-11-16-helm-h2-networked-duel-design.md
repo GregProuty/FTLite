@@ -193,9 +193,9 @@ The plan's evidence records both figures before and after the cache.
 - **The away steward.** A seat with no attachment, or whose attachment has detached, gets one steward on a loopback client.
   - At the next completed boundary, it sends `presence {present: false}` once through the normal ledger, and otherwise nothing.
   - It holds no memory, so `DuelControllers` stays empty (`duelCheckpoint.ts:20-21`).
-- **Peer loss.** When a `'remote'` attachment detaches, the manager attaches the steward, then calls `pause('peer-lost')`. The pause takes effect at the same completed boundary, after the presence command is admitted.
+- **Peer loss.** When a `'remote'` attachment detaches, the manager attaches the steward, which submits `presence {present: false}` for the lost seat. The manager calls `pause('peer-lost')` only once that presence command has an applied result, at least one tick later (rec.). A lifecycle pause applied before the command executes would leave it pending for the whole outage, and capture refuses while anything is pending (`core.ts:127`), so there would be no pause checkpoint or Net-3e mirror.
   - The host's own renderer port closing (`'local'`, for example a reload) gets a steward but **no** pause: the host's machine is still there.
-  - A test pins the order (presence false, then the pause) and the local-port exception.
+  - A test pins the order and the local-port exception. It asserts that the presence command's applied tick comes before the pause boundary, and that a pause capture is delivered during the outage.
 - **Rejoin.** It retires the steward and waits for the existing full-state ACK gate (`streamBinding.ts:48-53`, `66`). The returning client then sends `presence {present: true}` as its first command.
 
 **Guest loss.** The host pauses, as above **(rec.)**: in a two-person duel, a lost partner is no moment to keep fighting the hunter alone. The host can still press Escape and fly on alone. The guest's renderer freezes its last view under "CONNECTION LOST — RECONNECTING" and enters Net-3d's bounded retry (1, 2, 4, 8 s, within a 30 s window). Rejoining never unpauses; either player presses Escape to resume (Net-3d rule).
@@ -225,8 +225,9 @@ The duel's mirror goes through the duel adapter's `validateMirror` (`duelRules.v
 - `round`: 0 for the first round;
 - `helmPlayer`: from the init;
 - `baseTick`: the encounter tick on which this round began.
+- `decidedTick`: the encounter tick on which this round was decided, or −1 while it runs.
 
-The round seed is the tactical state's own `seed`, already hashed in the space module (`snapshot.ts:73` checks `values[2]`). With this module, the step, the snapshot and `rules.restore` read the round, its seed and `helmPlayer` from state. That matters because `rules.step` and `rules.restore` receive no init (`rules.ts:39`, `52`), and replays cover the round state automatically. Publications carry the round state, so a client that joins or reconnects late knows the round and the seating without seeing any `round` event. `validateDuelSnapshot` checks the module: `round` is a non-negative safe integer, `helmPlayer` is 0 or 1, and `baseTick` is at most the tick.
+The round seed is the tactical state's own `seed`, already hashed in the space module (`snapshot.ts:73` checks `values[2]`). With this module, the step, the snapshot and `rules.restore` read the round, its seed and `helmPlayer` from state. That matters because `rules.step` and `rules.restore` receive no init (`rules.ts:39`, `52`), and replays cover the round state automatically. Publications carry the round state, so a client that joins or reconnects late knows the round and the seating without seeing any `round` event. `validateDuelSnapshot` checks the module: `round` is a non-negative safe integer, `helmPlayer` is 0 or 1, `baseTick` is at most the tick, and `decidedTick` is −1 while the outcome is Running, otherwise between `baseTick` and the tick.
 
 **Monotone tick.** The encounter tick is the interior tick (`duelRules.ts:31`) and never goes backwards. The sender drops any ordinary publication whose tick is not above the last one sent (`sender.ts:46`). Clients release events only once `publication.tick` reaches them (`clientRun.ts:155`). Checkpoints bound ledger and result ticks by the snapshot tick (`duelCheckpoint.ts:94-97`). So:
 - A new round is built as `createDuel(layout, roundSeed(init.seed, round + 1), helmPlayer)`.
@@ -252,7 +253,7 @@ The plan audits every tick-stamped tactical field (for example `graceUntil`) so 
 - **`rematch` while a round runs** is rejected `duel-running`.
 - **The rematch applies in the step**, before any other phase. The new round starts on the next tick.
 
-**Records and capture.** A new optional rules hook, `records(baseline, s)`, emits one `{ kind: 'round', record }` authority event on the tick a round is decided. The record is the widened end summary (§8) plus `round`, `seed` and `baseTick`. The telemetry accumulator restarts with each round.
+**Records and capture.** A new optional rules hook, `records(baseline, s)`, emits one `{ kind: 'round', record }` authority event on the tick a round is decided. The record is the widened end summary (§8) plus `round`, `seed` and `baseTick`. The telemetry accumulator restarts with each round, and **freezes once a round is decided** (rec.). `recordTick` ignores every decided tick after the deciding one, so end-card ticks add nothing to `ticks` or the per-tick counters, and the terminal causes are not recomputed (`telemetry.ts:87-92,145-161`). A restore from an end-card capture therefore rebuilds, through `session()` (`duelRules.ts:21`), exactly the summary emitted at the decision. A test captures on the end card at least 60 ticks after the decision, restores, and checks that the restored summary (ticks, terminal causes and counters) equals the round record.
 
 The safe-point rule is restated: `duelRules.safePointKey` becomes `` `duel:${round}:${decided}` ``. The core then captures a safe-point checkpoint when a round is decided and when a rematch starts the next round (`core.ts:136-139` captures on a key change). The old `phase === 'ended'` edge never fires for the duel.
 
@@ -261,7 +262,7 @@ The safe-point rule is restated: `duelRules.safePointKey` becomes `` `duel:${rou
 - `phase === 'ended'` implies a decided outcome, but not the reverse: a decided round may be `running` or `paused`. Today the validator requires both directions (`duelCheckpoint.ts:92-93`).
 - `helmPlayer` in state must equal `init.helmPlayer`.
 - Grace lengths come from the round seed's map, through the cache. Today they come from `init.seed` (`duelCheckpoint.ts:98`).
-- Telemetry `ticks` must equal the tick minus `baseTick` (`duelCheckpoint.ts:99`).
+- Telemetry `ticks` must equal the tick minus `baseTick` while the round is running, and `decidedTick − baseTick` once it is decided (`duelCheckpoint.ts:99`). The round module holds `decidedTick`.
 - The outcome agreement between memory and snapshot stays (100-101).
 
 **Duel mode `schemaVersion` 2 covers:**
@@ -270,7 +271,7 @@ The safe-point rule is restated: `duelRules.safePointKey` becomes `` `duel:${rou
 - the event union (`round`) and the two reasons;
 - the widened end record (§8).
 
-The memory schema (`duelMemorySchema`) is unchanged: the accumulator's fields are the same, it restarts per round, and its `ticks` counts from `baseTick`.
+The memory schema (`duelMemorySchema`) is unchanged: the accumulator's fields are the same, it restarts per round, and its `ticks` counts from `baseTick` and stops at `decidedTick`.
 
 **End card and keys.**
 - The end card (`render/duel/endScreen.ts`, `endModel(outcome, tick, seed)`) reads "ENTER: REMATCH   ESC: LEAVE" on both machines.
@@ -282,7 +283,7 @@ The memory schema (`duelMemorySchema`) is unchanged: the accumulator's fields ar
 - A new room per rematch costs a new code and a re-join every round.
 - Re-initialising inside the room (restarting the authority under a new run ID and re-issuing every port) fights the replace refusal (`encounterMode.ts:85`), the client's run and sequence filters (`clientRun.ts:49`) and Net-3e's mirror ranking.
 
-**Versioning and bless sequence (SIM_VERSION 38 → 39).** The duel step gains a command, and the duel canonical array gains `round.round`, `round.helmPlayer` and `round.baseTick`. The sector's canonical fields are unchanged: its goldens change by the version number only, proved by the per-tick canonical comparison. The duel golden's hashes change because of the three added fields. The duel migration oracle proves that change per tick through a new `MIGRATIONS[38]` entry in `scripts/golden/duelOracle.ts`: `{ change: 'H-2: duel rounds', rename: () => undefined, derived: [], added: [/^round\.(round|helmPlayer|baseTick)$/] }`. No golden or oracle run sends `rematch` or a non-default `helmPlayer`, so every old value matches at every tick. The steps are:
+**Versioning and bless sequence (SIM_VERSION 38 → 39).** The duel step gains a command, and the duel canonical array gains `round.round`, `round.helmPlayer`, `round.baseTick` and `round.decidedTick`. The sector's canonical fields are unchanged: its goldens change by the version number only, proved by the per-tick canonical comparison. The duel golden's hashes change because of the four added fields. The duel migration oracle proves that change per tick through a new `MIGRATIONS[38]` entry in `scripts/golden/duelOracle.ts`: `{ change: 'H-2: duel rounds', rename: () => undefined, derived: [], added: [/^round\.(round|helmPlayer|baseTick|decidedTick)$/] }`. No golden or oracle run sends `rematch` or a non-default `helmPlayer`, so every old value matches at every tick. The steps are:
 1. On the commit before any H-2 sim change (SIM 38): run `npx tsx scripts/golden/canonical-trace.ts baseline` and `npx tsx scripts/golden/duel-oracle.ts baseline`. The oracle baseline is tied to `tests/golden/duel-1.json` (`duelOracle.ts:15-18`).
 2. Make the sim change, bump `SIM_VERSION` to 39, and add `MIGRATIONS[38]`.
 3. Run `npx tsx scripts/golden/canonical-trace.ts check` and `npx tsx scripts/golden/duel-oracle.ts check`, then `npm run bless`. Bless re-runs both proofs and refuses on any failure (`scripts/golden/blessGuard.ts:22-35`). Then run `canonical-trace.ts golden`.
@@ -470,3 +471,4 @@ H-2a is the bulk. If it is too big for one plan, its builder splits it at the se
   - F9: the bless sequence.
   - F10: the §16 rule printed verbatim, a guest-Helm round in each checklist, command delay to the result.
   - F11: citations, `seed` and `paused()`, Escape on the end card, LAN step 3.
+- 2026-11-16: refine round 2: the peer-lost pause waits for the steward's presence result; the telemetry accumulator freezes on a decided round, the round module keeps `decidedTick`, and the checkpoint rule changes to match.

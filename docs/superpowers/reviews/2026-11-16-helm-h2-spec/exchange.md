@@ -102,3 +102,70 @@ Beyond the choices offered, the spec adds the reason `duel-decided`, and an `ori
 
 ---
 
+# Round 2 (delta, reviewing 67ed0de, effort medium, 114 s, 608377 in / 525228 cached / 9526 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 End-card ticks now advance, but the telemetry accumulator and the checkpoint rule do not say whether it keeps counting, and restoring a capture from the end card would corrupt the round summary
+The R1-F2 fix keeps ticks advancing on a decided round. Today recordTick relies on a decided duel not advancing: it ignores a call only when the tick did not advance. On every end-card tick it would therefore keep adding to t.ticks and the per-tick counters (helm and weapons empty ticks, enemyInArcTicks, weaponsIdleTicks, walkingTicks and repairingTicks). Its terminal-cause block also rewrites t.terminal on every tick while a hull is 0. Each end-card tick shows no new contacts or events, so the causes are reset to []. The new validator rule makes this worse: telemetry ticks must equal tick − baseTick, which forces the accumulator to keep counting on the end card. The live summary is computed once, at the decision. But rules.restore rebuilds it from the restored telemetry through session(). So a capture on the end card (pause, periodic, a Net-3e mirror, or the safe point at duel:<round>:true once later ticks pass) restores with a longer round, inflated counters and empty terminal causes. That summary is the one §8 says the host's checkpoint memory provides for a missed round. · spec L243 (ticks keep advancing), L235 and L264 (telemetry ticks = tick − baseTick), L255 (the accumulator restarts per round), L282 ('the memory schema is unchanged … its ticks counts from baseTick'), §8 (the host's checkpoint memory holds the round), L389 (telemetry continues across a restore); telemetry.ts:L87-92 (recordTick skips only when the tick did not advance, a call after the end is 'ignored'), L145-150 (per-tick counters), L153-161 (terminal causes recomputed whenever the outcome is not Running); duelRules.ts:L21 (session() recomputes the summary from telemetry on restore), L36-37 (recordTick every step, summary set once), L61; duelCheckpoint.ts:L99 · The end-card restore tests in §10 would either fail or pin a wrong summary. The §16 report's round length, the empty and idle ratios, and the terminal causes would be wrong for any round recovered from a checkpoint. A planner has to decide the accumulator's semantics on the end card. · State that the accumulator freezes once a round is decided: recordTick ignores decided ticks other than the deciding one. Change the checkpoint rule to: telemetry ticks = tick − baseTick while the outcome is Running, and = decidedTick − baseTick once it is decided. Keep decidedTick in the round module, or derive it from the frozen ticks. Add a test that captures on the end card N ≥ 60 ticks after the decision, restores, and checks that the restored summary (ticks, terminal causes, counters) equals the round record emitted at the decision.
+
+## Prior findings
+- R1-F1: resolved — The hashed round module (round, helmPlayer, baseTick) is read by step and restore; the tick stays monotone; the seed, the phase rule and grace are redefined in validateDuelCheckpoint; schemaVersion 2 lists them; MIGRATIONS[38] uses module-id field names that match duelSchema's `${m.id}.${f.name}` (duelOracle.ts:L103). The new telemetry-ticks rule (L264) is raised as a new finding.
+- R1-F2: resolved — Ticks advance; every command gets a result (applied, noop or duel-decided; presence applied); safePointKey `duel:${round}:${decided}` triggers capture through core.ts:L138-139's key-change test; there is a 20-command test. The side effect on telemetry is the new finding.
+- R1-F3: resolved — 20 Hz kept explicitly (L71-72); alpha is computed over Δtick; budgets and thresholds restated; end and relaunch within one gap are handled by missilesLaunched together with hits + lost; cadence 1 is H-2c remedy 1, with size checks and a test pinning the sector at 3.
+- R1-F4: resolved — The onlineModeSession wrapper builds on first attach by modeId, swaps on a mode change and replays the status, focus and input-block state; the citation is corrected to onlineSession.ts:85.
+- R1-F5: resolved — Gated test-only entry (unpackaged + FTLITE_SECTOR_ONLINE_TEST=1). Both smokes launch unpackaged Electron on out/ through online-app-smoke.cjs (internet-app-smoke.ts:L54), so the gate holds; the internet smoke's menu clicks (L102) are covered.
+- R1-F6: resolved — The ModeWire.events hook leaves the sector union identical; the widened reason enum is stated and accepted; a sector codec rejection test is added.
+- R1-F7: still open — The trigger and the origin are now specified. The ordering is not well defined. L196 says the pause takes effect 'after the presence command is admitted'. Admitted is not executed. A lifecycle pause is applied in applyControls (core.ts:L376-428), separately from executeTick (L430-433). If the pause lands before the next tick, presence stays in `pending` for the whole pause. Then capture is skipped (core.ts:L127 refuses while anything is pending), so there is no pause checkpoint or mirror during the outage. Presence's result also arrives only after resume, so the 'presence false, then the pause' test (L198) has no defined observable. Fix: the manager calls pause('peer-lost') only once the steward's presence command has an applied result, at least one tick later. The test then asserts that presence's applied tick is before the pause boundary and that a pause capture is delivered.
+- R1-F8: resolved — The round, the seed and helmPlayer come from hashed state; host records are authoritative; the transport comes from the guest; reconnect tests cover mid-round and across a round end.
+- R1-F9: resolved — The four-step sequence records both baselines at 38, then bumps, then blesses, then adds the rematch golden with --fresh in a separate commit. The oracle stops at the decision (duelOracle.ts:L193), so the end-card ticks never reach it.
+- R1-F10: resolved — The rule is printed verbatim and evaluated; a guest-Helm round is in the LAN checklist (step 9) and the internet checklist; command delay is measured to the applied result or fireHeld.
+- R1-F11: resolved — Citations are fixed (runtime.ts:329-333, duelCheckpoint.ts:80/98, main.ts:45); seed and paused() added; Escape is defined on the end card; LAN step 3 is reworded.
+
+## Verified
+- The checkpoint validator today: seed === init.seed (duelCheckpoint.ts:L91), ended iff phase 'ended' (L92-93), grace from the init seed (L98), t.ticks === snapshot tick (L99); the spec's redefinition (L259-266) addresses each one
+- Core capture on a safe-point key change (core.ts:L138-139) supports the `duel:${round}:${decided}` key; capture refuses while commands are pending (L127)
+- Lifecycle pauses are applied in applyControls, apart from executeTick (core.ts:L376-433); ended-phase rejection is at L366-368
+- recordTick's skip guard and its terminal-cause recomputation (telemetry.ts:L89-92, L153-161); duelRules recomputes the summary on restore (duelRules.ts:L21, L58-62)
+- Oracle field naming `${m.id}.${f.name}` (duelOracle.ts:L103) matches the MIGRATIONS[38] regex /^round\.(round|helmPlayer|baseTick)$/; the oracle loop stops at the decision (L193)
+- The internet smoke launches the unpackaged driver online-app-smoke.cjs (internet-app-smoke.ts:L54) and clicks host and create-room (L102), so the FTLITE_SECTOR_ONLINE_TEST gate is reachable from both smokes
+
+## Not verified
+- Whether the tactical tick-stamped fields (graceUntil and others) behave identically for a round started at tick T: the spec defers this to a plan audit and an equivalence test
+- Whether `npm run bless -- --fresh` at the same version creates only the missing artifact and leaves the others unchanged (bless-golden.ts was not re-read this round)
+- The exact field order duelEndSummary uses for ticks (summary.ts not re-read); the finding relies on session() rebuilding the summary from telemetry
+- The ICE candidate type exposure in the hidden RTC window's stats, used for the transport field
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the spec and the code. 2 accepted (both P1), 0 rejected, 0 deferred.
+
+## R1-F7 [P2]: peer-lost pause ordering (still open)
+
+Confirmed. A lifecycle pause applied before the steward's presence command executes would leave that command pending for the whole outage, and capture refuses while anything is pending (`core.ts:127`). The manager now calls `pause('peer-lost')` only once the presence command has an applied result, at least one tick later. The test asserts that the applied tick comes before the pause boundary and that a pause capture is delivered.
+
+## R2-F1 [P1]: end-card ticks and the telemetry accumulator
+
+Confirmed. `recordTick` skips only ticks that did not advance (`telemetry.ts:87-92`), so advancing end-card ticks would inflate the counters and reset the terminal causes, and a restore through `session()` (`duelRules.ts:21`) would rebuild that wrong summary. The fix:
+- The accumulator freezes once a round is decided: later decided ticks are ignored, and the causes are not recomputed.
+- The round module gains `decidedTick`, and it is added to `MIGRATIONS[38]`, which now adds four fields.
+- The checkpoint rule becomes: telemetry ticks = tick − `baseTick` while the round is running, and `decidedTick` − `baseTick` once it is decided.
+- The snapshot validator checks `decidedTick`.
+- A test captures on the end card at least 60 ticks after the decision, restores, and compares the summary with the round record.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-16-helm-h2-networked-duel-design.md
+
+<!-- end -->
+
+---
+
