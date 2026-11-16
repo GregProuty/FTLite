@@ -1,0 +1,74 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "Mac-sleep-as-host recorder coverage rule makes the scenario unpassable if read literally",
+      "claim": "The new recorder contract says complete observer coverage must span the fencing and attempted-resume interval, and any gap makes the fencing claim NOT_RUN or FAIL. During real sleep, the observer on the sleeping Mac also stops, so its record always has a gap across the very interval in which lease loss happens. Per-machine monotonic ordering is mandated, but on macOS the common monotonic sources (mach_absolute_time / process.hrtime) do not advance during sleep. The spec does not say which side's observations cover the asleep interval, or how the sleeping machine shows that its coverage resumed before any old-authority publication or command acceptance.",
+      "evidence": "spec L134 (monotonic ordering per machine, UTC only an annotation); L136 ('A complete observer-coverage record spans the fencing and attempted-resume interval; gaps make the fencing claim NOT_RUN or FAIL'); L143 (Mac sleep as host: 'record lease loss or service generation change while asleep, and old authority fencing on wake before it can publish or accept commands').",
+      "why": "Read one way, Mac sleep as host can never PASS. Read another way, an implementer quietly waives coverage. Either way the Gate F sleep evidence is not comparable between implementers.",
+      "fix": "State that the asleep interval is covered by the Windows peer's recorder and the service snapshots: lease expiry, generation change and rejection of old-generation traffic. The sleeping Mac's coverage obligation starts at its first wake/resume event (powerMonitor resume or an equivalent main-process lifecycle event), and that event must be recorded before any old-authority gate-open, publication or command-application event. Make it a recorded sleep-boundary event pair (suspend seen or last pre-sleep event, then resume) rather than a gap that fails the claim. Add wall-clock or continuous-clock deltas around the boundary as annotations only."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "L117 defines the logical identity field by field: commit, committed blob IDs for both lockfiles, LF-normalized contentDigest, mode, protocol/sim/checkpoint/replay, and origin. L119 makes raw sourceFiles, outputs, binaries and archives per-side, and requires CRLF/LF pairing fixtures. L121 separates deployed-Worker provenance from locally rebuilt bundle/config bytes. The docs-commit allowance at L117 matches the existing ancestor check at internet-app-smoke.ts:L88-L89 and the provenance join at internet-app-report.ts:L93-L94."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "L125-L128 require a Finder-launched packaged-app session in each host direction for both D and E. The checklist covers hashes, timestamps, screenshots, room-code join, both seats acting, pause/resume and graceful exit. It is kept separate from the instrumented dev-Electron capture, and L130 says instrumentation alone never proves packaged networking."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "L130 keeps the 540 s capture, the 600 s total and the existing array caps (matching internet-app-smoke.ts:L26-L30 and internet-app-report.ts:L18-L21). It assigns the ten-minute soak only to the manual packaged session (L127), and makes overflow a failed capture. Gate D at L76 is updated to match."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "L134-L149 add a versioned two-machine recorder with bounds and a shared starting tuple: run ID, seat/connection generations, host generation, checkpoint sequence/capturedTick/payload SHA, and a publication. Per-scenario observations cover rehost tick at or after capturedTick under the new generation, old-authority fencing and stale rejection, and OS evidence for killed hosts. Manual and instrumented proof are labelled separately, and actualOsSuspend is declared insufficient. One new P2 about sleep-interval coverage is raised separately."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "L19 and L92 no longer call the archive optional. L153 mandates a ditto ZIP keeping the parent bundle, with symlinks preserved and the whole-archive SHA as the package identity. The executable and app.asar hashes are retained separately. The extracted copy must pass an inventory comparison (paths, hashes, modes, symlink targets), a signature check and a launch."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "L155 pins identity '-', disables auto-discovery, and sets notarize false and hardenedRuntime true. It names the three cs.* entitlements for the app and inherited helpers and excludes sandbox/camera/mic. L157 defines the codesign --verify --deep --strict, ad-hoc display and lipo/file ARM64 checks, and records spctl rejection separately."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "L61 now says 'shared constants (including constants to be introduced below)'. L161 correctly states that SESSION_PROTOCOL_VERSION and SIM_VERSION exist and that CHECKPOINT_VERSION and SUPPORTED_REPLAY_VERSIONS must be added. It ties the schema literals and types to them, requires manifest-equality tests, and keeps historical validators (e.g. sim literal 35 at internet-app-report.ts:L12) unchanged."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "L163 adds npm --prefix services/signalling ci and the build step, plus a native darwin-arm64 workerd preflight before Gate B. It records local Worker hashes apart from the deployed record, states that these are test-only prerequisites, and makes install failures explicit prerequisite failures."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "L167-L169 require an owned POSIX process group and PID/PPID/PGID plus start-identity tracking with continuous sampling, so reparented helpers stay attributable. Escalation is bounded and group-scoped. Absence is verified by the deadline even when the root exits first, reused PIDs are guarded against, and inventories are retained. Success, failure, timeout and parent-exits-first cases are covered. This addresses the direct-child-only kill in lease-smoke-lifecycle.ts:L29-L31."
+    }
+  ],
+  "verified": [
+    "The diff only touches L1 (BOM removed), L19, L61, L63, L76, L92, L110 and the new L113-L169 amendments. L110 states that the amendments supersede less-specific text above, which settles the remaining loose wording at L47 and L65.",
+    "Gate A (L73: 'no need to run a local Worker to play a packaged client') is consistent with L163 (local workerd is a test prerequisite only).",
+    "L117's docs-commit/ancestor allowance matches the existing tooling: internet-app-smoke.ts:L88-L89 (merge-base --is-ancestor plus exact source bytes) and internet-app-report.ts:L85-L94 (runtimeProvenance reportRevision/candidateRevision).",
+    "L130's bounds match the existing v1 limits in internet-app-smoke.ts:L26-L30 and internet-app-report.ts:L18-L21; the existing version literals (sim 35, checkpoint 2, replay 2/3/4) are at internet-app-report.ts:L12.",
+    "The instrumented session still uses dev Electron against out/ (L128), which is compatible with the electron==='37.10.3' status check the existing harness performs. The packaged session is kept strictly separate.",
+    "No amendment conflicts with the fixed decisions: no Developer account, notarize false (L155), the existing architecture is kept, and no wire-protocol fields are added (L117 'evidence-level comparisons, not new wire admission fields')."
+  ],
+  "not_verified": [
+    "Whether the lockfile-resolved electron-builder 26 accepts mac.identity '-' as ad-hoc signing and applies entitlementsInherit to all helper bundles. Checking this means reading node_modules, which this review is not allowed to do; the responder says it checked the entitlement template.",
+    "Whether ditto -c -k --sequesterRsrc output keeps extended attributes needed by codesign after extraction. This needs native macOS execution.",
+    "Whether Electron helpers on macOS ever leave the parent's process group (affects L167's 'descendant leaves the group' path). This needs native observation.",
+    "Whether the existing `git status --porcelain` dirty flag (online-recovery-smoke.ts:L129, rtc-config-smoke.ts:L37) treats untracked non-source files as dirty in a way that conflicts with L117's 'uncommitted candidate source changes are forbidden'. This is outside the touched regions."
+  ]
+}
