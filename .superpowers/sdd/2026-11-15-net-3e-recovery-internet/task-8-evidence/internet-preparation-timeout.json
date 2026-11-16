@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "identity": null,
+  "serviceOrigin": "https://service.example",
+  "forceRelay": false,
+  "mode": "local-pair",
+  "machineLabel": "local-pair",
+  "networkLabel": "local-network",
+  "failure": "preparation-timeout",
+  "cleanupFailed": false,
+  "temporaryRemoved": true,
+  "directoryCleanupAttempted": true,
+  "elapsedMs": 10103,
+  "budgetMs": 20000,
+  "processes": [
+    {
+      "pid": 33292,
+      "exited": true,
+      "exitCode": 1,
+      "kind": "preparation"
+    }
+  ],
+  "peers": [],
+  "temporaryName": "ftlite-internet-app-c9mrUm",
+  "ownedProcesses": [
+    {
+      "pid": 33292,
+      "kind": "preparation",
+      "exited": true,
+      "exitCode": 1
+    }
+  ]
+}

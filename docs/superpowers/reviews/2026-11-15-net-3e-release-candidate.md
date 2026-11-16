@@ -2,6 +2,19 @@
 
 This is a local unsigned Windows x64 candidate. **Deployment, live TURN, forced-relay gameplay, two physical devices and actual OS suspend are NOT RUN.** No internet-readiness claim is made. Final hashes and verification are retained under `.superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-8-evidence/` and summarized in `task-8-report.md`. The controller owns Task 8 independent review and the subsequent whole-slice review before external authorization.
 
+Final candidate source is `0e9d024db0189bbf918c9fc76a6276f51f7ef115`. Its 47 rebuilt runtime files match the packaged bytes exactly; all 264 recorded source files match. Archive size is 142,824,997 bytes. There are 2,253 audited ASAR entries. These are ignored local distribution artifacts, with committed hashes:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `dist/net-3e-candidate.zip` | `557c8dc18ef4225f4f8e538422d9df1067ca74230504a4f70da7b378e98dd202` |
+| Candidate `FTLite.exe` | `7d3402a21c49ac3201ea899d80d161a2ee1eaaea9f143f57270c58c65228ca08` |
+| Candidate `resources/app.asar` | `4623e37d2d6b44748a450238ab03ceff3197f0216bcc7686e4f7221e26e31e47` |
+| `dist/net-3e-rollback-disabled.zip` | `51b0e93e51eb3da0b0f8c1dd41d9df86036caea4497a3cd8bfd09720ae4906d5` |
+| Prepared Worker `index.js` | `fda351cb27f57961b61616324012f1d33969226b5356d51d8ad2749dc657eb33` |
+| Source/deployment `wrangler.jsonc` | `b9faa6b032720827399ddac179f1fe4021f33a6ee9c0a21d5420cac93a3212bc` |
+
+The final audit executes the resolver extracted from each actual packaged main bundle in an isolated VM. It observes disabled default, enabled explicit candidate origin, and rejected ambient development overrides in both packaged configurations. It also checks absence of the release origin in renderer/preload output. This is compiled-package configuration proof, not a claim that the unsigned installed UI was manually playtested.
+
 ## Build and package
 
 Root lockfile pins Electron 37.10.3, electron-vite 5.0.0, root Vitest 3.2.7; the manifest records all relevant resolved tool versions. Protocol 2, SIM_VERSION 35, checkpoint 2, and supported replay 2/3/4 are unchanged. Replay 4 is only the previously approved interrupted-control extension.
