@@ -1,0 +1,11 @@
+topic=engine-r1a-impl
+subject_kind=impl
+subject=scripts/golden/authority-trace.ts src/network/modes/encounterMode.ts src/network/modes/sector.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/session.ts src/renderer/src/authority/authority.ts src/renderer/src/authority/core.ts src/renderer/src/authority/ledger.ts src/renderer/src/authority/replay.ts src/renderer/src/authority/rules.ts src/renderer/src/authority/sectorRules.ts src/renderer/src/net/codec.ts src/renderer/src/net/contracts.ts src/renderer/src/sim/duel/commands.ts src/renderer/src/sim/duel/scripted.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/replay.ts tests/commandUnion.test.ts tests/duel.test.ts tests/duelControls.test.ts tests/duelInterior.test.ts tests/duelReadout.test.ts tests/duelTelemetry.test.ts tests/encounterAuthority.test.ts tests/encounterMode.test.ts tests/helpers/scriptedDuel.ts tests/netCodec.test.ts tests/networkBoundary.test.ts tests/sectorStream.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\engine-r1a
+base=8755199
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm run build && npm test
+created=2026-11-16
+head_at_setup=e6cad54
