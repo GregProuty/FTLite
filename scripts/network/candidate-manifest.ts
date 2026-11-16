@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync,readdirSync,writeFileSync,mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { dirname } from 'node:path';
+import { dirname,normalize } from 'node:path';
 import { createRequire } from 'node:module';
 import { computeContentDigest } from '../../build/contentDigest';
 const require=createRequire(import.meta.url),asar=require('@electron/asar');
@@ -16,7 +16,7 @@ const asarPath=appDirectory+'/resources/app.asar';
 const entries:string[]=asar.listPackage(asarPath).map((p:string)=>p.replaceAll('\\','/').replace(/^\//,''));
 if(entries.some(p=>/(^|\/)\.env|(^|\/)\.dev\.vars|(^|\/)(\.superpowers|test-results|scripts|tests|profiles)(\/|$)/i.test(p)))throw Error('package-content-invalid');
 const files=(root:string)=>readdirSync(root,{recursive:true,withFileTypes:true}).filter(d=>d.isFile()).map(d=>(d.parentPath+'/'+d.name).replaceAll('\\','/'));
-const artifacts=Object.fromEntries(files('out').sort().map(p=>{const bytes=asar.extractFile(asarPath,p);if(sha(bytes)!==hash(p))throw Error('package-build-mismatch');return [p,sha(bytes)];}));
+const artifacts=Object.fromEntries(files('out').filter(p=>!p.endsWith('/.gitkeep')).sort().map(p=>{const bytes=asar.extractFile(asarPath,normalize(p));if(sha(bytes)!==hash(p))throw Error('package-build-mismatch');return [p,sha(bytes)];}));
 const sourceFiles=Object.fromEntries([...['src','scripts','build'].flatMap(files),...['package.json','package-lock.json','electron.vite.config.ts','electron-builder.yml']].sort().map(p=>[p,hash(p)]));
 const rootLock=JSON.parse(readFileSync('package-lock.json','utf8')),serviceLock=JSON.parse(readFileSync('services/signalling/package-lock.json','utf8'));
 const versions=(lock:any,names:string[])=>Object.fromEntries(names.map(name=>[name,lock.packages['node_modules/'+name].version]));

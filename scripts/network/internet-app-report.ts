@@ -7,7 +7,7 @@ const label=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/);
 const identity=z.object({revision:z.string().regex(/^[a-f0-9]{40}$/),digest:sha,packageSha256:sha,artifacts:z.record(sha),versions:z.object({electron:z.literal('37.10.3'),protocol:z.literal(2),sim:z.literal(35),checkpoint:z.literal(2),replay:z.tuple([z.literal(2),z.literal(3),z.literal(4)])}).strict()}).strict();
 const runId=z.string().regex(/^[a-f0-9]{32}$/);
 const checkpoint=z.object({runId,hostGeneration:pos,checkpointSequence:pos,capturedTick:nat,payloadSha256:sha}).strict();
-const publication=z.object({runId,sequence:pos,tick:pos,hash:z.string().regex(/^[a-f0-9]{16}$/),phase:z.enum(['running','paused']),commandHighWater:z.array(nat).length(2),heldHighWater:z.array(nat).length(2)}).strict();
+const publication=z.object({runId,sequence:pos,tick:pos,hash:z.string().regex(/^[a-f0-9]{8}$/),phase:z.enum(['running','paused']),commandHighWater:z.array(nat).length(2),heldHighWater:z.array(nat).length(2)}).strict();
 const cleanup=z.object({pid:pos,exited:z.literal(true),exitCode:z.literal(0),utilities:nat,utilityExits:nat,utilityPids:z.array(pos).max(8),windows:z.literal(0),ports:z.literal(0),listeners:z.literal(0),peers:z.literal(0),nativeWindows:pos,nativeWindowExits:pos,nativePeersObserved:pos,nativePeerCloses:nat,nativePeersEndedWithWindow:nat,observedMainPorts:pos}).strict();
 const peer=z.object({role:z.enum(['host','guest']),seat:z.union([z.literal(0),z.literal(1)]),runId,hostGeneration:pos,checkpoint,errors:z.literal(0),fullReceipts:pos,firstAckOrder:pos,firstInputOrder:pos,
   inputs:z.array(z.object({player:nat,sequence:pos,order:pos,command:label.optional()}).strict()).min(1).max(512),

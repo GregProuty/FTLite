@@ -8,6 +8,11 @@ files:
   - '!**/.dev.vars*'
   - '!**/test-results/**'
   - '!**/.superpowers/**'
+  - '!node_modules/**/src/**'
+  - '!**/tests/**'
+  - '!**/__tests__/**'
+  - '!**/scripts/**'
+  - '!**/*.map'
 extraResources:
   - from: public/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt

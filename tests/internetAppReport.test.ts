@@ -5,7 +5,7 @@ const sha = 'a'.repeat(64), runId = 'b'.repeat(32);
 const recovery = JSON.parse(readFileSync('.superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-7-evidence/recovery-skiff.json','utf8'));
 const identity = () => ({ revision:'c'.repeat(40), digest:recovery.source.digest, packageSha256:sha, artifacts:Object.fromEntries(INTERNET_ARTIFACTS.map(k=>[k,sha])), versions:{electron:'37.10.3',protocol:2,sim:35,checkpoint:2,replay:[2,3,4]} });
 const ref = () => ({path:'evidence/run.json',sha256:sha});
-const publication = () => ({runId,sequence:10,tick:320,hash:'f'.repeat(16),phase:'paused',commandHighWater:[2,3],heldHighWater:[4,5]});
+const publication = () => ({runId,sequence:10,tick:320,hash:'f'.repeat(8),phase:'paused',commandHighWater:[2,3],heldHighWater:[4,5]});
 const peer = (seat:number) => ({role:seat===0?'host':'guest',seat,runId,hostGeneration:1,checkpoint:{runId,hostGeneration:1,checkpointSequence:3,capturedTick:320,payloadSha256:sha},errors:0,fullReceipts:1,firstAckOrder:1,firstInputOrder:2,
   inputs:[{player:seat,sequence:seat?3:2,order:2,command:'pause'}],results:[{id:{player:seat,sequence:seat?3:2},status:'applied'}],publications:[publication()],
   routes:[{state:'connected',selected:true,localType:'relay',remoteType:'relay',policy:'relay',sent:10,received:10}],
@@ -19,7 +19,7 @@ it.each([
   ['direct pair relabelled relay',(r:any)=>r.forcedRelayGameplay.report.peers[0].routes[0].localType='host'],
   ['handshake only',(r:any)=>r.forcedRelayGameplay.report.peers[1].publications=[]],
   ['no commands',(r:any)=>r.forcedRelayGameplay.report.peers[1].results=[]],
-  ['different state',(r:any)=>r.forcedRelayGameplay.report.peers[1].publications[0].hash='0'.repeat(16)],
+  ['different state',(r:any)=>r.forcedRelayGameplay.report.peers[1].publications[0].hash='0'.repeat(8)],
   ['different command',(r:any)=>r.forcedRelayGameplay.report.peers[1].results[0].id.sequence=99],
   ['same machine',(r:any)=>r.twoMachineGameplay.reports[1].machineLabel='device-0'],
   ['same network',(r:any)=>r.twoMachineGameplay.reports[1].networkLabel='network-0'],
@@ -42,3 +42,4 @@ it('admits a single device only as an independent local result',()=>expect(()=>v
 it('keeps a loopback rehearsal out of every internet gate',()=>{const r=run();r.serviceOrigin='http://127.0.0.1:12345';r.forceRelay=false;expect(()=>validateLocalInternetDriverRun(r)).not.toThrow();expect(()=>validateInternetRun(r)).toThrow('internet-evidence-invalid');});
 it('accepts bounded retained inputs without losing the observed first ACK/input ordering',()=>{const r=run();r.peers[0].firstInputOrder=2;r.peers[0].inputs[0].order=10;expect(()=>validateInternetRun(r)).not.toThrow();});
 it('rejects credentials hidden in older recovery evidence',()=>{const r=fixture();r.localRecovery.report.seatToken='private';expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
+it('accepts the production 32-bit canonical publication hash width',()=>{const r=run();for(const p of r.peers)p.publications[0].hash='c7e5cfd9';expect(()=>validateInternetRun(r)).not.toThrow();});
