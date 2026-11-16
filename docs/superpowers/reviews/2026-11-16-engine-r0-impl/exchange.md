@@ -141,3 +141,35 @@ Confirmed: the test only changed crew health, so it would still pass with the ve
 
 ---
 
+# Round 3 (delta, reviewing eff78a5, effort medium, 43 s, 107929 in / 74752 cached / 2013 out)
+
+Verdict: ready
+
+## Prior findings
+- R2-F1: resolved — The new test changes flatten index 0 and requires the hash to stay equal, then changes index 1 and requires a different hash (tests/versionOnly.test.ts:L73-L79). canonicalValues zeroes index 0 before hashing, and canonical(state) uses it (scripts/golden/versionOnly.ts:L36-L45).
+
+## Verified
+- flatten places SIM_VERSION at index 0 (src/renderer/src/sim/flatten.ts:L45-L50), matching the test and the version-only proof required by plan L45.
+- The crew health sensitivity test remains (tests/versionOnly.test.ts:L81-L88).
+- The round-3 diff is limited to the stated extraction and test changes; git diff --check passed.
+
+## Not verified
+- Tests and generated JSON were not rerun or inspected in this read-only review.
+- The run directory is deleted in the current worktree; its tracked round-2 response was read from HEAD.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json`. No new findings. Codex confirmed R2-F1 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
