@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { onlineAppFailureCode, onlineAppStderrDiagnostic, onlineAppWaitDiagnostic } from '../scripts/network/online-app-diagnostics';
 
 const secret = 'seatToken=private-seat localTicket=private-ticket SDP=private-sdp candidate=192.0.2.9';
-function driver() {
+function driver(slowClose=false) {
+  let liveWindows=1;
   const app = Object.assign(new EventEmitter(), { isPackaged: false, setPath: vi.fn(), disableHardwareAcceleration: vi.fn(), exit: vi.fn(),
     commandLine: { appendSwitch: vi.fn(), getSwitchValue: (key: string) => ({ 'online-app-dir': resolve('test-profile'),
       'online-app-role': 'guest', 'user-data-dir': resolve('test-profile/guest') })[key] } });
@@ -17,7 +18,7 @@ function driver() {
   const error = vi.fn();
   runInNewContext(readFileSync('scripts/network/online-app-smoke.cjs', 'utf8'), {
     require(name: string) {
-      if(name === 'electron') return {app, BrowserWindow: {}, MessageChannelMain: Channel, utilityProcess:{fork:vi.fn()}, ipcMain:new EventEmitter(), powerMonitor:new EventEmitter()};
+      if(name === 'electron') return {app, BrowserWindow: {getAllWindows:()=>liveWindows?[{}]:[]}, MessageChannelMain: Channel, utilityProcess:{fork:vi.fn()}, ipcMain:new EventEmitter(), powerMonitor:new EventEmitter()};
       if(name === 'node:path') return {resolve,join,sep:process.platform === 'win32' ? '\\' : '/'};
       if(name === 'node:fs') return {readFileSync,writeFileSync:vi.fn()};
       if(name === 'node:crypto') return {createHash};
@@ -28,11 +29,16 @@ function driver() {
     }, process:proc, console:{error}, setTimeout, Buffer,
   });
   const contents = Object.assign(new EventEmitter(), { executeJavaScript:vi.fn().mockRejectedValue(Error(secret)) });
-  const window = Object.assign(new EventEmitter(), { webContents:contents,loadFile:vi.fn(),destroy:vi.fn(),isDestroyed:()=>false });
+  const window = Object.assign(new EventEmitter(), { webContents:contents,loadFile:vi.fn(),destroy:()=>{if(slowClose)setTimeout(()=>{liveWindows=0;window.emit('closed');},30);else{liveWindows=0;window.emit('closed');}},isDestroyed:()=>false });
   app.emit('browser-window-created',{},window);
   return {app,proc,error,contents};
 }
 describe('application driver diagnostics',()=>{
+  it('observes delayed window retirement before reporting cleanup even with no utility',async()=>{
+    const h=driver(true);h.proc.emit('message',{command:'shutdown',requestId:9});
+    await vi.waitFor(()=>expect(h.proc.send).toHaveBeenCalled());
+    expect(h.proc.send.mock.calls[0]![0].result.windows).toBe(0);
+  });
   it('reports only enumerated wait role/phase context, including hostile last status values', () => {
     expect(onlineAppWaitDiagnostic('guest idle', 'joining')).toEqual({ code: 'APP_WAIT_TIMEOUT', role: 'guest', expected: 'idle', actual: 'joining' });
     expect(onlineAppWaitDiagnostic(secret, secret)).toEqual({ code: 'APP_WAIT_TIMEOUT', role: 'unknown', expected: 'unknown', actual: 'unknown' });

@@ -207,7 +207,8 @@ async function command(message) {
         const data = await record.window.webContents.executeJavaScript('window.rtcNative.status()'); nativeClosed.set(record,data);
       }
       if(visible&&!visible.isDestroyed()) visible.destroy();
-      for(let i=0;i<100 && utilities.some(r=>!r.exited);i++) await delay(20);
+      for(let i=0;i<100 && (utilities.some(r=>!r.exited) || BrowserWindow.getAllWindows().length || channels.some(r=>!r.released)
+        || ['online:status','net:rtc-response','net:transport-ready'].some(k=>ipcMain.listenerCount(k)>0));i++) await delay(20);
       const result = { utilities: utilities.length, utilityExits: utilities.filter(r=>r.exited).length,
         windows: BrowserWindow.getAllWindows().length, ports: channels.filter(r=>!r.released).length,
         listeners: ['online:status','net:rtc-response','net:transport-ready'].reduce((n,k)=>n+ipcMain.listenerCount(k),0),
