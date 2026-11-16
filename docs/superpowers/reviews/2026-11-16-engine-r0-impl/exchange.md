@@ -90,3 +90,54 @@ Verified:
 
 ---
 
+# Round 2 (delta, reviewing 7094119, effort medium, 61 s, 251904 in / 187264 cached / 2668 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 The canonical hash test never changes the version value
+The new test says it verifies that canonical hashing ignores the version, but it only changes crew health. It would still pass if the version-zeroing line were removed. · tests/versionOnly.test.ts:L66-L74; scripts/golden/versionOnly.ts:L37-L40; plan L45 · The version-only proof depends on excluding SIM_VERSION from the per-tick hash. This test cannot catch a regression in that behavior. · Test two canonical inputs that differ only at flatten index 0 and assert equal hashes; retain the health-field assertion to prove other changes are detected.
+
+## Prior findings
+- R1-F1: resolved — The complete basic.json is parsed and replay.init.simVersion is validated; an unreadable version throws. The test covers a version beyond 4,096 bytes and missing versions. scripts/bless-golden.ts:L33; scripts/golden/storedVersion.ts:L14-L24; tests/versionOnly.test.ts:L8-L22.
+- R1-F2: resolved — The capture script has no write path and exits 1. scripts/capture-net1a-baseline.ts:L1-L4.
+- R1-F3: resolved — Injected-trace tests cover a changed tick, missing baseline, moved version, and missing or extra runs; the same CLI exits 1 when the shared check fails. tests/versionOnly.test.ts:L28-L53; scripts/golden/canonical-trace.ts:L26-L29.
+
+## Verified
+- The version readers feed all three stored versions to the guard, and a detected stale version invokes the per-tick check. scripts/bless-golden.ts:L33-L35; scripts/golden/blessGuard.ts:L15-L21; plan L42.
+- The baseline capture command is disabled, and the new R-0 documentation describes the opt-in check and trace modes. scripts/capture-net1a-baseline.ts:L1-L4; docs/gates.md:L731-L735.
+
+## Not verified
+- Generated JSON was skipped as requested. Tests and cross-engine determinism were not rerun in this read-only review.
+- The run directory is absent from the worktree; its tracked exchange and ledger were read from HEAD. No review file was modified.
+
+---
+
+# Round 2 response (implementation revised, 182d1f5)
+
+Reviewed `round-2.json`. Codex confirmed R1-F1 to R1-F3 resolved and raised one new finding. 1 accepted (P1), 0 rejected, 0 deferred.
+
+## R2-F1 [P1]: The canonical hash test never changes the version value
+
+Confirmed: the test only changed crew health, so it would still pass with the version-zeroing line removed. The fix:
+- `canonicalValues(values)` is now split out of `canonical(state)`, in `scripts/golden/versionOnly.ts`.
+- A new test hashes a fresh state's flattened values, then the same values with index 0 bumped (equal hashes), then with index 1 bumped (different hashes).
+- The health-field test stays.
+- Mutation check: with `v[0] = 0` removed, the new test fails (1 failed, 9 passed). With the line restored, all 10 pass.
+
+`npm run typecheck` is clean. This change is test-only plus a pure extraction, so the full suite was not re-run.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- scripts/golden/versionOnly.ts
+- tests/versionOnly.test.ts
+
+<!-- end -->
+
+---
+
