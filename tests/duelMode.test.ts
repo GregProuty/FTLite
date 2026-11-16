@@ -13,7 +13,9 @@ import { authorityModes } from '../src/utility/authorityModes';
 import { readFileSync } from 'node:fs';
 import type { ModeDefinition, ModeHostDeps } from '../src/network/modes/contracts';
 import type { HostCommandInput } from '../src/shared/netSession';
-import { classifyStreamPacket, decodeState, decodeStatePacket } from '../src/network/state/imageCodec';
+import { classifyStreamPacket, decodeOpaquePacket, decodeState, decodeStatePacket, encodeControl, encodeOpaquePacket, inspectState } from '../src/network/state/imageCodec';
+import { spaceModule } from '../src/renderer/src/sim/tactical/hash';
+import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { duelCodec } from '../src/renderer/src/net/codec';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
@@ -96,6 +98,34 @@ describe('the duel mode over Net-3 (hostRuntime level)', () => {
     expect(imageToDuelPublication(duelPublicationToImage(publication, options), options)).toEqual(publication);
     const tampered: DuelPublication = { ...publication, snapshot: { ...publication.snapshot, values: publication.snapshot.values.map((v, k) => k === 7 ? v + 1 : v) } };
     expect(() => duelPublicationToImage(tampered, options)).toThrow();
+    // A rehashed out-of-bounds value (headingAcc rests in (-1, 1)): both hashes agree with the values, so only the
+    // duel snapshot validator stands between it and the wire, on the host's toImage and on the image's way back.
+    let at = 1;
+    for (const f of spaceModule.fields(createTacticalState(6))) { if (f.name === 'ships.0.headingAcc') break; at += f.count; }
+    const values = publication.snapshot.values.map((v, k) => k === at ? 1 : v), hash = hashF64(Float64Array.from(values));
+    expect(values[at]).not.toBe(publication.snapshot.values[at]);
+    const rehashed: DuelPublication = { ...publication, hash, snapshot: { header: { ...publication.snapshot.header, hash }, values } };
+    expect(() => duelPublicationToImage(rehashed, options)).toThrow(/ships\.0\.headingAcc/);
+    expect(() => imageToDuelPublication({ ...image, values: Float64Array.from(values),
+      metadata: new TextEncoder().encode(JSON.stringify({ ...rehashed, snapshot: { header: rehashed.snapshot.header } })) }, options)).toThrow(/ships\.0\.headingAcc/);
+  });
+  it('a streamed duel attachment, once its full state is ACKed, applies a command and returns its result on duel-notification', () => {
+    const h = harness(duelMode);
+    h.command({ kind: 'start', initBytes: encode(duelInit(6, 'mode-duel')) });
+    const p = portEndpoint(); h.runtime.attachPeer('crew', [0, 1], p.port, { streamed: true, latestPayloadLimit: 4096 });
+    ticks(h, 0, 3);
+    const data = () => p.sent.filter((x: any) => x.type === 'data').map((x: any) => x.bytes as Uint8Array);
+    const full = data().find((b) => classifyStreamPacket(b).stream === 'state')!;
+    let id = 0;
+    const send = (bytes: Uint8Array) => p.receive({ version: 1, type: 'data', id: ++id, kind: 'reliable-ordered', bytes });
+    send(encodeControl({ kind: 'ack', sequence: inspectState(decodeStatePacket(full)).sequence }, 1));
+    send(encodeOpaquePacket('input', 'command', 2, codec.encodeMessage({ kind: 'command', envelope: {
+      runId: 'mode-duel', id: { player: 1, sequence: 1 }, requestedTick: 3, command: { kind: 'presence', present: false } } })));
+    ticks(h, 3, 2);
+    expect(p.closed).toBe(false);
+    const notifications = data().filter((b) => classifyStreamPacket(b).stream === 'duel-notification')
+      .map((b) => codec.decodeMessage(decodeOpaquePacket(b).bytes.subarray(9)));   // after the envelope's version byte and publication floor
+    expect(notifications).toContainEqual({ kind: 'result', runId: 'mode-duel', result: expect.objectContaining({ id: { player: 1, sequence: 1 }, status: 'applied' }) });
   });
   it('the duel mode refuses a sector init and the sector mode a duel init, keeping the previous owner', () => {
     const duel = harness(duelMode), sector = harness(sectorMode);
@@ -110,7 +140,11 @@ describe('the duel mode over Net-3 (hostRuntime level)', () => {
     // authorityHost.ts is the utility's Electron entry point (it needs process.parentPort), so the test drives the
     // registry it is built from, and checks that it is built from exactly that registry.
     expect(readFileSync('src/utility/authorityHost.ts', 'utf8')).toMatch(/createUtilityHost\(authorityModes, \{/);
-    expect(authorityModes.get('duel')).toBe(authorityModes.get('duel'));
+    // The registry stores a frozen copy of each definition, so its entries are the definitions' own members.
+    for (const mode of [duelMode, sectorMode]) {
+      expect(authorityModes.get(mode.modeId)).toEqual(mode);
+      expect(authorityModes.get(mode.modeId).createHost).toBe(mode.createHost);
+    }
     const utility = (modeId: string, schemaVersion: number) => {
       let now = 0, request = 0; const messages: any[] = [], callbacks = new Set<() => void>();
       const owner = createUtilityHost(authorityModes, { contentDigest: __GAMEPLAY_CONTENT_DIGEST__, clock: { nowMs: () => now },

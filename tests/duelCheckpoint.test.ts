@@ -13,6 +13,9 @@ import type { ReplayFrame } from '../src/renderer/src/sim/replay';
 import type { CommandEnvelope } from '../src/renderer/src/net/contracts';
 import { duelCodec } from '../src/renderer/src/net/codec';
 import { DUEL_MODULES } from '../src/renderer/src/sim/duel/modules';
+import { checkpointRig } from './helpers/checkpointRig';
+import { LAYOUT } from './helpers/sim';
+import { runReplay } from '../src/renderer/src/authority/replay';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 /** Seed 7's scripted duel is a crew loss at tick 8832 (H-0c-ii-a decision 2), short enough to run to its end twice.
@@ -47,6 +50,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         const end = duelRules.terminal(reference.state, reference.init);
         expect(end.ended).toBe(true);
         expect(duelRules.terminal(resumed.state, resumed.init)).toEqual(end);
+        expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end.endRecord).toEqual({ mode: 'duel', record: { outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
           terminal: expect.any(Array), laserReleases: expect.any(Array), laserHits: expect.any(Array), missilesLaunched: expect.any(Array), missileHits: expect.any(Array), repairsFinished: expect.any(Array) } });
         expect(Object.isFrozen(end.endRecord!.record)).toBe(true);
@@ -80,6 +84,18 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
       expect((rerun.checkpoint.snapshot as DuelSnapshot).header.hash).toBe(live.checkpoint([]).snapshot.header.hash);
     } finally { live.dispose(); }
   }, 60_000);
+  it('runModeReplay looks modes up by own property only, and a sector replay without `mode` runs as the sector', () => {
+    for (const mode of ['nope', 'constructor', '__proto__', 'toString']) expect(() => runModeReplay({ version: 2, mode, frames: [] }, DIGEST, resolveCutter)).toThrow(/unknown replay mode/);
+    const h = checkpointRig();   // owns its cleanup
+    {
+      h.send({ kind: 'command', envelope: { runId: h.init.runId, id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'setPaused', paused: true } } }); h.pump();
+      const { mode: _mode, ...sector } = h.authority.replay() as { mode?: string };
+      expect(replayMode(sector)).toBe('sector');
+      const viaMode = runModeReplay(JSON.parse(JSON.stringify(sector)), h.init.contentDigest, () => LAYOUT);
+      expect(viaMode.checkpoint).toEqual(runReplay(LAYOUT, JSON.parse(JSON.stringify(sector)), h.init.contentDigest).checkpoint);
+      expect(viaMode.checkpoint).toMatchObject({ phase: 'paused' });
+    }
+  });
   it('size: a checkpoint at the duel\'s largest state stays far under MAX_HOST_BYTES', () => {
     const h = duelCore(duelInit(1)), driver = createDriver(1);
     try {
@@ -100,6 +116,13 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
       runToEnd(h, driver, [], [], 300);
       const cp = JSON.parse(JSON.stringify(h.core.captureCheckpoint()));
       expect(() => throughBytes({ ...cp, modeMemory: { ...cp.modeMemory, version: 2 } })).toThrow();
+      const telemetry = (patch: (t: any) => void) => { const copy = structuredClone(cp); patch(copy.modeMemory.telemetry); return copy; };
+      expect(() => throughBytes(telemetry(() => {}))).not.toThrow();
+      expect(() => throughBytes(telemetry((t) => { t.prev.grace[1] = t.prev.grace[1].slice(1); })), 'a wrong-length grace copy').toThrow(/telemetry/);
+      expect(() => throughBytes(telemetry((t) => { t.prev.grace[0][0] = 2 ** 31; })), 'a grace value outside signed 32 bits').toThrow();
+      expect(cp.snapshot.values[5], 'the snapshot outcome (values[5]) is Running').toBe(Outcome.Running);
+      expect(() => throughBytes(telemetry((t) => { t.outcome = Outcome.CrewWins; })), 'an accumulator outcome the snapshot does not have').toThrow(/inconsistent duel telemetry/);
+      expect(() => throughBytes(telemetry((t) => { t.terminal[0] = ['planet']; })), 'terminal causes while running').toThrow(/inconsistent duel telemetry/);
       expect(() => throughBytes({ ...cp, modeMemory: { ...cp.modeMemory, telemetry: { ...cp.modeMemory.telemetry, ticks: 299 } } })).toThrow(/telemetry/);
       expect(() => throughBytes({ ...cp, phase: 'ended' })).toThrow(/terminal phase/);
       expect(() => throughBytes({ ...cp, init: { ...cp.init, seed: 5 } })).toThrow(/seed/);

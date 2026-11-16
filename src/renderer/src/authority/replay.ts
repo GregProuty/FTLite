@@ -95,7 +95,9 @@ export function runReplay(layout: ShipLayout, value: unknown, contentDigest: str
 const REPLAY_RULES: Readonly<Record<string, EncounterRules<EncounterTypes>>> = { sector: sectorRules as unknown as EncounterRules<EncounterTypes>, duel: duelRules as unknown as EncounterRules<EncounterTypes> };
 /** Run a replay of any mode: its `mode` field (absent: sector) selects the rules. */
 export function runModeReplay(value: unknown, contentDigest: string, resolveLayout: ResolveLayout, options: ReplayOptions = {}) {
-  const rules = REPLAY_RULES[replayMode(value)];
+  const mode = replayMode(value);
+  // Own properties only: 'constructor' or '__proto__' must not reach Object.prototype.
+  const rules = Object.hasOwn(REPLAY_RULES, mode) ? REPLAY_RULES[mode] : undefined;
   if (!rules) throw new Error('unknown replay mode');
   return runEncounterReplay(rules, value, contentDigest, resolveLayout, undefined, options);
 }

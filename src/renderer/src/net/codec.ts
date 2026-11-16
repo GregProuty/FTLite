@@ -30,9 +30,19 @@ function primitives(playerLimit: number) {
 }
 type Primitives = ReturnType<typeof primitives>;
 type CommandOption = z.ZodDiscriminatedUnionOption<'kind'>;
-/** What one mode adds to the shared message schema: its command kinds and its snapshot header. */
-interface ModeWire { commands(p: Primitives): [CommandOption, ...CommandOption[]]; snapshotHeader(p: Primitives): z.ZodTypeAny }
-const sectorWire: ModeWire = {
+const TERMINAL_CAUSES = ['planet', 'asteroid', 'ship', 'laser', 'missile'] as const;
+/** The schemas every mode's end record may build on (today the sector's telemetry record). */
+interface SharedSchemas { telemetry: z.ZodTypeAny }
+/** What one mode adds to the shared message schema: its command kinds, its snapshot header and its end record. The
+ *  header schema is tied to the mode's snapshot type S, so pairing a mode's wire with another mode's snapshot type
+ *  does not compile (tests/codecModeTypes.test.ts). */
+export interface ModeWire<S extends { header: unknown }> {
+  commands(p: Primitives): [CommandOption, ...CommandOption[]];
+  snapshotHeader(p: Primitives): z.ZodType<S['header'], z.ZodTypeDef, unknown>;
+  /** The `ended` event's record, tagged `{ mode, record }`: each codec admits only its own mode's record. */
+  endRecord(p: Primitives, shared: SharedSchemas): z.ZodTypeAny;
+}
+export const sectorWire: ModeWire<Snapshot> = {
   commands({ uint, positive, index }) {
     const visit = z.object({ sector: index, beacon: index, arrivalTick: z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER) }).strict();
     const target = z.discriminatedUnion('kind', [
@@ -77,11 +87,12 @@ const sectorWire: ModeWire = {
       rngStates: z.object({ hazards: u32, director: u32, combat: u32, loot: u32, cosmetic: u32, map: u32, quirk: u32 }).strict(),
       layoutId: text, layoutHash: text, playerCount, manifest: z.array(text).min(1).max(128)
     }).strict();
-  }
+  },
+  endRecord: (_p, { telemetry }) => z.object({ mode: z.literal('sector'), record: telemetry }).strict()
 };
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
  *  header (sim/duel/snapshot.ts). */
-const duelWire: ModeWire = {
+export const duelWire: ModeWire<DuelSnapshot> = {
   commands({ index }) {
     return [
       z.object({ kind: z.literal('sit'), station: index }).strict(),
@@ -98,10 +109,19 @@ const duelWire: ModeWire = {
       snapshotFormat: z.literal(1), simVersion: positive, contentDigest: z.string().regex(/^[0-9a-f]{64}$/), tick: uint, playerCount,
       layoutId: text, layoutHash: text, seed: u32, mapHash: z.string().regex(/^[0-9a-f]{8}$/), hash: z.string().regex(/^[0-9a-f]{8}$/)
     }).strict();
+  },
+  /** The frozen end summary (sim/duel/summary.ts). Never null: the duel rules compute it on the step that ends the duel
+   *  and on the restore of an ended duel, before any `ended` event is published. */
+  endRecord({ uint }) {
+    const pair = z.tuple([uint, uint]);
+    const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
+      .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'terminal causes out of order or repeated');
+    const duelSummary = z.object({ outcome: z.number().int().min(0).max(3), ticks: uint, terminal: z.tuple([causes, causes]),
+      laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: pair }).strict();
+    return z.object({ mode: z.literal('duel'), record: duelSummary }).strict();
   }
 };
-const TERMINAL_CAUSES = ['planet', 'asteroid', 'ship', 'laser', 'missile'] as const;
-function messageSchemaFor(playerLimit: number, wire: ModeWire = sectorWire) {
+function messageSchemaFor<S extends { header: unknown }>(playerLimit: number, wire: ModeWire<S>) {
 const prims = primitives(playerLimit);
 const { uint, positive, index, player, text, u32 } = prims;
 const axis = z.number().finite().min(-1).max(1).transform((n) => n === 0 ? 0 : n);
@@ -134,26 +154,18 @@ const telemetry = z.object({
   teamwork: z.object({ lockedShots: uint, teamSeconds: seconds, revives: uint, timedEvades: uint, votesUnanimous: uint, votesSplit: uint }).strict(),
   score: seconds, skills: z.array(z.array(index).max(128)).max(playerLimit)
 }).strict();
-const pair = z.tuple([uint, uint]);
-const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
-  .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'terminal causes out of order or repeated');
-const duelSummary = z.object({ outcome: z.number().int().min(0).max(3), ticks: uint, terminal: z.tuple([causes, causes]),
-  laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: pair }).strict();
 const payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cue'), cue: z.enum(['alarm', 'impact', 'shot', 'hit', 'ready', 'jump', 'upgrade', 'victory', 'defeat', 'callout']) }).strict(),
   z.object({ kind: z.literal('callout'), player, text: z.string().min(1).max(256), station: index.nullable() }).strict(),
   z.object({ kind: z.literal('pause'), paused: z.boolean(), owner: player.nullable(), reason: text }).strict(),
-  z.object({ kind: z.literal('ended'), record: z.discriminatedUnion('mode', [
-    z.object({ mode: z.literal('sector'), record: telemetry }).strict(),
-    z.object({ mode: z.literal('duel'), record: duelSummary.nullable() }).strict()
-  ]) }).strict()
+  z.object({ kind: z.literal('ended'), record: wire.endRecord(prims, { telemetry }) }).strict()
 ]);
 const state = z.object({
   runId: text, tick: uint, publicationSequence: positive, snapshot, hash: text, phase: z.enum(['running', 'paused', 'ended', 'error']),
   pauseOwner: player.nullable(), controlRevision: uint, pauseReason: text.nullable(), lagTicks: uint, tickTimeMs: seconds.nullable(),
   commandHighWater: z.array(uint).min(1).max(playerLimit), heldHighWater: z.array(uint).min(1).max(playerLimit), auxiliaryHighWater: z.array(uint).min(1).max(playerLimit), eventSequence: uint
 }).strict().refine((value) => [value.commandHighWater, value.heldHighWater, value.auxiliaryHighWater]
-  .every((water) => water.length === (value.snapshot.header as { playerCount: number }).playerCount), 'publication watermarks must cover every player');
+  .every((water) => water.length === (value as { snapshot: { header: { playerCount: number } } }).snapshot.header.playerCount), 'publication watermarks must cover every player');
 const authorityEvent = z.object({ runId: text, eventSequence: positive, tick: uint, payload }).strict();
 const messageSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('held'), frame }).strict(),
@@ -172,7 +184,7 @@ export interface MessageCodec<S = Snapshot> {
 }
 /** A mode's codec factory, by player limit (engine refactor spec §6: the ledger takes the mode's command codec). */
 export type CommandCodec<S = Snapshot> = (playerLimit?: number) => MessageCodec<S>;
-function codecFor<S>(wire: ModeWire): CommandCodec<S> {
+export function codecFor<S extends { header: unknown }>(wire: ModeWire<S>): CommandCodec<S> {
   return (playerLimit = MAX_PLAYERS) => {
     if (!Number.isInteger(playerLimit) || playerLimit < 1 || playerLimit > 256) throw new Error('invalid player limit');
     const { messageSchema } = messageSchemaFor(playerLimit, wire);
@@ -184,6 +196,10 @@ function codecFor<S>(wire: ModeWire): CommandCodec<S> {
       },
       decodeMessage(bytes) {
         if (bytes.byteLength > MAX_MESSAGE_BYTES) throw new Error('message exceeds byte limit');
+        // The one cast: the parsed value is the wire contract (net/contracts.ts), but its type is zod's inference
+        // from the schemas (with the ZodTypeAny parts, the telemetry and end records, as any), which TypeScript cannot
+        // prove equal to ClientMessage | AuthorityMessage<S>. The header is pinned to S by ModeWire<S>; the rest is
+        // held to the contracts by the codec tests.
         return messageSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))) as ClientMessage | AuthorityMessage<S>;
       }
     };
@@ -196,9 +212,9 @@ export function createMessageCodec(playerLimit = MAX_PLAYERS): MessageCodec<Snap
 export const duelCodec: CommandCodec<DuelSnapshot> = codecFor<DuelSnapshot>(duelWire);
 /** Object validation of a duel publication, as validatePublication is for the sector. */
 export const duelPublicationSchema = messageSchemaFor(2, duelWire).publicationSchema;
-export const commandSchema = messageSchemaFor(MAX_PLAYERS).commandSchema;
+export const commandSchema = messageSchemaFor(MAX_PLAYERS, sectorWire).commandSchema;
 /** Object transport validation, independent of the unchanged local byte ceiling. */
-export const publicationSchema = messageSchemaFor(MAX_PLAYERS).publicationSchema;
+export const publicationSchema = messageSchemaFor(MAX_PLAYERS, sectorWire).publicationSchema;
 export function validatePublication(value: unknown): PublishedState { return publicationSchema.parse(value) as PublishedState; }
 export const { encodeMessage, decodeMessage } = createMessageCodec();
 export interface LatestMessageMetadata { key: string; sequence: number }

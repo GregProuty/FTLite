@@ -12,7 +12,7 @@ import type { ModeDefinition, Unsubscribe } from './contracts';
 
 const CUTTER = parseShip(cutter);
 function resolveLayout(id: string) { if (id !== CUTTER.id) throw Error('unknown duel layout'); return CUTTER; }
-const decode = duelCodec();
+const decode = duelCodec(2);
 
 export const duelMode: ModeDefinition = defineEncounterMode<DuelTypes>({
   modeId: 'duel', schemaVersion: 1, simVersion: SIM_VERSION, rules: duelRules, resolveLayout,

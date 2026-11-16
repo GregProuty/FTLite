@@ -97,5 +97,7 @@ export function validateDuelCheckpoint(value: unknown, contentDigest: string, re
   for (const { envelope, result } of cp.recentResults) if (envelope.runId !== cp.init.runId || result.tick > cp.snapshot.header.tick) throw new Error('inconsistent checkpoint cache');
   const t = cp.modeMemory.telemetry, bodies = createTacticalState(cp.init.seed).map.asteroids.length + 2;
   if (t.prev.grace.some((g) => g.length !== bodies) || t.ticks !== cp.snapshot.header.tick) throw new Error('inconsistent duel telemetry');
+  // The accumulator's outcome is the snapshot's (values[5], as above), and only an ended duel has terminal causes.
+  if (t.outcome !== cp.snapshot.values[1 + 4] || (t.outcome === 0 && t.terminal.some((c) => c.length > 0))) throw new Error('inconsistent duel telemetry');
   return structuredClone(cp);
 }

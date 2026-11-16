@@ -37,7 +37,12 @@ export const duelRules: EncounterRules<DuelTypes> = {
     if (!s.summary && s.duel.tactical.outcome !== Outcome.Running) s.summary = duelEndSummary(s.telemetry);
     return results;
   },
-  terminal: (s) => s.duel.tactical.outcome !== Outcome.Running ? { ended: true, endRecord: { mode: 'duel', record: s.summary } } : { ended: false, endRecord: null },
+  terminal(s) {
+    if (s.duel.tactical.outcome === Outcome.Running) return { ended: false, endRecord: null };
+    // step and restore (session) set the summary whenever the outcome has left Running, so an ended duel always has one.
+    if (!s.summary) throw new Error('an ended duel has no end summary');
+    return { ended: true, endRecord: { mode: 'duel', record: s.summary } };
+  },
   safePointKey: () => 'duel',
   callouts: () => null,
   cueBaseline: (s) => ({ outcome: s.duel.tactical.outcome }),
