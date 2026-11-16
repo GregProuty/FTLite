@@ -1,0 +1,12 @@
+topic=mac-1-plans
+subject_kind=plan
+subject=docs/superpowers/plans/2026-11-16-mac-1a-private-build.md docs/superpowers/plans/2026-11-16-mac-1b-cross-platform-validation.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=3
+effort=high
+confirm=0
+verify=
+created=2026-11-16
+head_at_setup=a178355
+format=
