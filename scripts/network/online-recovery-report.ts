@@ -35,7 +35,7 @@ export function validateOnlineRecoveryReport(value: unknown): void {
   if (!Array.isArray(r.processes) || r.processes.length < 2 || new Set(r.processes.map((p: any) => p.pid)).size !== r.processes.length
     || r.processes.some((p: any) => !positive(p.pid) || p.exited !== true || !Number.isInteger(p.exitCode)
       || !['shutdown','restart'].includes(p.termination) || p.termination === 'shutdown' && (p.exitCode !== 0 || !p.cleanup)
-      || p.termination === 'restart' && (!Array.isArray(p.resourcesBeforeForcedExit?.utilities) || !Array.isArray(p.forcedUtilityExits)
+      || p.termination === 'restart' && (p.cleanup!=null || !Array.isArray(p.resourcesBeforeForcedExit?.utilities) || !Array.isArray(p.forcedUtilityExits)
         || p.resourcesBeforeForcedExit.utilities.some((u:any)=>!positive(u.pid)||!p.forcedUtilityExits.some((e:any)=>e.pid===u.pid&&e.exited===true))))) fail();
   const c = r.cleanup;
   const counters = ['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'];

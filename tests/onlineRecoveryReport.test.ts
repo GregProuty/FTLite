@@ -35,6 +35,14 @@ it.each([
   ['deadline later than service expiry',(r:any)=>{r.proof.oldHostFence.evidence.acceptedLease.expiresAtEpochMs=100500;}],
 ] as const)('rejects %s',(_name,mutate)=>{const r=fixture();mutate(r);expect(()=>validateOnlineRecoveryReport(r)).toThrow();});
 it('rejects fabricated exit zero', () => expect(() => validateOnlineRecoveryReport({ exitCode: 0 })).toThrow());
+it('rejects a contradictory cleanup record attached to a forcibly restarted process',()=>{
+  const r=fixture();
+  r.processes[0]={pid:10,profile:'host',exited:true,exitCode:1,termination:'restart',resourcesBeforeForcedExit:{utilities:[{pid:12}]},forcedUtilityExits:[{pid:12,exited:true}]};
+  r.cleanup={...r.processes[1].cleanup};delete r.cleanup.utilityPids;
+  expect(()=>validateOnlineRecoveryReport(r)).not.toThrow();
+  r.processes[0].cleanup={windows:10};
+  expect(()=>validateOnlineRecoveryReport(r)).toThrow();
+});
 it.each(['source', 'runtime', 'runtimeHelper', 'processes', 'cleanup', 'proof'])('rejects absent %s', key => { const r = fixture(); delete r[key]; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it.each(['committed', 'oldHostFence', 'contenders', 'fullAck', 'ownership', 'pausedBaselineCommitted', 'serviceBytesRestored'])('rejects missing %s', key => { const r = fixture(); delete r.proof[key]; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
 it('rejects auto-resume', () => { const r = fixture(); r.proof.autoResume = true; expect(() => validateOnlineRecoveryReport(r)).toThrow(); });
