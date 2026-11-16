@@ -40,6 +40,7 @@ describe('application driver diagnostics',()=>{
     expect(onlineAppFailureCode(Error(secret))).toBe('online-application-gate-failed');
     expect(onlineAppFailureCode({message:secret,stack:secret})).toBe('online-application-gate-failed');
     expect(onlineAppFailureCode(Error('injected transport death'))).toBe('injected transport death');
+    expect(onlineAppFailureCode(Error('injected worker death'))).toBe('injected worker death');
     expect(onlineAppStderrDiagnostic('guest')).toEqual({code:'APP_NATIVE_STDERR',role:'guest'});
     expect(onlineAppStderrDiagnostic(secret)).toEqual({code:'APP_NATIVE_STDERR',role:'unknown'});
   });

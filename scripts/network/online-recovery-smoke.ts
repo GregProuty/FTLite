@@ -144,7 +144,7 @@ async function main() {
     if(process.argv.includes('--inject-timeout')) { const timer=setTimeout(timeout,250); try { await until(()=>status(g),()=>false,'deliberate timeout'); } finally { clearTimeout(timer); } }
     if(process.argv.includes('--inject-guest-failure')) { g.termination='fault'; await kill(g); throw Error('injected guest process death'); }
     if(process.argv.includes('--inject-transport-failure')) { await g.request('transport-death'); throw Error('injected transport death'); }
-    if(process.argv.includes('--inject-worker-death')) { process.kill(runtime.pid!); throw Error('injected guest process death'); }
+    if(process.argv.includes('--inject-worker-death')) { process.kill(runtime.pid!); throw Error('injected worker death'); }
     let staleEvidence: any, contenders: any[] | undefined;
     if(scenario==='stale') {
       stage='stale-arm';
