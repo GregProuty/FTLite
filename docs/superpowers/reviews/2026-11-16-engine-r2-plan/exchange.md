@@ -109,3 +109,43 @@ Fixed: the sort uses `localeCompare(…, 'en')`. The output is unchanged, so the
 
 ---
 
+# Round 2 (delta, reviewing cf57546, effort medium, 75 s, 406995 in / 358401 cached / 6857 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Plan L2019-2033 replaces the precondition with `m.active`. The old text's second line, `systems[0].rooms`, is the Task 2 codemod's output: tests/duelCheckpoint.test.ts:L40 reads `ships[0].rooms` and plan L1562 reports 1 systems edit for that file, so the exact match holds. The file is now in Task 3's Modify list (L1684), the file table (L87) and the git add line (L3780).
+- R1-F2: resolved — Plan L1809-1829 launches ship 1 first, so owner 1 sits in entry 0. resolveMissiles (plan L3127-3149) iterates by owner through missileOf, so both expiry (L3148, age >= lifeTicks) and the meeting (L3145, ending m then o) emit ship 0 first. An entry-order loop would emit [1,0], so both tests catch it. 5 apart is inside 2*MISSILE_RADIUS = 8 (tuning.ts:L83). `end` zeroes the entry, which matches toEqual([emptyMissile(), emptyMissile()]).
+- R1-F3: resolved — Plan L3663-3673 adds the identity check after validateTacticalValues. Offsets start at 1 and come from TACTICAL_MODULES over the 2-slot shape (snapshot.ts:L60). The new `at`/`offset` names do not clash with any existing name in validateDuelSnapshot (snapshot.ts:L45-88). Each of the 4 new cases (plan L2107-2108) passes the generic bounds (cls 0..1, target 0..1) and so is refused only by the new check. The emptied-slot-1 case (L2123-2126) is rehashed and leaves `ships.length` at 2. The message contains 'duel slot identity', so the regexes match. The DUEL_CLASSES and TACTICAL_MODULES imports are added (L3647-3650).
+- R1-F4: resolved — Decision 15 (plan L65) states the deviation from spec §5 L105-108 and its reason (presence is per player; telemetry stays a pair until R-5). The sites it cites match the code: telemetry.ts:L93 `[crew, enemy] = tac.ships`, L96 `[false, false]`, L107/L111/L153 `i < 2`.
+- R1-F5: resolved — Plan L2264-2372 adds systems comparisons to the three body-only tests. Each old text matches tests/tacticalSoloFlight.test.ts:L9-13, L15-17, L21-25, L27-29, L36-38 and L52-56. None of those lines contains a systems field, so the Task 2 codemod leaves them alone: its 2 edits are L26 `hull` and L46 `hull`. Each old text is unique in the file.
+- R1-F6: resolved — Plan L1832-1849 steps the duel golden's scripted run (seed 1) to its end and checks the 7 declared-added values at every tick, expecting [15772, 0]. CUTTER is exported from tests/helpers/scriptedDuel.ts:L14. The signatures match the imports: createScriptedPair and scriptedInput (scripted.ts:L62, L235), createDuel and disposeDuel (state.ts:L42, L66), stepDuelTick (step.ts:L72).
+- R1-F7: resolved — Plan L1544 and L1548 now pass 'en' to both sorts, including the new-import branch, which previously used a bare `.sort()`. Decision 13 (L64) records this.
+
+## Verified
+- The test counts are consistent: 3 new `it` cases in tacticalSlots (plan L1809, L1820, L1832). The duelSnapshot additions sit inside an existing `it`. That gives 446→449 at plan L3767 and 3,160→3,163 at plan L3822.
+- The Task 2 codemod's expected output (plan L1560-1580) still includes duelCheckpoint's single systems edit, so Task 3's new old text for that file is reachable.
+- The duelSnapshot 'empty' forgery (plan L2124) zeroes only the `ships.1.*`, `systems.1.*` and `missiles.*` names; `ships.length` stays at 2, so the check that refuses it is the identity check, not the slot-count check.
+- The telemetry pair sites named in Decision 15 match src/renderer/src/sim/duel/telemetry.ts:L93, L96, L107, L111, L153.
+
+## Not verified
+- I did not verify that (-300,600)/(-300,700)/(-295,600) are clear of the planet, asteroids and both ships at seed 5; that needs the generated map. The responder reports both tests pass and fail under entry order.
+- I did not verify that the emptied-slot-1 snapshot passes validateTacticalValues' other invariants (for example hunter-record or target-active checks), so that the identity check is really the one that throws. This depends on the full validator body, which I did not trace.
+- I did not verify the 15,772-tick length of seed 1's scripted run, and I ran nothing (the constraints allow reading only).
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. No new findings. The reviewer confirmed R1-F1 to R1-F7 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
