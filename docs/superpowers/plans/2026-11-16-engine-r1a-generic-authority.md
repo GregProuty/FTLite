@@ -32,6 +32,7 @@
 - Determinism guard (`tests/boundary.test.ts`) scans `sim/`, `authority/`, `net/`, `clientControl/`, `headless/`, `events/` and `src/shared/`: only `Math.abs`, `ceil`, `floor`, `round`, `min`, `max`, `sign`, `imul` and `sqrt`; no platform globals; randomness only through `src/shared/rng.ts`. Files under `sim/` import nothing from `authority/`, `clientControl/`, `app/` or `render/`.
 - The network boundary (`tests/networkBoundary.test.ts`): a file under `src/network/` may import renderer code only if it is a mode file; `modes/encounterMode.ts` joins the sector files on that list.
 - **The sector must not change.** No step of this plan writes `tests/golden/*` or `tests/fixtures/*`, and the existing replay, golden, determinism, ledger, authority and Net-3 tests run unedited, except `tests/netCodec.test.ts` and `tests/sectorStream.test.ts`, whose `ended` events gain the end record's mode tag (spec §6).
+- **Never discard working-tree changes.** No step runs `git checkout`, `git restore`, `git stash` or `git clean`: the owner and other sessions keep uncommitted work in this checkout (today, netcode files under `src/main/network/`, `src/renderer/src/main.ts` and `tests/online*.test.ts`), and this plan touches none of those files. Every check that writes evidence writes it under the git-ignored `out/`.
 - **Commands need no shell features.** Every `Run:` line works as written in Windows PowerShell 5.1 and in Git Bash.
 - Commit with explicit paths only (`git add <paths>`), never `git add -A` or `git add .`. End every commit message with the Co-Authored-By trailer your own session instructs.
 - Run single test files with `npx vitest run <file>`. The full suite is `npm test` (it reads the built `out/`; build first). Typecheck is `npm run typecheck`.
@@ -4356,16 +4357,10 @@ Run: `npm run test:host-runtime`
 Expected: `ACTUAL host runtime PASS: Electron 37.10.3; 15 checks; 8/8 utility exits` (it builds first; about 30 s), exit 0.
 
 Run: `npm test`
-Expected: every file passes, 3,086 tests in 222 files (12 more than after R-0: the three new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
+Expected: every file passes, 3,093 tests in 222 files at master cabc521 (12 more than after R-0: the three new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
 
-Run: `npm run test:determinism`
-Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS` for Node and `1800 samples PASS` for Electron (and Firefox where it is installed).
-
-The check rewrites its tracked evidence logs under `.superpowers/sdd/2026-11-14-net-1b-durability/task-5-logs/`; put them back:
-
-```bash
-git checkout -- .superpowers/sdd/2026-11-14-net-1b-durability/task-5-logs
-```
+Run: `npm run test:determinism -- --output-dir=out/r1a-determinism`
+Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS` for Node and `1800 samples PASS` for Electron (and Firefox where it is installed). The output-dir flag (read by scripts/determinism/run.ts) sends its evidence logs to the git-ignored out/ folder instead of the tracked default under .superpowers/sdd/, so this step leaves git status unchanged apart from the files the commits name.
 
 - [ ] **Step 6: Commit**
 
