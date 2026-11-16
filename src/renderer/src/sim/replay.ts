@@ -2,6 +2,9 @@ import type { ClientMessage, CommandResult, HeldInput, LifecyclePause, Published
 import type { Snapshot } from './snapshot';
 import type { Checkpoint } from '../net/contracts';
 import type { TickInput } from './commands';
+/** The type family a replay is generic over (authority/rules.ts EncounterTypes); the default is the sector's. */
+export interface ReplayTypes { init: unknown; controllers: unknown; snapshot: unknown }
+export interface SectorReplayTypes { init: RunInit; controllers: Checkpoint['botControllers']; snapshot: Snapshot }
 import type { AdmissionPolicy } from '../net/receivePolicy';
 export type ReplayAdmission = { binding: number; players: number[]; order: number; message: Exclude<ClientMessage, { kind: 'callout' }>; admissionPolicy?: AdmissionPolicy; effectiveTick?: number };
 export type ReplayAction =
@@ -22,12 +25,13 @@ export interface ReplayFrame {
   tick: number; eventSequenceBefore: number; action: ReplayAction;
   results: CommandResult[]; events: { eventSequence: number; tick: number; kind: 'cue' | 'pause' | 'ended' }[]; after?: ReplayOutcome;
 }
-/** Portable semantic replay. Auxiliary requests/presentation payloads are deliberately absent. */
-export interface ReplayV2 { version: 2; init: RunInit; initial: Snapshot; checkpoint: Checkpoint; frames: ReplayFrame[] }
-export interface ReplayV3 extends Omit<ReplayV2, 'version'> { version: 3 }
+/** Portable semantic replay. Auxiliary requests/presentation payloads are deliberately absent. `mode` names the
+ *  encounter's mode; it is absent for the sector, so every V2/V3/V4 file recorded before R-1 parses unchanged. */
+export interface ReplayV2<T extends ReplayTypes = SectorReplayTypes> { version: 2; mode?: string; init: T['init']; initial: T['snapshot']; checkpoint: Checkpoint<T['init'], T['controllers'], T['snapshot']>; frames: ReplayFrame[] }
+export interface ReplayV3<T extends ReplayTypes = SectorReplayTypes> extends Omit<ReplayV2<T>, 'version'> { version: 3 }
 /** V4 can record a permission fence inside a partially processed control drain. */
-export interface ReplayV4 extends Omit<ReplayV2, 'version'> { version: 4 }
-export type Replay = ReplayV2 | ReplayV3 | ReplayV4;
+export interface ReplayV4<T extends ReplayTypes = SectorReplayTypes> extends Omit<ReplayV2<T>, 'version'> { version: 4 }
+export type Replay<T extends ReplayTypes = SectorReplayTypes> = ReplayV2<T> | ReplayV3<T> | ReplayV4<T>;
 export type { HeldInput };
 
 /** Property insertion order is not part of portable JSON semantics. */
