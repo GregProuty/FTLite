@@ -10,7 +10,7 @@ import { flattenTactical, TACTICAL_MODULES } from '../src/renderer/src/sim/tacti
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { CUTTER } from './helpers/scriptedDuel';
+import { CUTTER, passiveInput } from './helpers/scriptedDuel';
 import { classOf, createTacticalState, emptyMissile, missileOf, placeMissile, removeMissile, shipBody, targetOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import {
   ENGINE_FACTOR, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, MAGAZINE, MISSILE_HULL, MISSILE_LIFE_TICKS, SHIELD_LAYERS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK
@@ -131,20 +131,26 @@ describe('the missile pool (spec §5: at most one in flight per ship)', () => {
 });
 
 describe('the declared-added fields (new in the R-2 alias table)', () => {
-  it('hold the duel values at every tick of a full scripted run: two slots, both active, the Cutter and the hunter, each on the other', () => {
-    const d = createDuel(CUTTER, 1), pair = createScriptedPair(1), at = new Map<string, number>();
+  // The same run kinds ORACLE_RUNS uses: the scripted pair (seed 1 in full, the golden) and a passive crew (capped).
+  const cases: { crew: 'scripted' | 'passive'; seed: number; cap: number }[] = [
+    { crew: 'scripted', seed: 1, cap: Infinity }, { crew: 'passive', seed: 1, cap: 3000 }, { crew: 'passive', seed: 7, cap: 3000 }
+  ];
+  it.each(cases)('hold the duel values at every tick of a $crew run, seed $seed: two slots, both active, the Cutter and the hunter, each on the other', ({ crew, seed, cap }) => {
+    const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed), at = new Map<string, number>();
     let offset = 0;
     for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { at.set(f.name, offset); offset += f.count; }
     const names = ['ships.length', 'ships.0.active', 'ships.1.active', 'systems.0.cls', 'systems.1.cls', 'systems.0.target', 'systems.1.target'];
     let ticks = 0, wrong = 0;
     try {
-      while (d.tactical.outcome === 0) {
-        stepDuelTick(d, scriptedInput(pair, d));
+      while (d.tactical.outcome === 0 && ticks < cap) {
+        stepDuelTick(d, crew === 'scripted' ? scriptedInput(pair, d) : passiveInput(d));
         const v = flattenTactical(d.tactical);
         if (names.map((n) => v[at.get(n)!]).join() !== '2,1,1,0,1,1,0') wrong++;
         ticks++;
       }
     } finally { disposeDuel(d); }
-    expect([ticks, wrong]).toEqual([15772, 0]);
+    expect(ticks).toBeGreaterThan(0);
+    expect(wrong).toBe(0);
+    if (crew === 'scripted') expect(ticks).toBe(15772);
   }, 60_000);
 });

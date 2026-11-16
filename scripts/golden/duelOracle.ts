@@ -95,6 +95,13 @@ export function duelSchema(d: DuelState): { names: string[]; counts: number[] } 
   return { names, counts };
 }
 
+/** The offset of the interior's version value in the flattened values (after the leading SIM_VERSION word); throws if the schema has none. */
+export function versionOffset(names: readonly string[], counts: readonly number[]): number {
+  let o = 0;
+  for (let k = 0; k < names.length; k++) { if (names[k] === 'interior.$simVersion') return o; o += counts[k]!; }
+  throw new Error('the duel schema has no interior.$simVersion field: the version cannot be checked');
+}
+
 /** How the current values become the baseline's named values: `build` returns them in the baseline's order. */
 export interface AliasPlan { problems: string[]; build(values: ArrayLike<number>): Float64Array }
 
@@ -133,6 +140,10 @@ export function aliasPlan(oldNames: readonly string[], oldCounts: readonly numbe
     if (f.count !== count) { problems.push(`old field ${old} has ${count} values, its new field ${name} ${f.count}`); return; }
     steps.push((values, out) => { for (let i = 0; i < f.count; i++) out.push(values[f.offset + i]!); });
   });
+  for (const name of consumed) {
+    const from = targeted.get(name);
+    if (from !== undefined) problems.push(`new field ${name} is read by a derived rule and also mapped from old field ${from}`);
+  }
   for (const name of newNames) {
     if (VERSION_FIELDS.includes(name) || targeted.has(name) || consumed.has(name)) continue;
     if (!migration?.added.some((p) => p.test(name))) problems.push(`new field ${name} is neither mapped nor declared added`);
@@ -165,7 +176,7 @@ export function recordRun(spec: OracleRunSpec, schema?: { names: readonly string
     const now = duelSchema(d), target = schema ?? now;
     const plan = aliasPlan(target.names, target.counts, now.names, now.counts, schema?.migration);
     const kept = target.names.map((n, k) => ({ n, c: target.counts[k]! })).filter((f) => !VERSION_FIELDS.includes(f.n));
-    const versionAt = (() => { let o = 0; for (let k = 0; k < now.names.length; k++) { if (now.names[k] === 'interior.$simVersion') return o; o += now.counts[k]!; } return -1; })();
+    const versionAt = versionOffset(now.names, now.counts);
     const chains = kept.map(() => SEED), perTick: string[] = [];
     if (plan.problems.length === 0) while (d.tactical.outcome === Outcome.Running && d.interior.tick < (spec.cap ?? CAP_TICKS)) {
       const input = spec.crew === 'scripted' ? scriptedInput(pair, d) : passiveInput(d);

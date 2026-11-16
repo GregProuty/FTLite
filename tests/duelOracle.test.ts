@@ -3,7 +3,7 @@
 // is caught at the first tick it shows, naming the fields; and the version rules (a bump is the baseline plus 1, a
 // same-version check needs the same version) hold.
 import { describe, expect, it } from 'vitest';
-import { aliasPlan, duelSchema, judgeDuelOracle, MIGRATIONS, ORACLE_RUNS, recordRun, runDifferences, type Migration, type OracleRunSpec, type OracleTrace } from '../scripts/golden/duelOracle';
+import { aliasPlan, duelSchema, judgeDuelOracle, MIGRATIONS, ORACLE_RUNS, recordRun, runDifferences, versionOffset, type Migration, type OracleRunSpec, type OracleTrace } from '../scripts/golden/duelOracle';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -29,6 +29,14 @@ describe('the alias table', () => {
     const plan = aliasPlan(['pair'], [2], ['slot.0', 'slot.1'], [1, 1], keyed);
     expect(plan.problems).toEqual([]);
     expect(Array.from(plan.build([3, 4]))).toEqual([4, 3]);
+  });
+  it('reports a new field that a derived rule reads and a plain mapping also targets', () => {
+    const both: Migration = { ...none, rename: (o) => (o === 'plain' ? 'slot.0' : undefined), derived: [{ old: /^pair$/, reads: /^slot\.\d$/, value: () => [0, 0] }] };
+    expect(aliasPlan(['pair', 'plain'], [2, 1], ['slot.0', 'slot.1'], [1, 1], both).problems).toEqual(['new field slot.0 is read by a derived rule and also mapped from old field plain']);
+  });
+  it('throws a clear error when the schema has no interior version field, and finds its offset otherwise', () => {
+    expect(() => versionOffset(['a', 'b'], [1, 1])).toThrow(/no interior\.\$simVersion/);
+    expect(versionOffset(['a', 'interior.$simVersion'], [3, 1])).toBe(3);
   });
   it('names every duel field once: the modules in flattenDuel order with the interior expanded', () => {
     const d = createDuel(CUTTER, 1);
@@ -96,5 +104,26 @@ describe('the judge', () => {
     const bad = judgeDuelOracle(trace({ runs }), (spec) => ({ problems: [], run: { ...runs.find((r) => r.id === spec.id)!, perTick: ['x', 'z'], chains: ['d'] } }), '/repo', 'same', 37);
     expect(bad.ok).toBe(false);
     expect(bad.message).toMatch(/scripted-1: first difference at tick 2 \(fields\); fields that differ during the run: a/);
+  });
+  const okRun = (id: string) => ({ id, names: ['a'], counts: [1], ticks: 2, outcome: 1, perTick: ['x', 'y'], chains: ['c'] });
+  it('applies no alias table at the same version', () => {
+    const runs = ORACLE_RUNS.map((s) => okRun(s.id)), seen: unknown[] = [];
+    const r = judgeDuelOracle(trace({ runs }), (spec, schema) => { seen.push(schema.migration); return { problems: [], run: runs.find((x) => x.id === spec.id)! }; }, '/repo', 'same', 37, { 37: { ...none, change: 'R-test' } });
+    expect(r.ok).toBe(true);
+    expect(seen).toEqual(ORACLE_RUNS.map(() => undefined));
+  });
+  it('fails on baseline run ids that differ from ORACLE_RUNS, on a tick count or outcome mismatch, and on re-run problems', () => {
+    const runs = ORACLE_RUNS.map((s) => okRun(s.id)), byId = (id: string) => runs.find((x) => x.id === id)!;
+    const echo = (spec: OracleRunSpec) => ({ problems: [] as string[], run: byId(spec.id) });
+    const renamed = [{ ...runs[0]!, id: 'other' }, ...runs.slice(1)];
+    expect(judgeDuelOracle(trace({ runs: renamed }), echo, '/repo', 'same', 37).message).toMatch(/other runs than ORACLE_RUNS/);
+    const ticks = judgeDuelOracle(trace({ runs }), (spec) => ({ problems: [], run: { ...byId(spec.id), ticks: 3 } }), '/repo', 'same', 37);
+    expect(ticks.ok).toBe(false);
+    expect(ticks.message).toMatch(/ended at tick 3 with outcome 1, the baseline at tick 2/);
+    const outcome = judgeDuelOracle(trace({ runs }), (spec) => ({ problems: [], run: { ...byId(spec.id), outcome: 2 } }), '/repo', 'same', 37);
+    expect(outcome.message).toMatch(/with outcome 2, the baseline at tick 2 with outcome 1/);
+    const prob = judgeDuelOracle(trace({ runs }), () => ({ problems: ['old field a is unmapped'], run: runs[0]! }), '/repo', 'same', 37);
+    expect(prob.ok).toBe(false);
+    expect(prob.message).toMatch(/scripted-1: old field a is unmapped/);
   });
 });
