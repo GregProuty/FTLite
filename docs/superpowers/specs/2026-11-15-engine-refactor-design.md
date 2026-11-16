@@ -147,14 +147,17 @@ interface EncounterRules<State, Init, ControllerMemory> {
   playerCount(state: State): number;
   tick(state: State): number;                             // today: state.tick, read by core.ts:133-138, 261-268, 426-429
   step(state: State, input: FrozenTickInput): CommandResult[];
-  terminal(state: State): { ended: boolean; endRecord: EndRecord | null };  // today: state.ended + telemetryRecord on end
+  terminal(state: State, init: Init): { ended: boolean; endRecord: EndRecord | null };  // today: state.ended + telemetryRecord on end (needs the init's seed)
+  validateInit(bytes: unknown, contentDigest: string, resolveLayout: ResolveLayout): Init;
+  initialControllers(init: Init): ControllerMemory;
+  cueBaseline(state: State): CueBaseline;
   safePointKey(state: State): string;                      // today: visitRef, for safe-point checkpoint captures
   callouts(state: State, player: number): Callout | null;  // today: calloutFor + the crew-dead check
   cues(prev: CueBaseline, state: State): Cue[];
   snapshot(state: State, contentDigest: string): Snapshot;  restore(snapshot: Snapshot, resolveLayout: ResolveLayout): State;
   hash(state: State): string;
   validateCheckpoint(bytes: unknown, contentDigest: string, resolveLayout: ResolveLayout): Checkpoint<Init, ControllerMemory>;
-  commandCodec: CommandCodec;                               // validates envelopes for the ledger (see Commands)
+  commandCodec: MessageCodec;                               // the mode's whole message codec: envelopes for the ledger and published states (the snapshot header differs per mode)
 }
 ```
 
@@ -168,7 +171,7 @@ Rules for three of these hooks:
     | { mode: 'duel'; record: DuelEndSummary | null };
   ```
 
-  - **The duel summary** is a plain, frozen value computed once when the duel ends: `{ outcome, ticks, terminal: [TerminalCause[], TerminalCause[]], laserReleases: [n, n], laserHits: [n, n], missilesLaunched: [n, n], missileHits: [n, n], repairsFinished: [n, n] }`, all integers, with causes from a fixed enum. `terminal` keeps the accumulator's arrays as they are, because one tick can kill a ship several ways (`duel/telemetry.ts:50-55, 152-161`). Each array lists the causes in the accumulator's order, with no duplicates, and is empty for a ship that survived; the codec validates that. It is not the live accumulator.
+  - **The duel summary** is a plain, frozen value computed once when the duel ends: `{ outcome, ticks, terminal: [TerminalCause[], TerminalCause[]], laserReleases: [n, n], laserHits: [n, n], missilesLaunched: [n, n], missileHits: [n, n], repairsFinished: [n, n] }, where the pairs are per ship except `repairsFinished`, which is per player`, all integers, with causes from a fixed enum. `terminal` keeps the accumulator's arrays as they are, because one tick can kill a ship several ways (`duel/telemetry.ts:50-55, 152-161`). Each array lists the causes in the accumulator's order, with no duplicates, and is empty for a ship that survived; the codec validates that. It is not the live accumulator.
   - **The duel telemetry accumulator** (`sim/duel/telemetry.ts`, with its previous-tick and manoeuvre state) is mode memory. It is not hashed. It is saved in the duel checkpoint as its own versioned, codec-validated blob next to `ControllerMemory`, and restored with it, so a restored duel's end summary equals an uninterrupted run's. The continuation proof below compares the end summaries too.
 - **Layout resolution.** The generic authority keeps the merged `resolveLayout` dependency (`authority/authority.ts:24-33,56-61,74-79`) and passes it as the explicit argument of the rules' `create`, `restore` and `validateCheckpoint` (see their signatures). The sector rules use it as today. The duel rules resolve the Cutter through the same resolver.
 
@@ -195,7 +198,7 @@ The ledger, tick driver, journal, checkpoint cadence and publication stay as the
 
   It also keeps the sector host's behaviour: it refuses to replace itself while anything is attached, and it caches checkpoint candidates and crash checkpoints (`sector.ts:35-52`). `modes/sector.ts` is rewritten as one call to it.
 - **The duel needs a snapshot format (an R-1 deliverable).** Today the duel has `cloneTactical` but no serialisation: nothing restores tactical or duel state. R-1 adds a duel snapshot codec and checkpoint schema **(rec.)**:
-  - **Header:** `{ snapshotFormat: 1, simVersion, contentDigest, layoutId, layoutHash, seed, mapHash }`. `mapHash` is `hashF64` over the map's canonical values, computed when the duel is created: planet, then each asteroid's x, y and r in index order, then the belt count, the cluster sizes, the gaps and both spawns.
+  - **Header:** `{ snapshotFormat: 1, simVersion, contentDigest, layoutId, layoutHash, seed, mapHash, tick, playerCount, hash }`. `mapHash` is `hashF64` over the map's canonical values, computed when the duel is created: planet, then each asteroid's x, y and r in index order, then the belt count, the cluster sizes, the gaps and both spawns.
   - **Stored values:**
     - the interior, through today's sector snapshot path (`flatten`/`unflatten` of the interior `SimState`);
     - the tactical state in `flattenTactical`'s order: ships, missiles, hunter, tick, outcome and the tactical random-number state;
@@ -407,3 +410,4 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
   - risk 3 revised.
 - 2026-11-15: refine (Net-3 corrections) round 2: `EndRecord` tagged on the wrapper, with a frozen `DuelEndSummary`; the duel telemetry accumulator saved as a checkpoint blob; `mapHash` in the header with its calculation and check; `resolveLayout` added to the rules signatures.
 - 2026-11-15: refine (Net-3 corrections) round 3: `DuelEndSummary.terminal` keeps per-ship cause arrays; the continuation proof also compares end summaries.
+- 2026-11-16: from the R-0/R-1 prototype: `terminal` takes the init; the rules gain `validateInit`, `initialControllers` and `cueBaseline`; `commandCodec` is the mode's whole message codec; the duel snapshot header adds `tick`, `playerCount` and `hash`; `repairsFinished` is per player.
