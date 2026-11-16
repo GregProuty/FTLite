@@ -237,6 +237,7 @@ async function main() {
     stage='leave-winner'; await g.request('click',{id:'leave'}); await phase(g,'idle');
     stage='idle-resources';
     for(const app of [h,g]) await until(()=>app.request('resource-counts'),r=>r.windows===1 && r.utilities.every((u:any)=>u.exited) && r.listeners===0 && r.ports===0,'idle resource release',5000);
+    proof.menuClicks=await Promise.all([h,g,...(contender?[contender]:[])].map(async app=>({role:app.profile,clicks:(await status(app)).recovery.clicks})));
   } catch(error) { failure=onlineAppFailureCode(error); failureCategory=error instanceof SyntaxError?'invalid-observation-json':(error as any)?.code==='ENOENT'?'missing-observation-file':'gate-failure'; console.error('RECOVERY_FAILED',{stage,category:failureCategory,assertion:assertionFailure}); }
   finally {
     clearTimeout(watchdog); clearTimeout(injectedDeadline);

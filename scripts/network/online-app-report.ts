@@ -1,6 +1,6 @@
 /** PASS requires independently observed application evidence, never just exit zero. */
 export const ONLINE_APP_ARTIFACTS = ['out/main/index.js','out/main/authorityHost.js','out/main/hostProcess.js','out/main/transportWindow.js','out/renderer/index.html',
-  'scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-observer.ts','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts',
+  'scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-click.cjs','scripts/network/online-app-observer.ts','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts',
   'src/main/index.ts','src/main/network/onlineSession.ts','src/main/network/onlineMirrors.ts','src/main/network/mirrorStore.ts','src/main/network/onlinePlatform.ts','src/main/network/onlineSector.ts',
   'src/main/network/hostProcess.ts','src/shared/onlineSession.ts','src/network/session/serviceClient.ts','src/network/utilityHost.ts','src/network/modes/sector.ts'];
 export function validateOnlineAppReport(value: unknown): void {
