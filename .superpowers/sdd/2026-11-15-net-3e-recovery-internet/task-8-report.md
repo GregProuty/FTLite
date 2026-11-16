@@ -105,3 +105,61 @@ An ignored `dist/net-3e-driver-source.zip` supplies the exact 264 audited source
 The exact proposed Task9 action is in the release record: reconfirm historical Worker `ftlite-signalling-dev` and `https://ftlite-signalling-dev.gprout009.workers.dev`; provision/verify only named server secrets IP_HASH_SALT, ALLOWED_ORIGINS, TURN_KEY_ID, TURN_KEY_API_TOKEN; deploy the prepared exact Worker artifact/config with existing Room/Directory SQLite v1 migration and unchanged quotas; then run real HTTPS/forced relay and the operator two-network procedure. Any deployed previous-version rollback artifact is unknown until authorized account inspection; no fictitious cloud rollback is claimed.
 
 The runbook names supported CLI controls and separately identifies operator network shaping for50/150/300ms injected RTT, jitter/loss and5s stalls. It distinguishes injected impairment from measured native network loss/RTT. Hour-long credential expiry/refresh and hardware OS sleep are separate operator evidence, not inferred from the short driver. Owner hardware/network input is needed only at that external stage. Controller reviews and combined-fix/re-review precede asking for external authorization.
+
+## Task 8 review fix round 1
+
+Fix base **`80dfded`**. Source/test fix **`b125547cacb5f4c43b651931f5e6503d10e72694`** addresses both Important findings in [task-8-review.md](task-8-review.md). Scoped re-review remains pending; this is not a reviewer approval. The original review and evidence are preserved. Controller progress and final-review brief are not staged by this implementer.
+
+**R1 — “Recovery evidence can belong to different runtime code.”** Admission now extracts and compares the complete executable output map, including all main/preload/renderer JavaScript/chunks/HTML and supported cjs/mjs/wasm/native-module output. Both key-set and hash equality are required, so missing, extra and changed executable entries reject in either direction. The current candidate has **22 executable files**, including hostProcess, transportWindow and the hashed renderer bundles, among47 total runtime assets. Minimum entry requirements also include hostProcess, transportWindow and networkTransport.html.
+
+Historical recovery revisions require `localRecovery.runtimeProvenance` containing the exact report revision, candidate revision and complete executable hash map. Each field is checked against the underlying report and candidate; neither a summary boolean nor a six-file subset is sufficient. Map field ordering is not treated as byte inequality. Current-revision reports may omit the historical record but must still match every executable byte.
+
+RED: after isolating the candidate mutations from unrelated external-identity comparisons by setting external gates NOT_RUN, **8 admission tests failed**: changed hostProcess, transportWindow and renderer bundle; missing and extra executable entries on each side; and absent historical provenance. The implementation brought all45 then-current report tests GREEN. Later supplemental controls reject altered provenance revisions/hashes and verify same-revision and reordered-map handling.
+
+**R2 — “The final report can combine different service origins into internetReady.”** `identity.serviceOrigin` is now required and must be the canonical explicit HTTPS origin, without alternate case/default-port/trailing-slash representations. Every external run (deployed, forced relay, both physical-device reports and actual OS suspend) must match its own identity; exact identity equality binds each to the candidate. Deployment attestation additionally matches candidate identity directly. The local-only verifier still permits a labelled loopback service, and that result remains inadmissible as internet evidence.
+
+The shared manifest guard compares requested origin, manifest top-level origin, identity origin and the unique compiled-main origin. The metadata generator uses it before emitting identity. The launcher uses it inside protected preparation, before ancestry/build/native work; changing both manifest origin labels is also rejected when compiled main still embeds the intended origin. The existing fixed preparation failure and cleanup behavior are retained. No production Origin, sender or authentication check changed.
+
+RED: **5 report assertions failed** for each of the four external gates using a different valid HTTPS origin and the missing identity origin. The new manifest guard's stub produced **11 intended failing rejection assertions**. The real launcher test observed two preparation children where the required early rejection permits only its initial Git child; after wiring the guard it observes exactly one exited preparation child, no native allocation and exact temporary removal. This proves the mismatch is rejected before downstream work, not only by a later unrelated missing-file check.
+
+### Covering commands and actual output
+
+At source `b125547`:
+
+```text
+npx vitest run tests/internetAppReport.test.ts tests/internetAppManifest.test.ts tests/internetAppSmoke.test.ts tests/onlineRecoveryReport.test.ts
+Test Files 4 passed (4)
+Tests 120 passed (120)
+Duration 11.78s
+```
+
+Per-file totals: report58, manifest12, launcher5, existing recovery validator45. Complete retained output: [fix-1/focused-green.txt](task-8-evidence/fix-1/focused-green.txt). Earlier final precommit run was also120/120 in11.77s; it is not counted as additional coverage.
+
+```text
+npx tsc --noEmit --target ES2023 --module ESNext --moduleResolution bundler --strict --skipLibCheck --types node --allowSyntheticDefaultImports scripts/network/internet-app-smoke.ts scripts/network/internet-app-report.ts scripts/network/internet-app-manifest.ts scripts/network/candidate-manifest.ts tests/internetAppReport.test.ts tests/internetAppManifest.test.ts tests/internetAppSmoke.test.ts
+exit 0
+npm run typecheck
+exit 0
+```
+
+Typecheck output/status: [root-typecheck.txt](task-8-evidence/fix-1/root-typecheck.txt), [verification.json](task-8-evidence/fix-1/verification.json). `git diff --check` PASS. Root/service regression suites, build, acceptance, engines and native gameplay gates were **not rerun**: no product, service, runtime bundle, transport lifecycle or simulation code changed.
+
+### Metadata and historical byte-equality provenance
+
+Current metadata is [fix-1/candidate.json](task-8-evidence/fix-1/candidate.json), pinned to `b125547`; original metadata remains unchanged. The reusable candidate tool was rerun against the existing candidate ZIP/unpacked package and confirmed all47 runtime hashes, canonical compiled origin and265 current source hashes. No runtime package was rebuilt or relabelled as a new native execution. The application archive/EXE/ASAR hashes remain exactly those recorded above.
+
+`npx tsx .superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-8-evidence/fix-1/audit.ts` prints:
+
+```text
+Review-fix audit PASS: 22 executable hashes equal across candidate/historical reports; canonical compiled origin; two early-rejection cleanup probes; no native rerun.
+```
+
+[fix-1/audit.json](task-8-evidence/fix-1/audit.json) records all22 executable hashes for each of the six original recovery reports, their exact file SHA-256 and original `f24149d` revision, and current candidate `b125547`. New [fix-1/readiness.json](task-8-evidence/fix-1/readiness.json) references the unchanged Skiff report with explicit checked runtime provenance; localRecovery remains PASS and every external field remains NOT_RUN.
+
+The existing native internet-driver result remains at its actual observed source `0e9d024`. The audit validates it only through a documented in-memory schema adapter adding `identity.serviceOrigin` from its original hashed manifest. It does not replace the report's source, fields or file bytes and explicitly records `nativeRerun:false`; the adapted loopback view is still rejected as internet evidence. This is compatibility revalidation of retained observations, not a new driver run.
+
+Two standalone safe launcher probes use `--service-origin=https://other.example` with either mismatched manifest/identity origins or both labels changed while the compiled origin remains unchanged. Each exits1 with preparation-failed, one owned Git child exited, zero native allocations and exact temporary removal. Inputs/results are retained as `fix-1/manifest-origin-{mismatch,relabelled}{-input,}.json`; no endpoint is contacted. The audit independently checks their resource evidence.
+
+Regenerated ignored operator overlay: `dist/net-3e-driver-source-fix-1.zip`, SHA-256 **`9fb5c24603dcdec0692c5d97dbaf67ed11d96b80b8049a3e67e11234d130bf81`**. All265 archive entries were independently read and hashed against the new candidate manifest; [driver-source-artifact.json](task-8-evidence/fix-1/driver-source-artifact.json) records that check. The runbook/release record point to the new source/manifest/overlay while retaining the unchanged player package.
+
+The review's Minor archive-member check in the reusable candidate tool remains deferred to the controller's final review, as requested. The existing player archive was independently matched during review and has not changed. Previously disclosed diagnostic noise is likewise retained, not recast as pristine output. No account, endpoint, provider, deployment, secret/root.env, quota, billing/DNS, upgrade, merge/push or owner-worktree operation occurred in this fix.

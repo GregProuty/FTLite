@@ -2,7 +2,7 @@
 
 This is a local unsigned Windows x64 candidate. **Deployment, live TURN, forced-relay gameplay, two physical devices and actual OS suspend are NOT RUN.** No internet-readiness claim is made. Final hashes and verification are retained under `.superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-8-evidence/` and summarized in `task-8-report.md`. The controller owns Task 8 independent review and the subsequent whole-slice review before external authorization.
 
-Final candidate source is `0e9d024db0189bbf918c9fc76a6276f51f7ef115`. Its 47 rebuilt runtime files match the packaged bytes exactly; all 264 recorded source files match. Archive size is 142,824,997 bytes. There are 2,253 audited ASAR entries. These are ignored local distribution artifacts, with committed hashes:
+Current candidate manifest/driver source is `b125547cacb5f4c43b651931f5e6503d10e72694`; use `task-8-evidence/fix-1/candidate.json`. Its 47 runtime files remain byte-identical to the original `0e9d024` candidate; all 265 current source files match. The fix changes report admission/launcher preparation only. `fix-1/audit.json` records full 22-executable equality and the original native report revisions, without claiming a rerun. Archive size is 142,824,997 bytes. There are 2,253 audited ASAR entries. These are ignored local distribution artifacts, with committed hashes:
 
 | Artifact | SHA-256 |
 | --- | --- |
@@ -14,6 +14,8 @@ Final candidate source is `0e9d024db0189bbf918c9fc76a6276f51f7ef115`. Its 47 reb
 | Source/deployment `wrangler.jsonc` | `b9faa6b032720827399ddac179f1fe4021f33a6ee9c0a21d5420cac93a3212bc` |
 
 The final audit executes the resolver extracted from each actual packaged main bundle in an isolated VM. It observes disabled default, enabled explicit candidate origin, and rejected ambient development overrides in both packaged configurations. It also checks absence of the release origin in renderer/preload output. This is compiled-package configuration proof, not a claim that the unsigned installed UI was manually playtested.
+
+The intended canonical origin is now part of candidate identity. Every external report and the deployment attestation must match it. Manifest generation and launcher preparation also compare both manifest origin fields and the requested origin with compiled main; changing metadata cannot redirect the driver. Historical recovery reuse requires complete executable-set/hash equality plus explicit report/candidate revision provenance. The original manifests/reports remain unchanged as historical evidence; current admission uses the fix-1 metadata/readiness files.
 
 ## Build and package
 

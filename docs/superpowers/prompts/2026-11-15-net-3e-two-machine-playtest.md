@@ -10,7 +10,7 @@ Copy the same candidate ZIP and committed manifest to both machines. Verify the 
 
 The manifest's `packagePath` is a local path to the unchanged ZIP. Adjust only that path if needed; preserve identity, artifact hashes and source hashes. Install pinned dependencies using the two existing lockfiles. Do not install newer Electron/Wrangler versions.
 
-For byte-exact source checks across Windows Git line-ending settings, overlay `dist/net-3e-driver-source.zip` onto a checkout of the manifest revision before installing dependencies. Its SHA-256 is `3024394c416601514070e0edefff55d80d97b563fd3d5310ffc341086e1cd098`; all264 entries were checked against `candidate.json.sourceFiles`. This separate operator archive contains only the audited source/build/driver files and lock/config files, no profiles, secrets, evidence or installed dependencies. It is not part of the player package.
+Use `task-8-evidence/fix-1/candidate.json` and a checkout of its revision `b125547cacb5f4c43b651931f5e6503d10e72694`. For byte-exact source checks across Windows Git line-ending settings, overlay `dist/net-3e-driver-source-fix-1.zip` before installing dependencies. Its SHA-256 is `9fb5c24603dcdec0692c5d97dbaf67ed11d96b80b8049a3e67e11234d130bf81`; all265 entries were checked against the current manifest's sourceFiles. This separate operator archive contains only the audited source/build/driver files and lock/config files, no profiles, secrets, evidence or installed dependencies. It is not part of the unchanged player package. The launcher verifies canonical identity/manifest/requested origin equality against compiled main before starting native work; do not edit either origin field.
 
 ## Capture each independent result
 

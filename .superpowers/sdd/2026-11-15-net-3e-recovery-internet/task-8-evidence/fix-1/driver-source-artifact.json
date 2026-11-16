@@ -1,0 +1,8 @@
+{
+    "sha256":  "9fb5c24603dcdec0692c5d97dbaf67ed11d96b80b8049a3e67e11234d130bf81",
+    "source":  "b125547cacb5f4c43b651931f5e6503d10e72694",
+    "files":  265,
+    "path":  "dist/net-3e-driver-source-fix-1.zip",
+    "allArchiveMembersMatchManifest":  true,
+    "purpose":  "Exact source-byte overlay for reviewed Task8 fix; no runtime package change"
+}

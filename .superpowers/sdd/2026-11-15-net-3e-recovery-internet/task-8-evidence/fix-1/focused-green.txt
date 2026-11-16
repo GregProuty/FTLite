@@ -1,0 +1,14 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ✓ tests/internetAppManifest.test.ts (12 tests) 4ms
+ ✓ tests/onlineRecoveryReport.test.ts (45 tests) 9ms
+ ✓ tests/internetAppReport.test.ts (58 tests) 60ms
+ ✓ tests/internetAppSmoke.test.ts (5 tests) 11093ms
+   ✓ bounds and cleans internet launcher preparation-timeout without an endpoint call  10338ms
+
+ Test Files  4 passed (4)
+      Tests  120 passed (120)
+   Start at  19:44:24
+   Duration  11.78s (transform 263ms, setup 1.30s, collect 192ms, tests 11.17s, environment 0ms, prepare 325ms)
+
