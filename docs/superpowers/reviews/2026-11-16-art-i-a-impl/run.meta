@@ -1,0 +1,11 @@
+topic=art-i-a-impl
+subject_kind=impl
+subject=.gitignore art/import.json docs/art/bible.md package-lock.json package.json scripts/art-import.ts scripts/art/importCore.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/render/assetNames.ts src/renderer/src/render/creditsText.ts src/renderer/src/render/doorModel.ts src/renderer/src/render/duel/interiorModel.ts src/renderer/src/render/duel/interiorView.ts src/renderer/src/render/effects.ts src/renderer/src/render/effectsShapes.ts src/renderer/src/render/enemyWindow.ts src/renderer/src/render/fallback.ts src/renderer/src/render/licenses.ts src/renderer/src/render/manifest.ts src/renderer/src/render/palette.json src/renderer/src/render/palette.ts src/renderer/src/render/renderer.ts src/renderer/src/render/tiles.ts src/renderer/src/render/wallModel.ts src/renderer/src/render/worldFit.ts tests/artGuards.test.ts tests/artImport.test.ts tests/doorModel.test.ts tests/duelInterior.test.ts tests/helpers/artGrid.ts tests/layout.test.ts tests/manifest.test.ts tests/paidManifest.test.ts tests/palette.test.ts tests/projectileModel.test.ts tests/tileLayer.test.ts tests/wallModel.test.ts tests/worldFit.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\art-i-a
+base=a68b13a
+cap=10
+effort=high
+confirm=0
+verify=npx tsc -b && npx vitest run
+created=2026-11-16
+head_at_setup=c9f8b5d
