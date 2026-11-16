@@ -6,13 +6,13 @@
 
 **Architecture:**
 - `sim/module.ts` (new): `SimModule<S>`, `ModuleField<S>` and the derived `flattenModule`, `unflattenModule`, `moduleLength`.
-- `sim/tactical/hash.ts`: the `space` module; `flattenTactical` is derived from its fields, in the H-0 order; `unflattenTactical`, `tacticalLength`.
+- `sim/tactical/hash.ts`: the `space` module; `flattenTactical` is derived from its fields, in the H-0 order; `unflattenTactical`, `tacticalLength`; `cloneTacticalFromModule` (the clone, derived from the same fields; `cloneTactical` in `state.ts` becomes a one-line wrapper); `validateTacticalValues` (every field's bounds and slot invariants).
 - `sim/duel/modules.ts` (new): the `presence`, `repair` and `interior` modules, `DUEL_MODULES`, `DUEL_NOT_SNAPSHOTTED`. `sim/duel/hash.ts`: `flattenDuel` from the modules; `mapHash`.
 - `sim/duel/snapshot.ts` (new): `saveDuelSnapshot`, `validateDuelSnapshot`, `loadDuelSnapshot`. `sim/duel/summary.ts` (new): `DuelEndSummary`, `duelEndSummary`.
 - `authority/duelCheckpoint.ts` (new): the duel's init, checkpoint and mode-memory schemas. `authority/duelRules.ts` (new): `duelRules`, `DuelTypes`, `DuelSession`.
 - `net/codec.ts`: the duel's wire (`duelCodec`, `duelPublicationSchema`) and the duel `EndRecord` variant; `net/contracts.ts`: the variant's type.
 - `authority/replay.ts`: `runModeReplay` picks the rules by the replay's mode.
-- `network/modes/streamBinding.ts` (new): the host side of a streamed attachment, moved unchanged out of `sectorStream.ts` and parametrised by the mode. `network/modes/duelStream.ts` (new): the duel's publication ↔ state-image adapter and stream binding. `network/modes/duel.ts` (new): `duelMode`, one `defineEncounterMode` call. `utility/authorityHost.ts` registers it.
+- `network/modes/streamBinding.ts` (new): the host side of a streamed attachment, moved unchanged out of `sectorStream.ts` and parametrised by the mode. `network/modes/duelStream.ts` (new): the duel's publication ↔ state-image adapter and stream binding. `network/modes/duel.ts` (new): `duelMode`, one `defineEncounterMode` call. `utility/authorityModes.ts` (new) is the utility's registry (sector and duel), and `utility/authorityHost.ts` builds its host from it.
 
 **No online duel UI and no main-process or renderer online wiring** (`main/network/onlineSector.ts`, the renderer's `app/onlineSession.ts`, room compatibility): that is H-2. A utility initialised as `duel` runs it; nothing yet starts one.
 
@@ -47,24 +47,27 @@
 Each is the recommendation, taken under the standing order; the owner can overturn any of them.
 
 1. **The module contract's shape** **(rec.)**: a module declares `fields(s)` (each `{ name, count, read, write }`), `notSnapshotted` (member path → reason), `commands` and `reasons`. Fields carry a writer as well as a reader, so restore is derived from the same declaration as flatten and hash, and nothing is hand-listed twice. The spec's `create(init, rng)` is left out for now: the duel is still created by `createDuel`, and R-4/R-5, which move creation into the modules, add it. A field list may depend on the state's shape (the map's asteroid count sizes `graceUntil`), never its values, and is cached per shape.
-2. **The duel's modules** (spec §6, R-1 stage): `space` (today's `TacticalState`), `presence`, `repair` and `interior` (the Cutter `SimState`, one field through the sector's `flatten` / validated `unflatten`), in that order after `SIM_VERSION`: exactly the hash-completeness order, so the duel golden is unchanged. `points`, `nav`, `weapons` and `events` are the duel's declared not-snapshotted members; `map`, `grid` and `events` are the space module's. The map's asteroid count stays a field (as in H-0) and is an identity check on restore: writing a different count throws.
+2. **The duel's modules** (spec §6, R-1 stage): `space` (today's `TacticalState`), `presence`, `repair` and `interior` (the Cutter `SimState`, one field through the sector's `flatten` / validated `unflatten`), in that order after `SIM_VERSION`. **The duel golden baseline is post-R-0's `flattenDuel`** (from `hash-completeness`, 2a57a48: `[SIM_VERSION, ...flattenTactical, present, ...repair, ...flatten(interior)]`, the interior's whole canonical flatten, not master's earlier hand-picked interior tail), **and Task 1 keeps its value sequence exactly**: the duel golden passes unedited, and Task 1's Step 0 checks that R-0's full-interior hash is present. `points`, `nav`, `weapons` and `events` are the duel's declared not-snapshotted members; `map`, `grid` and `events` are the space module's. The map's asteroid count stays a field (as in H-0) and is an identity check on restore: writing a different count throws.
 3. **The snapshot header** (a spec refinement): the spec's `{ snapshotFormat: 1, simVersion, contentDigest, layoutId, layoutHash, seed, mapHash }` plus `tick` and `playerCount` (the generic core and Net-3's publication read them from every snapshot) and `hash`, the `hashDuel` of the stored values, which the restored duel must reproduce (the spec's "the hash recorded in the checkpoint").
-4. **Validation before allocation** **(rec.)**: `validateDuelSnapshot` checks the header keys and versions, digest, layout, seed, the map (regenerated from the seed with `createTacticalState`, which builds no interior; it must pass `validateMap`, and its `mapHash` must equal the header's), the value count, the interior's canonical values (the sector's `validateCanonicalValues`), the interior and tactical ticks against the header, and the header's hash over the values. `loadDuelSnapshot` then creates a fresh duel from the seed (the map, grid, repair points and `Derived` regenerated), writes every module back, and requires equal ticks and `hashDuel` equal to the header's.
+4. **Validation before allocation** **(rec.)**: `validateDuelSnapshot` checks the header keys and versions, digest, layout, seed, the map (regenerated from the seed with `createTacticalState`, which builds no interior; it must pass `validateMap`, and its `mapHash` must equal the header's), the value count, **every tactical field's bounds and slot invariants** (Codex plan review F2, `validateTacticalValues`: heading indices 0..255, integer counters, room damage levels 0..2, shield layers 0..2, the magazine 0..4, laser charge and lock, the 0/1 flags and the skid sign, the hunter's mode, room, fire time and trail head, the outcome enum, the asteroid count against the map, and each missile slot: presence 0 or 1, an empty slot all zeros, a missile's heading index and age), presence (0/1) and repair (0 to `REPAIR_UNITS` − 1), the interior's canonical values (the sector's `validateCanonicalValues`), the interior and tactical ticks against the header, and the header's hash over the values. A test proves every state the scripted duels of seeds 1, 4 and 7 reach (sampled every 30 ticks) passes, and that 19 rehashed invalid values are each rejected by the validator, which allocates nothing. `loadDuelSnapshot` then creates a fresh duel from the seed (the map, grid, repair points and `Derived` regenerated), writes every module back, and requires equal ticks and `hashDuel` equal to the header's.
 5. **`mapHash`** (spec §6): `hashF64` over the planet's x, y and r, each asteroid's x, y and r in index order, the belt count, the cluster sizes, the gaps, and both spawns' x, y, vx, vy and heading, with −0 written as 0; cached per map.
 6. **Mode memory and controller memory** **(rec.)**: the duel has no bots in R-1, so its `botControllers` is always `[]`. Its telemetry accumulator is `modeMemory: { version: 1, telemetry }` (typed arrays as number arrays), validated by zod, consistent with the snapshot (its tick count equals the snapshot's tick; `graceUntil` copies have the map's body count), and restored with the duel. A restore without it is refused.
 7. **`DuelEndSummary`** (spec §6): `{ outcome, ticks, terminal: [causes, causes], laserReleases, laserHits, missilesLaunched, missileHits, repairsFinished }`, deeply frozen, computed once when the outcome leaves Running. Per-ship pairs are [crew ship, enemy ship]; `missileHits` sums the accumulator's hits by room; `repairsFinished` is per player (the accumulator counts repairs per player). The codec checks each cause array is in the accumulator's order without repeats. A restored ended duel recomputes the same summary from its restored accumulator.
 8. **The duel's other hooks** **(rec.)**: `tick` is the interior tick; `safePointKey` is constant (the duel has no visits; its end is still a safe point through the core); `callouts` returns none; the cues are `impact` (the crew ship hit), `shot` (a crew laser release), `hit` (the enemy hit) and `victory` or `defeat` when the outcome leaves Running, in the shared cue order.
-9. **Producers** **(rec.)**: humans only. A vacant duel player sends nothing; bots for the duel are later work.
-10. **The stream adapter** **(rec.)**: the host side of a streamed attachment moved, unchanged, from `sectorStream.ts` to `streamBinding.ts`, parametrised by the mode's image converter, codec, notification stream and label; the sector's stream, streams, packets and close reasons are byte-identical (its tests run unedited). The duel's images carry the canonical values with the rest of the publication as metadata, on `duel-notification` for results and events. The duel's remote client is H-2.
-11. **Replays pick their rules by mode** (spec §6): `runModeReplay(value, contentDigest, resolveLayout)` looks the mode up (`sector`, `duel`); `runReplay` stays the sector entry point for its callers.
-12. **The proofs' scenarios** (found by the prototype): the continuation proof uses seed 7, the scripted pair's 8,832-tick crew loss: 6,000 ticks, a checkpoint carried through JSON bytes and the duel validator, a restore into a new core, then the remaining 2,832; the per-tick hashes and the end summaries equal the uninterrupted run's (`{"outcome":2,"ticks":8832,"terminal":[["missile"],[]],"laserReleases":[11,28],"laserHits":[2,28],"missilesLaunched":[2,5],"missileHits":[0,5],"repairsFinished":[7,9]}`). Inputs enter the generic core as journal frames, as a binding's would. The size test's largest state (both missiles in flight, every room at level 2, mid-repair, a full accumulator) encodes to 8,548 bytes (8.3 KiB of the 256 KiB `MAX_HOST_BYTES`), 1,018 values.
+9. **The utility registry** (Codex plan review F3): `src/utility/authorityModes.ts` exports the registry the authority utility runs (sector and duel), and `authorityHost.ts`, the utility's Electron entry point (it needs `process.parentPort`), builds its host from exactly it. The utility test drives that registry through `createUtilityHost` (initialize as `duel`, start, run 90 ticks, `capture-checkpoint`, restore the captured bytes, compare values, hash and mode memory; then a sector utility) and checks the entry point passes `authorityModes`; Net-3's `test:host-runtime` gate builds and launches the real utility with both modes registered.
+10. **Cloning derives from the module** (Codex plan review F5; spec §6): `cloneTactical` is `cloneTacticalFromModule`: fresh containers of the state's shape, then every space field written from the original's values (−0 kept; the map and grid shared, as before). Its existing tests pass unchanged, and a new check changes every field on a clone and requires the original untouched. `cloneShip` stays for the flight predictor, which copies one ship.
+11. **Producers** **(rec.)**: humans only. A vacant duel player sends nothing; bots for the duel are later work.
+12. **The stream adapter** **(rec.)**: the host side of a streamed attachment moved, unchanged, from `sectorStream.ts` to `streamBinding.ts`, parametrised by the mode's image converter, codec, notification stream and label; the sector's stream, streams, packets and close reasons are byte-identical (its tests run unedited). The duel's images carry the canonical values with the rest of the publication as metadata, on `duel-notification` for results and events. The duel's remote client is H-2.
+13. **Replays pick their rules by mode** (spec §6): `runModeReplay(value, contentDigest, resolveLayout)` looks the mode up (`sector`, `duel`); `runReplay` stays the sector entry point for its callers.
+14. **The proofs' scenarios** (found by the prototype): the continuation proof uses seed 7, the scripted pair's 8,832-tick crew loss, split at **tick 5,156: the first tick from 5,000 on that ends with a missile in flight, a damaged crew room and a repair in progress** (Codex plan review F4; found by stepping the scripted duel, and asserted by the test): 5,156 ticks, a checkpoint carried through JSON bytes and the duel validator, a restore into a new core, then the remaining 3,676; the per-tick hashes and the end summaries equal the uninterrupted run's (`{"outcome":2,"ticks":8832,"terminal":[["missile"],[]],"laserReleases":[11,28],"laserHits":[2,28],"missilesLaunched":[2,5],"missileHits":[0,5],"repairsFinished":[7,9]}`). Inputs enter the generic core as journal frames, as a binding's would. The size test's largest state (both missiles in flight, every room at level 2, mid-repair, a full accumulator) encodes to 8,548 bytes (8.3 KiB of the 256 KiB `MAX_HOST_BYTES`), 1,018 values.
 
 ## File structure
 
 | File | Responsibility |
 |---|---|
 | `src/renderer/src/sim/module.ts` | **Create:** the module contract and its derived flatten / unflatten |
-| `src/renderer/src/sim/tactical/hash.ts` | **Replace:** the `space` module; `flattenTactical`, `unflattenTactical`, `tacticalLength` from it |
+| `src/renderer/src/sim/tactical/hash.ts` | **Replace:** the `space` module; `flattenTactical`, `unflattenTactical`, `tacticalLength`, `cloneTacticalFromModule`, `validateTacticalValues` from it |
+| `src/renderer/src/sim/tactical/state.ts` | **Replace:** `cloneTactical` is the module-derived clone (only change) |
 | `src/renderer/src/sim/duel/modules.ts` | **Create:** `presenceModule`, `repairModule`, `interiorModule`, `DUEL_MODULES`, `DUEL_NOT_SNAPSHOTTED` |
 | `src/renderer/src/sim/duel/hash.ts` | **Replace:** `flattenDuel` from the modules; `mapHash` |
 | `src/renderer/src/sim/duel/snapshot.ts` | **Create:** the duel snapshot format and its validation |
@@ -78,7 +81,8 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 | `src/network/modes/sectorStream.ts` | **Replace:** its host binding is `createModeStreamBinding` |
 | `src/network/modes/duelStream.ts` | **Create:** `duelPublicationToImage`, `imageToDuelPublication`, `createDuelStreamBinding` |
 | `src/network/modes/duel.ts` | **Create:** `duelMode` |
-| `src/utility/authorityHost.ts` | **Replace:** registers `duelMode` |
+| `src/utility/authorityModes.ts` | **Create:** `authorityModes`, the utility's registry (sector and duel) |
+| `src/utility/authorityHost.ts` | **Replace:** builds its host from `authorityModes` |
 | `tests/duelModules.test.ts`, `tests/duelSnapshot.test.ts`, `tests/duelCheckpoint.test.ts`, `tests/duelMode.test.ts`, `tests/helpers/duelAuthority.ts` | **Create:** the tests and their core driver |
 | `tests/networkBoundary.test.ts` | **Replace:** three more mode files (only change) |
 
@@ -88,7 +92,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 
 **Files:**
 - Create: `src/renderer/src/sim/module.ts`, `src/renderer/src/sim/duel/modules.ts`, `tests/duelModules.test.ts`
-- Modify (whole file): `src/renderer/src/sim/tactical/hash.ts`, `src/renderer/src/sim/duel/hash.ts`
+- Modify (whole file): `src/renderer/src/sim/tactical/hash.ts`, `src/renderer/src/sim/tactical/state.ts`, `src/renderer/src/sim/duel/hash.ts`
 
 **Interfaces:**
 - Consumes: `flatten`, `unflatten`, `canonicalFields`, `validateCanonicalValues`; `TacticalState`, `Ship`, `Missile`; `HUNTER_TRAIL_TICKS`; `COMMAND_REASONS`.
@@ -102,6 +106,9 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 
 Run: `npx vitest run tests/encounterMode.test.ts`
 Expected: PASS, 3 tests in 1 file. **If the file does not exist or fails, stop: R-1a is not merged.**
+
+Run: `npx vitest run tests/duelGolden.test.ts -t interior`
+Expected: PASS, 1 test in 1 file: R-0's "covers the whole interior canonical state, not hand-picked fields" (from hash-completeness). **If no test matches, stop:** sim/duel/hash.ts does not yet hash the full interior flatten, so the duel golden this plan keeps is not the post-R-0 one.
 
 - [ ] **Step 1: Record both oracles before anything changes (the sector's reference for this plan)**
 
@@ -229,6 +236,21 @@ describe('the duel modules (spec §6 module contract)', () => {
     expect(kinds).toEqual(['laserCharge', 'laserLock', 'missileLaunch', 'presence', 'sit', 'stand']);
     for (const { module } of DUEL_MODULES) for (const reason of module.reasons) expect(COMMAND_REASONS, `${module.id}: ${reason}`).toContain(reason);
   });
+  it('cloneTactical is derived from the space module: every field is copied, and changing it on the copy leaves the original', () => {
+    const d = played(3, 1200);
+    try {
+      const original = flattenTactical(d.tactical), copy = cloneTactical(d.tactical);
+      expect(flattenTactical(copy)).toEqual(original);
+      expect(copy.map).toBe(d.tactical.map); expect(copy.grid).toBe(d.tactical.grid);
+      for (const f of spaceModule.fields(copy)) {
+        if (f.name === 'map.asteroids.length') continue;
+        const values: number[] = []; f.read(copy, values);
+        f.write(copy, values.map((v, k) => k === 0 ? (f.name.startsWith('missiles.') || f.name.endsWith('released') || f.name.endsWith('fireHeld') || f.name === 'hunter.working' ? 1 - v : v + 1) : v), 0);
+      }
+      expect(flattenTactical(d.tactical), 'the original is untouched').toEqual(original);
+      expect(flattenTactical(copy)).not.toEqual(original);
+    } finally { disposeDuel(d); }
+  });
 });
 ```
 
@@ -313,8 +335,8 @@ Replace the whole of `src/renderer/src/sim/tactical/hash.ts` with:
 // outputs, reset every tick, and not hashed. −0 is written as 0. The field order is the H-0 order, unchanged.
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
-import { HUNTER_TRAIL_TICKS } from './tuning';
-import type { Missile, Ship, TacticalState } from './state';
+import { HEADING_COUNT, HUNTER_TRAIL_TICKS, LASER_CHARGE_UNITS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from './tuning';
+import { HunterMode, Outcome, type Missile, type Ship, type TacticalState } from './state';
 
 /** Values per missile slot: a presence flag, then x, y, vx, vy, heading, headingAcc, age (zeros when empty). */
 export const MISSILE_SLOT = 8;
@@ -400,6 +422,177 @@ export function tacticalLength(s: TacticalState): number { return moduleLength(s
 export function unflattenTactical(s: TacticalState, values: ArrayLike<number>, offset = 0): number { return unflattenModule(spaceModule, s, values, offset); }
 
 export function hashTactical(s: TacticalState): string { return hashF64(flattenTactical(s)); }
+
+/** Deep copy of a tactical state, derived from the space module (engine refactor spec §6: clone comes from the module's
+ *  fields): the copy gets fresh containers of the state's shape, then every field's values are written into it. The map
+ *  and the broad-phase grid are immutable after creation and are shared; the per-tick events are copied. −0 is kept. */
+export function cloneTacticalFromModule(s: TacticalState): TacticalState {
+  const shell = (src: Ship): Ship => ({ ...src, rooms: [0, 0, 0], graceUntil: new Int32Array(src.graceUntil.length) });
+  const copy: TacticalState = { ...s, rng: { s: 0 }, ships: [shell(s.ships[0]), shell(s.ships[1])], missiles: [null, null],
+    hunter: { ...s.hunter, trail: new Float64Array(s.hunter.trail.length) }, events: s.events.map((e) => ({ ...e })) };
+  const values: number[] = [];
+  flattenModule(spaceModule, s, values);
+  unflattenModule(spaceModule, copy, values, 0);
+  return copy;
+}
+
+const int = (v: number): boolean => Number.isInteger(v);
+const count = (v: number): boolean => Number.isInteger(v) && v >= 0;
+const within = (lo: number, hi: number) => (v: number): boolean => Number.isInteger(v) && v >= lo && v <= hi;
+const bit = within(0, 1), heading = within(0, HEADING_COUNT - 1), room = within(0, 2), any = (): boolean => true;
+/** Each ship field's per-value rule; every field not listed must hold finite values only (checked by the caller). */
+const SHIP_RULES: Readonly<Record<string, (v: number) => boolean>> = {
+  heading, hull: (v) => v <= SHIP_HULL, rooms: within(0, 2), planetHits: count, asteroidHits: count, shipHits: count,
+  released: bit, skidSign: within(-1, 1), shields: within(0, SHIELD_LAYERS), shieldClock: count,
+  laserCharge: within(0, LASER_CHARGE_UNITS), laserHold: count, fireHeld: bit, lock: room, magazine: within(0, MAGAZINE), magazineClock: count,
+  shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count, graceUntil: int
+};
+// Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
+const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
+  tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
+  'hunter.mode': within(HunterMode.Hunt, HunterMode.Repair), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': bit,
+  'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any
+});
+
+/** Check tactical values against the space module's field bounds and slot invariants without writing them anywhere:
+ *  heading indices, integer counters, room levels 0..2, shield layers, the magazine, the hunter's and the outcome's
+ *  enums, the map's asteroid count, and each missile slot (presence 0 or 1; an empty slot holds only zeros; a missile's
+ *  heading index and age). `shape` is any tactical state made from the same seed (only its map is read). Throws naming the
+ *  first bad field. */
+export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): void {
+  let at = offset;
+  const top = topRules();
+  for (const f of spaceModule.fields(shape)) {
+    const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
+    const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
+    if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
+    if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }
+    else if (f.name.startsWith('missiles.')) {
+      const [present, , , , , head, , age] = slice as [number, number, number, number, number, number, number, number];
+      if (!bit(present)) bad('presence is not 0 or 1');
+      if (present === 0 && slice.some((v) => v !== 0)) bad('an empty slot holds values');
+      if (present === 1 && (!heading(head) || !count(age))) bad('heading or age out of range');
+    } else {
+      const ship = /^ships\.[01]\.(.+)$/.exec(f.name), rule = ship ? SHIP_RULES[ship[1]!] : top[f.name];
+      if (rule && !slice.every(rule)) bad('out of range');
+    }
+    at += f.count;
+  }
+}
+```
+
+Replace the whole of `src/renderer/src/sim/tactical/state.ts` with:
+
+```ts
+// Tactical state for the duel (spec §3 to §9). Ship 0 is the crew's, ship 1 the enemy's; they always update in that
+// order. All Ship fields are flat scalars or arrays copied by cloneShip, so the flatten and the clone stay simple.
+import { createRng, type RngState } from '../../../../shared/rng';
+import { buildGrid, type BroadPhase } from './grid';
+import { generateMap, type MapDef, type Spawn } from './map';
+import { cloneTacticalFromModule } from './hash';
+import { HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from './tuning';
+
+/** Tactical rooms (spec §5); the index into Ship.rooms. */
+export const Room = { Weapons: 0, Shields: 1, Engines: 2 } as const;
+
+export interface Ship {
+  x: number; y: number; vx: number; vy: number;
+  /** Heading index 0..255 and the fractional turn accumulator (spec §4). */
+  heading: number; headingAcc: number;
+  hull: number;
+  /** Damage level 0..2 per Room. */
+  rooms: [number, number, number];
+  /** Tick from which contact with body id k may cost hull again: 0 planet, 1..n asteroid k−1, n+1 the other ship. */
+  graceUntil: Int32Array;
+  planetHits: number; asteroidHits: number; shipHits: number;
+  /** Stabilise (spec §6): true while both axes were zero last tick; the skid captured at release and still to remove, and its side (±1). */
+  released: boolean; skidBudget: number; skidSign: number;
+  /** Shield layers 0..2 and the recharge clock in SHIELD_RECHARGE_UNITS (spec §5). */
+  shields: number; shieldClock: number;
+  /** Laser (spec §7a): charge 0..LASER_CHARGE_UNITS (full), ticks a full charge has been held, whether Fire is held, the locked enemy Room. */
+  laserCharge: number; laserHold: number; fireHeld: boolean; lock: number;
+  /** Missiles in the magazine and the regain clock in ticks (spec §7b). */
+  magazine: number; magazineClock: number;
+  /** Telemetry counters (spec §13). */
+  shots: number; laserHits: number; layersStripped: number; missilesLaunched: number; missileHits: number; missilesLost: number;
+}
+
+/** A cruise missile in flight (spec §7b). At most one per ship, stored at its owner's index. */
+export interface Missile { x: number; y: number; vx: number; vy: number; heading: number; headingAcc: number; age: number }
+
+export const HunterMode = { Hunt: 0, Repair: 1 } as const;
+/** The enemy's brain (spec §9). */
+export interface Hunter {
+  mode: number;
+  /** Repair: the Room being repaired, ticks left in this phase, and whether the walk is over. */
+  room: number; timer: number; working: boolean;
+  /** Tick on which the jittered release is due, or −1 when none is scheduled. */
+  fireAt: number;
+  lastLaunch: number;
+  /** Ring buffer of the crew ship's last HUNTER_TRAIL_TICKS positions (x, y pairs); trailHead is the oldest entry. */
+  trail: Float64Array; trailHead: number;
+}
+
+export const Outcome = { Running: 0, CrewWins: 1, EnemyWins: 2, Draw: 3 } as const;
+
+/** Per-tick events for the views (shots and missile endings). Reset every tick and not hashed. */
+export type DuelEvent =
+  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer). */
+  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
+  /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
+  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number };
+
+export interface TacticalState {
+  tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
+  ships: [Ship, Ship];
+  missiles: [Missile | null, Missile | null];
+  hunter: Hunter;
+  outcome: number;
+  events: DuelEvent[];
+}
+
+/** Held axes for one ship: turn (+ clockwise) and thrust (+ forward). Nominally −1, 0 or 1; flyShip quantises them by sign (NaN counts as 0). */
+export interface Axes { turn: number; thrust: number }
+export const NO_AXES: Axes = { turn: 0, thrust: 0 };
+
+/** Body id of the other ship in Ship.graceUntil. */
+export function otherShipBody(map: MapDef): number { return map.asteroids.length + 1; }
+
+function shipAt(s: Spawn, bodies: number): Ship {
+  return {
+    x: s.x, y: s.y, vx: s.vx, vy: s.vy, heading: s.heading, headingAcc: 0, hull: SHIP_HULL, rooms: [0, 0, 0], graceUntil: new Int32Array(bodies),
+    planetHits: 0, asteroidHits: 0, shipHits: 0, released: false, skidBudget: 0, skidSign: 0,
+    shields: SHIELD_LAYERS, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: Room.Shields, magazine: MAGAZINE, magazineClock: 0,
+    shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0
+  };
+}
+
+function hunterFor(crew: Spawn): Hunter {
+  const trail = new Float64Array(2 * HUNTER_TRAIL_TICKS);
+  for (let k = 0; k < HUNTER_TRAIL_TICKS; k++) { trail[2 * k] = crew.x; trail[2 * k + 1] = crew.y; }
+  return { mode: HunterMode.Hunt, room: 0, timer: 0, working: false, fireAt: -1, lastLaunch: -HUNTER_MISSILE_COOLDOWN_TICKS, trail, trailHead: 0 };
+}
+
+export function createTacticalState(seed: number): TacticalState {
+  const rng = createRng(seed);
+  const map = generateMap(rng);
+  const bodies = map.asteroids.length + 2;
+  return {
+    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
+    ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies)],
+    missiles: [null, null], hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: []
+  };
+}
+
+/** Deep copy of the whole tactical state for snapshots, rollback and replay checks, derived from the space module's
+ *  fields (sim/tactical/hash.ts): a field the module declares is copied without anything listed here. The map and
+ *  broad-phase grid are immutable after creation and are shared. */
+export function cloneTactical(s: TacticalState): TacticalState { return cloneTacticalFromModule(s); }
+
+/** Deep copy of a ship. Any new nested Ship state (arrays, typed arrays) must be copied here. */
+export function cloneShip(s: Ship): Ship {
+  return { ...s, rooms: [...s.rooms], graceUntil: new Int32Array(s.graceUntil) };
+}
 ```
 
 Create `src/renderer/src/sim/duel/modules.ts`:
@@ -529,7 +722,7 @@ export function mapHash(map: MapDef): string {
 - [ ] **Step 4: Run the module tests, the duel golden and the tactical determinism tests**
 
 Run: `npx vitest run tests/duelModules.test.ts tests/duelGolden.test.ts tests/tacticalDeterminism.test.ts tests/duel.test.ts tests/duelGates.test.ts tests/boundary.test.ts`
-Expected: PASS, 169 tests in 6 files. The duel golden passes unedited: the module-derived flatten writes the same values in the same order.
+Expected: PASS, 170 tests in 6 files. The duel golden passes unedited: the module-derived flatten writes post-R-0's values in the same order, and `cloneTactical`'s tests pass on the derived clone.
 
 - [ ] **Step 5: Typecheck**
 
@@ -539,7 +732,7 @@ Expected: exit 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/sim/module.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/hash.ts tests/duelModules.test.ts
+git add src/renderer/src/sim/module.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/hash.ts tests/duelModules.test.ts
 git commit -q -m "feat(sim): the sim module contract; the duel's space, presence, repair and interior modules drive its flatten (engine refactor R-1b)"
 ```
 
@@ -573,6 +766,7 @@ import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { spaceModule } from '../src/renderer/src/sim/tactical/hash';
 import { CUTTER } from './helpers/scriptedDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
@@ -623,10 +817,47 @@ describe('the duel snapshot (spec §6)', () => {
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.header.seed = 3; }), DIGEST)).toThrow(/map does not match its seed/);
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values.push(0); rehash(s); }), DIGEST)).toThrow(/length does not match/);
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values[1] = s.values[1]! + 1; rehash(s); }), DIGEST)).toThrow(/ticks differ/);
-      expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values[10] = s.values[10]! + 0.5; }), DIGEST)).toThrow(/hash does not match its values/);
+      expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values[6] = s.values[6]! + 0.5; }), DIGEST)).toThrow(/hash does not match its values/);
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { (s.header as unknown as Record<string, unknown>).extra = 1; }), DIGEST)).toThrow(/header fields/);
     } finally { disposeDuel(d); }
   });
+  it('rejects tactical, presence and repair values the module writers would refuse, even rehashed, before allocating', () => {
+    const { d } = scriptedDuel(7, 5156);   // a missile in flight, a damaged crew room and a repair in progress
+    try {
+      const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
+      let at = 1;
+      for (const f of spaceModule.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
+      const slot = d.tactical.missiles[0] ? 'missiles.0' : 'missiles.1', empty = d.tactical.missiles[0] ? 'missiles.1' : 'missiles.0';
+      const cases: [string, number, number, RegExp][] = [
+        ['ships.0.heading', 0, 256, /ships\.0\.heading: out of range/], ['ships.1.heading', 0, 1.5, /ships\.1\.heading/],
+        ['ships.0.rooms', 1, 3, /ships\.0\.rooms/], ['ships.0.shields', 0, 3, /ships\.0\.shields/], ['ships.1.magazine', 0, 5, /ships\.1\.magazine/],
+        ['ships.0.shots', 0, 2.5, /ships\.0\.shots/], ['ships.0.laserCharge', 0, -1, /ships\.0\.laserCharge/], ['ships.1.lock', 0, 3, /ships\.1\.lock/],
+        ['ships.0.released', 0, 2, /ships\.0\.released/], ['hunter.mode', 0, 2, /hunter\.mode/], ['hunter.trailHead', 0, 18, /hunter\.trailHead/],
+        ['outcome', 0, 4, /outcome: out of range/], [slot, 0, 2, /presence is not 0 or 1/], [slot, 5, 300, /heading or age/], [slot, 7, -1, /heading or age/],
+        [empty, 3, 0.25, /an empty slot holds values/]
+      ];
+      for (const [name, k, value, error] of cases) {
+        const snap = structuredClone(good); snap.values[names.get(name)! + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
+        expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `${name}[${k}] = ${value}`).toThrow(error);
+      }
+      const space = at - 1;
+      for (const [k, value] of [[1 + space, 2], [1 + space + 2, 960], [1 + space + 4, -1]] as const) {
+        const snap = structuredClone(good); snap.values[k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
+        expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST)).toThrow(/presence|repair/);
+      }
+    } finally { disposeDuel(d); }
+  });
+  it('accepts every state the scripted duels reach (seeds 1, 4 and 7, every 30 ticks)', () => {
+    for (const seed of [1, 4, 7]) {
+      const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed);
+      try {
+        while (d.tactical.outcome === Outcome.Running) {
+          stepDuelTick(d, scriptedInput(pair, d));
+          if (d.interior.tick % 30 === 0 || d.tactical.outcome !== Outcome.Running) validateDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
+        }
+      } finally { disposeDuel(d); }
+    }
+  }, 60_000);
 });
 ```
 
@@ -641,8 +872,9 @@ Create `src/renderer/src/sim/duel/snapshot.ts`:
 // The duel snapshot (engine refactor spec §6, an R-1 deliverable). The values are exactly flattenDuel: SIM_VERSION, the
 // tactical state in flattenTactical's order, presence, repair, then the interior through the sector snapshot path.
 // Regenerated, not stored: the map (from the seed, checked by mapHash), the broad-phase grid, the repair points and
-// Derived (from the Cutter layout). Not stored: the per-tick events. Every check runs before any allocation, except
-// the final one, which restores into a fresh duel and requires hashDuel to equal the hash the header records.
+// Derived (from the Cutter layout). Not stored: the per-tick events. Every check runs before any allocation, including
+// every tactical field's bounds and slot invariants, presence and repair, except the final one, which restores into a
+// fresh duel and requires hashDuel to equal the hash the header records.
 import { hashF64 } from '../../../../shared/hash';
 import { canonicalFields } from '../canonicalFields';
 import { deriveLayout } from '../ship/derived';
@@ -650,7 +882,8 @@ import type { ShipLayout } from '../ship/schema';
 import { validateCanonicalValues } from '../snapshotValidation';
 import { validateMap } from '../tactical/map';
 import { createTacticalState } from '../tactical/state';
-import { tacticalLength } from '../tactical/hash';
+import { tacticalLength, validateTacticalValues } from '../tactical/hash';
+import { REPAIR_UNITS } from './tuning';
 import { SIM_VERSION } from '../tuning';
 import { flattenDuel, hashDuel, mapHash } from './hash';
 import { unflattenDuelModules } from './modules';
@@ -705,6 +938,11 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   if (values.length !== interiorAt + interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
+  validateTacticalValues(tactical, values, 1);   // bounds and slot invariants, before anything is allocated
+  for (let k = 1 + space; k < interiorAt; k++) {
+    const v = values[k]!, presence = k < 1 + space + 2;
+    if (presence ? v !== 0 && v !== 1 : !Number.isInteger(v) || v < 0 || v >= REPAIR_UNITS) throw new Error(`duel snapshot ${presence ? 'presence' : 'repair'} value ${v} is out of range`);
+  }
   validateCanonicalValues(layout, derived, DUEL_PLAYERS, values.slice(interiorAt));
   const interiorTick = values[interiorAt + fields.find((f) => f.name === 'tick')!.offset];
   if (values[1] !== h.tick || interiorTick !== h.tick) throw new Error('duel snapshot interior and tactical ticks differ from the header');
@@ -763,7 +1001,7 @@ export function duelEndSummary(t: DuelTelemetry): DuelEndSummary {
 - [ ] **Step 3: Run the tests**
 
 Run: `npx vitest run tests/duelSnapshot.test.ts tests/duelModules.test.ts tests/boundary.test.ts`
-Expected: PASS, 126 tests in 3 files.
+Expected: PASS, 129 tests in 3 files.
 
 - [ ] **Step 4: Typecheck**
 
@@ -881,8 +1119,10 @@ import { duelCodec } from '../src/renderer/src/net/codec';
 import { DUEL_MODULES } from '../src/renderer/src/sim/duel/modules';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** Seed 7's scripted duel is a crew loss at tick 8832 (H-0c-ii-a decision 2), short enough to run to its end twice. */
-const SEED = 7, SPLIT = 6000;
+/** Seed 7's scripted duel is a crew loss at tick 8832 (H-0c-ii-a decision 2), short enough to run to its end twice.
+ *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
+ *  progress (found by stepping the scripted duel; the test asserts all three). */
+const SEED = 7, SPLIT = 5156;
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (!duelRules.terminal(h.state, h.init).ended && duelRules.tick(h.state) < until) {
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -896,6 +1136,10 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
     try {
       runToEnd(reference, createDriver(SEED), referenceHashes);
       runToEnd(split, driver, splitHashes, [], SPLIT);
+      const at = split.state.duel;
+      expect(at.tactical.missiles.some((m) => m !== null), 'a missile in flight at the split').toBe(true);
+      expect(at.tactical.ships[0].rooms.some((r) => r > 0), 'a damaged crew room at the split').toBe(true);
+      expect(at.repair.some((r) => r > 0), 'a repair in progress at the split').toBe(true);
       const cp = throughBytes(split.core.captureCheckpoint());
       expect(cp.snapshot.header.tick).toBe(SPLIT);
       expect(cp).toHaveProperty('modeMemory.version', 1);
@@ -1859,7 +2103,7 @@ export function runEncounterReplay<T extends EncounterTypes>(rules: EncounterRul
 - [ ] **Step 4: Run the checkpoint tests: the continuation proof, replays, the size bound and validation**
 
 Run: `npx vitest run tests/duelCheckpoint.test.ts tests/duelSnapshot.test.ts tests/encounterAuthority.test.ts tests/commandUnion.test.ts tests/netCodec.test.ts tests/replayV2.test.ts tests/replayV3.test.ts tests/boundary.test.ts`
-Expected: PASS, 232 tests in 8 files (about 5 s for the checkpoint file). It prints `continuation proof: seed 7, 6000 + 2832 ticks; summary {"outcome":2,"ticks":8832,"terminal":[["missile"],[]],"laserReleases":[11,28],"laserHits":[2,28],"missilesLaunched":[2,5],"missileHits":[0,5],"repairsFinished":[7,9]}` and `duel checkpoint at its largest state: 8548 bytes (8.3 KiB of 256 KiB), 1018 values`.
+Expected: PASS, 234 tests in 8 files (about 5 s for the checkpoint file). It prints `continuation proof: seed 7, 5156 + 3676 ticks; summary {"outcome":2,"ticks":8832,"terminal":[["missile"],[]],"laserReleases":[11,28],"laserHits":[2,28],"missilesLaunched":[2,5],"missileHits":[0,5],"repairsFinished":[7,9]}` and `duel checkpoint at its largest state: 8548 bytes (8.3 KiB of 256 KiB), 1018 values`.
 
 - [ ] **Step 5: Typecheck**
 
@@ -1880,7 +2124,7 @@ git commit -q -m "feat(authority): the duel rules, checkpoint with telemetry mem
 ### Task 4: The duel as a registered Net-3 mode
 
 **Files:**
-- Create: `src/network/modes/streamBinding.ts`, `src/network/modes/duelStream.ts`, `src/network/modes/duel.ts`, `tests/duelMode.test.ts`
+- Create: `src/network/modes/streamBinding.ts`, `src/network/modes/duelStream.ts`, `src/network/modes/duel.ts`, `src/utility/authorityModes.ts`, `tests/duelMode.test.ts`
 - Modify (whole file): `src/network/modes/sectorStream.ts`, `src/utility/authorityHost.ts`, `tests/networkBoundary.test.ts`
 
 **Interfaces:**
@@ -1906,6 +2150,8 @@ import { sectorMode } from '../src/network/modes/sector';
 import { duelMode } from '../src/network/modes/duel';
 import { duelPublicationToImage, imageToDuelPublication, type DuelPublication } from '../src/network/modes/duelStream';
 import { createUtilityHost } from '../src/network/utilityHost';
+import { authorityModes } from '../src/utility/authorityModes';
+import { readFileSync } from 'node:fs';
 import type { ModeDefinition, ModeHostDeps } from '../src/network/modes/contracts';
 import type { HostCommandInput } from '../src/shared/netSession';
 import { classifyStreamPacket, decodeState, decodeStatePacket } from '../src/network/state/imageCodec';
@@ -2001,18 +2247,43 @@ describe('the duel mode over Net-3 (hostRuntime level)', () => {
     expect(duel.command({ kind: 'restore', checkpointBytes: encode({ bad: true }) }).ok).toBe(false);
     expect(duel.command({ kind: 'checkpoint' }).ok).toBe(true);
   });
-  it('a utility host initialised as the duel mode runs it (the authorityHost registry)', () => {
-    const messages: any[] = [];
-    const owner = createUtilityHost(createModeRegistry([sectorMode, duelMode]), { contentDigest: __GAMEPLAY_CONTENT_DIGEST__, clock: { nowMs: () => 0 },
-      scheduler: { schedule: () => () => {} }, onCrash() {} }, m => messages.push(m));
-    try {
-      owner.receive({ kind: 'initialize', protocolVersion: 2, modeId: 'duel', schemaVersion: 1, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, hostGeneration: 3 }, []);
-      owner.receive({ kind: 'command', command: { kind: 'start', requestId: 1, hostGeneration: 3, initBytes: encode(duelInit(2, 'utility-duel')) } }, []);
-      owner.receive({ kind: 'command', command: { kind: 'checkpoint', requestId: 2, hostGeneration: 3 } }, []);
-      const cp = decode(messages.at(-1).response.checkpointBytes);
-      expect(cp.init.runId).toBe('utility-duel');
-      expect(cp.snapshot.header).toMatchObject({ snapshotFormat: 1, seed: 2, tick: 0 });
-    } finally { owner.dispose(); }
+  it('the authority utility\'s own registry runs the duel: initialize, start, capture, restore, same hashes; and the sector', async () => {
+    // authorityHost.ts is the utility's Electron entry point (it needs process.parentPort), so the test drives the
+    // registry it is built from, and checks that it is built from exactly that registry.
+    expect(readFileSync('src/utility/authorityHost.ts', 'utf8')).toMatch(/createUtilityHost\(authorityModes, \{/);
+    expect(authorityModes.get('duel')).toBe(authorityModes.get('duel'));
+    const utility = (modeId: string, schemaVersion: number) => {
+      let now = 0, request = 0; const messages: any[] = [], callbacks = new Set<() => void>();
+      const owner = createUtilityHost(authorityModes, { contentDigest: __GAMEPLAY_CONTENT_DIGEST__, clock: { nowMs: () => now },
+        scheduler: { schedule: (_, cb) => { callbacks.add(cb); return () => { callbacks.delete(cb); }; } }, onCrash() {} }, m => messages.push(m));
+      ownTestCleanup(() => owner.dispose());
+      owner.receive({ kind: 'initialize', protocolVersion: 2, modeId, schemaVersion, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, hostGeneration: 3 }, []);
+      expect(messages.at(-1)).toMatchObject({ kind: 'ready', modeId });
+      const command = (c: object) => { owner.receive({ kind: 'command', command: { requestId: ++request, hostGeneration: 3, ...c } }, []); return messages.at(-1).response; };
+      const capture = (cause: string) => { owner.receive({ kind: 'capture-checkpoint', requestId: ++request, hostGeneration: 3, cause }, []); };   // request ids are shared with commands
+      return { owner, messages, command, capture, advance(n: number) { for (let k = 0; k < n; k++) { now += 1000 / 60; for (const cb of [...callbacks]) { callbacks.delete(cb); cb(); } } } };
+    };
+    const u = utility('duel', 1);
+    expect(u.command({ kind: 'start', initBytes: encode(duelInit(2, 'utility-duel')) }).ok).toBe(true);
+    u.advance(90);
+    u.capture('periodic');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const captured = u.messages.find((m) => m.kind === 'captured');
+    expect(captured).toMatchObject({ ok: true });
+    const saved = decode(captured.candidate.bytes);
+    expect(saved.init.runId).toBe('utility-duel');
+    expect(saved.snapshot.header).toMatchObject({ snapshotFormat: 1, seed: 2 });
+    expect(saved.snapshot.header.tick).toBeGreaterThan(60);
+    expect(u.command({ kind: 'restore', checkpointBytes: captured.candidate.bytes }).ok).toBe(true);
+    const restored = decode(u.command({ kind: 'checkpoint' }).checkpointBytes);
+    expect(restored.snapshot.values).toEqual(saved.snapshot.values);
+    expect(restored.snapshot.header.hash).toBe(saved.snapshot.header.hash);
+    expect(restored.modeMemory).toEqual(saved.modeMemory);
+    const s = utility('sector', 1);
+    expect(s.command({ kind: 'start', initBytes: encode(sectorInit()) }).ok).toBe(true);
+    const sector = decode(s.command({ kind: 'checkpoint' }).checkpointBytes);
+    expect(sector.snapshot.header).toMatchObject({ formatVersion: 2, layoutId: LAYOUT.id });
+    expect(sector).not.toHaveProperty('modeMemory');
   });
 });
 ```
@@ -2357,21 +2628,31 @@ export const duelMode: ModeDefinition = defineEncounterMode<DuelTypes>({
 });
 ```
 
+Create `src/utility/authorityModes.ts`:
+
+```ts
+// The modes the authority utility registers (engine refactor spec §6): the sector and the duel. authorityHost.ts, the
+// utility's Electron entry point, builds its host from exactly this registry, so a test can drive the same one.
+import { createModeRegistry } from '../network/modes/registry';
+import { sectorMode } from '../network/modes/sector';
+import { duelMode } from '../network/modes/duel';
+
+export const authorityModes = createModeRegistry([sectorMode, duelMode]);
+```
+
 Replace the whole of `src/utility/authorityHost.ts` with:
 
 ```ts
 import { performance } from 'node:perf_hooks';
 import { randomBytes } from 'node:crypto';
 import { createUtilityHost } from '../network/utilityHost';
-import { createModeRegistry } from '../network/modes/registry';
-import { sectorMode } from '../network/modes/sector';
-import { duelMode } from '../network/modes/duel';
+import { authorityModes } from './authorityModes';
 import { emitterPortEndpoint } from '../network/platformPort';
 
 declare const __GAMEPLAY_CONTENT_DIGEST__: string;
 const parent = process.parentPort;
 if (!parent) throw Error('authority utility requires parent port');
-const owner = createUtilityHost(createModeRegistry([sectorMode, duelMode]), {
+const owner = createUtilityHost(authorityModes, {
   contentDigest: __GAMEPLAY_CONTENT_DIGEST__, clock: { nowMs: () => performance.now() },
   leaseClock: { nowMs: () => performance.now(), epochMs: () => Date.now() }, nonce: () => randomBytes(16).toString('hex'),
   scheduler: { schedule(delayMs, callback) { const timer = setTimeout(callback, delayMs); return () => clearTimeout(timer); } },
@@ -2444,7 +2725,7 @@ Run: `npm run test:host-runtime`
 Expected: `ACTUAL host runtime PASS: Electron 37.10.3; 15 checks; 8/8 utility exits` (it builds the utility with both modes registered), exit 0.
 
 Run: `npm test`
-Expected: every file passes, 3,122 tests in 226 files at master 3e3055d (28 more than after R-1a: the four new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
+Expected: every file passes, 3,125 tests in 226 files at master bceb410 (31 more than after R-1a: the four new test files) (see the known flakes in Global Constraints). No file under `tests/golden/` or `tests/fixtures/` has changed.
 
 Run: `npm run test:determinism -- --output-dir=out/r1b-determinism`
 Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS` for Node and `1800 samples PASS` for Electron (and Firefox where it is installed). The output-dir flag (read by scripts/determinism/run.ts) sends its evidence logs to the git-ignored out/ folder instead of the tracked default under .superpowers/sdd/, so this step leaves git status unchanged apart from the files the commits name.
@@ -2452,7 +2733,7 @@ Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/network/modes/streamBinding.ts src/network/modes/sectorStream.ts src/network/modes/duelStream.ts src/network/modes/duel.ts src/utility/authorityHost.ts tests/duelMode.test.ts tests/networkBoundary.test.ts
+git add src/network/modes/streamBinding.ts src/network/modes/sectorStream.ts src/network/modes/duelStream.ts src/network/modes/duel.ts src/utility/authorityModes.ts src/utility/authorityHost.ts tests/duelMode.test.ts tests/networkBoundary.test.ts
 git commit -q -m "feat(network): the duel is a registered Net-3 mode with its stream adapter (engine refactor R-1b)"
 ```
 

@@ -1,0 +1,60 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P0",
+      "title": "Task 1 changes the duel golden’s canonical values",
+      "claim": "The proposed `flattenDuel` replaces the current short interior tail with the entire sector interior flatten, despite claiming the values and order are unchanged.",
+      "evidence": "plan L438-L450, L489-L510, L529-L532; src/renderer/src/sim/duel/hash.ts:L11-L16; src/renderer/src/sim/flatten.ts:L45-L50; tests/duelGolden.test.ts:L15-L24",
+      "why": "The value sequence changes immediately after the tactical values, so the unedited duel golden cannot pass.",
+      "fix": "Preserve the existing `flattenDuel` value sequence exactly. Store any additional interior state needed for continuation through a separately defined snapshot representation, and prove both with the golden and continuation tests."
+    },
+    {
+      "severity": "P1",
+      "title": "Snapshot validation misses tactical writer constraints",
+      "claim": "`validateDuelSnapshot` checks finite values and validates the interior, but accepts tactical values that module writers reject only after `loadDuelSnapshot` allocates a duel.",
+      "evidence": "plan L683-L711, L718-L726, L342-L347; spec L212",
+      "why": "For example, a missile presence value other than 0 or 1 with a recomputed header hash passes the validator and fails during restore. The promised validation before duel allocation is therefore incomplete.",
+      "fix": "Validate every tactical field’s bounds and slot invariants, including missile presence and empty-slot zeros, before calling `createDuel`; add a test that calls the validator on a rehashed invalid tactical value."
+    },
+    {
+      "severity": "P1",
+      "title": "The utility test bypasses the registered utility",
+      "claim": "The utility test constructs its own registry containing `duelMode`, so it passes even if `authorityHost.ts` fails to register the duel. It also does not perform the required utility-level capture and restore round trip.",
+      "evidence": "plan L2004-L2015, L2360-L2383; spec L215-L216; src/utility/authorityHost.ts:L11",
+      "why": "The test can pass for the wrong reason and cannot establish the stated utility acceptance criterion.",
+      "fix": "Exercise the built authority utility entry point with a duel initialize, start, capture, and restore sequence, then compare restored hashes; retain a sector identity check."
+    },
+    {
+      "severity": "P1",
+      "title": "The continuation proof does not establish its checkpoint conditions",
+      "claim": "The proof checks tick 6000 but never asserts that a missile is in flight, rooms are damaged, or a repair is active at that tick.",
+      "evidence": "plan L60, L883-L915; src/renderer/src/sim/duel/step.ts:L46-L62",
+      "why": "If the scripted scenario changes, the test can still pass while no longer exercising the risky missile and repair fields at the checkpoint.",
+      "fix": "Assert those three conditions on the split state before capture, or select a split tick that satisfies them and assert it."
+    },
+    {
+      "severity": "P1",
+      "title": "The module migration leaves tactical cloning manual",
+      "claim": "The spec requires clone to derive from module fields and explicitly calls for ending the manual `cloneTactical`, but Task 1 leaves that function in place and tests it as the clone path. Only the omission of `create` is declared as a deviation.",
+      "evidence": "spec L118-L138; plan L49, L220-L222, L307-L402; src/renderer/src/sim/tactical/state.ts:L100-L110",
+      "why": "A future tactical field can enter the module snapshot and hash while still being omitted from the independently maintained clone.",
+      "fix": "Derive tactical cloning from the module fields in Task 1, or state and justify a staged exception to the spec and add a clone completeness check."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The plan’s cited prerequisite interfaces are declared by R-1a, including `createEncounterCore`, `EncounterRules`, and `jsonModeCodecs` (R-1a plan L97-L106, L4241-L4242).",
+    "The proposed tactical field order includes RNG state, ship grace timers, missile ages, and hunter state in the current `flattenTactical` order (plan L357-L375; src/renderer/src/sim/tactical/hash.ts:L15-L28).",
+    "The proposed `mapHash` follows the specified planet, asteroids, belt, clusters, gaps, and spawns order (spec L200-L207; plan L512-L525).",
+    "The hostRuntime exposes synchronous checkpoint bytes and asynchronous capture, and the plan calls both in its mode test (src/network/hostRuntime.ts:L18-L25, L65-L74; plan L1939-L1957).",
+    "The H-1 runtime uses the existing local duel envelope; the plan does not replace that file or change `DuelState`’s shape (src/renderer/src/app/duel/runtime.ts:L7, L216-L217; src/renderer/src/sim/duel/commands.ts:L5-L18; plan L89-L99).",
+    "No reviewed subject or source file differs between the stated commit and the checkout; `git diff --stat b4a7a2c` for those paths was empty."
+  ],
+  "not_verified": [
+    "R-0 and R-1a are not merged in this checkout, so their planned interfaces could be checked against the prerequisite plan but not compiled as implemented code. R-1b’s Step 0 explicitly stops in that state (plan L23-L24, L101-L104).",
+    "No Jest or Vitest suite was run, as requested. The claimed 8,548-byte size and the exact tick-6000 missile, damage, and repair state were not independently measured.",
+    "The stated review ledger was absent from the checkout, so there were no prior round IDs to assess.",
+    "I read referenced helpers outside the reading manifest where needed to verify findings: `snapshotValidation.ts`, `commands.ts`, `network/utilityHost.ts`, and the determinism guard. The other session’s future netcode edits could not be inspected; the listed netcode paths had no post-`b4a7a2c` commits or current working-tree changes."
+  ]
+}
