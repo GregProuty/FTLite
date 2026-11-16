@@ -1,0 +1,40 @@
+{
+  "verdict": "changes requested",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "R-0 already flattens the whole interior in the stated order; the revised plan preserves that sequence and checks for R-0’s interior test (plan L50, L110-L111)."
+    },
+    {
+      "id": "R1-F2",
+      "result": "still open",
+      "note": "The validator accepts any integer for ships.*.graceUntil (plan L448, L941), but those fields are Int32Array values (plan L505). A rehashed value of 2147483648 passes validation and becomes -2147483648 when the module writer restores it (plan L300-L305). Restore then fails its hash check after duel allocation. Restrict these values to signed 32-bit integers and test a rehashed out-of-range value."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The test drives the registry used by authorityHost through duel capture and restore, compares values, hash and mode memory, and exercises sector (plan L2250-L2286, L2631-L2655)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "The continuation test asserts a missile in flight, crew-room damage and active repair at the split (plan L1139-L1144)."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "cloneTactical delegates to the module-derived clone, with a field-copy and isolation check (plan L239-L252, L429-L436, L590)."
+    }
+  ],
+  "verified": [
+    "The R-0 hash-completeness branch uses the full interior flatten, and its golden test has the name checked by Task 1 (plan L50, L110-L111).",
+    "Signed 32-bit coercion was confirmed with a read-only Node arithmetic check: Int32Array stores 2147483648 as -2147483648.",
+    "Task 4 replaces sectorStream.ts and authorityHost.ts (plan L2124-L2127). Recent netcode history includes changes to both paths, so concurrent edits there are a predictable integration conflict; neither path currently has working-tree changes."
+  ],
+  "not_verified": [
+    "R-0 and R-1a are not merged into this checkout, so the full R-1b plan was not compiled or run here.",
+    "The claimed test counts, checkpoint size and tick-5156 scenario were not independently executed; the requested review was read-only."
+  ]
+}

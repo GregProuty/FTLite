@@ -49,7 +49,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 1. **The module contract's shape** **(rec.)**: a module declares `fields(s)` (each `{ name, count, read, write }`), `notSnapshotted` (member path → reason), `commands` and `reasons`. Fields carry a writer as well as a reader, so restore is derived from the same declaration as flatten and hash, and nothing is hand-listed twice. The spec's `create(init, rng)` is left out for now: the duel is still created by `createDuel`, and R-4/R-5, which move creation into the modules, add it. A field list may depend on the state's shape (the map's asteroid count sizes `graceUntil`), never its values, and is cached per shape.
 2. **The duel's modules** (spec §6, R-1 stage): `space` (today's `TacticalState`), `presence`, `repair` and `interior` (the Cutter `SimState`, one field through the sector's `flatten` / validated `unflatten`), in that order after `SIM_VERSION`. **The duel golden baseline is post-R-0's `flattenDuel`** (from `hash-completeness`, 2a57a48: `[SIM_VERSION, ...flattenTactical, present, ...repair, ...flatten(interior)]`, the interior's whole canonical flatten, not master's earlier hand-picked interior tail), **and Task 1 keeps its value sequence exactly**: the duel golden passes unedited, and Task 1's Step 0 checks that R-0's full-interior hash is present. `points`, `nav`, `weapons` and `events` are the duel's declared not-snapshotted members; `map`, `grid` and `events` are the space module's. The map's asteroid count stays a field (as in H-0) and is an identity check on restore: writing a different count throws.
 3. **The snapshot header** (a spec refinement): the spec's `{ snapshotFormat: 1, simVersion, contentDigest, layoutId, layoutHash, seed, mapHash }` plus `tick` and `playerCount` (the generic core and Net-3's publication read them from every snapshot) and `hash`, the `hashDuel` of the stored values, which the restored duel must reproduce (the spec's "the hash recorded in the checkpoint").
-4. **Validation before allocation** **(rec.)**: `validateDuelSnapshot` checks the header keys and versions, digest, layout, seed, the map (regenerated from the seed with `createTacticalState`, which builds no interior; it must pass `validateMap`, and its `mapHash` must equal the header's), the value count, **every tactical field's bounds and slot invariants** (Codex plan review F2, `validateTacticalValues`: heading indices 0..255, integer counters, room damage levels 0..2, shield layers 0..2, the magazine 0..4, laser charge and lock, the 0/1 flags and the skid sign, the hunter's mode, room, fire time and trail head, the outcome enum, the asteroid count against the map, and each missile slot: presence 0 or 1, an empty slot all zeros, a missile's heading index and age), presence (0/1) and repair (0 to `REPAIR_UNITS` − 1), the interior's canonical values (the sector's `validateCanonicalValues`), the interior and tactical ticks against the header, and the header's hash over the values. A test proves every state the scripted duels of seeds 1, 4 and 7 reach (sampled every 30 ticks) passes, and that 19 rehashed invalid values are each rejected by the validator, which allocates nothing. `loadDuelSnapshot` then creates a fresh duel from the seed (the map, grid, repair points and `Derived` regenerated), writes every module back, and requires equal ticks and `hashDuel` equal to the header's.
+4. **Validation before allocation** **(rec.)**: `validateDuelSnapshot` checks the header keys and versions, digest, layout, seed, the map (regenerated from the seed with `createTacticalState`, which builds no interior; it must pass `validateMap`, and its `mapHash` must equal the header's), the value count, **every tactical field's bounds and slot invariants** (Codex plan review F2, `validateTacticalValues`: heading indices 0..255, integer counters, room damage levels 0..2, shield layers 0..2, the magazine 0..4, laser charge and lock, the 0/1 flags and the skid sign, the hunter's mode, room, fire time and trail head, the outcome enum, the asteroid count against the map, and each missile slot: presence 0 or 1, an empty slot all zeros, a missile's heading index and age), presence (0/1) and repair (0 to `REPAIR_UNITS` − 1), the interior's canonical values (the sector's `validateCanonicalValues`), the interior and tactical ticks against the header, and the header's hash over the values. A test proves every state the scripted duels of seeds 1, 4 and 7 reach (sampled every 30 ticks) passes, and that 20 rehashed invalid values are each rejected (including a `graceUntil` value outside signed 32 bits) by the validator, which allocates nothing. `loadDuelSnapshot` then creates a fresh duel from the seed (the map, grid, repair points and `Derived` regenerated), writes every module back, and requires equal ticks and `hashDuel` equal to the header's.
 5. **`mapHash`** (spec §6): `hashF64` over the planet's x, y and r, each asteroid's x, y and r in index order, the belt count, the cluster sizes, the gaps, and both spawns' x, y, vx, vy and heading, with −0 written as 0; cached per map.
 6. **Mode memory and controller memory** **(rec.)**: the duel has no bots in R-1, so its `botControllers` is always `[]`. Its telemetry accumulator is `modeMemory: { version: 1, telemetry }` (typed arrays as number arrays), validated by zod, consistent with the snapshot (its tick count equals the snapshot's tick; `graceUntil` copies have the map's body count), and restored with the duel. A restore without it is refused.
 7. **`DuelEndSummary`** (spec §6): `{ outcome, ticks, terminal: [causes, causes], laserReleases, laserHits, missilesLaunched, missileHits, repairsFinished }`, deeply frozen, computed once when the outcome leaves Running. Per-ship pairs are [crew ship, enemy ship]; `missileHits` sums the accumulator's hits by room; `repairsFinished` is per player (the accumulator counts repairs per player). The codec checks each cause array is in the accumulator's order without repeats. A restored ended duel recomputes the same summary from its restored accumulator.
@@ -437,6 +437,8 @@ export function cloneTacticalFromModule(s: TacticalState): TacticalState {
 }
 
 const int = (v: number): boolean => Number.isInteger(v);
+/** graceUntil is an Int32Array: a value outside signed 32 bits would wrap on restore and fail the hash only after allocation. */
+const int32 = (v: number): boolean => Number.isInteger(v) && v >= -2147483648 && v <= 2147483647;
 const count = (v: number): boolean => Number.isInteger(v) && v >= 0;
 const within = (lo: number, hi: number) => (v: number): boolean => Number.isInteger(v) && v >= lo && v <= hi;
 const bit = within(0, 1), heading = within(0, HEADING_COUNT - 1), room = within(0, 2), any = (): boolean => true;
@@ -445,7 +447,7 @@ const SHIP_RULES: Readonly<Record<string, (v: number) => boolean>> = {
   heading, hull: (v) => v <= SHIP_HULL, rooms: within(0, 2), planetHits: count, asteroidHits: count, shipHits: count,
   released: bit, skidSign: within(-1, 1), shields: within(0, SHIELD_LAYERS), shieldClock: count,
   laserCharge: within(0, LASER_CHARGE_UNITS), laserHold: count, fireHeld: bit, lock: room, magazine: within(0, MAGAZINE), magazineClock: count,
-  shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count, graceUntil: int
+  shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count, graceUntil: int32
 };
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
@@ -834,7 +836,7 @@ describe('the duel snapshot (spec §6)', () => {
         ['ships.0.shots', 0, 2.5, /ships\.0\.shots/], ['ships.0.laserCharge', 0, -1, /ships\.0\.laserCharge/], ['ships.1.lock', 0, 3, /ships\.1\.lock/],
         ['ships.0.released', 0, 2, /ships\.0\.released/], ['hunter.mode', 0, 2, /hunter\.mode/], ['hunter.trailHead', 0, 18, /hunter\.trailHead/],
         ['outcome', 0, 4, /outcome: out of range/], [slot, 0, 2, /presence is not 0 or 1/], [slot, 5, 300, /heading or age/], [slot, 7, -1, /heading or age/],
-        [empty, 3, 0.25, /an empty slot holds values/]
+        [empty, 3, 0.25, /an empty slot holds values/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/]
       ];
       for (const [name, k, value, error] of cases) {
         const snap = structuredClone(good); snap.values[names.get(name)! + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
@@ -1830,6 +1832,8 @@ export type DuelCheckpoint = Checkpoint<DuelInit, DuelControllers, DuelSnapshot>
 
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const int = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
+/** The accumulator's graceUntil copies are restored as Int32Arrays, so they must fit signed 32 bits (Codex plan review F2). */
+const int32 = z.number().int().min(-2147483648).max(2147483647);
 const num = z.number().finite();
 const stamp = z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER);
 const text = z.string().min(1).max(128);
@@ -1852,7 +1856,7 @@ export const duelMemorySchema = z.object({
     ticks: uint, outcome: z.number().int().min(0).max(3), ships: two(shipTelemetry), players: two(playerTelemetry),
     baits: uint, consoleSwaps: uint, helmEmptyTicks: uint, weaponsEmptyTicks: uint, enemyInArcTicks: uint, weaponsIdleTicks: uint,
     terminal: two(causes),
-    prev: z.object({ counters: two(z.tuple([uint, uint, uint, uint])), grace: two(z.array(int).max(65_536)), work: two(int), seat: two(int), lastConsole: two(int) }).strict(),
+    prev: z.object({ counters: two(z.tuple([uint, uint, uint, uint])), grace: two(z.array(int32).max(65_536)), work: two(int), seat: two(int), lastConsole: two(int) }).strict(),
     manoeuvre: z.object({ tick: int, x: num, y: num }).strict()
   }).strict()
 }).strict();
