@@ -8,9 +8,14 @@ const snapshot: RoomSnapshot = {
   capacity: 2, hostSeatId: 0, hostGeneration: 1, phase: 'lobby', rosterRevision: 1,
   seats: [{ seatId: 0, seatGeneration: 1, occupied: true, connected: true, ready: false }, { seatId: 1, seatGeneration: 0, occupied: false, connected: false, ready: false }],
 };
-const status = (): OnlineStatus => ({ phase: 'lobby', role: 'host', ownSeat: 0, snapshot: structuredClone(snapshot), attachmentEpoch: 0, error: null, retryAtMs: null, persistent: true, actions: ['ready', 'start', 'leave'] });
+const status = (): OnlineStatus => ({ phase: 'lobby', role: 'host', ownSeat: 0, snapshot: structuredClone(snapshot), attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: true, actions: ['ready', 'start', 'leave'] });
 
 describe('bounded online renderer boundary', () => {
+  it('validates mirror receipts without admitting bytes, credentials or restored receipt timestamps', () => {
+    const mirror = { committed: null, receivedAgeMs: null, localPending: true, persistent: false, error: 'save-unavailable' };
+    expect(validateOnlineStatus({ ...status(), mirror })).toBe(true);
+    for (const bad of [{ ...mirror, bytes: [1] }, { ...mirror, receivedAgeMs: -1 }, { ...mirror, seatToken: 'secret' }, { ...mirror, error: 'raw' }]) expect(validateOnlineStatus({ ...status(), mirror: bad })).toBe(false);
+  });
   it('accepts only version one status revisions with strict bounded public data', () => {
     expect(validateOnlineStatusEnvelope({ version: 1, revision: 1, status: status() })).toBe(true);
     for (const value of [{ version: 2, revision: 1, status: status() }, { version: 1, revision: 0, status: status() },

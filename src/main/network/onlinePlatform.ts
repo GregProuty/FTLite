@@ -42,7 +42,6 @@ export function createOnlinePlatform(win: BrowserWindow): OnlinePlatform {
         async dispose() { stop(false); }
       };
     },
-    startHost: (identity, signal) => startHostProcess({ ...identity, signal }, native),
     async startLeasedHost(identity, signal, sessionLease) {
       if (!validateSessionLeaseIdentity(sessionLease) || sessionLease.hostGeneration !== identity.hostGeneration) throw Error('invalid-lease');
       return startHostProcess({ ...identity, signal, sessionLease }, native);

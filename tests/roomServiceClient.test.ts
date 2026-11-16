@@ -34,6 +34,17 @@ async function connected(r = rig()) {
   return r;
 }
 describe('generic room service client', () => {
+  it.each(['get', 'put'] as const)('aborts the owned checkpoint %s request without closing authenticated service', async method => {
+    let signal: AbortSignal | undefined;
+    const { c, socket } = await connected(rig(async (url, init) => {
+      if (url.endsWith('/checkpoint')) { signal = init!.signal!; return new Promise<Response>(() => {}); }
+      return Response.json({ ticket: 'S'.repeat(43), connectionId: '3'.repeat(32), expiresAtEpochMs: Date.now() + 5000 });
+    }));
+    const abort = new AbortController(), metadata = { version: 1 as const, protocolVersion: 2 as const, roomId: snapshot.roomId, runId: snapshot.runId, compatibility, hostGeneration: 1, checkpointSequence: 1, capturedTick: 0, payloadSha256: 'a'.repeat(64) };
+    const pending = method === 'get' ? c.getCheckpoint({ signal: abort.signal }) : c.putCheckpoint(metadata, new Uint8Array([1]), { signal: abort.signal });
+    const result = expect(pending).rejects.toThrow('stale-connection'); abort.abort(); await result;
+    expect(signal?.aborted).toBe(true); expect(socket.closed).toBe(false);
+  });
   it('aborts local renewal correlation without undoing the sent request or killing the next renewal', async () => {
     const { c, socket } = await connected(); const abort = new AbortController();
     vi.useFakeTimers();

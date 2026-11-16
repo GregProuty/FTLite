@@ -19,7 +19,7 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { cardRows } from '../src/renderer/src/clientControl/cardController';
 import { doorsCursorTile } from '../src/renderer/src/render/hazardTiles';
 import { TILE_PX } from '../src/shared/resolution';
-const status: OnlineStatus = { phase: 'syncing', role: 'guest', ownSeat: 2, snapshot: null, attachmentEpoch: 1, error: null, retryAtMs: null, persistent: true, actions: ['leave'] };
+const status: OnlineStatus = { phase: 'syncing', role: 'guest', ownSeat: 2, snapshot: null, attachmentEpoch: 1, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: true, actions: ['leave'] };
 function rig(prepare?: (state: ReturnType<typeof makeState>) => void) {
   const state = makeState(3); quiet(state); prepare?.(state); let now = 0, cb = () => {};
   const clock = { nowMs: () => now }, h = portEndpoint(), p = portEndpoint();

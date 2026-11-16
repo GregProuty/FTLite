@@ -1,4 +1,4 @@
-import { SERVICE_ERROR_RETRYABLE, isRoomId, validateCompatibility, validateRoomSnapshot, type RoomCompatibility, type RoomSnapshot, type ServiceErrorCode } from './roomSession';
+import { SERVICE_ERROR_RETRYABLE, isRoomId, validateCompatibility, validateRoomSnapshot, validateCheckpointMetadata, type SessionCheckpointMetadata, type RoomCompatibility, type RoomSnapshot, type ServiceErrorCode } from './roomSession';
 import { rtcKeys, rtcRecord } from './rtcSession';
 
 /** Fixed public outcomes only. Provider messages and credential material stay in main. */
@@ -7,6 +7,7 @@ export const ONLINE_ERROR_CODES = [
   'online-disabled', 'invalid-action', 'invalid-status', 'invalid-port', 'busy', 'cancelled',
   'storage-invalid', 'storage-read-failed', 'storage-write-failed', 'storage-clear-failed',
   'transport-lost', 'host-lost', 'suspended', 'clock-discontinuity', 'retry-exhausted',
+  'save-unavailable', 'save-invalid', 'save-too-large',
 ] as const;
 export type OnlineErrorCode = typeof ONLINE_ERROR_CODES[number];
 export function isOnlineErrorCode(value: unknown): value is OnlineErrorCode {
@@ -24,7 +25,11 @@ export type OnlineAction =
   | { type: 'leave' }
   | { type: 'forget-seat' };
 export type OnlinePhase = 'idle' | 'creating' | 'joining' | 'lobby' | 'connecting' | 'syncing' | 'running' | 'paused' | 'reconnecting' | 'ended' | 'error';
+export interface MirrorStatus {
+  committed: SessionCheckpointMetadata | null; receivedAgeMs: number | null; localPending: boolean; persistent: boolean; error: OnlineErrorCode | null;
+}
 export interface OnlineStatus {
+  mirror: MirrorStatus;
   phase: OnlinePhase;
   role: 'host' | 'guest' | null;
   ownSeat: number | null;
@@ -67,7 +72,8 @@ export function validateOnlineAction(value: unknown): value is OnlineAction {
   }
 }
 export function validateOnlineStatus(value: unknown): value is OnlineStatus {
-  return rtcRecord(value) && rtcKeys(value, ['phase', 'role', 'ownSeat', 'snapshot', 'attachmentEpoch', 'error', 'retryAtMs', 'persistent', 'actions'])
+  return rtcRecord(value) && rtcKeys(value, ['phase', 'role', 'ownSeat', 'snapshot', 'attachmentEpoch', 'error', 'retryAtMs', 'persistent', 'actions', 'mirror'])
+    && validateMirrorStatus(value.mirror)
     && phases.includes(value.phase as OnlinePhase) && (value.role === null || value.role === 'host' || value.role === 'guest')
     && (value.ownSeat === null || seatId(value.ownSeat))
     && (value.snapshot === null || (validateRoomSnapshot(value.snapshot) && hasOnlyArrayIndices(value.snapshot.seats)))
@@ -76,6 +82,12 @@ export function validateOnlineStatus(value: unknown): value is OnlineStatus {
     && (value.retryAtMs === null || (typeof value.retryAtMs === 'number' && Number.isFinite(value.retryAtMs) && value.retryAtMs >= 0))
     && typeof value.persistent === 'boolean' && Array.isArray(value.actions) && value.actions.length <= actionTypes.length
     && hasOnlyArrayIndices(value.actions) && value.actions.every(type => actionTypes.includes(type)) && new Set(value.actions).size === value.actions.length;
+}
+export function validateMirrorStatus(value: unknown): value is MirrorStatus {
+  return rtcRecord(value) && rtcKeys(value, ['committed', 'receivedAgeMs', 'localPending', 'persistent', 'error'])
+    && (value.committed === null || validateCheckpointMetadata(value.committed))
+    && (value.receivedAgeMs === null || typeof value.receivedAgeMs === 'number' && Number.isFinite(value.receivedAgeMs) && value.receivedAgeMs >= 0)
+    && typeof value.localPending === 'boolean' && typeof value.persistent === 'boolean' && (value.error === null || isOnlineErrorCode(value.error));
 }
 /** Validate before detaching so unknown credential fields can never be copied to IPC. */
 export function copyOnlineStatus(value: OnlineStatus): OnlineStatus {

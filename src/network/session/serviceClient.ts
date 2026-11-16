@@ -339,8 +339,9 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       return bytes.slice(0, size);
     } finally { controller.signal.removeEventListener('abort', cancel); cancel(); try { reader.releaseLock(); } catch {} }
   }
-  async function httpRequest<T>(path: string, init: RequestInit, consume: (response: Response, controller: AbortController) => Promise<T>, expected = generation, authorityStamp?: number): Promise<T> {
+  async function httpRequest<T>(path: string, init: RequestInit, consume: (response: Response, controller: AbortController) => Promise<T>, expected = generation, authorityStamp?: number, signal?: AbortSignal): Promise<T> {
     assertCurrent(expected, authorityStamp);
+    if (signal?.aborted) throw fault('stale-connection');
     if (http.size + unsettledFactories.size >= 4) throw fault('capacity');
     const controller = new AbortController(), deadline = clock.nowMs() + DEADLINE_MS;
     http.set(controller, { authority: authorityStamp, deadline });
@@ -353,6 +354,8 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
     const onAbort = () => rejectAbort(controller.signal.reason);
     controller.signal.addEventListener('abort', onAbort, { once: true });
+    const cancelOwner = () => controller.abort(fault('stale-connection'));
+    signal?.addEventListener('abort', cancelOwner, { once: true });
     const timer = clock.setTimeout(() => controller.abort(fault('timeout')), DEADLINE_MS);
     const work = async () => {
       const response = await options.fetch(baseUrl + path, { ...init, redirect: 'error', signal: controller.signal });
@@ -371,7 +374,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     };
     try { return await Promise.race([work(), aborted]); }
     catch (error) { throw error instanceof RoomServiceClientError ? error : fault('unavailable'); }
-    finally { clock.clearTimeout(timer); controller.signal.removeEventListener('abort', onAbort); http.delete(controller); }
+    finally { clock.clearTimeout(timer); controller.signal.removeEventListener('abort', onAbort); signal?.removeEventListener('abort', cancelOwner); http.delete(controller); }
   }
   function json<T>(path: string, body: unknown, validate: (value: unknown) => value is T, expected = generation, authToken?: string, authorityStamp?: number): Promise<T> {
     return httpRequest(path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: 'Bearer ' + authToken } : {}) }, body: JSON.stringify(body) }, async (response, controller) => {
@@ -482,7 +485,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
     if (value.expiresAtEpochMs <= clock.nowMs()) throw fault('invalid-frame');
     return value;
   }
-  async function putCheckpoint(metadata: SessionCheckpointMetadata, bytes: Uint8Array): Promise<void> {
+  async function putCheckpoint(metadata: SessionCheckpointMetadata, bytes: Uint8Array, options?: { signal?: AbortSignal }): Promise<void> {
     const s = requireSession();
     if (!authenticated || !connectionId) throw fault('invalid-state');
     if (!validateCheckpointMetadata(metadata) || !validMetadata(metadata) || metadata.hostGeneration !== s.snapshot.hostGeneration || s.seatId !== s.snapshot.hostSeatId) throw fault('invalid-request');
@@ -493,10 +496,10 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
       await httpRequest(`/v2/rooms/${s.snapshot.roomId}/checkpoint`, { method: 'PUT', headers: { Authorization: 'Bearer ' + token,
         'Content-Type': 'application/octet-stream', 'X-FTL-Checkpoint': header, 'X-FTL-Connection': connectionId, 'X-FTL-Seat-Generation': String(s.seatGeneration) }, body: bytes.slice() }, async response => {
         if (response.status !== 204) throw fault('invalid-frame');
-      }, generation, authority);
+      }, generation, authority, options?.signal);
     } finally { checkpointBodies--; }
   }
-  async function getCheckpoint(): Promise<{ metadata: SessionCheckpointMetadata; bytes: Uint8Array }> {
+  async function getCheckpoint(options?: { signal?: AbortSignal }): Promise<{ metadata: SessionCheckpointMetadata; bytes: Uint8Array }> {
     const s = requireSession();
     if (checkpointBodies >= 2) throw fault('capacity'); checkpointBodies++;
     try {
@@ -507,7 +510,7 @@ export function createRoomServiceClient(options: RoomServiceClientOptions) {
         const bytes = await readBytes(response, ROOM_CHECKPOINT_BYTES, controller);
         if (await digest(bytes) !== metadata.payloadSha256) throw fault('hash-mismatch');
         return { metadata, bytes };
-      }, generation);
+      }, generation, undefined, options?.signal);
     } finally { checkpointBodies--; }
   }
   return {

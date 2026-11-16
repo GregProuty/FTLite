@@ -9,7 +9,7 @@ vi.mock('electron', async () => {
   return { ipcMain: { handle: (name: string, cb: (...args: any[]) => any) => native.handlers.set(name, cb), removeHandler: (name: string) => native.handlers.delete(name) }, powerMonitor: new EventEmitter() };
 });
 import { powerMonitor } from 'electron';
-const status = () => ({ phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, persistent: false, actions: ['host'] } as const);
+const status = () => ({ phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: false, actions: ['host'] } as const);
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const off of cleanups.splice(0)) off(); });
 function harness(visible = true) {

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { validateRunInit } from '../../renderer/src/authority/checkpoint';
+import { validateRunInit, validateCheckpoint } from '../../renderer/src/authority/checkpoint';
+import type { SessionMirror } from './mirrorStore';
 import type { RunInit } from '../../renderer/src/net/contracts';
 import { DEFAULT_CHARACTERS } from '../../renderer/src/sim/characters';
 import { SIM_VERSION } from '../../renderer/src/sim/tuning';
@@ -12,6 +13,17 @@ import { validateInitBase64, validateLeaseGrant, validateRoomSnapshot, type Comm
 import { onlineFault } from './onlineRetry';
 
 const layouts = { skiff: parseShip(skiff), cutter: parseShip(cutter) };
+export function validateSectorMirror(mirror: SessionMirror): void {
+  try {
+    const raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(mirror.bytes));
+    const layout = layouts[raw?.init?.layoutId as keyof typeof layouts];
+    if (!layout) throw Error();
+    const checkpoint = validateCheckpoint(layout, raw, __GAMEPLAY_CONTENT_DIGEST__), m = mirror.metadata;
+    const compatibility = sectorCompatibility(checkpoint.init.playerCount);
+    if (checkpoint.init.runId !== m.runId || checkpoint.snapshot.header.tick !== m.capturedTick
+      || Object.entries(compatibility).some(([k, v]) => m.compatibility[k as keyof RoomCompatibility] !== v)) throw Error();
+  } catch { throw onlineFault('save-invalid'); }
+}
 export function sectorCompatibility(capacity: number): RoomCompatibility {
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 4) throw onlineFault('invalid-request');
   return { protocolVersion: 2, modeId: 'sector', schemaVersion: 1, simVersion: SIM_VERSION,

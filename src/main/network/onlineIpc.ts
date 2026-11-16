@@ -5,7 +5,7 @@ import type { OnlineSessionOwner } from './onlineSession';
 
 let registered: BrowserWindow | undefined;
 const invalidStatus = (): OnlineStatus => ({ phase: 'error', role: null, ownSeat: null, snapshot: null,
-  attachmentEpoch: 0, error: 'invalid-status', retryAtMs: null, persistent: false, actions: [] });
+  attachmentEpoch: 0, error: 'invalid-status', retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: false, actions: [] });
 /** One visible session owner. No renderer can select another owner or invoke an arbitrary channel. */
 export function registerOnlineIpc(win: BrowserWindow, owner: OnlineSessionOwner): Unsubscribe {
   // Windows may not show the newly constructed application window until loading.

@@ -7,6 +7,8 @@ import { createOnlineSession } from './network/onlineSession';
 import { createOnlinePlatform } from './network/onlinePlatform';
 import { registerOnlineIpc } from './network/onlineIpc';
 import { createSeatStore } from './network/seatStore';
+import { createMirrorStore } from './network/mirrorStore';
+import { validateSectorMirror } from './network/onlineSector';
 import { createRoomServiceClient } from '../network/session/serviceClient';
 
 function createWindow(): void {
@@ -33,7 +35,7 @@ function createWindow(): void {
   const scheduler = { setTimeout: (callback: () => void, ms: number) => setTimeout(callback, ms),
     clearTimeout: (handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>) };
   const owner = createOnlineSession({
-    config, seatStore: createSeatStore(app.getPath('userData')), platform: createOnlinePlatform(win),
+    config, seatStore: createSeatStore(app.getPath('userData')), mirrorStore: createMirrorStore(app.getPath('userData'), validateSectorMirror), platform: createOnlinePlatform(win),
     clock: { nowMs: () => performance.now(), epochMs: () => Date.now() }, scheduler,
     nonce: () => randomBytes(16).toString('hex'),
     service() {
@@ -44,6 +46,13 @@ function createWindow(): void {
     }
   });
   registerOnlineIpc(win, owner);
+  let closing = false;
+  win.on('close', event => {
+    if (closing) return;
+    event.preventDefault(); closing = true;
+    // The owner shares one three-second graceful capture/commit budget with Leave.
+    void owner.dispose().finally(() => { if (!win.isDestroyed()) win.close(); });
+  });
   Menu.setApplicationMenu(null);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());

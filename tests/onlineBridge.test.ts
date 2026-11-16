@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createOnlineBridge } from '../src/renderer/src/app/onlineBridge';
 import { validateOnlineStatusEnvelope } from '../src/shared/onlineSession';
 
-const status = { phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, persistent: false, actions: ['host'] } as const;
+const status = { phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: false, actions: ['host'] } as const;
 const descriptor = { epoch: 1, runId: 'a'.repeat(32), hostGeneration: 1, seatId: 1, compatibility: { protocolVersion: 2, modeId: 'sector', schemaVersion: 1, simVersion: 35, contentDigest: 'b'.repeat(64), layoutHash: '12345678' } };
 const native = vi.hoisted(() => ({ listeners: new Map<string, Set<(...args: any[]) => void>>(), exposed: null as any, invoke: vi.fn() }));
 vi.mock('electron', () => ({ contextBridge: { exposeInMainWorld(_name: string, value: any) { native.exposed = value; } }, ipcRenderer: {

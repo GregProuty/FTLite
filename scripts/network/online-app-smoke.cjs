@@ -16,6 +16,7 @@ app.disableHardwareAcceleration();
 // harness terminal. Focus/blur still use native window focus and production guards.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const windows = [], utilities = [], channels = [], nativeClosed = new Map();
+const mirrorReceipts = [];
 let visible, stopping = false, delayNextTransport = false;
 const originalChannel = electron.MessageChannelMain;
 // Electron exports nonconfigurable constructors. Observe the native port methods
@@ -37,8 +38,17 @@ utilityProcess.fork = (...args) => {
   const child = fork(...args), record = { child, exited: false, pid: null, producerChanges: [] }; utilities.push(record);
   child.once('spawn', () => { record.pid = child.pid; });
   child.once('exit', () => { record.exited = true; });
+  child.on('message', message => {
+    if (message?.kind !== 'checkpoint') return;
+    const candidate = message.candidate;
+    if (candidate?.cause === 'initial' && candidate.capturedTick === 0) record.initialCaptureTick = 0;
+    if (candidate?.cause === 'periodic' && candidate.capturedTick === 300) record.periodicCapturedTick = 300;
+  });
   const post = child.postMessage.bind(child);
   child.postMessage = (message, ports) => {
+    if (message?.kind === 'initialize') record.runId = message.sessionLease?.runId;
+    if (message?.kind === 'bootstrap-complete') record.bootstrapAfterCommit = record.initialCaptureTick === 0
+      && mirrorReceipts.some(m => m.runId === record.runId && m.capturedTick === 0);
     // Only lifecycle kind and logical seat, never credentials or payload bytes.
     if (message?.kind === 'command') record.producerChanges.push({ kind: message.command?.kind, seatId: message.command?.seatId, player: message.command?.player, human: message.command?.human });
     const result=post(message, ports);transferred(ports);return result;
@@ -48,6 +58,17 @@ utilityProcess.fork = (...args) => {
 app.on('browser-window-created', (_, window) => {
   const hidden = !!visible; if (!visible) visible = window;
   const diagnosticContext={role,page:hidden?'transport':'application'};
+  if (!hidden && typeof window.webContents.send === 'function') {
+    const send = window.webContents.send.bind(window.webContents);
+    window.webContents.send = (channel, value) => {
+      const m = channel === 'online:status' && value?.status?.mirror?.committed;
+      if (m && !mirrorReceipts.some(old => old.runId === m.runId && old.hostGeneration === m.hostGeneration && old.checkpointSequence === m.checkpointSequence)) {
+        mirrorReceipts.push({ runId: m.runId, hostGeneration: m.hostGeneration, checkpointSequence: m.checkpointSequence, capturedTick: m.capturedTick, payloadSha256: m.payloadSha256 });
+        if (mirrorReceipts.length > 64) mirrorReceipts.shift();
+      }
+      return send(channel, value);
+    };
+  }
   window.webContents.on('preload-error', () => console.error('APP_PRELOAD_ERROR',diagnosticContext));
   window.webContents.on('console-message', details => { if (details.level === 'error') console.error('APP_PAGE_ERROR',diagnosticContext); });
   const record = { window, hidden, closed: false }; windows.push(record);
@@ -91,7 +112,8 @@ async function click(id) {
 }
 async function command(message) {
   switch (message.command) {
-    case 'status': return { ...await js(`(async () => ({status:(await window.ftlite.online.readStatus()).status, observations:window.onlineAppObservation(), keys:window.onlineAppKeys, text:document.body.innerText, hidden:document.hidden, focused:document.hasFocus()}))()`),electron:process.versions.electron };
+    case 'status': return { ...await js(`(async () => ({status:(await window.ftlite.online.readStatus()).status, observations:window.onlineAppObservation(), keys:window.onlineAppKeys, text:document.body.innerText, hidden:document.hidden, focused:document.hasFocus()}))()`),electron:process.versions.electron,
+      mirrorProof: { receipts: mirrorReceipts, utilities: utilities.map(({ runId, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit }) => ({ runId, initialCaptureTick, periodicCapturedTick, bootstrapAfterCommit })) } };
     case 'resize': {
       if (![[1280,720],[640,480]].some(([w,h]) => message.width === w && message.height === h)) throw Error('invalid test size');
       // Native stress viewport below the ordinary app minimum; production sizing

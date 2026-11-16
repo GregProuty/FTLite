@@ -6,7 +6,7 @@ import { join, resolve, sep } from 'node:path';
 import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
-import { validateOnlineAppReport } from './online-app-report';
+import { ONLINE_APP_ARTIFACTS, validateOnlineAppReport } from './online-app-report';
 import { onlineAppFailureCode, onlineAppStderrDiagnostic, onlineAppWaitDiagnostic } from './online-app-diagnostics';
 
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -25,7 +25,7 @@ async function main() {
   let waitFailure: ReturnType<typeof onlineAppWaitDiagnostic> | undefined;
   const source = { revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim(),
     dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', windowsHide: true }).trim(), digest: computeContentDigest(process.cwd()),
-    artifactHashes:Object.fromEntries(['out/main/index.js','out/main/transportWindow.js','out/renderer/index.html','scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-observer.ts','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts']
+    artifactHashes:Object.fromEntries(ONLINE_APP_ARTIFACTS
       .map(path=>[path,createHash('sha256').update(readFileSync(path)).digest('hex')])) };
   async function until(read: () => Promise<any>, predicate: (value: any) => boolean, label: string, ms = 10000) {
     const deadline = performance.now() + ms; let last;
@@ -100,6 +100,18 @@ async function main() {
     await h.request('click', {id:'ready'}); await g.request('click',{id:'ready'});
     await until(()=>status(h),r=>r.status.actions.includes('start'),'native/service ready');
     await h.request('click',{id:'start'}); await phase(h,'running'); const first = await phase(g,'running');
+    const runId = first.status.snapshot.runId;
+    const initialMirror = (await status(h)).mirrorProof;
+    const initialUtility = initialMirror.utilities.find((u: any) => u.runId === runId);
+    assert(initialUtility?.initialCaptureTick === 0 && initialUtility?.bootstrapAfterCommit === true, 'initial mirror barrier');
+    const mirrored = await until(async () => ({ host: await status(h), guest: await status(g) }), r => {
+      const utility = r.host.mirrorProof.utilities.find((u: any) => u.runId === runId);
+      const receipt = r.host.mirrorProof.receipts.find((m: any) => m.runId === runId && m.capturedTick === 300);
+      return utility?.periodicCapturedTick === 300 && receipt && r.guest.mirrorProof.receipts.some((m: any) => m.runId === runId && m.checkpointSequence === receipt.checkpointSequence && m.payloadSha256 === receipt.payloadSha256);
+    }, 'periodic mirrored capture', 12000);
+    const periodicReceipt = mirrored.host.mirrorProof.receipts.find((m: any) => m.runId === runId && m.capturedTick === 300);
+    const mirrorProof = { initialCommittedTick: 0, initialBeforeBootstrap: initialUtility.bootstrapAfterCommit,
+      periodicCapturedTick: 300, periodicCommittedTick: periodicReceipt.capturedTick, guestReceived: true };
     assert(first.status.ownSeat===seat && first.text.includes(`You are Player ${seat+1}`),'assigned-seat HUD');
     const generationBefore = first.status.snapshot.seats[seat].seatGeneration;
     await key(g,'F'); await key(g,'D',350);
@@ -143,7 +155,7 @@ async function main() {
     const records = [commandProof,resumed.guest,final.guest];
     const inputs = records.flatMap(r=>r.inputs);
     assert(inputs.length>0 && inputs.every((i:any)=>i.player===seat),'guest produced unowned-seat input');
-    const proof = {capacity,seat,layout:final.same.layout,fullReceipts:records.reduce((n,r)=>n+r.fullReceipts,0),acks:records.reduce((n,r)=>n+r.acks,0),
+    const proof = {capacity,seat,layout:final.same.layout,mirrors:mirrorProof,fullReceipts:records.reduce((n,r)=>n+r.fullReceipts,0),acks:records.reduce((n,r)=>n+r.acks,0),
       commands:commandProof.results.filter((r:any)=>r.status==='applied'&&r.id.player===seat).length,matched:3,ownership:true,
       ackBeforeInput:records.every(r=>r.firstAckOrder>0&&(!r.firstInputOrder||r.firstInputOrder>r.firstAckOrder)),
       generationBefore,generationAfter:paused.status.snapshot.seats[seat].seatGeneration,botTakeover:true,pausedReconnect:true,blurNeutral:true,
@@ -218,7 +230,7 @@ async function main() {
     processes: processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination}) => ({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,cleanup})),
     cleanup: Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k => [k, cleanups.reduce((n,r)=>n+r[k],0)])),
     runtimeHelper: runtime?.observation(), viewports, scenarios, checks, elapsedMs: Math.ceil(performance.now()-began), failure, waitFailure,
-    limits: ['loopback-only','no-TURN','no-independent-utility-lease','no-mirrors','no-rehost','no-WAN','no-two-machine'] };
+    limits: ['loopback-only','no-TURN','no-rehost','no-WAN','no-two-machine'] };
   writeFileSync(reportPath, JSON.stringify(report,null,2)+'\n');
   if (failure) throw Error(failure);
   validateOnlineAppReport(report); console.log('ACTUAL TWO-PROCESS ONLINE APPLICATION PASS');

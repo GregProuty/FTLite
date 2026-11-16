@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createOnlineSession } from '../src/main/network/onlineSession';
+import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
 import { sectorCompatibility } from '../src/main/network/onlineSector';
 import type { RoomServiceEvent } from '../src/network/session/serviceClient';
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
@@ -8,8 +9,8 @@ function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0) {
   let snapshot: any = { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), joinCode: 'ABCDEFGH', compatibility: sectorCompatibility(capacity), capacity,
     hostSeatId: 0, hostGeneration: 1, phase: 'lobby', rosterRevision: 1, seats: Array.from({ length: capacity }, (_, seatId) => ({ seatId, seatGeneration: 1, occupied: true, connected: true, ready: false })) };
   const session = () => ({ snapshot: structuredClone(snapshot), seatId: ownSeat, seatGeneration: snapshot.seats[ownSeat].seatGeneration, seatToken: 't'.repeat(43) });
-  let committed: any; const emit = (event: any) => { for (const cb of [...events]) cb(event); };
-  const service: any = { create: vi.fn(async () => { order.push('create'); return session(); }), join: vi.fn(async () => session()), connect: vi.fn(async () => { order.push('connect'); return structuredClone(snapshot); }), close: vi.fn(),
+  let committed: any, serverMirror: any = null, diskMirror: any = null; const emit = (event: any) => { for (const cb of [...events]) cb(event); };
+  const service: any = { putCheckpoint: vi.fn(async (metadata: any, bytes: Uint8Array) => { serverMirror = structuredClone({ metadata, bytes }); }), getCheckpoint: vi.fn(async () => { if (!serverMirror) throw { code: 'no-checkpoint' }; return structuredClone(serverMirror); }), create: vi.fn(async () => { order.push('create'); return session(); }), join: vi.fn(async () => session()), connect: vi.fn(async () => { order.push('connect'); return structuredClone(snapshot); }), close: vi.fn(),
     onEvent: (cb: any) => { events.add(cb); return () => events.delete(cb); }, request: vi.fn(async (op: any) => {
       order.push(op.type);
       if (op.type === 'ready') { snapshot = { ...snapshot, rosterRevision: snapshot.rosterRevision + 1, seats: snapshot.seats.map((s: any) => s.seatId === ownSeat ? { ...s, ready: op.ready } : s) }; return { kind: 'snapshot', snapshot }; }
@@ -20,23 +21,65 @@ function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0) {
     }) };
   let saved: any = null;
   const store = { load: vi.fn(async () => saved), save: vi.fn(async (seat: any) => { order.push('save'); saved = seat; }), clear: vi.fn(async () => { saved = null; }) };
+  const mirrorStore = { load: vi.fn(async () => diskMirror), save: vi.fn(async (value: any) => { diskMirror = structuredClone(value); }), clear: vi.fn(async () => { diskMirror = null; }) };
+  let capture = (_candidate: any) => {}, renewal = (_request: any) => {}, leaseIdentity: any, latestCapture: any, renewalTimer: ReturnType<typeof setInterval> | undefined;
   let nativeClosed = (_id: string) => {}, transportExit = () => {}, hostExit = (_reason: string) => {};
   const controller: any = { onSignal: () => () => {}, onAttemptClosed: (cb: any) => { nativeClosed = cb; return () => {}; }, closeAttempt: vi.fn(async () => {}), dispose: vi.fn(async () => {}), startAttempt: vi.fn(async () => ({ latestPayloadLimit: 16088 })), receiveSignal: vi.fn(async () => {}) };
   const transport = { controller, onExit: vi.fn((cb: () => void) => { transportExit = cb; return () => {}; }), dispose: vi.fn(async () => {}) };
-  const host = { onCheckpoint: () => () => {}, ackCheckpoint: async () => {}, captureCheckpoint: async () => { throw Error('capture not configured'); },
-    onLeaseRequest: () => () => {}, applyLease: async () => {}, invalidateLease: async () => {}, completeBootstrap: async () => {}, transport: controller, request: vi.fn(async () => ({ ok: true as const, requestId: 1, hostGeneration: 1 })), attachPeer: vi.fn(async () => {}), onExit: vi.fn((cb: (reason: string) => void) => { hostExit = cb; return () => {}; }), dispose: vi.fn(async () => {}) };
-  const platform = { startLeasedHost: async () => host, createTransport: vi.fn(async () => transport), startHost: vi.fn(async () => host), channel: () => { const port1 = { close: vi.fn() }, port2 = { close: vi.fn() }; ports.push(port1, port2); return { port1, port2 } as any; }, publishPort: vi.fn(), onVisibleGone: () => () => {} };
-  const owner = createOnlineSession({ config: { enabled: true, baseUrl: 'http://127.0.0.1:8787', allowInsecureLocalhost: true }, seatStore: store,
+  const host = { onCheckpoint: vi.fn((cb: any) => { capture = cb; return () => { capture = () => {}; }; }), ackCheckpoint: vi.fn(async () => {}),
+    captureCheckpoint: vi.fn(async () => { const next = { ...latestCapture, captureId: latestCapture.captureId + 1, cause: 'exit' }; latestCapture = next; capture(next); return next; }),
+    onLeaseRequest: (cb: any) => { renewal = cb; cb({ ...leaseIdentity, nonce: '8'.repeat(32) }); renewalTimer = setInterval(() => cb({ ...leaseIdentity, nonce: '9'.repeat(32) }), 5000); return () => { clearInterval(renewalTimer); }; },
+    applyLease: vi.fn(async (_request: any, _grant: any) => {}), invalidateLease: vi.fn(async () => {}), completeBootstrap: vi.fn(async () => {}), transport: controller,
+    request: vi.fn(async (request: any) => { latestCapture = initialOnlineCheckpoint(JSON.parse(new TextDecoder().decode(request.initBytes))); capture(latestCapture); return { ok: true as const, requestId: 1, hostGeneration: 1 }; }),
+    attachPeer: vi.fn(async () => {}), onExit: vi.fn((cb: (reason: string) => void) => { hostExit = cb; return () => {}; }), dispose: vi.fn(async () => { clearInterval(renewalTimer); }) };
+  const platform = { startLeasedHost: vi.fn(async (_identity: any, _signal: AbortSignal, lease: any) => { leaseIdentity = lease; return host; }), createTransport: vi.fn(async () => transport), channel: () => { const port1 = { close: vi.fn() }, port2 = { close: vi.fn() }; ports.push(port1, port2); return { port1, port2 } as any; }, publishPort: vi.fn(), onVisibleGone: () => () => {} };
+  const owner = createOnlineSession({ config: { enabled: true, baseUrl: 'http://127.0.0.1:8787', allowInsecureLocalhost: true }, seatStore: store, mirrorStore,
     service: () => service, platform, clock: { nowMs: () => Date.now() - monotonicOrigin, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32) });
   const savedSeat = () => ({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: snapshot.roomId, joinCode: snapshot.joinCode, compatibility: snapshot.compatibility, seatId: ownSeat, seatGeneration: 1, seatToken: 't'.repeat(43) });
   const issue = (attemptId = '1'.repeat(32), guestSeatId = ownSeat === 0 ? 1 : ownSeat) => emit({ type: 'link-issued', link: { attemptId, role: ownSeat === 0 ? 'offerer' : 'answerer',
     identity: { ...snapshot.compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration: 1, seatGeneration: snapshot.seats[guestSeatId].seatGeneration,
       localConnectionId: 'c'.repeat(32), remoteConnectionId: 'd'.repeat(32) }, localTicket: 'x'.repeat(43), expectedRemoteTicket: 'y'.repeat(43), ticketExpiresAtEpochMs: Date.now() + 30000 } });
-  return { owner, service, store, platform, host, transport, controller, order, ports, emit, issue, savedSeat, snapshot, session,
+  return { owner, service, store, mirrorStore, capture: (value: any) => capture(value), renewal: (nonce: string) => renewal({ ...leaseIdentity, nonce }), platform, host, transport, controller, order, ports, emit, issue, savedSeat, snapshot, session,
     nativeClosed: (id: string) => nativeClosed(id), transportExit: () => transportExit(), hostExit: () => hostExit('exit'), setSaved: (s: any) => { saved = s; } };
 }
 afterEach(() => vi.useRealTimers());
 describe('online coordinator ownership', () => {
+  it('reports live receipt age through status reads and preserves it after leaving', async () => {
+    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    await vi.advanceTimersByTimeAsync(200); expect(h.owner.status().mirror.receivedAgeMs).toBe(200);
+    await h.owner.dispatch({ type: 'leave' }); await vi.advanceTimersByTimeAsync(100); expect(h.owner.status().mirror.receivedAgeMs).toBe(100); await h.owner.dispose();
+  });
+  it('subscribes before start, acknowledges adoption before commit, and keeps bootstrap closed until the exact initial DO receipt', async () => {
+    const h = harness(), put = deferred<void>(); h.service.putCheckpoint.mockReturnValueOnce(put.promise);
+    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
+    await vi.waitFor(() => expect(h.host.ackCheckpoint).toHaveBeenCalledWith(1)); expect(h.host.completeBootstrap).not.toHaveBeenCalled(); expect(h.platform.publishPort).not.toHaveBeenCalled();
+    const lease = h.platform.startLeasedHost.mock.calls[0]![2]; expect(lease.utilityEpoch).toMatch(/^[a-f0-9]{32}$/); expect(lease.utilityEpoch).not.toBe('f'.repeat(32));
+    expect(h.service.request.mock.calls.find((c: any) => c[0].type === 'lease-renew')[0].nonce).toBe('8'.repeat(32));
+    put.resolve(); expect(await start).toEqual({ ok: true }); expect(h.host.completeBootstrap).toHaveBeenCalledOnce(); expect(h.owner.status().mirror.committed?.capturedTick).toBe(0); await h.owner.dispose();
+  });
+  it('initial commit failure never opens bootstrap and retains pending disk state', async () => {
+    vi.useFakeTimers(); const h = harness(); h.service.putCheckpoint.mockRejectedValue({ code: 'unavailable' });
+    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
+    await vi.advanceTimersByTimeAsync(6000); expect(await start).toMatchObject({ ok: false, code: 'save-unavailable' }); expect(h.host.completeBootstrap).not.toHaveBeenCalled(); expect((await h.mirrorStore.load())?.pending).not.toBeNull(); await h.owner.dispose();
+  });
+  it('supersedes renewal requests using the utility nonce and aborts old service correlation', async () => {
+    const h = harness(); await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    const old = deferred<any>(), original = h.service.request.getMockImplementation(); h.service.request.mockImplementation((op: any, options: any) => op.type === 'lease-renew' && op.nonce === '6'.repeat(32) ? old.promise : original(op, options));
+    h.renewal('6'.repeat(32)); const options = h.service.request.mock.calls.at(-1)[1]; h.renewal('7'.repeat(32)); expect(options.signal.aborted).toBe(true);
+    old.resolve({ lease: { roomId: h.snapshot.roomId, hostGeneration: 1, hostSeatId: 0, nonce: '6'.repeat(32), expiresAtEpochMs: Date.now() + 15000 } });
+    await vi.waitFor(() => expect(h.host.applyLease).toHaveBeenCalledTimes(2)); expect(h.host.applyLease.mock.calls.at(-1)![0].nonce).toBe('7'.repeat(32)); await h.owner.dispose();
+  });
+  it('Forget cancels a pending initial upload and clears both stores without late recreation', async () => {
+    const h = harness(), put = deferred<void>(); h.service.putCheckpoint.mockReturnValueOnce(put.promise);
+    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
+    await vi.waitFor(() => expect(h.service.putCheckpoint).toHaveBeenCalledOnce()); expect(await h.owner.dispatch({ type: 'forget-seat' })).toEqual({ ok: true }); put.resolve(); await start;
+    expect(await h.store.load()).toBeNull(); expect(await h.mirrorStore.load()).toBeNull(); expect(h.host.completeBootstrap).not.toHaveBeenCalled(); await h.owner.dispose();
+  });
+  it('retains the graceful exit pending mirror when the final server upload fails within the three-second budget', async () => {
+    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    h.service.putCheckpoint.mockRejectedValue({ code: 'unavailable' }); const leave = h.owner.dispatch({ type: 'leave' }); await vi.advanceTimersByTimeAsync(3000); expect(await leave).toEqual({ ok: true });
+    expect(h.host.captureCheckpoint).toHaveBeenCalledWith('exit'); expect((await h.mirrorStore.load())?.pending?.metadata.checkpointSequence).toBe(2); expect(h.host.dispose).toHaveBeenCalledOnce(); await h.owner.dispose();
+  });
   it('publishes Start capability only after human, native and service readiness and revokes it on loss or generation replacement', async () => {
     const h = harness(2), native = deferred<any>(); let attempt = '1'.repeat(32);
     h.controller.startAttempt.mockReturnValue(native.promise);
@@ -64,10 +107,10 @@ describe('online coordinator ownership', () => {
   });
   it('persists before connect/lobby; creates exactly one utility after duplicate commitment and keeps display hints powerless', async () => {
     const h = harness(); expect(await h.owner.dispatch({ type: 'host', capacity: 1 })).toEqual({ ok: true });
-    expect(h.order.slice(0, 3)).toEqual(['create', 'save', 'connect']); expect(h.owner.status().phase).toBe('lobby'); expect(h.platform.startHost).not.toHaveBeenCalled();
+    expect(h.order.slice(0, 3)).toEqual(['create', 'save', 'connect']); expect(h.owner.status().phase).toBe('lobby'); expect(h.platform.startLeasedHost).not.toHaveBeenCalled();
     expect(await h.owner.dispatch({ type: 'start' })).toMatchObject({ ok: false });
     await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
-    expect(h.platform.startHost).toHaveBeenCalledOnce(); expect(h.host.request).toHaveBeenCalledOnce(); expect(h.platform.publishPort).toHaveBeenCalledOnce(); expect(h.owner.status().phase).toBe('syncing');
+    expect(h.platform.startLeasedHost).toHaveBeenCalledOnce(); expect(h.host.request).toHaveBeenCalledOnce(); expect(h.platform.publishPort).toHaveBeenCalledOnce(); expect(h.owner.status().phase).toBe('syncing');
     const epoch = h.owner.status().attachmentEpoch;
     expect(await h.owner.dispatch({ type: 'view-state', epoch: epoch + 1, phase: 'running' })).toMatchObject({ ok: false });
     await h.owner.dispatch({ type: 'view-state', epoch, phase: 'paused' }); expect(h.owner.status().phase).toBe('paused');
@@ -90,14 +133,14 @@ describe('online coordinator ownership', () => {
     await expect(joining).resolves.toMatchObject({ ok: false, code: 'cancelled' }); await vi.waitFor(() => expect(h.transport.dispose).toHaveBeenCalledOnce()); expect(h.platform.publishPort).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it('closes a late utility after Leave and never publishes stale ports', async () => {
-    const h = harness(), factory = deferred<any>(); h.platform.startHost.mockReturnValue(factory.promise);
+    const h = harness(), factory = deferred<any>(); h.platform.startLeasedHost.mockReturnValue(factory.promise);
     await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const starting = h.owner.dispatch({ type: 'start' });
-    await vi.waitFor(() => expect(h.platform.startHost).toHaveBeenCalledOnce()); await h.owner.dispatch({ type: 'leave' }); factory.resolve(h.host); await starting;
+    await vi.waitFor(() => expect(h.platform.startLeasedHost).toHaveBeenCalledOnce()); await h.owner.dispatch({ type: 'leave' }); factory.resolve(h.host); await starting;
     await vi.waitFor(() => expect(h.host.dispose).toHaveBeenCalledOnce()); expect(h.platform.publishPort).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it('uses only the stored token and compatibility and refuses to recreate active host authority', async () => {
     const h = harness(); h.snapshot.phase = 'active'; h.setSaved({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: h.snapshot.roomId, joinCode: h.snapshot.joinCode, compatibility: h.snapshot.compatibility, seatId: 0, seatGeneration: 1, seatToken: 't'.repeat(43) });
-    expect(await h.owner.dispatch({ type: 'reconnect' })).toMatchObject({ ok: false, code: 'host-lost' }); expect(h.service.join).toHaveBeenCalledWith('ABCDEFGH', h.snapshot.compatibility, 't'.repeat(43)); expect(h.platform.startHost).not.toHaveBeenCalled(); await h.owner.dispose();
+    expect(await h.owner.dispatch({ type: 'reconnect' })).toMatchObject({ ok: false, code: 'host-lost' }); expect(h.service.join).toHaveBeenCalledWith('ABCDEFGH', h.snapshot.compatibility, 't'.repeat(43)); expect(h.platform.startLeasedHost).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it('rejects stored origin mismatch without contacting the service', async () => {
     const h = harness(); h.setSaved({ version: 1, serviceOrigin: 'http://localhost:9999', roomId: h.snapshot.roomId, joinCode: h.snapshot.joinCode, compatibility: h.snapshot.compatibility, seatId: 0, seatGeneration: 1, seatToken: 't'.repeat(43) });
@@ -122,7 +165,7 @@ describe('online coordinator ownership', () => {
     await h.owner.dispatch({ type: 'host', capacity: 4 }); await vi.waitFor(() => expect(h.service.request.mock.calls.some((call: any) => call[0].type === 'link-ready')).toBe(true));
     h.emit({ type: 'link-state', attemptId: '1'.repeat(32), state: 'ready' });
     h.snapshot.seats[3].ready = true; h.emit({ type: 'roster', snapshot: h.snapshot }); await h.owner.dispatch({ type: 'ready', ready: true });
-    await h.owner.dispatch({ type: 'start' }); expect(h.platform.startHost).toHaveBeenCalledOnce();
+    await h.owner.dispatch({ type: 'start' }); expect(h.platform.startLeasedHost).toHaveBeenCalledOnce();
     const start = h.host.request.mock.calls[0] as any; expect(JSON.parse(new TextDecoder().decode(start[0].initBytes))).toMatchObject({ playerCount: 4, layoutId: 'cutter' });
     expect(h.host.attachPeer.mock.calls.map((call: any) => call[1])).toEqual([[0], [3]]);
     expect(await h.owner.dispatch({ type: 'remove-seat', seatId: 3 })).toMatchObject({ ok: false });
@@ -143,7 +186,7 @@ describe('online coordinator ownership', () => {
     h.snapshot.seats[1].seatGeneration = 2; h.transportExit(); await vi.waitFor(() => expect(h.service.join).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(h.service.connect).toHaveBeenCalledTimes(2)); h.issue('2'.repeat(32)); await vi.waitFor(() => expect(h.platform.publishPort).toHaveBeenCalledTimes(2));
     expect(h.owner.status().attachmentEpoch).toBeGreaterThan(oldEpoch); expect(await h.owner.dispatch({ type: 'view-state', epoch: oldEpoch, phase: 'running' })).toMatchObject({ ok: false });
-    expect(h.service.join.mock.calls.every((call: any) => call[2] === 't'.repeat(43))).toBe(true); expect(h.platform.startHost).not.toHaveBeenCalled(); await h.owner.dispose();
+    expect(h.service.join.mock.calls.every((call: any) => call[2] === 't'.repeat(43))).toBe(true); expect(h.platform.startLeasedHost).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it('guest reconnect exhausts budget while syncing and closes its transport', async () => {
     vi.useFakeTimers(); const h = harness(2, 1); h.snapshot.phase = 'active'; h.setSaved(h.savedSeat()); const result = h.owner.dispatch({ type: 'reconnect' });
@@ -187,7 +230,7 @@ describe('online coordinator ownership', () => {
   });
   it('does not attach a rejoining guest to a utility until its start command completes', async () => {
     const h = harness(2), startReply = deferred<any>(); let generation = 1;
-    h.host.request.mockReturnValue(startReply.promise); const original = h.service.request.getMockImplementation();
+    const startImplementation = h.host.request.getMockImplementation()!; h.host.request.mockImplementation(async request => { await startImplementation(request); return startReply.promise; }); const original = h.service.request.getMockImplementation();
     h.service.request.mockImplementation(async (op: any) => {
       if (op.type === 'link-request') { h.issue(String(generation).repeat(32)); return { kind: 'attempt', attemptId: String(generation).repeat(32) }; }
       return original(op);
