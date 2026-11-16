@@ -540,8 +540,15 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   const owner: OnlineSessionOwner = {
     dispatch, status: () => copyOnlineStatus({ ...value, mirror: { ...value.mirror, receivedAgeMs: mirrorReceipt === null ? null : Math.max(0, clock.nowMs() - mirrorReceipt) } }),
     subscribe(cb) { if (disposed) return () => {}; if (listeners.size >= 64) throw onlineFault('capacity'); listeners.add(cb); return () => { listeners.delete(cb); }; },
-    async suspend() { const c = context; if (!c?.seat) { await stop('suspended'); return; } if (c.host) void c.host.invalidateLease('suspended').catch(() => {}); savedState(c, 'suspended'); await c.gameRetiring; },
-    async resume() { const c = context; if (c?.host) void c.host.invalidateLease('resumed').catch(() => {}); if (c?.seat) { savedState(c, 'suspended'); await c.gameRetiring; } if (!disposed && saved && !operation && !disposal) await dispatch({ type: 'reconnect' }); },
+    async suspend() { const c = context; if (!c) return; if (!c.seat) { await stop('suspended'); return; } if (c.host) void c.host.invalidateLease('suspended').catch(() => {}); savedState(c, 'suspended'); await c.gameRetiring; },
+    async resume() {
+      const c = context;
+      // A persisted credential is availability, not consent to leave couch/Helm/home.
+      if (!c?.seat || disposed || exitWork || disposal || value.phase === 'idle' || value.phase === 'error') return;
+      if (c.host) void c.host.invalidateLease('resumed').catch(() => {});
+      savedState(c, 'suspended'); await c.gameRetiring;
+      if (current(c) && saved && !operation && !exitWork && !disposal) await dispatch({ type: 'reconnect' });
+    },
     prepareExit,
     dispose() { if (disposal) return disposal; offVisible(); disposal = prepareExit().then(() => { disposed = true; listeners.clear(); }); return disposal; }
   };

@@ -171,3 +171,28 @@ it('does not reissue a failed quota acquisition from a reentrant reconciliation 
     ownSeat: 0, snapshot: () => snapshot, channel: () => ({ port1: { close() {} }, port2: { close() {} } }) as any, onReady() {}, onLost() {}, onFailure: () => { void peers.reconcile(); } });
   await peers.reconcile(); await flush(); expect(request).toHaveBeenCalledOnce(); await peers.dispose();
 });
+
+it.each(['retry', 'dispose'] as const)('keeps a new host alive through real TURN cooldown: %s', async action => {
+  vi.useFakeTimers();
+  const clock = { nowMs: () => Date.now(), epochMs: () => Date.now() };
+  const getTurn = vi.fn(async () => ({ iceServers: [{ urls: ['turn:example.test:3478'], username: 'test', credential: 'test' }], expiresAtEpochMs: Date.now() + 3600000 }));
+  const ice = createOnlineIce({ service: { getTurn }, clock, mode: 'turn' });
+  await ice.get(owner, new AbortController().signal); ice.invalidate();
+  const currentOwner = { ...owner, seatId: 0, hostGeneration: 2 };
+  const snapshot: any = { hostSeatId: 0, hostGeneration: 2, capacity: 2, seats: [0, 1].map(seatId => ({ seatId, occupied: true, connected: true, seatGeneration: 1 })) };
+  const failure = vi.fn(), ready = vi.fn(); let issued = 0, peers!: ReturnType<typeof createOnlinePeers>;
+  const request = vi.fn(async (op: any) => { if (op.type === 'link-request') peers.issued({ attemptId: `attempt-${++issued}`, role: 'offerer',
+    identity: { roomId: owner.roomId, hostGeneration: 2, seatGeneration: 1, localConnectionId: owner.connectionId }, ticketExpiresAtEpochMs: Date.now() + 30000 } as any); });
+  peers = createOnlinePeers({ ice, iceOwner: () => currentOwner, clock, ownSeat: 0, snapshot: () => snapshot,
+    scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) },
+    controller: { onSignal: () => () => {}, onAttemptClosed: () => () => {}, closeAttempt: async () => {}, startAttempt: async () => ({ latestPayloadLimit: 16088 }) } as any,
+    service: { request } as any, channel: () => ({ port1: { close() {} }, port2: { close() {} } }) as any, onReady: ready, onLost() {}, onFailure: failure });
+  try {
+    await peers.reconcile(); await vi.advanceTimersByTimeAsync(0);
+    expect(failure).not.toHaveBeenCalled(); expect(ready).not.toHaveBeenCalled();
+    if (action === 'dispose') { await peers.dispose(); await vi.advanceTimersByTimeAsync(60000); expect(getTurn).toHaveBeenCalledOnce(); expect(issued).toBe(1); return; }
+    await vi.advanceTimersByTimeAsync(59999); expect(getTurn).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1); expect(getTurn).toHaveBeenCalledTimes(2); expect(ready).toHaveBeenCalledOnce();
+    expect(issued).toBe(2); expect(failure).not.toHaveBeenCalled();
+  } finally { await peers.dispose(); ice.dispose(); vi.useRealTimers(); }
+});

@@ -24,6 +24,7 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
     timer: unknown; deadline: number; owner: IceOwner; link: LinkIssued; early: RtcSignal[]; bytes: number; candidates: number; description: boolean; draining: boolean };
   const peers = new Map<number, Entry>();
   const blocked = new Map<number, number>();
+  const retryTimers = new Map<number, unknown>();
   const failed = (error?: unknown) => { if (!disposed) deps.onFailure(error); };
   const current = (peer: Entry) => !disposed && peers.get(peer.seatId) === peer;
   function retire(peer: Entry) {
@@ -120,7 +121,21 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
         // Retain a bounded cooldown even when a callback immediately requests reconciliation.
         blocked.set(peer.seatId, clock.nowMs() + Math.max(1000, error?.retryAfterMs ?? 0));
         const acquisition = !peer.started;
-        if (acquisition) { retire(peer); failed(error); } else lost(peer.attemptId);
+        if (acquisition) {
+          retire(peer);
+          if (host && error?.retryable === true && !disposed) {
+            // A provider cooldown belongs to this link, not to the running authority.
+            // The old ticket is retired; retry obtains a new bounded setup attempt.
+            const previous = retryTimers.get(peer.seatId);
+            if (previous !== undefined) scheduler.clearTimeout(previous);
+            retryTimers.set(peer.seatId, scheduler.setTimeout(() => {
+              retryTimers.delete(peer.seatId);
+              if (disposed) return;
+              try { if (!sameIceOwner(peer.owner, deps.iceOwner())) return; } catch { return; }
+              void reconcile();
+            }, Math.max(0, blocked.get(peer.seatId)! - clock.nowMs())));
+          } else failed(error);
+        } else lost(peer.attemptId);
       });
     } catch (error) { lost(peer.attemptId); failed(error); }
   }
@@ -168,6 +183,6 @@ export function createOnlinePeers(deps: OnlinePeersDeps) {
     signal: receive,
     ready(): readonly OnlinePeer[] { return [...peers.values()].filter(p => p.ready); },
     allReady() { const s = deps.snapshot(); return !disposed && s.seats.every(seat => { const peer = peers.get(seat.seatId); return !seat.occupied || seat.connected && (seat.seatId === deps.ownSeat || !!peer?.ready && peer.serviceReady && peer.seatGeneration === seat.seatGeneration); }); },
-    async dispose() { if (disposed) return; disposed = true; for (const off of removers) off(); for (const peer of [...peers.values()]) retire(peer); }
+    async dispose() { if (disposed) return; disposed = true; for (const id of retryTimers.values()) scheduler.clearTimeout(id); retryTimers.clear(); for (const off of removers) off(); for (const peer of [...peers.values()]) retire(peer); }
   };
 }

@@ -66,6 +66,19 @@ function room() {
 }
 
 describe('manual committed-session recovery', () => {
+  it('does not reconnect a merely persisted seat on OS resume or idle suspend', async () => {
+    const r = room(), p = r.player(); await Promise.resolve(); await Promise.resolve();
+    await p.owner.suspend(); await p.owner.resume();
+    expect(p.owner.status().phase).toBe('idle');
+    expect(p.service.join).not.toHaveBeenCalled();
+    expect(p.platform.publishPort).not.toHaveBeenCalled();
+  });
+  it('does not reconnect after explicit Leave even though the saved seat remains', async () => {
+    const r = room(), p = r.player(); await p.owner.dispatch({ type: 'reconnect' });
+    await p.owner.dispatch({ type: 'leave' }); p.service.join.mockClear();
+    await p.owner.suspend(); await p.owner.resume();
+    expect(p.service.join).not.toHaveBeenCalled(); expect(p.owner.status().phase).toBe('idle');
+  });
   it('retains service identity and receipt age while saved; only lost service state permits re-host', async () => {
     const r = room(), p = r.player(); await p.owner.dispatch({ type: 'reconnect' });
     expect(p.owner.status()).toMatchObject({ phase: 'saved', ownSeat: 1, snapshot: { hostGeneration: 3 }, mirror: { receivedAgeMs: expect.any(Number) } });

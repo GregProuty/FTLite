@@ -3,3 +3,4 @@
 !fixture-*.jsonl
 .netcode.diff
 *.stderr
+!*.log

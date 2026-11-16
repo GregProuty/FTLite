@@ -69,7 +69,10 @@ async function startSector(): Promise<void> {
     }
   });
   // The actual transferred endpoint has exactly one owner before any menu action can dispatch.
-  const offPort = bridge?.onPort((descriptor, port) => session.selectOnline().attach(descriptor, port));
+  const offPort = bridge?.onPort((descriptor, port) => {
+    if (session.mode !== 'online') { port.close(); return; }
+    session.selectOnline().attach(descriptor, port);
+  });
   const menuRoot = document.createElement('div'); document.body.append(menuRoot);
   const menu = createSessionMenu({ root: menuRoot, document, api: bridge ?? undefined,
     couch() { session.selectCouch(); online = null; }, online() { session.selectOnline(); },
