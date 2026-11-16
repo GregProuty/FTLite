@@ -1,10 +1,15 @@
 import { z } from 'zod';
 import { resolveOnlineConfig } from '../../src/main/network/onlineConfig';
 import { validateOnlineRecoveryReport } from './online-recovery-report';
-export const INTERNET_ARTIFACTS = ['out/main/index.js','out/main/authorityHost.js','out/main/rtcTransport.js','out/preload/index.js','out/preload/networkTransport.js','out/renderer/index.html'];
+import { isCanonicalServiceOrigin } from './internet-app-manifest';
+export const INTERNET_ARTIFACTS = ['out/main/index.js','out/main/authorityHost.js','out/main/hostProcess.js','out/main/transportWindow.js','out/main/rtcTransport.js','out/preload/index.js','out/preload/networkTransport.js','out/renderer/index.html','out/renderer/networkTransport.html'];
+/** All executable output, including dynamically named renderer/main chunks. */
+export function executableRuntimeArtifacts(artifacts:Record<string,string>):Record<string,string> {
+  return Object.fromEntries(Object.entries(artifacts).filter(([path])=>/^out\/.*\.(?:[cm]?js|html|wasm|node)$/.test(path)).sort(([a],[b])=>a.localeCompare(b)));
+}
 const sha=z.string().regex(/^[a-f0-9]{64}$/), nat=z.number().int().nonnegative(), pos=nat.positive();
 const label=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/);
-const identity=z.object({revision:z.string().regex(/^[a-f0-9]{40}$/),digest:sha,packageSha256:sha,workerBundleSha256:sha,workerConfigSha256:sha,artifacts:z.record(sha),versions:z.object({electron:z.literal('37.10.3'),wrangler:z.literal('4.156.0'),workerd:z.literal('1.20261023.1'),protocol:z.literal(2),sim:z.literal(35),checkpoint:z.literal(2),replay:z.tuple([z.literal(2),z.literal(3),z.literal(4)])}).strict()}).strict();
+const identity=z.object({serviceOrigin:z.string().max(200).refine(isCanonicalServiceOrigin),revision:z.string().regex(/^[a-f0-9]{40}$/),digest:sha,packageSha256:sha,workerBundleSha256:sha,workerConfigSha256:sha,artifacts:z.record(sha),versions:z.object({electron:z.literal('37.10.3'),wrangler:z.literal('4.156.0'),workerd:z.literal('1.20261023.1'),protocol:z.literal(2),sim:z.literal(35),checkpoint:z.literal(2),replay:z.tuple([z.literal(2),z.literal(3),z.literal(4)])}).strict()}).strict();
 const runId=z.string().regex(/^[a-f0-9]{32}$/);
 const checkpoint=z.object({runId,hostGeneration:pos,checkpointSequence:pos,capturedTick:nat,payloadSha256:sha}).strict();
 const publication=z.object({runId,sequence:pos,tick:nat,hash:z.string().regex(/^[a-f0-9]{8}$/),phase:z.enum(['running','paused']),commandHighWater:z.array(nat).length(2),heldHighWater:z.array(nat).length(2)}).strict();
@@ -28,7 +33,7 @@ function checkAgreement(peers:z.infer<typeof peer>[]) {
   if(peers.some(p=>p.results.some(r=>!common.some(s=>s.commandHighWater[r.id.player]!>=r.id.sequence))))fail();
 }
 function parseRun(value:unknown,localOnly=false) {
-  const r=run.parse(value);checkIdentity(r.identity);
+  const r=run.parse(value);checkIdentity(r.identity);if(!localOnly&&r.serviceOrigin!==r.identity.serviceOrigin)fail();
   if(!resolveOnlineConfig(localOnly?{packaged:false,localServiceUrl:r.serviceOrigin}:{packaged:false,serviceUrl:r.serviceOrigin}).enabled || localOnly&&r.forceRelay || r.elapsedMs>r.budgetMs || r.peers.length!==(r.mode==='local-pair'?2:1))fail();
   if(new Set([...r.processes.map(p=>p.pid),...r.peers.map(p=>p.cleanup.pid)]).size!==r.processes.length+r.peers.length)fail();
   for(const p of r.peers) {
@@ -77,9 +82,18 @@ export function validateInternetAppReport(value:unknown):void {
       } else {
         const deployment=z.object({workerName:z.literal('ftlite-signalling-dev'),serviceOrigin:z.string(),versionId:label,bundleSha256:sha,configSha256:sha,operatorConfirmedArtifact:z.literal(true)}).strict();
         const shape={status:z.literal('PASS'),evidence:evidence.min(1),report:z.unknown()};
-        const g=(name==='deployedService'?z.object({...shape,deployment}).strict():z.object(shape).strict()).parse(raw);
-        if(name==='deployedService'){const d=(g as any).deployment;if(d.bundleSha256!==base.identity.workerBundleSha256||d.configSha256!==base.identity.workerConfigSha256||d.serviceOrigin!==(g.report as any).serviceOrigin)fail();}
-        if(name==='localRecovery') {validateOnlineRecoveryReport(g.report);const source=(g.report as any).source;if(source.digest!==base.identity.digest||INTERNET_ARTIFACTS.some(k=>source.artifactHashes[k]!==base.identity.artifacts[k]))fail();}
+        const runtimeProvenance=z.object({reportRevision:identity.shape.revision,candidateRevision:identity.shape.revision,executableArtifacts:z.record(sha)}).strict();
+        const g=(name==='deployedService'?z.object({...shape,deployment}).strict():name==='localRecovery'?z.object({...shape,runtimeProvenance:runtimeProvenance.optional()}).strict():z.object(shape).strict()).parse(raw);
+        if(name==='deployedService'){const d=(g as any).deployment;if(d.bundleSha256!==base.identity.workerBundleSha256||d.configSha256!==base.identity.workerConfigSha256||d.serviceOrigin!==base.identity.serviceOrigin||d.serviceOrigin!==(g.report as any).serviceOrigin)fail();}
+        if(name==='localRecovery') {
+          validateOnlineRecoveryReport(g.report);const source=(g.report as any).source;
+          const expected=executableRuntimeArtifacts(base.identity.artifacts),observed=executableRuntimeArtifacts(source.artifactHashes);
+          if(source.digest!==base.identity.digest||!same(expected,observed))fail();
+          const provenance=(g as any).runtimeProvenance;
+          if(source.revision!==base.identity.revision&&!provenance)fail();
+          if(provenance&&(provenance.reportRevision!==source.revision||provenance.candidateRevision!==base.identity.revision
+            ||!same(Object.fromEntries(Object.entries(provenance.executableArtifacts).sort(([a],[b])=>a.localeCompare(b))),expected)))fail();
+        }
         else {const r=parseRun(g.report);if(r.mode!=='local-pair'||!same(r.identity,base.identity)||(name==='forcedRelayGameplay'&&!r.forceRelay))fail();}
       }
     }

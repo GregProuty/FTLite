@@ -8,6 +8,7 @@ import { resolveOnlineConfig } from '../../src/main/network/onlineConfig';
 import { createLauncherDeadline,removeOwnedDirectory,stopOwnedProcess } from './lease-smoke-lifecycle';
 import { startOnlineAppRuntime,waitForAppRequest } from './online-app-runtime';
 import { INTERNET_ARTIFACTS,validateInternetRun,validateLocalInternetDriverRun } from './internet-app-report';
+import { assertCandidateServiceOrigin } from './internet-app-manifest';
 
 const pause=(ms:number)=>new Promise<void>(done=>setTimeout(done,ms));
 const hash=(path:string)=>createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -81,6 +82,7 @@ async function main() {
     if(args.has('--inject-preparation-read-failure')||args.has('--inject-cleanup-stop-failure'))readFileSync(join(directory,'missing-artifact'));
     if(!args.get('--candidate-manifest'))throw Error('preparation-failed');
     const manifest=JSON.parse(readFileSync(resolve(args.get('--candidate-manifest')!),'utf8'));identity=manifest.identity;
+    assertCandidateServiceOrigin(manifest,config.baseUrl,()=>readFileSync('out/main/index.js','utf8'));
     if(!/^[a-f0-9]{40}$/.test(revision)||!/^[a-f0-9]{40}$/.test(identity.revision)||manifest.serviceOrigin!==config.baseUrl || INTERNET_ARTIFACTS.some(k=>!identity.artifacts[k]))throw Error('preparation-failed');
     // Documentation/evidence commits may follow packaging. Verify the candidate
     // source ancestor AND its exact source bytes instead of relabelling the build.
