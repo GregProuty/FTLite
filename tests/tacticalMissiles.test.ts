@@ -91,8 +91,8 @@ describe('flight (spec §7b)', () => {
     expect(s.laserHold).toBe(50);                                          // tick 479: still frozen
     const x479 = m.x;
     tick(st, input());
-    expect(m.age).toBe(MISSILE_LIFE_TICKS);
     expect(missileOf(st, 0)).toBeNull();
+    expect(m.active).toBe(false);                                         // its pool entry is free again (and zeroed)
     const ended = st.events.at(-1)!;
     expect(ended).toMatchObject({ kind: 'missileEnd', ship: 0, cause: 'expired' });
     expect(ended.kind === 'missileEnd' && ended.x).toBeGreaterThan(x479 + 0.9);   // tick 480 still moved it (about 1 unit east)
@@ -155,7 +155,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     applyWeaponsInput(st, 1, input({ missileLaunch: true }));
     Object.assign(missileOf(st, 1)!, { x: missileOf(st, 0)!.x + 5, y: missileOf(st, 0)!.y });
     resolveMissiles(st);
-    expect(st.missiles).toEqual([null, null]);
+    expect(st.missiles.every((m) => !m.active)).toBe(true);
     expect(st.systems[1].hull).toBe(SHIP_HULL);
   });
   it('a frozen full charge keeps its hold timer, then vents after the rest of the 3 s with no press, and does not recharge', () => {

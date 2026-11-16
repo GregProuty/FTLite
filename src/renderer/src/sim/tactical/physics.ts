@@ -1,9 +1,10 @@
 // Flight physics (spec §3, §4, §6): softened gravity, the edge spring, turn, thrust, stabilise, drag,
 // semi-implicit Euler. Float64 with + − × ÷ and sqrt only; no trigonometry (the determinism guard enforces it).
+import { CUTTER_CLASS, type ShipClassDef } from './defs';
 import { hx, hy, wrapHeading } from './direction';
 import { hitStatics, resolveContacts } from './contacts';
-import { Room, type Axes, type Ship, type TacticalState } from './state';
-import { DEFAULT_FLIGHT, DT, ENGINE_FACTOR, GM, GRAVITY_EPS, K_EDGE, R_MAP, REVERSE_FRACTION, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from './tuning';
+import { classOf, Room, type Axes, type Ship, type TacticalState } from './state';
+import { DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, R_MAP, type FlightTuning } from './tuning';
 
 /** Acceleration toward the planet at the origin: a = −GM · d / (|d|² + ε²)^{3/2}. */
 export function gravityAccel(x: number, y: number): [number, number] {
@@ -20,14 +21,16 @@ export function edgeAccel(x: number, y: number): [number, number] {
   return [k * x, k * y];
 }
 
-export function engineFactor(s: Ship): number { return ENGINE_FACTOR[s.rooms[Room.Engines]]!; }
+/** The class's thrust and turn factor at an Engines damage level (0..2). */
+export function engineFactor(cls: ShipClassDef, engines: number): number { return cls.engineFactor[engines]!; }
 
-/** One tick of one ship's flight, without contacts. Shared by the step and by predictPath, so the prediction is exact. */
-export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning): void {
+/** One tick of one ship's flight, without contacts, at Engines damage level `engines` and with the class's thrust and
+ *  turn. Shared by the step and by predictPath, so the prediction is exact. */
+export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, cls: ShipClassDef = CUTTER_CLASS): void {
   // Quantise the held axes by sign (spec: each is -1, 0 or 1); `|| 0` maps NaN and -0 to 0.
   const turn = Math.sign(axes.turn) || 0, thrust = Math.sign(axes.thrust) || 0;
-  const f = engineFactor(s);
-  s.headingAcc += turn * TURN_STEPS_PER_TICK * f;
+  const f = engineFactor(cls, engines);
+  s.headingAcc += turn * cls.turnStepsPerTick * f;
   while (s.headingAcc >= 1) { s.heading = wrapHeading(s.heading + 1); s.headingAcc -= 1; }
   while (s.headingAcc <= -1) { s.heading = wrapHeading(s.heading - 1); s.headingAcc += 1; }
   const h0 = hx(s.heading), h1 = hy(s.heading);
@@ -45,8 +48,8 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning): void {
   let ax = 0, ay = 0;
   if (tuning.gravity) { const [gx, gy] = gravityAccel(s.x, s.y); ax += gx; ay += gy; }
   if (tuning.edge) { const [ex, ey] = edgeAccel(s.x, s.y); ax += ex; ay += ey; }
-  if (thrust > 0) { ax += h0 * THRUST * f; ay += h1 * THRUST * f; }
-  else if (thrust < 0) { ax -= h0 * THRUST * REVERSE_FRACTION * f; ay -= h1 * THRUST * REVERSE_FRACTION * f; }
+  if (thrust > 0) { ax += h0 * cls.thrust * f; ay += h1 * cls.thrust * f; }
+  else if (thrust < 0) { ax -= h0 * cls.thrust * cls.reverseFraction * f; ay -= h1 * cls.thrust * cls.reverseFraction * f; }
   s.vx += ax * DT; s.vy += ay * DT;
   const keep = 1 - tuning.drag * DT;
   s.vx *= keep; s.vy *= keep;
@@ -54,9 +57,14 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning): void {
   s.x += s.vx * DT; s.y += s.vy * DT;
 }
 
-/** One duel tick of flight: ships fly in fixed order, then contacts resolve, then the tick advances. */
+/** Ship slot i's flight for one tick: its body, its Engines level and its class. */
+export function flySlot(state: TacticalState, i: number, axes: Axes, tuning: FlightTuning): void {
+  flyShip(state.ships[i]!, axes, tuning, state.systems[i]!.rooms[Room.Engines], classOf(state, i));
+}
+
+/** One duel tick of flight: the active ships fly in slot order, then contacts resolve, then the tick advances. */
 export function stepFlight(state: TacticalState, axes: readonly Axes[], tuning: FlightTuning = DEFAULT_FLIGHT): void {
-  state.ships.forEach((s, i) => flyShip(s, axes[i] ?? { turn: 0, thrust: 0 }, tuning));
+  state.ships.forEach((s, i) => { if (s.active) flySlot(state, i, axes[i] ?? { turn: 0, thrust: 0 }, tuning); });
   resolveContacts(state);
   state.tick++;
 }
@@ -64,7 +72,7 @@ export function stepFlight(state: TacticalState, axes: readonly Axes[], tuning: 
 /** The dev flight view's single-ship step (H-1 spec §9): ship 0 flies, meets the planet and asteroids, then the tick
  *  advances. Ship 1 is never stepped and never collides, so it stays exactly as created. */
 export function stepSoloFlight(state: TacticalState, axes: Axes, tuning: FlightTuning = DEFAULT_FLIGHT): void {
-  flyShip(state.ships[0], axes, tuning);
-  hitStatics(state, state.ships[0]);
+  flySlot(state, 0, axes, tuning);
+  hitStatics(state, 0);
   state.tick++;
 }

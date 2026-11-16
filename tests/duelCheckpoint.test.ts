@@ -36,7 +36,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
       runToEnd(reference, createDriver(SEED), referenceHashes);
       runToEnd(split, driver, splitHashes, [], SPLIT);
       const at = split.state.duel;
-      expect(at.tactical.missiles.some((m) => m !== null), 'a missile in flight at the split').toBe(true);
+      expect(at.tactical.missiles.some((m) => m.active), 'a missile in flight at the split').toBe(true);
       expect(at.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at the split').toBe(true);
       expect(at.repair.some((r) => r > 0), 'a repair in progress at the split').toBe(true);
       const cp = throughBytes(split.core.captureCheckpoint());

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTacticalState, Room, type Ship } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, type Ship } from '../src/renderer/src/sim/tactical/state';
 import { edgeAccel, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { circularSpeed } from '../src/renderer/src/sim/tactical/map';
 import { DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, R_MAP, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
@@ -8,7 +8,7 @@ const GRAVITY_ONLY: FlightTuning = { gravity: true, edge: false, drag: 0, stabil
 const FLIGHT_NO_FIELD: FlightTuning = { gravity: false, edge: false, drag: DEFAULT_FLIGHT.drag, stabilise: DEFAULT_FLIGHT.stabilise };
 
 function ship(over: Partial<Ship>): Ship {
-  return { ...createTacticalState(1).ships[0], x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, rooms: [0, 0, 0], ...over };
+  return { ...createTacticalState(1).ships[0], x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, ...over };
 }
 const energy = (s: Ship): number => (s.vx * s.vx + s.vy * s.vy) / 2 - GM / Math.sqrt(s.x * s.x + s.y * s.y + GRAVITY_EPS * GRAVITY_EPS);
 
@@ -71,11 +71,10 @@ describe('flight configuration (spec §4 tests, §6)', () => {
   });
   it('scales thrust and turn by the Engines factor 1 / 0.6 / 0.25', () => {
     for (const [level, factor] of [[0, 1], [1, 0.6], [2, 0.25]] as const) {
-      const s = ship({ rooms: [0, 0, level] });
-      expect(s.rooms[Room.Engines]).toBe(level);
-      flyShip(s, { turn: 1, thrust: 1 }, { ...FLIGHT_NO_FIELD, drag: 0 });
+      const s = ship({});                                                 // the Engines level is the systems record's, passed in
+      flyShip(s, { turn: 1, thrust: 1 }, { ...FLIGHT_NO_FIELD, drag: 0 }, level);
       expect(Math.sqrt(s.vx * s.vx + s.vy * s.vy)).toBeCloseTo(THRUST * factor * DT, 12);
-      for (let t = 1; t < 60; t++) flyShip(s, { turn: 1, thrust: 0 }, FLIGHT_NO_FIELD);
+      for (let t = 1; t < 60; t++) flyShip(s, { turn: 1, thrust: 0 }, FLIGHT_NO_FIELD, level);
       expect(s.heading + s.headingAcc).toBeCloseTo(TURN_STEPS_PER_TICK * 60 * factor, 9);
     }
   });

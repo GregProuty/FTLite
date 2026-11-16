@@ -57,8 +57,28 @@ export interface Migration {
   /** New fields with no old counterpart. */
   readonly added: readonly RegExp[];
 }
+/** R-2 (37 → 38): a ship's systems fields move from its body (`space.ships.<i>.*`) to its systems record. */
+const MOVED_TO_SYSTEMS = /^space\.ships\.(\d+)\.(hull|rooms|shields|shieldClock|laserCharge|laserHold|fireHeld|lock|magazine|magazineClock|shots|laserHits|layersStripped|missilesLaunched|missileHits|missilesLost)$/;
 /** The schema migrations, keyed by the baseline's SIM_VERSION. A version with no entry maps every field to itself. */
-export const MIGRATIONS: Readonly<Record<number, Migration>> = {};
+export const MIGRATIONS: Readonly<Record<number, Migration>> = {
+  37: {
+    change: 'R-2: N-ship space and the per-ship systems record',
+    rename(old) { const m = MOVED_TO_SYSTEMS.exec(old); return m ? `ship.systems.${m[1]}.${m[2]}` : undefined; },
+    // The old per-ship missile slot (presence, then the flight) is the pool entry that ship owns, wherever it sits.
+    derived: [{
+      old: /^space\.missiles\.\d+$/, reads: /^space\.missiles\.\d+\.(active|owner|flight)$/,
+      value(old, read, names) {
+        const owner = Number(old.split('.')[2]);
+        for (const name of names) {
+          const k = /^space\.missiles\.(\d+)\.active$/.exec(name)?.[1];
+          if (k !== undefined && read(name)[0] === 1 && read(`space.missiles.${k}.owner`)[0] === owner) return [1, ...Array.from(read(`space.missiles.${k}.flight`))];
+        }
+        return [0, 0, 0, 0, 0, 0, 0, 0];
+      }
+    }],
+    added: [/^space\.ships\.length$/, /^space\.ships\.\d+\.active$/, /^space\.missiles\.\d+\.(active|owner)$/, /^ship\.systems\.\d+\.(cls|target)$/]
+  }
+};
 
 /** The duel's named canonical fields after SIM_VERSION, in flattenDuel order: `<module id>.<field name>`, with the
  *  interior expanded into `interior.<sector canonical field>`. */

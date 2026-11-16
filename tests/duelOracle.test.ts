@@ -3,7 +3,7 @@
 // is caught at the first tick it shows, naming the fields; and the version rules (a bump is the baseline plus 1, a
 // same-version check needs the same version) hold.
 import { describe, expect, it } from 'vitest';
-import { aliasPlan, duelSchema, judgeDuelOracle, ORACLE_RUNS, recordRun, runDifferences, type Migration, type OracleRunSpec, type OracleTrace } from '../scripts/golden/duelOracle';
+import { aliasPlan, duelSchema, judgeDuelOracle, MIGRATIONS, ORACLE_RUNS, recordRun, runDifferences, type Migration, type OracleRunSpec, type OracleTrace } from '../scripts/golden/duelOracle';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -40,6 +40,23 @@ describe('the alias table', () => {
       expect(names).toContain('interior.$simVersion');
       expect(counts.every((c) => Number.isInteger(c) && c >= 0)).toBe(true);   // a layout with no airlocks has empty arrays
     } finally { disposeDuel(d); }
+  });
+});
+
+describe('the R-2 alias table (37 → 38)', () => {
+  it('moves the systems fields to the ship module and finds each old per-ship missile slot by its owner', () => {
+    const m = MIGRATIONS[37]!;
+    expect([m.rename('space.ships.1.hull'), m.rename('space.ships.0.rooms'), m.rename('space.ships.0.missilesLost')]).toEqual(['ship.systems.1.hull', 'ship.systems.0.rooms', 'ship.systems.0.missilesLost']);
+    expect([m.rename('space.ships.0.x'), m.rename('space.ships.0.graceUntil'), m.rename('space.missiles.0')]).toEqual([undefined, undefined, undefined]);
+    const pool = [0, 1].flatMap((k) => [`space.missiles.${k}.active`, `space.missiles.${k}.owner`, `space.missiles.${k}.flight`]);
+    const plan = aliasPlan(['space.missiles.0', 'space.missiles.1'], [8, 8], pool, [1, 1, 7, 1, 1, 7], m);
+    expect(plan.problems).toEqual([]);
+    // Pool entry 0 holds ship 1's missile and entry 1 is free: the old slot 0 is empty, the old slot 1 is that missile.
+    expect(Array.from(plan.build([1, 1, 10, 11, 12, 13, 14, 0.5, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 1, 10, 11, 12, 13, 14, 0.5, 15]);
+    expect(Array.from(plan.build([1, 1, 10, 11, 12, 13, 14, 0.5, 15, 1, 0, 20, 21, 22, 23, 24, -0.5, 25]))).toEqual([1, 20, 21, 22, 23, 24, -0.5, 25, 1, 10, 11, 12, 13, 14, 0.5, 15]);
+    const added = ['space.ships.length', 'space.ships.0.active', 'ship.systems.0.cls', 'ship.systems.0.target'];
+    expect(aliasPlan(['space.ships.0.hull'], [1], ['ship.systems.0.hull', ...added], [1, 1, 1, 1, 1], m).problems).toEqual([]);
+    expect(aliasPlan(['space.ships.0.hull'], [1], ['ship.systems.0.hull', 'ship.systems.0.newGauge'], [1, 1], m).problems).toEqual(['new field ship.systems.0.newGauge is neither mapped nor declared added']);
   });
 });
 

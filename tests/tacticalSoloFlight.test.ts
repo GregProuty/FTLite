@@ -8,24 +8,26 @@ const plain = (s: Ship) => ({ ...s, graceUntil: [...s.graceUntil] });
 
 describe('stepSoloFlight (H-1 spec §9)', () => {
   it('flies ship 0 and advances the tick; ship 1 never moves', () => {
-    const st = createTacticalState(7), before = plain(cloneShip(st.ships[1]));
+    const st = createTacticalState(7), before = plain(cloneShip(st.ships[1])), beforeSystems = structuredClone(st.systems[1]);
     const x0 = st.ships[0].x, y0 = st.ships[0].y;
     for (let t = 0; t < 120; t++) stepSoloFlight(st, { turn: 0, thrust: 1 });
     expect(st.tick).toBe(120);
     expect(Math.hypot(st.ships[0].x - x0, st.ships[0].y - y0)).toBeGreaterThan(100);
     expect(plain(st.ships[1])).toEqual(before);
+    expect(st.systems[1]).toEqual(beforeSystems);
   });
 
   it('never resolves ship-to-ship contact: ship 0 flies straight through ship 1', () => {
     const st = createTacticalState(7);
     Object.assign(st.ships[0], { x: -600, y: -300, vx: 200, vy: 0, heading: 64 });
     Object.assign(st.ships[1], { x: -560, y: -300, vx: 0, vy: 0, heading: 192 });
-    const before = plain(cloneShip(st.ships[1]));
+    const before = plain(cloneShip(st.ships[1])), beforeSystems = structuredClone(st.systems[1]);
     for (let t = 0; t < 60; t++) stepSoloFlight(st, { turn: 0, thrust: 0 });
     expect(st.ships[0].shipHits).toBe(0);
     expect(st.systems[0].hull).toBe(SHIP_HULL);
     expect(st.ships[0].x).toBeGreaterThan(-500);
     expect(plain(st.ships[1])).toEqual(before);
+    expect(st.systems[1]).toEqual(beforeSystems);
   });
 
   it('matches stepFlight for ship 0 when the ships are far apart', () => {
@@ -35,6 +37,7 @@ describe('stepSoloFlight (H-1 spec §9)', () => {
       stepSoloFlight(a, axes); stepFlight(b, [axes, { turn: 0, thrust: 0 }]);
     }
     expect(plain(a.ships[0])).toEqual(plain(b.ships[0]));
+    expect(a.systems[0]).toEqual(b.systems[0]);
   });
 
   it('ship 0 hits the planet: pushed out, bounced, hull cost, one hit counted', () => {
@@ -51,7 +54,7 @@ describe('stepSoloFlight (H-1 spec §9)', () => {
     const st = createTacticalState(3);
     Object.assign(st.ships[0], { x: 0, y: -80, vx: 0, vy: 0 });
     Object.assign(st.ships[1], { x: 0, y: 80, vx: 0, vy: 0 });
-    hitStatics(st, st.ships[0]);
+    hitStatics(st, 0);
     expect(st.ships[0].planetHits).toBe(1);
     expect(st.ships[1].planetHits).toBe(0);
     expect(st.ships[1].y).toBe(80);

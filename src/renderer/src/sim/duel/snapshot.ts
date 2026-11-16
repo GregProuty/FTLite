@@ -1,5 +1,6 @@
 // The duel snapshot (engine refactor spec §6, an R-1 deliverable). The values are exactly flattenDuel: SIM_VERSION, the
-// tactical state in flattenTactical's order, presence, repair, then the interior through the sector snapshot path.
+// tactical state in flattenTactical's order (the space then the ship module), presence, repair, then the interior
+// through the sector snapshot path.
 // Regenerated, not stored: the map (from the seed, checked by mapHash), the broad-phase grid, the repair points and
 // Derived (from the Cutter layout). Not stored: the per-tick events. Every check runs before any allocation, including
 // every tactical field's bounds and slot invariants, presence and repair, except the final one, which restores into a
@@ -11,7 +12,8 @@ import type { ShipLayout } from '../ship/schema';
 import { validateCanonicalValues } from '../snapshotValidation';
 import { validateMap } from '../tactical/map';
 import { createTacticalState } from '../tactical/state';
-import { tacticalLength, validateTacticalValues } from '../tactical/hash';
+import { DUEL_CLASSES } from '../tactical/defs';
+import { TACTICAL_MODULES, tacticalLength, validateTacticalValues } from '../tactical/hash';
 import { REPAIR_UNITS } from './tuning';
 import { SIM_VERSION } from '../tuning';
 import { flattenDuel, hashDuel, mapHash } from './hash';
@@ -69,7 +71,15 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   if (values.length !== interiorAt + interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
-  validateTacticalValues(tactical, values, 1);   // bounds and slot invariants, before anything is allocated
+  if (validateTacticalValues(tactical, values, 1) !== 1 + space) throw new Error('duel snapshot tactical length does not match');   // bounds and slot invariants, before anything is allocated
+  // The duel's slot identity: exactly its two slots, both active, the Cutter and the hunter, each locked on the other.
+  const at = new Map<string, number>();
+  let offset = 1;
+  for (const m of TACTICAL_MODULES) for (const f of m.fields(tactical)) { at.set(f.name, offset); offset += f.count; }
+  const slotValue = (name: string): number => values[at.get(name)!]!;
+  if (slotValue('ships.length') !== DUEL_CLASSES.length
+    || DUEL_CLASSES.some((cls, i) => slotValue(`ships.${i}.active`) !== 1 || slotValue(`systems.${i}.cls`) !== cls || slotValue(`systems.${i}.target`) !== 1 - i))
+    throw new Error('duel snapshot duel slot identity does not match: two active slots, the Cutter and the hunter, each locked on the other');
   for (let k = 1 + space; k < interiorAt; k++) {
     const v = values[k]!, presence = k < 1 + space + 2;
     if (presence ? v !== 0 && v !== 1 : !Number.isInteger(v) || v < 0 || v >= REPAIR_UNITS) throw new Error(`duel snapshot ${presence ? 'presence' : 'repair'} value ${v} is out of range`);

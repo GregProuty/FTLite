@@ -1,11 +1,12 @@
-// The duel on the sim module contract (engine refactor spec §6, R-1): space (the tactical state), presence, repair and
-// the interior wrapper, in canonical order after SIM_VERSION. flattenDuel, the duel snapshot and its restore all come
+// The duel on the sim module contract (engine refactor spec §6, R-1 and R-2): space (the ship slots' bodies, the
+// missile pool, the hunter), ship (each slot's systems record), presence, repair and the interior wrapper, in canonical
+// order after SIM_VERSION. flattenDuel, the duel snapshot and its restore all come
 // from this list; tests/duelModules.test.ts holds every DuelState and TacticalState member to a field or an exclusion.
 import { flatten, unflatten } from '../flatten';
 import { validateCanonicalValues } from '../snapshotValidation';
 import { canonicalFields } from '../canonicalFields';
 import { flag, flattenModule, moduleLength, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
-import { spaceModule } from '../tactical/hash';
+import { shipModule, spaceModule } from '../tactical/hash';
 import type { DuelState } from './state';
 
 /** Who is at the keyboard (spec §8 "present or away"). */
@@ -59,6 +60,7 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
 /** The duel's modules in canonical order, each with the part of the DuelState it owns. */
 export const DUEL_MODULES: readonly { module: SimModule<never>; state(d: DuelState): unknown; path: string }[] = [
   { module: spaceModule as SimModule<never>, state: (d) => d.tactical, path: 'tactical' },
+  { module: shipModule as SimModule<never>, state: (d) => d.tactical, path: 'tactical' },
   { module: presenceModule as SimModule<never>, state: (d) => d, path: '' },
   { module: repairModule as SimModule<never>, state: (d) => d, path: '' },
   { module: interiorModule as SimModule<never>, state: (d) => d, path: '' }

@@ -8,8 +8,8 @@ import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
-import { missileOf, Outcome } from '../src/renderer/src/sim/tactical/state';
-import { spaceModule } from '../src/renderer/src/sim/tactical/hash';
+import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { TACTICAL_MODULES } from '../src/renderer/src/sim/tactical/hash';
 import { CUTTER } from './helpers/scriptedDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
@@ -60,7 +60,7 @@ describe('the duel snapshot (spec §6)', () => {
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.header.seed = 3; }), DIGEST)).toThrow(/map does not match its seed/);
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values.push(0); rehash(s); }), DIGEST)).toThrow(/length does not match/);
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values[1] = s.values[1]! + 1; rehash(s); }), DIGEST)).toThrow(/ticks differ/);
-      expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values[6] = s.values[6]! + 0.5; }), DIGEST)).toThrow(/hash does not match its values/);
+      expect(() => validateDuelSnapshot(CUTTER, bad((s) => { s.values[8] = s.values[8]! + 0.5; }), DIGEST)).toThrow(/hash does not match its values/);   // ships.0.x
       expect(() => validateDuelSnapshot(CUTTER, bad((s) => { (s.header as unknown as Record<string, unknown>).extra = 1; }), DIGEST)).toThrow(/header fields/);
     } finally { disposeDuel(d); }
   });
@@ -69,22 +69,38 @@ describe('the duel snapshot (spec §6)', () => {
     try {
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
-      for (const f of spaceModule.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
-      const slot = missileOf(d.tactical, 0) ? 'missiles.0' : 'missiles.1', empty = missileOf(d.tactical, 0) ? 'missiles.1' : 'missiles.0';
+      for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
+      const flying = d.tactical.missiles.findIndex((m) => m.active), slot = `missiles.${flying}`, free = `missiles.${1 - flying}`, owner = d.tactical.missiles[flying]!.owner;
+      expect(flying, 'one missile in flight at seed 7 tick 5156').toBeGreaterThanOrEqual(0);
+      expect(d.tactical.missiles[1 - flying]!.active).toBe(false);
       const cases: [string, number, number, RegExp][] = [
         ['ships.0.heading', 0, 256, /ships\.0\.heading: out of range/], ['ships.1.heading', 0, 1.5, /ships\.1\.heading/],
-        ['ships.0.rooms', 1, 3, /ships\.0\.rooms/], ['ships.0.shields', 0, 3, /ships\.0\.shields/], ['ships.1.magazine', 0, 5, /ships\.1\.magazine/],
-        ['ships.0.shots', 0, 2.5, /ships\.0\.shots/], ['ships.0.laserCharge', 0, -1, /ships\.0\.laserCharge/], ['ships.1.lock', 0, 3, /ships\.1\.lock/],
+        ['systems.0.rooms', 1, 3, /systems\.0\.rooms/], ['systems.0.shields', 0, 3, /systems\.0\.shields/], ['systems.1.magazine', 0, 5, /systems\.1\.magazine/],
+        ['systems.0.shots', 0, 2.5, /systems\.0\.shots/], ['systems.0.laserCharge', 0, -1, /systems\.0\.laserCharge/], ['systems.1.lock', 0, 3, /systems\.1\.lock/],
+        ['systems.0.cls', 0, 2, /systems\.0\.cls/], ['systems.1.target', 0, 2, /systems\.1\.target/], ['systems.0.hull', 0, -1, /systems\.0\.hull/],
         ['ships.0.released', 0, 2, /ships\.0\.released/], ['hunter.mode', 0, 2, /hunter\.mode/], ['hunter.trailHead', 0, 18, /hunter\.trailHead/],
-        ['outcome', 0, 4, /outcome: out of range/], [slot, 0, 2, /presence is not 0 or 1/], [slot, 5, 300, /heading, headingAcc or age/], [slot, 7, -1, /heading, headingAcc or age/],
-        [empty, 3, 0.25, /an empty slot holds values/], ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
-        [slot, 6, 1e300, /headingAcc/], ['ships.0.hull', 0, -1, /ships\.0\.hull/], ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/]
+        ['outcome', 0, 4, /outcome: out of range/], ['ships.length', 0, 3, /does not match the slot count/], ['ships.1.active', 0, 2, /ships\.1\.active: out of range/],
+        ['ships.1.active', 0, 0, /ships\.1\.x: an inactive slot holds values/],
+        [`${slot}.active`, 0, 2, /active is not 0 or 1/], [`${slot}.flight`, 4, 300, /heading, headingAcc or age/], [`${slot}.flight`, 6, -1, /heading, headingAcc or age/],
+        [`${slot}.flight`, 5, 1e300, /headingAcc/], [`${slot}.owner`, 0, 5, /owner is not an active ship slot/],
+        [`${free}.flight`, 2, 0.25, /a free entry holds values/], [`${free}.owner`, 0, 1, /a free entry holds values/],
+        ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
+        ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/],
+        ['systems.0.cls', 0, 1, /duel slot identity/], ['systems.1.cls', 0, 0, /duel slot identity/],
+        ['systems.0.target', 0, 0, /duel slot identity/], ['systems.1.target', 0, 1, /duel slot identity/]
       ];
       const created = vi.spyOn(duelState, 'createDuel');
       for (const [name, k, value, error] of cases) {
         const snap = structuredClone(good); snap.values[names.get(name)! + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `${name}[${k}] = ${value}`).toThrow(error);
       }
+      const empty = structuredClone(good);   // slot 1 inactive and zeros, no missiles: internally consistent, but not the duel
+      for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) if (/^(ships|systems)\.1\.|^missiles\./.test(f.name)) empty.values.fill(0, names.get(f.name)!, names.get(f.name)! + f.count);
+      empty.header.hash = hashF64(Float64Array.from(empty.values));
+      expect(() => validateDuelSnapshot(CUTTER, empty, DIGEST)).toThrow(/duel slot identity/);
+      const twice = structuredClone(good);   // the free entry claims the flying missile's owner: two missiles for one ship
+      twice.values[names.get(`${free}.active`)!] = 1; twice.values[names.get(`${free}.owner`)!] = owner; twice.header.hash = hashF64(Float64Array.from(twice.values));
+      expect(() => validateDuelSnapshot(CUTTER, twice, DIGEST)).toThrow(new RegExp(`ship ${owner} has two missiles in flight`));
       const interiorAt = at + 5, fieldsAt = interiorAt;
       for (const [k, value, error] of [[0, 1e6, /interior sim version/], [1, 12345, /interior layout/], [2, 12345, /interior layout/], [5, 1, /crew count/], [9, 3, /crew count/]] as const) {
         const snap = structuredClone(good); snap.values[fieldsAt + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
