@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { blessRefusal, writeAllOrNothing } from '../scripts/golden/blessGuard';
 
@@ -5,26 +6,41 @@ const ok = { ok: true, message: 'identical' }, bad = { ok: false, message: 'gold
 
 describe('the bless guard', () => {
   it('allows a version bump when the re-run comparison is ok', () => {
-    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => ok })).toBeUndefined();
+    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => ok, duel: () => ok })).toBeUndefined();
   });
   it('refuses a version bump when the comparison is not ok, quoting why', () => {
-    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => bad })).toMatch(/differs at tick 5/);
+    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => bad, duel: () => ok })).toMatch(/differs at tick 5/);
   });
   it('refuses a version bump with no baseline (the comparison reports it)', () => {
-    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => ({ ok: false, message: 'no baseline' }) })).toMatch(/no baseline/);
+    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => ({ ok: false, message: 'no baseline' }), duel: () => ok })).toMatch(/no baseline/);
   });
   it('allows a same-version bless without running the comparison', () => {
     const verify = vi.fn(() => bad);
-    expect(blessRefusal({ storedVersions: [36, 36, 36], currentVersion: 36, verify })).toBeUndefined();
+    expect(blessRefusal({ storedVersions: [36, 36, 36], currentVersion: 36, verify, duel: verify })).toBeUndefined();
     expect(verify).not.toHaveBeenCalled();
   });
   it('a mixed state, one golden already at the new version and another artifact not, still requires the comparison', () => {
     for (const storedVersions of [[37, 36, 36], [37, 37, 36], [36, 37, 37], [37, undefined, 36]]) {
       const verify = vi.fn(() => bad);
-      expect(blessRefusal({ storedVersions, currentVersion: 37, verify }), JSON.stringify(storedVersions)).toMatch(/36 → 37/);
+      expect(blessRefusal({ storedVersions, currentVersion: 37, verify, duel: () => ok }), JSON.stringify(storedVersions)).toMatch(/36 → 37/);
       expect(verify).toHaveBeenCalledTimes(1);
     }
-    expect(blessRefusal({ storedVersions: [37, 37, undefined], currentVersion: 37, verify: () => bad })).toBeUndefined();
+    expect(blessRefusal({ storedVersions: [37, 37, undefined], currentVersion: 37, verify: () => bad, duel: () => ok })).toBeUndefined();
+  });
+  it('a bump also needs the duel migration oracle: a sector proof alone never re-blesses duel-1.json', () => {
+    const duelBad = { ok: false, message: 'scripted-4: first difference at tick 812 (fields)' };
+    expect(blessRefusal({ storedVersions: [37, 37, 37], currentVersion: 38, verify: () => ok, duel: () => duelBad })).toMatch(/duel migration oracle failed[\s\S]*tick 812/);
+    expect(blessRefusal({ storedVersions: [38, 37, 38], currentVersion: 38, verify: () => ok, duel: () => duelBad })).toMatch(/37 → 38/);
+    const duel = vi.fn(() => ok);
+    expect(blessRefusal({ storedVersions: [37, 37, 37], currentVersion: 38, verify: () => bad, duel })).toMatch(/canonical comparison failed/);
+    expect(duel).not.toHaveBeenCalled();
+    expect(blessRefusal({ storedVersions: [37, 37, 37], currentVersion: 38, verify: () => ok, duel })).toBeUndefined();
+    expect(duel).toHaveBeenCalledTimes(1);
+  });
+  it('npm run bless passes the real duel oracle, re-run on every bump', () => {
+    const source = readFileSync('scripts/bless-golden.ts', 'utf8');
+    expect(source).toMatch(/import \{ verifyDuelOracle \} from '\.\/golden\/duelOracle';/);
+    expect(source).toMatch(/blessRefusal\(\{ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly, duel: verifyDuelOracle \}\)/);
   });
 });
 

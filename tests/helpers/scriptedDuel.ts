@@ -25,7 +25,7 @@ export const DUEL_GOLDEN_EVERY = 600;
 export interface DuelRun { seed: number; telemetry: DuelTelemetry; finalHash: string; hashes: string[] }
 
 /** Both players go away on tick 0, so neither console is attended for the whole duel. */
-function passiveInput(d: DuelState): DuelInput {
+export function passiveInput(d: DuelState): DuelInput {
   if (d.interior.tick !== 0) return { held: [], commands: [] };
   return { held: [], commands: [0, 1].map((player) => ({ runId: 'duel', id: { player, sequence: 0 }, requestedTick: 0, command: { kind: 'presence' as const, present: false } })) };
 }

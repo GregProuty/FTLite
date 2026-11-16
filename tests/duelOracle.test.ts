@@ -1,0 +1,83 @@
+// The duel migration oracle (engine refactor spec §5, R-2): the alias table refuses an unmapped old field, a new field
+// mapped twice or unaccounted for, and a count change; a re-run in the baseline's schema matches itself; a wrong alias
+// is caught at the first tick it shows, naming the fields; and the version rules (a bump is the baseline plus 1, a
+// same-version check needs the same version) hold.
+import { describe, expect, it } from 'vitest';
+import { aliasPlan, duelSchema, judgeDuelOracle, ORACLE_RUNS, recordRun, runDifferences, type Migration, type OracleRunSpec, type OracleTrace } from '../scripts/golden/duelOracle';
+import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { CUTTER } from './helpers/scriptedDuel';
+
+const none: Migration = { change: 'none', rename: () => undefined, derived: [], added: [] };
+const SHORT: OracleRunSpec = { id: 'scripted-3', seed: 3, crew: 'scripted', cap: 240 };
+
+describe('the alias table', () => {
+  it('maps unchanged names to themselves and leaves the version field out on both sides', () => {
+    const plan = aliasPlan(['a', 'interior.$simVersion', 'b'], [1, 1, 2], ['b', 'interior.$simVersion', 'a'], [2, 1, 1]);
+    expect(plan.problems).toEqual([]);
+    expect(Array.from(plan.build([5, 6, 38, 7]))).toEqual([7, 5, 6]);
+  });
+  it('refuses an unmapped old field, a new field mapped twice or not at all, and a count change', () => {
+    expect(aliasPlan(['a', 'gone'], [1, 1], ['a'], [1]).problems).toEqual(['old field gone is unmapped']);
+    const twice: Migration = { ...none, rename: (o) => (o === 'b' ? 'a' : undefined) };
+    expect(aliasPlan(['a', 'b'], [1, 1], ['a'], [1], twice).problems).toEqual(['new field a is mapped from two old fields (a and b)']);
+    expect(aliasPlan(['a'], [1], ['a', 'fresh'], [1, 1]).problems).toEqual(['new field fresh is neither mapped nor declared added']);
+    expect(aliasPlan(['a'], [1], ['a', 'fresh'], [1, 1], { ...none, added: [/^fresh$/] }).problems).toEqual([]);
+    expect(aliasPlan(['a'], [2], ['a'], [3]).problems).toEqual(['old field a has 2 values, its new field a 3']);
+  });
+  it('rebuilds a derived old field from the new fields it reads, which then count as mapped', () => {
+    const keyed: Migration = { ...none, derived: [{ old: /^pair$/, reads: /^slot\.\d$/, value: (_o, read, names) => names.flatMap((n) => Array.from(read(n))).reverse() }] };
+    const plan = aliasPlan(['pair'], [2], ['slot.0', 'slot.1'], [1, 1], keyed);
+    expect(plan.problems).toEqual([]);
+    expect(Array.from(plan.build([3, 4]))).toEqual([4, 3]);
+  });
+  it('names every duel field once: the modules in flattenDuel order with the interior expanded', () => {
+    const d = createDuel(CUTTER, 1);
+    try {
+      const { names, counts } = duelSchema(d);
+      expect(new Set(names).size).toBe(names.length);
+      expect(names.slice(0, 3)).toEqual(['space.tick', 'space.seed', 'space.rng.s']);
+      expect(names).toContain('presence.present.1');
+      expect(names).toContain('interior.$simVersion');
+      expect(counts.every((c) => Number.isInteger(c) && c >= 0)).toBe(true);   // a layout with no airlocks has empty arrays
+    } finally { disposeDuel(d); }
+  });
+});
+
+describe('the per-tick record', () => {
+  it('a re-run in the baseline schema matches it; a wrong alias fails at its first tick, naming the fields', () => {
+    const was = recordRun(SHORT).run;
+    expect(was.perTick).toHaveLength(240);
+    const same = recordRun(SHORT, { names: was.names, counts: was.counts });
+    expect(same.problems).toEqual([]);
+    expect(runDifferences(was, same.run)).toEqual([]);
+    const swap: Migration = { ...none, rename: (o) => (o === 'space.ships.0.x' ? 'space.ships.1.x' : o === 'space.ships.1.x' ? 'space.ships.0.x' : undefined) };
+    const wrong = recordRun(SHORT, { names: was.names, counts: was.counts, migration: swap });
+    expect(wrong.problems).toEqual([]);
+    const diff = runDifferences(was, wrong.run);
+    expect(diff).toHaveLength(1);
+    expect(diff[0]).toMatch(/^scripted-3: first difference at tick 1 \(fields\); fields that differ during the run: space\.ships\.0\.x, space\.ships\.1\.x$/);
+  }, 30_000);
+});
+
+describe('the judge', () => {
+  const trace = (over: Partial<OracleTrace> = {}): OracleTrace => ({ simVersion: 37, cwd: '/repo', head: 'abc', runs: [], ...over });
+  const rerun = () => { throw new Error('not reached'); };
+  it('refuses without a baseline, from another repo root, and on a version that is not the baseline plus 1', () => {
+    expect(judgeDuelOracle(undefined, rerun, '/repo', 'bump', 38).message).toMatch(/no duel oracle baseline/);
+    expect(judgeDuelOracle(trace({ cwd: '/elsewhere' }), rerun, '/repo', 'bump', 38).message).toMatch(/recorded from \/elsewhere/);
+    expect(judgeDuelOracle(trace(), rerun, '/repo', 'bump', 39).message).toMatch(/a bump must be to 38, not 39/);
+    expect(judgeDuelOracle(trace(), rerun, '/repo', 'bump', 37).message).toMatch(/a bump must be to 38, not 37/);
+    expect(judgeDuelOracle(trace(), rerun, '/repo', 'same', 38).message).toMatch(/use `check` for a bump/);
+  });
+  it('re-runs every run in the baseline schema, through the migration only for a bump', () => {
+    const runs = ORACLE_RUNS.map((s) => ({ id: s.id, names: ['a'], counts: [1], ticks: 2, outcome: 1, perTick: ['x', 'y'], chains: ['c'] }));
+    const seen: (string | undefined)[] = [], migration: Migration = { ...none, change: 'R-test' };
+    const ok = judgeDuelOracle(trace({ runs }), (spec, schema) => { seen.push(schema.migration?.change); return { problems: [], run: runs.find((r) => r.id === spec.id)! }; }, '/repo', 'bump', 38, { 37: migration });
+    expect(ok.ok).toBe(true);
+    expect(ok.message).toMatch(/20 runs, 40 ticks, 1 named fields, .* through the 37 → 38 alias table \(R-test\)/);
+    expect(seen).toEqual(ORACLE_RUNS.map(() => 'R-test'));
+    const bad = judgeDuelOracle(trace({ runs }), (spec) => ({ problems: [], run: { ...runs.find((r) => r.id === spec.id)!, perTick: ['x', 'z'], chains: ['d'] } }), '/repo', 'same', 37);
+    expect(bad.ok).toBe(false);
+    expect(bad.message).toMatch(/scripted-1: first difference at tick 2 \(fields\); fields that differ during the run: a/);
+  });
+});
