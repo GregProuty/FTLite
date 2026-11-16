@@ -141,7 +141,7 @@ interface SimModule<S, C> {
 
 ```ts
 interface EncounterRules<State, Init, ControllerMemory> {
-  create(init: Init): State;
+  create(init: Init, resolveLayout: ResolveLayout): State;
   dispose(state: State): void;                            // today: disposeSimState
   assertLive(state: State): void;                         // today: assertSimStateLive
   playerCount(state: State): number;
@@ -151,17 +151,26 @@ interface EncounterRules<State, Init, ControllerMemory> {
   safePointKey(state: State): string;                      // today: visitRef, for safe-point checkpoint captures
   callouts(state: State, player: number): Callout | null;  // today: calloutFor + the crew-dead check
   cues(prev: CueBaseline, state: State): Cue[];
-  snapshot(state: State, contentDigest: string): Snapshot;  restore(snapshot: Snapshot): State;
+  snapshot(state: State, contentDigest: string): Snapshot;  restore(snapshot: Snapshot, resolveLayout: ResolveLayout): State;
   hash(state: State): string;
-  validateCheckpoint(bytes: unknown, contentDigest: string): Checkpoint<Init, ControllerMemory>;
+  validateCheckpoint(bytes: unknown, contentDigest: string, resolveLayout: ResolveLayout): Checkpoint<Init, ControllerMemory>;
   commandCodec: CommandCodec;                               // validates envelopes for the ledger (see Commands)
 }
 ```
 
 Rules for three of these hooks:
 - **`tick`.** For the duel, `tick` returns `interior.tick`. `stepDuelTick` advances the interior tick and the tactical tick together, once per call, so they are always equal. The duel restore validates that equality and rejects a snapshot where they differ.
-- **`EndRecord`.** The authority's `ended` event becomes mode-tagged: `{ mode: string, record: EndRecord | null }`, where `EndRecord` is a discriminated union validated by the codec. The sector record is today's strict `TelemetryRecord`, unchanged (`net/contracts.ts:81-87`, `codec.ts:80-100`). The duel record is the duel telemetry summary from `sim/duel/telemetry.ts`: outcome, ticks, terminal cause, shots and hits, missiles, repairs. A mode with nothing to report sends `record: null`, which the codec accepts.
-- **Layout resolution.** The generic authority keeps the merged `resolveLayout` dependency (`authority/authority.ts:24-33,56-61,74-79`) and passes it to the rules' `create`, `restore` and `validateCheckpoint`. The sector rules use it as today. The duel rules resolve the Cutter through the same resolver.
+- **`EndRecord`.** The authority's `ended` event carries a tagged wrapper, and the tag lives on the wrapper, not inside the record. The codec validates it as a discriminated union on `mode`:
+
+  ```ts
+  type EndRecord =
+    | { mode: 'sector'; record: TelemetryRecord }   // today's strict record, unchanged (net/contracts.ts:81-87, codec.ts:80-100)
+    | { mode: 'duel'; record: DuelEndSummary | null };
+  ```
+
+  - **The duel summary** is a plain, frozen value computed once when the duel ends: `{ outcome, ticks, terminal: [cause, cause], laserReleases: [n, n], laserHits: [n, n], missilesLaunched: [n, n], missileHits: [n, n], repairsFinished: [n, n] }`, all integers, with causes from a fixed enum. It is not the live accumulator.
+  - **The duel telemetry accumulator** (`sim/duel/telemetry.ts`, with its previous-tick and manoeuvre state) is mode memory. It is not hashed. It is saved in the duel checkpoint as its own versioned, codec-validated blob next to `ControllerMemory`, and restored with it, so a restored duel's end summary equals an uninterrupted run's. The continuation proof below compares the end summaries too.
+- **Layout resolution.** The generic authority keeps the merged `resolveLayout` dependency (`authority/authority.ts:24-33,56-61,74-79`) and passes it as the explicit argument of the rules' `create`, `restore` and `validateCheckpoint` (see their signatures). The sector rules use it as today. The duel rules resolve the Cutter through the same resolver.
 
 Every call `authority/core.ts` makes into sector code today goes through one of these hooks: `visitRef` (`core.ts:118,124`), `calloutFor` (`:292-294`), `telemetryRecord` (`:437`), `state.ended`, `playerCount` and `layout` (`:44,164`), `assertSimStateLive` and `disposeSimState` (`:37,612`), and `saveSnapshot`. Bot controller memory (today the sector `CardUiState[]` in the checkpoint) becomes an opaque per-mode `ControllerMemory` blob that the mode's checkpoint validator checks.
 
@@ -186,13 +195,13 @@ The ledger, tick driver, journal, checkpoint cadence and publication stay as the
 
   It also keeps the sector host's behaviour: it refuses to replace itself while anything is attached, and it caches checkpoint candidates and crash checkpoints (`sector.ts:35-52`). `modes/sector.ts` is rewritten as one call to it.
 - **The duel needs a snapshot format (an R-1 deliverable).** Today the duel has `cloneTactical` but no serialisation: nothing restores tactical or duel state. R-1 adds a duel snapshot codec and checkpoint schema **(rec.)**:
-  - **Header:** `{ snapshotFormat: 1, simVersion, contentDigest, layoutId, layoutHash, seed }`.
+  - **Header:** `{ snapshotFormat: 1, simVersion, contentDigest, layoutId, layoutHash, seed, mapHash }`. `mapHash` is `hashF64` over the map's canonical values, computed when the duel is created: planet, then each asteroid's x, y and r in index order, then the belt count, the cluster sizes, the gaps and both spawns.
   - **Stored values:**
     - the interior, through today's sector snapshot path (`flatten`/`unflatten` of the interior `SimState`);
     - the tactical state in `flattenTactical`'s order: ships, missiles, hunter, tick, outcome and the tactical random-number state;
     - `present` and `repair`.
   - **Regenerated, not stored:**
-    - the map, rebuilt from `seed` with `generateMap`; its validation must pass, and the stored map hash must match;
+    - the map, rebuilt from `seed` with `generateMap`; it must pass `validateMap`, and its recomputed `mapHash` must equal the header's;
     - the broad-phase grid;
     - the repair points, from the Cutter layout;
     - `Derived`, from the layout.
@@ -396,3 +405,4 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
   - mode-aware replays;
   - the history ring moved to R-8 with bounds and a test;
   - risk 3 revised.
+- 2026-11-15: refine (Net-3 corrections) round 2: `EndRecord` tagged on the wrapper, with a frozen `DuelEndSummary`; the duel telemetry accumulator saved as a checkpoint blob; `mapHash` in the header with its calculation and check; `resolveLayout` added to the rules signatures.

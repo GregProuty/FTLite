@@ -1,0 +1,53 @@
+{
+  "verdict": "changes requested",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "The factory now includes synchronous checkpoint() and retains async captureCheckpoint (spec L181-L185), matching ModeHost and hostRuntime (contracts.ts:L8-L16; hostRuntime.ts:L65-L71)."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "The tick hook and equal-tick restore rule are specified (spec L148,L161-L162), matching the duel's interior and tactical tick updates (duel/step.ts:L126-L127)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "still open",
+      "note": "The wire record remains underspecified. The spec calls EndRecord a discriminated union while keeping the sector TelemetryRecord unchanged (spec L163); that record has no mode discriminator (net/codec.ts:L80-L100). The named duel telemetry is a mutable accumulator containing prev and manoeuvre state, with no defined wire summary or checkpoint lifecycle (duel/telemetry.ts:L36-L55,L68-L75). Specify the tagged wire variants and how duel telemetry survives restore."
+    },
+    {
+      "id": "R1-F4",
+      "result": "still open",
+      "note": "Restore must compare a stored map hash, but neither the header nor stored-value list contains one (spec L189-L195). The existing tactical flatten stores only the map's asteroid count (tactical/hash.ts:L15-L16). Add the map-hash field and its calculation and validation rule."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "Mode selection, legacy sector default, mode-specific replay validation and a duel replay check are now specified (spec L173-L175,L345)."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "The ring moved to R-8; its limits, eviction, export scope and tests are specified there (spec L313-L319,L345,L353)."
+    },
+    {
+      "id": "R1-F7",
+      "result": "still open",
+      "note": "resolveLayout is listed as a retained dependency, but the spec says to pass it to rules.create, restore and validateCheckpoint (spec L164,L172) while their declared signatures accept no resolver (spec L143-L156). Add the resolver to those signatures or specify how the rules receive it without an argument."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "Risk 3 now names metadata, client acceptance, event filtering and re-host policy, and keeps R-6 deferred (spec L368)."
+    }
+  ],
+  "verified": [
+    "Reviewed the revision at b510ecd against the cited merged code at a5b772f.",
+    "The PvP deferral in the touched text matches the owner's amendment (spec L274,L351,L358; thesis-grill.md Q28 amendment)."
+  ],
+  "not_verified": [
+    "No tests were run, as requested; replay compatibility, checkpoint continuation and encoded-size claims remain unexecuted."
+  ]
+}

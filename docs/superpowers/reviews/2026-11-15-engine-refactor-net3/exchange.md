@@ -107,3 +107,57 @@ Confirmed. Risk 3 now names everything R-6 needs: new metadata, a client accepta
 
 ---
 
+# Round 2 (delta, reviewing b510ecd, effort medium, 110 s, 335541 in / 262784 cached / 4572 out)
+
+Verdict: changes requested
+
+## Prior findings
+- R1-F1: resolved — The factory now includes synchronous checkpoint() and retains async captureCheckpoint (spec L181-L185), matching ModeHost and hostRuntime (contracts.ts:L8-L16; hostRuntime.ts:L65-L71).
+- R1-F2: resolved — The tick hook and equal-tick restore rule are specified (spec L148,L161-L162), matching the duel's interior and tactical tick updates (duel/step.ts:L126-L127).
+- R1-F3: still open — The wire record remains underspecified. The spec calls EndRecord a discriminated union while keeping the sector TelemetryRecord unchanged (spec L163); that record has no mode discriminator (net/codec.ts:L80-L100). The named duel telemetry is a mutable accumulator containing prev and manoeuvre state, with no defined wire summary or checkpoint lifecycle (duel/telemetry.ts:L36-L55,L68-L75). Specify the tagged wire variants and how duel telemetry survives restore.
+- R1-F4: still open — Restore must compare a stored map hash, but neither the header nor stored-value list contains one (spec L189-L195). The existing tactical flatten stores only the map's asteroid count (tactical/hash.ts:L15-L16). Add the map-hash field and its calculation and validation rule.
+- R1-F5: resolved — Mode selection, legacy sector default, mode-specific replay validation and a duel replay check are now specified (spec L173-L175,L345).
+- R1-F6: resolved — The ring moved to R-8; its limits, eviction, export scope and tests are specified there (spec L313-L319,L345,L353).
+- R1-F7: still open — resolveLayout is listed as a retained dependency, but the spec says to pass it to rules.create, restore and validateCheckpoint (spec L164,L172) while their declared signatures accept no resolver (spec L143-L156). Add the resolver to those signatures or specify how the rules receive it without an argument.
+- R1-F8: resolved — Risk 3 now names metadata, client acceptance, event filtering and re-host policy, and keeps R-6 deferred (spec L368).
+
+## Verified
+- Reviewed the revision at b510ecd against the cited merged code at a5b772f.
+- The PvP deferral in the touched text matches the owner's amendment (spec L274,L351,L358; thesis-grill.md Q28 amendment).
+
+## Not verified
+- No tests were run, as requested; replay compatibility, checkpoint continuation and encoded-size claims remain unexecuted.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json`. No new findings. Codex confirmed R1-F1, R1-F2, R1-F5, R1-F6 and R1-F8 resolved, and re-raised three with precise gaps, all confirmed. Fixed again; 0 rejected, 0 deferred.
+
+## R1-F3 [P1]: Duel completion has no specified wire record (still open, fixed again)
+
+Confirmed: the sector `TelemetryRecord` has no discriminator (`codec.ts:L80-L100`), and the duel accumulator is mutable state (`duel/telemetry.ts:L36-L55, L68-L75`). Three changes:
+- The tag now lives on a wrapper: `EndRecord = { mode: 'sector', record: TelemetryRecord } | { mode: 'duel', record: DuelEndSummary | null }`. The codec validates it as a discriminated union on `mode`.
+- `DuelEndSummary` is a frozen value of integers and enums, computed once when the duel ends.
+- The live accumulator is mode memory: it is not hashed, it is saved in the duel checkpoint as its own versioned blob, and it is restored with it. The continuation proof also compares end summaries.
+
+## R1-F4 [P1]: The duel snapshot format leaves restore rules undecided (still open, fixed again)
+
+Confirmed: the tactical flatten stores only the asteroid count (`tactical/hash.ts:L15-L16`). The header now has `mapHash`: `hashF64` over the planet, each asteroid's x, y and r in index order, the belt count, the cluster sizes, the gaps and the spawns, computed at creation. Restore regenerates the map from the seed, requires `validateMap` to pass, and requires the recomputed hash to equal the header's.
+
+## R1-F7 [P1]: The unchanged-deps claim omits resolveLayout (still open, fixed again)
+
+Confirmed. `resolveLayout` is now an explicit argument in the signatures of `create`, `restore` and `validateCheckpoint`.
+
+## Also changed
+
+- Change log entry for round 2.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-15-engine-refactor-design.md
+
+<!-- end -->
+
+---
+
