@@ -6,6 +6,7 @@ import { resolveOnlineConfig } from './network/onlineConfig';
 import { createOnlineSession } from './network/onlineSession';
 import { createOnlinePlatform } from './network/onlinePlatform';
 import { registerOnlineIpc } from './network/onlineIpc';
+import { registerOnlineExit } from './network/onlineExit';
 import { createSeatStore } from './network/seatStore';
 import { createMirrorStore } from './network/mirrorStore';
 import { validateSectorMirror } from './network/onlineSector';
@@ -46,13 +47,7 @@ function createWindow(): void {
     }
   });
   registerOnlineIpc(win, owner);
-  let closing = false;
-  win.on('close', event => {
-    if (closing) return;
-    event.preventDefault(); closing = true;
-    // The owner shares one three-second graceful capture/commit budget with Leave.
-    void owner.dispose().finally(() => { if (!win.isDestroyed()) win.close(); });
-  });
+  registerOnlineExit(app, win, owner);
   Menu.setApplicationMenu(null);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());

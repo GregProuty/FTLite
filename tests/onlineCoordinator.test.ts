@@ -140,7 +140,7 @@ describe('online coordinator ownership', () => {
   });
   it('uses only the stored token and compatibility and refuses to recreate active host authority', async () => {
     const h = harness(); h.snapshot.phase = 'active'; h.setSaved({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: h.snapshot.roomId, joinCode: h.snapshot.joinCode, compatibility: h.snapshot.compatibility, seatId: 0, seatGeneration: 1, seatToken: 't'.repeat(43) });
-    expect(await h.owner.dispatch({ type: 'reconnect' })).toMatchObject({ ok: false, code: 'host-lost' }); expect(h.service.join).toHaveBeenCalledWith('ABCDEFGH', h.snapshot.compatibility, 't'.repeat(43)); expect(h.platform.startLeasedHost).not.toHaveBeenCalled(); await h.owner.dispose();
+    expect(await h.owner.dispatch({ type: 'reconnect' })).toMatchObject({ ok: true }); expect(h.owner.status().phase).toBe('saved'); expect(h.service.join).toHaveBeenCalledWith('ABCDEFGH', h.snapshot.compatibility, 't'.repeat(43)); expect(h.platform.startLeasedHost).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it('rejects stored origin mismatch without contacting the service', async () => {
     const h = harness(); h.setSaved({ version: 1, serviceOrigin: 'http://localhost:9999', roomId: h.snapshot.roomId, joinCode: h.snapshot.joinCode, compatibility: h.snapshot.compatibility, seatId: 0, seatGeneration: 1, seatToken: 't'.repeat(43) });
@@ -176,7 +176,7 @@ describe('online coordinator ownership', () => {
     if (loss === 'service') h.emit({ type: 'error', error: { code: 'unavailable', retryable: true } });
     if (loss === 'transport') h.transportExit(); if (loss === 'utility') h.hostExit();
     if (loss === 'renewal') { h.service.request.mockRejectedValueOnce({ code: 'lease-expired' }); await vi.advanceTimersByTimeAsync(5000); }
-    await Promise.resolve(); expect(h.owner.status().phase).toBe('error'); expect(h.host.dispose).toHaveBeenCalledOnce(); expect(h.transport.dispose).toHaveBeenCalledOnce(); await h.owner.dispose(); expect(vi.getTimerCount()).toBe(0);
+    await Promise.resolve(); expect(h.owner.status().phase).toBe('saved'); expect(h.owner.status().ownSeat).toBe(0); expect(h.host.dispose).toHaveBeenCalledOnce(); expect(h.transport.dispose).toHaveBeenCalledOnce(); await h.owner.dispose(); expect(vi.getTimerCount()).toBe(0);
   });
   it('active guest reconnect waits for matching sync hint and later loss starts a fresh original-token attempt', async () => {
     const h = harness(2, 1); h.snapshot.phase = 'active'; h.setSaved(h.savedSeat());
@@ -191,7 +191,7 @@ describe('online coordinator ownership', () => {
   it('guest reconnect exhausts budget while syncing and closes its transport', async () => {
     vi.useFakeTimers(); const h = harness(2, 1); h.snapshot.phase = 'active'; h.setSaved(h.savedSeat()); const result = h.owner.dispatch({ type: 'reconnect' });
     await vi.advanceTimersByTimeAsync(0); h.issue(); await vi.advanceTimersByTimeAsync(0); expect(h.platform.publishPort).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(30000); expect(await result).toMatchObject({ ok: false, code: 'retry-exhausted' }); expect(h.transport.dispose).toHaveBeenCalledOnce(); expect(h.owner.status().phase).toBe('error'); await h.owner.dispose(); expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(30000); expect(await result).toMatchObject({ ok: false, code: 'retry-exhausted' }); expect(h.transport.dispose).toHaveBeenCalledOnce(); expect(h.owner.status().phase).toBe('saved'); await h.owner.dispose(); expect(vi.getTimerCount()).toBe(0);
   });
   it('fails closed on terminal service errors during reconnect instead of looping', async () => {
     const h = harness(2, 1); h.snapshot.phase = 'active'; h.setSaved(h.savedSeat()); const result = h.owner.dispatch({ type: 'reconnect' });

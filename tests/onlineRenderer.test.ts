@@ -41,6 +41,13 @@ function rig(prepare?: (state: ReturnType<typeof makeState>) => void) {
   return { state, session, authority, draw, update, viewState, resetInput, descriptor, port, deliver, pump, saveProgress, sent: p.sent, device(key: string, available = true) { sourceKey = key; present = available; }, setMove(v: number) { moveX = v; }, tick() { now += 17; authority.pump(); deliver(); }, disconnect() { for (const fn of [...listeners.get('close') ?? []]) fn({}); } };
 }
 describe('online renderer uses the real streaming client', () => {
+  it('freezes saved presentation and preserves it while a replacement awaits first valid full state', () => {
+    const h = rig(); h.deliver(); h.pump(); h.session.frame(); const previousTick = h.draw.mock.calls.at(-1)![0].tick;
+    h.session.setStatus({ ...status, phase: 'saved' }); h.setMove(1); h.pump(); h.session.frame();
+    const previous = h.draw.mock.calls.at(-1)![0]; expect(previous.tick).toBe(previousTick);
+    h.session.attach({ ...h.descriptor, epoch: 2, hostGeneration: 4 }, { postMessage() {}, close() {}, start() {}, addEventListener() {}, removeEventListener() {} } as any);
+    h.session.setStatus({ ...status, phase: 'rehosting' }); h.session.frame(); expect(h.draw.mock.calls.at(-1)![0]).toBe(previous); assertSimStateLive(previous);
+  });
   it('retains a nondefault Doors selection in draws after main detaches the replica', () => {
     const h = rig(state => sitDown(state, 2, state.derived.stationOfKind[StationKind.Doors]!)); h.deliver(); h.pump(); h.session.frame();
     const ui = h.draw.mock.calls.at(-1)![3], station = h.state.derived.stationOfKind[StationKind.Doors]!;
@@ -122,7 +129,7 @@ describe('online renderer uses the real streaming client', () => {
     h.session.pause(); h.disconnect(); h.session.frame(); const frozen = h.draw.mock.calls.at(-1)![0];
     const postMessage = vi.fn(), close = vi.fn();
     h.session.attach({ ...h.descriptor, epoch: 2 }, { postMessage, close, start() {}, addEventListener() {}, removeEventListener() {} } as unknown as MessagePort);
-    expect(() => assertSimStateLive(frozen)).toThrow('disposed'); expect(() => assertSimStateLive(old[0])).toThrow('disposed');
+    expect(() => assertSimStateLive(frozen)).not.toThrow(); expect(() => assertSimStateLive(old[0])).toThrow('disposed');
     h.pump(); h.session.frame(); expect(postMessage).not.toHaveBeenCalled();
     expect(h.resetInput.mock.calls.length).toBeGreaterThanOrEqual(3);
     h.session.dispose(); expect(close).toHaveBeenCalledOnce();

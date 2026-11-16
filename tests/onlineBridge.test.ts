@@ -79,6 +79,9 @@ describe('isolated preload transfer and API', () => {
         const p = { close: vi.fn() }; deliver(value, [p]); expect(p.close).toHaveBeenCalledOnce();
       }
       expect(native.exposed.online.onPort).toBeUndefined(); expect(native.exposed.invoke).toBeUndefined(); expect(native.exposed.send).toBeUndefined();
+      native.invoke.mockResolvedValueOnce({ ok: true });
+      expect(await native.exposed.online.rehost()).toEqual({ ok: true }); expect(native.invoke).toHaveBeenLastCalledWith('online:rehost', { type: 'rehost' });
+      expect(native.exposed.online.resume).toBeUndefined();
       const off = native.exposed.onSuspend(() => {}); expect(native.listeners.get('app:suspend')?.size).toBe(1); off(); expect(native.listeners.get('app:suspend')?.size).toBe(0);
       native.invoke.mockResolvedValueOnce({ ok: true, token: 'private' }).mockRejectedValueOnce(Error('private'));
       expect(await native.exposed.online.host(2)).toEqual({ ok: false, code: 'invalid-status' });

@@ -1,12 +1,17 @@
 import type { OnlineErrorCode, OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
-type MenuApi = Pick<OnlinePreloadApi, 'host' | 'join' | 'ready' | 'start' | 'removeSeat' | 'reconnect' | 'retry' | 'leave' | 'forgetSeat'>;
+type MenuApi = Pick<OnlinePreloadApi, 'host' | 'join' | 'ready' | 'start' | 'removeSeat' | 'reconnect' | 'rehost' | 'retry' | 'leave' | 'forgetSeat'>;
 interface MenuDeps { root: HTMLElement; document: Pick<Document, 'createElement'>; api?: MenuApi; couch(): void; online(): void; pause(): void; inputBlocked(value: boolean): void; leaveCouch?(): void; home?(): void }
 const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
   'online-disabled': 'Online development needs a configured local service. Couch play is available.',
   'not-found': 'Room not found. Check the eight-character code and try again.',
   'incompatible': 'This room needs compatible game content and ship data. Check both versions, then try again.',
   'unauthorized': 'This seat is no longer authorized. Return to the menu or forget the saved seat.',
-  'host-lost': 'The host has stopped. A saved seat cannot restore a lost game; rehosting is not available yet.',
+  'host-lost': 'Host disconnected. Reconnect or re-host the last committed checkpoint when available.',
+  'no-checkpoint': 'No committed checkpoint is available for this room.',
+  'save-invalid': 'The saved checkpoint is corrupt or incompatible. Reconnect to check the service again.',
+  'save-too-large': 'The saved checkpoint exceeds the size limit.',
+  'save-unavailable': 'The latest save could not be committed. Recovery uses the last committed checkpoint.',
+  'conflict': 'Another player may have claimed this room. Reconnect to check the current host.',
   'suspended': 'Online play stopped when the computer suspended. Reconnect explicitly to continue.',
   'retry-exhausted': 'Reconnection timed out. Retry to make a new attempt.',
   'storage-write-failed': 'Your seat could not be saved. This session can play, but restart recovery is unavailable.',
@@ -14,7 +19,8 @@ const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
 export function createSessionMenu(deps: MenuDeps) {
   let status: OnlineStatus | null = null, page: 'home' | 'host' | 'join' | 'session' | 'couch' = 'home';
   let pending = false, disposed = false, localError = '', hadView = false;
-  let operation = 0, countdown: HTMLElement | null = null;
+  let operation = 0, countdown: HTMLElement | null = null, mirrorLabel: HTMLElement | null = null, receiptAt = 0;
+  let recovering = false;
   const { root, document: doc } = deps;
   root.setAttribute('aria-label', 'FTLite session menu'); root.setAttribute('data-testid', 'session-menu');
   function node(tag: string, text = '', id?: string) {
@@ -35,7 +41,7 @@ export function createSessionMenu(deps: MenuDeps) {
   }
   function render() {
     if (disposed) return;
-    countdown = null;
+    countdown = null; mirrorLabel = null;
     const playing = page === 'couch' || page === 'session' && hadView;
     deps.inputBlocked(!playing);
     root.style.cssText = playing
@@ -45,7 +51,10 @@ export function createSessionMenu(deps: MenuDeps) {
     root.replaceChildren(panel);
     if (page === 'couch') { button(panel, 'leave-couch', 'Leave couch play', () => { deps.leaveCouch?.(); page = 'home'; render(); }); return; }
     if (!playing) { panel.append(node('h1', 'FTLite')); panel.append(node('p', 'Crew together. Keep the ship flying.')); }
-    const message = localError || (status?.error ? ERRORS[status.error] ?? `Online stopped (${status.error}). Retry or leave.` : page === 'session' ? `${status?.phase ?? 'Connecting'}${pending ? '…' : ''}` : 'Choose how to play.');
+    const phaseMessage = status?.phase === 'rehosting' ? 'Restoring the mirrored checkpoint…'
+      : status?.phase === 'saving' ? 'Saving the final checkpoint…'
+      : recovering && status?.phase === 'paused' && status.mirror.committed ? `Restored at tick ${status.mirror.committed.capturedTick}. Paused.` : null;
+    const message = localError || phaseMessage || (status?.error ? ERRORS[status.error] ?? `Online stopped (${status.error}). Retry or leave.` : page === 'session' ? `${status?.phase ?? 'Connecting'}${pending ? '…' : ''}` : 'Choose how to play.');
     const live = node('p', message, 'status'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); panel.append(live);
     if (page === 'home') {
       button(panel, 'couch', 'Couch play', () => { page = 'couch'; deps.couch(); render(); });
@@ -53,7 +62,7 @@ export function createSessionMenu(deps: MenuDeps) {
       button(panel, 'join', 'Join', () => { hadView = false; page = 'join'; render(); }, can('join'));
       if (status?.actions.includes('reconnect')) button(panel, 'reconnect', 'Reconnect saved seat', () => { void invoke(() => deps.api!.reconnect()); }, can('reconnect'));
       if (status?.actions.includes('forget-seat')) button(panel, 'forget-seat', 'Forget saved seat', () => { void invoke(() => deps.api!.forgetSeat(), false); }, can('forget-seat'));
-      panel.append(node('p', !deps.api || status?.phase === 'idle' && !status.actions.includes('host') && !status.actions.includes('join') ? ERRORS['online-disabled']! : 'A saved seat reconnects to a living host. It is not a saved game.', 'online-availability'));
+      panel.append(node('p', !deps.api || status?.phase === 'idle' && !status.actions.includes('host') && !status.actions.includes('join') ? ERRORS['online-disabled']! : 'Reconnect your saved seat to check the host and the last committed checkpoint.', 'online-availability'));
     } else if (page === 'host' || page === 'join') {
       const host = page === 'host', form = node('form', '', host ? 'host-form' : 'join-form');
       const label = node('label', host ? 'Crew capacity' : 'Room code');
@@ -87,21 +96,34 @@ export function createSessionMenu(deps: MenuDeps) {
         if (status.role === 'host') button(panel, 'start', 'Start', () => { void invoke(() => deps.api!.start()); }, can('start') && !!room?.seats.every(s => !s.occupied || s.ready && s.connected));
       }
       if (status?.phase === 'running' || status?.phase === 'paused') button(panel, 'pause', status.phase === 'paused' ? 'Resume' : 'Pause', deps.pause);
+      if (status?.mirror.committed) {
+        mirrorLabel = node('span', '', 'mirror-status'); panel.append(mirrorLabel); updateReceipt();
+        if (['saved', 'rehosting'].includes(status.phase)) panel.append(node('span', 'Recovery may roll back actions after this checkpoint.', 'rollback-warning'));
+      }
+      if (status?.mirror.localPending) panel.append(node('span', 'Local pending save: not committed to the service.', 'pending-save'));
+      if (status?.mirror.error) panel.append(node('span', ERRORS[status.mirror.error] ?? 'Checkpoint storage is unavailable.', 'mirror-error'));
+      if (status?.phase === 'saved' || status?.phase === 'rehosting') button(panel, 'rehost', 'Re-host', () => { void invoke(() => deps.api!.rehost()); }, can('rehost'));
       if (status?.retryAtMs !== null && status?.retryAtMs !== undefined) { countdown = node('span', 'Reconnecting saved seat…', 'reconnect-countdown'); panel.append(countdown); }
       if (status && !status.persistent && status.snapshot) panel.append(node('span', 'Seat not saved: restart recovery unavailable.', 'storage-warning'));
       if (status?.actions.includes('retry')) button(panel, 'retry', 'Retry', () => { void invoke(() => deps.api!.retry()); }, can('retry'));
       if (status?.actions.includes('reconnect')) button(panel, 'reconnect', 'Reconnect saved seat', () => { void invoke(() => deps.api!.reconnect()); }, can('reconnect'));
+      if (status?.actions.includes('forget-seat')) button(panel, 'forget-seat', 'Forget saved seat', () => { void invoke(() => deps.api!.forgetSeat(), false, true); }, !!deps.api);
       if (status?.actions.includes('leave')) button(panel, 'leave', status.phase === 'ended' ? 'Return to menu' : 'Leave', () => { void invoke(() => deps.api!.leave(), false, true).then(() => { if (status?.phase === 'idle') { deps.home?.(); hadView = false; page = 'home'; render(); } }); }, !!deps.api);
       if (!pending && status?.actions.includes('join')) button(panel, 'try-code', 'Try another code', () => { hadView = false; page = 'join'; render(); });
       if (!pending && (!status || status.phase === 'idle' || status.phase === 'error')) button(panel, 'home', 'Return to menu', () => { deps.home?.(); hadView = false; page = 'home'; render(); });
     }
   }
+  function updateReceipt() {
+    if (!mirrorLabel || !status?.mirror.committed) return;
+    const age = status.mirror.receivedAgeMs;
+    mirrorLabel.textContent = `Last mirrored checkpoint: tick ${status.mirror.committed.capturedTick}, ${age === null ? 'receipt age unknown' : `received ${Math.floor((age + Math.max(0, performance.now() - receiptAt)) / 1000)}s ago`}.`;
+  }
   render();
   return {
     reservedHeight() { return page === 'couch' || page === 'session' && hadView ? root.offsetHeight : 0; },
-    setStatus(next: OnlineStatus) { status = next; if (next.attachmentEpoch > 0) hadView = true; if (page !== 'couch' && next.phase !== 'idle') page = 'session'; if (next.phase === 'idle' && page === 'session' && !pending && !hadView) page = 'home'; render(); },
+    setStatus(next: OnlineStatus) { status = next; receiptAt = performance.now(); if (['saved', 'rehosting', 'reconnecting'].includes(next.phase)) recovering = true; if (next.phase === 'idle') recovering = false; if (next.attachmentEpoch > 0) hadView = true; if (page !== 'couch' && next.phase !== 'idle') page = 'session'; if (next.phase === 'idle' && page === 'session' && !pending && !hadView) page = 'home'; render(); },
     home() { if (!status || status.phase === 'idle' || status.phase === 'error') { deps.home?.(); hadView = false; page = 'home'; localError = ''; render(); } },
-    frame(_monotonicNow?: number) { if (countdown && status?.retryAtMs !== null && status?.retryAtMs !== undefined) countdown.textContent = `Retrying saved seat in ${Math.max(0, Math.ceil((status.retryAtMs - Date.now()) / 1000))}s…`; },
+    frame(_monotonicNow?: number) { updateReceipt(); if (countdown && status?.retryAtMs !== null && status?.retryAtMs !== undefined) countdown.textContent = `Retrying saved seat in ${Math.max(0, Math.ceil((status.retryAtMs - Date.now()) / 1000))}s…`; },
     dispose() { disposed = true; root.replaceChildren(); deps.inputBlocked(true); }
   };
 }

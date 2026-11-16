@@ -50,7 +50,7 @@ export function registerOnlineIpc(win: BrowserWindow, owner: OnlineSessionOwner)
     }
   }
   const suspend = () => { if (!removed) { void owner.suspend().catch(() => {}); lifecycle('app:suspend'); } };
-  const resume = () => lifecycle('app:resume');
+  const resume = () => { if (!removed) { void owner.resume().catch(() => {}); lifecycle('app:resume'); } };
   function remove(): void {
     if (removed) return; removed = true; registered = undefined;
     for (const channel of [...Object.values(ONLINE_CHANNELS), ONLINE_STATUS_CHANNEL]) ipcMain.removeHandler(channel);

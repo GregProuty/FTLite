@@ -18,6 +18,10 @@ export interface OnlineMirrors {
 const rank = (a: SessionCheckpointMetadata, b: SessionCheckpointMetadata) => a.hostGeneration - b.hostGeneration || a.checkpointSequence - b.checkpointSequence;
 const exactMetadata = (a: SessionCheckpointMetadata, b: SessionCheckpointMetadata) => rank(a, b) === 0 && a.payloadSha256 === b.payloadSha256 && a.capturedTick === b.capturedTick;
 const exact = (a: SessionMirror, b: SessionMirror) => exactMetadata(a.metadata, b.metadata) && Buffer.from(a.bytes).equals(Buffer.from(b.bytes));
+const diagnosis = (e: unknown): MirrorStatus['error'] => {
+  const code = (e as { code?: string })?.code;
+  return code === 'save-too-large' || code === 'save-invalid' ? code : 'save-unavailable';
+};
 /** One current upload, one newest pending candidate, and one serialized coalescing disk writer. */
 export function createOnlineMirrors(deps: OnlineMirrorsDeps): OnlineMirrors {
   let disposed = false, committed: SessionMirror | null = null, pending: SessionMirror | null = null;
@@ -43,7 +47,7 @@ export function createOnlineMirrors(deps: OnlineMirrorsDeps): OnlineMirrors {
       if (value.serviceOrigin !== deps.serviceOrigin || value.roomId !== deps.roomId) return;
       const c = value.committed && validate(value.committed), p = value.pending && validate(value.pending);
       committed = c; pending = p; if (c) observe(c); if (p) observe(p); emit();
-    } catch (e) { if (!active()) return; persistent = false; error = (e as { code?: string })?.code === 'save-invalid' ? 'save-invalid' : 'save-unavailable'; emit(); }
+    } catch (e) { if (!active()) return; persistent = false; error = diagnosis(e); emit(); }
   })();
   function persist(): Promise<void> {
     revision++;
@@ -86,7 +90,7 @@ export function createOnlineMirrors(deps: OnlineMirrorsDeps): OnlineMirrors {
   }
   async function fetchLatest() {
     try { const next = await deps.service.getCheckpoint({ signal: abort.signal }); check(); accept(next); await persistBounded(); }
-    catch (e) { check(); if ((e as { code?: string })?.code === 'no-checkpoint') return; error = (e as { code?: string })?.code === 'save-invalid' ? 'save-invalid' : 'save-unavailable'; emit(); throw onlineFault(error); }
+    catch (e) { check(); if ((e as { code?: string })?.code === 'no-checkpoint') return; error = diagnosis(e); emit(); throw onlineFault(error!); }
   }
   function refresh(): Promise<void> {
     if (!active()) return Promise.reject(onlineFault('cancelled'));

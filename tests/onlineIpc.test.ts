@@ -17,13 +17,20 @@ function harness(visible = true) {
   const win = Object.assign(new EventEmitter(), { webContents, isDestroyed: (): boolean => false, isVisible: (): boolean => visible });
   const listeners = new Set<(value: any) => void>();
   const owner: OnlineSessionOwner = { dispatch: vi.fn(async () => ({ ok: true as const })), status: vi.fn(status),
-    subscribe: cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, suspend: vi.fn(async () => {}), dispose: vi.fn(async () => {}) };
+    subscribe: cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, suspend: vi.fn(async () => {}), resume: vi.fn(async () => {}), prepareExit: vi.fn(async () => {}), dispose: vi.fn(async () => {}) };
   const off = registerOnlineIpc(win as any, owner); cleanups.push(off);
   const event = { sender: webContents, senderFrame: webContents.mainFrame, ports: [] };
   const invoke = (name: string, payload?: unknown, e = event) => native.handlers.get('online:' + name)!(e, ...(payload === undefined ? [] : [payload]));
   return { win, owner, webContents, listeners, off, event, invoke };
 }
 describe('registered visible online IPC', () => {
+  it('allows only named payload-free rehost and sends trusted OS resume to the owner', async () => {
+    const h = harness();
+    expect(await h.invoke('rehost', { type: 'rehost' })).toEqual({ ok: true });
+    expect(await h.invoke('rehost', { type: 'rehost', checkpointBytes: [1] })).toEqual({ ok: false, code: 'invalid-action' });
+    expect(native.handlers.has('online:resume')).toBe(false);
+    powerMonitor.emit('resume'); expect(h.owner.resume).toHaveBeenCalledOnce();
+  });
   it('registers its trusted application window before the OS shows it, but admits actions only once visible', async () => {
     const h = harness(false);
     expect(await h.invoke('host', { type: 'host', capacity: 2 })).toEqual({ ok: false, code: 'unauthorized' });

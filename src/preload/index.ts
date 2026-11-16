@@ -33,6 +33,7 @@ const api: FtlitePreloadApi = {
     removeSeat: seatId => action({ type: 'remove-seat', seatId }),
     viewState: (epoch, phase) => action({ type: 'view-state', epoch, phase }),
     reconnect: () => action({ type: 'reconnect' }),
+    rehost: () => action({ type: 'rehost' }),
     start: () => action({ type: 'start' }),
     retry: () => action({ type: 'retry' }),
     leave: () => action({ type: 'leave' }),

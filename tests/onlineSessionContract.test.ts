@@ -11,6 +11,12 @@ const snapshot: RoomSnapshot = {
 const status = (): OnlineStatus => ({ phase: 'lobby', role: 'host', ownSeat: 0, snapshot: structuredClone(snapshot), attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: true, actions: ['ready', 'start', 'leave'] });
 
 describe('bounded online renderer boundary', () => {
+  it('accepts named rehost and saved transitions without payloads or privileged Resume', () => {
+    expect(validateOnlineAction({ type: 'rehost' })).toBe(true);
+    for (const extra of [{ bytes: [1] }, { seatToken: 'secret' }, { hostGeneration: 2 }]) expect(validateOnlineAction({ type: 'rehost', ...extra })).toBe(false);
+    expect(validateOnlineAction({ type: 'resume' })).toBe(false);
+    for (const phase of ['saved', 'saving', 'rehosting']) expect(validateOnlineStatus({ ...status(), phase, actions: ['rehost', 'leave'] })).toBe(true);
+  });
   it('validates mirror receipts without admitting bytes, credentials or restored receipt timestamps', () => {
     const mirror = { committed: null, receivedAgeMs: null, localPending: true, persistent: false, error: 'save-unavailable' };
     expect(validateOnlineStatus({ ...status(), mirror })).toBe(true);

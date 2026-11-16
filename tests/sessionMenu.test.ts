@@ -8,6 +8,18 @@ class Element {
   find(id: string): Element | undefined { return this.attributes.get('data-testid') === id ? this : this.children.map(c => c.find(id)).find(Boolean); }
   fire(type = 'click') { if (!this.disabled) this.listeners.get(type)?.({ preventDefault() {}, stopPropagation() {} }); }
 }
+it('shows committed receipt age and pending rollback warning with explicit Re-host, restored Pause and Forget', async () => {
+  const root = new Element(), rehost = vi.fn(async () => ({ ok: true as const })), pause = vi.fn();
+  const menu = createSessionMenu({ root: root as any, document: { createElement: () => new Element() } as any, api: { rehost } as any, couch() {}, online() {}, pause, inputBlocked() {} });
+  const status: OnlineStatus = { phase: 'saved', role: 'guest', ownSeat: 1, snapshot: null, attachmentEpoch: 2, error: 'host-lost', retryAtMs: null, persistent: true,
+    mirror: { committed: { capturedTick: 1800 } as any, receivedAgeMs: 4000, localPending: true, persistent: true, error: null }, actions: ['rehost', 'leave', 'forget-seat'] };
+  menu.setStatus(status); expect(root.find('mirror-status')!.textContent).toContain('tick 1800'); expect(root.find('mirror-status')!.textContent).toContain('received 4s ago');
+  expect(root.find('pending-save')!.textContent).toContain('not committed'); expect(root.find('forget-seat')).toBeDefined();
+  root.find('rehost')!.fire(); root.find('rehost')!.fire(); expect(rehost).toHaveBeenCalledOnce(); await Promise.resolve(); await Promise.resolve();
+  menu.setStatus({ ...status, phase: 'rehosting', actions: ['leave', 'forget-seat'], error: null }); expect(root.find('status')!.textContent).toContain('Restoring');
+  menu.setStatus({ ...status, phase: 'paused', error: null }); expect(root.find('status')!.textContent).toContain('Restored at tick 1800'); root.find('pause')!.fire(); expect(pause).toHaveBeenCalledOnce();
+  menu.dispose();
+});
 it('reserves the measured strip height for online and couch, including wrapped controls', () => {
   const root = new Element(); const menu = createSessionMenu({ root: root as unknown as HTMLElement, document: { createElement: () => new Element() } as unknown as Document, couch: vi.fn(), online: vi.fn(), pause: vi.fn(), inputBlocked: vi.fn() });
   expect(menu.reservedHeight()).toBe(0); root.find('couch')!.fire(); expect(menu.reservedHeight()).toBe(56);

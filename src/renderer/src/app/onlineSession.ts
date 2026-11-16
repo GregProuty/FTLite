@@ -40,13 +40,15 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
     if (!client || !publication || !state || !descriptor) return;
     if (descriptor.seatId >= state.playerCount) { link?.close('invalid-seat'); return; }
     if (publication.publicationSequence !== lastSequence) {
+      if (lastSequence === 0) { points = []; callouts = []; }
       // This allocation belongs to this session, never to the disposable replica.
-      if (!frozen) frozen = loadSnapshot(deps.resolveLayout(publication.snapshot.header.layoutId), publication.snapshot, deps.contentDigest);
+      if (!frozen || frozen.derived.layoutHash !== publication.snapshot.header.layoutHash) { if (frozen) disposeSimState(frozen); frozen = loadSnapshot(deps.resolveLayout(publication.snapshot.header.layoutId), publication.snapshot, deps.contentDigest); }
       else restoreSnapshot(frozen, publication.snapshot, deps.contentDigest);
       lastSequence = publication.publicationSequence;
     }
-    if (!synced && client.commandStatus(descriptor.seatId).state !== 'waiting-state') { synced = true; resetInput(); hint('synced'); }
-    if (synced && publication.phase !== lastPhase) { lastPhase = publication.phase; if (publication.phase !== 'error') hint(publication.phase); }
+    const newlySynced = !synced && client.commandStatus(descriptor.seatId).state !== 'waiting-state';
+    if (newlySynced) { synced = true; resetInput(); hint('synced'); }
+    if (synced && (newlySynced || publication.phase !== lastPhase)) { lastPhase = publication.phase; if (publication.phase !== 'error') hint(publication.phase); }
     frozenUi = structuredClone(client.ui);
     client.takeResults();
     for (const event of client.takeEvents()) {
@@ -75,7 +77,7 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
   return {
     attach(next: OnlinePortDescriptor, port: MessagePort) {
       if (disposed || next.epoch <= (descriptor?.epoch ?? 0)) { port.close(); return; }
-      release(); if (frozen) disposeSimState(frozen); frozen = null; points = []; callouts = []; cues.clear(); lastSequence = 0; lastPhase = ''; synced = false;
+      observe(); release(); cues.clear(); lastSequence = 0; synced = false;
       descriptor = next; resetInput(); deps.renderer?.reset();
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close.
@@ -84,7 +86,7 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
     },
     setStatus(next: OnlineStatus) {
       status = next;
-      if (['error', 'reconnecting', 'idle', 'ended'].includes(next.phase) && client) { observe(); release(); }
+      if (['error', 'reconnecting', 'saved', 'saving', 'rehosting', 'idle', 'ended'].includes(next.phase) && client) { observe(); release(); }
     },
     setFocused(value: boolean) { if (focused === value) return; focused = value; if (!value) stopInput(); else resetInput(); },
     setInputBlocked(value: boolean) { if (blocked === value) return; blocked = value; if (value) stopInput(); else resetInput(); },
@@ -94,8 +96,9 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
       const state = client?.state() ?? frozen; if (!state || !descriptor) return;
       if (client?.state()) points = client.presentation.sample(deps.now());
       const phase = lastPhase === 'ended' ? 'gameover' : lastPhase === 'paused' ? 'paused' : 'running';
-      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), client?.ui ?? frozenUi, points);
-      deps.hud?.update(buildHudModel(state, { mode: 'player', player: descriptor.seatId, ui: client?.ui ?? frozenUi }, {
+      const ui = client?.state() ? client.ui : frozenUi;
+      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), ui, points);
+      deps.hud?.update(buildHudModel(state, { mode: 'player', player: descriptor.seatId, ui }, {
         slots: state.crew.map((_, pid) => ({ status: status?.snapshot?.seats.find(s => s.seatId === pid)?.connected || pid === descriptor!.seatId && !!client?.state() ? 'active' : pid === descriptor!.seatId ? 'reconnect' : 'bot', key: pid === descriptor!.seatId ? input.key : null })),
         phase, message: `PLAYER ${descriptor.seatId + 1}${client?.state() ? '' : ' — CONNECTION LOST'}`, callouts, calloutFlash: flashingKinds(callouts, state.tick)
       }));

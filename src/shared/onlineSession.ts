@@ -20,11 +20,12 @@ export type OnlineAction =
   | { type: 'remove-seat'; seatId: number }
   | { type: 'view-state'; epoch: number; phase: 'synced' | 'running' | 'paused' | 'ended' }
   | { type: 'reconnect' }
+  | { type: 'rehost' }
   | { type: 'start' }
   | { type: 'retry' }
   | { type: 'leave' }
   | { type: 'forget-seat' };
-export type OnlinePhase = 'idle' | 'creating' | 'joining' | 'lobby' | 'connecting' | 'syncing' | 'running' | 'paused' | 'reconnecting' | 'ended' | 'error';
+export type OnlinePhase = 'idle' | 'creating' | 'joining' | 'lobby' | 'connecting' | 'syncing' | 'running' | 'paused' | 'reconnecting' | 'saved' | 'saving' | 'rehosting' | 'ended' | 'error';
 export interface MirrorStatus {
   committed: SessionCheckpointMetadata | null; receivedAgeMs: number | null; localPending: boolean; persistent: boolean; error: OnlineErrorCode | null;
 }
@@ -54,8 +55,8 @@ function hasOnlyArrayIndices(value: readonly unknown[]): boolean {
   const keys = Object.keys(value);
   return keys.length === value.length && keys.every((key, index) => key === String(index));
 }
-const actionTypes: readonly OnlineAction['type'][] = ['host', 'join', 'ready', 'remove-seat', 'view-state', 'reconnect', 'start', 'retry', 'leave', 'forget-seat'];
-const phases: readonly OnlinePhase[] = ['idle', 'creating', 'joining', 'lobby', 'connecting', 'syncing', 'running', 'paused', 'reconnecting', 'ended', 'error'];
+const actionTypes: readonly OnlineAction['type'][] = ['host', 'join', 'ready', 'remove-seat', 'view-state', 'reconnect', 'rehost', 'start', 'retry', 'leave', 'forget-seat'];
+const phases: readonly OnlinePhase[] = ['idle', 'creating', 'joining', 'lobby', 'connecting', 'syncing', 'running', 'paused', 'reconnecting', 'saved', 'saving', 'rehosting', 'ended', 'error'];
 /** Bound raw input first, then accept only the service's eight-character code alphabet. */
 export function validateOnlineAction(value: unknown): value is OnlineAction {
   if (!rtcRecord(value)) return false;
@@ -67,7 +68,7 @@ export function validateOnlineAction(value: unknown): value is OnlineAction {
     case 'remove-seat': return rtcKeys(value, ['type', 'seatId']) && seatId(value.seatId);
     case 'view-state': return rtcKeys(value, ['type', 'epoch', 'phase']) && positive(value.epoch)
       && ['synced', 'running', 'paused', 'ended'].includes(value.phase as string);
-    case 'reconnect': case 'start': case 'retry': case 'leave': case 'forget-seat': return rtcKeys(value, ['type']);
+    case 'rehost': case 'reconnect': case 'start': case 'retry': case 'leave': case 'forget-seat': return rtcKeys(value, ['type']);
     default: return false;
   }
 }
@@ -111,7 +112,7 @@ export function validateOnlineResult(value: unknown): value is OnlineResult {
 export type Unsubscribe = () => void;
 export const ONLINE_CHANNELS = {
   host: 'online:host', join: 'online:join', ready: 'online:ready', 'remove-seat': 'online:remove-seat',
-  'view-state': 'online:view-state', reconnect: 'online:reconnect', start: 'online:start', retry: 'online:retry',
+  'view-state': 'online:view-state', reconnect: 'online:reconnect', rehost: 'online:rehost', start: 'online:start', retry: 'online:retry',
   leave: 'online:leave', 'forget-seat': 'online:forget-seat',
 } as const satisfies Record<OnlineAction['type'], string>;
 export const ONLINE_STATUS_CHANNEL = 'online:status';
@@ -133,6 +134,7 @@ export interface OnlinePreloadApi {
   removeSeat(seatId: number): Promise<OnlineResult>;
   viewState(epoch: number, phase: Extract<OnlineAction, { type: 'view-state' }>['phase']): Promise<OnlineResult>;
   reconnect(): Promise<OnlineResult>;
+  rehost(): Promise<OnlineResult>;
   start(): Promise<OnlineResult>;
   retry(): Promise<OnlineResult>;
   leave(): Promise<OnlineResult>;

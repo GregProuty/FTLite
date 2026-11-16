@@ -16,6 +16,12 @@ function harness(initial: MirrorFileV1 | null = null, generation = 1, loadGate?:
   return { owner, store, service, abort, saved: () => saved, server: () => server, setServer: (value: SessionMirror) => { server = value; }, advance: () => { now += 20; } };
 }
 describe('bounded authenticated mirror coordination', () => {
+  it('preserves oversized load and download diagnoses', async () => {
+    const h = harness({ version: 1, serviceOrigin: 'http://localhost:8787', roomId: 'a'.repeat(32), committed: remote(1, 1, 0, new Uint8Array(262145)), pending: null });
+    await h.owner.refresh(); expect(h.owner.status().error).toBe('save-too-large');
+    h.setServer(remote(1, 1, 0, new Uint8Array(262145)));
+    await expect(h.owner.refresh()).rejects.toMatchObject({ code: 'save-too-large' }); expect(h.owner.status().error).toBe('save-too-large'); h.owner.dispose();
+  });
   it('bounds initial disk loading and never adopts a late disk result over fresh authenticated progress', async () => {
     vi.useFakeTimers(); const read = deferred<void>(), h = harness(null, 1, read.promise); let adopted = false;
     try {
