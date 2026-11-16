@@ -3,6 +3,7 @@
 import { createRng, type RngState } from '../../../../shared/rng';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
+import { cloneTacticalFromModule } from './hash';
 import { HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from './tuning';
 
 /** Tactical rooms (spec §5); the index into Ship.rooms. */
@@ -97,18 +98,10 @@ export function createTacticalState(seed: number): TacticalState {
   };
 }
 
-/** Deep copy of the whole tactical state for snapshots, rollback and replay checks. The map and broad-phase grid are
- *  immutable after creation and are shared. Any new nested state must be copied here; the clone test guards it. */
-export function cloneTactical(s: TacticalState): TacticalState {
-  const h = s.hunter;
-  return {
-    ...s, rng: { s: s.rng.s },
-    ships: [cloneShip(s.ships[0]), cloneShip(s.ships[1])],
-    missiles: [s.missiles[0] ? { ...s.missiles[0] } : null, s.missiles[1] ? { ...s.missiles[1] } : null],
-    hunter: { ...h, trail: new Float64Array(h.trail) },
-    events: s.events.map((e) => ({ ...e }))
-  };
-}
+/** Deep copy of the whole tactical state for snapshots, rollback and replay checks, derived from the space module's
+ *  fields (sim/tactical/hash.ts): a field the module declares is copied without anything listed here. The map and
+ *  broad-phase grid are immutable after creation and are shared. */
+export function cloneTactical(s: TacticalState): TacticalState { return cloneTacticalFromModule(s); }
 
 /** Deep copy of a ship. Any new nested Ship state (arrays, typed arrays) must be copied here. */
 export function cloneShip(s: Ship): Ship {

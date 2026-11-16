@@ -1,5 +1,6 @@
 import type { Snapshot } from '../sim/snapshot';
 import type { TelemetryRecord } from '../sim/telemetry';
+import type { DuelEndSummary } from '../sim/duel/summary';
 
 export type PeerId = string;
 export type RunId = string;
@@ -94,8 +95,9 @@ export type Admission = { status: 'queued' } | { status: 'duplicate' | 'rejected
 export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' };
 // Data-only event cue names shared with pure derivation.
 export type Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'upgrade' | 'victory' | 'defeat' | 'callout';
-/** The authority's end record, tagged on the wrapper by mode (spec §6). The sector record is unchanged. */
-export type EndRecord = { mode: 'sector'; record: TelemetryRecord };
+/** The authority's end record, tagged on the wrapper by mode (spec §6). The sector record is unchanged; the duel's
+ *  is its frozen end summary, always present once the duel has ended. Each mode's codec admits only its own record. */
+export type EndRecord = { mode: 'sector'; record: TelemetryRecord } | { mode: 'duel'; record: DuelEndSummary };
 export interface AuthorityEvent {
   runId: RunId; eventSequence: number; tick: number;
   payload:

@@ -10,6 +10,7 @@ import { replayDataEqual, type Replay, type ReplayFrame } from '../sim/replay';
 import { createEncounterCore } from './core';
 import type { EncounterRules, EncounterTypes, ResolveLayout } from './rules';
 import { sectorRules, type SectorTypes } from './sectorRules';
+import { duelRules } from './duelRules';
 export type { Replay, ReplayV2, ReplayV3, ReplayV4, ReplayFrame } from '../sim/replay';
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const players = z.array(uint.max(MAX_PLAYERS - 1)).max(MAX_PLAYERS).refine(a => new Set(a).size === a.length);
@@ -89,6 +90,16 @@ export interface ReplayOptions {
 /** Runs the live admission/phase executor directly; no wall-clock debt or producer callbacks. */
 export function runReplay(layout: ShipLayout, value: unknown, contentDigest: string, observe?: (state: SimState, frame: Readonly<ReplayFrame>) => void, options: ReplayOptions = {}) {
   return runEncounterReplay<SectorTypes>(sectorRules, value, contentDigest, () => layout, observe, options);
+}
+/** Every mode a replay may name, by mode id. */
+const REPLAY_RULES: Readonly<Record<string, EncounterRules<EncounterTypes>>> = { sector: sectorRules as unknown as EncounterRules<EncounterTypes>, duel: duelRules as unknown as EncounterRules<EncounterTypes> };
+/** Run a replay of any mode: its `mode` field (absent: sector) selects the rules. */
+export function runModeReplay(value: unknown, contentDigest: string, resolveLayout: ResolveLayout, options: ReplayOptions = {}) {
+  const mode = replayMode(value);
+  // Own properties only: 'constructor' or '__proto__' must not reach Object.prototype.
+  const rules = Object.hasOwn(REPLAY_RULES, mode) ? REPLAY_RULES[mode] : undefined;
+  if (!rules) throw new Error('unknown replay mode');
+  return runEncounterReplay(rules, value, contentDigest, resolveLayout, undefined, options);
 }
 export function runEncounterReplay<T extends EncounterTypes>(rules: EncounterRules<T>, value: unknown, contentDigest: string, resolveLayout: ResolveLayout, observe?: (state: T['state'], frame: Readonly<ReplayFrame>) => void, options: ReplayOptions = {}) {
   const replay = parseEncounterReplay(rules, value, contentDigest, resolveLayout);

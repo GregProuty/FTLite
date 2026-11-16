@@ -1,21 +1,21 @@
-import type { AttachOptions } from '../../renderer/src/authority/authority';
 import { createClientRun } from '../../renderer/src/clientControl/clientRun';
 import type { AuthorityMessage, ChannelKind, Link, MonotonicClock, PublishedState } from '../../renderer/src/net/contracts';
-import { decodeMessage, encodeMessage, validatePublication, MAX_MESSAGE_BYTES } from '../../renderer/src/net/codec';
+import { decodeMessage, validatePublication, MAX_MESSAGE_BYTES, createMessageCodec } from '../../renderer/src/net/codec';
 import { validateSnapshot } from '../../renderer/src/sim/snapshot';
 import type { ShipLayout } from '../../renderer/src/sim/ship/schema';
 import { Life, Position, Seated, Stable } from '../../renderer/src/sim/components';
 import { CREW_SPEED, TICK_HZ } from '../../renderer/src/sim/tuning';
 import { speedMult } from '../../renderer/src/sim/characters';
 import { hashF64 } from '../../shared/hash';
-import { classifyStreamPacket, createTransportSequence, decodeOpaquePacket, decodeStatePacket, inspectState, encodeOpaquePacket, imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, MAX_RETAINED_IMAGES, type StateImage } from '../state/imageCodec';
-import { createStateSender } from '../state/sender';
+import { classifyStreamPacket, createTransportSequence, decodeOpaquePacket, decodeStatePacket, inspectState, encodeOpaquePacket, imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, type StateImage } from '../state/imageCodec';
 import { createStateReceiver } from '../state/receiver';
+import { createModeStreamBinding, encodeModeNotification, modeInputIdentity } from './streamBinding';
 import { createPresentationTimeline, type PresentationPoint, type PresentationTimelineOptions } from '../state/timeline';
 
 export interface SectorValidationOptions { resolveLayout(id: string): ShipLayout; contentDigest?: string }
 type Notification = Extract<AuthorityMessage, { kind: 'result' | 'event' }>;
 const NOTIFICATION_STREAM = 'sector-notification';
+const codec = createMessageCodec();
 function identity(value: unknown): string {
   const text = JSON.stringify(value);
   return hashF64(Float64Array.from(text, c => c.charCodeAt(0)));
@@ -50,10 +50,7 @@ export function imageToPublication(image: StateImage, options: SectorValidationO
 
 /** Mode-owned envelope preserves the original reliable codec bytes verbatim. */
 export function encodeSectorNotification(message: Notification, requiredPublicationSequence: number, transportSequence: number): Uint8Array {
-  if (!Number.isSafeInteger(requiredPublicationSequence) || requiredPublicationSequence < 0) throw Error('sector-notification-floor');
-  const payload = encodeMessage(message), body = new Uint8Array(9 + payload.length);
-  body[0] = 1; new DataView(body.buffer).setFloat64(1, requiredPublicationSequence, true); body.set(payload, 9);
-  return encodeOpaquePacket('state', NOTIFICATION_STREAM, transportSequence, body);
+  return encodeModeNotification(codec, NOTIFICATION_STREAM, 'sector', message, requiredPublicationSequence, transportSequence);
 }
 function decodeNotification(packet: Uint8Array): { message: Notification; floor: number } {
   const { bytes, class: payloadClass, stream } = decodeOpaquePacket(packet);
@@ -63,66 +60,13 @@ function decodeNotification(packet: Uint8Array): { message: Notification; floor:
   return { message, floor };
 }
 function inputIdentity(bytes: Uint8Array, channel: ChannelKind): { stream: string; channel: ChannelKind } {
-  const message = decodeMessage(bytes);
-  if (message.kind === 'held') {
-    const held = message.frame.held, neutral = held.moveX === 0 && held.moveY === 0 && !held.interactHeld;
-    return { stream: `held:${message.frame.player}`, channel: neutral && channel === 'reliable-ordered' ? 'reliable-ordered' : 'unreliable-latest' };
-  }
-  if (message.kind === 'command' || message.kind === 'callout') return { stream: message.kind, channel: 'reliable-ordered' };
-  throw Error('sector-input-direction');
+  return modeInputIdentity(codec, 'sector', bytes, channel);
 }
 
 /** Trusted authority attachment. It owns stream controls, while the authority owns gameplay ingress. */
 export function createSectorStreamBinding(link: Link, options: SectorValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number }) {
-  const nextTransportSequence = createTransportSequence(), messages = new Set<(kind: ChannelKind, bytes: Uint8Array) => void>();
-  let closed = false, ready = false;
-  const sentFulls = new Set<number>();
-  const removers: (() => void)[] = [];
-  const sender = createStateSender({ clock: options.clock, latestPayloadLimit: options.latestPayloadLimit, nextTransportSequence,
-    send: (kind, bytes) => {
-      if (closed) return;
-      if (!ready && kind === 'reliable-ordered') {
-        // Record before send: a synchronous transport can deliver the ACK and
-        // subsequent input before this callback returns.
-        sentFulls.add(inspectState(decodeStatePacket(bytes)).sequence);
-        while (sentFulls.size > MAX_RETAINED_IMAGES) sentFulls.delete(sentFulls.values().next().value!);
-      }
-      link.send(kind, bytes);
-    }, close: reason => link.close(reason) });
-  function dispose(): void { if (closed) return; closed = true; ready = false; sentFulls.clear(); sender.dispose(); messages.clear(); for (const off of removers.splice(0)) { try { off(); } catch { /* release all subscriptions */ } } }
-  const offClose = link.onClose(dispose);
-  if (closed) offClose(); else removers.push(offClose);
-  if (!closed) removers.push(link.onMessage((kind, bytes) => {
-    if (closed) return;
-    try {
-      const metadata = classifyStreamPacket(bytes);
-      if (metadata.class === 'control' && metadata.stream === 'state-control') {
-        if (kind !== 'reliable-ordered') throw Error('sector-control-channel');
-        sender.receiveControl(bytes);
-        if (!closed && !ready && sentFulls.has(sender.acknowledgedSequence())) { ready = true; sentFulls.clear(); }
-        return;
-      }
-      if (metadata.class !== 'input') throw Error('sector-input-direction');
-      const payload = decodeOpaquePacket(bytes), expected = inputIdentity(payload.bytes, kind);
-      if (payload.stream !== expected.stream || kind !== expected.channel) throw Error('sector-input-channel');
-      if (!ready) return;
-      for (const receive of [...messages]) { if (closed) break; receive(kind, payload.bytes); }
-    } catch { link.close('sector-stream-invalid'); }
-  }));
-  const authorityLink: Link = { peer: link.peer, caps: link.caps, stats: () => link.stats(), close: reason => link.close(reason),
-    onClose: cb => link.onClose(cb), onMessage(cb) { messages.add(cb); return () => { messages.delete(cb); }; },
-    send() { throw Error('sector-stream-missing-sink'); } };
-  const attachOptions: AttachOptions = {
-    publicationSink(publication, reliable) {
-      if (closed) return;
-      try { sender.publish(publicationToImage(publication, options), reliable); } catch { link.close('sector-stream-invalid'); }
-    },
-    notificationSink(message, floor) {
-      if (closed) return;
-      try { link.send('reliable-ordered', encodeSectorNotification(message, floor, nextTransportSequence())); } catch { link.close('sector-stream-invalid'); }
-    }
-  };
-  return { link: authorityLink, attachOptions, dispose, stats: sender.stats };
+  return createModeStreamBinding(link, { clock: options.clock, latestPayloadLimit: options.latestPayloadLimit,
+    toImage: publication => publicationToImage(publication, options), codec, notificationStream: NOTIFICATION_STREAM, label: 'sector' });
 }
 
 export interface SectorRemoteClientOptions extends SectorValidationOptions {

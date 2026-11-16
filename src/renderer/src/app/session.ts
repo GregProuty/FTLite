@@ -95,7 +95,7 @@ export function createSession(deps: SessionDeps) {
           callouts = [...callouts.filter(c => c.pid !== payload.player && event.tick - c.tick < 3 * TICK_HZ), { pid: payload.player, tick: event.tick, text: payload.text, icon: calloutIcon(payload.text), flash: payload.station }].sort((a, b) => a.pid - b.pid);
           pendingCues.add('callout'); return;
         }
-        if (event.payload.kind !== 'ended' || completedRuns.has(event.runId)) return;
+        if (event.payload.kind !== 'ended' || event.payload.record.mode !== 'sector' || completedRuns.has(event.runId)) return;
         completedRuns.add(event.runId);
         const record = event.payload.record.record;   // the sector's TelemetryRecord, tagged on the wrapper (engine refactor spec §6)
         const next = applyRun(progress, record); newUnlocks = next.unlocked.filter((id) => !progress.unlocked.includes(id)); progress = next;

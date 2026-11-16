@@ -411,3 +411,4 @@ R-1 and R-2 come first, because the networked duel (H-2) and the owner's playtes
 - 2026-11-15: refine (Net-3 corrections) round 2: `EndRecord` tagged on the wrapper, with a frozen `DuelEndSummary`; the duel telemetry accumulator saved as a checkpoint blob; `mapHash` in the header with its calculation and check; `resolveLayout` added to the rules signatures.
 - 2026-11-15: refine (Net-3 corrections) round 3: `DuelEndSummary.terminal` keeps per-ship cause arrays; the continuation proof also compares end summaries.
 - 2026-11-16: from the R-0/R-1 prototype: `terminal` takes the init; the rules gain `validateInit`, `initialControllers` and `cueBaseline`; `commandCodec` is the mode's whole message codec; the duel snapshot header adds `tick`, `playerCount` and `hash`; `repairsFinished` is per player.
+- 2026-11-16: R-1b impl review: the duel `EndRecord`'s record is non-null because an ended duel always carries a summary; the codec rejects null.
