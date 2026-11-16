@@ -1,7 +1,7 @@
 # Mac-1: Apple Silicon private multiplayer test build
 
 Date: 2026-11-16
-Status: Draft for design approval. Private MacBook build approach selected by the user; detailed design not yet approved.
+Status: Approved for implementation planning by the user on 2026-11-16, after the Claude Code refinement ending at 11d9d10.
 Baseline inspected: master at 1a0df0a. Engine work is advancing concurrently; implementation must record its actual source revision.
 
 ## Intent and success
@@ -107,7 +107,7 @@ These sources establish packaging constraints, not proof that FTLite already wor
 
 ## Design review
 
-A fresh builder-readiness review on 2026-11-16 found no consequential unanswered planning questions. The private-build approach is confirmed; this document remains a draft awaiting design approval. No product code or packaging configuration was changed while writing it. The subsequent Claude Code review amendments below supersede less-specific descriptions above.
+A fresh builder-readiness review on 2026-11-16 found no consequential unanswered planning questions. The private-build approach and refined design are approved for planning. No product code or packaging configuration was changed while writing it. The subsequent Claude Code review amendments below supersede less-specific descriptions above.
 
 
 ## Review amendments: executable evidence contracts
