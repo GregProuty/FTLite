@@ -1,0 +1,42 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P0",
+      "title": "A valid basic.json can bypass the version guard",
+      "claim": "If basic.json has more than 4,096 bytes before its stored simVersion, basicVersion returns undefined. With the other two artifacts already at the current version, bless proceeds without the per-tick proof.",
+      "evidence": "plan L42; scripts/bless-golden.ts:L33-L40; scripts/golden/blessGuard.ts:L18-L20",
+      "why": "A JSON file with leading whitespace remains valid. An in-memory probe with 4,096 leading spaces, stored version 36, and the other versions at 37 produced no detected stale version. The guard can then overwrite the older golden without proof.",
+      "fix": "Read and validate the structural simVersion from the complete basic.json. Treat an existing file whose version cannot be read as an error, and test the padded-file case."
+    },
+    {
+      "severity": "P1",
+      "title": "The retired baseline still has an overwrite command",
+      "claim": "The retained capture script can rewrite net1a-baseline.json, contrary to the decision that the historical oracle is never written.",
+      "evidence": "plan L42-L43; scripts/capture-net1a-baseline.ts:L1-L6",
+      "why": "An explicit invocation overwrites the pinned baseline even though R-0 retires it to a read-only historical check.",
+      "fix": "Remove or disable the capture script's write path while leaving the pinned baseline untouched."
+    },
+    {
+      "severity": "P2",
+      "title": "The same-mode proof has no automated failure test",
+      "claim": "No test exercises verifyUnchanged or the same CLI branch, despite R-1 depending on their failure behavior.",
+      "evidence": "plan L44; scripts/golden/versionOnly.ts:L98-L104; scripts/golden/canonical-trace.ts:L26-L29; tests/blessGuard.test.ts:L6-L49",
+      "why": "The shared comparison and exit path look correct by inspection, but a later change could make the R-1 proof report success on a changed tick without a test catching it.",
+      "fix": "Add a small test using a synthetic baseline and injected trace: change one tick hash and assert failure. Cover missing baseline and moved version in the same test group."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The three artifacts are staged before any write, matching the plan's staging guarantee: plan L42; scripts/bless-golden.ts:L43-L57; scripts/golden/blessGuard.ts:L27-L31; tests/blessGuard.test.ts:L35-L48.",
+    "A stale version in any detected artifact invokes the per-tick guard; an absent artifact is ignored as specified by the implemented decision: scripts/golden/blessGuard.ts:L16-L22; tests/blessGuard.test.ts:L21-L27. A missing determinism fixture fails during staging: scripts/determinism/bless.ts:L33-L34.",
+    "On a version bump, fixture staging checks sample fields and positions apart from the version and hash, plus result/event boundaries: plan L42; scripts/determinism/bless.ts:L43-L53.",
+    "The same mode uses the same differences function as check, rejects a missing baseline and a moved version, and exits 1 on failure: plan L44; scripts/golden/versionOnly.ts:L74-L104; scripts/golden/canonical-trace.ts:L22-L29.",
+    "The duel hash includes the full interior canonical flatten, and its test mutates fire, oxygen, and power: plan L45; src/renderer/src/sim/duel/hash.ts:L12-L21; tests/duelGolden.test.ts:L42-L49.",
+    "The default tests inspected do not read net1a-baseline.json; package.json still routes bless to the updated script. Historical docs/gates.md text at L551 describes the pinned baseline and contains no rebless-version reference: tests/netParity.test.ts:L8-L10; tests/golden.test.ts:L10-L19; package.json:L25."
+  ],
+  "not_verified": [
+    "Generated JSON was skipped as requested. The full suite and cross-engine determinism commands were not rerun under the read-only review constraint.",
+    "The run directory could not be read from the worktree because its tracked files appear deleted there; HEAD versions of brief.md and run.meta were read with git show. No review exchange was modified."
+  ]
+}
