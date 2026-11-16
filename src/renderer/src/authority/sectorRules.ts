@@ -23,7 +23,7 @@ export interface SectorTypes { state: SimState; init: RunInit; controllers: Card
 export const sectorRules: EncounterRules<SectorTypes> = {
   modeId: 'sector',
   validateInit(value, contentDigest, resolveLayout) {
-    const layout = resolveLayout((value as RunInit).layoutId);
+    const layout = resolveLayout((value as RunInit | null)?.layoutId as string);
     const init = validateRunInit(layout, value, contentDigest);
     if (init.simVersion !== SIM_VERSION || init.contentDigest !== contentDigest || init.layoutHash !== deriveLayout(layout).layoutHash || layout.id !== init.layoutId) throw new Error('incompatible run');
     return init;

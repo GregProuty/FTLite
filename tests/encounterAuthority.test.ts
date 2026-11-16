@@ -45,6 +45,15 @@ describe('the generic authority', () => {
     expect(sectorRules.terminal(s, { ...init(), seed: 5 })).toEqual({ ended: true, endRecord: { mode: 'sector', record: telemetryRecord(s, 5) } });
     expect(sectorRules.initialControllers()).toEqual([]);
   });
+  it('a mode whose terminal reports ended without an end record is a named mode bug, not a silently missing ended event', () => {
+    const buggy = { ...sectorRules, terminal: (s: { tick: number }) => ({ ended: s.tick >= 1, endRecord: null }) };
+    const failures: string[] = [], d = deps();
+    const authority = createEncounterAuthority(buggy as never, { ...d.value, onCrash(r: { error: string }) { failures.push(r.error); } });
+    ownTestCleanup(() => authority.dispose());
+    authority.start(init());
+    d.now(1000 / 60 + 0.01); d.now(2 * 1000 / 60 + 0.02);
+    expect(failures.join('|')).toMatch(/sector rules reported ended without an end record/);
+  });
   it('replays name their mode: absent is sector, so recorded V2 files parse unchanged; another mode is refused', () => {
     const replay = scriptedSemanticReplay(1, 1, 5);
     expect(replay).not.toHaveProperty('mode');

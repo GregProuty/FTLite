@@ -15,6 +15,7 @@ import { createAuthority } from '../../src/renderer/src/authority/authority';
 import { runReplay } from '../../src/renderer/src/authority/replay';
 import type { ChannelKind, ClientMessage, CommandEnvelope, Link, PublishedState } from '../../src/renderer/src/net/contracts';
 import { decodeMessage, encodeMessage } from '../../src/renderer/src/net/codec';
+import { loadSnapshot, saveSnapshot } from '../../src/renderer/src/sim/snapshot';
 import { deriveLayout } from '../../src/renderer/src/sim/ship/derived';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import starter from '../../src/renderer/src/sim/ship/starter.json';
@@ -26,6 +27,16 @@ const LAYOUT = parseShip(starter), digest = computeContentDigest(process.cwd());
 /** A short hash of a value's JSON with the content digest masked: every source edit changes the digest, never the boundary. */
 const sha = (value: unknown): string => createHash('sha256').update(JSON.stringify(value).replaceAll(digest, '<content-digest>')).digest('hex').slice(0, 16);
 type Entry = Record<string, unknown>;
+/** The ended event's record: master emits the bare TelemetryRecord, the generic core emits { mode, record }; compare the bare record. */
+const bareEvent = (event: unknown): unknown => {
+  const e = event as { payload?: { kind?: string; record?: { mode?: unknown; record?: unknown } } } | null, p = e?.payload;
+  return p && p.kind === 'ended' && p.record && 'mode' in p.record && 'record' in p.record ? { ...e, payload: { ...p, record: p.record.record } } : event;
+};
+const bareEvents = (events: unknown): unknown => Array.isArray(events) ? events.map(bareEvent) : events;
+const isEnded = (event: unknown): boolean => (event as { payload?: { kind?: string } } | null)?.payload?.kind === 'ended';
+const tags: unknown[] = [];
+/** Branch only (an older authority emits the bare record): every ended event carries the sector tag. */
+const endedModes = (events: unknown[]): unknown[] => events.filter(isEnded).map((e) => (e as { payload: { record?: { mode?: unknown } } }).payload.record?.mode);
 
 function publication(state: PublishedState, channel: ChannelKind): Entry {
   return { pub: state.publicationSequence, tick: state.tick, channel, phase: state.phase, hash: state.hash, pauseOwner: state.pauseOwner, pauseReason: state.pauseReason,
@@ -41,7 +52,10 @@ function recordingLink(name: string, out: Entry[], failSends = { after: Infinity
       const m = decodeMessage(bytes);
       if (m.kind === 'state') out.push({ link: name, ...publication(m.state, kind) });
       else if (m.kind === 'result') out.push({ link: name, channel: kind, result: m.result });
-      else if (m.kind === 'event') out.push({ link: name, channel: kind, event: m.event });
+      else if (m.kind === 'event') {
+        tags.push(...endedModes([m.event]));
+        out.push({ link: name, channel: kind, event: bareEvent(m.event) });
+      }
     },
     onMessage(cb) { listeners.add(cb); return () => { listeners.delete(cb); }; },
     onClose(cb) { closes.add(cb); return () => { closes.delete(cb); }; },
@@ -71,7 +85,7 @@ function replayRoundTrip(out: Entry[], replay: unknown): void {
   const r = replay as { version: number; frames: unknown[] };
   out.push({ replay: r.version, frames: r.frames.length, bytes: sha(replay) });
   const result = runReplay(LAYOUT, replay, digest, undefined, { retainFrames: true });
-  out.push({ rerun: result.hashes.length, last: result.hashes.at(-1) ?? null, results: sha(result.results), events: sha(result.events), checkpoint: sha(result.checkpoint) });
+  out.push({ rerun: result.hashes.length, last: result.hashes.at(-1) ?? null, results: sha(result.results), events: sha(bareEvents(result.events)), checkpoint: sha(result.checkpoint) });
 }
 
 /** The scenarios, in order; each returns its entries. */
@@ -82,7 +96,7 @@ async function scenarios(): Promise<Record<string, Entry[]>> {
   const golden: Entry[] = all.golden = [];
   const replay = scriptedSemanticReplay(2026, 4, 60 * 120, digest);
   const result = runReplay(LAYOUT, replay, digest, undefined, { retainTrace: false, onFrame(frame) {
-    if (frame.results.length || frame.events.length || frame.action.kind === 'tick' && frame.tick % 60 === 59) golden.push({ tick: frame.tick, action: frame.action.kind, results: frame.results, events: frame.events, after: frame.after ?? null });
+    if (frame.results.length || frame.events.length || frame.action.kind === 'tick' && frame.tick % 60 === 59) golden.push({ tick: frame.tick, action: frame.action.kind, results: frame.results, events: bareEvents(frame.events), after: frame.after ?? null });
   } });
   golden.push({ checkpoint: sha(result.checkpoint) });
 
@@ -136,6 +150,32 @@ async function scenarios(): Promise<Record<string, Entry[]>> {
   c.authority.attach(doomed.link, [0], { admissionPolicy: 'strict' });
   c.tick(20); failing.after = 0; c.tick(3);
   c.authority.dispose();
+
+  // 5. A run that reaches ended through the real authority: the checkpoint's hull is zeroed (as tests/session.test.ts
+  //    does), restored on a fresh authority, and ticked until the ended event; its record is compared unwrapped.
+  const ended: Entry[] = all.ended = [];
+  const seedHost = host([]), eid = 'trace-ended';
+  seedHost.authority.start(init(1, 3, eid));
+  const cp = seedHost.authority.checkpoint([]);
+  seedHost.authority.dispose();
+  const doomedState = loadSnapshot(LAYOUT, cp.snapshot, digest); doomedState.hull = 0;
+  cp.snapshot = saveSnapshot(doomedState, digest);
+  ended.push({ seeded: cp.snapshot.header.tick, bytes: sha(cp) });
+  const e = host(ended), watcher = recordingLink('watcher', ended);
+  e.authority.restore(cp);
+  e.authority.attach(watcher.link, [0], { admissionPolicy: 'strict' });
+  e.tick(2);
+  watcher.deliver(command(eid, 0, 1, tickOf(ended), { kind: 'setPaused', paused: false }));
+  for (let k = 0; k < 20 && !ended.some((x) => isEnded(x.event)); k++) e.tick(1);
+  e.tick(3);
+  const endedEvents = ended.filter((x) => isEnded(x.event));
+  if (endedEvents.length !== 1) throw new Error(`ended scenario: expected one ended event, saw ${endedEvents.length}`);
+  const record = (endedEvents[0]!.event as { payload: { record: unknown } }).payload.record;
+  ended.push({ endRecord: sha(record), reason: (record as { endReason?: unknown }).endReason ?? null });
+  const finalCapture = await e.authority.requestCheckpoint('safe-point');
+  ended.push({ requested: finalCapture.cause, tick: finalCapture.checkpoint.snapshot.header.tick, bytes: sha(finalCapture.checkpoint) });
+  replayRoundTrip(ended, e.authority.replay());
+  e.authority.dispose();
   return all;
 }
 
@@ -164,6 +204,8 @@ async function main(): Promise<void> {
         if (d) { console.error(`authority boundary CHANGED at ${d}`); process.exit(1); }
       }
     }
+    // Branch only, outside the comparison: the generic core tags the sector's end record 'sector'.
+    if (!tags.length || tags.some((t) => t !== 'sector')) { console.error(`ended events must carry mode 'sector': ${JSON.stringify(tags)}`); process.exit(1); }
     console.log(`authority boundary unchanged: ${counts(now)} entries`);
   } else throw Error('usage: npx tsx scripts/golden/authority-trace.ts baseline|same');
 }

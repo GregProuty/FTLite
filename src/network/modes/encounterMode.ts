@@ -43,7 +43,7 @@ export interface EncounterModeOptions<T extends EncounterTypes> {
 }
 
 /** JSON byte codecs over the rules' validators, bounded by Net-3's host payload limit. */
-export function jsonModeCodecs<T extends EncounterTypes>(rules: EncounterRules<T>, resolveLayout: ResolveLayout, label: string): EncounterModeOptions<T>['codecs'] {
+export function jsonModeCodecs<T extends EncounterTypes>(rules: EncounterRules<T>, resolveLayout: ResolveLayout, label: string = rules.modeId): EncounterModeOptions<T>['codecs'] {
   const decode = (bytes: Uint8Array): unknown => {
     if (!boundedHostBytes(bytes)) throw Error(`${label} payload exceeds limit`);
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));

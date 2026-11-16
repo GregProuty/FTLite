@@ -448,8 +448,9 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     tickTimeMs = deadline;
     const end = rules.terminal(state, deps.init);
     if (end.ended) {
+      if (!end.endRecord) throw new Error(`${rules.modeId} rules reported ended without an end record`);
       phase = 'ended'; driver.dispose(); applyControls();
-      if (end.endRecord) emit({ kind: 'ended', record: end.endRecord });
+      emit({ kind: 'ended', record: end.endRecord });
     }
     publishCompletedState();
     complete();

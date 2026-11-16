@@ -74,7 +74,18 @@ describe('defineEncounterMode', () => {
     off(); host.start(encode(init()));
     expect(() => host.start(new Uint8Array(262145))).toThrow(/sector-copy payload exceeds limit/);
     expect(decode(host.checkpoint()).init.runId).toBe('factory');
-    expect(() => host.pause('')).toThrow();
+    expect(() => host.pause('')).toThrow(/sector-copy unavailable/);
+  });
+  it('the real sector mode keeps its literal messages, and a JSON null init is the unknown layout error, not a TypeError', () => {
+    const h = harness(sectorMode), host = sectorMode.createHost(h.deps);
+    ownTestCleanup(() => host.dispose());
+    expect(() => host.checkpoint()).toThrow(/^Error: sector unavailable$|^sector unavailable$/);
+    expect(() => host.start(encode(null))).toThrow(/unknown sector layout/);
+    host.start(encode(init()));
+    expect(() => host.attach(link(), [2], 'receive-time')).toThrow(/invalid sector ownership/);
+  });
+  it('jsonModeCodecs labels its payload errors with the mode id of its rules unless told otherwise', () => {
+    expect(() => jsonModeCodecs(sectorRules, resolveLayout).decodeInit(new Uint8Array(262145), __GAMEPLAY_CONTENT_DIGEST__)).toThrow(/^sector payload exceeds limit$/);
   });
 });
 
