@@ -1,4 +1,6 @@
-# Couch playtest checklist (the Skiff, two players)
+# Two-player playtest checklist (the Skiff, Multiplayer)
+
+**2026-11-16: keyboard and mouse only.** Couch play and gamepads were removed from the app (`docs/superpowers/specs/2026-11-16-main-menu-kbm-design.md`). This checklist now runs as an online Multiplayer session: each player on their own computer with one keyboard and mouse (WASD walk, E interact, F confirm, Q cancel, R call out; the full list is under Settings, Controls). For the solo Helm demo, use Single player.
 
 Replaces the Demo-i script (2026-11-13). Claude's own playtest and its findings: `docs/playtest-report-2026-11-13.md`.
 
@@ -7,12 +9,12 @@ Players (who sat where):
 Build (commit):
 Seed (shown on the summary):
 Screen and distance:
-Devices (keyboard / pads):
+Computers (one keyboard and mouse each):
 
-Run `npm run dev`. Don't coach during the first fight. Tick each step as seen, and note anything that went wrong next to it. Severity: **crash/stuck** > **didn't understand** > **boring or unfair** > **polish**.
+Run the app on both computers (`npm run dev`, or the packaged build). Main menu: Multiplayer, then Host on one computer and Join with the room code on the other. Don't coach during the first fight. Tick each step as seen, and note anything that went wrong next to it. Severity: **crash/stuck** > **didn't understand** > **boring or unfair** > **polish**.
 
 ## 1. Start
-- [ ] Both join (E, Enter / A); the lobby says `Ship: Skiff (2 crew)`; Confirm starts.
+- [ ] The host picks `2 crew — Skiff`, the other player joins with the room code; both press Ready and the host presses Start.
 - [ ] Each player finds their seat without help: Helm in the Bridge (front), Ops in the room with the eye. Time to sit: ____ s.
 - [ ] Each player switches tabs (Up from the top row, Left/Right).
 
@@ -51,4 +53,4 @@ Run `npm run dev`. Don't coach during the first fight. Tick each step as seen, a
 ## 7. Separately
 - [ ] Swap seats and play the first fight again.
 - [ ] Three or four players on the Cutter: carrying torpedoes, separate stations.
-- [ ] Unplug a pad mid-run; alt-tab out and back.
+- [ ] Alt-tab out and back on one computer; the other keeps playing.

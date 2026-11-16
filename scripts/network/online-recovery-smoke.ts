@@ -83,14 +83,14 @@ async function main() {
     child.stderr!.on('data', () => { if(!stderrReported){stderrReported=true;console.error(onlineAppStderrDiagnostic(profile));} });
     record.exit = new Promise(done => child.once('exit', code => { record.exited = true; record.exitCode=code; for (const item of pending.values()) { item.reject(Error('application exited')); } pending.clear(); done(); }));
     processes.push(record);
-    const initial=await until(async () => { try { return await record.request('status'); } catch (error) { if (record.exited) throw error; return null; } }, value => !!value?.status && value.text.includes('Couch play'), profile + ' app ready');
+    const initial=await until(async () => { try { return await record.request('status'); } catch (error) { if (record.exited) throw error; return null; } }, value => !!value?.status && value.text.includes('Single player'), profile + ' app ready');
     assert(initial.electron==='37.10.3','wrong actual Electron runtime');electronVersion=initial.electron;
     return record;
   }
   const status = (app: Application) => app.request('status');
   const phase = (app: Application, value: string) => until(() => status(app), r => r.status.phase === value, `${app.profile} ${value}`);
-  async function host(app: Application, capacity: number) { await app.request('click', { id: 'host' }); if (capacity !== 2) await app.request('capacity', { value: capacity }); await app.request('click', { id: 'create-room' }); return phase(app, 'lobby'); }
-  async function joinRoom(app: Application, code: string) { await app.request('click', { id: 'join' }); await app.request('type', { id: 'join-code', text: code }); await app.request('click', { id: 'join-room' }); return phase(app, 'lobby'); }
+  async function host(app: Application, capacity: number) { await app.request('open-multiplayer'); await app.request('click', { id: 'host' }); if (capacity !== 2) await app.request('capacity', { value: capacity }); await app.request('click', { id: 'create-room' }); return phase(app, 'lobby'); }
+  async function joinRoom(app: Application, code: string) { await app.request('open-multiplayer'); await app.request('click', { id: 'join' }); await app.request('type', { id: 'join-code', text: code }); await app.request('click', { id: 'join-room' }); return phase(app, 'lobby'); }
   async function kill(app: Application) {
     if (!app.exited) {
       app.termination??='restart';
@@ -240,7 +240,7 @@ async function main() {
       contenders=[{seat:0,outcome:'loser',utilitiesCreated:0},{seat,outcome:'winner',utilitiesCreated:1}];
       await until(()=>status(h),r=>r.status.phase==='saved'||r.status.phase==='paused','old host transition',10000);
       if((await status(h)).status.phase==='saved') await h.request('click',{id:'reconnect'});
-    } else { h=await launch('host'); await h.request('click',{id:'reconnect'}); }
+    } else { h=await launch('host'); await h.request('open-multiplayer'); await h.request('click',{id:'reconnect'}); }
     const rejoined=await phase(h,'paused');
     assert(rejoined.status.ownSeat===0 && rejoined.status.role==='guest','old host did not rejoin logical seat');
     const synced = await matched(g,h);

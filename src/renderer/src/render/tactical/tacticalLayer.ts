@@ -36,7 +36,12 @@ export function starField(seed: number, w: number, h: number): { x: number; y: n
   const rnd = (): number => { r ^= r << 13; r >>>= 0; r ^= r >>> 17; r ^= r << 5; r >>>= 0; return r / 4294967296; };
   return Array.from({ length: STAR_COUNT }, () => { const x = rnd() * w, y = rnd() * h, b = rnd(); return { x, y, b }; });
 }
-export interface TacticalLayerOptions { fontFamily: string; viewport: Viewport; seed?: number }
+export interface TacticalLayerOptions {
+  fontFamily: string; viewport: Viewport; seed?: number;
+  /** The pause banner's text (the app's single player adds the main-menu key). */
+  pauseText?: string;
+}
+export const PAUSE_TEXT = 'PAUSED   ESC: RESUME';
 
 export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const { w, h } = opts.viewport;
@@ -54,7 +59,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const arrowText = Array.from({ length: ARROWS }, () => mk(FONT_NATIVE, TEXT, 0.5, 0.5));
   const zoomText = mk(FONT_SIZE, DIM), scaleText = mk(FONT_NATIVE, DIM), hint = mk(FONT_SIZE, AMBER, 0.5, 1), banner = mk(FONT_SIZE * 1.5, TEXT, 0.5, 0.5);
   zoomText.position.set(16, h - 64); scaleText.position.set(16, h - 22); hint.position.set(w / 2, h - 12); banner.position.set(w / 2, h / 2 - 80);
-  banner.text = 'PAUSED   ESC: RESUME';
+  banner.text = opts.pauseText ?? PAUSE_TEXT;
   const lockText = mk(FONT_NATIVE, LOCK, 0, 0), info = mk(FONT_SIZE, TEXT, 0.5, 0);
   const texts = [...cols, ...rows, ...ring, ...arrowText, zoomText, scaleText, hint, banner, lockText, info];
 

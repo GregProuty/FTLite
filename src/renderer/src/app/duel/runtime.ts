@@ -180,6 +180,8 @@ export interface DuelRuntime {
   lastResults(): readonly DuelResult[];
   /** True once the duel's outcome is decided: stepping has stopped and Enter restarts (spec §4). */
   ended(): boolean;
+  /** True once M was pressed while user-paused or on the end screen: the app returns to its main menu (main menu spec). */
+  menuRequested(): boolean;
   dispose(): void;
 }
 
@@ -197,6 +199,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   // queued after a Tab waits here until the Tab's presence tick has run, then goes out on the following tick.
   let switching = false, deferred: { player: number; command: DuelCommand }[] = [];
   let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = [NEUTRAL, NEUTRAL], sentAxes: Axes = NO_AXES, sentSteer = 0;
+  let menuAsked = false;
   let chargeSent = false, events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera() };
   const capture = (): void => {
@@ -340,6 +343,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       const sampled = deps.samplePointer();
       let pointer = sampled;
       pacer.toggleUser(k.presses.pause);
+      if (k.presses.menu > 0 && (ended() || pacer.reasons.has('user'))) menuAsked = true;
       // A Tab or a restart changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
       const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0 }; };
       if (ended()) { if (k.presses.confirm > 0) { restart(); k = IDLE_KEYS(); moved(); } }
@@ -364,6 +368,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     drainEvents() { const out = events; events = []; return out; },
     lastResults: () => results,
     ended,
+    menuRequested: () => menuAsked,
     dispose() { pacer.dispose(); disposeDuel(d); }
   };
 }

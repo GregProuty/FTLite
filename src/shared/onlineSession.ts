@@ -142,8 +142,18 @@ export interface OnlinePreloadApi {
   readStatus(): Promise<OnlineStatusEnvelope | Extract<OnlineResult, { ok: false }>>;
   onStatus(callback: (value: OnlineStatusEnvelope) => void): Unsubscribe;
 }
+/** The window's fullscreen state (Settings, main menu spec): the same native toggle as F11. */
+export const WINDOW_FULLSCREEN_CHANNEL = 'app:fullscreen';
+/** The key the main process toggles fullscreen on (its before-input-event handler); Settings lists it from here. */
+export const FULLSCREEN_KEY = 'F11';
+export interface WindowPreloadApi {
+  isFullScreen(): Promise<boolean>;
+  /** Resolves with the requested state once asked, or the current one when the request is refused. */
+  setFullScreen(on: boolean): Promise<boolean>;
+}
 export interface FtlitePreloadApi {
   online: OnlinePreloadApi;
   onSuspend(callback: () => void): Unsubscribe;
   onResume(callback: () => void): Unsubscribe;
+  window?: WindowPreloadApi;
 }

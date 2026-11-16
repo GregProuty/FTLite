@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { INTERNAL_W, INTERNAL_H } from '../shared/resolution';
@@ -11,6 +11,7 @@ import { createSeatStore } from './network/seatStore';
 import { createMirrorStore } from './network/mirrorStore';
 import { validateSectorMirror } from './network/onlineSector';
 import { createRoomServiceClient } from '../network/session/serviceClient';
+import { FULLSCREEN_KEY, WINDOW_FULLSCREEN_CHANNEL } from '../shared/onlineSession';
 declare const __FTLITE_PACKAGED_SERVICE_ORIGIN__: string;
 
 function createWindow(): void {
@@ -54,11 +55,22 @@ function createWindow(): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.webContents.on('before-input-event', (event, input) => {
-    if (input.type === 'keyDown' && input.key === 'F11') {
+    if (input.type === 'keyDown' && input.key === FULLSCREEN_KEY) {
       win.setFullScreen(!win.isFullScreen());
       event.preventDefault();
     }
   });
+  // Settings' fullscreen toggle (main menu spec), trusted as onlineIpc.ts trusts its callers: only this window's own main
+  // frame may ask. No argument reads the state; one boolean sets it; anything else is refused (answers false, no change).
+  ipcMain.removeHandler(WINDOW_FULLSCREEN_CHANNEL);
+  ipcMain.handle(WINDOW_FULLSCREEN_CHANNEL, (event, ...args: unknown[]) => {
+    if (win.isDestroyed() || win.webContents.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) return false;
+    if (args.length > 1 || (args.length === 1 && typeof args[0] !== 'boolean')) return false;
+    if (args.length === 0) return win.isFullScreen();
+    win.setFullScreen(args[0] as boolean);
+    return args[0];
+  });
+  win.on('closed', () => { ipcMain.removeHandler(WINDOW_FULLSCREEN_CHANNEL); });
   // FTLITE_MODE (H-1 spec §3): `flight` opens the dev flight view and `duel` the solo duel; the renderer reads it as `?mode=`.
   const mode = process.env['FTLITE_MODE'];
   if (process.env['ELECTRON_RENDERER_URL']) {

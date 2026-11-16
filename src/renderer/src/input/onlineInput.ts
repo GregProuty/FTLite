@@ -9,7 +9,7 @@ export function createOnlineInput() {
     reset() { key = null; previous = undefined; changed = false; callouts = 0; },
     sample(sources: readonly SourceSample[]): InputFrame {
       changed = false; callouts = 0;
-      const eligible = sources.filter(s => s.key === 'kb:0' || s.key.startsWith('gp:'));
+      const eligible = sources.filter(s => s.key === 'kb:0');   // keyboard and mouse only: the one WASD cluster
       let source = eligible.find(s => s.key === key);
       if (!source) {
         source = eligible.find(s => s.any);

@@ -24,18 +24,23 @@ export interface DuelModeDeps {
   seed: number;
   /** The Cutter. */
   layout: ShipLayout;
-  /** The preload bridge's suspend and resume hooks, when present. */
-  lifecycle?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void };
+  /** The preload bridge's suspend and resume hooks, when present; their unsubscribes run on dispose. */
+  lifecycle?: { onSuspend(cb: () => void): (() => void) | void; onResume(cb: () => void): (() => void) | void };
+  /** Inside the app (main menu spec): M while paused or on the end screen calls this, and the banners show the key. The
+   *  caller disposes the duel. Absent for `?mode=duel`, which has no menu to return to. */
+  onExit?: () => void;
 }
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
   const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H }, font = renderer.assets.fontFamily;
-  for (const child of renderer.app.stage.children) child.visible = false;   // world, enemy window, projectiles, callouts, HUD
+  const hidden = renderer.app.stage.children.filter((child) => child.visible);
+  for (const child of hidden) child.visible = false;   // world, enemy window, projectiles, callouts, HUD; shown again on dispose
   const root = new Container(), scene = new Container();
-  const layer = createTacticalLayer({ fontFamily: font, viewport, seed: deps.seed });
+  const exitHint = deps.onExit ? '   M: MAIN MENU' : '';
+  const layer = createTacticalLayer({ fontFamily: font, viewport, seed: deps.seed, pauseText: `PAUSED   ESC: RESUME${exitHint}` });
   let interior: InteriorView = createInteriorView(renderer.assets);
   const panel = createReadoutPanel({ fontFamily: font }), end = createEndScreen({ fontFamily: font });
-  const paused = new BitmapText({ text: 'PAUSED   ESC: RESUME', style: { fontFamily: font, fontSize: FONT_SIZE * 1.5 } });
+  const paused = new BitmapText({ text: `PAUSED   ESC: RESUME${exitHint}`, style: { fontFamily: font, fontSize: FONT_SIZE * 1.5 } });
   paused.tint = TEXT; paused.anchor.set(0.5, 0.5); paused.position.set((INTERNAL_W - READOUT_COLUMN) / 2, 80); paused.visible = false;
   scene.addChild(layer.container, interior.container, panel.container);
   root.addChild(scene, paused, end.container);   // the shake moves the scene; the banner and the end card stay still
@@ -62,12 +67,13 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const onVisibility = (): void => { if (document.hidden) runtime.pause('hidden'); else runtime.resume('hidden'); };
   window.addEventListener('blur', onBlur); window.addEventListener('focus', onFocus);
   document.addEventListener('visibilitychange', onVisibility);
-  deps.lifecycle?.onSuspend(() => runtime.pause('suspend'));
-  deps.lifecycle?.onResume(() => runtime.resume('suspend'));
+  const offSuspend = deps.lifecycle?.onSuspend(() => runtime.pause('suspend'));
+  const offResume = deps.lifecycle?.onResume(() => runtime.resume('suspend'));
 
   const frame = (ticker: { deltaMS: number }): void => {
     const dt = Math.min(0.1, ticker.deltaMS / 1000);
     runtime.frame(dt);
+    if (deps.onExit && runtime.menuRequested()) { deps.onExit(); return; }   // the caller disposes this duel
     if (runtime.epoch() !== epoch) {   // a restart (spec §4): every view-owned cache starts again
       epoch = runtime.epoch();
       resetFx(fx); layer.reset(); layer.reseed(runtime.seed);   // the next duel's star field
@@ -90,15 +96,21 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     panel.draw(readoutRows({ duel: d, mode: view, active: runtime.active(), other: runtime.otherStatus() }), readoutHelp(view));
     const shake = shakeOffset(fx);
     scene.position.set(shake.x, shake.y);
-    end.draw(endModel(d.tactical.outcome, d.tactical.tick, runtime.seed));
+    end.draw(endModel(d.tactical.outcome, d.tactical.tick, runtime.seed, !!deps.onExit));
   };
   renderer.app.ticker.add(frame);
 
+  let disposed = false;
   const dispose = (): void => {
+    if (disposed) return; disposed = true;
     renderer.app.ticker.remove(frame);
     window.removeEventListener('blur', onBlur); window.removeEventListener('focus', onFocus);
     document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('beforeunload', dispose);
+    offSuspend?.(); offResume?.();
     keyboard.destroy(); pointer.destroy(); runtime.dispose(); interior.destroy();
+    renderer.app.stage.removeChild(root); root.destroy({ children: true });
+    for (const child of hidden) child.visible = true;
   };
   window.addEventListener('beforeunload', dispose, { once: true });
   return dispose;

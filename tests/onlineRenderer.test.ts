@@ -108,12 +108,13 @@ describe('online renderer uses the real streaming client', () => {
       expect(p.health).toBeGreaterThan(0); expect(p.interactPrompt).toBe(''); expect(p.confirmPrompt).toBe(''); expect(p.cancelPrompt).toBe('');
     }
   });
-  it('neutralizes a removed controller exactly once and stops production until a physical producer returns', () => {
-    const h = rig(); h.device('gp:0'); h.setMove(1); h.deliver(); h.pump(); h.pump();
+  it('neutralizes a missing keyboard source exactly once, ignores non-keyboard sources, and resumes when the keyboard returns', () => {
+    const h = rig(); h.device('kb:0'); h.setMove(1); h.deliver(); h.pump(); h.pump();
     expect(h.authority.checkpoint([]).held[2]!.moveX).toBe(1);
-    h.device('gp:0', false); h.pump(); const high = h.authority.checkpoint([]).heldHighWater;
+    h.device('kb:0', false); h.pump(); const high = h.authority.checkpoint([]).heldHighWater;
     h.pump(); h.pump(); expect(h.authority.checkpoint([]).heldHighWater).toEqual(high); expect(h.authority.checkpoint([]).held[2]!.moveX).toBe(0);
-    h.device('gp:1'); h.pump(); h.pump(); expect(h.authority.checkpoint([]).held[2]!.moveX).toBe(1);
+    h.device('gp:0'); h.pump(); h.pump(); expect(h.authority.checkpoint([]).heldHighWater).toEqual(high); expect(h.authority.checkpoint([]).held[2]!.moveX).toBe(0);
+    h.device('kb:0'); h.pump(); h.pump(); expect(h.authority.checkpoint([]).held[2]!.moveX).toBe(1);
   });
   it('waits for validated state ACK, maps physical zero only to seat two, and blur neutralizes once without pause', () => {
     const h = rig(); h.setMove(1); h.pump(); expect(h.viewState).not.toHaveBeenCalled();

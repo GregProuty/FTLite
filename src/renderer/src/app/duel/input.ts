@@ -3,12 +3,15 @@
 import type { Axes } from '../../sim/tactical/state';
 
 /** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones. */
-export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm';
+export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm' | 'menu';
 
-const PRESS_CODES: Readonly<Record<string, KeyAction>> = {
+export const PRESS_CODES: Readonly<Record<string, KeyAction>> = {
   KeyE: 'interact', KeyQ: 'prevLock', Space: 'fireDown', KeyF: 'launch', KeyX: 'stand', Tab: 'switch', Escape: 'pause', KeyC: 'camera',
-  Equal: 'zoomIn', NumpadAdd: 'zoomIn', Minus: 'zoomOut', NumpadSubtract: 'zoomOut', Enter: 'confirm', NumpadEnter: 'confirm'
+  Equal: 'zoomIn', NumpadAdd: 'zoomIn', Minus: 'zoomOut', NumpadSubtract: 'zoomOut', Enter: 'confirm', NumpadEnter: 'confirm', KeyM: 'menu'
 };
+/** The held keys: WASD movement (walk, thrust and turn, steer), E held to repair, Space held to charge. */
+export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' } as const;
+export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
 /** Keys whose browser default (focus moves, page scrolls, history back) must never happen in the duel views. */
 const PREVENT = new Set(['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
 
@@ -21,7 +24,7 @@ export interface KeySample {
 }
 
 export function emptyPresses(): Record<KeyAction, number> {
-  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0 };
+  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0, menu: 0 };
 }
 
 /** The Helm's held axes from a key sample: A/D turn (D clockwise), W thrusts forward, S reverses (W gives moveY −1). */
@@ -50,7 +53,7 @@ export function createDuelKeyboard(target: EventSource): DuelKeyboard {
   };
   const up = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
-    if (e.code === 'Space' && held.has('Space')) presses.fireUp++;
+    if (e.code === FIRE_HELD && held.has(FIRE_HELD)) presses.fireUp++;
     held.delete(e.code);
   };
   const clear = (): void => { held.clear(); presses = emptyPresses(); };
@@ -59,9 +62,9 @@ export function createDuelKeyboard(target: EventSource): DuelKeyboard {
   target.addEventListener('blur', clear as (e: never) => void);
   return {
     sample(): KeySample {
-      const x = (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0), y = (held.has('KeyS') ? 1 : 0) - (held.has('KeyW') ? 1 : 0);
+      const x = (held.has(MOVE_CODES.right) ? 1 : 0) - (held.has(MOVE_CODES.left) ? 1 : 0), y = (held.has(MOVE_CODES.down) ? 1 : 0) - (held.has(MOVE_CODES.up) ? 1 : 0);
       const len = Math.sqrt(x * x + y * y) || 1;
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: held.has('KeyE'), fireHeld: held.has('Space'), presses };
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: held.has(INTERACT_HELD), fireHeld: held.has(FIRE_HELD), presses };
       presses = emptyPresses();
       return out;
     },

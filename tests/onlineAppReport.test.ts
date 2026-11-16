@@ -9,7 +9,7 @@ const fixture = () => ({ version: 1, source: { revision: 'a'.repeat(40), digest:
     mirrors: { initialCommittedTick: 0, initialBeforeBootstrap: true, periodicCapturedTick: 300, periodicCommittedTick: 300, guestReceived: true }, ackBeforeInput: true, generationBefore: 1, generationAfter: 2, botTakeover: true, pausedReconnect: true, blurNeutral: true },
     { capacity: 4, seat: 2, layout: 'cutter', fullReceipts: 2, acks: 2, commands: 2, matched: 2, ownership: true,
     mirrors: { initialCommittedTick: 0, initialBeforeBootstrap: true, periodicCapturedTick: 300, periodicCommittedTick: 300, guestReceived: true }, ackBeforeInput: true, generationBefore: 1, generationAfter: 2, botTakeover: true, pausedReconnect: true, blurNeutral: true }],
-  checks: ['bad-code', 'incompatible', 'cancel-couch'], elapsedMs: 50000,
+  checks: ['bad-code', 'incompatible', 'cancel-single'], elapsedMs: 50000,
   limits: ['loopback-only', 'no-TURN', 'no-rehost', 'no-WAN', 'no-two-machine'] });
 describe('actual online app report admission', () => {
   it.each(['initialCommittedTick', 'initialBeforeBootstrap', 'periodicCapturedTick', 'periodicCommittedTick', 'guestReceived'])('requires actual %s mirror proof', key => {

@@ -92,6 +92,7 @@ describe('the end screen (H-1 spec §4 End)', () => {
     expect(endModel(Outcome.Running, 100, 5)).toBeNull();
     expect(endModel(Outcome.CrewWins, 83 * 60 + 30, 2026)).toMatchObject({ title: 'VICTORY', length: 'DUEL LENGTH 1:23', prompt: 'ENTER: NEW DUEL (SEED 2027)' });
     expect(endModel(Outcome.EnemyWins, 60, 7)!.title).toBe('DEFEAT');
+    expect(endModel(Outcome.CrewWins, 60, 2026, true)!.prompt).toBe('ENTER: NEW DUEL (SEED 2027)   M: MAIN MENU');   // inside the app (main menu spec)
     expect(endModel(Outcome.Draw, 60, 7)!.title).toBe('BOTH SHIPS LOST');
   });
   it('shows only while the duel is decided, and allocates nothing after creation', () => {

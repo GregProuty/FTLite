@@ -60,7 +60,7 @@ async function main() {
       const key=++id;const work=new Promise((resolve,reject)=>{pending.set(key,{resolve,reject});try{p.child.send({...data,...(command==='shutdown'?{shutdownBudgetMs:Math.max(0,Math.min(4500,deadline.remaining(cleaning?8000:10000)-250))}:{}),command,requestId:key},error=>{if(error){pending.delete(key);reject(Error('driver-failed'));}});}catch{pending.delete(key);reject(Error('driver-failed'));}});
       return waitForAppRequest(work,deadline,undefined,cleaning?8000:10000).finally(()=>pending.delete(key));
     };
-    await until(async()=>{try{return await p.request!('status');}catch{if(p.exited)throw Error('driver-exited');return null;}},v=>v?.electron==='37.10.3'&&v?.text?.includes('Couch play'));return p;
+    await until(async()=>{try{return await p.request!('status');}catch{if(p.exited)throw Error('driver-exited');return null;}},v=>v?.electron==='37.10.3'&&v?.text?.includes('Single player'));return p;
   }
   async function phase(p:Owned,value:string){return until(()=>p.request!('status'),v=>v.status.phase===value);}
   const click=(p:Owned,id:string)=>p.request!('click',{id});
@@ -99,8 +99,8 @@ async function main() {
       await deadline.wait(pause(Math.max(0,began+captureAfter-performance.now())),'driver-timeout',10000);
       await phase(app,'paused');peers.push(await capture(app));
     } else {
-      const host=await launch('host'),guest=await launch('guest');await click(host,'host');await click(host,'create-room');const lobby=await phase(host,'lobby');
-      await click(guest,'join');await guest.request!('type',{id:'join-code',text:lobby.status.snapshot.joinCode});await click(guest,'join-room');await phase(guest,'lobby');
+      const host=await launch('host'),guest=await launch('guest');await host.request!('open-multiplayer');await click(host,'host');await click(host,'create-room');const lobby=await phase(host,'lobby');
+      await guest.request!('open-multiplayer');await click(guest,'join');await guest.request!('type',{id:'join-code',text:lobby.status.snapshot.joinCode});await click(guest,'join-room');await phase(guest,'lobby');
       await click(host,'ready');await click(guest,'ready');await until(()=>host.request!('status'),v=>v.status.actions.includes('start'));await click(host,'start');await phase(guest,'running');
       for(const app of [host,guest]) {await app.request!('key',{key:'F',down:true});await pause(100);await app.request!('key',{key:'F',down:false});await click(app,'pause');await phase(app,'paused');await click(app,'pause');await phase(app,'running');}
       await pause(6000);await click(guest,'pause');await phase(host,'paused');
