@@ -1,7 +1,7 @@
 // The duel's view effects (H-1 spec §7 item 8, §8 shake): laser beams, missile bursts and contact sparks from each tick's
 // events, the shake when the crew ship is hit, and the missile trails. Pure and view-owned: never sent to the sim, never
 // hashed; a restart resets it. Times are render seconds.
-import type { DuelEvent, TacticalState } from '../../sim/tactical/state';
+import { missileOf, type DuelEvent, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import type { Point } from './camera';
 import type { PrevBody } from './tacticalModel';
@@ -58,9 +58,9 @@ export function shakeOffset(fx: FxState): Point {
   return { x: Math.round(Math.sin(fx.shakeT * 95) * k), y: Math.round(Math.cos(fx.shakeT * 71) * k) };
 }
 
-/** A missile's interpolated position, or null when none flies. */
+/** Ship i's missile's interpolated position, or null when none flies. `missilePrev` is by owner (ship slot). */
 export function interpolatedMissile(state: TacticalState, missilePrev: readonly (PrevBody | null)[], alpha: number, i: number): PrevBody | null {
-  const m = state.missiles[i];
+  const m = missileOf(state, i);
   if (!m) return null;
   const p = missilePrev[i], h1 = m.heading + m.headingAcc, a = Math.min(1, Math.max(0, alpha));
   if (!p) return { x: m.x, y: m.y, h: h1 };

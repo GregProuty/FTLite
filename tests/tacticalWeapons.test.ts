@@ -25,14 +25,14 @@ function hold(st: TacticalState, ticks: number, over: Partial<ShipInput> = {}): 
 
 describe('laser charge and release (spec §7a, §7 table)', () => {
   it('charges to full in exactly 240 ticks (4 s) while Fire is held', () => {
-    const st = duel(), s = st.ships[0];
+    const st = duel(), s = st.systems[0];
     hold(st, 239);
     expect(s.laserCharge).toBeLessThan(LASER_CHARGE_UNITS);
     tick(st, input());
     expect(s.laserCharge).toBe(LASER_CHARGE_UNITS);
   });
   it('a full release in arc strips a shield layer', () => {
-    const st = duel(), [a, b] = st.ships;
+    const st = duel(), [a, b] = st.systems;
     hold(st, 240);
     tick(st, input({ laserCharge: false }));
     expect([a.shots, a.laserHits, a.layersStripped]).toEqual([1, 1, 1]);
@@ -42,14 +42,14 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     expect(st.events).toContainEqual({ kind: 'laser', ship: 0, hit: true, stripped: true, room: -1, x1: -600, y1: -300, x2: -300, y2: -300 });
   });
   it('an early release discards the charge without a shot', () => {
-    const st = duel(), a = st.ships[0];
+    const st = duel(), a = st.systems[0];
     hold(st, 100);
     tick(st, input({ laserCharge: false }));
     expect(a.laserCharge).toBe(0);
     expect(a.shots).toBe(0);
   });
   it('with shields down, damages the locked room and costs 2 hull; a room at level 2 takes no more room damage', () => {
-    const st = duel(), b = st.ships[1];
+    const st = duel(), b = st.systems[1];
     b.shields = 0;
     tick(st, input({ laserLock: Room.Engines }));
     for (let shot = 0; shot < 3; shot++) {
@@ -62,13 +62,13 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     expect(st.events.at(-1)).toMatchObject({ kind: 'laser', hit: true, stripped: false, room: Room.Engines });
   });
   it('misses outside the arc, out of range or without line of sight', () => {
-    const st = duel(), a = st.ships[0];
+    const st = duel(), a = st.systems[0];
     st.ships[1].x = -900;                                   // behind the crew
     expect(laserEligible(st, 0, 1)).toBe(false);
     hold(st, 240);
     tick(st, input({ laserCharge: false }));
     expect([a.shots, a.laserHits]).toEqual([1, 0]);
-    expect(st.ships[1].shields).toBe(2);
+    expect(st.systems[1].shields).toBe(2);
     Object.assign(st.ships[1], { x: -600 + 460, y: -300 });  // in arc, out of range
     expect(laserEligible(st, 0, 1)).toBe(false);
   });
@@ -86,13 +86,13 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
       expect(Math.hypot(b.x - a.x, b.y - a.y), name).toBeLessThanOrEqual(LASER_RANGE);
       hold(st, 240);
       tick(st, input({ laserCharge: false }));
-      expect([a.shots, a.laserHits], name).toEqual([1, 0]);
-      expect([b.shields, b.hull], name).toEqual([2, SHIP_HULL]);
+      expect([st.systems[0].shots, st.systems[0].laserHits], name).toEqual([1, 0]);
+      expect([st.systems[1].shields, st.systems[1].hull], name).toEqual([2, SHIP_HULL]);
       expect(st.events.at(-1), name).toMatchObject({ kind: 'laser', ship: 0, hit: false });
     }
   });
   it('a full charge held 3 s vents and starts charging again', () => {
-    const st = duel(), a = st.ships[0];
+    const st = duel(), a = st.systems[0];
     hold(st, 240 + LASER_HOLD_TICKS - 1);
     expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
     tick(st, input());
@@ -101,7 +101,7 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     expect(a.laserCharge).toBeGreaterThan(0);
   });
   it('Weapons damage stretches the charge time: 10 s at level 2', () => {
-    const st = duel(), a = st.ships[0];
+    const st = duel(), a = st.systems[0];
     a.rooms[Room.Weapons] = 2;
     hold(st, 599);
     expect(a.laserCharge).toBeLessThan(LASER_CHARGE_UNITS);
@@ -109,7 +109,7 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
   });
   it('an empty Weapons console lets go of Fire without firing or discarding, and freezes the charge', () => {
-    const st = duel(), a = st.ships[0];
+    const st = duel(), a = st.systems[0];
     hold(st, 120);
     const charge = a.laserCharge;
     tick(st, input({ weapons: false, laserCharge: false }));
@@ -126,7 +126,7 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
 
 describe('weapon admission (used by the duel step for reject reasons)', () => {
   it('canCharge, canLaunch and validLock agree with what applyWeaponsInput accepts', () => {
-    const st = duel(), s = st.ships[0];
+    const st = duel(), s = st.systems[0];
     expect([canCharge(st, 0), canLaunch(st, 0)]).toEqual([true, true]);
     s.rooms[Room.Weapons] = 2;
     expect(canLaunch(st, 0)).toBe(false);
@@ -143,7 +143,7 @@ describe('weapon admission (used by the duel step for reject reasons)', () => {
 
 describe('shields (spec §5)', () => {
   it('recharge one layer per 5 s, and 7.5 s at Shields level 1', () => {
-    const st = duel(), b = st.ships[1];
+    const st = duel(), b = st.systems[1];
     b.shields = 0;
     for (let t = 0; t < 300; t++) tick(st, input());
     expect(b.shields).toBe(1);
@@ -154,7 +154,7 @@ describe('shields (spec §5)', () => {
     expect(b.shields).toBe(2);
   });
   it('Shields level 2 holds a part-charged clock exactly, and repair to level 1 resumes it to the exact tick', () => {
-    const st = duel(), b = st.ships[1];
+    const st = duel(), b = st.systems[1];
     b.shields = 1; b.shieldClock = 0;
     for (let t = 0; t < 150; t++) tick(st, input());
     expect(b.shieldClock).toBe(150 * SHIELD_RATE[0]!);                  // 450 of 900
@@ -172,7 +172,7 @@ describe('shields (spec §5)', () => {
     expect([b.shields, b.shieldClock]).toEqual([2, 0]);
   });
   it('a stripping hit resets the recharge clock', () => {
-    const st = duel(), b = st.ships[1];
+    const st = duel(), b = st.systems[1];
     b.shields = 1; b.shieldClock = 0;
     hold(st, 240);
     expect(b.shieldClock).toBe(240 * SHIELD_RATE[0]!);
@@ -184,7 +184,7 @@ describe('shields (spec §5)', () => {
 
 describe('magazine (spec §7b)', () => {
   it('regains one missile every 45 s up to the full magazine', () => {
-    const st = duel(), a = st.ships[0];
+    const st = duel(), a = st.systems[0];
     a.magazine = MAGAZINE - 2;
     for (let t = 0; t < MAGAZINE_REGEN_TICKS; t++) tick(st, input());
     expect(a.magazine).toBe(MAGAZINE - 1);

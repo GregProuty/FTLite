@@ -29,7 +29,7 @@ export interface InteriorOverlay { tints: RoomTint[]; markers: RepairMarker[]; c
  * (0..1) toward lowering it one level; the two role consoles are outlined, free (highlighted) or occupied (dimmed).
  */
 export function interiorOverlay(d: DuelState): InteriorOverlay {
-  const st = d.interior, w = st.derived.width, ship = d.tactical.ships[0];
+  const st = d.interior, w = st.derived.width, ship = d.tactical.systems[0];
   const px = (t: number): { x: number; y: number } => { const tx = t % w; return { x: tx * TILE_PX, y: ((t - tx) / w) * TILE_PX }; };
   const tints: RoomTint[] = [], markers: RepairMarker[] = [];
   for (const p of d.points) {

@@ -8,7 +8,7 @@ import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
-import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { missileOf, Outcome } from '../src/renderer/src/sim/tactical/state';
 import { spaceModule } from '../src/renderer/src/sim/tactical/hash';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -70,7 +70,7 @@ describe('the duel snapshot (spec §6)', () => {
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const f of spaceModule.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
-      const slot = d.tactical.missiles[0] ? 'missiles.0' : 'missiles.1', empty = d.tactical.missiles[0] ? 'missiles.1' : 'missiles.0';
+      const slot = missileOf(d.tactical, 0) ? 'missiles.0' : 'missiles.1', empty = missileOf(d.tactical, 0) ? 'missiles.1' : 'missiles.0';
       const cases: [string, number, number, RegExp][] = [
         ['ships.0.heading', 0, 256, /ships\.0\.heading: out of range/], ['ships.1.heading', 0, 1.5, /ships\.1\.heading/],
         ['ships.0.rooms', 1, 3, /ships\.0\.rooms/], ['ships.0.shields', 0, 3, /ships\.0\.shields/], ['ships.1.magazine', 0, 5, /ships\.1\.magazine/],

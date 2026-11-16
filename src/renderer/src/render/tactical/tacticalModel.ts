@@ -3,7 +3,7 @@
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
 import { gravityAccel } from '../../sim/tactical/physics';
 import { predictPath } from '../../sim/tactical/predict';
-import type { Axes, TacticalState } from '../../sim/tactical/state';
+import { missileOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT, R_MAP, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 
@@ -113,7 +113,7 @@ export function interpolatedShip(state: TacticalState, prev: readonly PrevBody[]
 /** The followed body's interpolated world position, or null when there is none (the camera then holds still). */
 export function followTarget(state: TacticalState, prev: readonly PrevBody[], alpha: number, follow: Follow, own = 0): Point | null {
   if (follow === 'free') return null;
-  if (follow === 'missile') { const m = state.missiles[own]; return m ? { x: m.x, y: m.y } : null; }
+  if (follow === 'missile') { const m = missileOf(state, own); return m ? { x: m.x, y: m.y } : null; }
   const s = interpolatedShip(state, prev, alpha, own);
   return { x: s.x, y: s.y };
 }
@@ -254,7 +254,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
 
   const ships: ShipDraw[] = [];
   for (const i of input.ships) {
-    const b = interpolatedShip(state, prev, alpha, i), s = state.ships[i]!;
+    const b = interpolatedShip(state, prev, alpha, i), s = state.systems[i]!;
     if (!onScreen(b.x, b.y, SHIP_RADIUS * 2)) continue;
     const p = toS(b.x, b.y);
     ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: z, chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, rooms: s.rooms, shields: s.shields });
@@ -286,7 +286,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   if (input.ships.includes(0)) arrow('ship', own.x, own.y, cam.centreX, cam.centreY);
   if (input.ships.includes(1)) { const en = interpolatedShip(state, prev, alpha, 1); arrow('enemy', en.x, en.y, own.x, own.y); }
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
-  const m = state.missiles[0];
+  const m = missileOf(state, 0);
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
   if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight);
 

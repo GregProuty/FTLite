@@ -20,23 +20,23 @@ describe('ship contacts (spec §4 collision matrix)', () => {
     stepFlight(st, IDLE, STILL);
     expect(Math.sqrt(s.x * s.x + s.y * s.y)).toBeCloseTo(PLANET_RADIUS + SHIP_RADIUS, 9);
     expect(s.vy).toBeCloseTo(-60, 9);
-    expect(s.hull).toBe(SHIP_HULL - 4);
+    expect(st.systems[0].hull).toBe(SHIP_HULL - 4);
     expect(s.planetHits).toBe(1);
     Object.assign(s, { vy: 120 });                         // hit again inside the grace window
     stepFlight(st, IDLE, STILL);
-    expect(s.hull).toBe(SHIP_HULL - 4);
+    expect(st.systems[0].hull).toBe(SHIP_HULL - 4);
     expect(s.vy).toBeCloseTo(-60, 9);                      // still bounces
     st.tick += CONTACT_GRACE_TICKS;
     Object.assign(s, { vy: 120 });
     stepFlight(st, IDLE, STILL);
-    expect(s.hull).toBe(SHIP_HULL - 8);
+    expect(st.systems[0].hull).toBe(SHIP_HULL - 8);
     expect(s.planetHits).toBe(2);
   });
   it('ship–asteroid: costs 1 hull and bounces', () => {
     const st = duel(), s = st.ships[0], a = st.map.asteroids[0]!;
     Object.assign(s, { x: a.x, y: a.y - (a.r + SHIP_RADIUS + 1), vx: 0, vy: 120 });
     stepFlight(st, IDLE, STILL);
-    expect(s.hull).toBe(SHIP_HULL - 1);
+    expect(st.systems[0].hull).toBe(SHIP_HULL - 1);
     expect(s.asteroidHits).toBe(1);
     expect(s.vy).toBeCloseTo(-60, 9);
   });
@@ -48,15 +48,15 @@ describe('ship contacts (spec §4 collision matrix)', () => {
     expect(b.x - a.x).toBeCloseTo(2 * SHIP_RADIUS, 9);
     expect(a.vx).toBeCloseTo(-50, 9);
     expect(b.vx).toBeCloseTo(50, 9);
-    expect([a.hull, b.hull]).toEqual([SHIP_HULL - 1, SHIP_HULL - 1]);
+    expect([st.systems[0].hull, st.systems[1].hull]).toEqual([SHIP_HULL - 1, SHIP_HULL - 1]);
     expect([a.shipHits, b.shipHits]).toEqual([1, 1]);
   });
   it('hull never goes below zero', () => {
     const st = duel(), s = st.ships[0];
-    s.hull = 2;
+    st.systems[0].hull = 2;
     Object.assign(s, { x: 0, y: -(PLANET_RADIUS + SHIP_RADIUS + 1), vx: 0, vy: 120 });
     stepFlight(st, IDLE, STILL);
-    expect(s.hull).toBe(0);
+    expect(st.systems[0].hull).toBe(0);
   });
   it('resolves in spec order: ship 0 statics, the pair, then ship 1 statics, so a pushed ship cannot end inside the planet', () => {
     const st = duel(), [a, b] = st.ships, rim = PLANET_RADIUS + SHIP_RADIUS;

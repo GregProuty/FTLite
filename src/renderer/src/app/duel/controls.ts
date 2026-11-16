@@ -19,7 +19,7 @@ export function seatOf(d: DuelState, pid: number): Seat {
 export function repairInReach(d: DuelState, pid: number): number {
   const eid = d.interior.crew[pid]!;
   if (Seated.station[eid]! >= 0 || Life.state[eid] !== LifeState.Conscious) return -1;
-  const here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!), ship = d.tactical.ships[0];
+  const here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!), ship = d.tactical.systems[0];
   const p = d.points.find((q) => ship.rooms[q.tacticalRoom]! > 0 && q.room === here && inReachOfTile(d.interior, eid, q.tile));
   return p ? p.tacticalRoom : -1;
 }

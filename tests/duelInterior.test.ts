@@ -33,7 +33,7 @@ const crewAt = (d: DuelState) => d.interior.crew.map((eid) => ({ x: Position.x[e
 describe('the duel interior through the reused interior layers (H-1 spec §8, §13 risk 1)', () => {
   it('draws a duel interior: tiles, desks, both crew and the damage overlay, fitted left of the readout column', () => {
     const d = createDuel(layout, 5), view = createInteriorView(assets);
-    d.tactical.ships[0].rooms[Room.Shields] = 2;
+    d.tactical.systems[0].rooms[Room.Shields] = 2;
     view.draw(d, crewAt(d), 1, 1 / 60);
     const fit = duelFit(d.interior.derived.width, d.interior.derived.height);
     expect(fit).toEqual({ scale: 1, x: 66, y: 152 });   // the 29 × 13 Cutter is 928 × 416 px: centred in 1060 × 720, never upscaled
@@ -50,9 +50,9 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     const frame = (k: number): void => {
       prev = crewAt(d);
       if (k === 1) step(d, [{ player: 0, command: { kind: 'stand' } }]);
-      else if (k === 20) { d.tactical.ships[0].rooms[Room.Engines] = 1; d.tactical.ships[0].rooms[Room.Weapons] = 2; step(d); }
+      else if (k === 20) { d.tactical.systems[0].rooms[Room.Engines] = 1; d.tactical.systems[0].rooms[Room.Weapons] = 2; step(d); }
       else if (k === 40) { d.repair[Room.Engines] = REPAIR_UNITS / 2; step(d, [{ player: 1, command: { kind: 'stand' } }]); }
-      else if (k === 55) { d.tactical.ships[0].rooms[Room.Engines] = 0; d.tactical.ships[0].rooms[Room.Weapons] = 0; step(d); }
+      else if (k === 55) { d.tactical.systems[0].rooms[Room.Engines] = 0; d.tactical.systems[0].rooms[Room.Weapons] = 0; step(d); }
       else step(d, [], [{ moveX: -1, moveY: 0, interactHeld: false }, NONE]);
       view.draw(d, prev, 0.5, 1 / 60);
     };
@@ -66,7 +66,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     const d = createDuel(layout, 5);
     expect(interiorOverlay(d).tints).toEqual([]);
     expect(interiorOverlay(d).consoles.map((c) => c.free)).toEqual([false, false]);   // player 0 at Navigation, player 1 at Weapons
-    d.tactical.ships[0].rooms[Room.Shields] = 1; d.repair[Room.Shields] = REPAIR_UNITS / 4;
+    d.tactical.systems[0].rooms[Room.Shields] = 1; d.repair[Room.Shields] = REPAIR_UNITS / 4;
     step(d, [{ player: 1, command: { kind: 'stand' } }]);
     const o = interiorOverlay(d);
     expect(o.tints.map((t) => [t.tacticalRoom, t.level])).toEqual([[Room.Shields, 1]]);

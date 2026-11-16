@@ -23,7 +23,7 @@ describe('stepSoloFlight (H-1 spec §9)', () => {
     const before = plain(cloneShip(st.ships[1]));
     for (let t = 0; t < 60; t++) stepSoloFlight(st, { turn: 0, thrust: 0 });
     expect(st.ships[0].shipHits).toBe(0);
-    expect(st.ships[0].hull).toBe(SHIP_HULL);
+    expect(st.systems[0].hull).toBe(SHIP_HULL);
     expect(st.ships[0].x).toBeGreaterThan(-500);
     expect(plain(st.ships[1])).toEqual(before);
   });
@@ -43,7 +43,7 @@ describe('stepSoloFlight (H-1 spec §9)', () => {
     for (let t = 0; t < 10; t++) stepSoloFlight(st, { turn: 0, thrust: 0 });
     const s = st.ships[0];
     expect(s.planetHits).toBe(1);
-    expect(s.hull).toBe(SHIP_HULL - PLANET_CONTACT_HULL);
+    expect(st.systems[0].hull).toBe(SHIP_HULL - PLANET_CONTACT_HULL);
     expect(Math.hypot(s.x, s.y)).toBeGreaterThanOrEqual(PLANET_RADIUS + SHIP_RADIUS - 1e-9);
   });
 

@@ -9,18 +9,13 @@ import { HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS, MAGAZINE, SHIELD_LAY
 /** Tactical rooms (spec §5); the index into Ship.rooms. */
 export const Room = { Weapons: 0, Shields: 1, Engines: 2 } as const;
 
-export interface Ship {
-  x: number; y: number; vx: number; vy: number;
-  /** Heading index 0..255 and the fractional turn accumulator (spec §4). */
-  heading: number; headingAcc: number;
+/** A ship's systems record (engine refactor spec §5, R-2): hull, room damage, shields, the laser, the magazine and the
+ *  weapon counters. Read it as `state.systems[i]`. Until R-2's storage change these are still members of Ship and
+ *  `systems` holds the same objects as `ships`. */
+export interface ShipSystems {
   hull: number;
   /** Damage level 0..2 per Room. */
   rooms: [number, number, number];
-  /** Tick from which contact with body id k may cost hull again: 0 planet, 1..n asteroid k−1, n+1 the other ship. */
-  graceUntil: Int32Array;
-  planetHits: number; asteroidHits: number; shipHits: number;
-  /** Stabilise (spec §6): true while both axes were zero last tick; the skid captured at release and still to remove, and its side (±1). */
-  released: boolean; skidBudget: number; skidSign: number;
   /** Shield layers 0..2 and the recharge clock in SHIELD_RECHARGE_UNITS (spec §5). */
   shields: number; shieldClock: number;
   /** Laser (spec §7a): charge 0..LASER_CHARGE_UNITS (full), ticks a full charge has been held, whether Fire is held, the locked enemy Room. */
@@ -29,6 +24,17 @@ export interface Ship {
   magazine: number; magazineClock: number;
   /** Telemetry counters (spec §13). */
   shots: number; laserHits: number; layersStripped: number; missilesLaunched: number; missileHits: number; missilesLost: number;
+}
+
+export interface Ship extends ShipSystems {
+  x: number; y: number; vx: number; vy: number;
+  /** Heading index 0..255 and the fractional turn accumulator (spec §4). */
+  heading: number; headingAcc: number;
+  /** Tick from which contact with body id k may cost hull again: 0 planet, 1..n asteroid k−1, n+1 the other ship. */
+  graceUntil: Int32Array;
+  planetHits: number; asteroidHits: number; shipHits: number;
+  /** Stabilise (spec §6): true while both axes were zero last tick; the skid captured at release and still to remove, and its side (±1). */
+  released: boolean; skidBudget: number; skidSign: number;
 }
 
 /** A cruise missile in flight (spec §7b). At most one per ship, stored at its owner's index. */
@@ -59,6 +65,8 @@ export type DuelEvent =
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
   ships: [Ship, Ship];
+  /** Each ship's systems record, by ship slot (the same objects as `ships` until R-2's storage change). */
+  systems: [ShipSystems, ShipSystems];
   missiles: [Missile | null, Missile | null];
   hunter: Hunter;
   outcome: number;
@@ -90,13 +98,26 @@ function hunterFor(crew: Spawn): Hunter {
 export function createTacticalState(seed: number): TacticalState {
   const rng = createRng(seed);
   const map = generateMap(rng);
-  const bodies = map.asteroids.length + 2;
+  const bodies = map.asteroids.length + 2, ships: [Ship, Ship] = [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies)];
   return {
-    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
-    ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies)],
+    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap), ships, systems: ships,
     missiles: [null, null], hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: []
   };
 }
+
+/** The ship slot ship i's weapons are locked on (spec §5 "arrays, not pairs"): today the other ship. */
+export function targetOf(_state: TacticalState, i: number): number { return 1 - i; }
+
+/** Ship i's missile in flight, or null (at most one per ship). */
+export function missileOf(state: TacticalState, i: number): Missile | null { return state.missiles[i] ?? null; }
+/** Put a missile in flight for ship i with these flight values (tests and the launch). Returns it. */
+export function placeMissile(state: TacticalState, i: number, m: Missile): Missile {
+  const missile: Missile = { x: m.x, y: m.y, vx: m.vx, vy: m.vy, heading: m.heading, headingAcc: m.headingAcc, age: m.age };
+  state.missiles[i] = missile;
+  return missile;
+}
+/** Take ship i's missile out of flight, with no event (a missile ending goes through the missile step). */
+export function removeMissile(state: TacticalState, i: number): void { state.missiles[i] = null; }
 
 /** Deep copy of the whole tactical state for snapshots, rollback and replay checks, derived from the space module's
  *  fields (sim/tactical/hash.ts): a field the module declares is copied without anything listed here. The map and

@@ -14,7 +14,7 @@ import { queryGrid } from '../tactical/grid';
 import { pursuitTurn } from '../tactical/hunter';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
-import { Room, type Axes } from '../tactical/state';
+import { missileOf, Room, targetOf, type Axes } from '../tactical/state';
 import { BELT_OUTER, LASER_ARC_COS, LASER_HOLD_TICKS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { canCharge, canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, REACH } from '../tuning';
@@ -88,11 +88,11 @@ function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
 
 /** The Helm's axes (spec §3): avoid, then line up, then orbit. */
 function helmAxes(pair: ScriptedPair, d: DuelState): Axes {
-  const t = d.tactical, s = t.ships[0], e = t.ships[1];
+  const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
   const away = hazardAway(d, pair.axes);
   if (away) return { turn: turnToward(s.heading, away.x, away.y), thrust: 1 };
   const ex = e.x - s.x, ey = e.y - s.y;
-  if (laserFull(t, 0) && s.fireHeld && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
+  if (laserFull(t, 0) && t.systems[0].fireHeld && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
     return { turn: turnToward(s.heading, ex, ey), thrust: 0 };
   // Orbit: t is the prograde tangent (the way the ship already circles, clockwise at rest); tilt it toward the planet
   // when outside the radius and away when inside, by at most 30°.
@@ -199,7 +199,7 @@ function inRepairReach(d: DuelState, pid: number, room: number): boolean {
 /** Repair assignment (spec §3 nearest free character): damaged rooms without a repairer, higher level first, then Room
  *  order, each to the free character with the shortest walk, ties to player 1. A finished room frees its repairer. */
 function assignRepairs(pair: ScriptedPair, d: DuelState): void {
-  const rooms = d.tactical.ships[0].rooms;
+  const rooms = d.tactical.systems[0].rooms;
   for (let pid = 0; pid < 2; pid++) if (pair.task[pid]! >= 0 && rooms[pair.task[pid]!] === 0) pair.task[pid as 0 | 1] = -1;
   const open = [Room.Weapons, Room.Shields, Room.Engines].filter((r) => rooms[r] >= 1 && !pair.task.includes(r)).sort((a, b) => rooms[b] - rooms[a]);
   for (const r of open) {
@@ -216,18 +216,18 @@ function assignRepairs(pair: ScriptedPair, d: DuelState): void {
 
 /** The gunner's commands while seated at Weapons (spec §3), and the missile's steer. */
 function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): number {
-  const t = d.tactical, s = t.ships[0], e = t.ships[1], ex = e.x - s.x, ey = e.y - s.y;
-  const want = e.shields > 0 ? Room.Shields : Room.Weapons;
-  if (s.lock !== want) out.push({ kind: 'laserLock', room: want });
-  const m = t.missiles[0];
+  const t = d.tactical, target = targetOf(t, 0), s = t.ships[0], e = t.ships[target]!, ex = e.x - s.x, ey = e.y - s.y, sys = t.systems[0];
+  const want = t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons;
+  if (sys.lock !== want) out.push({ kind: 'laserLock', room: want });
+  const m = missileOf(t, 0);
   if (m) return pursuitTurn(m.heading, e.x - m.x, e.y - m.y);
   if (canLaunch(t, 0) && ex * ex + ey * ey > LASER_RANGE * LASER_RANGE && t.tick - pair.lastLaunch >= MISSILE_GAP) {
     out.push({ kind: 'missileLaunch' }); pair.lastLaunch = t.tick;
     return 0;
   }
   if (!canCharge(t, 0)) return 0;
-  if (!s.fireHeld) out.push({ kind: 'laserCharge', held: true });
-  else if (laserFull(t, 0) && (laserEligible(t, 0, 1) || s.laserHold >= LASER_HOLD_TICKS - 1)) out.push({ kind: 'laserCharge', held: false });   // release on a shot, or before the vent
+  if (!sys.fireHeld) out.push({ kind: 'laserCharge', held: true });
+  else if (laserFull(t, 0) && (laserEligible(t, 0, target) || sys.laserHold >= LASER_HOLD_TICKS - 1)) out.push({ kind: 'laserCharge', held: false });   // release on a shot, or before the vent
   return 0;
 }
 

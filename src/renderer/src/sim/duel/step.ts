@@ -46,7 +46,7 @@ function seated(d: DuelState, pid: number): boolean { return Seated.station[d.in
 /** Each standing, present, conscious player holding Interact inside a damaged room's repair room and in reach of its
  *  point. Pushes a repairWork event per worker and a repairDone event per room whose level drops (H-0c-ii-a spec §4). */
 function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
-  const crewShip = d.tactical.ships[0], workers: number[][] = [[], [], []];
+  const crewShip = d.tactical.systems[0], workers: number[][] = [[], [], []];
   for (let pid = 0; pid < 2; pid++) {
     if (!d.present[pid as 0 | 1] || !conscious(d, pid) || seated(d, pid) || !(held[pid] ?? NO_HELD).interactHeld) continue;
     const eid = d.interior.crew[pid]!, here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!);

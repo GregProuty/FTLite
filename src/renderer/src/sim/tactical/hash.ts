@@ -78,6 +78,7 @@ export const spaceModule: SimModule<TacticalState> = {
   notSnapshotted: {
     map: 'regenerated from the seed by generateMap; the duel snapshot checks its mapHash',
     grid: 'the broad-phase grid, rebuilt from the map',
+    systems: 'the same Ship objects as ships until R-2 moves the systems record out',
     events: 'per-tick events for the views, cleared every tick'
   },
   commands: ['laserLock', 'laserCharge', 'missileLaunch'],
@@ -103,6 +104,7 @@ export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const shell = (src: Ship): Ship => ({ ...src, rooms: [0, 0, 0], graceUntil: new Int32Array(src.graceUntil.length) });
   const copy: TacticalState = { ...s, rng: { s: 0 }, ships: [shell(s.ships[0]), shell(s.ships[1])], missiles: [null, null],
     hunter: { ...s.hunter, trail: new Float64Array(s.hunter.trail.length) }, events: s.events.map((e) => ({ ...e })) };
+  copy.systems = copy.ships;
   const values: number[] = [];
   flattenModule(spaceModule, s, values);
   unflattenModule(spaceModule, copy, values, 0);

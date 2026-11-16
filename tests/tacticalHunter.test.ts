@@ -3,7 +3,7 @@ import { nextInt } from '../src/shared/rng';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
 import { hunterThink, pursuitTurn } from '../src/renderer/src/sim/tactical/hunter';
-import { createTacticalState, HunterMode, Outcome, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, HunterMode, missileOf, Outcome, placeMissile, removeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HUNTER_JITTER_TICKS, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_WALK_TICKS, LASER_CHARGE_UNITS, REPAIR_WORK_TICKS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 
@@ -29,7 +29,7 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     Object.assign(st.ships[0], { x: 0, y: -300 });                       // dead astern of an enemy facing west, 300 away
     expect(hunterThink(st).axes).toEqual({ turn: 1, thrust: 0 });
     expect(pursuitTurn(0, 0, -10)).toBe(0);                               // dead ahead: no turn
-    st.missiles[1] = { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 };   // pointing north
+    placeMissile(st, 1, { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 });   // pointing north
     st.hunter.trail.fill(0);
     for (let k = 0; k < st.hunter.trail.length; k += 2) { st.hunter.trail[k] = -300; st.hunter.trail[k + 1] = 0; }   // the crew was due south
     expect(hunterThink(st).steer).toBe(1);
@@ -44,7 +44,7 @@ describe('hunter: flying (spec §9 Hunt)', () => {
   });
   it('steers its missile at exactly where the crew was 18 calls ago, across several trail wraps', () => {
     const st = facing();
-    st.missiles[1] = { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 };   // pointing north
+    placeMissile(st, 1, { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 });   // pointing north
     const steers: number[] = [];
     for (let k = 0; k < 72; k++) {
       st.ships[0].x = Math.floor(k / 18) % 2 === 0 ? -200 : -400;     // 18 calls east of the missile, 18 west, and so on
@@ -56,7 +56,7 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     expect(steers.slice(54, 72)).toEqual(new Array(18).fill(1));
   });
   it('draws exactly one jitter per scheduled release, none while it waits, and redraws after a cancel', () => {
-    const st = facing(), me = st.ships[1];
+    const st = facing(), me = st.systems[1];
     me.fireHeld = true; me.laserCharge = LASER_CHARGE_UNITS;
     let seed = 1;
     while (nextInt({ s: seed }, HUNTER_JITTER_TICKS + 1) < 3) seed++;   // a seed whose first jitter is at least 3 ticks
@@ -118,7 +118,7 @@ describe('hunter: flying (spec §9 Hunt)', () => {
 
 describe('hunter: firing (spec §9 Firing)', () => {
   it('presses Fire first, then releases within 0 to 12 ticks of being full and in arc, drawing one jitter', () => {
-    const st = facing(), me = st.ships[1];
+    const st = facing(), me = st.systems[1];
     expect(hunterThink(st).laserCharge).toBe(true);
     me.fireHeld = true; me.laserCharge = LASER_CHARGE_UNITS;
     const rng = st.rng.s;
@@ -133,33 +133,33 @@ describe('hunter: firing (spec §9 Firing)', () => {
   it('locks Shields until the crew Shields room is at level 2, then Weapons', () => {
     const st = facing();
     expect(hunterThink(st).laserLock).toBe(Room.Shields);
-    st.ships[0].rooms[Room.Shields] = 2;
+    st.systems[0].rooms[Room.Shields] = 2;
     expect(hunterThink(st).laserLock).toBe(Room.Weapons);
   });
   it('launches a missile within 400 units, then not again for 30 s after a launch', () => {
     const st = facing();
     stepDuel(st, IDLE_INPUT);
-    expect(st.missiles[1]).not.toBeNull();
+    expect(missileOf(st, 1)).not.toBeNull();
     expect(st.hunter.lastLaunch).toBe(0);
-    st.missiles[1] = null;
+    removeMissile(st, 1);
     st.tick = HUNTER_MISSILE_COOLDOWN_TICKS - 1;
     expect(hunterThink(st).missileLaunch).toBe(false);
     st.tick = HUNTER_MISSILE_COOLDOWN_TICKS;
     expect(hunterThink(st).missileLaunch).toBe(true);
   });
   it('a launch refused on the tick (the crew knocks its Weapons room to level 2 first) costs no cooldown', () => {
-    const st = facing(), [crew, me] = st.ships;
+    const st = facing(), [crew, me] = st.systems;
     me.rooms[Room.Weapons] = 1; me.shields = 0;
     crew.lock = Room.Weapons; crew.fireHeld = true; crew.laserCharge = LASER_CHARGE_UNITS;
     const before = st.hunter.lastLaunch;
     stepDuel(st, { ...IDLE_INPUT, laserCharge: false });
     expect(me.rooms[Room.Weapons]).toBe(2);
-    expect(st.missiles[1]).toBeNull();
+    expect(missileOf(st, 1)).toBeNull();
     expect(st.hunter.lastLaunch).toBe(before);
   });
   it('steers its missile toward where the crew was 18 ticks ago', () => {
     const st = facing();
-    st.missiles[1] = { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 };   // pointing north
+    placeMissile(st, 1, { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 });   // pointing north
     st.hunter.trail.fill(-600);                                          // the crew was at (−600, −600): north-west
     expect(hunterThink(st).steer).toBe(-1);
   });
@@ -167,7 +167,7 @@ describe('hunter: firing (spec §9 Firing)', () => {
 
 describe('hunter: repair (spec §9 Repair)', () => {
   it('walks 6 s and works 4 s on a level-2 room with that console empty, then lowers it one level', () => {
-    const st = facing(), me = st.ships[1];
+    const st = facing(), me = st.systems[1];
     me.rooms[Room.Engines] = 2;
     let input = hunterThink(st);
     expect(st.hunter.mode).toBe(HunterMode.Repair);
@@ -179,7 +179,7 @@ describe('hunter: repair (spec §9 Repair)', () => {
     expect(st.hunter.mode).toBe(HunterMode.Hunt);
   });
   it('repairs a level-1 room only while the crew is out of laser range; Weapons repair empties the Weapons console', () => {
-    const st = facing(), me = st.ships[1];
+    const st = facing(), me = st.systems[1];
     me.rooms[Room.Weapons] = 1;
     hunterThink(st);
     expect(st.hunter.mode).toBe(HunterMode.Hunt);
@@ -189,13 +189,13 @@ describe('hunter: repair (spec §9 Repair)', () => {
     expect([input.helm, input.weapons, input.laserCharge, input.missileLaunch]).toEqual([true, false, null, false]);
   });
   it('picks the highest level first, ties Engines, then Weapons, then Shields', () => {
-    const st = facing(), me = st.ships[1];
+    const st = facing(), me = st.systems[1];
     st.ships[0].x = -900;
     me.rooms = [1, 1, 1];
     hunterThink(st);
     expect(st.hunter.room).toBe(Room.Engines);
     const st2 = facing();
-    st2.ships[1].rooms = [1, 2, 1];
+    st2.systems[1].rooms = [1, 2, 1];
     hunterThink(st2);
     expect(st2.hunter.room).toBe(Room.Shields);
   });
@@ -209,12 +209,12 @@ describe('duel step (spec §4 to §9)', () => {
   it('the hunter wears down a crew that only sits there, and the duel ends', () => {
     const st = createTacticalState(9);
     for (let t = 0; t < 60 * 600 && st.outcome === Outcome.Running; t++) stepDuel(st, IDLE_INPUT);
-    expect(st.ships[0].hull).toBeLessThan(SHIP_HULL);
-    expect(st.ships[1].shots + st.ships[1].missilesLaunched).toBeGreaterThan(0);
+    expect(st.systems[0].hull).toBeLessThan(SHIP_HULL);
+    expect(st.systems[1].shots + st.systems[1].missilesLaunched).toBeGreaterThan(0);
   });
   it('stops advancing once the duel has ended', () => {
     const st = facing();
-    st.ships[0].hull = 0;
+    st.systems[0].hull = 0;
     stepDuel(st, IDLE_INPUT);
     expect(st.outcome).toBe(Outcome.EnemyWins);
     const tick = st.tick;
