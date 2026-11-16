@@ -1,0 +1,11 @@
+topic=engine-r0-impl
+subject_kind=impl
+subject=scripts/bless-golden.ts scripts/determinism/bless.ts scripts/determinism/rebless-version.ts scripts/golden/baselineCheck.ts scripts/golden/blessGuard.ts scripts/golden/canonical-trace.ts scripts/golden/versionOnly.ts src/renderer/src/sim/canonicalFields.ts src/renderer/src/sim/duel/hash.ts src/renderer/src/sim/tuning.ts tests/blessGuard.test.ts tests/duelGolden.test.ts tests/fixtures/determinism-v2.json tests/golden.test.ts tests/golden/basic.json tests/golden/duel-1.json tests/netParity.test.ts tests/simStateCompleteness.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\engine-r0
+base=8b141b9
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm run build && npm test
+created=2026-11-16
+head_at_setup=8d30d74
