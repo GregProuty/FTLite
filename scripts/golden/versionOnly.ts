@@ -4,8 +4,9 @@
 // flattened state at EVERY tick with the version value (flatten index 0) zeroed:
 //   - the golden replay `npm run bless` writes (scriptedSemanticReplay(2026, 4, 7200) on the starter layout);
 //   - every schedule of tests/fixtures/determinism-v2.json (its checkpoints moved to the current SIM_VERSION first).
-// No side effects on import. canonical-trace.ts is the CLI; bless-golden.ts and rebless-version.ts call
-// verifyVersionOnly() right before they write.
+// No side effects on import. canonical-trace.ts is the CLI; bless-golden.ts calls verifyVersionOnly() right before it
+// writes. verifyUnchanged() is the same comparison for a refactor that keeps SIM_VERSION (engine refactor R-1): the
+// per-tick canonical trace must be identical at the same version.
 import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -74,6 +75,12 @@ export function verifyVersionOnly(): VersionOnlyResult {
   if (!existsSync(TRACE_FILE)) return { ok: false, message: `no baseline at ${TRACE_FILE}: run \`canonical-trace.ts baseline\` before the bump` };
   const was = JSON.parse(readFileSync(TRACE_FILE, 'utf8')) as Trace, now = trace();
   if (was.simVersion === now.simVersion) return { ok: false, message: `the baseline is already at sim version ${now.simVersion}: it is stale or SIM_VERSION was not bumped` };
+  const problems = differences(was, now);
+  if (problems.length > 0) return { ok: false, message: `NOT version-only, bless nothing:\n${problems.join('\n')}` };
+  return { ok: true, message: `per-tick canonical trace identical, sim version ${was.simVersion} → ${now.simVersion}: ${counts(now)}` };
+}
+
+function differences(was: Trace, now: Trace): string[] {
   const problems: string[] = [];
   const g = firstDiff(was.golden, now.golden);
   if (g >= 0) problems.push(`golden replay differs at tick ${g + 1}`);
@@ -81,6 +88,18 @@ export function verifyVersionOnly(): VersionOnlyResult {
     const k = firstDiff(was.determinism[runId], now.determinism[runId]);
     if (k >= 0) problems.push(`determinism-v2 ${runId} differs at its tick ${k + 1}`);
   }
-  if (problems.length > 0) return { ok: false, message: `NOT version-only, bless nothing:\n${problems.join('\n')}` };
-  return { ok: true, message: `per-tick canonical trace identical, sim version ${was.simVersion} → ${now.simVersion}: ${counts(now)}` };
+  return problems;
+}
+
+/**
+ * The refactor check: the baseline in the temp folder, recorded before a change that keeps SIM_VERSION, against a
+ * fresh trace of the current code. Not ok when there is no baseline, when the version moved, or when any tick differs.
+ */
+export function verifyUnchanged(): VersionOnlyResult {
+  if (!existsSync(TRACE_FILE)) return { ok: false, message: `no baseline at ${TRACE_FILE}: run \`canonical-trace.ts baseline\` before the change` };
+  const was = JSON.parse(readFileSync(TRACE_FILE, 'utf8')) as Trace, now = trace();
+  if (was.simVersion !== now.simVersion) return { ok: false, message: `the baseline is at sim version ${was.simVersion}, the code at ${now.simVersion}: use \`check\` for a bump` };
+  const problems = differences(was, now);
+  if (problems.length > 0) return { ok: false, message: `canonical trace CHANGED:\n${problems.join('\n')}` };
+  return { ok: true, message: `per-tick canonical trace unchanged at sim version ${now.simVersion}: ${counts(now)}` };
 }
