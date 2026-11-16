@@ -1,0 +1,61 @@
+{
+  "passes": [
+    {
+      "path": "recovery-skiff",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 19590
+    },
+    {
+      "path": "recovery-cutter",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 21519
+    },
+    {
+      "path": "recovery-paused",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 19369
+    },
+    {
+      "path": "recovery-upload",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 19049
+    },
+    {
+      "path": "recovery-race",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 28470
+    },
+    {
+      "path": "fix-1/recovery-stale",
+      "revision": "689c8354ff0841aff6ba8f65e5c3bcec1509de33",
+      "elapsedMs": 42525
+    }
+  ],
+  "rejected": [
+    "recovery-stale",
+    "recovery-race-failed-leave",
+    "recovery-stale-failed-leave",
+    "recovery-transport-failed-observation",
+    "recovery-upload-diagnostic-1",
+    "recovery-upload-diagnostic-5",
+    "recovery-timeout",
+    "recovery-guest-failure",
+    "recovery-transport-failure",
+    "recovery-worker-death",
+    "recovery-startup-timeout",
+    "recovery-build-timeout",
+    "fix-1/recovery-unresponsive-cleanup"
+  ],
+  "app": {
+    "revision": "689c8354ff0841aff6ba8f65e5c3bcec1509de33",
+    "elapsedMs": 49381
+  },
+  "fault": {
+    "revision": "689c8354ff0841aff6ba8f65e5c3bcec1509de33",
+    "elapsedMs": 13226,
+    "budgetMs": 20000
+  },
+  "instrumentedAuthoritySha256": "b1e482a3891dadd33a906277c901c709c9de51ebdce841157f99dad26f9d7981",
+  "uniqueObservedPids": 82,
+  "livePidCandidates": []
+}

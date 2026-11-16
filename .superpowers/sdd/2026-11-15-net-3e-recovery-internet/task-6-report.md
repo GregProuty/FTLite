@@ -1,6 +1,6 @@
 # Net-3e Task 6: real-service actual-application recovery proof
 
-**Local recovery PASS.** Six real-service recovery scenarios and six expected-failure cleanup probes completed. Controller review remains separate. The controller owns `progress.md`; this implementer has not edited or staged it.
+**Local recovery PASS after fix round 1; scoped re-review pending.** [The fix report](task-6-fix-1-report.md) supersedes the initial validator/deadline/cleanup claims below. The original stale report is retained but rejected by the corrected deadline-provenance check; `fix-1/recovery-stale.json` supplies the replacement pass. The remainder of this document records the initial round and its original tested revisions. The controller owns `progress.md`; this implementer has not edited or staged it.
 
 ## Source and implementation
 
@@ -51,7 +51,7 @@ The historical cancellation-to-couch failure did not recur in the final existing
 
 ## Final actual-application evidence
 
-Each report is `recovery-NAME.json` with its corresponding `.log` in this directory. All six normal commands exited 0; all retained reports pass the final strict validator. All observed apps and utilities exited, helper/workerd exited, resource counters reached zero and each exact temporary root was removed. No final click needed a retry.
+Each initial report is `recovery-NAME.json` with its corresponding `.log` in this directory. All six initial normal commands exited 0 and passed the then-current validator. The corrected validator accepts five and rejects the original stale deadline trace, replaced in fix round 1. All observed apps and utilities exited, helper/workerd exited, resource counters reached zero and each exact temporary root was removed. No final click needed a retry.
 
 | Scenario | Tested source | Elapsed ms | Restored tick | Host generation |
 |---|---|---:|---:|---:|
