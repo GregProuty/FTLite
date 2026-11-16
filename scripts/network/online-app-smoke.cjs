@@ -24,7 +24,8 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function checkpointProof(bytes) {
   const b = Buffer.from(bytes), cp = JSON.parse(b.toString());
   return { payloadSha256: hash(b), runId: cp.init.runId, tick: cp.snapshot.header.tick, phase: cp.phase,
-    commandHighWater: cp.commandHighWater, heldHighWater: cp.heldHighWater, botMemoryHash: hash(JSON.stringify(cp.botControllers)), snapshotHash: hash(JSON.stringify(cp.snapshot)) };
+    commandHighWater: cp.commandHighWater, heldHighWater: cp.heldHighWater, botMemoryHash: hash(JSON.stringify(cp.botControllers)), botMemory:cp.botControllers,
+    reconciledBotMemory:require(join(directory,'observer/utility.cjs')).reconciledMemory(cp), snapshotHash: hash(JSON.stringify(cp.snapshot)) };
 }
 const nativeFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {

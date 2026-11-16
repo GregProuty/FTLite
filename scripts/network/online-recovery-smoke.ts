@@ -6,7 +6,7 @@ import { join, resolve, sep } from 'node:path';
 import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
-import { ONLINE_RECOVERY_ARTIFACTS, validateOnlineRecoveryReport } from './online-recovery-report';
+import { ONLINE_RECOVERY_ARTIFACTS, validateOnlineRecoveryReport, validateRecoveryMemory } from './online-recovery-report';
 import { onlineAppFailureCode, onlineAppStderrDiagnostic, onlineAppWaitDiagnostic } from './online-app-diagnostics';
 import { createLauncherDeadline, stopOwnedProcess, removeOwnedDirectory } from './lease-smoke-lifecycle';
 
@@ -185,7 +185,9 @@ async function main() {
     assert(restored.status.snapshot.hostGeneration>committed.hostGeneration && restored.status.snapshot.hostSeatId===seat,'wrong claim ownership');
     assert(restored.status.mirror.committed.hostGeneration===restored.status.snapshot.hostGeneration && restored.status.mirror.committed.capturedTick===restore.tick,'paused baseline not committed');
     const baseline=restored.recovery.puts.find((p:any)=>p.phase==='paused' && p.tick===restore.tick);
-    assert(baseline && baseline.snapshotHash===restore.snapshotHash && baseline.botMemoryHash===restore.botMemoryHash,'restored snapshot or bot memory changed');
+    proof={committed,restored:restore,pausedBaseline:baseline,observedPuts:restored.recovery.puts,observedCaptures:restored.recovery.captures};
+    assert(baseline && baseline.snapshotHash===restore.snapshotHash,'restored canonical snapshot changed');
+    const memoryReconciliation=validateRecoveryMemory(restore,baseline);
     assert(JSON.stringify(baseline.commandHighWater)===JSON.stringify(restore.commandHighWater) && JSON.stringify(baseline.heldHighWater)===JSON.stringify(restore.heldHighWater),'restored watermarks changed');
     const frozen = observation(restored).publications.at(-1); await delay(350);
     assert(observation(await status(g)).publications.at(-1).tick===frozen.tick,'auto resume');
@@ -216,7 +218,7 @@ async function main() {
       serviceBytesRestored:true,fullAck:true,ackBeforeInput:true,ownership:true,pausedBaselineCommitted:true,explicitResume:true,autoResume:false,
       agreement:agreement.same,initialCommittedTick:0,periodicCapturedTick:300,oldHostRejoinedSeat:rejoined.status.ownSeat,
       seatGenerationBefore:before.status.snapshot.seats[0].seatGeneration,seatGenerationAfter:rejoined.status.snapshot.seats[0].seatGeneration,
-      observations:{restored:observation(restored),afterResume:inputs},mirrorReceipts:restored.mirrorProof.receipts,pausedBaseline:baseline};
+      observations:{restored:observation(restored),afterResume:inputs},mirrorReceipts:restored.mirrorProof.receipts,pausedBaseline:baseline,memoryReconciliation};
     if(contenders) proof.contenders=contenders;
     if(oldHostFence) proof.oldHostFence=oldHostFence;
     if(scenario==='upload') {

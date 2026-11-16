@@ -1,4 +1,23 @@
 import { ONLINE_APP_ARTIFACTS } from './online-app-report';
+export function validateRecoveryMemory(before:any,after:any): string[] {
+  const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+  if(!Array.isArray(before?.botMemory)||!Array.isArray(after?.botMemory)||before.botMemory.length!==after.botMemory.length) throw Error('missing bot memory');
+  return before.botMemory.map((ui:any,index:number)=>{
+    const next=after.botMemory[index];
+    if(same(ui,next)) return 'unchanged';
+    const dormant=ui.stations.length===0 && ui.groupBar.length===0 && ui.navigationVisit===null
+      && ui.players.every((p:any)=>p.heldDir===0 && p.repeat===0 && p.lastTick===-1 && (p.botDecisionTick??-1)===-1 && p.seat===-1 && p.pendingVote===null);
+    if(!next || next.players.length!==ui.players.length || next.players.some((p:any,i:number)=>p.nextSequence!==before.commandHighWater[i]+1 || p.heldSequence!==before.heldHighWater[i])) throw Error('invalid reconciled producer counters');
+    if(dormant) {
+      if(!same(next,before.reconciledBotMemory?.[index])) throw Error('unexplained dormant memory change');
+      return 'reconciled-dormant';
+    }
+    const withCounters=structuredClone(ui);
+    for(let i=0;i<withCounters.players.length;i++) { withCounters.players[i].nextSequence=before.commandHighWater[i]+1; withCounters.players[i].heldSequence=before.heldHighWater[i]; }
+    if(!same(next,withCounters)) throw Error('populated bot memory changed');
+    return 'reconciled-counters';
+  });
+}
 export const ONLINE_RECOVERY_ARTIFACTS = [...ONLINE_APP_ARTIFACTS, 'scripts/network/online-recovery-smoke.ts', 'scripts/network/online-recovery-report.ts', 'scripts/network/online-recovery-utility.ts', 'scripts/network/online-recovery-utility.cjs', 'scripts/network/online-recovery-instrument.cjs', 'src/main/network/onlineExit.ts'];
 /** Individual, bounded real-app passes. The validation document must list every required scenario. */
 export function validateOnlineRecoveryReport(value: unknown): void {
@@ -27,6 +46,8 @@ export function validateOnlineRecoveryReport(value: unknown): void {
     || !hash(p.restored?.botMemoryHash) || ['commandHighWater','heldHighWater'].some(k => !Array.isArray(p.restored[k]) || p.restored[k].length < 2 || p.restored[k].some((n: any) => !Number.isSafeInteger(n) || n < 0))
     || ['serviceBytesRestored','fullAck','ackBeforeInput','ownership','pausedBaselineCommitted','explicitResume'].some(k => p[k] !== true) || p.autoResume !== false
     || p.agreement?.runId !== p.runId || typeof p.agreement?.hash !== 'string' || !positive(p.agreement?.tick)) fail();
+  if(!hash(p.restored.snapshotHash) || p.pausedBaseline?.snapshotHash!==p.restored.snapshotHash) fail();
+  validateRecoveryMemory(p.restored,p.pausedBaseline);
   if (r.scenario === 'stale') {
     const f = p.oldHostFence;
     if (!f || !Number.isFinite(f.mainBlockedMs) || f.mainBlockedMs <= 12000 || ['utilityAlive','lastAdvanceBeforeDeadline','closedAdmission','noOldCommit','lateReplyRejected','serverExpired'].some(k => f[k] !== true)) fail();
