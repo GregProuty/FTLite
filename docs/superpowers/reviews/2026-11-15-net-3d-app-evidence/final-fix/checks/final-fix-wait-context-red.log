@@ -1,0 +1,38 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ❯ tests/onlineAppDiagnostics.test.ts (5 tests | 1 failed) 68ms
+   × application driver diagnostics > reports only enumerated wait role/phase context, including hostile last status values 4ms
+     → (0 , onlineAppWaitDiagnostic) is not a function
+   ✓ application driver diagnostics > allows only fixed launcher failure codes and enumerated stderr context 1ms
+   ✓ application driver diagnostics > does not disclose uncaught exception messages or stacks 3ms
+   ✓ application driver diagnostics > redacts hostile preload paths and page error text while retaining fixed context 1ms
+   ✓ application driver diagnostics > returns a fixed driver failure without reflecting arbitrary commands or errors 59ms
+node.exe : 
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/onlineAppDiagnostics.test.ts > application driver diagnostics > reports only enumerated wait role/phase 
+context, including hostile last status values
+TypeError: (0 , onlineAppWaitDiagnostic) is not a function
+ ❯ tests/onlineAppDiagnostics.test.ts:34:12
+     32| describe('application driver diagnostics',()=>{
+     33|   it('reports only enumerated wait role/phase context, including hosti…
+     34|     expect(onlineAppWaitDiagnostic('guest idle', 'joining')).toEqual({…
+       |            ^
+     35|     expect(onlineAppWaitDiagnostic(secret, secret)).toEqual({ code: 'A…
+     36|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  13:32:54
+   Duration  681ms (transform 202ms, setup 318ms, collect 13ms, tests 68ms, environment 0ms, prepare 81ms)
+

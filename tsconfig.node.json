@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2023", "module": "ESNext", "moduleResolution": "bundler",
-    "strict": true, "composite": true, "skipLibCheck": true, "noUncheckedIndexedAccess": true,
+    "strict": true, "composite": true, "skipLibCheck": true, "noUncheckedIndexedAccess": true, "resolveJsonModule": true,
     "outDir": "./.tsout/node", "emitDeclarationOnly": true,
     "types": ["node"]
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "build/contentDigest.ts", "electron.vite.config.ts"]
+  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "src/network/session/serviceClient.ts", "src/network/rtc/contracts.ts", "src/renderer/src/net/env.d.ts", "src/renderer/src/sim/**/*", "src/renderer/src/sim/**/*.json", "src/renderer/src/net/contracts.ts", "src/renderer/src/net/codec.ts", "src/renderer/src/net/receivePolicy.ts", "src/renderer/src/authority/checkpoint.ts", "src/renderer/src/authority/ledger.ts", "src/renderer/src/clientControl/cardController.ts", "src/renderer/src/clientControl/inputFrame.ts", "build/contentDigest.ts", "build/isolatedBuildReporter.ts", "electron.vite.config.ts"]
 }

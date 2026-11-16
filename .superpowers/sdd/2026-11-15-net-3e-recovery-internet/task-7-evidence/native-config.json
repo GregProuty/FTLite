@@ -1,0 +1,57 @@
+{
+  "electron": "37.10.3",
+  "checks": [
+    {
+      "policy": "all",
+      "servers": 1,
+      "urls": 2,
+      "credentialsPreserved": true,
+      "noGathering": true,
+      "noDescription": true
+    },
+    {
+      "policy": "relay",
+      "servers": 1,
+      "urls": 2,
+      "credentialsPreserved": true,
+      "noGathering": true,
+      "noDescription": true
+    }
+  ],
+  "peersClosed": 2,
+  "windows": 0,
+  "routeEstablished": false,
+  "source": {
+    "revision": "ca8060496b1b8499d469d977c07a56be12cfa947",
+    "dirty": true,
+    "hashes": {
+      "scripts/network/rtc-config-smoke.cjs": "da5efb30e732beb030c24953e376f89748912293e9896e47d4f83327c7759479",
+      "scripts/network/rtc-config-smoke.ts": "1b3782119cc11476c7a68337bb0aae2277f07479e5b52332ee0eb477d1910dc3",
+      "out/main/authorityHost.js": "1a35cbb1ca75b52c6ec3e878bdb60410f11245602b9e1678c4b98c1d050dc052",
+      "out/main/cutter.js": "5f2709687dfd4baca44953be62b5d0a68676c136034dfa15dba27241a16ab329",
+      "out/main/hostProcess.js": "1e5a1d3dcf5161404ffecb442d01f2dfca2cbac8ed908151ac0aff46ad3827f8",
+      "out/main/hostProcessProtocol.js": "be82845b380168b7b8332bf08d28de2de9951edefb1b6dfecc13a3949c6078f0",
+      "out/main/index.js": "4eab09bdda7b5478014d57364e1590780826a16badcea30c94f8f1d8c74e3ef7",
+      "out/main/rtcTransport.js": "cc7212ec8e12f0a9b0699f672016677ea817b588bb9e38f9ab7a9448e71cc937",
+      "out/main/transportWindow.js": "5639d26c0b68a6bce01abaa341d3a80ed4d77d22dbdfc6f7221f1b1d945cb3d2",
+      "out/preload/index.js": "e628a2f384b9f5503a91060170e16a8cd22621d9268dea8987b009444eff071f",
+      "out/preload/networkTransport.js": "3c1160797156658f26e13dd2609d316e4b308c01d82ae106a679d7ab8002dc82",
+      "out/renderer/index.html": "781cc9ee18e00418f706eb2d64f06899bdd65eb914cae83a7b64213a54c3ab45",
+      "out/renderer/networkTransport.html": "9f14f15a6ad9268960de62e4ccefc1773c564ccccec71be885d3098b57c3744b",
+      "out/renderer/assets/bridge-Sxw1vNWZ.js": "81c517fa0acf857af3531665b25cd45b61695a887e0c18a2912e9c95803a86c5",
+      "out/renderer/assets/browserAll-B2_AilG7.js": "c2481699d0d2e82e64f19f0c71df235bb42a37b9a1a4ab64b65556b14d163d8e",
+      "out/renderer/assets/BufferResource-Cu8Spt_i.js": "79c8b4f6a92f7573fc92a1c51053a117cd123827fcb0235e1913a0461e83dd91",
+      "out/renderer/assets/CanvasRenderer-RWsRAM1s.js": "7309f81d19e97de023e5be40a01445a59fc3c70be11676775c0f2bb0926808ae",
+      "out/renderer/assets/Filter-BGeiUxn2.js": "ae7071f7e18ee92a1fe0b5b2efb68d5a9f8f6c5bb6d5af79eb805e1d0e3911b6",
+      "out/renderer/assets/index-2PjRlZky.js": "380420c3e6663a487cb88f5808712966ab83475c96e1c5a62e1b554f242d858f",
+      "out/renderer/assets/networkTransport-BhUuKAjb.js": "94e1f327ec3df5f03c3c95e2011bffb058db2b5acf00cea913d50677636a5596",
+      "out/renderer/assets/RenderTargetSystem-Lq0l92wQ.js": "4875117a895c1fe00092185c5b299433249d10bea4a3b132f2a5013e431f488d",
+      "out/renderer/assets/WebGLRenderer-OL-hqlXN.js": "865b76d4c0c8266f743dc5f12dd57fb45ffec8eb0a21dd8ab3d5fce7b2db6f8e",
+      "out/renderer/assets/WebGPURenderer-DuEyeTMA.js": "a42b357ef30ffb7252b982474540cbbb62ef6e1d85760aef009ada53de3c376d",
+      "out/renderer/assets/webworkerAll-toDlD6XG.js": "2a83357e64209ab82a6d29e8dffe91d18995cac3cbc01fe2688ad714c9e16c24"
+    }
+  },
+  "processExitObserved": true,
+  "temporaryRemoved": true,
+  "elapsedMs": 641
+}

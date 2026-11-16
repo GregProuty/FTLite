@@ -1,0 +1,63 @@
+{
+  "electron": "37.10.3",
+  "composition": {
+    "pairs": 3,
+    "hostSeatGeneration": 2,
+    "guestSeatGeneration": 1,
+    "pairSeatGeneration": 1,
+    "delayedOffer": true,
+    "staleSignalRejected": true,
+    "crossSeatRejected": true,
+    "staleTicketCloseCode": 1008
+  },
+  "order": {
+    "hostNativeReady": 15,
+    "guestNativeReady": 16,
+    "serviceReady": 17,
+    "committed": 19,
+    "authorityCreated": 20,
+    "attached": 21
+  },
+  "replacements": [
+    {
+      "seat": "guest",
+      "from": 1,
+      "to": 2,
+      "closedPcs": 2,
+      "ready": true
+    },
+    {
+      "seat": "host",
+      "from": 2,
+      "to": 3,
+      "closedPcs": 2,
+      "ready": true
+    }
+  ],
+  "gameplay": {
+    "fullReceipts": 3,
+    "validatedAcks": 3,
+    "appliedCommands": 1,
+    "matchedPublications": 1,
+    "runIdentity": true,
+    "direct": true
+  },
+  "cleanup": {
+    "pcs": 6,
+    "closedPcs": 6,
+    "timers": 0,
+    "listeners": 0,
+    "utilities": 1,
+    "utilityExits": 1,
+    "windows": 0,
+    "ports": 0
+  },
+  "workerd": "1.20261023.1",
+  "runtime": {
+    "sqlite": true,
+    "hibernated": true,
+    "electronExit": true,
+    "workerExit": true,
+    "temporaryRemoved": true
+  }
+}

@@ -1,0 +1,32 @@
+﻿[
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-recovery-smoke.ts --scenario=skiff --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/recovery-skiff.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-recovery-smoke.ts --scenario=cutter --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/recovery-cutter.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-recovery-smoke.ts --scenario=paused --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/recovery-paused.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-recovery-smoke.ts --scenario=upload --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/recovery-upload.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-recovery-smoke.ts --scenario=race --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/recovery-race.json"
+    },
+    {
+        "expectedExit":  0,
+        "exitCode":  0,
+        "command":  "node node_modules/tsx/dist/cli.mjs scripts/network/online-recovery-smoke.ts --scenario=stale --report-path=.superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/recovery-stale.json"
+    }
+]

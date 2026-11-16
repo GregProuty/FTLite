@@ -1,0 +1,63 @@
+# Net-3b builder check
+
+Reviewed the slice design against approved parent sections 3, 4, 7, 8 and 13 and the current authority, client, mode, MessagePort, utility and hidden-window implementations at the Net-3a baseline. This is a buildability check; no implementation, tests, service action or commit was performed.
+
+**Ready for planning with the integration decisions below made explicit in the plan. No user-only question or new product decision is needed.** The design already answers the architectural questions; the remaining risks are coupling between implementation tasks that cannot safely be built as independent wrappers around the current APIs.
+
+## 1. High: where does streaming intercept state before the local byte limit?
+
+**Question:** Does the planned authority adapter receive the publication object before `encodeMessage`, or only the bytes passed to `Link.send`?
+
+`src/renderer/src/authority/core.ts:159` constructs every publication and unconditionally runs the 65,536-byte encoder before iterating bindings. Therefore a wrapper around the existing sector `Link` cannot implement the promised 128 KiB network state contract: it never receives a larger publication. This remains true when every binding is streamed, and encoding currently occurs even without bindings. Raising the shared encoder limit would violate the explicit local-codec constraint.
+
+**Classification: minor implementation decision, important task dependency.** Add a trusted per-binding publication sink or equivalent object delivery seam before local serialization. Keep publication sequence/hash/journal accounting and ordinary local delivery unchanged. Only ordinary byte bindings use the existing guarded encoder; streamed bindings convert the publication object to a network image. Extend `ModeHost`/sector attachment and utility attachment options together so streamed selection reaches this seam. The plan must cover a valid network image whose equivalent local JSON exceeds 65,536 bytes, plus a local encode rejection and mixed streamed/local attachment regression. Do not implement network state by round-tripping through the existing local byte codec.
+
+## 2. High: what exactly counts as accepted state, and when may the producer start?
+
+**Question:** Which explicit receiver result controls the state ACK, and how does initial ACK emission precede producer enablement without changing strict clients?
+
+`src/renderer/src/clientControl/clientRun.ts:39` subscribes to a void `Link.onMessage` callback. State processing silently ignores wrong-run/stale publications, can close the link on version/hash failure, and initializes outboxes before returning. `Link.send` and `onMessage` expose no acceptance result. The schema in `net/codec.ts` is private and reachable through guarded byte encode/decode, so object delivery also needs an explicit reusable validation path. `sim/snapshot.ts` already supplies complete snapshot validation before live writes, but does not validate the publication watermarks/control metadata. A successful transport callback or port ACK is therefore insufficient evidence for a state ACK.
+
+**Classification: answered by the design's required success-returning contract; minor API decision remains.** Extract the existing publication-schema validation and client application into an explicit object path returning accepted/ignored/rejected. Preserve strict byte reception through that same validator. Network acceptance must verify stream sequence/tick/identity against the reconstructed publication fields, validate all publication metadata and snapshot, and only then apply it. The stream receiver records the immutable baseline and sends its application ACK only for accepted state. Keep the remote producer gated until that initial ACK has been emitted successfully; if host-side gating is used too, consume ACK before subsequent input. Do not use a new unconditional state listener or infer success from lack of an exception. Test silent stale/wrong-run rejection, bad metadata with valid values checksum, failed snapshot validation, and synchronous close during acceptance/ACK.
+
+Results are a related dependency: `takeEvents()` already gates by publication tick, while `takeResults()` immediately drains all results. Put result presentation gating behind the explicit remote option while retaining early outbox reconciliation and existing strict-client behavior. Use bounded pending storage with an explicit overflow policy.
+
+## 3. High: where can an unsent reliable fallback state be replaced?
+
+**Question:** What readiness/backpressure signal crosses the utility-to-hidden port so a large ordinary state that falls back to reliable remains replaceable until transmission starts?
+
+`src/network/portLink.ts` immediately posts reliable payloads, charges them until its own storage ACK, and offers neither send readiness nor cancellation. Its ACK is sent after callback dispatch, not after RTC delivery or mode acceptance. `Link.send` returns void. Merely coalescing the latest channel does not solve ordinary full-state fallback: a large or poorly compressible state every third tick becomes reliable historical traffic once posted. A bounded RTC queue can close safely at 1 MiB but still violate the separate requirement to coalesce unsent ordinary state. Also, its latest capacity is 16 KiB before the new RTC framing overhead or any smaller negotiated SCTP limit.
+
+**Classification: minor implementation decision, important task dependency.** Define the port/stream scheduler contract before implementing either side. Keep one replaceable ordinary publication pending upstream; explicit bounded credit/readiness allows conversion and commitment to the reliable queue. Control/initial/end full state and results/events retain ordered reliable semantics. A bounded alternative is a distinct replaceable ordinary-state slot inside the generic bridge, marked by opaque stream metadata supplied by the mode; do not parse sector messages in the hidden renderer. Propagate the effective RTC payload cap to the upstream stream wrapper (or negotiate a conservative cap and reject smaller capabilities) so oversized latest deltas select full upstream. Distinguish port storage ACK, transport queue credit and validated-state ACK in types and tests. Account bytes/metadata at each retained boundary; closing at a limit is an explicit policy, not coalescing. Exercise a stalled browser sender with repeated oversized ordinary states, then a control full/results, and show bounded retained work and newest ordinary state delivery.
+
+## 4. Medium: how is the new shared transport owner related to the host's existing window?
+
+**Question:** Is the generic owner extracted from the existing host-owned transport, and what readiness event permits each peer attachment to publish its initial state?
+
+`startHostProcess()` unconditionally spawns a utility and hidden window and waits on a utility/window bridge handshake. The current preload and renderer bridge accept exactly one port. That port only carries the initial ready notification; the utility rejects later messages on it. `hostHandle.attachPeer()` currently transfers a separate peer port directly to the utility, and `core.attach()` synchronously publishes full state. Reusing the handshake port for attempts, spawning another hidden host window, or exposing an RTC Link before a client subscription exists would create materially different ownership and first-publication behavior.
+
+**Classification: answered by the design's generic owner and bridge-readiness requirement; minor wiring decision remains.** Extract/reuse one host transport owner, preserve the existing utility readiness handshake, and add separately typed per-attempt control and peer-port transfer with per-peer readiness acknowledgement. Install both downstream bridge and guest client subscriptions before calling the utility's publishing attach path or opening its delivery gate. Guest construction uses the transport owner directly and never calls `startHostProcess`. Scope setup failure/cancellation to the attempt; transport-renderer death remains host-wide teardown under existing ownership. Test two concurrent peers, failed peer setup while another stays active, cancellation during transfer, a standalone guest with zero utility spawn, and no initial full-state loss.
+
+## Resolved scope and remaining builder choices
+
+- **Answered:** native Chromium transport, utility authority, receive-time asynchronous humans, synchronous couch behavior, host-offerer role, trusted injected signalling, per-attempt tickets and generation checks, application state ACK, 128 KiB network versus 64 KiB local codec, guest without authority, 20 Hz ordinary cadence, interpolation separate from confirmed state, and unavailable WAN/relay proofs. No owner reapproval is needed.
+- **Minor:** choose concrete wire/header layouts, epoch encoding, frame-count ceilings, bounded presentation queue limits and latest high-water values consistent with the stated budgets. The framing classifier must explicitly assign existing result/event messages (including the ended telemetry event) to permitted logical classes and verify actual encoded sizes; do not silently drop an event because it exceeds a 4 KiB control budget. These are builder choices and tests, not user questions.
+- **User-only:** none.
+
+The plan should settle items 1-4 as one set of contracts before separating implementation tasks. They do not require expanding Net-3b into service authentication, automatic reconnect, online UI, bot handoff or deployment.
+
+## Scoped confirmation of the revised design and plan
+
+Reviewed only the four interface resolutions in the revised slice design and `docs/superpowers/plans/2026-11-14-net-3b-transport-streaming.md`.
+
+Items 1, 2 and 4 are resolved: the trusted per-binding sink precedes local encoding; explicit whole-publication acceptance and remote production/presentation gates preserve strict defaults; and the shared owner preserves host readiness while adding guest-only ownership and per-peer readiness. Task 3's opaque envelope and independent transport ordinals also correctly allow semantic command retries without gameplay parsing in the hidden transport.
+
+**One concrete blocker remains in item 3:** a validated state ACK with sequence greater than an outstanding ordinary full does not prove that full left the reliable delivery queue. Reliable full F can remain stalled while a later latest-channel delta D, based on an older acknowledged image, arrives and is accepted. ACK(D) then frees the proposed ordinary-full slot even though F remains queued. A subsequent image requiring full fallback can queue F2 behind F. Repeating large changes followed by small changes against the current acknowledged base can accumulate historical fulls until the reliable queue overflows. The 1 MiB limit still bounds memory, but the proposed application-ACK gate does not establish the promised ordinary-full backpressure/coalescing behavior.
+
+Minimal resolution preserving continuing deltas: add a full-specific receipt/retirement acknowledgement in stream control. Only receipt of that exact ordinary full releases its flow slot; a full that has become stale must still report receipt without being applied or acknowledged as an accepted baseline. Keep the accepted-image ACK as the sole baseline/initial-production signal. The receipt can be emitted after complete bounded full-record processing, and a malformed full follows the existing close/recovery policy. This requires no general cross-port byte-credit protocol. Test a blocked reliable full with successful newer deltas, further full-fallback publications, and eventual stale-full arrival: retain one ordinary full plus the newest pending publication throughout, and unblock after the exact receipt without rewinding state.
+
+An alternative is exact accepted-full ACK with overtaking deltas suppressed while that full is outstanding, but that changes the plan's deliberate continuing-delta behavior. No user-only decision is involved; choose and document one sound flow-slot contract before task 3 implementation.
+
+## Controller resolution
+
+The design and plan now require exact full-received retirement receipts, separate from validated-state ACKs and port-storage ACKs. A newer delta ACK cannot release an older reliable full. Structurally complete full receipt retires transport capacity even for stale/checksum-rejected images; it never selects a baseline or enables input. The other three accepted interface resolutions are incorporated. These are implementation decisions under the existing approved scope, with no user-only question left open.

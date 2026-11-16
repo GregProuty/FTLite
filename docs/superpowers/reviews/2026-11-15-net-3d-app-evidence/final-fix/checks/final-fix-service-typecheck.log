@@ -1,0 +1,8 @@
+
+> ftlite@0.0.1 typecheck:signalling
+> npm --prefix services/signalling run typecheck
+
+
+> ftlite-signalling@0.0.1 typecheck
+> tsc --noEmit
+

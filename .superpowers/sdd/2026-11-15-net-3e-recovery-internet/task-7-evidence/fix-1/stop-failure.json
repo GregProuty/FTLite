@@ -1,0 +1,28 @@
+{
+  "source": null,
+  "failure": "preparation-failed",
+  "budgetMs": 20000,
+  "processes": [
+    {
+      "kind": "git",
+      "pid": 35160,
+      "exited": true,
+      "forced": false,
+      "code": 0
+    },
+    {
+      "kind": "git",
+      "pid": 25400,
+      "exited": true,
+      "forced": false,
+      "code": 0
+    }
+  ],
+  "nativeAllocated": false,
+  "processExitObserved": false,
+  "temporaryName": "ftlite-rtc-config-Evlnfc",
+  "directoryCleanupAttempted": true,
+  "cleanupFailed": true,
+  "temporaryRemoved": true,
+  "elapsedMs": 71
+}

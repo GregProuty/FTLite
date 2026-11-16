@@ -1,0 +1,276 @@
+{
+  "normal": [
+    {
+      "name": "skiff",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 19590,
+      "tick": 300,
+      "generation": 2,
+      "apps": 3,
+      "utilityExits": 1,
+      "forcedUtilityExits": 1,
+      "workerExit": true,
+      "tempRemoved": true,
+      "memory": [
+        "reconciled-dormant",
+        "reconciled-dormant"
+      ],
+      "clickRetries": [],
+      "pids": [
+        32820,
+        33612,
+        26864,
+        9260,
+        30624,
+        17536,
+        3500
+      ]
+    },
+    {
+      "name": "cutter",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 21519,
+      "tick": 300,
+      "generation": 2,
+      "apps": 4,
+      "utilityExits": 1,
+      "forcedUtilityExits": 1,
+      "workerExit": true,
+      "tempRemoved": true,
+      "memory": [
+        "unchanged",
+        "unchanged",
+        "unchanged",
+        "unchanged"
+      ],
+      "clickRetries": [],
+      "pids": [
+        33772,
+        30284,
+        23940,
+        24768,
+        31972,
+        35176,
+        34804,
+        34752
+      ]
+    },
+    {
+      "name": "paused",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 19369,
+      "tick": 325,
+      "generation": 2,
+      "apps": 3,
+      "utilityExits": 1,
+      "forcedUtilityExits": 1,
+      "workerExit": true,
+      "tempRemoved": true,
+      "memory": [
+        "unchanged",
+        "unchanged"
+      ],
+      "clickRetries": [],
+      "pids": [
+        33372,
+        29140,
+        34612,
+        35496,
+        24852,
+        6076,
+        18580
+      ]
+    },
+    {
+      "name": "upload",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 19049,
+      "tick": 300,
+      "generation": 2,
+      "apps": 3,
+      "utilityExits": 1,
+      "forcedUtilityExits": 1,
+      "workerExit": true,
+      "tempRemoved": true,
+      "memory": [
+        "reconciled-dormant",
+        "reconciled-dormant"
+      ],
+      "clickRetries": [],
+      "pids": [
+        25072,
+        27780,
+        6776,
+        33572,
+        11532,
+        16496,
+        22388
+      ]
+    },
+    {
+      "name": "race",
+      "revision": "8a1a14998b8a654e2e16f248aa9adff5424d2a97",
+      "elapsedMs": 28470,
+      "tick": 300,
+      "generation": 2,
+      "apps": 4,
+      "utilityExits": 1,
+      "forcedUtilityExits": 1,
+      "workerExit": true,
+      "tempRemoved": true,
+      "memory": [
+        "reconciled-dormant",
+        "reconciled-dormant",
+        "reconciled-dormant",
+        "unchanged"
+      ],
+      "clickRetries": [],
+      "pids": [
+        33748,
+        17940,
+        34128,
+        4592,
+        24692,
+        30712,
+        2848,
+        32804
+      ]
+    },
+    {
+      "name": "stale",
+      "revision": "bfede55418c14b12c7687165629bde305d498e28",
+      "elapsedMs": 42843,
+      "tick": 300,
+      "generation": 2,
+      "apps": 2,
+      "utilityExits": 2,
+      "forcedUtilityExits": 0,
+      "workerExit": true,
+      "tempRemoved": true,
+      "memory": [
+        "unchanged",
+        "unchanged"
+      ],
+      "clickRetries": [],
+      "pids": [
+        35804,
+        34860,
+        22044,
+        32224,
+        26948,
+        31696
+      ]
+    }
+  ],
+  "faults": [
+    {
+      "name": "timeout",
+      "failure": "launcher timeout",
+      "elapsedMs": 11392,
+      "apps": 2,
+      "utilityExits": 1,
+      "workerAllocated": true,
+      "workerExit": true,
+      "helperExit": true,
+      "helperForced": false,
+      "tempRemoved": true,
+      "pids": [
+        34728,
+        28000,
+        6776,
+        33568,
+        35680
+      ]
+    },
+    {
+      "name": "guest-failure",
+      "failure": "injected guest process death",
+      "elapsedMs": 11976,
+      "apps": 2,
+      "utilityExits": 1,
+      "workerAllocated": true,
+      "workerExit": true,
+      "helperExit": true,
+      "helperForced": false,
+      "tempRemoved": true,
+      "pids": [
+        31540,
+        20456,
+        35520,
+        35644,
+        35092
+      ]
+    },
+    {
+      "name": "transport-failure",
+      "failure": "injected transport death",
+      "elapsedMs": 11055,
+      "apps": 2,
+      "utilityExits": 1,
+      "workerAllocated": true,
+      "workerExit": true,
+      "helperExit": true,
+      "helperForced": false,
+      "tempRemoved": true,
+      "pids": [
+        29288,
+        29972,
+        30708,
+        24432,
+        29180
+      ]
+    },
+    {
+      "name": "worker-death",
+      "failure": "injected worker death",
+      "elapsedMs": 11142,
+      "apps": 2,
+      "utilityExits": 1,
+      "workerAllocated": true,
+      "workerExit": true,
+      "helperExit": true,
+      "helperForced": false,
+      "tempRemoved": true,
+      "pids": [
+        32056,
+        22592,
+        26756,
+        34460,
+        26812
+      ]
+    },
+    {
+      "name": "startup-timeout",
+      "failure": "launcher timeout",
+      "elapsedMs": 2939,
+      "apps": 0,
+      "utilityExits": 0,
+      "workerAllocated": false,
+      "workerExit": false,
+      "helperExit": true,
+      "helperForced": true,
+      "tempRemoved": true,
+      "pids": [
+        24332
+      ]
+    },
+    {
+      "name": "build-timeout",
+      "failure": "launcher timeout",
+      "elapsedMs": 1445,
+      "apps": 0,
+      "utilityExits": 0,
+      "workerAllocated": true,
+      "workerExit": true,
+      "helperExit": true,
+      "helperForced": false,
+      "tempRemoved": true,
+      "pids": [
+        28792,
+        6332
+      ]
+    }
+  ],
+  "uniqueObservedPids": 65,
+  "livePidCandidates": []
+}

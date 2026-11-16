@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "source": {
+    "revision": "aa5950b2aae6a1505db737a824ce110ed65a2980",
+    "dirty": true,
+    "digest": "b963f67b69764cd8c8683bf74492bb002050f660a406dffb03b0e507729586a5",
+    "artifactHashes": {
+      "out/main/index.js": "62bf1e7df1b2e0ff40cc9e72a62d880d227f025e466df054d1700fe0d2f9cbff",
+      "out/main/transportWindow.js": "b1beb8a051b02ea886159d9bd6d643f756658154038843ecd9b2b520670febd6",
+      "out/renderer/index.html": "c154adbb6987e67c24820c7ff913c5440fd772eb8dbe9d6bb9a226d6f676c51b",
+      "scripts/network/online-app-smoke.ts": "26998a969c06f7067bc844522e790908e2bbc677ce5ac5a681e0d5742601c73e",
+      "scripts/network/online-app-smoke.cjs": "072107941a88c06a79d101f20400beb3a11d93e11f19d00f83a604b71a252886",
+      "scripts/network/online-app-observer.ts": "102c310829e1362d691d9d0ea189d6f7faee59a7acbd15e5883af9d61a011497",
+      "scripts/network/online-app-runtime.ts": "6ad3de5a3acd894414b109b074b064edb9fdcdcf8efe57290a889b3548ec57c7",
+      "scripts/network/online-app-runtime-worker.ts": "e46b7ea6632ef5ea0c5814c10d1e744430ac617735dc460638c0fc57cf045c4e"
+    }
+  },
+  "runtime": {
+    "workerd": "1.20261023.1",
+    "workerPid": 23556,
+    "workerExit": true,
+    "temporaryRemoved": true
+  },
+  "processes": [],
+  "cleanup": {
+    "utilities": 0,
+    "utilityExits": 0,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 0,
+    "nativeWindowExits": 0,
+    "nativePeersObserved": 0,
+    "nativePeerCloses": 0,
+    "nativePeersEndedWithWindow": 0,
+    "observedMainPorts": 0
+  },
+  "runtimeHelper": {
+    "pid": 25916,
+    "exited": true,
+    "exitCode": 0,
+    "forced": false,
+    "stage": "observer-build"
+  },
+  "viewports": [],
+  "scenarios": [],
+  "checks": [],
+  "elapsedMs": 1381,
+  "failure": "launcher timeout",
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-independent-utility-lease",
+    "no-mirrors",
+    "no-rehost",
+    "no-WAN",
+    "no-two-machine"
+  ]
+}

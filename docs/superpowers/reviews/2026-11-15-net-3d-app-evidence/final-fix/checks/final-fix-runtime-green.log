@@ -1,0 +1,12 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ✓ tests/onlineAppRuntime.test.ts (2 tests) 3663ms
+   ✓ bounds an unresolved actual startup and observes owned process cleanup  2629ms
+   ✓ bounds an unresolved actual observer-build and observes owned process cleanup  1033ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  13:23:54
+   Duration  4.28s (transform 203ms, setup 317ms, collect 16ms, tests 3.66s, environment 0ms, prepare 79ms)
+

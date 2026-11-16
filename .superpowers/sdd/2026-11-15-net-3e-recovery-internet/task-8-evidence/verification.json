@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "source": "0e9d024db0189bbf918c9fc76a6276f51f7ef115",
+  "root": {
+    "tests": 2784,
+    "files": 195,
+    "status": "PASS",
+    "seconds": 61.86,
+    "source": "1d613fc"
+  },
+  "service": {
+    "tests": 222,
+    "files": 14,
+    "status": "PASS",
+    "seconds": 24.9,
+    "source": "a1066cd"
+  },
+  "focusedReport": {
+    "tests": 37,
+    "status": "PASS",
+    "source": "0e9d024db0189bbf918c9fc76a6276f51f7ef115"
+  },
+  "rootTypecheck": "PASS",
+  "serviceTypecheck": "PASS",
+  "scriptsStrictTypecheck": "PASS",
+  "candidateBuild": "PASS",
+  "defaultBuild": "PASS",
+  "workerDryRun": "PASS",
+  "preparedWorkerNoBundleDryRun": "PASS",
+  "acceptance": {
+    "exitCode": 0,
+    "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+    "budgetMs": 30000,
+    "elapsedMs": 28695.4863
+  },
+  "logs": {
+    "root-tests.log": {
+      "sha256": "b80f4cff5a3edd83f88a4145ec07d58d02dd6482cfe0ba5ea78096ca0ac705ee",
+      "retention": "ignored-local-only"
+    },
+    "root-tests-final.log": {
+      "sha256": "492b2350fb98dfc9268cb74f7b81aaa031801ec284313659d353aaa8d03ff038",
+      "retention": "ignored-local-only"
+    },
+    "service-tests.log": {
+      "sha256": "e70c7079a0cdd5c50a6738a26748c972a48ae57e407f42c1a35a8119bcd06f8e",
+      "retention": "ignored-local-only"
+    },
+    "acceptance.log": {
+      "sha256": "312c51e554d5cd8afd1ec5dafb320faef63891f344359f44aea96576875a3a4e",
+      "retention": "ignored-local-only"
+    },
+    "acceptance-timed.log": {
+      "sha256": "312c51e554d5cd8afd1ec5dafb320faef63891f344359f44aea96576875a3a4e",
+      "retention": "ignored-local-only"
+    }
+  }
+}

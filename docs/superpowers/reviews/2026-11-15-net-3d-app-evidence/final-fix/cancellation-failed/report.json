@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "source": {
+    "revision": "f36d4411016a1f1c66e3597128e3b56f5d6628c7",
+    "dirty": true,
+    "digest": "b963f67b69764cd8c8683bf74492bb002050f660a406dffb03b0e507729586a5",
+    "artifactHashes": {
+      "out/main/index.js": "62bf1e7df1b2e0ff40cc9e72a62d880d227f025e466df054d1700fe0d2f9cbff",
+      "out/main/transportWindow.js": "b1beb8a051b02ea886159d9bd6d643f756658154038843ecd9b2b520670febd6",
+      "out/renderer/index.html": "260e3875a8675ecdf625fb3442b8f481ce25cfa60bab3443ffa1e7423eb3022f",
+      "scripts/network/online-app-smoke.ts": "204c8424b98a140142ecc1a8f93fa4093460641a8f685962f375f767f9bf63e3",
+      "scripts/network/online-app-smoke.cjs": "d13e3c1a9d54ae311a88bec073b939c8395ba307f829925bfa162cfe86737614",
+      "scripts/network/online-app-observer.ts": "102c310829e1362d691d9d0ea189d6f7faee59a7acbd15e5883af9d61a011497",
+      "scripts/network/online-app-runtime.ts": "6ad3de5a3acd894414b109b074b064edb9fdcdcf8efe57290a889b3548ec57c7",
+      "scripts/network/online-app-runtime-worker.ts": "e46b7ea6632ef5ea0c5814c10d1e744430ac617735dc460638c0fc57cf045c4e"
+    }
+  },
+  "runtime": {
+    "electron": "37.10.3",
+    "workerd": "1.20261023.1",
+    "workerPid": 29244,
+    "workerExit": true,
+    "temporaryRemoved": true
+  },
+  "processes": [
+    {
+      "pid": 30388,
+      "profile": "host",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 1,
+        "nativeWindowExits": 1,
+        "nativePeersObserved": 1,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 1,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 2
+      }
+    },
+    {
+      "pid": 27044,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "shutdown",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [],
+        "windows": 2,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [],
+            "timers": 0,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 2
+      }
+    },
+    {
+      "pid": 34244,
+      "profile": "incompatible",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 0,
+        "nativeWindowExits": 0,
+        "nativePeersObserved": 0,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 0
+      }
+    }
+  ],
+  "cleanup": {
+    "utilities": 0,
+    "utilityExits": 0,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 1,
+    "nativeWindowExits": 1,
+    "nativePeersObserved": 1,
+    "nativePeerCloses": 0,
+    "nativePeersEndedWithWindow": 1,
+    "observedMainPorts": 2
+  },
+  "runtimeHelper": {
+    "pid": 33128,
+    "exited": true,
+    "exitCode": 0,
+    "forced": false,
+    "stage": "ready"
+  },
+  "viewports": [],
+  "scenarios": [],
+  "checks": [
+    "bad-code",
+    "incompatible"
+  ],
+  "elapsedMs": 19766,
+  "failure": "online-application-gate-failed",
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-independent-utility-lease",
+    "no-mirrors",
+    "no-rehost",
+    "no-WAN",
+    "no-two-machine"
+  ]
+}

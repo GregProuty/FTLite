@@ -1,0 +1,44 @@
+{
+    "compatibilityDate":  "2026-10-23",
+    "deployed":  "NOT_RUN",
+    "files":  [
+                  {
+                      "sha256":  "6c00e937d268eb37691555f6bca8e79c509c23f5fb593b55c1a85fe0c7bba3d1",
+                      "path":  "dist/net-3e-worker.zip"
+                  },
+                  {
+                      "sha256":  "fda351cb27f57961b61616324012f1d33969226b5356d51d8ad2749dc657eb33",
+                      "path":  "dist/net-3e-worker/index.js"
+                  },
+                  {
+                      "sha256":  "b9faa6b032720827399ddac179f1fe4021f33a6ee9c0a21d5420cac93a3212bc",
+                      "path":  "dist/net-3e-worker/wrangler.jsonc"
+                  },
+                  {
+                      "sha256":  "b9faa6b032720827399ddac179f1fe4021f33a6ee9c0a21d5420cac93a3212bc",
+                      "path":  "services/signalling/wrangler.jsonc"
+                  }
+              ],
+    "name":  "ftlite-signalling-dev",
+    "source":  "1d613fcd3f03a4493c66a64d5c16c7aafd7d6d17",
+    "bindings":  [
+                     {
+                         "name":  "ROOMS",
+                         "class_name":  "Room"
+                     },
+                     {
+                         "name":  "DIRECTORY",
+                         "class_name":  "Directory"
+                     }
+                 ],
+    "migrations":  [
+                       {
+                           "tag":  "v1",
+                           "new_sqlite_classes":  [
+                                                      "Room",
+                                                      "Directory"
+                                                  ]
+                       }
+                   ],
+    "previousCloudVersion":  "NOT_RUN"
+}

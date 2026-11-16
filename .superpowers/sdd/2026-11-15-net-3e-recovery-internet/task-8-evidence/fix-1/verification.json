@@ -1,0 +1,18 @@
+{
+    "focusedTests":  {
+                         "output":  "focused-green.txt",
+                         "files":  [
+                                       "tests/internetAppReport.test.ts",
+                                       "tests/internetAppManifest.test.ts",
+                                       "tests/internetAppSmoke.test.ts",
+                                       "tests/onlineRecoveryReport.test.ts"
+                                   ],
+                         "passed":  120
+                     },
+    "nativeRerun":  false,
+    "source":  "b125547cacb5f4c43b651931f5e6503d10e72694",
+    "rootTypecheckExit":  0,
+    "runtimeRebuild":  false,
+    "directStrictTypecheckExit":  0,
+    "externalStatus":  "NOT_RUN"
+}

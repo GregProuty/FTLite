@@ -61,7 +61,9 @@ const commandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
 ]);
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();
-const result = z.object({ id, tick: uint, status: z.enum(['applied', 'noop', 'rejected', 'already-processed']), reason: z.enum(COMMAND_REASONS).optional() }).strict();
+const result = z.object({ id, tick: uint, status: z.enum(['applied', 'noop', 'rejected', 'already-processed']), reason: z.enum(COMMAND_REASONS).optional(),
+  admission: z.object({ expectedSequence: positive, disposition: z.enum(['terminal', 'retryable']) }).strict().optional()
+}).strict();
 const u32 = z.number().int().min(0).max(4_294_967_295);
 const snapshot = z.object({
   header: z.object({
@@ -112,7 +114,7 @@ const messageSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('result'), runId: text, result }).strict(),
   z.object({ kind: z.literal('event'), event: authorityEvent }).strict()
 ]);
-return { messageSchema, commandSchema };
+return { messageSchema, commandSchema, publicationSchema: state };
 }
 export function createMessageCodec(playerLimit = MAX_PLAYERS) {
   if (!Number.isInteger(playerLimit) || playerLimit < 1 || playerLimit > 256) throw new Error('invalid player limit');
@@ -130,6 +132,9 @@ export function createMessageCodec(playerLimit = MAX_PLAYERS) {
   };
 }
 export const commandSchema = messageSchemaFor(MAX_PLAYERS).commandSchema;
+/** Object transport validation, independent of the unchanged local byte ceiling. */
+export const publicationSchema = messageSchemaFor(MAX_PLAYERS).publicationSchema;
+export function validatePublication(value: unknown) { return publicationSchema.parse(value); }
 export const { encodeMessage, decodeMessage } = createMessageCodec();
 export interface LatestMessageMetadata { key: string; sequence: number }
 /** Framing policy lives above transport; sequences were stamped by the producer. */

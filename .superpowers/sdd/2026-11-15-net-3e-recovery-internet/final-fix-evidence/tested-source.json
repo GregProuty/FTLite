@@ -1,0 +1,15 @@
+{
+  "revision": "65b92a3d29fdf87bc719658cd071395224182546",
+  "files": {
+    "src/main/network/onlineSession.ts": "0d2861608be2ec0475e0fc4b47b7a520332592044305d2e4db2cd7e900779bba",
+    "scripts/network/online-app-smoke.cjs": "30b5159306bbbb2706a7add486ce125b54d08438a78d718a0acbac94e88cfc73",
+    "scripts/network/online-recovery-smoke.ts": "29bcdee627f88de09733cacee55b77fa64e132de583798d804ccf421cddba28d",
+    "scripts/network/internet-app-smoke.ts": "d2d12011b46e0d68dbe20f1532cd0b700cce255a645a4a0d3ab6bd9626f445d3",
+    "tests/onlineRecovery.test.ts": "3fae366aa732fdfc3aff57436507a4eef235fdb87b61c26814ba6baf08df5f73",
+    "tests/onlineAppDiagnostics.test.ts": "0e85cbc17fbb662210c9a3f5442090f0a67373b939dd9a46d03c6046262ca13e",
+    "tests/onlineRecoveryPreparation.test.ts": "0fb77a0f5613aef4026c11c2e745f3145f8a234fea62f8009504a46e689e50e0",
+    "scripts/network/internet-app-report.ts": "9d0ec930c7e4984d2471b62b73351263942a07c6867ec3f6d6631d6e6407b61e",
+    "tests/internetAppReport.test.ts": "2e64562ea567aaaa4f530297156a59a6e3f1669011f6e6608e5bbba3051843d6"
+  },
+  "runtimeBuildRevision": "8d0b221a9922bd4e43914f9e45af92a08c1d4d4a"
+}

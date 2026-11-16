@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "origin": null,
+  "onlineDisabled": true,
+  "compiledResolverExecuted": true,
+  "developmentOverrideRejected": true,
+  "otherRuntimeFilesMatchingCandidate": 46,
+  "entryCount": 2253,
+  "files": {
+    "dist/net-3e-final-rollback-disabled.zip": "9af99a9c451c280132c7312b52e81c3a452d9bffd03b5b29783aca1b09ea5962",
+    "dist/net-3e-final-rollback-disabled/win-unpacked/FTLite.exe": "f004293e3a08781f38027d2406757bc2be28012aaf0e1444b24a86bef2bbb87a",
+    "dist/net-3e-final-rollback-disabled/win-unpacked/resources/app.asar": "4214f9df4013207a5081a8843817d18eff7b6b77824fb6333afc34be21fc4256"
+  },
+  "mainSha256": "61001bad189a0d25be09187b2bce25f911772d585109094a1de91563ceefa472"
+}

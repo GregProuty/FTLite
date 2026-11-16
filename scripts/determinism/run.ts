@@ -11,7 +11,8 @@ import { executeFixture, unpackFixture } from './fixture';
 import { browserExecutable, compareReports, receiveBrowser } from './protocol';
 async function main() {
   const digest = computeContentDigest(process.cwd()), fixtureBytes = readFileSync('tests/fixtures/determinism-v2.json'), fixture = unpackFixture(JSON.parse(fixtureBytes.toString()));
-  const output = resolve('.superpowers/sdd/2026-11-14-net-1b-durability/task-5-logs'); mkdirSync(output, { recursive: true });
+  const output = resolve(process.argv.find(arg => arg.startsWith('--output-dir='))?.slice('--output-dir='.length)
+    ?? '.superpowers/sdd/2026-11-14-net-1b-durability/task-5-logs'); mkdirSync(output, { recursive: true });
   const began = performance.now();
   const expected = executeFixture(fixture, digest); compareReports(fixture.expected, expected);
   const evidence: any = { platform: `${process.platform}/${process.arch}`, digest, node: process.version, samples: expected.samples.length, runs: fixture.runs.map(r => ({ ship: r.ship, runId: r.checkpoint.init.runId, seed: r.checkpoint.init.seed, ticks: r.ticks, ended: r.ended })), engines: [{ engine: `Node ${process.version}; V8 ${process.versions.v8}`, seconds: (performance.now() - began) / 1000 }] };

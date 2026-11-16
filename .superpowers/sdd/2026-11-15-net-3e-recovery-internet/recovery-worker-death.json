@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "scenario": "skiff",
+  "source": {
+    "revision": "bfede55418c14b12c7687165629bde305d498e28",
+    "dirty": true,
+    "digest": "8a758f1ac9c0728946029c44ffbb1ceaf3d20ed2cfb9567ffcbf2690b1968144",
+    "artifactHashes": {
+      "out/main/index.js": "966e778790f50729989da7e5082f670d2f8e410e432ac1d2fa32a3ca1d12309c",
+      "out/main/authorityHost.js": "cba01267184195ee28bb1eaecde2318192242617ff26e33f88c461755dc5acf5",
+      "out/main/hostProcess.js": "1e5a1d3dcf5161404ffecb442d01f2dfca2cbac8ed908151ac0aff46ad3827f8",
+      "out/main/transportWindow.js": "5639d26c0b68a6bce01abaa341d3a80ed4d77d22dbdfc6f7221f1b1d945cb3d2",
+      "out/renderer/index.html": "a14f6b6fe21a443a2442fd8cd389f9618ebaeace5e84172dc28e165f97395bb7",
+      "scripts/network/online-app-smoke.ts": "0d0f42f970702af2931ee8b0cc1e69db299dc24c5b08549dd78d05ddf3cbda81",
+      "scripts/network/online-app-smoke.cjs": "54a3331a3caa205e3363575f6ca74d89a53aa53b4386545b26ed5c7465c90b93",
+      "scripts/network/online-app-click.cjs": "47d48d86aec2c73ec0a84a3acc443b355a4a5583657a4851019bd2a9aeb3f0a1",
+      "scripts/network/online-app-observer.ts": "102c310829e1362d691d9d0ea189d6f7faee59a7acbd15e5883af9d61a011497",
+      "scripts/network/online-app-runtime.ts": "6ad3de5a3acd894414b109b074b064edb9fdcdcf8efe57290a889b3548ec57c7",
+      "scripts/network/online-app-runtime-worker.ts": "c1536138fe9f49e8c3843060886a48851cfa117e7700b929c2c705dd935fa13c",
+      "src/main/index.ts": "3cb301c01cfb7a2db75d28cad20863381b88668b9973aa1a84404b68e1df7e70",
+      "src/main/network/onlineSession.ts": "52e6166342c750a62cd6c1d03f734052df9ac4d8dfc807c94e1a41ee17691cea",
+      "src/main/network/onlineMirrors.ts": "c74bd1aff40655e8a546e284ee72ae6dffc6bfe3a9113e687bba997f96af09c6",
+      "src/main/network/mirrorStore.ts": "ac3d3c637525abb283111358b6119bea9f72677574c64cb2aee0269dafab259d",
+      "src/main/network/onlinePlatform.ts": "b697b5446155010e7bc7a6d5c6a7efdd8005718607d9aa13cca6b936910f6b0f",
+      "src/main/network/onlineSector.ts": "004843dcc7e69e68fa5ddaa5e8bf0cc894f6b4d242827e74aae2a83e2eba6377",
+      "src/main/network/hostProcess.ts": "64e53ffb9bd6fc6300199a928a70f820790fa4f83401927261cd8fdffa8698c6",
+      "src/shared/onlineSession.ts": "e65f32dcf9f9f5857769f2afdfb7035e13ab66d4b177a64edd7e53e967ce0c3b",
+      "src/network/session/serviceClient.ts": "19647dfde0cd9a6c02d4d37eca632ca46aeea1717b1c848ba34486cb5a8cf9f3",
+      "src/network/utilityHost.ts": "16d00281f21bba20e35d0f9198cc49ac9d247e7922aea76bf747ee38e54163ad",
+      "src/network/modes/sector.ts": "b475d7d26fbdf0817d4296335d2dcb246efb4baa7d4eb9e1cda391d5dc944ac2",
+      "scripts/network/online-recovery-smoke.ts": "0fe3077082c4977607c5241a698d0f702bb6fc4bf1531d7d4dc66e09642de930",
+      "scripts/network/online-recovery-report.ts": "310f518bb56378b7711967cb54cde93559187f703c32da28a7c1656ec8716df9",
+      "scripts/network/online-recovery-utility.ts": "c647c553982cf8d3b4e47b6d14e1a9def890ad7c8244d2a14dbfb39ce9e808b7",
+      "scripts/network/online-recovery-utility.cjs": "c25b17970f991d91191dc53d67f6d63291631c59f69070130319a38789ec3d62",
+      "scripts/network/online-recovery-instrument.cjs": "4f1f8c724fd7870392f1c74834f499775cfbb6cd37dab6b1d37bf1a43b837763",
+      "src/main/network/onlineExit.ts": "d50b6dc903efa564cce3efa60a65a0a4fdc8fd2a288183c0113af486d32ab8b6",
+      "out/main/cutter.js": "b36184860272e4aba4277132276e8c708762533fd4d91b9e6e1cb13727f6a673",
+      "out/main/hostProcessProtocol.js": "289e550d017795a39a923f1869f0f4c488d9db9326da70dc0e454c0bfc435ad7",
+      "out/main/rtcTransport.js": "cc7212ec8e12f0a9b0699f672016677ea817b588bb9e38f9ab7a9448e71cc937",
+      "out/preload/index.js": "e628a2f384b9f5503a91060170e16a8cd22621d9268dea8987b009444eff071f",
+      "out/preload/networkTransport.js": "3c1160797156658f26e13dd2609d316e4b308c01d82ae106a679d7ab8002dc82",
+      "out/renderer/networkTransport.html": "9f14f15a6ad9268960de62e4ccefc1773c564ccccec71be885d3098b57c3744b",
+      "out/renderer/assets/bridge-Sxw1vNWZ.js": "81c517fa0acf857af3531665b25cd45b61695a887e0c18a2912e9c95803a86c5",
+      "out/renderer/assets/browserAll-DdLa56WU.js": "95586516da66c6822752436e43dbe660e3796a604340f82d0f8f66f4d23b04a1",
+      "out/renderer/assets/BufferResource-DFPK_k-Q.js": "59f62742250597052a1cd424ac98177a36398913688af089c82b6ea75eedd4df",
+      "out/renderer/assets/CanvasRenderer-CEKN97Mt.js": "1af2c65a818a1f507ba73976ab24df3e41ec6bd82631ab4cb978b79cc88a4c86",
+      "out/renderer/assets/Filter-CPi0w3yu.js": "caead3b9e29c2960d95b8d7da41724eb7316295d9fe7e253da5626dd6a286cc7",
+      "out/renderer/assets/index-CaAMn46v.js": "c17bd2f15139ce60ef6d2a8210d3c86e7df287df1930c125ab61c63c81186cdf",
+      "out/renderer/assets/networkTransport-BhUuKAjb.js": "94e1f327ec3df5f03c3c95e2011bffb058db2b5acf00cea913d50677636a5596",
+      "out/renderer/assets/RenderTargetSystem-Dju3OMva.js": "917813094b3242c375fbda7cd58d346a8140d6ce019b8afbcfa29320bd47faed",
+      "out/renderer/assets/WebGLRenderer-CW8GK0Z1.js": "6c6d412c66c064392bcaf42a87cc34a41565da9c6f55bf979e2fb7f3dbea795b",
+      "out/renderer/assets/WebGPURenderer-B7CL2RTE.js": "f4118cf24bc13a301e513bc20e1d6dcdd6e5f84272a73b6224000204527f7c29",
+      "out/renderer/assets/webworkerAll-D06saflj.js": "a4029432de35edc25bbc726c6b45df22cfd3cee987afd9e092083154efa6ac83"
+    }
+  },
+  "runtime": {
+    "electron": "37.10.3",
+    "workerd": "1.20261023.1",
+    "workerPid": 26812,
+    "workerExit": true,
+    "temporaryRemoved": true
+  },
+  "processes": [
+    {
+      "pid": 32056,
+      "profile": "host",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 1,
+        "utilityExits": 1,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 2,
+        "nativeWindowExits": 2,
+        "nativePeersObserved": 1,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 1,
+        "peers": 0,
+        "utilityPids": [
+          26756
+        ],
+        "observedMainPorts": 6
+      }
+    },
+    {
+      "pid": 22592,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 1,
+        "nativeWindowExits": 1,
+        "nativePeersObserved": 1,
+        "nativePeerCloses": 1,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 2
+      }
+    }
+  ],
+  "cleanup": {
+    "utilities": 1,
+    "utilityExits": 1,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 3,
+    "nativeWindowExits": 3,
+    "nativePeersObserved": 2,
+    "nativePeerCloses": 1,
+    "nativePeersEndedWithWindow": 1,
+    "observedMainPorts": 8
+  },
+  "runtimeHelper": {
+    "pid": 34460,
+    "exited": true,
+    "exitCode": 0,
+    "forced": false,
+    "stage": "ready"
+  },
+  "instrumentation": [
+    {
+      "file": "host-utility-0.json.instrumentation.json",
+      "sourceSha256": "cba01267184195ee28bb1eaecde2318192242617ff26e33f88c461755dc5acf5",
+      "observedSha256": "2b93fb9425f0c0d787fa8315edf95f5b16da569f2b2cd1a5a356687d31ffc7d4",
+      "transformSha256": "4f1f8c724fd7870392f1c74834f499775cfbb6cd37dab6b1d37bf1a43b837763"
+    }
+  ],
+  "viewports": [],
+  "elapsedMs": 11142,
+  "failure": "injected worker death",
+  "failureCategory": "gate-failure",
+  "stage": "startup",
+  "driverFailure": {
+    "profile": "guest",
+    "command": "status",
+    "reason": "command-failed",
+    "code": "DRIVER_COMMAND_FAILED"
+  },
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-WAN",
+    "no-two-machine",
+    "OS-suspend-NOT-RUN"
+  ]
+}

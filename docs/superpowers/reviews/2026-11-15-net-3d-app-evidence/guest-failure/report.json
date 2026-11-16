@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "source": {
+    "revision": "5a3f7f5d0253e8a84a34c06b6ea667ed1de8ca13",
+    "dirty": true,
+    "digest": "f8c6bdd8d9b88e9932ea91508750e2ebe972eca135320f1508d2a25bac736128",
+    "artifactHashes": {
+      "out/main/index.js": "0573dfffc1b4b172ccb4d9b46ff5beaa98ce88bb8d721a029679445e99e2ab54",
+      "out/main/transportWindow.js": "b1beb8a051b02ea886159d9bd6d643f756658154038843ecd9b2b520670febd6",
+      "out/renderer/index.html": "89a0212fccbb2a5e9af3f81732a240d7811e305bf0ef4d56ac8a39f9e108396f",
+      "scripts/network/online-app-smoke.ts": "33f7abc93d83bc4a202d6fe479996383aebbf43b6b54cb193a72b9f65fa05992",
+      "scripts/network/online-app-smoke.cjs": "796e4321581b7b74d16c343b04337f67d11830d83799e707fd02de0f0088eb29",
+      "scripts/network/online-app-observer.ts": "102c310829e1362d691d9d0ea189d6f7faee59a7acbd15e5883af9d61a011497"
+    }
+  },
+  "runtime": {
+    "electron": "37.10.3",
+    "workerd": "1.20261023.1",
+    "workerPid": 33948,
+    "workerExit": true,
+    "temporaryRemoved": true
+  },
+  "processes": [
+    {
+      "pid": 16884,
+      "profile": "host",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 1,
+        "utilityExits": 1,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 2,
+        "nativeWindowExits": 2,
+        "nativePeersObserved": 1,
+        "nativePeerCloses": 1,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [
+          25908
+        ],
+        "observedMainPorts": 6
+      }
+    },
+    {
+      "pid": 16408,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "fault",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [],
+        "windows": 2,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [
+              {
+                "state": "connected",
+                "selected": true,
+                "direct": true,
+                "lossAvailable": false,
+                "listeners": 4,
+                "channels": [
+                  {
+                    "label": "ftl-reliable-v1",
+                    "state": "open",
+                    "ordered": true,
+                    "maxRetransmits": null,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 51,
+                    "received": 11,
+                    "maxBytes": 259
+                  },
+                  {
+                    "label": "ftl-latest-v1",
+                    "state": "open",
+                    "ordered": false,
+                    "maxRetransmits": 0,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 37,
+                    "received": 38,
+                    "maxBytes": 237
+                  }
+                ]
+              }
+            ],
+            "timers": 1,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 2
+      }
+    },
+    {
+      "pid": 30784,
+      "profile": "incompatible",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 0,
+        "nativeWindowExits": 0,
+        "nativePeersObserved": 0,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 0
+      }
+    }
+  ],
+  "cleanup": {
+    "utilities": 1,
+    "utilityExits": 1,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 2,
+    "nativeWindowExits": 2,
+    "nativePeersObserved": 1,
+    "nativePeerCloses": 1,
+    "nativePeersEndedWithWindow": 0,
+    "observedMainPorts": 6
+  },
+  "scenarios": [],
+  "checks": [
+    "bad-code",
+    "incompatible",
+    "cancel-couch"
+  ],
+  "elapsedMs": 15741,
+  "failure": "injected guest process death",
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-independent-utility-lease",
+    "no-mirrors",
+    "no-rehost",
+    "no-WAN",
+    "no-two-machine"
+  ]
+}

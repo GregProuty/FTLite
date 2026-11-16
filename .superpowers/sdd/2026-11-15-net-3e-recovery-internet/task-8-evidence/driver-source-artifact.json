@@ -1,0 +1,7 @@
+{
+  "files": 264,
+  "path": "dist/net-3e-driver-source.zip",
+  "sha256": "3024394c416601514070e0edefff55d80d97b563fd3d5310ffc341086e1cd098",
+  "purpose": "Exact source-byte overlay for Windows line-ending portability; apply over the named Git revision; no secrets or profiles",
+  "source": "0e9d024db0189bbf918c9fc76a6276f51f7ef115"
+}

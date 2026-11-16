@@ -72,6 +72,7 @@ export const COMMAND_REASONS = [
 export type CommandReason = typeof COMMAND_REASONS[number];
 export interface CommandResult {
   id: CommandId; tick: number; status: 'applied' | 'noop' | 'rejected' | 'already-processed'; reason?: CommandReason;
+  admission?: { expectedSequence: number; disposition: 'terminal' | 'retryable' };
 }
 export type Admission = { status: 'queued' } | { status: 'duplicate' | 'rejected'; result: CommandResult };
 export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' };

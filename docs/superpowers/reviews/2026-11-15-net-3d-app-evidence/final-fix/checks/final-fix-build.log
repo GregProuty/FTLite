@@ -1,0 +1,42 @@
+
+> ftlite@0.0.1 build
+> electron-vite build
+
+vite v7.3.8 building ssr environment for production...
+transforming...
+✓ 111 modules transformed.
+rendering chunks...
+out/main/hostProcessProtocol.js    4.46 kB
+out/main/transportWindow.js        5.66 kB
+out/main/hostProcess.js            9.59 kB
+out/main/rtcTransport.js          13.95 kB
+out/main/index.js                 90.06 kB
+out/main/authorityHost.js        187.18 kB
+out/main/cutter.js               191.40 kB
+✓ built in 515ms
+vite v7.3.8 building ssr environment for production...
+transforming...
+✓ 1 modules transformed.
+✓ 8 modules transformed.
+rendering chunks...
+out/preload/networkTransport.js   8.45 kB
+out/preload/index.js             10.40 kB
+✓ built in 53ms
+vite v7.3.8 building client environment for production...
+transforming...
+✓ 878 modules transformed.
+rendering chunks...
+../../out/renderer/networkTransport.html                      0.37 kB
+../../out/renderer/index.html                                 0.38 kB
+../../out/renderer/assets/networkTransport-JdxjgeK1.js        0.09 kB
+../../out/renderer/assets/Filter-DrhQHRgB.js                  2.20 kB
+../../out/renderer/assets/BufferResource-xRo_gJpm.js         16.74 kB
+../../out/renderer/assets/webworkerAll-D_zEV1jI.js           34.91 kB
+../../out/renderer/assets/CanvasRenderer-DrkE1v8W.js         42.71 kB
+../../out/renderer/assets/bridge-DJX2xl5z.js                 60.52 kB
+../../out/renderer/assets/WebGPURenderer-CZxOzNgL.js         71.75 kB
+../../out/renderer/assets/browserAll-BrfUZNpH.js            100.90 kB
+../../out/renderer/assets/RenderTargetSystem-CjVN9zMD.js    108.60 kB
+../../out/renderer/assets/WebGLRenderer-CxJSoWX1.js         130.21 kB
+../../out/renderer/assets/index-DZCx0O_i.js               1,589.75 kB
+✓ built in 2.60s

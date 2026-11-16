@@ -1,0 +1,21 @@
+{
+  "source": null,
+  "failure": "preparation-timeout",
+  "budgetMs": 20000,
+  "processes": [
+    {
+      "kind": "git",
+      "pid": 32516,
+      "exited": true,
+      "forced": true,
+      "code": 1
+    }
+  ],
+  "nativeAllocated": false,
+  "processExitObserved": false,
+  "temporaryName": "ftlite-rtc-config-eLcgOD",
+  "directoryCleanupAttempted": true,
+  "cleanupFailed": false,
+  "temporaryRemoved": true,
+  "elapsedMs": 15099
+}

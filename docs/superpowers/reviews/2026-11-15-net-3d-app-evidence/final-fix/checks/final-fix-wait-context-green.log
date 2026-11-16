@@ -1,0 +1,10 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ✓ tests/onlineAppDiagnostics.test.ts (5 tests) 67ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  13:32:56
+   Duration  705ms (transform 198ms, setup 311ms, collect 12ms, tests 67ms, environment 0ms, prepare 82ms)
+

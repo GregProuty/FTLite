@@ -1,0 +1,103 @@
+{
+  "source": "65b92a3d29fdf87bc719658cd071395224182546",
+  "runtimeBuildSource": "8d0b221a9922bd4e43914f9e45af92a08c1d4d4a",
+  "root": {
+    "command": "npm test",
+    "files": 197,
+    "tests": 2839,
+    "seconds": 61.02,
+    "exitCode": 0,
+    "log": "root-tests-final.txt"
+  },
+  "focused": {
+    "command": "npx vitest run tests/onlineRecovery.test.ts tests/onlineCoordinator.test.ts tests/onlineAppDiagnostics.test.ts tests/onlineRecoveryPreparation.test.ts tests/onlineAppRuntime.test.ts tests/onlineRecoveryReport.test.ts tests/internetAppSmoke.test.ts tests/internetAppReport.test.ts",
+    "files": 8,
+    "tests": 193,
+    "seconds": 11.99,
+    "exitCode": 0,
+    "log": "focused-final-green.txt"
+  },
+  "rootTypecheck": {
+    "command": "npm run typecheck",
+    "exitCode": 0,
+    "log": "root-typecheck-final.txt"
+  },
+  "scopedTypecheck": {
+    "command": "npx tsc --noEmit --target ES2023 --module ESNext --moduleResolution bundler --strict --skipLibCheck --types node --allowSyntheticDefaultImports src/renderer/src/net/env.d.ts scripts/network/online-recovery-smoke.ts scripts/network/internet-app-smoke.ts scripts/network/internet-app-report.ts tests/onlineRecoveryPreparation.test.ts tests/onlineAppDiagnostics.test.ts tests/onlineRecovery.test.ts tests/internetAppReport.test.ts",
+    "exitCode": 0,
+    "log": "scoped-typecheck-final.txt"
+  },
+  "builds": [
+    {
+      "command": "FTLITE_PACKAGED_SERVICE_ORIGIN='' npm run build",
+      "exitCode": 0,
+      "log": "build-disabled.txt"
+    },
+    {
+      "command": "FTLITE_PACKAGED_SERVICE_ORIGIN='https://ftlite-signalling-dev.gprout009.workers.dev' npm run build",
+      "exitCode": 0,
+      "log": "build-candidate.txt"
+    }
+  ],
+  "packages": [
+    {
+      "command": "npm run package:candidate -- --config.directories.output=dist/net-3e-final-rollback-disabled",
+      "exitCode": 0,
+      "log": "package-disabled.txt"
+    },
+    {
+      "command": "npm run package:candidate -- --config.directories.output=dist/net-3e-final-candidate",
+      "exitCode": 0,
+      "log": "package-candidate.txt"
+    }
+  ],
+  "audit": {
+    "command": "npx tsx .superpowers/sdd/2026-11-15-net-3e-recovery-internet/final-fix-evidence/audit.ts",
+    "exitCode": 0,
+    "log": "audit.txt"
+  },
+  "historicalUnchanged": {
+    "serviceSuite": "NOT_RERUN",
+    "acceptance": "NOT_RERUN; historical28.695s, unchanged30s threshold",
+    "engines": "NOT_RERUN",
+    "proof": "unchanged-runtime-provenance.json"
+  },
+  "logs": {
+    "audit.txt": "22e23138e849ad1a5a60010a2bb47f40cd61fac81a28a328a3fb5661efe94d5b",
+    "build-candidate.txt": "611a6438ccee522782ea7a28641a1cd8e630f9e26211ab8da1f4639352aa7a55",
+    "build-disabled.txt": "d1e64bb08286d9778819bc89791462f41757db5d0820d97e49f8deac041c646b",
+    "focused-final-green.txt": "6c1443be5a6d0a677890621bf075729336b4afc7d20e820583771562e9ef5ad0",
+    "focused-green.txt": "3e049729f34e5d01c1fe1ef577aedd6d87b244b3091216ad6c69ae9a5b760d9c",
+    "internet-delayed-shutdown.txt": "a4dc6abe412238ef6f8f124b912dec3d693b514700f2ab8cc8ae0712c2ce9509",
+    "internet-driver-loopback.txt": "a4dc6abe412238ef6f8f124b912dec3d693b514700f2ab8cc8ae0712c2ce9509",
+    "native-config.txt": "cfae11abbc74c69be92bb8d48860ec0c4c0e7b8271a1d57307fe6a8a0ac9a2af",
+    "online-app.txt": "bcb6ae0bb70261c7383e7e3c9bca3261f9b265e193a226fb3c970b60f8941397",
+    "package-candidate.txt": "f234ae976891c95835ffaa063badbfd9451eef105e3cf389726cef76378fc12a",
+    "package-disabled.txt": "a900a30f0a3a16d9bb157b1307065195384a0ca4936ee59b062c587b20c257c7",
+    "package-zip-audit.txt": "8a151205ffd2d1e8ed8a6cbe39e7ae2c8673ff1cd91828ae449123611abf434d",
+    "r1-r3-green.txt": "5caf4aecebe69da7248c64d34355df9c570ceeb3eb2573b42e74e4a287f3221d",
+    "r1-r3-red.txt": "dc9d5632fc629ee80c16ee0e74a821b0808ea472e9b1cf2ba37d2518600e483d",
+    "r2-green.txt": "fb673d66883b46b48bc828486ec23d55d188ca7f159985d807e11f6ed8ea6514",
+    "r2-red.txt": "1f1c666d398ed6bbfe14f39fff2e6c5240b3dd97419129623fa07bad1e5fdfb2",
+    "r3-schema-failure-internet-driver-loopback.txt": "737b4ab7289eeea2791aaa6d48be94a949cf36c8e626c4953fb03168f355461a",
+    "r3-schema-green.txt": "8461f4a31205cbc689c313a05eb8d70216a836e80641e540920760522375c48e",
+    "r3-schema-red.txt": "7bc00956ded43630a7a1c8e265bc803276b4ced2d895a04a9817339f85843af2",
+    "r3-sequence-red-native.txt": "22d90f4e650492b294529eba919bc04f847e2ab055d21024616e0d18f1bc2547",
+    "recovery-cutter.txt": "48b1b98af012bb26e8af36427034db414ae9f719751e28de14c9f96528896964",
+    "recovery-git-failure.txt": "aee2ebc11b55f77393c44b79e7c9ef268b986158e9b7ba709aa7bc6e74967e2b",
+    "recovery-git-timeout.txt": "aee2ebc11b55f77393c44b79e7c9ef268b986158e9b7ba709aa7bc6e74967e2b",
+    "recovery-paused.txt": "372b55e067d3928a6f613502e84f9e1b2ba38a2dcff66bc1978b424e5ba33587",
+    "recovery-preparation-read-failure.txt": "67dba9a139b6347a91241cf93c13dd2d1fdfbf6a25a4b136a94e6683da2bb557",
+    "recovery-race.txt": "ef3afde25fa827959577f58b7b9ef4706c2c61b5748da5a35e09c5885cbd23d6",
+    "recovery-skiff.txt": "adf18f5397ae69114c16e671598a4854543c6d99807a4666316430e3884de8e5",
+    "recovery-stale.txt": "7497576b988d04d22eba186afb8f1dcef547ae5c62fe23ce4db64bcd9297992d",
+    "recovery-unresponsive-cleanup.txt": "fd579749b7340463476f4d074bf8f20313f85a88c125cc72697000a4d3cd0ab0",
+    "recovery-upload.txt": "753130a1f145086956f1b3967fcf2ed610ca23e831a357550b2b25f676dca2c8",
+    "root-tests-final.txt": "a1a0bb1e9137505d58b3f24ec42793bf00b85d43d563cf491228b42aecf5eca6",
+    "root-tests.txt": "e581bfc8a579b887f9f8440011ca23a530c2c9a38c9a69f3c87d3a6dcacf4861",
+    "root-typecheck-final.txt": "b0648a2684ae21c8ed9943d2d57848b8474aa6fa22d03d98bf0a3e3fcd2b94b8",
+    "root-typecheck.txt": "b0648a2684ae21c8ed9943d2d57848b8474aa6fa22d03d98bf0a3e3fcd2b94b8",
+    "scoped-typecheck-final.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scoped-typecheck.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

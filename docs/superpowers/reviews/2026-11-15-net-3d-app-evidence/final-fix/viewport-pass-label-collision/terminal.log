@@ -1,0 +1,15 @@
+node.exe : { code: 'APP_NATIVE_STDERR', role: 'guest' }
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ({ code: 'APP_NA...role: 'guest' }:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{ code: 'APP_NATIVE_STDERR', role: 'host' }
+{ code: 'APP_NATIVE_STDERR', role: 'guest' }
+{ code: 'APP_NATIVE_STDERR', role: 'guest' }
+ACTUAL APP 2-seat skiff: input, ACK, bot, restart and paused rejoin proved
+{ code: 'APP_NATIVE_STDERR', role: 'guest' }
+{ code: 'APP_NATIVE_STDERR', role: 'guest' }
+ACTUAL APP 4-seat cutter: input, ACK, bot, restart and paused rejoin proved
+ACTUAL TWO-PROCESS ONLINE APPLICATION PASS

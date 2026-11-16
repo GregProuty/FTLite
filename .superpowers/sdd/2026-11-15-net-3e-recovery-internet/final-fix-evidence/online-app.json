@@ -1,0 +1,628 @@
+{
+  "version": 1,
+  "source": {
+    "revision": "65b92a3d29fdf87bc719658cd071395224182546",
+    "dirty": true,
+    "digest": "0f3d25b24a4b22b74e932ef1870ee5468dda68ce03bd46e8dfbde4a30470702b",
+    "artifactHashes": {
+      "out/main/index.js": "3886904480542fb590da160f43536e3ab219ec1c6bfbafca470f62b43634b930",
+      "out/main/authorityHost.js": "1a35cbb1ca75b52c6ec3e878bdb60410f11245602b9e1678c4b98c1d050dc052",
+      "out/main/hostProcess.js": "1e5a1d3dcf5161404ffecb442d01f2dfca2cbac8ed908151ac0aff46ad3827f8",
+      "out/main/transportWindow.js": "5639d26c0b68a6bce01abaa341d3a80ed4d77d22dbdfc6f7221f1b1d945cb3d2",
+      "out/renderer/index.html": "781cc9ee18e00418f706eb2d64f06899bdd65eb914cae83a7b64213a54c3ab45",
+      "scripts/network/online-app-smoke.ts": "0d0f42f970702af2931ee8b0cc1e69db299dc24c5b08549dd78d05ddf3cbda81",
+      "scripts/network/online-app-smoke.cjs": "30b5159306bbbb2706a7add486ce125b54d08438a78d718a0acbac94e88cfc73",
+      "scripts/network/online-app-click.cjs": "47d48d86aec2c73ec0a84a3acc443b355a4a5583657a4851019bd2a9aeb3f0a1",
+      "scripts/network/online-app-observer.ts": "102c310829e1362d691d9d0ea189d6f7faee59a7acbd15e5883af9d61a011497",
+      "scripts/network/online-app-runtime.ts": "d074499f5ded65ead91a9231afd3807cd1976828721b90a569773f035a77556b",
+      "scripts/network/online-app-runtime-worker.ts": "3a7c143b6761a9fa770887dd2323f7c11400ad81ca2cea220d3bbac749797584",
+      "src/main/index.ts": "c46df99d969145c687186cf3196cb6a3e5d462144656396f6c7ff8be4ff7cdd8",
+      "src/main/network/onlineSession.ts": "0d2861608be2ec0475e0fc4b47b7a520332592044305d2e4db2cd7e900779bba",
+      "src/main/network/onlineMirrors.ts": "c74bd1aff40655e8a546e284ee72ae6dffc6bfe3a9113e687bba997f96af09c6",
+      "src/main/network/mirrorStore.ts": "ac3d3c637525abb283111358b6119bea9f72677574c64cb2aee0269dafab259d",
+      "src/main/network/onlinePlatform.ts": "b697b5446155010e7bc7a6d5c6a7efdd8005718607d9aa13cca6b936910f6b0f",
+      "src/main/network/onlineSector.ts": "004843dcc7e69e68fa5ddaa5e8bf0cc894f6b4d242827e74aae2a83e2eba6377",
+      "src/main/network/hostProcess.ts": "64e53ffb9bd6fc6300199a928a70f820790fa4f83401927261cd8fdffa8698c6",
+      "src/shared/onlineSession.ts": "e65f32dcf9f9f5857769f2afdfb7035e13ab66d4b177a64edd7e53e967ce0c3b",
+      "src/network/session/serviceClient.ts": "198bb9f1487f487c422fa48e879151aecc90cc4b9de3a2a8ac556b277fce925c",
+      "src/network/utilityHost.ts": "16d00281f21bba20e35d0f9198cc49ac9d247e7922aea76bf747ee38e54163ad",
+      "src/network/modes/sector.ts": "b475d7d26fbdf0817d4296335d2dcb246efb4baa7d4eb9e1cda391d5dc944ac2"
+    }
+  },
+  "runtime": {
+    "electron": "37.10.3",
+    "workerd": "1.20261023.1",
+    "workerPid": 31764,
+    "workerExit": true,
+    "temporaryRemoved": true
+  },
+  "processes": [
+    {
+      "pid": 32192,
+      "profile": "host",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 2,
+        "utilityExits": 2,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 4,
+        "nativeWindowExits": 4,
+        "nativePeersObserved": 7,
+        "nativePeerCloses": 7,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [
+          33712,
+          35732
+        ],
+        "observedMainPorts": 22,
+        "shutdownComplete": true,
+        "exitCommitDelayMs": 0,
+        "shutdownElapsedMs": 16.222499999996217
+      }
+    },
+    {
+      "pid": 22936,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "restart",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [],
+        "windows": 2,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [
+              {
+                "state": "connected",
+                "selected": true,
+                "direct": true,
+                "lossAvailable": false,
+                "localType": "host",
+                "remoteType": "host",
+                "policy": "all",
+                "listeners": 4,
+                "channels": [
+                  {
+                    "label": "ftl-reliable-v1",
+                    "state": "open",
+                    "ordered": true,
+                    "maxRetransmits": null,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 166,
+                    "received": 11,
+                    "maxBytes": 259
+                  },
+                  {
+                    "label": "ftl-latest-v1",
+                    "state": "open",
+                    "ordered": false,
+                    "maxRetransmits": 0,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 69,
+                    "received": 153,
+                    "maxBytes": 238
+                  }
+                ]
+              }
+            ],
+            "timers": 1,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 2
+      }
+    },
+    {
+      "pid": 31168,
+      "profile": "incompatible",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 0,
+        "nativeWindowExits": 0,
+        "nativePeersObserved": 0,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 0,
+        "shutdownComplete": true,
+        "exitCommitDelayMs": 0,
+        "shutdownElapsedMs": 7.49160000000029
+      }
+    },
+    {
+      "pid": 32880,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "restart",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [],
+        "windows": 2,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [
+              {
+                "state": "connected",
+                "selected": true,
+                "direct": true,
+                "lossAvailable": false,
+                "localType": "host",
+                "remoteType": "host",
+                "policy": "all",
+                "listeners": 4,
+                "channels": [
+                  {
+                    "label": "ftl-reliable-v1",
+                    "state": "open",
+                    "ordered": true,
+                    "maxRetransmits": null,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 18,
+                    "received": 7,
+                    "maxBytes": 258
+                  },
+                  {
+                    "label": "ftl-latest-v1",
+                    "state": "open",
+                    "ordered": false,
+                    "maxRetransmits": 0,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 12,
+                    "received": 10,
+                    "maxBytes": 239
+                  }
+                ]
+              }
+            ],
+            "timers": 1,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 2
+      }
+    },
+    {
+      "pid": 33868,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "restart",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [],
+        "windows": 2,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [
+              {
+                "state": "connected",
+                "selected": true,
+                "direct": true,
+                "lossAvailable": false,
+                "localType": "host",
+                "remoteType": "host",
+                "policy": "all",
+                "listeners": 4,
+                "channels": [
+                  {
+                    "label": "ftl-reliable-v1",
+                    "state": "open",
+                    "ordered": true,
+                    "maxRetransmits": null,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 169,
+                    "received": 13,
+                    "maxBytes": 259
+                  },
+                  {
+                    "label": "ftl-latest-v1",
+                    "state": "open",
+                    "ordered": false,
+                    "maxRetransmits": 0,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 74,
+                    "received": 154,
+                    "maxBytes": 238
+                  }
+                ]
+              }
+            ],
+            "timers": 1,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 2
+      }
+    },
+    {
+      "pid": 15576,
+      "profile": "filler",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 1,
+        "nativeWindowExits": 1,
+        "nativePeersObserved": 0,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 2,
+        "shutdownComplete": true,
+        "exitCommitDelayMs": 0,
+        "shutdownElapsedMs": 101.02700000000004
+      }
+    },
+    {
+      "pid": 21300,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 1,
+      "termination": "restart",
+      "resourcesBeforeForcedExit": {
+        "bounds": {
+          "x": 632,
+          "y": 316,
+          "width": 1296,
+          "height": 759
+        },
+        "minimized": false,
+        "visible": true,
+        "focused": true,
+        "utilities": [],
+        "windows": 2,
+        "ports": 0,
+        "native": [
+          {
+            "connections": [
+              {
+                "state": "connected",
+                "selected": true,
+                "direct": true,
+                "lossAvailable": false,
+                "localType": "host",
+                "remoteType": "host",
+                "policy": "all",
+                "listeners": 4,
+                "channels": [
+                  {
+                    "label": "ftl-reliable-v1",
+                    "state": "open",
+                    "ordered": true,
+                    "maxRetransmits": null,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 19,
+                    "received": 7,
+                    "maxBytes": 258
+                  },
+                  {
+                    "label": "ftl-latest-v1",
+                    "state": "open",
+                    "ordered": false,
+                    "maxRetransmits": 0,
+                    "maxPacketLifeTime": null,
+                    "listeners": 6,
+                    "sent": 11,
+                    "received": 12,
+                    "maxBytes": 239
+                  }
+                ]
+              }
+            ],
+            "timers": 1,
+            "held": false,
+            "faults": {
+              "dropped": 0,
+              "reordered": 0,
+              "closedMidTransfer": 0
+            }
+          }
+        ],
+        "listeners": 2
+      }
+    },
+    {
+      "pid": 17004,
+      "profile": "guest",
+      "exited": true,
+      "exitCode": 0,
+      "termination": "shutdown",
+      "cleanup": {
+        "utilities": 0,
+        "utilityExits": 0,
+        "windows": 0,
+        "ports": 0,
+        "listeners": 0,
+        "nativeWindows": 1,
+        "nativeWindowExits": 1,
+        "nativePeersObserved": 0,
+        "nativePeerCloses": 0,
+        "nativePeersEndedWithWindow": 0,
+        "peers": 0,
+        "utilityPids": [],
+        "observedMainPorts": 2,
+        "shutdownComplete": true,
+        "exitCommitDelayMs": 0,
+        "shutdownElapsedMs": 5.136099999999715
+      }
+    }
+  ],
+  "cleanup": {
+    "utilities": 2,
+    "utilityExits": 2,
+    "windows": 0,
+    "ports": 0,
+    "listeners": 0,
+    "peers": 0,
+    "nativeWindows": 6,
+    "nativeWindowExits": 6,
+    "nativePeersObserved": 7,
+    "nativePeerCloses": 7,
+    "nativePeersEndedWithWindow": 0,
+    "observedMainPorts": 26
+  },
+  "runtimeHelper": {
+    "pid": 34108,
+    "exited": true,
+    "exitCode": 0,
+    "forced": false,
+    "stage": "ready"
+  },
+  "viewports": [
+    {
+      "name": "couch",
+      "small": false,
+      "width": 1280,
+      "height": 720,
+      "menu": {
+        "top": 0,
+        "bottom": 57,
+        "width": 1280,
+        "height": 57
+      },
+      "canvas": {
+        "top": 57,
+        "bottom": 720,
+        "width": 1280,
+        "height": 663
+      }
+    },
+    {
+      "name": "couch",
+      "small": true,
+      "width": 640,
+      "height": 480,
+      "menu": {
+        "top": 0,
+        "bottom": 57,
+        "width": 640,
+        "height": 57
+      },
+      "canvas": {
+        "top": 57,
+        "bottom": 480,
+        "width": 640,
+        "height": 423
+      }
+    },
+    {
+      "name": "online-player2",
+      "small": false,
+      "width": 1280,
+      "height": 720,
+      "menu": {
+        "top": 0,
+        "bottom": 57,
+        "width": 1280,
+        "height": 57
+      },
+      "canvas": {
+        "top": 57,
+        "bottom": 720,
+        "width": 1280,
+        "height": 663
+      }
+    },
+    {
+      "name": "online-player2",
+      "small": true,
+      "width": 640,
+      "height": 480,
+      "menu": {
+        "top": 0,
+        "bottom": 163,
+        "width": 640,
+        "height": 163
+      },
+      "canvas": {
+        "top": 163,
+        "bottom": 480,
+        "width": 640,
+        "height": 317
+      }
+    },
+    {
+      "name": "online-player3",
+      "small": false,
+      "width": 1280,
+      "height": 720,
+      "menu": {
+        "top": 0,
+        "bottom": 110,
+        "width": 1280,
+        "height": 110
+      },
+      "canvas": {
+        "top": 110,
+        "bottom": 720,
+        "width": 1280,
+        "height": 610
+      }
+    },
+    {
+      "name": "online-player3",
+      "small": true,
+      "width": 640,
+      "height": 480,
+      "menu": {
+        "top": 0,
+        "bottom": 163,
+        "width": 640,
+        "height": 163
+      },
+      "canvas": {
+        "top": 163,
+        "bottom": 480,
+        "width": 640,
+        "height": 317
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "capacity": 2,
+      "seat": 1,
+      "layout": "skiff",
+      "mirrors": {
+        "initialCommittedTick": 0,
+        "initialBeforeBootstrap": true,
+        "periodicCapturedTick": 300,
+        "periodicCommittedTick": 300,
+        "guestReceived": true
+      },
+      "fullReceipts": 8,
+      "acks": 167,
+      "commands": 2,
+      "matched": 3,
+      "ownership": true,
+      "ackBeforeInput": true,
+      "generationBefore": 3,
+      "generationAfter": 5,
+      "botTakeover": true,
+      "pausedReconnect": true,
+      "blurNeutral": true,
+      "botHeldBefore": 71,
+      "botHeldAfter": 93,
+      "agreement": {
+        "runId": "0ea85fd9a1d70f78474f0424838d095c",
+        "sequence": 653,
+        "hash": "36a25695",
+        "tick": 641
+      }
+    },
+    {
+      "capacity": 4,
+      "seat": 2,
+      "layout": "cutter",
+      "mirrors": {
+        "initialCommittedTick": 0,
+        "initialBeforeBootstrap": true,
+        "periodicCapturedTick": 300,
+        "periodicCommittedTick": 300,
+        "guestReceived": true
+      },
+      "fullReceipts": 10,
+      "acks": 169,
+      "commands": 2,
+      "matched": 3,
+      "ownership": true,
+      "ackBeforeInput": true,
+      "generationBefore": 1,
+      "generationAfter": 3,
+      "botTakeover": true,
+      "pausedReconnect": true,
+      "blurNeutral": true,
+      "botHeldBefore": 74,
+      "botHeldAfter": 104,
+      "agreement": {
+        "runId": "c251a437ea6a41ca3de415abd875345c",
+        "sequence": 657,
+        "hash": "5402d8b4",
+        "tick": 643
+      }
+    }
+  ],
+  "checks": [
+    "bad-code",
+    "incompatible",
+    "cancel-couch"
+  ],
+  "elapsedMs": 51886,
+  "limits": [
+    "loopback-only",
+    "no-TURN",
+    "no-rehost",
+    "no-WAN",
+    "no-two-machine"
+  ]
+}

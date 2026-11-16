@@ -1,0 +1,319 @@
+
+ RUN  v3.2.7 C:/Users/djuar/.codex/worktrees/56fc/FTLite
+
+ ❯ tests/sessionMenu.test.ts (7 tests | 2 failed) 13ms
+   × reserves the measured strip height for online and couch, including wrapped controls 5ms
+     → menu.reservedHeight is not a function
+   × counts down a shared epoch deadline despite unequal process performance origins 4ms
+     → expected 'Retrying saved seat in 1800000003s…' to contain 'in 3s'
+   ✓ explains unavailable online in a connected but unconfigured app while leaving Couch playable 1ms
+   ✓ keeps a compact failure strip over the last game even when main clears the attachment epoch 0ms
+   ✓ offers accessible capacity/code forms and deduplicates Join until settlement 2ms
+   ✓ gates lobby capabilities and labels reconnect as a seat, with actionable compatibility errors 0ms
+   ✓ requires ready occupied humans and host capability before Start, and permits leaving during a pending Join 1ms
+ ❯ tests/onlineAppReport.test.ts (31 tests | 9 failed) 12ms
+   × actual online app report admission > rejects invalid post-rejoin generation undefined 6ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation NaN 1ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation Infinity 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation 2.5 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects invalid post-rejoin generation 9007199254740992 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects a report declaring failure despite complete observations 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > requires hashes for the actual application and launcher artifacts 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects missing or malformed hash out/main/index.js 0ms
+     → expected [Function] to throw an error
+   × actual online app report admission > rejects missing or malformed hash scripts/network/online-app-smoke.ts 0ms
+     → expected [Function] to throw an error
+   ✓ actual online app report admission > accepts complete observed evidence 0ms
+   ✓ actual online app report admission > rejects missing source 0ms
+   ✓ actual online app report admission > rejects missing processes 0ms
+   ✓ actual online app report admission > rejects missing cleanup 0ms
+   ✓ actual online app report admission > rejects missing scenarios 0ms
+   ✓ actual online app report admission > rejects missing runtime 0ms
+   ✓ actual online app report admission > rejects missing acks proof 0ms
+   ✓ actual online app report admission > rejects missing commands proof 0ms
+   ✓ actual online app report admission > rejects missing matched proof 0ms
+   ✓ actual online app report admission > rejects missing fullReceipts proof 0ms
+   ✓ actual online app report admission > rejects false ownership 0ms
+   ✓ actual online app report admission > rejects false ackBeforeInput 0ms
+   ✓ actual online app report admission > rejects false botTakeover 0ms
+   ✓ actual online app report admission > rejects false pausedReconnect 0ms
+   ✓ actual online app report admission > rejects false blurNeutral 0ms
+   ✓ actual online app report admission > exit zero alone is insufficient 0ms
+   ✓ actual online app report admission > rejects missing actual cleanup 0ms
+   ✓ actual online app report admission > rejects shared processes 0ms
+   ✓ actual online app report admission > rejects unchanged seat generation 0ms
+   ✓ actual online app report admission > rejects an unexpected process exit 0ms
+   ✓ actual online app report admission > rejects unobserved native window exits 0ms
+   ✓ actual online app report admission > rejects native peers with no closure or owning-window destruction 0ms
+ ❯ tests/hudSlots.test.ts (1 test | 1 failed) 17ms
+   × clears unavailable player cards when a four-slot couch HUD is reused for two online seats 16ms
+     → expected true to be false // Object.is equality
+ ❯ tests/sectorProducers.test.ts (13 tests | 1 failed) 464ms
+   ✓ gives every vacant seat exactly one bot through published-state strict input 38ms
+   × retires an entire multi-seat human binding when seat 2 is replaced and restores bot 0 24ms
+     → expected false to be true // Object.is equality
+   ✓ suppresses only sparse human seats 0 and 2 and resumes each bot after loss 13ms
+   ✓ settles an admitted pending command and clears held movement before bot takeover 12ms
+   ✓ hands human to bot to human with current watermarks and ignores stale detach closures 7ms
+   ✓ coalesces replacement and close callbacks while paused without advancing simulation 5ms
+   ✓ queues replacements requested during a synchronous initial publication outside its journal frame 4ms
+   ✓ restores actual controller cursor/repeat memory and reconciles abandoned sequences before continuing 262ms
+   ✓ captures live sector controllers in initial and periodic crash baselines and regular mode checkpoints 92ms
+   ✓ closes queued human links on disposal without ever binding or producing 1ms
+   ✓ coalesces superseded pending links immediately while binding only at the safe boundary 2ms
+   ✓ retires a bot candidate if another publication observer disposes the manager during binding 2ms
+   ✓ releases every sector producer when initial publication faults the authority 2ms
+ ❯ tests/onlineRenderer.test.ts (9 tests | 2 failed) 119ms
+   × online renderer uses the real streaming client > retains a nondefault Doors selection in draws after main detaches the replica 21ms
+     → expected undefined to deeply equal { rowKey: 'door:3', page: 'main' }
+   × online renderer uses the real streaming client > shows vacant and disconnected crew as bots with health and without local input prompts 7ms
+     → expected [ 'reconnect', 'reconnect', 'active' ] to deeply equal [ 'bot', 'bot', 'active' ]
+   ✓ online renderer uses the real streaming client > neutralizes a removed controller exactly once and stops production until a physical producer returns 15ms
+   ✓ online renderer uses the real streaming client > waits for validated state ACK, maps physical zero only to seat two, and blur neutralizes once without pause 10ms
+   ✓ online renderer uses the real streaming client > draws detached presentation without changing confirmed data and freezes after replica disposal 7ms
+   ✓ online renderer uses the real streaming client > uses delayed draw coordinates in the actual crew layer without modifying Position or snapshots 13ms
+   ✓ online renderer uses the real streaming client > uses owned pause commands, reserves bounded outbox capacity and never writes couch progression 34ms
+   ✓ online renderer uses the real streaming client > neutralizes menu blocking once and rejects stale attachment epochs without replacing a live client 8ms
+   ✓ online renderer uses the real streaming client > replaces the client, UI and frozen ownership; new attachment cannot send abandoned pending commands 3ms
+ ❯ tests/onlineCoordinator.test.ts (27 tests | 1 failed) 1091ms
+   ✓ online coordinator ownership > publishes Start capability only after human, native and service readiness and revokes it on loss or generation replacement 135ms
+   ✓ online coordinator ownership > offers Reconnect only after a saved seat is known 1ms
+   ✓ online coordinator ownership > persists before connect/lobby; creates exactly one utility after duplicate commitment and keeps display hints powerless 4ms
+   ✓ online coordinator ownership > keeps play available with a fixed persistence warning 1ms
+   ✓ online coordinator ownership > probes second layout only for incompatible 2ms
+   ✓ online coordinator ownership > Leave preempts an unresolved transport factory and closes its late return 52ms
+   ✓ online coordinator ownership > closes a late utility after Leave and never publishes stale ports 125ms
+   ✓ online coordinator ownership > uses only the stored token and compatibility and refuses to recreate active host authority 2ms
+   ✓ online coordinator ownership > rejects stored origin mismatch without contacting the service 1ms
+   ✓ online coordinator ownership > bounds subscribers and coalesces explicit ready changes while rejecting concurrent lifecycle work 2ms
+   ✓ online coordinator ownership > keeps sparse capacity four and frozen seats through start/removal/reuse 4ms
+   ✓ online coordinator ownership > stops host authority on its own service loss 2ms
+   ✓ online coordinator ownership > stops host authority on its own transport loss 1ms
+   ✓ online coordinator ownership > stops host authority on its own utility loss 1ms
+   ✓ online coordinator ownership > stops host authority on its own renewal loss 2ms
+   ✓ online coordinator ownership > active guest reconnect waits for matching sync hint and later loss starts a fresh original-token attempt 247ms
+   ✓ online coordinator ownership > guest reconnect exhausts budget while syncing and closes its transport 1ms
+   ✓ online coordinator ownership > fails closed on terminal service errors during reconnect instead of looping 61ms
+   ✓ online coordinator ownership > Forget fences replacement work until old resource disposal and serialized credential clearing finish 1ms
+   ✓ online coordinator ownership > bounds unresolved native factories across cancellation generations  311ms
+   ✓ online coordinator ownership > removes lobby seats, retires their old route and reuses the same logical ID at a newer generation 1ms
+   ✓ online coordinator ownership > does not attach a rejoining guest to a utility until its start command completes 123ms
+   ✓ online coordinator ownership > all dispose callers await the same outstanding resource shutdown 1ms
+   ✓ online coordinator ownership > preserves unavailable retryAfter across coordinator retries 1ms
+   ✓ online coordinator ownership > explicit Leave invalidates an automatic retry queued behind transport cleanup 1ms
+   ✓ online coordinator ownership > a Leave from a status observer cannot be undone by the old automatic retry continuation 1ms
+   × publishes retry deadlines in shared epoch time without changing monotonic enforcement 5ms
+     → expected 13000 to be 1800000008000 // Object.is equality
+node.exe : 
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+⎯⎯⎯⎯⎯⎯ Failed Tests 16 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hudSlots.test.ts > clears unavailable player cards when a four-slot couch HUD is reused for two online 
+seats
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hudSlots.test.ts:28:58
+     26|   const state = makeState(2);
+     27|   hud.update(buildHudModel(state, { mode: 'player', player: 0, ui }, {…
+     28|   expect(visibleText(parent).some(t => /P[34]/.test(t))).toBe(false);
+       |                                                          ^
+     29|   expect(visibleText(parent).some(t => /P2.*BOT/.test(t))).toBe(true);
+     30|   expect(visibleText(parent).some(t => /RECONNECT|press Interact/.test…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 
+undefined
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation NaN
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 
+Infinity
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 2.5
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects invalid post-rejoin generation 
+9007199254740992
+AssertionError: expected [Function] to throw an error
+ ❯ tests/onlineAppReport.test.ts:17:46
+     15|   it.each([undefined, NaN, Infinity, 2.5, Number.MAX_SAFE_INTEGER + 1]…
+     16|     const r: any = fixture(); r.scenarios[0].generationAfter = generat…
+     17|     expect(() => validateOnlineAppReport(r)).toThrow();
+       |                                              ^
+     18|   });
+     19|   it('rejects a report declaring failure despite complete observations…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects a report declaring failure despite 
+complete observations
+AssertionError: expected [Function] to throw an error
+ ❯ tests/onlineAppReport.test.ts:20:90
+     18|   });
+     19|   it('rejects a report declaring failure despite complete observations…
+     20|     expect(() => validateOnlineAppReport({ ...fixture(), failure: 'lau…
+       |                                                                                          ^
+     21|   });
+     22|   it('requires hashes for the actual application and launcher artifact…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > requires hashes for the actual application 
+and launcher artifacts
+AssertionError: expected [Function] to throw an error
+ ❯ tests/onlineAppReport.test.ts:23:104
+     21|   });
+     22|   it('requires hashes for the actual application and launcher artifact…
+     23|     const r: any = fixture(); delete r.source.artifactHashes; expect((…
+       |                                                                                                        ^
+     24|   });
+     25|   it.each(['out/main/index.js', 'scripts/network/online-app-smoke.ts']…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects missing or malformed hash 
+out/main/index.js
+ FAIL  tests/onlineAppReport.test.ts > actual online app report admission > rejects missing or malformed hash 
+scripts/network/online-app-smoke.ts
+AssertionError: expected [Function] to throw an error
+ ❯ tests/onlineAppReport.test.ts:26:109
+     24|   });
+     25|   it.each(['out/main/index.js', 'scripts/network/online-app-smoke.ts']…
+     26|     const r: any = fixture(); delete r.source.artifactHashes[key]; exp…
+       |                                                                                                             ^
+     27|     r.source.artifactHashes[key] = 'not-a-hash'; expect(() => validate…
+     28|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+ FAIL  tests/onlineCoordinator.test.ts > publishes retry deadlines in shared epoch time without changing monotonic 
+enforcement
+AssertionError: expected 13000 to be 1800000008000 // Object.is equality
+
+- Expected
++ Received
+
+- 1800000008000
++ 13000
+
+ ❯ tests/onlineCoordinator.test.ts:229:38
+    227|   h.service.join.mockRejectedValueOnce({ code: 'unavailable', retryabl…
+    228|   const result = h.owner.dispatch({ type: 'reconnect' }); await vi.adv…
+    229|   expect(h.owner.status().retryAtMs).toBe(1800000008000);
+       |                                      ^
+    230|   await vi.advanceTimersByTimeAsync(7999); expect(h.service.join).toHa…
+    231|   await vi.advanceTimersByTimeAsync(1); expect(await result).toEqual({…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/16]⎯
+
+ FAIL  tests/onlineRenderer.test.ts > online renderer uses the real streaming client > retains a nondefault Doors 
+selection in draws after main detaches the replica
+AssertionError: expected undefined to deeply equal { rowKey: 'door:3', page: 'main' }
+
+- Expected: 
+{
+  "page": "main",
+  "rowKey": "door:3",
+}
+
++ Received: 
+undefined
+
+ ❯ tests/onlineRenderer.test.ts:45:55
+     43|     ui.stations[0] = { rowKey: 'door:3', page: 'main' };
+     44|     h.session.setStatus({ ...status, phase: 'reconnecting' }); h.sessi…
+     45|     expect(h.draw.mock.calls.at(-1)![3]?.stations[0]).toEqual({ rowKey…
+       |                                                       ^
+     46|     expect(h.draw.mock.calls.at(-1)![3]).not.toBe(ui);
+     47|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/16]⎯
+
+ FAIL  tests/onlineRenderer.test.ts > online renderer uses the real streaming client > shows vacant and disconnected 
+crew as bots with health and without local input prompts
+AssertionError: expected [ 'reconnect', 'reconnect', 'active' ] to deeply equal [ 'bot', 'bot', 'active' ]
+
+- Expected
++ Received
+
+  [
+-   "bot",
+-   "bot",
++   "reconnect",
++   "reconnect",
+    "active",
+  ]
+
+
+ Test Files  6 failed (6)
+      Tests  16 failed | 72 passed (88)
+   Start at  13:21:14
+   Duration  2.03s (transform 974ms, setup 1.90s, collect 2.99s, tests 1.72s, environment 1ms, prepare 518ms)
+
+ ❯ tests/onlineRenderer.test.ts:54:78
+     52|       { seatId: 2, occupied: true, connected: true }
+     53|     ] } as any }); h.session.frame();
+     54|     expect(h.update.mock.calls.at(-1)![0].players.map((p: any) => p.st…
+       |                                                                              ^
+     55|     for (const p of h.update.mock.calls.at(-1)![0].players.slice(0, 2)…
+     56|       expect(p.health).toBeGreaterThan(0); expect(p.interactPrompt).to…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/16]⎯
+
+ FAIL  tests/sectorProducers.test.ts > retires an entire multi-seat human binding when seat 2 is replaced and restores 
+bot 0
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/sectorProducers.test.ts:69:109
+     67|   expect(replacement.host.links).toHaveLength(1);
+     68|   replacement.client.callout(2); h.transport.drain(); h.tick(); h.tick…
+     69|   expect(h.checkpoint().recentResults.some(r => r.result.id.player ===…
+       |                                                                                                             ^
+     70| });
+     71| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/16]⎯
+
+ FAIL  tests/sessionMenu.test.ts > reserves the measured strip height for online and couch, including wrapped controls
+TypeError: menu.reservedHeight is not a function
+ ❯ tests/sessionMenu.test.ts:13:15
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/16]⎯
+
+ FAIL  tests/sessionMenu.test.ts > counts down a shared epoch deadline despite unequal process performance origins
+AssertionError: expected 'Retrying saved seat in 1800000003s…' to contain 'in 3s'
+
+Expected: "in 3s"
+Received: "Retrying saved seat in 1800000003s…"
+
+ ❯ tests/sessionMenu.test.ts:23:73
+     21|   const now = vi.spyOn(Date, 'now').mockReturnValue(1800000000000);
+     22|   menu.setStatus({ phase: 'reconnecting', role: 'guest', ownSeat: 1, s…
+     23|   menu.frame(17); expect(root.find('reconnect-countdown')!.textContent…
+       |                                                                         ^
+     24|   now.mockReturnValue(1800000002000); menu.frame(2017); expect(root.fi…
+     25|   now.mockRestore(); menu.dispose();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/16]⎯
+

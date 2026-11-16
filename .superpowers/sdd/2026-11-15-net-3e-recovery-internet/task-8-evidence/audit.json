@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "candidateSource": "0e9d024db0189bbf918c9fc76a6276f51f7ef115",
+  "candidateManifestSha256": "02f33eeccf29af622045a4575751dad286d2e7e0a3083dbe69a4f63d090362e7",
+  "sourceFilesChecked": 264,
+  "artifactFilesChecked": 47,
+  "rollback": {
+    "version": 1,
+    "origin": null,
+    "onlineDisabled": true,
+    "compiledResolverExecuted": true,
+    "developmentOverrideRejected": true,
+    "otherRuntimeFilesMatchingCandidate": 46,
+    "entryCount": 2253,
+    "files": {
+      "dist/net-3e-rollback-disabled.zip": "51b0e93e51eb3da0b0f8c1dd41d9df86036caea4497a3cd8bfd09720ae4906d5",
+      "dist/net-3e-rollback-disabled/win-unpacked/FTLite.exe": "c519b5177c0d46fa74078c8832b68b101e7530253f417bc2b61432a29c796fcb",
+      "dist/net-3e-rollback-disabled/win-unpacked/resources/app.asar": "9679bdd5c6ed6270b29f04a66b8c69d88b28087b0114d126b61f2fd92e6a6e04"
+    },
+    "mainSha256": "4eab09bdda7b5478014d57364e1590780826a16badcea30c94f8f1d8c74e3ef7"
+  },
+  "recovery": [
+    {
+      "scenario": "skiff",
+      "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+      "elapsedMs": 19049,
+      "sha256": "24dbd13125b41aae1c672887dc3a4d368647c7c7bcdb56780b6281132621dda1"
+    },
+    {
+      "scenario": "cutter",
+      "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+      "elapsedMs": 21910,
+      "sha256": "d65b5ac4a71111db55ba544ebabefb018215181b342be962edfec7988ce695a6"
+    },
+    {
+      "scenario": "paused",
+      "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+      "elapsedMs": 19226,
+      "sha256": "51e204a1f77a51c4e75697550d05239fc2a4177db55f321c43809d8add956942"
+    },
+    {
+      "scenario": "upload",
+      "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+      "elapsedMs": 19347,
+      "sha256": "c9b280ecfa737bf7a153c05f0628d4f19df16e9b5a5e6b10f1c1556f597923c8"
+    },
+    {
+      "scenario": "race",
+      "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+      "elapsedMs": 31706,
+      "sha256": "a1b1fc4bd1adf83debdc85bcd70b983d73f089ee8891157496a4b99384f99006"
+    },
+    {
+      "scenario": "stale",
+      "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+      "elapsedMs": 42851,
+      "sha256": "493f687c5c5f376f5ec111a852af1cf551cd9bf416cf470305a1363019fd0f1e"
+    }
+  ],
+  "onlineApp": {
+    "source": "f24149dfd7922662f3c0a68ee02153b7229b34eb",
+    "elapsedMs": 51387
+  },
+  "localInternetDriver": {
+    "source": "0e9d024db0189bbf918c9fc76a6276f51f7ef115",
+    "elapsedMs": 13645,
+    "internetRejected": true
+  },
+  "negativeAudits": [
+    {
+      "name": "preparation-read-failure",
+      "failure": "preparation-failed",
+      "cleanupFailed": false,
+      "elapsedMs": 36,
+      "ownedExits": 1
+    },
+    {
+      "name": "preparation-timeout",
+      "failure": "preparation-timeout",
+      "cleanupFailed": false,
+      "elapsedMs": 10103,
+      "ownedExits": 1
+    },
+    {
+      "name": "cleanup-stop-failure",
+      "failure": "preparation-failed",
+      "cleanupFailed": true,
+      "elapsedMs": 35,
+      "ownedExits": 1
+    }
+  ],
+  "artifacts": {
+    "acceptance-timing.json": "2b4661925616cc80a8bf4e4e94e978f2e979adcfa5218b3521deff93c55ec280",
+    "audit.ts": "9e071acc059c948c698975af2d6cb2c110671ab98c29de267e5af41887b7656a",
+    "candidate.json": "02f33eeccf29af622045a4575751dad286d2e7e0a3083dbe69a4f63d090362e7",
+    "couch-small.png": "bf7968869c220cfb7f3bd0f9aabea1cf5ff969fd3c17fe2cfa6e6cf143d25451",
+    "couch.png": "4ab63318786977050c1ad91f211196a972a210eba8bf47d1ff1586583b4fe8de",
+    "cutter-paused-small.png": "f7e038a0b7cea7914facd1b0cc0d5da81cb8e1f20dc594fa774be9fc8f18e243",
+    "cutter-paused.png": "4930db27f2a112ba8e0cedacc012e0fadff0c73489697525d3d172e9a9f3e1e8",
+    "cutter-rehosting-small.png": "ac56bc5753a71ca03ad072e4c206ff3bcfcb2491e447ac3619228bc4d8e54b87",
+    "cutter-rehosting.png": "b14d34bd87dc75069416250e325cda66c7ce7427f2ff08ecb25fd6710ad30358",
+    "cutter-saved-small.png": "140fec24d5f7b2bff34a6d5b0651d1fa9d0c6d37662902416af084f2c83364b8",
+    "cutter-saved.png": "310ac7f4e3abcc27ed6ab5553c64649dfdf3e3a2cf94e5e7c65957e813a3c28c",
+    "driver-source-artifact.json": "02aeda5739803c37ccd8e5e43a12f95f65a9ac92bca7aba7673546b5a1c7508e",
+    "internet-cleanup-stop-failure.json": "f9e089835c0317d9aa81be02122581092a6aede3598f33e3a3057550e0409f86",
+    "internet-driver-loopback-before-recovery-binding.json": "5cea79a476b4da705778f87028e80623537406d786a8ddfa9f9f2ff7bb4ee2cd",
+    "internet-driver-loopback-before-worker-identity.json": "73dcc774bc885f77fe917b9b5bf5ae0f408cd80d639b4e9d1d5cf1f765039204",
+    "internet-driver-loopback-first-failure.json": "a8f90be8d627181421bc87aacb172277b366af8082c26756df90f25fa9737719",
+    "internet-driver-loopback-guest.png": "5f837b601dc653f5dc88f5efa4e864ac70ead2c161942dea81651342b67754b7",
+    "internet-driver-loopback-host.png": "45d67cd0a8b23e534f1616c6a3da307c0485e457c460d597709ee49c76c1dc7a",
+    "internet-driver-loopback-second-failure.json": "13eeb738af9c93209b9cb3f9662228e2a902a0a7705e0c6e476aab66d38ab3e6",
+    "internet-driver-loopback.json": "880fa3e5c8dd9e579a2216c77b8dc37123c47b706f6ea2c0f2fdd82aafe6a8e3",
+    "internet-driver-loopback.json.runtime.json": "e93f0aaf0f4eed5220881ff7dcf40a519de2c10a4f129e577fe61562c377e2ae",
+    "internet-preparation-read-failure.json": "acad74a57d1f2e775431b424f16a724b5fc7b2465b6d2ae6c9b66292e00c861f",
+    "internet-preparation-timeout.json": "6d7cdf31cdd3d08cbeb807f5fbfda259fc701a071209d1e094794dad71e9981d",
+    "native-config.json": "e2fe604995da032b2db9d7cf12e91f86655e54089614d9db47862d0b6843cf98",
+    "online-app.json": "fb01cb920738ab90d4083164aff5169679a4177c14baeaf8feca6f2e8141c2f8",
+    "online-menu.png": "3c6c3e048ccdde1543fc2482a29526d88ce3a29d47ac78a473a9afff758e3368",
+    "online-player2-small.png": "150e5ce544118f6380cf2fbd4c6e68544af01e823730f5a9b0b7e142c42f6d47",
+    "online-player2.png": "60826f3745e5ac40acfae6c160438271b35875c1805b9a3b482eba23d289b21a",
+    "online-player3-small.png": "dc67d06bf4ef671c3393accca7975800f0b71b060d761e6c511b3e902ad4cdd9",
+    "online-player3.png": "32e93750556ac8e5f34606337d773183104f76a81d3404c368147f557058c737",
+    "paused-paused-small.png": "a6d85b32229bdb031f88ac82dd7d64dbff9354296708448fc2c100a8975c7c96",
+    "paused-paused.png": "da22d58e946b33aedff2760f4908f3df4cf206eef10278168432772879d095a3",
+    "paused-rehosting-small.png": "26587f68ee429c39f29e9160e0e5d30dea5b6d5ff9b8035d00e1f182b49bd992",
+    "paused-rehosting.png": "20a3fc6129ce8c5725d31f668b87992160b06d213b7eaf25537a41c01f67686f",
+    "paused-saved-small.png": "af8d009fc1f8b9191fa54a015de3483999bfd4505813f19768b6832461d9a4a5",
+    "paused-saved.png": "deaaabc0816d06b7cd2e7979026dd98d70cb71ddfa60b5092f0cd138847c2fa0",
+    "race-paused-small.png": "cf8683d878d232c780a02477f9c5587391b4389a19772ba58f6a208ab9642454",
+    "race-paused.png": "a5db8d0fc6277d411eb9e26183fc7c80e4e418bfaef61a90365537d795d9a449",
+    "race-saved-small.png": "47de89f77793b3538f9600824cb2bb488823975e8d7e0ace886bdeac24526e46",
+    "race-saved.png": "1a6a42b59daa6e3281f55b4bda365155ec2c75c63ef78964de016c728e6dd488",
+    "readiness.json": "48e45a92bca887cad02e34b57a98ff72a783673c4238d7ca1723982899145122",
+    "recovery-cutter.json": "d65b5ac4a71111db55ba544ebabefb018215181b342be962edfec7988ce695a6",
+    "recovery-paused.json": "51e204a1f77a51c4e75697550d05239fc2a4177db55f321c43809d8add956942",
+    "recovery-race.json": "a1b1fc4bd1adf83debdc85bcd70b983d73f089ee8891157496a4b99384f99006",
+    "recovery-skiff.json": "24dbd13125b41aae1c672887dc3a4d368647c7c7bcdb56780b6281132621dda1",
+    "recovery-stale.json": "493f687c5c5f376f5ec111a852af1cf551cd9bf416cf470305a1363019fd0f1e",
+    "recovery-unresponsive-cleanup.json": "0e19a0b1b967aceef280109c9402d425313b7f82a8cb92d4159a549d32e466f8",
+    "recovery-upload.json": "c9b280ecfa737bf7a153c05f0628d4f19df16e9b5a5e6b10f1c1556f597923c8",
+    "rollback.json": "192ab58516737d82449651fade309c21682ab58302d6538e9aec0dc46bb1ec33",
+    "skiff-paused-small.png": "6b7d54e19d477cf9bc70e837191cd48b24a8c1ea39cd19fcfed2c8a2abf4071c",
+    "skiff-paused.png": "9c2808f0c2c9c31760346ac5e419ef06fc70e1f8faaf6152fa75c957daa6c60f",
+    "skiff-rehosting-small.png": "40af1f2b5ddf9986ab39faea543e201bc1606d648839141e1e2bea0afa57c651",
+    "skiff-rehosting.png": "92366e847b99146e02f9b366654aa250ebfed50a75c8ddac2da414bcba78b3dc",
+    "skiff-saved-small.png": "5b2c1fd3de045caafb96a58b45f62a0d790ecf163ef109f68a7cd24b45d033f3",
+    "skiff-saved.png": "8f2af4773a588cca22a0449de9639ef412558db5cc558532423a7747759b7e43",
+    "stale-paused-small.png": "913c7abd811d4ad2e2f9e1b2d672e7b352c25035584a7cd9ac35a961853ac755",
+    "stale-paused.png": "e63c4e5f77ec7066f5cec6071d3102e345a60bee3b1aa69d28ab9390b1a9ee91",
+    "stale-rehosting-small.png": "f0adf5afba70b546bbc800fcba2a430a2863e1d90a5a56f4fd46f687cc9cf3bd",
+    "stale-rehosting.png": "4134c059d76b57aebb7271b532fe57f8638ee488b2fe383ecd73510857791956",
+    "stale-saved-small.png": "3dc3029153f023c731d67e3c50db544eb12423eae410fb73f2dab4e261461c10",
+    "stale-saved.png": "d178dbf19377355caec2c673cb3a61b0fd9e5269cb6f565f8fd14012176483db",
+    "upload-paused-small.png": "a97dd727e2a1989c5e0d0b7da156829350c676d8cd918408056c56e14b9118d4",
+    "upload-paused.png": "090d950ad7a7153d6b9f8ea8a5cfa767b573249e9a4a2943dcf160fed29f2e4a",
+    "upload-rehosting-small.png": "01ffbe04857a2db58060eaa812e978039628b78dafa65036ba1230f33cc1f381",
+    "upload-rehosting.png": "30816d3313445864a2094e369d449e9b547c296dcd590aa66ca73290446733dc",
+    "upload-saved-small.png": "e8018effe8cd6c4977896a087ec89cd32295445c3e0beb9d328f4a92124a54ae",
+    "upload-saved.png": "763b753216be0b2224959f0db4282bb40a6aaab50441412e7148ab4ef14bc7aa",
+    "verification.json": "2cce1b1caa903e86b50b2244c91ecbb5df3df388e98fd93f9fb200463cdc6bcc",
+    "worker-artifact.json": "de743874ac4dcd49445a72e57e26edcf7abf2e51d22f60cbf96ccb7bd0f5b386"
+  },
+  "externalStatus": "NOT_RUN"
+}

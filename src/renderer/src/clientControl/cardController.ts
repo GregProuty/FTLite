@@ -15,6 +15,7 @@ import { canSwap, swapSlot, selectorList, weaponRef } from '../sim/weapons';
 import { warnedTargets, targetRef, weaponsTargetSlot, scienceTargetSlot } from '../sim/debrisTargets';
 import { upgradeRows, REACTOR_ROW, BACK_ROW, canUpgrade, canBuyReactor } from '../sim/power';
 import { doorsCursorCount, doorsCursorTarget } from '../sim/doors';
+import type { AdmissionPolicy } from '../net/receivePolicy';
 
 export interface CardUiState {
   runId: RunId;
@@ -23,7 +24,14 @@ export interface CardUiState {
   groupBar: boolean[];
   navigationVisit: VisitRef | null;
 }
-export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[] }
+export type CommandBudget = (player: number, control: boolean, staged?: number) => boolean;
+export interface CommandBlocked { player: number; reason: 'capacity' }
+export interface ClientActions { held: HeldFrame[]; commands: CommandEnvelope[]; blocked?: CommandBlocked[] }
+function blocked(out: ClientActions, player: number): false {
+  out.blocked ??= [];
+  if (!out.blocked.some(entry => entry.player === player)) out.blocked.push({ player, reason: 'capacity' });
+  return false;
+}
 export interface CardRow { key: string; enabled: boolean; text: string; action: Command | null }
 export function cardRows(view: SimState, station: number, ui?: CardUiState): readonly CardRow[] {
   const kind = view.derived.stationKind[station], online = stationOnline(view, station), available = online || view.derived.stationGroup[station]! < 0;
@@ -70,7 +78,8 @@ export function createCardUiState(runId: RunId, players: number): CardUiState {
   return { runId, players: Array.from({ length: players }, () => ({ nextSequence: 1, heldSequence: 0, heldDir: Dir.None, repeat: 0, lastTick: -1, seat: -1, pendingVoteSequence: 0, pendingVoteTick: -1, pendingVote: null })), stations: [], groupBar: [], navigationVisit: null };
 }
 export function createCardUi(runId = ''): CardUiState { return createCardUiState(runId, 0); }
-export function pauseActions(ui: CardUiState, player: number, tick: number, paused: boolean): ClientActions {
+export function pauseActions(ui: CardUiState, player: number, tick: number, paused: boolean, budget?: CommandBudget): ClientActions {
+  if (budget && !budget(player, true, 0)) { const out: ClientActions = { held: [], commands: [] }; blocked(out, player); return out; }
   const producer = ui.players[player];
   if (!producer || !Number.isSafeInteger(producer.nextSequence)) throw new Error('input sequence exhausted');
   return { held: [], commands: [{ runId: ui.runId, id: { player, sequence: producer.nextSequence++ }, requestedTick: tick, command: { kind: 'setPaused', paused } }] };
@@ -90,7 +99,7 @@ export function reconcileCardUi(view: SimState, ui: CardUiState): void {
   ui.navigationVisit = visit;
 }
 /** Publications reconcile lifecycle/acknowledgments without advancing repeat. */
-export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water: readonly number[]): void {
+export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water: readonly number[], admissionPolicy: AdmissionPolicy = 'strict'): void {
   if (ui.runId !== runId) Object.assign(ui, createCardUiState(runId, view.playerCount));
   while (ui.stations.length < view.derived.stationKind.length) ui.stations.push({ rowKey: null, page: 'main' });
   for (let p = 0; p < view.playerCount; p++) {
@@ -105,8 +114,9 @@ export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water
       }
     }
     producer.seat = seat;
-    // Admission high-water alone is insufficient: pause can publish an unexecuted tick.
-    if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || ((water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
+    // Receive-time sender ticks do not identify execution. That client retires
+    // a matching executed result only after a publication covers its actual tick.
+    if (producer.pendingVote && (view.run.event < 0 || view.run.eventChoice >= 0 || !sameEvent(producer.pendingVote.event, eventRef(view)) || (admissionPolicy === 'strict' && (water[p] ?? 0) >= producer.pendingVoteSequence && view.tick > producer.pendingVoteTick))) producer.pendingVote = null;
   }
   while (ui.groupBar.length < view.groups.tab.length) ui.groupBar.push(false);
   reconcileCardUi(view, ui);
@@ -120,7 +130,7 @@ export function reconcileUi(view: SimState, ui: CardUiState, runId: RunId, water
  */
 export function reconcileCommandResult(ui: CardUiState, result: CommandResult): void {
   const producer = ui.players[result.id.player];
-  if (result.status === 'rejected' && producer?.pendingVote && result.id.sequence === producer.pendingVoteSequence) producer.pendingVote = null;
+  if (result.status === 'rejected' && result.admission?.disposition !== 'retryable' && producer?.pendingVote && result.id.sequence === producer.pendingVoteSequence) producer.pendingVote = null;
 }
 /** Client-owned 0.5 threshold, horizontal tie, and eight-tick repeat. */
 export function stickEdge(ui: CardUiState, pid: number, moveX: number, moveY: number, tick = ui.players[pid]!.lastTick + 1): Dir {
@@ -143,13 +153,17 @@ export function atFirstRow(state: SimState, i: number, ui?: CardUiState): boolea
   return cardRowIndex(state, i, ui) <= first;
 }
 /** Translate only completed state plus client memory. Held movement/Interact remain raw. */
-export function translateTick(view: SimState, ui: CardUiState, frames: readonly InputFrame[], tick: number, players?: readonly number[]): ClientActions {
+export function translateTick(view: SimState, ui: CardUiState, frames: readonly InputFrame[], tick: number, players?: readonly number[], budget?: CommandBudget): ClientActions {
   const out: ClientActions = { held: [], commands: [] };
   for (let player = 0; player < view.playerCount; player++) {
     if (players && !players.includes(player)) continue;
     const f = frames[player] ?? NEUTRAL_FRAME, producer = ui.players[player]!;
     const sequence = (): number => { if (!Number.isSafeInteger(producer.nextSequence)) throw new Error('input sequence exhausted'); return producer.nextSequence++; };
-    const emit = (command: Command): void => { out.commands.push({ runId: ui.runId, id: { player, sequence: sequence() }, requestedTick: tick, command }); };
+    let staged = 0;
+    const emit = (command: Command): boolean => {
+      if (budget && !budget(player, command.kind === 'setPaused', staged)) return blocked(out, player);
+      out.commands.push({ runId: ui.runId, id: { player, sequence: sequence() }, requestedTick: tick, command }); staged++; return true;
+    };
     if (!Number.isSafeInteger(producer.heldSequence + 1)) throw new Error('input sequence exhausted');
     out.held.push({ runId: ui.runId, player, tick, sequence: ++producer.heldSequence, held: { moveX: f.moveX, moveY: f.moveY, interactHeld: f.interactHeld } });
     const eid = view.crew[player]!, seat = Seated.station[eid]!;
@@ -159,7 +173,7 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
     if (confirm && override && view.run.event >= 0 && view.run.eventChoice < 0) {
       const event = eventRef(view), previous = producer.pendingVote && sameEvent(event, producer.pendingVote.event) ? producer.pendingVote.choice : view.run.vote[player]!;
       const choice = (previous + 1) % EVENT_DEFS[view.run.event]!.choices.length;
-      emit({ kind: 'vote', event, choice }); producer.pendingVote = { event, choice }; producer.pendingVoteSequence = producer.nextSequence - 1; producer.pendingVoteTick = tick; confirm = false;
+      if (emit({ kind: 'vote', event, choice })) { producer.pendingVote = { event, choice }; producer.pendingVoteSequence = producer.nextSequence - 1; producer.pendingVoteTick = tick; } confirm = false;
     } else if (confirm && override && view.run.jumpPending >= 0) {
       emit({ kind: 'jumpAgree', pending: { visit: visitRef(view), requestedAtTick: view.run.jumpPendingTick, destination: view.run.jumpPending } }); confirm = false;
     }
@@ -185,9 +199,9 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
     if (kind === StationKind.Science) {
       const rows = cardRows(view, seat, ui); let index = cardRowIndex(view, seat, ui);
       if (dir === Dir.Up || dir === Dir.Down) {
-        index = index < 0 ? 0 : (index + (dir === Dir.Up ? rows.length - 1 : 1)) % rows.length;
-        const action = rows[index]!.action;
-        emit({ kind: 'selectTarget', station: seat, target: action?.kind === 'selectTarget' ? action.target : null });
+        const selected = index < 0 ? 0 : (index + (dir === Dir.Up ? rows.length - 1 : 1)) % rows.length;
+        const action = rows[selected]!.action;
+        if (emit({ kind: 'selectTarget', station: seat, target: action?.kind === 'selectTarget' ? action.target : null })) index = selected;
       }
       const row = rows[index]; ui.stations[seat]!.rowKey = row?.key ?? null;
       if (confirm && row?.action) {
@@ -206,19 +220,18 @@ export function translateTick(view: SimState, ui: CardUiState, frames: readonly 
       // A swap into an empty slot removes its row. The next input resumes at
       // the first warned target before applying that input's direction.
       if (index < 0 && memory.rowKey === 'swap' && !canSwap(view) && (dir !== Dir.None || confirm)) {
-        index = rows.length ? 0 : -1; memory.rowKey = rows[index]?.key ?? null;
-        const action = rows[index]?.action;
-        if (action?.kind === 'selectTarget') emit(action);
+        const selected = rows.length ? 0 : -1, action = rows[selected]?.action;
+        if (action?.kind !== 'selectTarget' || emit(action)) { index = selected; memory.rowKey = rows[index]?.key ?? null; }
       }
       if (dir === Dir.Up || dir === Dir.Down) {
-        index = rows.length ? index < 0 ? 0 : (index + (dir === Dir.Up ? rows.length - 1 : 1)) % rows.length : -1;
-        const row = rows[index]; memory.rowKey = row?.key ?? null;
-        emit({ kind: 'selectTarget', station: seat, target: row?.action?.kind === 'selectTarget' ? row.action.target : null });
+        const selected = rows.length ? index < 0 ? 0 : (index + (dir === Dir.Up ? rows.length - 1 : 1)) % rows.length : -1;
+        const row = rows[selected];
+        if (emit({ kind: 'selectTarget', station: seat, target: row?.action?.kind === 'selectTarget' ? row.action.target : null })) { index = selected; memory.rowKey = row?.key ?? null; }
       }
       if (dir === Dir.Left || dir === Dir.Right) {
         const list = selectorList(view), at = list.indexOf(weapon.selector);
-        weapon = weaponRef(view, list[at < 0 ? 0 : (at + (dir === Dir.Left ? list.length - 1 : 1)) % list.length]!);
-        emit({ kind: 'selectWeapon', station: seat, weapon });
+        const selected = weaponRef(view, list[at < 0 ? 0 : (at + (dir === Dir.Left ? list.length - 1 : 1)) % list.length]!);
+        if (emit({ kind: 'selectWeapon', station: seat, weapon: selected })) weapon = selected;
       }
       if (confirm) {
         const row = rows[index];

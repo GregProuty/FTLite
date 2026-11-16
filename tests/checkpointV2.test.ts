@@ -12,6 +12,14 @@ import type { AuthorityMessage, CommandEnvelope, ClientMessage } from '../src/re
 import { ownTestCleanup } from './helpers/simLifetime';
 import { checkpointRig } from './helpers/checkpointRig';
 const envelope = (sequence: number, requestedTick = 0): CommandEnvelope => ({ runId: 'durable', id: { player: 0, sequence }, requestedTick, command: { kind: 'stand' } });
+it('refuses to export a pending ledger instead of presenting admitted work as completed', () => {
+  const ledger = createLedger([0], 1);
+  expect(ledger.admit(envelope(1), 0).status).toBe('queued');
+  expect(() => ledger.export()).toThrow('cannot checkpoint pending ledger');
+  ledger.finish({ id: { player: 0, sequence: 1 }, tick: 0, status: 'rejected', reason: 'unavailable' });
+  const restored = createLedger([0], 1); restored.restore(ledger.export());
+  expect(restored.admit(envelope(1), 0)).toMatchObject({ status: 'duplicate', result: { reason: 'unavailable' } });
+});
 it('restores detached checkpoint paused, keeps cached retries and checkpoint publication cursors', () => {
   const h = checkpointRig(); h.send({ kind: 'command', envelope: envelope(1) }); h.pump(17);
   const ui = createCardUiState('durable', 1); ui.players[0]!.repeat = 7; ui.players[0]!.nextSequence = 2;
