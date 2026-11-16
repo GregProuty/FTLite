@@ -1,12 +1,14 @@
 // CLI for the version-independent per-tick check on a SIM_VERSION bump (H-0c-ii-a plan, Task 4). The comparison itself
-// is verifyVersionOnly() in versionOnly.ts, which `npm run bless` and rebless-version.ts re-run right before they write.
+// is verifyVersionOnly() in versionOnly.ts, which `npm run bless` re-runs right before it writes.
 // Usage (no shell features needed; the temp folder comes from os.tmpdir()):
 //   npx tsx scripts/golden/canonical-trace.ts baseline   before the bump: records the trace and a copy of basic.json
 //   npx tsx scripts/golden/canonical-trace.ts check      after the bump, before any bless: exits 1 unless identical
 //   npx tsx scripts/golden/canonical-trace.ts golden     after `npm run bless`: basic.json differs only in version,
 //                                                        content digest and hashes
+//   npx tsx scripts/golden/canonical-trace.ts same       after a refactor that keeps SIM_VERSION: exits 1 unless the
+//                                                        per-tick trace equals the baseline (engine refactor R-1)
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basicCopy, counts, dir, trace, TRACE_FILE, verifyVersionOnly } from './versionOnly';
+import { basicCopy, counts, dir, trace, TRACE_FILE, verifyUnchanged, verifyVersionOnly } from './versionOnly';
 
 const GOLDEN = 'tests/golden/basic.json';
 
@@ -19,6 +21,10 @@ if (mode === 'baseline') {
   console.log(`baseline at sim version ${t.simVersion}: ${counts(t)}; written to ${TRACE_FILE}`);
 } else if (mode === 'check') {
   const r = verifyVersionOnly();
+  if (!r.ok) { console.error(r.message); process.exit(1); }
+  console.log(r.message);
+} else if (mode === 'same') {
+  const r = verifyUnchanged();
   if (!r.ok) { console.error(r.message); process.exit(1); }
   console.log(r.message);
 } else if (mode === 'golden') {
@@ -36,4 +42,4 @@ if (mode === 'baseline') {
   const other = diffs.filter((p) => !/(simVersion|contentDigest|\.values\.0|\.hash|^\.hashes\.\d+|^\.finalHash)$/.test(p));
   console.log(`${GOLDEN}: ${diffs.length} leaves differ, ${other.length} outside version, digest and hashes`);
   if (other.length > 0) { console.error(other.slice(0, 10).join('\n')); process.exit(1); }
-} else throw Error('usage: npx tsx scripts/golden/canonical-trace.ts baseline|check|golden');
+} else throw Error('usage: npx tsx scripts/golden/canonical-trace.ts baseline|check|golden|same');

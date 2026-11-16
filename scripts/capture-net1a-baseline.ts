@@ -1,7 +1,4 @@
-// Explicit developer command only; never imported by tests. Run on the pinned baseline before migration.
-import { writeFileSync } from 'node:fs';
-import { scenarios, runScenario } from '../tests/helpers/gameplayTrace';
-import { computeContentDigest } from '../build/contentDigest';
-const contentDigest = computeContentDigest(process.cwd());
-writeFileSync('tests/fixtures/net1a-baseline.json', JSON.stringify({ baseline: '88979b3', gameCode: '0a47e50', simVersion: 34, goldenFinalHash: '0a644af3', scenarios: scenarios.map((spec) => runScenario(spec, contentDigest)) }) + '\n');
-console.log(`Captured ${scenarios.length} immutable gameplay scenarios`);
+// RETIRED. tests/fixtures/net1a-baseline.json is a historical oracle and is never written (engine refactor R-0).
+// It is only checked: `npm run bless -- --baseline`.
+console.error('capture-net1a-baseline is retired: net1a-baseline.json is never rewritten. Check it with `npm run bless -- --baseline`.');
+process.exit(1);
