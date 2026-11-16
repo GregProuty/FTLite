@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { COMMAND_REASONS } from './contracts';
 import type { AuthorityMessage, ClientMessage, PublishedState } from './contracts';
 import type { Snapshot } from '../sim/snapshot';
+import type { DuelSnapshot } from '../sim/duel/snapshot';
 
 // Bounds are wire resource limits. Layout/catalog membership remains execution validation.
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -78,6 +79,28 @@ const sectorWire: ModeWire = {
     }).strict();
   }
 };
+/** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
+ *  header (sim/duel/snapshot.ts). */
+const duelWire: ModeWire = {
+  commands({ index }) {
+    return [
+      z.object({ kind: z.literal('sit'), station: index }).strict(),
+      z.object({ kind: z.literal('stand') }).strict(),
+      z.object({ kind: z.literal('presence'), present: z.boolean() }).strict(),
+      z.object({ kind: z.literal('laserLock'), room: index }).strict(),
+      z.object({ kind: z.literal('laserCharge'), held: z.boolean() }).strict(),
+      z.object({ kind: z.literal('missileLaunch') }).strict(),
+      z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
+    ];
+  },
+  snapshotHeader({ uint, positive, text, u32, playerCount }) {
+    return z.object({
+      snapshotFormat: z.literal(1), simVersion: positive, contentDigest: z.string().regex(/^[0-9a-f]{64}$/), tick: uint, playerCount,
+      layoutId: text, layoutHash: text, seed: u32, mapHash: z.string().regex(/^[0-9a-f]{8}$/), hash: z.string().regex(/^[0-9a-f]{8}$/)
+    }).strict();
+  }
+};
+const TERMINAL_CAUSES = ['planet', 'asteroid', 'ship', 'laser', 'missile'] as const;
 function messageSchemaFor(playerLimit: number, wire: ModeWire = sectorWire) {
 const prims = primitives(playerLimit);
 const { uint, positive, index, player, text, u32 } = prims;
@@ -111,11 +134,19 @@ const telemetry = z.object({
   teamwork: z.object({ lockedShots: uint, teamSeconds: seconds, revives: uint, timedEvades: uint, votesUnanimous: uint, votesSplit: uint }).strict(),
   score: seconds, skills: z.array(z.array(index).max(128)).max(playerLimit)
 }).strict();
+const pair = z.tuple([uint, uint]);
+const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
+  .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'terminal causes out of order or repeated');
+const duelSummary = z.object({ outcome: z.number().int().min(0).max(3), ticks: uint, terminal: z.tuple([causes, causes]),
+  laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: pair }).strict();
 const payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cue'), cue: z.enum(['alarm', 'impact', 'shot', 'hit', 'ready', 'jump', 'upgrade', 'victory', 'defeat', 'callout']) }).strict(),
   z.object({ kind: z.literal('callout'), player, text: z.string().min(1).max(256), station: index.nullable() }).strict(),
   z.object({ kind: z.literal('pause'), paused: z.boolean(), owner: player.nullable(), reason: text }).strict(),
-  z.object({ kind: z.literal('ended'), record: z.discriminatedUnion('mode', [z.object({ mode: z.literal('sector'), record: telemetry }).strict()]) }).strict()
+  z.object({ kind: z.literal('ended'), record: z.discriminatedUnion('mode', [
+    z.object({ mode: z.literal('sector'), record: telemetry }).strict(),
+    z.object({ mode: z.literal('duel'), record: duelSummary.nullable() }).strict()
+  ]) }).strict()
 ]);
 const state = z.object({
   runId: text, tick: uint, publicationSequence: positive, snapshot, hash: text, phase: z.enum(['running', 'paused', 'ended', 'error']),
@@ -161,6 +192,10 @@ function codecFor<S>(wire: ModeWire): CommandCodec<S> {
 /** The sector's codec; createMessageCodec and the module-level encodeMessage/decodeMessage are this codec. */
 export const sectorCodec: CommandCodec<Snapshot> = codecFor<Snapshot>(sectorWire);
 export function createMessageCodec(playerLimit = MAX_PLAYERS): MessageCodec<Snapshot> { return sectorCodec(playerLimit); }
+/** The duel's codec: duel command kinds only, the duel snapshot header, and the same results and events. */
+export const duelCodec: CommandCodec<DuelSnapshot> = codecFor<DuelSnapshot>(duelWire);
+/** Object validation of a duel publication, as validatePublication is for the sector. */
+export const duelPublicationSchema = messageSchemaFor(2, duelWire).publicationSchema;
 export const commandSchema = messageSchemaFor(MAX_PLAYERS).commandSchema;
 /** Object transport validation, independent of the unchanged local byte ceiling. */
 export const publicationSchema = messageSchemaFor(MAX_PLAYERS).publicationSchema;
