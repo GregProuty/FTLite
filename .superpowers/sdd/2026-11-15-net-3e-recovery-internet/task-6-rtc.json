@@ -1,0 +1,152 @@
+{
+  "electron": "37.10.3",
+  "checks": [
+    "early-cleanup",
+    "topology",
+    "first-full-ack",
+    "stall-watchdog-command",
+    "canonical-presentation",
+    "harness-latest-loss-reorder",
+    "harness-base-eviction-refresh",
+    "cadence-byte-caps",
+    "pause-full-checkpoint",
+    "native-channels-route",
+    "two-peer-isolation-disconnect",
+    "wrong-ticket",
+    "stale-generation",
+    "cancel-attempt",
+    "mid-transfer-close",
+    "native-resource-cleanup",
+    "owner-cleanup"
+  ],
+  "details": {
+    "early-cleanup": "two real pre-spawn kill=false/retry=true exits",
+    "topology": {
+      "distinctProcesses": 6,
+      "hiddenRenderers": 3,
+      "visibleGuests": 2,
+      "liveUtilities": 1,
+      "guestAuthorities": 0
+    },
+    "first-full-ack": {
+      "first": {
+        "ack": 2,
+        "full-received": 2,
+        "refresh": 0
+      },
+      "second": {
+        "ack": 1,
+        "full-received": 1,
+        "refresh": 0
+      }
+    },
+    "stall-watchdog-command": {
+      "busyMs": 500.30000001192093,
+      "ticks": [
+        10,
+        29,
+        35
+      ],
+      "commandRequestedTick": 9,
+      "commandAppliedTick": 39,
+      "hiddenRtcContinued": true,
+      "watchdogStable": true
+    },
+    "canonical-presentation": {
+      "matchedPublications": 32,
+      "interpolationSeparate": true
+    },
+    "harness-latest-loss-reorder": {
+      "boundary": "native RTCDataChannel.send, state latest only",
+      "dropped": 1,
+      "reversedPairs": 1,
+      "canonicalRecovered": true,
+      "measuredWanLoss": false
+    },
+    "harness-base-eviction-refresh": {
+      "boundary": "guest client Link validated ACK suppression",
+      "suppressed": 65,
+      "receiverResyncs": 1,
+      "reliableFullReceipts": 5,
+      "canonicalRecovered": true
+    },
+    "cadence-byte-caps": {
+      "deltas": 122,
+      "tickModulo": 3,
+      "maxImageBytes": 5940,
+      "maxInputBytes": 297
+    },
+    "pause-full-checkpoint": {
+      "tick": 369,
+      "sequence": 375,
+      "sameTickControlSequence": 376,
+      "sameTickControlFull": true,
+      "coveringResultEvent": true,
+      "canonicalCheckpointExact": true,
+      "presentationSnapped": true,
+      "pauseFromInterpolation": true,
+      "pauseLag": 0.11333333333333329,
+      "sameTickNotificationWithheld": true,
+      "withheldPolls": 5,
+      "notificationFloorsChecked": true,
+      "heldFloor": 376,
+      "resultDequeuedAtSequence": 376,
+      "heldDeliveries": [
+        {
+          "key": "result:0:4",
+          "kind": "result",
+          "floor": 376,
+          "tick": 369,
+          "confirmedSequence": 376,
+          "confirmedTick": 369
+        },
+        {
+          "key": "event:3",
+          "kind": "event",
+          "floor": 376,
+          "tick": 369,
+          "confirmedSequence": 376,
+          "confirmedTick": 369
+        }
+      ]
+    },
+    "native-channels-route": {
+      "nativePcs": 4,
+      "channelsPerPc": 2,
+      "selectedRoute": "direct",
+      "addresses": "redacted",
+      "lossZeroMeans": "unavailable"
+    },
+    "two-peer-isolation-disconnect": {
+      "ownershipIsolated": true,
+      "survivorAdvanced": true,
+      "disconnectedPresentationFrozen": true,
+      "activeInterpolationAtDisconnect": true,
+      "frozenAtConfirmedPositions": true,
+      "disconnectLag": 0.05666666666666664,
+      "confirmedSequence": 380,
+      "futureSampleOffsetsMs": [
+        0,
+        25,
+        100,
+        1000
+      ]
+    },
+    "wrong-ticket": "native rejected/cancelled; survivor canonical; native resources closed",
+    "stale-generation": "native rejected/cancelled; survivor canonical; native resources closed",
+    "cancel-attempt": "native rejected/cancelled; survivor canonical; native resources closed",
+    "mid-transfer-close": "actual production framing, first fragment sent, native PC closed, survivor canonical",
+    "native-resource-cleanup": {
+      "hostPcsClosed": 6,
+      "productionListeners": 0,
+      "productionTimers": 0
+    },
+    "owner-cleanup": {
+      "utilities": 3,
+      "actualExits": 3,
+      "windows": 0,
+      "listeners": 0,
+      "relayPorts": 0
+    }
+  }
+}
