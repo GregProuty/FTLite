@@ -10,7 +10,7 @@ import { flattenDuel, hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
-import { flattenTactical, spaceModule, unflattenTactical } from '../src/renderer/src/sim/tactical/hash';
+import { MISSILE_KEYS, flattenTactical, spaceModule, unflattenTactical } from '../src/renderer/src/sim/tactical/hash';
 import { cloneTactical, createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -59,6 +59,17 @@ describe('the duel modules (spec §6 module contract)', () => {
       (d as unknown as Record<string, unknown>).newFlag = true;
       expect(uncovered(d.tactical, names(spaceModule, d.tactical), spaceModule.notSnapshotted)).toEqual(['ships.0.newCounter', 'hunter.newTimer', 'newThing']);
       expect(uncovered(d, duelNames(d), DUEL_NOT_SNAPSHOTTED, new Set(['tactical']))).toEqual(['newFlag']);
+    } finally { disposeDuel(d); }
+  });
+  it('a missile in flight is walked against the missile keys, and a member added to it is caught', () => {
+    const d = played(7, 5156);
+    try {
+      const flying = d.tactical.missiles.filter((m) => m !== null);
+      expect(flying.length, 'seed 7 tick 5156 has a missile in flight').toBeGreaterThan(0);
+      const extras = () => flying.flatMap((m, i) => Object.keys(m!).filter((k) => !(MISSILE_KEYS as readonly string[]).includes(k)).map((k) => `${i}.${k}`));
+      expect(extras()).toEqual([]);
+      (flying[0] as unknown as Record<string, unknown>).newMissileThing = 1;
+      expect(extras()).toEqual(['0.newMissileThing']);
     } finally { disposeDuel(d); }
   });
   it('every exclusion names a real member and is not also a field', () => {

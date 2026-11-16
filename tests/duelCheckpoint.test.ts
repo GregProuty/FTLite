@@ -52,7 +52,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(duelRules.terminal(resumed.state, resumed.init)).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end.endRecord).toEqual({ mode: 'duel', record: { outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: expect.any(Array), laserReleases: expect.any(Array), laserHits: expect.any(Array), missilesLaunched: expect.any(Array), missileHits: expect.any(Array), repairsFinished: expect.any(Array) } });
+          terminal: [['missile'], []], laserReleases: [11, 28], laserHits: [2, 28], missilesLaunched: [2, 5], missileHits: [0, 5], repairsFinished: [7, 9] } });
         expect(Object.isFrozen(end.endRecord!.record)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end.endRecord!.record)}`);

@@ -5,7 +5,7 @@
 import type { DuelTelemetry, TerminalCause } from './telemetry';
 
 /** The accumulator's order of terminal causes (telemetry.ts recordTick). */
-export const TERMINAL_CAUSES: readonly TerminalCause[] = ['planet', 'asteroid', 'ship', 'laser', 'missile'];
+export const TERMINAL_CAUSES = ['planet', 'asteroid', 'ship', 'laser', 'missile'] as const satisfies readonly TerminalCause[];
 type Pair = readonly [number, number];
 export interface DuelEndSummary {
   readonly outcome: number; readonly ticks: number;

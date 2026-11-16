@@ -4,6 +4,7 @@ import { COMMAND_REASONS } from './contracts';
 import type { AuthorityMessage, ClientMessage, PublishedState } from './contracts';
 import type { Snapshot } from '../sim/snapshot';
 import type { DuelSnapshot } from '../sim/duel/snapshot';
+import { TERMINAL_CAUSES } from '../sim/duel/summary';
 
 // Bounds are wire resource limits. Layout/catalog membership remains execution validation.
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -30,12 +31,11 @@ function primitives(playerLimit: number) {
 }
 type Primitives = ReturnType<typeof primitives>;
 type CommandOption = z.ZodDiscriminatedUnionOption<'kind'>;
-const TERMINAL_CAUSES = ['planet', 'asteroid', 'ship', 'laser', 'missile'] as const;
 /** The schemas every mode's end record may build on (today the sector's telemetry record). */
 interface SharedSchemas { telemetry: z.ZodTypeAny }
 /** What one mode adds to the shared message schema: its command kinds, its snapshot header and its end record. The
  *  header schema is tied to the mode's snapshot type S, so pairing a mode's wire with another mode's snapshot type
- *  does not compile (tests/codecModeTypes.test.ts). */
+ *  does not compile (tests/codecModeWire.test.ts). */
 export interface ModeWire<S extends { header: unknown }> {
   commands(p: Primitives): [CommandOption, ...CommandOption[]];
   snapshotHeader(p: Primitives): z.ZodType<S['header'], z.ZodTypeDef, unknown>;

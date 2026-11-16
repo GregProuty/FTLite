@@ -8,7 +8,7 @@ import { duelCodec } from '../net/codec';
 import { deriveLayout } from '../sim/ship/derived';
 import type { ShipLayout } from '../sim/ship/schema';
 import { DUEL_PLAYERS, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
-import type { DuelTelemetry, MissileLoss, TerminalCause } from '../sim/duel/telemetry';
+import type { DuelTelemetry, MissileLoss } from '../sim/duel/telemetry';
 import { TERMINAL_CAUSES } from '../sim/duel/summary';
 import { validateMap } from '../sim/tactical/map';
 import { createTacticalState } from '../sim/tactical/state';
@@ -35,7 +35,7 @@ export const duelInitSchema = z.object({
   runId: text, layoutId: text, layoutHash: text, simVersion: z.literal(SIM_VERSION),
   contentDigest: z.string().regex(/^[0-9a-f]{64}$/), seed: uint.max(0xffffffff), playerCount: z.literal(DUEL_PLAYERS)
 }).strict();
-const causes = z.array(z.enum(TERMINAL_CAUSES as [TerminalCause, ...TerminalCause[]])).max(TERMINAL_CAUSES.length)
+const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
   .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'causes out of order or repeated');
 const losses: Record<MissileLoss, typeof uint> = { planet: uint, asteroid: uint, edge: uint, expired: uint, own: uint, missile: uint };
 const shipTelemetry = z.object({

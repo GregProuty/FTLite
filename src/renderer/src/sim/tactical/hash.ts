@@ -16,7 +16,11 @@ const SHIP_TAIL = ['planetHits', 'asteroidHits', 'shipHits', 'released', 'skidBu
   'shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'magazine', 'magazineClock',
   'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost'] as const;
 const SHIP_FLAGS = new Set<string>(['released', 'fireHeld']);
-const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const;
+export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof Missile)[];
+/** Compile-time completeness: a `Missile` member missing from MISSILE_KEYS makes this `never` assignment fail typecheck. */
+type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number]>;
+const missileKeysComplete: MissingMissileKeys extends never ? true : never = true;
+void missileKeysComplete;
 const HUNTER_HEAD = ['mode', 'room', 'timer', 'working', 'fireAt', 'lastLaunch', 'trailHead'] as const;
 
 type Numeric<T> = { [K in keyof T]: T[K] extends number | boolean ? K : never }[keyof T];
