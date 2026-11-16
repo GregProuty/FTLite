@@ -27,7 +27,7 @@ const assets: GameAssets = {
 };
 let seq = 0;
 const step = (d: DuelState, commands: { player: number; command: Parameters<typeof stepDuelTick>[1]['commands'][number]['command'] }[] = [], held: HeldInput[] = [NONE, NONE]) =>
-  stepDuelTick(d, { held, commands: commands.map((c) => ({ id: { player: c.player, sequence: ++seq }, requestedTick: d.interior.tick, command: c.command })) });
+  stepDuelTick(d, { held, commands: commands.map((c) => ({ runId: 'duel', id: { player: c.player, sequence: ++seq }, requestedTick: d.interior.tick, command: c.command })) });
 const crewAt = (d: DuelState) => d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
 
 describe('the duel interior through the reused interior layers (H-1 spec §8, §13 risk 1)', () => {

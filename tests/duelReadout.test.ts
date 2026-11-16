@@ -47,7 +47,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
   });
   it('standing, the strip tells about the ship outside: empty consoles, the enemy, an inbound missile', () => {
     const d = createDuel(layout, 5);
-    stepDuelTick(d, { held: [], commands: [{ id: { player: 1, sequence: 0 }, requestedTick: 0, command: { kind: 'presence', present: false } }, { id: { player: 0, sequence: 0 }, requestedTick: 0, command: { kind: 'stand' } }] });
+    stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 1, sequence: 0 }, requestedTick: 0, command: { kind: 'presence', present: false } }, { runId: 'duel', id: { player: 0, sequence: 0 }, requestedTick: 0, command: { kind: 'stand' } }] });
     const [crew, enemy] = d.tactical.ships;
     let out = pairs({ duel: d, mode: 'interior', active: 0, other: 'AT WEAPONS' });
     expect(out.slice(11)).toEqual([

@@ -212,7 +212,7 @@ describe('sector publication and acceptance boundary', () => {
   it('preserves a codec-valid ended notification over 4 KiB with a bounded reliable envelope', () => {
     const wire = endpoint(), client = createSectorRemoteClient(wire.link, [0], { ...options, clock: { nowMs: () => 0 } }); ownTestCleanup(() => client.dispose());
     const state = makeState(1), record = telemetryRecord(state, 1); record.run.unlocks = Array.from({ length: 100 }, (_, i) => `${i}:${'x'.repeat(100)}`);
-    const message: AuthorityMessage = { kind: 'event', event: { runId: 'stream', eventSequence: 1, tick: 0, payload: { kind: 'ended', record } } };
+    const message: AuthorityMessage = { kind: 'event', event: { runId: 'stream', eventSequence: 1, tick: 0, payload: { kind: 'ended', record: { mode: 'sector', record } } } };
     const bytes = encodeMessage(message); expect(bytes.length).toBeGreaterThan(4096);
     const packet = encodeSectorNotification(message, 1, 1); expect(decodeOpaquePacket(packet).bytes.subarray(9)).toEqual(bytes);
     wire.receive(packet); wire.receive(encodeStatePacket(encodeFull(publicationToImage(publication(state), options)), 2));
@@ -265,7 +265,7 @@ describe('sector publication and acceptance boundary', () => {
   it('bounds queued remote notifications by bytes as well as count', () => {
     const wire = endpoint(), client = createSectorRemoteClient(wire.link, [0], { ...options, clock: { nowMs: () => 0 } }); ownTestCleanup(() => client.dispose());
     const record = telemetryRecord(makeState(1), 1); record.run.unlocks = Array.from({ length: 100 }, (_, i) => `${i}:${'x'.repeat(100)}`);
-    for (let i = 1; i <= 100; i++) wire.receive(encodeSectorNotification({ kind: 'event', event: { runId: 'stream', eventSequence: i, tick: 0, payload: { kind: 'ended', record } } }, 1000, i));
+    for (let i = 1; i <= 100; i++) wire.receive(encodeSectorNotification({ kind: 'event', event: { runId: 'stream', eventSequence: i, tick: 0, payload: { kind: 'ended', record: { mode: 'sector', record } } } }, 1000, i));
     expect(wire.reasons).toEqual(['notification-history-unavailable']); expect(client.takeEvents()).toEqual([]);
   });
   it('keeps presentation separate with stable player IDs and snaps same-tick teleport, seat and target changes', () => {

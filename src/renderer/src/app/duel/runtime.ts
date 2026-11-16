@@ -4,7 +4,7 @@
 import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
-import type { DuelCommand, DuelEnvelope, DuelResult } from '../../sim/duel/commands';
+import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
 import { stepDuelTick } from '../../sim/duel/step';
@@ -214,7 +214,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (ended()) return;
     capture();
     const commands: DuelEnvelope[] = [];
-    const envelope = (player: number, command: DuelCommand): DuelEnvelope => ({ id: { player, sequence: seq[player]!++ }, requestedTick: d.interior.tick, command });
+    const envelope = (player: number, command: DuelCommand): DuelEnvelope => ({ runId: LOCAL_DUEL_RUN, id: { player, sequence: seq[player]!++ }, requestedTick: d.interior.tick, command });
     if (firstTick) { commands.push(envelope(1, { kind: 'presence', present: false })); firstTick = false; }   // the solo start rule (spec §4)
     // Weapons commands go out only when the sim would accept them (spec §7 table; canCharge / canLaunch), judged against the
     // state this tick will see. `chargeSent` is the truth about what the sim holds: a release goes out only after a press did.

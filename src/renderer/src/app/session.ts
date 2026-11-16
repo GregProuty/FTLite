@@ -97,7 +97,7 @@ export function createSession(deps: SessionDeps) {
         }
         if (event.payload.kind !== 'ended' || completedRuns.has(event.runId)) return;
         completedRuns.add(event.runId);
-        const record = event.payload.record;
+        const record = event.payload.record.record;   // the sector's TelemetryRecord, tagged on the wrapper (engine refactor spec §6)
         const next = applyRun(progress, record); newUnlocks = next.unlocked.filter((id) => !progress.unlocked.includes(id)); progress = next;
         phase = 'gameover';
         message = `${state!.endReason === EndReason.Hull ? 'HULL LOST' : state!.endReason === EndReason.Victory ? 'VICTORY' : 'CREW LOST'} after ${Math.floor(state!.tick / TICK_HZ)}s. Confirm: same seed. Cancel: new seed.`;

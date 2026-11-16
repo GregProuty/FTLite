@@ -18,7 +18,7 @@ import { Room, type Axes } from '../tactical/state';
 import { BELT_OUTER, LASER_ARC_COS, LASER_HOLD_TICKS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { canCharge, canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, REACH } from '../tuning';
-import type { DuelCommand, DuelEnvelope } from './commands';
+import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands';
 import type { DuelState } from './state';
 import type { DuelInput } from './step';
 
@@ -259,6 +259,6 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
   }
   if (Seated.station[st.crew[0]!]! !== d.nav) pair.axes = { turn: 0, thrust: 0 };
   const commands: DuelEnvelope[] = [];
-  for (let pid = 0; pid < 2; pid++) for (const command of cmds[pid]!) commands.push({ id: { player: pid, sequence: pair.seq[pid as 0 | 1]++ }, requestedTick: st.tick, command });
+  for (let pid = 0; pid < 2; pid++) for (const command of cmds[pid]!) commands.push({ runId: LOCAL_DUEL_RUN, id: { player: pid, sequence: pair.seq[pid as 0 | 1]++ }, requestedTick: st.tick, command });
   return { held, commands };
 }

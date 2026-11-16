@@ -1,0 +1,27 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "Tie the message codec’s snapshot type to its wire schema",
+      "claim": "The generic codec can claim any snapshot type without proving that its wire schema validates that type.",
+      "evidence": "plan L52-L53; src/renderer/src/net/codec.ts:L33,L144,L156; src/renderer/src/authority/rules.ts:L56",
+      "why": "When R-1b adds the duel codec, TypeScript would accept a duel snapshot type paired with the wrong snapshot header schema, and decoded publications would carry a false type.",
+      "fix": "Make ModeWire generic over the snapshot header and have codecFor derive or check its snapshot type from that schema; remove the unchecked decode cast."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The sector rules supply the planned init, step, terminal, cue, snapshot, checkpoint and codec hooks; createAuthority delegates to them. plan L50-L56; src/renderer/src/authority/sectorRules.ts:L23,L39,L52; src/renderer/src/authority/authority.ts:L46.",
+    "The changed core retains admission, the lease gate, held input, captures, segment rotation, publication, event routing and disposal in the corresponding paths. src/renderer/src/authority/core.ts:L227,L313,L430,L456,L619.",
+    "The mode factory retains the old sector host’s replacement, ownership, checkpoint, capture, attachment and disposal paths; sector.ts supplies its existing producers and stream adapter. src/network/modes/encounterMode.ts:L84,L110,L121,L128; src/network/modes/sector.ts:L18.",
+    "Sector replays omit the mode field, non-sector replays record it, and parsing checks the rules’ mode. plan L57; src/renderer/src/authority/core.ts:L571; src/renderer/src/authority/replay.ts:L35,L42.",
+    "The ended record is tagged, and its readers either use the inner sector record or inspect only the event kind. src/renderer/src/net/contracts.ts:L97; src/renderer/src/app/session.ts:L100; src/renderer/src/clientControl/clientRun.ts:L157; src/renderer/src/app/onlineSession.ts:L54.",
+    "Although the authority trace does not reach ended, an existing recovery test drives a terminal tick through the authority and client; the new tests check the record and codec shape. scripts/golden/authority-trace.ts:L77,L132; tests/authorityRecovery.test.ts:L52; tests/encounterAuthority.test.ts:L43; tests/commandUnion.test.ts:L50.",
+    "The network boundary adds encounterMode.ts to its mode-file exception, and the determinism guard covers the authority and net roots. tests/networkBoundary.test.ts:L28; tests/boundary.test.ts:L12,L21."
+  ],
+  "not_verified": [
+    "I did not run Jest, the golden comparisons, the host-runtime gate or the cross-engine determinism gate; their passing results are reported by the implementers.",
+    "I could not read the run directory’s brief.md because filesystem access was denied. Targeted reads beyond the manifest covered checkpoint validation, ended-event readers and the existing terminal recovery test; other unlisted files were not audited."
+  ]
+}

@@ -1,7 +1,7 @@
 // One duel tick (spec §13 phase list). The sector step (sim/step.ts) is never called on the duel's interior; this runs
 // only the interior pieces the duel uses (sit, stand, Interact for repair, movement) and then the tactical stepDuel.
 import { NEUTRAL_INTENT, type Intent } from '../../../../shared/intent';
-import type { CommandEnvelope, CommandResult, HeldInput } from '../../net/contracts';
+import type { CommandEnvelope, HeldInput } from '../../net/contracts';
 import { applyConsoleCommand, applyInteractionCommands } from '../commands';
 import { Life, LifeState, Position, Seated } from '../components';
 import { roomAt } from '../grid';
@@ -31,7 +31,7 @@ function resetScratch(d: DuelState): void {
 /** A duel sit or stand as today's envelope, so today's validation and handlers apply unchanged. */
 function sector(env: DuelEnvelope): CommandEnvelope {
   const c = env.command;
-  return { runId: 'duel', id: env.id, requestedTick: env.requestedTick, command: c.kind === 'sit' ? { kind: 'sit', station: c.station } : { kind: 'stand' } };
+  return { runId: env.runId, id: env.id, requestedTick: env.requestedTick, command: c.kind === 'sit' ? { kind: 'sit', station: c.station } : { kind: 'stand' } };
 }
 
 /** The player seated at station i who is present, or −1. */
@@ -72,7 +72,6 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
 export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   if (d.tactical.outcome !== Outcome.Running) return [];
   const st = d.interior, tick = st.tick, results: DuelResult[] = [];
-  const keep = (s: CommandResult['status']): DuelResult['status'] => (s === 'already-processed' ? 'rejected' : s);   // the duel step never produces already-processed
   const result = (env: DuelEnvelope, reason?: DuelReason): void => {
     results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status: 'applied' });
   };
@@ -86,11 +85,11 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   for (const e of sits) if (!allowedSits.includes(e)) result(e, 'not-in-duel');
   const liveSits = allowedSits.filter((e) => { if (!away(e)) return true; result(e, 'unavailable'); return false; });
   applyInteractionCommands(st, liveSits.map(sector));
-  for (const r of st.scratch.commandResults) results.push({ id: r.id, tick, status: keep(r.status), ...(r.reason ? { reason: r.reason } : {}) });
+  for (const r of st.scratch.commandResults) results.push({ id: r.id, tick, status: r.status, ...(r.reason ? { reason: r.reason } : {}) });
   for (const e of input.commands) if (e.command.kind === 'stand') {
     if (away(e)) { result(e, 'unavailable'); continue; }
     const r = applyConsoleCommand(st, sector(e));
-    results.push({ id: r.id, tick, status: keep(r.status), ...(r.reason ? { reason: r.reason } : {}) });
+    results.push({ id: r.id, tick, status: r.status, ...(r.reason ? { reason: r.reason } : {}) });
   }
   for (const e of input.commands) if (e.command.kind === 'presence') {
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }

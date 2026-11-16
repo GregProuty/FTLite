@@ -67,7 +67,7 @@ describe('closed wire codec', () => {
     const result: AuthorityMessage = { kind: 'result', runId: 'run-1', result: { id: { player: 0, sequence: 1 }, tick: 0, status: 'rejected', reason: 'unsupported' } };
     expect(roundTrip(result)).toEqual(result);
     const payloads = [{ kind: 'cue' as const, cue: 'shot' as const }, { kind: 'callout' as const, player: 0, text: 'Need help!', station: null },
-      { kind: 'pause' as const, paused: true, owner: 0, reason: 'focus' }, { kind: 'ended' as const, record: telemetryRecord(sim, 17) }];
+      { kind: 'pause' as const, paused: true, owner: 0, reason: 'focus' }, { kind: 'ended' as const, record: { mode: 'sector' as const, record: telemetryRecord(sim, 17) } }];
     for (const payload of payloads) {
       const message: AuthorityMessage = { kind: 'event', event: { runId: 'run-1', eventSequence: 1, tick: 0, payload } };
       expect(roundTrip(message)).toEqual(message);

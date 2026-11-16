@@ -1,13 +1,15 @@
+// Portable replays for any mode (engine refactor spec §6). A replay records its `mode`; absent means 'sector', so
+// every V2/V3/V4 file recorded before R-1 parses unchanged. The mode's rules supply the checkpoint, snapshot and
+// command validators. parseReplay and runReplay are the sector instances, kept for their callers.
 import { z } from 'zod';
 import { MAX_PLAYERS } from '../../../shared/intent';
 import type { ShipLayout } from '../sim/ship/schema';
-import { loadSnapshot } from '../sim/snapshot';
-import { decodeMessage, encodeMessage } from '../net/codec';
 import type { CommandEnvelope, CommandResult } from '../net/contracts';
 import type { SimState } from '../sim/state';
 import { replayDataEqual, type Replay, type ReplayFrame } from '../sim/replay';
-import { validateCheckpoint } from './checkpoint';
-import { createAuthorityCore } from './core';
+import { createEncounterCore } from './core';
+import type { EncounterRules, EncounterTypes, ResolveLayout } from './rules';
+import { sectorRules, type SectorTypes } from './sectorRules';
 export type { Replay, ReplayV2, ReplayV3, ReplayV4, ReplayFrame } from '../sim/replay';
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const players = z.array(uint.max(MAX_PLAYERS - 1)).max(MAX_PLAYERS).refine(a => new Set(a).size === a.length);
@@ -27,10 +29,20 @@ const frameSchema = z.object({ tick: uint, eventSequenceBefore: uint, action, re
 }).strict();
 /** Full validation occurs before constructing a simulation. No numeric-button fallback. */
 export function parseReplay(layout: ShipLayout, value: unknown, contentDigest: string): Replay {
+  return parseEncounterReplay(sectorRules, value, contentDigest, () => layout);
+}
+/** The mode a replay names: its `mode` field, or 'sector' when the field is absent. */
+export function replayMode(value: unknown): string {
+  const mode = (value as { mode?: unknown } | null)?.mode;
+  return mode === undefined ? 'sector' : typeof mode === 'string' ? mode : '';
+}
+export function parseEncounterReplay<T extends EncounterTypes>(rules: EncounterRules<T>, value: unknown, contentDigest: string, resolveLayout: ResolveLayout): Replay<T> {
   const version = (value as { version?: unknown } | null)?.version;
   if (version !== 2 && version !== 3 && version !== 4) throw new Error('unsupported replay format (expected 2, 3 or 4)');
-  const parsed = z.object({ version: z.union([z.literal(2), z.literal(3), z.literal(4)]), init: z.unknown(), initial: z.unknown(), checkpoint: z.unknown(), frames: z.array(frameSchema).max(1_000_000) }).strict().parse(value);
-  const checkpoint = validateCheckpoint(layout, parsed.checkpoint, contentDigest);
+  if (replayMode(value) !== rules.modeId) throw new Error('replay mode does not match');
+  const parsed = z.object({ version: z.union([z.literal(2), z.literal(3), z.literal(4)]), mode: z.string().min(1).max(64).optional(), init: z.unknown(), initial: z.unknown(), checkpoint: z.unknown(), frames: z.array(frameSchema).max(1_000_000) }).strict().parse(value);
+  const { decodeMessage, encodeMessage } = rules.commandCodec();
+  const checkpoint = rules.validateCheckpoint(parsed.checkpoint, contentDigest, resolveLayout);
   if (!replayDataEqual(parsed.init, checkpoint.init) || !replayDataEqual(parsed.initial, checkpoint.snapshot)) throw new Error('inconsistent replay baseline');
   let expectedTick = checkpoint.snapshot.header.tick;
   for (const frame of parsed.frames) {
@@ -65,7 +77,7 @@ export function parseReplay(layout: ShipLayout, value: unknown, contentDigest: s
     }
     if (frame.after && frame.after.tick !== expectedTick) throw new Error('invalid replay completion tick');
   }
-  return { version: parsed.version, init: checkpoint.init, initial: checkpoint.snapshot, checkpoint, frames: parsed.frames as ReplayFrame[] };
+  return { version: parsed.version, ...(parsed.mode !== undefined ? { mode: parsed.mode } : {}), init: checkpoint.init, initial: checkpoint.snapshot, checkpoint, frames: parsed.frames as ReplayFrame[] };
 }
 export interface ReplayOptions {
   /** Default false: avoid retaining a second journal for long replay runs. */
@@ -76,9 +88,12 @@ export interface ReplayOptions {
 }
 /** Runs the live admission/phase executor directly; no wall-clock debt or producer callbacks. */
 export function runReplay(layout: ShipLayout, value: unknown, contentDigest: string, observe?: (state: SimState, frame: Readonly<ReplayFrame>) => void, options: ReplayOptions = {}) {
-  const replay = parseReplay(layout, value, contentDigest);
-  const state = loadSnapshot(layout, replay.initial, contentDigest);
-  const core = createAuthorityCore({ init: replay.init, contentDigest, resolveLayout: () => layout, clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash(record) { throw new Error(record.error); } }, state, replay.checkpoint);
+  return runEncounterReplay<SectorTypes>(sectorRules, value, contentDigest, () => layout, observe, options);
+}
+export function runEncounterReplay<T extends EncounterTypes>(rules: EncounterRules<T>, value: unknown, contentDigest: string, resolveLayout: ResolveLayout, observe?: (state: T['state'], frame: Readonly<ReplayFrame>) => void, options: ReplayOptions = {}) {
+  const replay = parseEncounterReplay(rules, value, contentDigest, resolveLayout);
+  const state = rules.restore(replay.initial, resolveLayout, replay.checkpoint.modeMemory);
+  const core = createEncounterCore(rules, { init: replay.init, contentDigest, resolveLayout, clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash(record) { throw new Error(record.error); } }, state, replay.checkpoint);
   const results: CommandResult[] = [], frames = [], hashes: string[] = [], events = [];
   try {
     for (const frame of replay.frames) {

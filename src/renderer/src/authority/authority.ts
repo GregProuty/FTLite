@@ -1,51 +1,52 @@
-import type { AuthorityMessage, PublishedState, LifecyclePause, Link, MonotonicClock, RunInit, Scheduler, Unsubscribe } from '../net/contracts';
+// The public authority (engine refactor spec §6): createEncounterAuthority runs any encounter through its rules;
+// createAuthority is the sector instance. The merged Authority surface and deps are unchanged.
+import type { AuthorityMessage, PublishedState, LifecyclePause, Link, MonotonicClock, Scheduler, Unsubscribe } from '../net/contracts';
 import type { Replay } from '../sim/replay';
 import type { SessionWorkGate } from '../../../shared/sessionLease';
 import type { CaptureCause } from '../../../shared/sessionCheckpoint';
 import type { AdmissionPolicy } from '../net/receivePolicy';
 export type { AdmissionPolicy } from '../net/receivePolicy';
-export interface AttachOptions {
+import type { Snapshot } from '../sim/snapshot';
+export interface AttachOptions<S = Snapshot> {
   admissionPolicy?: AdmissionPolicy;
   /** Trusted mode adapter, before the ordinary local byte codec. Receives owned data. */
-  publicationSink?(state: PublishedState, reliable: boolean): void;
-  notificationSink?(message: Extract<AuthorityMessage, { kind: 'result' | 'event' }>, requiredPublicationSequence: number): void;
+  publicationSink?(state: PublishedState<S>, reliable: boolean): void;
+  notificationSink?(message: Extract<AuthorityMessage<S>, { kind: 'result' | 'event' }>, requiredPublicationSequence: number): void;
 }
-import { loadSnapshot } from '../sim/snapshot';
-import type { CardUiState } from '../clientControl/cardController';
-import { validateCheckpoint, validateRunInit, type Checkpoint } from './checkpoint';
 export type { Checkpoint } from './checkpoint';
-import { createSimState } from '../sim/state';
 import type { ShipLayout } from '../sim/ship/schema';
-import { deriveLayout } from '../sim/ship/derived';
-import { SIM_VERSION } from '../sim/tuning';
-import { createAuthorityCore, type CrashRecord } from './core';
+import { createEncounterCore, type CrashRecord } from './core';
+import type { CheckpointOf, EncounterRules, EncounterTypes } from './rules';
+import { sectorRules, type SectorTypes } from './sectorRules';
 export type { CrashRecord, JournalTick } from './core';
 
-export interface AuthorityDeps {
-  onCheckpoint?(checkpoint: Checkpoint, cause: CaptureCause): void;
+export interface EncounterAuthorityDeps<T extends EncounterTypes> {
+  onCheckpoint?(checkpoint: CheckpointOf<T>, cause: CaptureCause): void;
   sessionGate?: SessionWorkGate;
   clock: MonotonicClock; scheduler: Scheduler; contentDigest: string;
-  resolveLayout(id: string): ShipLayout; onCrash(record: CrashRecord): void;
-  botControllers?(): readonly CardUiState[];
+  resolveLayout(id: string): ShipLayout; onCrash(record: CrashRecord<T>): void;
+  botControllers?(): Readonly<T['controllers']>;
   beforeControls?(): void; beforeTick?(nextTick: number, tickTimeMs: number): void;
   /** Trusted couch adapter only; never exposed on Link or assigned a player command ID.
    * The unsubscriber releases only its registration, preserving a newer replacement callback. */
   bindLifecyclePause?(request: (control: LifecyclePause) => void): void | Unsubscribe;
 }
+export type AuthorityDeps = EncounterAuthorityDeps<SectorTypes>;
 /** Live Net-1a owner: closed held/command/contextual-callout ingress; durable restore belongs to Net-1b. */
-export interface Authority1a { attach(link: Link, players: readonly number[], options?: AttachOptions): Unsubscribe; start(init: RunInit): void; pump(): void; dispose(): void }
-export interface Authority extends Authority1a {
-  requestCheckpoint(cause: CaptureCause): Promise<{ checkpoint: Checkpoint; cause: CaptureCause }>;
+export interface Authority1a<T extends EncounterTypes = SectorTypes> { attach(link: Link, players: readonly number[], options?: AttachOptions<T['snapshot']>): Unsubscribe; start(init: T['init']): void; pump(): void; dispose(): void }
+export interface Authority<T extends EncounterTypes = SectorTypes> extends Authority1a<T> {
+  requestCheckpoint(cause: CaptureCause): Promise<{ checkpoint: CheckpointOf<T>; cause: CaptureCause }>;
   completeBootstrap(): void;
-  checkpoint(botControllers: readonly CardUiState[]): Checkpoint;
+  checkpoint(botControllers: Readonly<T['controllers']>): CheckpointOf<T>;
   /** Restore paused with no attached producers. Retire old client/transport queues,
    * then attach fresh producers synchronized from the restored publication. */
-  restore(checkpoint: Checkpoint): void;
-  replay(): Replay;
+  restore(checkpoint: CheckpointOf<T>): void;
+  replay(): Replay<T>;
 }
-export function createAuthority(deps: AuthorityDeps): Authority {
-  let core: ReturnType<typeof createAuthorityCore> | null = null, disposed = false;
-  const attached = new Map<Link, { players: readonly number[]; options: AttachOptions; off?: Unsubscribe }>();
+export function createAuthority(deps: AuthorityDeps): Authority { return createEncounterAuthority(sectorRules, deps); }
+export function createEncounterAuthority<T extends EncounterTypes>(rules: EncounterRules<T>, deps: EncounterAuthorityDeps<T>): Authority<T> {
+  let core: ReturnType<typeof createEncounterCore<T>> | null = null, disposed = false;
+  const attached = new Map<Link, { players: readonly number[]; options: AttachOptions<T['snapshot']>; off?: Unsubscribe }>();
   return {
     attach(link, players, options = {}) {
       if (disposed || attached.has(link)) throw new Error('authority unavailable');
@@ -53,12 +54,10 @@ export function createAuthority(deps: AuthorityDeps): Authority {
       const entry = { players: [...players], options: { ...options }, off: core?.attach(link, players, options) }; attached.set(link, entry);
       return () => { entry.off?.(); attached.delete(link); };
     },
-    start(init) {
+    start(value) {
       if (disposed) throw new Error('authority disposed');
-      const layout = deps.resolveLayout(init.layoutId);
-      init = validateRunInit(layout, init, deps.contentDigest);
-      if (init.simVersion !== SIM_VERSION || init.contentDigest !== deps.contentDigest || init.layoutHash !== deriveLayout(layout).layoutHash || layout.id !== init.layoutId) throw new Error('incompatible run');
-      const next = createAuthorityCore({ ...deps, init }, createSimState(layout, init.playerCount, init.seed, init.characters, { unlocked: init.unlocked, quirk: init.quirk }));
+      const init = rules.validateInit(value, deps.contentDigest, deps.resolveLayout);
+      const next = createEncounterCore(rules, { ...deps, init }, rules.create(init, deps.resolveLayout));
       try {
         core?.dispose(); core = next;
         for (const [link, entry] of attached) entry.off = next.attach(link, entry.players, entry.options);
@@ -74,9 +73,8 @@ export function createAuthority(deps: AuthorityDeps): Authority {
     restore(checkpoint) {
       if (disposed) throw new Error('authority disposed');
       if (attached.size) throw new Error('detach all producers before restore');
-      const layout = deps.resolveLayout(checkpoint?.init?.layoutId);
-      const cp = validateCheckpoint(layout, checkpoint, deps.contentDigest);
-      const next = createAuthorityCore({ ...deps, init: cp.init }, loadSnapshot(layout, cp.snapshot, deps.contentDigest), cp, true);
+      const cp = rules.validateCheckpoint(checkpoint, deps.contentDigest, deps.resolveLayout);
+      const next = createEncounterCore(rules, { ...deps, init: cp.init }, rules.restore(cp.snapshot, deps.resolveLayout, cp.modeMemory), cp, true);
       try {
         core?.dispose(); core = next;
       } catch (error) { try { next.dispose(); } finally { core = null; } throw error; }

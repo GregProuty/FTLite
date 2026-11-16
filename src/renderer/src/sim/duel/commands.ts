@@ -1,18 +1,12 @@
-// The duel's commands (spec §13). H-0c-ii moves these into the shared command union in net/contracts.ts as an explicit
-// Net-1 amendment; until then the duel step takes them in this local envelope, so nothing here touches the authority.
-import type { CommandReason } from '../../net/contracts';
+// The duel's commands (Helm demo spec §13), now members of the one command union and result type in net/contracts.ts
+// (engine refactor spec §6): DuelCommand is the duel's slice of Command, a duel envelope is a CommandEnvelope that
+// carries a runId like every other, and the duel's reasons are members of COMMAND_REASONS.
+import type { CommandEnvelope, CommandReason, CommandResult, DuelCommand } from '../../net/contracts';
+export type { DuelCommand } from '../../net/contracts';
 
-export type DuelCommand =
-  | { kind: 'sit'; station: number }
-  | { kind: 'stand' }
-  | { kind: 'presence'; present: boolean }
-  | { kind: 'laserLock'; room: number }
-  | { kind: 'laserCharge'; held: boolean }
-  | { kind: 'missileLaunch' };
+/** The run id a local (offline) duel stamps on its envelopes; an authority duel uses its init's runId. */
+export const LOCAL_DUEL_RUN = 'duel';
 
-export interface DuelEnvelope { id: { player: number; sequence: number }; requestedTick: number; command: DuelCommand }
-
-/** Today's reasons plus the duel's own (spec §7 table, §13). */
-export type DuelReason = CommandReason | 'not-in-duel' | 'not-at-weapons' | 'missile-in-flight';
-
-export interface DuelResult { id: { player: number; sequence: number }; tick: number; status: 'applied' | 'noop' | 'rejected'; reason?: DuelReason }
+export type DuelEnvelope = CommandEnvelope<DuelCommand>;
+export type DuelReason = CommandReason;
+export type DuelResult = CommandResult;

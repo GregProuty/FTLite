@@ -1,4 +1,4 @@
-import { createMessageCodec } from '../net/codec';
+import { sectorCodec, type CommandCodec } from '../net/codec';
 import { MAX_PLAYERS } from '../../../shared/intent';
 import type { Admission, CommandEnvelope, CommandReason, CommandResult, PlayerId } from '../net/contracts';
 import { inputTickAllowed, type AdmissionPolicy } from '../net/receivePolicy';
@@ -19,9 +19,10 @@ export interface Ledger {
   export(): LedgerState;
   restore(value: LedgerState): void;
 }
-/** One link's owned players, with one shared command stream per player. */
-export function createLedger(owned: readonly PlayerId[], playerLimit = MAX_PLAYERS): Ledger {
-  const { decodeMessage, encodeMessage } = createMessageCodec(playerLimit);
+/** One link's owned players, with one shared command stream per player. Every envelope and cached result is validated
+ *  by the mode's codec (engine refactor spec §6); an envelope it rejects is `malformed`. */
+export function createLedger(owned: readonly PlayerId[], playerLimit = MAX_PLAYERS, codec: CommandCodec<unknown> = sectorCodec): Ledger {
+  const { decodeMessage, encodeMessage } = codec(playerLimit);
   if (new Set(owned).size !== owned.length || owned.some(p => !Number.isInteger(p) || p < 0 || p >= playerLimit)) throw new Error('invalid ledger ownership');
   const water = Array<number>(playerLimit).fill(0);
   const pending = new Map<string, { payload: string; tick: number }>();
