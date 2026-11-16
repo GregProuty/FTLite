@@ -1,0 +1,13 @@
+kind=delta
+head=cabc521
+thread_id=01a1e34a-3d0e-7811-af58-50035b99c7db
+effort=medium
+started_at=2026-11-16T07:37:35Z
+duration_s=79
+input_tokens=426134
+cached_input_tokens=350848
+output_tokens=3373
+reasoning_output_tokens=1295
+exit=0
+parsed=1
+needs_judgment=

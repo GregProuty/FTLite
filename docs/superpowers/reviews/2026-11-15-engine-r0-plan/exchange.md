@@ -54,3 +54,47 @@ Confirmed (`run.ts:L14-L15, L60-L64`). The determinism step now runs `npm run te
 
 ---
 
+# Round 2 (delta, reviewing cabc521, effort medium, 79 s, 426134 in / 350848 cached / 3373 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 The all-or-nothing claim excludes write failures
+The plan says a failed bless writes nothing, but the implementation writes the staged artifacts sequentially. · plan L42, L433-L434, L299-L303, L484 · If a later write fails, earlier artifacts have already changed. The mixed-version guard protects a retry, but the stated all-or-nothing behavior does not hold. · Qualify the claim as covering staging failures, or add a write procedure that can preserve the originals if any write fails.
+
+## Prior findings
+- R1-F1: resolved — The plan stages all three artifacts before writing and checks every stored version. The mixed-version and third-stage-failure tests are specified at plan L236-L263; the guard and caller are at plan L288-L303 and L459-L484.
+- R1-F2: resolved — The checkout step is gone. Plan L963-L964 uses the supported --output-dir flag shown in scripts/determinism/run.ts:L14-L15 and L60-L64; the destination is git-ignored.
+
+## Verified
+- HEAD is cabc521. The changed guard and bless code is consistent with the version-only requirement in spec L247-L249 and the R-0 row at spec L356.
+- The plan contains no checkout, restore, stash, or clean command; plan L31 and L963-L964 direct evidence output to out/.
+- The hash-completeness branch has the two expected commits and changes the five files named in plan L51 and L67.
+
+## Not verified
+- I did not execute the plan or its tests because this review is read-only and the implementation remains in plan code blocks.
+- The named review run directory was unavailable in the checkout, so I used the ledger and prior response supplied in the request.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json`. Codex confirmed R1-F1 and R1-F2 resolved. 1 accepted (P2), 0 rejected, 0 deferred.
+
+## R2-F1 [P2]: The all-or-nothing claim excludes write failures
+
+Confirmed: the staged artifacts are written one after another. The claim is now qualified. Staging failures write nothing; a failure during the final writes (a disk error) can leave a partial set, and the next bless finds the artifacts at mixed versions and runs the guard again, so a partial set cannot be blessed past it. Decision 1 and the `bless-golden.ts` header comment are updated.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-16-engine-r0-guards.md
+
+<!-- end -->
+
+---
+
