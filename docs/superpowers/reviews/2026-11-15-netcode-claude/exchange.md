@@ -95,3 +95,49 @@ Deferred in part. The idle error is removed with R1-F1. Suspend still fences/ret
 
 ---
 
+# Round 2 (delta, reviewing 3f6a38b, effort medium, 44 s, 1136707 in / 852655 cached / 3362 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — resume() now returns unless a seated online context exists and the phase is not idle or error, and no exit or disposal is in flight (onlineSession.ts:L547). Leave goes through prepareExit -> stop (L483, L536), and stop clears `context` (L113), so a persisted `saved` credential alone no longer triggers a reconnect. Idle suspend is a no-op (L543: `if (!c) return`). After retirement, current(c) is checked again before dispatching (L550). The renderer also closes a delivered port unless the router is already online (main.ts onPort guard, using sessionRouter.ts:L9 `mode`), which stops an unsolicited couch-to-online switch. The regressions in onlineRecovery.test.ts cover initial idle and post-Leave suspend/resume.
+- R1-F2: resolved — On the host, a retryable credential failure during acquisition now retires only that peer. It schedules one owned per-seat timer at the cooldown deadline instead of calling session onFailure (onlinePeers.ts:L124-L137). The delay equals blocked - now, so when the timer fires `blocked > now` is false and reconcile proceeds (L163). The `attempted` map is per drain, so a new reconcile can re-issue. The timer checks the owner identity before reissuing (L134) and is cleared on replacement and on dispose (L130, L186). onlineIce marks rate-limited, capacity and turn-unavailable as retryable with retryAfterMs (onlineIce.ts:L14, L43, L51-L58), so the cited cases take the peer-scoped path. Guests keep the session-level failure, which is one of the fixes the finding itself proposed. The new test uses the real createOnlineIce in turn mode and covers both the retry and the dispose path.
+
+## Verified
+- onlinePeers.ts:L119-L140: on the host, a retryable acquisition failure retires the link and schedules a retry; a non-retryable or guest failure still calls failed(error); a failure after start still calls lost().
+- onlinePeers.ts:L186: dispose clears every retry timer before releasing the peers.
+- onlineSession.ts:L111-L123: stop() clears context, so resume after Leave or Forget is a no-op.
+- onlineSession.ts:L543-L551: suspend and resume guards, including the exitWork and disposal checks and the post-retirement current(c) check.
+- sessionRouter.ts:L6-L11: `mode` getter exists and defaults to 'home', so the renderer port guard closes the port in home and couch modes.
+- onlineIce.ts:L14, L43, L51-L58: the error codes and retryability flags that the host retry path keys on.
+
+## Not verified
+- Whether a host-side readiness or sync watchdog in onlineSession (attach/allReady path) can still fail the session while a seat waits up to 60 s for its TURN cooldown retry. I did not trace the attach/sync timers.
+- Whether choosing couch or home in the renderer while the online context is still in phase 'saved' leaves that context in place. If it does, OS resume would still reconnect in main; the renderer would close the port, and I did not check how the host then treats that seat.
+- I ran none of the tests or native smoke checks; the pass counts reported in the response are not independently confirmed.
+- The deferred R1-F3, R1-F4 and R1-F5 were not re-reviewed (not awaited in this round).
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against `3f6a38b`. Claude Code Opus confirmed R1-F1 and R1-F2 resolved, with no new findings. R1-F3, R1-F4 and R1-F5 remain deferred as documented in response-1.md.
+
+## Independent follow-up
+
+The host attach timeout starts inside attach(), after a peer is ready; it does not cover the credential-cooldown wait. allReady() gates starting a lobby, not an active host lifetime. The 30-second recovering sync wait in establish() applies to an active returning guest; a returning host enters saved state before that wait. The ordinary saved-state menu offers Leave before returning home, and direct home navigation is restricted to idle/error. These checks address the two code paths listed as unverified in round 2; they are not external runtime proof.
+
+## Verification
+
+No production or test code changed in this round. Retained verification for the unchanged source: 3,086 root tests, 222 service tests, root typecheck, final 92 focused tests, build and native Skiff/Cutter smoke passed in round 1. No redundant full-suite rerun was made. The reviewer's test claims remain explicitly controller-verified, not reviewer-executed.
+
+## Also changed
+
+The local prompt assembler had discarded the explicit source scope and expanded into historical binary/UTF-16 evidence. It now preserves setup subjects and adds files changed since setup. Assembly succeeded; all 10 existing assembler tests and both Claude launcher tests pass. Concurrent engine planning commits appeared in the generated delta; they were not edited by this netcode run. Round 2 contains no findings about them. No deployment or package update occurred. No separate confirm pass was requested.
+
+## Files changed
+
+<!-- end -->
+
+---
+
