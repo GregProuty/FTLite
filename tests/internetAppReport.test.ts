@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { validateInternetAppReport, validateInternetRun, validateLocalInternetDriverRun, INTERNET_ARTIFACTS } from '../scripts/network/internet-app-report';
 const sha = 'a'.repeat(64), runId = 'b'.repeat(32);
 const recovery = JSON.parse(readFileSync('.superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-7-evidence/recovery-skiff.json','utf8'));
-const identity = () => ({ revision:'c'.repeat(40), digest:recovery.source.digest, packageSha256:sha, artifacts:Object.fromEntries(INTERNET_ARTIFACTS.map(k=>[k,sha])), versions:{electron:'37.10.3',protocol:2,sim:35,checkpoint:2,replay:[2,3,4]} });
+const identity = () => ({ revision:'c'.repeat(40), digest:recovery.source.digest, packageSha256:sha,workerBundleSha256:sha,workerConfigSha256:sha, artifacts:Object.fromEntries(INTERNET_ARTIFACTS.map(k=>[k,sha])), versions:{electron:'37.10.3',wrangler:'4.156.0',workerd:'1.20261023.1',protocol:2,sim:35,checkpoint:2,replay:[2,3,4]} });
 const ref = () => ({path:'evidence/run.json',sha256:sha});
 const publication = () => ({runId,sequence:10,tick:320,hash:'f'.repeat(8),phase:'paused',commandHighWater:[2,3],heldHighWater:[4,5]});
 const peer = (seat:number) => ({role:seat===0?'host':'guest',seat,runId,hostGeneration:1,checkpoint:{runId,hostGeneration:1,checkpointSequence:3,capturedTick:320,payloadSha256:sha},errors:0,fullReceipts:1,firstAckOrder:1,firstInputOrder:2,
@@ -11,7 +11,7 @@ const peer = (seat:number) => ({role:seat===0?'host':'guest',seat,runId,hostGene
   routes:[{state:'connected',selected:true,localType:'relay',remoteType:'relay',policy:'relay',sent:10,received:10}],
   cleanup:{pid:100+seat,exited:true,exitCode:0,utilities:seat?0:1,utilityExits:seat?0:1,utilityPids:seat?[]:[150],windows:0,ports:0,listeners:0,peers:0,nativeWindows:1,nativeWindowExits:1,nativePeersObserved:1,nativePeerCloses:1,nativePeersEndedWithWindow:0,observedMainPorts:4}});
 const run = (role?:number):any => ({version:1,identity:identity(),serviceOrigin:'https://service.example',forceRelay:true,mode:role===undefined?'local-pair':'single-device',machineLabel:role===undefined?'local':`device-${role}`,networkLabel:role===undefined?'local':`network-${role}`,failure:null,cleanupFailed:false,temporaryRemoved:true,directoryCleanupAttempted:true,elapsedMs:1000,budgetMs:90000,processes:[{pid:10,exited:true,exitCode:0,kind:'preparation'}],peers:role===undefined?[peer(0),peer(1)]:[peer(role)]});
-const fixture = ():any => ({version:1,identity:identity(),internetReady:true,localRecovery:{status:'PASS',evidence:[ref()],report:structuredClone(recovery)},deployedService:{status:'PASS',evidence:[ref()],report:run()},forcedRelayGameplay:{status:'PASS',evidence:[ref()],report:run()},twoMachineGameplay:{status:'PASS',evidence:[ref(),ref()],reports:[run(0),run(1)],attestation:{physicallySeparate:true,differentNetworks:true,operatorLabels:['operator-a','operator-b']}},actualOsSuspend:{status:'NOT_RUN',evidence:[]}});
+const fixture = ():any => ({version:1,identity:identity(),internetReady:true,localRecovery:{status:'PASS',evidence:[ref()],report:structuredClone(recovery)},deployedService:{status:'PASS',evidence:[ref()],report:run(),deployment:{workerName:'ftlite-signalling-dev',serviceOrigin:'https://service.example',versionId:'deployment-1',bundleSha256:sha,configSha256:sha,operatorConfirmedArtifact:true}},forcedRelayGameplay:{status:'PASS',evidence:[ref()],report:run()},twoMachineGameplay:{status:'PASS',evidence:[ref(),ref()],reports:[run(0),run(1)],attestation:{physicallySeparate:true,differentNetworks:true,operatorLabels:['operator-a','operator-b']}},actualOsSuspend:{status:'NOT_RUN',evidence:[]}});
 it('accepts complete semantic evidence with honest operator attestation',()=>expect(()=>validateInternetAppReport(fixture())).not.toThrow());
 it('accepts an explicitly incomplete candidate without promoting external gates',()=>{const r=fixture();r.internetReady=false;for(const k of ['deployedService','forcedRelayGameplay','twoMachineGameplay'])r[k]={status:'NOT_RUN',evidence:[]};expect(()=>validateInternetAppReport(r)).not.toThrow();});
 it.each([
@@ -36,6 +36,8 @@ it.each([
   ['input before ACK',(r:any)=>r.forcedRelayGameplay.report.peers[0].inputs[0].order=1],
   ['summary false',(r:any)=>r.internetReady=false],
   ['unreferenced proof',(r:any)=>r.deployedService.evidence=[]],
+  ['wrong deployed artifact',(r:any)=>r.deployedService.deployment.bundleSha256='d'.repeat(64)],
+  ['wrong deployed origin',(r:any)=>r.deployedService.deployment.serviceOrigin='https://other.example'],
   ['raw diagnostic',(r:any)=>r.forcedRelayGameplay.report.peers[0].routes[0].address='192.0.2.1'],
 ])('rejects %s',(_name,mutate)=>{const r=fixture();mutate(r);expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it('admits a single device only as an independent local result',()=>expect(()=>validateInternetRun(run(1))).not.toThrow());
@@ -47,3 +49,4 @@ it('accepts actual tick-zero bootstrap followed by gameplay',()=>{const r=run();
 it('rejects only tick-zero bootstrap as gameplay',()=>{const r=run();for(const p of r.peers)p.publications[0].tick=0;expect(()=>validateInternetRun(r)).toThrow('internet-evidence-invalid');});
 it('rejects matching bootstrap with unrelated advancing gameplay',()=>{const r=run();for(const p of r.peers)p.publications.unshift({...publication(),tick:0,sequence:1});r.peers[1].publications[1].hash='00000000';expect(()=>validateInternetRun(r)).toThrow('internet-evidence-invalid');});
 it('requires command watermarks in a common advancing publication',()=>{const r=run();for(const p of r.peers)p.publications[0].commandHighWater=[0,0];expect(()=>validateInternetRun(r)).toThrow('internet-evidence-invalid');});
+it('requires deployed artifact identity, not only successful app requests',()=>{const r=fixture();delete r.deployedService.deployment;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});

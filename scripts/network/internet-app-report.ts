@@ -4,7 +4,7 @@ import { validateOnlineRecoveryReport } from './online-recovery-report';
 export const INTERNET_ARTIFACTS = ['out/main/index.js','out/main/authorityHost.js','out/main/rtcTransport.js','out/preload/index.js','out/preload/networkTransport.js','out/renderer/index.html'];
 const sha=z.string().regex(/^[a-f0-9]{64}$/), nat=z.number().int().nonnegative(), pos=nat.positive();
 const label=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/);
-const identity=z.object({revision:z.string().regex(/^[a-f0-9]{40}$/),digest:sha,packageSha256:sha,artifacts:z.record(sha),versions:z.object({electron:z.literal('37.10.3'),protocol:z.literal(2),sim:z.literal(35),checkpoint:z.literal(2),replay:z.tuple([z.literal(2),z.literal(3),z.literal(4)])}).strict()}).strict();
+const identity=z.object({revision:z.string().regex(/^[a-f0-9]{40}$/),digest:sha,packageSha256:sha,workerBundleSha256:sha,workerConfigSha256:sha,artifacts:z.record(sha),versions:z.object({electron:z.literal('37.10.3'),wrangler:z.literal('4.156.0'),workerd:z.literal('1.20261023.1'),protocol:z.literal(2),sim:z.literal(35),checkpoint:z.literal(2),replay:z.tuple([z.literal(2),z.literal(3),z.literal(4)])}).strict()}).strict();
 const runId=z.string().regex(/^[a-f0-9]{32}$/);
 const checkpoint=z.object({runId,hostGeneration:pos,checkpointSequence:pos,capturedTick:nat,payloadSha256:sha}).strict();
 const publication=z.object({runId,sequence:pos,tick:nat,hash:z.string().regex(/^[a-f0-9]{8}$/),phase:z.enum(['running','paused']),commandHighWater:z.array(nat).length(2),heldHighWater:z.array(nat).length(2)}).strict();
@@ -75,7 +75,10 @@ export function validateInternetAppReport(value:unknown):void {
         const g=z.object({status:z.literal('PASS'),evidence:evidence.min(1),report:z.unknown(),attestation:z.object({actualOsSleep:z.literal(true),operatorLabel:label}).strict()}).strict().parse(raw);
         if(!same(parseRun(g.report).identity,base.identity))fail();
       } else {
-        const g=z.object({status:z.literal('PASS'),evidence:evidence.min(1),report:z.unknown()}).strict().parse(raw);
+        const deployment=z.object({workerName:z.literal('ftlite-signalling-dev'),serviceOrigin:z.string(),versionId:label,bundleSha256:sha,configSha256:sha,operatorConfirmedArtifact:z.literal(true)}).strict();
+        const shape={status:z.literal('PASS'),evidence:evidence.min(1),report:z.unknown()};
+        const g=(name==='deployedService'?z.object({...shape,deployment}).strict():z.object(shape).strict()).parse(raw);
+        if(name==='deployedService'){const d=(g as any).deployment;if(d.bundleSha256!==base.identity.workerBundleSha256||d.configSha256!==base.identity.workerConfigSha256||d.serviceOrigin!==(g.report as any).serviceOrigin)fail();}
         if(name==='localRecovery') {validateOnlineRecoveryReport(g.report);if((g.report as any).source.digest!==base.identity.digest)fail();}
         else {const r=parseRun(g.report);if(r.mode!=='local-pair'||!same(r.identity,base.identity)||(name==='forcedRelayGameplay'&&!r.forceRelay))fail();}
       }
