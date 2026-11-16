@@ -1,0 +1,89 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "The palette role list does not cover the door and effects colours that section 4 says will read roles",
+      "claim": "Section 4 says 'The tile layer, the door model and the effects read roles instead of their module constants', but the role list only has doorFill and doorOutline for doors and nothing for most effects colours. The door model also has SEALED_FILL, HELD_TICK and SPACE_GAP. effects.ts has the fire fallback orange, the active breach red, the airlock outline cyan, the vent speck pale blue, the failed-station yellow and the IMPACT colour. Section 1 says every procedural stroke is whole art pixels, but the effects airlock outline is a 3-unit stroke at offset -2, and the even-grid test only covers wallPicture and doorPicture.",
+      "evidence": "spec L22, L58, L60; render/doorModel.ts:L5; render/effects.ts:L70, L79, L94, L103, L116",
+      "why": "Implementers would differ. One adds new roles, another maps these colours onto the nearest ramp entries, a third leaves the constants. A palette swap (Art-ii) would then only partly recolour the interior, and the 'one palette' goal fails for the effects layer.",
+      "fix": "Either add roles for the missing colours (sealed, heldTick, spaceGap, breach, airlockOutline, failed), or state which ramp entry each one takes (for example fire fallback = fire[2], vent = vent[1]). Either way, say that no 0x literal stays in tiles.ts, doorModel.ts or effects.ts. Extend the even-grid rule (or its test) to the effects rectangles and strokes, or say explicitly that effects outlines are out of scope for Art-i-a."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Section 5's duel adapter gives the hull from d.tactical.systems[CREW_SLOT].hull over the class hull and says fire and vacuum are always off (L78). Section 7 uses hitsCrew, and the duel flash covers the whole interior at half strength (L94-95). The screenshot list now asks for duel normal and alert and sector vacuum (L111). hitsCrew exists at fxModel.ts:L35."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "L96 names what each shake and flash replaces and which container each shake moves. L95 makes the flash 2 sim ticks, and L97 says the hitstop does not extend it."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "L98 gives the key, the default, a boot read in try/catch, a pure feelScale with its multipliers, no menu, and an F9 dev cycle."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "I recomputed the table at L49-54 from the formula at L47 and it matches. Cutter: 0.5, 1/3 < 0.491 so kept, 0.5, 0.6, 0.5. Starter: 0.5 < 0.57 so kept, 0.667, 0.75, 0.6, 0.667. Skiff: 1 at every stage. L47 covers re-centring, rounding so x times stage is whole, the same object going to callouts and projectiles, and the path reset on resize. L56 covers the n=0 case."
+    },
+    {
+      "id": "R1-F5",
+      "result": "still open",
+      "note": "The static geometry is now on the grid. PANEL_THICK 12 and BAND 10 put every wallPicture rect on even values (wallModel.ts:L26-30 gives x/y 0, 10 or 22 and w/h 10 or 12). But a sliding door panel's width is continuous: doorPicture computes w = HALF*(1-p) and places the panel at x = T - w (doorModel.ts:L23-24), and the airlock stripes start at r.x+4 (L34). So for any progress strictly between 0 and 1, the panels and stripes have odd or fractional x and w. As written, the test that 'every doorPicture rectangle has even x, y, w and h' (spec L58) either fails or only gets run at rest states, and implementers would choose differently. Fix: quantise the slide, w = 2*round(HALF*(1-p)/2), and test doorPicture over a sweep of progress values."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "L88 and L90 define the sector and duel 'working' signals, the failed-station signal, and that the sparks add to fx.arc. interactTarget has the Fire, Breach and Power kinds (interact.ts:L61, L67, L75). repairWork events exist (duel/state.ts:L19, duel/step.ts:L54)."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "L30-34 cover the regex, excluding paid from LICENSE_URLS, the superRefine rules, the one-name-one-entry rule, the notices line, the gitignore entry, and registering house.floor.* with the houseFloor feature. The goal is narrowed at L13."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "L71-74 give the return shape with alert and vacuum independent, LOW_O2_THRESHOLD 0.98 (matches effects.ts:L12), the LOW_O2_MAX_ALPHA strength formula (effects.ts:L14), the pulse formula, and that the vacuum tint is a normal-blend replacement of the o2Layer colour."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "The orders at L67-68 match today's addChild lists with grade and lights inserted (renderer.ts:L53, interiorView.ts:L45). The duel marks and labels sit above the lights. L66's opening line is consistent with them."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "L60 makes palette.json a static import with {colours, roles, ramps}, a role list and a membership test. L39 makes the import validate first and exit 1. L41 puts the contact sheet at .art/contact.png, outside out/."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "L80 places the lamp on the room's top-left floor tile. L104 picks vents by a hash of wall tiles next to floor. L105 puts the starfield in a container under the world filling WORLD_BAND or INTERIOR_BAND (both exist: worldFit.ts:L4, interiorModel.ts:L10), drifting at 4 and 10 art px/s. L85 seeds everything from the layout hash."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "L5-7 split the work into Art-i-a (sections 1-4) and Art-i-b (sections 5-8), each with its own plan, implementation review and owner gate (L112)."
+    }
+  ],
+  "verified": [
+    "Recomputed the snapWorldScale table (spec L49-54) from the formula at L47 for every ship and stage; all values match.",
+    "With PANEL_THICK 12 and BAND 10, every wallPicture rect is even (wallModel.ts:L26-30 gives 0/10/22 and 10/12).",
+    "The sector and duel addChild orders at L67-68 are today's lists plus grade and lights (renderer.ts:L53, interiorView.ts:L45).",
+    "HULL_MAX = 100 exists (sim/tuning.ts:L11) and state.hull exists (sim/state.ts:L28), so the sector adapter at L77 is buildable.",
+    "LOW_O2_THRESHOLD 0.98 and LOW_O2_MAX_ALPHA 0.6 exist in effects.ts:L12-14, as L74 cites.",
+    "The interactTarget kinds Fire, Breach and Power (interact.ts:L61-75) and the repairWork duel events (duel/state.ts:L19, duel/step.ts:L54) exist for the L90 derivations.",
+    "duelFit and INTERIOR_BAND exist (duel/interiorModel.ts:L10-14)."
+  ],
+  "not_verified": [
+    "Whether every ship class's starting hull in sim/tactical/defs.ts is the right denominator for the duel hull fraction (I did not read defs.ts L16-24 in full).",
+    "Whether the duel interior's fit is exactly 1 for every ship class (I did not compute duelFit's output per ship).",
+    "Whether Pixi 8.19 renders 'multiply' without importing the advanced blend modes; the spec defers this check to the plan."
+  ]
+}
