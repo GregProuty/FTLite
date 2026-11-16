@@ -134,3 +134,34 @@ The validator's message, `duel snapshot tactical ships.0.graceUntil: out of rang
 
 ---
 
+# Round 3 (delta, reviewing ab6be42, effort medium, 62 s, 292109 in / 239360 cached / 2811 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F2: resolved — The tactical validator now bounds graceUntil to signed 32 bits (plan L440-L450), matching its Int32Array storage (plan L508). A rehashed out-of-range value is tested at plan L839-L843. The telemetry memory schema applies the same bound before Int32Array.from restores it (plan L1835-L1859, L1868-L1870).
+
+## Verified
+- The snapshot validator calls validateTacticalValues before createDuel (plan L943, L959-L960). The new graceUntil rule covers the remaining typed-array conversion identified in round 2.
+- The revised invalid-value count is consistent: 17 tactical cases at plan L833-L840 and three presence or repair cases at plan L845-L849.
+- Task 4 has a predictable integration overlap: it replaces authorityHost.ts (plan L2647), which recent netcode commit 740fc31 also changed. The implementer should reconcile that file against current master.
+
+## Not verified
+- No implementation or tests were run; this is a read-only review of the plan at ab6be42. R-0 and R-1a interfaces are not on master yet.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json`. No new findings. Codex confirmed R1-F2 resolved. Verdict: ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
