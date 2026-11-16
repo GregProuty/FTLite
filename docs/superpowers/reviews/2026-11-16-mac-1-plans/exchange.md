@@ -122,3 +122,56 @@ The stale probe distinguishes closed-binding local retirement from remote reject
 
 ---
 
+# Round 2 (delta, reviewing d8fb831, effort medium, 62 s, 225937 in / 189203 cached / 5124 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 Stale-probe can only hold a guest input envelope, so it cannot probe stale old-host traffic in the Mac-sleep-as-host scenario
+The R1-F9 fix narrows the stale probe to keeping one decoded RTC gameplay input envelope in memory. Input is guest-to-host traffic. In the Mac-sleep-as-host scenario the stale party is the old host waking up, and its stale traffic is publications or state sent to the guest. The probe has no allowed message class for that direction. So the spec's 'a new generation must reject traffic from the old one' falls back to the vague 'where observable' ingress observation, and ends up NOT_RUN or a later 'surface the missing test'. · 1b plan L157 (keep at most one decoded RTC gameplay input envelope); 1b plan L159 (host-rehost/sleep: 'where observable'; must add a still-open stale binding case 'or surface the missing test'); spec L143 (Mac sleep as host: a new generation must reject old traffic); spec L147 (current-host rejection of old-generation traffic); R1-F9's original fix allowed 'an input or state packet'. · Gate F needs remote stale rejection for the host-sleep case. As written, the only probe mechanism cannot exercise that direction. Gate F would end up NOT_RUN, or the implementer would invent an untested mechanism during execution. · Let the probe keep, by role, at most one envelope: the guest keeps an input envelope, and the old host keeps one publication/state envelope with its binding identity. Both follow the same secret-exclusion and no-retargeting rules. On wake, the old host attempts to send through its own still-owned binding. The guest's ingress records whether it rejected the packet or the binding was already closed. Add fake tests for both directions.
+
+## Prior findings
+- R1-F1: resolved — 1a L70 adds nativeAudit to CandidateV2. 1a L157-159 define strict darwin and win32 NativeAudit variants, require complete Mach-O and helper inventories, state that a label alone cannot pass, and add failure tests. 1b L139-143 define Gate A/B/C evidence schemas and their derivation, and reject caller-supplied booleans.
+- R1-F2: resolved — 1a L129 makes ProcessIdentity and CleanupProof platform-discriminated with no pgid on Windows. 1a L163 defines a bounded PowerShell Win32_Process adapter using execFile args, a CreationDate identity check, orphan handling and native probes. 1b L47 and L149 validate each platform's variant and reject fake PGIDs.
+- R1-F3: resolved — 1b L61-63 keep every command input plus the first held frame under a combined 512 cap and count other held frames without storing them. Results stay under the existing 128 cap, which matches internet-app-report.ts:L18-19. Tests cover 10,000 held frames passing and 513 commands failing (512 with a held boundary).
+- R1-F4: resolved — 1a L117 adds modeId:'sector' to auditCandidate and a --mode-id flag, checked against the registered sector definition. Unknown modes are rejected, and the runtime mode must match the manifest.
+- R1-F5: resolved — 1a L80 adds build/contentDigest.ts and its tests to Task 1's files. L86 adds formatVersions.ts to the digest's shared-file list explicitly, with mutation and CRLF/LF tests.
+- R1-F6: resolved — 1a L104 adds onlineExit.ts, onlineSession.ts and onlineRecovery tests to Task 3. L109 requires dispose after either prepareExit outcome, with the real owner retiring through stop even when the save fails. This addresses onlineSession.ts:L536 and L553, where a rejected save skips stop and the disposed flag.
+- R1-F7: resolved — 1a L165 defines registerControllerCleanup. It handles SIGINT, SIGTERM, SIGHUP and stdin close idempotently under a bounded deadline, adds fake and native interrupt probes, and states honestly that SIGKILL cannot be handled. 1b L161 registers it in the Task 4 runner.
+- R1-F8: resolved — 1a L76 and L169 require portable relative paths, keep root mappings in an uncommitted sidecar, hash only after sanitizing, reject /Users/, C:\Users\ and traversal paths, and test relocation. 1b L151 resolves files under the operator-supplied root and never serializes the mapping.
+- R1-F9: resolved — 1b L95 adds disconnect-guest, reconnect-guest, quit and close commands. L155 defines their mechanisms and marker ordering. L157-161 define a credential-free, in-memory, one-envelope bound probe that never retargets traffic, and are honest about closed bindings versus remote rejection. One gap remains for the host-sleep direction; it is raised as a new P2.
+- R1-F10: resolved — 1a L140 now limits the Mac-1a artifacts to Mac-1a evidence and requires Mac-1b Task 6 to freeze and rebuild.
+
+## Verified
+- onlineSession.ts:L531-537 and L553: a rejected graceful save skips stop() and the disposed flag. The Task 3 fix at 1a L109 targets exactly this path.
+- internet-app-report.ts:L18-19 caps inputs at 512 and results at 128. online-app-observer.ts:L46 and L49 shift both rings. 1b L63 matches these caps.
+- The CandidateV2 shape (1a L62-73) includes nativeAudit. LogicalIdentity.modeId (L48) agrees with auditCandidate modeId:'sector' (L117).
+- The spec's stale-traffic requirements (spec L140, L143, L147, L174) were checked against the 1b stale-probe text (L157-159).
+
+## Not verified
+- Whether the old RTC binding actually stays open after Mac sleep on real hardware. That decides whether the remote stale-rejection case is reachable at all; it needs a native run.
+- Whether Windows PowerShell Get-CimInstance runs fast enough to sample often during teardown. That is a runtime property I did not measure.
+
+---
+
+# Round 2 response (plan revised)
+
+Claude Code Opus confirmed all ten round-1 findings resolved. One new P2 accepted and fixed; no rejected or deferred findings.
+
+## R2-F1: old-host stale traffic
+
+Confirmed. Input envelopes only cover guest-to-host direction; an old host emits state/publication traffic. The plan now allows one role-appropriate envelope in memory, records receiver-side rejection in each direction, and requires tests for both directions and already-closed bindings. No service auth frames, secret persistence, retargeting or generation relabelling is allowed. Closed-binding local retirement remains distinct from remote rejection, and missing required native evidence cannot pass Gate F.
+
+## Verification
+
+Re-read the probe control, event model and recovery gates with the spec's old-generation rejection requirement. Original binding identity and generated-versus-received observations remain required. Product code was neither edited nor executed. This final P2 wording fix was controller-verified; no independent confirmation is claimed for it. Per refine rules, P2-only changes do not prolong the loop. No full confirm pass ran.
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-16-mac-1b-cross-platform-validation.md
+
+<!-- end -->
+
+---
+

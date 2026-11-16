@@ -1,0 +1,75 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "Stale-probe can only hold a guest input envelope, so it cannot probe stale old-host traffic in the Mac-sleep-as-host scenario",
+      "claim": "The R1-F9 fix narrows the stale probe to keeping one decoded RTC gameplay input envelope in memory. Input is guest-to-host traffic. In the Mac-sleep-as-host scenario the stale party is the old host waking up, and its stale traffic is publications or state sent to the guest. The probe has no allowed message class for that direction. So the spec's 'a new generation must reject traffic from the old one' falls back to the vague 'where observable' ingress observation, and ends up NOT_RUN or a later 'surface the missing test'.",
+      "evidence": "1b plan L157 (keep at most one decoded RTC gameplay input envelope); 1b plan L159 (host-rehost/sleep: 'where observable'; must add a still-open stale binding case 'or surface the missing test'); spec L143 (Mac sleep as host: a new generation must reject old traffic); spec L147 (current-host rejection of old-generation traffic); R1-F9's original fix allowed 'an input or state packet'.",
+      "why": "Gate F needs remote stale rejection for the host-sleep case. As written, the only probe mechanism cannot exercise that direction. Gate F would end up NOT_RUN, or the implementer would invent an untested mechanism during execution.",
+      "fix": "Let the probe keep, by role, at most one envelope: the guest keeps an input envelope, and the old host keeps one publication/state envelope with its binding identity. Both follow the same secret-exclusion and no-retargeting rules. On wake, the old host attempts to send through its own still-owned binding. The guest's ingress records whether it rejected the packet or the binding was already closed. Add fake tests for both directions."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "1a L70 adds nativeAudit to CandidateV2. 1a L157-159 define strict darwin and win32 NativeAudit variants, require complete Mach-O and helper inventories, state that a label alone cannot pass, and add failure tests. 1b L139-143 define Gate A/B/C evidence schemas and their derivation, and reject caller-supplied booleans."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "1a L129 makes ProcessIdentity and CleanupProof platform-discriminated with no pgid on Windows. 1a L163 defines a bounded PowerShell Win32_Process adapter using execFile args, a CreationDate identity check, orphan handling and native probes. 1b L47 and L149 validate each platform's variant and reject fake PGIDs."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "1b L61-63 keep every command input plus the first held frame under a combined 512 cap and count other held frames without storing them. Results stay under the existing 128 cap, which matches internet-app-report.ts:L18-19. Tests cover 10,000 held frames passing and 513 commands failing (512 with a held boundary)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "1a L117 adds modeId:'sector' to auditCandidate and a --mode-id flag, checked against the registered sector definition. Unknown modes are rejected, and the runtime mode must match the manifest."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "1a L80 adds build/contentDigest.ts and its tests to Task 1's files. L86 adds formatVersions.ts to the digest's shared-file list explicitly, with mutation and CRLF/LF tests."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "1a L104 adds onlineExit.ts, onlineSession.ts and onlineRecovery tests to Task 3. L109 requires dispose after either prepareExit outcome, with the real owner retiring through stop even when the save fails. This addresses onlineSession.ts:L536 and L553, where a rejected save skips stop and the disposed flag."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "1a L165 defines registerControllerCleanup. It handles SIGINT, SIGTERM, SIGHUP and stdin close idempotently under a bounded deadline, adds fake and native interrupt probes, and states honestly that SIGKILL cannot be handled. 1b L161 registers it in the Task 4 runner."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "1a L76 and L169 require portable relative paths, keep root mappings in an uncommitted sidecar, hash only after sanitizing, reject /Users/, C:\\Users\\ and traversal paths, and test relocation. 1b L151 resolves files under the operator-supplied root and never serializes the mapping."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "1b L95 adds disconnect-guest, reconnect-guest, quit and close commands. L155 defines their mechanisms and marker ordering. L157-161 define a credential-free, in-memory, one-envelope bound probe that never retargets traffic, and are honest about closed bindings versus remote rejection. One gap remains for the host-sleep direction; it is raised as a new P2."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "1a L140 now limits the Mac-1a artifacts to Mac-1a evidence and requires Mac-1b Task 6 to freeze and rebuild."
+    }
+  ],
+  "verified": [
+    "onlineSession.ts:L531-537 and L553: a rejected graceful save skips stop() and the disposed flag. The Task 3 fix at 1a L109 targets exactly this path.",
+    "internet-app-report.ts:L18-19 caps inputs at 512 and results at 128. online-app-observer.ts:L46 and L49 shift both rings. 1b L63 matches these caps.",
+    "The CandidateV2 shape (1a L62-73) includes nativeAudit. LogicalIdentity.modeId (L48) agrees with auditCandidate modeId:'sector' (L117).",
+    "The spec's stale-traffic requirements (spec L140, L143, L147, L174) were checked against the 1b stale-probe text (L157-159)."
+  ],
+  "not_verified": [
+    "Whether the old RTC binding actually stays open after Mac sleep on real hardware. That decides whether the remote stale-rejection case is reachable at all; it needs a native run.",
+    "Whether Windows PowerShell Get-CimInstance runs fast enough to sample often during teardown. That is a runtime property I did not measure."
+  ]
+}
