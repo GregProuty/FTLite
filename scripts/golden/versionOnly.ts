@@ -33,11 +33,16 @@ const FIXTURE = 'tests/fixtures/determinism-v2.json';
 export interface Trace { simVersion: number; cwd?: string; head?: string; golden: string[]; determinism: Record<string, string[]> }
 export interface VersionOnlyResult { ok: boolean; message: string }
 
-/** The canonical hash of a state with the version value zeroed. */
-export function canonical(state: SimState): string {
-  const v = Float64Array.from(flatten(state));
+/** The canonical hash of flattened values with the version value (index 0) zeroed. */
+export function canonicalValues(values: ArrayLike<number>): string {
+  const v = Float64Array.from(values);
   v[0] = 0;
   return hashF64(v);
+}
+
+/** The canonical hash of a state with the version value zeroed. */
+export function canonical(state: SimState): string {
+  return canonicalValues(flatten(state));
 }
 
 function gitHead(): string {

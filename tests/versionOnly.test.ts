@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { basicVersionFromText, duelVersionFromText } from '../scripts/golden/storedVersion';
-import { canonical, dirFor, judgeUnchanged, judgeVersionOnly, type Trace } from '../scripts/golden/versionOnly';
+import { canonical, canonicalValues, dirFor, judgeUnchanged, judgeVersionOnly, type Trace } from '../scripts/golden/versionOnly';
 import { makeState } from './helpers/sim';
 import { disposeSimState } from '../src/renderer/src/sim/state';
 import { Health } from '../src/renderer/src/sim/components';
+import { flatten } from '../src/renderer/src/sim/flatten';
+
+/** The flattened values of a fresh two-crew state, disposed before returning. */
+function freshValues(): Float64Array {
+  const state = makeState(2);
+  try { return Float64Array.from(flatten(state)); } finally { disposeSimState(state); }
+}
 
 describe('stored version readers', () => {
   const basic = (pad: number) => JSON.stringify({ pad: 'x'.repeat(pad), replay: { version: 2, init: { simVersion: 37 } }, header: { simVersion: 99 } });
@@ -64,7 +71,14 @@ describe('the bump check', () => {
 });
 
 describe('the canonical hash', () => {
-  it('changes when one crew Health.cur changes and ignores the version value', () => {
+  it('ignores only the version value (flatten index 0)', () => {
+    const v = freshValues();
+    const bumped = Float64Array.from(v); bumped[0] = v[0]! + 1;
+    expect(canonicalValues(bumped)).toBe(canonicalValues(v));
+    const other = Float64Array.from(v); other[1] = v[1]! + 1;
+    expect(canonicalValues(other)).not.toBe(canonicalValues(v));
+  });
+  it('changes when one crew Health.cur changes', () => {
     const state = makeState(2);
     try {
       const before = canonical(state);
