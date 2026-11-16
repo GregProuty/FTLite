@@ -6,7 +6,7 @@
 
 **Architecture:** Tests, scripts and one constant:
 - the merge brings `src/renderer/src/sim/canonicalFields.ts` (`NOT_SNAPSHOTTED`), `sim/duel/hash.ts` (the interior's whole flatten), `tests/simStateCompleteness.test.ts` and the re-blessed `tests/golden/duel-1.json`;
-- `scripts/bless-golden.ts` writes `basic.json`, `duel-1.json` and the determinism fixture's expectations (through the new `scripts/determinism/bless.ts`, which replaces `rebless-version.ts`); `--baseline` runs the new `scripts/golden/baselineCheck.ts` and writes nothing;
+- `scripts/bless-golden.ts` stages `basic.json`, `duel-1.json` and the determinism fixture's expectations (through the new `scripts/determinism/bless.ts`, which replaces `rebless-version.ts`) in memory and writes them only when all three are valid; the version-only guard runs whenever any of the three is stored at another version (`scripts/golden/blessGuard.ts`: `blessRefusal` over every stored version, `writeAllOrNothing`); `--baseline` runs the new `scripts/golden/baselineCheck.ts` and writes nothing;
 - `scripts/golden/versionOnly.ts` gains `verifyUnchanged()` and `canonical-trace.ts` its `same` mode, the per-tick proof the R-1 refactors use at an unchanged version;
 - `tests/netParity.test.ts` and `tests/golden.test.ts` stop reading `net1a-baseline.json`;
 - `sim/tuning.ts`: `SIM_VERSION` 36 → 37.
@@ -28,6 +28,7 @@
 
 - Determinism guard (`tests/boundary.test.ts`): the sim may only use `Math.abs`, `ceil`, `floor`, `round`, `min`, `max`, `sign`, `imul` and `sqrt`; no platform globals; randomness only through `src/shared/rng.ts`. This plan changes no sim code beyond the merge and the constant.
 - Generated files are never hand-written. `tests/golden/basic.json`, `tests/golden/duel-1.json` and `tests/fixtures/determinism-v2.json` come only from `npm run bless`. `tests/fixtures/net1a-baseline.json` and `tests/fixtures/net1a-gates.json` are never written.
+- **Never discard working-tree changes.** No step runs `git checkout`, `git restore`, `git stash` or `git clean`: the owner and other sessions keep uncommitted work in this checkout (today, netcode files under `src/main/network/`, `src/renderer/src/main.ts` and `tests/online*.test.ts`), and this plan touches none of those files. Every check that writes evidence writes it under the git-ignored `out/`.
 - **Commands need no shell features.** Every `Run:` line works as written in Windows PowerShell 5.1 and in Git Bash. The canonical trace keeps its baseline in `<os tmpdir>/ftlite-canonical-trace/`.
 - Commit with explicit paths only (`git add <paths>`), never `git add -A` or `git add .`: the owner keeps unrelated uncommitted files in this checkout. End every commit message with the Co-Authored-By trailer your own session instructs.
 - Run single test files with `npx vitest run <file>`. The full suite is `npm test`; it reads the built `out/` (build first). Typecheck is `npm run typecheck`.
@@ -38,10 +39,10 @@
 
 Each is the recommendation, taken under the standing order; the owner can overturn any of them.
 
-1. **What `npm run bless` regenerates** **(rec.)**: `basic.json`, `duel-1.json` and the expectations (not the schedules) of `determinism-v2.json`. A version bump is refused unless the per-tick canonical comparison, re-run just before writing, is identical; on a bump the determinism fixture's checkpoints move to the new version and the write is refused unless every canonical field except `$simVersion`, every sample's place and all 404 result/event boundaries are unchanged. A same-version bless (a deliberate gameplay change) re-executes the fixture's schedules and writes the new expectations, as it does the goldens. `scripts/determinism/rebless-version.ts` is folded into it and deleted. `net1a-gates.json` is not a bless artifact: it pins the eight gate families and stays as it is.
+1. **What `npm run bless` regenerates** **(rec.)**: `basic.json`, `duel-1.json` and the expectations (not the schedules) of `determinism-v2.json`, **all or nothing** (Codex plan review, P0): the three are computed and validated in memory, and none is written unless all three staged. **A version change is in progress whenever any of the three is stored at a version other than `SIM_VERSION`** (read from `basic.json`'s and `duel-1.json`'s `simVersion` and the fixture's checkpoints), so a half-finished earlier bless that left `basic.json` at the new version still triggers the guard. A version change is then refused unless the per-tick canonical comparison, re-run just before staging, is identical; on a bump the determinism fixture's checkpoints move to the new version and the write is refused unless every canonical field except `$simVersion`, every sample's place and all 404 result/event boundaries are unchanged. A same-version bless (a deliberate gameplay change) re-executes the fixture's schedules and writes the new expectations, as it does the goldens. `scripts/determinism/rebless-version.ts` is folded into it and deleted. `net1a-gates.json` is not a bless artifact: it pins the eight gate families and stays as it is.
 2. **`--baseline`** **(rec.)**: `npm run bless -- --baseline` writes nothing. It re-runs the 19 pinned `net1a-baseline.json` scenarios (observations, decisions and summary, ignoring only the recorded SIM 34 in the summary) and the golden replay's 60-tick projections, prints one line and exits 0, or names each first difference and exits 1. The prototype checked that it bites: with `CREW_SPEED` 4 → 4.001 it named every scenario at tick 1 (`crew[0].x`). The default suite no longer reads the file: the scenario loop, the "short scripts" assertions and the projection test move out; the projection code's own tests stay, with a synthetic oracle for the corruption check.
 3. **The R-1 refactor check** **(rec.)**: `canonical-trace.ts same` compares the per-tick canonical trace at an *unchanged* version and exits 1 on the first differing tick. R-1 records the baseline before it changes the authority and runs `same` after; R-0 only adds the mode.
-4. **The version bump's proof** (spec §7 and the R-0 row): the bump changes no sector tick. The prototype's `check` reported `per-tick canonical trace identical, sim version 36 → 37: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs`, and `golden` found 14,531 differing leaves in `basic.json`, all of them version, digest or hash. The duel golden keeps its 26 checkpoints, 15,772 ticks and outcome 1; only its hashes move (the fuller hash, then the version). A second `npm run bless` at version 37 regenerated all three files byte for byte.
+4. **The version bump's proof** (spec §7 and the R-0 row): the bump changes no sector tick. The prototype's `check` reported `per-tick canonical trace identical, sim version 36 → 37: golden 7200 ticks, determinism-v2 108000 ticks in 19 runs`, and `golden` found 14,531 differing leaves in `basic.json`, all of them version, digest or hash. The duel golden keeps its 26 checkpoints, 15,772 ticks and outcome 1; only its hashes move (the fuller hash, then the version). A second `npm run bless` at version 37 regenerated all three files byte for byte; with `duel-1.json` alone set back to 36 it refused (`refusing to bless a SIM_VERSION bump (36 → 37)`) and wrote nothing.
 
 ## File structure
 
@@ -52,7 +53,8 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 | `scripts/determinism/bless.ts` | **Create:** `blessDeterminismFixture(contentDigest)`, `fixtureVersion` |
 | `scripts/determinism/rebless-version.ts` | **Delete** (folded into `bless.ts`) |
 | `scripts/bless-golden.ts` | **Replace:** writes all three artifacts; `--baseline` |
-| `scripts/golden/versionOnly.ts`, `scripts/golden/canonical-trace.ts`, `scripts/golden/blessGuard.ts` | **Replace:** `verifyUnchanged` and the `same` mode; comments |
+| `scripts/golden/versionOnly.ts`, `scripts/golden/canonical-trace.ts` | **Replace:** `verifyUnchanged` and the `same` mode |
+| `scripts/golden/blessGuard.ts`, `tests/blessGuard.test.ts` | **Replace:** `blessRefusal` over every artifact's stored version; `writeAllOrNothing`; their tests |
 | `tests/netParity.test.ts`, `tests/golden.test.ts` | **Replace:** no longer read `net1a-baseline.json` |
 | `src/renderer/src/sim/tuning.ts` | **Replace:** `SIM_VERSION` 36 → 37 (only change) |
 | `tests/golden/basic.json`, `tests/golden/duel-1.json`, `tests/fixtures/determinism-v2.json` | **Generated** in Task 3 |
@@ -93,12 +95,12 @@ Expected: exit 0.
 
 **Files:**
 - Create: `scripts/golden/baselineCheck.ts`, `scripts/determinism/bless.ts`
-- Modify (whole file): `scripts/bless-golden.ts`, `scripts/golden/versionOnly.ts`, `scripts/golden/canonical-trace.ts`, `scripts/golden/blessGuard.ts`, `tests/netParity.test.ts`, `tests/golden.test.ts`
+- Modify (whole file): `scripts/bless-golden.ts`, `scripts/golden/versionOnly.ts`, `scripts/golden/canonical-trace.ts`, `scripts/golden/blessGuard.ts`, `tests/blessGuard.test.ts`, `tests/netParity.test.ts`, `tests/golden.test.ts`
 - Delete: `scripts/determinism/rebless-version.ts`
 
 **Interfaces:**
 - Consumes: `scenarios`, `runScenario`, `firstDifference`, `projectGameplay` (`tests/helpers/gameplayTrace.ts`); `runSemanticReplay`; `executeFixture`, `packFixture`, `unpackFixture` (`scripts/determinism/fixture.ts`); `firstDifference` (`scripts/determinism/protocol.ts`); `blessRefusal`, `verifyVersionOnly`.
-- Produces: `checkNet1aBaseline(contentDigest: string): { ok: boolean; message: string }`; `DETERMINISM_FIXTURE`, `fixtureVersion(fixture: Fixture): number`, `blessDeterminismFixture(contentDigest: string): string`; `verifyUnchanged(): VersionOnlyResult`; the CLI modes `canonical-trace.ts same` and `bless-golden.ts --baseline`.
+- Produces: `checkNet1aBaseline(contentDigest: string): { ok: boolean; message: string }`; `DETERMINISM_FIXTURE`, `fixtureVersion(fixture: Fixture): number`, `storedFixtureVersion(): number`, `stageDeterminismFixture(contentDigest: string): { content: string; message: string }` (writes nothing); `blessRefusal({ storedVersions, currentVersion, verify, versionOnly? })`; `interface StagedArtifact { path; stage(): { content; message } }`; `writeAllOrNothing(artifacts, write): string[]`; `verifyUnchanged(): VersionOnlyResult`; the CLI modes `canonical-trace.ts same` and `bless-golden.ts --baseline`.
 
 - [ ] **Step 1: Move the default suite off the pinned baseline**
 
@@ -206,7 +208,106 @@ describe('replay', () => {
 Run: `npx vitest run tests/netParity.test.ts tests/golden.test.ts`
 Expected: PASS, 8 tests in 2 files (5 net parity, 3 golden).
 
-- [ ] **Step 2: Write the historical check and the determinism fixture's bless**
+- [ ] **Step 2: The all-or-nothing guard, test first**
+
+Replace the whole of `tests/blessGuard.test.ts` with:
+
+```ts
+import { describe, expect, it, vi } from 'vitest';
+import { blessRefusal, writeAllOrNothing } from '../scripts/golden/blessGuard';
+
+const ok = { ok: true, message: 'identical' }, bad = { ok: false, message: 'golden replay differs at tick 5' };
+
+describe('the bless guard', () => {
+  it('allows a version bump when the re-run comparison is ok', () => {
+    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => ok })).toBeUndefined();
+  });
+  it('refuses a version bump when the comparison is not ok, quoting why', () => {
+    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => bad })).toMatch(/differs at tick 5/);
+  });
+  it('refuses a version bump with no baseline (the comparison reports it)', () => {
+    expect(blessRefusal({ storedVersions: [35, 35, 35], currentVersion: 36, verify: () => ({ ok: false, message: 'no baseline' }) })).toMatch(/no baseline/);
+  });
+  it('allows a same-version bless without running the comparison', () => {
+    const verify = vi.fn(() => bad);
+    expect(blessRefusal({ storedVersions: [36, 36, 36], currentVersion: 36, verify })).toBeUndefined();
+    expect(verify).not.toHaveBeenCalled();
+  });
+  it('a mixed state, one golden already at the new version and another artifact not, still requires the comparison', () => {
+    for (const storedVersions of [[37, 36, 36], [37, 37, 36], [36, 37, 37], [37, undefined, 36]]) {
+      const verify = vi.fn(() => bad);
+      expect(blessRefusal({ storedVersions, currentVersion: 37, verify }), JSON.stringify(storedVersions)).toMatch(/36 → 37/);
+      expect(verify).toHaveBeenCalledTimes(1);
+    }
+    expect(blessRefusal({ storedVersions: [37, 37, undefined], currentVersion: 37, verify: () => bad })).toBeUndefined();
+  });
+  it('a version-only re-bless always runs the comparison', () => {
+    expect(blessRefusal({ storedVersions: [35], currentVersion: 36, verify: () => bad, versionOnly: true })).toBeDefined();
+    expect(blessRefusal({ storedVersions: [35], currentVersion: 36, verify: () => ok, versionOnly: true })).toBeUndefined();
+  });
+});
+
+describe('writing the pinned artifacts', () => {
+  it('stages every artifact before writing any, in order', () => {
+    const order: string[] = [], write = vi.fn((path: string) => { order.push(`write ${path}`); });
+    const stage = (path: string) => ({ path, stage: () => { order.push(`stage ${path}`); return { content: path.toUpperCase(), message: `blessed ${path}` }; } });
+    expect(writeAllOrNothing([stage('a'), stage('b'), stage('c')], write)).toEqual(['blessed a', 'blessed b', 'blessed c']);
+    expect(order).toEqual(['stage a', 'stage b', 'stage c', 'write a', 'write b', 'write c']);
+    expect(write).toHaveBeenCalledWith('b', 'B');
+  });
+  it('a failure while staging the third artifact writes nothing', () => {
+    const write = vi.fn();
+    const good = (path: string) => ({ path, stage: () => ({ content: 'x', message: path }) });
+    expect(() => writeAllOrNothing([good('basic'), good('duel'), { path: 'fixture', stage: () => { throw new Error('not version-only: sample 3'); } }], write)).toThrow(/not version-only/);
+    expect(write).not.toHaveBeenCalled();
+  });
+});
+```
+
+Run: `npx vitest run tests/blessGuard.test.ts`
+Expected: FAIL: writeAllOrNothing is not exported yet, and blessRefusal still reads one stored version.
+
+Replace the whole of `scripts/golden/blessGuard.ts` with:
+
+```ts
+// The guards that keep `npm run bless` honest. This file is pure; scripts/bless-golden.ts injects the comparison and
+// the file system.
+// - blessRefusal: a SIM_VERSION change is in progress whenever ANY pinned artifact's stored version differs from the
+//   current one (a half-finished earlier bless can leave them mixed). Then the per-tick canonical comparison
+//   (versionOnly.ts) is re-run, so nothing from an earlier run is trusted, and the bless is allowed only when it is ok.
+// - writeAllOrNothing: every artifact is staged (computed and validated) in memory before any file is written, so a
+//   failure while staging any of them writes none.
+import type { VersionOnlyResult } from './versionOnly';
+
+/**
+ * Returns undefined to allow the bless, or the refusal message. A bump (`versionOnly`, or any stored version different
+ * from the current one) runs `verify` and is allowed only when it returns ok; a same-version bless (every artifact
+ * already at the current version: a deliberate gameplay change) never calls it. An absent artifact (undefined) does
+ * not count as a bump.
+ */
+export function blessRefusal(opts: { storedVersions: readonly (number | undefined)[]; currentVersion: number; verify: () => VersionOnlyResult; versionOnly?: boolean }): string | undefined {
+  const { storedVersions, currentVersion, verify, versionOnly } = opts;
+  const stale = storedVersions.filter((v): v is number => v !== undefined && v !== currentVersion);
+  if (versionOnly !== true && stale.length === 0) return undefined;
+  const r = verify();
+  if (r.ok) return undefined;
+  return `refusing to bless a SIM_VERSION bump (${[...new Set(stale)].join(', ') || '?'} → ${currentVersion}): the per-tick canonical comparison failed.\n${r.message}`;
+}
+
+export interface StagedArtifact { path: string; stage(): { content: string; message: string } }
+
+/** Stage every artifact first; write them only when all staged. Returns the messages in order. */
+export function writeAllOrNothing(artifacts: readonly StagedArtifact[], write: (path: string, content: string) => void): string[] {
+  const staged = artifacts.map((a) => ({ path: a.path, ...a.stage() }));
+  for (const s of staged) write(s.path, s.content);
+  return staged.map((s) => s.message);
+}
+```
+
+Run: `npx vitest run tests/blessGuard.test.ts`
+Expected: PASS, 8 tests in 1 file, including "a mixed state, one golden already at the new version and another artifact not, still requires the comparison" and "a failure while staging the third artifact writes nothing".
+
+- [ ] **Step 2b: Write the historical check and the determinism fixture's staging**
 
 Create `scripts/golden/baselineCheck.ts`:
 
@@ -268,7 +369,8 @@ Create `scripts/determinism/bless.ts`:
 //   snapshot's flattened version value), re-execute, and refuse unless the new expectations differ from the old only
 //   in the version: every canonical field but `$simVersion`, every sample's place and every result/event boundary
 //   unchanged. The caller (scripts/bless-golden.ts) has already passed the per-tick canonical guard for a bump.
-import { readFileSync, writeFileSync } from 'node:fs';
+// Nothing here writes: the caller stages this with the goldens and writes all three only when every one is valid.
+import { readFileSync } from 'node:fs';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import { executeFixture, packFixture, unpackFixture, type Fixture } from './fixture';
 import { firstDifference } from './protocol';
@@ -285,8 +387,13 @@ export function fixtureVersion(fixture: Fixture): number {
   return from;
 }
 
-/** Rewrites the fixture's expectations and returns the summary line. Throws, writing nothing, on a bump that is not version-only. */
-export function blessDeterminismFixture(contentDigest: string): string {
+/** The sim version the stored fixture records. */
+export function storedFixtureVersion(): number {
+  return fixtureVersion(unpackFixture(JSON.parse(readFileSync(DETERMINISM_FIXTURE, 'utf8')) as Fixture));
+}
+
+/** The fixture with re-executed expectations, as file content, and its summary line. Throws on a bump that is not version-only. */
+export function stageDeterminismFixture(contentDigest: string): { content: string; message: string } {
   const old = unpackFixture(JSON.parse(readFileSync(DETERMINISM_FIXTURE, 'utf8')) as Fixture), from = fixtureVersion(old);
   const fixture = structuredClone(old);
   for (const run of fixture.runs) {
@@ -307,10 +414,9 @@ export function blessDeterminismFixture(contentDigest: string): string {
     const boundaries = firstDifference(was.boundaries, now.boundaries, 'boundaries');
     if (boundaries) throw Error(`not version-only: ${boundaries}`);
   }
-  writeFileSync(DETERMINISM_FIXTURE, JSON.stringify(packFixture(fixture)));
-  return from === SIM_VERSION
+  return { content: JSON.stringify(packFixture(fixture)), message: from === SIM_VERSION
     ? `blessed ${DETERMINISM_FIXTURE}: sim version ${SIM_VERSION}, ${now.samples.length} samples and ${now.boundaries.length} boundaries re-executed`
-    : `blessed ${DETERMINISM_FIXTURE}: sim version ${from} → ${SIM_VERSION}, ${now.samples.length} samples and ${now.boundaries.length} boundaries unchanged apart from the version and hashes`;
+    : `blessed ${DETERMINISM_FIXTURE}: sim version ${from} → ${SIM_VERSION}, ${now.samples.length} samples and ${now.boundaries.length} boundaries unchanged apart from the version and hashes` };
 }
 ```
 
@@ -321,16 +427,19 @@ Replace the whole of `scripts/bless-golden.ts` with:
 ```ts
 // `npm run bless`: the one command that regenerates every pinned artifact (engine refactor spec §7, R-0):
 //   tests/golden/basic.json (the sector golden), tests/golden/duel-1.json (the duel golden) and the expectations of
-//   tests/fixtures/determinism-v2.json. A SIM_VERSION bump is refused unless the per-tick canonical comparison
-//   (scripts/golden/versionOnly.ts, re-run here just before writing) proves it version-only; a same-version bless is a
-//   deliberate gameplay change. tests/fixtures/net1a-baseline.json is a retired historical oracle and is never written:
-//   `npm run bless -- --baseline` only checks it and writes nothing. tests/fixtures/net1a-gates.json is never written.
+//   tests/fixtures/determinism-v2.json. If ANY of them is stored at a version other than the current SIM_VERSION, a
+//   version change is in progress, and the bless is refused unless the per-tick canonical comparison
+//   (scripts/golden/versionOnly.ts, re-run here) proves it version-only; a same-version bless is a deliberate gameplay
+//   change. All three are computed and validated in memory first and written only when every one is staged, so a
+//   failure writes nothing and a re-run still sees the old versions. tests/fixtures/net1a-baseline.json is a retired
+//   historical oracle and is never written: `npm run bless -- --baseline` only checks it and writes nothing.
+//   tests/fixtures/net1a-gates.json is never written.
 import { computeContentDigest } from '../build/contentDigest';
-import { writeFileSync, mkdirSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
-import { blessRefusal } from './golden/blessGuard';
+import { writeFileSync, mkdirSync, existsSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
+import { blessRefusal, writeAllOrNothing } from './golden/blessGuard';
 import { verifyVersionOnly } from './golden/versionOnly';
 import { checkNet1aBaseline } from './golden/baselineCheck';
-import { blessDeterminismFixture } from './determinism/bless';
+import { DETERMINISM_FIXTURE, stageDeterminismFixture, storedFixtureVersion } from './determinism/bless';
 import starter from '../src/renderer/src/sim/ship/starter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { runSemanticReplay } from '../tests/helpers/semanticReplay';
@@ -338,6 +447,7 @@ import { scriptedSemanticReplay } from '../tests/helpers/script';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { DUEL_GOLDEN, DUEL_GOLDEN_EVERY, DUEL_GOLDEN_SEED, runDuel } from '../tests/helpers/scriptedDuel';
 
+const BASIC = 'tests/golden/basic.json';
 const contentDigest = computeContentDigest(process.cwd());
 if (process.argv.includes('--baseline')) {
   const r = checkNet1aBaseline(contentDigest);
@@ -346,29 +456,33 @@ if (process.argv.includes('--baseline')) {
   process.exit(0);
 }
 
-// A version-bump bless needs a passing per-tick canonical-trace check first; a same-version bless is a deliberate gameplay change.
-function storedVersion(path: string): number | undefined {
-  if (!existsSync(path)) return undefined;
-  const fd = openSync(path, 'r'), buf = Buffer.alloc(4096);
+/** basic.json is large; its simVersion is in the first bytes. */
+function basicVersion(): number | undefined {
+  if (!existsSync(BASIC)) return undefined;
+  const fd = openSync(BASIC, 'r'), buf = Buffer.alloc(4096);
   try { return Number(/"simVersion":(\d+)/.exec(buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)))?.[1] ?? NaN) || undefined; } finally { closeSync(fd); }
 }
-const refusal = blessRefusal({ storedVersion: storedVersion('tests/golden/basic.json'), currentVersion: SIM_VERSION, verify: verifyVersionOnly });
+const duelVersion = (): number | undefined => existsSync(DUEL_GOLDEN) ? (JSON.parse(readFileSync(DUEL_GOLDEN, 'utf8')) as { simVersion: number }).simVersion : undefined;
+const stored = [basicVersion(), duelVersion(), existsSync(DETERMINISM_FIXTURE) ? storedFixtureVersion() : undefined];
+const refusal = blessRefusal({ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly });
 if (refusal) { console.error(refusal); process.exit(1); }
 
-const layout = parseShip(starter);
-const replay = scriptedSemanticReplay(2026, 4, 60 * 120, contentDigest);   // 2 minutes, 4 players
-const { hashes, finalHash } = runSemanticReplay(layout, replay, 60, contentDigest);
-mkdirSync('tests/golden', { recursive: true });
-writeFileSync('tests/golden/basic.json', JSON.stringify({ replay, hashes, finalHash }));
-console.log(`blessed tests/golden/basic.json: ${hashes.length} checkpoints, final ${finalHash}`);
-
-// The duel golden (H-0c-ii-a spec §6): the scripted pair at one seed, a hash every DUEL_GOLDEN_EVERY ticks.
-const duel = runDuel(DUEL_GOLDEN_SEED, 'scripted', undefined, DUEL_GOLDEN_EVERY), t = duel.telemetry;
-writeFileSync(DUEL_GOLDEN, JSON.stringify({ simVersion: SIM_VERSION, seed: DUEL_GOLDEN_SEED, outcome: t.outcome, ticks: t.ticks, finalHash: duel.finalHash, every: DUEL_GOLDEN_EVERY, hashes: duel.hashes }, null, 2) + '\n');
-console.log(`blessed ${DUEL_GOLDEN}: ${duel.hashes.length} checkpoints, ${t.ticks} ticks, outcome ${t.outcome}, final ${duel.finalHash}`);
-
-// The determinism fixture's expectations (version-only checked on a bump).
-console.log(blessDeterminismFixture(contentDigest));
+const messages = writeAllOrNothing([
+  { path: BASIC, stage() {
+    const replay = scriptedSemanticReplay(2026, 4, 60 * 120, contentDigest);   // 2 minutes, 4 players
+    const { hashes, finalHash } = runSemanticReplay(parseShip(starter), replay, 60, contentDigest);
+    return { content: JSON.stringify({ replay, hashes, finalHash }), message: `blessed ${BASIC}: ${hashes.length} checkpoints, final ${finalHash}` };
+  } },
+  // The duel golden (H-0c-ii-a spec §6): the scripted pair at one seed, a hash every DUEL_GOLDEN_EVERY ticks.
+  { path: DUEL_GOLDEN, stage() {
+    const duel = runDuel(DUEL_GOLDEN_SEED, 'scripted', undefined, DUEL_GOLDEN_EVERY), t = duel.telemetry;
+    return { content: JSON.stringify({ simVersion: SIM_VERSION, seed: DUEL_GOLDEN_SEED, outcome: t.outcome, ticks: t.ticks, finalHash: duel.finalHash, every: DUEL_GOLDEN_EVERY, hashes: duel.hashes }, null, 2) + '\n',
+      message: `blessed ${DUEL_GOLDEN}: ${duel.hashes.length} checkpoints, ${t.ticks} ticks, outcome ${t.outcome}, final ${duel.finalHash}` };
+  } },
+  // The determinism fixture's expectations (version-only checked on a bump).
+  { path: DETERMINISM_FIXTURE, stage: () => stageDeterminismFixture(contentDigest) }
+], (path, content) => { mkdirSync('tests/golden', { recursive: true }); writeFileSync(path, content); });
+for (const line of messages) console.log(line);
 ```
 
 Replace the whole of `scripts/golden/versionOnly.ts` with:
@@ -531,29 +645,6 @@ if (mode === 'baseline') {
 } else throw Error('usage: npx tsx scripts/golden/canonical-trace.ts baseline|check|golden|same');
 ```
 
-Replace the whole of `scripts/golden/blessGuard.ts` with:
-
-```ts
-// The guard that keeps a SIM_VERSION-bump bless honest: just before writing, the per-tick canonical comparison
-// (versionOnly.ts) is re-run, so nothing from an earlier run is trusted. This file is the pure decision; the callers
-// (scripts/bless-golden.ts) inject the comparison.
-import type { VersionOnlyResult } from './versionOnly';
-
-/**
- * Returns undefined to allow the bless, or the refusal message. A bump (`versionOnly`, or a stored version different
- * from the current one) runs `verify` and is allowed only when it returns ok; a same-version bless (a deliberate
- * gameplay change) never calls it.
- */
-export function blessRefusal(opts: { storedVersion: number | undefined; currentVersion: number; verify: () => VersionOnlyResult; versionOnly?: boolean }): string | undefined {
-  const { storedVersion, currentVersion, verify, versionOnly } = opts;
-  const bump = versionOnly === true || (storedVersion !== undefined && storedVersion !== currentVersion);
-  if (!bump) return undefined;
-  const r = verify();
-  if (r.ok) return undefined;
-  return `refusing to bless a SIM_VERSION bump (${storedVersion ?? '?'} → ${currentVersion}): the per-tick canonical comparison failed.\n${r.message}`;
-}
-```
-
 ```bash
 git rm -q scripts/determinism/rebless-version.ts
 ```
@@ -566,7 +657,7 @@ Expected: the last line is `net1a-baseline: 19 scenarios and the golden replay's
 - [ ] **Step 5: Run the touched tests and typecheck**
 
 Run: `npx vitest run tests/netParity.test.ts tests/golden.test.ts tests/blessGuard.test.ts tests/determinismHarness.test.ts`
-Expected: PASS, 27 tests in 4 files.
+Expected: PASS, 30 tests in 4 files.
 
 Run: `npm run typecheck`
 Expected: exit 0.
@@ -574,7 +665,7 @@ Expected: exit 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/golden/baselineCheck.ts scripts/determinism/bless.ts scripts/bless-golden.ts scripts/golden/versionOnly.ts scripts/golden/canonical-trace.ts scripts/golden/blessGuard.ts tests/netParity.test.ts tests/golden.test.ts
+git add scripts/golden/baselineCheck.ts scripts/determinism/bless.ts scripts/bless-golden.ts scripts/golden/versionOnly.ts scripts/golden/canonical-trace.ts scripts/golden/blessGuard.ts tests/blessGuard.test.ts tests/netParity.test.ts tests/golden.test.ts
 git commit -q -m "build(golden): one bless command for every pinned artifact; net1a-baseline retired to --baseline (engine refactor R-0)"
 ```
 
@@ -841,7 +932,7 @@ Expected: `per-tick canonical trace identical, sim version 36 → 37: golden 720
 - [ ] **Step 4: Bless every pinned artifact**
 
 Run: `npm run bless`
-Expected, the last three lines (about 20 s; the bless re-runs the comparison itself before writing):
+Expected, the last three lines (about 20 s; the bless re-runs the comparison itself, then stages all three artifacts before writing any):
 ```
 blessed tests/golden/basic.json: 120 checkpoints, final fdf43ba3
 blessed tests/golden/duel-1.json: 26 checkpoints, 15772 ticks, outcome 1, final c973118a
@@ -865,18 +956,12 @@ Run: `npm run build`
 Expected: exit 0 (the suite reads `out/`).
 
 Run: `npm test`
-Expected: every file passes, 3,074 tests in 219 files: the merge adds `tests/simStateCompleteness.test.ts`, and the 19 scenario tests, the short-script test and the projection test that read `net1a-baseline.json` leave the default suite (see the known flakes in Global Constraints).
+Expected: every file passes, 3,081 tests in 219 files at master 3f6a38b: the merge adds `tests/simStateCompleteness.test.ts`, and the 19 scenario tests, the short-script test and the projection test that read `net1a-baseline.json` leave the default suite (see the known flakes in Global Constraints).
 
 - [ ] **Step 7: The cross-engine determinism check**
 
-Run: `npm run test:determinism`
-Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS` for Node and `1800 samples PASS` for Electron (and Firefox where it is installed) (about 60 s).
-
-The check rewrites its tracked evidence logs under `.superpowers/sdd/2026-11-14-net-1b-durability/task-5-logs/`; put them back:
-
-```bash
-git checkout -- .superpowers/sdd/2026-11-14-net-1b-durability/task-5-logs
-```
+Run: `npm run test:determinism -- --output-dir=out/r0-determinism`
+Expected: exit 0, with `1800 canonical samples, 404 result/event boundaries PASS` for Node and `1800 samples PASS` for Electron (and Firefox where it is installed) (about 60 s). The output-dir flag (read by scripts/determinism/run.ts) sends its evidence logs to the git-ignored out/ folder instead of the tracked default under .superpowers/sdd/, so this step leaves git status unchanged: no step of this plan restores, checks out or stashes anything, and only the files each commit names change.
 
 - [ ] **Step 8: Commit**
 

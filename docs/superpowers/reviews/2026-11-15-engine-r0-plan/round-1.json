@@ -1,0 +1,34 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P0",
+      "title": "A failed bless can bypass the version-only guard on retry",
+      "claim": "The unified bless writes both goldens before validating the determinism fixture, and it decides whether to run the per-tick guard from basic.json alone.",
+      "evidence": "plan L349-L371; plan L299-L310; scripts/golden/blessGuard.ts:L11-L16",
+      "why": "If fixture validation rejects the first run, basic.json is already at SIM 37. A retry treats it as a same-version bless and skips the per-tick comparison, allowing a later sector gameplay change to be blessed.",
+      "fix": "Validate and stage all three artifacts before writing any of them. Check the stored versions of every pinned artifact, and require the per-tick guard while any artifact is being moved from 36 to 37."
+    },
+    {
+      "severity": "P0",
+      "title": "The log cleanup can discard concurrent edits",
+      "claim": "The unconditional checkout restores an entire tracked log directory after the determinism run.",
+      "evidence": "plan L870-L879; scripts/determinism/run.ts:L14-L15; scripts/determinism/run.ts:L60-L64",
+      "why": "Any uncommitted edit another session makes in that directory before the checkout is lost. The directory is currently clean, but the plan is meant to run in a shared checkout.",
+      "fix": "Run `npm run test:determinism -- --output-dir=out/r0-determinism` and remove the checkout step."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "The plan is unchanged from commit e446e0d in the current checkout; the hash-completeness branch has the stated two commits and five-file diff.",
+    "The consumed gameplay-trace and determinism helpers have the assumed exports and signatures: tests/helpers/gameplayTrace.ts:L37-L70,L80,L124; scripts/determinism/fixture.ts:L21-L42,L111; scripts/determinism/protocol.ts:L3.",
+    "The trace is ordered before the 36-to-37 bump and the check before bless: plan L594-L610,L836-L848.",
+    "The baseline mode exits before writes: plan L341-L347. Gate tests still read net1a-gates.json through tests/helpers/gateTrace.ts:L15-L16,L73-L83.",
+    "Net-3's sector mode, online compatibility, and host smoke derive their version from SIM_VERSION: src/network/modes/sector.ts:L93; src/main/network/onlineSector.ts:L29-L38; scripts/network/host-smoke.ts:L39."
+  ],
+  "not_verified": [
+    "No Jest/Vitest suite or typecheck was run, as requested; compilation and stated output hashes were reviewed statically.",
+    "The review ledger could not be read because docs/superpowers/reviews/2026-11-15-engine-r0-plan/ledger.md is unavailable in this checkout. No awaited prior IDs were supplied.",
+    "To assess the findings, I also inspected tsconfig files, the gate helper, the determinism runner, and the isolated RTC configuration smoke outside the reading manifest."
+  ]
+}
