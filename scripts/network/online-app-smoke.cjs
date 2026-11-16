@@ -36,9 +36,10 @@ globalThis.fetch = async (url, init) => {
     await new Promise((_, reject) => { const abort = () => reject(Error('held-upload-aborted')); if(init.signal?.aborted) abort(); else init.signal?.addEventListener('abort', abort, { once: true }); });
   }
   if(checkpoint && init?.method === 'PUT' && stopping && delayedExitCommit) {
-    delayedExitCommit=false;const began=performance.now();await delay(2600);recovery.exitCommitDelayMs=performance.now()-began;
+    delayedExitCommit=false;recovery.exitCommitAcknowledged=false;const began=performance.now();await delay(2600);recovery.exitCommitDelayMs=performance.now()-began;
   }
   const response = await nativeFetch(url, init);
+  if(checkpoint && init?.method === 'PUT' && stopping && recovery.exitCommitAcknowledged===false)recovery.exitCommitAcknowledged=response.ok;
   if (checkpoint && response.ok) {
     if(init?.method === 'PUT') recovery.puts.push(checkpointProof(init.body));
     else {
@@ -227,6 +228,7 @@ async function command(message) {
         peers:[...nativeClosed].flatMap(([owner,r])=>owner.closed?[]:r?.connections??[]).filter(r=>r.state!=='closed').length,
         utilityPids:utilities.map(r=>r.pid),observedMainPorts:channels.length };
       result.shutdownComplete = result.utilities === result.utilityExits && result.windows === 0 && result.ports === 0 && result.listeners === 0 && result.peers === 0;
+      if(recovery.exitCommitAcknowledged!==undefined)result.exitCommitAcknowledged=recovery.exitCommitAcknowledged;
       result.exitCommitDelayMs = recovery.exitCommitDelayMs ?? 0;
       result.shutdownElapsedMs = budget - Math.max(0,stopAt-performance.now());
       process.send?.({id:message.requestId,result},()=>app.exit(result.shutdownComplete ? 0 : 1)); return;

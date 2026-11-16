@@ -114,12 +114,16 @@ async function main() {
     await Promise.all([...owned.map(async p=>{try{if(p.kind!=='preparation'&&!p.exited){try{p.cleanup=await p.request!('shutdown');await deadline.wait(p.done,'cleanup-timeout',7000);}catch{cleanupFailed=true;}}
       await stopOwnedProcess(p.child,deadline);await deadline.wait(p.done,'cleanup-timeout',1500);
       if(p===owned[0]&&args.has('--inject-cleanup-stop-failure'))throw Error('cleanup-failed');
-    }catch{cleanupFailed=true;}}),...(runtime?[runtime.dispose(deadline).catch(()=>{cleanupFailed=true;})]:[])]);abort.abort();
+    }catch{cleanupFailed=true;}})]);
+    // Final host capture/PUT needs the local service until every app has retired.
+    // Runtime termination and removal still use the original absolute deadline.
+    if(runtime)try{await runtime.dispose(deadline);}catch{cleanupFailed=true;}
+    abort.abort();
     directoryCleanupAttempted=true;
     try {const target=resolve(directory),prefix=resolve(tmpdir())+sep;if(!target.startsWith(prefix)||!target.slice(prefix.length).startsWith('ftlite-internet-app-'))throw Error('cleanup-target-invalid');await removeOwnedDirectory(target,deadline);}catch{cleanupFailed=true;}
   }
   for(const peer of peers){const p=owned.find(p=>p.kind===peer.role)!;peer.cleanup={pid:p.pid,exited:p.exited,exitCode:p.exitCode,...p.cleanup};}
-  if(args.has('--local-delayed-shutdown')&&!failure) {const host=owned.find(p=>p.kind==='host');if(!host?.cleanup?.shutdownComplete||host.cleanup.exitCommitDelayMs<2500||host.cleanup.shutdownElapsedMs<2500)failure='delayed-shutdown-proof-failed';}
+  if(args.has('--local-delayed-shutdown')&&!failure) {const host=owned.find(p=>p.kind==='host');if(!host?.cleanup?.shutdownComplete||!host.cleanup.exitCommitAcknowledged||host.cleanup.exitCommitDelayMs<2500||host.cleanup.shutdownElapsedMs<2500)failure='delayed-shutdown-proof-failed';}
   if(cleanupFailed)failure??='cleanup-failed';
   const report={version:1,identity,serviceOrigin:local?runtime?.baseUrl??'http://127.0.0.1:1':config.baseUrl,forceRelay:args.has('--force-relay'),mode:manual?'single-device':'local-pair',machineLabel,networkLabel,failure,cleanupFailed,temporaryRemoved:!existsSync(directory),directoryCleanupAttempted,elapsedMs:Math.round(performance.now()-began),budgetMs,processes:owned.filter(p=>p.kind==='preparation').map(p=>({pid:p.pid,exited:p.exited,exitCode:p.exitCode,kind:p.kind})),peers};
   if(!failure)try{if(local){validateLocalInternetDriverRun(report);if(!runtime?.exited()||!runtime.observation().exited||runtime.observation().exitCode!==0)throw Error('runtime-cleanup-failed');}else validateInternetRun(report);}catch{report.failure='internet-evidence-invalid';}

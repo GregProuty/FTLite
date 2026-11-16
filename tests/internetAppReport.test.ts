@@ -68,3 +68,11 @@ it.each(['reportRevision','candidateRevision','executableArtifacts'])('rejects i
 it('accepts current-revision recovery without a historical provenance record',()=>{const r=localCandidate();r.localRecovery.report.source.revision=r.identity.revision;delete r.localRecovery.runtimeProvenance;expect(()=>validateInternetAppReport(r)).not.toThrow();});
 it('does not confuse provenance map field ordering with byte inequality',()=>{const r=localCandidate();r.localRecovery.runtimeProvenance.executableArtifacts=Object.fromEntries(Object.entries(r.localRecovery.runtimeProvenance.executableArtifacts).reverse());expect(()=>validateInternetAppReport(r)).not.toThrow();});
 it.each(['https://SERVICE.example','https://service.example/','https://service.example:443'])('rejects noncanonical identity origin %s',origin=>{const r=localCandidate();r.identity.serviceOrigin=origin;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
+
+it('admits exact cleanup with bounded shutdown observation and an acknowledged delayed exit commit',()=>{
+  const r=run();Object.assign(r.peers[0].cleanup,{shutdownComplete:true,shutdownElapsedMs:3100,exitCommitDelayMs:2600,exitCommitAcknowledged:true});
+  expect(()=>validateInternetRun(r)).not.toThrow();
+});
+it.each([{shutdownComplete:false},{shutdownElapsedMs:5001},{exitCommitDelayMs:-1},{exitCommitAcknowledged:false}])('rejects invalid shutdown observation %j',fields=>{
+  const r=run();Object.assign(r.peers[0].cleanup,fields);expect(()=>validateInternetRun(r)).toThrow('internet-evidence-invalid');
+});
