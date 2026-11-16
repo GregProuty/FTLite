@@ -30,7 +30,7 @@ export function validateOnlineAppReport(value: unknown): void {
     if (s.mirrors?.initialCommittedTick !== 0 || s.mirrors?.initialBeforeBootstrap !== true
       || s.mirrors?.periodicCapturedTick !== 300 || s.mirrors?.periodicCommittedTick !== 300 || s.mirrors?.guestReceived !== true) fail();
   }
-  if (!['bad-code', 'incompatible', 'cancel-couch'].every(k => r.checks?.includes(k))
+  if (!['bad-code', 'incompatible', 'cancel-single'].every(k => r.checks?.includes(k))
     || !['loopback-only', 'no-TURN', 'no-rehost', 'no-WAN', 'no-two-machine'].every(k => r.limits?.includes(k))) fail();
 }
 

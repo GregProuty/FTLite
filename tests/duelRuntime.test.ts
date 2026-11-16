@@ -278,6 +278,17 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.view()).toBe('helm');   // the X pressed while paused was dropped
     rt.dispose();
   });
+  it('M asks for the main menu only while user-paused or on the end screen (main menu spec)', () => {
+    const { rt, press, tick } = rig(7);
+    press('menu'); tick(); expect(rt.menuRequested()).toBe(false);   // while playing, M does nothing
+    rt.pause('blur'); press('menu'); rt.frame(1 / 60); expect(rt.menuRequested()).toBe(false); rt.resume('blur');
+    press('pause'); rt.frame(1 / 60); press('menu'); rt.frame(1 / 60); expect(rt.menuRequested()).toBe(true);
+    rt.dispose();
+    const end = rig(7);
+    end.rt.duel.tactical.systems[1].hull = 0; end.tick(); expect(end.rt.ended()).toBe(true);
+    end.press('menu'); end.rt.frame(1 / 60); expect(end.rt.menuRequested()).toBe(true);
+    end.rt.dispose();
+  });
   it('the duel ends, stepping stops, and Enter restarts with seed + 1, a fresh tick epoch and the solo start again', () => {
     const { time, rt, press, tick, cleared } = rig(7);
     press('switch'); tick(); press('zoomIn'); tick();

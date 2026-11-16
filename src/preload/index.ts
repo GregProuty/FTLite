@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { copyOnlinePortDescriptor, ONLINE_CHANNELS, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL,
+import { copyOnlinePortDescriptor, ONLINE_CHANNELS, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
   validateOnlineAction, validateOnlinePortEnvelope, validateOnlineResult, validateOnlineStatusEnvelope,
   type FtlitePreloadApi, type OnlineAction, type OnlineResult, type Unsubscribe } from '../shared/onlineSession';
 
@@ -26,6 +26,10 @@ ipcRenderer.on(ONLINE_PORT_CHANNEL, (event, value: unknown) => {
 const api: FtlitePreloadApi = {
   onSuspend: callback => lifecycle('app:suspend', callback),
   onResume: callback => lifecycle('app:resume', callback),
+  window: {
+    async isFullScreen() { try { return (await ipcRenderer.invoke(WINDOW_FULLSCREEN_CHANNEL)) === true; } catch { return false; } },
+    async setFullScreen(on) { try { return (await ipcRenderer.invoke(WINDOW_FULLSCREEN_CHANNEL, on === true)) === true; } catch { return false; } }
+  },
   online: {
     host: capacity => action({ type: 'host', capacity }),
     join: code => action({ type: 'join', code }),

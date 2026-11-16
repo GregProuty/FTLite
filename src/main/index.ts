@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { INTERNAL_W, INTERNAL_H } from '../shared/resolution';
@@ -11,6 +11,7 @@ import { createSeatStore } from './network/seatStore';
 import { createMirrorStore } from './network/mirrorStore';
 import { validateSectorMirror } from './network/onlineSector';
 import { createRoomServiceClient } from '../network/session/serviceClient';
+import { WINDOW_FULLSCREEN_CHANNEL } from '../shared/onlineSession';
 declare const __FTLITE_PACKAGED_SERVICE_ORIGIN__: string;
 
 function createWindow(): void {
@@ -58,6 +59,15 @@ function createWindow(): void {
       win.setFullScreen(!win.isFullScreen());
       event.preventDefault();
     }
+  });
+  // Settings' fullscreen toggle (main menu spec): only this window's own page may ask; no argument reads the state.
+  ipcMain.removeHandler(WINDOW_FULLSCREEN_CHANNEL);
+  ipcMain.handle(WINDOW_FULLSCREEN_CHANNEL, (event, ...args: unknown[]) => {
+    if (win.isDestroyed() || event.sender !== win.webContents) return false;
+    if (args.length === 0) return win.isFullScreen();
+    if (typeof args[0] !== 'boolean') return win.isFullScreen();
+    win.setFullScreen(args[0]);
+    return args[0];
   });
   // FTLITE_MODE (H-1 spec §3): `flight` opens the dev flight view and `duel` the solo duel; the renderer reads it as `?mode=`.
   const mode = process.env['FTLITE_MODE'];

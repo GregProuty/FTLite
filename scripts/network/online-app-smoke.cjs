@@ -186,6 +186,8 @@ async function command(message) {
     }
     case 'layout': return js(`(() => { const rect = e => { const r=e.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,width:r.width,height:r.height}; }; return {width:innerWidth,height:innerHeight,menu:rect(document.querySelector('[data-testid="session-menu"]')),canvas:rect(document.querySelector('canvas'))}; })()`);
     case 'click': await click(message.id); return true;
+    // The main menu (2026-11-16) keeps Host, Join and the saved-seat actions on its Multiplayer page.
+    case 'open-multiplayer': if (await js(`!!document.querySelector('[data-testid="multiplayer"]')`)) await click('multiplayer'); return true;
     case 'type': await click(message.id); visible.webContents.insertText(message.text); return true;
     case 'capacity': await click('capacity'); visible.webContents.sendInputEvent({type:'keyDown',keyCode:'Home'}); visible.webContents.sendInputEvent({type:'keyUp',keyCode:'Home'});
       for(let i=1;i<message.value;i++){ visible.webContents.sendInputEvent({type:'keyDown',keyCode:'Down'}); visible.webContents.sendInputEvent({type:'keyUp',keyCode:'Down'}); }

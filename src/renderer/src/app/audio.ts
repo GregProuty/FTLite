@@ -20,13 +20,15 @@ const CUES: Record<Cue, Tone[]> = {
   callout: [tone('triangle', 988, 988, 0, 0.05, 0.6), tone('triangle', 1319, 1319, 0.07, 0.07, 0.6)]
 };
 
-export function createAudio(): { play(cue: Cue): void; unlock(): void } {
+export interface Audio { play(cue: Cue): void; unlock(): void; /** 0 (off) to 1 (full): scales MASTER_GAIN (Settings, main menu spec). */ setVolume(v: number): void }
+
+export function createAudio(): Audio {
   let ctx: AudioContext | null = null; let master: GainNode | null = null;
   try {
     const Ctor = (globalThis as { AudioContext?: typeof AudioContext }).AudioContext;
     if (Ctor) { ctx = new Ctor(); master = ctx.createGain(); master.gain.value = MASTER_GAIN; master.connect(ctx.destination); }
   } catch { ctx = null; master = null; }
-  if (!ctx || !master) return { play() { /* no audio */ }, unlock() { /* no audio */ } };
+  if (!ctx || !master) return { play() { /* no audio */ }, unlock() { /* no audio */ }, setVolume() { /* no audio */ } };
   const c = ctx, m = master;
   return {
     play(cue) {
@@ -43,6 +45,9 @@ export function createAudio(): { play(cue: Cue): void; unlock(): void } {
     },
     unlock() {
       try { void c.resume().catch(() => { /* rejected resume: ignore */ }); } catch { /* ignore */ }
+    },
+    setVolume(v) {
+      try { m.gain.value = MASTER_GAIN * Math.max(0, Math.min(1, Number.isFinite(v) ? v : 1)); } catch { /* ignore */ }
     }
   };
 }

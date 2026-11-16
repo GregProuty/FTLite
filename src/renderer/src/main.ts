@@ -1,18 +1,14 @@
 import cutter from './sim/ship/cutter.json';
 import skiff from './sim/ship/skiff.json';
-import { shipForCrew } from './sim/ship/fleet';
 import { parseShip } from './sim/ship/schema';
 import { loadAssets } from './render/assets';
 import { createRenderer } from './render/renderer';
 import { createHud } from './render/hud';
-import { createKeyboardSources, sampleGamepads } from './input/sources';
-import { createSession } from './app/session';
-import { appendTelemetry } from './app/telemetryStore';
-import { loadProgress, saveProgress } from './app/progressStore';
+import { createKeyboardSources } from './input/sources';
 import { createAudio } from './app/audio';
-import { EMPTY_PROGRESS } from './sim/progress';
-import { CREDITS } from './render/credits.generated';
-import { readMode, readSeed } from './app/duel/mode';
+import { loadSettings, saveSettings } from './app/settingsStore';
+import { controlSections } from './app/controls';
+import { DEFAULT_SEED, readMode, readSeed } from './app/duel/mode';
 import { startFlightMode } from './app/duel/flightMode';
 import { startDuelMode } from './app/duel/duelMode';
 import { createOnlineBridge } from './app/onlineBridge';
@@ -33,36 +29,30 @@ ${err instanceof Error ? err.message : String(err)}`;
   document.body.replaceChildren(pre);
 }
 
-/** Today's sector game (unchanged; H-1 spec §3: the default mode). */
-async function startSector(): Promise<void> {
+/** The app (main menu spec, 2026-11-16): the menu with Single player (the solo duel), Multiplayer (today's online
+ *  flow) and Settings. One renderer serves both; the router owns at most one of them at a time. */
+async function startApp(): Promise<void> {
   const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff) };   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   const hud = createHud(renderer.hud, assets);
   const keyboard = createKeyboardSources(window);
   const audio = createAudio();
+  let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
+  audio.setVolume(settings.volume);
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
-  const sampleDevices = () => [...keyboard.sample(), ...sampleGamepads()];
-  const createCouch = () => createSession({
-    layout: (players) => ships[shipForCrew(players)],   // the Skiff for one or two, the cutter for three or four (spec Demo-x-a section 3)
-    sampleDevices,
-    renderer, hud,
-    now: () => performance.now(),
-    scheduler,
-    canResume: () => !document.hidden && document.hasFocus(),
-    credits: CREDITS,
-    playCue: audio.play,
-    saveCrash: (payload) => { try { localStorage.setItem('ftlite-crash', JSON.stringify(payload)); } catch { /* storage unavailable */ } },
-    saveTelemetry: (record) => { try { appendTelemetry(localStorage, record); } catch { /* storage denied: evaluating localStorage itself can throw, and the callback runs inside the session's sim-fault try */ } },
-    loadProgress: () => { try { return loadProgress(localStorage); } catch { return EMPTY_PROGRESS; } },
-    saveProgress: (p) => { try { saveProgress(localStorage, p); } catch { /* storage denied */ } }
-  });
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
   let online: ReturnType<typeof createOnlineRendererSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
-  const session = createSessionRouter({ couch: createCouch, resetInput: keyboard.reset,
+  let menu: ReturnType<typeof createSessionMenu> | null = null;
+  const session = createSessionRouter({ resetInput: keyboard.reset,
+    single: () => {
+      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.cutter, lifecycle: window.ftlite,
+        onExit: () => { session.home(); menu?.leaveSingle(); } });
+      return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
+    },
     online: () => {
-      online = createOnlineRendererSession({ sampleDevices, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
+      online = createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
         resolveLayout: id => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; },
         api: bridge!, playCue: audio.play });
       if (status) online.setStatus(status); online.setInputBlocked(blocked); return online;
@@ -74,15 +64,22 @@ async function startSector(): Promise<void> {
     session.selectOnline().attach(descriptor, port);
   });
   const menuRoot = document.createElement('div'); document.body.append(menuRoot);
-  const menu = createSessionMenu({ root: menuRoot, document, api: bridge ?? undefined,
-    couch() { session.selectCouch(); online = null; }, online() { session.selectOnline(); },
-    leaveCouch() { session.home(); }, home() { session.home(); online = null; }, pause() { online?.pause(); },
-    inputBlocked(value) { if (blocked !== value) keyboard.reset(); blocked = value; online?.setInputBlocked(value); }
+  const win = window.ftlite?.window;
+  menu = createSessionMenu({ root: menuRoot, document, api: bridge ?? undefined,
+    single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
+    home() { session.home(); online = null; }, pause() { online?.pause(); },
+    inputBlocked(value) { if (blocked !== value) keyboard.reset(); blocked = value; online?.setInputBlocked(value); },
+    settings: {
+      volume: () => settings.volume,
+      setVolume(volume) { settings = { ...settings, volume }; audio.setVolume(volume); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+      fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined,
+      controls: controlSections()
+    }
   });
-  const offStatus = bridge?.onStatus(next => { status = next; online?.setStatus(next); menu.setStatus(next); });
-  if (document.hidden || !document.hasFocus()) session.pause('initial-focus');
+  const offStatus = bridge?.onStatus(next => { status = next; online?.setStatus(next); menu?.setStatus(next); });
+  if (document.hidden || !document.hasFocus()) session.pause();
   const resize = (): void => {
-    const top = menu.reservedHeight();
+    const top = menu?.reservedHeight() ?? 0;
     renderer.app.canvas.style.cssText = `position:fixed;left:0;top:${top}px;display:block`;
     renderer.resize(window.innerWidth, Math.max(1, window.innerHeight - top));
   };
@@ -91,13 +88,11 @@ async function startSector(): Promise<void> {
   window.addEventListener('resize', resize); resize();
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
-  window.addEventListener('blur', () => session.pause('blur'));
-  document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause('hidden'); else if (session.mode === 'couch' || document.hasFocus()) session.resume('visible'); });
-  window.addEventListener('focus', () => session.resume('focus'));
-  const offSuspend = window.ftlite?.onSuspend(() => session.pause('os-suspend'));
-  const offResume = window.ftlite?.onResume(() => { if (session.mode === 'couch') session.resume('os-resume'); });
-  renderer.app.ticker.add(() => { session.frame(); menu.frame(); });
-  window.addEventListener('beforeunload', () => { offPort?.(); offStatus?.(); offSuspend?.(); offResume?.(); menuResize.disconnect(); menu.dispose(); session.dispose(); bridge?.dispose(); keyboard.destroy(); }, { once: true });
+  window.addEventListener('blur', () => session.pause());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause(); else if (document.hasFocus()) session.resume(); });
+  window.addEventListener('focus', () => session.resume());
+  renderer.app.ticker.add(() => { session.frame(); menu?.frame(); });
+  window.addEventListener('beforeunload', () => { offPort?.(); offStatus?.(); menuResize.disconnect(); menu?.dispose(); session.dispose(); bridge?.dispose(); keyboard.destroy(); }, { once: true });
 }
 
 /** The dev flight view (H-1 spec §9): the renderer and its letterbox, but no sector session. */
@@ -119,9 +114,9 @@ async function startDuel(seed: number): Promise<void> {
   startDuelMode({ renderer, seed, layout, lifecycle: window.ftlite });
 }
 
-/** One mode per launch (H-1 spec §3): `?mode=flight`, `?mode=duel`, or today's sector game. */
+/** One mode per launch (H-1 spec §3): the dev views `?mode=flight` and `?mode=duel`, or the app with its main menu. */
 function start(): Promise<void> {
   const mode = readMode(location.search);
-  return mode === 'flight' ? startFlight(readSeed(location.search)) : mode === 'duel' ? startDuel(readSeed(location.search)) : startSector();
+  return mode === 'flight' ? startFlight(readSeed(location.search)) : mode === 'duel' ? startDuel(readSeed(location.search)) : startApp();
 }
 start().catch(showFatal);

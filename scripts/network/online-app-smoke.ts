@@ -56,14 +56,14 @@ async function main() {
     child.stderr!.on('data', () => { if(!stderrReported){stderrReported=true;console.error(onlineAppStderrDiagnostic(profile));} });
     record.exit = new Promise(done => child.once('exit', code => { record.exited = true; record.exitCode=code; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('application exited')); } pending.clear(); done(); }));
     processes.push(record);
-    const initial=await until(async () => { try { return await record.request('status'); } catch (error) { if (record.exited) throw error; return null; } }, value => !!value?.status && value.text.includes('Couch play'), profile + ' app ready');
+    const initial=await until(async () => { try { return await record.request('status'); } catch (error) { if (record.exited) throw error; return null; } }, value => !!value?.status && value.text.includes('Single player'), profile + ' app ready');
     assert(initial.electron==='37.10.3','wrong actual Electron runtime');electronVersion=initial.electron;
     return record;
   }
   const status = (app: Application) => app.request('status');
   const phase = (app: Application, value: string) => until(() => status(app), r => r.status.phase === value, `${app.profile} ${value}`);
-  async function host(app: Application, capacity: number) { await app.request('click', { id: 'host' }); if (capacity !== 2) await app.request('capacity', { value: capacity }); await app.request('click', { id: 'create-room' }); return phase(app, 'lobby'); }
-  async function joinRoom(app: Application, code: string) { await app.request('click', { id: 'join' }); await app.request('type', { id: 'join-code', text: code }); await app.request('click', { id: 'join-room' }); return phase(app, 'lobby'); }
+  async function host(app: Application, capacity: number) { await app.request('open-multiplayer'); await app.request('click', { id: 'host' }); if (capacity !== 2) await app.request('capacity', { value: capacity }); await app.request('click', { id: 'create-room' }); return phase(app, 'lobby'); }
+  async function joinRoom(app: Application, code: string) { await app.request('open-multiplayer'); await app.request('click', { id: 'join' }); await app.request('type', { id: 'join-code', text: code }); await app.request('click', { id: 'join-room' }); return phase(app, 'lobby'); }
   async function kill(app: Application) {
     if (!app.exited) {
       app.termination??='restart';
@@ -143,12 +143,12 @@ async function main() {
     await kill(g);
     await until(()=>status(h),r=>!r.status.snapshot.seats[seat].connected,'service observes guest process loss');
     const bot = await until(()=>status(h),r=>observation(r).publications.at(-1).heldHighWater[seat]>beforeLoss.heldHighWater[seat]+2,'bot publication advances guest seat');
-    g = await launch('guest'); await g.request('click',{id:'reconnect'}); const rejoined = await phase(g,'running');
+    g = await launch('guest'); await g.request('open-multiplayer'); await g.request('click',{id:'reconnect'}); const rejoined = await phase(g,'running');
     assert(rejoined.status.snapshot.seats[seat].seatGeneration>generationBefore,'persisted token generation did not increase');
     await key(g,'F'); await key(g,'D',150); const resumed = await matched(h,g);
     assert(resumed.guest.firstAckOrder>0 && resumed.guest.firstInputOrder>resumed.guest.firstAckOrder,'resumed input before full ACK');
     await g.request('click',{id:'pause'}); await phase(g,'paused'); await phase(h,'paused');
-    await kill(g); g = await launch('guest'); await g.request('click',{id:'reconnect'});
+    await kill(g); g = await launch('guest'); await g.request('open-multiplayer'); await g.request('click',{id:'reconnect'});
     const paused = await phase(g,'paused'); const frozen = observation(paused).publications.at(-1); await delay(200);
     assert(observation(await status(g)).publications.at(-1).tick===frozen.tick,'reconnect auto-unpaused');
     const final = await matched(h,g);
@@ -173,7 +173,7 @@ async function main() {
     await runtime.ready;
     const h = await launch('host'); let g = await launch('guest');
     await h.request('screenshot', { path: join(artifactDirectory, 'online-menu.png') });
-    await g.request('click',{id:'join'}); await g.request('type',{id:'join-code',text:'00000000'}); await g.request('click',{id:'join-room'});
+    await g.request('open-multiplayer'); await g.request('click',{id:'join'}); await g.request('type',{id:'join-code',text:'00000000'}); await g.request('click',{id:'join-room'});
     const invalid = await phase(g,'error'), invalidResources = await g.request('resources');
     assert(invalid.status.error==='not-found'&&invalid.status.snapshot===null&&invalidResources.utilities.length===0&&invalidResources.windows===1,'bad code allocated native resources');
     checks.push('bad-code'); await g.request('click',{id:'home'});
@@ -188,19 +188,18 @@ async function main() {
       if(text.includes(source.digest)){writeFileSync(path,text.replaceAll(source.digest,'0'.repeat(64)));changed++;}
     }
     assert(changed>=3,'incompatible compiled variant missing');
-    const incompatible=await launch('incompatible'); await incompatible.request('click',{id:'join'});
+    const incompatible=await launch('incompatible'); await incompatible.request('open-multiplayer'); await incompatible.request('click',{id:'join'});
     await incompatible.request('type',{id:'join-code',text:lobby.status.snapshot.joinCode}); await incompatible.request('click',{id:'join-room'});
     const mismatch=await phase(incompatible,'error'), mismatchResources=await incompatible.request('resources');
     assert(mismatch.status.error==='incompatible'&&mismatch.status.snapshot===null&&mismatchResources.utilities.length===0&&mismatchResources.windows===1,'incompatible build allocated resources');
     assert((await status(h)).status.snapshot.seats.filter((s:any)=>s.occupied).length===1,'incompatible build occupied seat');
     checks.push('incompatible'); await shutdown(incompatible);
-    await g.request('delay-next-transport'); await g.request('click',{id:'join'}); await g.request('type',{id:'join-code',text:lobby.status.snapshot.joinCode});
+    await g.request('delay-next-transport'); await g.request('open-multiplayer'); await g.request('click',{id:'join'}); await g.request('type',{id:'join-code',text:lobby.status.snapshot.joinCode});
     await g.request('click',{id:'join-room'}); await phase(g,'joining'); await g.request('click',{id:'leave'}); await phase(g,'idle');
-    await g.request('click',{id:'couch'}); await key(g,'E'); await delay(1300);
+    await g.request('click',{id:'single-player'}); await delay(1300);
     const cancelled=await g.request('resources'); assert(cancelled.utilities.length===0&&cancelled.windows===1&&cancelled.listeners===0,'cancel retained transport resources');
-    await key(g, 'F'); await delay(200);
-    await viewportProof(g, 'couch');
-    await g.request('click',{id:'leave-couch'}); checks.push('cancel-couch');
+    await viewportProof(g, 'single');
+    await key(g, 'Escape'); await delay(100); await key(g, 'M'); await delay(300); checks.push('cancel-single');
     // Cancellation can leave the service's disconnected reservation; host removes
     // it through the same real roster action before admitting the actual guest.
     if((await status(h)).status.snapshot.seats[1].occupied) await h.request('click',{id:'remove-seat-1'});

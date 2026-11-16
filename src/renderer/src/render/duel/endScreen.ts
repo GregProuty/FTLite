@@ -9,13 +9,14 @@ import { AMBER, BACKDROP, BACKDROP_ALPHA, DIM, FONT_SIZE, GOOD, TEXT, TITLE_SIZE
 
 export interface EndView { title: string; tint: number; length: string; prompt: string }
 
-/** The end card for a decided duel, or null while it runs. `ticks` is the duel's length in tactical ticks. */
-export function endModel(outcome: number, ticks: number, seed: number): EndView | null {
+/** The end card for a decided duel, or null while it runs. `ticks` is the duel's length in tactical ticks. `menu` adds
+ *  the main-menu key when the duel runs inside the app (main menu spec). */
+export function endModel(outcome: number, ticks: number, seed: number, menu = false): EndView | null {
   if (outcome === Outcome.Running) return null;
   const title = outcome === Outcome.CrewWins ? 'VICTORY' : outcome === Outcome.EnemyWins ? 'DEFEAT' : 'BOTH SHIPS LOST';
   const tint = outcome === Outcome.CrewWins ? GOOD : outcome === Outcome.EnemyWins ? WARN : AMBER;
   const s = Math.floor(ticks / TICK_HZ);
-  return { title, tint, length: `DUEL LENGTH ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`, prompt: `ENTER: NEW DUEL (SEED ${seed + 1})` };
+  return { title, tint, length: `DUEL LENGTH ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`, prompt: `ENTER: NEW DUEL (SEED ${seed + 1})${menu ? '   M: MAIN MENU' : ''}` };
 }
 
 export interface EndScreen { container: Container; draw(view: EndView | null): void }
