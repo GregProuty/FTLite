@@ -61,6 +61,8 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   if (validateMap(tactical.map).length > 0) throw new Error('duel snapshot seed makes an invalid map');
   if (mapHash(tactical.map) !== h.mapHash) throw new Error('duel snapshot map does not match its seed');
   if (!Array.isArray(snap.values) || snap.values.some((v) => typeof v !== 'number' || !Number.isFinite(v))) throw new Error('duel snapshot values must be finite numbers');
+  // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
+  // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
   const fields = canonicalFields(layout, DUEL_PLAYERS), last = fields[fields.length - 1]!, interiorCount = last.offset + last.count;
   const space = tacticalLength(tactical), interiorAt = 1 + space + 2 + 3;
@@ -72,7 +74,12 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
     const v = values[k]!, presence = k < 1 + space + 2;
     if (presence ? v !== 0 && v !== 1 : !Number.isInteger(v) || v < 0 || v >= REPAIR_UNITS) throw new Error(`duel snapshot ${presence ? 'presence' : 'repair'} value ${v} is out of range`);
   }
-  validateCanonicalValues(layout, derived, DUEL_PLAYERS, values.slice(interiorAt));
+  const interior = values.slice(interiorAt);
+  validateCanonicalValues(layout, derived, DUEL_PLAYERS, interior);
+  // The identity values unflatten checks (flatten.ts), required here so nothing is allocated for a snapshot it would refuse.
+  if (interior[0] !== SIM_VERSION) throw new Error('duel snapshot interior sim version does not match');
+  if (interior[1] !== parseInt(derived.idHash, 16) || interior[2] !== parseInt(derived.layoutHash, 16)) throw new Error('duel snapshot interior layout does not match');
+  if (interior[5] !== DUEL_PLAYERS || interior[9] !== DUEL_PLAYERS) throw new Error('duel snapshot interior crew count does not match');
   const interiorTick = values[interiorAt + fields.find((f) => f.name === 'tick')!.offset];
   if (values[1] !== h.tick || interiorTick !== h.tick) throw new Error('duel snapshot interior and tactical ticks differ from the header');
   if (hashF64(Float64Array.from(values)) !== h.hash) throw new Error('duel snapshot hash does not match its values');

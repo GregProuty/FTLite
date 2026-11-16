@@ -110,10 +110,12 @@ const int = (v: number): boolean => Number.isInteger(v);
 const int32 = (v: number): boolean => Number.isInteger(v) && v >= -2147483648 && v <= 2147483647;
 const count = (v: number): boolean => Number.isInteger(v) && v >= 0;
 const within = (lo: number, hi: number) => (v: number): boolean => Number.isInteger(v) && v >= lo && v <= hi;
+/** headingAcc: physics.ts and missiles.ts drain it with `while (>= 1)` and `while (<= -1)`, so it always rests in (-1, 1). */
+const acc = (v: number): boolean => Number.isFinite(v) && v > -1 && v < 1;
 const bit = within(0, 1), heading = within(0, HEADING_COUNT - 1), room = within(0, 2), any = (): boolean => true;
 /** Each ship field's per-value rule; every field not listed must hold finite values only (checked by the caller). */
 const SHIP_RULES: Readonly<Record<string, (v: number) => boolean>> = {
-  heading, hull: (v) => v <= SHIP_HULL, rooms: within(0, 2), planetHits: count, asteroidHits: count, shipHits: count,
+  heading, headingAcc: acc, hull: (v) => v >= 0 && v <= SHIP_HULL, skidBudget: (v) => Number.isFinite(v) && v >= 0, rooms: within(0, 2), planetHits: count, asteroidHits: count, shipHits: count,
   released: bit, skidSign: within(-1, 1), shields: within(0, SHIELD_LAYERS), shieldClock: count,
   laserCharge: within(0, LASER_CHARGE_UNITS), laserHold: count, fireHeld: bit, lock: room, magazine: within(0, MAGAZINE), magazineClock: count,
   shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count, graceUntil: int32
@@ -139,10 +141,10 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
     if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
     if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }
     else if (f.name.startsWith('missiles.')) {
-      const [present, , , , , head, , age] = slice as [number, number, number, number, number, number, number, number];
+      const [present, , , , , head, headAcc, age] = slice as [number, number, number, number, number, number, number, number];
       if (!bit(present)) bad('presence is not 0 or 1');
       if (present === 0 && slice.some((v) => v !== 0)) bad('an empty slot holds values');
-      if (present === 1 && (!heading(head) || !count(age))) bad('heading or age out of range');
+      if (present === 1 && (!heading(head) || !acc(headAcc) || !count(age))) bad('heading, headingAcc or age out of range');
     } else {
       const ship = /^ships\.[01]\.(.+)$/.exec(f.name), rule = ship ? SHIP_RULES[ship[1]!] : top[f.name];
       if (rule && !slice.every(rule)) bad('out of range');

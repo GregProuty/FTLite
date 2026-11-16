@@ -1,6 +1,7 @@
 // The duel snapshot (engine refactor spec §6, R-1b): the header with the map hash, the stored and regenerated
 // values, and restore validation, at the sim level.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as duelState from '../src/renderer/src/sim/duel/state';
 import { hashF64 } from '../src/shared/hash';
 import { flattenDuel, hashDuel, mapHash } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
@@ -75,18 +76,27 @@ describe('the duel snapshot (spec §6)', () => {
         ['ships.0.rooms', 1, 3, /ships\.0\.rooms/], ['ships.0.shields', 0, 3, /ships\.0\.shields/], ['ships.1.magazine', 0, 5, /ships\.1\.magazine/],
         ['ships.0.shots', 0, 2.5, /ships\.0\.shots/], ['ships.0.laserCharge', 0, -1, /ships\.0\.laserCharge/], ['ships.1.lock', 0, 3, /ships\.1\.lock/],
         ['ships.0.released', 0, 2, /ships\.0\.released/], ['hunter.mode', 0, 2, /hunter\.mode/], ['hunter.trailHead', 0, 18, /hunter\.trailHead/],
-        ['outcome', 0, 4, /outcome: out of range/], [slot, 0, 2, /presence is not 0 or 1/], [slot, 5, 300, /heading or age/], [slot, 7, -1, /heading or age/],
-        [empty, 3, 0.25, /an empty slot holds values/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/]
+        ['outcome', 0, 4, /outcome: out of range/], [slot, 0, 2, /presence is not 0 or 1/], [slot, 5, 300, /heading, headingAcc or age/], [slot, 7, -1, /heading, headingAcc or age/],
+        [empty, 3, 0.25, /an empty slot holds values/], ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
+        [slot, 6, 1e300, /headingAcc/], ['ships.0.hull', 0, -1, /ships\.0\.hull/], ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/]
       ];
+      const created = vi.spyOn(duelState, 'createDuel');
       for (const [name, k, value, error] of cases) {
         const snap = structuredClone(good); snap.values[names.get(name)! + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `${name}[${k}] = ${value}`).toThrow(error);
+      }
+      const interiorAt = at + 5, fieldsAt = interiorAt;
+      for (const [k, value, error] of [[0, 1e6, /interior sim version/], [1, 12345, /interior layout/], [2, 12345, /interior layout/], [5, 1, /crew count/], [9, 3, /crew count/]] as const) {
+        const snap = structuredClone(good); snap.values[fieldsAt + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
+        expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `interior[${k}] = ${value}`).toThrow(error);
       }
       const space = at - 1;
       for (const [k, value] of [[1 + space, 2], [1 + space + 2, 960], [1 + space + 4, -1]] as const) {
         const snap = structuredClone(good); snap.values[k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST)).toThrow(/presence|repair/);
       }
+      expect(created).not.toHaveBeenCalled();
+      created.mockRestore();
     } finally { disposeDuel(d); }
   });
   it('accepts every state the scripted duels reach (seeds 1, 4 and 7, every 30 ticks)', () => {
