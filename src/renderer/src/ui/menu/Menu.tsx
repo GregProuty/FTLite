@@ -10,7 +10,8 @@ import { JoinForm } from './JoinForm';
 import { Multiplayer } from './Multiplayer';
 import { SessionPage } from './SessionPage';
 import { Settings } from './Settings';
-import { BUTTON, PANEL_OVERLAY, PANEL_STRIP, ROOT_OVERLAY, ROOT_STRIP } from './styles';
+import { BUTTON, PANEL_OVERLAY, PANEL_STRIP, ROOT_OVERLAY, ROOT_STRIP, VERSION } from './styles';
+import { versionText } from '../version';
 
 export function Menu() {
   const menu = useUi((s) => s.menu), online = useUi((s) => s.online), actions = useActions();
@@ -34,6 +35,7 @@ export function Menu() {
         <p data-testid="status" role="status" aria-live="polite">{menuMessage({ menu, online })}</p>
         {page === 'home' ? <Home /> : page === 'multiplayer' ? <Multiplayer /> : page === 'settings' ? <Settings />
           : page === 'host' ? <HostForm /> : page === 'join' ? <JoinForm /> : <SessionPage playing={playing} />}
+        {!playing && <p data-testid="version" style={VERSION}>{versionText()}</p>}
       </section>
     </div>
   );

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'electron-vite';
 import { computeContentDigest } from './build/contentDigest';
 import { ensureIsolatedBuildReporterOutput } from './build/isolatedBuildReporter';
+import { computeBuildInfo } from './build/buildInfo';
 
 ensureIsolatedBuildReporterOutput();
 const digest = JSON.stringify(computeContentDigest(import.meta.dirname));
@@ -21,7 +22,7 @@ export default defineConfig({
     // explicit opt-out after that config hook and before Vite loads env files.
     plugins: [react(), { name: 'no-renderer-env-files', enforce: 'post', config: () => ({ envDir: false }) }],
     publicDir: resolve('public'),
-    define: { __GAMEPLAY_CONTENT_DIGEST__: digest },
+    define: { __GAMEPLAY_CONTENT_DIGEST__: digest, __FTLITE_BUILD__: JSON.stringify(computeBuildInfo(import.meta.dirname)) },
     build: { rollupOptions: { input: { index: resolve('src/renderer/index.html'), networkTransport: resolve('src/renderer/networkTransport.html') } } }
   }
 });

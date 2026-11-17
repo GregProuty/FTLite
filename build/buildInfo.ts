@@ -1,0 +1,17 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/** Build/CLI only: the app version (package.json) and the commit it was built from, shown on the main menu (owner
+ *  2026-11-17) so testers can say which build they run. `rev` is the short HEAD, with `+` when the tree has changes, or
+ *  `dev` without git. */
+export function computeBuildInfo(root: string): { version: string; rev: string } {
+  const version = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version;
+  let rev = 'dev';
+  try {
+    rev = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+    const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=no', '--', 'src', 'public', 'package.json'], { cwd: root, encoding: 'utf8' }).trim();
+    if (dirty) rev += '+';
+  } catch { /* no git: dev */ }
+  return { version, rev };
+}

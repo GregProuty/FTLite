@@ -7,6 +7,7 @@ import type { OnlineStatus } from '../src/shared/onlineSession';
 import { RegionBoundary } from '../src/renderer/src/ui/RegionBoundary';
 import { flush, idle } from './helpers/uiStore';
 import { buttonIds, renderUi } from './helpers/uiRender';
+import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 const HOME = ['single-player', 'multiplayer', 'settings', 'quit'];
@@ -14,6 +15,9 @@ const click = (id: string): void => { fireEvent.click(screen.getByTestId(id)); }
 const text = (id: string): string => screen.getByTestId(id).textContent ?? '';
 
 describe('home', () => {
+  it('shows the version line: app version, sim version and build', () => {
+    renderUi(); expect(text('version')).toBe(`v0.0.0-test · sim ${SIM_VERSION} · test`);
+  });
   it('Quit closes the app', () => {
     const { deps } = renderUi(); click('quit'); expect(deps.quit).toHaveBeenCalledOnce();
   });
