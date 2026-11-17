@@ -52,6 +52,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 12. **The sector smokes** (spec §10): the shared driver gains `host-sector` and `join-sector`, which call the preload's sector forms; the online-app and online-recovery smokes use them with `FTLITE_SECTOR_ONLINE_TEST=1`. The internet smoke's switch rides H-2b with its manifest.
 13. **The duel smoke** reuses the shared driver with its own passive observer and a no-op `observer/utility.cjs` (the driver proves each utility checkpoint with the sector's card memory, which a duel checkpoint does not have). It runs the spec's seven checks in a robust order **(rec.)**: the menu (1); then round 1, the forced end, in which both players only stand up and sit down (their records' command samples) until it is decided, and Enter starts round 2 (6) with a record on both machines (7); then, in round 2, the Helm's thrust (2), the beam (3), the hash agreement (4) and the guest's kill, rejoin and Escape unpause (5).
 14. **Single player's `session: 'solo'` records move to H-2b** **(deviation from §8 and the H-2a row of §11)**: only the online duel session writes records in H-2a. The local runtime steps `stepDuelTick` directly and has no telemetry accumulator, so a solo record needs one (and the round summary it produces) added to the runtime; that lands in H-2b beside the report script that reads the records and reports solo rounds separately. The record schema already admits `'solo'`, so H-2b adds the writer only.
+15. **Art-i-b carried into the scene** (master moved after the prototype): `scene.ts` keeps Art-i-b's duel-interior changes that the replaced `duelMode.ts` had: `createInteriorView(..., renderer.feel)`, `interior.draw(..., events, paused ? 0 : dt)`, and no fx shake on the interior view (it shakes its own world). Every `replace:` block was re-checked against master 409a1e3 plus H-2a-ii and matches once.
 
 ## File structure
 
@@ -2327,7 +2328,7 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
   for (const child of hidden) child.visible = false;   // world, enemy window, projectiles, callouts, HUD; shown again on dispose
   const root = new Container(), scene = new Container();
   const layer = createTacticalLayer({ fontFamily: font, viewport, seed: options.seed, pauseText: options.pauseText });
-  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale);
+  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel);
   const panel = createReadoutPanel({ fontFamily: font }), end = createEndScreen({ fontFamily: font });
   const banner = new BitmapText({ text: options.pauseText, style: { fontFamily: font, fontSize: FONT_SIZE * 1.5 } });
   banner.tint = TEXT; banner.anchor.set(0.5, 0.5); banner.position.set((INTERNAL_W - READOUT_COLUMN) / 2, 80); banner.visible = false;
@@ -2345,14 +2346,15 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
         resetFx(fx); layer.reset(); layer.reseed(source.seed);   // the next round's star field
-        interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale); scene.addChildAt(interior.container, 1);
+        interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha();
-      pushEvents(fx, source.drainEvents());
+      const events = source.drainEvents();
+      pushEvents(fx, events);
       stepFx(fx, source.paused() ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
-      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt);
+      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, source.paused() ? 0 : dt);   // Art-i spec section 7: the light and feel hold while paused
       else {
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
@@ -2364,7 +2366,7 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       if (overlay.banner !== null) banner.text = overlay.banner;
       notice.visible = !!overlay.notice; notice.text = overlay.notice ?? '';
       panel.draw(readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus() }), readoutHelp(view));
-      const shake = shakeOffset(fx);
+      const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake
       scene.position.set(shake.x, shake.y);
       end.draw(overlay.end);
     },
