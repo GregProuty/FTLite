@@ -21,23 +21,16 @@
           "y": 120,
           "w": 16,
           "h": 16
-        }
-      ],
-      "output": "public/assets/paid/maru/floor.png",
-      "columns": 3
-    },
-    {
-      "pack": "maru-98-mars/tilesets/tilesets.png",
-      "frames": [
+        },
         {
-          "x": 352,
-          "y": 136,
+          "x": 240,
+          "y": 120,
           "w": 16,
           "h": 16
         }
       ],
-      "output": "public/assets/paid/maru/floor-grate.png",
-      "columns": 1
+      "output": "public/assets/paid/maru/floor.png",
+      "columns": 4
     },
     {
       "pack": "maru-98-mars/tilesets/tilesets.png",
