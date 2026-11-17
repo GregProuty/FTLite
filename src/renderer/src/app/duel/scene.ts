@@ -46,6 +46,9 @@ export interface DuelViewSource {
   alpha(): number;
   paused(): boolean;
   drainEvents(): ViewEvent[];
+  /** False while the view is a frozen copy (the online duel across a lost link): the audio reports no battle and no
+   *  hum from it. Absent means always live (Single player). */
+  live?(): boolean;
 }
 /** The frame's overlays: the pause banner (null: none), whether the tactical layer dims for it, the end card, and a
  *  one-line notice (the online start's YOU: HELM). */
@@ -90,7 +93,7 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       pushEvents(fx, events);
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
-        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(),
+        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true,
           pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
       }
       stepFx(fx, source.paused() ? 0 : dt);

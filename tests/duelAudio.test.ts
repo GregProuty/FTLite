@@ -33,4 +33,15 @@ describe('the duel audio adapter (Audio-i spec section 4)', () => {
       expect(r.sounds).toHaveLength(4);   // after reset the next frame is a fresh baseline
     } finally { disposeDuel(d); }
   });
+  it('reports no battle, hum or crackle from a frozen view (a lost online link)', () => {
+    const d = createDuel(parseShip(hound), 1), r = recorder(), a = createDuelAudio(r.out);
+    try {
+      d.interior.rooms.fire[0] = 1;
+      a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 1 }, paused: false, pan: () => 0, live: false });
+      expect(r.status[0]).toEqual({ engaged: false, paused: false, duck: false, fires: 0, hum: null });
+      d.tactical.tick += 1;
+      a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 1 }, paused: false, pan: () => 0, live: true });
+      expect(r.status[1]).toMatchObject({ engaged: true, fires: 1, hum: { thrust: 1 } });
+    } finally { disposeDuel(d); }
+  });
 });

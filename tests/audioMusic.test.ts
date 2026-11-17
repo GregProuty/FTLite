@@ -4,7 +4,7 @@ import { CALM_AFTER_S, DUCK_LEVEL, IDLE_STATUS, MAX_STEP_S, REPORT_STALE_S, crea
 
 const quiet = { engaged: false, paused: false, duck: false };
 /** Steps from `from` to `to` in 50 ms frames with the same input; returns the last mix. */
-function run(s: ReturnType<typeof createMusic>, from: number, to: number, input: { engaged: boolean; paused: boolean; duck: boolean }): MusicMix {
+function run(s: ReturnType<typeof createMusic>, from: number, to: number, input: { engaged: boolean; paused: boolean; duck: boolean; idle?: boolean }): MusicMix {
   let out: MusicMix | null = null;
   for (let k = 0; from + k * 0.05 <= to + 1e-9; k++) out = stepMusic(s, { now: from + k * 0.05, ...input });
   return out!;
@@ -48,6 +48,13 @@ describe('the music state machine (Audio-i spec section 5)', () => {
     const s = createMusic(); stepMusic(s, { now: 0, ...quiet });
     const m = stepMusic(s, { now: 100, ...quiet, engaged: true });
     expect(m.battle).toBeCloseTo(Math.sin(((MAX_STEP_S / 2) * Math.PI) / 2));
+  });
+  it('goes calm at once (still a 2 s crossfade) when the report is idle, skipping the 8 s wait', () => {
+    const s = createMusic();
+    run(s, 0, 3, { ...quiet, engaged: true });
+    const mid = run(s, 3.05, 4, { ...quiet, idle: true });
+    expect(mid.battle).toBeLessThan(1); expect(mid.battle).toBeGreaterThan(0);
+    expect(run(s, 4.05, 5.5, { ...quiet, idle: true })).toEqual({ calm: 1, battle: 0, mix: 1, battleOn: false });
   });
   it('treats a missing or stale report as idle (the menu)', () => {
     const report: AudioStatus = { engaged: true, paused: true, duck: false, hum: null, fires: 2 };

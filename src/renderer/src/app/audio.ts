@@ -3,7 +3,7 @@ import type { SoundSource } from '../render/assets';
 import { CUE_RECIPES, DUCK_CUES } from '../audio/cueRecipes';
 import { MUSIC_BATTLE, MUSIC_CALM, sfxKeyOf, type SfxKey, type SoundRequest } from '../audio/soundBank';
 import { admitVoice, createVoicePool, detuneCents, pickVariant } from '../audio/voices';
-import { BATTLE_LOOP_END_S, BATTLE_LOOP_START_S, BATTLE_START_S, CALM_LOOP_START_S, createMusic, liveStatus, stepMusic, type AudioStatus } from '../audio/musicState';
+import { BATTLE_LOOP_END_S, BATTLE_LOOP_START_S, BATTLE_START_S, CALM_LOOP_START_S, createMusic, IDLE_STATUS, liveStatus, stepMusic, type AudioStatus } from '../audio/musicState';
 import { CRACKLE_SECONDS, FIRE_FILTER_HZ, FIRE_FILTER_Q, FIRE_SMOOTH_S, HUM_SMOOTH_S, crackleSamples, fireGain, humTarget } from '../audio/loops';
 
 export type { SoundSource } from '../render/assets';
@@ -212,7 +212,7 @@ export function createAudio(options: AudioOptions = {}): Audio {
       safe(() => {
         wall = now;
         const st = liveStatus(report, now), t = c.currentTime;
-        const m = stepMusic(music, { now, engaged: st.engaged, paused: st.paused, duck: duckPending });
+        const m = stepMusic(music, { now, engaged: st.engaged, paused: st.paused, duck: duckPending, idle: st === IDLE_STATUS });
         duckPending = false;
         if (m.battleOn) startBattle(t); else stopBattle();
         calmGain.gain.setTargetAtTime(m.calm, t, MUSIC_SMOOTH_S);

@@ -41,4 +41,14 @@ describe('the sector audio adapter (Audio-i spec section 4c)', () => {
     a.frame(s, false, none);
     expect(sounds).toHaveLength(1);   // reset: a fresh baseline, no replay
   });
+  it('reports no battle, hum or crackle from a frozen copy (the connection lost)', () => {
+    const status: AudioStatus[] = [];
+    const out: AudioOut = { play() {}, sounds() {}, status: (st) => { status.push(st); } };
+    const s = makeState(2, 1), a = createSectorAudio(out);
+    s.enemy.present = 1; s.run.jumpCharge = 0.4;
+    a.frame(s, false, new Set<Cue>(['shot']), false);
+    expect(status[0]).toEqual({ engaged: false, paused: false, duck: false, fires: 0, hum: null });
+    a.frame(s, false, none, true);
+    expect(status[1]).toMatchObject({ engaged: true, hum: { charge: 0.4 } });
+  });
 });

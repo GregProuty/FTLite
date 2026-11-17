@@ -9,7 +9,7 @@ import { AUDIO_ASSET_NAMES, MUSIC_BATTLE, MUSIC_CALM, MUSIC_FILES, isAudioName, 
 const sfx = { file: 'raw/kenney-sci-fi-sounds/laserSmall_000.ogg', title: 'Sci-fi Sounds', author: 'Kenney', source: 'https://kenney.nl/assets/sci-fi-sounds', license: 'CC0-1.0', required: false, name: 'sfx.laserSmall.0' };
 const music = { file: 'raw/scott-buckley/cobalt.mp3', title: 'Cobalt', author: 'Scott Buckley', source: 'https://www.scottbuckley.com.au/library/cobalt/',
   archived: 'https://web.archive.org/web/20261026145225/https://www.scottbuckley.com.au/library/cobalt/', license: 'CC-BY-4.0',
-  credit: "'Cobalt' by Scott Buckley - released under CC-BY 4.0. www.scottbuckley.com.au", required: false, name: 'music.calm' };
+  credit: "'Cobalt' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au", required: false, name: 'music.calm' };
 const image = { file: 'raw/x/a.png', title: 'A', author: 'B', source: 'https://x', license: 'CC0-1.0', name: 'floor.0' };
 const font = { file: 'raw/m5x7/m5x7.ttf', title: 'm5x7', author: 'Daniel Linssen', source: 'https://managore.itch.io/m5x7', license: 'CC0-1.0', name: 'font.m5x7' };
 
@@ -56,7 +56,7 @@ describe('audio manifest entries (Audio-i spec section 2)', () => {
     for (const [name, file] of Object.entries(MUSIC_FILES)) { expect(byName.get(name)?.file, name).toBe(file); expect(existsSync(join('public/assets', file)), file).toBe(true); }
     expect(byName.size).toBe(52);
     for (const e of byName.values()) expect(e.required, e.file).toBe(false);
-    expect(byName.get(MUSIC_BATTLE)!.credit).toBe("'Time and Space' by Scott Buckley - released under CC-BY 4.0. www.scottbuckley.com.au");
+    expect(byName.get(MUSIC_BATTLE)!.credit).toBe("'Time and Space' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au");
     expect(byName.get(MUSIC_CALM)!.archived).toBe('https://web.archive.org/web/20261026145225/https://www.scottbuckley.com.au/library/cobalt/');
   });
 });

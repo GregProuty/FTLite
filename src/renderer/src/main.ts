@@ -133,8 +133,10 @@ async function startApp(): Promise<void> {
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
-  document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause(); else if (document.hasFocus()) session.resume(); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) audio.suspend(); else audio.unlock(); });   // Audio-i spec section 5: a hidden window is silent
+  document.addEventListener('visibilitychange', () => {   // Audio-i spec section 5: a hidden window is paused and silent
+    if (document.hidden) { session.pause(); audio.suspend(); }
+    else { audio.unlock(); if (document.hasFocus()) session.resume(); }
+  });
   window.addEventListener('focus', () => session.resume());
   renderer.app.ticker.add(() => session.frame());
   renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop

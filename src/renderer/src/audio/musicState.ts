@@ -22,7 +22,9 @@ export function liveStatus(report: { status: AudioStatus; at: number } | null, n
 
 export interface MusicState { mode: 'calm' | 'battle'; x: number; quietFor: number; pause: number; duckLeft: number; last: number | null }
 export function createMusic(): MusicState { return { mode: 'calm', x: 0, quietFor: 0, pause: 1, duckLeft: 0, last: null }; }
-export interface MusicInput { now: number; engaged: boolean; paused: boolean; duck: boolean }
+/** `idle`: no session is reporting (liveStatus returned IDLE_STATUS, e.g. back on the menu): go calm at once, still
+ *  over the normal crossfade, without the CALM_AFTER_S wait. */
+export interface MusicInput { now: number; engaged: boolean; paused: boolean; duck: boolean; idle?: boolean }
 /** The gains to aim for: calm and battle (equal power), the mix (pause x duck), and whether a battle source should exist. */
 export interface MusicMix { calm: number; battle: number; mix: number; battleOn: boolean }
 
@@ -30,6 +32,7 @@ export function stepMusic(s: MusicState, i: MusicInput): MusicMix {
   const dt = s.last === null ? 0 : Math.min(MAX_STEP_S, Math.max(0, i.now - s.last));
   s.last = i.now;
   if (i.engaged) { s.mode = 'battle'; s.quietFor = 0; }
+  else if (i.idle) { s.mode = 'calm'; s.quietFor = 0; }
   else if (s.mode === 'battle' && !i.paused) { s.quietFor += dt; if (s.quietFor >= CALM_AFTER_S) s.mode = 'calm'; }
   const step = dt / CROSSFADE_S;
   s.x = s.mode === 'battle' ? Math.min(1, s.x + step) : Math.max(0, s.x - step);

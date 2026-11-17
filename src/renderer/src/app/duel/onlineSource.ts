@@ -133,6 +133,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     steer: () => (seatOf(duel(), seat) === 'weapons' ? Math.sign(sentHeld.moveX) || 0 : 0),
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
+    live: () => client.live?.() ?? true,
     drainEvents() { const out = events; events = []; return out; },
     observe,
     ready: () => !!client.state() && !!client.publication(),

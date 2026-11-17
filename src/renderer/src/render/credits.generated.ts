@@ -3,7 +3,7 @@ export const CREDITS: readonly string[] = [
   "FTLite",
   "",
   "\"1-Bit Input Prompts Pixel 16×\" by Kenney (www.kenney.nl), CC0",
-  "'Cobalt' by Scott Buckley - released under CC-BY 4.0. www.scottbuckley.com.au",
+  "'Cobalt' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au",
   "\"Cozy Space Interiors\" by Bramble & Byte (https://aquumgifts.itch.io), CC-BY 4.0",
   "Deep Space (Red) from Diver-Class Scout Ship by 2-Minute Tabletop, CC BY-NC 4.0, non-commercial demo",
   "Explosion VFX by Pimen (pimen.itch.io)",
@@ -16,7 +16,7 @@ export const CREDITS: readonly string[] = [
   "\"Pixel UI Pack\" by Kenney (www.kenney.nl), CC0",
   "\"Puny Characters\" by Shade, CC0",
   "\"Sci-fi Sounds\" by Kenney (www.kenney.nl), CC0",
-  "'Time and Space' by Scott Buckley - released under CC-BY 4.0. www.scottbuckley.com.au",
+  "'Time and Space' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au",
   "",
   "Original art: FTLite project owner"
 ];

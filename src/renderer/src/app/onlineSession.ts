@@ -105,7 +105,7 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
         slots: state.crew.map((_, pid) => ({ status: status?.snapshot?.seats.find(s => s.seatId === pid)?.connected || pid === descriptor!.seatId && !!client?.state() ? 'active' : pid === descriptor!.seatId ? 'reconnect' : 'bot', key: pid === descriptor!.seatId ? input.key : null })),
         phase, message: `PLAYER ${descriptor.seatId + 1}${client?.state() ? '' : ' — CONNECTION LOST'}`, callouts, calloutFlash: flashingKinds(callouts, state.tick)
       }));
-      deps.sound?.frame(state, phase === 'paused', cues);   // before the cues clear: they count toward engaged
+      deps.sound?.frame(state, phase === 'paused', cues, !!client?.state());   // before the cues clear: they count toward engaged
       for (const cue of CUE_ORDER) if (cues.has(cue)) deps.playCue?.(cue); cues.clear();
     },
     dispose() { if (disposed) return; disposed = true; cancel(); release(); if (frozen) disposeSimState(frozen); frozen = null; deps.hud?.clear?.(); points = []; callouts = []; cues.clear(); }

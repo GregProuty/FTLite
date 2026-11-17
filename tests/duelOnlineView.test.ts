@@ -34,6 +34,15 @@ function confirmed() {
 }
 
 describe('the online duel view source (spec §3)', () => {
+  it('reports whether the view is live from the client (absent: live), so a frozen copy holds no battle music', () => {
+    const c = confirmed();
+    let live = true;
+    const always = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
+    const tracked = createOnlineDuelSource({ client: { ...c.client, live: () => live }, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
+    expect(always.live?.()).toBe(true); expect(tracked.live?.()).toBe(true);
+    live = false; expect(tracked.live?.()).toBe(false);
+    c.dispose();
+  });
   it('interpolates over the actual tick gap: alpha reaches 1 only when the next publication is due', () => {
     const d = createDuel(CUTTER, 3), c = confirmed();
     let now = 0;
