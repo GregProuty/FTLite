@@ -1,5 +1,6 @@
 // Keyboard and mouse for the Helm demo views (H-1 spec §5). One keyboard drives the active character, or the one ship in
-// the flight view. Pointer input feeds only the camera and never becomes a command (parent §10).
+// the flight view. Pointer input feeds the camera and, through takeClick, the contact window's map clicks (enemy ship
+// window spec §6.2); it never becomes a command (parent §10).
 import type { Axes } from '../../sim/tactical/state';
 import { clampThrottle } from '../../sim/duel/throttle';
 
@@ -73,12 +74,17 @@ export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): v
 /** Held keys are cleared on blur so nothing sticks after alt-tab; `clear` does the same for Tab and restart (spec §4, §5).
  *  Console clicks (Artemis spec §6.2) are a second held set and extra press edges: a code is held when either set holds
  *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
-export function createDuelKeyboard(target: EventSource): DuelKeyboard {
+/** Options (enemy ship window spec §6.2): `intercept` sees each non-repeat keydown's code before PRESS_CODES; returning
+ *  true takes the key, so it adds no press edge and is not held (PREVENT's keys still have their default prevented). */
+export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
+
+export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOptions = {}): DuelKeyboard {
   const keys = new Set<string>(), ui = new Set<string>();
   let presses = emptyPresses(), lockTo: number | null = null, throttleTo: number | null = null;
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
   const down = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
+    if (!e.repeat && opts.intercept?.(e.code)) return;   // taken (the contact window's Esc and T): no edge, not held
     if (e.code === FIRE_HELD) { if (!e.repeat && !has(FIRE_HELD)) presses.fireDown++; }
     else { const action = PRESS_CODES[e.code]; if (action && !e.repeat) presses[action]++; }
     keys.add(e.code);
@@ -135,7 +141,14 @@ export interface PointerSample {
 interface PointerEventLike { clientX: number; clientY: number; button: number; buttons: number; pointerId?: number; preventDefault(): void }
 interface WheelEventLike { clientX: number; clientY: number; deltaY: number; deltaMode: number; preventDefault(): void }
 
-export interface PointerSource { sample(): PointerSample; clear(): void; destroy(): void }
+export interface PointerSource {
+  sample(): PointerSample;
+  /** The last left-button (button 0) pointerdown since the previous call, in internal px, or null; reading clears it
+   *  (enemy ship window spec §6.2). Separate from `sample()`, so the camera input is unchanged. */
+  takeClick(): { x: number; y: number } | null;
+  clear(): void;
+  destroy(): void;
+}
 
 /** Pixels of wheel delta per zoom notch (a mouse wheel click). */
 export const WHEEL_NOTCH_PX = 100;
@@ -151,6 +164,7 @@ export function accumulateWheel(acc: number, deltaY: number): { notches: number;
 /** `toInternal` maps a client position to internal pixels (the letterbox inverse). Buttons 2 (right) and 1 (middle) drag. */
 export function createPointerSource(target: EventSource, toInternal: (clientX: number, clientY: number) => { x: number; y: number }): PointerSource {
   let x: number | null = null, y: number | null = null, wheel = 0, dragX = 0, dragY = 0, dragging = false;
+  let click: { x: number; y: number } | null = null;
   const DRAG_BUTTONS = 2 | 4;   // `buttons` bits: 2 right, 4 middle
   const move = (e: PointerEventLike): void => {
     const p = toInternal(e.clientX, e.clientY);
@@ -161,6 +175,7 @@ export function createPointerSource(target: EventSource, toInternal: (clientX: n
   const downFn = (e: PointerEventLike): void => {
     const p = toInternal(e.clientX, e.clientY); x = p.x; y = p.y;
     if (e.button === 1 || e.button === 2) { dragging = true; e.preventDefault(); }
+    else if (e.button === 0) click = { x: p.x, y: p.y };   // the contact window's map click (spec §6.2)
   };
   const upFn = (e: PointerEventLike): void => { if ((e.buttons & DRAG_BUTTONS) === 0) dragging = false; };
   const wheelFn = (e: WheelEventLike): void => {
@@ -169,7 +184,7 @@ export function createPointerSource(target: EventSource, toInternal: (clientX: n
     e.preventDefault();
   };
   const menu = (e: { preventDefault(): void }): void => { e.preventDefault(); };
-  const clear = (): void => { wheel = 0; dragX = 0; dragY = 0; dragging = false; };
+  const clear = (): void => { wheel = 0; dragX = 0; dragY = 0; dragging = false; click = null; };
   const on: [string, (e: never) => void][] = [
     ['pointermove', move as (e: never) => void], ['pointerdown', downFn as (e: never) => void], ['pointerup', upFn as (e: never) => void],
     ['wheel', wheelFn as (e: never) => void], ['contextmenu', menu as (e: never) => void]
@@ -181,6 +196,7 @@ export function createPointerSource(target: EventSource, toInternal: (clientX: n
       wheel = 0; dragX = 0; dragY = 0;
       return out;
     },
+    takeClick() { const out = click; click = null; return out; },
     clear,
     destroy(): void { for (const [type, fn] of on) target.removeEventListener(type, fn, type === 'wheel' ? { passive: false } : undefined); }
   };
