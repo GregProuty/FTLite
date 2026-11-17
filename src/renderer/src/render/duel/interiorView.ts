@@ -1,4 +1,4 @@
-// The duel's interior view (H-1 spec ง8): the Cutter drawn by today's interior layers (tiles, effects, room icons,
+// The duel's interior view (H-1 spec ยง8): the Cutter drawn by today's interior layers (tiles, effects, room icons,
 // consoles, crew, boarders), composed as render/renderer.ts composes them, without the sector enemy window, projectiles,
 // callouts or HUD, plus the duel's damage overlay. It owns its RenderMemory; a restart destroys it and builds a new one.
 import { BitmapText, Container, Graphics } from 'pixi.js';
