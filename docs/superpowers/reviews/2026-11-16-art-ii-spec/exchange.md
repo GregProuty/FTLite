@@ -215,3 +215,50 @@ Confirmed. Section 4 now states that:
 
 ---
 
+# Round 3 (delta, reviewing 0b246ae, effort medium, 47 s, 111115 in / 80405 cached / 4214 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R3-F1 'tile-local -WALL_GAP on the wall side' is literally right only for a north wall
+The placement rule gives the flush back-edge line as tile-local -WALL_GAP. That value holds for side n only. For s and e the line is T + WALL_GAP (42), and for w it is -WALL_GAP on x. The parenthetical 'the same line the procedural desk backs onto' settles it, but a literal reading of the number is wrong for three sides. · spec L34. consoleModel.ts:L47 (y = flush ? -WALL_GAP : 0, drawn for n) and L50 (the turn: s maps y to T - y - h, e maps x to T - y - h), so the flush back edge is at T + WALL_GAP on the s and e sides. · A subagent who codes the number literally places e and s sprites inside the room. The parenthetical probably prevents this, so it is a nit. · Replace the number with: 'the outer edge of the turned deskPicture(side, flush).desk rectangle', or list the line per side (n: y = -WALL_GAP; s: y = T + WALL_GAP; w: x = -WALL_GAP; e: x = T + WALL_GAP; 0 or T when not flush).
+
+## Prior findings
+- R1-F7: resolved — spec L35: the console layer skips the strip, and createInteriorFeel gains consoleArt?: boolean, which skips the cursor rect. The cursor rect is drawn only in interiorFeel.ts:L169-171, so the right owner now carries the flag. Both call sites (renderer.ts:L66, duel/interiorView.ts:L45) have `assets` in scope, so featureReady(new Set(assets.missing), 'consoleArt') can be built. The fixture order holds because the sprites sit at index 0 (spec L36) and renderer.ts:L69 and interiorView.ts:L59 append the fixtures afterwards.
+- R2-F1: resolved — spec L34 now gives one rule: rotate about the centre, put the rotated back edge on the desk's back line, centre along the wall on the tile centre line, and floor the top-left to an even unit. Every sprite dimension is even at 2x, so the back-edge positions (-10, 0, 32, 42) and the half-extents stay integers. The rack and med-pod overlap is explicitly accepted. The old 'centre on the desk rectangle' wording is gone. The only leftover is the wording nit raised as a P3 above.
+- R2-F2: resolved — spec L52 adds the four rules: k-means over non-kept colours only; kept colours seed the init's nearest-centre distance and are never moved; an empty cluster keeps its previous centre; 48 or more kept colours fail, else k = 48 - kept. spec L58's test list now names 'k = 48 minus kept' and '48 kept colours failing' instead of the undefined 'k bound'. I found no contradiction with steps 1 and 3 (L51, L53).
+
+## Verified
+- consoleModel.ts:L17, L19, L47, L50: DESK_D 10, WALL_GAP, the flush desk at y -WALL_GAP for n, and the turn for the other sides. The new back-edge rule (spec L34) maps onto this line for every side.
+- interiorFeel.ts:L81 (opts has no consoleArt yet) and L165-172 (the cursor rect drawn into the fixtures from c.picture.screen). The new option at spec L35 is the right hook.
+- renderer.ts:L63, L66, L68-69 and duel/interiorView.ts:L45, L49, L58-59: both views build the feel and the console layer with `assets` available. Fixtures are appended to the desk container after creation, which matches the index-0 child container at spec L36.
+- spec L52 and L58: the kept-colour, empty-cluster and k-limit rules are stated and testable, and they agree with steps 1, 3 and 6 (L51, L53, L56).
+- spec L36-37: the fallback and layer bullets are unchanged and still agree with the revised L34-35.
+
+## Not verified
+- Whether a crew character sitting at a station tile (drawn above the console layer) reads well over the 30-54-unit-deep console sprites. That is a look-gate question that code reading cannot settle.
+- That 'consoleArt' is added to the Feature union in fallback.ts: spec L28 names the feature, but I did not re-read fallback.ts or the plan in this delta round.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `0b246ae`. 1 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F7, R2-F1 and R2-F2 as resolved.
+
+## R3-F1 [P3]: -WALL_GAP is literally right only for a north wall
+
+Confirmed against consoleModel.ts:L47-L50, where the turn maps s and e to T + WALL_GAP. Section 2 now names the line as the outer edge of the turned `deskPicture(side, flush).desk` rectangle and gives its value for each side.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-16-art-ii-bought-art-design.md
+
+<!-- end -->
+
+---
+
