@@ -28,7 +28,7 @@ Source: Art-i spec (`docs/superpowers/specs/2026-11-16-art-i-demo-polish-design.
 
 ## Value hierarchy
 
-- Floors and walls are calm, dark mid-tones with low saturation; they are the stage, not the actors. (The Art-i-a placeholder floor, `c7cfcc`, is lighter than this on purpose, to keep today's look; Art-ii's pack palette brings floors down to dark mid-tones.)
+- Floors and walls are calm, dark mid-tones with low saturation; they are the stage, not the actors. (The Art-i-a placeholder floor, `c7cfcc`, is lighter than this on purpose, to keep today's look; the procedural floor role is still light, `#bad2e0` in the Art-ii pack palette. The bought Maru plating, `house.floor.*`, is what brings floors down to dark mid-tones.)
 - Crew, consoles and hazards (fire, breaches, sparks) carry the strongest saturation and contrast, so the eye finds them first.
 - Floors get only a quiet one-art-pixel `floorSeam` panel line per tile.
 
@@ -38,10 +38,10 @@ Each effect family uses one ramp, bright to dark, 5 to 8 palette colours, listed
 
 | Ramp | Steps |
 |---|---|
-| `fire` | white, yellow, orange, red, brown, smoke grey |
-| `plasma` | white, cyan, blue, navy |
-| `electric` | white, pale blue, violet |
-| `vent` | white, pale grey, blue-grey |
+| `fire` | white, pale yellow, yellow, amber, orange, brown, slate, dark slate |
+| `plasma` | white, pale blue, cyan, blue, steel blue, dark slate, navy |
+| `electric` | white, pale blue, cyan, slate, dark slate |
+| `vent` | white, pale blue, grey, teal, blue-grey |
 
 ## Bought art (paid packs)
 

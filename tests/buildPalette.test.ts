@@ -32,6 +32,11 @@ beforeAll(() => {
 afterAll(() => { rmSync(root, { recursive: true, force: true }); });
 
 describe('the palette builder (Art-ii spec section 4)', () => {
+  it('rejects a frame rectangle outside its pack, and a ramp override past the ramp end', () => {
+    const bad = { outputs: [{ pack: 'maru/a.png', frames: [{ x: 8, y: 0, w: 16, h: 1 }], output: 'public/assets/paid/t/bad.png', columns: 1 }] };
+    expect(() => run(bad)).toThrow('art:palette: rectangle 8,0 16x1 is outside maru/a.png (16x10)');
+    expect(() => run(config, { ...overrides, ramps: { ...overrides.ramps, electric: { 7: '#fffff0' } } })).toThrow(/override ramp electric\[7\] is past the end/);
+  });
   it('is deterministic: the same packs, config, palette and overrides give the same bytes', () => {
     expect(run().text).toBe(run().text);
   });

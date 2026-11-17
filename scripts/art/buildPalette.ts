@@ -43,6 +43,7 @@ export function countColours(config: unknown, read: (pack: string) => Image): Co
       const key = `${o.pack}|${f.x}|${f.y}|${f.w}|${f.h}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      if (f.x + f.w > img.width || f.y + f.h > img.height) throw new Error(`art:palette: rectangle ${f.x},${f.y} ${f.w}x${f.h} is outside ${o.pack} (${img.width}x${img.height})`);
       for (let y = f.y; y < f.y + f.h; y++) for (let x = f.x; x < f.x + f.w; x++) {
         const i = (y * img.width + x) * 4;
         if (img.data[i + 3]! < 128) continue;
@@ -103,6 +104,7 @@ export function paletteColours(centres: readonly number[], kept: ReadonlySet<num
 /** Drops repeats, then pads to 5 with the palette colours nearest the last entry (palette order breaks ties). */
 function tidyRamp(ramp: readonly number[], colours: readonly number[]): number[] {
   const out = [...new Set(ramp)];
+  if (!out.length) throw new Error('art:palette: a ramp is empty (nothing to pad from)');
   if (out.length >= RAMP_MIN) return out;
   const last = labOf(out[out.length - 1]!);
   const rest = colours.filter((c) => !out.includes(c)).map((c, i) => ({ c, i, d: dist2(labOf(c), last) })).sort((a, b) => a.d - b.d || a.i - b.i);
@@ -123,7 +125,11 @@ export function mapRoles(current: PaletteFile, colours: readonly number[], overr
   for (const [r, h] of Object.entries(overrides.roles)) roles[r] = pick(`override role ${r}`, h!);
   for (const [name, o] of Object.entries(overrides.ramps)) {
     if (Array.isArray(o)) ramps[name] = o.map((h, i) => pick(`override ramp ${name}[${i}]`, h));
-    else { const ramp = [...ramps[name]!]; for (const [i, h] of Object.entries(o)) ramp[Number(i)] = pick(`override ramp ${name}[${i}]`, h); ramps[name] = tidyRamp(ramp, colours); }
+    else { const ramp = [...ramps[name]!]; for (const [i, h] of Object.entries(o)) {
+        if (Number(i) >= ramp.length) throw new Error(`art:palette: override ramp ${name}[${i}] is past the end of the ramp (${ramp.length} entries)`);
+        ramp[Number(i)] = pick(`override ramp ${name}[${i}]`, h);
+        }
+        ramps[name] = tidyRamp(ramp, colours); }
   }
   if (problems.length) throw new Error(`art:palette: ${problems.join('; ')}`);
   return {

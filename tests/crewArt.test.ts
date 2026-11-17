@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { AnimatedSprite, Graphics, Texture } from 'pixi.js';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
@@ -11,6 +11,7 @@ import { ASSET_NAMES, FACINGS } from '../src/renderer/src/render/assetNames';
 import { FEATURE_NAMES, featureReady } from '../src/renderer/src/render/fallback';
 import type { GameAnimation, GameAssets } from '../src/renderer/src/render/assets';
 import { createRenderMemory } from '../src/renderer/src/render/memory';
+import { createCalloutLayer } from '../src/renderer/src/render/callouts';
 import { createCrewLayer, CREW_COLORS } from '../src/renderer/src/render/crewSprites';
 import { bubbleAnchor, CALLOUT_LIFT_PUNY } from '../src/renderer/src/render/calloutModel';
 import { consoles, stationSides } from '../src/renderer/src/render/consoleModel';
@@ -21,6 +22,12 @@ import {
 import { TILE_PX } from '../src/shared/resolution';
 import { cutterState, RECRUITS } from './helpers/sim';
 import { createSimState } from './helpers/simLifetime';
+
+// Node has no font atlas or canvas: the real Pixi scene graph stays, only bitmap glyph measurement is replaced (as in hudSlots.test.ts).
+vi.mock('pixi.js', async (original) => {
+  const pixi = await original<typeof import('pixi.js')>();
+  return { ...pixi, BitmapText: class extends pixi.Container { text = ''; roundPixels = false; constructor(_options: unknown) { super(); } } };
+});
 
 // AnimatedSprite.play() starts Pixi's shared ticker, which needs requestAnimationFrame (absent in node).
 beforeAll(() => {
@@ -141,5 +148,27 @@ describe('the crew layer with the bought crew (Art-ii spec section 1)', () => {
     layer.draw(s, 1);
     const sp = spriteOf(layer, 0);
     expect(sp.texture.label).toBe('crew.idle.s'); expect(sp.tint).toBe(CREW_COLORS[Owner.pid[s.crew[0]!]! % 4]); expect(sp.anchor.y).toBe(0.75);
+  });
+});
+
+describe('the callout layer lifts (Art-ii spec section 1)', () => {
+  const fit = { scale: 1, x: 0, y: 0 };
+  /** The root's y is the tail tip's anchor minus the bubble height (20) and tail (5), rounded; one bubble, so no stacking. */
+  const rootY = (art: boolean, down: boolean): { y: number; anchor: number } => {
+    const s = cutterState(), layer = createCalloutLayer(fakeAssets(art)), eid = s.crew[0]!;
+    if (down) Life.state[eid] = LifeState.Downed;
+    layer.draw(s, [{ pid: 0, text: 'Hi', icon: null }], fit);
+    const root = layer.container.children[0]!;
+    expect(root.visible).toBe(true);
+    return { y: root.y, anchor: bubbleAnchor(s, 0, fit).y };
+  };
+  it('sits CALLOUT_LIFT_LIMEZU up over a conscious bought crew, the lower DOWN lift when downed, CALLOUT_LIFT_PUNY without crewArt', () => {
+    const conscious = rootY(true, false), downed = rootY(true, true), puny = rootY(false, false);
+    const puny0 = conscious.anchor + CALLOUT_LIFT_PUNY;   // the anchor at lift 0 (position y in pixels)
+    const expectY = (lift: number): number => Math.round(puny0 - lift - 20 - 5);
+    expect(conscious.y).toBe(expectY(CALLOUT_LIFT_LIMEZU));
+    expect(downed.y).toBe(expectY(CALLOUT_LIFT_DOWN_LIMEZU));
+    expect(puny.y).toBe(expectY(CALLOUT_LIFT_PUNY));
+    expect(downed.y).toBeGreaterThan(conscious.y);
   });
 });
