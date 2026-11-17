@@ -1,0 +1,50 @@
+// The readout's emphasis (CRT map spec section 2): every row readoutRows builds (Task 3), and how the CRT panel draws it (Task 6).
+import { describe, expect, it } from 'vitest';
+import hound from '../src/renderer/src/sim/ship/hound.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
+import { placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
+import { LASER_CHARGE_UNITS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+import { readoutRows, type ReadoutRow } from '../src/renderer/src/render/duel/readoutModel';
+
+const layout = parseShip(hound);
+const marks = (rows: readonly ReadoutRow[]) => rows.map((r) => [r.label || r.value, r.emphasis ?? '-']);
+
+describe('readoutRows emphasis (CRT map spec section 2)', () => {
+  it('helm, healthy: the crew heading and pips crew, rooms good, the HUNTER heading, pips and nothing else enemy', () => {
+    const d = createDuel(layout, 5);
+    expect(marks(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' }))).toEqual([
+      ['HELM', '-'], ['HOUND', 'crew'], ['HULL', '-'], ['SHIELD', 'crew'], ['WEAPONS', 'good'], ['SHIELDS', 'good'], ['ENGINES', 'good'],
+      ['HUNTER', 'enemy'], ['HULL', '-'], ['SHIELD', 'enemy'], ['ROOMS', '-'], ['OTHER', '-'], ['AT WEAPONS', '-']
+    ]);
+    disposeDuel(d);
+  });
+  it('helm, hurt: own low hull alert, damaged rooms warn (with the repair bar), enemy low hull good, enemy rooms warn', () => {
+    const d = createDuel(layout, 5), s = d.tactical.systems;
+    s[0].hull = SHIP_HULL / 4; s[0].rooms = [1, 2, 0]; d.repair[Room.Shields] = REPAIR_UNITS / 2; s[1].hull = SHIP_HULL / 4; s[1].rooms = [0, 0, 1];
+    const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
+    expect(marks(rows)).toEqual([
+      ['HELM', '-'], ['HOUND', 'crew'], ['HULL', 'alert'], ['SHIELD', 'crew'], ['WEAPONS', 'warn'], ['SHIELDS', 'warn'], ['ENGINES', 'good'],
+      ['HUNTER', 'enemy'], ['HULL', 'good'], ['SHIELD', 'enemy'], ['ROOMS', 'warn'], ['OTHER', '-'], ['AT WEAPONS', '-']
+    ]);
+    expect(rows[5]!.value).toBe('DMG 2'); expect(rows[5]!.bar?.fill).toBe(0.5);
+    disposeDuel(d);
+  });
+  it('weapons: LASER heading plain, LOCK enemy, CHARGE good only when full and no missile flies, MAG plain', () => {
+    const d = createDuel(layout, 5), s = d.tactical.systems[0];
+    const tail = (): (string | undefined)[][] => marks(readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' })).slice(11, 15);
+    expect(tail()).toEqual([['LASER', '-'], ['LOCK', 'enemy'], ['CHARGE', '-'], ['MAG', '-']]);
+    s.laserCharge = LASER_CHARGE_UNITS; expect(tail()[2]).toEqual(['CHARGE', 'good']);
+    placeMissile(d.tactical, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }); expect(tail()[2]).toEqual(['CHARGE', '-']);
+    disposeDuel(d);
+  });
+  it('interior: EMPTY, COASTING and MISSILE INBOUND are alert (they keep their tints: the interior has no CRT)', () => {
+    const d = createDuel(layout, 5), t = d.tactical, c = t.ships[0];
+    d.interior.stations.occupant[d.nav] = -1; d.interior.stations.occupant[d.weapons] = -1;
+    placeMissile(t, 1, { x: c.x + 100, y: c.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
+    const rows = readoutRows({ duel: d, mode: 'interior', active: 0, other: 'WALKING' });
+    expect(marks(rows).slice(13)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['MISSILE INBOUND', 'alert']]);
+    disposeDuel(d);
+  });
+});
