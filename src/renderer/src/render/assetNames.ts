@@ -31,6 +31,7 @@ add('optional', 'crew.sit');
 add('optional', ...CREW_ART_NAMES);
 add('optional', ...CONSOLE_ART_NAMES);   // Art-ii spec section 2: the bought consoles; the procedural desks without them
 add('optional', 'ship.hound.map');   // Art-iv: the 2-Minute Tabletop Hound battlemap, a paid painting
+add('optional', 'space.backdrop');   // Art-v: the 2-Minute Tabletop Deep Space (Red) backdrop; the procedural starfield without it
 add('optional', ...BLAST_NAMES);         // Art-ii spec section 3: the bought blasts; none without them
 add('optional', ...PROP_ART_NAMES);      // Art-iii spec section 1: the set dressing; bare floor without it
 // icons (in-house)

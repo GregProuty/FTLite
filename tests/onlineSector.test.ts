@@ -3,6 +3,11 @@ import { createHash } from 'node:crypto';
 import { sectorCompatibility, sectorInit, sectorJoinCompatibilities, validateCommittedSectorStart, validateSectorMirror } from '../src/main/network/onlineSector';
 import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
 import type { RoomSnapshot } from '../src/shared/roomSession';
+import { deriveLayout } from '../src/renderer/src/sim/ship/derived';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import skiff from '../src/renderer/src/sim/ship/skiff.json';
+/** A sector layout that no longer flies (the Skiff's), for compatibility mismatches now that every capacity is the Hound. */
+const SKIFF_HASH = deriveLayout(parseShip(skiff)).layoutHash;
 function room(capacity = 4): RoomSnapshot { return { roomId: 'a'.repeat(32), runId: 'b'.repeat(32), joinCode: 'ABCDEFGH', capacity, hostSeatId: 0,
   hostGeneration: 1, rosterRevision: 1, phase: 'lobby', compatibility: sectorCompatibility(capacity), seats: Array.from({ length: capacity }, (_, seatId) =>
     ({ seatId, seatGeneration: seatId === 0 || seatId === capacity - 1 ? 1 : 0, occupied: seatId === 0 || seatId === capacity - 1, connected: seatId === 0 || seatId === capacity - 1, ready: false })) }; }
@@ -11,13 +16,15 @@ describe('main sector initialization', () => {
     const snapshot = room(), candidate = initialOnlineCheckpoint(sectorInit(snapshot));
     const mirror = { bytes: candidate.bytes, metadata: { version: 1 as const, protocolVersion: 2 as const, roomId: snapshot.roomId, runId: snapshot.runId, compatibility: snapshot.compatibility, hostGeneration: 1, checkpointSequence: 1, capturedTick: 0, payloadSha256: createHash('sha256').update(candidate.bytes).digest('hex') } };
     expect(() => validateSectorMirror(mirror)).not.toThrow();
-    for (const metadata of [{ ...mirror.metadata, capturedTick: 1 }, { ...mirror.metadata, runId: 'c'.repeat(32) }, { ...mirror.metadata, compatibility: sectorCompatibility(2) }]) expect(() => validateSectorMirror({ ...mirror, metadata })).toThrow();
+    for (const metadata of [{ ...mirror.metadata, capturedTick: 1 }, { ...mirror.metadata, runId: 'c'.repeat(32) }, { ...mirror.metadata, compatibility: { ...sectorCompatibility(4), layoutHash: SKIFF_HASH } }]) expect(() => validateSectorMirror({ ...mirror, metadata })).toThrow();
   });
-  it('uses capacity and baseline content for sparse seats and exposes just two layouts', () => {
-    expect(sectorInit(room())).toMatchObject({ layoutId: 'cutter', playerCount: 4, seed: 2026, characters: [0, 1, 2, 3], unlocked: [] });
-    expect(sectorInit(room(2))).toMatchObject({ layoutId: 'skiff', playerCount: 2 });
-    expect(sectorJoinCompatibilities()).toHaveLength(2);
-    expect(() => sectorInit({ ...room(), compatibility: sectorCompatibility(2) })).toThrow();
+  it('uses capacity and baseline content for sparse seats and exposes just the Hound layout', () => {
+    expect(sectorInit(room())).toMatchObject({ layoutId: 'hound', playerCount: 4, seed: 2026, characters: [0, 1, 2, 3], unlocked: [] });
+    expect(sectorInit(room(2))).toMatchObject({ layoutId: 'hound', playerCount: 2 });
+    expect(sectorJoinCompatibilities()).toEqual([sectorCompatibility(2)]);
+    expect(sectorCompatibility(1)).toEqual(sectorCompatibility(4));
+    expect(() => sectorInit({ ...room(), compatibility: { ...sectorCompatibility(4), layoutHash: SKIFF_HASH } })).toThrow();
+    expect(() => sectorInit({ ...room(), compatibility: { ...sectorCompatibility(4), simVersion: sectorCompatibility(4).simVersion + 1 } })).toThrow();
   });
   it('validates hash, run identity, lease identity and exact baseline init before utility allocation', async () => {
     const snapshot = room(), init = sectorInit(snapshot);

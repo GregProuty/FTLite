@@ -1,0 +1,11 @@
+topic=helm-h2b-ii-impl
+subject_kind=impl
+subject=docs/gates.md docs/superpowers/plans/2026-11-16-helm-h2b-ii-internet-candidate.md docs/superpowers/prompts/2026-11-15-net-3e-two-machine-playtest.md electron-builder.yml scripts/network/candidate-manifest.ts scripts/network/internet-app-report.ts scripts/network/internet-app-smoke.ts scripts/network/internet-observer-worker.ts scripts/network/online-observer-build.ts tests/internetAppReport.test.ts tests/internetAppSmoke.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\h2b-ii
+base=69c2e06
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-16
+head_at_setup=43ba070

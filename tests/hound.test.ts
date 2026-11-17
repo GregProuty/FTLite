@@ -44,9 +44,9 @@ describe('the Hound layout', () => {
     for (const [x, y] of ship.spawns) expect(ship.rows[y]![x]).toBe('Q');
     expect(ship.airlocks).toContainEqual({ room: 'H', tile: [0, 7] });
   });
-  it('is the duel ship, and the sector fleet is unchanged (Art-iv-b moves it)', () => {
+  it('is the duel ship, and the sector fleet is the Hound at every crew size (Art-iv-b)', () => {
     expect(DUEL_LAYOUT.id).toBe('hound');
-    expect([1, 2, 3, 4].map(shipForCrew)).toEqual(['skiff', 'skiff', 'cutter', 'cutter']);
+    expect([1, 2, 3, 4].map(shipForCrew)).toEqual(['hound', 'hound', 'hound', 'hound']);
   });
   it('a duel on the Hound seats the two players on separate seats, in both helm orders, and resolves its repair points', () => {
     for (const helm of [0, 1] as const) {

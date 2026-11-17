@@ -3,7 +3,10 @@ productName: FTLite
 directories:
   output: dist
 files:
-  - out/**/*
+  # Only the build's three entry folders: evidence written under out/ by the smokes is never packaged (H-2b).
+  - out/main/**/*
+  - out/preload/**/*
+  - out/renderer/**/*
   - '!**/.env*'
   - '!**/.dev.vars*'
   - '!**/test-results/**'

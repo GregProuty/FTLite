@@ -1,4 +1,4 @@
-export interface Sample { ship: string; seed: number; runId: string; tick: number; completed: number; hash: string; fields: Record<string, unknown> }
+export interface Sample { ship: string; variant?: string; seed: number; runId: string; tick: number; completed: number; hash: string; fields: Record<string, unknown> }
 export interface Report { samples: Sample[]; boundaries: unknown[] }
 export function firstDifference(a: unknown, b: unknown, path = ''): string | undefined {
   if (Object.is(a, b)) return;
@@ -16,7 +16,7 @@ export function compareReports(expected: Report, actual: Report): void {
   for (let i = 0; i < expected.samples.length; i++) {
     const a = expected.samples[i]!, b = actual.samples[i]!;
     const difference = firstDifference(a.fields, b.fields, 'canonical') ?? firstDifference(a, b, 'sample');
-    if (difference) throw Error(`${a.ship} seed ${a.seed} run ${a.runId} tick ${a.tick} completed ${a.completed}: ${difference}`);
+    if (difference) throw Error(`${a.variant ?? a.ship} seed ${a.seed} run ${a.runId} tick ${a.tick} completed ${a.completed}: ${difference}`);
   }
   const difference = firstDifference(expected.boundaries, actual.boundaries, 'boundaries');
   if (difference) throw Error(difference);

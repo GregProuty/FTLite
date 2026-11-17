@@ -29,7 +29,8 @@
     "gen:headings": "tsx scripts/gen-headings.ts",
     "dist": "electron-vite build && electron-builder --win",
     "art:import": "tsx scripts/art-import.ts",
-    "art:palette": "tsx scripts/art-palette.ts"
+    "art:palette": "tsx scripts/art-palette.ts",
+    "art:stars": "tsx scripts/art-stars.ts"
   },
   "devDependencies": {
     "@testing-library/dom": "10.4.2",
