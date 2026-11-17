@@ -41,9 +41,16 @@ export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | null; r
   return { tabs, tabActions };
 }
 
+/** The station a character's console shows (spec §6.3): its seat, or SHIP while standing. The scene reads it before the
+ *  map is built (enemy ship window spec §6.5 step 1). */
+export function consoleStation(d: DuelState, me: 0 | 1): ConsoleStation {
+  const seat = seatOf(d, me);
+  return seat === 'standing' ? 'ship' : seat;
+}
+
 export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   if (i.hidden) return null;
-  const d = i.duel, seat = seatOf(d, i.me), station: ConsoleStation = seat === 'standing' ? 'ship' : seat;
+  const d = i.duel, seat = seatOf(d, i.me), station = consoleStation(d, i.me);
   const c = seat === 'standing' ? consoleInReach(d, i.me) : -1;
   const { tabs, tabActions } = consoleTabs({ seat, reach: c < 0 ? null : c === d.nav ? 'helm' : 'weapons', repairNear: seat === 'standing' && repairInReach(d, i.me) >= 0,
     otherSeat: seatOf(d, i.me === 0 ? 1 : 0), mode: i.mode });

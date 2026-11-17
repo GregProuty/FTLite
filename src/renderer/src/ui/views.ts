@@ -2,6 +2,7 @@
 import type { EndView } from '../render/duel/endModel';
 import type { ReadoutRow } from '../render/duel/readoutModel';
 import type { ConsoleView } from '../render/duel/consoleModel';
+import type { ContactView } from '../render/duel/contactModel';
 import type { OverlayDraw } from '../render/tactical/tacticalModel';
 
 /** The three banner lines; null hides one (spec §6 placements). */
@@ -10,7 +11,9 @@ export type MapOverlayView = Pick<OverlayDraw, 'zoomText' | 'scaleBar' | 'snapHi
 /** `crt`: the frame is a console view, drawn as an amber CRT screen (CRT map spec section 1: crtActive(view)). */
 export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: readonly string[] }; end: EndView | null; banners: Banners; overlay: MapOverlayView | null; crt: boolean;
   /** The Artemis console (spec 2026-11-17-artemis-consoles §6.1); absent or null draws today's screen. */
-  console?: ConsoleView | null }
+  console?: ConsoleView | null;
+  /** The contact window (enemy ship window spec §6.5): set while it is shown; absent or null draws no window. */
+  contact?: ContactView | null }
 export interface FlightUiView { feel: readonly (readonly [string, string])[]; banners: Banners; overlay: MapOverlayView | null; crt: boolean }
 
 export function mapOverlayOf(o: OverlayDraw): MapOverlayView { return { zoomText: o.zoomText, scaleBar: o.scaleBar, snapHint: o.snapHint }; }

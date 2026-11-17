@@ -10,7 +10,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { canLaunch } from '../src/renderer/src/sim/tactical/weapons';
 import { CONSOLE_RESERVE, CONTACT, CONTACT_BOX, CONTACT_RESERVE, EDGE, SIDE, SIDE_H, STATION, STATUS, TABS, TABS_RIGHT, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
 import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
-import { consoleModel, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
+import { consoleModel, consoleStation, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
 import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/controls';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
 import { readoutHelp, readoutRows } from '../src/renderer/src/render/duel/readoutModel';
@@ -131,6 +131,13 @@ describe('station panels', () => {
     const d = createDuel(layout, 5), overlay = { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: true };
     expect(model(d, { me: 1, overlay })!.side).toEqual({ zoom: '0.90', free: true, snapLabel: 'CAMERA' });
     expect(model(d, { overlay })!.side!.snapLabel).toBe('SNAP');
+    disposeDuel(d);
+  });
+  it('consoleStation: the seat, or SHIP while standing (enemy ship window spec §6.5 step 1)', () => {
+    const d = createDuel(layout, 5);
+    expect(consoleStation(d, 0)).toBe('helm'); expect(consoleStation(d, 1)).toBe('weapons');
+    step(d, 0, { kind: 'stand' });
+    expect(consoleStation(d, 0)).toBe('ship'); expect(model(d)!.station).toBe('ship');
     disposeDuel(d);
   });
   it('hidden gives null', () => {
