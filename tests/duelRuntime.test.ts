@@ -462,6 +462,17 @@ describe('the interior zoom camera input (interior zoom spec rules 1-4)', () => 
     expect(rt.view()).toBe('interior');   // C does nothing else while standing
     rt.dispose();
   });
+  it('the wheel and a drag while standing leave both console cameras untouched', () => {
+    const { rt, pointer } = standing();
+    const snap = () => [rt.cameras.helm, rt.cameras.weapons].map((c) => ({ cx: c.centreX, cy: c.centreY, tz: c.targetZoom, follow: c.follow }));
+    const before = snap();
+    Object.assign(pointer, { x: 300, y: 200, wheel: -300, dragX: 80, dragY: 40 }); rt.frame(1 / 60);
+    Object.assign(pointer, { wheel: 0, dragX: 0, dragY: 0 });
+    expect(rt.interiorCamera.notches).toBe(3);
+    expect(snap().map((c) => ({ tz: c.tz, follow: c.follow }))).toEqual(before.map((c) => ({ tz: c.tz, follow: c.follow })));
+    expect(snap().map((c) => c.follow)).toEqual(['ship', 'ship']);
+    rt.dispose();
+  });
   it('pause keeps the zoom and the camera still moves; Tab keeps the level and follows again; a rematch resets it', () => {
     const { rt, press, pointer, tick, ticks } = standing();
     press('pause'); tick();

@@ -69,6 +69,16 @@ describe('interior follow, clamp, drag and anchor (rules 2 and 3)', () => {
     interiorInput(cam, input({ notches: 1, anchor: { x: 10, y: 10 } }));
     expect(placeInterior(cam, g, CENTRE)).toEqual({ scale: 2, x: 530 - CENTRE.x * 2, y: 360 - CENTRE.y * 2 });
   });
+  it('back at level 0 the camera follows again: zooming in after a drag centres on the character', () => {
+    const cam = createInteriorCamera(), g = geo();
+    interiorInput(cam, input({ notches: 1 })); placeInterior(cam, g, CENTRE);
+    interiorInput(cam, input({ dragX: 50 })); placeInterior(cam, g, CENTRE);
+    expect(cam.follow).toBe(false);
+    interiorInput(cam, input({ notches: -1 })); placeInterior(cam, g, CENTRE);
+    expect(cam.follow).toBe(true);
+    interiorInput(cam, input({ notches: 1, anchor: { x: 900, y: 100 } }));
+    expect(placeInterior(cam, g, CENTRE)).toEqual({ scale: 1.5, x: -166, y: 48 });
+  });
   it('a drag at level 0 does nothing', () => {
     const cam = createInteriorCamera(), g = geo();
     interiorInput(cam, input({ dragX: 40 }));

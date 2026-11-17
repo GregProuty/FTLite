@@ -78,6 +78,7 @@ export function placeInterior(cam: InteriorCamera, g: InteriorGeometry, target: 
   if (cam.level > 0 && (cam.dragX !== 0 || cam.dragY !== 0)) { cam.follow = false; from = clamp({ scale: old.scale, x: old.x + cam.dragX, y: old.y + cam.dragY }); }
   const zoomed = cam.notches !== 0;
   cam.level = Math.max(minLevel(k), Math.min(ZOOM_IN_MAX, cam.level + cam.notches));
+  if (cam.level <= 0) cam.follow = true;   // back at the fit (or out): the next zoom in follows the character again
   const anchor = zoomed && cam.anchor ? cam.anchor : { x: band.x + band.w / 2, y: band.y + band.h / 2 };
   clearPending(cam);
   let out: Placement;
