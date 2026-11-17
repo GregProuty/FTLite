@@ -6,7 +6,8 @@ import type { OverlayDraw } from '../render/tactical/tacticalModel';
 /** The three banner lines; null hides one (spec §6 placements). */
 export interface Banners { interior: string | null; tactical: string | null; notice: string | null }
 export type MapOverlayView = Pick<OverlayDraw, 'zoomText' | 'scaleBar' | 'snapHint'>;
-export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: readonly string[] }; end: EndView | null; banners: Banners; overlay: MapOverlayView | null }
-export interface FlightUiView { feel: readonly (readonly [string, string])[]; banners: Banners; overlay: MapOverlayView | null }
+/** `crt`: the frame is a console view, drawn as an amber CRT screen (CRT map spec section 1: crtActive(view)). */
+export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: readonly string[] }; end: EndView | null; banners: Banners; overlay: MapOverlayView | null; crt: boolean }
+export interface FlightUiView { feel: readonly (readonly [string, string])[]; banners: Banners; overlay: MapOverlayView | null; crt: boolean }
 
 export function mapOverlayOf(o: OverlayDraw): MapOverlayView { return { zoomText: o.zoomText, scaleBar: o.scaleBar, snapHint: o.snapHint }; }

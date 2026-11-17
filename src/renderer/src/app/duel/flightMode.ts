@@ -59,7 +59,7 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
     const paused = runtime.reasons().has('user');
     const model = tacticalModel({ state: runtime.state, prev: runtime.prev, alpha: runtime.alpha(), camera: runtime.camera, viewport, console: 'helm', axes: runtime.axes(), ships: [0], paused, reserveRight: FLIGHT_RESERVE_RIGHT });
     layer.draw(model);
-    deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null }, overlay: mapOverlayOf(model.overlay) });
+    deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null }, overlay: mapOverlayOf(model.overlay), crt: true });
   };
   renderer.app.ticker.add(frame);
 

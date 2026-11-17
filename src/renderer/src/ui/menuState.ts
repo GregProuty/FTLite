@@ -30,6 +30,8 @@ export interface UiState {
   hud: import('../render/hudModel').HudModel | null;
   /** The online duel's F3 latency overlay lines (H-2b); null while hidden. */
   latency: readonly string[] | null;
+  /** The CRT strength setting (CRT map spec section 4), written at boot and by the dev F10 cycle (app/crtBoot.ts). */
+  crt: import('../render/crt').CrtSetting;
   /** Bumped by a sink each time its slice goes null -> non-null: the regions' error-boundary reset keys (spec §2). */
   epochs: { duel: number; flight: number; hud: number };
 }

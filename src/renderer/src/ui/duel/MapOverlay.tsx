@@ -1,25 +1,30 @@
 // The tactical map's screen overlay (tacticalLayer.ts's lines 216-222): the zoom text, the scale bar with its end
-// ticks (2 px lines centred on their paths) and units label, and the snap-back hint while the camera is free.
+// ticks (2 px lines centred on their paths) and units label, and the snap-back hint while the camera is free. On a CRT
+// screen (CRT map spec section 2) the zoom text, bar and units are `mid` and the snap hint `main`.
 import { memo } from 'react';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import { AMBER, DIM, FONT_NATIVE, FONT_SIZE } from '../../render/theme';
+import { CRT } from '../../render/tactical/crtTheme';
 import { Box } from '../stage/Box';
 import { hex } from '../stage/color';
+import { useCrt } from '../stage/CrtContext';
 import { PixelText } from '../stage/PixelText';
 import type { MapOverlayView } from '../views';
 
-const BX = 16, BY = INTERNAL_H - 28;
+/** The scale bar's left end and baseline, the zoom text's top and the snap hint's bottom (internal pixels). */
+export const BX = 16, BY = INTERNAL_H - 28, ZOOM_Y = INTERNAL_H - 64, SNAP_Y = INTERNAL_H - 12;
 
 export const MapOverlay = memo(function MapOverlay({ overlay }: { overlay: MapOverlayView }) {
-  const px = overlay.scaleBar.px, line = { background: hex(DIM) };
+  const { crt } = useCrt(), dim = crt ? CRT.mid : DIM, accent = crt ? CRT.main : AMBER;
+  const px = overlay.scaleBar.px, line = { background: hex(dim) };
   return (
     <>
-      <PixelText text={overlay.zoomText} x={16} y={INTERNAL_H - 64} size={FONT_SIZE} tint={DIM} />
+      <PixelText text={overlay.zoomText} x={BX} y={ZOOM_Y} size={FONT_SIZE} tint={dim} />
       <Box x={BX} y={BY - 1} w={px} h={2} attrs={{ 'data-ui-scalebar': '' }} style={line} />
       <Box x={BX - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
       <Box x={BX + px - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
-      <PixelText text={`${overlay.scaleBar.units} u`} x={BX + px + 8} y={BY - 8} size={FONT_NATIVE} tint={DIM} />
-      {overlay.snapHint && <PixelText text="C: SNAP BACK" x={INTERNAL_W / 2} y={INTERNAL_H - 12} size={FONT_SIZE} tint={AMBER} anchorX={0.5} anchorY={1} />}
+      <PixelText text={`${overlay.scaleBar.units} u`} x={BX + px + 8} y={BY - 8} size={FONT_NATIVE} tint={dim} />
+      {overlay.snapHint && <PixelText text="C: SNAP BACK" x={INTERNAL_W / 2} y={SNAP_Y} size={FONT_SIZE} tint={accent} anchorX={0.5} anchorY={1} />}
     </>
   );
 });

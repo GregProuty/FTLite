@@ -6,6 +6,7 @@
 import { Container } from 'pixi.js';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
+import { crtActive } from '../../render/crt';
 import type { EndView } from '../../render/duel/endModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
@@ -100,6 +101,7 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus() }), help: readoutHelp(view) },
         end: overlay.end,
+        crt: crtActive(view),
         ...sceneUi(view, overlay, options.pauseText, overlayView)
       });
       const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake

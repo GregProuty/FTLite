@@ -21,7 +21,7 @@ const find = (t: string) => texts().find((c) => c.text === t);
 const banners = { interior: null, tactical: null, notice: null };
 const view = (patch: Partial<DuelUiView> = {}): DuelUiView => ({
   readout: { rows: [{ label: 'HULL', value: '10/10', labelTint: TEXT, valueTint: TEXT, pips: { n: 2, max: 3, colour: 0x7cc4ff }, bar: { fill: 0.5, colour: AMBER } }], help: ['TAB  SWITCH'] },
-  end: null, banners, overlay: null, ...patch });
+  end: null, banners, overlay: null, crt: false, ...patch });
 function mount(menu = false) {
   const ui = makeUi(); const duel = createDuelSink(ui.store), flight = createFlightSink(ui.store);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={menu} /></UiContext.Provider>);
@@ -89,7 +89,7 @@ describe('the end card, banners and map overlay', () => {
 
 describe('the flight region', () => {
   it('draws the feel panel with its title, rows and help', () => {
-    const { flight } = mount(); act(() => flight.frame({ feel: [['SPEED', '12 u/s']], banners: { ...banners, tactical: 'PAUSED   ESC: RESUME' }, overlay: null }));
+    const { flight } = mount(); act(() => flight.frame({ feel: [['SPEED', '12 u/s']], banners: { ...banners, tactical: 'PAUSED   ESC: RESUME' }, overlay: null, crt: false }));
     const X = INTERNAL_W - FEEL_PANEL_W - FEEL_PANEL_MARGIN, Y = FEEL_PANEL_MARGIN;
     expect(find('FLIGHT FEEL')).toMatchObject({ x: X + PAD, y: Y + PAD - 6 });
     expect(find('SPEED')).toMatchObject({ x: X + PAD, y: Y + PAD - 6 + LINE }); expect(find('12 u/s')).toMatchObject({ x: X + FEEL_PANEL_W - PAD, anchor: '1' });
