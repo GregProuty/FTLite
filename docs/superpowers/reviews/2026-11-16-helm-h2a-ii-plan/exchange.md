@@ -82,3 +82,55 @@ Confirmed. Decision 9 records it.
 
 ---
 
+# Round 2 (delta, reviewing c551fe3, effort medium, 98 s, 440385 in / 391634 cached / 6597 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 The no-watchdog assertion sees only the journal since the last 300-tick baseline, not the whole round
+The new per-seed check `expect(replay.frames.filter((f) => f.action.kind === 'watchdog')).toEqual([])` reads `rig.authority.replay()` once, after the round. The authority clears `frames` at every 300-tick boundary. A scripted round runs for thousands of ticks (plan i's example summary has ticks: 8832), so the assertion covers at most the last ~5 s of flying, and sometimes only a few ticks when the decide tick lands just after a boundary. A watchdog neutralisation earlier in the round would not be caught. Decision 8 says the journal 'holds no watchdog frame' as though that covered the round. · plan L1693 (single replay read after the loop), L1688 (`rig.authority.replay()`), L1680-L1681 (the loop runs to the outcome, then 6 ticks), L49 (Decision 8 wording); src/renderer/src/authority/core.ts:457-458 (`boundary = tickOf() % 300 === 0` → `resetBaseline()`), :258 (`frames = []`), :572 (replay returns `frames`), :319 (watchdog frames are journaled only in the current window); plan i L717/L727 (ticks 8832). · The producer fix itself (held on every publication, plan L1667-L1668) is correct, so this is not blocking. But the assertion added to prove it guards only the tail of each round. A later regression that skips held refreshes (a gate brought back, a cadence change) would pass every seed unless it happened in the last window. The crew-laser sum (L1709-L1712) catches a passive Weapons player, not a neutralised Helm thrust or repair. · Collect watchdog frames throughout the loop, at intervals shorter than the window. For example, keep `let watchdogs = 0` and, inside the L1680 loop, `if (k % 250 === 249) watchdogs += rig.authority.replay().frames.filter((f) => f.action.kind === 'watchdog').length;`. After the loop, add the final replay's count and `expect(watchdogs).toBe(0)`. Overlapping windows are harmless because the expected count is zero. Alternatively, have the rig wrap or count `neutralizeExpired` through a test probe. Reword Decision 8 to say 'no watchdog frame during the round'.
+
+## Prior findings
+- R1-F1: resolved — The producer now calls `seat.client.held` on every new publication, and the same/last gate is gone (plan L1655-L1670). Decision 8 is amended (L49). A crew-laser sum test follows the seeds (L1675, L1707, L1709-L1712). The held refresh (50 ms) is under REMOTE_HELD_TIMEOUT_MS (250, core.ts:326). After the outcome the producer stops refreshing, but the test ends 6 ticks (100 ms) later, inside the timeout. The added watchdog assertion is weaker than it reads; that is raised separately as a new P2.
+- R1-F2: resolved — Step 4b's replace block (plan L567-L575) matches build/contentDigest.ts:15 exactly and occurs once. The fixture replace block (L580-L591) matches tests/contentDigest.test.ts:40-41 exactly. The fixture had 31 sources, so 31 + 3 = 34 tests today and 36 after the two new paths, matching L600. Both files are in Task 1's Files list (L77), the file table (L68) and the commit (L611).
+- R1-F3: resolved — Decision 10 (L51) states the deviation and why. The rig comment is corrected (L1110-L1112). The wiring test does go through `duelMode.createHost` with stream attachment options carrying origin 'remote', and it checks the peer-lost pause through the lifecycle closure (L1279-L1301), so the Decision's coverage claim holds.
+- R1-F4: resolved — L1698 builds `duelRoundRecord(rig.session().summary!, 0, seed, 0)`. That matches plan i's signature `duelRoundRecord(summary, round, seed, baseTick)` (plan i L962) and its use on emit (plan i L2547). `DuelSession.summary` is `DuelEndSummary | null` (plan i L2463), and is set when the round event is emitted. Each client's record is compared with `toEqual` (L1704). The import is added (L1643).
+- R1-F5: resolved — Decision 9 (L50) records the `load(snapshot)` / `restore(replica, snapshot)` signatures, the layout and digest closed over, and the `supported` option.
+
+## Verified
+- build/contentDigest.ts:15 is exactly the line the Step 4b replace targets, and it occurs once; tests/contentDigest.test.ts:40-41 is exactly the fixture replace target
+- The contentDigest test count goes from 34 to 36: it.each over the 31 sources plus 3 fixed tests, then 2 new paths (tests/contentDigest.test.ts:9-66; plan L600)
+- The duelOnline count of 14 is 10 seeds + 1 sum + 1 rematch + 2 reconnect/Helm tests (plan L1676-L1771, L1777); the full-suite count 3431 + 3 = 3434 (L1801) is consistent
+- The watchdog action kind is 'watchdog' in core.ts:319 and replay.ts:24, so the filter at plan L1693 is well-typed and matches real frames
+- expireHeld neutralises only non-zero held input with a receive-time stamp (core.ts:313-331), so refreshing every publication avoids it
+- `duelRoundRecord` signature and `DuelSession.summary` come from plan i (plan i L692, L962, L2463, L2547)
+- The wiring test exercises duelMode.createHost with origin pass-through and the peer-lost pause (plan L1279-L1301), which supports Decision 10
+
+## Not verified
+- That `laserReleases[0]` is the crew ship's count in plan i's DuelEndSummary ordering. I inferred it from `forceHunterDown` touching systems[1] and did not trace it through summary.ts.
+- That vitest runs the it.each seeds before the sum test in file order with no concurrency config. That is the default, but I did not check vitest.config.
+- That the scripted pair actually produces a laser release on at least one of the ten seeds over the stream.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json`. 1 accepted, 0 rejected, 0 deferred; R1-F1 to R1-F5 confirmed resolved.
+
+## R2-F1 [P2]: The no-watchdog assertion sees only the journal since the last 300-tick baseline, not the whole round
+
+Confirmed against `src/renderer/src/authority/core.ts` (the baseline resets every 300 ticks and clears `frames`). The ten-seed loop now counts watchdog frames from `rig.authority.replay()` every 250 ticks, adds the final window's count, and expects 0; Decision 8 says "during the round".
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-16-helm-h2a-ii-online-stack.md
+
+<!-- end -->
+
+---
+

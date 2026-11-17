@@ -46,7 +46,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 5. **The steward is a minimal loopback producer** **(rec.)**: it reads only its seat's publications and results from the duel codec, never a replica, and sends `presence {present: false}` with `commandHighWater + 1` at the first completed boundary while the run is running; receive-time admission restamps it. It holds no memory, so the duel's controller memory stays empty.
 6. **A seat with no attachment gets a steward, from the start** (spec §6): the seats are vacant until the renderers attach (the host's own port after the bootstrap, the guest when its link is ready), so their characters go away until each client's first command, `presence {present: true}`, brings them back (H-2a-iii sends it on every attach).
 7. **A lost peer** is a bound attachment with origin `'remote'` that goes; its seat's steward owes the `peer-lost` pause, requested through `ProducerOptions.pause` (the same lifecycle pause `ModeHost.pause` uses) once the presence result is applied. A later human for the seat clears the debt; a `'local'` attachment, or one with no origin, never pauses.
-8. **The ten-seed test drives at the publication rate** **(rec.)**: each seat's scripted pair reads its own client's replica on each new publication and sends its own player's held input on every one (every 50 ms, inside the 250 ms receive-time watchdog, so a held thrust, turn or repair is never neutralised) and its commands, through that client, at 20 Hz as the sender publishes. Every seed reaches an outcome within the gate cap; both replicas then hash as the authority's state, the journal since the last baseline replays to its final hash and holds no watchdog frame, no result is `stale-tick`, and both clients' round records equal the authority's (`duelRoundRecord` over the session's summary); across the ten seeds the crew ship releases its laser at least once, which a passive crew cannot.
+8. **The ten-seed test drives at the publication rate** **(rec.)**: each seat's scripted pair reads its own client's replica on each new publication and sends its own player's held input on every one (every 50 ms, inside the 250 ms receive-time watchdog, so a held thrust, turn or repair is never neutralised) and its commands, through that client, at 20 Hz as the sender publishes. Every seed reaches an outcome within the gate cap; both replicas then hash as the authority's state, the journal since the last baseline replays to its final hash, no watchdog frame is journaled during the round (counted every 250 ticks, inside the 300-tick journal window), no result is `stale-tick`, and both clients' round records equal the authority's (`duelRoundRecord` over the session's summary); across the ten seeds the crew ship releases its laser at least once, which a passive crew cannot.
 9. **The replica adapter closes over the mode's layout and digest** **(rec.; spec §4 gives `load(layout, snapshot, digest)` and `restore(replica, snapshot, digest)`)**: `ReplicaAdapter` is `load(snapshot)` and `restore(replica, snapshot)`, each mode closing over its own layout resolver and content digest; the `supported(publication)` option carries the snapshot format and version check that `clientRun.ts` had inline.
 10. **The ten-seed rig composes the authority and the producers by hand** **(rec.; spec §10 says a duel mode host from `authorityModes`)**: `tests/helpers/onlineDuel.ts` builds `createEncounterAuthority` and `createDuelProducers` itself, because the tests need `authority.replay()` and the duel session (`forceHunterDown`), which `ModeHost` does not expose. The `ModeHost` path (`duelMode.createHost`: the pause closure, the origin pass-through, the stream attachment options) is covered by the wiring test in `tests/duelProducers.test.ts`.
 
@@ -1677,7 +1677,13 @@ describe('two clients over the loopback, one per seat (spec §10)', () => {
     const rig = onlineDuel(seed), a = rig.connect(0), b = rig.connect(1), pa = producer(a, seed), pb = producer(b, seed);
     rig.tick(2);
     expect(a.client.commandStatus(0).state).toBe('ready');
-    for (let k = 0; k < CAP_TICKS && a.client.state()?.tactical.outcome === Outcome.Running; k++) { pa.step(); pb.step(); rig.tick(); }
+    // The journal resets every 300 ticks, so watchdog frames are counted every 250 ticks across the whole round.
+    const watchdogs = () => rig.authority.replay().frames.filter((f) => f.action.kind === 'watchdog').length;
+    let watchdogCount = 0;
+    for (let k = 0; k < CAP_TICKS && a.client.state()?.tactical.outcome === Outcome.Running; k++) {
+      pa.step(); pb.step(); rig.tick();
+      if (k % 250 === 249) watchdogCount += watchdogs();
+    }
     rig.tick(6); pa.step(); pb.step();
     const d = a.client.state()!;
     expect(d.tactical.outcome, 'the round reached an outcome').not.toBe(Outcome.Running);
@@ -1689,8 +1695,8 @@ describe('two clients over the loopback, one per seat (spec §10)', () => {
     const ticks = replay.frames.filter((f) => f.action.kind === 'tick');
     expect(ticks.length).toBeGreaterThan(0);
     expect(rerun.hashes.at(-1)).toBe(ticks.at(-1)!.after!.hash);
-    // Held input refreshed every publication: the receive-time watchdog never neutralised a seat.
-    expect(replay.frames.filter((f) => f.action.kind === 'watchdog')).toEqual([]);
+    // Held input refreshed every publication: the receive-time watchdog never neutralised a seat during the round.
+    expect(watchdogCount + watchdogs()).toBe(0);
     const results = [...pa.results, ...pb.results];
     expect(results.length).toBeGreaterThan(0);
     expect(results.filter((r) => r.reason === 'stale-tick')).toEqual([]);
