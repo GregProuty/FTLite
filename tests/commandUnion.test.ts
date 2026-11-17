@@ -15,7 +15,7 @@ import { CUTTER } from './helpers/scriptedDuel';
 
 describe('one command union and result type', () => {
   it('the duel reasons are members of the closed reason enum the result codec validates', () => {
-    expect(COMMAND_REASONS.slice(-3)).toEqual(['not-in-duel', 'not-at-weapons', 'missile-in-flight']);
+    expect(COMMAND_REASONS.slice(-5, -2)).toEqual(['not-in-duel', 'not-at-weapons', 'missile-in-flight']);   // then H-2's round reasons (codecModeWire.test.ts)
     for (const reason of ['not-in-duel', 'not-at-weapons', 'missile-in-flight'] as const) {
       const message = { kind: 'result' as const, runId: 'r', result: { id: { player: 0, sequence: 1 }, tick: 3, status: 'rejected' as const, reason } };
       expect(decodeMessage(encodeMessage(message))).toEqual(message);

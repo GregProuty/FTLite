@@ -1,6 +1,6 @@
 import type { Snapshot } from '../sim/snapshot';
 import type { TelemetryRecord } from '../sim/telemetry';
-import type { DuelEndSummary } from '../sim/duel/summary';
+import type { DuelEndSummary, DuelRoundRecord } from '../sim/duel/summary';
 
 export type PeerId = string;
 export type RunId = string;
@@ -74,15 +74,18 @@ export type DuelCommand =
   | { kind: 'laserLock'; room: number }
   | { kind: 'laserCharge'; held: boolean }
   | { kind: 'missileLaunch' }
+  /** On a decided round's end card: start the next round (H-2 spec §7). */
+  | { kind: 'rematch' }
   | { kind: 'setPaused'; paused: boolean };
 /** The one command union (engine refactor spec §6): every mode's kinds; `setPaused` is the core's control. */
 export type Command = SectorCommand | DuelCommand;
 export interface CommandEnvelope<C extends Command = Command> { runId: RunId; id: CommandId; requestedTick: number; command: C }
-/** The shared base reasons, then the duel's (spec §6: the enum is closed, so every module's reasons join it). */
+/** The shared base reasons, then the duel's (spec §6: the enum is closed, so every module's reasons join it). H-2 adds
+ *  the round module's two: a rematch while the round runs, and a round command on a decided round's end card. */
 export const COMMAND_REASONS = [
   'wrong-run', 'unowned', 'malformed', 'expected-sequence', 'stale-tick', 'over-capacity',
   'invalid-seat', 'stale-target', 'unavailable', 'unsupported', 'conflicting-duplicate',
-  'not-in-duel', 'not-at-weapons', 'missile-in-flight'
+  'not-in-duel', 'not-at-weapons', 'missile-in-flight', 'duel-running', 'duel-decided'
 ] as const;
 export type CommandReason = typeof COMMAND_REASONS[number];
 /** The one result type for every mode. `already-processed` comes only from the ledger; `admission` is wire-only
@@ -104,7 +107,9 @@ export interface AuthorityEvent {
     | { kind: 'cue'; cue: Cue }
     | { kind: 'callout'; player: PlayerId; text: string; station: number | null }
     | { kind: 'pause'; paused: boolean; owner: PlayerId | null; reason: string }
-    | { kind: 'ended'; record: EndRecord };
+    | { kind: 'ended'; record: EndRecord }
+    /** A duel round was decided (H-2 spec §7); only the duel codec admits it. */
+    | { kind: 'round'; record: DuelRoundRecord };
 }
 export interface PublishedState<S = Snapshot> {
   runId: RunId; tick: number; publicationSequence: number; snapshot: S; hash: string;
