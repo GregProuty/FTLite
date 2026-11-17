@@ -71,13 +71,13 @@ async function startApp(): Promise<void> {
   const audio = createAudio();
   void audio.load(assets.sounds ?? [], loadBytes);   // Audio-i spec section 2: in the background; the synth tones play until it lands
   let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
-  audio.setVolumes({ master: settings.volume, music: 1, effects: 1 });
+  audio.setVolumes(settings);
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const win = window.ftlite?.window;
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
+  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, fullscreenAvailable: !!win, controls: controlSections() } });
   bootCrt(renderer, store);
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
@@ -106,7 +106,7 @@ async function startApp(): Promise<void> {
   const actions = createUiActions({ store, api: bridge ?? undefined,
     single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
-    setVolume(volume) { settings = { ...settings, volume }; audio.setVolumes({ master: volume, music: 1, effects: 1 }); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined
   });
   // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.

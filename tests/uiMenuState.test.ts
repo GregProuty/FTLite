@@ -95,11 +95,11 @@ describe('the derived rules', () => {
 
 describe('createUiStore', () => {
   it('starts at home with no status and the given settings', () => {
-    const s = createUiStore({ onlineAvailable: true, settings: { volume: 0.5, fullscreenAvailable: true, controls: [] } }).getState();
+    const s = createUiStore({ onlineAvailable: true, settings: { master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [] } }).getState();
     expect(s.menu).toEqual(INITIAL_MENU); expect(s.online).toEqual({ available: true, status: null, receivedAt: 0 });
-    expect(s.settings).toEqual({ available: true, volume: 0.5, fullscreenAvailable: true, controls: [] }); expect(s.layout).toEqual({ stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 });
+    expect(s.settings).toEqual({ available: true, master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [] }); expect(s.layout).toEqual({ stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 });
   });
   it('marks settings unavailable without them', () => {
-    expect(createUiStore({ onlineAvailable: false }).getState().settings).toEqual({ available: false, volume: 1, fullscreenAvailable: false, controls: [] });
+    expect(createUiStore({ onlineAvailable: false }).getState().settings).toEqual({ available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [] });
   });
 });
