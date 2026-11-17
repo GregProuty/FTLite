@@ -1,0 +1,49 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Stated as a deviation in Decision 14 (plan L54), the Scope 'Not in H-2a' line (plan L24), the Goal (plan L5) and After H-2a-iii (plan L3502), which names the telemetry accumulator and a recordDuel dep for H-2b. This is the option (b) the finding offered. The schema still admits 'solo'."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "leavePromptKeys (plan L2662-2671) keeps the prompt open only when the round is decided, the phase is running and d.round equals prompt.round, and it checks this before reading Escape. A stale prompt in round 1 therefore closes, and Escape sends setPaused(true) (L2667). pump uses it (L2781-2785), and keys.leave returns before a rematch could be sent on the same Enter. bannerText reads leaveConfirm.open (L2804), and attach resets it to CLOSED_PROMPT (L2814). The new test (plan L1802-1827) covers opening the prompt, Enter to leave, a partner's rematch, then Escape (pauses) and Enter (does not leave)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "rttMs is null (L2721) and the deviation is stated in Decision 5 (L45). attach clears heldStamps and commandStamps (L2815). Disconnects and pauses are per-round deltas through roundAttaches and roundPauses (L2723-2724): the first round gives 0 disconnects, and a re-attach gives 1. latencyFigure and arrivalJitter drop samples above DUEL_RECORD_MAX_MS (L1048-1061). The schema uses the same constant (L1020). The tests assert the dropped samples and that a non-null rttMs is accepted (L201-204)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "The replace block at plan L1567-1575 matches src/renderer/src/render/sessionMenu.ts:L17 exactly once. The test replace at plan L764-774 matches tests/sessionMenu.test.ts:L69 exactly once. No script or test asserts the old text. The ERRORS map is shared, so the sector's test-only Join shows the new text too. That is acceptable: a sector mismatch after both layouts are tried also means a different build."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "bannerText (L2803) shows 'LEAVING\u2026' when status.phase is saving, idle or ended (LEAVING_PHASES, L2655), and CONNECTION LOST otherwise. setStatus records the status before it freezes and releases the client (L2824-2825), so the banner sees the phase that caused the freeze. Decision 7 (L46) states this."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "The test (plan L2003-2014) now snapshots the active Helm camera's centre, targetZoom and follow after the round is decided. It asserts them right after the press frame, before any tick. This mirrors the existing Tab test at tests/duelRuntime.test.ts:L369-377. A surviving drag would change the centre and follow, and a surviving wheel would change targetZoom, so the test now detects a regression."
+    }
+  ],
+  "verified": [
+    "The leavePromptKeys signature takes {pause, confirm}, and pump passes k.presses, which has more fields: this is structurally compatible (plan L2662, L2781).",
+    "tests/duelOnlineView.test.ts imports CLOSED_PROMPT and leavePromptKeys from onlineDuel (plan L1704). Every other helper the new case uses (createDuel, disposeDuel, stepDuelTick, Outcome, confirmed, CUTTER) is already imported or defined in the file (plan L1703-1731).",
+    "Other tests already import pixi.js values (tests/hudSlots.test.ts:L2), and onlineDuel only touches `window` inside createOnlineDuelSession (plan L2675), so importing its pure export should be safe.",
+    "The duelRuntime rig's tick() runs rt.frame, so ticks(3) settles the end card before the snapshot (tests/duelRuntime.test.ts:L50-51).",
+    "The test-count updates are consistent: duelOnlineView goes from 5 to 6, so Step 8 expects 82 tests in 8 files (plan L2996), and the full-suite count in Task 4 is 3463 (plan L3483).",
+    "The Interfaces lists name DUEL_RECORD_MAX_MS (L88) and LeavePrompt, CLOSED_PROMPT and leavePromptKeys (L1691), and these match the code blocks."
+  ],
+  "not_verified": [
+    "I did not run the new duelOnlineView case. Its rematch step assumes that plan i's stepDuelTick applies `rematch` from player 0 on a decided duel once present[0] is set; I did not trace this through plan i's step code.",
+    "I did not trace the camera follow code to confirm that ship 0's interpolated position stays fixed across end-card frames, which the R1-F6 test's before/after equality relies on. It is very likely fixed, because no input was given, and it is the same assumption the existing Tab test makes.",
+    "I did not run vitest to confirm that importing src/renderer/src/app/duel/onlineDuel.ts (which pulls in scene, input and network bridge modules) succeeds in the node test environment."
+  ]
+}
