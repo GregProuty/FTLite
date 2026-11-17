@@ -140,10 +140,15 @@ export function createSessionMenu(deps: MenuDeps) {
       if (status?.actions.includes('retry')) button(panel, 'retry', 'Retry', () => { void invoke(() => deps.api!.retry()); }, can('retry'));
       if (status?.actions.includes('reconnect')) button(panel, 'reconnect', 'Reconnect saved seat', () => { void invoke(() => deps.api!.reconnect()); }, can('reconnect'));
       if (status?.actions.includes('forget-seat')) button(panel, 'forget-seat', 'Forget saved seat', () => { void invoke(() => deps.api!.forgetSeat(), false, true); }, !!deps.api);
-      if (status?.actions.includes('leave')) button(panel, 'leave', status.phase === 'ended' ? 'Return to menu' : 'Leave', () => { leaving = true; void invoke(() => deps.api!.leave(), false, true).then(() => { if (status?.phase === 'idle' && page === 'session') { leaving = false; deps.home?.(); hadView = false; page = 'home'; render(); } }); }, !!deps.api);
+      if (status?.actions.includes('leave')) button(panel, 'leave', status.phase === 'ended' ? 'Return to menu' : 'Leave', leave, !!deps.api);
       if (!pending && status?.actions.includes('join')) button(panel, 'try-code', 'Try another code', () => { hadView = false; page = 'join'; render(); });
       if (!pending && (!status || status.phase === 'idle' || status.phase === 'error')) button(panel, 'home', 'Return to menu', () => { deps.home?.(); hadView = false; page = 'home'; render(); });
     }
+  }
+  /** Leave (the Leave button, and the online duel's confirmed Escape on its end card, H-2 spec §7). */
+  function leave() {
+    if (!deps.api || !status?.actions.includes('leave')) return;
+    leaving = true; void invoke(() => deps.api!.leave(), false, true).then(() => { if (status?.phase === 'idle' && page === 'session') { leaving = false; deps.home?.(); hadView = false; page = 'home'; render(); } });
   }
   function readFullscreen() {
     void deps.settings?.fullscreen?.get().then(on => { fullscreen = on; if (page === 'settings') render(); }, () => {});
@@ -189,6 +194,7 @@ export function createSessionMenu(deps: MenuDeps) {
     setStatus(next: OnlineStatus) { status = next; receiptAt = performance.now(); if (['saved', 'rehosting', 'reconnecting'].includes(next.phase)) recovering = true; if (next.phase === 'idle' || next.phase === 'running') recovering = false; if (next.attachmentEpoch > 0) hadView = true; if (page !== 'single' && next.phase !== 'idle') page = 'session'; if (next.phase === 'idle' && page === 'session' && !pending && !hadView) page = 'home'; if (next.phase === 'idle' && leaving && page === 'session' && !pending) { leaving = false; deps.home?.(); hadView = false; page = 'home'; } if (page !== 'settings') render(); },   // a status push changes nothing on Settings: keep its controls (an open select) intact
     /** The window resized (F11 or the Settings toggle changes fullscreen): refresh the Fullscreen label. */
     windowResized() { if (page === 'settings') readFullscreen(); },
+    leave,
     /** Single player has ended (M in the duel): show the main menu again. */
     leaveSingle() { if (page === 'single') { page = 'home'; render(); } },
     home() { if (!status || status.phase === 'idle' || status.phase === 'error') { deps.home?.(); hadView = false; page = 'home'; localError = ''; render(); } },

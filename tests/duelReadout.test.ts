@@ -89,17 +89,17 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
 
 describe('the end screen (H-1 spec §4 End)', () => {
   it('names the outcome, the duel length and the next seed', () => {
-    expect(endModel(Outcome.Running, 100, 5)).toBeNull();
-    expect(endModel(Outcome.CrewWins, 83 * 60 + 30, 2026)).toMatchObject({ title: 'VICTORY', length: 'DUEL LENGTH 1:23', prompt: 'ENTER: NEW DUEL (SEED 2027)' });
-    expect(endModel(Outcome.EnemyWins, 60, 7)!.title).toBe('DEFEAT');
-    expect(endModel(Outcome.CrewWins, 60, 2026, true)!.prompt).toBe('ENTER: NEW DUEL (SEED 2027)   M: MAIN MENU');   // inside the app (main menu spec)
-    expect(endModel(Outcome.Draw, 60, 7)!.title).toBe('BOTH SHIPS LOST');
+    expect(endModel(Outcome.Running, 100, 'ENTER: REMATCH')).toBeNull();
+    expect(endModel(Outcome.CrewWins, 83 * 60 + 30, 'ENTER: REMATCH')).toMatchObject({ title: 'VICTORY', length: 'DUEL LENGTH 1:23', prompt: 'ENTER: REMATCH' });
+    expect(endModel(Outcome.EnemyWins, 60, 'ENTER: REMATCH')!.title).toBe('DEFEAT');
+    expect(endModel(Outcome.CrewWins, 60, 'ENTER: REMATCH   ESC: LEAVE')!.prompt).toBe('ENTER: REMATCH   ESC: LEAVE');   // online (H-2 spec §7)
+    expect(endModel(Outcome.Draw, 60, 'ENTER: REMATCH')!.title).toBe('BOTH SHIPS LOST');
   });
   it('shows only while the duel is decided, and allocates nothing after creation', () => {
     const end = createEndScreen({ fontFamily: 'm5x7' }), n0 = count(end.container);
     end.draw(null); expect(end.container.visible).toBe(false);
-    end.draw(endModel(Outcome.CrewWins, 600, 5)); expect(end.container.visible).toBe(true);
-    end.draw(endModel(Outcome.EnemyWins, 1200, 6));
+    end.draw(endModel(Outcome.CrewWins, 600, 'ENTER: REMATCH')); expect(end.container.visible).toBe(true);
+    end.draw(endModel(Outcome.EnemyWins, 1200, 'ENTER: REMATCH'));
     expect(count(end.container)).toBe(n0);
   });
 });

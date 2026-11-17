@@ -1,6 +1,8 @@
 // The local runtimes for the Helm demo views (H-1 spec §4, §9): the renderer steps the sim itself on a 60 Hz wall-clock
 // driver until H-0c-ii puts the duel behind the authority. The flight runtime steps the single-ship flight; the duel
-// runtime steps stepDuelTick with the solo player's commands (spec §5) and owns both console cameras.
+// runtime steps stepDuelTick with the solo player's commands (spec §5) and owns both console cameras. H-2 spec §3, §7:
+// held axes are quantised to −1, 0 or 1 as online, and a decided round's end card keeps ticking until Enter sends the
+// same `rematch` command the online duel sends.
 import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
@@ -78,9 +80,10 @@ function createPacer(now: () => number, scheduler: Scheduler, onTick: (tick: num
   };
 }
 
-/** The per-frame camera input shared by both runtimes: zoom keys, drag before wheel (a pan clears the zoom anchor, so a
- *  drag and a wheel in one frame still zoom about the cursor), and the wheel's notch accumulator with its idle reset. */
-function createCameraInput(now: () => number, vp: Viewport) {
+/** The per-frame camera input shared by the runtimes and the online duel: zoom keys, drag before wheel (a pan clears the
+ *  zoom anchor, so a drag and a wheel in one frame still zoom about the cursor), and the wheel's notch accumulator with
+ *  its idle reset. */
+export function createCameraInput(now: () => number, vp: Viewport) {
   let wheelAcc = 0, lastWheelAt = -Infinity;
   return {
     apply(camera: Camera, k: KeySample, p: PointerSample): void {
@@ -147,10 +150,11 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
 }
 
 export interface DuelRuntime {
-  /** The duel now running; a restart replaces it. */
+  /** The duel now running; a rematch starts its next round in place. */
   readonly duel: DuelState;
+  /** The current round's seed. */
   readonly seed: number;
-  /** How many restarts so far: a view that sees it change rebuilds its caches (spec §4 restart). */
+  /** The round (H-2 spec §7): a view that sees it change rebuilds its caches. */
   epoch(): number;
   /** The player the keyboard drives (spec §5): 0 at the start of every duel. */
   active(): 0 | 1;
@@ -178,7 +182,7 @@ export interface DuelRuntime {
   drainEvents(): ViewEvent[];
   /** The results of the last tick's commands (for tests and the console log). */
   lastResults(): readonly DuelResult[];
-  /** True once the duel's outcome is decided: stepping has stopped and Enter restarts (spec §4). */
+  /** True once the round is decided: the end card, where Enter sends a rematch (H-2 spec §7). */
   ended(): boolean;
   /** True once M was pressed while user-paused or on the end screen: the app returns to its main menu (main menu spec). */
   menuRequested(): boolean;
@@ -193,8 +197,8 @@ const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.
 const hitCounts = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.planetHits, s.asteroidHits, s.shipHits]);
 
 export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
-  let seed = deps.seed, d = createDuel(deps.layout, seed), epoch = 0;
-  let active: 0 | 1 = 0, firstTick = true, seq = [0, 0], pending: { player: number; command: DuelCommand }[] = [];
+  const d = createDuel(deps.layout, deps.seed);
+  let round = 0, active: 0 | 1 = 0, firstTick = true, seq = [0, 0], pending: { player: number; command: DuelCommand }[] = [];
   // The sim checks sits and stands against presence before it applies that tick's presence commands, so a seat change
   // queued after a Tab waits here until the Tab's presence tick has run, then goes out on the following tick.
   let switching = false, deferred: { player: number; command: DuelCommand }[] = [];
@@ -214,7 +218,6 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const attendant = (station: number): number => { const pid = d.interior.stations.occupant[station]!; return pid >= 0 && d.present[pid as 0 | 1] ? pid : -1; };
 
   const onTick = (_tick: number, tickTimeMs: number): void => {
-    if (ended()) return;
     capture();
     const commands: DuelEnvelope[] = [];
     const envelope = (player: number, command: DuelCommand): DuelEnvelope => ({ runId: LOCAL_DUEL_RUN, id: { player, sequence: seq[player]!++ }, requestedTick: d.interior.tick, command });
@@ -255,23 +258,21 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     counts = now;
     if (sentSwitch) { switching = false; pending = deferred; deferred = []; }   // presence applied: the held seat changes go next tick
     lastTickTime = tickTimeMs;
-    if (ended()) pacer.sync();   // the duel is decided: stop stepping (spec §4 End)
+    if (d.round !== round) newRound();   // the rematch applied: the next round began in place
   };
-  const pacer = createPacer(deps.now, deps.scheduler, onTick, ended), cameraInput = createCameraInput(deps.now, deps.viewport);
+  const pacer = createPacer(deps.now, deps.scheduler, onTick), cameraInput = createCameraInput(deps.now, deps.viewport);
   const queue = (command: DuelCommand): void => {
     const seat = command.kind === 'sit' || command.kind === 'stand';
     (seat && switching ? deferred : pending).push({ player: active, command });
   };
 
-  function restart(): void {
-    disposeDuel(d);
-    seed += 1; d = createDuel(deps.layout, seed); epoch++;
-    active = 0; firstTick = true; seq = [0, 0]; pending = []; switching = false; deferred = [];
+  /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
+  function newRound(): void {
+    round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = [NEUTRAL, NEUTRAL]; sentAxes = NO_AXES; sentSteer = 0;
-    chargeSent = false; events = []; results = []; counts = hitCounts(d); lastTickTime = null; frameAlpha = 1;
+    chargeSent = false; events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset();
     deps.clearKeys?.();
-    pacer.restart();   // a fresh driver: the new duel's ticks start from now
   }
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
@@ -321,12 +322,12 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
 
   return {
     get duel() { return d; },
-    get seed() { return seed; },
+    get seed() { return d.tactical.seed; },
     get prev() { return prev; },
     get missilePrev() { return missilePrev; },
     get crewPrev() { return crewPrev; },
     get cameras() { return cameras; },
-    epoch: () => epoch,
+    epoch: () => d.round,
     active: () => active,
     view: () => { const s = seatOf(d, active); return s === 'standing' ? 'interior' : s; },
     otherStatus() {
@@ -344,11 +345,11 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       let pointer = sampled;
       pacer.toggleUser(k.presses.pause);
       if (k.presses.menu > 0 && (ended() || pacer.reasons.has('user'))) menuAsked = true;
-      // A Tab or a restart changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
+      // A Tab or a rematch changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
       const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0 }; };
-      if (ended()) { if (k.presses.confirm > 0) { restart(); k = IDLE_KEYS(); moved(); } }
+      if (ended()) { if (k.presses.confirm > 0 && !pending.some((c) => c.command.kind === 'rematch')) { pending.push({ player: active, command: { kind: 'rematch' } }); k = IDLE_KEYS(); moved(); } }
       else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k); }   // while paused, gameplay presses are dropped; the camera still moves
-      activeHeld = { moveX: k.moveX, moveY: k.moveY, interactHeld: k.interactHeld };
+      activeHeld = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld };   // quantised as online (H-2 spec §3)
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
