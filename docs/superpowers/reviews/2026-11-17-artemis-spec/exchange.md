@@ -130,3 +130,87 @@ Confirmed. §3 now has no tabIndex, and calls preventDefault on pointerdown, mou
 
 ---
 
+# Round 2 (delta, reviewing 7e3e683, effort medium, 205 s, 1034900 in / 954262 cached / 18037 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 The revision dropped the wire step: the duel codec would reject every online throttle command
+Round 1's §5 had a 'Wire' bullet saying the command codec admits the new kind. The rewrite removed it, and no section of the current spec names the codec. `duelWire.commands` is a closed list of strict zod objects, so a `{ kind: 'throttle', level }` sent by the online duel fails validation before the authority sees it. · Spec L20-21 (Artemis-ii scope lists the module, command, physics, scripted pair and prediction, but not the wire). Spec L171 (joins `DuelCommand` and `DUEL_KINDS` only). The old bullet 'Wire. The command codec admits the new kind…' is removed in the diff. src/renderer/src/net/codec.ts:L110-121 (duelWire.commands: sit, stand, presence, laserLock, laserCharge, missileLaunch, rematch, setPaused, each `.strict()`). src/renderer/src/net/contracts.ts:L74-76 (the wire DuelCommand union). · A plan built from §5 would leave the codec alone. Online throttle presses and notch clicks would then be refused on the wire, which breaks the online duel's Helm. §8's online test uses the two-presses-in-one-round-trip path and could pass against a fake client without catching it. · Restore it in §5.2. 'throttle' joins the wire DuelCommand in net/contracts.ts and duelWire.commands in net/codec.ts as `z.object({ kind: z.literal('throttle'), level: z.number().int().min(-1).max(4) }).strict()`, or as any finite number so that the sim answers `malformed`. State which one. Keep the note that the signalling service needs no redeploy. Add a codec round-trip test to §8. It lands in step 1 of §5.6.
+
+### [P2] R2-F2 clear() on every console change now empties the physical keyboard too, and the new Space-transition rule makes an auto-repeat count a fireDown
+§6.2 says clear() 'empties both sets' and runs on stand, sit, any pause, the end card and a new round. Today stand and sit leave held keys alone. Clearing the physical set also means OS auto-repeat (keydown with repeat=true still adds the code to `held`) re-adds Space. Under the new rule ('fireDown is counted when the merged Space state goes from released to held, whichever source caused it'), that re-add is a fresh press edge. That contradicts 'auto-repeat does not count'. · Spec L269-272 (clear empties both sets; runs on stand, sit, pause, end card, new round). Spec L263-265 (fireDown counted on any merged transition). src/renderer/src/app/duel/input.ts:L48-53 (`held.add` runs on repeat keydowns; presses only when `!e.repeat`), L22 comment ('auto-repeat does not count'). src/renderer/src/app/duel/runtime.ts:L325 (stand does not clear keys today), L321-323 (a standing character walks from held keys). · Holding D at the Helm and pressing X stops the walk until auto-repeat starts. Holding Space through an Esc pause and its resume can start a new charge from a repeat event. Both change today's keyboard play, which a fixed decision protects. They also make the edge rule depend on the OS repeat rate. · Split the clear. On a console change or null, clear only the `ui` set and the requests (`clearUi()`). The physical set stays cleared only where it is today (Tab, restart, blur). State that a repeat keydown never counts a fireDown, even when it re-adds Space to the merged state. Add both cases to §8's keyboard-merge tests.
+
+### [P3] R2-F3 `HeldFlags` is named as a type but does not exist and is not defined
+§6.1 gives `uiHeld(): HeldFlags` as a new DuelViewSource member. No `HeldFlags` type exists in the codebase, and the spec neither defines it nor marks it new. ConsoleView uses two different inline `held` shapes. · Spec L243 (`uiHeld(): HeldFlags`), L234-235 (inline `held` shapes). grep 'HeldFlags' in src/renderer/src: no matches. src/renderer/src/app/duel/scene.ts:L27 (DuelViewSource). · A fresh subagent has to invent the shape, which is minor. · Define it inline in §6.1, for example `interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean }` (new, in app/duel/input.ts). Say that the runtime fills it from its last merged KeySample.
+
+## Prior findings
+- R1-F1: resolved — §3 releases a hold exactly once on unmount (L101-103). §6.2 clears the keyboard on any station change or null console (L269-272). §7 restates this. The side effect of also clearing the physical set is raised as a new P2.
+- R1-F2: resolved — §6.2 makes the keyboard the merge point, with two sets, edges on merged Space transitions and axes from merged codes (L249-265). This matches input.ts sample() (L64-67). The auto-repeat interaction is raised separately.
+- R1-F3: resolved — §6.3 defines tabs by occupancy and uses the same rules in both modes (L281-287). The E click requires consoleInReach and repairInReach < 0, as runtime.ts L322 and onlineDuel.ts L165 do. The single-player Tab case is explicit.
+- R1-F4: resolved — The MIGRATIONS[40] shape matches the existing entry at scripts/golden/duelOracle.ts:L106 ({change, rename, derived, added}). The oracle's `<module id>.<field>` naming (L109-110) makes `helm.throttle` the right pattern. The two-step bless is at spec L214-220.
+- R1-F5: still open — runtime/online axes() and telemetry are fixed (L189-192). §5.5 (L209-210) is not: it says hazardAway predicts with `throttleThrust(wanted)`, but hazardAway is what decides the wanted thrust (scripted.ts:L92-93 call it first, with last tick's `pair.axes`). So 'wanted' is circular. Two readings remain, the previous wanted level or `d.throttle`. They differ after a re-sit, because `pair.axes` is reset to 0 while standing (scripted.ts:L260) and d.throttle is kept. That gives different goldens. Fix: predict with `{ turn: pair.axes.turn, thrust: throttleThrust(d.throttle) }`, the thrust the ship actually flies at this tick before any new command.
+- R1-F6: resolved — Spec L208-209 compares the wanted level against d.throttle on each seated tick, so a re-sit corrects a kept throttle.
+- R1-F7: resolved — Spec L199-202 defines throttleSent {level, sequence}, its clearing on result, attach, round, stand and sit, and the fallback to d.throttle. Results carry id.sequence for our seat (onlineDuel.ts:L153), so the rule is buildable. §8 tests two presses in one round trip.
+- R1-F8: still open — The module, DUEL_KINDS, check order and the noop status in the running helper are now specified (L164-179), and they match step.ts:L27, L44 and L137-139. The snapshot part is not. Spec L166 says only 'carried by the snapshot', and the round-1 'validated as an integer in range' was removed. validateDuelSnapshot uses fixed offsets (snapshot.ts:L128 `interiorAt = roundAt + 4`, L129 length check, L145 round slice). A helm module after round shifts the interior by one, and nothing range-checks a throttle of 7 or 0.5. Fix: in §5.1, say snapshot.ts gains `helmAt = roundAt + 4; interiorAt = helmAt + 1` and rejects any throttle that is not an integer in −1..4, and add that case to §8's snapshot test.
+- R1-F9: resolved — Labels use FONT_NATIVE (16, theme.ts:L22), values use FONT_SIZE, the station is 300 wide, and only ASCII is drawn (spec L56-57). The rows fit: the LOCK row at 6 px per glyph is about 170 px. The status table check holds: 14 × LINE 24 = 336 from y 42 ends at 378, above the Weapons station top at 492.
+- R1-F10: resolved — The reserve {left 228, right 156} replaces reserveRight. That matches the uses at tacticalModel.ts:L80, L187-188, L202-203, weaponsModel.ts:L88 and scene.ts:L95. FLIGHT_RESERVE_RIGHT exists (flightMode.ts:L26). The notice centre (228+1124)/2 = 676 is correct. The interior readout starts at x 1068 (ReadoutPanel.tsx:L19), so moving INTERIOR_BAND's top to 42 (interiorModel.ts:L13) is the right fix.
+- R1-F11: resolved — The actions.console slot with setConsole is buildable. The main.ts single/online closures can reference `actions` at call time (main.ts:L84-93, L105). Paused is defined (runtime.ts:L395 paused(); online phase). The undefined HeldFlags type is a new P3.
+- R1-F12: resolved — No tabIndex, and preventDefault on pointerdown, mousedown, contextmenu and auxclick for any button (spec L95-99). This covers the gap left by the canvas-only listeners in input.ts:L116, L124.
+
+## Verified
+- step.ts:L44 `attendant(d, station)` matches spec L175 `attendant(d, d.nav)`; DUEL_KINDS at step.ts:L27 gives duel-decided via stepDecided L119
+- Running result helper step.ts:L137-139 emits only applied/rejected, so the spec's 'gains a noop status' (L178-179) is a needed and correctly named change; stepDecided already has the status parameter (L101-102)
+- 'invalid-seat' and 'stale-tick' are existing duel reasons (modules.ts:L65), so helmModule's reasons list (spec L167) uses known values
+- DUEL_MODULES order (modules.ts:L77-84) lets a helm module sit between round and interior as spec L164 says
+- MIGRATIONS entry shape and field naming (duelOracle.ts:L77-82, L106, L109-110) match spec L216-217
+- Keyboard: KeySample (input.ts:L18-24) and sample() (L64-69) can be rebuilt from a merged set as §6.2 says; runtime fire handling (runtime.ts:L334-339) works unchanged on merged edges
+- Layout arithmetic: tabs 3×96+2×4 from x 12 end at 308; STATION tops 492/508; status 14×24 rows end at 378
+- Scripted wanted thrust values are −1/0/1 (scripted.ts:L107-111), so the 1→4, 0→0, −1→−1 mapping in spec L208 is complete
+- Telemetry manoeuvre (telemetry.ts:L128) can be restated as turn held or throttle ≠ 0 as spec L192 says
+
+## Not verified
+- Whether the online authority in src/main/network/onlineDuel.ts also validates command kinds separately from net/codec.ts. I did not read it, and it may need the throttle kind too.
+- Whether the online publication delivers a command's result in the same frame as the replica state that reflects it, which the 'applied: the replica has the level' clearing rule in §5.4 assumes
+- Whether createDuel (used by startRound, step.ts:L86) is where the throttle's 0 initial value must live. The spec says startRound sets it, but startRound builds a fresh duel through createDuel.
+- Banners.tsx:L11 PLAY_CX still centres the other duel banners on (1280−220)/2. I did not check whether those banners overlap the new left panels.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `7e3e683`. 3 new accepted, 2 reopened fixed again, 0 rejected. R1-F1–F4, F6, F7 and F9–F12 confirmed resolved.
+
+## R1-F5 [P1]: Predicted path, flame, telemetry and scripted prediction read held W/S
+
+Confirmed: 'wanted' was circular. scripted.ts L92-93 calls hazardAway before it decides. §5.5 now predicts with `{ turn: pair.axes.turn, thrust: throttleThrust(d.throttle) }`.
+
+## R1-F8 [P2]: Admission and module placement
+
+Confirmed. snapshot.ts L128-145 uses fixed offsets. §5.1 now names `helmAt = roundAt + 4; interiorAt = helmAt + 1` and the integer range check. §8 adds the rejection cases.
+
+## R2-F1 [P1]: The wire step was dropped
+
+Confirmed. codec.ts L110-121 is a closed strict list. §5.2 restores a Wire paragraph: contracts plus codec with `z.number().finite()`, so a bad level is answered `malformed` by the sim. It lands in step 1. §8 adds a codec round trip.
+
+## R2-F2 [P2]: clear() empties the physical keyboard; auto-repeat counts as fireDown
+
+Confirmed. input.ts L48-53 adds repeats to held. §6.2 splits `clear()` (Tab, restart and blur, as today) from `clearUi()` (console change). A repeat keydown never counts a fireDown. §7 and §8 are updated.
+
+## R2-F3 [P3]: HeldFlags undefined
+
+Confirmed. §6.1 defines it inline as new in app/duel/input.ts.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-artemis-consoles-design.md
+
+<!-- end -->
+
+---
+

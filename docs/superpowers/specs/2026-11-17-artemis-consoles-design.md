@@ -163,7 +163,9 @@ nobody can click another seat's controls.
 
 A new duel module `helmModule` (id `helm`), placed in `DUEL_MODULES` after `round` and before `interior`. It owns one
 canonical field, `throttle`: an integer level in `−1..4` (−1 reverse, 0 stop, 1–4 are 25/50/75/100 %), stored as
-`DuelState.throttle`. It is hashed through the module flatten, carried by the snapshot, and set to 0 by `startRound`. The
+`DuelState.throttle`. It is hashed through the module flatten and set to 0 by `startRound`. The snapshot carries it:
+`validateDuelSnapshot` (net/snapshot.ts) gains `helmAt = roundAt + 4; interiorAt = helmAt + 1`, and rejects a throttle
+that is not an integer in `−1..4`. The
 module's command kinds are `['throttle']` and its reasons `['invalid-seat', 'malformed', 'stale-tick']`.
 
 ### 5.2 Command
@@ -177,6 +179,11 @@ the checks in this order:
 4. `level === d.throttle` → `noop`; otherwise applied, and `d.throttle = level`.
 Within one tick, envelope order holds and the last applied one wins. The running result helper gains a `noop` status
 for this case.
+
+**Wire.** `throttle` joins the wire `DuelCommand` in net/contracts.ts and `duelWire.commands` in net/codec.ts as
+`z.object({ kind: z.literal('throttle'), level: z.number().finite() }).strict()`. Any finite level passes the codec, so a
+bad level reaches the sim and is answered `malformed`. The online duel's authority runs in the host app, so the
+signalling service needs no redeploy. The wire change lands in step 1 of §5.6.
 
 ### 5.3 Physics and step
 
@@ -207,7 +214,8 @@ The flight dev view keeps held W/S thrust: it does not run the duel sim.
 
 Each tick the scripted Helm is seated, it computes its wanted level from its wanted thrust (1 → 4, 0 → 0, −1 → −1) and
 sends `throttle {level}` when that differs from `d.throttle`. Its hazard prediction (`hazardAway`) predicts with
-`{ turn, thrust: throttleThrust(wanted) }`.
+`{ turn: pair.axes.turn, thrust: throttleThrust(d.throttle) }`: the thrust the ship actually flies at this tick, before
+any new command.
 
 ### 5.6 SIM_VERSION and the goldens (two steps)
 
@@ -240,7 +248,9 @@ interface ConsoleView {
 The status table keeps using `readout.rows`. The sink's `replaceEqualDeep` sharing covers the new branch.
 
 `DuelViewSource` (scene.ts) gains the members `consoleModel` needs, implemented by both the runtime and the online
-source: `seat(): Seat` (the local driven character's seat), `uiHeld(): HeldFlags` (the merged held state of §6.2), and,
+source: `seat(): Seat` (the local driven character's seat), `uiHeld(): HeldFlags` (new in app/duel/input.ts:
+`interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean }`, filled from the
+last merged `KeySample`'s codes; `ConsoleView`'s `held` fields are picks of it), and,
 from Artemis-ii, `throttle(): number` (the level shown: the local base of §5.4). Today's `axes()`, `paused()` and the
 cameras give the rest.
 
@@ -262,13 +272,15 @@ interface ConsoleInput {
   merged state, exactly as today from the one set.
 - `fireDown` is counted when the merged Space state goes from released to held, and `fireUp` when it goes from held to
   released, whichever source caused it. So Space held while the FIRE button is clicked and released gives no edge until
-  both are released.
+  both are released. A keydown with `repeat` true never counts a `fireDown`, even when it re-adds Space to the merged
+  state (after a clear).
 - `lock(room)` and `throttle(level)` are queued as requests in the sample (`KeySample.lockTo: number | null`,
   `throttleTo: number | null`; the last one wins) and turned into commands in `play()` beside E/Q and W/S, with the same
   seat checks.
-- `clear()` empties both sets and the requests without counting any edges. It runs where it runs today (Tab, restart,
-  blur), and also whenever the drawn console's `station` changes or the console becomes null (stand, sit, seat change,
-  pause of any reason, end card, a new round). The runtime's existing rule, release a sent charge when Fire is no longer
+- `clear()` empties both sets and the requests without counting any edges. It runs only where it runs today (Tab,
+  restart, blur). A new `clearUi()` empties only the `ui` set and the requests, also without edges. It runs whenever the
+  drawn console's `station` changes or the console becomes null (stand, sit, seat change, pause of any reason, end card,
+  a new round). The physical keys are untouched there, as today. The runtime's existing rule, release a sent charge when Fire is no longer
   held (runtime.ts L339 and its online twin), then lets go of any charge.
 
 Wiring: `createUiActions` gains `console: ConsoleInput`, which forwards to a `ConsoleInput | null` slot held by the
@@ -290,7 +302,7 @@ The same rules in both modes, by occupancy, for the local driven character `me`:
 
 The duel region's `RegionBoundary` covers the new components. A button that throws takes the duel region down, and the
 boundary's reset key (the duel epoch) brings it back, as today. The unmount releases every held button (§3), and the
-console's change to null clears the keyboard's `ui` set (§6.2), so a crash never leaves a hold behind.
+console's change to null runs `clearUi()` (§6.2), so a crash never leaves a hold behind.
 
 ## 8. Tests
 
@@ -298,8 +310,9 @@ console's change to null clears the keyboard's `ui` set (§6.2), so a crash neve
   console with a repair in reach (locked); launch disabled exactly when `canLaunch` is false; steer enabled only with a
   missile in flight; heading and speed values; null while paused, on the end card and online when not running.
 - Keyboard merge: a click hold and a key hold of the same code give one `fireDown` and one `fireUp` in every
-  interleaving; moveX from `KeyA` on one source and `KeyD` on the other is 0; `clear()` drops UI holds with no stray
-  edge; `lockTo`/`throttleTo` last-wins.
+  interleaving; moveX from `KeyA` on one source and `KeyD` on the other is 0; `clear()` and `clearUi()` drop holds
+  with no stray edge, and `clearUi()` leaves a held physical key held; a repeat Space keydown after a `clear()` counts
+  no `fireDown`; `lockTo`/`throttleTo` last-wins.
 - `<Button>`: not focusable; Space with the pointer over a button does not click it; right and middle buttons do
   nothing and open no menu; a held button releases exactly once on `pointerup`, `pointercancel`, lost capture and
   unmount.
@@ -310,7 +323,8 @@ console's change to null clears the keyboard's `ui` set (§6.2), so a crash neve
 - Artemis-ii, sim: admission order and reasons (stale-tick, invalid-seat, malformed, noop, applied); quarter-thrust
   physics (level 4 matches today's held W tick for tick; level 2 gives half the forward acceleration; −1 matches held
   S); the hunter's flight unchanged; the level kept across stand and sit and reset by a new round; a snapshot round
-  trip mid-throttle; the oracle at step 1 and the goldens at step 2.
+  trip mid-throttle, and a snapshot with throttle 7 or 0.5 rejected; the codec round-trips a throttle command; the
+  oracle at step 1 and the goldens at step 2.
 - Artemis-ii, online: two W presses inside one round trip move two notches; a rejected throttle drops back to the
   replica level.
 - Electron smoke: in Single player, click `console-tab-weapons`, hold `console-fire` until the charge shows FULL, then
