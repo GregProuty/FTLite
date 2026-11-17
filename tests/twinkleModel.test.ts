@@ -89,5 +89,7 @@ describe('the layer choice (Art-v spec section 3)', () => {
     expect(f!.width).toBe(2304); expect(f!.height).toBe(1584);
     expect(f!.stars.length).toBeGreaterThan(50);
     expect(parseStarFile({ nope: 1 })).toBeNull();
+    expect(parseStarFile({ width: 0, height: 10, tint: '#ffffff', stars: [] })).toBeNull();
+    expect(parseStarFile({ width: 10, height: 10, tint: '#ffffff', stars: [[1, Number.NaN, 1, 1]] })).toBeNull();
   });
 });

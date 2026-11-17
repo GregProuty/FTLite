@@ -64,7 +64,8 @@ export function parseStarFile(raw: unknown): StarFile | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.width !== 'number' || typeof r.height !== 'number' || typeof r.tint !== 'string' || !Array.isArray(r.stars)) return null;
+  if (!(Number.isFinite(r.width) && Number.isFinite(r.height) && r.width > 0 && r.height > 0)) return null;
   if (!/^#[0-9a-f]{6}$/i.test(r.tint)) return null;
-  const ok = r.stars.every((s) => Array.isArray(s) && s.length === 4 && s.every((v) => typeof v === 'number'));
+  const ok = r.stars.every((s) => Array.isArray(s) && s.length === 4 && s.every((v) => typeof v === 'number' && Number.isFinite(v)));
   return ok ? { width: r.width, height: r.height, tint: r.tint, stars: r.stars as StarRow[] } : null;
 }

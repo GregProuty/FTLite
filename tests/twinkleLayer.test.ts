@@ -22,17 +22,17 @@ describe('the backdrop layer (Art-v spec sections 1 and 2)', () => {
     expect(tex.source.scaleMode).toBe('linear'); expect(tex.source.autoGenerateMipmaps).toBe(true);
     expect((layer.container.children[1] as Container).children).toHaveLength(0);   // no star list: nothing twinkles
   });
-  it('one additive dot per star over its speck through the cover transform, plus a glint on the brightest tenth', () => {
+  it('one additive dot per on-stage star over its speck through the cover transform, plus a glint on the brightest tenth; stars in the cropped bands get none', () => {
     const layer = createBackdropLayer({ texture: painting(), stars: STARS });
     const twinkle = layer.container.children[1] as Container;
     expect(twinkle.blendMode).toBe('add');
-    expect(twinkle.children).toHaveLength(STARS.stars.length + 1);   // 10 stars, ceil(10 x 0.1) = 1 glint
-    const s = 1280 / 2304, centre = twinkle.children[1] as Sprite;   // the second star (the brightest) is its dot, then its glint
+    expect(twinkle.children).toHaveLength(STARS.stars.length - 1 + 1);   // 10 stars, the one at source y 80 is in the cropped top band; ceil(10 x 0.1) = 1 glint
+    const s = 1280 / 2304, centre = twinkle.children[0] as Sprite;   // the brightest star is the first on stage: its dot, then its glint
     expect(centre.x).toBeCloseTo((1152 + 0.5) * s, 6); expect(centre.y).toBeCloseTo((792 + 0.5) * s - 80, 6);
     expect(centre.width).toBeCloseTo(2 * (DOT_BASE + 2) * s, 6);
     expect(centre.tint).toBe(0xb36521);
   });
-  it('draw changes only alphas: the dots twinkle on the clock, and feel off holds them all lit with no glint', () => {
+  it('draw changes only alphas: the dots twinkle on the clock, and feel off hides the twinkle (the plain painting)', () => {
     const layer = createBackdropLayer({ texture: painting(), stars: STARS });
     const sprites = (layer.container.children[1] as Container).children as Sprite[];
     const before = sprites.map((d) => [d.x, d.y, d.width]);
@@ -41,9 +41,15 @@ describe('the backdrop layer (Art-v spec sections 1 and 2)', () => {
     expect(seen.size).toBeGreaterThan(5);
     for (const d of sprites) { expect(d.alpha).toBeGreaterThanOrEqual(0); expect(d.alpha).toBeLessThanOrEqual(1); }
     layer.draw(2.5, 0);
-    expect(sprites.filter((d, k) => k !== 2).every((d) => d.alpha === GLOW_ALPHA)).toBe(true);
-    expect(sprites[2]!.alpha).toBe(0);   // the glint
+    expect((layer.container.children[1] as Container).visible).toBe(false);
+    layer.draw(2.5, 1);
+    expect((layer.container.children[1] as Container).visible).toBe(true);
+    expect(sprites.every((d) => d.alpha <= GLOW_ALPHA)).toBe(true);
     expect(sprites.map((d) => [d.x, d.y, d.width])).toEqual(before);
+  });
+  it('a star list for a differently shaped image gives no twinkle; the backdrop still draws', () => {
+    const layer = createBackdropLayer({ texture: painting(), stars: { ...STARS, width: 1000, height: 1000 } });
+    expect((layer.container.children[1] as Container).children).toHaveLength(0);
   });
   it('backdropOption: present only when space.backdrop is loaded; the committed star list is used', () => {
     const tex = painting();

@@ -52,7 +52,7 @@ export function backdropOption(assets: GameAssets, stars: StarFile | null = BACK
 
 export interface BackdropLayer {
   container: Container;
-  /** `t`: the presentation clock (seconds); `feel`: 0 (off) to 1 (full), 0 holds every star lit with no glint. */
+  /** `t`: the presentation clock (seconds); `feel`: 0 (off) to 1 (full); 0 hides the twinkle layer (the plain painting). */
   draw(t: number, feel: number): void;
 }
 
@@ -66,14 +66,18 @@ export function createBackdropLayer(opt: BackdropOption, stage: { w: number; h: 
   const twinkle = new Container(); twinkle.blendMode = 'add';
   container.addChild(back, twinkle);
   const stars = opt.stars;
-  const dots: Sprite[] = [], glints: { k: number; sprite: Sprite; period: number }[] = [], params: TwinkleParams[] = [];
-  if (stars) {
+  const dots: { k: number; sprite: Sprite; params: TwinkleParams }[] = [], glints: { k: number; sprite: Sprite; period: number }[] = [];
+  // A star list for a differently shaped image would land in the wrong places: no twinkle then (the backdrop still draws).
+  const sameShape = !!stars && Math.abs(stars.width / stars.height - opt.texture.width / opt.texture.height) < 1e-3;
+  if (stars && sameShape) {
     const { dot, glint } = textures(), tint = parseInt(stars.tint.slice(1), 16), bright = brightFlags(stars.stars);
     const s = fit.scale * (opt.texture.width / stars.width);   // the star list's source px to stage px
     stars.stars.forEach(([x, y, size], k) => {
       const r = (DOT_BASE + Math.sqrt(size)) * s, px = fit.x + (x + 0.5) * s, py = fit.y + (y + 0.5) * s;   // + 0.5: a centroid in pixel indices to the pixel centre
+      const reach = bright[k] ? r * GLINT_REACH : r;
+      if (px + reach < 0 || px - reach > stage.w || py + reach < 0 || py - reach > stage.h) return;   // in the cropped bands: never seen
       const d = new Sprite(dot); d.anchor.set(0.5); d.width = d.height = 2 * r; d.position.set(px, py); d.tint = tint;
-      twinkle.addChild(d); dots.push(d); params.push(twinkleParams(k));
+      twinkle.addChild(d); dots.push({ k, sprite: d, params: twinkleParams(k) });
       if (bright[k]) {
         const g = new Sprite(glint); g.anchor.set(0.5); g.width = g.height = 2 * r * GLINT_REACH; g.position.set(px, py); g.tint = tint; g.alpha = 0;
         twinkle.addChild(g); glints.push({ k, sprite: g, period: glintPeriod(k) });
@@ -83,7 +87,9 @@ export function createBackdropLayer(opt: BackdropOption, stage: { w: number; h: 
   return {
     container,
     draw(t, feel) {
-      for (let k = 0; k < dots.length; k++) dots[k]!.alpha = GLOW_ALPHA * twinkleAlpha(k, t, feel, params[k]);
+      twinkle.visible = feel > 0;   // feel off: the painting as painted, no glow
+      if (!twinkle.visible) return;
+      for (const d of dots) d.sprite.alpha = GLOW_ALPHA * twinkleAlpha(d.k, t, feel, d.params);
       for (const g of glints) g.sprite.alpha = GLINT_ALPHA * glintAlpha(g.k, t, feel, g.period);
     }
   };
