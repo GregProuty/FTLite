@@ -80,7 +80,9 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         for (const eid of state.crew) {
           const id = Stable.id[eid]!, g = tokens.get(id)!, { x, y, dx, dy } = interpolated(eid, alpha, pointFor(eid));
           const facing: Facing8 = facingFromDelta(dx, dy, memory.facing.get(id) ?? 's'); memory.facing.set(id, facing);
-          const l = Life.state[eid], t = tokenLook(Owner.pid[eid]!, l === LifeState.Conscious ? 'conscious' : l === LifeState.Downed ? 'downed' : 'dead', Seated.station[eid]! >= 0, facing);
+          if (sidesFor !== state.derived.layoutHash) { sides = stationSides(state); sidesFor = state.derived.layoutHash; }
+          const seat = Seated.station[eid]!, l = Life.state[eid];
+          const t = tokenLook(Owner.pid[eid]!, l === LifeState.Conscious ? 'conscious' : l === LifeState.Downed ? 'downed' : 'dead', seat >= 0, seat >= 0 ? sides[seat] ?? facing : facing);   // seated: facing the console
           const moving = Math.abs(dx) >= MOVE_EPS_PX || Math.abs(dy) >= MOVE_EPS_PX, stride = (strides.get(id) ?? id) + Math.hypot(dx, dy) * STRIDE_PER_TILE;
           strides.set(id, stride);
           drawPaintedToken(g, t, { stride, moving });   // the art spike: an inked top-down figure that sits on the painting

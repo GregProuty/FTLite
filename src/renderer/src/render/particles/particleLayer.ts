@@ -1,7 +1,7 @@
 import { Container, Sprite, Texture } from 'pixi.js';
 import { ART_PX, PARTICLE_CAP, particleColour, particleCorner, type Particle } from './emitter';
 import { DEBRIS, EMBER, SMOKE } from './sources';
-import { mix, SMOKE_TONES } from '../painted/ink';
+import { FLAME, mix, SMOKE_TONES } from '../painted/ink';
 import { softTextures } from '../painted/softTextures';
 
 /** The particles on screen (Art-i spec section 6): one pooled Sprite per emitter slot, made up front so the display
@@ -39,8 +39,8 @@ export function createParticleLayer(cap = PARTICLE_CAP): ParticleLayer {
           s.setSize(base * 2.5, base * 2.5);
         } else if (p.blend === 'add') {   // a spark: an inked streak along the flight, longer the faster it goes
           const speed = Math.hypot(p.vx, p.vy);
-          s.texture = soft.streak; s.rotation = Math.atan2(p.vy, p.vx); s.alpha = 1 - 0.4 * u;
-          s.setSize(base * 4 + speed * 0.14, base * 3);
+          s.texture = soft.streak; s.rotation = Math.atan2(p.vy, p.vx); s.alpha = 1 - 0.4 * u; s.tint = FLAME[u < 0.4 ? 0 : u < 0.7 ? 1 : 2];   // white-hot to orange
+          s.setSize(base * 6 + speed * 0.2, base * 3.5);
         } else if (p.ramp === DEBRIS) {
           s.texture = soft.shard; s.rotation = p.slot + p.age * 9; s.alpha = 1 - u * u;
           s.setSize(base * 2.6, base * 2.6);
