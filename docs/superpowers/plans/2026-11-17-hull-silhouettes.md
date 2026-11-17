@@ -57,7 +57,7 @@
 - Test: `tests/hullModel.test.ts`
 
 **Interfaces:**
-- Consumes: `isConvex(poly: readonly number[]): boolean` and `hatchSegments` from `./dashModel` (test only).
+- Consumes: `isConvex(poly: readonly number[]): boolean` from `./dashModel` (test only).
 - Produces: `type HullId = 'hound' | 'scout'`; `interface Hull { outline: readonly number[]; rooms: readonly (readonly number[])[] }`; `HULLS: Readonly<Record<HullId, Hull>>`; `hullFor(crew: boolean): HullId`; `roomCentre(hull: HullId, room: number): { f: number; s: number }`; `ENEMY_RING = 1.35`; `pointInPolygon(x, y, poly): boolean`; `segmentsCross(ax, ay, bx, by, cx, cy, dx, dy): boolean`; `polygonArea(poly): number`.
 
 - [ ] **Step 1: Write the failing test** `tests/hullModel.test.ts`:
@@ -294,7 +294,7 @@ In `tests/crtColours.test.ts`:
 - Add two ships so every damage level shows on both hulls in both phases: after the four ships in L23 add `ship({ index: 4, x: 420, y: 520, rooms: [0, 1, 2] }), ship({ index: 5, x: 640, y: 560, crew: false, hull: 'scout', rooms: [0, 1, 2], shields: 0 })`. (The `t` values 0, 0.3, 0.6, 0.9 already give both 2 Hz phases.)
 
 Run: `npx vitest run tests/tacticalModel.test.ts tests/dashModel.test.ts tests/duelWeaponsView.test.ts tests/crtColours.test.ts tests/hullModel.test.ts`
-Expected: FAIL. `tacticalModel` has no `hull` (the new test fails); `npx tsc -b` reports `hull` missing on `ShipDraw` in crtColours. Capture the output.
+Expected: FAIL. vitest fails the new tacticalModel assertions (no `hull` yet) and the duelWeaponsView lock test (the lock still sits on the wedge's nose centre, f 0.633; `roomCentre('scout', 0).f` is 0.67). Also run `npx tsc -b`: expected errors that `'hull'` does not exist in type `ShipDraw` (or `Partial<ShipDraw>`) in `tests/crtColours.test.ts`. Capture both outputs.
 
 - [ ] **Step 2: `tacticalModel.ts`**
 
@@ -382,23 +382,39 @@ Run: `git diff master --stat -- src/renderer/src/sim src/renderer/src/authority 
 
 Copy the CRT map's harness from `docs/superpowers/plans/2026-11-17-crt-map.md`, Task 7 Step 3 (the code blocks between `**Step 3: Write the screenshot harness**` and `**Step 4: Take the screenshots**`), into `.art/shots/` exactly as written there, with these changes:
 1. In `main.ts`, read `zoom` from the query (`const zoom = Number(q.get('zoom') ?? '0.9')`, beside `view` and `crt`) and use it as the third argument of both `createCamera` calls (helm and weapons) in place of `0.9`.
-2. In `main.ts`, the `DuelViewSource` object also needs `interiorCamera` if the current `DuelViewSource` type has it (it did when the CRT map ran): read `src/renderer/src/app/duel/scene.ts` for the type and add any missing required field with the same value shape the real runtime uses; report what you added.
+2. In `main.ts`, add `import { createInteriorCamera } from '../../src/renderer/src/render/duel/interiorCamera';` beside the other imports, and the field `interiorCamera: createInteriorCamera(),` in the `source` object right after `cameras: { ... },` (`DuelViewSource.interiorCamera` is required, scene.ts L35; the runtime builds it the same way, runtime.ts L227).
 3. In the runner, replace the shot list with:
 ```ts
-[['view=weapons&crt=subtle&zoom=0.5', 1920, 1080, 'weapons-0.5-a.png', 0],
- ['view=weapons&crt=subtle&zoom=0.5', 1920, 1080, 'weapons-0.5-b.png', 250],
+[['view=weapons&crt=subtle&zoom=0.5&phase=a', 1920, 1080, 'weapons-0.5-a.png', 0],
+ ['view=weapons&crt=subtle&zoom=0.5&phase=b', 1920, 1080, 'weapons-0.5-b.png', 0],
  ['view=helm&crt=subtle&zoom=0.5', 1920, 1080, 'helm-0.5.png', 0],
  ['view=flight&crt=subtle', 1920, 1080, 'flight.png', 0],
- ['view=weapons&crt=subtle&zoom=1.2', 1920, 1080, 'weapons-1.2-a.png', 0],
- ['view=weapons&crt=subtle&zoom=1.2', 1920, 1080, 'weapons-1.2-b.png', 250],
+ ['view=weapons&crt=subtle&zoom=1.2&phase=a', 1920, 1080, 'weapons-1.2-a.png', 0],
+ ['view=weapons&crt=subtle&zoom=1.2&phase=b', 1920, 1080, 'weapons-1.2-b.png', 0],
  ['view=weapons&crt=full&zoom=1.2', 1920, 1080, 'weapons-1.2-full.png', 0]]
 ```
-   (the last number is the extra delay in ms before the shot; 250 ms apart lands the 2 Hz damage blink in the other phase), and the output folder with `C:\Users\djuar\FTLite-shots\hull-silhouettes\`.
+   (the last number is the extra delay in ms before the shot; the phase comes from `&phase=`). The output folder is not in the runner: it is the second argument of `all.mjs` (Step 3).
 4. The harness stages own rooms `[1, 2, 0]` and enemy rooms `[2, 1, 0]` with the lock on Shields; keep that.
+5. Pin the blink phase in the page, so the two phase shots differ whatever the load time: in `main.ts`, right after the line that defines `q` and `view` and before `createRenderer`, add:
+```ts
+  const ph = q.get('phase');
+  if (ph) { const real = performance.now.bind(performance); performance.now = () => { const r = real(); return r - (r % 500) + (ph === 'b' ? 260 : 10); }; }
+```
+   The 2 Hz damage blink then holds phase 0 for `a` and phase 1 for `b`; the 1 Hz enemy ring changes only between the two shots.
 
 - [ ] **Step 3: Take the screenshots**
 
-Run the harness exactly as the CRT plan's Task 7 Step 4 says (build, the server, the runner). Stop every process you started afterwards (check each PID's command line first; never stop a process you did not start).
+Run `npm run build`. Check the port is free: `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5299 -State Listen -ErrorAction SilentlyContinue | Measure-Object | % Count"` prints `0`. Start the harness server in the background and keep it running: `npx vite --config .art/shots/vite.config.mjs`; wait for `Local: http://localhost:5299/`. Then (Electron needs a desktop session; if the tool sandbox blocks GUI processes, run without the sandbox):
+
+```bash
+E=node_modules/electron/dist/electron.exe; [ -f "$E" ] || E=/c/Users/djuar/FTLite/node_modules/electron/dist/electron.exe
+mkdir -p /c/Users/djuar/FTLite-shots/hull-silhouettes
+rm -f .art/shots/shot.log; node .art/shots/all.mjs "$E" "C:/Users/djuar/FTLite-shots/hull-silhouettes"; grep -v wrote .art/shots/shot.log
+```
+
+Expected: seven `ok   <name>.png (1920x1080) exit 0` lines (the shot list's names) and no `page:`, `failed` or `uncaught` lines. Nothing is written to the CRT map's shot folder.
+
+Stop the harness: `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5299 -State Listen -ErrorAction SilentlyContinue | % { Stop-Process -Id $_.OwningProcess -Force }; Get-CimInstance Win32_Process -Filter "+chr(92)+""Name='electron.exe'\" | ? { $_.CommandLine -like '*hull-silhouettes*shot.cjs*' } | % { Stop-Process -Id $_.ProcessId -Force }"`, then the port count command above prints `0`. Never stop a process you did not start.
 
 - [ ] **Step 4: Look at the screenshots** (Read each PNG) and check, writing pass/fail per item in the report:
 - The crew's ship reads as the Hound (twin aft nacelles, the body, the cockpit nose, nose along its heading, not mirrored: compare with `C:\Users\djuar\FTLite-shots\hull-silhouettes\prototype-2.png`); the enemy reads as the drone scout (forked nose, disc, spine, swept fins).
