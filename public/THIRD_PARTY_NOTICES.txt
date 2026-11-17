@@ -84,6 +84,15 @@ Explosion VFX by Pimen (pimen.itch.io)
   Retrieved: 2026-11-16
   Files: paid/pimen/explosion-hit.png, paid/pimen/explosion-room.png
 
+Hound-class Transport Ship by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0, non-commercial demo
+  Title: Hound-class Transport Ship
+  Author: 2-Minute Tabletop
+  Source: https://www.patreon.com/2minutetabletop
+  Licence: paid (commercial licence, https://www.patreon.com/2minutetabletop)
+  Modifications: mirrored horizontally by npm run art:import (edited by FTLite art import)
+  Retrieved: 2026-11-16
+  Files: paid/2mt/hound.png
+
 Mars colony pixel art by Maru-98 (maru-98.itch.io)
   Title: Mars colony sets (Habitable Building)
   Author: Maru-98

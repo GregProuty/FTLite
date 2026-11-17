@@ -1208,5 +1208,18 @@
         }
       }
     }
+  },
+  {
+    "title": "Hound-class Transport Ship",
+    "author": "2-Minute Tabletop",
+    "source": "https://www.patreon.com/2minutetabletop",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "mirrored horizontally by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Hound-class Transport Ship by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0, non-commercial demo",
+    "required": false,
+    "file": "paid/2mt/hound.png",
+    "name": "ship.hound.map"
   }
 ]
