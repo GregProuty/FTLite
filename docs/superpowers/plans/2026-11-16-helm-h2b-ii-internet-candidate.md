@@ -831,7 +831,7 @@ $env:FTLITE_PACKAGED_SERVICE_ORIGIN='https://ftlite-signalling-dev.gprout009.wor
 npm run build
 Remove-Item Env:FTLITE_PACKAGED_SERVICE_ORIGIN
 $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win --dir --publish never -c.win.signAndEditExecutable=false -c.directories.output=dist/h2b-candidate
+npx electron-builder --win --dir --publish never '-c.win.signAndEditExecutable=false' '-c.directories.output=dist/h2b-candidate'   # quoted: PowerShell 5.1 splits an unquoted -c.a.b=c argument
 Remove-Item Env:CSC_IDENTITY_AUTO_DISCOVERY
 Compress-Archive -Path dist\h2b-candidate\win-unpacked\* -DestinationPath dist\h2b-candidate.zip -Force
 ```
