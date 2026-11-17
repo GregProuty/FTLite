@@ -9,12 +9,15 @@ import { flush, idle } from './helpers/uiStore';
 import { buttonIds, renderUi } from './helpers/uiRender';
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
-const HOME = ['single-player', 'multiplayer', 'settings'];
+const HOME = ['single-player', 'multiplayer', 'settings', 'quit'];
 const click = (id: string): void => { fireEvent.click(screen.getByTestId(id)); };
 const text = (id: string): string => screen.getByTestId(id).textContent ?? '';
 
 describe('home', () => {
-  it('shows exactly Single player, Multiplayer and Settings, even with a saved seat', () => {
+  it('Quit closes the app', () => {
+    const { deps } = renderUi(); click('quit'); expect(deps.quit).toHaveBeenCalledOnce();
+  });
+  it('shows exactly Single player, Multiplayer, Settings and Quit, even with a saved seat', () => {
     const { actions, view } = renderUi();
     expect(buttonIds(view.container)).toEqual(HOME);
     act(() => actions.setStatus(idle)); expect(buttonIds(view.container)).toEqual(HOME);
