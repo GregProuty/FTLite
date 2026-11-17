@@ -199,7 +199,7 @@ async function startProbe(): Promise<void> {
   };
   window.addEventListener('resize', resize); resize();
   startUiProbe(renderer, !duelProbe && !hudProbe);
-  if (duelProbe) createDuelSink(store).frame(duelProbeFixture());
+  if (duelProbe) createDuelSink(store).frame(duelProbeFixture(q.get('console') === 'helm' || q.get('console') === 'weapons' ? (q.get('console') as 'helm' | 'weapons') : undefined));
   if (hudProbe) {   // UI-iii: a fixture HUD model drawn by the React HUD (dynamic imports, the probe only)
     const { HUD_FIXTURES } = await import('./app/hudFixtures');
     const raw = q.get('fixture') ?? '0', idx = Number(raw);
