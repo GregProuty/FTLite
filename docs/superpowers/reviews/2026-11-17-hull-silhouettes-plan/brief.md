@@ -12,12 +12,10 @@ An implementation plan for a presentation-only change to FTLite (Electron + Pixi
 
 ## What to check, in priority order
 
-1. **Internal contradictions.** Any two sections that cannot both be true as written.
-2. **Ambiguity.** Any requirement two implementers would build differently.
-3. **Unstated assumptions** about the codebase, the vendor, the operator, or timing.
-4. **Missing failure modes and degraded states.** What happens when each dependency fails, is slow, or returns something unexpected.
-5. **Untestable acceptance criteria.** Any criterion with no observable check.
-6. **Interfaces described that the codebase does not have.** Verify against the source.
+1. **Executability against the actual branch.** For every interface the plan consumes (methods, signatures, types, schemas, helpers, exports), grep the source and confirm it exists with the assumed shape. A task that would fail to compile or import as written is a P1.
+2. **Spec conformance.** Where the plan deviates from the spec, is the deviation stated and justified?
+3. **Task ordering and dependencies.** Does any task consume something a later task produces?
+4. **Test adequacy.** Can the tests the plan writes pass against the helpers that exist, and do they cover the risky paths?
 5. Task 2 Step 1 edits tests by line number and old string: confirm each anchor and old string against the branch (tests/tacticalModel.test.ts, tests/dashModel.test.ts, tests/duelWeaponsView.test.ts, tests/crtColours.test.ts).
 6. Task 2 Step 4 replaces a range of drawShip and the ENEMY_RING lines in tacticalLayer.ts: confirm the replaced text exists, that seg, segments, fx/fy/rx/ry and the imports it needs are in scope, and that tsc will pass (e.g. `export { ENEMY_RING }` of an imported binding, unused imports such as SHIP_RADIUS).
 7. Test counts: Task 1 says 9 tests; the full-suite delta in Task 2 Step 6.
