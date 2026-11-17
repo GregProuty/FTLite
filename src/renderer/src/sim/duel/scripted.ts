@@ -22,6 +22,7 @@ import { isDowned, medbayOnline, medbayRoom, revivers } from './health';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands';
 import type { DuelState } from './state';
 import type { DuelInput } from './step';
+import { THROTTLE_MAX, THROTTLE_MIN, throttleThrust } from './throttle';
 
 // The pair's own numbers (spec §3 "Tunable"), separate from the game tuning.
 /** Ticks of predicted path the Helm checks for hazards, and the clearance it keeps from them (u). */
@@ -54,7 +55,7 @@ export interface ScriptedPair {
   orbitR: number;
   /** Next command sequence per player. */
   seq: [number, number];
-  /** The Helm's axes on the tick before (the avoidance prediction holds them). */
+  /** The Helm's axes on the tick before. The avoidance prediction holds their turn, and flies the throttle's thrust. */
   axes: Axes;
   /** Tick of the last crew missile launch the pair sent. */
   lastLaunch: number;
@@ -91,10 +92,11 @@ function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
   return null;
 }
 
-/** The Helm's axes (spec §3): avoid, then line up, then orbit. */
+/** The Helm's axes (spec §3): avoid, then line up, then orbit. The hazard check predicts with the thrust the ship flies
+ *  at this tick before any new command: the throttle's (Artemis spec §5.5). */
 function helmAxes(pair: ScriptedPair, d: DuelState): Axes {
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
-  const away = hazardAway(d, pair.axes);
+  const away = hazardAway(d, { turn: pair.axes.turn, thrust: throttleThrust(d.throttle) });
   if (away) return { turn: turnToward(s.heading, away.x, away.y), thrust: 1 };
   const ex = e.x - s.x, ey = e.y - s.y;
   if (laserFull(t, 0) && t.systems[0].fireHeld && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
@@ -291,7 +293,10 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
     if (seat === d.nav) {
       const axes = helmAxes(pair, d);
       pair.axes = axes;
-      held[pid] = { moveX: axes.turn, moveY: -axes.thrust, interactHeld: false };
+      // Artemis spec §5.5: the throttle stands for the wanted thrust (1 → 4, 0 → 0, −1 → −1), sent only when it changes.
+      const level = axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0;
+      if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
+      held[pid] = { moveX: axes.turn, moveY: 0, interactHeld: false };
     } else if (seat === d.weapons) {
       held[pid] = { moveX: gunner(pair, d, cmds[pid]!), moveY: 0, interactHeld: false };
     }

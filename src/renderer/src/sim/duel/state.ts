@@ -50,12 +50,15 @@ export interface DuelState {
   /** The round module (H-2 spec §7): this round's index from 0, the player seated at the Helm when it began, the
    *  encounter tick it began on, and the tick right after its deciding step (−1 while it runs). */
   round: number; helmPlayer: 0 | 1; baseTick: number; decidedTick: number;
+  /** The helm module (Artemis spec §5.1): the Helm's throttle level, an integer −1..4 (sim/duel/throttle.ts). Kept
+   *  across stand and sit; 0 in a fresh duel, so a new round starts at STOP. */
+  throttle: number;
 }
 
 /**
  * A duel on `layout` (the Hound in the app; the Cutter in older tests): two trait-free Recruits (no XP is ever awarded, since xpSystem never runs), every
  * door held open, `helmPlayer` (default 0) seated at Navigation and the other player at Weapons, and a tactical state
- * from the same seed whose map must validate. Round 0, beginning on tick 0. Throws if the map, a repair point or
+ * from the same seed whose map must validate. Round 0, beginning on tick 0, the throttle at STOP. Throws if the map, a repair point or
  * `helmPlayer` is invalid, so a bad seed or layout fails loudly.
  */
 export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 = 0): DuelState {
@@ -79,7 +82,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 =
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
-    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1 };
+    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0 };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;

@@ -28,7 +28,9 @@ const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   zoomIn: 'Zoom in (the maps and the ship)',
   zoomOut: 'Zoom out (the maps and the ship)',
   confirm: 'Start a new duel (end screen)',
-  menu: 'Return to the main menu (paused or end screen)'
+  menu: 'Return to the main menu (paused or end screen)',
+  throttleUp: 'At the Helm, throttle up a notch (it stays set)',
+  throttleDown: 'At the Helm, throttle down a notch (to stop, then reverse)'
 };
 
 /** The codes bound to one press action, in table order. */
@@ -39,7 +41,7 @@ function codesFor(action: KeyAction): string[] {
 export function controlSections(): ControlSection[] {
   const move = [MOVE_CODES.up, MOVE_CODES.left, MOVE_CODES.down, MOVE_CODES.right].map(keyLabel).join(' ');
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
-  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, thrust and turn; at Weapons, steer the missile' }];
+  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, A/D turn; at Weapons, steer the missile' }];
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
     const keys = codesFor(action).map(keyLabel).join(' / ');
     duel.push({ keys, action: DUEL_ACTION[action] });

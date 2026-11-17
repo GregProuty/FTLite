@@ -127,6 +127,8 @@ describe('the Helm layer (H-1 spec §7 item 7)', () => {
     const coast = tacticalModel(input(st, cam)).helm!.path, burn = tacticalModel(input(st, cam, { axes: { turn: 0, thrust: 1 } })).helm!;
     expect(burn.path.length).toBeLessThan(coast.length);
     expect(burn.thrust).toBe(1); expect(burn.turn).toBe(0);
+    const quarter = tacticalModel(input(st, cam, { axes: { turn: 0, thrust: 0.25 } })).helm!, rev = tacticalModel(input(st, cam, { axes: { turn: 0, thrust: -0.25 } })).helm!, nan = tacticalModel(input(st, cam, { axes: { turn: 0, thrust: NaN } })).helm!;
+    expect(quarter.thrust).toBe(0.25); expect(rev.thrust).toBe(-0.25); expect(nan.thrust).toBe(0);   // the flame scales with the throttle
   });
   it('draws the bearing ring at zoom 0.3 and up: 36 ticks, labels every 30 degrees, north up', () => {
     const st = createTacticalState(4), s = st.ships[0];

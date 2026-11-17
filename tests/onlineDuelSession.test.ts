@@ -4,7 +4,7 @@
 // neutralising without a pause, Enter's rematch on a decided round and the leave prompt, a release swallowed by a pause
 // re-sent after resume, CONNECTION LOST right after a link close, and each record's own disconnects, pauses and jitter.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
+import type { CommandResult, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
@@ -23,9 +23,9 @@ interface Pub { publicationSequence: number; tick: number; phase: string; pauseR
 /** A stub of the duel stream client: the test publishes replicas and reads what the session sent. */
 function stubClient() {
   let replica: DuelState | null = null, pub: Pub | null = null, sequence = 0, heldSequence = 0, commandSequence = 0, status = 'pending';
-  const sent: Sent[] = [], events: unknown[] = [], neutralized: number[] = [];
+  const sent: Sent[] = [], events: unknown[] = [], neutralized: number[] = [], results: CommandResult[] = [], ids: { player: number; sequence: number }[] = [];
   return {
-    sent, events, neutralized,
+    sent, events, neutralized, results, ids,
     ready() { status = 'ready'; },
     commands: () => sent.flatMap((s) => (s.kind === 'command' ? [s.command] : [])),
     helds: () => sent.flatMap((s) => (s.kind === 'held' ? [s.held] : [])),
@@ -36,11 +36,11 @@ function stubClient() {
       pub = { publicationSequence: sequence, tick: sequence * 3, phase, pauseReason: pause.reason, pauseOwner: pause.owner, heldHighWater: [0, 0] };
     },
     state: () => replica, publication: () => pub,
-    command(player: number, command: DuelCommand) { sent.push({ kind: 'command', command }); return { player, sequence: ++commandSequence }; },
+    command(player: number, command: DuelCommand) { sent.push({ kind: 'command', command }); const id = { player, sequence: ++commandSequence }; ids.push(id); return id; },
     held(_player: number, held: HeldInput) { sent.push({ kind: 'held', held: { ...held } }); return ++heldSequence; },
     neutralize(player: number) { neutralized.push(player); },
     commandStatus: () => ({ state: status }),
-    takeResults: () => [], takeEvents: () => events.splice(0),
+    takeResults: () => results.splice(0), takeEvents: () => events.splice(0),
     dispose() { if (replica) disposeDuel(replica); replica = null; pub = null; }
   };
 }
@@ -326,5 +326,75 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
     r.dispose();
     expect(setConsole).toHaveBeenCalledTimes(2);
     expect(setConsole.mock.calls[1]![0]).toBeNull();
+  });
+});
+
+describe('the online Helm throttle (Artemis spec §5.4)', () => {
+  const tap = (r: ReturnType<typeof rig>, code: string): void => { r.key('keydown', code); r.key('keyup', code); r.pump(); };
+  const throttles = (c: Stub) => c.commands().filter((x) => x.kind === 'throttle');
+  const lastThrottleId = (c: Stub) => c.ids[c.commands().map((x) => x.kind).lastIndexOf('throttle')]!;
+  it('two W presses inside one round trip move two notches; S steps down from the level in flight', () => {
+    const r = rig(0), c = r.attach();   // seat 0 flies the Helm
+    tap(r, 'KeyW'); tap(r, 'KeyW');
+    expect(throttles(c)).toEqual([{ kind: 'throttle', level: 1 }, { kind: 'throttle', level: 2 }]);
+    tap(r, 'KeyS');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });
+    r.dispose();
+  });
+  it('a rejected throttle drops back to the replica level', () => {
+    const r = rig(0), c = r.attach();
+    tap(r, 'KeyW'); tap(r, 'KeyW');   // 1, then 2 on top of it
+    c.results.push({ id: lastThrottleId(c), tick: 3, status: 'rejected', reason: 'invalid-seat' }); r.pump();
+    tap(r, 'KeyW');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // from the replica's 0, not from 2
+    r.dispose();
+  });
+  it('only the result for the level in flight hands the base back to the replica; a notch click asks for its level', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    tap(r, 'KeyW');
+    const first = lastThrottleId(c);
+    tap(r, 'KeyW');                                                       // 2 in flight
+    c.results.push({ id: first, tick: 3, status: 'applied' }); r.d.throttle = 1; c.publish(r.d); r.pump();
+    tap(r, 'KeyW');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 3 });   // still built on the 2 in flight
+    c.results.push({ id: lastThrottleId(c), tick: 4, status: 'applied' }); r.d.throttle = 4; c.publish(r.d); r.pump();
+    tap(r, 'KeyS');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 3 });   // from the replica's 4
+    input!.throttle(-1); r.pump();
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: -1 });
+    r.dispose();
+  });
+  it('a stand and a new round clear the level in flight', () => {
+    const r = rig(0), c = r.attach();
+    tap(r, 'KeyW');                                                       // 1 in flight
+    tap(r, 'KeyX');                                                       // the stand clears it (the replica still shows the seat)
+    tap(r, 'KeyW');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });
+    tap(r, 'KeyW');                                                       // 2 in flight
+    nextRound(r.d); c.publish(r.d); r.pump();
+    tap(r, 'KeyW');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // the new round starts from the replica's 0
+    r.dispose();
+  });
+  it('a sit, a re-attach and a noop result each clear the level in flight (the base falls back to the replica)', () => {
+    const r = rig(0), c = r.attach();
+    tap(r, 'KeyW');                                                       // 1 in flight
+    stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: r.d.interior.tick, command: { kind: 'stand' } }] });
+    c.publish(r.d); r.pump();
+    tap(r, 'KeyE');                                                       // the sit clears it
+    stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 2 }, requestedTick: r.d.interior.tick, command: { kind: 'sit', station: r.d.nav } }] });
+    c.publish(r.d); r.pump();
+    tap(r, 'KeyW');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // from the replica's 0, not from 2
+    tap(r, 'KeyW');                                                       // 2 in flight
+    const c2 = r.attach();                                                // a re-attach clears it
+    tap(r, 'KeyW');
+    expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });
+    tap(r, 'KeyW');                                                       // 2 in flight on c2
+    c2.results.push({ id: lastThrottleId(c2), tick: 3, status: 'noop' } as never); r.pump();
+    tap(r, 'KeyW');
+    expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // a noop hands the base back too
+    r.dispose();
   });
 });

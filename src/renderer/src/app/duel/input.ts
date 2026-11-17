@@ -1,15 +1,19 @@
 // Keyboard and mouse for the Helm demo views (H-1 spec §5). One keyboard drives the active character, or the one ship in
 // the flight view. Pointer input feeds only the camera and never becomes a command (parent §10).
 import type { Axes } from '../../sim/tactical/state';
+import { clampThrottle } from '../../sim/duel/throttle';
 
-/** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones. */
-export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm' | 'menu';
+/** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones; Artemis-ii
+ *  adds the Helm's throttle notches on W and S (spec 2026-11-17-artemis-consoles §5.4). */
+export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm' | 'menu' | 'throttleUp' | 'throttleDown';
 
 export const PRESS_CODES: Readonly<Record<string, KeyAction>> = {
   KeyE: 'interact', KeyQ: 'prevLock', Space: 'fireDown', KeyF: 'launch', KeyX: 'stand', Tab: 'switch', Escape: 'pause', KeyC: 'camera',
-  Equal: 'zoomIn', NumpadAdd: 'zoomIn', Minus: 'zoomOut', NumpadSubtract: 'zoomOut', Enter: 'confirm', NumpadEnter: 'confirm', KeyM: 'menu'
+  Equal: 'zoomIn', NumpadAdd: 'zoomIn', Minus: 'zoomOut', NumpadSubtract: 'zoomOut', Enter: 'confirm', NumpadEnter: 'confirm', KeyM: 'menu',
+  KeyW: 'throttleUp', KeyS: 'throttleDown'
 };
-/** The held keys: WASD movement (walk, thrust and turn, steer), E held to repair, Space held to charge. */
+/** The held keys: WASD movement (walk, the Helm's turn, the flight view's thrust and turn, steer), E held to repair,
+ *  Space held to charge. W and S are also the throttle's press edges (PRESS_CODES). */
 export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' } as const;
 export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
 
@@ -18,8 +22,8 @@ export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: b
 export const NO_HELD_FLAGS: HeldFlags = { fire: false, left: false, right: false, up: false, down: false };
 /** The codes a console button can hold (spec §6.2). */
 export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS';
-/** What a console click can do (spec §6.2): a press edge, a held code, or a direct lock request. */
-export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void }
+/** What a console click can do (spec §6.2): a press edge, a held code, a direct lock request, or a throttle notch. */
+export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; throttle(level: number): void }
 /** Keys whose browser default (focus moves, page scrolls, history back) must never happen in the duel views. */
 const PREVENT = new Set(['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
 
@@ -33,15 +37,28 @@ export interface KeySample {
   held?: HeldFlags;
   /** The last console lock request since the previous sample, or null (spec §6.2). */
   lockTo?: number | null;
+  /** The last console throttle request since the previous sample, or null (Artemis spec §6.2). */
+  throttleTo?: number | null;
 }
 
 export function emptyPresses(): Record<KeyAction, number> {
-  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0, menu: 0 };
+  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0, menu: 0, throttleUp: 0, throttleDown: 0 };
 }
 
-/** The Helm's held axes from a key sample: A/D turn (D clockwise), W thrusts forward, S reverses (W gives moveY −1). */
+/** The flight dev view's held axes from a key sample: A/D turn (D clockwise), W thrusts forward, S reverses (W gives moveY −1). The duel's Helm thrusts by its throttle instead (Artemis spec §5.3). */
 export function helmAxes(k: Pick<KeySample, 'moveX' | 'moveY'>): Axes {
   return { turn: Math.sign(k.moveX) || 0, thrust: -Math.sign(k.moveY) || 0 };
+}
+
+/** The level a frame's throttle input asks for (Artemis spec §5.4), or null for none. Each W press moves it one notch up
+ *  and each S press one down from `base`, clamped to −1..4 at every step. Then a console notch click (`to`) wins. A
+ *  request equal to `base` is null, since the sim would answer noop. */
+export function throttleRequest(base: number, presses: Pick<Record<KeyAction, number>, 'throttleUp' | 'throttleDown'>, to: number | null | undefined): number | null {
+  const steps = presses.throttleUp - presses.throttleDown;
+  let level = base;
+  for (let n = 0; n < Math.abs(steps); n++) level = clampThrottle(level + Math.sign(steps));
+  if (to !== undefined && to !== null) level = clampThrottle(to);
+  return level === base ? null : level;
 }
 
 /** The structural subset of a DOM event target the input needs, so tests can drive it with a fake. */
@@ -58,7 +75,7 @@ export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): v
  *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
 export function createDuelKeyboard(target: EventSource): DuelKeyboard {
   const keys = new Set<string>(), ui = new Set<string>();
-  let presses = emptyPresses(), lockTo: number | null = null;
+  let presses = emptyPresses(), lockTo: number | null = null, throttleTo: number | null = null;
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
   const down = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
@@ -72,8 +89,8 @@ export function createDuelKeyboard(target: EventSource): DuelKeyboard {
     keys.delete(e.code);
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
-  const clearUi = (): void => { ui.clear(); lockTo = null; };
-  const clear = (): void => { keys.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; };
+  const clearUi = (): void => { ui.clear(); lockTo = null; throttleTo = null; };
+  const clear = (): void => { keys.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; throttleTo = null; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -84,7 +101,8 @@ export function createDuelKeyboard(target: EventSource): DuelKeyboard {
       if (on) ui.add(code); else ui.delete(code);
       if (code === FIRE_HELD) { const now = has(FIRE_HELD); if (!was && now) presses.fireDown++; else if (was && !now) presses.fireUp++; }
     },
-    lock(room) { lockTo = room; }
+    lock(room) { lockTo = room; },
+    throttle(level) { throttleTo = level; }
   };
   return {
     ui: consoleInput,
@@ -92,8 +110,8 @@ export function createDuelKeyboard(target: EventSource): DuelKeyboard {
       const x = (has(MOVE_CODES.right) ? 1 : 0) - (has(MOVE_CODES.left) ? 1 : 0), y = (has(MOVE_CODES.down) ? 1 : 0) - (has(MOVE_CODES.up) ? 1 : 0);
       const len = Math.sqrt(x * x + y * y) || 1;
       const held: HeldFlags = { fire: has(FIRE_HELD), left: has(MOVE_CODES.left), right: has(MOVE_CODES.right), up: has(MOVE_CODES.up), down: has(MOVE_CODES.down) };
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo };
-      presses = emptyPresses(); lockTo = null;
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, throttleTo };
+      presses = emptyPresses(); lockTo = null; throttleTo = null;
       return out;
     },
     clear,

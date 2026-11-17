@@ -38,7 +38,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'tactical', 'weapons']);
+    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'tactical', 'throttle', 'weapons']);
   });
   it('disposeDuel is idempotent', () => {
     const d = createDuel(layout, 5);
@@ -74,16 +74,18 @@ describe('seat phase guards', () => {
 });
 
 describe('consoles are roles (spec §8, §13)', () => {
-  it('the Helm player’s held axes fly the ship: moveX +1 turns clockwise, W (moveY −1) thrusts along the nose', () => {
+  it('the Helm player’s held moveX turns the ship clockwise and the throttle thrusts along the nose; held W does not (Artemis spec §5.3)', () => {
     const d = createDuel(layout, 5), s = d.tactical.ships[0], h0 = s.heading;
     step(d, [], [{ moveX: 1, moveY: 0, interactHeld: false }, NONE]);
     expect(s.heading).toBe((h0 + 1) % 256);                              // 1.78 steps per tick: one whole step on the first tick
-    const coast = createDuel(layout, 5), thrust = createDuel(layout, 5);
-    step(coast); step(thrust, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
-    const [a, b] = [coast.tactical.ships[0], thrust.tactical.ships[0]];
-    const dx = b.vx - a.vx, dy = b.vy - a.vy;                           // the velocity thrust added this tick
+    const coast = createDuel(layout, 5), thrust = createDuel(layout, 5), held = createDuel(layout, 5);
+    step(coast); step(thrust, [cmd(thrust, 0, { kind: 'throttle', level: 4 })]); step(held, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
+    const [a, b, w] = [coast.tactical.ships[0], thrust.tactical.ships[0], held.tactical.ships[0]];
+    const dx = b.vx - a.vx, dy = b.vy - a.vy;                           // the velocity full throttle added this tick
     expect(dx * hx(b.heading) + dy * hy(b.heading)).toBeGreaterThan(0.99 * Math.hypot(dx, dy));
     expect(Math.hypot(dx, dy)).toBeGreaterThan(1.9);                     // about THRUST · dt = 2 u/s
+    expect([w.vx, w.vy]).toEqual([a.vx, a.vy]);                         // held W coasts
+    for (const x of [d, coast, thrust, held]) disposeDuel(x);
   });
   it('accepts weapon commands only from the present player seated at Weapons', () => {
     const d = createDuel(layout, 5);

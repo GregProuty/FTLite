@@ -235,7 +235,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         const fx = (hd.headingTo.x - hd.headingFrom.x) / 40, fy = (hd.headingTo.y - hd.headingFrom.y) / 40, rx = -fy, ry = fx;
         const back = Math.hypot(hd.headingFrom.x - hd.origin.x, hd.headingFrom.y - hd.origin.y);
         if (hd.thrust !== 0) {
-          const dir = hd.thrust > 0 ? -1 : 1, bx = hd.origin.x + fx * dir * back, by = hd.origin.y + fy * dir * back, len = hd.thrust > 0 ? 14 : 8;
+          const dir = hd.thrust > 0 ? -1 : 1, bx = hd.origin.x + fx * dir * back, by = hd.origin.y + fy * dir * back, len = (hd.thrust > 0 ? 14 : 8) * Math.abs(hd.thrust);
           helm.poly([bx + rx * 5, by + ry * 5, bx - rx * 5, by - ry * 5, bx + fx * dir * len, by + fy * dir * len]).fill({ color: CRT.hot, alpha: 0.9 });
         }
         if (hd.turn !== 0) helm.circle(hd.headingTo.x + rx * hd.turn * 8, hd.headingTo.y + ry * hd.turn * 8, 3).fill({ color: CRT.hot, alpha: 0.9 });

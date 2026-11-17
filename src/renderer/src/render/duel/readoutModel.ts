@@ -126,7 +126,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 
 /** Key help under the rows, per screen (spec §5 table). */
 export function readoutHelp(mode: ReadoutMode): string[] {
-  if (mode === 'helm') return ['W/S THRUST   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
+  if (mode === 'helm') return ['W/S THROTTLE   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F MISSILE   A/D STEER', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
   return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }

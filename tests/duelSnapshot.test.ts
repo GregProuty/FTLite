@@ -101,7 +101,7 @@ describe('the duel snapshot (spec §6)', () => {
       const twice = structuredClone(good);   // the free entry claims the flying missile's owner: two missiles for one ship
       twice.values[names.get(`${free}.active`)!] = 1; twice.values[names.get(`${free}.owner`)!] = owner; twice.header.hash = hashF64(Float64Array.from(twice.values));
       expect(() => validateDuelSnapshot(CUTTER, twice, DIGEST)).toThrow(new RegExp(`ship ${owner} has two missiles in flight`));
-      const interiorAt = at + 5 + 4, fieldsAt = interiorAt;   // after presence, repair and the round module (H-2)
+      const interiorAt = at + 5 + 4 + 1, fieldsAt = interiorAt;   // after presence, repair, the round module (H-2) and the helm module (Artemis-ii)
       for (const [k, value, error] of [[0, 1e6, /interior sim version/], [1, 12345, /interior layout/], [2, 12345, /interior layout/], [5, 1, /crew count/], [9, 3, /crew count/]] as const) {
         const snap = structuredClone(good); snap.values[fieldsAt + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `interior[${k}] = ${value}`).toThrow(error);

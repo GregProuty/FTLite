@@ -1,6 +1,6 @@
 // The duel snapshot (engine refactor spec §6, an R-1 deliverable). The values are exactly flattenDuel: SIM_VERSION, the
 // tactical state in flattenTactical's order (the space then the ship module), presence, repair, the round (H-2 spec
-// §7), then the interior through the sector snapshot path.
+// §7), the helm throttle (Artemis-ii), then the interior through the sector snapshot path.
 // Regenerated, not stored: the map (from the seed, checked by mapHash), the broad-phase grid, the repair points and
 // Derived (from the duel layout). Not stored: the per-tick events. Every check runs before any allocation, including
 // every tactical field's bounds and slot invariants, presence and repair, except the final one, which restores into a
@@ -23,6 +23,7 @@ import { SIM_VERSION } from '../tuning';
 import { flattenDuel, hashDuel, mapHash } from './hash';
 import { unflattenDuelModules } from './modules';
 import { createDuel, disposeDuel, type DuelState } from './state';
+import { validThrottle } from './throttle';
 
 export const DUEL_SNAPSHOT_FORMAT = 1;
 export const DUEL_PLAYERS = 2;
@@ -125,7 +126,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
   // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
-  const space = seed.spaceLength, roundAt = 1 + space + 2 + 3, interiorAt = roundAt + 4;
+  const space = seed.spaceLength, roundAt = 1 + space + 2 + 3, helmAt = roundAt + 4, interiorAt = helmAt + 1;
   if (values.length !== interiorAt + lay.interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
@@ -142,13 +143,16 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // The round module: a round index (at most MAX_DUEL_ROUNDS, and round n begins no earlier than tick 2n: each round
   // before it took a deciding step and a rematch step), the Helm player 0 or 1, a base tick no later than the tick, and
   // a decided tick that is −1 exactly while the outcome is Running, otherwise between the base tick and the tick.
-  const [round, helm, base, decided] = values.slice(roundAt, interiorAt) as [number, number, number, number];
+  const [round, helm, base, decided] = values.slice(roundAt, helmAt) as [number, number, number, number];
   const running = values[seed.fieldOffsets.get('outcome')!] === Outcome.Running;
   if (!Number.isSafeInteger(round) || round < 0 || round > MAX_DUEL_ROUNDS) throw new Error(`duel snapshot round ${round} is invalid`);
   if (helm !== 0 && helm !== 1) throw new Error(`duel snapshot helm player ${helm} is invalid`);
   if (!Number.isSafeInteger(base) || base < 0 || base > h.tick) throw new Error(`duel snapshot base tick ${base} is invalid`);
   if (2 * round > base) throw new Error(`duel snapshot round ${round} is invalid at base tick ${base}`);
   if (running ? decided !== -1 : !Number.isSafeInteger(decided) || decided < base || decided > h.tick) throw new Error(`duel snapshot decided tick ${decided} does not match the outcome`);
+  // The helm module (Artemis spec §5.1): the throttle, an integer level in −1..4.
+  const level = values[helmAt]!;
+  if (!validThrottle(level)) throw new Error(`duel snapshot throttle ${level} is invalid`);
   const interior = values.slice(interiorAt);
   validateCanonicalValues(layout, derived, DUEL_PLAYERS, interior);
   // The identity values unflatten checks (flatten.ts), required here so nothing is allocated for a snapshot it would refuse.

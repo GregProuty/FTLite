@@ -44,11 +44,12 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     expect([Room.Weapons, Room.Shields, Room.Engines].map((r) => walk(d.weapons, r).length)).toEqual([0, 9, 5]);
     disposeDuel(d);
   });
-  it('the Helm turns away from the planet and thrusts when its predicted path meets it', () => {
+  it('the Helm turns away from the planet and sets full throttle when its predicted path meets it', () => {
     const d = createDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
     s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;           // falling south onto the planet, nose south
     const input = scriptedInput(pair, d);
-    expect(input.held[0]).toEqual({ moveX: 1, moveY: -1, interactHeld: false });   // dead astern of the away direction: clockwise, thrust
+    expect(input.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false });   // dead astern of the away direction: clockwise
+    expect(input.commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'throttle', level: 4 }]);   // and full throttle
     disposeDuel(d);
   });
   it('the nearest free character (the gunner, 5 tiles away) walks to an Engines repair, fixes it and sits again', () => {
@@ -77,7 +78,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['laserCharge', 'laserLock', 'missileLaunch', 'sit', 'stand']);
+    expect([...kinds].sort()).toEqual(['laserCharge', 'laserLock', 'missileLaunch', 'sit', 'stand', 'throttle']);
     disposeDuel(d);
   });
 });

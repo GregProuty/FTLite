@@ -78,7 +78,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   });
   it('Tab switches presence on one tick, clears the keyboard and leaves the old character neutral', () => {
     const { rt, hold, press, tick, cleared } = rig();
-    hold({ moveY: -1 }); tick();
+    hold({ moveY: -1 }); press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();   // Artemis-ii: full throttle; held W no longer thrusts
     expect(rt.held()[0]).toEqual({ moveX: 0, moveY: -1, interactHeld: false });
     expect(rt.axes()).toEqual({ turn: 0, thrust: 1 });
     press('switch'); tick();
@@ -514,6 +514,62 @@ describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
     expect(rt.uiHeld()).toEqual(held);
     hold({ held: undefined }); rt.frame(1 / 60);
     expect(rt.uiHeld()).toEqual(NO_HELD_FLAGS);
+    rt.dispose();
+  });
+});
+
+describe('the Helm throttle (Artemis spec §5.4)', () => {
+  it('W and S step it a notch a press, clamped to −1..4, and it holds with no key down', () => {
+    const { rt, press, tick, ticks } = rig();
+    press('throttleUp'); tick();
+    expect([rt.duel.throttle, rt.throttle(), rt.axes()]).toEqual([1, 1, { turn: 0, thrust: 0.25 }]);
+    press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();
+    expect([rt.duel.throttle, rt.axes()]).toEqual([4, { turn: 0, thrust: 1 }]);
+    ticks(10);
+    expect(rt.duel.throttle).toBe(4);
+    press('throttleDown'); tick();
+    expect([rt.duel.throttle, rt.axes().thrust]).toEqual([3, 0.75]);
+    for (let n = 0; n < 6; n++) { press('throttleDown'); tick(); }
+    expect([rt.duel.throttle, rt.axes().thrust]).toEqual([-1, -1]);
+    expect(rt.lastResults().some((r) => r.status === 'rejected')).toBe(false);
+    rt.dispose();
+  });
+  it('two presses in two frames before one tick build on the queued level, not the confirmed one', () => {
+    const { rt, press, tick } = rig();
+    tick();
+    press('throttleUp'); rt.frame(1 / 60); press('throttleUp'); rt.frame(1 / 60);
+    expect([rt.duel.throttle, rt.throttle()]).toEqual([0, 2]);
+    tick();
+    expect([rt.duel.throttle, rt.throttle()]).toEqual([2, 2]);
+    rt.dispose();
+  });
+  it('the end card flies nothing: axes() is NO_AXES on a decided round with a non-zero throttle', () => {
+    const { rt, press, tick, ticks } = rig();
+    press('throttleUp', 'throttleUp'); tick();
+    expect(rt.axes().thrust).toBe(0.5);
+    rt.duel.tactical.systems[1].hull = 0; ticks(3);
+    expect(rt.duel.tactical.outcome).not.toBe(Outcome.Running);
+    expect([rt.duel.throttle, rt.axes()]).toEqual([2, { turn: 0, thrust: 0 }]);
+    rt.dispose();
+  });
+  it('a notch click asks for its level at the Helm only; stand and sit keep the level, and the empty Helm coasts', () => {
+    const { rt, hold, press, tick } = rig();
+    hold({ throttleTo: 3 }); tick(); hold({ throttleTo: null });
+    expect(rt.duel.throttle).toBe(3);
+    press('stand'); tick();
+    expect([rt.view(), rt.duel.throttle, rt.axes()]).toEqual(['interior', 3, { turn: 0, thrust: 0 }]);
+    hold({ throttleTo: 1 }); tick(); hold({ throttleTo: null });   // standing: the click does nothing
+    expect(rt.duel.throttle).toBe(3);
+    press('interact'); tick();
+    expect([rt.view(), rt.duel.throttle, rt.axes()]).toEqual(['helm', 3, { turn: 0, thrust: 0.75 }]);
+    rt.dispose();
+  });
+  it('Tab drops a throttle the left Helm had queued, so nothing is rejected', () => {
+    const { rt, press, tick } = rig();
+    tick();
+    press('throttleUp'); rt.frame(1 / 60); press('switch'); tick();
+    expect(rt.lastResults().some((r) => r.status === 'rejected')).toBe(false);
+    expect(rt.duel.throttle).toBe(0);
     rt.dispose();
   });
 });

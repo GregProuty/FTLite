@@ -1,6 +1,6 @@
 // Spec 2026-11-17-artemis-consoles §6.2: the duel keyboard is the merge point for keys and console clicks.
 import { describe, expect, it } from 'vitest';
-import { createDuelKeyboard, type EventSource } from '../src/renderer/src/app/duel/input';
+import { createDuelKeyboard, throttleRequest, type EventSource } from '../src/renderer/src/app/duel/input';
 
 function fakeWindow() {
   const fns = new Map<string, (e: unknown) => void>();
@@ -68,5 +68,33 @@ describe('keys and clicks merge (spec §6.2)', () => {
     const w = fakeWindow(), kb = createDuelKeyboard(w.target);
     kb.ui.hold('KeyA', true); kb.sample(); w.blur();
     expect(kb.sample().moveX).toBe(0);
+  });
+});
+
+describe('the throttle keys and clicks (Artemis spec §5.4, §6.2)', () => {
+  it('W and S are press edges (auto-repeat ignored) and still held keys', () => {
+    const w = fakeWindow(), kb = createDuelKeyboard(w.target);
+    w.down('KeyW'); w.down('KeyW', true); w.down('KeyW', true);
+    let s = kb.sample(); expect([s.presses.throttleUp, s.presses.throttleDown, s.moveY]).toEqual([1, 0, -1]);
+    w.up('KeyW'); w.down('KeyS');
+    s = kb.sample(); expect([s.presses.throttleUp, s.presses.throttleDown, s.moveY]).toEqual([0, 1, 1]);
+  });
+  it('throttle(level) is last-wins for one sample, and clear and clearUi drop it', () => {
+    const w = fakeWindow(), kb = createDuelKeyboard(w.target);
+    kb.ui.throttle(2); kb.ui.throttle(4);
+    expect(kb.sample().throttleTo).toBe(4); expect(kb.sample().throttleTo).toBeNull();
+    kb.ui.throttle(1); kb.clearUi(); expect(kb.sample().throttleTo).toBeNull();
+    kb.ui.throttle(1); kb.clear(); expect(kb.sample().throttleTo).toBeNull();
+  });
+  it('throttleRequest: a notch a press from the base, clamped at every step; a click wins; the base itself is no request', () => {
+    const p = (throttleUp: number, throttleDown: number) => ({ throttleUp, throttleDown });
+    expect(throttleRequest(0, p(1, 0), null)).toBe(1);
+    expect(throttleRequest(3, p(3, 0), null)).toBe(4);
+    expect(throttleRequest(0, p(0, 3), undefined)).toBe(-1);
+    expect(throttleRequest(4, p(1, 0), null)).toBeNull();
+    expect(throttleRequest(2, p(1, 1), null)).toBeNull();
+    expect(throttleRequest(2, p(1, 0), 0)).toBe(0);
+    expect(throttleRequest(2, p(0, 0), 2)).toBeNull();
+    expect(throttleRequest(2, p(0, 0), 9)).toBe(4);
   });
 });

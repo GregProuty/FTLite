@@ -284,7 +284,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
       path, origin: ownS,
       velocity: { x: ownS.x + s.vx * z, y: ownS.y + s.vy * z },   // where the ship would be in 1 s at this speed
       headingFrom: { x: ownS.x + hxs * nose, y: ownS.y + hys * nose }, headingTo: { x: ownS.x + hxs * (nose + 40), y: ownS.y + hys * (nose + 40) },
-      thrust: Math.sign(input.axes.thrust) || 0, turn: Math.sign(input.axes.turn) || 0,
+      thrust: Number.isFinite(input.axes.thrust) ? Math.max(-1, Math.min(1, input.axes.thrust)) : 0, turn: Math.sign(input.axes.turn) || 0,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null
     };
   }

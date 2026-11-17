@@ -11,7 +11,7 @@ import { canLaunch, laserFull } from '../tactical/weapons';
 import type { DuelState } from './state';
 import type { DuelInput } from './step';
 
-/** A crew manoeuvre counts toward a bait for this many ticks (spec §4). */
+/** A crew manoeuvre (the Helm turns, or its throttle is set: Artemis spec §5.3) counts toward a bait for this many ticks (spec §4). */
 export const BAIT_WINDOW_TICKS = 300;
 /** A crew manoeuvre needs the enemy within this distance (u). */
 export const BAIT_RANGE = 900;
@@ -125,8 +125,8 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   }
   const helm = attendant(d, d.nav);
   if (helm >= 0) {
-    const h = input.held[helm];
-    if (h && (h.moveX !== 0 || h.moveY !== 0) && dist(crew.x, crew.y, enemy.x, enemy.y) <= BAIT_RANGE) { m.tick = tick; m.x = enemy.x; m.y = enemy.y; }
+    const turning = (input.held[helm]?.moveX ?? 0) !== 0;   // Artemis spec §5.3: the Helm turns, or the throttle is not 0
+    if ((turning || d.throttle !== 0) && dist(crew.x, crew.y, enemy.x, enemy.y) <= BAIT_RANGE) { m.tick = tick; m.x = enemy.x; m.y = enemy.y; }
   }
 
   // Repairs: a start is the first tick of work on a room after not working on it; a finish credits every named player.

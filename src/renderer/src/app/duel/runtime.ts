@@ -11,6 +11,7 @@ import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } 
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
 import { stepDuelTick } from '../../sim/duel/step';
+import { throttleThrust } from '../../sim/duel/throttle';
 import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim/duel/summary';
 import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
 import type { ShipLayout } from '../../sim/ship/schema';
@@ -24,7 +25,7 @@ import type { OtherStatus } from '../../render/duel/readoutModel';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
-import { accumulateWheel, emptyPresses, helmAxes, NO_HELD_FLAGS, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
+import { accumulateWheel, emptyPresses, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
 
@@ -184,7 +185,8 @@ export interface DuelRuntime {
   readonly cameras: { readonly helm: Camera; readonly weapons: Camera };
   /** The interior's zoom and follow (interior zoom spec): kept across pause, re-following on Tab, reset each round. */
   readonly interiorCamera: InteriorCamera;
-  /** The Helm's axes and the gunner's steering the last tick sent (zero while that console is empty, spec §7). */
+  /** The Helm's axes the last tick flew: the held turn and the throttle's thrust (Artemis spec §5.3). Zero while the
+   *  Helm is empty or the round is decided. The gunner's steering the last tick sent (zero while Weapons is empty). */
   axes(): Axes;
   steer(): number;
   /** The held input the last tick sent, per player. */
@@ -209,10 +211,14 @@ export interface DuelRuntime {
   uiHeld(): HeldFlags;
   /** Not paused for any reason and not ended (Artemis spec §6.1: the console shows only then). */
   running(): boolean;
+  /** The Helm throttle level the console shows (Artemis spec §6.1): the active player's latest queued throttle, else the duel's. */
+  throttle(): number;
   dispose(): void;
 }
 
 const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
+/** The commands only a seated console's player sends (Weapons and the Helm's throttle): a Tab or a stand drops them. */
+const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle';
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 const shipBody = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
@@ -279,7 +285,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     sentHeld = held;
     const helm = attendant(d.nav), gunner = attendant(d.weapons);
-    sentAxes = helm >= 0 ? helmAxes(held[helm]!) : NO_AXES;
+    sentAxes = helm >= 0 && !ended() ? { turn: Math.sign(held[helm]!.moveX) || 0, thrust: throttleThrust(d.throttle) } : NO_AXES;   // Artemis spec §5.3
     sentSteer = gunner >= 0 ? Math.sign(held[gunner]!.moveX) || 0 : 0;
     for (const e of d.tactical.events) events.push(e);
     // Contact sparks (spec §7 item 8): the sim emits no contact events, so an increase in a hit counter is one.
@@ -297,6 +303,11 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const seat = command.kind === 'sit' || command.kind === 'stand';
     (seat && switching ? deferred : pending).push({ player: active, command });
   };
+  /** The level the Helm builds on and shows (Artemis spec §5.4): the active player's latest queued throttle, else the sim's. */
+  const throttleBase = (): number => {
+    const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'throttle')?.command;
+    return last && last.kind === 'throttle' ? last.level : d.throttle;
+  };
 
   /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
   function newRound(): void {
@@ -312,7 +323,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (k.presses.switch > 0) {   // Tab: presence false for the character left, true for the one taken, same tick; nothing carries over
       // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them. A
       // charge already sent needs no release: the sim lets go of Fire when the seat empties, so chargeSent just resets.
-      pending = pending.filter((c) => !isWeaponsCommand(c.command));
+      pending = pending.filter((c) => !isConsoleCommand(c.command));
       cameraInput.reset(); refollowInteriorCamera(interiorCamera);
       for (let n = 0; n < k.presses.switch; n++) {
         queue({ kind: 'presence', present: false });
@@ -329,8 +340,13 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.interact > 0 && repairInReach(d, active) < 0) { const c = consoleInReach(d, active); if (c >= 0) queue({ kind: 'sit', station: c }); }
       return k;
     }
-    if (p.stand > 0) { pending = pending.filter((c) => !isWeaponsCommand(c.command)); queue({ kind: 'stand' }); chargeSent = false; return k; }   // the stand empties the seat first, as a Tab does
-    if (seat === 'helm') { if (p.camera > 0) snapBack(cameras.helm); return k; }
+    if (p.stand > 0) { pending = pending.filter((c) => !isConsoleCommand(c.command)); queue({ kind: 'stand' }); chargeSent = false; return k; }   // the stand empties the seat first, as a Tab does
+    if (seat === 'helm') {
+      if (p.camera > 0) snapBack(cameras.helm);
+      const level = throttleRequest(throttleBase(), p, k.throttleTo);   // W/S a notch, or a notch click (Artemis spec §5.4)
+      if (level !== null) queue({ kind: 'throttle', level });
+      return k;
+    }
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0) {
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'laserLock')?.command;
@@ -411,6 +427,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     mode: 'single' as const,
     uiHeld: () => lastHeld,
     running: () => pacer.reasons.size === 0 && !ended(),
+    throttle: throttleBase,
     dispose() { pacer.dispose(); disposeDuel(d); }
   };
 }

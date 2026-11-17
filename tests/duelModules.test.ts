@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { COMMAND_REASONS } from '../src/renderer/src/net/contracts';
 import { flatten } from '../src/renderer/src/sim/flatten';
 import { flattenModule, unflattenModule, type SimModule } from '../src/renderer/src/sim/module';
-import { DUEL_MODULES, DUEL_NOT_SNAPSHOTTED, interiorModule, presenceModule, repairModule, roundModule } from '../src/renderer/src/sim/duel/modules';
+import { DUEL_MODULES, DUEL_NOT_SNAPSHOTTED, helmModule, interiorModule, presenceModule, repairModule, roundModule } from '../src/renderer/src/sim/duel/modules';
 import { flattenDuel, hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
@@ -37,7 +37,7 @@ const names = <S>(m: SimModule<S>, s: S) => new Set(m.fields(s).map((f) => f.nam
 const tacticalNames = (s: TacticalState) => new Set([...TACTICAL_MODULES.flatMap((m) => [...names(m, s)]),
   ...s.missiles.flatMap((_, k) => MISSILE_KEYS.map((key) => `missiles.${k}.${key}`))]);
 const tacticalExcluded = { ...spaceModule.notSnapshotted, ...shipModule.notSnapshotted };
-const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, interiorModule].flatMap((m) => [...names(m, d)]));
+const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, helmModule, interiorModule].flatMap((m) => [...names(m, d)]));
 function played(seed: number, ticks: number): DuelState {
   const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed);
   for (let k = 0; k < ticks; k++) stepDuelTick(d, scriptedInput(pair, d));
@@ -59,7 +59,7 @@ describe('the duel modules (spec §6 module contract)', () => {
       expect(uncovered(s, tacticalNames(s), tacticalExcluded), `seed ${seed}, ${slots} slots`).toEqual([]);
     }
   });
-  it('every DuelState member is a presence, repair or interior field, the tactical modules\' state, or declared', () => {
+  it('every DuelState member is a presence, repair, round, helm or interior field, the tactical modules\' state, or declared', () => {
     const d = createDuel(CUTTER, 1);
     try { expect(uncovered(d, duelNames(d), DUEL_NOT_SNAPSHOTTED, new Set(['tactical']))).toEqual([]); } finally { disposeDuel(d); }
   });
@@ -87,7 +87,7 @@ describe('the duel modules (spec §6 module contract)', () => {
   it('every exclusion names a real member and is not also a field', () => {
     const d = createDuel(CUTTER, 1);
     try {
-      for (const [m, s] of [[spaceModule, d.tactical], [shipModule, d.tactical], [presenceModule, d], [repairModule, d], [interiorModule, d]] as const)
+      for (const [m, s] of [[spaceModule, d.tactical], [shipModule, d.tactical], [presenceModule, d], [repairModule, d], [helmModule, d], [interiorModule, d]] as const)
         for (const path of Object.keys(m.notSnapshotted)) { expect(s, path).toHaveProperty(path.split('.')); expect(names(m as SimModule<object>, s).has(path)).toBe(false); }
       for (const path of Object.keys(DUEL_NOT_SNAPSHOTTED)) { expect(d, path).toHaveProperty(path.split('.')); expect(duelNames(d).has(path)).toBe(false); }
     } finally { disposeDuel(d); }
@@ -124,13 +124,13 @@ describe('the duel modules (spec §6 module contract)', () => {
     const active = spaceModule.fields(s).find((f) => f.name === 'missiles.0.active')!;
     expect(() => active.write(s, [2], 0)).toThrow(/not 0 or 1/);
   });
-  it('flatten is the modules in canonical order after SIM_VERSION: space, ship, presence, repair, round, interior', () => {
+  it('flatten is the modules in canonical order after SIM_VERSION: space, ship, presence, repair, round, helm, interior', () => {
     const d = played(1, 600);
     try {
       const space: number[] = [], ship: number[] = [];
       flattenModule(spaceModule, d.tactical, space); flattenModule(shipModule, d.tactical, ship);
       expect(Array.from(flattenTactical(d.tactical))).toEqual([...space, ...ship].map((v) => (v === 0 ? 0 : v)));
-      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, ...flatten(d.interior)]);
+      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, ...flatten(d.interior)]);
       const copy = cloneTactical(d.tactical), fresh = createTacticalState(1);
       expect(unflattenTactical(fresh, flattenTactical(copy))).toBe(flattenTactical(copy).length);
       expect(flattenTactical(fresh)).toEqual(flattenTactical(copy));
@@ -140,7 +140,7 @@ describe('the duel modules (spec §6 module contract)', () => {
   });
   it('the modules own the duel\'s command kinds (setPaused is the core\'s), and their reasons are enum members', () => {
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]).sort();
-    expect(kinds).toEqual(['laserCharge', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'sit', 'stand']);
+    expect(kinds).toEqual(['laserCharge', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'sit', 'stand', 'throttle']);
     for (const { module } of DUEL_MODULES) for (const reason of module.reasons) expect(COMMAND_REASONS, `${module.id}: ${reason}`).toContain(reason);
   });
   it('cloneTactical is derived from the space and ship modules: every field is copied, and changing it on the copy leaves the original', () => {

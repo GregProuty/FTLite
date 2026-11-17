@@ -10,7 +10,7 @@ import { createPortLink } from '../../../../network/portLink';
 import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
 import { createDuelRemoteClient } from '../../../../network/modes/duelStream';
-import type { DuelCommand, Link, Scheduler, Cue } from '../../net/contracts';
+import type { CommandId, DuelCommand, Link, Scheduler, Cue } from '../../net/contracts';
 import { arrivalJitter, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
@@ -25,7 +25,7 @@ import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
-import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, type ConsoleInput, type EventSource, type KeySample } from './input';
+import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
 import { consoleChange } from './consoleChange';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
 import type { DuelSink, LatencySink } from '../../ui/sinks';
@@ -86,6 +86,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), chargePressed = false, releaseSentAt = -1, cancel = () => {}, offClose = () => {};
   let lastHeld = { moveX: 0, moveY: 0, interactHeld: false };
+  // Artemis spec §5.4: the throttle this seat last asked for, until its result comes back; the base W, S and the console build on.
+  let throttleSent: { level: number; sequence: number; round: number } | null = null;
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
   const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
@@ -109,10 +111,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const publication = () => (linkClosed ? null : client?.publication()) ?? frozenPublication;
   const live = (): boolean => !!client && !linkClosed && !!client.publication();
   function hint(phase: 'synced' | 'running' | 'paused' | 'ended') { if (descriptor) void deps.api.viewState(descriptor.epoch, phase).catch(() => {}); }
-  function send(command: DuelCommand): void {
-    if (!client || !descriptor) return;
+  function send(command: DuelCommand): CommandId | null {
+    if (!client || !descriptor) return null;
     const id = client.command(descriptor.seatId, command);
     if (id && command.kind !== 'presence') commandStamps.set(id.sequence, deps.now());
+    return id;
   }
   function stopInput(): void {
     if (client && descriptor && producing) {
@@ -158,6 +161,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const now = deps.now();
     if (fresh) while (heldStamps.length && heldStamps[0]!.sequence <= p.heldHighWater[descriptor.seatId]!) sample(heldSamples, liveHeld, now - heldStamps.shift()!.at);
     for (const result of client.takeResults()) {
+      if (throttleSent && result.id.player === descriptor.seatId && result.id.sequence === throttleSent.sequence) throttleSent = null;   // applied, noop or rejected: the replica is the base again
       const at = result.id.player === descriptor.seatId ? commandStamps.get(result.id.sequence) : undefined;
       if (at !== undefined) { commandStamps.delete(result.id.sequence); if (result.status === 'applied') sample(commandSamples, liveCommand, now - at); }
     }
@@ -170,11 +174,16 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   function play(k: KeySample, d: DuelState, me: number): void {
     const seat = seatOf(d, me), p = k.presses;
     if (seat === 'standing') {
-      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) send({ kind: 'sit', station: c }); }
+      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; send({ kind: 'sit', station: c }); } }
       return;
     }
-    if (p.stand > 0) { if (chargePressed || d.tactical.systems[0].fireHeld) send({ kind: 'laserCharge', held: false }); chargePressed = false; send({ kind: 'stand' }); return; }
-    if (seat === 'helm') { if (p.camera > 0 && source) snapBack(source.cameras.helm); return; }
+    if (p.stand > 0) { if (chargePressed || d.tactical.systems[0].fireHeld) send({ kind: 'laserCharge', held: false }); chargePressed = false; throttleSent = null; send({ kind: 'stand' }); return; }
+    if (seat === 'helm') {
+      if (p.camera > 0 && source) snapBack(source.cameras.helm);
+      const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo);   // Artemis spec §5.4
+      if (level !== null) { const id = send({ kind: 'throttle', level }); if (id) throttleSent = { level, sequence: id.sequence, round: d.round }; }
+      return;
+    }
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0 && steps !== 0) {
       let room = d.tactical.systems[0].lock;
@@ -199,6 +208,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     source?.heldFlags(k.held ?? NO_HELD_FLAGS);
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
     const d = client?.state(), p = client?.publication();
+    if (throttleSent && d && d.round !== throttleSent.round) throttleSent = null;   // a new round starts at STOP
+    source?.throttleBase(throttleSent ? throttleSent.level : null);
     if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
     const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
     // Escape and the leave prompt (spec §7): a prompt from a round that is no longer decided and running closes first.
@@ -217,6 +228,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       heldStamps.push({ sequence, at: deps.now() }); if (heldStamps.length > 64) heldStamps.shift();
     }
     if (!decided) { lastHeld = held; source?.sent(held); }
+    source?.throttleBase(throttleSent ? throttleSent.level : null);   // a press this pump shows this pump
     producing = true;
   }
   function schedule(): void { cancel = deps.scheduler.schedule(1000 / 60, () => { pump(); if (!disposed) schedule(); }); }
@@ -237,7 +249,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       observe(); release();
       // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
-      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; attaches++;
+      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });

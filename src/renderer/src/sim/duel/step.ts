@@ -16,6 +16,7 @@ import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
+import { throttleThrust, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
@@ -25,7 +26,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick. */
 const WEAPON_ORDER = ['laserLock', 'laserCharge', 'missileLaunch'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'laserCharge', 'missileLaunch', 'rematch'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle'];
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -127,7 +128,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
 /**
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
  * only at the two role consoles; stand through today's handler; then presence); tactical commands validated against the
- * seats after the seat phase and folded into the crew's ShipInput; repair, with its events; movement for standing
+ * seats after the seat phase and folded into the crew's ShipInput; the Helm's throttle (Artemis spec §5.2); repair, with its events; movement for standing
  * present players; the tactical stepDuel; hit damage to the crew; fire (growth, damage, ignition from this tick's hits);
  * health (fire damage, downed, pick-up, the Medbay, the both-down loss); the interior tick. Commands apply in the order given (the authority's
  * envelope order). Returns one result per command, sorted by player then sequence. A rematch while the round runs is
@@ -136,8 +137,8 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
 export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   if (d.tactical.outcome !== Outcome.Running) return stepDecided(d, input);
   const st = d.interior, tick = st.tick, results: DuelResult[] = [];
-  const result = (env: DuelEnvelope, reason?: DuelReason): void => {
-    results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status: 'applied' });
+  const result = (env: DuelEnvelope, reason?: DuelReason, status: DuelResult['status'] = 'applied'): void => {
+    results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status });
   };
   resetScratch(d);
   d.events = [];
@@ -176,9 +177,19 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     else { if (!canLaunch(d.tactical, 0)) { result(e, 'unavailable'); continue; } crew.missileLaunch = true; }
     result(e);
   }
+  // The Helm's throttle (Artemis spec §5.2), against the seats as they now stand: stale, then the Helm attendant, then
+  // the level, then noop. Envelope order holds and the last applied level wins.
+  for (const e of input.commands) if (e.command.kind === 'throttle') {
+    const level = e.command.level;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
+    if (!validThrottle(level)) { result(e, 'malformed'); continue; }
+    if (level === d.throttle) { result(e, undefined, 'noop'); continue; }
+    d.throttle = level; result(e);
+  }
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
-  if (helm >= 0) { const h = input.held[helm] ?? NO_HELD; crew.axes = { turn: h.moveX, thrust: -h.moveY }; }   // W (moveY −1, up) is thrust forward
+  if (helm >= 0) crew.axes = { turn: (input.held[helm] ?? NO_HELD).moveX, thrust: throttleThrust(d.throttle) };   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does
   if (gunner >= 0) crew.steer = (input.held[gunner] ?? NO_HELD).moveX;
 
   repairPhase(d, input.held);
