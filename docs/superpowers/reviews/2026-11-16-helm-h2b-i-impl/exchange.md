@@ -110,3 +110,43 @@ Deferred: cosmetic; Decision 5 moves the overlay to React (UI-ii), where it is p
 
 ---
 
+# Round 2 (delta, reviewing 21b1fb3, effort medium, 26 s, 106464 in / 75278 cached / 2263 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — tests/onlineCoordinator.test.ts drives the real owner's linkStats (src/main/network/onlineSession.ts:L579-583). It checks that a fresh figure is returned, that the figure is null after 5001 ms (fake Date, and the clock is Date.now()-based), and that it is null for an attemptId not in peers.ready(). It also sends a retired controller's stats for the new, ready attempt and expects null. Without the transport guard that case would return {lan,5}, so the test fails for the right reason.
+- R1-F2: resolved — scripts/network/duel-app-smoke.ts:L167-168 refuses the recursive delete unless resolve(reportPath,'..') starts with resolve('out')+sep. `sep` is imported at L16. A refused path sets `failure`, and that fails the run at L186.
+- R1-F3: resolved — In src/network/rtc/peer.ts sampleStats sets route/rtt to null before scanning and assigns them only with a pair. The catch also nulls them. The rtcPeer test covers the sequence pair, then no pair, then pair again, then a throwing getStats.
+- R1-F4: resolved — In onlineDuel.ts a null poll answer clears rttMs and keeps route (Decision 4). frame() calls overlay?.draw(null) on both early returns. The session test checks 'RTT 40 MS', then 'RTT - MS' with the INTERNET label kept, which matches the format at latencyOverlay.ts:L20. It then checks a null draw when there is no state.
+- R1-F5: resolved — groupRooms counts a dropped record only when the kept record is a different one with a different startedAtIso, so the same record read twice is not counted. formatReport adds the warning to the header line. The test covers 2 duplicates, the re-read case and the clean case.
+- R1-F6: resolved — soloRecorder.ts takes over duelMode's previous logic unchanged: rising-edge count, then reset of the count and startedAtIso on each record. duelMode.ts wires framePaused after runtime.frame and passes record() into onRound. The test covers two user pauses with a blur in between giving 2, the next round's start time taken from the previous record, and a pause held across a record not counting as a new edge.
+
+## Verified
+- onlineSession.ts:L579-583 linkStats: the current-context check, LINK_STATS_MAX_AGE_MS and the ready-attempt filter are each exercised by the new coordinator test
+- duel-app-smoke.ts:L166-178: the guarded delete, with the existing temporary-root guard at L180-182 left unchanged
+- peer.ts sampleStats: the reset before the scan and the null in the catch; linkFigures still returns {route, rttMs}
+- onlineDuel.ts pollLink and frame(): only rttMs is cleared, roundRtt does not take a null, and the overlay is hidden on the early returns
+- duel-playtest-model.ts groupRooms and formatReport: duplicates is in the return type and consumed by the header; nothing else changed
+- duelMode.ts: the soloRecorder wiring keeps the record → recordDuel promise chain with catch
+
+## Not verified
+- I did not run any tests (forbidden by the constraints). The responder's claims that the full suite passes, that the duel smoke passes and that each new test fails with its fix reverted are taken as reported.
+- R1-F7 (deferred, cosmetic overlay placement) is not among the awaited IDs and was not re-checked.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. Verdict ready, no new findings; R1-F1 to R1-F6 confirmed resolved. R1-F7 stays deferred.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
