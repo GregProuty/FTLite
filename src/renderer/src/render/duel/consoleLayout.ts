@@ -10,5 +10,14 @@ export const STATUS = { x: 12, y: 42, w: READOUT_W } as const;
 export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 216 } } as const;
 export function stationTop(s: 'helm' | 'weapons'): number { return INTERNAL_H - EDGE - STATION.h[s]; }
 export const SIDE = { x: INTERNAL_W - EDGE - 132, y: 42, w: 132 } as const;
+/** The side column panel's height (SideColumn). */
+export const SIDE_H = 96;
 /** The map's off-screen arrows and the Weapons notice keep clear of the status table and the right column. */
 export const CONSOLE_RESERVE = { left: STATUS.x + STATUS.w + EDGE, right: EDGE + SIDE.w + EDGE } as const;
+/** The contact window (enemy ship window spec §4.1): at the right edge, directly below the side column, ending at y 510. */
+export const CONTACT = { x: INTERNAL_W - EDGE - 300, y: SIDE.y + SIDE_H + EDGE, w: 300, h: 360 } as const;
+/** Its ship drawing box (spec §4.2 item 3): 276 × 200 under the title and status rows. */
+export const CONTACT_BOX = { x: CONTACT.x + 12, y: CONTACT.y + 60, w: 276, h: 200 } as const;
+/** The map's right reserve while the window is shown, instead of CONSOLE_RESERVE.right: the off-screen arrows and the top
+ *  info line keep clear of it. */
+export const CONTACT_RESERVE = INTERNAL_W - CONTACT.x + EDGE;

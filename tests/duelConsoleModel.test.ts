@@ -8,7 +8,8 @@ import type { DuelCommand } from '../src/renderer/src/sim/duel/commands';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { canLaunch } from '../src/renderer/src/sim/tactical/weapons';
-import { CONSOLE_RESERVE, SIDE, STATION, STATUS, TABS_RIGHT, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONSOLE_RESERVE, CONTACT, CONTACT_BOX, CONTACT_RESERVE, EDGE, SIDE, SIDE_H, STATION, STATUS, TABS, TABS_RIGHT, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
+import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
 import { consoleModel, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
 import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/controls';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
@@ -37,6 +38,30 @@ describe('console layout (spec §2)', () => {
       expect(STATUS.y + PAD + LINE * rows.length + PAD).toBeLessThanOrEqual(stationTop(mode));
     }
     disposeDuel(d);
+  });
+  it('the contact window (enemy ship window spec §4.1): right edge, below the side column, overlapping nothing', () => {
+    expect(SIDE_H).toBe(96);
+    expect(CONTACT).toEqual({ x: 968, y: 150, w: 300, h: 360 });
+    expect(CONTACT.x + CONTACT.w).toBe(INTERNAL_W - EDGE);
+    expect(CONTACT.y).toBe(SIDE.y + SIDE_H + EDGE);
+    expect(CONTACT_RESERVE).toBe(324);
+    expect(CONTACT_BOX).toEqual({ x: 980, y: 210, w: 276, h: 200 });
+    expect(CONTACT_BOX.x >= CONTACT.x && CONTACT_BOX.x + CONTACT_BOX.w <= CONTACT.x + CONTACT.w).toBe(true);
+    expect(CONTACT_BOX.y >= CONTACT.y && CONTACT_BOX.y + CONTACT_BOX.h <= CONTACT.y + CONTACT.h).toBe(true);
+    type R = { x: number; y: number; w: number; h: number };
+    const rect = (x: number, y: number, w: number, h: number): R => ({ x, y, w, h });
+    const overlap = (a: R, b: R): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const others: [string, R][] = [
+      ['tabs', rect(TABS.x, TABS.y, TABS_RIGHT - TABS.x, TABS.h)],
+      ['status', rect(STATUS.x, STATUS.y, STATUS.w, INTERNAL_H - STATUS.y)],
+      ['helm block', rect(STATION.x, stationTop('helm'), STATION.w, STATION.h.helm)],
+      ['weapons block', rect(STATION.x, stationTop('weapons'), STATION.w, STATION.h.weapons)],
+      ['side column', rect(SIDE.x, SIDE.y, SIDE.w, SIDE_H)],
+      ['scale bar row', rect(0, INTERNAL_H - 40, INTERNAL_W, 40)],
+      ['info line row', rect(0, 0, INTERNAL_W, 30)],
+      ['screen centre ± 80', rect(INTERNAL_W / 2 - 80, INTERNAL_H / 2 - 80, 160, 160)]
+    ];
+    for (const [name, r] of others) expect(overlap(CONTACT, r), name).toBe(false);
   });
 });
 

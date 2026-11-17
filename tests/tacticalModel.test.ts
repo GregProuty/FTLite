@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createCamera, pan, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { createFeelTracker, feelReadout, feelRows, FEEL_WINDOW_TICKS, recordFeel } from '../src/renderer/src/render/tactical/feelModel';
 import {
-  asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, ringCrossesRect,
+  asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, pickRadius, pickShip, ringCrossesRect,
   shipScale, SHIP_MIN_PX_PER_UNIT, tacticalModel, type PrevBody, type TacticalModelInput
 } from '../src/renderer/src/render/tactical/tacticalModel';
 import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
@@ -226,5 +226,30 @@ describe('the feel panel (H-1 spec §9)', () => {
     expect(feelReadout(t, s, st.map.planet).minPlanet).toBeCloseTo(200, 9);
     recordFeel(t, s, st.map.planet);   // the 200 sample falls out of the window
     expect(feelReadout(t, s, st.map.planet).minPlanet).toBeCloseTo(900, 9);
+  });
+});
+
+describe('pickShip (enemy ship window spec §3, §6.2)', () => {
+  const at = (st: TacticalState, cam: Camera, x: number, y: number) => pickShip(input(st, cam), { x, y });
+  it('hits inside the radius and misses outside it at zoom 0.2 (the 16 px floor), 0.5 and 1.2', () => {
+    for (const [z, r] of [[0.2, 16], [0.5, 30.4], [1.2, 48]] as const) {
+      const st = createTacticalState(4), en = st.ships[1], cam = createCamera(en.x, en.y, z);   // the enemy at the screen centre
+      expect(pickRadius(z), `radius at ${z}`).toBeCloseTo(r, 9);
+      expect(at(st, cam, 640 + r - 0.5, 360), `inside at ${z}`).toBe(1);
+      expect(at(st, cam, 640, 360 - (r - 0.5)), `inside, above, at ${z}`).toBe(1);
+      expect(at(st, cam, 640 + r + 0.5, 360), `outside at ${z}`).toBeNull();
+    }
+  });
+  it('skips the crew slot and inactive slots, and picks the nearest of two', () => {
+    const st = createTacticalState(4, 3), crew = st.ships[0], en = st.ships[1], third = st.ships[2]!;
+    expect(at(st, createCamera(crew.x, crew.y, 0.5), 640, 360)).toBeNull();   // the crew's own ship
+    third.x = en.x + 2000; third.y = en.y;
+    expect(at(st, createCamera(third.x, third.y, 0.5), 640, 360)).toBeNull();   // an inactive slot
+    third.active = true;
+    expect(at(st, createCamera(third.x, third.y, 0.5), 640, 360)).toBe(2);
+    third.x = en.x + 20;   // 24 px right of the enemy at zoom 1.2
+    const cam = createCamera(en.x, en.y, 1.2);
+    expect(at(st, cam, 640 + 16, 360)).toBe(2);
+    expect(at(st, cam, 640 + 8, 360)).toBe(1);
   });
 });

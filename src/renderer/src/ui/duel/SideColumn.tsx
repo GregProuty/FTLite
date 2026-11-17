@@ -2,7 +2,7 @@
 // the camera snap button (lit while the camera is free).
 import { memo } from 'react';
 import type { ConsoleView } from '../../render/duel/consoleModel';
-import { SIDE } from '../../render/duel/consoleLayout';
+import { SIDE, SIDE_H } from '../../render/duel/consoleLayout';
 import { DIM, FONT_NATIVE, FONT_SIZE, TEXT } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { useActions } from '../context';
@@ -15,7 +15,7 @@ export const SideColumn = memo(function SideColumn({ side }: { side: NonNullable
   const actions = useActions(), { crt } = useCrt();
   return (
     <>
-      <Panel x={SIDE.x} y={SIDE.y} w={SIDE.w} h={96} />
+      <Panel x={SIDE.x} y={SIDE.y} w={SIDE.w} h={SIDE_H} />
       <PixelText text="ZOOM" x={SIDE.x + 8} y={SIDE.y + 6} size={FONT_NATIVE} tint={crt ? CRT.mid : DIM} />
       <Button name="zoom-out" label="-" x={SIDE.x + 8} y={SIDE.y + 28} w={24} h={24} onPress={() => actions.console.press('zoomOut')} />
       <PixelText text={side.zoom} x={SIDE.x + SIDE.w / 2} y={SIDE.y + 30} size={FONT_SIZE} tint={crt ? CRT.main : TEXT} anchorX={0.5} />
