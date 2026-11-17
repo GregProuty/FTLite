@@ -1208,5 +1208,96 @@
         }
       }
     }
+  },
+  {
+    "title": "Mars colony sets (Habitable Building)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/prop-bunk-a.png",
+    "name": "prop.bunk.a"
+  },
+  {
+    "title": "Mars colony sets (Habitable Building)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/prop-bunk-b.png",
+    "name": "prop.bunk.b"
+  },
+  {
+    "title": "Mars colony sets (Habitable Building)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/prop-seats.png",
+    "name": "prop.seats"
+  },
+  {
+    "title": "Mars colony sets (Habitable Building)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/prop-couch.png",
+    "name": "prop.couch"
+  },
+  {
+    "title": "Mars colony sets (Mars Tools)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/prop-locker-a.png",
+    "name": "prop.locker.a"
+  },
+  {
+    "title": "Mars colony sets (Mars Tools)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/prop-locker-b.png",
+    "name": "prop.locker.b"
+  },
+  {
+    "title": "Mars colony sets (Mars Tools)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/prop-crate.png",
+    "name": "prop.crate"
   }
 ]

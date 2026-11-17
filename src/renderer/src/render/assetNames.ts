@@ -31,6 +31,7 @@ add('optional', 'crew.sit');
 add('optional', ...CREW_ART_NAMES);
 add('optional', ...CONSOLE_ART_NAMES);   // Art-ii spec section 2: the bought consoles; the procedural desks without them
 add('optional', ...BLAST_NAMES);         // Art-ii spec section 3: the bought blasts; none without them
+add('optional', ...PROP_ART_NAMES);      // Art-iii spec section 1: the set dressing; bare floor without it
 // icons (in-house)
 add('optional', 'icon.fire', 'icon.oxygen', 'icon.breach', 'icon.door', 'icon.repair', 'icon.medical', 'icon.power', 'icon.sensors', 'icon.weapons', 'icon.navigation');
 // ui (Kenney Pixel UI, Kenney 1-Bit Input Prompts)
