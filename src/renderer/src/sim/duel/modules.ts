@@ -1,5 +1,5 @@
 // The duel on the sim module contract (engine refactor spec §6, R-1 and R-2): space (the ship slots' bodies, the
-// missile pool, the hunter), ship (each slot's systems record), presence, repair, round (H-2 spec §7) and the interior
+// missile pool, the hunter), ship (each slot's systems record), presence, repair, round (H-2 spec §7), helm (Artemis-ii) and the interior
 // wrapper, in canonical order after SIM_VERSION. flattenDuel, the duel snapshot and its restore all come
 // from this list; tests/duelModules.test.ts holds every DuelState and TacticalState member to a field or an exclusion.
 import { flatten, unflatten } from '../flatten';
@@ -45,6 +45,16 @@ const ROUND: ModuleField<DuelState>[] = [
   scalar('decidedTick', (d) => d.decidedTick, (d, v) => { d.decidedTick = v; })
 ];
 
+/** The Helm's throttle (Artemis spec §5.1): one canonical level, set by the `throttle` command (sim/duel/step.ts). */
+export const helmModule: SimModule<DuelState> = {
+  id: 'helm',
+  fields: () => HELM,
+  notSnapshotted: {},
+  commands: ['throttle'],
+  reasons: ['invalid-seat', 'malformed', 'stale-tick']
+};
+const HELM: ModuleField<DuelState>[] = [scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; })];
+
 /** The duel ship (the Hound) interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
 export const interiorModule: SimModule<DuelState> = {
   id: 'interior',
@@ -80,6 +90,7 @@ export const DUEL_MODULES: readonly { module: SimModule<never>; state(d: DuelSta
   { module: presenceModule as SimModule<never>, state: (d) => d, path: '' },
   { module: repairModule as SimModule<never>, state: (d) => d, path: '' },
   { module: roundModule as SimModule<never>, state: (d) => d, path: '' },
+  { module: helmModule as SimModule<never>, state: (d) => d, path: '' },
   { module: interiorModule as SimModule<never>, state: (d) => d, path: '' }
 ];
 

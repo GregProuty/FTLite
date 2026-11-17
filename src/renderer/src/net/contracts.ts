@@ -74,6 +74,9 @@ export type DuelCommand =
   | { kind: 'laserLock'; room: number }
   | { kind: 'laserCharge'; held: boolean }
   | { kind: 'missileLaunch' }
+  /** The Helm's throttle (Artemis spec §5.2): an integer level −1..4. Any finite number passes the codec, and the sim
+   *  answers a bad one malformed. */
+  | { kind: 'throttle'; level: number }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
   | { kind: 'setPaused'; paused: boolean };
