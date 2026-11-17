@@ -13,6 +13,8 @@ import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/main/network/onlineDuel';
 import { CUTTER } from './helpers/scriptedDuel';
+import { createDuelSink } from '../src/renderer/src/ui/sinks';
+import { createUiStore } from '../src/renderer/src/ui/store';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
@@ -43,7 +45,8 @@ function stubClient() {
 }
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
-  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[]
+  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[],
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -55,7 +58,17 @@ vi.mock('../src/network/portLink', () => ({
 }));
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
-  createDuelScene: () => ({ draw: (_source: unknown, _dt: number, opts: { banner: string | null }) => { h.draws.push({ banner: opts.banner }); }, dispose() {} })
+  // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
+    h.sceneOpts.push(opts);
+    return {
+      draw: (_source: unknown, _dt: number, o: { banner: string | null }) => {
+        h.draws.push({ banner: o.banner });
+        opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
+      },
+      dispose() { h.disposes.n++; opts.ui.clear(); }
+    };
+  }
 }));
 // Imported after the mocks are registered (vi.mock is hoisted above every import).
 import { createOnlineDuelSession } from '../src/renderer/src/app/duel/onlineDuel';
@@ -81,14 +94,14 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.sceneOpts.length = 0; h.disposes.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
-function rig(seat: 0 | 1) {
+function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }) {
   let now = 1000, pending: (() => void) | null = null;
   const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createDuel(CUTTER, 7);
   const session = createOnlineDuelSession({
-    renderer: { app: { canvas: target() } } as never, ui: { frame() {}, clear() {} }, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
+    renderer: { app: { canvas: target() } } as never, ui: ui as never, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
     scheduler: { schedule: (_ms, cb) => { pending = cb; return () => { if (pending === cb) pending = null; }; } },
     api: { viewState: async () => ({ ok: true }) } as never, leave, recordDuel: (r) => { records.push(r); }
   });
@@ -116,6 +129,21 @@ function rig(seat: 0 | 1) {
   };
   return r;
 }
+
+describe('the online duel session clears its UI on leave (React UI spec §2)', () => {
+  it('passes deps.ui to the scene; dispose disposes it once and the duel slice goes null', () => {
+    const store = createUiStore({ onlineAvailable: true }), sink = createDuelSink(store);
+    const r = rig(0, sink);
+    r.attach(); r.session.frame();
+    expect(h.sceneOpts).toHaveLength(1);
+    expect(h.sceneOpts[0]!.ui).toBe(sink);
+    expect(h.draws.length).toBeGreaterThan(0);
+    expect(store.getState().duel).not.toBeNull();
+    r.dispose();
+    expect(h.disposes.n).toBe(1);
+    expect(store.getState().duel).toBeNull();
+  });
+});
 
 describe('the online duel session (H-2 spec §3, §6, §7)', () => {
   it('presence is the first command once the client is ready, on every attach', () => {
