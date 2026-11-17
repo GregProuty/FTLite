@@ -8,7 +8,7 @@ import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { AMBER, DIM, TEXT, WARN, GOOD } from '../theme';
-import { CREW_SHIP, ENEMY_SHIP } from '../tactical/tacticalLayer';
+import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
 import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 

@@ -7,9 +7,11 @@ import { SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { asteroidShape, CHEVRON_SIZE, wedgeSegments, type ArrowTarget, type Label, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import type { ArcDraw, CombatDraw } from './weaponsModel';
 import type { Viewport } from './camera';
+import { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
+
+export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
 export const SPACE = 0x05060a;
-export const CREW_SHIP = 0x4fd6e8, ENEMY_SHIP = 0xe8564f, SHIELD_RING = 0x6fc3ff;
 const GRID = 0x34445c, CONTOUR = 0x4a6a9a, EDGE = 0xa05050, PLANET = 0x2d4a6b, PLANET_LIT = 0x5b86b0, PLANET_RIM = 0x8fb4d8;
 const ROCK = 0x5e554b, ROCK_EDGE = 0x8a7f70, PATH = GOOD, VELOCITY = AMBER, FLAME = 0xff8c1a, MISSILE_PATH = AMBER, LOCK = AMBER;
 const ARROW_COLOUR: Readonly<Record<ArrowTarget, number>> = { ship: CREW_SHIP, enemy: ENEMY_SHIP, planet: PLANET_RIM, missile: AMBER };
