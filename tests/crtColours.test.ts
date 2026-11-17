@@ -11,7 +11,7 @@ import { ringDraw, type ShipDraw, type TacticalDraw } from '../src/renderer/src/
 import type { CombatDraw } from '../src/renderer/src/render/tactical/weaponsModel';
 
 const vp = { w: 1280, h: 720 };
-const ship = (patch: Partial<ShipDraw>): ShipDraw => ({ index: 0, x: 500, y: 360, angle: 0.4, scale: 0.9, chevron: false, crew: true, rooms: [1, 2, 0], shields: 2, ...patch });
+const ship = (patch: Partial<ShipDraw>): ShipDraw => ({ index: 0, x: 500, y: 360, angle: 0.4, scale: 0.9, chevron: false, crew: true, hull: 'hound', rooms: [1, 2, 0], shields: 2, ...patch });
 const trail = (x: number, y: number) => Array.from({ length: 12 }, (_, k) => ({ x: x - 6 * k, y: y + 3 * k })).reverse();
 
 function fullFrame(console: 'helm' | 'weapons'): { d: TacticalDraw; c: CombatDraw } {
@@ -20,7 +20,7 @@ function fullFrame(console: 'helm' | 'weapons'): { d: TacticalDraw; c: CombatDra
     grid: { spacing: 250, lines: [{ x1: 100, y1: 0, x2: 100, y2: 720, major: true }, { x1: 0, y1: 200, x2: 1280, y2: 200, major: false }], columns: [{ text: 'H', x: 100, y: 4 }], rows: [{ text: '9', x: 4, y: 200 }] },
     contours: [{ accel: 40, x: 900, y: 500, r: 120 }], edge: { x: 900, y: 500, r: 400 }, planet: { x: 900, y: 500, r: 40 },
     asteroids: [{ index: 3, x: 300, y: 600, r: 14, dot: false }, { index: 4, x: 320, y: 640, r: 1, dot: true }],
-    ships: [ship({}), ship({ index: 1, x: 760, y: 260, crew: false, rooms: [2, 1, 0], shields: 1 }), ship({ index: 2, x: 200, y: 200, chevron: true }), ship({ index: 3, x: 220, y: 240, chevron: true, crew: false })],
+    ships: [ship({}), ship({ index: 1, x: 760, y: 260, crew: false, hull: 'scout', rooms: [2, 1, 0], shields: 1 }), ship({ index: 2, x: 200, y: 200, chevron: true }), ship({ index: 3, x: 220, y: 240, chevron: true, crew: false, hull: 'scout' }), ship({ index: 4, x: 420, y: 520, rooms: [0, 1, 2] }), ship({ index: 5, x: 640, y: 560, crew: false, hull: 'scout', rooms: [0, 1, 2], shields: 0 })],
     helm: console === 'helm' ? { path: [{ x: 520, y: 340 }, { x: 560, y: 300 }, { x: 610, y: 280 }], origin: { x: 500, y: 360 }, velocity: { x: 560, y: 330 }, headingFrom: { x: 510, y: 340 }, headingTo: { x: 530, y: 300 }, thrust: 1, turn: -1, ring } : null,
     arrows: (['ship', 'enemy', 'planet', 'missile'] as const).map((target, k) => ({ target, x: 28, y: 100 + 120 * k, angle: -Math.PI / 2, distance: 900, label: `${target.toUpperCase()} 900` })),
     overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: true, paused: false },

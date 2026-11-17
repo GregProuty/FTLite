@@ -6,6 +6,7 @@ import { predictPath } from '../../sim/tactical/predict';
 import { CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT, R_MAP, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
+import { hullFor, type HullId } from './hullModel';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -16,6 +17,15 @@ export const CONTOUR_ACCELS: readonly number[] = [40, 10, 3];
 export const ASTEROID_DOT_PX = 2, DOT_MIN_PX = 0.5;
 /** Below this many pixels across, a ship is a fixed-size chevron. */
 export const SHIP_CHEVRON_PX = 10, CHEVRON_SIZE = 14;
+/** Hull silhouettes spec section 2: a silhouette is never drawn smaller than this many screen pixels per ship unit
+ *  (the Hound at least 38 px long), so its shape reads at the default zoom. Drawing only: collision, arcs and ranges
+ *  keep the true scale. */
+export const SHIP_MIN_PX_PER_UNIT = 16;
+/** Screen pixels per world unit for a ship's silhouette at zoom z: the zoom, but never below the minimum. */
+export function shipScale(z: number): number { return Math.max(z, SHIP_MIN_PX_PER_UNIT / SHIP_RADIUS); }
+/** The scale the ship's cues are placed by (the lock, the heading line): the true zoom while the ship is a fixed-size
+ *  chevron, so they stay on the chevron; the silhouette's minimum scale otherwise. */
+export function drawnScale(z: number): number { return 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX ? z : shipScale(z); }
 /** The Helm's predicted path: 2 s at zoom ≥ 0.6, rising linearly to 8 s at zoom 0.12, a point every 4 ticks. */
 export const PATH_NEAR_S = 2, PATH_FAR_S = 8, PATH_NEAR_ZOOM = 0.6, PATH_FAR_ZOOM = 0.12, PATH_STRIDE = 4;
 export const BEARING_RING_ZOOM = 0.3, BEARING_RING_PX = 120;
@@ -42,6 +52,8 @@ export interface ShipDraw {
   /** Screen pixels per world unit (the zoom) for the silhouette. */
   scale: number;
   chevron: boolean; crew: boolean;
+  /** The silhouette (hull silhouettes spec section 2): the shape comes from HULLS[hull], the colours from `crew`. */
+  hull: HullId;
   rooms: readonly number[]; shields: number;
 }
 export interface RingDraw { x: number; y: number; r: number; ticks: (Line & { major: boolean })[]; labels: Label[] }
@@ -257,9 +269,9 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   const ships: ShipDraw[] = [];
   for (const i of input.ships) {
     const b = interpolatedShip(state, prev, alpha, i), s = state.systems[i]!;
-    if (!onScreen(b.x, b.y, SHIP_RADIUS * 2)) continue;
+    if (!onScreen(b.x, b.y, Math.max(SHIP_RADIUS * 2, (SHIP_RADIUS * 1.9 * drawnScale(z)) / z))) continue;   // the drawn rings reach 1.9 units
     const p = toS(b.x, b.y);
-    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: z, chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, rooms: s.rooms, shields: s.shields });
+    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: drawnScale(z), chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: hullFor(i === 0), rooms: s.rooms, shields: s.shields });
   }
 
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
@@ -267,7 +279,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   if (input.console === 'helm' && input.ships.includes(0)) {
     const s = state.ships[0];
     const path = predictPath(state, 0, input.axes, Math.round(pathSeconds(z) * 60), PATH_STRIDE).map((q) => toS(q.x, q.y));
-    const a = headingAngle(own.h), hxs = Math.sin(a), hys = -Math.cos(a), nose = SHIP_RADIUS * 1.3 * z + 4;
+    const a = headingAngle(own.h), hxs = Math.sin(a), hys = -Math.cos(a), nose = SHIP_RADIUS * 1.3 * drawnScale(z) + 4;
     helm = {
       path, origin: ownS,
       velocity: { x: ownS.x + s.vx * z, y: ownS.y + s.vy * z },   // where the ship would be in 1 s at this speed
@@ -299,19 +311,6 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
   };
-}
-
-/** The wedge silhouette in ship units (forward f, right s; the nose at +f), split into the three room segments of
- *  parent §5: Weapons (nose), Shields (flanks), Engines (stern). Each is a flat [f, s, f, s, ...] polygon. */
-export const WEDGE_NOSE = 1.3, WEDGE_TAIL = -0.9, WEDGE_HALF = 0.85;
-function halfWidth(f: number): number { return (WEDGE_HALF * (WEDGE_NOSE - f)) / (WEDGE_NOSE - WEDGE_TAIL); }
-export function wedgeSegments(): { room: number; poly: number[] }[] {
-  const a = 0.3, b = -0.5, wa = halfWidth(a), wb = halfWidth(b);
-  return [
-    { room: 0, poly: [WEDGE_NOSE, 0, a, wa, a, -wa] },
-    { room: 1, poly: [a, -wa, a, wa, b, wb, b, -wb] },
-    { room: 2, poly: [b, -wb, b, wb, WEDGE_TAIL, WEDGE_HALF, WEDGE_TAIL, -WEDGE_HALF] }
-  ];
 }
 
 const shapeCache = new Map<number, number[]>();

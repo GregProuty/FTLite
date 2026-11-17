@@ -84,7 +84,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     expect((kids[3] as Container).blendMode).toBe('multiply');                                // the battlemap, tiles, the props (Art-iii), then the grade
     const lights = kids.findIndex((k) => k.blendMode === 'add');
     expect(lights).toBe(11);                                                                   // after effects.above
-    expect(kids.length - lights - 1).toBe(4);                                                  // the marks and the three labels above the lights
+    expect(kids.length - lights - 1).toBe(6);                                                  // the marks, the three marker labels and the two downed labels (duel-health) above the lights
     view.draw(d, crewAt(d), 1, 1 / 60);
     expect([view.world.x, view.world.y]).toEqual([66, 173]);
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;

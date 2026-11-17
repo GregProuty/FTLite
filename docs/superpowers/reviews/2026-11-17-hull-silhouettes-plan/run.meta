@@ -1,0 +1,11 @@
+topic=hull-silhouettes-plan
+subject_kind=plan
+subject=docs/superpowers/plans/2026-11-17-hull-silhouettes.md
+worktree=C:\Users\djuar\FTLite\.worktrees\hull-silhouettes
+base=main
+cap=10
+effort=high
+confirm=0
+verify=
+created=2026-11-17
+head_at_setup=bbdabf9

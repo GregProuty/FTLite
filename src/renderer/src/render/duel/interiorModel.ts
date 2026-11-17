@@ -4,6 +4,8 @@ import { INTERNAL_H, INTERNAL_W, TILE_PX } from '../../../../shared/resolution';
 import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
+import { Health, Life, LifeState, Position } from '../../sim/components';
+import { HEALTH_MAX } from '../../sim/tuning';
 import { fitInBand, fitRectInBand, type Fit } from '../worldFit';
 import type { TileRect } from '../battlemapModel';
 
@@ -24,7 +26,20 @@ export interface RoomTint { tacticalRoom: number; level: number; tiles: { x: num
 /** `fire`: the room is burning (duel-fire spec §2): the label says so and `progress` is the extinguish progress. */
 export interface RepairMarker { tacticalRoom: number; level: number; x: number; y: number; progress: number; label: string; fire: boolean }
 export interface ConsoleOutline { station: number; x: number; y: number; free: boolean }
-export interface InteriorOverlay { tints: RoomTint[]; markers: RepairMarker[]; consoles: ConsoleOutline[] }
+/** A character's health mark (duel-health spec §2), centred on it (ship-local pixels, uninterpolated): `fill` the health
+ *  bar 0..1, drawn below full and never while downed; `downed`; `revive` the pick-up progress 0..1; `label` the text under
+ *  a downed character ('DOWNED - STAY CLOSE' while it is being picked up, else 'DOWNED'), '' otherwise. */
+export interface CrewHealthMark { pid: number; x: number; y: number; fill: number; bar: boolean; downed: boolean; revive: number; label: string }
+export interface InteriorOverlay { tints: RoomTint[]; markers: RepairMarker[]; consoles: ConsoleOutline[]; crew: CrewHealthMark[] }
+
+/** Each character's health mark, in player order. */
+export function crewHealthMarks(d: DuelState): CrewHealthMark[] {
+  return d.interior.crew.map((eid, pid) => {
+    const downed = Life.state[eid] === LifeState.Downed, hp = Health.cur[eid]!, revive = downed ? Life.reviveProgress[eid]! : 0;
+    return { pid, x: Position.x[eid]! * TILE_PX, y: Position.y[eid]! * TILE_PX, fill: hp / HEALTH_MAX, bar: !downed && Math.ceil(hp) < HEALTH_MAX, downed, revive,
+      label: downed ? (revive > 0 ? 'DOWNED - STAY CLOSE' : 'DOWNED') : '' };
+  });
+}
 
 /**
  * Each damaged tactical room tints its repair room's tiles by level, with a marker on the repair tile and the progress
@@ -46,5 +61,5 @@ export function interiorOverlay(d: DuelState): InteriorOverlay {
     const at = px(st.derived.stationTile[station]!);
     return { station, x: at.x, y: at.y, free: st.stations.occupant[station]! < 0 };
   });
-  return { tints, markers, consoles };
+  return { tints, markers, consoles, crew: crewHealthMarks(d) };
 }

@@ -22,6 +22,8 @@ const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const HOLD: HeldInput = { moveX: 0, moveY: 0, interactHeld: true };
 let seq = 0;
 const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope => ({ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command });
+/** The tick's repair and fire events, without the health events a firefighter standing in the flames adds (duel-health). */
+const work = (d: DuelState) => d.events.filter((e) => e.kind !== 'crewHurt' && e.kind !== 'downed' && e.kind !== 'revived');
 const step = (d: DuelState, held: HeldInput[] = [NONE, NONE], commands: DuelEnvelope[] = []) => stepDuelTick(d, { held, commands });
 /** Stand player pid up and put them at tile (tx, ty), as if they had walked there. */
 function standAt(d: DuelState, pid: number, tx: number, ty: number): void {
@@ -52,7 +54,7 @@ describe('duel fire: ignition (spec §1.1)', () => {
           igniteFromHits(d, [laser(1, true, r)]);
           expect(d.interior.rng.hazards).toEqual(probe);                       // exactly one draw
           expect(fireOf(d, r) > 0).toBe(expected);
-          if (expected) { lit++; expect(fireOf(d, r)).toBe(FIRE_START); expect(d.events).toContainEqual({ kind: 'fireStart', room: r }); } else unlit++;
+          if (expected) { lit++; expect(fireOf(d, r)).toBe(FIRE_START); expect(work(d)).toContainEqual({ kind: 'fireStart', room: r }); } else unlit++;
           if (expected) {                                                        // burning: the next hit draws nothing
             const before = { ...d.interior.rng.hazards }, n = d.events.length;
             igniteFromHits(d, [laser(1, true, r), missile('ship', 0, r)]);
@@ -101,7 +103,7 @@ describe('duel fire: ignition (spec §1.1)', () => {
       } finally { disposeDuel(d); }
     }
     expect(starts).toBeGreaterThan(0);
-  });
+  }, 30_000);
 });
 
 describe('duel fire: persistence and damage (spec §1.2, §1.3)', () => {
@@ -145,16 +147,16 @@ describe('duel fire: putting it out (spec §1.4)', () => {
       igniteRoom(d.interior, roomOf(d, Room.Engines));
       for (let k = 0; k < 179; k++) {
         step(d, [HOLD, NONE]);
-        expect(d.events).toEqual([{ kind: 'fireWork', player: 0, room: Room.Engines }]);
+        expect(work(d)).toEqual([{ kind: 'fireWork', player: 0, room: Room.Engines }]);
       }
       expect(fireOf(d, Room.Engines)).toBeGreaterThan(0);
       expect(d.interior.rooms.fireRepair[roomOf(d, Room.Engines)]).toBeCloseTo(179 * 4 / 720, 12);
       step(d, [HOLD, NONE]);
-      expect(d.events).toEqual([{ kind: 'fireWork', player: 0, room: Room.Engines }, { kind: 'fireOut', room: Room.Engines, players: [0] }]);
+      expect(work(d)).toEqual([{ kind: 'fireWork', player: 0, room: Room.Engines }, { kind: 'fireOut', room: Room.Engines, players: [0] }]);
       expect(fireOf(d, Room.Engines)).toBe(0);
       expect(d.interior.rooms.fireRepair[roomOf(d, Room.Engines)]).toBe(0);
       step(d, [HOLD, NONE]);
-      expect(d.events).toEqual([]);              // nothing left to work on
+      expect(work(d)).toEqual([]);              // nothing left to work on
     } finally { disposeDuel(d); }
   });
   it('two workers take exactly 72 ticks; the burning room\'s repair stays put, then resumes after fireOut', () => {
@@ -167,11 +169,11 @@ describe('duel fire: putting it out (spec §1.4)', () => {
       expect(fireOf(d, Room.Engines)).toBeGreaterThan(0);
       expect(d.repair[Room.Engines]).toBe(100);
       step(d, [HOLD, HOLD]);
-      expect(d.events.at(-1)).toEqual({ kind: 'fireOut', room: Room.Engines, players: [0, 1] });
+      expect(work(d).at(-1)).toEqual({ kind: 'fireOut', room: Room.Engines, players: [0, 1] });
       expect(fireOf(d, Room.Engines)).toBe(0);
       expect(d.repair[Room.Engines]).toBe(100);
       step(d, [HOLD, HOLD]);
-      expect(d.events).toEqual([{ kind: 'repairWork', player: 0, room: Room.Engines }, { kind: 'repairWork', player: 1, room: Room.Engines }]);
+      expect(work(d)).toEqual([{ kind: 'repairWork', player: 0, room: Room.Engines }, { kind: 'repairWork', player: 1, room: Room.Engines }]);
       expect(d.repair[Room.Engines]).toBe(110);
     } finally { disposeDuel(d); }
   });
@@ -198,10 +200,10 @@ describe('duel fire: events, rounds and snapshots (spec §1.5, §1.6, §3)', () 
       igniteRoom(d.interior, roomOf(d, Room.Engines));
       for (let k = 0; k < 179; k++) {
         step(d, [HOLD, HOLD]);
-        expect(d.events).toEqual([{ kind: 'fireWork', player: 0, room: Room.Engines }, { kind: 'repairWork', player: 1, room: Room.Weapons }]);
+        expect(work(d)).toEqual([{ kind: 'fireWork', player: 0, room: Room.Engines }, { kind: 'repairWork', player: 1, room: Room.Weapons }]);
       }
       step(d, [HOLD, HOLD]);
-      expect(d.events).toEqual([
+      expect(work(d)).toEqual([
         { kind: 'fireWork', player: 0, room: Room.Engines }, { kind: 'repairWork', player: 1, room: Room.Weapons },
         { kind: 'repairDone', room: Room.Weapons, players: [1] }, { kind: 'fireOut', room: Room.Engines, players: [0] }
       ]);

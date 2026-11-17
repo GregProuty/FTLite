@@ -3,7 +3,7 @@
 // starts a new interpolation over the actual tick gap. The per-tick tactical events are not in the snapshot, so beams,
 // missile endings and contact sparks are derived from the cumulative counters the snapshot does carry; the sim's own
 // `cue` events still bring the sounds. Cameras belong to this machine and never become commands.
-import { Position } from '../../sim/components';
+import { Life, LifeState, Position } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
 import { hx, hy } from '../../sim/tactical/direction';
 import { missileOf, NO_AXES, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
@@ -126,6 +126,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     view: (): DuelView => { const s = seatOf(duel(), seat); return s === 'standing' ? 'interior' : s; },
     otherStatus(): OtherStatus {
       const d = duel(), other = seat === 0 ? 1 : 0, s = seatOf(d, other);
+      if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
       if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
       const room = repairInReach(d, other);
       return d.present[other] && room >= 0 && workOf(d)[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';

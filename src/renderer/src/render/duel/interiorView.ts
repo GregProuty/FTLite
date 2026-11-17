@@ -15,7 +15,9 @@ import { createCrewLayer } from '../crewSprites';
 import { createEffectsLayer } from '../effects';
 import { createRenderMemory, type RenderMemory } from '../memory';
 import { createIconLayer } from '../roomIcons';
-import { AMBER, DIM, FONT_NATIVE, TEXT, WARN } from '../theme';
+import { AMBER, DIM, FONT_NATIVE, GOOD, TEXT, WARN } from '../theme';
+import { HEALTH_LOW } from './readoutModel';
+import { HEALTH_MAX } from '../../sim/tuning';
 import { createTileLayer } from '../tiles';
 import { duelFit, interiorOverlay, INTERIOR_BAND } from './interiorModel';
 import { placeInterior, type InteriorCamera } from './interiorCamera';
@@ -63,6 +65,10 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
   const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
   const damage = new Graphics(), marks = new Graphics();
+  const crewLabels = Array.from({ length: 2 }, () => {   // duel-health spec §2: DOWNED under a downed character
+    const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
+    t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
+  });
   const labels = Array.from({ length: 3 }, () => {
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
@@ -71,7 +77,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
   // labels on top so the lights never wash them out.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
+  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...crewLabels);
   desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
   return {
     container, world, memory,
@@ -104,6 +110,22 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (t.text !== m.label) t.text = m.label;
         t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
       });
+      // Health (duel-health spec §2): a bar above each character below full, and a downed character's pick-up ring and label.
+      for (const c of o.crew) {
+        const was = crewPrev[c.pid], x = was ? (was.x + (c.x / TILE_PX - was.x) * alpha) * TILE_PX : c.x, y = was ? (was.y + (c.y / TILE_PX - was.y) * alpha) * TILE_PX : c.y;
+        if (c.bar) {
+          const w = TILE_PX * 0.8, bx = x - w / 2, by = y - TILE_PX * 0.75;
+          marks.rect(bx - 1, by - 1, w + 2, 5).fill({ color: 0x000000, alpha: 0.6 });
+          marks.rect(bx, by, w * c.fill, 3).fill({ color: Math.ceil(c.fill * HEALTH_MAX) < HEALTH_LOW ? WARN : GOOD })   // the HEALTH row's rounding;
+        }
+        if (c.revive > 0) marks.moveTo(x, y).arc(x, y, TILE_PX * 0.45, -Math.PI / 2, -Math.PI / 2 + c.revive * Math.PI * 2).closePath().fill({ color: GOOD, alpha: 0.45 });
+        const t = crewLabels[c.pid];
+        if (!t) continue;
+        t.visible = c.label !== '';
+        if (!t.visible) continue;
+        if (t.text !== c.label) t.text = c.label;
+        t.tint = WARN; t.position.set(Math.round(x), Math.round(y + TILE_PX * 0.5));
+      }
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
       const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still

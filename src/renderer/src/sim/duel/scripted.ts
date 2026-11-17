@@ -4,7 +4,7 @@
 // It lives under sim/ so the determinism guard covers it; its only randomness is its own seeded stream.
 import { createRng, nextFloat, type RngState } from '../../../../shared/rng';
 import type { HeldInput } from '../../net/contracts';
-import { Life, LifeState, Position, Seated } from '../components';
+import { Health, Life, LifeState, Position, Seated } from '../components';
 import { roomAt, solidAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { stationOnline } from '../stations';
@@ -17,7 +17,8 @@ import { predictPath } from '../tactical/predict';
 import { missileOf, Room, targetOf, type Axes } from '../tactical/state';
 import { BELT_OUTER, LASER_ARC_COS, LASER_HOLD_TICKS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { canCharge, canLaunch, laserEligible, laserFull } from '../tactical/weapons';
-import { CREW_SPEED, DT, REACH } from '../tuning';
+import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
+import { isDowned, medbayOnline, medbayRoom, revivers } from './health';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands';
 import type { DuelState } from './state';
 import type { DuelInput } from './step';
@@ -35,6 +36,8 @@ export const ORBIT_MAX = 2200;
 export const SPEED_SLACK = 8;
 /** Ticks between two crew missile launches. */
 export const MISSILE_GAP = 900;
+/** A bot below this health with nothing to repair goes to the Medbay and stays until full (duel-health spec §1.9). */
+export const HURT_HEALTH = 50;
 /** Salt for the pair's own stream, so it never shares a sequence with rng.tactical. */
 export const PAIR_SALT = 0x48454c4d;
 
@@ -57,12 +60,14 @@ export interface ScriptedPair {
   lastLaunch: number;
   /** The tactical Room each character is assigned to repair, or −1. */
   task: [number, number];
+  /** Whether each character is on its way to (or in) the Medbay to heal to full. */
+  heal: [boolean, boolean];
 }
 
 export function createScriptedPair(seed: number): ScriptedPair {
   const rng = createRng((seed ^ PAIR_SALT) >>> 0);
   const orbitR = ORBIT_MIN + nextFloat(rng) * (ORBIT_MAX - ORBIT_MIN);
-  return { rng, orbitR, seq: [0, 0], axes: { turn: 0, thrust: 0 }, lastLaunch: -MISSILE_GAP, task: [-1, -1] };
+  return { rng, orbitR, seq: [0, 0], axes: { turn: 0, thrust: 0 }, lastLaunch: -MISSILE_GAP, task: [-1, -1], heal: [false, false] };
 }
 
 /** Turn toward (dx, dy): the sign of the heading error, ties clockwise. */
@@ -200,18 +205,36 @@ function inRepairReach(d: DuelState, pid: number, room: number): boolean {
  *  order, each to the free character with the shortest walk, ties to player 1. A finished room frees its repairer. */
 function assignRepairs(pair: ScriptedPair, d: DuelState): void {
   const rooms = d.tactical.systems[0].rooms;
-  for (let pid = 0; pid < 2; pid++) if (pair.task[pid]! >= 0 && rooms[pair.task[pid]!] === 0) pair.task[pid as 0 | 1] = -1;
+  for (let pid = 0; pid < 2; pid++) if (pair.task[pid]! >= 0 && (rooms[pair.task[pid]!] === 0 || isDowned(d, pid))) pair.task[pid as 0 | 1] = -1;   // a downed character drops its task
   const open = [Room.Weapons, Room.Shields, Room.Engines].filter((r) => rooms[r] >= 1 && !pair.task.includes(r)).sort((a, b) => rooms[b] - rooms[a]);
   for (const r of open) {
     const p = d.points.find((q) => q.tacticalRoom === r)!, goals = goalTiles(d, p.room, p.tile);
     let best = -1, bestDist = Infinity;
     for (const pid of [1, 0]) {
-      if (pair.task[pid]! >= 0) continue;
+      if (pair.task[pid]! >= 0 || isDowned(d, pid)) continue;
       const dist = walkDistance(d, pid, goals);
       if (dist < bestDist) { best = pid; bestDist = dist; }
     }
     if (best >= 0) pair.task[best as 0 | 1] = r;
   }
+}
+
+/** Walkable tiles whose centre is within REACH of pid's centre: where a teammate stands to pick pid up. */
+function reviveTiles(d: DuelState, pid: number): Set<number> {
+  const st = d.interior, w = st.derived.width, eid = st.crew[pid]!, px = Position.x[eid]!, py = Position.y[eid]!, out = new Set<number>();
+  for (let i = 0; i < st.derived.roomOfTile.length; i++) {
+    const tx = i % w, ty = Math.floor(i / w);
+    const dx = tx + 0.5 - px, dy = ty + 0.5 - py;
+    if (!solidAt(st, tx, ty) && Math.sqrt(dx * dx + dy * dy) <= REACH) out.add(i);
+  }
+  return out;
+}
+
+/** The non-solid tiles of an interior room. */
+function roomTiles(d: DuelState, room: number): Set<number> {
+  const st = d.interior, w = st.derived.width, out = new Set<number>();
+  for (let i = 0; i < st.derived.roomOfTile.length; i++) if (st.derived.roomOfTile[i] === room && !solidAt(st, i % w, Math.floor(i / w))) out.add(i);
+  return out;
 }
 
 /** The gunner's commands while seated at Weapons (spec §3), and the missile's steer. */
@@ -236,12 +259,28 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
   const st = d.interior, held: HeldInput[] = [NO_HELD, NO_HELD], cmds: DuelCommand[][] = [[], []];
   assignRepairs(pair, d);
   for (let pid = 0; pid < 2; pid++) {
-    const eid = st.crew[pid]!, seat = Seated.station[eid]!, own = pid === 0 ? d.nav : d.weapons, task = pair.task[pid]!;
+    const eid = st.crew[pid]!, seat = Seated.station[eid]!, own = pid === 0 ? d.nav : d.weapons, task = pair.task[pid]!, mate = 1 - pid;
+    if (Life.state[eid] !== LifeState.Conscious) continue;   // downed: its input is ignored anyway
+    // duel-health spec §1.9: picking up a downed teammate outranks repair.
+    if (isDowned(d, mate)) {
+      if (seat >= 0) { cmds[pid]!.push({ kind: 'stand' }); continue; }
+      if (!revivers(d, mate).includes(pid)) held[pid] = walkTo(d, pid, reviveTiles(d, mate));
+      continue;
+    }
     if (task >= 0) {
       if (seat >= 0) { cmds[pid]!.push({ kind: 'stand' }); continue; }
       if (inRepairReach(d, pid, task)) { held[pid] = { moveX: 0, moveY: 0, interactHeld: true }; continue; }
       const p = d.points.find((q) => q.tacticalRoom === task)!;
       held[pid] = walkTo(d, pid, goalTiles(d, p.room, p.tile));
+      continue;
+    }
+    // A hurt bot with nothing to repair heals at the Medbay, to full.
+    if (Health.cur[eid]! < HURT_HEALTH) pair.heal[pid as 0 | 1] = true;
+    if (Health.cur[eid]! >= HEALTH_MAX) pair.heal[pid as 0 | 1] = false;
+    const mb = medbayRoom(d);
+    if (pair.heal[pid] && mb >= 0 && medbayOnline(d)) {
+      if (seat >= 0) { cmds[pid]!.push({ kind: 'stand' }); continue; }
+      if (roomAt(st, Position.x[eid]!, Position.y[eid]!) !== mb) held[pid] = walkTo(d, pid, roomTiles(d, mb));
       continue;
     }
     if (seat < 0) {   // walk back to its own console and sit

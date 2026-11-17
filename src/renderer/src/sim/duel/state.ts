@@ -24,6 +24,14 @@ export type RepairEvent =
   | { kind: 'fireOut'; room: number; players: number[] }
   | { kind: 'fireStart'; room: number };
 
+/** Per-tick health events (duel-health spec §1.7), derived and unhashed like RepairEvent. `crewHurt`: pid lost `amount`
+ *  health this tick to a fire or a hit. `downed`: pid reached 0 and went down. `revived`: pid stood up at 1 health; `by`
+ *  names the teammates in reach, ascending. */
+export type HealthEvent =
+  | { kind: 'crewHurt'; player: number; amount: number; cause: 'fire' | 'hit' }
+  | { kind: 'downed'; player: number }
+  | { kind: 'revived'; player: number; by: number[] };
+
 export interface DuelState {
   interior: SimState;
   tactical: TacticalState;
@@ -36,8 +44,9 @@ export interface DuelState {
   /** Station indices of the two consoles that are roles (spec §8). */
   nav: number; weapons: number;
   /** This tick's repair and fire events: every repairWork or fireWork in player order, then each Room's repairDone or
-   *  fireOut in Room order (repairPhase), then any fireStart in tactical event order (firePhase, after stepDuel). */
-  events: RepairEvent[];
+   *  fireOut in Room order (repairPhase), then any fireStart in tactical event order (firePhase, after stepDuel), then the
+   *  health events (healthPhase): crewHurt from hits in tactical event order, crewHurt from fire, downed, revived. */
+  events: (RepairEvent | HealthEvent)[];
   /** The round module (H-2 spec §7): this round's index from 0, the player seated at the Helm when it began, the
    *  encounter tick it began on, and the tick right after its deciding step (−1 while it runs). */
   round: number; helmPlayer: 0 | 1; baseTick: number; decidedTick: number;

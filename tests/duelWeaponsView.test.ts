@@ -10,7 +10,8 @@ import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, rese
 import { MISSILE_PATH_MAX_TICKS, predictMissilePath } from '../src/renderer/src/render/tactical/missilePath';
 import { createTacticalLayer, starField } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ARROW_GAP_SIDE, ARROW_MARGIN, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
-import { ARC_HALF, bearingDeg, combatModel, segmentCentre, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { ARC_HALF, bearingDeg, combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { roomCentre } from '../src/renderer/src/render/tactical/hullModel';
 
 const vp = { w: 1280, h: 720 };
 const count = (c: Container): number => c.children.reduce((n, k) => n + 1 + count(k as Container), 0);
@@ -110,7 +111,7 @@ describe('the combat model (H-1 spec §7)', () => {
     for (const console of ['helm', 'weapons'] as const) {
       st.systems[0].lock = 0;
       let c = combatModel(input(st, cam, console));
-      const nose = segmentCentre(0);
+      const nose = roomCentre('scout', 0);
       expect(c.lock!.x).toBeCloseTo(640 + nose.f * SHIP_RADIUS, 9); expect(c.lock!.y).toBeCloseTo(360, 9);
       expect(c.lock!.label.text).toBe('LOCK WEAPONS');
       st.systems[0].lock = 2;
@@ -118,6 +119,15 @@ describe('the combat model (H-1 spec §7)', () => {
       expect(c.lock!.x).toBeLessThan(640); expect(c.lock!.label.text).toBe('LOCK ENGINES');
       expect(c.weapons === null).toBe(console === 'helm');
     }
+  });
+  it('the lock follows the minimum drawn scale at zoom 0.5, and the true zoom on a chevron (zoom 0.2)', () => {
+    const st = createTacticalState(11), e = st.ships[1];
+    Object.assign(e, { heading: 64, headingAcc: 0 });   // nose east
+    st.systems[0].lock = 0;
+    const at = (z: number) => combatModel(input(st, createCamera(e.x, e.y, z), 'weapons')).lock!;
+    expect(at(0.5).x).toBeCloseTo(640 + roomCentre('scout', 0).f * 16, 9);   // 16 px per ship unit
+    expect(at(0.2).x).toBeCloseTo(640, 9);                                      // the chevron's centre
+    expect(at(0.2).label.x).toBeCloseTo(640 + 14 + 6, 9);                      // max(14, 20 × 0.2 × 1.6) + 6
   });
   it('missile mode: the missile, its trail and its predicted path from its drawn position', () => {
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), fx = createFx();
