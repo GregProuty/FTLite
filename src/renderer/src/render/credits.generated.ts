@@ -4,6 +4,7 @@ export const CREDITS: readonly string[] = [
   "",
   "\"1-Bit Input Prompts Pixel 16×\" by Kenney (www.kenney.nl), CC0",
   "\"Cozy Space Interiors\" by Bramble & Byte (https://aquumgifts.itch.io), CC-BY 4.0",
+  "Deep Space (Red) from Diver-Class Scout Ship by 2-Minute Tabletop, CC BY-NC 4.0, non-commercial demo",
   "Explosion VFX by Pimen (pimen.itch.io)",
   "\"Fire Smoke Animations\" by Reactorcore, CC0",
   "Hound-class Transport Ship by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0, non-commercial demo",
