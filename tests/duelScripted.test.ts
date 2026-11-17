@@ -4,6 +4,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Seated } from '../src/renderer/src/sim/components';
 import { solidAt } from '../src/renderer/src/sim/grid';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import {
   AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, scriptedInput, SPEED_SLACK
@@ -23,13 +24,13 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       expect(r).toBeGreaterThanOrEqual(ORBIT_MIN); expect(r).toBeLessThanOrEqual(ORBIT_MAX);
       expect(createScriptedPair(seed).orbitR).toBe(r);
     }
-    const d = createDuel(layout, 3), rng = d.tactical.rng.s;
+    const d = createSeatedDuel(layout, 3), rng = d.tactical.rng.s;
     createScriptedPair(3);
     expect(d.tactical.rng.s).toBe(rng);   // never rng.tactical
     disposeDuel(d);
   });
   it('walks four-way through walkable tiles only, and measures the Cutter walks to each repair point', () => {
-    const d = createDuel(layout, 1), st = d.interior, w = st.derived.width;
+    const d = createSeatedDuel(layout, 1), st = d.interior, w = st.derived.width;
     const walk = (station: number, room: number): number[] => {
       const p = d.points.find((q) => q.tacticalRoom === room)!, path = bfsPath(d, st.derived.stationTile[station]!, goalTiles(d, p.room, p.tile))!;
       let at = st.derived.stationTile[station]!;
@@ -45,7 +46,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('the Helm turns away from the planet and sets full throttle when its predicted path meets it', () => {
-    const d = createDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
+    const d = createSeatedDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
     s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;           // falling south onto the planet, nose south
     const input = scriptedInput(pair, d);
     expect(input.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false });   // dead astern of the away direction: clockwise
@@ -53,7 +54,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('the nearest free character (the gunner, 5 tiles away) walks to an Engines repair, fixes it and sits again', () => {
-    const d = createDuel(layout, 1), pair = createScriptedPair(1), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 1), pair = createScriptedPair(1), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
     let stood = -1, done = -1, sat = -1;
     for (let k = 0; k < 900 && sat < 0; k++) {
@@ -72,7 +73,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('plays a whole duel with every command admitted: never a weapon command away from Weapons, never a refused sit', () => {
-    const d = createDuel(layout, 4), pair = createScriptedPair(4), kinds = new Set<string>();
+    const d = createSeatedDuel(layout, 4), pair = createScriptedPair(4), kinds = new Set<string>();
     while (d.tactical.outcome === Outcome.Running) {
       const input = scriptedInput(pair, d);
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }

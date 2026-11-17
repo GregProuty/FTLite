@@ -141,7 +141,8 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     const p = t.players[pid]!;
     if (work[pid]! >= 0 && work[pid] !== t.prev.work[pid]) p.repairsStarted++;
     if (seat[pid]! < 0) { if (work[pid]! >= 0) p.repairingTicks++; else p.walkingTicks++; }
-    if (seat[pid]! >= 0 && t.prev.seat[pid]! < 0) { if (seat[pid] !== t.prev.lastConsole[pid]) t.consoleSwaps++; t.prev.lastConsole[pid as 0 | 1] = seat[pid]!; }
+    if (seat[pid]! >= 0 && t.prev.seat[pid]! < 0) { if (t.prev.lastConsole[pid]! >= 0 && seat[pid] !== t.prev.lastConsole[pid]) t.consoleSwaps++;   // a first sit is not a swap (start-aboard spec §1)
+      t.prev.lastConsole[pid as 0 | 1] = seat[pid]!; }
   }
 
   // Consoles, the arc and the idle predicate.

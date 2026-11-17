@@ -130,6 +130,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = duel(), other = seat === 0 ? 1 : 0, s = seatOf(d, other);
       if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
       if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
+      if (!d.present[other]) return 'STANDING BY';   // away and on foot (start-aboard spec §1)
       const room = repairInReach(d, other);
       return d.present[other] && room >= 0 && workOf(d)[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';
     },

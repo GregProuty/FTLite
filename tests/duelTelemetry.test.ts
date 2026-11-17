@@ -6,6 +6,7 @@ import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick, type DuelInput } from '../src/renderer/src/sim/duel/step';
 import { BAIT_WINDOW_TICKS, createTelemetry, endedFromPlanet, recordTick, type DuelTelemetry } from '../src/renderer/src/sim/duel/telemetry';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -32,7 +33,7 @@ function standAt(d: DuelState, t: DuelTelemetry | null, pid: number, tx: number,
 
 describe('repair events (H-0c-ii-a spec §4)', () => {
   it('a repairWork per worker every tick of work, a repairDone when the level drops, cleared every tick', () => {
-    const d = createDuel(layout, 5), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
     standAt(d, null, 0, 1, 6);
     expect(d.events).toEqual([]);
@@ -46,7 +47,7 @@ describe('repair events (H-0c-ii-a spec §4)', () => {
     expect(d.events).toEqual([]);
   });
   it('a joint finish names both workers; the events are not hashed', () => {
-    const d = createDuel(layout, 5), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
     standAt(d, null, 0, 1, 6); standAt(d, null, 1, 1, 7);
     for (let k = 0; k < 95; k++) step(d, null, [], [HOLD, HOLD]);
@@ -59,8 +60,19 @@ describe('repair events (H-0c-ii-a spec §4)', () => {
 });
 
 describe('telemetry (H-0c-ii-a spec §4)', () => {
+  it('a first sit from the standing start is not a console swap; a sit at the other console is (start-aboard spec §1)', () => {
+    const d = createDuel(layout, 5), t = createTelemetry(d), w = d.interior.derived.width;
+    const goTo = (pid: number, station: number) => { const tile = d.interior.derived.stationTile[station]!, eid = d.interior.crew[pid]!; Position.x[eid] = (tile % w) + 0.5; Position.y[eid] = Math.floor(tile / w) + 0.5; };
+    goTo(0, d.nav); step(d, t, [cmd(d, 0, { kind: 'sit', station: d.nav })]);
+    expect(d.interior.stations.occupant[d.nav]).toBe(0);
+    expect(t.consoleSwaps).toBe(0);
+    step(d, t, [cmd(d, 0, { kind: 'stand' })]);
+    goTo(0, d.weapons); step(d, t, [cmd(d, 0, { kind: 'sit', station: d.weapons })]);
+    expect(d.interior.stations.occupant[d.weapons]).toBe(0);
+    expect(t.consoleSwaps).toBe(1);
+  });
   it('counts a repair start on the first tick of work and again on resumed work; a finish per level dropped', () => {
-    const d = createDuel(layout, 5), t = createTelemetry(d), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), ship = d.tactical.systems[0];
     ship.rooms[Room.Weapons] = 2;
     step(d, t, [cmd(d, 1, { kind: 'stand' })]);                            // the gunner stands in reach of the Weapons point
     for (let k = 0; k < 480; k++) step(d, t, [], [NONE, HOLD]);              // both levels, held throughout
@@ -77,14 +89,14 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect(t.helmEmptyTicks).toBe(0);
   });
   it('credits a joint finish to both players', () => {
-    const d = createDuel(layout, 5), t = createTelemetry(d), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
     standAt(d, t, 0, 1, 6); standAt(d, t, 1, 1, 7);
     for (let k = 0; k < 96; k++) step(d, t, [], [HOLD, HOLD]);
     expect(t.players.map((p) => [p.repairsStarted, p.repairsFinished])).toEqual([[1, 1], [1, 1]]);
   });
   it('a crew ship that dies on the planet ends the duel from planet contact', () => {
-    const d = createDuel(layout, 5), t = createTelemetry(d), s = d.tactical.ships[0], p = d.tactical.map.planet;
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), s = d.tactical.ships[0], p = d.tactical.map.planet;
     s.x = p.x + p.r + SHIP_RADIUS - 5; s.y = p.y; s.vx = -10; s.vy = 0; d.tactical.systems[0].hull = 1;
     step(d, t);
     expect(t.outcome).toBe(Outcome.EnemyWins);
@@ -93,7 +105,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect(endedFromPlanet(t)).toBe(true);
   });
   it('a laser kill is attributed to the laser, not the planet', () => {
-    const d = createDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships;
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships;
     e.x = s.x + hx(s.heading) * 200; e.y = s.y + hy(s.heading) * 200; e.vx = s.vx; e.vy = s.vy; d.tactical.systems[1].shields = 0; d.tactical.systems[1].hull = 1;
     d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS; d.tactical.systems[0].fireHeld = true;
     step(d, t, [cmd(d, 1, { kind: 'laserCharge', held: false })]);
@@ -104,7 +116,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
   });
   it('an enemy planet contact after a crew manoeuvre with the enemy near is a bait; without one, or too late, it is not', () => {
     const bait = (manoeuvre: boolean, wait: number): number => {
-      const d = createDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
+      const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
       e.x = s.x + 500; e.y = s.y; e.vx = s.vx; e.vy = s.vy;                  // within 900 of the crew, far from the planet
       step(d, t, [], [manoeuvre ? { moveX: 1, moveY: 0, interactHeld: false } : NONE, NONE]);
       for (let k = 0; k < wait; k++) step(d, t);
@@ -118,7 +130,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect(bait(true, BAIT_WINDOW_TICKS)).toBe(0);
   });
   it('counts Weapons as idle only with nothing to do: full, no launch possible, enemy out of the arc', () => {
-    const d = createDuel(layout, 5), t = createTelemetry(d), s = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), s = d.tactical.systems[0];
     s.laserCharge = LASER_CHARGE_UNITS;
     step(d, t);                                                             // a launch is possible (enemy far, magazine full)
     expect(t.weaponsIdleTicks).toBe(0);
@@ -129,7 +141,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect([t.weaponsIdleTicks, t.weaponsEmptyTicks]).toEqual([1, 1]);
   });
   it('counts missile launches and their losses by cause', () => {
-    const d = createDuel(layout, 5), t = createTelemetry(d);
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d);
     step(d, t, [cmd(d, 1, { kind: 'missileLaunch' })]);
     while (missileOf(d.tactical, 0) && d.tactical.outcome === Outcome.Running) step(d, t);
     const c = t.ships[0], lost = Object.values(c.missileLosses).reduce((a, b) => a + b, 0) + c.missileHitsByRoom.reduce((a, b) => a + b, 0);
@@ -141,7 +153,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
 describe('a set throttle is a manoeuvre (Artemis spec §5.3)', () => {
   it('an enemy planet contact while the throttle is set counts as a bait; with the throttle back at STOP for the window it does not', () => {
     const bait = (levels: number[], wait: number): number => {
-      const d = createDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
+      const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
       e.x = s.x + 500; e.y = s.y; e.vx = s.vx; e.vy = s.vy;                  // within 900 of the crew, far from the planet
       for (const level of levels) step(d, t, [cmd(d, 0, { kind: 'throttle', level })]);
       for (let k = 0; k < wait; k++) step(d, t);

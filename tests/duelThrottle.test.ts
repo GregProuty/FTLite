@@ -10,6 +10,7 @@ import { DUEL_MODULES, helmModule } from '../src/renderer/src/sim/duel/modules';
 import { moduleLength, type SimModule } from '../src/renderer/src/sim/module';
 import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { clampThrottle, THROTTLE_MAX, THROTTLE_MIN, throttleThrust, validThrottle } from '../src/renderer/src/sim/duel/throttle';
 import { createTacticalState, Outcome, type Axes, type Ship } from '../src/renderer/src/sim/tactical/state';
@@ -51,7 +52,7 @@ describe('the helm module (Artemis spec §5.1)', () => {
   it('sits after round and before interior, owns throttle, and its field moves the duel hash', () => {
     expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'presence', 'repair', 'round', 'helm', 'interior']);
     expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle'], ['invalid-seat', 'malformed', 'stale-tick']]);
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       expect(d.throttle).toBe(0);
       const base = hashDuel(d);
@@ -63,7 +64,7 @@ describe('the helm module (Artemis spec §5.1)', () => {
 
 describe('the throttle command (Artemis spec §5.2)', () => {
   it('admits in order: stale-tick, then invalid-seat, then malformed, then noop, else applied', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       const r = step(d, [
         cmd(d, 1, throttle(9), d.interior.tick + 1),   // stale comes before the seat
@@ -79,14 +80,14 @@ describe('the throttle command (Artemis spec §5.2)', () => {
     } finally { disposeDuel(d); }
   });
   it('envelope order holds within a tick and the last applied level wins; a repeat of the new level is noop', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       expect(step(d, [cmd(d, 0, throttle(2)), cmd(d, 0, throttle(4)), cmd(d, 0, throttle(4))]).map((x) => x.status)).toEqual(['applied', 'applied', 'noop']);
       expect(d.throttle).toBe(4);
     } finally { disposeDuel(d); }
   });
   it('only the present Helm attendant may set it: an away Helm player and an empty Helm are invalid-seat', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       step(d, [cmd(d, 0, { kind: 'presence', present: false })]);
       expect(step(d, [cmd(d, 0, throttle(2))])[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
@@ -97,7 +98,7 @@ describe('the throttle command (Artemis spec §5.2)', () => {
     } finally { disposeDuel(d); }
   });
   it('is kept across stand and sit, answered duel-decided on the end card, and reset to 0 by a new round', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       step(d, [cmd(d, 0, throttle(3))]);
       expect(step(d, [cmd(d, 0, { kind: 'stand' })])[0]!.status).toBe('applied');
@@ -125,7 +126,7 @@ describe('the throttle on the wire (Artemis spec §5.2)', () => {
 
 describe('the throttle in the snapshot (Artemis spec §5.1)', () => {
   it('round-trips mid-throttle and refuses a level that is not an integer in −1..4, even rehashed', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       step(d, [cmd(d, 0, throttle(-1))]);
       const snap = saveDuelSnapshot(d, DIGEST), at = helmOffset(d);
@@ -144,7 +145,7 @@ describe('the 42 → 43 alias table (Artemis spec §5.6)', () => {
   it('declares helm.throttle added, after the round module, and maps every other field to itself', () => {
     const m = MIGRATIONS[42]!;
     expect(m.change).toBe('Artemis-ii: helm throttle');
-    const d = createDuel(CUTTER, 1);
+    const d = createSeatedDuel(CUTTER, 1);
     try {
       const now = duelSchema(d), k = now.names.indexOf('helm.throttle');
       expect(k).toBe(now.names.indexOf('round.decidedTick') + 1);
@@ -211,7 +212,7 @@ describe('quarter-thrust flight (Artemis spec §5.3)', () => {
 describe('the throttle flies the duel (Artemis spec §5.3)', () => {
   it('levels 4, 2 and −1 fly the held-thrust path 1, 0.5 and −1 tick for tick while the Helm is crewed', () => {
     for (const [level, thrust] of [[4, 1], [2, 0.5], [-1, -1]] as const) {
-      const d = createDuel(CUTTER, 5);
+      const d = createSeatedDuel(CUTTER, 5);
       try {
         const path = predictPath(d.tactical, 0, { turn: 0, thrust }, 60, 1), s = d.tactical.ships[0];
         expect(path).toHaveLength(60);
@@ -225,7 +226,7 @@ describe('the throttle flies the duel (Artemis spec §5.3)', () => {
     }
   });
   it('held W no longer thrusts; an empty Helm coasts and keeps its level, and the next pilot flies at it', () => {
-    const d = createDuel(CUTTER, 5), coast = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5), coast = createSeatedDuel(CUTTER, 5);
     try {
       step(d, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]); step(coast);
       expect([d.tactical.ships[0].vx, d.tactical.ships[0].vy]).toEqual([coast.tactical.ships[0].vx, coast.tactical.ships[0].vy]);

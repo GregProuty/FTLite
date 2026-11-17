@@ -9,6 +9,7 @@ import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { duelEndSummary } from '../src/renderer/src/sim/duel/summary';
 import { createTelemetry, recordTick } from '../src/renderer/src/sim/duel/telemetry';
@@ -42,7 +43,7 @@ function standIn(d: DuelState, pid: number, room: number): void {
   standAt(d, pid, t % w, Math.floor(t / w));
 }
 /** A duel whose enemy is switched off, so no hit lands. */
-function quietDuel(seed = 5): DuelState { const d = createDuel(CUTTER, seed); d.tactical.ships[1]!.active = false; return d; }
+function quietDuel(seed = 5): DuelState { const d = createSeatedDuel(CUTTER, seed); d.tactical.ships[1]!.active = false; return d; }
 const laser = (ship: number, hit: boolean, room: number): DuelEvent => ({ kind: 'laser', ship, hit, stripped: false, room, x1: 0, y1: 0, x2: 0, y2: 0 });
 const missile = (cause: 'ship' | 'planet', target: number, room: number): DuelEvent => ({ kind: 'missileEnd', ship: 1, cause, target, room, x: 0, y: 0 });
 /** Down pid where it stands: health 0, then one step (the downed transition). */
@@ -86,7 +87,7 @@ describe('duel health: damage (spec §1.2)', () => {
   it('the step wires the hunter hits in: away characters standing in the hit rooms are hurt by exactly the hits', () => {
     let hits = 0;
     for (let seed = 1; seed <= 4; seed++) {
-      const d = createDuel(CUTTER, seed);
+      const d = createSeatedDuel(CUTTER, seed);
       try {
         standIn(d, 0, roomOf(d, Room.Shields)); standIn(d, 1, roomOf(d, Room.Weapons));
         step(d, [NONE, NONE], [cmd(d, 0, { kind: 'presence', present: false }), cmd(d, 1, { kind: 'presence', present: false })]);
@@ -269,7 +270,7 @@ describe('duel health: rounds, hash and snapshots (spec §1.8, §3)', () => {
   it('health, life and pick-up progress are hashed, carried by the interior flatten, and validated', () => {
     const names = canonicalFields(CUTTER, 2).map((f) => f.name);
     for (const p of [0, 1]) for (const k of ['health', 'life', 'reviveProgress']) expect(names).toContain(`crew.${p}.${k}`);
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       const h = hashDuel(d);
       d.events = [{ kind: 'downed', player: 0 }];
@@ -281,7 +282,7 @@ describe('duel health: rounds, hash and snapshots (spec §1.8, §3)', () => {
     } finally { disposeDuel(d); }
   });
   it('a snapshot taken mid-downed and mid-pick-up restores and continues identically', () => {
-    const d = createDuel(CUTTER, 1), pair = createScriptedPair(1);
+    const d = createSeatedDuel(CUTTER, 1), pair = createScriptedPair(1);
     try {
       for (let k = 0; k < 600; k++) stepDuelTick(d, scriptedInput(pair, d));
       Health.cur[eid(d, 1)] = 0;                         // the gunner goes down at its console; the Helm bot walks over

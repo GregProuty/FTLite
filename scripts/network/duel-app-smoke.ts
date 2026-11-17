@@ -69,6 +69,26 @@ async function main() {
   // State packets can arrive out of order and a paused host stops publishing, so the newest is the highest sequence, not the last received.
   const latest = (r: any) => (r.observations.at(-1)?.publications as any[] | undefined)?.reduce((a: any, p: any) => (a && a.sequence >= p.sequence ? a : p), undefined);
   const press = async (app: Application, key: string, hold = 120) => { await app.request('key', { key, down: true }); await delay(hold); await app.request('key', { key, down: false }); };
+  /** The highest applied command sequence of `seat` in the app's latest observation. */
+  const applied = async (app: Application, seat: number): Promise<number> =>
+    Math.max(0, ...((await status(app)).observations.at(-1)?.results ?? []).filter((x: any) => x.status === 'applied' && x.id.player === seat).map((x: any) => x.id.sequence as number));
+  /** Walk `seat` with held keys (each [key, ms]) and press E until its sit is applied, nudging left between tries. */
+  async function walkAndSit(app: Application, seat: number, route: readonly (readonly [string, number])[]): Promise<void> {
+    for (const [key, ms] of route) await press(app, key, ms);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const before = await applied(app, seat);
+      await press(app, 'E');
+      try { await until(() => applied(app, seat), (n) => n > before, `${app.profile} sat`, 1500); return; }
+      catch { await press(app, 'A', 120); }
+    }
+    throw Error(`${app.profile} could not reach its console`);
+  }
+  /** Both start standing in the Hound's mid room (Q): the host goes right to the cockpit's back wall, up to its top
+   *  wall and a little left, to Weapons (19,5); the guest goes right to the back wall beside the Helm (20,7). */
+  async function takeConsoles(h: Application, g: Application): Promise<void> {
+    await walkAndSit(h, 0, [['D', 3000], ['W', 1500], ['A', 300]]);
+    await walkAndSit(g, 1, [['D', 3000]]);
+  }
   try {
     runtime = startOnlineAppRuntime(directory, digest, deadline.signal);
     await runtime.ready;
@@ -95,13 +115,10 @@ async function main() {
     const started = await until(() => status(g), (r: any) => latest(r)?.helmPlayer === 1 && latest(r)?.seed === DUEL_TEST_SEED, 'guest sees itself at the Helm');
     proof.swap = { helmPlayer: latest(started).helmPlayer, seed: latest(started).seed };
     step = 'step 2';
-    // 2. Round 1, the forced end: each player stands up and sits down again (X, then E). Nobody flies or fires, so the
-    //    test seed's round is decided on tick 1471 whatever the timing, and both records get command samples.
-    for (const [app, seat] of [[g, 1], [h, 0]] as const) {
-      await press(app, 'X');
-      await until(() => status(app), (r: any) => r.observations.at(-1)?.results.some((x: any) => x.status === 'applied' && x.id.player === seat && x.id.sequence > 1), `${app.profile} stood up`);
-      await press(app, 'E');
-    }
+    // 2. Round 1, the forced end: both start standing aboard (start-aboard spec §1) and walk to their consoles: the host
+    //    to Weapons, the guest to the Helm. Nobody flies or fires, so the test seed's round is decided on tick 1471
+    //    whatever the timing, and both records get command samples.
+    await takeConsoles(h, g);
     step = 'step 3';
     // 3. The round ends; Enter starts round 2 on both; a record with latency samples on both machines.
     const decided = await until(() => status(h), (r: any) => latest(r)?.outcome !== 0, 'the forced round end', 60000);
@@ -109,6 +126,7 @@ async function main() {
     await press(h, 'Return');
     await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.round === 1 && b.round === 1 && a.outcome === 0, 'Enter starts round 2 on both');
     proof.rounds = { decidedTick: latest(decided).tick, outcome: latest(decided).outcome };
+    await takeConsoles(h, g);   // round 2 starts standing aboard too
     const records = await until(async () => (['host', 'guest'] as const).map((profile) => {
       const dir = join(directory, profile, 'playtest');
       const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^duel-\d{4}-\d{2}-\d{2}\.jsonl$/.test(f)) : [];

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { DUEL_LAYOUT } from '../src/renderer/src/sim/duel/layout';
 import { seatOf } from '../src/renderer/src/app/duel/controls';
 import { Seated, Position } from '../src/renderer/src/sim/components';
@@ -48,9 +49,16 @@ describe('the Hound layout', () => {
     expect(DUEL_LAYOUT.id).toBe('hound');
     expect([1, 2, 3, 4].map(shipForCrew)).toEqual(['hound', 'hound', 'hound', 'hound']);
   });
-  it('a duel on the Hound seats the two players on separate seats, in both helm orders, and resolves its repair points', () => {
+  it('a duel on the Hound starts both players standing at the spawns (13,7 and 14,7), in both helm orders; seated they take separate seats; it resolves its repair points', () => {
     for (const helm of [0, 1] as const) {
-      const d = createDuel(DUEL_LAYOUT, 7, helm), st = d.interior;
+      const fresh = createDuel(DUEL_LAYOUT, 7, helm);
+      try {
+        const fc = fresh.interior.crew;
+        expect([fresh.helmPlayer, seatOf(fresh, 0), seatOf(fresh, 1)]).toEqual([helm, 'standing', 'standing']);
+        expect([0, 1].map((p) => [Math.floor(Position.x[fc[p]!]!), Math.floor(Position.y[fc[p]!]!)])).toEqual([[13, 7], [14, 7]]);
+        expect([fresh.interior.stations.occupant[fresh.nav], fresh.interior.stations.occupant[fresh.weapons]]).toEqual([-1, -1]);
+      } finally { disposeDuel(fresh); }
+      const d = createSeatedDuel(DUEL_LAYOUT, 7, helm), st = d.interior;
       try {
         expect(d.nav).not.toBe(d.weapons);
         const [a, b] = [st.crew[helm]!, st.crew[1 - helm]!];

@@ -14,6 +14,7 @@ import { createDuelRemoteClient, createDuelStreamBinding } from '../../src/netwo
 import { duelInit, resolveCutter } from './duelAuthority';
 import { linkPair, type LinkPair } from './linkPair';
 import { ownTestCleanup } from './simLifetime';
+import { seatDuelCrew } from './duelSeat';
 
 export interface Seat { seat: 0 | 1; pair: LinkPair; client: ReturnType<typeof createDuelRemoteClient>; detach(): void; origin: AttachmentOrigin }
 export function onlineDuel(seed: number, options: { helmPlayer?: 0 | 1; runId?: string; drop?: (k: number) => boolean; restore?: DuelCheckpoint } = {}) {
@@ -22,7 +23,8 @@ export function onlineDuel(seed: number, options: { helmPlayer?: 0 | 1; runId?: 
   const clock = { nowMs: () => now }, captures: { checkpoint: DuelCheckpoint; cause: CaptureCause }[] = [];
   let producers!: ReturnType<typeof createDuelProducers>, session: DuelSession | null = null;
   const rules: EncounterRules<DuelTypes> = { ...duelRules,
-    create: (init, resolve) => (session = duelRules.create(init, resolve)), restore: (snap, resolve, memory) => (session = duelRules.restore(snap, resolve, memory)) };
+    create: (init, resolve) => { session = duelRules.create(init, resolve); seatDuelCrew(session.duel); return session; },   // the old seated start (createDuel leaves both standing)
+    restore: (snap, resolve, memory) => (session = duelRules.restore(snap, resolve, memory)) };
   const authority = createEncounterAuthority(rules, { clock, scheduler: { schedule: () => () => {} }, contentDigest, resolveLayout: resolveCutter,
     onCrash(record) { throw Error(record.error); }, onCheckpoint: (checkpoint, cause) => { captures.push({ checkpoint: checkpoint as DuelCheckpoint, cause }); },
     beforeControls: () => producers.beforeControls(), beforeTick: () => producers.beforeTick(),

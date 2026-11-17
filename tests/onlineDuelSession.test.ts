@@ -8,6 +8,7 @@ import type { CommandResult, DuelCommand, HeldInput } from '../src/renderer/src/
 import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
@@ -101,7 +102,7 @@ afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
 function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}) {
   let now = 1000, pending: (() => void) | null = null;
-  const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createDuel(CUTTER, 7);
+  const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createSeatedDuel(CUTTER, 7);
   // The F3 overlay's sink: the lines it was last given, or null once hidden.
   const latency = { frame: (lines: readonly string[]) => { h.overlay.push(lines); }, clear: () => { h.overlay.push(null); } };
   const session = createOnlineDuelSession({

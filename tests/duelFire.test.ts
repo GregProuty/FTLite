@@ -9,6 +9,7 @@ import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { DUEL_EXTINGUISH_UNITS, DUEL_FIRE_CHANCE_LASER, DUEL_FIRE_CHANCE_MISSILE, DUEL_FIRE_DAMAGE_TICKS, DUEL_FIRE_GROW } from '../src/renderer/src/sim/duel/tuning';
 import { Outcome, Room, type DuelEvent } from '../src/renderer/src/sim/tactical/state';
@@ -36,7 +37,7 @@ const roomOf = (d: DuelState, r: number): number => d.points.find((p) => p.tacti
 const fireOf = (d: DuelState, r: number): number => d.interior.rooms.fire[roomOf(d, r)]!;
 /** A duel whose enemy is switched off, so no hit lands and only the fire changes the room levels. */
 function quietDuel(seed = 5): DuelState {
-  const d = createDuel(CUTTER, seed);
+  const d = createSeatedDuel(CUTTER, seed);
   d.tactical.ships[1]!.active = false;
   return d;
 }
@@ -91,7 +92,7 @@ describe('duel fire: ignition (spec §1.1)', () => {
   it('scripted duels do catch fire from the hunter (the step wires the tactical events in)', () => {
     let starts = 0;
     for (let seed = 1; seed <= 3; seed++) {
-      const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed);
+      const d = createSeatedDuel(CUTTER, seed), pair = createScriptedPair(seed);
       try {
         for (let k = 0; k < 20000 && d.tactical.outcome === Outcome.Running; k++) {
           stepDuelTick(d, scriptedInput(pair, d));
@@ -237,7 +238,7 @@ describe('duel fire: events, rounds and snapshots (spec §1.5, §1.6, §3)', () 
     } finally { disposeDuel(d); }
   });
   it('a snapshot taken mid-fire, mid-extinguish restores and continues identically', () => {
-    const d = createDuel(CUTTER, 1), pair = createScriptedPair(1);
+    const d = createSeatedDuel(CUTTER, 1), pair = createScriptedPair(1);
     try {
       for (let k = 0; k < 600; k++) stepDuelTick(d, scriptedInput(pair, d));
       igniteRoom(d.interior, roomOf(d, Room.Shields)); igniteRoom(d.interior, roomOf(d, Room.Engines));

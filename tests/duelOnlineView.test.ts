@@ -10,6 +10,7 @@ import { Position } from '../src/renderer/src/sim/components';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { CUTTER_REPAIR_POINTS } from '../src/renderer/src/sim/duel/tuning';
 import { createTacticalState, missileOf, Outcome, placeMissile } from '../src/renderer/src/sim/tactical/state';
@@ -44,7 +45,7 @@ describe('the online duel view source (spec §3)', () => {
     c.dispose();
   });
   it('interpolates over the actual tick gap: alpha reaches 1 only when the next publication is due', () => {
-    const d = createDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
     let now = 0;
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => now, viewport: { w: 1280, h: 720 } });
     try {
@@ -60,7 +61,7 @@ describe('the online duel view source (spec §3)', () => {
     } finally { disposeDuel(d); c.dispose(); }
   });
   it('derives every beam and missile ending exactly once from the counters, with every third tick published and one in five dropped', () => {
-    const d = createDuel(CUTTER, 7), pair = createScriptedPair(7), c = confirmed(), local: ViewEvent[] = [], online: ViewEvent[] = [];
+    const d = createSeatedDuel(CUTTER, 7), pair = createScriptedPair(7), c = confirmed(), local: ViewEvent[] = [], online: ViewEvent[] = [];
     let now = 0, published = 0;
     const source = createOnlineDuelSource({ client: c.client, seat: 1, now: () => now, viewport: { w: 1280, h: 720 } });
     try {
@@ -91,7 +92,7 @@ describe('the online duel view source (spec §3)', () => {
     expect(missileOf(after, 0)).not.toBeNull();
   });
   it('shows the other character REPAIRING only while a repair it stands at has progressed since the last publication', () => {
-    const d = createDuel(CUTTER, 5), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 5), c = confirmed();
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       // Player 1 stands at the Weapons room's repair point with the room damaged.
@@ -113,7 +114,7 @@ describe('the online duel view source (spec §3)', () => {
 
 describe('the online end card leave prompt (spec §7)', () => {
   it('a partner rematch closes an open prompt: Escape in the next round sends setPaused, and no prompt shows', () => {
-    const d = createDuel(CUTTER, 3), c = confirmed(), esc = { pause: 1, confirm: 0 }, enter = { pause: 0, confirm: 1 };
+    const d = createSeatedDuel(CUTTER, 3), c = confirmed(), esc = { pause: 1, confirm: 0 }, enter = { pause: 0, confirm: 1 };
     try {
       d.tactical.systems[1].hull = 0; stepDuelTick(d, { held: [], commands: [] });
       c.publish(d);
@@ -164,7 +165,7 @@ describe('the online session wrapper (spec §3)', () => {
 
 describe('the online interior zoom camera (interior zoom spec rule 5)', () => {
   it('this seat standing: the wheel, the zoom keys, a drag and C feed the interior camera; a new round resets it', () => {
-    const d = createDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
     let now = 0;
     const source = createOnlineDuelSource({ client: c.client, seat: 1, now: () => now, viewport: { w: 1280, h: 720 } });
     const keys = (over: Partial<ReturnType<typeof emptyPresses>> = {}) => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: { ...emptyPresses(), ...over } });
@@ -192,7 +193,7 @@ describe('the online interior zoom camera (interior zoom spec rule 5)', () => {
 
 describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', () => {
   it('the Helm seat flies the replica throttle; throttle() is the session base, else the replica', () => {
-    const d = createDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 2; c.publish(d); source.observe();
@@ -208,7 +209,7 @@ describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', (
     } finally { disposeDuel(d); c.dispose(); }
   });
   it('the end card flies nothing: axes() is NO_AXES on a decided round whatever the throttle', () => {
-    const d = createDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 3; c.publish(d); source.observe();

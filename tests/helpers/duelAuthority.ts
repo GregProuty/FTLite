@@ -1,6 +1,7 @@
 // A duel run through the generic authority core (engine refactor spec §6, R-1b): the scripted pair's held axes and
 // commands enter as journal frames, exactly as a live binding's would, so the run exercises the ledger, the duel codec,
 // the rules' step, cues, end record, snapshot and checkpoint. Shared by the duel snapshot, replay and size tests.
+import { seatDuelCrew } from './duelSeat';
 import { createEncounterCore } from '../../src/renderer/src/authority/core';
 import { duelRules, type DuelTypes } from '../../src/renderer/src/authority/duelRules';
 import type { DuelCheckpoint, DuelInit } from '../../src/renderer/src/authority/duelCheckpoint';
@@ -29,6 +30,7 @@ export function createDriver(seed: number): DuelDriver {
 
 export function duelCore(init: DuelInit, restored?: DuelCheckpoint) {
   const state = restored ? duelRules.restore(restored.snapshot, resolveCutter, restored.modeMemory) : duelRules.create(init, resolveCutter);
+  if (!restored) seatDuelCrew(state.duel);   // the old seated start (createDuel leaves both standing)
   const core = createEncounterCore(duelRules, deps(init), state, restored as CheckpointOf<DuelTypes> | undefined);
   return { core, state, init };
 }

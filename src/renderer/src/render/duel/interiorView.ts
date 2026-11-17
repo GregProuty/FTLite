@@ -14,12 +14,13 @@ import { createPropLayer } from '../propLayer';
 import { createCrewLayer } from '../crewSprites';
 import { createEffectsLayer } from '../effects';
 import { createRenderMemory, type RenderMemory } from '../memory';
-import { createIconLayer } from '../roomIcons';
+import { createIconLayer, drawIcon } from '../roomIcons';
+import { INK } from '../painted/ink';
 import { AMBER, DIM, FONT_NATIVE, GOOD, TEXT, WARN } from '../theme';
 import { HEALTH_LOW } from './readoutModel';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { createTileLayer } from '../tiles';
-import { duelFit, interiorOverlay, INTERIOR_BAND } from './interiorModel';
+import { duelFit, interiorOverlay, INTERIOR_BAND, stationBadges, type StationBadge } from './interiorModel';
 import { placeInterior, type InteriorCamera } from './interiorCamera';
 import { createInteriorFeel } from '../interiorFeel';
 import { backdropOption } from '../twinkleLayer';
@@ -61,7 +62,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const clip = new Graphics().rect(INTERIOR_BAND.x, INTERIOR_BAND.y, INTERIOR_BAND.w, INTERIOR_BAND.h).fill(0xffffff);
   container.addChild(fx.starfield, world, clip);   // the starfield under the world, filling INTERIOR_BAND; Art-v: or the painted backdrop over the whole stage
   const memory = createRenderMemory();
-  const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer();
+  const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer(['navigation', 'medbay']);   // the badges stand in for these two (start-aboard spec §2)
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
   const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
   const damage = new Graphics(), marks = new Graphics();
@@ -69,6 +70,11 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
   });
+  // Station badges (start-aboard spec §2): a plate and glyph per working console over the desks and under the crew, and a
+  // label on top with the other labels. The glyphs are drawn white once and tinted each frame.
+  const badges = new Container(), badgeLabels: BitmapText[] = [];
+  let badgesFor: string | null = null, badgeScale = 0;
+  const BADGE = 32, BADGE_GLYPH = 22, LABEL_ADVANCE = 6, BADGE_TINT: Record<StationBadge['tint'], number> = { normal: TEXT, offline: WARN, faint: DIM };
   const labels = Array.from({ length: 3 }, () => {
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
@@ -77,7 +83,9 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
   // labels on top so the lights never wash them out.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...crewLabels);
+  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...crewLabels);
+  const badgeText = new Container();
+  world.addChild(badgeText);
   desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
   return {
     container, world, memory,
@@ -96,6 +104,24 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       clip.visible = zoomed;
       st.crew.forEach((eid, pid) => { const p = crewPrev[pid]; if (p) memory.prev.set(Stable.id[eid]!, p); });
       battlemap.draw(st); tiles.update(st, dt); props.draw(st); icons.update(st); desks.draw(st); effects.draw(st);
+      const bs = stationBadges(d), k2 = zoomed ? 1 : 2;   // labels at twice native over the whole-ship fit, native once zoomed in
+      if (badgesFor !== st.derived.layoutHash || badgeScale !== k2) {   // built once per layout: a plate and a white glyph per badge, and its label
+        for (const c of badges.removeChildren()) c.destroy();
+        for (const c of badgeText.removeChildren()) c.destroy();
+        badgeLabels.length = 0;
+        for (const b of bs) {
+          const plate = new Graphics().roundRect(b.x - BADGE / 2, b.y - BADGE / 2, BADGE, BADGE, 6).fill({ color: INK, alpha: 0.7 });
+          const glyph = new Graphics(); drawIcon(glyph, b.kind, b.x, b.y, BADGE_GLYPH, 0xffffff);
+          badges.addChild(plate, glyph);
+          const t = new BitmapText({ text: b.label, style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE * k2 } });
+          t.anchor.set(0.5, 0); t.roundPixels = true; t.position.set(Math.round(b.x), Math.round(b.y + BADGE / 2 + 1));
+          const lw = b.label.length * LABEL_ADVANCE * k2;   // m5x7's advance at its native size: no text measuring (no canvas in node tests)
+          const back = new Graphics().rect(Math.round(b.x - lw / 2) - 2 * k2, Math.round(b.y + BADGE / 2 + 1) + 1.5 * k2, lw + 4 * k2, 11 * k2).fill({ color: INK, alpha: 0.7 });
+          badgeText.addChild(back, t); badgeLabels.push(t);
+        }
+        badgesFor = st.derived.layoutHash; badgeScale = k2;
+      }
+      bs.forEach((b, k) => { const c = BADGE_TINT[b.tint]; (badges.children[k * 2 + 1] as Graphics).tint = c; badgeLabels[k]!.tint = c; });
       const o = interiorOverlay(d);
       damage.clear(); marks.clear();
       for (const t of o.tints) for (const p of t.tiles) damage.rect(p.x, p.y, TILE_PX, TILE_PX).fill({ color: TINT[t.level]!, alpha: 0.28 });
