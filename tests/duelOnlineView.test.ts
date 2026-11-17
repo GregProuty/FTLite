@@ -207,4 +207,14 @@ describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', (
       expect(gunner.axes()).toEqual({ turn: 0, thrust: 0 });
     } finally { disposeDuel(d); c.dispose(); }
   });
+  it('the end card flies nothing: axes() is NO_AXES on a decided round whatever the throttle', () => {
+    const d = createDuel(CUTTER, 3), c = confirmed();
+    const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
+    try {
+      d.throttle = 3; c.publish(d); source.observe();
+      expect(source.axes().thrust).toBe(0.75);
+      d.tactical.outcome = Outcome.CrewWins; d.decidedTick = d.interior.tick; c.publish(d); source.observe();
+      expect(source.axes()).toEqual({ turn: 0, thrust: 0 });
+    } finally { disposeDuel(d); c.dispose(); }
+  });
 });

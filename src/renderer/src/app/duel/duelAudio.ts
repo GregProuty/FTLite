@@ -27,7 +27,7 @@ export function createDuelAudio(out: AudioOut) {
       // axes, so only the speed part), and the crew ship's speed. A frozen view (not live) holds no battle, hum or crackle.
       if (f.live === false) { out.status({ engaged: false, paused: f.paused, duck: ev.duck, fires: 0, hum: null }); return; }
       out.status({ engaged: t.outcome === OUTCOME_RUNNING, paused: f.paused, duck: ev.duck, fires: ins.fires,
-        hum: { thrust: Math.abs(f.axes.thrust) > 0 ? 1 : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
+        hum: { thrust: Number.isFinite(f.axes.thrust) ? Math.min(1, Math.abs(f.axes.thrust)) : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
     },
     /** A new round or a rebuilt scene: the next frame is a fresh baseline. */
     reset(): void { duelWatch = null; inside = null; }

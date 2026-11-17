@@ -543,6 +543,15 @@ describe('the Helm throttle (Artemis spec §5.4)', () => {
     expect([rt.duel.throttle, rt.throttle()]).toEqual([2, 2]);
     rt.dispose();
   });
+  it('the end card flies nothing: axes() is NO_AXES on a decided round with a non-zero throttle', () => {
+    const { rt, press, tick, ticks } = rig();
+    press('throttleUp', 'throttleUp'); tick();
+    expect(rt.axes().thrust).toBe(0.5);
+    rt.duel.tactical.systems[1].hull = 0; ticks(3);
+    expect(rt.duel.tactical.outcome).not.toBe(Outcome.Running);
+    expect([rt.duel.throttle, rt.axes()]).toEqual([2, { turn: 0, thrust: 0 }]);
+    rt.dispose();
+  });
   it('a notch click asks for its level at the Helm only; stand and sit keep the level, and the empty Helm coasts', () => {
     const { rt, hold, press, tick } = rig();
     hold({ throttleTo: 3 }); tick(); hold({ throttleTo: null });

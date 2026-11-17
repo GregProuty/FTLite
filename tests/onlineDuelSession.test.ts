@@ -377,4 +377,24 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // the new round starts from the replica's 0
     r.dispose();
   });
+  it('a sit, a re-attach and a noop result each clear the level in flight (the base falls back to the replica)', () => {
+    const r = rig(0), c = r.attach();
+    tap(r, 'KeyW');                                                       // 1 in flight
+    stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: r.d.interior.tick, command: { kind: 'stand' } }] });
+    c.publish(r.d); r.pump();
+    tap(r, 'KeyE');                                                       // the sit clears it
+    stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 2 }, requestedTick: r.d.interior.tick, command: { kind: 'sit', station: r.d.nav } }] });
+    c.publish(r.d); r.pump();
+    tap(r, 'KeyW');
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // from the replica's 0, not from 2
+    tap(r, 'KeyW');                                                       // 2 in flight
+    const c2 = r.attach();                                                // a re-attach clears it
+    tap(r, 'KeyW');
+    expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });
+    tap(r, 'KeyW');                                                       // 2 in flight on c2
+    c2.results.push({ id: lastThrottleId(c2), tick: 3, status: 'noop' } as never); r.pump();
+    tap(r, 'KeyW');
+    expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // a noop hands the base back too
+    r.dispose();
+  });
 });

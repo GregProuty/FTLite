@@ -44,4 +44,11 @@ describe('the duel audio adapter (Audio-i spec section 4)', () => {
       expect(r.status[1]).toMatchObject({ engaged: true, fires: 1, hum: { thrust: 1 } });
     } finally { disposeDuel(d); }
   });
+  it('the hum thrust follows the magnitude of the axes thrust (a quarter throttle hums a quarter)', () => {
+    const d = createDuel(parseShip(hound), 1), r = recorder(), a = createDuelAudio(r.out);
+    try {
+      for (const thrust of [0.25, -0.5, 1, 0, NaN]) a.frame({ duel: d, events: [], axes: { turn: 0, thrust }, paused: false, pan: () => 0 });
+      expect(r.status.map((s) => s.hum?.thrust)).toEqual([0.25, 0.5, 1, 0, 0]);
+    } finally { disposeDuel(d); }
+  });
 });
