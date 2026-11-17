@@ -117,3 +117,68 @@ Confirmed: duelGates.test.ts asserts 180-300 s. Spec 10: bands unchanged; a fail
 
 ---
 
+# Round 2 (delta, reviewing 15b4d988, effort medium, 126 s, 650607 in / 584854 cached / 9726 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Step-1 neutral derelict (orbitR 0) fails the new §6.2 validation, so step-1 snapshots cannot restore
+§6.3 step 1 zeroes the derelict (`derelict zeroed with salvaged 1`), so `derelict.orbitR` is 0. §6.2 validates `derelict.orbitR in the drawn bands` ([700, 1000] ∪ [1400, 1599]). Every snapshot taken under step 1 would therefore fail validation on restore. The two sections contradict each other. · spec L117 (step 1: derelict zeroed, salvaged 1); spec L113 (orbitR in the drawn bands); spec L68 (bands 700..1000, 1400..1599); src/renderer/src/sim/duel/modules.ts:L87-L95 (the snapshot path runs through these modules) · Under step 1 the snapshot and online-join tests would throw. The plan author would then have to choose between relaxing validation and picking a non-zero neutral value, and those two choices give different step-1 hashes. · Pick one neutral value that the validation accepts, and name it in step 1. One option is `orbitR` 700 with `salvaged` 1. The other is to allow `orbitR` 0 in validation only when `salvaged` is 1. Then add a step-1 snapshot round-trip test.
+
+### [P2] R2-F2 The spec doesn't say whether `scanner` is computed before or after contactScan admission, and a takeover in the same tick depends on it
+§4.6 says step.ts sets `scanner = scan.contact < 0 || attendant(d, scan.by) >= 0` 'after the seat phase'. §5's admission phase also runs after the seat phase and can change `scan.by`: a faster seat takes over the rate and its `by`. Take a Helm scan whose Helm player stands this tick while Science sends contactScan on the same contact. If `scanner` is computed before admission it is false and the scan cancels. If it is computed after, it is true and the scan continues at Science's rate. · spec L82 (scanner computed 'after the seat phase'); spec L92 (takeover sets `by`); spec L97 (admission after the throttle loop, against the seats after the seat phase); src/renderer/src/sim/duel/step.ts:L168-L192 (crew ShipInput built, then the command loops) · The two orders produce different hashes in a reachable case, and the scan tests ('a faster seat takes over', 'leaving the seat cancels') would be written against whichever one the implementer guessed. · State that `scanner` is computed after the contactScan admission loop, from the scan as it stands after admission. Add a test where the Helm player stands and Science takes over in the same tick.
+
+## Prior findings
+- R1-F1: resolved — `startTick` is set by startRound beside lastLaunch (step.ts:L93). Every round-relative rule uses rt (spec L37). hostileAt is round-relative and starts at −1 in each new round. A rematch test is listed (L170).
+- R1-F2: resolved — The command is renamed `contactScan` (spec L88, L92).
+- R1-F3: resolved — `ShipInput.scanner` is set in step.ts from `attendant(d, scan.by)`, and the science steps stay in stepDuel (spec L82-L83). `attendant` exists at step.ts:L46. The tick order relative to admission is still open; see the new P2.
+- R1-F4: resolved — §6.2 gives the science module, its field order, `freq` after `lock` (SYSTEMS_TAIL at hash.ts:L20), fresh clone containers, and validation widened for Patrol (hash.ts:L179) and layers + 1 (hash.ts:L172). `science` is added to DUEL_NOT_SNAPSHOTTED (L104). The step-1 orbitR conflict is raised separately.
+- R1-F5: resolved — The angle is in heading units, using `dirBetween`/`wrapHeading` (direction.ts:L5, L10), `circularSpeed` (map.ts:L26), `DT` (sim/tuning.ts:L3) and `HEADING_COUNT` (tuning.ts:L8). The draw order and bands are exact (L66-L75). Prograde is heading + 64, as in spawnAt (map.ts:L58).
+- R1-F6: still open — The two-step structure is now correct, but the version numbers are stale. Master already has `SIM_VERSION = 44` (src/renderer/src/sim/tuning.ts:L7, from the start-aboard merge 69f34c27), and the oracle requires bump = baseline + 1 with MIGRATIONS keyed by the baseline (scripts/golden/duelOracle.ts:L10, L331-L333). Spec L117 says 43 → 44 with `MIGRATIONS[43]`, which the oracle would never apply. It should say 44 → 45 with `MIGRATIONS[44]`, and L118, the §1/§8 text and the role line should be updated to match. The `added` regexes match duelSchema's `<module id>.<field>` naming (duelOracle.ts:L103, L111).
+- R1-F7: resolved — `ContactState.contact`, the new `pickContact`, the enemy drawn through `hunterSlot` (duel.ts:L13) and `arm` as a no-op on the derelict are all in spec L33 and L133-L134 and L139.
+- R1-F8: resolved — The Patrol ShipInput is given exactly (L44), the shield clock is held while hostileAt < 0 (L45), and the start is the class's layers − 1 (L39). This fits tickWeapons L106-L107 and laserFrozen when `weapons` is false (weapons.ts:L48-L49).
+- R1-F9: resolved — Only existing reasons are used: `invalid-seat` and `not-at-weapons` (as the throttle uses them, step.ts:L185). The wire is int, the sim answers malformed, designate returns noop, and the module lists are in L110.
+- R1-F10: resolved — The spec now states the admission order after the throttle (L97), that a frequency change applies in the same tick (fireLaser runs inside stepDuel later), the completion tick formula (L53), hostility at rt 1199 (L40) and the rate takeover (L92). The scanner-versus-admission ordering is raised as a new P2.
+- R1-F11: resolved — T now supersedes the enemy-window rule, S scans on Science only, Science is added to ConsoleStation/Seat/reach/layout, and Science has no aim (L105, L135, L139, L143-L146).
+- R1-F12: resolved — The bands are unchanged, the expected direction is stated, and a failed band is reported to the owner (L177).
+
+## Verified
+- Hostility triggers line up with the event shapes: a `laser` event has `ship` and `hit` (state.ts:L78) and a `missileEnd` event has `ship` and `target` (state.ts:L80). The hostility step runs after resolveMissiles and tickWeapons (duel.ts:L33-L34), so that tick's events are present.
+- Holding the Patrol shield clock fits tickWeapons L106-L107. A layer at layers + 1 is never regained because the `shields >= layers` branch zeroes the clock.
+- A derelict at orbitR ≤ 1599 is always at least 401 from spawns at SPAWN_RADIUS 2000 (tuning.ts:L34). The 600 rule can bind only on the outer band, and the inner band always clears it.
+- DUEL_MODULES uses path 'tactical' for the tactical modules (modules.ts:L88-L89), and the `science` id doesn't collide with an existing module id.
+- `stationOfKind[StationKind.Science]` exists in the sector sim (debris.ts:L70).
+
+## Not verified
+- That the Hound layout actually has a Science station in Ops. I didn't open the layout file.
+- Whether non-belt asteroids or the belt asteroids' radius (BELT_R_MAX 45) intrude within SALVAGE_RANGE of orbitR 1000 or 1400. The edges are close (1100 − 45 = 1055 against 1000 + 60), but I didn't check generateMap's placement.
+- What start-aboard (SIM 44) changed beyond the version number, for example whether its sit or consoleInReach changes conflict with §6.1. I didn't read that spec.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject. 3 accepted (R1-F6 reopened, R2-F1, R2-F2), 0 rejected. 11 prior IDs resolved.
+
+## R1-F6 [P1]: The SIM_VERSION two-step (reopened)
+Confirmed: src/renderer/src/sim/tuning.ts:7 is 44 after the start-aboard merge 69f34c27. Spec 6.3 now says 44 -> 45 with MIGRATIONS[44]; step 2 blesses at 45; section 8 names MIGRATIONS[44].
+
+## R2-F1 [P1]: Step-1 neutral derelict fails validation
+Confirmed: orbitR 0 is outside the 6.2 bands. Step 1 now uses orbitR 700, phase 0, loot 0, trapped 0, salvage 0, salvaged 1; a step-1 snapshot round-trip test is added.
+
+## R2-F2 [P2]: scanner versus contactScan admission
+Confirmed. Spec 4.6: scanner is computed after the contactScan admission loop, from the scan after admission; a same-tick takeover test is added.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-science-scans-design.md
+
+<!-- end -->
+
+---
+
