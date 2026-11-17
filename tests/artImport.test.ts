@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRemap, encodePng, nearestIndex, readPng, remapPixels, runImport, sourceFolder, toOklab, type Image } from '../scripts/art/importCore';
+import { createRemap, encodePng, importConfig, nearestIndex, readPng, remapPixels, runImport, sourceFolder, toOklab, type Image } from '../scripts/art/importCore';
 import { PALETTE } from '../src/renderer/src/render/palette';
 const committed = JSON.parse(readFileSync('art/import.json', 'utf8')) as { outputs: unknown[] };
 
@@ -122,8 +122,10 @@ describe('runImport', () => {
   it('the source folder defaults to the owner folder unless FTLITE_ASSETS is set', () => {
     expect(sourceFolder({})).toBe('C:\\Users\\djuar\\FTLite-assets'); expect(sourceFolder({ FTLITE_ASSETS: 'D:\\packs' })).toBe('D:\\packs');
   });
-  it('the committed art/import.json parses and lists no outputs yet (Art-ii fills it)', () => {
-    expect(committed.outputs).toEqual([]);
-    expect(runImport({ repoRoot: repo, sourceRoot: source, config: committed })).toEqual({ problems: [], written: [] });
+  it('the committed art/import.json parses and writes each output once, under public/assets/paid/ (Art-ii)', () => {
+    const parsed = importConfig.parse(committed);
+    expect(parsed.outputs.length).toBeGreaterThan(0);
+    for (const o of parsed.outputs) expect(o.output.startsWith('public/assets/paid/'), o.output).toBe(true);
+    expect(new Set(parsed.outputs.map((o) => o.output)).size).toBe(parsed.outputs.length);
   });
 });

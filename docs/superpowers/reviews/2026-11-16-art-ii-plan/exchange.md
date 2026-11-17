@@ -1,0 +1,72 @@
+# Codex review exchange: art-ii-plan
+
+Subject: `docs/superpowers/plans/2026-11-16-art-ii-bought-art.md` (plan). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing 3bffb3a, effort high, 601 s, 8197682 in / 8002624 cached / 53296 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R1-F1 A downed player's 'Help!' bubble floats about 1.5 tiles above the lying LimeZu body
+The callout lift is raised to 64 world units for every crew member whenever crew and crewArt are ready. The only case checked was the standing crew (head top 50 units up, carried torpedo at 54). A downed or dead LimeZu body is drawn with anchor 0.5/0.5, turned a quarter, centred on the crew position, so its top is only about 16 units up. Downed players are exactly the ones that always show a bubble, so their tail sits 64 units over a body that reaches about 16. · plan L45 (Decision 6: lift 64 checked only against the standing head and torpedo); plan L728 (crewPose 'down': anchorY 0.5, rotation π/2); plan L969 (lift chosen once per layer, not per crew state); src/renderer/src/render/calloutModel.ts:L31 (a downed player always gets a 'Help!' bubble, no press needed); spec L22 ('the plan checks their offset against the taller sprite and raises it the same way if it overlaps'). · Downed crew are common in ordinary play, and their bubble is the one players most need to read. With the bought crew it detaches from the body by about 48 units (roughly 1.5 tiles at 32 units per tile), can overlap the room or crew above, and reads as belonging to someone else. The spec asked the plan to check the offset against the new sprite, and the lying pose was not checked. · Choose the lift per player inside the draw loop of callouts.ts: with crewArt and Life.state[state.crew[item.pid]] === LifeState.Downed, use a small lift such as CALLOUT_LIFT_DOWN_LIMEZU = 16 + 10 = 26 (the lying body's half height plus the same 10-unit clearance) exported from crewArt.ts; otherwise use CALLOUT_LIFT_LIMEZU. Add one assertion to the crewArt callout test. Alternatively, record in Decision 6 / Spec notes that the downed bubble keeps the standing lift, as an accepted look point for the owner's gate.
+
+### [P3] R1-F2 The 'git status --short is empty' checks can be tripped by untracked refine-run files
+Step 0.1 and Task 6 Step 2 expect `git status --short` to print nothing, but it lists every untracked file. The plan's review folder currently holds `.prompt-round-1.md` and `.claude-round-1.stderr`. Its own .gitignore only ignores `*.jsonl` and `.round-*.attempt*`, so these show as untracked until they are committed. The paid PNGs are gitignored anyway, so `git status` here really only checks palette.json. · plan L87-L88 (Step 0.1 expects no status lines except possibly the plan); plan L2086-L2087 (Task 6 Step 2: `npm run art:palette ... && git status --short` expects no output); docs/superpowers/reviews/2026-11-16-art-ii-plan/.gitignore (only *.jsonl, .round-*.attempt*, !fixture-*.jsonl); the session git status shows the two untracked files. · An implementer told to stop on any unexpected output could stop for review files that have nothing to do with the palette. Meanwhile the check never looks at the PNGs it appears to cover; only Task 1 Step 8's md5 check does that. · In Task 6 Step 2 use `git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json && echo CLEAN` (expected `CLEAN`), or `git status --short --untracked-files=no`. Add a note that PNG determinism is checked by Task 1 Step 8's md5 run. In Step 0.1 also allow untracked files under docs/superpowers/reviews/.
+
+## Verified
+- Task 1 imports exist with the assumed shapes: importConfig, nearestIndex (ties go to the earlier index), readPng, toOklab, sourceFolder, Image, Lab and encodePng in scripts/art/importCore.ts:L22-L79; RAMPS, ROLES, parsePalette and PaletteFile in src/renderer/src/render/palette.ts:L5-L24.
+- buildPalette.ts (plan L194-L355) follows spec section 4 (spec L50-L58). It counts alpha >= 128 per RGB colour and keeps colours from packs under 'pimen-explosions/'. k-means runs over the other colours with k = 48 minus kept; kept colours seed the starting `near` distances; farthest-point starts from the most frequent colour, weighted by ln(1+count), with ties to (count desc, RGB asc). Up to 12 Lloyd steps snap each centre to a member, an empty cluster keeps its centre, and it stops when nothing moves. 48 or more kept colours throw. Results are deduplicated and sorted by OKLab L; ramps are tidied and padded to 5; overrides are checked against the palette. Decision 2 (each distinct pack+rectangle counted once) is stated and justified.
+- A second run reproduces the palette exactly: roles are mapped from the committed palette, so re-running maps each role to itself, and the k-means result depends only on the packs and config. The seven console rectangles (plan L1188-L1189) match frames already in art/import.json exactly (L39-L66 machines: 80,22 16x27; 16,28 16x23; 112,33 24x14; L76-L91 stations: 18,17 12x15; 50,17 12x15; 82,16 13x16). So Task 3's PALETTE_UNCHANGED check holds.
+- Task 1 Step 7's expected diff fits the committed palette.json (42 colours; +8 −2 = 48; 17 insertions / 11 deletions counting name, source, 5 roles and 2 vent entries).
+- The baseline failure is real: tests/artImport.test.ts:L125-L127 expects committed.outputs to be [], but art/import.json has 12 outputs. The replacement text and the import line (artImport.test.ts:L5) match exactly. The test count stays at 13.
+- Every Edit anchor in the plan matches the branch text exactly: assetNames.ts:L19 (add crew.sit); fallback.ts:L1, L4, L15; calloutModel.ts:L45-L49; callouts.ts:L5-L6, L11-L12, L41; interiorFeel.ts:L81, L90, L100, L113, L126, L132, L158, L162, L169, L202; renderer.ts:L28, L63, L66; duel/interiorView.ts:L23, L45, L49; package.json:L30; docs/art/bible.md:L12, L17, L21, L51 (the end of the file, so the new '## Adding a pack' heading lands cleanly).
+- Every caller of a changed API is updated: createConsoleLayer is called only at renderer.ts:L63 and interiorView.ts:L49. createInteriorFeel is called at renderer.ts:L66, interiorView.ts:L45 and tests/interiorFeel.test.ts:L17 (still compatible with InteriorFeelOptions). bubbleAnchor is called only at callouts.ts:L41 (the new default keeps the old value). createCrewLayer in tests/onlineRenderer.test.ts:L143 stays on circles because useLimeZu short-circuits.
+- The `above` order is preserved without blasts: tests/interiorFeel.test.ts:L19 reads above.children[1] as the flash, and the plan only inserts blastLayer when opts.blasts is given (plan L1778).
+- Existing layer tests keep their fallbacks: tests/duelInterior.test.ts:L27 and tests/tileLayer.test.ts:L19 build `missing` from Object.values(FEATURE_NAMES).flat(), so the new crewArt, consoleArt and blastArt features are missing there too. duelInterior's child-index checks (L82-L86) are on world/view, not on the desk container.
+- The test helpers exist as used: cutterState and RECRUITS (tests/helpers/sim.ts:L27-L28), createSimState(layout, players, seed, characters) (helpers/simLifetime.ts:L10), parseShip (sim/ship/schema.ts:L126), sitDown(state, pid, i) setting Seated.station and the position (sim/stations.ts:L31-L39), StationKind and STATION_IDS in kind order (sim/stationKinds.ts:L2-L4), derived.stationOfKind, stationTile, siteTile and layoutHash (sim/ship/derived.ts:L15-L25), sectorGradeInput (gradeModel.ts:L40), WORLD_BAND (worldFit.ts:L4), and GameAssets/GameAnimation shapes (assets.ts:L6-L15).
+- The console tint tests are sound: every Cutter station starts online (cutter.json allocations all >= 1, and state.ts:L124 sets level from allocation), so all consoles start 'free'. stationOnline uses failed[i] === 0 && level > 0 (stations.ts:L8-L10), so setting failed = 1 makes the console 'down'.
+- I checked consolePlacement's arithmetic against deskPicture (consoleModel.ts:L46-L51, WALL_GAP 10). The back edges are n top -gap, s bottom T+gap, w left -gap, e right T+gap; the along-wall offset even(16 - w) is centred within 1 unit; the specific toMatchObject cases (L1106-L1108) all hold; and the anchor-0.5 centres are integers.
+- Imports form no runtime cycle: assetNames → crewArt (crewArt imports only types from assetNames and consoleModel); consoleModel → assetNames; fallback → assetNames and crewArt.
+- The blast model's numbers check out: blastFrame at 1.05 gives 1, at 1.66 gives 13, at 1.69 is still live, and at 1+14/20 = 1.7 gives frame 14 and is removed. The pool of 4 plain Sprites, the cap via slice of the newest 4, clearing on reset and build, the duel blast reusing the smoke's single emitter.random draw, and the breach spark at tileCentre(siteTile) all match spec L41-L46. sources.ts:L166-L169 breachOpenings returns site indices and reports no openings on the first sight (seen null).
+- The manifest scripts are given in full, and their entries pass manifest.ts:L44-L51 (paid: https source, retrieved, credit, required false, file under paid/). The names and files are unique. The counts 25 → 29 → 36 → 38 match the 25 current entries. The pimen frames are 16x16 and 32x32 cells (art/import.json:L1502-L1585), so the sheet grids divide exactly for tests/assets.test.ts:L31-L39.
+- The determinism boundary holds: no task edits sim, authority, network or shared. The new render files import no RNG. scripts/ and pngjs stay out of render/ and app/. The artGuards count is right: 70 render .ts files and 20 app .ts files give 7 + 2×70 + 20 = 167 tests, so 169 after crewArt.ts and 171 after blastModel.ts.
+- The 'missing optional names: 17' screenshot expectation is right: public/assets/art holds only .gitkeep, so breach.h/v, floor.damaged.0/1, vent.puff, fx.arc, crew.sit and the ten icon.* names are the unbound optional names (assets.ts:L76).
+- Test files and scripts are type-checked: tsconfig.web.json includes tests/** and scripts/**, so tsc -b covers them; .art/ is not included and is gitignored (.gitignore L18).
+
+## Not verified
+- Whether `Object.entries(o)` in mapRoles' ramp-override else-branch (plan L322) type-checks. If zod 3 infers `z.record(z.enum(RAMPS), ...)` as Partial<Record<...>>, `o` is `Record<string,string> | undefined` there, and tsc would reject Object.entries(undefined). The roles loop's `h!` suggests the author saw undefined values. I could not read zod's type definitions (node_modules is out of bounds). The plan claims `npx tsc -b` was clean in the prototype. If it is not, `Object.entries(o ?? {})` fixes it.
+- The exact baseline totals (3487 tests in 247 files) and the prototype's 3530 / 251: I did not run the suite, as instructed.
+- That the LimeZu frame order (e, n, w, s) and the head and foot rows (7 / 31) are right; this needs the paid PNGs, which I did not inspect.
+- That the Cutter's Navigation console side is 'e' (the crewArt seated test, plan L643) and that Cutter breach site 0 and rooms 0-3 exist as the blasts tests assume; I did not trace these through cutter.json's layout rows.
+- The THIRD_PARTY_NOTICES grouping described in Task 3 Step 9 and the credits.generated.ts line counts; I did not read scripts/gen-credits.ts.
+- Whether the screenshot harness (vite config define __GAMEPLAY_CONTENT_DIGEST__, Electron debugger flow) runs on this machine; it is outside the review's read scope and cannot be run read-only.
+
+---
+
+# Round 1 response (plan revised)
+
+Reviewed `round-1.json` against the subject at `3bffb3a`. 2 accepted, 0 rejected, 0 deferred.
+
+## R1-F1 [P2]: A downed player's bubble floats above the lying LimeZu body
+
+Confirmed: calloutModel.ts:L31 always shows Help! for a downed player, and the plan's lift was chosen once per layer. Task 2's callouts.ts edit now picks the lift per player with `liftFor(state, pid)`. A conscious player gets CALLOUT_LIFT_LIMEZU (64); a downed or dead one gets the new CALLOUT_LIFT_DOWN_LIMEZU (16 + 10 = 26); Puny keeps CALLOUT_LIFT_PUNY. It reads `Life.state[state.crew[pid]]`, the same lookup bubbles() uses. The constant, the interface list, the test and Decision 6 are updated. These edits were checked against calloutModel.ts and the crewSprites.ts imports but were not run in the prototype.
+
+## R1-F2 [P3]: The git status checks can be tripped by untracked review files
+
+Confirmed. Task 6 now runs `git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json && echo CLEAN` and expects `CLEAN`, noting that PNG determinism is Task 1's md5 check. Step 0.1 now allows untracked files under docs/superpowers/reviews/.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-16-art-ii-bought-art.md
+
+<!-- end -->
+
+---
+

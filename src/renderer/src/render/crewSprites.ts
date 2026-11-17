@@ -10,6 +10,8 @@ import { facingFromDelta, MOVE_EPS_PX } from './facing';
 import { featureReady } from './fallback';
 import { syncCache } from './cache';
 import { drawTorpedo } from './torpedoLayer';
+import { CARRY_LIFT_LIMEZU, CARRY_LIFT_PUNY, crewPose, crewSlot, crewStandName, LIMEZU_ANCHOR_Y, type CrewPoseState } from './crewArt';
+import { stationSides, type Side } from './consoleModel';
 import type { PresentationPoint } from '../../../network/state/timeline';
 
 export const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
@@ -22,18 +24,23 @@ export interface CrewLayer { container: Container; draw(state: SimState, alpha: 
 
 interface CrewSprite { sprite: AnimatedSprite; anim: string | null }
 
-/** One AnimatedSprite per crew member, keyed by StableId. Falls back to the Increment 1 circles when any crew name is missing. */
+/** One AnimatedSprite per crew member, keyed by StableId. Falls back to the Increment 1 circles when any crew name is missing.
+ *  With the crewArt feature (Art-ii spec section 1) each player wears their own LimeZu character (slot pid % 4), untinted;
+ *  without it the Puny sheet draws, tinted per player, as before. */
 export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewLayer {
   const container = new Container();
   const useArt = featureReady(new Set(assets.missing), 'crew');
   const useSit = featureReady(new Set(assets.missing), 'sit');
+  const useLimeZu = useArt && featureReady(new Set(assets.missing), 'crewArt');   // the circle fallback still wins when Puny is missing
+  const carryLift = useLimeZu ? CARRY_LIFT_LIMEZU : CARRY_LIFT_PUNY;
+  let sides: Side[] = [], sidesFor = '';
   const sprites = new Map<number, CrewSprite>();
   const circles = new Map<number, Graphics>();
   const carried = new Container(), torps = new Map<number, Graphics>();   // a torpedo in a carrier's arms (spec Coop-ii section 2), drawn over every crew sprite
   const drawCarried = (state: SimState, eid: number, pid: number, x: number, y: number): void => {
     const g = torps.get(Stable.id[eid]!)!;
     g.visible = state.carrying[pid] === 1 && Life.state[eid] === LifeState.Conscious;
-    g.position.set(x * TILE_PX, y * TILE_PX - 30);   // held overhead, clear of the sprite
+    g.position.set(x * TILE_PX, y * TILE_PX - carryLift);   // held overhead, clear of the sprite's head
   };
 
   /** Interpolated draw position, and the movement since the last drawn frame (not since the last tick: a paused sim must read as idle). */
@@ -70,7 +77,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         return;
       }
       syncCache(sprites, liveIds,
-        () => { const s = new AnimatedSprite([assets.texture('crew.idle.s')]); s.anchor.set(ANCHOR_X, ANCHOR_Y); s.scale.set(SCALE); container.addChild(s); return { sprite: s, anim: null }; },
+        () => { const s = new AnimatedSprite([assets.texture(useLimeZu ? crewStandName(0, 's') : 'crew.idle.s')]); s.anchor.set(ANCHOR_X, useLimeZu ? LIMEZU_ANCHOR_Y : ANCHOR_Y); s.scale.set(SCALE); container.addChild(s); return { sprite: s, anim: null }; },
         (cs, id) => { cs.sprite.destroy(); memory.prev.delete(id); memory.lastDrawn.delete(id); memory.facing.delete(id); });
       for (const eid of state.crew) {
         const id = Stable.id[eid]!, cs = sprites.get(id)!, { x, y, dx, dy } = interpolated(eid, alpha, pointFor(eid));
@@ -78,6 +85,19 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         memory.facing.set(id, facing);
         const life = Life.state[eid];
         const moving = Math.abs(dx) >= MOVE_EPS_PX || Math.abs(dy) >= MOVE_EPS_PX;
+        if (useLimeZu) {
+          if (sidesFor !== state.derived.layoutHash) { sides = stationSides(state); sidesFor = state.derived.layoutHash; }
+          const seat = Seated.station[eid]!, pose: CrewPoseState = life !== LifeState.Conscious ? 'down' : seat >= 0 ? 'seated' : moving ? 'walk' : 'idle';
+          const p = crewPose(crewSlot(Owner.pid[eid]!), pose, facing, seat >= 0 ? sides[seat] ?? null : null);
+          if (p.animated) { const a = assets.animation(p.name); setAnim(cs, p.name, a.textures, a.fps, a.loop, pose === 'walk' ? id : 0); }
+          else setAnim(cs, p.name, [assets.texture(p.name)], 1, false);
+          cs.sprite.anchor.set(ANCHOR_X, p.anchorY); cs.sprite.rotation = p.rotation;
+          cs.sprite.tint = life === LifeState.Dead ? DEAD_TINT : 0xffffff;   // the character identifies the player: no per-player tint
+          cs.sprite.alpha = life === LifeState.Downed ? 0.85 : 1;
+          cs.sprite.position.set(x * TILE_PX, y * TILE_PX + (bob[Owner.pid[eid]!] ?? 0));
+          drawCarried(state, eid, Owner.pid[eid]!, x, y);
+          continue;
+        }
         if (life !== LifeState.Conscious) setAnim(cs, 'crew.down', [assets.texture('crew.down')], 1, false);
         else if (Seated.station[eid]! >= 0) { const n = useSit ? 'crew.sit' : 'crew.idle.s'; setAnim(cs, n, [assets.texture(n)], 1, false); }
         else if (!moving) setAnim(cs, `crew.idle.${facing}`, [assets.texture(`crew.idle.${facing}`)], 1, false);

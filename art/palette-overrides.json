@@ -1,0 +1,19 @@
+{
+  "$comment": "npm run art:palette (Art-ii spec section 4): applied after the roles and ramps are mapped onto the new colours. A ramp given as an array replaces it whole; as an object it replaces entries by index. Every colour here must be in the built palette.",
+  "roles": {
+    "flash": "#fffff0",
+    "fireFallback": "#f68420",
+    "lampOn": "#f8ca1c",
+    "heldTick": "#f8ca1c",
+    "ventSpeck": "#fffff0",
+    "alert": "#e06715",
+    "breach": "#944510",
+    "failed": "#e06715"
+  },
+  "ramps": {
+    "fire": ["#fffff0", "#feef98", "#f8ca1c", "#faae1e", "#f68420", "#944510", "#596686", "#3a3a50"],
+    "plasma": { "0": "#fffff0" },
+    "electric": { "0": "#fffff0" },
+    "vent": { "0": "#fffff0" }
+  }
+}

@@ -42,8 +42,11 @@ export function flashingKinds(callouts: readonly Callout[], nowTick: number): nu
   return [...kinds].sort((a, b) => a - b);
 }
 
-/** Where a player's bubble sits in internal pixels: centred above the crew member's head, given the world fit. */
-export function bubbleAnchor(state: SimState, pid: number, fit: { scale: number; x: number; y: number }): { x: number; y: number } {
+/** The bubble tail's height over the crew position in world units: 0.6 tile over the Puny crew (the default). */
+export const CALLOUT_LIFT_PUNY = 0.6 * TILE_PX;
+/** Where a player's bubble sits in internal pixels: centred above the crew member's head, given the world fit. `lift`: the
+ *  tail's height over the crew position, world units (Art-ii: CALLOUT_LIFT_LIMEZU over the taller bought crew). */
+export function bubbleAnchor(state: SimState, pid: number, fit: { scale: number; x: number; y: number }, lift = CALLOUT_LIFT_PUNY): { x: number; y: number } {
   const eid = state.crew[pid]!;
-  return { x: fit.x + Position.x[eid]! * TILE_PX * fit.scale, y: fit.y + (Position.y[eid]! - 0.6) * TILE_PX * fit.scale };
+  return { x: fit.x + Position.x[eid]! * TILE_PX * fit.scale, y: fit.y + (Position.y[eid]! * TILE_PX - lift) * fit.scale };
 }

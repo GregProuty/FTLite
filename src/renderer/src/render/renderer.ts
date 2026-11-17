@@ -26,6 +26,7 @@ import { DEFAULT_FEEL, type FeelSetting } from './feel';
 import { sectorGradeInput } from './gradeModel';
 import { sectorHits } from './impactModel';
 import { failedStationPoints, sectorWorking, watchRepair } from './particles/sources';
+import { featureReady } from './fallback';
 
 
 export interface Renderer {
@@ -60,10 +61,14 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const icons = createIconLayer();
   const crew = createCrewLayer(assets, memory);
   const boarders = createBoarderLayer(assets);
-  const consoleDesks = createConsoleLayer();   // spec Demo-xii section 1: a desk at every station, under the crew
+  const consoleDesks = createConsoleLayer(assets);   // spec Demo-xii section 1: a desk at every station, under the crew (Art-ii: the bought consoles)
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
   let feelSetting: FeelSetting = DEFAULT_FEEL;
-  const feel = createInteriorFeel({ world, band: WORLD_BAND, feel: () => feelSetting });   // Art-i spec sections 5-8
+  const missing = new Set(assets.missing);
+  const feel = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
+    world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'),
+    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
+  });
   // Art-i spec section 5: tiles, grade, effects.below, icons, consoleDesks, magazine, crew, boarders, effects.above, lights.
   world.addChild(tiles.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
   consoleDesks.container.addChild(feel.fixtures); effects.above.addChild(feel.above);

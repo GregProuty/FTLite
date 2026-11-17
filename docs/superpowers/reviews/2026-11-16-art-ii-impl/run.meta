@@ -1,0 +1,11 @@
+topic=art-ii-impl
+subject_kind=impl
+subject=art/import.json art/palette-overrides.json docs/art/bible.md docs/gates.md docs/superpowers/plans/2026-11-16-art-ii-bought-art.md docs/superpowers/specs/2026-11-16-art-ii-bought-art-design.md package.json public/THIRD_PARTY_NOTICES.txt public/assets/manifest.json scripts/art-palette.ts scripts/art/buildPalette.ts src/renderer/src/render/assetNames.ts src/renderer/src/render/blastModel.ts src/renderer/src/render/calloutModel.ts src/renderer/src/render/callouts.ts src/renderer/src/render/consoleLayer.ts src/renderer/src/render/consoleModel.ts src/renderer/src/render/credits.generated.ts src/renderer/src/render/crewArt.ts src/renderer/src/render/crewSprites.ts src/renderer/src/render/duel/interiorView.ts src/renderer/src/render/fallback.ts src/renderer/src/render/interiorFeel.ts src/renderer/src/render/palette.json src/renderer/src/render/renderer.ts tests/artImport.test.ts tests/blasts.test.ts tests/buildPalette.test.ts tests/consoleArt.test.ts tests/crewArt.test.ts tests/palette.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\art-ii
+base=adb2854c6a2026e5f6263e9dcf3de321e9cd3a4c
+cap=10
+effort=high
+confirm=0
+verify=npx tsc -b && npx vitest run
+created=2026-11-16
+head_at_setup=b111828
