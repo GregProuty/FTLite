@@ -60,6 +60,7 @@ describe('the prop layer (Art-iii spec section 4)', () => {
     const layer = createPropLayer(fakeAssets(true)), a = stateOf(CUTTER);
     layer.draw(a); const first = layer.container.children[0];
     layer.draw(stateOf(CUTTER)); expect(layer.container.children[0]).toBe(first);
+    layer.draw(stateOf({ ...CUTTER })); expect(layer.container.children[0]).toBe(first); expect(first!.destroyed).toBe(false);   // a new layout object with the same key: no rebuild (impl review R1-F1)
     layer.draw(stateOf(SKIFF));
     expect(layer.container.children).toHaveLength(1); expect(first!.destroyed).toBe(true);
   });
