@@ -40,6 +40,17 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     expect([row.value, row.bar?.fill]).toEqual(['DMG 2', 0.25]);
     disposeDuel(d);
   });
+  it('Weapons and Engines at level 2 read OFFLINE, the laser CHARGE too; Shields at 2 stays DMG 2 (owner 2026-11-17)', () => {
+    const d = createDuel(layout, 5), s = d.tactical.systems[0];
+    s.rooms = [2, 2, 2]; s.laserCharge = LASER_CHARGE_UNITS;
+    const w = pairs({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' });
+    expect(w.slice(4, 7)).toEqual([['WEAPONS', 'OFFLINE'], ['SHIELDS', 'DMG 2'], ['ENGINES', 'OFFLINE']]);
+    const charge = readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' }).find((r) => r.label === 'CHARGE')!;
+    expect([charge.value, charge.bar?.fill, charge.emphasis]).toEqual(['OFFLINE', 0, 'warn']);
+    s.rooms = [1, 0, 1];
+    expect(pairs({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' }).slice(4, 7)).toEqual([['WEAPONS', 'DMG 1'], ['SHIELDS', 'OK'], ['ENGINES', 'DMG 1']]);
+    disposeDuel(d);
+  });
   it('Weapons adds the lock, the charge bar and hold timer, and the magazine', () => {
     const d = createDuel(layout, 5), s = d.tactical.systems[0];
     s.laserCharge = LASER_CHARGE_UNITS / 2;

@@ -69,8 +69,8 @@ describe('flight configuration (spec §4 tests, §6)', () => {
     expect(f.vy).toBeCloseTo(-THRUST * DT, 12);
     expect(r.vy).toBeCloseTo(0.4 * THRUST * DT, 12);
   });
-  it('scales thrust and turn by the Engines factor 1 / 0.6 / 0.25', () => {
-    for (const [level, factor] of [[0, 1], [1, 0.6], [2, 0.25]] as const) {
+  it('scales thrust and turn by the Engines factor 1 / 0.6 / 0 (level 2 is off, owner 2026-11-17)', () => {
+    for (const [level, factor] of [[0, 1], [1, 0.6], [2, 0]] as const) {
       const s = ship({});                                                 // the Engines level is the systems record's, passed in
       flyShip(s, { turn: 1, thrust: 1 }, { ...FLIGHT_NO_FIELD, drag: 0 }, level);
       expect(Math.sqrt(s.vx * s.vx + s.vy * s.vy)).toBeCloseTo(THRUST * factor * DT, 12);

@@ -100,13 +100,17 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     tick(st, input());
     expect(a.laserCharge).toBeGreaterThan(0);
   });
-  it('Weapons damage stretches the charge time: 10 s at level 2', () => {
+  it('Weapons damage stretches the charge time: 6.4 s at level 1; level 2 is off and never charges (owner 2026-11-17)', () => {
     const st = duel(), a = st.systems[0];
-    a.rooms[Room.Weapons] = 2;
-    hold(st, 599);
+    a.rooms[Room.Weapons] = 1;
+    hold(st, 383);
     expect(a.laserCharge).toBeLessThan(LASER_CHARGE_UNITS);
     tick(st, input());
     expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
+    const off = duel(), b = off.systems[0];
+    b.rooms[Room.Weapons] = 2;
+    hold(off, 900);
+    expect(b.laserCharge).toBe(0);
   });
   it('an empty Weapons console lets go of Fire without firing or discarding, and freezes the charge', () => {
     const st = duel(), a = st.systems[0];
