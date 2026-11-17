@@ -16,7 +16,7 @@ import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
 import { createOnlineDuelSession } from './app/duel/onlineDuel';
 import { createSessionRouter } from './app/sessionRouter';
-import { createUiStore, setLayout } from './ui/store';
+import { createUiStore, setCrtSetting, setLayout, type UiStore } from './ui/store';
 import { createDuelSink, createFlightSink, createHudSink, createLatencySink } from './ui/sinks';
 import { buildImageCache, hudImageNames } from './ui/images';
 import { createPixiImageSource } from './app/uiImages';
@@ -27,6 +27,7 @@ import { inputBlockedOf } from './ui/menuState';
 import { mountUi } from './ui/mount';
 import { createUiPerf } from './ui/perf';
 import { installFeel } from './app/feelBoot';
+import { installCrt } from './app/crtBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
 import { INTERNAL_H, INTERNAL_W } from '../../shared/resolution';
@@ -51,6 +52,12 @@ function bootFeel(renderer: Renderer): void {
   installFeel(renderer, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });
 }
 
+/** The CRT setting (CRT map spec section 4): read once at boot (loadCrt), F10 cycles it in dev builds; it reaches the
+ *  console views' Pixi filter through the renderer and the CRT overlay through the store. */
+function bootCrt(renderer: Renderer, store: UiStore): void {
+  installCrt({ crt: renderer.crt, setCrt(s) { renderer.setCrt(s); setCrtSetting(store, s); } }, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });
+}
+
 /** The app (main menu spec, 2026-11-16; React UI spec UI-i): the menu with Single player (the solo duel), Multiplayer
  *  (today's online flow) and Settings, drawn by React over one UI store. One renderer serves both modes; the router
  *  owns at most one of them at a time. */
@@ -70,6 +77,7 @@ async function startApp(): Promise<void> {
   let blocked = true;
   const win = window.ftlite?.window;
   const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
+  bootCrt(renderer, store);
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
@@ -138,6 +146,7 @@ async function startFlight(seed: number): Promise<void> {
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
   const store = createUiStore({ onlineAvailable: false });
+  bootCrt(renderer, store);
   const actions = createUiActions({ store, single() {}, online() {}, pause() {} });
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
   await mountUi({ el: uiRoot, store, actions, menu: false });
@@ -157,6 +166,7 @@ async function startDuel(seed: number): Promise<void> {
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
   const store = createUiStore({ onlineAvailable: false });
+  bootCrt(renderer, store);
   const actions = createUiActions({ store, single() {}, online() {}, pause() {} });
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
   await mountUi({ el: uiRoot, store, actions, menu: false });
