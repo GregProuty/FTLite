@@ -5,7 +5,7 @@ import { sectorCompatibility, sectorInit } from '../src/main/network/onlineSecto
 import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
 import { createAuthority, type Checkpoint } from '../src/renderer/src/authority/authority';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import skiff from '../src/renderer/src/sim/ship/skiff.json';
+import hound from '../src/renderer/src/sim/ship/hound.json';
 import type { RoomSnapshot } from '../src/shared/roomSession';
 import type { SessionMirror } from '../src/main/network/mirrorStore';
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
@@ -52,7 +52,7 @@ function room() {
       captureCheckpoint: vi.fn(async (cause: any) => { const next = await authority!.requestCheckpoint(cause); return captured(next.checkpoint, cause); }),
       onLeaseRequest: (cb: any) => { cb({ ...leaseIdentity, nonce: 'e'.repeat(32) }); return () => {}; }, applyLease: vi.fn(async () => {}), invalidateLease: vi.fn(async () => {}), completeBootstrap: vi.fn(async () => {}),
       request: vi.fn(async (op: any) => {
-        authority = createAuthority({ clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, contentDigest: snapshot.compatibility.contentDigest, resolveLayout: () => parseShip(skiff), onCrash: r => { throw Error(r.error); } });
+        authority = createAuthority({ clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, contentDigest: snapshot.compatibility.contentDigest, resolveLayout: () => parseShip(hound), onCrash: r => { throw Error(r.error); } });
         authorities.push(authority); authority.restore(JSON.parse(new TextDecoder().decode(op.checkpointBytes))); return { ok: true as const, requestId: 1, hostGeneration: snapshot.hostGeneration };
       }), attachPeer: vi.fn(async () => {}), onExit: () => () => {}, dispose: vi.fn(async () => { authority?.dispose(); }), transport: controller };
     const platform = { startLeasedHost: vi.fn(async (_i: any, _s: AbortSignal, identity: any) => { leaseIdentity = identity; return host; }), createTransport: vi.fn(async () => transport), channel: () => ({ port1: { close: vi.fn() }, port2: { close: vi.fn() } }) as any, publishPort: vi.fn(), onVisibleGone: () => () => {} };

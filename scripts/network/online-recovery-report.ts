@@ -26,7 +26,8 @@ export function validateOnlineRecoveryReport(value: unknown): void {
   const natural = (n: unknown) => Number.isSafeInteger(n) && (n as number) >= 0;
   const same = (a: unknown,b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const hash = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
-  if (!r || r.version !== 1 || r.failure != null || r.driverFailure != null || !['skiff','cutter','paused','upload','race','stale'].includes(r.scenario)
+  // 'skiff' and 'cutter' are the archived pre-Art-iv-b names of 'hound-2' and 'hound-4' (capacity 2 and 4).
+  if (!r || r.version !== 1 || r.failure != null || r.driverFailure != null || !['hound-2','hound-4','skiff','cutter','paused','upload','race','stale'].includes(r.scenario)
     || !/^[a-f0-9]{40}$/.test(r.source?.revision ?? '') || !hash(r.source?.digest) || typeof r.source?.dirty !== 'boolean'
     || ONLINE_RECOVERY_ARTIFACTS.some(k => !hash(r.source?.artifactHashes?.[k]))
     || r.runtime?.electron !== '37.10.3' || r.runtime?.workerd !== '1.20261023.1' || !positive(r.runtime.workerPid)

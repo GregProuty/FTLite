@@ -340,7 +340,8 @@ export const LOBBY_LINES: readonly string[] = [
 
 /** The Skiff's helm line in place of the torpedo-carrying one: its tube loads itself, and its consoles have tabs (spec Demo-x-a sections 1 and 2). */
 export const SKIFF_HELM_LINE = 'Helm: evade as a hit lands. Up from the top row, Left/Right: tabs';
-/** The lobby card for the players joined so far: the cutter's card, or the Skiff's with its helm line. */
+/** The lobby card for the players joined so far: the standard card, or the Skiff's with its helm line (the Skiff's branch
+ *  stays keyed to the Skiff; since Art-iv-b the Hound flies at every crew size, so it no longer shows). */
 export function lobbyLines(players: number): string[] { return shipForCrew(Math.max(1, players)) === 'skiff' ? LOBBY_LINES.map((l, k) => (k === 8 ? SKIFF_HELM_LINE : l)) : [...LOBBY_LINES]; }
 
 /** The centre notice while running, first match wins (spec Demo-i sections 4 and 11.4 rule 1b, Demo-vi section 2, Loop-ii section 2): a pending jump, a pending event, a purchase for 3 s, the encounter (won, over, contact), a surrender offer, a shop node, then the ready drive. */

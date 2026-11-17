@@ -1,3 +1,4 @@
+import { shipForCrew } from '../../src/renderer/src/sim/ship/fleet';
 /** PASS requires independently observed application evidence, never just exit zero. */
 export const ONLINE_APP_ARTIFACTS = ['out/main/index.js','out/main/authorityHost.js','out/main/hostProcess.js','out/main/transportWindow.js','out/renderer/index.html',
   'scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-click.cjs','scripts/network/online-app-observer.ts','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts',
@@ -21,8 +22,9 @@ export function validateOnlineAppReport(value: unknown): void {
   if(!positive(c.nativeWindows)||c.nativeWindows!==c.nativeWindowExits||!positive(c.nativePeersObserved)
     || c.nativePeerCloses+c.nativePeersEndedWithWindow!==c.nativePeersObserved||!positive(c.observedMainPorts)) fail();
   if (!Array.isArray(r.scenarios) || r.scenarios.length !== 2) fail();
-  for (const [index, capacity, seat, layout] of [[0, 2, 1, 'skiff'], [1, 4, 2, 'cutter']] as const) {
-    const s = r.scenarios[index];
+  // The layout each capacity flies is the production fleet's (the Hound at every crew size since Art-iv-b).
+  for (const [index, capacity, seat] of [[0, 2, 1], [1, 4, 2]] as const) {
+    const s = r.scenarios[index], layout = shipForCrew(capacity);
     if (!s || s.capacity !== capacity || s.seat !== seat || s.layout !== layout
       || ['acks', 'commands', 'matched', 'fullReceipts'].some(k => !positive(s[k]))
       || ['ownership', 'ackBeforeInput', 'botTakeover', 'pausedReconnect', 'blurNeutral'].some(k => s[k] !== true)
