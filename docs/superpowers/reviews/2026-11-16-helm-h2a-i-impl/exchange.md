@@ -73,3 +73,47 @@ Confirmed. A shared `requireApplied` helper (runDuel's message unchanged) is cal
 
 ---
 
+# Round 2 (delta, reviewing 695f2a1, effort medium, 44 s, 147335 in / 112562 cached / 4098 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R2-F1 No suite test ties recordRun's rematch run to runRematch or to the stored duel-rematch.json
+recordRun's rematch path re-implements runRematch: its own play loop, the rematch envelope, the hash cadence and the rounds record. The only check that the two agree is rematchGoldenRefusal, and that check runs only in bump mode at bless time. The responder's statement that 'the new run's record matches the stored rematch golden' was a manual check. No test in tests/duelOracle.test.ts calls recordRun on the rematch spec. · scripts/golden/duelOracle.ts:L205-264 (recordRun's rematch branch) against tests/helpers/scriptedDuel.ts:L98-119 (runRematch). tests/duelOracle.test.ts:L132-152 covers rematchGoldenRefusal and runDifferences with synthetic traces only. judgeDuelOracle runs the tie only `if (mode === 'bump')` (duelOracle.ts:L337). · The tie fails closed: a drift refuses the bump, so this is not a proof hole. But the drift would only surface at the next SIM_VERSION bump, when the baseline is already recorded. The bump would then be blocked until someone debugs the oracle. · Add one test, gated like the other full-length oracle tests if it is slow. It should check that `recordRun(ORACLE_RUNS.at(-1)!)` gives `rematch` and `hashes` equal to `runRematch(DUEL_GOLDEN_SEED, DUEL_GOLDEN_EVERY)`, or to tests/golden/duel-rematch.json's rematchTick, rounds, finalHash and hashes.
+
+## Prior findings
+- R1-F1: resolved — Fixed. ORACLE_RUNS gains rematch-1 (duelOracle.ts L52-56). recordRun plays round 1, applies the rematch and records the rematch step plus round 2 per tick: fields, results and events, and telemetry. Round 1 is the scripted-1 run, which is already proved per tick. The record uses round 2's schema and sets `from` so differences name the real tick. judgeDuelOracle now refuses a bump unless rematchGoldenRefusal passes against the stored duel-rematch.json (version, seed, cadence, checkpoints, rematch tick, rounds, final hash). verifyDuelOracle passes readStoredRematch(). The bless-golden.ts comment is corrected (L3-4, L9).
+- R1-F2: resolved — Fixed. requireApplied (scriptedDuel.ts L39-46) keeps runDuel's message unchanged and is called in runRematch's play() before recordTick (L105). The rematch step itself was already checked (L114).
+
+## Verified
+- recordRun's rematch run builds the same checkpoint list as runRematch. Both hash at d.interior.tick % DUEL_GOLDEN_EVERY in round 1 and round 2, and once after the rematch step. Both cap each round at interior.tick - baseTick < cap. Both push rounds as {seed, baseTick, outcome, ticks} from each round's fresh telemetry. Both take finalHash after round 2 (duelOracle.ts L211-235, L258-260; scriptedDuel.ts L98-119).
+- perTick[0] of the rematch run is recorded after the rematch step, using the fresh round-2 telemetry, so runDifferences' `(was.from ?? 0) + first + 1` names the right tick (duelOracle.ts L323). The test at tests/duelOracle.test.ts:L150-152 pins this.
+- The judge also compares ticks and outcome for the rematch run (runDifferences L317). run.ticks is the absolute final tick, so a change in round 1's length also shows up there. scripted-1 covers round 1 per tick.
+- The golden tie is ordered duel golden first, then rematch golden (L337), as the test at L144-145 checks. oracleTrace throws if the rematch run produces no rematchGolden (L282).
+- The 20 existing runs' records are unchanged by the refactor of play(): the same loop body, with hashes pushed before record and the cap from baseTick 0 in round 1 (L211-220). The MIGRATIONS[38] comment is narrowed to '38 oracle run', which stays true.
+
+## Not verified
+- I did not run the duel oracle, the bless or the tests (read-only, no suite runs). The byte-identity of the 20 old runs and the match of rematch-1 against the stored golden are the responder's claims.
+- I did not check whether the local SIM 39 duel-oracle.json baseline has been re-recorded with rematchGolden. It is an uncommitted artifact; the next bump will need it recorded at the stored golden's commit.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. Verdict ready; R1-F1 and R1-F2 confirmed resolved. 0 accepted, 0 rejected, 1 deferred.
+
+## R2-F1 [P3]: No suite test ties recordRun's rematch run to runRematch or to the stored duel-rematch.json
+
+Deferred. Verified: `rematchGoldenRefusal` checks the baseline against the stored golden on every bump (duelOracle.ts, bump mode), so a disagreement blocks the bless. A suite test is a cheaper early signal, not a missing guard.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
