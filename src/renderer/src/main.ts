@@ -176,16 +176,23 @@ async function startProbe(): Promise<void> {
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
   const { mountProbe } = await import('./ui/probe/mountProbe');
   const { startUiProbe, duelProbeFixture } = await import('./app/uiProbe');
-  const duelProbe = new URLSearchParams(location.search).get('probe') === 'duel';
-  if (duelProbe) await mountUi({ el: uiRoot, store, actions, menu: false }); else await mountProbe({ el: uiRoot, store, actions });
+  const q = new URLSearchParams(location.search), duelProbe = q.get('probe') === 'duel', hudProbe = q.get('probe') === 'hud';
+  const reactHud = hudProbe && q.get('engine') === 'react';
+  if (duelProbe || reactHud) await mountUi({ el: uiRoot, store, actions, menu: false }); else if (!hudProbe) await mountProbe({ el: uiRoot, store, actions });
   const resize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
     const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
     setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
-  startUiProbe(renderer, !duelProbe);
+  startUiProbe(renderer, !duelProbe && !hudProbe);
   if (duelProbe) createDuelSink(store).frame(duelProbeFixture());
+  if (hudProbe) {   // UI-iii Task 4: a fixture HUD model drawn by the old Pixi HUD or the React HUD (dynamic imports, the probe only)
+    const { HUD_FIXTURES } = await import('./app/hudFixtures');
+    const model = HUD_FIXTURES[Number(q.get('fixture') ?? 0)]!();
+    if (reactHud) { const { createHudSink } = await import('./ui/sinks'); createHudSink(store).update(model); }
+    else { const { createHud } = await import('./render/hud'); renderer.hud.visible = true; renderer.app.stage.addChild(renderer.hud); createHud(renderer.hud, assets).update(model); }
+  }
 }
 
 /** One mode per launch (H-1 spec §3): the dev views `?mode=flight` and `?mode=duel`, or the app with its main menu. */
