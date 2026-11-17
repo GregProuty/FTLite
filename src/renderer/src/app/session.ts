@@ -173,6 +173,7 @@ export function createSession(deps: SessionDeps) {
     resume(reason = 'resume') { doResume(reason); }, pump,
     dispose() { disposed = true; cancelLobby?.(); runtime?.dispose(); deps.hud?.clear?.(); },
     frame() {
+      if (disposed) return;
       for (const cue of CUE_ORDER) if (pendingCues.has(cue)) deps.playCue?.(cue); pendingCues.clear();
       if (phase !== 'error') runtime?.frame();
       deps.hud?.update(buildHudModel(phase === 'error' ? null : state, { mode: 'couch', ui: runtime?.ui ?? lobbyUi }, {

@@ -1,6 +1,6 @@
 import { Container, Graphics, BitmapText } from 'pixi.js';
 import { mapTitle, type HudModel } from './hudModel';
-import { MAP_W, MAP_H, nodeX, nodeY, NODE_R, MAP_FLEET, ROCKS } from './mapModel';
+import { MAP_W, MAP_H, nodeX, nodeY, NODE_R, MAP_FLEET, ROCKS, MAP_MARKS } from './mapModel';
 import { drawPanel } from './panel';
 import { TEXT, DIM, AMBER, FONT_SIZE, PANEL_FILL, CELL_EDGE, PAD } from './theme';
 
@@ -16,7 +16,7 @@ export function createMapPanel(fontFamily = 'm5x7'): { root: Container; update(m
   const g = new Graphics(); root.addChild(g);
   const mk = (anchorCentre: boolean): BitmapText => { const t = new BitmapText({ text: '', style: { fontFamily, fontSize: FONT_SIZE } }); t.tint = TEXT; t.roundPixels = true; if (anchorCentre) t.anchor.set(0.5, 0.5); root.addChild(t); return t; };
   const title = mk(false); title.position.set(PAD, 0); title.tint = AMBER;
-  const marks: BitmapText[] = []; for (let i = 0; i < 24; i++) { const t = mk(true); t.visible = false; marks.push(t); }
+  const marks: BitmapText[] = []; for (let i = 0; i < MAP_MARKS; i++) { const t = mk(true); t.visible = false; marks.push(t); }
   return {
     root,
     update(map) {

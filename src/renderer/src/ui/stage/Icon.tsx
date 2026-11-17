@@ -9,6 +9,6 @@ export const Icon = memo(function Icon(p: { name: string; x: number; y: number; 
   const img = useImages().get(p.name); if (!img) return null;
   const style = p.tint === undefined
     ? { backgroundImage: `url(${img.url})`, backgroundSize: '100% 100%', imageRendering: 'pixelated' as const }
-    : { backgroundColor: hex(p.tint), maskImage: `url(${img.url})`, maskSize: '100% 100%', WebkitMaskImage: `url(${img.url})`, WebkitMaskSize: '100% 100%' };
+    : { backgroundColor: hex(p.tint), maskImage: `url(${img.url})`, maskSize: '100% 100%', WebkitMaskImage: `url(${img.url})`, WebkitMaskSize: '100% 100%', imageRendering: 'pixelated' as const };
   return <Box x={p.x} y={p.y} w={img.w} h={img.h} attrs={{ 'data-ui-image': p.name }} style={style} />;
 });
