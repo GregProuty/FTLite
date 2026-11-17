@@ -5,6 +5,7 @@ import { CREW_SLOT, missileOf, type DuelEvent, type TacticalState } from '../../
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import type { Point } from './camera';
 import type { PrevBody } from './tacticalModel';
+import { CRT } from './crtTheme';
 
 /** A contact the runtime detects from a ship's hit counters (the sim emits no contact events). */
 export interface ContactEvent { kind: 'contact'; ship: number; body: 'planet' | 'asteroid' | 'ship'; x: number; y: number }
@@ -14,8 +15,9 @@ export type ViewEvent = DuelEvent | ContactEvent;
 export const BEAM_S = 0.15, BURST_S = 0.3, SPARK_S = 0.3, SHAKE_S = 0.2, SHAKE_PX = 6;
 /** Trail length in drawn positions (spec §7 item 6). */
 export const TRAIL_POINTS = 30;
-export const BEAM_HIT = 0xffffff, BEAM_MISS = 0x8a8f99, BURST = 0xff8c1a;
-export const SPARK: Readonly<Record<ContactEvent['body'], number>> = { planet: 0xff8c1a, asteroid: 0xa0a0a0, ship: 0xffffff };
+/** CRT map spec section 2: a beam hit hot, a miss dim; bursts and sparks hot (the layer fades them to mid). */
+export const BEAM_HIT = CRT.hot, BEAM_MISS = CRT.dim, BURST = CRT.hot;
+export const SPARK: Readonly<Record<ContactEvent['body'], number>> = { planet: CRT.hot, asteroid: CRT.hot, ship: CRT.hot };
 
 export interface FxItem { kind: 'beam' | 'burst' | 'spark'; age: number; life: number; x1: number; y1: number; x2: number; y2: number; colour: number }
 export interface FxState {

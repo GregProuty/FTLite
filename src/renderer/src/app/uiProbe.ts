@@ -18,7 +18,8 @@ export function duelProbeFixture(): DuelUiView {
     ], help: ['TAB: SWITCH', 'ENTER: REMATCH…'] },
     end: { title: 'VICTORY', tint: GOOD, length: 'DUEL LENGTH 1:23', prompt: 'ENTER: REMATCH   ESC: LEAVE' },
     banners: { interior: 'PAUSED', tactical: 'PAUSED TACTICAL', notice: 'YOU: HELM' },
-    overlay: null
+    overlay: null,
+    crt: false
   };
 }
 

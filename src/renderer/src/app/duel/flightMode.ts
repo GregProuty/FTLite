@@ -5,6 +5,7 @@ import { Container } from 'pixi.js';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { computeLetterbox } from '../../render/letterbox';
+import { crtScale } from '../../render/crt';
 import { feelReadout, feelRows, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../../render/tactical/feelModel';
 import { createTacticalLayer, PAUSE_TEXT } from '../../render/tactical/tacticalLayer';
 import { tacticalModel } from '../../render/tactical/tacticalModel';
@@ -58,8 +59,9 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
     const ship = runtime.state.ships[0];
     const paused = runtime.reasons().has('user');
     const model = tacticalModel({ state: runtime.state, prev: runtime.prev, alpha: runtime.alpha(), camera: runtime.camera, viewport, console: 'helm', axes: runtime.axes(), ships: [0], paused, reserveRight: FLIGHT_RESERVE_RIGHT });
-    layer.draw(model);
-    deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null }, overlay: mapOverlayOf(model.overlay) });
+    layer.setCrt(crtScale(deps.renderer.crt()));   // CRT map spec section 1: the flight view is a console screen
+    layer.draw(model, null, performance.now() / 1000);
+    deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null }, overlay: mapOverlayOf(model.overlay), crt: true });
   };
   renderer.app.ticker.add(frame);
 

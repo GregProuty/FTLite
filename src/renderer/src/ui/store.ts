@@ -2,6 +2,7 @@
 // read by components through selectors. UI-ii and UI-iii add the per-frame hud, duel and flight slices.
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { ControlSection } from '../app/controlsList';
+import { DEFAULT_CRT, type CrtSetting } from '../render/crt';
 import { INITIAL_MENU, type LayoutSlice, type UiState } from './menuState';
 
 export type UiStore = StoreApi<UiState>;
@@ -15,7 +16,7 @@ export function createUiStore(init: UiStoreInit): UiStore {
     online: { available: init.onlineAvailable, status: null, receivedAt: 0 },
     settings: init.settings ? { available: true, ...init.settings } : { available: false, volume: 1, fullscreenAvailable: false, controls: [] },
     layout: { stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 },
-    duel: null, flight: null, hud: null, latency: null, epochs: { duel: 0, flight: 0, hud: 0 }
+    duel: null, flight: null, hud: null, latency: null, epochs: { duel: 0, flight: 0, hud: 0 }, crt: DEFAULT_CRT
   }));
 }
 
@@ -24,4 +25,9 @@ export function setLayout(store: UiStore, patch: Partial<Omit<LayoutSlice, 'stri
   const cur = store.getState().layout;
   if ((Object.keys(patch) as (keyof typeof patch)[]).every((k) => cur[k] === patch[k])) return;
   store.setState((s) => ({ layout: { ...s.layout, ...patch } }));
+}
+
+/** The CRT strength setting (CRT map spec section 4); writes only a change. */
+export function setCrtSetting(store: UiStore, crt: CrtSetting): void {
+  if (store.getState().crt !== crt) store.setState({ crt });
 }

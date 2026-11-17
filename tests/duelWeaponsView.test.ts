@@ -214,7 +214,7 @@ describe('the tactical layer with the combat lists (H-1 spec §10)', () => {
     const layer = createTacticalLayer({ fontFamily: 'm5x7', viewport: vp });
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), base = { ...input(st, cam, 'weapons'), paused: true };
     layer.draw(tacticalModel(base), combatModel(base));
-    const visibleTexts = (): number => layer.container.children.filter((k) => k.constructor.name === 'BitmapText' && k.visible).length;
+    const visibleTexts = (): number => [...layer.bloom.children, ...layer.container.children].filter((k) => k.constructor.name === 'BitmapText' && k.visible).length;
     expect(visibleTexts()).toBeGreaterThan(4);
     layer.reset();
     expect(visibleTexts()).toBe(0);

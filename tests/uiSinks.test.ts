@@ -6,7 +6,7 @@ import { createDuelSink, createFlightSink, createLatencySink } from '../src/rend
 import { mapOverlayOf, type DuelUiView, type FlightUiView } from '../src/renderer/src/ui/views';
 
 const banners = { interior: null, tactical: null, notice: null };
-const duelView = (value: string): DuelUiView => ({ readout: { rows: [{ label: 'HULL', value, labelTint: 1, valueTint: 2 }], help: ['TAB'] }, end: null, banners, overlay: null });
+const duelView = (value: string): DuelUiView => ({ readout: { rows: [{ label: 'HULL', value, labelTint: 1, valueTint: 2 }], help: ['TAB'] }, end: null, banners, overlay: null, crt: false });
 
 describe('the duel sink', () => {
   it('writes a changed view, skips an equal one and keeps unchanged subtrees', () => {
@@ -26,7 +26,7 @@ describe('the duel sink', () => {
 describe('the flight sink', () => {
   it('writes the flight slice with its own epoch', () => {
     const store = createUiStore({ onlineAvailable: false }), sink = createFlightSink(store);
-    const view: FlightUiView = { feel: [['SPEED', '1 u/s']], banners, overlay: mapOverlayOf({ zoomText: 'ZOOM 1.00', scaleBar: { px: 80, units: 500 }, snapHint: false, paused: true }) };
+    const view: FlightUiView = { feel: [['SPEED', '1 u/s']], banners, overlay: mapOverlayOf({ zoomText: 'ZOOM 1.00', scaleBar: { px: 80, units: 500 }, snapHint: false, paused: true }), crt: false };
     sink.frame(view); expect(store.getState().flight!.overlay).toEqual({ zoomText: 'ZOOM 1.00', scaleBar: { px: 80, units: 500 }, snapHint: false });
     expect(store.getState().epochs.flight).toBe(1); sink.clear(); expect(store.getState().flight).toBeNull();
   });

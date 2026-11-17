@@ -19,6 +19,11 @@ export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'WALKING' | 'REPAIRING';
 export const INCOMING_RANGE = 600;
 export const READOUT_MARGIN = 8, READOUT_W = READOUT_COLUMN - 2 * READOUT_MARGIN;
 
+/** What a row means, beside its tints (CRT map spec section 2): the console views' CRT readout draws by emphasis and the
+ *  interior ignores it. `alert` an inverse bar blinking main/hot; `warn` and `good` hot text; `crew` main text and solid
+ *  pips; `enemy` an inverse bar (a heading or a value) and hollow pips. */
+export type ReadoutEmphasis = 'good' | 'warn' | 'alert' | 'crew' | 'enemy';
+
 export interface ReadoutRow {
   label: string; value: string;
   labelTint: number; valueTint: number;
@@ -26,10 +31,13 @@ export interface ReadoutRow {
   pips?: { n: number; max: number; colour: number };
   /** A thin bar along the bottom of the row: 0..1 filled (the laser charge, a room's repair progress). */
   bar?: { fill: number; colour: number };
+  emphasis?: ReadoutEmphasis;
 }
 
 const row = (label: string, value = '', labelTint = DIM, valueTint = TEXT): ReadoutRow => ({ label, value, labelTint, valueTint });
 const heading = (label: string, tint: number): ReadoutRow => row(label, '', tint, tint);
+/** The row with an emphasis, or unchanged when there is none (so rows without one carry no `emphasis` key). */
+const em = (r: ReadoutRow, emphasis: ReadoutEmphasis | null): ReadoutRow => (emphasis ? { ...r, emphasis } : r);
 const level = (n: number): string => (n === 0 ? 'OK' : `DMG ${n}`);
 const levelTint = (n: number): number => (n === 0 ? GOOD : n === 1 ? AMBER : WARN);
 
@@ -46,24 +54,24 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
   const rows: ReadoutRow[] = [
     heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : 'ON FOOT', AMBER),
-    heading(d.interior.layout.id.toUpperCase(), CREW_SHIP),
-    row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT),
-    { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP } }
+    em(heading(d.interior.layout.id.toUpperCase(), CREW_SHIP), 'crew'),
+    em(row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT), crewSys.hull <= SHIP_HULL / 4 ? 'alert' : null),
+    { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP }, emphasis: 'crew' }
   ];
   for (let r = 0; r < 3; r++) {
-    const n = crewSys.rooms[r]!, progress = d.repair[r]! / REPAIR_UNITS, out = row(ROOM_NAMES[r]!, level(n), DIM, levelTint(n));
+    const n = crewSys.rooms[r]!, progress = d.repair[r]! / REPAIR_UNITS, out = em(row(ROOM_NAMES[r]!, level(n), DIM, levelTint(n)), n === 0 ? 'good' : 'warn');
     rows.push(n > 0 && progress > 0 ? { ...out, bar: { fill: progress, colour: GOOD } } : out);
   }
-  rows.push(heading('HUNTER', ENEMY_SHIP));
-  rows.push(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT));
-  rows.push({ ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP } });
-  rows.push(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')));
+  rows.push(em(heading('HUNTER', ENEMY_SHIP), 'enemy'));
+  rows.push(em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
+  rows.push({ ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
+  rows.push(em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));
   if (input.mode === 'weapons') {
     const flying = missileOf(t, 0) !== null, full = crewSys.laserCharge >= LASER_CHARGE_UNITS;
     rows.push(heading('LASER', AMBER));
-    rows.push(row('LOCK', ROOM_NAMES[crewSys.lock]!));
+    rows.push(em(row('LOCK', ROOM_NAMES[crewSys.lock]!), 'enemy'));
     const value = flying ? 'FROZEN' : full ? `HOLD ${((LASER_HOLD_TICKS - crewSys.laserHold) / TICK_HZ).toFixed(1)}` : `${Math.floor((crewSys.laserCharge / LASER_CHARGE_UNITS) * 100)}%`;
-    rows.push({ ...row('CHARGE', value, DIM, full && !flying ? GOOD : TEXT), bar: { fill: crewSys.laserCharge / LASER_CHARGE_UNITS, colour: full ? GOOD : AMBER } });
+    rows.push(em({ ...row('CHARGE', value, DIM, full && !flying ? GOOD : TEXT), bar: { fill: crewSys.laserCharge / LASER_CHARGE_UNITS, colour: full ? GOOD : AMBER } }, full && !flying ? 'good' : null));
     rows.push(row('MAG', `${crewSys.magazine}/${MAGAZINE}${flying ? ' FLYING' : ''}`));
   }
   rows.push(row('OTHER', d.present[other] ? 'PRESENT' : 'AWAY', DIM, d.present[other] ? TEXT : DIM));
@@ -72,14 +80,14 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     const helm = d.interior.stations.occupant[d.nav]!, gun = d.interior.stations.occupant[d.weapons]!;
     const crewed = (pid: number): boolean => pid >= 0 && d.present[pid as 0 | 1];
     rows.push(heading('OUTSIDE', AMBER));
-    rows.push(row('HELM', crewed(helm) ? 'CREWED' : 'EMPTY', DIM, crewed(helm) ? TEXT : WARN));
-    if (!crewed(helm)) rows.push(row('', 'COASTING', DIM, WARN));
-    rows.push(row('WEAPONS', crewed(gun) ? 'CREWED' : 'EMPTY', DIM, crewed(gun) ? TEXT : WARN));
+    rows.push(em(row('HELM', crewed(helm) ? 'CREWED' : 'EMPTY', DIM, crewed(helm) ? TEXT : WARN), crewed(helm) ? null : 'alert'));
+    if (!crewed(helm)) rows.push(em(row('', 'COASTING', DIM, WARN), 'alert'));
+    rows.push(em(row('WEAPONS', crewed(gun) ? 'CREWED' : 'EMPTY', DIM, crewed(gun) ? TEXT : WARN), crewed(gun) ? null : 'alert'));
     const dx = enemy.x - crew.x, dy = enemy.y - crew.y;
     rows.push(row('ENEMY', `${Math.round(Math.sqrt(dx * dx + dy * dy))}`));
     rows.push(row('BEARING', String(bearingDeg(dx, dy)).padStart(3, '0')));
     const m = missileOf(t, target);
-    if (m && (m.x - crew.x) ** 2 + (m.y - crew.y) ** 2 <= INCOMING_RANGE * INCOMING_RANGE) rows.push(heading('MISSILE INBOUND', WARN));
+    if (m && (m.x - crew.x) ** 2 + (m.y - crew.y) ** 2 <= INCOMING_RANGE * INCOMING_RANGE) rows.push(em(heading('MISSILE INBOUND', WARN), 'alert'));
   }
   return rows;
 }
