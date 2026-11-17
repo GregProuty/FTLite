@@ -27,6 +27,7 @@ import { missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
 import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
 import { consoleChange } from './consoleChange';
+import { createContactController, type ContactActions } from './contactController';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
 import type { DuelSink, LatencySink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
@@ -45,6 +46,8 @@ export interface OnlineDuelDeps {
   recordDuel?(record: DuelPlaytestRecord): Promise<boolean> | void;
   /** The console's click slot (Artemis spec §6.2): filled with this session's keyboard, emptied on dispose. */
   setConsole?(input: ConsoleInput | null): void;
+  /** The contact window's click slot (enemy ship window spec §6.1, §6.6): filled with this session's controller, emptied on dispose. */
+  setContact?(contact: ContactActions | null): void;
 }
 const NOTICE_MS = 3000;
 /** How often the session asks main for the link's figures, and how many recent samples the F3 overlay reads. */
@@ -72,8 +75,12 @@ export function leavePromptKeys(prompt: LeavePrompt, d: DuelState, phase: string
 
 export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const canvas = deps.renderer.app.canvas;
-  const keyboard = createDuelKeyboard(window as unknown as EventSource);
+  // Enemy ship window spec §6.1, §6.2: local to this screen, never sent. While the window is shown its intercept takes Esc
+  // (and T), so the leave prompt and setPaused below never see that Escape.
+  const contact = createContactController();
+  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => focused && !blocked && contact.intercept(code) });
   deps.setConsole?.(keyboard.ui);
+  deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
   const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
     const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
@@ -251,7 +258,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
       descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
-      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio });
+      // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
+      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,
+        takeClick: () => { const click = pointer.takeClick(); return focused && !blocked ? click : null; } });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });
@@ -281,7 +290,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     },
     dispose(): void {
       if (disposed) return; disposed = true; cancel(); release();
-      deps.setConsole?.(null);
+      deps.setConsole?.(null); deps.setContact?.(null);
       keyboard.destroy(); pointer.destroy(); debug.destroy(); deps.latency?.clear(); scene?.dispose(); scene = null;
       if (frozen) disposeDuel(frozen); frozen = null;
     }

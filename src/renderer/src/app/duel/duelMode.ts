@@ -9,6 +9,7 @@ import { endModel } from '../../render/duel/endModel';
 import type { DuelPlaytestRecord } from '../../net/duelRecord';
 import { createDuelKeyboard, createPointerSource, type ConsoleInput, type EventSource } from './input';
 import { consoleChange } from './consoleChange';
+import { createContactController, type ContactActions } from './contactController';
 import { createDuelRuntime } from './runtime';
 import type { DuelSink } from '../../ui/sinks';
 import type { AudioOut } from '../audio';
@@ -32,15 +33,20 @@ export interface DuelModeDeps {
   audio?: AudioOut;
   /** The console's click slot (Artemis spec §6.2): filled with this duel's keyboard, emptied on dispose. */
   setConsole?(input: ConsoleInput | null): void;
+  /** The contact window's click slot (enemy ship window spec §6.1, §6.6): filled with this duel's controller, emptied on dispose. */
+  setContact?(contact: ContactActions | null): void;
 }
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
   const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H };
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME${exitHint}`;
-  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio });
+  // Enemy ship window spec §6.1: the contact window's state, local to this screen; its intercept takes Esc and T first.
+  const contact = createContactController();
+  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio, contact, takeClick: () => pointer.takeClick() });
   const canvas = renderer.app.canvas;
-  const keyboard = createDuelKeyboard(window as unknown as EventSource);
+  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) });
   deps.setConsole?.(keyboard.ui);
+  deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
   const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
     const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
@@ -83,7 +89,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('beforeunload', dispose);
     offSuspend?.(); offResume?.();
-    deps.setConsole?.(null);
+    deps.setConsole?.(null); deps.setContact?.(null);
     keyboard.destroy(); pointer.destroy(); runtime.dispose(); scene.dispose();
   };
   window.addEventListener('beforeunload', dispose, { once: true });

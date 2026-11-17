@@ -1,6 +1,7 @@
 // What the menu can do (React UI spec §2, §5): the preload calls, the router callbacks and the menu's transitions, moved
 // line for line from render/sessionMenu.ts. Components only call these; each change is one store setState.
 import type { ConsoleInput } from '../app/duel/input';
+import type { ContactActions } from '../app/duel/contactController';
 import type { OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
 import { applyStatus, failureText, helmPlayerOf, isDuel, ROOM_CODE, type MenuState } from './menuState';
 import type { UiStore } from './store';
@@ -48,9 +49,21 @@ export function createUiActions(deps: UiActionDeps) {
     throttle: (level) => consoleInput?.throttle(level)
   };
 
+  // The contact window's clicks (enemy ship window spec §6.6) go to the duel mode's contact controller while one is set;
+  // a pick locks through the console input, the same path as the WEAP/SHLD/ENG buttons. A no-op otherwise.
+  let contactInput: ContactActions | null = null;
+  const contactActions = {
+    close: (): void => contactInput?.close(),
+    arm: (): void => contactInput?.arm(),
+    cancelAim: (): void => contactInput?.cancelAim(),
+    pick: (room: number): void => contactInput?.pick(room, (r) => consoleActions.lock(r))
+  };
+
   return {
     console: consoleActions,
+    contact: contactActions,
     setConsole(input: ConsoleInput | null): void { consoleInput = input; },
+    setContact(controller: ContactActions | null): void { contactInput = controller; },
     setStatus(next: OnlineStatus): void {
       const { menu: nextMenu, goHome } = applyStatus(menu(), next);
       if (goHome) deps.home?.();   // as sessionMenu did: the router goes home before the menu shows it

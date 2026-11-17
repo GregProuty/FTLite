@@ -313,6 +313,25 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   };
 }
 
+/** Enemy ship window spec §3: a map click's hit radius in internal px at zoom z, the ships loop's cull radius in screen
+ *  px (2 R z, or the drawn rings' 1.9 R drawnScale(z)) with a 16 px floor for the chevron zooms. */
+export const PICK_MIN_PX = 16;
+export function pickRadius(z: number): number { return Math.max(PICK_MIN_PX, 2 * SHIP_RADIUS * z, 1.9 * SHIP_RADIUS * drawnScale(z)); }
+
+/** Spec §6.2: the ship under a map click, or null. Only slots other than the crew's whose ship is active, each at the
+ *  interpolated position and camera the map draws with; the nearest hit wins. Reads no reserves. */
+export function pickShip(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport'>, p: Point): number | null {
+  const r = pickRadius(input.camera.zoom);
+  let best: number | null = null, bestD = Infinity;
+  for (let i = 0; i < input.state.ships.length; i++) {
+    if (i === CREW_SLOT || !input.state.ships[i]!.active) continue;
+    const b = interpolatedShip(input.state, input.prev, input.alpha, i), s = worldToScreen(input.camera, input.viewport, b.x, b.y);
+    const d = Math.hypot(s.x - p.x, s.y - p.y);
+    if (d <= r && d < bestD) { best = i; bestD = d; }
+  }
+  return best;
+}
+
 const shapeCache = new Map<number, number[]>();
 /** A rough asteroid outline as radius multipliers (9 vertices, 0.72..1.08), seeded by the asteroid's index. Render-only randomness. */
 export function asteroidShape(index: number): number[] {

@@ -4,7 +4,7 @@
 // blink phases. Also: those frames allocate no display objects (the filters are tested in crtFilter.test.ts, which needs jsdom).
 import { describe, expect, it } from 'vitest';
 import { BitmapText, Container, Graphics } from 'pixi.js';
-import { CRT_RAMP } from '../src/renderer/src/render/tactical/crtTheme';
+import { CRT, CRT_RAMP, roomLevel, roomLook } from '../src/renderer/src/render/tactical/crtTheme';
 import { BEAM_HIT, BEAM_MISS, BURST } from '../src/renderer/src/render/tactical/fxModel';
 import { createTacticalLayer } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ringDraw, type ShipDraw, type TacticalDraw } from '../src/renderer/src/render/tactical/tacticalModel';
@@ -73,5 +73,24 @@ describe('the CRT layer allocates nothing per frame (spec section 2)', () => {
     const n0 = count(layer.container);
     for (let k = 0; k < 60; k++) { const f = k % 2 ? helm : weapons; layer.draw(f.d, f.c, k / 7); }
     expect(count(layer.container)).toBe(n0);
+  });
+});
+
+describe('roomLook (enemy ship window spec §6.3: the map\'s room damage table, shared with the contact window)', () => {
+  it('reproduces the hull silhouettes table for both ships, every level and both blink phases', () => {
+    const N = null;
+    const table = [
+      [true, 0, 0, N, CRT.glass, N], [true, 0, 1, N, CRT.glass, N],
+      [true, 1, 0, CRT.mid, CRT.glass, CRT.glass], [true, 1, 1, CRT.mid, CRT.glass, CRT.glass],
+      [true, 2, 0, CRT.glass, CRT.hot, N], [true, 2, 1, CRT.hot, CRT.glass, N],
+      [false, 0, 0, N, CRT.mid, N], [false, 0, 1, N, CRT.mid, N],
+      [false, 1, 0, CRT.dim, CRT.main, CRT.main], [false, 1, 1, CRT.dim, CRT.main, CRT.main],
+      [false, 2, 0, CRT.hot, CRT.glass, N], [false, 2, 1, CRT.glass, CRT.main, CRT.main]
+    ] as const;
+    for (const [crew, level, phase, fill, stroke, hatch] of table)
+      expect(roomLook(crew, level, phase), `crew ${crew} level ${level} phase ${phase}`).toEqual({ fill, stroke, hatch });
+  });
+  it('roomLevel maps a room damage value to the table row: 0, 1, else 2', () => {
+    expect([0, 1, 2, 3].map(roomLevel)).toEqual([0, 1, 2, 2]);
   });
 });

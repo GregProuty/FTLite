@@ -65,6 +65,36 @@ describe('duel keyboard (H-1 spec §5)', () => {
     s = kb.sample(); expect(s.interactHeld).toBe(false); expect(s.presses.interact).toBe(0);
     kb.destroy(); expect(t.count()).toBe(0);
   });
+  it('an intercepted keydown adds no press edge and is not held; a declined one counts as before (enemy ship window spec §6.2)', () => {
+    const t = fakeTarget(), seen: string[] = [];
+    let take = true;
+    const kb = createDuelKeyboard(t, { intercept: (code) => { seen.push(code); return take && (code === 'Escape' || code === 'KeyW'); } });
+    t.fire('keydown', key('Escape')); t.fire('keydown', key('KeyW')); t.fire('keydown', key('KeyC'));
+    let s = kb.sample();
+    expect(s.presses.pause).toBe(0); expect(s.moveY).toBe(0); expect(s.presses.camera).toBe(1);
+    t.fire('keydown', key('KeyC', true));   // auto-repeat is never offered to the intercept
+    expect(seen).toEqual(['Escape', 'KeyW', 'KeyC']);
+    t.fire('keyup', key('Escape')); t.fire('keyup', key('KeyW'));
+    take = false;
+    t.fire('keydown', key('Escape')); t.fire('keydown', key('KeyW'));
+    s = kb.sample();
+    expect(s.presses.pause).toBe(1); expect(s.moveY).toBe(-1);
+  });
+  it('auto-repeats of an intercepted key stay unheld; after keyup a declined press works', () => {
+    const t = fakeTarget(); let take = true;
+    const kb = createDuelKeyboard(t, { intercept: (code) => take && code === 'KeyW' });
+    t.fire('keydown', key('KeyW')); t.fire('keydown', key('KeyW', true)); t.fire('keydown', key('KeyW', true));
+    let s = kb.sample();
+    expect(s.moveY).toBe(0); expect(s.presses.camera).toBe(0);
+    t.fire('keyup', key('KeyW')); take = false;
+    t.fire('keydown', key('KeyW'));
+    s = kb.sample(); expect(s.moveY).toBe(-1);
+  });
+  it('an intercepted key in PREVENT still has its default prevented', () => {
+    const t = fakeTarget(); createDuelKeyboard(t, { intercept: () => true });
+    const tab = key('Tab'); t.fire('keydown', tab);
+    expect(tab.preventDefault).toHaveBeenCalled();
+  });
 });
 
 describe('pointer source (H-1 spec §5)', () => {
@@ -96,6 +126,19 @@ describe('pointer source (H-1 spec §5)', () => {
     t.fire('pointerdown', ptr(260, 80, 1, 4)); t.fire('pointermove', ptr(270, 80, -1, 4));   // middle button pans
     expect(p.sample().dragX).toBe(5);
     const menu = { preventDefault: vi.fn() }; t.fire('contextmenu', menu); expect(menu.preventDefault).toHaveBeenCalled();
+  });
+  it('takeClick returns the last left-button press once, in internal px; ignores right and middle; clear drops it (enemy ship window spec §6.2)', () => {
+    const t = fakeTarget(), p = createPointerSource(t, half);
+    expect(p.takeClick()).toBeNull();
+    t.fire('pointerdown', ptr(100, 60, 0, 1)); t.fire('pointerdown', ptr(300, 200, 0, 1));
+    expect(p.takeClick()).toEqual({ x: 150, y: 100 });
+    expect(p.takeClick()).toBeNull();
+    t.fire('pointerdown', ptr(100, 100, 2, 2)); t.fire('pointerdown', ptr(100, 100, 1, 4));
+    expect(p.takeClick()).toBeNull();
+    t.fire('pointerdown', ptr(40, 40, 0, 1)); p.clear();
+    expect(p.takeClick()).toBeNull();
+    t.fire('pointerdown', ptr(40, 40, 0, 1)); p.sample();   // sampling the camera input leaves the click
+    expect(p.takeClick()).toEqual({ x: 20, y: 20 });
   });
   it('wheel accumulator: small deltas sum to whole notches, remainder carries, scrolling up zooms in', () => {
     expect(accumulateWheel(0, 0)).toEqual({ notches: 0, acc: 0 });

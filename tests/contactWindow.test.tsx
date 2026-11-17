@@ -1,0 +1,109 @@
+// @vitest-environment jsdom
+// Enemy ship window spec §4.2, §5, §6.6, §8: the contact window's clicks.
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { UiContext } from '../src/renderer/src/ui/context';
+import { UiRoot } from '../src/renderer/src/ui/UiRoot';
+import { createDuelSink } from '../src/renderer/src/ui/sinks';
+import type { DuelUiView } from '../src/renderer/src/ui/views';
+import { contactModel, type ContactView } from '../src/renderer/src/render/duel/contactModel';
+import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { TEXT } from '../src/renderer/src/render/theme';
+import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
+import { hex } from '../src/renderer/src/ui/stage/color';
+import { makeUi } from './helpers/uiStore';
+
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
+const contactOf = (station: 'helm' | 'weapons', aim: boolean, ship = 1, slots = 2): ContactView => {
+  const st = createTacticalState(4, slots); if (slots > 2) st.ships[2]!.active = true;
+  return contactModel({ state: st, ship, aim, station, t: 0, weapons: station === 'weapons' ? { charge } : null })!;
+};
+const view = (contact: ContactView): DuelUiView => ({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: null, contact });
+function mount(contact: ContactView) {
+  const ui = makeUi(), duel = createDuelSink(ui.store);
+  const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn() };
+  ui.actions.setContact(c);
+  render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
+  act(() => duel.frame(view(contact)));
+  return c;
+}
+const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement | null;
+const box = () => document.querySelector('[data-ui-contact-box]') as Element;
+const root = () => document.querySelector('[data-ui-contact]') as Element;
+const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e.dataset.text);
+
+describe('the contact window (spec §4.2, §5)', () => {
+  it('draws the title, the room labels and, at Weapons, LASER and MISSILE', () => {
+    mount(contactOf('weapons', false));
+    for (const t of ['ENEMY SHIP', 'WEAP', 'SHLD', 'ENG', 'MISSILE', 'STEER A/D', 'CHARGE', '40%']) expect(texts(), t).toContain(t);
+    expect(btn('contact-laser')).not.toBeNull();
+    expect(document.querySelector('[data-ui-contact-lock]')).not.toBeNull();   // the scout is the laser's target
+  });
+  it('LASER calls arm', () => {
+    const c = mount(contactOf('weapons', false));
+    fireEvent.pointerDown(btn('contact-laser')!, { button: 0 });
+    expect(c.arm).toHaveBeenCalledTimes(1);
+  });
+  it('while armed, a click inside the SHLD polygon calls pick(1); a click in the box on no room calls nothing', () => {
+    const v = contactOf('weapons', true), c = mount(v), shld = v.rooms[1]!.centre;
+    fireEvent.pointerDown(box(), { button: 0, clientX: v.box.x + 2, clientY: v.box.y + 2 });
+    expect(c.pick).not.toHaveBeenCalled();
+    fireEvent.pointerDown(box(), { button: 0, clientX: shld.x, clientY: shld.y });
+    expect(c.pick).toHaveBeenCalledTimes(1); expect(c.pick.mock.calls[0]![0]).toBe(1);
+  });
+  it('while armed, the pointer over the box draws the reticle', () => {
+    const v = contactOf('weapons', true), shld = v.rooms[1]!.centre;
+    mount(v);
+    expect(document.querySelector('[data-ui-contact-reticle]')).toBeNull();
+    fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
+    expect(document.querySelector('[data-ui-contact-reticle]')).not.toBeNull();
+    expect(box().getAttribute('style')).toContain('cursor: none');
+  });
+  it('draws a glass under-stroke below the hover outline and the reticle, and a backing box behind each room label', () => {
+    const v = contactOf('weapons', true), shld = v.rooms[1]!.centre;
+    mount(v);
+    fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
+    const glass = hex(CRT.glass);
+    const under = (sel: string) => Array.from(document.querySelectorAll(`${sel} > *`)).some((e) => e.getAttribute('stroke') === glass && e.getAttribute('stroke-width') === '3');
+    expect(under('[data-ui-contact-reticle]')).toBe(true);
+    const hov = document.querySelector('[data-ui-contact-hover]') as Element;
+    expect(hov).not.toBeNull();
+    expect(Array.from(hov.children).some((e) => e.getAttribute('stroke') === glass && e.getAttribute('stroke-width') === '3')).toBe(true);
+    expect(document.querySelectorAll('[data-ui-contact-label-bg]').length).toBe(v.rooms.length);
+  });
+  it('a right-click on the window or on the box calls cancelAim; the context menu is suppressed', () => {
+    const c = mount(contactOf('weapons', true));
+    fireEvent.pointerDown(root(), { button: 2 });
+    fireEvent.pointerDown(box(), { button: 2 });
+    expect(c.cancelAim).toHaveBeenCalledTimes(2);
+    expect(fireEvent.contextMenu(root())).toBe(false);
+    expect(c.pick).not.toHaveBeenCalled();
+  });
+  it('the close button calls close', () => {
+    const c = mount(contactOf('weapons', false));
+    fireEvent.pointerDown(btn('contact-close')!, { button: 0 });
+    expect(c.close).toHaveBeenCalledTimes(1);
+  });
+  it('the Helm: no weapon list, no reticle, and a room click calls nothing', () => {
+    const v = contactOf('helm', true), c = mount(v), shld = v.rooms[1]!.centre;
+    expect(btn('contact-laser')).toBeNull(); expect(texts()).not.toContain('MISSILE');
+    fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
+    fireEvent.pointerDown(box(), { button: 0, clientX: shld.x, clientY: shld.y });
+    expect(c.pick).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-ui-contact-reticle]')).toBeNull();
+  });
+  it('a ship that is not the laser\'s target: LASER disabled and NOT TARGETED', () => {
+    const c = mount(contactOf('weapons', false, 2, 3));
+    expect(btn('contact-laser')!.dataset.uiButton).toBe('disabled');
+    expect(texts()).toContain('NOT TARGETED');
+    fireEvent.pointerDown(btn('contact-laser')!, { button: 0 });
+    expect(c.arm).not.toHaveBeenCalled();
+  });
+  it('without a contact view no window is drawn', () => {
+    const ui = makeUi(), duel = createDuelSink(ui.store);
+    render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
+    act(() => duel.frame({ ...view(contactOf('weapons', false)), contact: null }));
+    expect(root()).toBeNull();
+  });
+});
