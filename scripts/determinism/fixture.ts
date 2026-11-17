@@ -1,5 +1,4 @@
-import cutter from '../../src/renderer/src/sim/ship/cutter.json';
-import skiff from '../../src/renderer/src/sim/ship/skiff.json';
+import hound from '../../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { loadSnapshot } from '../../src/renderer/src/sim/snapshot';
 import { canonicalFields } from '../../src/renderer/src/sim/canonicalFields';
@@ -11,7 +10,12 @@ import type { Checkpoint, Command, CommandEnvelope, HeldInput } from '../../src/
 import type { ReplayAction, ReplayFrame, ReplayV2 } from '../../src/renderer/src/sim/replay';
 import { compareReports, firstDifference, type Report, type Sample } from './protocol';
 
-export const layouts = { cutter: parseShip(cutter), skiff: parseShip(skiff) };
+export const layouts = { hound: parseShip(hound) };
+/** The production fleet (`shipForCrew`) recorded at two crew sizes (spec Art-iv-b): each variant is one ship at one
+ *  player count, with its own 54 000 completed ticks and 900 samples. */
+export const VARIANTS = [{ ship: 'hound', playerCount: 2 }, { ship: 'hound', playerCount: 3 }] as const;
+export const variantName = (ship: string, playerCount: number) => `${ship}-${playerCount}`;
+export const variantOf = (schedule: Schedule) => variantName(schedule.ship, schedule.checkpoint.init.playerCount);
 export interface Schedule {
   ship: keyof typeof layouts; checkpoint: Checkpoint; ticks: number; ended: boolean;
   held: { tick: number; player: number; held: HeldInput }[];
@@ -76,7 +80,7 @@ export function* actions(schedule: Schedule): Generator<ReplayAction> {
 function sample(schedule: Schedule, state: ReturnType<typeof coreFor>['state'], completed: number): Sample {
   const values = flatten(state), fields: Record<string, unknown> = {};
   for (const field of canonicalFields(state.layout, state.playerCount)) fields[field.name] = field.array ? Array.from(values.slice(field.offset, field.offset + field.count)) : values[field.offset];
-  return { ship: schedule.ship, seed: schedule.checkpoint.init.seed, runId: schedule.checkpoint.init.runId, tick: state.tick, completed, hash: hashState(state), fields };
+  return { ship: schedule.ship, variant: variantOf(schedule), seed: schedule.checkpoint.init.seed, runId: schedule.checkpoint.init.runId, tick: state.tick, completed, hash: hashState(state), fields };
 }
 export function executeSchedule(schedule: Schedule, digest: string, completedBefore: number, verifyReplay = true): Report {
   const h = coreFor(schedule, digest), report: Report = { samples: [], boundaries: [] }, frames: ReplayFrame[] = [];
@@ -84,9 +88,9 @@ export function executeSchedule(schedule: Schedule, digest: string, completedBef
     for (const action of actions(schedule)) {
       const frame = h.core.replayFrame({ tick: h.state.tick, eventSequenceBefore: h.core.cursors().eventSequence, action, results: [], events: [] });
       if (verifyReplay) frames.push(frame);
-      if (frame.results.length || frame.events.length) report.boundaries.push({ ship: schedule.ship, runId: schedule.checkpoint.init.runId, tick: frame.tick, action: action.kind, results: frame.results, events: frame.events });
+      if (frame.results.length || frame.events.length) report.boundaries.push({ ship: schedule.ship, variant: variantOf(schedule), runId: schedule.checkpoint.init.runId, tick: frame.tick, action: action.kind, results: frame.results, events: frame.events });
       if (action.kind === 'tick' && (completedBefore + h.state.tick) % 60 === 0) report.samples.push(sample(schedule, h.state, completedBefore + h.state.tick));
-      if (h.state.ended && h.state.tick !== schedule.ticks) throw Error(`unexpected end ${schedule.ship} seed ${schedule.checkpoint.init.seed} at tick ${h.state.tick}, expected ${schedule.ticks}`);
+      if (h.state.ended && h.state.tick !== schedule.ticks) throw Error(`unexpected end ${variantOf(schedule)} seed ${schedule.checkpoint.init.seed} at tick ${h.state.tick}, expected ${schedule.ticks}`);
     }
     if (Boolean(h.state.ended) !== schedule.ended) throw Error(`terminal chain mismatch ${schedule.checkpoint.init.runId}`);
     if (verifyReplay) {
@@ -94,7 +98,7 @@ export function executeSchedule(schedule: Schedule, digest: string, completedBef
       const replayed: Report = { samples: [], boundaries: [] };
       const result = runReplay(h.layout, replay, digest, state => {
         if ((completedBefore + state.tick) % 60 === 0) replayed.samples.push(sample(schedule, state, completedBefore + state.tick));
-      }, { retainTrace: false, onFrame: frame => { if (frame.results.length || frame.events.length) replayed.boundaries.push({ ship: schedule.ship, runId: schedule.checkpoint.init.runId, tick: frame.tick, action: frame.action.kind, results: frame.results, events: frame.events }); } });
+      }, { retainTrace: false, onFrame: frame => { if (frame.results.length || frame.events.length) replayed.boundaries.push({ ship: schedule.ship, variant: variantOf(schedule), runId: schedule.checkpoint.init.runId, tick: frame.tick, action: frame.action.kind, results: frame.results, events: frame.events }); } });
       compareReports(report, replayed);
       const difference = firstDifference(h.core.captureCheckpoint(), result.checkpoint, 'replay checkpoint');
       if (difference) throw Error(difference);
@@ -109,16 +113,19 @@ export function executeSchedule(schedule: Schedule, digest: string, completedBef
   } finally { h.core.dispose(); }
 }
 export function executeFixture(fixture: Fixture, digest: string, verifyReplay = true): Report {
-  const report: Report = { samples: [], boundaries: [] }, completed = { cutter: 0, skiff: 0 };
+  const report: Report = { samples: [], boundaries: [] }, names = VARIANTS.map(v => variantName(v.ship, v.playerCount));
+  const completed = new Map(names.map(name => [name, 0]));
   for (const schedule of fixture.runs) {
-    const out = executeSchedule(schedule, digest, completed[schedule.ship], verifyReplay);
-    completed[schedule.ship] += schedule.ticks; report.samples.push(...out.samples); report.boundaries.push(...out.boundaries);
+    const variant = variantOf(schedule), before = completed.get(variant);
+    if (before === undefined) throw Error(`${variant}: not a production fleet variant`);
+    const out = executeSchedule(schedule, digest, before, verifyReplay);
+    completed.set(variant, before + schedule.ticks); report.samples.push(...out.samples); report.boundaries.push(...out.boundaries);
   }
-  for (const ship of ['cutter', 'skiff'] as const) {
-    if (completed[ship] !== 54_000 || report.samples.filter(s => s.ship === ship).length !== 900) throw Error(`${ship}: requires 54000 completed ticks and 900 samples`);
+  for (const variant of names) {
+    if (completed.get(variant) !== 54_000 || report.samples.filter(s => s.variant === variant).length !== 900) throw Error(`${variant}: requires 54000 completed ticks and 900 samples`);
   }
   // Keep two independent worlds alive and alternate every boundary, then compare their canonical samples.
-  const schedules = ['cutter', 'skiff'].map(ship => fixture.runs.find(r => r.ship === ship)!);
+  const schedules = names.map(variant => fixture.runs.find(r => variantOf(r) === variant)!);
   const live = schedules.map(s => coreFor(s, digest)), iterators = schedules.map(s => actions({ ...s, ticks: 600 }));
   try {
     for (let active = true; active;) {

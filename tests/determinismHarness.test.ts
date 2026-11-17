@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compareReports, browserExecutable, receiveBrowser } from '../scripts/determinism/protocol';
 import { readFileSync } from 'node:fs';
-import { executeSchedule, unpackFixture, packFixture, coreFor, actions } from '../scripts/determinism/fixture';
+import { executeSchedule, unpackFixture, packFixture, coreFor, actions, variantOf, VARIANTS } from '../scripts/determinism/fixture';
 import { shipForCrew } from '../src/renderer/src/sim/ship/fleet';
 import { Position } from '../src/renderer/src/sim/components';
 import { CREW_SPEED, TRAIT_SLOW_SPEED, DT } from '../src/renderer/src/sim/tuning';
@@ -41,34 +41,42 @@ describe('independently recorded semantic schedule coverage', () => {
   it('covers the complete production fleet with its actual crew allocation', () => {
     expect(new Set(fixture.runs.map(r => r.ship))).toEqual(new Set([1, 2, 3, 4].map(shipForCrew)));
     for (const run of fixture.runs) expect(run.ship).toBe(shipForCrew(run.checkpoint.init.playerCount));
+    expect(new Set(fixture.runs.map(variantOf))).toEqual(new Set(['hound-2', 'hound-3']));
+    expect(VARIANTS.map(v => `${v.ship}-${v.playerCount}`)).toEqual(['hound-2', 'hound-3']);
+    for (const run of fixture.runs) expect(run.checkpoint.init.runId.startsWith(`det-${variantOf(run)}-`)).toBe(true);
+    for (const sample of fixture.expected.samples) expect(sample.variant).toBe(variantOf(fixture.runs.find(r => r.checkpoint.init.runId === sample.runId)!));
   });
   it('losslessly compresses expected canonical fields without compressing away changing values', () => {
     expect(unpackFixture(packFixture(fixture))).toEqual(fixture);
   });
   it('the recorded full diagonal is normalized by the production held phase', () => {
-    const schedule = { ...fixture.runs.find(r => r.ship === 'skiff')!, ticks: 24 }, h = coreFor(schedule, __GAMEPLAY_CONTENT_DIGEST__);
+    const schedule = { ...fixture.runs.find(r => variantOf(r) === 'hound-2')!, ticks: 24 }, h = coreFor(schedule, __GAMEPLAY_CONTENT_DIGEST__);
+    const mover = schedule.checkpoint.init.playerCount - 1;
+    let checked = false;
     try {
       for (const action of actions(schedule)) {
-        const eid = h.state.crew[1]!, x = Position.x[eid]!, y = Position.y[eid]!, tick = h.state.tick;
+        const eid = h.state.crew[mover]!, x = Position.x[eid]!, y = Position.y[eid]!, tick = h.state.tick;
         h.core.replayFrame({ tick, eventSequenceBefore: h.core.cursors().eventSequence, action, results: [], events: [] });
         if (action.kind === 'tick' && tick === 23) {
-          expect(action.input.held[1]).toMatchObject({ moveX: -1, moveY: -1 });
+          checked = true;
+          expect(action.input.held[mover]).toMatchObject({ moveX: -1, moveY: -1 });
           const distance = CREW_SPEED * TRAIT_SLOW_SPEED * DT / Math.sqrt(2);
           expect(Position.x[eid]).toBeCloseTo(x - distance, 12); expect(Position.y[eid]).toBeCloseTo(y - distance, 12);
         }
       }
     } finally { h.core.dispose(); }
+    expect(checked).toBe(true);
   });
-  it.each(['cutter', 'skiff'])('%s has exactly 54000 completed ticks, 900 samples and explicit terminal chains', ship => {
-    const runs = fixture.runs.filter(r => r.ship === ship), samples = fixture.expected.samples.filter(s => s.ship === ship);
+  it.each(['hound-2', 'hound-3'])('%s has exactly 54000 completed ticks, 900 samples and explicit terminal chains', variant => {
+    const runs = fixture.runs.filter(r => variantOf(r) === variant), samples = fixture.expected.samples.filter(s => s.variant === variant);
     expect(runs.reduce((n, r) => n + r.ticks, 0)).toBe(54000);
     expect(samples.map(s => s.completed)).toEqual(Array.from({ length: 900 }, (_, i) => (i + 1) * 60));
     expect(runs.slice(0, -1).every(r => r.ended)).toBe(true);
     expect(new Set(runs.map(r => r.checkpoint.init.runId)).size).toBe(runs.length);
     expect(new Set(runs.map(r => r.checkpoint.init.seed)).size).toBeGreaterThan(1);
   });
-  it.each(['cutter', 'skiff'])('%s executes meaningful non-neutral command and held coverage through production replay', ship => {
-    const original = fixture.runs.find(r => r.ship === ship)!;
+  it.each(['hound-2', 'hound-3'])('%s executes meaningful non-neutral command and held coverage through production replay', variant => {
+    const original = fixture.runs.find(r => variantOf(r) === variant)!;
     const actual = executeSchedule({ ...original, ticks: 960, ended: false }, __GAMEPLAY_CONTENT_DIGEST__, 0);
     const pinned = { samples: fixture.expected.samples.filter(s => s.runId === original.checkpoint.init.runId && s.tick <= 960), boundaries: fixture.expected.boundaries.filter((b: any) => b.runId === original.checkpoint.init.runId && b.tick < 960) };
     compareReports(pinned, actual);
@@ -82,9 +90,18 @@ describe('independently recorded semantic schedule coverage', () => {
     expect(actual.boundaries.flatMap((b: any) => b.events).filter((e: any) => e.kind === 'pause')).toHaveLength(4);
     const mover = original.checkpoint.init.playerCount - 1;
     expect(actual.samples[0]!.fields[`crew.${mover}.x`]).not.toBe(actual.samples[2]!.fields[`crew.${mover}.x`]);
-    if (ship === 'skiff') {
-      expect(resultAt(2)).toContainEqual(expect.objectContaining({ status: 'applied' }));
-      for (const tick of [10, 11, 13, 299, 301]) expect(resultAt(tick)).toContainEqual(expect.objectContaining({ status: 'applied' }));
+    // The mover's scan at the Ops group, its Ops tabs (Science -> Engineering -> Science), the reactor buy between
+    // them and its stand all apply on both crew sizes.
+    expect(resultAt(2)).toContainEqual(expect.objectContaining({ id: expect.objectContaining({ player: mover }), status: 'applied' }));
+    for (const tick of [11, 12, 13, 22]) expect(resultAt(tick)).toEqual([expect.objectContaining({ id: expect.objectContaining({ player: mover }), status: 'applied' })]);
+    expect(resultAt(700)).toEqual([expect.objectContaining({ reason: 'unsupported' })]);
+    if (variant === 'hound-2') {
+      // Two crew: Navigation and Weapons are separate seats, so player 0 stands, walks and sits between them.
+      for (const tick of [20, 40, 290, 298, 300, 302, 311]) expect(resultAt(tick)).toEqual([expect.objectContaining({ id: expect.objectContaining({ player: 0 }), status: 'applied' })]);
+      expect(resultAt(61)).toEqual([expect.objectContaining({ id: expect.objectContaining({ player: 0 }), reason: 'stale-target' })]);
+    } else {
+      // Three crew: player 1 is the gunner at Weapons.
+      expect(resultAt(61)).toEqual([expect.objectContaining({ id: expect.objectContaining({ player: 1 }), reason: 'stale-target' })]);
     }
   });
 });
