@@ -78,3 +78,40 @@ Deferred, as the reviewer suggested ("not needed before merge"). The sizes are s
 
 ---
 
+# Round 2 (delta, reviewing ebedf5c, effort medium, 29 s, 70653 in / 50889 cached / 2823 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — interiorFeel.ts now sets flashLeft = FLASH_TICKS / TICK_HZ in onHit and drains it by realDt every frame. The flash shows only while flashLeft > 0 and flashAlpha(ticksSince) > 0, so it ends on real time even when state.tick stops. In the ended duel, duelMode.ts:88 passes dt as both presentDt and realDt, so it drains. While paused, realDt = dt also drains it. The sector renderer passes the real dt (renderer.ts diff). build() and reset() clear flashLeft. A hitstop does not extend it, because flashLeft drains on realDt and not pdt. The new test holds state.tick at 10 and expects the flash hidden. At 1/60 frames, 1/30 - 2×(1/60) comes out to exactly 0, so no stray third frame is lit.
+- R1-F2: resolved — paused = dt === 0 && realDt > 0. While paused, clock.advance(0) leaves t held, clock.drain(realDt) (presentClock.ts:31) ends a running hitstop, and the wasStopped check runs after the drain, so freezeAnimations releases the sprites. stepShake drains on realDt and the returned offset is {0,0}. duelMode.ts:88 passes 0 or dt as presentDt and dt as realDt, and the sector renderer passes paused ? 0 : dt plus dt. The new test runs 4 paused frames of 1/60 s. That covers the 0.0433 s of hitstop left after the hit frame, and the test checks that time() is held and anim.playing is true.
+
+## Verified
+- interiorFeel.ts draw(frame, dt, realDt = dt): the default keeps the existing two-argument calls and tests working as before
+- duelMode.ts:88 passes the real dt to interior.draw. interiorView.ts:82 forwards presentDt as the presentation dt and dt as realDt
+- presentClock.ts:24-33: drain lowers only stop and never advances t; advance and hitstop are unchanged
+- impactModel.ts:7,39-42: FLASH_TICKS = 2. flashAlpha still bounds the flash by ticks, so with the sim ticking normally the flash still lasts 2 ticks
+- impactModel.ts:26-37: stepShake on realDt during a pause fully drains a 0.25 s shake, so play resumes with no stale offset
+- build() and reset() both clear flashLeft (interiorFeel diff), so a layout change or a restart cannot carry a lit flash over
+- Per-task minor notes (progress.md): none is reopened by this delta. R1-F3 (per-frame allocations) stays deferred and is not blocking
+
+## Not verified
+- I did not run the test suite or tsc (the constraints forbid it). The responder reports 3463 tests passing and tsc -b clean
+- No visual check of the running app (the flash and shake across pause and resume)
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the branch at `ebedf5c`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 and R1-F2 as resolved, with no new findings. R1-F3 stays deferred as a performance follow-up.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
