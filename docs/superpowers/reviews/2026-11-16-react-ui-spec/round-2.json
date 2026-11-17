@@ -1,0 +1,103 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "\u00a79's SceneOverlay\u2192Banners mapping drops H-2a-iii's visibility rule and maps a boolean onto a text field",
+      "claim": "\u00a79 says `banner` maps to `banners.interior` and `layerPaused` to `banners.tactical`. But `layerPaused` is a boolean, and `banners.tactical` is `string | null`. H-2a-iii's scene also shows the interior banner in every view whenever the layer is not paused (`view === 'interior' || !overlay.layerPaused`). The online duel uses this to show its host-pause or disconnect banner over the map views too. \u00a76 defines `banners.interior` as non-null only when `view === 'interior'`. An implementer who copies \u00a76's rule into the scene would hide the online banner in Helm and Weapons.",
+      "evidence": "spec L355-357 (mapping), L267-268 (interior only in the interior view); helm-h2a-iii-online-app.md:L2288 (`layerPaused: boolean`), L2329 (`banner.visible = overlay.banner !== null && (view === 'interior' || !overlay.layerPaused)`), L2803 (online: `banner: bannerText(), layerPaused: false`)",
+      "why": "H-2a-iii's refinement will rebuild the scene from this mapping. As written, it loses the online duel's status banner in the map views, or two implementers will each invent their own condition.",
+      "fix": "State the mapping exactly: `banners.interior = overlay.banner !== null && (view === 'interior' || !overlay.layerPaused) ? overlay.banner : null`, and `banners.tactical = overlay.layerPaused ? pauseText : null`, where pauseText is the scene's `pauseText` option."
+    },
+    {
+      "severity": "P2",
+      "title": "The error boundary's reset rule ('until its slice is next cleared') has no meaning for the Menu region",
+      "claim": "\u00a72 says a failed region renders nothing until its slice is next cleared. Hud, DuelUi and FlightUi each have a slice that their producer clears, but Menu has none. So if Menu throws once, it stays blank for the rest of the run. That also removes the strip's Leave and Pause, which this rule exists to protect. The spec also does not say how a boundary detects that its slice was cleared (for example, by a reset key taken from the slice's null-to-non-null transition).",
+      "evidence": "spec L144-146 (boundary rule, 'so a bad HUD model can never take away the strip's Leave and Pause'); L78 (Menu is gated on the mountUi prop, not on a slice); L92-93 (the menu slice is never cleared)",
+      "why": "Menu is the one region whose failure strands the player, and two implementers would reset its boundary differently, or not at all.",
+      "fix": "Give each boundary a reset key. For Hud, DuelUi and FlightUi, a counter bumped by the sink each time the slice goes from null to non-null. For Menu, `menu.page` together with `online.status?.phase`, so the next page change or status push retries it. Say that Menu's fallback still renders a minimal Leave/Return to menu control, or accept and document that it does not."
+    },
+    {
+      "severity": "P3",
+      "title": "\u00a73 says SessionDeps.hud keeps its `{ update }` type, but \u00a77 adds `clear()` to it",
+      "claim": "L183-184 says `SessionDeps.hud` keeps its `{ update(m: HudModel) }` type. \u00a77 adds an optional `clear()` to the same dependency's type, and \u00a71 requires every producer to clear on dispose.",
+      "evidence": "spec L183-184 vs L304-305 and L83",
+      "why": "This is a small contradiction that a UI-iii plan writer has to resolve on their own.",
+      "fix": "Change L183-184 to read `{ update(m: HudModel); clear?(): void }`."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "\u00a74 L196-212 replaces DOM webfont text with <PixelText>, drawn from a 16 px atlas with nearest sampling (BitmapText's rule). It handles non-integer scales as parity, and <Box> rounds in device pixels with dpr (L190-195). \u00a78 L338-344 restates the visual criterion per scale and records dpr."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "\u00a72 L102 defines Banners {interior, tactical, notice}. \u00a76 L267-275 gives each banner's derivation and placement, and they match duelMode.ts:L44 and tacticalLayer.ts:L61 (viewport is INTERNAL_W\u00d7INTERNAL_H per duelMode.ts:L35, flightMode.ts:L25). Flight carries banners (L282-283)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "\u00a75 L244-247 puts the testid and aria-label on <Menu>'s root: the full-screen overlay, or exactly the strip while playing, never #ui or the stage. A jsdom test is in \u00a78 L319-320. This matches sessionMenu.ts:L58-60."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "\u00a77 L299-302 adds HudPlayer.seatedName and HudModel.maxCells, built in buildHudModel. \u00a78 L333-337 states the guard exactly: .ts and .tsx, direct imports, `import type` allowed, render/ models and theme allowed."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "\u00a79 L353-362 lists H-2a-iii's scene.ts, duelMode.ts and onlineDuel.ts as rebuilt onto duelSink, with the sink passed through the router factory. endModel moves to render/duel/endModel.ts (\u00a73 L162), and the notice placement is at L275. A residual gap in the banner mapping is raised as a new P2."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "\u00a71 L76-84 gives the render rule for each region. Every sink has clear(), called on its producer's dispose (L63, L271, L283, L304). The dev views are specified in \u00a76 L287-289."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "\u00a73 L164 adds a row, and \u00a76 L276-281 specifies MapOverlay. The positions match tacticalLayer.ts:L61 and L217-222: zoom at (16,h\u221264), bar at by=h\u221228 with \u00b15 ticks, label at (bx+px+8, by\u22128)=h\u221236, hint at (w/2,h\u221212) with anchor 0.5/1 in AMBER. The world-space content is listed under 'Stays' (L172-175)."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "\u00a72 L111-114 makes setStatus a single setState covering every transition in sessionMenu.ts:L177. \u00a75 L239-243 states the Settings change explicitly with afterSettings, and its description of today's behaviour (page becomes 'session' without a render, and the stale Back handler at L85 goes home) is accurate. useNow is aligned to the second boundary (L133-135)."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "\u00a74 L215-217 places rows absolutely from ROW_GLYPH, ceil(textPx) and ROW_GAP, takes widths from textPx/rowPx, and takes advances from theme (L201). With canvas glyph text, kerning cannot arise."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "\u00a72 L120-127 gives the selector rule (references or primitives, useShallow, tick-derived primitives), and \u00a78 L324 adds the render-count test."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "\u00a75 L248-253: the strip's ResizeObserver writes the height and writes 0 on cleanup, and main.ts subscribes and calls resize() with innerHeight \u2212 stripHeight. \u00a72 L137-140 covers the inputBlocked compare-with-last, its initial true and beforeunload. This matches sessionMenu.ts:L176 and L184."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "\u00a72 L142-149 adds error boundaries per region and the font/cache fallbacks. \u00a74 L221-227 has mountUi await the extract.base64 cache, with try/catch per icon and Sprite targets. The Menu boundary's reset is raised separately as a new P2."
+    }
+  ],
+  "verified": [
+    "Today's tactical banner and overlay positions (tacticalLayer.ts:L60-61, L217-223) match the \u00a76 placements at spec L272-281, including the scale label's moved position (bx+px+8, by\u22128).",
+    "duelMode and flightMode pass viewport {INTERNAL_W, INTERNAL_H} to the layer (duelMode.ts:L35, flightMode.ts:L25), so internal-pixel placements on <Stage> are equivalent.",
+    "\u00a75's description of today's Settings behaviour is accurate: sessionMenu.ts:L177 sets page='session' but skips render on Settings, and the Back handler at L85 sets page='home'.",
+    "reservedHeight returns 0 unless page is session and hadView is set (sessionMenu.ts:L176), and dispose calls inputBlocked(true) (L184). These match spec L137-140 and L248-253.",
+    "H-2a-iii's SceneOverlay shape is {banner, layerPaused, end, notice?} (plan L2288), as \u00a79 cites it."
+  ],
+  "not_verified": [
+    "Whether alpha-snapping the canvas-rasterised m5x7 atlas reproduces Pixi BitmapFont.install's glyph pixels exactly. That needs a runtime comparison, which the \u00a78 visual check is meant to cover.",
+    "Whether the smoke driver's `insertText` and capacity selection fire the events React-controlled inputs need (spec L236-238). I did not read the driver for this round.",
+    "Whether a zustand 5 / React 19 render-count test can be written as \u00a78 L324 describes. This was not exercised, since tests were not run."
+  ]
+}

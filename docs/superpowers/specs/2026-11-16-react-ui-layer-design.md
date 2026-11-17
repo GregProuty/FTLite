@@ -100,6 +100,8 @@ Single player never shows a stale sector HUD, and M back to the menu leaves no d
   overlay: MapOverlayView | null }`.
 - `flight: FlightUiView | null`, where `FlightUiView = { feel: rows, banners: Banners, overlay: MapOverlayView | null }`.
 - `Banners = { interior: string | null; tactical: string | null; notice: string | null }`, placed as in §6.
+- `epochs: { hud, duel, flight }`: counters bumped by each sink when its slice goes from null to non-null (the error
+  boundaries' reset keys, below).
 
 **How game changes reach the UI.**
 
@@ -142,8 +144,14 @@ set to `true` before `session.dispose()`, as `sessionMenu.dispose()` does now.
 **Failure modes.**
 
 - *A component throws:* each region (`Menu`, `Hud`, `DuelUi`, `FlightUi`) has its own error boundary. It logs the
-  error once with `console.error` and renders nothing for that region until its slice is next cleared. The other
-  regions stay mounted, so a bad HUD model can never take away the strip's Leave and Pause.
+  error once with `console.error`. The other regions stay mounted, so a bad HUD model can never take away the strip's
+  Leave and Pause. Each boundary has a reset key, and it retries rendering its region when the key changes:
+  - `Hud`, `DuelUi`, `FlightUi`: the slice's `epoch`, a counter in the store that the sink bumps each time the slice
+    goes from null to non-null. Until then the failed region renders nothing.
+  - `Menu`: `` `${menu.page}|${online.status?.phase ?? 'none'}` ``, so the next page change or status push retries it.
+    Until then it renders a minimal fallback with the same `session-menu` root: the text `Menu error` and one plain
+    button. The button is `Leave` (calling `actions.leave`) when `online.status?.actions` includes `leave`, else
+    `Return to menu` (calling `actions.home`).
 - *The font or image cache fails* (§4): `mountUi` still mounts. Text falls back as §4 says, and a failed icon is
   omitted, the same rule as `featureReady` today.
 - *React itself fails to load or mount:* `start().catch(showFatal)` shows the plain-DOM fatal screen, as today.
@@ -180,8 +188,8 @@ input, card-controller and command paths. The guards are in §8.
 - The fatal startup screen (`showFatal` in `main.ts`). It must work when React or the assets fail to load, so it stays
   plain DOM.
 
-After UI-iii, `Renderer.hud` (the Pixi HUD container) and `createHud` are gone. `SessionDeps.hud` keeps its
-`{ update(m: HudModel) }` type and is satisfied by `hudSink`.
+After UI-iii, `Renderer.hud` (the Pixi HUD container) and `createHud` are gone. `SessionDeps.hud` becomes
+`{ update(m: HudModel): void; clear?(): void }` (§7) and is satisfied by `hudSink`.
 
 ## 4. The pixel stage (looking the same)
 
@@ -353,8 +361,14 @@ The UI must look the same as today's Pixi panels: same rectangles, same glyph sh
 3. **H-2a-i, H-2a-ii, H-2a-iii.** Their plans are written but not executed. H-2a-i and H-2a-ii touch none of UI-ii's
    files and need no change. H-2a-iii is rebuilt on UI-i and UI-ii in its own plan refinement:
    - its new `app/duel/scene.ts` (`createDuelScene` with `SceneOverlay { banner, layerPaused, end, notice }`) builds no
-     Pixi readout, end screen or banners. Instead it returns the `DuelUiView` for `duelSink.frame`, where `banner`
-     maps to `banners.interior`, `layerPaused` to `banners.tactical`, and `notice` to `banners.notice`.
+     Pixi readout, end screen or banners. Instead it returns the `DuelUiView` for `duelSink.frame`, mapping its
+     overlay exactly as its own visibility rule does today:
+     - `banners.interior = overlay.banner !== null && (view === 'interior' || !overlay.layerPaused) ? overlay.banner : null`
+       (so the online duel's host-pause and disconnect banners also show over the map views)
+     - `banners.tactical = overlay.layerPaused ? pauseText : null` (`pauseText` is the scene's own option)
+     - `banners.notice = overlay.notice ?? null`
+
+     §6's single-player derivation is this mapping with `overlay.banner` set only while paused in the interior.
    - its rewrite of `duelMode.ts` and its new `onlineDuel.ts` take `duelSink` as a dependency. `main.ts` passes it
      into the router's online factory.
    - its `endModel` edits apply to `render/duel/endModel.ts`.
