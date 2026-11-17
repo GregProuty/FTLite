@@ -80,3 +80,12 @@ export function consoles(state: SimState): ConsoleDraw[] {
   }
   return out;
 }
+
+// ---- Art-ii (spec sections 1-2): the bought console art and the seated crew's facing ----
+
+/** Every station's console wall side, indexed by station: a group's members share their group's side. */
+export function stationSides(state: SimState): Side[] {
+  const out: Side[] = new Array<Side>(state.derived.stationTile.length).fill('s');
+  for (const c of consoles(state)) for (const m of c.members) out[m] = c.side;
+  return out;
+}

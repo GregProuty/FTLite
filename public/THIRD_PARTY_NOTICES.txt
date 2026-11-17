@@ -83,3 +83,12 @@ Mars colony pixel art by Maru-98 (maru-98.itch.io)
   Modifications: frames cut and remapped to the FTLite house palette by npm run art:import (edited by FTLite art import)
   Retrieved: 2026-11-16
   Files: paid/maru/floor.png
+
+Modern Interiors by LimeZu (limezu.itch.io)
+  Title: Modern Interiors (premade characters)
+  Author: LimeZu
+  Source: https://limezu.itch.io/moderninteriors
+  Licence: paid (commercial licence, https://limezu.itch.io/moderninteriors)
+  Modifications: frames cut and remapped to the FTLite house palette by npm run art:import (edited by FTLite art import)
+  Retrieved: 2026-11-16
+  Files: paid/limezu/crew_04.png, paid/limezu/crew_07.png, paid/limezu/crew_13.png, paid/limezu/crew_19.png

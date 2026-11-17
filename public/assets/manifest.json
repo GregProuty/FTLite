@@ -562,5 +562,485 @@
       },
       "animations": {}
     }
+  },
+  {
+    "title": "Modern Interiors (premade characters)",
+    "author": "LimeZu",
+    "source": "https://limezu.itch.io/moderninteriors",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Modern Interiors by LimeZu (limezu.itch.io)",
+    "required": false,
+    "file": "paid/limezu/crew_04.png",
+    "sheet": {
+      "frameW": 16,
+      "frameH": 32,
+      "frames": {
+        "crew.p0.stand.e": 0,
+        "crew.p0.stand.n": 1,
+        "crew.p0.stand.w": 2,
+        "crew.p0.stand.s": 3
+      },
+      "animations": {
+        "crew.p0.idle.e": {
+          "frames": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p0.idle.n": {
+          "frames": [
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p0.idle.w": {
+          "frames": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p0.idle.s": {
+          "frames": [
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p0.walk.e": {
+          "frames": [
+            28,
+            29,
+            30,
+            31,
+            32,
+            33
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p0.walk.n": {
+          "frames": [
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p0.walk.w": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p0.walk.s": {
+          "frames": [
+            46,
+            47,
+            48,
+            49,
+            50,
+            51
+          ],
+          "fps": 10,
+          "loop": true
+        }
+      }
+    }
+  },
+  {
+    "title": "Modern Interiors (premade characters)",
+    "author": "LimeZu",
+    "source": "https://limezu.itch.io/moderninteriors",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Modern Interiors by LimeZu (limezu.itch.io)",
+    "required": false,
+    "file": "paid/limezu/crew_07.png",
+    "sheet": {
+      "frameW": 16,
+      "frameH": 32,
+      "frames": {
+        "crew.p1.stand.e": 0,
+        "crew.p1.stand.n": 1,
+        "crew.p1.stand.w": 2,
+        "crew.p1.stand.s": 3
+      },
+      "animations": {
+        "crew.p1.idle.e": {
+          "frames": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p1.idle.n": {
+          "frames": [
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p1.idle.w": {
+          "frames": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p1.idle.s": {
+          "frames": [
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p1.walk.e": {
+          "frames": [
+            28,
+            29,
+            30,
+            31,
+            32,
+            33
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p1.walk.n": {
+          "frames": [
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p1.walk.w": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p1.walk.s": {
+          "frames": [
+            46,
+            47,
+            48,
+            49,
+            50,
+            51
+          ],
+          "fps": 10,
+          "loop": true
+        }
+      }
+    }
+  },
+  {
+    "title": "Modern Interiors (premade characters)",
+    "author": "LimeZu",
+    "source": "https://limezu.itch.io/moderninteriors",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Modern Interiors by LimeZu (limezu.itch.io)",
+    "required": false,
+    "file": "paid/limezu/crew_13.png",
+    "sheet": {
+      "frameW": 16,
+      "frameH": 32,
+      "frames": {
+        "crew.p2.stand.e": 0,
+        "crew.p2.stand.n": 1,
+        "crew.p2.stand.w": 2,
+        "crew.p2.stand.s": 3
+      },
+      "animations": {
+        "crew.p2.idle.e": {
+          "frames": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p2.idle.n": {
+          "frames": [
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p2.idle.w": {
+          "frames": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p2.idle.s": {
+          "frames": [
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p2.walk.e": {
+          "frames": [
+            28,
+            29,
+            30,
+            31,
+            32,
+            33
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p2.walk.n": {
+          "frames": [
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p2.walk.w": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p2.walk.s": {
+          "frames": [
+            46,
+            47,
+            48,
+            49,
+            50,
+            51
+          ],
+          "fps": 10,
+          "loop": true
+        }
+      }
+    }
+  },
+  {
+    "title": "Modern Interiors (premade characters)",
+    "author": "LimeZu",
+    "source": "https://limezu.itch.io/moderninteriors",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Modern Interiors by LimeZu (limezu.itch.io)",
+    "required": false,
+    "file": "paid/limezu/crew_19.png",
+    "sheet": {
+      "frameW": 16,
+      "frameH": 32,
+      "frames": {
+        "crew.p3.stand.e": 0,
+        "crew.p3.stand.n": 1,
+        "crew.p3.stand.w": 2,
+        "crew.p3.stand.s": 3
+      },
+      "animations": {
+        "crew.p3.idle.e": {
+          "frames": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p3.idle.n": {
+          "frames": [
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p3.idle.w": {
+          "frames": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p3.idle.s": {
+          "frames": [
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 6,
+          "loop": true
+        },
+        "crew.p3.walk.e": {
+          "frames": [
+            28,
+            29,
+            30,
+            31,
+            32,
+            33
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p3.walk.n": {
+          "frames": [
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p3.walk.w": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew.p3.walk.s": {
+          "frames": [
+            46,
+            47,
+            48,
+            49,
+            50,
+            51
+          ],
+          "fps": 10,
+          "loop": true
+        }
+      }
+    }
   }
 ]

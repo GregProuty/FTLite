@@ -2,14 +2,25 @@ import { Container, Graphics, BitmapText, Sprite } from 'pixi.js';
 import { INTERNAL_W } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import type { GameAssets } from './assets';
-import { bubbleAnchor, type Bubble } from './calloutModel';
+import { bubbleAnchor, CALLOUT_LIFT_PUNY, type Bubble } from './calloutModel';
 import { CREW_COLORS } from './crewSprites';
+import { CALLOUT_LIFT_DOWN_LIMEZU, CALLOUT_LIFT_LIMEZU } from './crewArt';
+import { featureReady } from './fallback';
+import { Life, LifeState } from '../sim/components';
 
 const PAD = 4, ICON = 16, MAX_BUBBLES = 4, TAIL = 5, BG = 0x10131a, TEXT = 0xffffff;
 
 /** Callout bubbles (spec Coop-i section 3): one per player over the crew member's head, in internal pixels, drawn between the world and the HUD. Display objects are made once and reused. */
 export function createCalloutLayer(assets: GameAssets) {
   const container = new Container();
+  const missing = new Set(assets.missing);
+  const limezu = featureReady(missing, 'crew') && featureReady(missing, 'crewArt');   // over the taller bought crew (Art-ii spec section 1)
+  /** A standing LimeZu head is 50 units up; a downed one lies across its tile (top about 16 up), so its bubble sits lower (plan review R1-F1). */
+  const liftFor = (state: SimState, pid: number): number => {
+    if (!limezu) return CALLOUT_LIFT_PUNY;
+    const eid = state.crew[pid];
+    return eid !== undefined && Life.state[eid] !== LifeState.Conscious ? CALLOUT_LIFT_DOWN_LIMEZU : CALLOUT_LIFT_LIMEZU;
+  };
   const pool = Array.from({ length: MAX_BUBBLES }, () => {
     const root = new Container(); root.visible = false;
     const g = new Graphics();
@@ -38,7 +49,7 @@ export function createCalloutLayer(assets: GameAssets) {
           b.g.clear().roundRect(0, 0, w, h, 4).fill({ color: BG, alpha: 0.92 }).stroke({ width: 2, color: edge })
             .poly([w / 2 - TAIL, h, w / 2 + TAIL, h, w / 2, h + TAIL]).fill({ color: edge });
         }
-        const a = bubbleAnchor(state, item.pid, fit), w = b.w;
+        const a = bubbleAnchor(state, item.pid, fit, liftFor(state, item.pid)), w = b.w;
         let x = Math.round(Math.max(4, Math.min(INTERNAL_W - w - 4, a.x - w / 2))), y = Math.round(a.y - 20 - TAIL);
         const hits = (): boolean => placed.some((p) => x < p.x + p.w + 2 && p.x < x + w + 2 && y < p.y + 22 && p.y < y + 22);
         while (hits()) y -= 23;                                  // crew close together: stack the later bubble above the earlier one

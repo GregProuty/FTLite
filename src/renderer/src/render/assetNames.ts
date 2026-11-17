@@ -1,3 +1,5 @@
+import { CREW_ART_NAMES } from './crewArt';
+
 /** Every asset name the renderer uses (spec §3 name contract). required = must be bound in the manifest; optional = may be unbound (in-house piece, Graphics fallback). */
 export const FACINGS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 export type Facing8 = (typeof FACINGS)[number];
@@ -17,6 +19,8 @@ add('optional', 'breach.h', 'breach.v', 'floor.damaged.0', 'floor.damaged.1', 'v
 for (const f of FACINGS) add('required', `crew.idle.${f}`, `crew.walk.${f}`);
 add('required', 'crew.down');
 add('optional', 'crew.sit');
+// Art-ii (spec section 1): the bought crew, a paid pack absent on a fresh clone; the Puny crew then draw as before
+add('optional', ...CREW_ART_NAMES);
 // icons (in-house)
 add('optional', 'icon.fire', 'icon.oxygen', 'icon.breach', 'icon.door', 'icon.repair', 'icon.medical', 'icon.power', 'icon.sensors', 'icon.weapons', 'icon.navigation');
 // ui (Kenney Pixel UI, Kenney 1-Bit Input Prompts)

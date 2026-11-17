@@ -7,6 +7,7 @@ export const CREDITS: readonly string[] = [
   "\"Fire Smoke Animations\" by Reactorcore, CC0",
   "\"m5x7\" by Daniel Linssen, CC0",
   "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+  "Modern Interiors by LimeZu (limezu.itch.io)",
   "\"Pixel UI Pack\" by Kenney (www.kenney.nl), CC0",
   "\"Puny Characters\" by Shade, CC0",
   "",
