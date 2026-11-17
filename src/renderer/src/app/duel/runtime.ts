@@ -2,7 +2,8 @@
 // driver until H-0c-ii puts the duel behind the authority. The flight runtime steps the single-ship flight; the duel
 // runtime steps stepDuelTick with the solo player's commands (spec §5) and owns both console cameras. H-2 spec §3, §7:
 // held axes are quantised to −1, 0 or 1 as online, and a decided round's end card keeps ticking until Enter sends the
-// same `rematch` command the online duel sends.
+// same `rematch` command the online duel sends. H-2b: the duel runtime keeps the round's telemetry accumulator, as the
+// authority does, and hands each decided round's record to `onRound` (Single player's solo playtest records).
 import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
@@ -10,6 +11,8 @@ import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } 
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
 import { stepDuelTick } from '../../sim/duel/step';
+import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim/duel/summary';
+import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { stepSoloFlight } from '../../sim/tactical/physics';
 import { createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
@@ -143,10 +146,12 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
 export type DuelView = 'helm' | 'weapons' | 'interior';
 
 export interface DuelRuntimeDeps extends FlightRuntimeDeps {
-  /** The Cutter (spec parent §8). */
+  /** The duel ship, the Hound (spec parent §8). */
   layout: ShipLayout;
   /** Drop the keyboard's held keys and press edges (Tab and restart, spec §4, §5). */
   clearKeys?(): void;
+  /** Each decided round's record, once, on the tick it is decided (H-2 spec §8: Single player's solo records). */
+  onRound?(record: DuelRoundRecord): void;
 }
 
 export interface DuelRuntime {
@@ -198,6 +203,7 @@ const hitCounts = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.p
 
 export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const d = createDuel(deps.layout, deps.seed);
+  let telemetry = createTelemetry(d);   // the round's accumulator, as the authority's duel rules keep it
   let round = 0, active: 0 | 1 = 0, firstTick = true, seq = [0, 0], pending: { player: number; command: DuelCommand }[] = [];
   // The sim checks sits and stands against presence before it applies that tick's presence commands, so a seat change
   // queued after a Tab waits here until the Tab's presence tick has run, then goes out on the following tick.
@@ -244,7 +250,13 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     pending = [];
     const held: HeldInput[] = [NEUTRAL, NEUTRAL];
     held[active] = activeHeld;
+    const roundBefore = d.round, running = d.tactical.outcome === Outcome.Running;
     results = stepDuelTick(d, { held, commands });
+    if (d.round !== roundBefore) telemetry = createTelemetry(d);   // a rematch: a fresh accumulator
+    else {
+      recordTick(telemetry, d, { held, commands });
+      if (running && d.tactical.outcome !== Outcome.Running) deps.onRound?.(duelRoundRecord(duelEndSummary(telemetry), d.round, d.tactical.seed, d.baseTick));
+    }
     sentHeld = held;
     const helm = attendant(d.nav), gunner = attendant(d.weapons);
     sentAxes = helm >= 0 ? helmAxes(held[helm]!) : NO_AXES;

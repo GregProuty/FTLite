@@ -1,5 +1,5 @@
 import { ipcMain, powerMonitor, type BrowserWindow, type IpcMainInvokeEvent, type MessagePortMain } from 'electron';
-import { copyOnlineStatus, ONLINE_CHANNELS, ONLINE_STATUS_CHANNEL, validateOnlineAction, validateOnlineResult,
+import { copyOnlineStatus, ONLINE_CHANNELS, ONLINE_LINK_STATS_CHANNEL, ONLINE_STATUS_CHANNEL, validateOnlineAction, validateOnlineLinkStats, validateOnlineResult,
   type OnlineStatus, type OnlineStatusEnvelope, type Unsubscribe } from '../../shared/onlineSession';
 import type { OnlineSessionOwner } from './onlineSession';
 
@@ -37,6 +37,10 @@ export function registerOnlineIpc(win: BrowserWindow, owner: OnlineSessionOwner)
     if (!trusted(event)) return { ok: false, code: 'unauthorized' };
     return args.length ? { ok: false, code: 'invalid-action' } : envelope();
   });
+  ipcMain.handle(ONLINE_LINK_STATS_CHANNEL, (event, ...args: unknown[]) => {
+    if (!trusted(event) || args.length) return null;
+    try { const stats = owner.linkStats?.() ?? null; return validateOnlineLinkStats(stats) ? { route: stats.route, rttMs: stats.rttMs } : null; } catch { return null; }
+  });
   const unsubscribe = owner.subscribe(status => {
     if (removed || revision >= Number.MAX_SAFE_INTEGER) return;
     current = safe(status); revision++;
@@ -53,7 +57,7 @@ export function registerOnlineIpc(win: BrowserWindow, owner: OnlineSessionOwner)
   const resume = () => { if (!removed) { void owner.resume().catch(() => {}); lifecycle('app:resume'); } };
   function remove(): void {
     if (removed) return; removed = true; registered = undefined;
-    for (const channel of [...Object.values(ONLINE_CHANNELS), ONLINE_STATUS_CHANNEL]) ipcMain.removeHandler(channel);
+    for (const channel of [...Object.values(ONLINE_CHANNELS), ONLINE_STATUS_CHANNEL, ONLINE_LINK_STATS_CHANNEL]) ipcMain.removeHandler(channel);
     unsubscribe(); powerMonitor.off('suspend', suspend); powerMonitor.off('resume', resume);
     win.off('closed', remove); contents.off('render-process-gone', remove);
     void owner.dispose().catch(() => {});

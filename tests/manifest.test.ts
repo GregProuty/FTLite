@@ -15,7 +15,7 @@ const font = { file: 'raw/m5x7/m5x7.ttf', title: 'm5x7', author: 'Daniel Linssen
 
 describe('licenses', () => {
   it('allows the §12 list and rejects everything else', () => {
-    expect(LICENSES).toEqual(['CC0-1.0', 'CC-BY-3.0', 'CC-BY-4.0', 'OGA-BY-3.0', 'OFL-1.1', 'original', 'CC-BY-SA-4.0', 'paid']);
+    expect(LICENSES).toEqual(['CC0-1.0', 'CC-BY-3.0', 'CC-BY-4.0', 'OGA-BY-3.0', 'OFL-1.1', 'original', 'CC-BY-SA-4.0', 'paid', 'CC-BY-NC-4.0']);
     expect(licenseAllowed('CC0-1.0', 'recoloured')).toBe(true);
     expect(licenseAllowed('CC-BY-SA-4.0', 'none')).toBe(true);
     expect(licenseAllowed('CC-BY-SA-4.0', 'recoloured')).toBe(false);

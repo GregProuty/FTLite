@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Container, Sprite, Texture, TextureSource } from 'pixi.js';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
+import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip, type ShipLayout } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import type { SimState } from '../src/renderer/src/sim/state';
@@ -18,13 +19,13 @@ import { createSimState } from './helpers/simLifetime';
 import { RECRUITS } from './helpers/sim';
 
 const T = TILE_PX;
-const CUTTER = parseShip(cutter), SKIFF = parseShip(skiff);
+const CUTTER = parseShip(cutter), SKIFF = parseShip(skiff), HOUND = parseShip(hound);
 const stateOf = (layout: ShipLayout): SimState => createSimState(layout, 2, 1, RECRUITS);
 const xy = (s: SimState, t: number): [number, number] => [t % s.derived.width, Math.floor(t / s.derived.width)];
 
 /** Fake assets: the prop textures sized as the spec's rectangles, every other optional feature missing. */
-function fakeAssets(withProps: boolean): GameAssets {
-  const missing = Object.values(FEATURE_NAMES).flat().filter((n) => !(withProps && n.startsWith('prop.')));
+function fakeAssets(withProps: boolean, withBattlemap = false): GameAssets {
+  const missing = Object.values(FEATURE_NAMES).flat().filter((n) => !(withProps && n.startsWith('prop.')) && !(withBattlemap && n === 'ship.hound.map'));
   const tex = new Map<string, Texture>();
   const named = (n: string): Texture => {
     let t = tex.get(n);
@@ -69,16 +70,26 @@ describe('the prop layer (Art-iii spec section 4)', () => {
     layer.draw(stateOf(CUTTER));
     expect(layer.container.children).toHaveLength(0);
   });
-  it('sits directly over the tiles in both views', () => {
+  it('draws no props on a painted ship (Art-iv), and the Art-iii props when its painting is missing', () => {
+    const painted = createPropLayer(fakeAssets(true, true));
+    painted.draw(stateOf(HOUND));
+    expect(painted.container.children).toHaveLength(0);
+    painted.draw(stateOf(CUTTER));
+    expect(painted.container.children).toHaveLength(propSlots(stateOf(CUTTER)).length);   // an unpainted ship keeps its props
+    const unpainted = createPropLayer(fakeAssets(true));
+    unpainted.draw(stateOf(HOUND));
+    expect(unpainted.container.children).toHaveLength(propSlots(stateOf(HOUND)).length);
+  });
+  it('sits directly over the tiles in both views (after the Art-iv battlemap layer)', () => {
     const d = createDuel(CUTTER, 5), view = createInteriorView(fakeAssets(true));
     view.draw(d, d.interior.crew.map(() => ({ x: 0, y: 0 })), 1, 1 / 60);
-    const props = view.world.children[1] as Container;
+    const props = view.world.children[2] as Container;
     expect(props.children.length).toBe(propSlots(d.interior).length);
     expect(props.children.every((k) => k instanceof Sprite && k.texture.label!.startsWith('prop.'))).toBe(true);
-    expect((view.world.children[2] as Container).blendMode).toBe('multiply');   // the grade next
+    expect((view.world.children[3] as Container).blendMode).toBe('multiply');   // the grade next
     view.destroy(); disposeDuel(d);
     const src = readFileSync('src/renderer/src/render/renderer.ts', 'utf8');
-    expect(src).toContain('world.addChild(tiles.container, props.container, feel.grade,');
+    expect(src).toContain('world.addChild(battlemap.container, tiles.container, props.container, feel.grade,');
     expect(src).toMatch(/tiles\.update\(state, dt\);\s*props\.draw\(state\);/);
   });
 });

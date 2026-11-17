@@ -17,7 +17,11 @@ const output = z.object({
   /** The sheet to write, relative to the repo root; must be under public/assets/paid/. */
   output: z.string().min(1),
   /** Sheet layout: frames left to right, `columns` per row, each in a cell as big as the largest frame. */
-  columns: z.number().int().positive()
+  columns: z.number().int().positive(),
+  /** Remap to the house palette (default). false keeps the pixels and alpha as bought: a painted battlemap (Art-iv). */
+  remap: z.boolean().default(true),
+  /** Mirror the packed sheet left-right (Art-iv: the Hound's dome faces right). */
+  flipX: z.boolean().default(false)
 });
 export const importConfig = z.object({ $comment: z.string().optional(), outputs: z.array(output) });
 export type ImportConfig = z.infer<typeof importConfig>;
@@ -94,6 +98,15 @@ export function packSheet(src: Image, o: ImportOutput): Image {
   return sheet;
 }
 
+/** Mirror an image left-right in place. */
+export function flipImageX(img: Image): void {
+  const row = img.width * 4;
+  for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width >> 1; x++) {
+    const a = y * row + x * 4, b = y * row + (img.width - 1 - x) * 4;
+    for (let k = 0; k < 4; k++) { const t = img.data[a + k]!; img.data[a + k] = img.data[b + k]!; img.data[b + k] = t; }
+  }
+}
+
 /** Every output at 2x, stacked top to bottom with a 4 px gap, on the palette's background role. */
 export function contactSheet(sheets: readonly Image[], background: number): Image {
   const gap = 4, width = Math.max(...sheets.map((s) => s.width * 2)), height = sheets.reduce((n, s) => n + s.height * 2, 0) + gap * (sheets.length - 1);
@@ -137,7 +150,9 @@ export function runImport(run: ImportRun): ImportResult {
   if (problems.length) return { problems, written: [] };
   const remap = createRemap(palette.colours), written: string[] = [], sheets: Image[] = [];
   parsed.data.outputs.forEach((o, i) => {
-    const sheet = packSheet(sources[i]!, o); remapPixels(sheet.data, remap); sheets.push(sheet);
+    const sheet = packSheet(sources[i]!, o);
+    if (o.flipX) flipImageX(sheet);
+    if (o.remap) { remapPixels(sheet.data, remap); sheets.push(sheet); }   // raw outputs stay off the contact sheet (a 2100 px painting would swamp it)
     const path = resolve(run.repoRoot, o.output); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, encodePng(sheet)); written.push(path);
   });
   if (sheets.length) {

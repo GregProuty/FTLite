@@ -45,7 +45,7 @@ const ROUND: ModuleField<DuelState>[] = [
   scalar('decidedTick', (d) => d.decidedTick, (d, v) => { d.decidedTick = v; })
 ];
 
-/** The Cutter interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
+/** The duel ship (the Hound) interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
 export const interiorModule: SimModule<DuelState> = {
   id: 'interior',
   fields(d) {
@@ -67,7 +67,7 @@ export const interiorModule: SimModule<DuelState> = {
 
 /** The DuelState members that are not module state, each with its reason. */
 export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
-  points: 'the repair points, resolved from the Cutter layout by createDuel',
+  points: 'the repair points, resolved from the duel layout by createDuel',
   nav: 'the Navigation station index, from the layout',
   weapons: 'the Weapons station index, from the layout',
   events: 'per-tick repair events, cleared every tick'

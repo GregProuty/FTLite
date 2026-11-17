@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { MessagePortMain } from 'electron';
 import { RoomServiceClientError, type RoomServiceClient, type RoomServiceEvent } from '../../network/session/serviceClient';
 import { RTC_MAX_HEADER_BYTES, RTC_MAX_PACKET_BYTES } from '../../network/rtc/contracts';
-import { copyOnlineStatus, isOnlineErrorCode, validateOnlineAction, type OnlineAction, type OnlineErrorCode, type OnlinePortDescriptor, type OnlineResult, type OnlineStatus } from '../../shared/onlineSession';
+import { copyOnlineStatus, isOnlineErrorCode, validateOnlineAction, type OnlineAction, type OnlineErrorCode, type OnlineLinkStats, type OnlinePortDescriptor, type OnlineResult, type OnlineStatus } from '../../shared/onlineSession';
 import { SERVICE_ERROR_RETRYABLE, type CommittedStart, type LeaseGrant, type RoomSnapshot, type SeatSession } from '../../shared/roomSession';
 import type { HostIdentity } from '../../shared/hostProcessProtocol';
 import type { HostProcessHandle } from './hostProcess';
@@ -38,7 +38,11 @@ export interface OnlineSessionDeps {
 export interface OnlineSessionOwner {
   dispatch(action: OnlineAction): Promise<OnlineResult>; status(): OnlineStatus;
   subscribe(callback: (status: OnlineStatus) => void): Unsubscribe; suspend(): Promise<void>; resume(): Promise<void>; prepareExit(): Promise<void>; dispose(): Promise<void>;
+  /** The newest link figures of a ready peer link (H-2 spec §8): its route and RTT; null with none, or older than 5 s. */
+  linkStats?(): OnlineLinkStats | null;
 }
+/** Link figures older than this are not reported (the link has gone quiet or been replaced). */
+export const LINK_STATS_MAX_AGE_MS = 5000;
 const codeOf = (error: unknown): OnlineErrorCode => {
   const code = (error as { code?: unknown } | null)?.code;
   return isOnlineErrorCode(code) ? code : 'unavailable';
@@ -61,7 +65,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     peers?: ReturnType<typeof createOnlinePeers>; ice?: OnlineIce; removers: Unsubscribe[]; gameRemovers: Unsubscribe[]; ports: Set<MessagePortMain>; timers: Set<unknown>;
     gameEpoch: number; gameRetiring?: Promise<void>; claiming?: boolean; claimSnapshot?: RoomSnapshot;
     starting?: Promise<void>; committedHash?: string; active: boolean; authorityReady?: boolean; recovering: boolean; attached: Set<string>;
-    synced?: () => void; syncedPromise?: Promise<void>; lease?: LeaseGrant; cleanup?: Promise<void>; mirrors?: OnlineMirrors; renewal?: AbortController; explicitStart?: boolean; captureWork?: Promise<void>; graceful?: Promise<void> };
+    synced?: () => void; syncedPromise?: Promise<void>; link?: { attemptId: string; stats: OnlineLinkStats; atMs: number }; lease?: LeaseGrant; cleanup?: Promise<void>; mirrors?: OnlineMirrors; renewal?: AbortController; explicitStart?: boolean; captureWork?: Promise<void>; graceful?: Promise<void> };
   let context: Context | undefined;
   const current = (c: Context) => !disposed && context === c && epoch === c.epoch && !c.abort.signal.aborted;
   const check = (c: Context) => { if (!current(c)) throw c.abort.signal.reason ?? onlineFault('cancelled'); };
@@ -179,6 +183,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     const seat = c.seat!, transport = await acquire(c, () => platform.createTransport(identityOf(seat.snapshot)), resource => { c.transport = resource; });
     checkGame(c, gameEpoch);
     c.gameRemovers.push(transport.onExit(() => { if (c.transport === transport) fail(c, 'transport-lost'); }));
+    c.gameRemovers.push(transport.controller.onStats?.((attemptId, stats) => { if (c.transport === transport) c.link = { attemptId, stats: { route: stats.route, rttMs: stats.rttMs }, atMs: clock.nowMs() }; }) ?? (() => {}));
     if (!config.enabled) throw onlineFault('online-disabled');
     c.ice ??= createOnlineIce({ service: c.service, clock, mode: config.iceMode });
     const peers = createOnlinePeers({ controller: transport.controller, service: c.service, ownSeat: seat.seatId, snapshot: () => c.seat!.snapshot, channel: () => platform.channel(),
@@ -571,6 +576,11 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
       if (current(c) && saved && !operation && !exitWork && !disposal) await dispatch({ type: 'reconnect' });
     },
     prepareExit,
+    linkStats() {
+      const c = context, link = c?.link;
+      if (!c || !link || !current(c) || clock.nowMs() - link.atMs > LINK_STATS_MAX_AGE_MS || !c.peers?.ready().some(p => p.attemptId === link.attemptId)) return null;
+      return { ...link.stats };
+    },
     dispose() { if (disposal) return disposal; offVisible(); disposal = prepareExit().then(() => { disposed = true; listeners.clear(); }); return disposal; }
   };
   emit();

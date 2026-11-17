@@ -10,6 +10,9 @@ import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { followingSeed } from '../src/renderer/src/sim/duel/seeds';
 import { ZOOM_DEFAULT, ZOOM_STEP } from '../src/renderer/src/render/tactical/camera';
 import { interpolatedMissile } from '../src/renderer/src/render/tactical/fxModel';
+import type { DuelRoundRecord } from '../src/renderer/src/sim/duel/summary';
+import { soloDuelRecord, validateDuelRecord } from '../src/renderer/src/net/duelRecord';
+import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
 
 const layout = parseShip(cutter);
 const TICK_MS = 1000 / 60;
@@ -35,7 +38,7 @@ function fakeTime() {
 }
 const idle = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 /** Scripted keys: the test sets held keys and presses, `frame()` samples them once and runs due ticks. */
-function rig(seed = 5) {
+function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void) {
   const time = fakeTime();
   let keys = idle(), cleared = 0;
   const pointer: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 };
@@ -43,7 +46,7 @@ function rig(seed = 5) {
     now: time.now, scheduler: time.scheduler, seed, viewport: { w: 1280, h: 720 }, layout,
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ ...pointer }),
-    clearKeys: () => { keys = idle(); cleared++; }
+    clearKeys: () => { keys = idle(); cleared++; }, onRound
   });
   const hold = (h: Partial<Omit<KeySample, 'presses'>>): void => { keys = { ...keys, ...h }; };
   const press = (...actions: KeyAction[]): void => { const p = { ...keys.presses }; for (const a of actions) p[a]++; keys = { ...keys, presses: p }; };
@@ -308,6 +311,44 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect([rt.cameras.helm.targetZoom, rt.cameras.weapons.targetZoom]).toEqual([ZOOM_DEFAULT, ZOOM_DEFAULT]);
     expect(rt.drainEvents()).toEqual([]);
     expect(rt.duel.present).toEqual([false, true]);
+    rt.dispose();
+  });
+  it('hands each decided round to onRound once, from a fresh accumulator per round, as a valid solo record (H-2b)', () => {
+    const rounds: DuelRoundRecord[] = [], { time, rt, press, tick, ticks } = rig(7, (r) => rounds.push(r));
+    ticks(330);   // player 1 is away from Weapons all round (the solo start)
+    rt.duel.tactical.systems[1].hull = 0; tick();
+    const decided = rt.duel.decidedTick;
+    time.advance(1000); rt.frame(1 / 60);   // the end card's ticks add nothing
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]).toMatchObject({ round: 0, seed: 7, baseTick: 0, outcome: Outcome.CrewWins, ticks: decided });
+    press('confirm'); tick(); tick();
+    ticks(120); rt.duel.tactical.systems[1].hull = 0; tick();
+    expect(rounds).toHaveLength(2);
+    expect(rounds[1]).toMatchObject({ round: 1, seed: followingSeed(7), baseTick: rt.duel.baseTick, ticks: rt.duel.decidedTick - rt.duel.baseTick });
+    expect([rounds[0]!.weaponsEmptyTicks, rounds[1]!.weaponsEmptyTicks]).toEqual([rounds[0]!.ticks, rounds[1]!.ticks]);   // counted per round, not carried over
+    const record = soloDuelRecord(rounds[1]!, { seat: 0, helmPlayer: 0, startedAtIso: '2026-11-16T12:00:00.000Z', pauses: 2 });
+    expect(validateDuelRecord(record)).toMatchObject({ session: 'solo', role: 'host', transport: null, round: 1, latency: { held: { count: 0 }, rttMs: null }, disconnects: 0, pauses: 2 });
+    rt.dispose();
+  });
+  it("Single player's recorder counts the user's pause edges per round, resets on each record, and ignores a blur pause (H-2b)", () => {
+    let clock = 0, active: 0 | 1 = 0;
+    const iso = (): string => new Date(Date.UTC(2026, 10, 16, 12, 0, clock++)).toISOString();
+    const solo = soloRecorder({ now: iso, active: () => active, helmPlayer: () => 1 });
+    const { rt } = rig(7);
+    // The caller reads the user's own pause after each frame, as duelMode does: blur, hidden and suspend are not counted.
+    const frame = (): void => { rt.frame(1 / 60); solo.framePaused(rt.reasons().has('user')); };
+    frame(); rt.pause('user'); frame(); frame(); rt.resume('user'); frame();
+    rt.pause('blur'); frame(); rt.resume('blur'); frame();
+    rt.pause('user'); frame(); rt.resume('user'); frame();
+    active = 1;
+    const first = solo.record({ round: 0, seed: 7 } as DuelRoundRecord);
+    expect([first.pauses, first.seat, first.helmPlayer, first.session, first.startedAtIso]).toEqual([2, 1, 1, 'solo', '2026-11-16T12:00:00.000Z']);
+    frame();
+    const second = solo.record({ round: 1, seed: 8 } as DuelRoundRecord);
+    expect([second.pauses, second.startedAtIso]).toEqual([0, '2026-11-16T12:00:01.000Z']);   // from the time of the first record
+    // A pause still on across a record is not a new edge for the next round.
+    rt.pause('user'); frame(); solo.record({ round: 2, seed: 9 } as DuelRoundRecord); frame();
+    expect(solo.record({ round: 3, seed: 10 } as DuelRoundRecord).pauses).toBe(0);
     rt.dispose();
   });
   it('the end card sends neutral held input, as online does (H-2 spec §3, §7)', () => {

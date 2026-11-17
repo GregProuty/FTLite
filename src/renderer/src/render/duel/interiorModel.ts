@@ -3,7 +3,8 @@
 import { INTERNAL_H, INTERNAL_W, TILE_PX } from '../../../../shared/resolution';
 import type { DuelState } from '../../sim/duel/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
-import { fitInBand, type Fit } from '../worldFit';
+import { fitInBand, fitRectInBand, type Fit } from '../worldFit';
+import type { TileRect } from '../battlemapModel';
 
 /** The readout column on the right that the interior leaves clear (spec §8). */
 export const READOUT_COLUMN = 220;
@@ -11,8 +12,8 @@ export const READOUT_COLUMN = 220;
 export const INTERIOR_BAND = { x: 0, y: 0, w: INTERNAL_W - READOUT_COLUMN, h: INTERNAL_H } as const;
 
 /** worldFit's rules on the duel's band: never upscaled above 1x, snapped for the stage scale, centred on whole screen pixels (Art-i spec section 4). */
-export function duelFit(widthTiles: number, heightTiles: number, stage: number): Fit {
-  return fitInBand(INTERIOR_BAND, widthTiles, heightTiles, stage);
+export function duelFit(widthTiles: number, heightTiles: number, stage: number, rect?: TileRect): Fit {
+  return rect ? fitRectInBand(INTERIOR_BAND, rect, stage) : fitInBand(INTERIOR_BAND, widthTiles, heightTiles, stage);
 }
 
 /** The tactical rooms' names, in Room order (Weapons, Shields, Engines). */

@@ -1,4 +1,5 @@
 import cutter from './sim/ship/cutter.json';
+import hound from './sim/ship/hound.json';
 import skiff from './sim/ship/skiff.json';
 import { parseShip } from './sim/ship/schema';
 import { loadAssets } from './render/assets';
@@ -17,7 +18,7 @@ import { createOnlineModeSession } from './app/onlineModeSession';
 import { createOnlineDuelSession } from './app/duel/onlineDuel';
 import { createSessionRouter } from './app/sessionRouter';
 import { createUiStore, setLayout } from './ui/store';
-import { createDuelSink, createFlightSink } from './ui/sinks';
+import { createDuelSink, createFlightSink, createLatencySink } from './ui/sinks';
 import { computeLetterbox } from './render/letterbox';
 import { createUiActions } from './ui/actions';
 import { inputBlockedOf } from './ui/menuState';
@@ -52,7 +53,7 @@ function bootFeel(renderer: Renderer): void {
  *  (today's online flow) and Settings, drawn by React over one UI store. One renderer serves both modes; the router
  *  owns at most one of them at a time. */
 async function startApp(): Promise<void> {
-  const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff) };   // throws with a clear message on invalid ship data (spec §9)
+  const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff), hound: parseShip(hound) };   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
@@ -67,18 +68,18 @@ async function startApp(): Promise<void> {
   let blocked = true;
   const win = window.ftlite?.window;
   const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
-  const duelSink = createDuelSink(store, perf);
+  const duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
-      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.cutter, lifecycle: window.ftlite, ui: duelSink,
-        onExit: () => { session.home(); actions.leaveSingle(); } });
+      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink,
+        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
     // Multiplayer (H-2 spec §3): the wrapper builds the duel's or the sector's session when the first port arrives.
     online: () => {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
-        duel: () => createOnlineDuelSession({ renderer, ui: duelSink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
+        duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
           leave: () => actions.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record) }),
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play })
@@ -147,9 +148,9 @@ async function startFlight(seed: number): Promise<void> {
   startFlightMode({ renderer, seed, ui: createFlightSink(store, perf), lifecycle: window.ftlite });
 }
 
-/** The solo duel (H-1 spec §4, §11a): the renderer and its letterbox, the Cutter, but no sector session. */
+/** The solo duel (H-1 spec §4, §11a): the renderer and its letterbox, the Hound, but no sector session. */
 async function startDuel(seed: number): Promise<void> {
-  const layout = parseShip(cutter);   // throws with a clear message on invalid ship data (spec §9)
+  const layout = parseShip(hound);   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   bootFeel(renderer);

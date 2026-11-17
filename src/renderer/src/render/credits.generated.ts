@@ -6,6 +6,7 @@ export const CREDITS: readonly string[] = [
   "\"Cozy Space Interiors\" by Bramble & Byte (https://aquumgifts.itch.io), CC-BY 4.0",
   "Explosion VFX by Pimen (pimen.itch.io)",
   "\"Fire Smoke Animations\" by Reactorcore, CC0",
+  "Hound-class Transport Ship by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0, non-commercial demo",
   "\"m5x7\" by Daniel Linssen, CC0",
   "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
   "Modern Interiors by LimeZu (limezu.itch.io)",

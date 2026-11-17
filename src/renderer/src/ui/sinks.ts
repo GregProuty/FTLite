@@ -25,3 +25,15 @@ export function createDuelSink(store: UiStore, perf?: UiPerf): DuelSink { return
 export function createFlightSink(store: UiStore, perf?: UiPerf): FlightSink { return createSink(store, 'flight', perf); }
 export interface HudSink { update(m: HudModel): void; clear(): void }
 export function createHudSink(store: UiStore, perf?: UiPerf): HudSink { const s = createSink(store, 'hud', perf); return { update: (m) => s.frame(m), clear: () => s.clear() }; }
+
+/** The F3 latency overlay's lines (H-2b, render/duel/latencyOverlay.ts): frame shows them, clear hides the overlay. */
+export type LatencySink = Sink<readonly string[]>;
+export function createLatencySink(store: UiStore, perf: UiPerf = passThrough): LatencySink {
+  return {
+    frame(lines) {
+      const prev = store.getState().latency, next = replaceEqualDeep(prev, lines);
+      if (next !== prev) perf.run(() => store.setState({ latency: next }));
+    },
+    clear() { if (store.getState().latency !== null) store.setState({ latency: null }); }
+  };
+}

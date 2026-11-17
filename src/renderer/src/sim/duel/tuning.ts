@@ -14,3 +14,11 @@ export const CUTTER_REPAIR_POINTS: readonly { tacticalRoom: number; room: string
   { tacticalRoom: Room.Shields, room: 'R', tile: [16, 8] },
   { tacticalRoom: Room.Engines, room: 'E', tile: [2, 6] }
 ];
+/** Art-iv spec section 3: the Hound's repair points, one per tactical room. */
+export const HOUND_REPAIR_POINTS: readonly { tacticalRoom: number; room: string; tile: readonly [number, number] }[] = [
+  { tacticalRoom: Room.Weapons, room: 'O', tile: [10, 8] },
+  { tacticalRoom: Room.Shields, room: 'R', tile: [4, 11] },
+  { tacticalRoom: Room.Engines, room: 'E', tile: [4, 2] }
+];
+/** Repair points by layout id; a duel on any other layout throws. */
+export const DUEL_REPAIR_POINTS: Readonly<Record<string, typeof CUTTER_REPAIR_POINTS>> = { cutter: CUTTER_REPAIR_POINTS, hound: HOUND_REPAIR_POINTS };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
@@ -24,6 +25,13 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     ]);
     expect(rows[3]!.pips).toMatchObject({ n: 1, max: 2 }); expect(rows[9]!.pips).toMatchObject({ n: 2, max: 2 });
     disposeDuel(d);
+  });
+  it('the crew-ship heading comes from the layout id (Art-iv): HOUND for the Hound duel, CUTTER for the Cutter', () => {
+    for (const [ship, name] of [[hound, 'HOUND'], [cutter, 'CUTTER']] as const) {
+      const d = createDuel(parseShip(ship), 5);
+      expect(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' })[1]!.label).toBe(name);
+      disposeDuel(d);
+    }
   });
   it('repair progress is a bar on the damaged room row', () => {
     const d = createDuel(layout, 5);

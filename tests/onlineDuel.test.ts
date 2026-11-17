@@ -21,11 +21,11 @@ const commit = (snapshot: RoomSnapshot, value: unknown) => { const bytes = Buffe
   lease: { roomId: snapshot.roomId, hostGeneration: 1, hostSeatId: 0, nonce: 'c'.repeat(32), expiresAtEpochMs: Date.now() + 12000 } }; };
 
 describe('the duel online mode in main (spec §2)', () => {
-  it('a duel room is the Cutter at duel schema version 2, capacity 2, round 0 seeded from its runId', () => {
+  it('a duel room is the Hound at duel schema version 2, capacity 2, round 0 seeded from its runId', () => {
     expect(duelCompatibility()).toMatchObject({ protocolVersion: 2, modeId: 'duel', schemaVersion: 2 });
     expect(duelJoinCompatibilities()).toEqual([duelCompatibility()]);
     const snapshot = room();
-    expect(duelInit(snapshot)).toMatchObject({ runId: snapshot.runId, layoutId: 'cutter', playerCount: 2, helmPlayer: 0, seed: seedFromRunId(snapshot.runId) });
+    expect(duelInit(snapshot)).toMatchObject({ runId: snapshot.runId, layoutId: 'hound', playerCount: 2, helmPlayer: 0, seed: seedFromRunId(snapshot.runId) });
     expect(seedFromRunId(snapshot.runId)).toBe(nextValidSeed(0xbeef));
     expect(duelInit(snapshot, { helmPlayer: 1 }).helmPlayer).toBe(1);
     expect(duelInit(snapshot, undefined, 2277).seed).toBe(2277);   // the test-only seed

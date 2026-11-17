@@ -23,7 +23,7 @@ import { hashF64 } from '../src/shared/hash';
 import { LAYOUT } from './helpers/sim';
 import { ownTestCleanup } from './helpers/simLifetime';
 import { portEndpoint } from './helpers/portEndpoint';
-import { duelInit, resolveCutter } from './helpers/duelAuthority';
+import { modeDuelInit as duelInit, resolveCutter } from './helpers/duelAuthority';
 
 const encode = (x: unknown) => new TextEncoder().encode(JSON.stringify(x));
 const decode = (x: Uint8Array) => JSON.parse(new TextDecoder().decode(x));

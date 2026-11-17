@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import starter from '../src/renderer/src/sim/ship/starter.json';
+import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip, type ShipLayout } from '../src/renderer/src/sim/ship/schema';
 import type { SimState } from '../src/renderer/src/sim/state';
 import { PROP_ART_NAMES } from '../src/renderer/src/render/assetNames';
 import { consolePlacement, WALL_GAP, type Side } from '../src/renderer/src/render/consoleModel';
-import { floorDepth, propCandidates, propDepth, propKey, propSlots, PROP_SIZE, ROOM_PROPS, roomKind } from '../src/renderer/src/render/propModel';
+import { floorDepth, propCandidates, propDepth, propKey, propSlots, PROP_SIZE, ROOM_PROPS, roomKind, shownPropSlots } from '../src/renderer/src/render/propModel';
 import { TILE_PX } from '../src/shared/resolution';
 import { createSimState } from './helpers/simLifetime';
 import { RECRUITS } from './helpers/sim';
@@ -126,5 +127,15 @@ describe('where props stand (Art-iii spec section 3)', () => {
     expect(propKey(b)).not.toBe(propKey(a));
     expect(propSlots(b).map((p) => p.name)).toEqual(['prop.seats']);
     expect(propSlots(a).map((p) => p.name)).toEqual(['prop.crate']);
+  });
+});
+
+describe('no props on a painted ship (Art-iv spec "Out of scope")', () => {
+  it('the Hound with its painting shows no props; without the painting it falls back to the Art-iii slots; the Cutter is unchanged', () => {
+    const h = stateOf(parseShip(hound)), c = stateOf(SHIPS.cutter!);
+    expect(propSlots(h).length).toBeGreaterThan(0);                                    // it has dressed rooms (Quarters, Hold, Medbay)
+    expect(shownPropSlots(h, new Set())).toEqual([]);
+    expect(shownPropSlots(h, new Set(['ship.hound.map']))).toEqual(propSlots(h));
+    expect(shownPropSlots(c, new Set())).toEqual(propSlots(c));
   });
 });

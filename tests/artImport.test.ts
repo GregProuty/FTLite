@@ -47,6 +47,25 @@ describe('the OKLab remap', () => {
   });
 });
 
+describe('raw outputs (Art-iv: a painted battlemap)', () => {
+  it('remap false keeps every pixel and alpha exactly; flipX mirrors left-right; raw outputs stay off the contact sheet', () => {
+    const r = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [output({ frames: [{ x: 0, y: 0, w: 32, h: 16 }], columns: 1, remap: false, flipX: true })] } });
+    expect(r.problems).toEqual([]);
+    const out = readPng(join(repo, 'public/assets/paid/pack/sheet.png'));
+    expect([out.width, out.height]).toEqual([32, 16]);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 32; x++) {
+      const s = (y * 32 + (31 - x)) * 4, d = (y * 32 + x) * 4;
+      const a = pack.data[s + 3]!;
+      expect(out.data[d + 3]).toBe(a);
+      if (a > 0) expect([...out.data.subarray(d, d + 3)]).toEqual([...pack.data.subarray(s, s + 3)]);
+    }
+    expect(existsSync(join(repo, '.art', 'contact.png'))).toBe(false);
+  });
+  it('the defaults still remap and do not flip', () => {
+    expect(importConfig.parse({ outputs: [output()] }).outputs[0]).toMatchObject({ remap: true, flipX: false });
+  });
+});
+
 describe('runImport', () => {
   it('writes the sheet and the contact sheet; every output pixel is a palette colour or transparent', () => {
     const r = runImport({ repoRoot: repo, sourceRoot: source, config: { outputs: [output()] } });

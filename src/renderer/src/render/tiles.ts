@@ -8,6 +8,7 @@ import { advanceDoor, doorTarget, DOOR_ANIM_SECONDS } from './doorAnim';
 import { floorSeams, houseFloorName, wallPicture, type Cell } from './wallModel';
 import { doorPicture, doorLook, PANEL_STROKE, type DoorPicture, type DoorRect } from './doorModel';
 import { featureReady } from './fallback';
+import { battlemapFor } from './battlemapModel';
 import { ROLE } from './palette';
 
 export interface TileLayer { container: Container; build(state: SimState): void; update(state: SimState, dtSeconds: number): void }
@@ -25,6 +26,8 @@ export function createTileLayer(assets: GameAssets, _memory: RenderMemory): Tile
   const floorArt = new Container(), base = new Graphics(), doors = new Graphics();
   container.addChild(floorArt, base, doors);
   const art = featureReady(new Set(assets.missing), 'houseFloor');
+  const missing = new Set(assets.missing);
+  let painted = false;
   let builtFor: string | null = null;
   const doorProgress = new Map<number, number>(), lockProgress = new Map<number, number>();
 
@@ -44,6 +47,8 @@ export function createTileLayer(assets: GameAssets, _memory: RenderMemory): Tile
     const d = state.derived, rows = state.layout.rows;
     base.clear();
     for (const c of floorArt.removeChildren()) c.destroy({ texture: true, textureSource: false });   // the per-part sub-textures go; the shared source stays
+    painted = battlemapFor(state.layout.id, missing) !== null;
+    if (painted) { builtFor = d.layoutHash; doorProgress.clear(); lockProgress.clear(); return; }   // Art-iv: the painting is the floor and walls
     const cell = (x: number, y: number): Cell => { const c = rows[y]?.charAt(x) ?? ' '; return c === '' || c === ' ' ? 'space' : c === '#' ? 'wall' : c === '+' ? 'door' : 'floor'; };
     for (let ty = 0; ty < d.height; ty++) for (let tx = 0; tx < d.width; tx++) {
       const c = cell(tx, ty), x = tx * TILE_PX, y = ty * TILE_PX, tile = ty * d.width + tx;
@@ -61,7 +66,7 @@ export function createTileLayer(assets: GameAssets, _memory: RenderMemory): Tile
   const at = (x: number, y: number, r: DoorRect) => doors.rect(x + r.x, y + r.y, r.w, r.h);
   function draw(x: number, y: number, p: DoorPicture): void {
     if (p.gap) at(x, y, p.gap).fill(ROLE.spaceGap);
-    if (p.floor && !art) at(x, y, p.floor).fill(ROLE.floor);   // with floor art the doorway shows the art drawn under it
+    if (p.floor && !art && !painted) at(x, y, p.floor).fill(ROLE.floor);   // with floor art the doorway shows the art drawn under it
     for (const j of p.jambs) at(x, y, j).fill(p.outline);
     for (const r of p.panels) at(x, y, r).fill(p.fill).stroke({ width: PANEL_STROKE, color: p.outline, alignment: 1 });
     for (const s of p.stripes) at(x, y, s).fill(p.outline);

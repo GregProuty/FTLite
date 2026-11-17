@@ -25,7 +25,7 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 
 | Painted room (squares, mirrored) | Room | System | Stations |
 |---|---|---|---|
-| Dome cockpit, columns 12-13, rows 4-6 | Bridge | navigation | console group navigation + weapons at the pilot seat |
+| Dome cockpit, columns 12-13, rows 4-6 | Bridge | navigation | navigation at the pilot seat [20,7]; weapons at the side console [19,5] (separate seats: the duel needs two) |
 | Bunk passage, columns 9-11, row 5 (bunks are furniture) | Quarters (corridor role) | null | spawns |
 | Galley/common, columns 6-8, rows 4-6 | Ops | science | console group science + engineering + doors at the counter |
 | Red-cross room, columns 6-8, rows 2-3 | Medbay | medbay | medbay |
@@ -36,6 +36,7 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 
 - Doors go only where the painting shows a wall gap. If a room has no painted gap to a neighbour it needs, the plan adds the narrowest door in the wall that the painting's traffic flow implies, and records it.
 - Breach sites: one per room, on an outer wall tile. Airlocks: the hold ramp and one hull door the painting shows. Allocations copy the Skiff's (reactor budget unchanged).
+- Known deviation: Ops and Quarters have no outer wall in this trace, so their breach sites ([10,4], [15,5]) are interior walls; to fix before the Hound enters the sector (Art-iv-b).
 - Station tiles sit on the painted furniture (pilot chair, galley counter, medbed, table). Console groups match the Skiff's.
 
 ## 3. Which ship flies
@@ -69,3 +70,14 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 ## Out of scope
 
 Enemy ships stay as they are. No painted art for other ships. No change to sim walls or doors (thin-wall walls were option B, rejected as weeks of sim work). Art-iii set dressing does not apply to the Hound, since the painting already has the furniture.
+
+## Art-iv-b: the Hound in the sector (owner, 2026-11-16: "make the hound the main ship in single player and multiplayer")
+
+- `shipForCrew` returns `'hound'` for every crew size (1-4). The lobby ship line is "Ship: Hound (4 crew)". The Skiff's helm-line lobby branch stays keyed to the Skiff, so it no longer shows. The Skiff and Cutter stay as layouts for tests, gates and fixed-layout scenarios.
+- **Determinism fixture:** the owner's request is the explicit authorisation to re-author `tests/fixtures/determinism-v2.json` once, for the new production fleet. The fixture stays explicit, one-time authoring by `scripts/determinism/capture.ts` (delete the old file first, by hand, in the same commit). It is never blessed automatically.
+  - Coverage: the production fleet is now `{hound}`. It is recorded at two crew sizes, 2 players (the Skiff's old role) and 3 players (the Cutter's old role), each with the same 54 000 completed ticks, 900 samples and terminal chains as before.
+  - The schedules keep the same command and held coverage, adapted to the Hound's stations. Navigation and Weapons are separate seats, so there are no group-0 tabs. The Ops group (Science, Engineering, Doors) is group 0 on the Hound, and its tabs replace the Skiff's group-1 tabs.
+  - The harness test names runs by ship and crew size: `hound-2` and `hound-3`.
+- Breach sites: a breach vents its own room whatever wall it sits on (`oxygen.ts` uses `siteRoom`). The interior-wall sites for Ops [10,4] and Quarters [15,5] therefore work in the sector; only their marker sits on an inner wall. They are kept as they are.
+- Online: `onlineSector.ts`, `network/modes/sector.ts` and the online report scripts follow `shipForCrew`. Scripts that list layouts by capacity (`scripts/network/online-app-report.ts`) use the Hound.
+- Look: the sector view fits the painted bounds into `WORLD_BAND` (608x296). Screenshots of the sector Hound (normal and alert) go into `C:\Users\djuar\FTLite-shots\art-iv\`. If the ship reads too small, raising the fit is a follow-up for the owner's look check, not part of this part.

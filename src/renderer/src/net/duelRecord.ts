@@ -56,6 +56,12 @@ export function latencyFigure(samples: readonly number[]): LatencyFigure {
   const round = (v: number) => Math.round(v * 10) / 10;
   return { count: s.length, median: round(rank(0.5)), p95: round(rank(0.95)), max: round(s[s.length - 1]!) };
 }
+/** Single player's record of a decided round (H-2 spec §8, Helm §11a): the same record with session 'solo'. One machine
+ *  and no link: role 'host', no transport, no latency samples, no jitter and no disconnects. */
+export function soloDuelRecord(summary: DuelRoundRecord, at: { seat: 0 | 1; helmPlayer: 0 | 1; startedAtIso: string; pauses: number }): DuelPlaytestRecord {
+  return { version: 1, session: 'solo', role: 'host', transport: null, seat: at.seat, helmPlayer: at.helmPlayer, seed: summary.seed, round: summary.round,
+    startedAtIso: at.startedAtIso, summary, latency: { held: latencyFigure([]), command: latencyFigure([]), rttMs: null }, jitter: arrivalJitter([]), disconnects: 0, pauses: at.pauses };
+}
 /** The standard deviation of publication inter-arrival gaps against the expected 50 ms; gaps outside 0 to the cap are dropped. */
 export function arrivalJitter(samples: readonly number[]): { count: number; stdMs: number | null } {
   const gaps = samples.filter((g) => g >= 0 && g <= DUEL_RECORD_MAX_MS);

@@ -12,9 +12,11 @@ import { syncCache } from './cache';
 import { drawTorpedo } from './torpedoLayer';
 import { CARRY_LIFT_LIMEZU, CARRY_LIFT_PUNY, crewPose, crewSlot, crewStandName, LIMEZU_ANCHOR_Y, type CrewPoseState } from './crewArt';
 import { stationSides, type Side } from './consoleModel';
+import { CREW_COLORS, tokenLook } from './tokenModel';
+import { battlemapFor } from './battlemapModel';
 import type { PresentationPoint } from '../../../network/state/timeline';
 
-export const CREW_COLORS = [0x4fc3f7, 0x81c784, 0xffb74d, 0xe57373];
+export { CREW_COLORS };
 const DEAD_TINT = 0x777777;
 const SCALE = TILE_PX / 16;
 const ANCHOR_X = 0.5, ANCHOR_Y = 0.75;   // spec §2: feet at the bottom of the 0.6-tile collision box
@@ -36,6 +38,8 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
   let sides: Side[] = [], sidesFor = '';
   const sprites = new Map<number, CrewSprite>();
   const circles = new Map<number, Graphics>();
+  const missing = new Set(assets.missing);
+  const tokens = new Map<number, Graphics>();
   const carried = new Container(), torps = new Map<number, Graphics>();   // a torpedo in a carrier's arms (spec Coop-ii section 2), drawn over every crew sprite
   const drawCarried = (state: SimState, eid: number, pid: number, x: number, y: number): void => {
     const g = torps.get(Stable.id[eid]!)!;
@@ -66,6 +70,26 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
       if (carried.parent !== container) container.addChild(carried); else container.setChildIndex(carried, container.children.length - 1);
       syncCache(torps, liveIds, () => { const g = new Graphics(); drawTorpedo(g, 0, 0, 20); carried.addChild(g); return g; }, (g) => { g.destroy(); });
+      if (battlemapFor(state.layout.id, missing)) {   // Art-iv spec section 5: VTT tokens on a painted ship
+        syncCache(sprites, [], () => { throw new Error('unreachable'); }, (cs) => cs.sprite.destroy());
+        syncCache(circles, [], () => { throw new Error('unreachable'); }, (g) => g.destroy());
+        syncCache(tokens, liveIds, () => { const g = new Graphics(); container.addChild(g); return g; }, (g, id) => { g.destroy(); memory.prev.delete(id); memory.lastDrawn.delete(id); memory.facing.delete(id); });
+        for (const eid of state.crew) {
+          const id = Stable.id[eid]!, g = tokens.get(id)!, { x, y, dx, dy } = interpolated(eid, alpha, pointFor(eid));
+          const facing: Facing8 = facingFromDelta(dx, dy, memory.facing.get(id) ?? 's'); memory.facing.set(id, facing);
+          const l = Life.state[eid], t = tokenLook(Owner.pid[eid]!, l === LifeState.Conscious ? 'conscious' : l === LifeState.Downed ? 'downed' : 'dead', Seated.station[eid]! >= 0, facing);
+          g.clear();
+          if (t.ring !== null) g.circle(0, 0, t.radius + 3).stroke({ width: 2, color: t.ring });
+          g.circle(0, 0, t.radius).fill({ color: t.fill, alpha: t.fillAlpha }).stroke({ width: 3, color: t.rim });
+          g.circle(0, 0, t.radius * 0.35).fill({ color: t.rim, alpha: 0.35 });   // the figure's head, seen from above
+          if (t.tick) g.moveTo(t.tick.x * 0.55, t.tick.y * 0.55).lineTo(t.tick.x, t.tick.y).stroke({ width: 3, color: t.rim });
+          if (t.cross) { const k = t.radius * 0.6; g.moveTo(-k, -k).lineTo(k, k).moveTo(k, -k).lineTo(-k, k).stroke({ width: 3, color: t.crossColor }); }
+          g.position.set(x * TILE_PX, y * TILE_PX + (bob[Owner.pid[eid]!] ?? 0));
+          drawCarried(state, eid, Owner.pid[eid]!, x, y);
+        }
+        return;
+      }
+      syncCache(tokens, [], () => { throw new Error('unreachable'); }, (g) => g.destroy());
       if (!useArt) {
         syncCache(circles, liveIds, () => { const g = new Graphics(); container.addChild(g); return g; }, (g, id) => { g.destroy(); memory.prev.delete(id); memory.lastDrawn.delete(id); });
         for (const eid of state.crew) {

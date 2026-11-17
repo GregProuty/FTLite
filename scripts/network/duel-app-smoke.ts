@@ -7,9 +7,11 @@
 // ship's speed rises on both screens; Weapons (the host) presses and releases Space and a beam is fired on both; both
 // renderers agree on a hash at a common publication; the guest is killed and restarted (presence false and the host
 // paused for the lost partner, then the rejoin, its ACK before any input and its presence true, then an Escape
-// unpause). Exact temporary roots are cleaned; Electron and workerd are never killed globally.
+// unpause). H-2b: the host's records read loopback and the guest's lan with an RTT; F3 shows the latency overlay on
+// both (screenshots beside the report); both machines' records are copied beside the report for the playtest report
+// script. Exact temporary roots are cleaned; Electron and workerd are never killed globally.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import electron from 'electron';
@@ -111,7 +113,9 @@ async function main() {
       const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^duel-\d{4}-\d{2}-\d{2}\.jsonl$/.test(f)) : [];
       return files.flatMap((f) => readFileSync(join(dir, f), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)));
     }), (both) => both.every((list) => list.some((r: any) => r.round === 0 && r.summary.round === 0 && r.latency.held.count + r.latency.command.count > 0)), 'playtest records with latency samples on both', 15000);
-    proof.records = records.map((list) => ({ count: list.length, role: list[0].role, latency: list[0].latency, jitter: list[0].jitter }));
+    proof.records = records.map((list) => ({ count: list.length, role: list[0].role, transport: list[0].transport, latency: list[0].latency, jitter: list[0].jitter }));
+    // H-2b: the host's own port is loopback; the guest labels its link from the RTC window's selected pair, with an RTT.
+    assert(records[0]!.every((r: any) => r.transport === 'loopback') && records[1]!.every((r: any) => r.transport === 'lan' && r.latency.rttMs !== null), 'host records read loopback, guest records lan with an RTT');
     step = 'step 4';
     // 4. The Helm machine (the guest) holds W for 2 s: the crew ship's speed rises on both screens.
     const speedBefore = latest(await status(h)).speed;
@@ -129,6 +133,12 @@ async function main() {
     const agreement = await until(async () => { const [a, b] = [await status(h), await status(g)]; const hp = a.observations.at(-1).publications, gp = b.observations.at(-1).publications;
       return gp.findLast((p: any) => hp.some((q: any) => q.sequence === p.sequence && q.hash === p.hash && q.tick === p.tick)); }, (same: any) => !!same, 'hash agreement');
     proof.agreement = { tick: agreement.tick, sequence: agreement.sequence, hash: agreement.hash };
+    // F3 shows the latency overlay on either machine (spec §9): a screenshot of each beside the report, then F3 hides it.
+    for (const app of [h, g]) await press(app, 'F3');
+    await delay(500);
+    for (const app of [h, g]) await app.request('screenshot', { path: join(resolve(reportPath, '..'), `f3-${app.profile}.png`) });
+    for (const app of [h, g]) await press(app, 'F3');
+    proof.overlay = { screenshots: ['f3-host.png', 'f3-guest.png'] };
     step = 'step 7';
     // 7. The guest is killed and restarted: presence false and the host paused for the lost partner; the rejoin and
     //    its ACK before any input, then presence true; then an Escape unpause.
@@ -152,6 +162,20 @@ async function main() {
   finally {
     clearTimeout(watchdog);
     for (const app of processes) if (!app.exited) { try { const done = app.request('shutdown'); await Promise.race([done, delay(6000)]); } catch { /* forced below */ } await kill(app); }
+    // Both machines' playtest logs, beside the report, for scripts/duel-playtest-report.ts (exact paths only).
+    // The recursive delete is only ever under out/: a report path elsewhere is refused, its records not copied.
+    const evidence = resolve(reportPath, '..'), outRoot = resolve('out') + sep;
+    if (!evidence.startsWith(outRoot)) failure ??= 'report path outside out/: records not copied';
+    else try {
+      const copies = join(evidence, 'records');
+      rmSync(copies, { recursive: true, force: true });
+      for (const profile of ['host', 'guest']) {
+        const from = join(directory, profile, 'playtest');
+        if (!existsSync(from)) continue;
+        mkdirSync(join(copies, profile), { recursive: true });
+        for (const f of readdirSync(from).filter((f) => /^duel-\d{4}-\d{2}-\d{2}\.jsonl$/.test(f))) copyFileSync(join(from, f), join(copies, profile, f));
+      }
+    } catch { failure ??= 'record copy failed'; }
     try { await runtime?.dispose(); } catch { failure ??= 'workerd cleanup failed'; }
     const target = resolve(directory), prefix = resolve(tmpdir()) + sep;
     if (!target.startsWith(prefix) || !target.slice(prefix.length).startsWith('ftlite-duel-app-')) throw Error('invalid exact cleanup target');

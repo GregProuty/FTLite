@@ -1,5 +1,6 @@
 import type { Link, LinkStats } from '../../renderer/src/net/contracts';
 import { createRtcDataLink } from './dataLink';
+import { rtcRoute, type RtcRoute } from './route';
 import type { MonotonicClock, PayloadClassifier, RtcDataChannel, Scheduler } from './contracts';
 import { RTC_MAX_PACKET_BYTES } from './contracts';
 import { copyRtcIceServers, isRtcCandidate, isRtcIdentity, isRtcSignal, rtcBoundedText, rtcId, rtcKeys, rtcRecord,
@@ -34,6 +35,9 @@ export interface RtcPeerOptions {
 }
 export interface RtcPeer {
   readonly ready: Promise<Link>; receiveSignal(signal: unknown): Promise<void>; close(reason: string): void; diagnostics(): LinkStats;
+  /** The selected pair's route and RTT from the last stats sample (H-2 spec §8), each null before one or when unknown
+   *  (a missing currentRoundTripTime is null, not 0); never a candidate or address. */
+  linkFigures?(): { route: RtcRoute | null; rttMs: number | null };
 }
 
 /** The adapter allows exactly one already-authenticated race packet to enter task1's initial consumer slot. */
@@ -61,7 +65,7 @@ export function createRtcPeer({attemptId,role,identity: suppliedIdentity,localTi
   const candidates: (RTCIceCandidateInit | null)[] = [], nativeListeners: (() => void)[] = [], authListeners: (() => void)[] = [];
   let pending: {channel: RtcPeerChannel; data: ArrayBuffer} | undefined;
   let cancelSetup: (() => void) | undefined, cancelStats: (() => void) | undefined;
-  let chain = Promise.resolve(), sampled = { rttMs: 0, lossPct: 0, relayed: false };
+  let chain = Promise.resolve(), sampled = { rttMs: 0, lossPct: 0, relayed: false }, route: RtcRoute | null = null, rtt: number | null = null;
   let resolveReady!: (link: Link) => void, rejectReady!: (reason: Error) => void;
   const ready = new Promise<Link>((resolve,reject) => { resolveReady=resolve;rejectReady=reject; });
   // Closing an attempt before a caller subscribes must not cause an unhandled rejection.
@@ -174,6 +178,8 @@ export function createRtcPeer({attemptId,role,identity: suppliedIdentity,localTi
   async function sampleStats() {
     try {
       const report=await pc!.getStats();if(!alive())return;
+      // Each sample stands alone: no selected pair now means no route or RTT, so main's 5 s cut-off applies to a quiet link.
+      route=null;rtt=null;
       // DOM's minimal RTCStatsReport typing only promises forEach. Retain no raw report in public state.
       const find=(id: unknown): unknown=>{let found: unknown;report.forEach((record: unknown)=>{if(rtcRecord(record) && record.id===id)found=record;});return found;};
       let pair: Record<string,unknown> | undefined;
@@ -184,10 +190,12 @@ export function createRtcPeer({attemptId,role,identity: suppliedIdentity,localTi
         const received=finite(pair.packetsReceived,Number.MAX_SAFE_INTEGER),lost=finite(pair.packetsLost,Number.MAX_SAFE_INTEGER);
         const local=find(pair.localCandidateId),remote=find(pair.remoteCandidateId);
         sampled={rttMs:finite(pair.currentRoundTripTime,60)*1000,lossPct:received+lost>0?100*lost/(received+lost):0,relayed:(rtcRecord(local)&&local.candidateType==='relay') || (rtcRecord(remote)&&remote.candidateType==='relay')};
+        const seconds=pair.currentRoundTripTime;
+        route=rtcRoute(local,remote,iceServers.length===0); rtt=typeof seconds==='number' && Number.isFinite(seconds) && seconds>=0 && seconds<=60?seconds*1000:null;
       }
-    }catch{} finally{if(alive())scheduleStats();}
+    }catch{route=null;rtt=null;} finally{if(alive())scheduleStats();}
   }
-  const api: RtcPeer={ready,receiveSignal,close:()=>fail('rtc-closed'),diagnostics};
+  const api: RtcPeer={ready,receiveSignal,close:()=>fail('rtc-closed'),diagnostics,linkFigures:()=>({route,rttMs:rtt})};
   try {
     const servers=copyRtcIceServers(iceServers);
     if(!rtcId(attemptId) || !isRtcIdentity(identity) || !['offerer','answerer'].includes(role) || !['all','relay'].includes(iceTransportPolicy) || !localTicket || !expectedRemoteTicket || !rtcBoundedText(localTicket,RTC_TICKET_BYTES) || !rtcBoundedText(expectedRemoteTicket,RTC_TICKET_BYTES) || !Number.isFinite(ticketExpiresAtMs) || !validTime() || !servers){fail('rtc-config-invalid');return api;}

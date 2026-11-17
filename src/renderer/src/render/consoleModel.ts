@@ -116,3 +116,7 @@ export function consolePlacement(side: Side, flush: boolean, w: number, h: numbe
 
 /** The console sprite's tint by look: free plain, occupied at 80 % brightness, down at 60 %. */
 export const CONSOLE_TINT: Readonly<Record<ConsoleLook, number>> = { free: 0xffffff, occupied: 0xcccccc, down: 0x999999 };
+
+/** Art-iv spec section 4: on a painted ship the painting shows the console; a VTT-style marker on its tile carries its state. */
+export const MARKER_TINT: Readonly<Record<ConsoleLook, number>> = { free: 0xffc857, occupied: 0x8a93a6, down: 0xe5533d };
+export function markerRect(): { x: number; y: number; w: number; h: number; r: number } { return { x: 3, y: 3, w: TILE_PX - 6, h: TILE_PX - 6, r: 6 }; }

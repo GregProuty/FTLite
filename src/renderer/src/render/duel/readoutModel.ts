@@ -46,7 +46,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
   const rows: ReadoutRow[] = [
     heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : 'ON FOOT', AMBER),
-    heading('CUTTER', CREW_SHIP),
+    heading(d.interior.layout.id.toUpperCase(), CREW_SHIP),
     row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT),
     { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP } }
   ];

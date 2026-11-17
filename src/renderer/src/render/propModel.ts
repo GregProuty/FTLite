@@ -5,6 +5,7 @@ import type { SimState } from '../sim/state';
 import { WALL_GAP, type Side } from './consoleModel';
 import { hashString, hashU32 } from './particles/random';
 import type { PropName } from './assetNames';
+import { battlemapFor } from './battlemapModel';
 
 /** Each sprite's size in art pixels (w, h), the rectangles of spec section 1. Every sprite's back is at the top (checked
  *  by eye against the sheets, Art-iii plan Decision 3), so it stands as drawn against a north wall and turns by SIDE_ROTATION. */
@@ -125,4 +126,10 @@ export function propSlots(s: Layout): PropSlot[] {
   });
   cached = { key, slots };
   return slots;
+}
+
+/** The slots to draw: none on a painted ship (Art-iv spec "Out of scope": the painting already has the furniture, so
+ *  Art-iii set dressing does not apply), else propSlots. `missing` is the asset set battlemapFor reads. */
+export function shownPropSlots(s: Layout, missing: ReadonlySet<string>): PropSlot[] {
+  return battlemapFor(s.layout.id, missing) ? [] : propSlots(s);
 }

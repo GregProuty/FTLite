@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { copyOnlinePortDescriptor, DUEL_RECORD_CHANNEL, ONLINE_CHANNELS, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
-  validateOnlineAction, validateOnlinePortEnvelope, validateOnlineResult, validateOnlineStatusEnvelope,
+import { copyOnlinePortDescriptor, DUEL_RECORD_CHANNEL, ONLINE_CHANNELS, ONLINE_LINK_STATS_CHANNEL, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
+  validateOnlineAction, validateOnlineLinkStats, validateOnlinePortEnvelope, validateOnlineResult, validateOnlineStatusEnvelope,
   type FtlitePreloadApi, type OnlineAction, type OnlineResult, type Unsubscribe } from '../shared/onlineSession';
 
 async function action(value: OnlineAction): Promise<OnlineResult> {
@@ -50,6 +50,10 @@ const api: FtlitePreloadApi = {
         if (validateOnlineResult(value) && !value.ok) return value;
         return { ok: false, code: 'invalid-status' };
       } catch { return { ok: false, code: 'unavailable' }; }
+    },
+    async linkStats() {
+      try { const value: unknown = await ipcRenderer.invoke(ONLINE_LINK_STATS_CHANNEL); return validateOnlineLinkStats(value) ? { route: value.route, rttMs: value.rttMs } : null; }
+      catch { return null; }
     },
     onStatus(callback) {
       const listener = (_event: unknown, value: unknown) => { if (validateOnlineStatusEnvelope(value)) callback(value); };
