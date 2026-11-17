@@ -27,10 +27,11 @@ export interface LayoutSlice { stripHeight: number; scale: number; offsetX: numb
 export interface UiState {
   menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice;
   duel: import('./views').DuelUiView | null; flight: import('./views').FlightUiView | null;
+  hud: import('../render/hudModel').HudModel | null;
   /** The online duel's F3 latency overlay lines (H-2b); null while hidden. */
   latency: readonly string[] | null;
   /** Bumped by a sink each time its slice goes null -> non-null: the regions' error-boundary reset keys (spec §2). */
-  epochs: { duel: number; flight: number };
+  epochs: { duel: number; flight: number; hud: number };
 }
 export type MenuView = Pick<UiState, 'menu' | 'online'>;
 

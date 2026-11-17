@@ -8,8 +8,7 @@ import { EnemyRoom } from '../sim/enemy';
 export interface EnemyWindowLayer { container: Container; draw(view: EnemyWindowView, shown: boolean, dt: number, hitFlash: { room: number | 'hull'; alpha: number } | null): void; reset(): void }
 export interface EnemyWindowOptions { fontFamily: string; fire: { textures: Texture[]; fps: number } | null; panel: ((w: number, h: number) => Container) | null }
 
-import { TEXT, DIM, WARN, AMBER, GOOD, FONT_SIZE, BAR_OFF, CELL_EDGE } from './theme';
-import { drawPanel } from './panel';
+import { TEXT, DIM, WARN, AMBER, GOOD, FONT_SIZE, BAR_OFF, CELL_EDGE, PANEL_FILL, PANEL_ALPHA, PANEL_BORDER, PANEL_BORDER_W, PANEL_INNER } from './theme';
 import { ROLE } from './palette';   // the door colours are palette roles (Art-i spec section 4)
 const FAINT = CELL_EDGE;
 const PANEL = 0x10131a, HULL = 0x3b4352, HULL_EDGE = 0x22262f, FLOOR = 0x5d6675, FLOOR_DAMAGED = 0x7a6a52, FLOOR_DOWN = 0x7a2a2a, FLOOR_ION = 0x2f5f9a, ION_TEXT = 0x8fd0ff, WALL = 0x14171d;
@@ -20,6 +19,15 @@ const FIRE_PER_ROOM = 2, PIECE_COUNT = 5;
 const HOLE_SIDE: readonly ('top' | 'bottom' | 'left' | 'right')[] = ['left', 'right', 'bottom', 'top', 'top'];
 /** Under the ship: the charge bar, then two text lines (spec Demo-x-c section 3). */
 const CHARGE_Y = 288, STATUS_Y = 292, PROBLEM_Y = 314;
+
+/** A themed panel (spec Demo-x-c section 1): the dark fill, a 2 px border and a 1 px inner highlight. */
+function drawPanel(g: Graphics, x: number, y: number, w: number, h: number): Graphics {
+  const b = PANEL_BORDER_W;
+  g.rect(x, y, w, h).fill({ color: PANEL_FILL, alpha: PANEL_ALPHA });
+  g.rect(x + b / 2, y + b / 2, w - b, h - b).stroke({ width: b, color: PANEL_BORDER });
+  g.rect(x + b + 0.5, y + b + 0.5, w - 2 * b - 1, h - 2 * b - 1).stroke({ width: 1, color: PANEL_INNER });
+  return g;
+}
 
 export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLayer {
   const container = new Container(); container.visible = false;

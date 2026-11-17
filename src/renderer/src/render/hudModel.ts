@@ -7,7 +7,7 @@ import type { SimState } from '../sim/state';
 import { Health, Life, LifeState, Position, Seated } from '../sim/components';
 import { interactTarget, confirmTarget, TargetKind, ConfirmKind } from '../sim/interact';
 import { DoorState, conditionRoomAt } from '../sim/grid';
-import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, REACTOR_BONUS_MAX, WEAPON_SLOTS, SLOT_LEVELS, SCAN_RESULT_SECONDS, SCAN_NOTICE_SECONDS, CACHE_FUEL, scrapCache, FIRST_STRIKE_SECONDS, AMBUSH_WARN } from '../sim/tuning';
+import { CONFIRM_SECONDS, VOTE_SECONDS, TICK_HZ, DT, EVADE_BASE, EVADE_SCALE, HEAT_MAX, COOLANT_POOL, TORP_CAP, SKILL_COUNT, ENEMY_SYS_HP, BOARDER_HEALTH, SECTOR_COLUMNS, SECTORS, scrapSurrender, HIT_FLASH_TICKS, ENCOUNTER_NOTICE_SECONDS, ENCOUNTER_REWARD_HULL, ENCOUNTER_START, scrapField, STATION_MAX, UPGRADE_MAX, STATION_OVERDRIVE, REACTOR_BONUS_MAX, WEAPON_SLOTS, SLOT_LEVELS, SCAN_RESULT_SECONDS, SCAN_NOTICE_SECONDS, CACHE_FUEL, scrapCache, FIRST_STRIKE_SECONDS, AMBUSH_WARN } from '../sim/tuning';
 import { navRows, helmOffline, overrun, nodeLabel, NodeType, reachable, beaconIndex, beaconAt, hereIndex, contentOf, EXIT_JUMP, exitText } from '../sim/run';
 import { depthOf, peaceful } from '../sim/depth';
 import { EVENTS, EVENT_DEFS, noticeChoices, choiceLabel, choiceEnabled, isBlue } from '../sim/events';
@@ -569,3 +569,8 @@ export function buildHudModel(state: SimState | null, viewer: Viewer, context: H
   }
   return model;
 }
+
+/** The station a seated player's block names on its second line (hud.ts read STATION_NAMES directly); '' standing. */
+export function seatedName(p: HudPlayer): string { return p.seated !== null ? STATION_NAMES[p.seated] ?? '' : ''; }
+/** Cells per row: the largest station maximum plus the bought levels and the overdrive cell (spec Loop-ii section 1). */
+export const HUD_MAX_CELLS = Math.max(...STATION_MAX) + UPGRADE_MAX + STATION_OVERDRIVE;

@@ -39,7 +39,7 @@ describe('the latency sink (H-2b F3 overlay)', () => {
     sink.frame(['LATENCY  LAN', 'RTT 3 MS']); sink.frame(['LATENCY  LAN', 'RTT 3 MS']); expect(writes).toBe(1);
     sink.frame(['LATENCY  LAN', 'RTT 4 MS']); expect(writes).toBe(2); expect(store.getState().latency).toEqual(['LATENCY  LAN', 'RTT 4 MS']);
     sink.clear(); sink.clear(); expect(writes).toBe(3); expect(store.getState().latency).toBeNull();
-    expect(store.getState().duel).toBeNull(); expect(store.getState().epochs).toEqual({ duel: 0, flight: 0 });
+    expect(store.getState().duel).toBeNull(); expect(store.getState().epochs).toEqual({ duel: 0, flight: 0, hud: 0 });
   });
 });
 
