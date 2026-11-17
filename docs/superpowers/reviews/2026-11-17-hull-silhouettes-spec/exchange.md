@@ -244,3 +244,49 @@ Accepted. The owner gate question now asks about the level-1 fill explicitly. Th
 
 ---
 
+# Round 4 (delta, reviewing 46a8c5d, effort medium, 35 s, 55335 in / 40592 cached / 3110 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R4-F1 Under the stated fallback, the per-phase check fails: enemy level 2 phase 1 looks exactly like enemy level 1
+The new fallback (spec L117) sets the two level-1 fill cells to 'none'. Enemy level 1 then becomes no fill over the `glass` hull, a `main` stroke and a `main` hatch. Enemy level 2 phase 1 (L110) is a `glass` fill, a `main` stroke and a `main` hatch. Over the L95 `glass`-filled outline, those two look the same. The reworded check (L132) still requires that 'Level 2 must differ ... from level 1 in each phase', and it has no fallback condition. So if the owner picks hatch-only, the enemy phase-1 shot fails the check. This is the CRT rule itself: CRT spec L42 makes enemy level 2's off-phase a `main` outline with a `main` hatch, which is level 1's look. It is the same pattern as R3-F1, on the other ship. · spec L108 (enemy 1: `dim` / `main` / `main`) with L117 fallback ('the two level-1 fill cells become "none"'); spec L110 (enemy 2 phase 1: `glass` / `main` / `main`); spec L95 (enemy outline filled `glass`); spec L132 ('from level 1 in each phase'); CRT spec L42. · The fallback is a stated build path. If the owner rejects the tone fill, whoever applies the fallback hits a gate that cannot pass. They might then 'fix' it by changing enemy level 2 phase 1, which would break the CRT rule. · Add one sentence to L132: 'Under the hatch-only fallback (section 2), enemy level 2 in phase 1 is expected to match enemy level 1 (the blink is the signal).' Or word the level-2-vs-level-1 clause as 'in at least one phase' once the fallback applies.
+
+## Prior findings
+- R2-F1: resolved — Of the finding's two options, the responder chose a gated version of (b). The deviation is named at L117. The owner gate asks about it explicitly at L136. The rejection fallback is exactly the pure CRT rule (fill cells 'none'), which matches CRT spec L41-L42 for fill. Approval triggers a one-line amendment to CRT spec section 2. Level 2 cells L105-L106 and L109-L110 match CRT L41-L42, and hatch and blink rules are unchanged. No dated approval exists yet, so the CRT rules stay intact until the owner decides. The one interaction with the check is raised as a new P2.
+- R3-F1: resolved — L132 is reworded as proposed: level 1 ≠ level 0 in each phase; level 2 ≠ level 0 in at least one phase and ≠ level 1 in each phase; crew level 2 phase 1 is expected to match the hull. Checked against the current table. Crew L1 (`mid` fill + `glass` hatch) differs from L2 p0 (`glass` cut-out, `hot` stroke) and from L2 p1 (solid `hot`, no hatch). Enemy L1 (`dim` fill) differs from L2 p0 (`hot`) and from L2 p1 (`glass` hollow + hatch). Enemy L2 p0 differs from L0. So the check can pass with the table as written.
+
+## Verified
+- spec L103-L110: the level-2 cells match CRT spec L41 (crew: `glass` cut-out ↔ `hot`) and L42 (enemy: solid `hot` ↔ `main` outline + `main` hatch)
+- spec L117: the fallback restores the pure CRT level-1 look (hatch only), matching CRT spec L41-L42
+- spec L136: the owner gate asks about the level-1 tone fill explicitly
+- spec L132: every level/phase pair the check requires to differ does differ under the current table (L103-L110 over the L95 outline fills)
+- The diff touches only L117, L132 and L136. No contradiction with section 1 or with the rest of section 2 (L99, L112-L115)
+
+## Not verified
+- Whether the owner's look gate runs before or after merge. If it runs after, the deviation lands on master before sign-off. The spec does not say, and I did not look at process docs.
+- The rendered look at zoom 0.5. No screenshots were taken (read-only review).
+
+---
+
+# Round 4 response (spec revised)
+
+Reviewed `round-4.json` against `46a8c5d`. 1 accepted, 0 rejected, 0 deferred.
+
+## R4-F1 [P2]: The fallback breaks the check
+
+Confirmed. Added the sentence as proposed.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-hull-silhouettes-design.md
+
+<!-- end -->
+
+---
+

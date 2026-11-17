@@ -129,7 +129,7 @@ Below `SHIP_CHEVRON_PX` (10 px across) the chevron is drawn as today. The lock l
   - `tests/crtColours.test.ts`: the full-frame colour test with both hulls at damage levels 0, 1 and 2 in both phases.
 - **Unchanged:** all existing tests pass, with the wedge's tests moved as in section 1. SIM_VERSION and the goldens are unchanged.
 - **Screenshots** (the CRT map harness approach), saved to `C:\Users\djuar\FTLite-shots\hull-silhouettes\`:
-  - the Weapons map at the default zoom (0.5) with the lock and damage at levels 1 and 2 on both ships. This is a pass/fail check, with one shot per blink phase. Level 1 must differ from level 0 in each phase. Level 2 must differ from level 0 in at least one phase, and from level 1 in each phase. Crew level 2 in phase 1 is expected to match the hull (the blink is the signal, as in the CRT spec);
+  - the Weapons map at the default zoom (0.5) with the lock and damage at levels 1 and 2 on both ships. This is a pass/fail check, with one shot per blink phase. Level 1 must differ from level 0 in each phase. Level 2 must differ from level 0 in at least one phase, and from level 1 in each phase. Crew level 2 in phase 1 is expected to match the hull (the blink is the signal, as in the CRT spec). Under the hatch-only fallback (section 2), enemy level 2 in phase 1 is expected to match enemy level 1, for the same reason;
   - the Helm map;
   - the flight view;
   - the Weapons map at `ZOOM_MAX` (1.2) on both ships.
