@@ -5,6 +5,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Position, Stable } from '../src/renderer/src/sim/components';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
@@ -34,7 +35,7 @@ const crewAt = (d: DuelState) => d.interior.crew.map((eid) => ({ x: Position.x[e
 
 describe('the duel interior through the reused interior layers (H-1 spec §8, §13 risk 1)', () => {
   it('draws a duel interior: tiles, desks, both crew and the damage overlay, fitted left of the readout column', () => {
-    const d = createDuel(layout, 5), view = createInteriorView(assets);
+    const d = createSeatedDuel(layout, 5), view = createInteriorView(assets);
     d.tactical.systems[0].rooms[Room.Shields] = 2;
     view.draw(d, crewAt(d), 1, 1 / 60);
     const fit = duelFit(d.interior.derived.width, d.interior.derived.height, 1);
@@ -47,7 +48,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     view.destroy(); disposeDuel(d);
   });
   it('a warm-up of 2 frames, then 60 frames of walking, damage, repair and reseating add no display objects', () => {
-    const d = createDuel(layout, 5), view = createInteriorView(assets);
+    const d = createSeatedDuel(layout, 5), view = createInteriorView(assets);
     let prev = crewAt(d);
     const frame = (k: number): void => {
       prev = crewAt(d);
@@ -65,7 +66,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     view.destroy(); disposeDuel(d);
   });
   it('the overlay: damaged rooms tinted by level with a marker and progress; role consoles free or occupied', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     expect(interiorOverlay(d).tints).toEqual([]);
     expect(interiorOverlay(d).consoles.map((c) => c.free)).toEqual([false, false]);   // player 0 at Navigation, player 1 at Weapons
     d.tactical.systems[0].rooms[Room.Shields] = 1; d.repair[Room.Shields] = REPAIR_UNITS / 4;
@@ -78,7 +79,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     disposeDuel(d);
   });
   it('light and feel (Art-i spec sections 5-8): the spec order, and a hit on the crew ship flashes and shakes only the interior world', () => {
-    const d = createDuel(layout, 5), view = createInteriorView(assets);
+    const d = createSeatedDuel(layout, 5), view = createInteriorView(assets);
     const kids = view.world.children;
     expect(view.container.children[1]).toBe(view.world);                                      // the starfield first, under the world
     expect((kids[3] as Container).blendMode).toBe('multiply');                                // the battlemap, tiles, the props (Art-iii), then the grade
@@ -97,7 +98,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
 
 describe('the interior view places its world from the zoom camera (interior zoom spec)', () => {
   it('level 0 is the fit; +1 follows the active character on whole pixels; the hit shake goes on top', () => {
-    const d = createDuel(layout, 5), view = createInteriorView(assets), camera = createInteriorCamera();
+    const d = createSeatedDuel(layout, 5), view = createInteriorView(assets), camera = createInteriorCamera();
     view.draw(d, crewAt(d), 1, 1 / 60, [], 1 / 60, { camera, active: 0 });
     expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 173, 1]);
     interiorInput(camera, { notches: 1, anchor: null, dragX: 0, dragY: 0, follow: false });

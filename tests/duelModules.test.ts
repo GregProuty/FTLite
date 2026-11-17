@@ -9,6 +9,7 @@ import { flattenModule, unflattenModule, type SimModule } from '../src/renderer/
 import { DUEL_MODULES, DUEL_NOT_SNAPSHOTTED, helmModule, interiorModule, presenceModule, repairModule, roundModule } from '../src/renderer/src/sim/duel/modules';
 import { flattenDuel, hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { MISSILE_KEYS, flattenTactical, shipModule, spaceModule, TACTICAL_MODULES, unflattenTactical } from '../src/renderer/src/sim/tactical/hash';
@@ -39,7 +40,7 @@ const tacticalNames = (s: TacticalState) => new Set([...TACTICAL_MODULES.flatMap
 const tacticalExcluded = { ...spaceModule.notSnapshotted, ...shipModule.notSnapshotted };
 const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, helmModule, interiorModule].flatMap((m) => [...names(m, d)]));
 function played(seed: number, ticks: number): DuelState {
-  const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed);
+  const d = createSeatedDuel(CUTTER, seed), pair = createScriptedPair(seed);
   for (let k = 0; k < ticks; k++) stepDuelTick(d, scriptedInput(pair, d));
   return d;
 }
@@ -60,11 +61,11 @@ describe('the duel modules (spec §6 module contract)', () => {
     }
   });
   it('every DuelState member is a presence, repair, round, helm or interior field, the tactical modules\' state, or declared', () => {
-    const d = createDuel(CUTTER, 1);
+    const d = createSeatedDuel(CUTTER, 1);
     try { expect(uncovered(d, duelNames(d), DUEL_NOT_SNAPSHOTTED, new Set(['tactical']))).toEqual([]); } finally { disposeDuel(d); }
   });
   it('catches a member added to a module without a field or an exclusion', () => {
-    const d = createDuel(CUTTER, 1);
+    const d = createSeatedDuel(CUTTER, 1);
     try {
       (d.tactical as unknown as Record<string, unknown>).newThing = 1;
       (d.tactical.ships[0] as unknown as Record<string, unknown>).newCounter = 0;
@@ -85,7 +86,7 @@ describe('the duel modules (spec §6 module contract)', () => {
     } finally { disposeDuel(d); }
   });
   it('every exclusion names a real member and is not also a field', () => {
-    const d = createDuel(CUTTER, 1);
+    const d = createSeatedDuel(CUTTER, 1);
     try {
       for (const [m, s] of [[spaceModule, d.tactical], [shipModule, d.tactical], [presenceModule, d], [repairModule, d], [helmModule, d], [interiorModule, d]] as const)
         for (const path of Object.keys(m.notSnapshotted)) { expect(s, path).toHaveProperty(path.split('.')); expect(names(m as SimModule<object>, s).has(path)).toBe(false); }

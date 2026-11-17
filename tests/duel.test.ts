@@ -8,6 +8,7 @@ import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
@@ -26,10 +27,12 @@ function standAt(d: DuelState, pid: number, tx: number, ty: number): void {
 }
 
 describe('createDuel (spec §8)', () => {
-  it('seats player 0 at Navigation and player 1 at Weapons, holds every door open, and resolves the repair points', () => {
+  it('starts both players standing at the layout spawns with every console free, holds every door open, and resolves the repair points', () => {
     const d = createDuel(layout, 5), st = d.interior;
-    expect([st.stations.occupant[d.nav], st.stations.occupant[d.weapons]]).toEqual([0, 1]);
-    expect([Seated.station[st.crew[0]!], Seated.station[st.crew[1]!]]).toEqual([d.nav, d.weapons]);
+    expect([...st.stations.occupant].every((o) => o === -1)).toBe(true);
+    expect([st.stations.occupant[d.nav], st.stations.occupant[d.weapons]]).toEqual([-1, -1]);
+    expect([Seated.station[st.crew[0]!], Seated.station[st.crew[1]!]]).toEqual([-1, -1]);
+    expect([0, 1].map((p) => [Math.floor(Position.x[st.crew[p]!]!), Math.floor(Position.y[st.crew[p]!]!)])).toEqual([[...layout.spawns[0]!], [...layout.spawns[1]!]]);
     expect([...st.doors.state].every((s) => s === DoorState.HeldOpen)).toBe(true);
     expect(d.points.map((p) => [p.tacticalRoom, p.room])).toEqual([[Room.Weapons, st.derived.roomIndex.get('W')], [Room.Shields, st.derived.roomIndex.get('R')], [Room.Engines, st.derived.roomIndex.get('E')]]);
     expect(d.present).toEqual([true, true]);
@@ -38,10 +41,10 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'tactical', 'throttle', 'weapons']);
+    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'tactical', 'throttle', 'weapons']);
   });
   it('disposeDuel is idempotent', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     disposeDuel(d);
     expect(() => disposeDuel(d)).not.toThrow();
   });
@@ -49,7 +52,7 @@ describe('DuelState shape', () => {
 
 describe('seat phase guards', () => {
   it('rejects presence from player 2 or with a non-boolean value as malformed', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     const bad = cmd(d, 2, { kind: 'presence', present: false }), odd = cmd(d, 0, { kind: 'presence', present: 'no' } as unknown as DuelCommand);
     const r = step(d, [bad, odd]);
     expect(r.map((x) => [x.status, x.reason])).toEqual([['rejected', 'malformed'], ['rejected', 'malformed']]);
@@ -57,7 +60,7 @@ describe('seat phase guards', () => {
     expect(d.present).toHaveLength(2);
   });
   it('an away player cannot stand or sit: the character stays exactly where it is', () => {
-    const d = createDuel(layout, 5), eid = d.interior.crew[0]!;
+    const d = createSeatedDuel(layout, 5), eid = d.interior.crew[0]!;
     step(d, [cmd(d, 0, { kind: 'presence', present: false })]);
     const r = step(d, [cmd(d, 0, { kind: 'stand' })]);
     expect(r[0]).toMatchObject({ status: 'rejected', reason: 'unavailable' });
@@ -75,10 +78,10 @@ describe('seat phase guards', () => {
 
 describe('consoles are roles (spec §8, §13)', () => {
   it('the Helm player’s held moveX turns the ship clockwise and the throttle thrusts along the nose; held W does not (Artemis spec §5.3)', () => {
-    const d = createDuel(layout, 5), s = d.tactical.ships[0], h0 = s.heading;
+    const d = createSeatedDuel(layout, 5), s = d.tactical.ships[0], h0 = s.heading;
     step(d, [], [{ moveX: 1, moveY: 0, interactHeld: false }, NONE]);
     expect(s.heading).toBe((h0 + 1) % 256);                              // 1.78 steps per tick: one whole step on the first tick
-    const coast = createDuel(layout, 5), thrust = createDuel(layout, 5), held = createDuel(layout, 5);
+    const coast = createSeatedDuel(layout, 5), thrust = createSeatedDuel(layout, 5), held = createSeatedDuel(layout, 5);
     step(coast); step(thrust, [cmd(thrust, 0, { kind: 'throttle', level: 4 })]); step(held, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
     const [a, b, w] = [coast.tactical.ships[0], thrust.tactical.ships[0], held.tactical.ships[0]];
     const dx = b.vx - a.vx, dy = b.vy - a.vy;                           // the velocity full throttle added this tick
@@ -88,7 +91,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     for (const x of [d, coast, thrust, held]) disposeDuel(x);
   });
   it('accepts weapon commands only from the present player seated at Weapons', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     const helmPress = cmd(d, 0, { kind: 'laserCharge', held: true }), gunPress = cmd(d, 1, { kind: 'laserCharge', held: true });
     const results = step(d, [helmPress, gunPress]);
     expect(results.find((r) => r.id === helmPress.id)).toMatchObject({ status: 'rejected', reason: 'not-at-weapons' });
@@ -101,7 +104,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   });
   it('weapon commands take effect lock, then charge, then launch, whatever their envelope order', () => {
     for (const launchFirst of [true, false]) {
-      const d = createDuel(layout, 5), s = d.tactical.systems[0];
+      const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
       s.fireHeld = true; s.laserCharge = LASER_CHARGE_UNITS;            // a full charge, held
       const launch = cmd(d, 1, { kind: 'missileLaunch' }), release = cmd(d, 1, { kind: 'laserCharge', held: false });
       const results = step(d, launchFirst ? [launch, release] : [release, launch]);
@@ -109,7 +112,7 @@ describe('consoles are roles (spec §8, §13)', () => {
       expect([s.shots, s.missilesLaunched], String(launchFirst)).toEqual([1, 1]);   // the release fired, then the missile launched
     }
     for (const lockFirst of [true, false]) {
-      const d = createDuel(layout, 5), [s, e] = d.tactical.ships;
+      const d = createSeatedDuel(layout, 5), [s, e] = d.tactical.ships;
       Object.assign(e, { x: s.x + hx(s.heading) * 300, y: s.y + hy(s.heading) * 300 }); d.tactical.systems[1].shields = 0;   // dead ahead, shields down
       d.tactical.systems[0].fireHeld = true; d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
       const lock = cmd(d, 1, { kind: 'laserLock', room: Room.Engines }), release = cmd(d, 1, { kind: 'laserCharge', held: false });
@@ -118,14 +121,14 @@ describe('consoles are roles (spec §8, §13)', () => {
     }
   });
   it('rejects a bad lock, a charge while a missile flies, and a launch it cannot make', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     const lock = cmd(d, 1, { kind: 'laserLock', room: 1.5 }), launch = cmd(d, 1, { kind: 'missileLaunch' });
     expect(step(d, [lock, launch]).map((r) => r.reason)).toEqual(['malformed', undefined]);
     const charge = cmd(d, 1, { kind: 'laserCharge', held: true }), again = cmd(d, 1, { kind: 'missileLaunch' });
     expect(step(d, [charge, again]).map((r) => r.reason)).toEqual(['missile-in-flight', 'unavailable']);
   });
   it('standing up empties the console: the ship coasts and weapon commands are refused', () => {
-    const d = createDuel(layout, 5), s = d.tactical.ships[0];
+    const d = createSeatedDuel(layout, 5), s = d.tactical.ships[0];
     const stand = cmd(d, 0, { kind: 'stand' });
     expect(step(d, [stand])[0]).toMatchObject({ status: 'applied' });
     const h = s.heading;
@@ -134,7 +137,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     expect(Seated.station[d.interior.crew[0]!]).toBe(-1);
   });
   it('a standing player walks with the held stick and can sit back down at the console', () => {
-    const d = createDuel(layout, 5), eid = d.interior.crew[0]!;
+    const d = createSeatedDuel(layout, 5), eid = d.interior.crew[0]!;
     step(d, [cmd(d, 0, { kind: 'stand' })]);
     const x0 = Position.x[eid]!;
     for (let t = 0; t < 15; t++) step(d, [], [{ moveX: -1, moveY: 0, interactHeld: false }, NONE]);
@@ -144,7 +147,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     expect(d.interior.stations.occupant[d.nav]).toBe(0);
   });
   it('rejects sitting at a scenery console, unknown kinds, and stale ticks', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     step(d, [cmd(d, 0, { kind: 'stand' })]);
     const science = 3, sit = cmd(d, 0, { kind: 'sit', station: science });
     const stale: DuelEnvelope = { ...cmd(d, 1, { kind: 'laserCharge', held: true }), requestedTick: d.interior.tick - 1 };
@@ -155,7 +158,7 @@ describe('consoles are roles (spec §8, §13)', () => {
 describe('weapon commands need a present gunner (spec §13)', () => {
   it('a command claiming player −1 is refused when Weapons is empty or its occupant is away', () => {
     for (const vacate of ['stand', 'away'] as const) {
-      const d = createDuel(layout, 5), s = d.tactical.systems[0];
+      const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
       step(d, [vacate === 'stand' ? cmd(d, 1, { kind: 'stand' }) : cmd(d, 1, { kind: 'presence', present: false })]);
       const ghost = [cmd(d, -1, { kind: 'laserLock', room: Room.Engines }), cmd(d, -1, { kind: 'laserCharge', held: true }), cmd(d, -1, { kind: 'missileLaunch' })];
       expect(step(d, ghost).map((r) => r.reason), vacate).toEqual(['not-at-weapons', 'not-at-weapons', 'not-at-weapons']);
@@ -166,7 +169,7 @@ describe('weapon commands need a present gunner (spec §13)', () => {
 
 describe('present or away (spec §8, §11a)', () => {
   it('an away player\’s console is empty: Fire lets go without firing and their commands are refused', () => {
-    const d = createDuel(layout, 5), s = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
     step(d, [cmd(d, 1, { kind: 'laserCharge', held: true })]);
     expect(s.fireHeld).toBe(true);
     step(d, [cmd(d, 1, { kind: 'presence', present: false })]);
@@ -178,7 +181,7 @@ describe('present or away (spec §8, §11a)', () => {
     expect(step(d, [cmd(d, 1, { kind: 'laserCharge', held: true })])[0]).toMatchObject({ status: 'applied' });
   });
   it('an away player does not walk or repair', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     d.tactical.systems[0].rooms[Room.Engines] = 1;
     standAt(d, 0, 1, 6);                                                 // Engines room, next to its repair point (2, 6)
     step(d, [cmd(d, 0, { kind: 'presence', present: false })]);
@@ -191,7 +194,7 @@ describe('present or away (spec §8, §11a)', () => {
 
 describe('repair in the room (spec §8)', () => {
   it('one repairer lowers a room one level in exactly 240 ticks; progress waits when released', () => {
-    const d = createDuel(layout, 5), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 2;
     standAt(d, 0, 1, 6);
     const hold: HeldInput[] = [{ moveX: 0, moveY: 0, interactHeld: true }, NONE];
@@ -205,7 +208,7 @@ describe('repair in the room (spec §8)', () => {
     expect(d.repair[Room.Engines]).toBe(0);
   });
   it('two repairers on one point finish in 96 ticks', () => {
-    const d = createDuel(layout, 5), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
     standAt(d, 0, 1, 6); standAt(d, 1, 1, 7);
     const both: HeldInput[] = [{ moveX: 0, moveY: 0, interactHeld: true }, { moveX: 0, moveY: 0, interactHeld: true }];
@@ -215,7 +218,7 @@ describe('repair in the room (spec §8)', () => {
     expect(ship.rooms[Room.Engines]).toBe(0);
   });
   it('needs the repairer inside the repair room: in reach through a wall does not count', () => {
-    const d = createDuel(layout, 5), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
     standAt(d, 0, 2, 4);                                                 // (2, 4) is the door tile north of Engines, outside the room
     expect(roomAt(d.interior, 2.5, 4.5)).not.toBe(d.points[2]!.room);
@@ -224,7 +227,7 @@ describe('repair in the room (spec §8)', () => {
     expect(ship.rooms[Room.Engines]).toBe(1);
   });
   it('the gunner can fix the Weapons room from the console spot, with the console empty meanwhile', () => {
-    const d = createDuel(layout, 5), ship = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5), ship = d.tactical.systems[0];
     ship.rooms[Room.Weapons] = 1;
     step(d, [cmd(d, 1, { kind: 'stand' })]);
     for (let t = 0; t < 240; t++) step(d, [], [NONE, { moveX: 0, moveY: 0, interactHeld: true }]);
@@ -235,14 +238,14 @@ describe('repair in the room (spec §8)', () => {
 describe('the duel tick', () => {
   it('is deterministic: the same seed and inputs give the same duel hash', () => {
     const run = (): string => {
-      const d = createDuel(layout, 9);
+      const d = createSeatedDuel(layout, 9);
       for (let t = 0; t < 900; t++) step(d, t === 10 ? [cmd(d, 0, { kind: 'stand' })] : [], [{ moveX: t % 50 < 25 ? 1 : -1, moveY: 0, interactHeld: false }, NONE]);
       return hashDuel(d);
     };
     expect(run()).toBe(run());
   });
   it('keeps the interior and tactical ticks together, and a decided round keeps ticking with nothing to report (H-2 spec §7)', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     for (let t = 0; t < 10; t++) step(d);
     expect([d.interior.tick, d.tactical.tick]).toEqual([10, 10]);
     d.tactical.systems[0].hull = 0;
@@ -256,7 +259,7 @@ describe('the duel tick', () => {
 
 describe('the interior stays quiet (spec §17 risk 7)', () => {
   it('starts no breach, boarder or event in 3,600 busy ticks, and fire only where an enemy hit set it (duel-fire spec)', () => {
-    const d = createDuel(layout, 5), st = d.interior, event0 = st.run.event, started = new Set<number>();
+    const d = createSeatedDuel(layout, 5), st = d.interior, event0 = st.run.event, started = new Set<number>();
     for (let t = 0; t < 3600; t++) {
       const cmds = t === 10 ? [cmd(d, 0, { kind: 'stand' })] : t % 120 === 0 ? [cmd(d, 1, { kind: 'laserCharge', held: true })] : t % 120 === 60 ? [cmd(d, 1, { kind: 'laserCharge', held: false })] : [];
       step(d, cmds, [{ moveX: t % 40 < 20 ? 1 : -1, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]);

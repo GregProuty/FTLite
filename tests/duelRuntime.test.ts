@@ -13,6 +13,7 @@ import { interpolatedMissile } from '../src/renderer/src/render/tactical/fxModel
 import type { DuelRoundRecord } from '../src/renderer/src/sim/duel/summary';
 import { soloDuelRecord, validateDuelRecord } from '../src/renderer/src/net/duelRecord';
 import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
+import { seatDuelCrew } from './helpers/duelSeat';
 
 const layout = parseShip(cutter);
 const TICK_MS = 1000 / 60;
@@ -38,7 +39,7 @@ function fakeTime() {
 }
 const idle = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 /** Scripted keys: the test sets held keys and presses, `frame()` samples them once and runs due ticks. */
-function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void) {
+function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = true) {
   const time = fakeTime();
   let keys = idle(), cleared = 0;
   const pointer: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 };
@@ -48,6 +49,7 @@ function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void) {
     samplePointer: () => ({ ...pointer }),
     clearKeys: () => { keys = idle(); cleared++; }, onRound
   });
+  if (seated) seatDuelCrew(rt.duel);   // the old seated start: createDuel now leaves both standing
   const hold = (h: Partial<Omit<KeySample, 'presses'>>): void => { keys = { ...keys, ...h }; };
   const press = (...actions: KeyAction[]): void => { const p = { ...keys.presses }; for (const a of actions) p[a]++; keys = { ...keys, presses: p }; };
   /** One frame, then one tick's worth of wall time with a frame after it (so the press is sent on exactly one tick). */
@@ -60,7 +62,16 @@ const put = (rt: ReturnType<typeof rig>['rt'], pid: number, tx: number, ty: numb
 };
 
 describe('the duel runtime (H-1 spec §4, §5)', () => {
-  it('solo start: player 0 at the Helm; player 1 goes away on tick 0, ahead of any other command', () => {
+  it('solo start: both characters stand on the interior view with every console free; player 1 goes away on tick 0', () => {
+    const { rt, tick } = rig(5, undefined, false), d = rt.duel;
+    expect([rt.active(), rt.view()]).toEqual([0, 'interior']);
+    expect([d.interior.stations.occupant[d.nav], d.interior.stations.occupant[d.weapons]]).toEqual([-1, -1]);
+    tick();
+    expect(rt.lastResults().map((r) => [r.id.player, r.id.sequence, r.tick, r.status])).toEqual([[1, 0, 0, 'applied']]);
+    expect(d.present).toEqual([true, false]);
+    rt.dispose();
+  });
+  it('seated solo: player 0 at the Helm; player 1 goes away on tick 0, ahead of any other command', () => {
     const { rt, press, tick } = rig();
     expect([rt.active(), rt.view()]).toEqual([0, 'helm']);
     press('stand'); tick();
@@ -305,7 +316,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const duel = rt.duel, before = cleared();
     press('confirm'); tick(); tick();
     expect(rt.duel).toBe(duel);   // the same duel: the next round began in place
-    expect([rt.seed, rt.epoch(), rt.active(), rt.view(), rt.ended()]).toEqual([followingSeed(7), 1, 1, 'weapons', false]);   // presence carried: player 1 is still the one at the keyboard
+    expect([rt.seed, rt.epoch(), rt.active(), rt.view(), rt.ended()]).toEqual([followingSeed(7), 1, 1, 'interior', false]);   // presence carried: player 1 is still the one at the keyboard; the new round starts standing (start-aboard spec §1)
     expect(rt.duel.baseTick).toBeGreaterThan(decided + 60);
     expect(cleared()).toBe(before + 1);
     expect([rt.cameras.helm.targetZoom, rt.cameras.weapons.targetZoom]).toEqual([ZOOM_DEFAULT, ZOOM_DEFAULT]);

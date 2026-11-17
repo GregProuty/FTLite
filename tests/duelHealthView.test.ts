@@ -7,6 +7,7 @@ import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { emptyPresses } from '../src/renderer/src/app/duel/input';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel, seatDuelCrew } from './helpers/duelSeat';
 import { interiorOverlay } from '../src/renderer/src/render/duel/interiorModel';
 import { readoutHelp, readoutRows, READOUT_ROWS, READOUT_W, type ReadoutMode } from '../src/renderer/src/render/duel/readoutModel';
 import { PAD, textPx, TEXT, WARN } from '../src/renderer/src/render/theme';
@@ -18,7 +19,7 @@ const healthRow = (d: DuelState, active: 0 | 1, mode: ReadoutMode = 'interior') 
 
 describe('duel health views (spec §2)', () => {
   it('the HEALTH row shows the shown character: 72/100, red under 30, DOWNED when downed', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       for (const mode of ['helm', 'weapons', 'interior'] as ReadoutMode[]) expect(healthRow(d, 0, mode)).toMatchObject({ value: '100/100', valueTint: TEXT });
       Health.cur[d.interior.crew[0]!] = 71.4;
@@ -36,7 +37,7 @@ describe('duel health views (spec §2)', () => {
   });
   it('every row, the longest list and the help fit the 220-px column, with STAND BY DOWNED TO REVIVE', () => {
     expect(readoutHelp('interior')).toContain('STAND BY DOWNED TO REVIVE');
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     try {
       Life.state[d.interior.crew[0]!] = LifeState.Downed;
       for (const mode of ['helm', 'weapons', 'interior'] as ReadoutMode[]) {
@@ -49,7 +50,7 @@ describe('duel health views (spec §2)', () => {
     } finally { disposeDuel(d); }
   });
   it('the interior draws a health bar below full, and DOWNED - STAY CLOSE while a downed character is picked up', () => {
-    const d = createDuel(CUTTER, 5), [a, b] = d.interior.crew as [number, number];
+    const d = createSeatedDuel(CUTTER, 5), [a, b] = d.interior.crew as [number, number];
     try {
       expect(interiorOverlay(d).crew.map((c) => [c.bar, c.downed, c.label])).toEqual([[false, false, ''], [false, false, '']]);
       Health.cur[a] = 40;
@@ -66,6 +67,7 @@ describe('duel health views (spec §2)', () => {
       sampleKeys: () => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }),
       samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }), clearKeys: () => {}
     });
+    seatDuelCrew(rt.duel);   // the old seated start (createDuel now leaves both standing)
     try {
       expect(rt.otherStatus()).toBe('AT WEAPONS');
       const e = rt.duel.interior.crew[1]!;
@@ -74,7 +76,7 @@ describe('duel health views (spec §2)', () => {
     } finally { rt.dispose(); }
   });
   it('the online source shows the other character DOWNED', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5);
     let replica: DuelState | null = null;
     const client = { state: () => replica, publication: () => (replica ? { publicationSequence: 1, tick: d.interior.tick, phase: 'running' } : null) };
     const source = createOnlineDuelSource({ client: client as never, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });

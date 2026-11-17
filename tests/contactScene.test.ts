@@ -12,6 +12,7 @@ import { worldToScreen } from '../src/renderer/src/render/tactical/camera';
 import { interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
 import { emptyPresses, type KeyAction, type KeySample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
+import { seatDuelCrew } from './helpers/duelSeat';
 import { createDuelScene } from '../src/renderer/src/app/duel/scene';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
@@ -45,7 +46,8 @@ function rig() {
   const renderer = { app: { stage }, assets, stageScale: () => 1, feel: () => DEFAULT_FEEL, crt: () => 'off' as const };
   const store = createUiStore({ onlineAvailable: false } as never), contact = createContactController(), clicks: { x: number; y: number }[] = [];
   const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store), contact, takeClick: () => clicks.shift() ?? null });
-  // createDuel seats player 0 at the Helm and player 1 at Weapons: Tab takes the gunner.
+  // The old seated start (createDuel now leaves both standing): player 0 at the Helm, player 1 at Weapons; Tab takes the gunner.
+  seatDuelCrew(rt.duel);
   press('switch'); tick(); tick();
   const enemyOnScreen = () => { const b = interpolatedShip(rt.duel.tactical, rt.prev, rt.alpha(), 1); return worldToScreen(rt.cameras.weapons, vp, b.x, b.y); };
   const view = () => store.getState().duel?.contact;

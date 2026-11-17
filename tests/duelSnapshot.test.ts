@@ -2,6 +2,7 @@
 // values, and restore validation, at the sim level.
 import { describe, expect, it, vi } from 'vitest';
 import * as duelState from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { hashF64 } from '../src/shared/hash';
 import { flattenDuel, hashDuel, mapHash } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, MAX_DUEL_ROUNDS, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
@@ -14,7 +15,7 @@ import { CUTTER } from './helpers/scriptedDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 function scriptedDuel(seed: number, ticks: number) {
-  const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed);
+  const d = createSeatedDuel(CUTTER, seed), pair = createScriptedPair(seed);
   for (let k = 0; k < ticks && d.tactical.outcome === Outcome.Running; k++) stepDuelTick(d, scriptedInput(pair, d));
   return { d, pair };
 }
@@ -129,7 +130,7 @@ describe('the duel snapshot (spec §6)', () => {
       expect(created).toHaveBeenCalledTimes(1);
       created.mockRestore();
       // A decided round (the hunter down on tick 1, then five end-card ticks): its decided tick lies between the base tick and the tick.
-      const dd = createDuel(CUTTER, 7);
+      const dd = createSeatedDuel(CUTTER, 7);
       try {
         dd.tactical.systems[1].hull = 0;
         for (let k = 0; k < 6; k++) stepDuelTick(dd, { held: [], commands: [] });
@@ -147,7 +148,7 @@ describe('the duel snapshot (spec §6)', () => {
   });
   it('accepts every state the scripted duels reach (seeds 1, 4 and 7, every 30 ticks)', () => {
     for (const seed of [1, 4, 7]) {
-      const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed);
+      const d = createSeatedDuel(CUTTER, seed), pair = createScriptedPair(seed);
       try {
         while (d.tactical.outcome === Outcome.Running) {
           stepDuelTick(d, scriptedInput(pair, d));

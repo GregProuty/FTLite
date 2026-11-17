@@ -12,6 +12,7 @@ import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/
 import { followingSeed, roundSeed } from '../src/renderer/src/sim/duel/seeds';
 import { duelRoundOf, loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import type { SimModule } from '../src/renderer/src/sim/module';
 import { canonicalFields } from '../src/renderer/src/sim/canonicalFields';
@@ -25,7 +26,7 @@ let sequence = 0;
 const env = (d: DuelState, player: number, command: DuelCommand, requestedTick = d.interior.tick): DuelEnvelope => ({ runId: LOCAL_DUEL_RUN, id: { player, sequence: ++sequence }, requestedTick, command });
 const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { held: [], commands });
 /** A duel whose first tick decides the round for the crew. */
-function decided(seed = 3): DuelState { const d = createDuel(CUTTER, seed); d.tactical.systems[1].hull = 0; step(d); return d; }
+function decided(seed = 3): DuelState { const d = createSeatedDuel(CUTTER, seed); d.tactical.systems[1].hull = 0; step(d); return d; }
 /** Named canonical values: `<module>.<field>`, the interior expanded into its sector field names. */
 function named(d: DuelState): Map<string, number[]> {
   const out = new Map<string, number[]>(), values = Array.from(flattenDuel(d));
@@ -39,15 +40,15 @@ function named(d: DuelState): Map<string, number[]> {
 }
 
 describe('the Helm player (spec §2)', () => {
-  it('createDuel seats helmPlayer at Navigation and the other at Weapons; the seating and the round module survive a save and load', () => {
+  it('createDuel leaves both players standing with every console free, and carries helmPlayer; the standing start and the round module survive a save and load', () => {
     for (const helm of [0, 1] as const) {
       const d = createDuel(CUTTER, 5, helm);
       try {
-        expect(Seated.station[d.interior.crew[helm]!]).toBe(d.nav);
-        expect(Seated.station[d.interior.crew[1 - helm]!]).toBe(d.weapons);
+        expect([Seated.station[d.interior.crew[helm]!], Seated.station[d.interior.crew[1 - helm]!]]).toEqual([-1, -1]);
+        expect([d.interior.stations.occupant[d.nav], d.interior.stations.occupant[d.weapons]]).toEqual([-1, -1]);
         expect([d.round, d.helmPlayer, d.baseTick, d.decidedTick]).toEqual([0, helm, 0, -1]);
         const r = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
-        try { expect(Seated.station[r.interior.crew[helm]!]).toBe(r.nav); expect(r.helmPlayer).toBe(helm); expect(hashDuel(r)).toBe(hashDuel(d)); } finally { disposeDuel(r); }
+        try { expect([Seated.station[r.interior.crew[helm]!], Seated.station[r.interior.crew[1 - helm]!]]).toEqual([-1, -1]); expect(r.helmPlayer).toBe(helm); expect(hashDuel(r)).toBe(hashDuel(d)); } finally { disposeDuel(r); }
       } finally { disposeDuel(d); }
     }
     expect(() => createDuel(CUTTER, 5, 2 as 0)).toThrow(/helm player/);
@@ -56,7 +57,7 @@ describe('the Helm player (spec §2)', () => {
 
 describe('a decided round and the rematch (spec §7)', () => {
   it('a rematch while the round runs is rejected duel-running and changes nothing', () => {
-    const d = createDuel(CUTTER, 3);
+    const d = createSeatedDuel(CUTTER, 3);
     try {
       const r = step(d, [env(d, 0, { kind: 'rematch' })]);
       expect(r).toEqual([expect.objectContaining({ status: 'rejected', reason: 'duel-running' })]);
@@ -83,7 +84,7 @@ describe('a decided round and the rematch (spec §7)', () => {
     } finally { disposeDuel(d); }
   });
   it('a rematch builds the next round on the next tick: the following valid seed, base tick, carried presence, same Helm player, a fresh interior', () => {
-    const d = createDuel(CUTTER, 3, 1);
+    const d = createSeatedDuel(CUTTER, 3, 1);
     d.tactical.systems[1].hull = 0; step(d);
     try {
       for (let k = 0; k < 10; k++) step(d);
@@ -96,7 +97,8 @@ describe('a decided round and the rematch (spec §7)', () => {
       expect([d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.tactical.seed]).toEqual([1, 1, 12, -1, followingSeed(seed)]);
       expect([d.interior.tick, d.tactical.tick, d.tactical.outcome]).toEqual([12, 12, Outcome.Running]);
       expect(d.present).toEqual([false, true]);
-      expect(Seated.station[d.interior.crew[1]!]).toBe(d.nav);
+      expect([Seated.station[d.interior.crew[0]!], Seated.station[d.interior.crew[1]!]]).toEqual([-1, -1]);   // the fresh interior starts standing
+      expect(d.interior.stations.occupant[d.nav]).toBe(-1);
       expect(d.tactical.ships.every((s) => s.graceUntil.every((g) => g === 12))).toBe(true);
       expect(roundSeed(3, 1)).toBe(d.tactical.seed);
     } finally { disposeDuel(d); }
@@ -218,7 +220,8 @@ describe('rounds through the authority (spec §7, §10)', () => {
     expect([cp.phase, cp.snapshot.header.seed, cp.init.seed]).toEqual(['paused', roundSeed(5, 2), 5]);
     const rehost = liveDuel(cp.init, undefined, cp);
     expect(duelRules.hash(rehost.state)).toBe(duelRules.hash(live.state));
-    expect(Seated.station[rehost.state.duel.interior.crew[1]!]).toBe(rehost.state.duel.nav);
+    expect(Seated.station[rehost.state.duel.interior.crew[1]!]).toBe(-1);   // round 2 started standing, and the restore keeps it
+    expect(rehost.state.duel.helmPlayer).toBe(1);
     const bad = (f: (c: DuelCheckpoint) => void) => { const c = structuredClone(cp); f(c); return () => throughBytes(c); };
     expect(bad((c) => { c.init.seed = 6; })).toThrow(/seed/);
     expect(bad((c) => { c.init.helmPlayer = 0; })).toThrow(/helm player/);

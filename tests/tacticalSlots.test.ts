@@ -9,6 +9,7 @@ import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
 import { flattenTactical, TACTICAL_MODULES } from '../src/renderer/src/sim/tactical/hash';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { CUTTER, passiveInput } from './helpers/scriptedDuel';
 import { classOf, createTacticalState, emptyMissile, missileOf, placeMissile, removeMissile, shipBody, targetOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -136,7 +137,7 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     { crew: 'scripted', seed: 1, cap: Infinity }, { crew: 'passive', seed: 1, cap: 3000 }, { crew: 'passive', seed: 7, cap: 3000 }
   ];
   it.each(cases)('hold the duel values at every tick of a $crew run, seed $seed: two slots, both active, the Cutter and the hunter, each on the other', ({ crew, seed, cap }) => {
-    const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed), at = new Map<string, number>();
+    const d = createSeatedDuel(CUTTER, seed), pair = createScriptedPair(seed), at = new Map<string, number>();
     let offset = 0;
     for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { at.set(f.name, offset); offset += f.count; }
     const names = ['ships.length', 'ships.0.active', 'ships.1.active', 'systems.0.cls', 'systems.1.cls', 'systems.0.target', 'systems.1.target'];

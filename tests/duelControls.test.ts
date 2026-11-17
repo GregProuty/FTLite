@@ -5,6 +5,7 @@ import { Life, LifeState, Position } from '../src/renderer/src/sim/components';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand } from '../src/renderer/src/sim/duel/commands';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { Room } from '../src/renderer/src/sim/tactical/state';
@@ -19,7 +20,7 @@ const put = (d: DuelState, pid: number, tx: number, ty: number): void => { const
 
 describe('duel controls (H-1 spec §5)', () => {
   it('a downed character can neither repair nor sit, and an offline console cannot be sat at (as the sim)', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     step(d, 0, { kind: 'stand' }); put(d, 0, 1, 6);
     d.tactical.systems[0].rooms[Room.Engines] = 1;
     expect(repairInReach(d, 0)).toBe(Room.Engines);
@@ -37,15 +38,18 @@ describe('duel controls (H-1 spec §5)', () => {
     expect(results.map((r) => r.status)).not.toContain('applied');   // the sim agrees
     disposeDuel(d);
   });
-  it('seatOf: player 0 at the Helm, player 1 at Weapons, standing after a stand', () => {
-    const d = createDuel(layout, 5);
+  it('seatOf: both standing at the start; the Helm and Weapons once seated; standing after a stand', () => {
+    const fresh = createDuel(layout, 5);
+    expect([seatOf(fresh, 0), seatOf(fresh, 1)]).toEqual(['standing', 'standing']);
+    disposeDuel(fresh);
+    const d = createSeatedDuel(layout, 5);
     expect([seatOf(d, 0), seatOf(d, 1)]).toEqual(['helm', 'weapons']);
     step(d, 1, { kind: 'stand' });
     expect(seatOf(d, 1)).toBe('standing');
     disposeDuel(d);
   });
   it('repairInReach mirrors the sim: a damaged room, from inside its repair room, in reach of its tile', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     step(d, 0, { kind: 'stand' }); put(d, 0, 1, 6);            // Engines room, next to its repair point (2, 6)
     expect(repairInReach(d, 0)).toBe(-1);                         // nothing damaged
     d.tactical.systems[0].rooms[Room.Engines] = 1;
@@ -58,7 +62,7 @@ describe('duel controls (H-1 spec §5)', () => {
     disposeDuel(d);
   });
   it('consoleInReach: a free role console from inside its room and in reach; never a scenery console', () => {
-    const d = createDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5);
     expect(consoleInReach(d, 0)).toBe(-1);                        // seated
     step(d, 0, { kind: 'stand' });
     expect(consoleInReach(d, 0)).toBe(d.nav);                     // standing at the Navigation console

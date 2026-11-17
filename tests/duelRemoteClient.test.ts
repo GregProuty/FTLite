@@ -1,6 +1,7 @@
 // The duel's remote client (H-2 spec §4): a streamed duel attachment on a queued link pair, the host binding on one end
 // and createDuelRemoteClient on the other. The client produces nothing before its full state is acknowledged, then
 // tracks the authority at the sender's 20 Hz, and its commands come back on duel-notification.
+import { seatDuelCrew } from './helpers/duelSeat';
 import { describe, expect, it } from 'vitest';
 import { createEncounterCore } from '../src/renderer/src/authority/core';
 import { duelRules } from '../src/renderer/src/authority/duelRules';
@@ -15,6 +16,7 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 function rig(seed: number, drop?: (k: number) => boolean) {
   let now = 0, ordinal = 0;
   const clock = { nowMs: () => now }, init = duelInit(seed, 'remote-duel'), session = duelRules.create(init, resolveCutter);
+  seatDuelCrew(session.duel);   // the old seated start (createDuel leaves both standing)
   const core = createEncounterCore(duelRules, { init, contentDigest: DIGEST, resolveLayout: resolveCutter, clock, scheduler: { schedule: () => () => {} }, onCrash(r) { throw Error(r.error); } }, session);
   const pair = linkPair('remote', drop), binding = createDuelStreamBinding(pair.host.link, { resolveLayout: resolveCutter, contentDigest: DIGEST, clock, latestPayloadLimit: 16088 });
   const client = createDuelRemoteClient(pair.guest.link, [1], { runId: init.runId, contentDigest: DIGEST, resolveLayout: resolveCutter, clock });
