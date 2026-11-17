@@ -70,3 +70,14 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 ## Out of scope
 
 Enemy ships stay as they are. No painted art for other ships. No change to sim walls or doors (thin-wall walls were option B, rejected as weeks of sim work). Art-iii set dressing does not apply to the Hound, since the painting already has the furniture.
+
+## Art-iv-b: the Hound in the sector (owner, 2026-11-16: "make the hound the main ship in single player and multiplayer")
+
+- `shipForCrew` returns `'hound'` for every crew size (1-4). The lobby ship line is "Ship: Hound (4 crew)". The Skiff's helm-line lobby branch stays keyed to the Skiff, so it no longer shows. The Skiff and Cutter stay as layouts for tests, gates and fixed-layout scenarios.
+- **Determinism fixture:** the owner's request is the explicit authorisation to re-author `tests/fixtures/determinism-v2.json` once, for the new production fleet. The fixture stays explicit, one-time authoring by `scripts/determinism/capture.ts` (delete the old file first, by hand, in the same commit). It is never blessed automatically.
+  - Coverage: the production fleet is now `{hound}`. It is recorded at two crew sizes, 2 players (the Skiff's old role) and 3 players (the Cutter's old role), each with the same 54 000 completed ticks, 900 samples and terminal chains as before.
+  - The schedules keep the same command and held coverage, adapted to the Hound's stations. Navigation and Weapons are separate seats, so there are no group-0 tabs. The Ops group (Science, Engineering, Doors) is group 0 on the Hound, and its tabs replace the Skiff's group-1 tabs.
+  - The harness test names runs by ship and crew size: `hound-2` and `hound-3`.
+- Breach sites: a breach vents its own room whatever wall it sits on (`oxygen.ts` uses `siteRoom`). The interior-wall sites for Ops [10,4] and Quarters [15,5] therefore work in the sector; only their marker sits on an inner wall. They are kept as they are.
+- Online: `onlineSector.ts`, `network/modes/sector.ts` and the online report scripts follow `shipForCrew`. Scripts that list layouts by capacity (`scripts/network/online-app-report.ts`) use the Hound.
+- Look: the sector view fits the painted bounds into `WORLD_BAND` (608x296). Screenshots of the sector Hound (normal and alert) go into `C:\Users\djuar\FTLite-shots\art-iv\`. If the ship reads too small, raising the fit is a follow-up for the owner's look check, not part of this part.
