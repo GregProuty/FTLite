@@ -59,7 +59,7 @@ async function startApp(): Promise<void> {
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
-  const images = await buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets));
+  const images = buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets));
   const keyboard = createKeyboardSources(window);
   const audio = createAudio();
   let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
@@ -180,7 +180,7 @@ async function startProbe(): Promise<void> {
   const { startUiProbe, duelProbeFixture } = await import('./app/uiProbe');
   const q = new URLSearchParams(location.search), duelProbe = q.get('probe') === 'duel', hudProbe = q.get('probe') === 'hud';
   const reactHud = hudProbe;   // the Pixi engine arm is gone (UI-iii Task 5): probe=hud is the React HUD
-  const images = reactHud ? await buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets)) : undefined;
+  const images = reactHud ? buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets)) : undefined;
   if (duelProbe || reactHud) await mountUi({ el: uiRoot, store, actions, menu: false, images }); else if (!hudProbe) await mountProbe({ el: uiRoot, store, actions });
   const resize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
