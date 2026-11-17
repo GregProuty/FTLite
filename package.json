@@ -30,12 +30,18 @@
     "art:import": "tsx scripts/art-import.ts"
   },
   "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
     "@types/node": "^22.0.0",
     "@types/pngjs": "6.0.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
     "electron": "37.10.3",
     "electron-builder": "^26.0.0",
     "electron-vite": "5.0.0",
     "fast-check": "^3.22.0",
+    "jsdom": "31.0.1",
     "pngjs": "7.0.0",
     "tsx": "^4.19.0",
     "typescript": "~5.8.0",
@@ -45,6 +51,9 @@
   "dependencies": {
     "bitecs": "0.4.0",
     "pixi.js": "8.19.0",
-    "zod": "^3.23.0"
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "^3.23.0",
+    "zustand": "5.1.0"
   }
 }

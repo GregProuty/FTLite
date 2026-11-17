@@ -1,3 +1,4 @@
+import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 import { defineConfig } from 'electron-vite';
 import { computeContentDigest } from './build/contentDigest';
@@ -18,7 +19,7 @@ export default defineConfig({
     envDir: false,
     // electron-vite's renderer defaults use `envDir || root`; restore the
     // explicit opt-out after that config hook and before Vite loads env files.
-    plugins: [{ name: 'no-renderer-env-files', enforce: 'post', config: () => ({ envDir: false }) }],
+    plugins: [react(), { name: 'no-renderer-env-files', enforce: 'post', config: () => ({ envDir: false }) }],
     publicDir: resolve('public'),
     define: { __GAMEPLAY_CONTENT_DIGEST__: digest },
     build: { rollupOptions: { input: { index: resolve('src/renderer/index.html'), networkTransport: resolve('src/renderer/networkTransport.html') } } }
