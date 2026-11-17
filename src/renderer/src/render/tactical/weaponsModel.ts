@@ -10,9 +10,10 @@ import { worldToScreen, type Point } from './camera';
 import { interpolatedMissile, type FxState } from './fxModel';
 import { predictMissilePath } from './missilePath';
 import {
-  BEARING_RING_ZOOM, headingAngle, interpolatedShip, ringDraw, SHIP_CHEVRON_PX, wedgeSegments, type Label, type PrevBody, type RingDraw,
+  BEARING_RING_ZOOM, headingAngle, interpolatedShip, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
 } from './tacticalModel';
+import { hullFor, roomCentre } from './hullModel';
 
 /** The laser arc's half-angle in radians: ±60° (cos 0.5). */
 export const ARC_HALF = Math.acos(LASER_ARC_COS);
@@ -44,14 +45,6 @@ export function bearingDeg(dx: number, dy: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
-/** A room segment's centre in ship units (forward f, right s): the mean of its polygon's vertices. */
-export function segmentCentre(room: number): { f: number; s: number } {
-  const poly = wedgeSegments()[room]!.poly;
-  let f = 0, s = 0;
-  for (let i = 0; i < poly.length; i += 2) { f += poly[i]!; s += poly[i + 1]!; }
-  return { f: f / (poly.length / 2), s: s / (poly.length / 2) };
-}
-
 export function combatModel(input: CombatModelInput): CombatDraw {
   const { state, prev, alpha, camera: cam, viewport: vp } = input, z = cam.zoom;
   const toS = (x: number, y: number): Point => worldToScreen(cam, vp, x, y);
@@ -67,12 +60,12 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     missiles.push({ x: p.x, y: p.y, angle: headingAngle(m.h), crew: i === 0, trail: input.fx.trails[i as 0 | 1].map((q) => toS(q.x, q.y)) });
   }
 
-  // The lock marker sits on the enemy's locked room segment, or on the chevron when the ship is drawn as one.
+  // The lock marker sits on the locked room of the enemy's hull (the scout), or on the chevron when the ship is drawn as one.
   let lock: LockDraw | null = null;
   const room = state.systems[0].lock;
   if (onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {
     const chevron = 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, a = headingAngle(enemy.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx;
-    const c = chevron ? { f: 0, s: 0 } : segmentCentre(room), k = SHIP_RADIUS * z;
+    const c = chevron ? { f: 0, s: 0 } : roomCentre(hullFor(false), room), k = SHIP_RADIUS * z;
     const x = enemyS.x + (fx * c.f + rx * c.s) * k, y = enemyS.y + (fy * c.f + ry * c.s) * k, r = Math.max(7, k * 0.45);
     lock = { x, y, r, room, label: { text: `LOCK ${ROOM_NAMES[room]}`, x: enemyS.x + Math.max(14, k * 1.6) + 6, y: enemyS.y - 8 } };
   }

@@ -10,7 +10,8 @@ import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, rese
 import { MISSILE_PATH_MAX_TICKS, predictMissilePath } from '../src/renderer/src/render/tactical/missilePath';
 import { createTacticalLayer, starField } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ARROW_GAP_SIDE, ARROW_MARGIN, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
-import { ARC_HALF, bearingDeg, combatModel, segmentCentre, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { ARC_HALF, bearingDeg, combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { roomCentre } from '../src/renderer/src/render/tactical/hullModel';
 
 const vp = { w: 1280, h: 720 };
 const count = (c: Container): number => c.children.reduce((n, k) => n + 1 + count(k as Container), 0);
@@ -105,7 +106,7 @@ describe('the combat model (H-1 spec §7)', () => {
     for (const console of ['helm', 'weapons'] as const) {
       st.systems[0].lock = 0;
       let c = combatModel(input(st, cam, console));
-      const nose = segmentCentre(0);
+      const nose = roomCentre('scout', 0);
       expect(c.lock!.x).toBeCloseTo(640 + nose.f * SHIP_RADIUS, 9); expect(c.lock!.y).toBeCloseTo(360, 9);
       expect(c.lock!.label.text).toBe('LOCK WEAPONS');
       st.systems[0].lock = 2;

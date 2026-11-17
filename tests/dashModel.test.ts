@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { dashCircle, dashLine, hatchSegments, isConvex } from '../src/renderer/src/render/tactical/dashModel';
-import { wedgeSegments } from '../src/renderer/src/render/tactical/tacticalModel';
 
 const lengths = (s: readonly number[]): number[] => { const out: number[] = []; for (let i = 0; i < s.length; i += 4) out.push(Math.hypot(s[i + 2]! - s[i]!, s[i + 3]! - s[i + 1]!)); return out; };
 
@@ -37,10 +36,7 @@ describe('dashCircle', () => {
   });
 });
 
-describe('isConvex and the wedge segments', () => {
-  it('every wedgeSegments polygon is convex, so the hatch clips by line-polygon intersection without a split', () => {
-    for (const s of wedgeSegments()) expect(isConvex(s.poly), `room ${s.room}`).toBe(true);
-  });
+describe('isConvex', () => {
   it('tells convex from concave', () => {
     expect(isConvex([0, 0, 10, 0, 10, 10, 0, 10])).toBe(true);
     expect(isConvex([0, 0, 10, 0, 5, 2, 10, 10, 0, 10])).toBe(false);

@@ -6,6 +6,7 @@ import { predictPath } from '../../sim/tactical/predict';
 import { CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT, R_MAP, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
+import { hullFor, type HullId } from './hullModel';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -42,6 +43,8 @@ export interface ShipDraw {
   /** Screen pixels per world unit (the zoom) for the silhouette. */
   scale: number;
   chevron: boolean; crew: boolean;
+  /** The silhouette (hull silhouettes spec section 2): the shape comes from HULLS[hull], the colours from `crew`. */
+  hull: HullId;
   rooms: readonly number[]; shields: number;
 }
 export interface RingDraw { x: number; y: number; r: number; ticks: (Line & { major: boolean })[]; labels: Label[] }
@@ -257,7 +260,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const b = interpolatedShip(state, prev, alpha, i), s = state.systems[i]!;
     if (!onScreen(b.x, b.y, SHIP_RADIUS * 2)) continue;
     const p = toS(b.x, b.y);
-    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: z, chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, rooms: s.rooms, shields: s.shields });
+    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: z, chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: hullFor(i === 0), rooms: s.rooms, shields: s.shields });
   }
 
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
@@ -297,19 +300,6 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
   };
-}
-
-/** The wedge silhouette in ship units (forward f, right s; the nose at +f), split into the three room segments of
- *  parent §5: Weapons (nose), Shields (flanks), Engines (stern). Each is a flat [f, s, f, s, ...] polygon. */
-export const WEDGE_NOSE = 1.3, WEDGE_TAIL = -0.9, WEDGE_HALF = 0.85;
-function halfWidth(f: number): number { return (WEDGE_HALF * (WEDGE_NOSE - f)) / (WEDGE_NOSE - WEDGE_TAIL); }
-export function wedgeSegments(): { room: number; poly: number[] }[] {
-  const a = 0.3, b = -0.5, wa = halfWidth(a), wb = halfWidth(b);
-  return [
-    { room: 0, poly: [WEDGE_NOSE, 0, a, wa, a, -wa] },
-    { room: 1, poly: [a, -wa, a, wa, b, wb, b, -wb] },
-    { room: 2, poly: [b, -wb, b, wb, WEDGE_TAIL, WEDGE_HALF, WEDGE_TAIL, -WEDGE_HALF] }
-  ];
 }
 
 const shapeCache = new Map<number, number[]>();
