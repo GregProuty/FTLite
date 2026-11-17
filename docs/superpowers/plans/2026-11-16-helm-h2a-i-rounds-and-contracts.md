@@ -55,7 +55,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 7. **The `records` hook reads the cue baseline** **(rec.)**: the core calls `records(previousCues, state)` after the tick's cues; the duel's baseline becomes `{ outcome, round }`, and a round record is emitted when the same round leaves Running. The duel never reports `ended` any more; its `EndRecord` variant stays in the codec, now carrying the widened summary.
 8. **The widened summary** (spec §8): `missileLosses` is per ship, each a record of the accumulator's six causes in their order; every other figure is a per-ship or per-player pair, or a single count. `DuelRoundRecord` is the summary plus `round`, `seed` and `baseTick`.
 9. **The layout cache is keyed by the layout object** **(rec.; the spec says by `layout.id` and `layoutHash`)**: computing the `layoutHash` is `deriveLayout`, the cost the cache avoids, so the key is the layout object itself, and the entry holds its id and `layoutHash`, which validation compares exactly as before. Bounded at 4 like the spec's.
-10. **`roundSeed` keeps a memoised chain** **(rec.)**: round n's seed applies `nextValidSeed(s + 1)` n times from the init seed; the chain is kept for four init seeds, so validating a checkpoint of round n does not regenerate n maps.
+10. **`roundSeed` keeps a memoised chain** **(rec.)**: round n's seed applies `nextValidSeed(s + 1)` n times from the init seed; the chain is kept for four init seeds, so validating a checkpoint of round n does not regenerate n maps. A round is bounded by `MAX_DUEL_ROUNDS` (1024, in `snapshot.ts`, which `seeds.ts` already imports): `roundSeed` throws above it, and the snapshot's round check refuses a round above it or one whose base tick is below 2n (each earlier round took a deciding step and a rematch step), before any seed work.
 11. **The replay frame's event kind gains `round`** (not a wire schema): a duel replay records the round events like any other.
 12. **The rematch golden** (`tests/golden/duel-rematch.json`): seed 1's scripted pair to its outcome, a rematch from player 0 on the first end-card tick, a fresh scripted pair for round 2 to its outcome, `hashDuel` whenever the encounter tick is a multiple of 600: `{ simVersion, seed, every, rematchTick, rounds: [{ seed, baseTick, outcome, ticks }], finalHash, hashes }`, read by `duelVersionFromText` for the guard.
 13. **The publication budget, measured** (spec §5; this machine, seed 2026 at tick 3,600, 600 samples, two runs): before the cache the host's median per tick is 0.598 to 0.792 ms and the client's per publication 0.706 to 0.940 ms (restore by `loadDuelSnapshot`); after it, 0.376 to 0.387 ms and 0.262 to 0.272 ms (restore by `restoreDuelSnapshot`). Both budgets (1.5 ms and 1.0 ms) are met after the cache, with room; the script exits 1 above them.
@@ -88,7 +88,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 **Interfaces:**
 - Consumes: `createTacticalState`, `validateMap`, `mapHash`, `TACTICAL_MODULES`, `tacticalLength`, `hashTactical`, `deriveLayout`, `canonicalFields`.
 - Produces:
-  - `snapshot.ts`: `SEED_CACHE_MAX` (8), `LAYOUT_CACHE_MAX` (4); `duelSeedFacts(seed): { valid, mapHash, spaceLength, graceLength }`; `duelCacheProbe(seed?): { seeds, layouts, shapeHash }` (tests only; never the shape); `restoreDuelSnapshot(d, snapshot, contentDigest): void`.
+  - `snapshot.ts`: `SEED_CACHE_MAX` (8), `LAYOUT_CACHE_MAX` (4), `MAX_DUEL_ROUNDS` (1024); `duelSeedFacts(seed): { valid, mapHash, spaceLength, graceLength }`; `duelCacheProbe(seed?): { seeds, layouts, shapeHash }` (tests only; never the shape); `restoreDuelSnapshot(d, snapshot, contentDigest): void`.
   - `seeds.ts`: `MAX_SEED_STEPS` (16); `nextValidSeed(seed)`, `followingSeed(seed)`, `roundSeed(initSeed, round)`, `seedFromRunId(runId)`.
 
 - [ ] **Step 0: Check the prerequisite**
@@ -193,7 +193,7 @@ import { describe, expect, it } from 'vitest';
 import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import * as snapshots from '../src/renderer/src/sim/duel/snapshot';
-import { duelCacheProbe, duelSeedFacts, LAYOUT_CACHE_MAX, loadDuelSnapshot, restoreDuelSnapshot, saveDuelSnapshot, SEED_CACHE_MAX, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
+import { duelCacheProbe, duelSeedFacts, LAYOUT_CACHE_MAX, loadDuelSnapshot, MAX_DUEL_ROUNDS, restoreDuelSnapshot, saveDuelSnapshot, SEED_CACHE_MAX, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { followingSeed, MAX_SEED_STEPS, nextValidSeed, roundSeed, seedFromRunId } from '../src/renderer/src/sim/duel/seeds';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
@@ -263,6 +263,7 @@ describe('restoreDuelSnapshot (spec §4)', () => {
       const snap = validateDuelSnapshot(CUTTER, saveDuelSnapshot(b, DIGEST), DIGEST), interior = a.interior;
       restoreDuelSnapshot(a, snap, DIGEST);
       expect(a.interior).toBe(interior);                       // no new interior
+      expect([a.events, a.tactical.events]).toEqual([[], []]);   // as a fresh load: no per-tick events
       expect(hashDuel(a)).toBe(hashDuel(b));
       const loaded = loadDuelSnapshot(CUTTER, snap, DIGEST);
       try { expect(hashDuel(loaded)).toBe(hashDuel(a)); } finally { disposeDuel(loaded); }
@@ -293,6 +294,7 @@ describe('the duel seeds (spec §2)', () => {
     expect(roundSeed(init, 0)).toBe(init);
     let s = init;
     for (let n = 1; n <= 5; n++) { s = nextValidSeed((s + 1) >>> 0); expect(roundSeed(init, n)).toBe(s); expect(followingSeed(roundSeed(init, n - 1))).toBe(s); }
+    expect(() => roundSeed(init, MAX_DUEL_ROUNDS + 1)).toThrow(/invalid duel round 1025/);   // bounded before any seed work
   });
   it('a room seed is the runId\'s first eight hex digits as a u32, then the next valid seed', () => {
     expect(seedFromRunId('0000002a' + '0'.repeat(24))).toBe(nextValidSeed(42));
@@ -313,7 +315,7 @@ Create `src/renderer/src/sim/duel/seeds.ts`:
 // The duel's seeds (H-2 spec §2): a room's first seed comes from its runId, every round's seed from the one before.
 // A seed is valid when its map passes validateMap; the next valid seed advances by one (wrapping at 2^32) and gives up
 // after MAX_SEED_STEPS. Pure and deterministic, so both machines compute the same seeds for a room.
-import { duelSeedFacts } from './snapshot';
+import { duelSeedFacts, MAX_DUEL_ROUNDS } from './snapshot';
 
 /** How many seeds nextValidSeed tries before it gives up. */
 export const MAX_SEED_STEPS = 16;
@@ -333,9 +335,10 @@ export function nextValidSeed(seed: number): number {
 export function followingSeed(seed: number): number { return nextValidSeed((seed + 1) >>> 0); }
 
 const chains = new Map<number, number[]>();
-/** Round n's seed for a duel whose init seed is `initSeed` (round 0 is the init seed itself), memoised per init seed. */
+/** Round n's seed for a duel whose init seed is `initSeed` (round 0 is the init seed itself), memoised per init seed.
+ *  The round is bounded by MAX_DUEL_ROUNDS, so a forged round never extends the chain without limit. */
 export function roundSeed(initSeed: number, round: number): number {
-  if (!Number.isSafeInteger(round) || round < 0) throw new Error(`invalid duel round ${round}`);
+  if (!Number.isSafeInteger(round) || round < 0 || round > MAX_DUEL_ROUNDS) throw new Error(`invalid duel round ${round}`);
   let chain = chains.get(initSeed);
   if (!chain) {
     chain = [initSeed]; chains.set(initSeed, chain);
@@ -404,6 +407,8 @@ with:
 /** The seed cache's and the layout cache's bounds (H-2 spec §5). */
 export const SEED_CACHE_MAX = 8;
 export const LAYOUT_CACHE_MAX = 4;
+/** The highest round index a snapshot or roundSeed accepts: far beyond any session, and it bounds the seed chain. */
+export const MAX_DUEL_ROUNDS = 1024;
 interface SeedEntry {
   valid: boolean; mapHash: string; spaceLength: number; fieldOffsets: ReadonlyMap<string, number>; graceLength: number;
   /** createTacticalState(seed), read only by validateTacticalValues; never returned to a caller. */
@@ -586,6 +591,7 @@ export function restoreDuelSnapshot(d: DuelState, snapshot: DuelSnapshot, conten
   if (h.contentDigest !== contentDigest || h.simVersion !== SIM_VERSION) throw new Error('duel snapshot versions do not match');
   if (h.layoutId !== d.interior.layout.id || h.layoutHash !== d.interior.derived.layoutHash || h.seed !== d.tactical.seed) throw new Error('duel snapshot is for another layout or seed: load it instead');
   writeBack(d, snapshot);
+  d.events = []; d.tactical.events = [];   // not snapshotted: a restore holds no per-tick events, as a fresh load
 }
 ````
 
@@ -1418,7 +1424,9 @@ describe('a decided round and the rematch (spec §7)', () => {
   it('a round started at T agrees with a fresh duel of its seed in every canonical field for 600 ticks, apart from the tick stamps', () => {
     const d = decided(4);
     try {
-      for (let k = 0; k < 250; k++) step(d);
+      // decided(4) ends on tick 1; 255 end-card steps and the rematch step put the round's base at T = 257, a prime, so
+      // no tick-periodic rule can agree at T and at 0 by its period dividing T.
+      for (let k = 0; k < 255; k++) step(d);
       step(d, [env(d, 0, { kind: 'rematch' })]);
       const T = d.baseTick, fresh = createDuel(CUTTER, d.tactical.seed), pa = createScriptedPair(d.tactical.seed), pb = createScriptedPair(d.tactical.seed);
       // Tick stamps: these hold an encounter tick, so a round started at T holds the fresh duel's value plus T.
@@ -1441,13 +1449,16 @@ describe('a decided round and the rematch (spec §7)', () => {
   it('after a rematch, the stepped duel hashes as its saved-and-loaded copy at every tick for 600 ticks', () => {
     const d = decided(6);
     try {
-      step(d, [env(d, 0, { kind: 'rematch' })]);
+      expect(step(d, [env(d, 0, { kind: 'rematch' })]).map((r) => r.status)).toEqual(['applied']);
+      expect(d.round).toBe(1);
       const pair = createScriptedPair(d.tactical.seed);
-      for (let k = 0; k < 600 && d.tactical.outcome === Outcome.Running; k++) {
+      let ticks = 0;
+      for (let k = 0; k < 600 && d.tactical.outcome === Outcome.Running; k++, ticks++) {
         stepDuelTick(d, scriptedInput(pair, d));
         const r = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
         try { expect(hashDuel(r), `tick ${d.interior.tick}`).toBe(hashDuel(d)); } finally { disposeDuel(r); }
       }
+      expect(ticks).toBe(600);   // the rematch round ran: the loop is not vacuous
     } finally { disposeDuel(d); }
   }, 60_000);
 });
@@ -1538,6 +1549,12 @@ describe('rounds through the authority (spec §7, §10)', () => {
     live.command(0, { kind: 'setPaused', paused: false }); live.tick(3);
     expect(live.state.duel.tactical.outcome).not.toBe(Outcome.Running);
     expect(throughBytes(live.core.captureCheckpoint()).phase).toBe('running');
+    // Paused on the decided round's end card: the checkpoint validates and a re-host restores it.
+    live.command(0, { kind: 'setPaused', paused: true }); live.tick();
+    const card = throughBytes(live.core.captureCheckpoint()), cardRound = duelRoundOf(card.snapshot);
+    expect([card.phase, cardRound.round, cardRound.outcome]).toEqual(['paused', 2, Outcome.CrewWins]);
+    const rehostCard = liveDuel(card.init, undefined, card);
+    expect(duelRules.hash(rehostCard.state)).toBe(duelRules.hash(live.state));
   });
 });
 ````
@@ -1779,6 +1796,18 @@ with:
 In `tests/duelSnapshot.test.ts`, replace:
 
 ````ts
+import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
+````
+
+with:
+
+````ts
+import { loadDuelSnapshot, MAX_DUEL_ROUNDS, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
+````
+
+In `tests/duelSnapshot.test.ts`, replace:
+
+````ts
       expect(() => validateDuelSnapshot(CUTTER, twice, DIGEST)).toThrow(new RegExp(`ship ${owner} has two missiles in flight`));
       const interiorAt = at + 5, fieldsAt = interiorAt;
       for (const [k, value, error] of [[0, 1e6, /interior sim version/], [1, 12345, /interior layout/], [2, 12345, /interior layout/], [5, 1, /crew count/], [9, 3, /crew count/]] as const) {
@@ -1806,14 +1835,49 @@ with:
       }
       // The round module (H-2 spec §7): a round index, the Helm player, a base tick no later than the tick, and a
       // decided tick that is −1 exactly while the round runs.
-      for (const [k, value, error] of [[0, -1, /round -1/], [0, 0.5, /round 0.5/], [1, 2, /helm player/], [2, 5157, /base tick/], [2, -1, /base tick/], [3, 7, /decided tick/]] as const) {
+      for (const [k, value, error] of [[0, -1, /round -1/], [0, 0.5, /round 0.5/], [0, MAX_DUEL_ROUNDS + 1, /round 1025 is invalid/], [0, 1, /round 1 is invalid/],
+        [1, 2, /helm player/], [2, 5157, /base tick/], [2, -1, /base tick/], [3, 7, /decided tick/]] as const) {
         const snap = structuredClone(good); snap.values[at + 5 + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `round[${k}] = ${value}`).toThrow(error);
       }
+      // Round n begins no earlier than tick 2n (a deciding step and a rematch step per round before it).
+      for (const [round, base] of [[1, 1], [MAX_DUEL_ROUNDS, 2 * MAX_DUEL_ROUNDS - 1]] as const) {
+        const snap = structuredClone(good); snap.values[at + 5] = round; snap.values[at + 5 + 2] = base; snap.header.hash = hashF64(Float64Array.from(snap.values));
+        expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `round ${round} at base ${base}`).toThrow(new RegExp(`round ${round} is invalid`));
+      }
+````
+
+In `tests/duelSnapshot.test.ts`, replace (after the spy is restored, so the decided duel's createDuel is not counted):
+
+````ts
+      expect(created).toHaveBeenCalledTimes(1);
+      created.mockRestore();
+````
+
+with:
+
+````ts
+      expect(created).toHaveBeenCalledTimes(1);
+      created.mockRestore();
+      // A decided round (the hunter down on tick 1, then five end-card ticks): its decided tick lies between the base tick and the tick.
+      const dd = createDuel(CUTTER, 7);
+      try {
+        dd.tactical.systems[1].hull = 0;
+        for (let k = 0; k < 6; k++) stepDuelTick(dd, { held: [], commands: [] });
+        expect([dd.tactical.outcome, dd.decidedTick, dd.interior.tick]).toEqual([Outcome.CrewWins, 1, 6]);
+        const card = saveDuelSnapshot(dd, DIGEST);
+        let ra = 1;
+        for (const m of TACTICAL_MODULES) for (const f of m.fields(dd.tactical)) ra += f.count;
+        ra += 5;   // after presence and repair
+        for (const [base, value] of [[0, -1], [1, 0], [0, 7]] as const) {   // −1; base tick − 1; tick + 1
+          const snap = structuredClone(card); snap.values[ra + 2] = base; snap.values[ra + 3] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
+          expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `decided tick ${value} at base ${base}`).toThrow(/decided tick/);
+        }
+      } finally { disposeDuel(dd); }
 ````
 
 Run: `npx vitest run tests/duelRounds.test.ts`
-Expected: FAIL, 9 tests: `createDuel` has no Helm player and the duel has no round module.
+Expected: FAIL, 10 tests: `createDuel` has no Helm player and the duel has no round module.
 
 - [ ] **Step 2: The round module's members and the Helm player**
 
@@ -2288,13 +2352,15 @@ with:
     const v = values[k]!, presence = k < 1 + space + 2;
     if (presence ? v !== 0 && v !== 1 : !Number.isInteger(v) || v < 0 || v >= REPAIR_UNITS) throw new Error(`duel snapshot ${presence ? 'presence' : 'repair'} value ${v} is out of range`);
   }
-  // The round module: a round index, the Helm player 0 or 1, a base tick no later than the tick, and a decided tick that
-  // is −1 exactly while the outcome is Running, otherwise between the base tick and the tick.
+  // The round module: a round index (at most MAX_DUEL_ROUNDS, and round n begins no earlier than tick 2n: each round
+  // before it took a deciding step and a rematch step), the Helm player 0 or 1, a base tick no later than the tick, and
+  // a decided tick that is −1 exactly while the outcome is Running, otherwise between the base tick and the tick.
   const [round, helm, base, decided] = values.slice(roundAt, interiorAt) as [number, number, number, number];
   const running = values[seed.fieldOffsets.get('outcome')!] === Outcome.Running;
-  if (!Number.isSafeInteger(round) || round < 0) throw new Error(`duel snapshot round ${round} is invalid`);
+  if (!Number.isSafeInteger(round) || round < 0 || round > MAX_DUEL_ROUNDS) throw new Error(`duel snapshot round ${round} is invalid`);
   if (helm !== 0 && helm !== 1) throw new Error(`duel snapshot helm player ${helm} is invalid`);
   if (!Number.isSafeInteger(base) || base < 0 || base > h.tick) throw new Error(`duel snapshot base tick ${base} is invalid`);
+  if (2 * round > base) throw new Error(`duel snapshot round ${round} is invalid at base tick ${base}`);
   if (running ? decided !== -1 : !Number.isSafeInteger(decided) || decided < base || decided > h.tick) throw new Error(`duel snapshot decided tick ${decided} does not match the outcome`);
   const interior = values.slice(interiorAt);
 ````
