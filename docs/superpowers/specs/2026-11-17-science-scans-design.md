@@ -22,137 +22,159 @@ This is **Sci-1**: the world, the scans and a Science console a character can wa
 
 ## 3. The round, start to finish
 
-1. The round begins (fresh duel or rematch). The enemy (slot 1) is in **Patrol**; its contact level is 0 (unknown). The derelict is placed on its orbit, contact level 0. A **hostility clock** starts: the enemy turns hostile at `HOSTILE_AFTER_TICKS` = 1200 (20 s at 60 Hz) after the round's first tick.
-2. While in Patrol the enemy does not fire, charge or launch; it only flies (threat avoidance, no pursuit), and its shields start one layer below full (`SHIELD_LAYERS − 1` = 1) and do not recharge.
-3. It turns **Hostile** (Hunt, today's behaviour, shields recharge normally from then on) at the first of: the hostility clock running out; a crew laser hit on it (a release that `hit`, stripped or not); a crew missile landing on it. The turn is recorded at the end of the tick that caused it and is permanent for the round.
+1. The round begins (fresh duel or rematch). The enemy is in **Patrol**; both contacts are at level 0 (unknown). The derelict is on its orbit. The **hostility clock** runs on the round-relative tick `rt = state.tick − state.startTick` (§4.1).
+2. In Patrol the enemy does not fire, charge or launch; it flies only to avoid threats (§4.2); its shields start one layer below its class's layers and do not recharge.
+3. It turns **Hostile** (mode Hunt, today's behaviour, shields recharge normally from then on) at the first of: the clock (§4.1); a crew laser release that `hit` it (stripped or not); a crew missile landing on it. Permanent for the round.
 4. Meanwhile the crew may scan either contact, salvage the derelict, and tune the laser.
-5. The round ends exactly as today (hull to 0; the crew wins when every other active **ship** is gone; the derelict is not a ship and never counts).
+5. The round ends exactly as today (hull to 0; the crew wins when every other active **ship** is gone). The derelict is not a ship slot and never counts.
 
-## 4. Sim state (all new state is in the tactical modules and hashed)
+## 4. Sim rules
 
-All of it is reset by a new round, because a round builds a fresh tactical state.
+Contact ids are **not** ship slots: `Contact.Enemy = 0`, `Contact.Derelict = 1`. The enemy contact is drawn and aimed through the hunter's ship slot (`hunterSlot(state)`, slot 1 in the duel); the derelict has no slot.
 
-### 4.1 Hostility
+### 4.1 Round-relative time and hostility
 
-- `hunter.mode` gains `HunterMode.Patrol = 2`. `createTacticalState` sets `Patrol`.
-- `TacticalState.hostileAt: number`: the tactical tick on which the enemy turned hostile, −1 while in Patrol.
-- The hostility clock compares `state.tick` with `HOSTILE_AFTER_TICKS` (tactical ticks restart at 0 every round).
+- `TacticalState.startTick`: the tactical tick the round began on. `createTacticalState` sets 0; `startRound` (sim/duel/step.ts) sets it to `tick` beside `hunter.lastLaunch += tick`. Every round-relative rule below uses `rt = state.tick − state.startTick`, evaluated before `state.tick++`.
+- `TacticalState.hostileAt`: the round-relative tick the enemy turned hostile, −1 while in Patrol. `startRound` needs no shift for it (it is round-relative and the new round starts at −1).
+- `HunterMode.Patrol = 2`; `createTacticalState` sets `hunter.mode = Patrol` and `systems[1].shields = classOf(state, 1).shields.layers − 1`.
+- **Hostility step** (§4.6 position): if `hostileAt < 0` and (`rt >= HOSTILE_AFTER_TICKS − 1`, or this tick's `state.events` hold a crew `laser` event (`ship === CREW_SLOT`) with `hit` true, or a `missileEnd` from the crew with `target` the hunter slot), then `hostileAt = rt`, `hunter.mode = Hunt`, and a `hostile` event is pushed with cause `laser`, `missile` or `clock` (in that precedence when several apply). `HOSTILE_AFTER_TICKS` = 1200: with no ambush the step on `rt` = 1199 turns it, so it has been in Patrol for exactly 1200 steps (20 s) and the first hostile think is on `rt` = 1200.
 
-### 4.2 Contacts and scans
+### 4.2 Patrol behaviour (hunter.ts, weapons.ts)
 
-- Contact ids: `Contact.Enemy = 0`, `Contact.Derelict = 1`.
-- `TacticalState.known: [number, number]`: the level known per contact. Enemy 0..2, derelict 0..1.
-- `TacticalState.scan`: one ship scanner (Artemis has one): `{ contact: number (−1 idle), level: number, progress: number, rate: number, by: number }`.
-  - `progress` counts up by `rate` per tick; the level completes when it reaches `SCAN_UNITS[level]`: Level 1 = 900, Level 2 = 1800.
-  - `rate` is `SCAN_RATE_SCIENCE` = 5 when started from the Science console and `SCAN_RATE_OTHER` = 2 from Helm or Weapons.
-  - `by`: the station index of the console that started it.
-- **Times** (exact, at 60 Hz, from the values above): from Science, Level 1 takes 180 ticks (3 s) and Level 2 360 ticks (6 s); from Helm or Weapons, 450 ticks (7.5 s) and 900 ticks (15 s), i.e. 2.5× as long.
-- `TacticalState.designated: number`: the contact Science has pointed out (−1 none). Shown to everyone, no rule effect.
+- `hunterThink` in Patrol: updates the trail ring buffer as today, skips `updateRepair`, and returns `{ helm: true, weapons: false, axes: threat ? <today's avoidance axes> : { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false }`, with `threat = threatAhead(state, i)`. So it coasts on its orbit, the laser charge does not build and Fire is not held.
+- `tickWeapons`: for the hunter slot while `state.hostileAt < 0`, the shield clock is held at 0 and no layer is regained. Everything else in tickWeapons is unchanged.
 
-### 4.3 The weak frequency and the laser frequency
+### 4.3 Scans
 
-- `TacticalState.weakFreq: number` 0..2 (A..C), drawn once per round in `createTacticalState` from the tactical rng after the map.
-- `ShipSystems.freq: number` 0..2, the laser's tuned frequency; every ship starts at 0 (A). Only the crew's changes.
-- `fireLaser`: a hit on a ship with shields up strips **2** layers (to a floor of 0) when the shooter is the crew and `freq === weakFreq`, else 1. `layersStripped` counts layers actually removed.
+- `TacticalState.known: [number, number]`: level known per contact. Enemy 0..2, derelict 0..1.
+- One ship scanner (Artemis has one): `TacticalState.scan = { contact, level, progress, rate, by }`; idle is `contact = −1` with the other four 0. `by` is the station index of the console the scan runs from.
+- Units: Level 1 completes at 900, Level 2 at 1800 (`SCAN_UNITS = [0, 900, 1800]`). Rates: `SCAN_RATE_SCIENCE = 5` from the Science console, `SCAN_RATE_OTHER = 2` from Helm or Weapons.
+- **Progress step** (§4.6 position), when `contact ≥ 0`: if `crew.scanner` is false (§4.6), the scan goes idle. Otherwise `progress += rate`; if `progress >= SCAN_UNITS[level]`, `known[contact] = level`, a `scanDone` event is pushed and the scan goes idle.
+- **Exact times**: a scan started by a command admitted at tick t gets its first progress step in tick t, so it completes in the step of tick `t + ceil(units / rate) − 1`: from Science, Level 1 after 180 steps (3 s), Level 2 after 360 (6 s); from Helm or Weapons 450 (7.5 s) and 900 (15 s).
+- A scan of the enemy keeps running when it turns hostile.
+- `TacticalState.designated`: the contact Science has pointed out, −1 none. No rule reads it; it is shared so every screen shows it.
 
-### 4.4 The derelict
+### 4.4 Frequencies
 
-- `TacticalState.derelict: { orbitR: number; phase: number; loot: number; trapped: boolean; salvage: number; salvaged: boolean }`.
-- **Position** is closed form, never integrated: a clockwise circular orbit around the planet at `orbitR`, angle `phase + ω·tick`, with ω the circular-orbit angular speed for `orbitR` under the map's gravity (the same `circularSpeed` the spawns use). Velocity is the matching tangent. A pure function `derelictPos(state)` returns `{x, y, vx, vy}`.
-- It does not collide with anything and is not a ship slot; missiles and lasers ignore it.
-- **Placement**, drawn in `createTacticalState` after `weakFreq`: `orbitR` uniform integer in [900, 1500]; `phase` a heading index 0..255 chosen so that at tick 0 it is at least 600 from both spawns (draw, reject and redraw up to 16 times, then take the last; the draws are deterministic).
-- **Loot** (`loot` 0..2), drawn next: `Hull` (+8 hull, capped at the class hull), `Missiles` (magazine to full), `Shield` (+1 shield layer above the class maximum, for this round; it is lost when stripped and never recharges above the class maximum).
-- **Trapped**, drawn next: true with probability 1/3.
-- **Salvage**: each tick, if not `salvaged`, the crew ship (slot 0) is within `SALVAGE_RANGE` = 60 of the derelict's position and the crew ship's speed relative to the derelict is at most `SALVAGE_SPEED` = 40 u/s, `salvage` goes up by 1; otherwise it resets to 0. At `SALVAGE_TICKS` = 300 (5 s): `salvaged = true`, the loot applies to the crew's systems, and if `trapped` the crew loses `TRAP_HULL` = 3 hull (after the loot). It fires a `salvage` event (§4.6).
-- Salvage needs no scan and no seated Helm (anyone flying, or coasting into it, counts).
+- `TacticalState.weakFreq` 0..2 (A..C), drawn in `createTacticalState` (§4.5 draws).
+- `ShipSystems.freq` 0..2, the laser's tuned frequency; every ship starts at 0; only the crew's changes.
+- `fireLaser`: when the shooter is `CREW_SLOT`, the target's shields are up and `freq === state.weakFreq`, a hit strips `min(2, shields)` layers; otherwise 1 as today. `layersStripped` adds the layers actually removed. The hunter's laser is unchanged.
 
-### 4.5 Where the new steps run in the tick
+### 4.5 The derelict
 
-In `stepDuel`, fixed order: think → weapon commands → fly → missiles fly → contacts → missile contacts → weapon clocks → **hostility check** (laser/missile hits on the enemy this tick, or the clock) → **scan progress** → **salvage** → outcome → tick. The hunter's Patrol branch is inside `hunterThink`.
+- `TacticalState.derelict = { orbitR, phase, loot, trapped, salvage, salvaged }` (salvaged as 0/1 in the module).
+- **Draws**, in `createTacticalState`, after `generateMap` and before anything else uses the rng, in this order, with `shared/rng.ts`:
+  1. `weakFreq = nextInt(rng, 3)`.
+  2. `u = nextInt(rng, 501)`; `orbitR = u <= 300 ? 700 + u : 1400 + (u − 301)`, so `orbitR` ∈ [700, 1000] ∪ [1400, 1599], clear of the asteroid belt (`BELT_INNER` 1100 to `BELT_OUTER` 1300). Drawn once.
+  3. `phase = nextInt(rng, 256)`, redrawn while the position at `rt = 0` is within 600 of either spawn, at most 16 draws in all; the last draw stands.
+  4. `loot = nextInt(rng, 3)`: 0 `Hull`, 1 `Missiles`, 2 `Shield`.
+  5. `trapped = nextInt(rng, 3) === 0`.
+- **Position** (pure `derelictPos(state)` in the new `sim/tactical/science.ts`), with the sim's table trig only (no `Math.sin`/`Math.cos`):
+  - `ωh = circularSpeed(orbitR) / orbitR · DT · HEADING_COUNT / (2π)` heading units per tick (clockwise, like the spawn orbits).
+  - `a = phase + ωh · rt`; `i = floor(a)`, `f = a − i`; `[ux, uy] = dirBetween(wrapHeading(i), f)`; position `(ux · orbitR, uy · orbitR)` about the planet at the origin.
+  - velocity: `[vx, vy] = dirBetween(wrapHeading(i + HEADING_COUNT / 4), f)` times `circularSpeed(orbitR)` (prograde, as `spawnAt` uses heading + 64).
+- It does not collide with anything; missiles and lasers ignore it.
+- **Loot effects**: `Hull` +8 hull capped at the class hull; `Missiles` magazine to the class magazine; `Shield` +1 layer, allowed to reach `layers + 1` once; it is never regained above `layers` (tickWeapons already holds the clock at `shields >= layers`).
+- **Salvage step** (§4.6 position), while `salvaged` is 0 and the round runs: if the crew ship (slot 0) is within `SALVAGE_RANGE` = 60 of `derelictPos` and its speed relative to the derelict's velocity is at most `SALVAGE_SPEED` = 40 u/s, `salvage += 1`, else `salvage = 0`. When `salvage` reaches `SALVAGE_TICKS` = 300 (5 s): `salvaged = 1`, the loot applies to the crew's systems, then, if trapped, the crew loses `TRAP_HULL` = 3 hull (floor 0, so a trap can decide the round in the outcome check that follows); a `salvage` event is pushed. It needs no scan and no seated Helm.
 
-### 4.6 Events (per tick, not hashed)
+### 4.6 The tactical step
 
-New `DuelEvent` kinds: `{ kind: 'hostile'; cause: 'clock' | 'laser' | 'missile' }`, `{ kind: 'scanDone'; contact; level }`, `{ kind: 'salvage'; loot; trapped }`. Views use them for a line of text and a sound.
+- `ShipInput` gains `scanner: boolean`: whether the station running the ship's scan is attended. step.ts sets it to `scan.contact < 0 || attendant(d, scan.by) >= 0` after the seat phase. Every other constructor of a crew `ShipInput` (the hunter's, `UNCREWED_INPUT`, the gate and test bots) sets `true`.
+- `stepDuel` order, fixed: think → weapon commands → fly → missiles fly → contacts → missile contacts → weapon clocks → **hostility** → **scan progress** (crew input's `scanner`) → **salvage** → outcome → tick. Hostility, scan and salvage live in the new `sim/tactical/science.ts`, called from `stepDuel`, so the headless gates (which call `stepDuel` directly) get Patrol and hostility too.
+- New per-tick `DuelEvent` kinds (not hashed): `{ kind: 'hostile'; cause: 'clock' | 'laser' | 'missile' }`, `{ kind: 'scanDone'; contact: number; level: number }`, `{ kind: 'salvage'; loot: number; trapped: boolean }`.
 
-## 5. Commands (duel command union)
+## 5. Commands
 
-| Command | Who | Rule | Rejections |
+Three new `DuelCommand` kinds. `contactScan` is named so it does not collide with the sector's `scan` in the shared `Command` union.
+
+| Command (wire) | Who | Rule | Results |
 |---|---|---|---|
-| `{ kind: 'scan'; contact: number }` | A player seated at Helm, Weapons or Science | Starts the next level for that contact (`known + 1`). If the scanner is already on that contact, `noop` (Artemis: a repeat click is ignored). If it is on the other contact, that scan is aborted (progress lost) and this one starts. Rate from the seat (Science fast, Helm/Weapons slow). | `not-seated` (not at one of the three), `malformed` (contact not 0/1), `unavailable` (contact fully known, or the derelict already salvaged and scanned) |
-| `{ kind: 'designate'; contact: number }` | Seated at Science | Sets `designated` (−1 clears) | `invalid-seat`, `malformed` |
-| `{ kind: 'laserFrequency'; freq: number }` | Seated at Weapons | Sets the crew's `freq` | `not-at-weapons`, `malformed` (not 0..2), `noop` if unchanged |
+| `{ kind: 'contactScan'; contact: number }` (`z.number().int()`) | Seated at Helm, Weapons or Science (`attendant` of that station is the sender) | Next level for that contact: `level = known[contact] + 1`. If the scanner is idle, start it (`progress 0`, `rate` and `by` from the sender's station). If it is already on that contact and level: keep the progress; if the sender's rate is higher, take it and its `by` (applied), else `noop` (Artemis ignores a repeat click). If it is on the other contact, abort that one (progress lost) and start this one. | `invalid-seat` (not seated at one of the three); `malformed` (contact not 0 or 1); `unavailable` (that contact fully known) |
+| `{ kind: 'designate'; contact: number }` (`z.number().int()`) | Seated at Science | Sets `designated` | `invalid-seat`; `malformed` (not −1, 0 or 1); `noop` if unchanged |
+| `{ kind: 'laserFrequency'; freq: number }` (`z.number().int()`) | Seated at Weapons | Sets the crew's `freq`; applies to a release in the same tick | `not-at-weapons`; `malformed` (not 0..2); `noop` if unchanged |
 
-- All three are checked for `stale-tick` like the other tactical commands.
-- **Cancel by leaving:** if, at the scan-progress step, the station `by` has no present player seated at it, the scan stops (contact −1, progress 0).
-- A scan whose level completes sets `known[contact] = level`, emits `scanDone`, and goes idle.
-- New reason strings, if any are needed, join `COMMAND_REASONS`; the plan reuses existing reasons where they fit.
+- All three are checked first for `stale-tick`, like the other tactical commands. No new reason strings.
+- **Admission phase**, in step.ts after the throttle loop: every `laserFrequency` in envelope order, then every `designate`, then every `contactScan`, each against the seats as they stand after the seat phase; within a kind the last applied wins.
+- They join `DUEL_KINDS`, `duelWire.commands` (net/codec.ts) and the new science module's `commands` list (§6.2).
 
-## 6. Seats
+## 6. Seats, state and snapshots
 
-- `DuelState.science: number`: the station index of the layout's Science console, or −1 when the layout has none (the Hound has one, in Ops, in the console group shared with Engineering and Doors).
-- `sit` is allowed at `nav`, `weapons` and `science`. `consoleInReach` and the solo character switch include it. `Seat` gains `'science'`.
-- The Science console's group is not checked against Helm/Weapons (it is in another room).
-- The scripted pair and the hunter-gate bots never scan, designate, tune or salvage on purpose (Sci-1 adds no bot logic).
-- Two players still: `present` and `helmPlayer` stay two-wide in Sci-1. Sci-2 widens them.
+### 6.1 Seats
+
+- `DuelState.science`: the station index of the layout's Science console (`stationOfKind[StationKind.Science]`), or −1 when the layout has none. The Hound has one in Ops, in the console group shared with Engineering and Doors; no group check against Helm/Weapons is needed (other room). Added to `DUEL_NOT_SNAPSHOTTED` ("the Science station index, from the layout").
+- `sit` is allowed at `nav`, `weapons` and `science` (when ≥ 0). `consoleInReach` includes it. `Seat` gains `'science'` (`seatOf`).
+- Two players still: `present` and `helmPlayer` stay two-wide (Sci-2 widens them). The scripted pair and the gate bots never scan, designate, tune or salvage on purpose.
+
+### 6.2 Module fields and validation
+
+- New tactical module **`science`** (sim/tactical/hash.ts), in `TACTICAL_MODULES` after `ship` and in `DUEL_MODULES` after `ship` (path `tactical`). Fields in this order: `startTick`, `hostileAt`, `known.0`, `known.1`, `scan.contact`, `scan.level`, `scan.progress`, `scan.rate`, `scan.by`, `designated`, `weakFreq`, `derelict.orbitR`, `derelict.phase`, `derelict.loot`, `derelict.trapped`, `derelict.salvage`, `derelict.salvaged`. Its `commands` are the three kinds; its `reasons` `stale-tick`, `invalid-seat`, `not-at-weapons`, `malformed`, `unavailable`.
+- `ship` module: `freq` joins the systems record's canonical fields right after `lock`.
+- `cloneTacticalFromModule` builds fresh `known`, `scan` and `derelict` containers (no sharing with the original).
+- Validation: `hunter.mode` within Hunt..Patrol; `shields` within 0..(largest class layers + 1); `freq` 0..2; `startTick`, `scan.progress`, `derelict.salvage` counts; `hostileAt` ≥ −1; `known.0` 0..2, `known.1` 0..1; `scan.contact`, `designated` −1..1; `scan.level` 0..2; `scan.rate` 0, 2 or 5; `scan.by` ≥ 0; `weakFreq`, `derelict.loot`, `derelict.trapped` and `derelict.salvaged` in range; `derelict.orbitR` in the drawn bands; `derelict.phase` 0..255.
+
+### 6.3 SIM_VERSION and the goldens (two steps, as Artemis-ii §5.6)
+
+1. **Step 1**: `SIM_VERSION` 43 → 44; every new field at a neutral value (no Patrol: `hostileAt` 0 and mode Hunt from the start, no new rng draws, scan idle, `freq` 0, derelict zeroed with `salvaged` 1 so it does nothing), the three commands and their admission, and `MIGRATIONS[43] = { change: 'Sci-1: science scans', rename: () => undefined, derived: [], added: [/^science\./, /^ship\.systems\.\d+\.freq$/] }`. Bless; the oracle proves every existing run unchanged.
+2. **Step 2**: Patrol, the draws, the scans' effects, salvage and the frequency strip; bless the goldens again at 44 with the reason.
 
 ## 7. What each screen shows
 
 ### 7.1 Every console (Helm, Weapons, Science)
 
-- **Unknown contacts** (level 0) draw on the map as a plain `?` marker in `CRT.dim`, no silhouette, no shield ring. The enemy's window title reads `UNKNOWN CONTACT`.
-- **Hostility line** in the readout while in Patrol: before enemy Level 1, `INCOMING SCAN` blinking (no number); after Level 1, `HOSTILE IN 14 s` (whole seconds, ceiling). Once hostile: `HOSTILE` for 3 s, then gone.
-- **Scan ring**: a progress arc around the contact being scanned, on every console's map.
-- **Designation**: a pulsing green-amber (`CRT.hot`) bracket on the designated contact, on every console's map. On Science it also marks the Weapons lock target with a slow rotating ring (Artemis).
-- **Derelict** (when known level 1): a small wreck mark; label `DERELICT` with its loot (`HULL`, `MISSILES`, `SHIELD`) and `TRAPPED` in the alert colour if trapped; `SALVAGED` once done. Unknown: the `?` marker.
-- **Salvage ring**: while `salvage > 0`, a ring around the crew ship filling over 5 s.
+- **Unknown contacts** (level 0) draw on the map as a plain `?` marker in `CRT.dim`: no silhouette, no shield ring. The enemy's window title reads `UNKNOWN CONTACT`.
+- **Hostility line** in the readout while in Patrol: before enemy Level 1, `INCOMING SCAN` blinking (no number); after Level 1, `HOSTILE IN n s` with `n = ceil((1200 − rt) / 60)`. Once hostile: `HOSTILE` for 3 s, then gone.
+- **Scan ring**: a progress arc around the contact being scanned, on every map.
+- **Designation**: a pulsing `CRT.hot` bracket on the designated contact, on every map. On Science the Weapons lock target also gets a slow rotating ring (Artemis).
+- **Derelict** at level 1: a small wreck mark, label `DERELICT` with its loot (`HULL`, `MISSILES`, `SHIELD`), `TRAPPED` in the alert colour if trapped, `SALVAGED` once done. At level 0: the `?` marker.
+- **Salvage ring**: while `salvage > 0`, a ring round the crew ship filling over 5 s.
 
-### 7.2 The contact window (grows from the enemy window)
+### 7.2 The contact window (replaces the enemy window's opening rules)
 
-- It opens on either contact (click on the map, or T cycles enemy → derelict → closed). Contacts are picked with `pickShip`'s radius rule extended to the derelict.
-- Every window has a **SCAN** button with the next level (`SCAN 1`, `SCAN 2`) or `SCANNED`; a progress bar while scanning; on Helm and Weapons the bar notes `SLOW` (the 2.5×).
-- **Enemy, level 0**: `UNKNOWN CONTACT`, no drawing. **Level 1**: the scout drawing with room outlines but room labels `?` and no damage hatching, hull bar, shield pips, the hostility time. **Level 2**: today's full window (labels, damage, lock), plus `WEAK FREQ B` and an `ENEMY LASER` charge bar and `MISSILE READY / RELOADING` (from the existing hunter state; presentation only).
-- **Derelict**: level 0 `UNKNOWN CONTACT`; level 1 its loot, trap and range; a `SALVAGE` hint: `CLOSE TO 60 AND MATCH SPEED`.
-- Weapons' aiming (LASER → reticle → room) works only at enemy level ≥ 1 (there is no drawing before); the WEAP/SHLD/ENG buttons on the Weapons panel work at any level as today.
+- The controller is re-keyed on a contact id: `ContactState { contact: 0 | 1; aim: boolean }`. A new pure `pickContact(input, p): 0 | 1 | null` uses `pickShip` for the enemy and `derelictPos` with the same `pickRadius` for the derelict; nearest wins.
+- Shown on Helm, Weapons and Science. The sync's "ship inactive" close applies to the enemy contact through the hunter slot; the derelict is always there. A change of contact disarms the aim.
+- **T** (supersedes enemy-window §3's T rule): cycles enemy → derelict → closed on Helm and Weapons; on Science it cycles enemy → derelict → none and sends `designate` each time.
+- Every window has a **SCAN** button with the next level (`SCAN 1`, `SCAN 2`) or `SCANNED`; a progress bar while the scanner is on this contact; on Helm and Weapons the button reads `SCAN 1 (SLOW)`.
+- **Enemy, level 0**: `UNKNOWN CONTACT`, no drawing. **Level 1**: the scout drawing with room outlines, labels `?`, no damage hatching; hull bar, shield pips, the hostility line. **Level 2**: today's full window (labels, damage, lock mark), plus `WEAK FREQ B`, an `ENEMY LASER` charge bar and `MISSILE READY` / `RELOADING` (existing hunter state, presentation only).
+- **Derelict**: level 0 `UNKNOWN CONTACT`; level 1 its loot, trap and range, and the hint `CLOSE TO 60, MATCH SPEED`.
+- Weapons' aim (LASER → reticle → room) needs the enemy contact at level ≥ 1 (there is no drawing before) and is enemy-only (`arm` is a no-op on the derelict). The WEAP/SHLD/ENG buttons on the Weapons panel work at any level, as today. Science never aims.
 
 ### 7.3 The Science console
 
-- The full-width CRT tactical map (no station block on the left), with the contact window as its **analysis panel** on the right, always shown (it shows `NO CONTACT SELECTED` when nothing is selected).
-- Click a contact: selects it locally (opens it in the panel) **and** sends `designate`.
-- **Hover readout**: under the cursor, `BRG 327 RNG 1450` from the crew ship (bearing in degrees clockwise from map up, range in world units rounded to 10). Presentation only.
-- **Keys**: S scans the selected contact; T cycles the selection; Esc deselects (then pauses, as the window rule does today).
+- `ConsoleStation`, `consoleTabs`' reach and the layout gain `'science'`. Layout: no station block; the map is full width less `CONTACT_RESERVE`, and the contact window at `CONTACT` is always shown (`NO CONTACT SELECTED` when none).
+- Click a contact: selects it (opens it in the panel) **and** sends `designate`.
+- **Hover readout**: `BRG 327 RNG 1450` from the crew ship to the cursor (bearing in whole degrees clockwise from map up, range in world units rounded to 10). Presentation only.
+- **Keys on Science only**: S scans the selected contact (S is the throttle key only at the Helm, so there is no clash); T as in §7.2; Esc deselects, then pauses (the window's Esc rule).
 
 ### 7.4 Weapons
 
-- The Weapons station block gains a frequency row: three buttons `A B C` (current one lit) and keys 1, 2, 3. After enemy Level 2 the weak one is marked `◆` on every console that shows the row.
+- The Weapons station block gains a frequency row: buttons `A B C` (current one lit) and keys 1, 2, 3. After enemy Level 2 the weak one is marked `◆` on every console that shows the row.
 
-## 8. Architecture
+## 8. Architecture (files)
 
-- **Sim** (rules version change): `sim/tactical/state.ts` (fields, creation draws), `sim/tactical/hunter.ts` (Patrol), `sim/tactical/weapons.ts` (frequency strip), new `sim/tactical/science.ts` (hostility check, scan progress, salvage, `derelictPos`), `sim/tactical/duel.ts` (step order), `sim/tactical/hash.ts` (module fields), `sim/tactical/tuning.ts` (constants), `sim/duel/state.ts` and `step.ts` (science seat, command admission), `net/contracts.ts` and `net/codec.ts` (three commands).
-- **Presentation**: `render/tactical` (unknown marker, scan ring, designation, derelict, salvage ring), `render/duel/consoleModel.ts` (`science` station, hostility line, frequency row), `render/duel/contactModel.ts` (contact kinds and levels), `app/duel/contactController.ts` (two contacts, the Science panel always open), input (S, 1/2/3, hover), `ui/duel/*` (SCAN button, frequency row, Science layout).
-- `SIM_VERSION` 43 → 44. The goldens and gate baselines are regenerated in one marked step, as Artemis-ii did (§5.6 there): first a commit where only the version and the goldens move, with the reason.
+- **Sim**: `sim/tactical/state.ts` (fields, `HunterMode.Patrol`, creation draws), `hunter.ts` (Patrol), `weapons.ts` (`scanner` in ShipInput, Patrol shield hold, frequency strip), new `science.ts` (hostility, scan progress, salvage, `derelictPos`), `duel.ts` (step order), `hash.ts` (science module, `freq`, clone, validation), `tuning.ts` (constants), `sim/duel/state.ts` (`science`), `step.ts` (sit, admission, `scanner`, `startTick`), `modules.ts` (DUEL_MODULES, DUEL_NOT_SNAPSHOTTED), `net/contracts.ts` and `net/codec.ts` (three commands), `scripts/golden/duelOracle.ts` (MIGRATIONS[43]).
+- **Presentation**: `render/tactical` (unknown marker, scan ring, designation, derelict, salvage ring, `pickContact`), `render/duel/consoleModel.ts` and `consoleLayout.ts` (science station, hostility line, frequency row), `render/duel/contactModel.ts` (contact kinds and levels), `app/duel/contactController.ts` (contact ids, Science), `app/duel/controls.ts` (`seatOf`, `consoleInReach`), input (S and 1/2/3 by station, hover), `ui/duel/*` (SCAN button, frequency row, Science layout).
 
-## 9. Errors and edge cases
+## 9. Edge cases
 
-- A scan in progress on the enemy keeps running when it turns hostile.
-- A scan of a contact already at its maximum level is rejected `unavailable`; the button shows `SCANNED`.
+- A scan of a contact already at its maximum is rejected `unavailable`; the button shows `SCANNED`.
 - The derelict at level 0 may be salvaged (a gamble).
-- Salvage while the round is decided: no (the decided tick runs no physics).
-- `Shield` loot on a ship at 0 layers gives 1; on a full ship gives class max + 1.
+- A decided round runs no physics, so no salvage or scan progress.
+- `Shield` loot at 0 layers gives 1; at full gives class layers + 1.
 - A layout without a Science console: no Science seat; Helm/Weapons scans still work.
-- Hostility from a missile the crew launched before the enemy turned hostile: counts when it lands.
+- A crew missile launched in Patrol that lands after hostility changes nothing; one that lands in Patrol turns it hostile.
 - A crew laser that misses does not turn it hostile.
 
 ## 10. Tests
 
-- **Hostility**: Patrol for 1199 ticks, hostile on tick 1200 (cause clock); a laser hit on tick 300 makes it hostile that tick (cause laser), shields one layer down; no enemy charge or launch in Patrol; shields do not recharge in Patrol.
-- **Scans**: exact tick counts for L1/L2 from Science and from Helm/Weapons; repeat scan on the same contact `noop`; switching contacts aborts; leaving the seat cancels; `known` set and `scanDone` emitted; `unavailable` past the maximum; admission per seat.
-- **Frequency**: matching strips 2, otherwise 1; floor at 0; command admission.
-- **Derelict**: placement deterministic per seed and ≥ 600 from spawns; `derelictPos` on its orbit; salvage counts only within range and speed, resets when leaving, applies each loot, trap costs 3 hull, once only.
-- **Seats**: sit at Science allowed; `consoleInReach` reaches it.
-- **Determinism**: hash and flatten round trip with the new fields; online replica agrees with the authority over a run with scans, designation, tuning and salvage.
-- **Views**: model tests for unknown/L1/L2 windows, the hostility line text, the frequency row, the Science panel, the hover readout.
-- **Screens**: harness shots of Science (panel, hover, scan ring), an unknown enemy, a derelict with loot, Weapons frequency row, salvage ring.
-- Goldens and gates regenerated (`tests/duelGolden.test.ts`, `tests/duelRematchGolden.test.ts`, `tests/duelGates.test.ts`); the gates' duel-length bands are re-checked, since the opening adds up to 20 s of Patrol.
+- **Hostility**: hostile in the step of `rt` 1199 (cause clock) and in Patrol for every earlier step; a laser hit at `rt` 300 turns it that tick (cause laser) with shields one below; no enemy charge or launch in Patrol; no shield regain in Patrol; **rematch**: in round 2 Patrol again lasts 1200 steps.
+- **Scans**: 180/360/450/900 steps; repeat on the same contact `noop`; a faster seat takes over the rate; switching contacts aborts; leaving the seat cancels; `known` and `scanDone`; `unavailable`; admission per seat with the exact reasons.
+- **Frequency**: a match strips 2 (1 when only 1 is up), otherwise 1; same-tick tuning applies; admission.
+- **Derelict**: the draw order and values per seed; orbitR outside the belt; ≥ 600 from spawns at `rt` 0 when any of the 16 draws allows it; `derelictPos` moves along the orbit at the expected speed; salvage counts only within range and speed, resets when leaving, applies each loot, the trap costs 3 hull, once only.
+- **Seats**: sit at Science; `consoleInReach` reaches it.
+- **Snapshots**: hash and flatten round trip with every new field; a snapshot during Patrol (`rt` 600) and one after `Shield` loot both validate and restore; the clone shares no container; online replica agrees with the authority over a run with scans, designation, tuning and salvage.
+- **Views**: model tests for unknown/L1/L2 windows, the hostility line, the frequency row, the Science panel, the hover readout, T cycling, `pickContact`.
+- **Screens**: harness shots of Science (panel, hover, scan ring), an unknown enemy, a derelict with loot, the Weapons frequency row, the salvage ring.
+- **Goldens and gates**: the two steps of §6.3. `tests/duelGates.test.ts` keeps its bands unchanged (median 180 to 300 s; the crew both wins and loses). Patrol is expected to lengthen duels by up to 20 s. If a band fails after step 2, the implementer reports the numbers and stops; the owner decides (no band edits and no retuning without the owner).
 
 ## 11. Out of scope
 

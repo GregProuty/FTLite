@@ -1,0 +1,119 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Tactical ticks do not restart at 0 on a rematch, so the hostility clock and the derelict orbit break from round 2",
+      "claim": "\u00a74.1 says the hostility clock compares state.tick with HOSTILE_AFTER_TICKS because \"tactical ticks restart at 0 every round\". They don't. startRound moves the new round's tactical tick to the encounter tick. In every round after the first, state.tick is already \u2265 1200 on the round's first tick, so the enemy turns hostile at once. The derelict's angle phase + \u03c9\u00b7tick is also offset by baseTick, which breaks the 'at least 600 from both spawns at tick 0' placement guarantee.",
+      "evidence": "spec L39, L25, L61, L63; src/renderer/src/sim/duel/step.ts:L83-L95 (startRound: `next.tactical.tick = tick`, graceUntil.fill(tick), hunter.lastLaunch += tick); sim/duel/state.ts:L52 (baseTick lives in DuelState, not TacticalState)",
+      "why": "This contradicts the existing sim. Rematch play (and tests/duelRematchGolden) would show an enemy hostile from tick 0 and a derelict drawn somewhere other than its checked placement.",
+      "fix": "Add a round-relative base to the tactical state, e.g. `TacticalState.startTick` (set to 0 in createTacticalState and to `tick` in startRound beside lastLaunch, hashed). Write the clock as `state.tick - startTick >= HOSTILE_AFTER_TICKS` and the orbit as `phase + \u03c9\u00b7(tick \u2212 startTick)`. Have startRound shift `hostileAt` if it is \u2265 0. Add a rematch test: Patrol holds for 1200 ticks in round 2."
+    },
+    {
+      "severity": "P1",
+      "title": "A new duel command named `scan` collides with the sector's `scan` in the shared Command union",
+      "claim": "`Command = SectorCommand | DuelCommand`, and SectorCommand already has `{ kind: 'scan'; station; target }`. Adding a duel `{ kind: 'scan'; contact }` means `c.kind === 'scan'` on a Command narrows to both variants. applyConsoleCommand, which takes `CommandEnvelope<Command>`, reads `c.station` and `c.target` after that check, and that stops type-checking.",
+      "evidence": "spec L81; src/renderer/src/net/contracts.ts:L57, L70-L84; src/renderer/src/sim/commands.ts:L87-L88, L128-L132",
+      "why": "The interface as named cannot be built without breaking the sector's command handling, and two plan authors would resolve it differently (rename vs add guards).",
+      "fix": "Give the duel command its own kind, e.g. `contactScan` (keep `designate` and `laserFrequency`, which don't collide). Name it in DuelCommand, duelWire.commands, DUEL_KINDS and a module's `commands` list."
+    },
+    {
+      "severity": "P1",
+      "title": "Scan progress and 'cancel by leaving' are placed in stepDuel, which can't see seats or presence",
+      "claim": "\u00a74.5 runs scan progress inside the tactical `stepDuel(state, crew, tuning)`. \u00a75 says scan progress cancels when station `by` has no present seated player. Occupancy (`interior.stations.occupant`) and `present` live in DuelState. stepDuel gets only the tactical state and the crew's ShipInput, which carries helm/weapons flags and no Science or station attendance. The hunter gates and tests also call stepDuel directly with no interior.",
+      "evidence": "spec L71, L86, L48; src/renderer/src/sim/tactical/duel.ts:L22; src/renderer/src/sim/tactical/weapons.ts:L9-L22 (ShipInput fields); src/renderer/src/sim/duel/step.ts:L46-L49 (attendant), L168-L169",
+      "why": "As written, the cancel rule can't be built where the spec puts it. Implementers would either widen ShipInput or move the step into step.ts, and those give different tick positions and different hashes.",
+      "fix": "State it explicitly. Option (a): step.ts computes `scannerAttended = attendant(d, scan.by) >= 0` after the seat phase and passes it in a new ShipInput field (e.g. `scanner: boolean`, true in IDLE_INPUT and the gate bots); stepDuel's scan step cancels when it is false. Option (b): run scan progress in step.ts right after stepDuel. Name the choice and the exact tick position."
+    },
+    {
+      "severity": "P1",
+      "title": "The hash/snapshot work for the new state is under-specified: validation rejects Patrol and Shield loot, clone would share the new objects, and module placement is unstated",
+      "claim": "(1) validateTacticalValues bounds `hunter.mode` to within(Hunt, Repair) = 0..1, so `HunterMode.Patrol = 2` makes every snapshot taken in the first 20 s fail validation. (2) It bounds shields to the largest class's layers (2), so the `Shield` loot (class max + 1 = 3) fails validation. (3) cloneTacticalFromModule shallow-copies the state and rebuilds only the ships/systems/missiles/hunter containers. The new nested `scan`, `derelict` and `known` objects would be shared between the copy and the original, so rollback and replay would corrupt state. (4) The spec says the fields are 'in the tactical modules' but not which module (space or ship) or the canonical order (e.g. where `freq` goes in SYSTEMS_TAIL). (5) The new `DuelState.science` must be a field or be listed in DUEL_NOT_SNAPSHOTTED, as nav and weapons are.",
+      "evidence": "spec L31-L33, L37, L44-L45, L50, L54-L55, L60, L64, L92, L130; src/renderer/src/sim/tactical/hash.ts:L172 (shields within(0, max layers)), L179 (hunter.mode within(Hunt, Repair)), L143-L148 (clone containers), L17-L22, L65-L83; src/renderer/src/sim/duel/modules.ts:L4, L79-L84",
+      "why": "Snapshot restore (online join and resync) would throw during Patrol and after Shield salvage, and a shared nested object breaks rollback determinism. These are exactly the per-field obligations the plan's subagents need spelled out.",
+      "fix": "Add a hash/snapshot subsection. List each new field with its module (e.g. hostileAt, known, scan.*, designated, weakFreq and derelict.* in `space` after the hunter fields; `freq` in `ship` SYSTEMS_TAIL after `lock`) and its validation rule. Widen `hunter.mode` to Patrol and shields to `max layers + 1`, or bound shields per class + 1. Rebuild fresh scan/derelict/known containers in cloneTacticalFromModule. Add `science` to DUEL_NOT_SNAPSHOTTED. Test that a snapshot at tick 600 and one after Shield loot both restore."
+    },
+    {
+      "severity": "P1",
+      "title": "The derelict's closed-form position has no defined angle units or trig, and the placement draws are ambiguous",
+      "claim": "The angle `phase + \u03c9\u00b7tick` mixes a heading index (phase 0..255) with \u03c9 in some unit, and gives a non-integer angle. The tactical sim never calls Math.sin or Math.cos; it uses the generated HEADING_X/HEADING_Y table and dirBetween for fractions. The spec doesn't say how to turn the fractional angle into x/y, or which way 'clockwise' prograde points for the velocity (spawnAt uses heading + 64). Placement is also ambiguous: whether a rejection redraws orbitR or only phase, how the 1/3 trap is drawn (nextInt(3) === 0 vs nextFloat < 1/3), and how loot is drawn. Separately, orbitR in [900, 1500] overlaps the asteroid belt (1100 to 1300), so on some seeds salvage means hovering inside the belt.",
+      "evidence": "spec L61, L63-L65; src/renderer/src/sim/tactical/direction.ts:L6-L15 (table lookup, dirBetween); headings.ts:L1-L3 (generated table); src/renderer/src/sim/tactical/map.ts:L26-L29, L57-L60 (spawnAt prograde = heading + 64); tuning.ts:L16-L17 (BELT_INNER/OUTER); no Math.sin/cos anywhere under src/renderer/src/sim",
+      "why": "Two implementers would produce different positions and rng streams. Bringing in Math.sin breaks the sim's table-only trig convention, which exists so peers can't drift.",
+      "fix": "Define the angle in heading-index units: `a = phase + \u03c9h\u00b7(tick \u2212 startTick)` with `\u03c9h = circularSpeed(orbitR) / orbitR \u00b7 DT \u00b7 HEADING_COUNT / (2\u03c0)`. Position: `[dx, dy] = dirBetween(floor(a) mod 256, a \u2212 floor(a))` times orbitR. Velocity: `dirBetween` of a + 64 times circularSpeed(orbitR). Fix the draw order exactly: weakFreq `nextInt(3)`; orbitR `900 + nextInt(601)` drawn once; phase `nextInt(256)` redrawn up to 16 times; loot `nextInt(3)`; trapped `nextInt(3) === 0`. Either exclude the belt band from orbitR (e.g. [700, 1000] \u222a [1400, 1500]) or state that the overlap is intended."
+    },
+    {
+      "severity": "P1",
+      "title": "The SIM_VERSION two-step is misdescribed and leaves out the migration entry",
+      "claim": "\u00a78 says step 1 is 'a commit where only the version and the goldens move'. In the Artemis-ii precedent, step 1 adds the new fields at neutral values plus a `MIGRATIONS[40]` entry with `added` regexes, and the oracle proves every run unchanged. All gameplay changes are blessed in step 2 at the same version. Here the new rng draws in createTacticalState (weakFreq, derelict) shift rng.s and every later hunter jitter, and Patrol and the shield start change every run, so none of them can be in step 1. The spec names no `MIGRATIONS[43]` entry and no list of added fields.",
+      "evidence": "spec L132; docs/superpowers/specs/2026-11-17-artemis-consoles-design.md:L220-L228; tests/duelThrottle.test.ts:L145 (MIGRATIONS[42]); tests/duelOracle.test.ts:L6 (scripts/golden/duelOracle MIGRATIONS)",
+      "why": "Following the spec literally either fails the oracle or produces an unexplained golden churn. The plan needs the exact split.",
+      "fix": "Restate it as: Step 1, SIM_VERSION 43 \u2192 44, add every new field at a neutral value (hostileAt \u22121 with no Patrol, known [0,0], scan idle, freq 0, no new rng draws, derelict zeroed), the three command kinds and their admission, and `MIGRATIONS[43] = { change: 'Sci-1: science scans', rename: () => undefined, derived: [], added: [/^hostileAt$/, /^known/, /^scan\\./, /^designated$/, /^weakFreq$/, /^derelict\\./, /^systems\\.\\d+\\.freq$/] }`; bless, and the oracle proves runs unchanged. Step 2, Patrol, the draws, salvage and the strip rule, blessed at 44."
+    },
+    {
+      "severity": "P1",
+      "title": "Contact ids clash with ship slots in the view layer, and pickShip can't return the derelict",
+      "claim": "The sim uses `Contact.Enemy = 0` and `Contact.Derelict = 1`, but the enemy is ship slot 1 and CREW_SLOT is 0. The contact window's state is `ContactState.ship` (a slot). Its sync closes on `!active(st.ship)` and disarms when `target !== st.ship`. pickShip returns `number | null` over active non-crew slots. 'pickShip's radius rule extended to the derelict' doesn't say whether the result becomes a contact id or a slot, how the derelict (not a slot, no `active`) passes the closing rules, or how aim is kept enemy-only.",
+      "evidence": "spec L43, L111, L115, L120; src/renderer/src/app/duel/contactController.ts:L7, L11, L42-L46, L55-L61; src/renderer/src/render/tactical/tacticalModel.ts:L321-L327; src/renderer/src/sim/tactical/state.ts:L100",
+      "why": "Two implementers would key the window differently. An off-by-one between contact 0 and slot 0 points the window or the scan at the crew's own ship.",
+      "fix": "Re-key the controller on a contact id: `ContactState { contact: 0 | 1; aim: boolean }`. Add a new `pickContact(input, p): 0 | 1 | null` (keep pickShip for the enemy and use derelictPos with the same pickRadius for the derelict, nearest wins). Map the enemy contact to `hunterSlot` for drawing and aim. The sync's active check uses the enemy slot for contact 0 and is always true for the derelict; arm() is a no-op for the derelict."
+    },
+    {
+      "severity": "P1",
+      "title": "Patrol isn't mapped onto ShipInput or tickWeapons; the shield 'no recharge' rule has no named home",
+      "claim": "tickWeapons recharges shields for every slot unconditionally whenever `shields < layers`. \u00a78 lists weapons.ts only for the 'frequency strip', so nothing is assigned the Patrol recharge gate. The spec also doesn't say what shieldClock does in Patrol (held at 0 or accumulating), which decides when the first layer returns after hostility. It doesn't say which ShipInput Patrol returns (`weapons: false` freezes the laser and clears fireHeld; `weapons: true` with no commands does not), or whether the trail ring buffer still updates in Patrol, which changes missile steering for 18 ticks after hostility. 'Only flies (threat avoidance, no pursuit)' leaves the no-threat case open (axes zero?). The shield start is given as `SHIELD_LAYERS \u2212 1`, not the class's layers \u2212 1.",
+      "evidence": "spec L26-L27, L37, L71, L130; src/renderer/src/sim/tactical/weapons.ts:L47-L50, L81, L106-L107; src/renderer/src/sim/tactical/hunter.ts:L58-L69, L83; src/renderer/src/sim/tactical/state.ts:L113-L116",
+      "why": "Each choice changes the hash and the tested shield timing, so two implementers would build different rules.",
+      "fix": "Specify it. In Patrol, hunterThink updates the trail first, skips updateRepair, and returns `{ helm: true, weapons: false, axes: threat ? avoid : {0,0}, \u2026 }`. tickWeapons skips the shield clock (held at 0) for the hunter slot while `state.hostileAt < 0`. createTacticalState sets `systems[1].shields = classOf(1).shields.layers \u2212 1`. The hostility step sets `hunter.mode = Hunt` and `hostileAt = state.tick` (round-relative per the rematch finding). List weapons.ts for the recharge gate."
+    },
+    {
+      "severity": "P2",
+      "title": "Rejection reasons and wire shapes are left to the plan; `not-seated` doesn't exist",
+      "claim": "\u00a75 uses `not-seated`, which isn't in COMMAND_REASONS, and then says 'the plan reuses existing reasons where they fit', which defers the decision. The codec's `index` is `int \u2265 0`, so `designate` with \u22121 (the clear) fails at the wire unless designate uses a different shape. The spec also doesn't say whether out-of-range values pass the codec and get `malformed` from the sim, as throttle does. `designate` has no `noop` when unchanged, unlike laserFrequency, and it doesn't say which module's `commands`/`reasons` lists the new kinds join.",
+      "evidence": "spec L81-L83, L88; src/renderer/src/net/contracts.ts:L88-L92; src/renderer/src/net/codec.ts:L25, L110-L122; src/renderer/src/sim/tactical/hash.ts:L118-L119; src/renderer/src/sim/duel/modules.ts:L49-L55",
+      "why": "Admission tests ('admission per seat') need fixed reason strings, and the wire shape decides which values reach the sim at all.",
+      "fix": "Use `invalid-seat` for a scan from an unseated or wrong-seat player (no new reason). Wire: `contact: z.number().int()` and `freq: z.number().int()`, with the sim answering `malformed` outside 0..1, \u22121..1 and 0..2. designate returns `noop` when unchanged. Add a new `science` duel module (or extend `ship`) listing the three kinds and their reasons."
+    },
+    {
+      "severity": "P2",
+      "title": "Same-tick ordering, scan hand-over and exact tick counts are unstated",
+      "claim": "The spec doesn't say where the three commands are admitted relative to WEAPON_ORDER and throttle, or what happens when two scan commands land in one tick (envelope order, last wins?). It doesn't say whether a laserFrequency change applies to a release in the same tick, which it would, since fireLaser runs later inside stepDuel. Science clicking SCAN on a contact a Helm player is slow-scanning gets `noop`, so Science can only speed it up by aborting it. The tests demand 'exact tick counts', but the spec doesn't say whether the start tick's progress step counts (L1 done after 180 steps, including the start tick?). The same goes for hostility (`tick >= 1200` at the check gives hostileAt 1200 after 1200 Patrol steps, not the 1199 the test wording suggests).",
+      "evidence": "spec L46-L49, L71, L81, L85, L147-L148; src/renderer/src/sim/duel/step.ts:L165-L191; src/renderer/src/sim/tactical/duel.ts:L28, L34-L39",
+      "why": "The tests will be written against whatever the implementer guessed, and online prediction in Sci-2 depends on the same order.",
+      "fix": "Add a phase line: after throttle, in envelope order, `laserFrequency`, then `designate`, then `contactScan`, each last-wins. A freq change applies to this tick's release. Define completion as: a scan started at tick t completes at the end of tick t + ceil(units/rate) \u2212 1, and hostility fires in the step whose round-relative tick is 1199, so hostileAt = 1199. Decide whether a scan from a faster seat on the same contact upgrades the rate (recommended: keep progress, take the higher rate, set `by`)."
+    },
+    {
+      "severity": "P2",
+      "title": "View rules conflict with the enemy window spec and existing keys, and the console types have no 'science'",
+      "claim": "The enemy window spec says T toggles the window on the laser target slot and 'T again' closes it. Sci-1 makes T cycle enemy \u2192 derelict \u2192 closed, without saying it supersedes that rule or what T does on Science, where the panel is always shown. It also doesn't say whether T selection on Science sends designate the way a click does. S is already `throttleDown` and moveY down. ConsoleStation is 'helm' | 'weapons' | 'ship', consoleTabs' reach is 'helm' | 'weapons', the layout's STATION.h has only helm/weapons, and the controller's `shown` and its T handling admit only helm/weapons. None of this is listed as changed. It also isn't said whether the Science panel shows the LASER aim.",
+      "evidence": "spec L111-L122, L131; docs/superpowers/specs/2026-11-17-enemy-ship-window-design.md:L22-L25, L31, L36; src/renderer/src/app/duel/input.ts:L14; src/renderer/src/render/duel/consoleModel.ts:L12, L33; src/renderer/src/render/duel/consoleLayout.ts:L10-L11, L18; src/renderer/src/app/duel/contactController.ts:L8-L11, L68-L73; src/renderer/src/app/duel/controls.ts:L10-L16",
+      "why": "UI subagents will implement conflicting key and shown rules.",
+      "fix": "State that Sci-1 replaces enemy-window \u00a73's T rule. Define T on Science as cycling enemy \u2192 derelict \u2192 none, sending designate each time. Map S to scan only on the Science station (throttle is Helm-only). Extend ConsoleStation, Seat, consoleTabs reach, and the controller's shown set to 'science'. Add a SCIENCE layout entry (map reserves with the panel fixed at CONTACT). Disable LASER aim on Science."
+    },
+    {
+      "severity": "P2",
+      "title": "The gates have fixed bands, so 'regenerated' and 're-checked' give no rule when the Patrol opening moves them",
+      "claim": "tests/duelGates.test.ts asserts a median of 180 to 300 s and that the crew both wins and loses; there is no baseline to regenerate. Patrol adds up to 20 s, the enemy's opening shield drops to 1, and the scripted crew's existing fire triggers the ambush, all of which shift outcomes. The spec gives no action if the median leaves the band or the crew stops losing.",
+      "evidence": "spec L95, L155; tests/duelGates.test.ts:L22-L31",
+      "why": "An implementer whose gate fails has no rule: retune, widen the band, or ship red.",
+      "fix": "Say what passes: the bands stay as they are. If the median leaves 180 to 300 s, the plan reports it and the owner decides; no silent band edits. Or pre-authorise one knob (e.g. HOSTILE_AFTER_TICKS stays and SHIP_HULL may move). Record the expected direction (longer by at most 20 s)."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "Hostility triggers can be observed at the spec's step position: crew laser releases push `{kind:'laser', ship:0, hit}` and missile endings push `{kind:'missileEnd', ship, target, cause}` into state.events during the same stepDuel (weapons.ts:L74, missiles.ts:L25), before weapon clocks (duel.ts:L28-L34).",
+    "In Patrol, rooms can only be damaged by a crew laser hit with shields down or a missile, and both make the enemy hostile in the same tick. Rams cost hull only (contacts.ts:L18, L39), so updateRepair can't leave Patrol by itself unless the Patrol branch skips it as recommended.",
+    "Shield loot above the class max won't recharge further: tickWeapons holds the clock at 0 when `shields >= layers` (weapons.ts:L106), which matches spec L64 and L140.",
+    "Scan timings check out: 900/5 = 180, 1800/5 = 360, 900/2 = 450, 1800/2 = 900 (spec L46-L49).",
+    "The sit filter currently admits only nav/weapons (step.ts:L149). sitDown at a grouped station seats the player at every member and sets Seated.station to members[0] (stations.ts:L31-L36). The Hound's Science console is station 2 in room O, grouped with Engineering and Doors (hound.json:L178-L213), so a Science seat is buildable once allowedSits and consoleInReach (controls.ts:L35) include it.",
+    "The duel codec admits kinds by an explicit list (codec.ts:L110-L122), and step.ts rejects unlisted kinds with not-in-duel through DUEL_KINDS (step.ts:L29, L191), so the new kinds must be added in both places.",
+    "A new round builds a fresh tactical state through createDuel/createTacticalState (step.ts:L88), so all new tactical fields reset per round apart from the tick-base problem.",
+    "Relative salvage speed is reachable: circularSpeed over orbitR 900 to 1500 gives roughly 41 to 53 u/s, and spawns at radius 2000 against orbitR \u2264 1500 are at least 500 apart, so the 600 rejection triggers only near alignment."
+  ],
+  "not_verified": [
+    "Whether applyInteractionCommands' sit validation requires the Science group to be powered online in the duel interior (stations.level > 0); I assumed it is, from allocation 1 in hound.json, but didn't read the sit handler.",
+    "Whether groupStations orders the Hound's Ops group with Science first (members[0]), which affects Seated.station after a sit; I didn't read the derived-layout builder.",
+    "The scripted crew's opening behaviour, i.e. how soon it lands a hit and triggers the ambush; I didn't read scripted.ts beyond grep lines, so the gate shift is estimated.",
+    "The view models (contactModel.ts, tacticalModel.ts shield rings and pips) for assumptions that shields \u2264 class layers; I didn't read them.",
+    "The duel snapshot restore path, to confirm validateTacticalValues runs on online join and resync; I inferred it from the 'duel snapshot tactical' error text in hash.ts:L195."
+  ]
+}
