@@ -79,3 +79,40 @@ Confirmed. Checked the order inside pump(). The base is now also handed to the s
 
 ---
 
+# Round 2 (delta, reviewing a8b6ff73, effort medium, 34 s, 96263 in / 75097 cached / 2740 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Plan L424 (Task 1 Step 8) adds 'throttle' between 'tactical' and 'weapons' in tests/duel.test.ts L41. The Files line at L84 and the Step 13 git add (L488) both now include tests/duel.test.ts.
+- R1-F2: resolved — Plan L810 re-pins tests/duelSnapshot.test.ts L117 `[2, 5157, /base tick/]` to `<S + 1>`. That matches the real test (tests/duelSnapshot.test.ts:L117). The case only throws because the base is past the header tick, the check at snapshot.ts L149. The test-derived form was not adopted, but the explicit re-pin is complete and mechanical.
+- R1-F3: resolved — (1) Plan L412-419 replaces duelOracle.ts L105-107: the H-2 comment, the 38 entry and `};`, as on disk at scripts/golden/duelOracle.ts:L105-107. The replacement keeps the H-2 comment, adds a comma after the 38 entry and closes with one `};`. (2) Plan L720 replaces scripted.ts L94-97 (the doc comment through `hazardAway`), as on disk at scripted.ts:L94-97. The new block (L723-727) supplies one doc comment, the signature, the destructure and the hazard line, so nothing is duplicated and nothing is lost. (3) The Files line at L499 now cites telemetry.ts:14.
+- R1-F4: resolved — Plan L1265 adds a second `source?.throttleBase(...)` at the end of pump(), after play() and the held send, just before `producing = true;` (onlineDuel.ts:L219-220). That point is reached whenever play() ran. The early returns at L209-210 skip it, but they do not run play(), so throttleSent cannot change in that pump. The sit and stand paths in play() set throttleSent = null, and the end-of-pump call then hands over null as it should.
+
+## Verified
+- scripts/golden/duelOracle.ts:L105-107 is the H-2 comment, the 38 entry and `};`; the plan's replacement (L414-419) is syntactically complete and keeps the comment
+- src/renderer/src/sim/duel/scripted.ts:L94-97 is the doc comment, the helmAxes signature, the destructure and the `hazardAway` line; the plan's block (L722-728) replaces all four one for one
+- tests/duelSnapshot.test.ts:L68, L74 and L117 are the only seed-7 split-derived pins in that file (grep for 5156|5157); all three are now in Task 2 Step 11 (plan L810)
+- src/renderer/src/app/duel/onlineDuel.ts:L201-220: the first throttleBase call is placed after the state read and the second after play() and the held send, before `producing = true`
+- Task 1 Files (L83-84) and git add (L488) are consistent with the Step 8 edits, including tests/duel.test.ts
+
+## Not verified
+- I did not run the suite, by constraint, so I could not confirm that S + 1 still exceeds the header tick of the `good` snapshot. This assumes `good` is the snapshot taken at scriptedDuel(7, S) from L68.
+- I did not re-review sections outside the diff.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `a8b6ff73`. No new findings; all four round-1 IDs confirmed resolved; verdict ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
