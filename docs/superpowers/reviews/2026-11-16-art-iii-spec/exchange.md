@@ -110,3 +110,60 @@ Confirmed (derived.ts:L72-83). The cache key is now layoutHash plus the joined r
 
 ---
 
+# Round 2 (delta, reviewing c32ca60, effort medium, 119 s, 439512 in / 391317 cached / 10251 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 The hold list now starts with a 66-unit-deep locker, so the Upper Hold's only prop crosses its south wall, and no crate is ever drawn on today's ships
+The R1-F1 fix made `prop.locker.a` (18x33 art px, so 36x66 world units) the first name in the hold list, and the hand count gives each hold at most one slot. The Cutter's Upper Hold is one tile deep (row y=3 only), and its slot is (6,3) or (7,3) with side n. Placed flush north, the locker runs from y=86 to y=152. The south wall's band in row 4 spans y=138 to 150, so the locker draws over the whole band and pokes 2 units past it. The prop layer sits directly above `tiles.container`, which draws the walls, so nothing covers it. There is also a second consequence. The Skiff Hold also gets one slot, the Lower Hold and Aft Store get none, and `prop.crate` is second in the list, so no ship ever shows a crate. The Goal at L9 ('lockers and crates in the holds') is therefore false for every shipped ship. · spec L25 and L36 (locker 18x33; the hold list starts with locker.a), L56 (Upper Hold 1), L60 (the prop layer goes directly after the tiles), L61 (flush, 'sprites deeper … than a tile overlap neighbouring floor'), L9 Goal. cutter.json:L10-11: row 3 has S at x=5..7, and row 4 is all '#' below it. doorModel.ts:L11 BAND=10 and PANEL_THICK=12, so consoleModel.ts:L20 WALL_GAP=10. consoleModel.ts:L109: for side n, top=-gap and height=2h=66. renderer.ts:L73 and duel/interiorView.ts:L63: the tiles container holds the walls. Skiff hand count: after the lamp tile (7,6), the door neighbour (9,6), the breach neighbour (7,7) and the airlock neighbour (8,7) are excluded, only (8,6) and (9,7) are left. They are diagonal to each other, so the room takes 1 slot (skiff.json:L12-13, L32, L44, L62). · It is a visible defect on a guaranteed tile: whichever tile the hash picks, the one-tile room's prop is a full-height locker drawn over a hull wall. The 'overlap neighbouring floor (accepted)' wording does not cover overlapping a wall. It also means one of the spec's stated outcomes is false. · Put `prop.crate` first in the hold list, e.g. `prop.crate, prop.locker.a, prop.crate, prop.locker.b`. The crate is 24x32 units and fits inside a one-tile room flush to its wall (y 86 to 118). Alternatively, add a rule that skips a name whose turned depth minus WALL_GAP is larger than the room's floor depth from that wall, and say so in section 3. Restate the per-room result at L56, including the Skiff Hold's 1 and the prop each room gets, and add a test that no prop's placed rectangle crosses the face of a wall other than its own.
+
+## Prior findings
+- R1-F1: resolved — Every rectangle in section 1 is already in art/import.json (furniture.png L142-195: 97,49 / 129,48 / 16,88 / 88,88; lockers.png L203-220: 19,29 / 59,29 / 90,96). The new crate rectangles are dropped, and the spec says palette.json stays byte-identical and tests that countColours is unchanged.
+- R1-F2: resolved — Seats now 16,88,25,15 and couch 88,88,23,15 (both listed in import.json L154-171), with the back noted per sprite. Back at the top with no turn matches SIDE_ROTATION n:0 (consoleModel.ts:L100).
+- R1-F3: resolved — L49 now excludes the floor 4-neighbours of derived.siteTile and derived.airlockTile (derived.ts:L15-16). The test at L70 matches.
+- R1-F4: resolved — L50 excludes the magazine tile and its neighbours (derived.ts:L18, -1 when there is none). I confirmed the Lower Hold ends up with 0 slots, which L56 states.
+- R1-F5: resolved — L60 adds its own layer directly after tiles.container in both renderer.ts:L73 and interiorView.ts:L63, and L62 makes it independent of consoleArt. The layering does introduce the wall-overdraw problem raised as a new finding.
+- R1-F6: resolved — L44 gives the return type, L53 ascending order with ties by tile index, L54 names in take order, and L56 adds propCandidates. Side is exported from consoleModel.ts:L22.
+- R1-F7: resolved — L51 excludes the lamp tile (lampPoints exists at gradeModel.ts:L100). The Aft Store ends up with 0 slots, which L56 states.
+- R1-F8: resolved — L56 covers the starter and L70 its roomKind test. The starter's Crew Quarters (6x3) and Medbay (4x3) have plenty of candidates (starter.json:L14-17, L8-10).
+- R1-F9: resolved — L44: the cache key is layoutHash plus the joined room names and systems.
+
+## Verified
+- I hand-checked the Cutter counts at L56 against cutter.json: Crew Quarters candidates (13,3) and (13,5) give 2. Galley candidates (13,7), (11,8) and (13,9) give 3. Upper Hold candidates (6,3) and (7,3) are adjacent, giving 1. Lower Hold and Aft Store give 0. Medbay candidates (17,3) and (15,5) give 1, which the spec does not state but does not contradict.
+- Every derived field L46-50 names exists: stationTile, edgeTile, siteTile, airlockTile, magazineTile (derived.ts:L14-20).
+- consolePlacement(side, true, w, h) exists with that signature, and its n rotation of 0 matches 'back at the top' (consoleModel.ts:L100-115).
+- All seven rectangles are frames that Art-ii already counts (art/import.json:L142-220), so the palette cannot move under buildPalette's per pack + rectangle count.
+- Both views' world.addChild calls start with tiles.container, so 'directly after the tiles' can be built (renderer.ts:L73, duel/interiorView.ts:L63).
+
+## Not verified
+- I did not open the Maru sheets to confirm by eye where the backrests of the 16,88 seats and the 88,88 couch are, or which way the lockers face. The spec leaves that check to the plan.
+- I did not compute the actual hashU32 order, so which props land in the Galley and which tile the Upper Hold takes is unverified. The wall overdraw happens on either Upper Hold tile.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `c32ca60`. 1 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F9 as resolved.
+
+## R2-F1 [P1]: The 66-unit locker crosses the Upper Hold's south wall, and no crate is ever drawn
+
+Confirmed: the Upper Hold is one tile deep (cutter.json rows 3-4), and consolePlacement makes a north-flush locker 66 units deep. I fixed it two ways:
+- **Crate first.** The hold list now starts with the crate: crate, locker a, crate, locker b.
+- **Fit rule.** Section 3 has a new step 4. A name fits a candidate only if its depth beyond the wall face is no more than the room's floor depth away from that wall. A candidate takes the first unused name that fits, and names that fit nowhere are not drawn.
+
+The outcomes are restated: the Upper Hold gets 1 crate and the Skiff Hold 1 crate. The tests now pin the names, and a new check confirms no prop crosses another wall's face.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md
+
+<!-- end -->
+
+---
+

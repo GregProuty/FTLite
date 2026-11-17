@@ -33,11 +33,11 @@ Every sprite's back is at the top: drawn as is it stands against a north wall, a
 A pure `roomKind(room: { name: string; system: string | null })`, matching the name case-insensitively:
 - `quarters` (name contains "quarters"): `prop.bunk.a`, `prop.bunk.b`, `prop.bunk.a`;
 - `galley` (name contains "galley" or "mess"): `prop.seats`, `prop.couch`, `prop.locker.a`;
-- `hold` (name contains "hold", "store" or "cargo"): `prop.locker.a`, `prop.crate`, `prop.locker.b`, `prop.crate`;
+- `hold` (name contains "hold", "store" or "cargo"): `prop.crate`, `prop.locker.a`, `prop.crate`, `prop.locker.b`;
 - `medbay` (system `medbay`): `prop.bunk.a`;
 - any other room: nothing.
 
-The list is the room's order of props; a room gets as many as it has slots (section 3), up to the list's length.
+The list is the room's order of props; a room gets as many as it has slots that fit (section 3), up to the list's length.
 
 ## 3. Where props stand
 
@@ -51,9 +51,10 @@ A pure `propSlots(state): { room: number; tile: number; side: Side; name: string
    - the room's lamp tile (Art-i-b's `lampPoints`: the room's lowest tile index).
 2. **Side:** the wall side, the first of n, e, s, w with a `#` neighbour.
 3. **Order:** candidates sorted by `hashU32(hashString(layoutHash), tile)` ascending (the hashes Art-i-b's wall vents use, `render/particles/random.ts`), ties by tile index.
-4. **Take:** in that order, skipping any candidate that is 4-adjacent or diagonal to a slot already taken in any room, until the room's list is used up or no candidates remain. The k-th taken slot gets the k-th name of the room's list.
+4. **Fit:** a name fits a candidate when the prop's depth from the wall face (2 x its height in art pixels for side n or s, 2 x its width for e or w, after the quarter turn, minus `WALL_GAP`) is at most the room's floor depth from that candidate: 32 world units times the number of consecutive floor tiles of the same room starting at the candidate and going away from its wall. A prop that fits never crosses a wall other than its own.
+5. **Take:** in that order, skipping any candidate that is 4-adjacent or diagonal to a slot already taken in any room; a candidate is taken when at least one not-yet-used name of the room's list fits it, and gets the first such name. It stops when the room's list is used up or no candidates remain. Names that fit no remaining candidate are not drawn.
 
-Same layout and names, same slots, every run. Some dressed rooms end with fewer props than their list, or none (on the Cutter the plan's own hand count gives the Crew Quarters 2, the Galley 3, the Upper Hold 1, and the Lower Hold and Aft Store none, since the magazine, doors and lamp take their wall tiles); that is accepted. A separate pure `propCandidates(state)` exposes step 1 for testing. The rule also dresses the starter ship (its Crew Quarters and Medbay).
+Same layout and names, same slots, every run. Some dressed rooms end with fewer props than their list, or none (by hand count: on the Cutter the Crew Quarters 2 bunks, the Galley 3, the Upper Hold 1 crate (one tile deep, so no locker fits), the Lower Hold and Aft Store none, since the magazine, doors and lamp take their wall tiles; on the Skiff the Hold 1 crate; the plan pins the exact slots and names in a test); that is accepted. A separate pure `propCandidates(state)` exposes step 1 for testing. The rule also dresses the starter ship (its Crew Quarters and Medbay).
 
 ## 4. Drawing
 
@@ -67,7 +68,7 @@ The sim does not know about props, so a crew member can walk across a prop's flo
 
 ## Testing and the gate
 
-- Unit tests: `roomKind` for every room on the Cutter, Skiff and starter and for the generic rules; `propCandidates` (none on or next to a station, door or opening, the magazine, a breach site or airlock; no spawn or lamp tile; every candidate has a wall neighbour on its side); `propSlots` (deterministic for a layout; no two slots adjacent or diagonal; names in list order; the exact slots for the Cutter and Skiff pinned); the placement per side through `consolePlacement`; the prop layer's order (directly after the tiles in both views), its rebuild rule, and nothing drawn without `propArt`; the manifest names and paid rules; `countColours` unchanged and `palette.json` unchanged.
+- Unit tests: `roomKind` for every room on the Cutter, Skiff and starter and for the generic rules; `propCandidates` (none on or next to a station, door or opening, the magazine, a breach site or airlock; no spawn or lamp tile; every candidate has a wall neighbour on its side); `propSlots` (deterministic for a layout; no two slots adjacent or diagonal; names in list order skipping names that do not fit; no placed prop rectangle crossing the face of any wall but its own; the exact slots and names for the Cutter and Skiff pinned); the placement per side through `consolePlacement`; the prop layer's order (directly after the tiles in both views), its rebuild rule, and nothing drawn without `propArt`; the manifest names and paid rules; `countColours` unchanged and `palette.json` unchanged.
 - All existing tests pass; SIM_VERSION and the goldens are unchanged; no file under `src/renderer/src/sim` changes.
 - Screenshots (the Art-ii harness): the Cutter and the Skiff, normal; saved to `C:\Users\djuar\FTLite-shots\art-iii\`.
 - **Owner gate:** do the rooms read as lived-in, and do any props sit where crew walk in a way that looks wrong?
