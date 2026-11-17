@@ -1,0 +1,42 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "The replacement at plan L1487-L1521 is today's src/renderer/src/ui/store.ts (L1-L27) line for line, plus three changes: the `DEFAULT_CRT, type CrtSetting` import (L1492), `crt: DEFAULT_CRT` on the state line (L1506, which keeps `hud: null` and `epochs: { duel: 0, flight: 0, hud: 0 }`) and `setCrtSetting` (L1517-L1520). The added instruction at L1485 to diff against the current file first is a sensible guard."
+    },
+    {
+      "id": "R1-F2",
+      "result": "still open",
+      "note": "Task 1 (L402) and Task 7 Step 1 (L2201) are fixed. Task 4 Step 7 (plan L1243) is only half fixed. It still expects the absolute `Tests 231 passed (231)`, which is 9+1+2+21 plus the old artGuards count of 198. Since the Step 0 artGuards count is now higher (203 by round 1's count), the real total is 245, so the line contradicts the new 'Step 0 count + 9' clause next to it. The stale parenthetical '(189 before this plan, ...)' also remains. Fix: drop `Tests 231 passed (231)`, or restate it as '33 + (artGuards Step 0 count + 9)', and delete '189 before this plan,'. The prototype-verification table at L39 still lists the old absolutes. That is acceptable as a record of history, but L2452's example (`4097 tests in 290 files`) is worth labelling as the prototype figure."
+    },
+    {
+      "id": "R1-F3",
+      "result": "still open",
+      "note": "Task 7 Step 2 (plan L2208, L2211) now runs `git diff $BASE --stat`. `BASE` is only a shell variable set in Step 0.3 (L181), and the role says a fresh subagent runs each task alone, so `$BASE` will be empty in Task 7's shell. With an empty `$BASE` the command becomes `git diff --stat -- <paths>`, which compares the working tree with the index. That prints nothing for committed changes, so the determinism-boundary check passes silently even if a plan commit touched the sim. This is worse than the original false failure. Fix: use a literal base that every task can see, e.g. `git diff 869a27e --stat -- \u2026`. The commits after the merge, 3c296ea and a0904cc, change only docs, so 869a27e is a valid pre-plan base. Alternatively have Task 7 compute the base itself, e.g. `BASE=$(git merge-base HEAD master)`, and state it as part of the step."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "The Files list at plan L1265 now anchors `menuState.ts:32`, the line of `latency: readonly string[] | null;` inside `interface UiState` that round 1 cited."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "Spec note 7 (plan L2478) states the deviation: major lines `dim` at 0.5, minor lines `faint`. It gives the reason (500-unit squares read apart from the 250-unit minors) and notes that both are ramp colours."
+    }
+  ],
+  "verified": [
+    "The plan's store.ts replacement (plan L1487-L1521) differs from the current src/renderer/src/ui/store.ts:L1-L27 only by the crt import, the `crt: DEFAULT_CRT` field and `setCrtSetting`.",
+    "The Task 5 Step 8 fixture edits (plan L1947) match old strings that exist today: tests/uiSinks.test.ts:L9 `end: null, banners, overlay: null });` and L29 `snapHint: false, paused: true }) };`. uiSinks has 5 tests (L12, L18, L27, L36, L47), as plan L1954 expects.",
+    "No absolute test counts remain in Task 1 (L402) or Task 7 Step 1 (L2201). The only leftovers are at L1243 (still open) and in the historical record at L39 and L2452.",
+    "The diff touches no code edits outside the count and diff-base text, the store literal, the anchor and spec note 7, so there are no regressions in other touched regions."
+  ],
+  "not_verified": [
+    "I did not re-check that the plan's grid code at L52 and L1132 still matches spec note 7's wording. That code is outside the diff, and round 1 had already quoted it as major `dim` at 0.5, minor `faint`.",
+    "I did not re-check src/renderer/src/ui/menuState.ts:L32; I relied on the line round 1 cited.",
+    "I did not compute today's exact artGuards baseline; by the round-1 count it would be 203."
+  ]
+}
