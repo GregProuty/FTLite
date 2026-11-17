@@ -58,7 +58,7 @@ Each is the recommendation, taken under the standing order. The owner can overtu
    - **The local pair's budget rises from 90 s to 180 s.** The local rehearsal takes about 55 s; the deployed service is slower.
 4. **The report checks the duel evidence** **(rec.)**. A local-pair run must carry `duel` and not `deviceDuel`; a single-device run must carry `deviceDuel` (its own seat's record, and a thrust peak and a beam on its own screen) and not `duel`, and the two-machine pair's duel seeds must match. Every duel record must carry latency samples (`held + command > 0`). The host's record reads `loopback`. The guest's has an RTT and reads `lan` or `internet`, and **must read `internet` under `--force-relay`**, which is the end-to-end proof of the H-2b-i route label over TURN. The speed and shots must rise on both screens. Every duel app's cleanup must balance, as the sector peers' does, and their process ids must be distinct from every other.
 5. **What is proven before the redeploy, and what is the owner's:**
-   - **Proven here:** the Wrangler dry-run bundle; the origin-embedded build; the unsigned package, its zip and its manifest audit; the smoke's `--local-verification` run against local workerd; the playtest report on that run's duel records.
+   - **Proven here:** the Wrangler dry-run bundle; the origin-embedded build; the unsigned package, its zip and its manifest audit; the smoke's `--local-verification` run against local workerd; the playtest report on that run's duel records; the local recovery smoke on the candidate build, for the readiness report's `localRecovery` (added by the implementation review; the commands are in `docs/gates.md`'s H-2b-ii subsection).
    - **Not run here:** `--local-verification` cannot be combined with `--force-relay`, and local workerd issues no TURN. The deployed service is SIM 35 and refuses a SIM 39 room. Deploying is the owner's.
 6. **The candidate's packaged origin is the Net-3e worker's.** The redeploy target is the same worker (`ftlite-signalling-dev`). If the owner deploys elsewhere, rebuild the candidate for that origin.
 
@@ -831,7 +831,7 @@ $env:FTLITE_PACKAGED_SERVICE_ORIGIN='https://ftlite-signalling-dev.gprout009.wor
 npm run build
 Remove-Item Env:FTLITE_PACKAGED_SERVICE_ORIGIN
 $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win --dir --publish never -c.win.signAndEditExecutable=false -c.directories.output=dist/h2b-candidate
+npx electron-builder --win --dir --publish never '-c.win.signAndEditExecutable=false' '-c.directories.output=dist/h2b-candidate'   # quoted: PowerShell 5.1 splits an unquoted -c.a.b=c argument
 Remove-Item Env:CSC_IDENTITY_AUTO_DISCOVERY
 Compress-Archive -Path dist\h2b-candidate\win-unpacked\* -DestinationPath dist\h2b-candidate.zip -Force
 ```
@@ -841,7 +841,7 @@ Expected: each command exits 0. `out/main/index.js` contains the origin once. `d
 - [ ] **Step 4: The candidate manifest (a local, read-only audit)**
 
 Run: `npx tsx scripts/network/candidate-manifest.ts --package-path=dist/h2b-candidate.zip --app-directory=dist/h2b-candidate/win-unpacked --output=dist/h2b-candidate/candidate.json`
-Expected: `Candidate package audit PASS: exact out bytes, no env, test profiles or evidence.`, exit 0. The manifest's `identity.versions` reads `sim: 39`, with 47 artifacts under `out/main`, `out/preload` and `out/renderer`.
+Expected: `Candidate package audit PASS: exact out/main, out/preload and out/renderer bytes, no env, test profiles or evidence.`, exit 0. The manifest's `identity.versions` reads `sim: 39`, and its artifacts are every file under `out/main`, `out/preload` and `out/renderer` (the count follows the build's chunks: 50 at H-2b-ii).
 
 - [ ] **Step 5: The internet smoke against local workerd (proven before the redeploy)**
 

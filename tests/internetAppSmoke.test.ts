@@ -2,6 +2,7 @@ import { expect,it } from 'vitest';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { INTERNET_ARTIFACTS } from '../scripts/network/internet-app-report';
+import { parseJoinCodeFile } from '../scripts/network/join-code-file';
 import { tmpdir } from 'node:os';
 import { join,resolve,sep } from 'node:path';
 import { createRequire } from 'node:module';
@@ -33,3 +34,21 @@ it('rejects a manifest-origin/identity mismatch before ancestry, builds or nativ
     const r=JSON.parse(readFileSync(report,'utf8'));expect(r.failure).toBe('preparation-failed');expect(r.processes).toHaveLength(1);expect(r.ownedProcesses).toHaveLength(1);expect(r.peers).toEqual([]);expect(r.temporaryRemoved).toBe(true);expect(r.cleanupFailed).toBe(false);expect(r.processes[0].exited).toBe(true);
   }finally{await stopOwnedProcess(child,deadline);const target=resolve(directory);if(!target.startsWith(resolve(tmpdir())+sep)||!target.includes('ftlite-internet-test-'))throw Error('test-cleanup-invalid');rmSync(target,{recursive:true,force:true});}
 },12000);
+it.each([['a two-machine guest without a join-code file',['--role=guest']],['a join-code file off the guest',['--role=host','--join-code-file=join-code.txt']]])('refuses %s before any work or report',async(_name,extra)=>{
+  const directory=mkdtempSync(join(tmpdir(),'ftlite-internet-test-')),report=join(directory,'report.json');const deadline=createLauncherDeadline(performance.now()+10000);
+  const child=spawn(process.execPath,[resolve('node_modules/tsx/dist/cli.mjs'),'scripts/network/internet-app-smoke.ts','--service-origin=https://service.example','--machine-label=device-a','--network-label=network-a',...extra,`--report-path=${report}`],{windowsHide:true,stdio:'ignore'});
+  try{expect(await deadline.wait(new Promise(done=>child.once('exit',done)),'test-timeout',3000)).toBe(1);expect(existsSync(report)).toBe(false);
+  }finally{await stopOwnedProcess(child,deadline);const target=resolve(directory);if(!target.startsWith(resolve(tmpdir())+sep)||!target.includes('ftlite-internet-test-'))throw Error('test-cleanup-invalid');rmSync(target,{recursive:true,force:true});}
+},12000);
+it.each([
+  ['UTF-8',Buffer.from('ABCD1234\n','utf8')],
+  ['UTF-8 with a BOM (Set-Content -Encoding UTF8)',Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from('ABCD1234\r\n','utf8')])],
+  ['UTF-16LE with a BOM (PowerShell 5.1 > and Out-File)',Buffer.concat([Buffer.from([0xff,0xfe]),Buffer.from('ABCD1234\r\n','utf16le')])],
+  ['ROOM and lower case',Buffer.from('room abcd1234','utf8')],
+])('reads a join-code file saved as %s',(_name,bytes)=>expect(parseJoinCodeFile(bytes)).toBe('ABCD1234'));
+it('maps the look-alikes the room code alphabet leaves out (O to 0, I and L to 1)',()=>{
+  expect(parseJoinCodeFile(Buffer.from('ROOM OIL5ab9o','utf8'))).toBe('0115AB90');
+  expect(parseJoinCodeFile(Buffer.concat([Buffer.from([0xff,0xfe]),Buffer.from('oil5ab9o','utf16le')]))).toBe('0115AB90');
+});
+it.each([['too short','ABCD123'],['too long','ABCD12345'],['U (not in the alphabet)','ABCDU234'],['inner space','ABCD 1234'],['empty','']])('waits on a join-code file that is %s',(_name,text)=>expect(parseJoinCodeFile(Buffer.from(text,'utf8'))).toBe(''));
+it('does not read UTF-16LE without its BOM as a code',()=>expect(parseJoinCodeFile(Buffer.from('ABCD1234','utf16le'))).toBe(''));

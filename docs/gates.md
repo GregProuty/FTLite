@@ -777,3 +777,65 @@ Spec `docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md`, plan `d
 | Session | Date | Network | Pair | Q1-Q5 | Guest-Helm Q1 | Helm laggy | Rooms |
 |---|---|---|---|---|---|---|---|
 | none yet | | | | | | | |
+
+### The internet candidate for SIM 39 (H-2b-ii)
+
+- **The candidate.** Its identity reads `sim: 39`, from `SIM_VERSION`. Only `out/main`, `out/preload` and `out/renderer` are packaged, so smoke evidence under `out/` never enters a candidate. Every command here is for Windows PowerShell 5.1, in the repository root. Build it on a committed revision (the manifest records `HEAD` as `identity.revision`):
+  1. The worker bundle, a Wrangler dry run (nothing is deployed): `npm run build:signalling`. It ends `--dry-run: exiting now.`.
+  2. The origin-embedded build and the unsigned package:
+
+     ```powershell
+     $env:FTLITE_PACKAGED_SERVICE_ORIGIN='https://ftlite-signalling-dev.gprout009.workers.dev'
+     npm run build
+     Remove-Item Env:FTLITE_PACKAGED_SERVICE_ORIGIN
+     $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
+     npx electron-builder --win --dir --publish never '-c.win.signAndEditExecutable=false' '-c.directories.output=dist/h2b-candidate'   # quoted: PowerShell 5.1 splits an unquoted -c.a.b=c argument
+     Remove-Item Env:CSC_IDENTITY_AUTO_DISCOVERY
+     Compress-Archive -Path dist\h2b-candidate\win-unpacked\* -DestinationPath dist\h2b-candidate.zip -Force
+     ```
+
+  3. The manifest, a local read-only audit: `npx tsx scripts/network/candidate-manifest.ts --package-path=dist/h2b-candidate.zip --app-directory=dist/h2b-candidate/win-unpacked --output=dist/h2b-candidate/candidate.json`. It prints `Candidate package audit PASS: exact out/main, out/preload and out/renderer bytes, no env, test profiles or evidence.`
+  4. The operator source archive for the two machines (exactly the manifest's `sourceFiles`, with this machine's bytes, so the launcher's source checks pass whatever the other machines' Git line-ending setting):
+
+     ```powershell
+     $m = Get-Content dist\h2b-candidate\candidate.json -Raw | ConvertFrom-Json
+     $m.sourceFiles.PSObject.Properties.Name | Set-Content -Path dist\h2b-source-files.txt -Encoding ASCII
+     & "$env:SystemRoot\System32\tar.exe" -a -c -f dist\h2b-source.zip -T dist\h2b-source-files.txt
+     ```
+
+  `out/` must hold the candidate build whenever a command below names the manifest. `npm run build` and every `test:*-runtime` script except `test:internet-app-runtime` rebuild `out/` without the origin; afterwards repeat the first three lines of step 2. The smoke refuses (`preparation-failed`) if `out/` differs from the manifest.
+- **The internet smoke** (`npm run test:internet-app-runtime`) first runs a duel pair through the real menu:
+  - the test seed's forced round end (each player stands up and sits down, X then E), then Enter;
+  - the Helm's thrust and Weapons' beam seen on both, and hash agreement;
+  - each machine's round-1 record, with latency samples, copied to `<report>-duel-records/`.
+
+  It then runs its sector pair through the test-only sector entry (`host-sector`, `join-sector` and `FTLITE_SECTOR_ONLINE_TEST=1`). A local pair's report must carry the duel evidence. The host's record reads loopback; the guest's carries an RTT and reads `lan` or `internet`, and must read `internet` under `--force-relay`. Use a new `--report-path` for every run: a rerun with the same path deletes the earlier run's copied duel records. The smoke's duel records are 25 s test-seed rounds: never feed them to the real playtest report, the checklist or the §16 sessions (the commands below only prove the merge and the labels).
+- **Two machines** (`--role=host|guest`) run the same two parts, one machine each: the duel through the real menu, then the sector through the test-only entry, captured `--capture-after-ms` (at most 180 s) after the sector run starts. The host's lobby shows each room code on screen; the guest's operator saves it with `Set-Content -Path <file> -Value <code> -Encoding ASCII` in the file named by `--join-code-file`, which the guest reads and deletes (and removes again when the run ends, pass or fail). The guest also reads a UTF-16 file (PowerShell 5.1's `>` and `Out-File`) and takes O as 0 and I or L as 1. No room code is printed, logged or reported. Each single-device report carries its machine's `deviceDuel`, and the pair's duel seeds must match. The exact steps and commands are in the [two-machine procedure](superpowers/prompts/2026-11-15-net-3e-two-machine-playtest.md).
+- **Proven before the redeploy** (on the candidate build, against local workerd; nothing deployed):
+  - The internet smoke's local verification and the playtest report on its duel records:
+
+    ```powershell
+    npm run test:internet-app-runtime -- --service-origin=https://ftlite-signalling-dev.gprout009.workers.dev --candidate-manifest=dist/h2b-candidate/candidate.json --report-path=out/h2b-internet/local.json --local-verification
+    npx tsx scripts/duel-playtest-report.ts out/h2b-internet/local-duel-records/host out/h2b-internet/local-duel-records/guest
+    ```
+
+    The first prints `Actual-app evidence PASS; this invocation does not assert internet readiness or physical separation.`; the second reads `2 file(s), 2 valid record(s), 0 invalid line(s) skipped.` with the room `| seed-2277 | lan | 0 | 1 | 1 |`.
+  - The local recovery smoke, for the readiness report's `localRecovery` gate. Run the script directly: `npm run test:online-recovery-runtime` would rebuild `out/` without the origin, and the gate needs the candidate's executable bytes.
+
+    ```powershell
+    npx tsx scripts/network/online-recovery-smoke.ts --scenario=skiff --report-path=out/h2b-recovery/recovery-skiff.json
+    (Get-FileHash out\h2b-recovery\recovery-skiff.json -Algorithm SHA256).Hash.ToLower()
+    ```
+
+    It prints `ACTUAL APPLICATION RECOVERY PASS skiff`. Its report goes into `localRecovery` unedited: `{status:'PASS', evidence:[{path:'out/h2b-recovery/recovery-skiff.json', sha256:<the hash above>}], report:<the report's JSON>}`. `validateInternetAppReport` requires its `source.digest` to equal the manifest's `identity.digest` and its executable `out/` hashes to equal the manifest's. If its `source.revision` differs from `identity.revision` (it was run after a later commit), add `runtimeProvenance:{reportRevision:<source.revision>, candidateRevision:<identity.revision>, executableArtifacts:<the manifest's out/ .js and .html artifacts with their hashes>}`.
+- **Owner-only, after the redeploy** of exactly the manifest's worker bundle (`identity.workerBundleSha256` and `workerConfigSha256`), following the Net-3e release document's deployment section:
+  - The deployed service, then forced relay (TURN; the guest's duel record must read `internet`), each with its own report path:
+
+    ```powershell
+    npm run test:internet-app-runtime -- --service-origin=https://ftlite-signalling-dev.gprout009.workers.dev --candidate-manifest=dist/h2b-candidate/candidate.json --report-path=out/h2b-internet/deployed.json
+    npm run test:internet-app-runtime -- --service-origin=https://ftlite-signalling-dev.gprout009.workers.dev --force-relay --candidate-manifest=dist/h2b-candidate/candidate.json --report-path=out/h2b-internet/relay.json
+    ```
+
+    Their duel records land in `out/h2b-internet/deployed-duel-records/` and `out/h2b-internet/relay-duel-records/`; check them with `npx tsx scripts/duel-playtest-report.ts out/h2b-internet/relay-duel-records/host out/h2b-internet/relay-duel-records/guest` (the guest row reads `internet`), and keep them out of the real playtest report.
+  - The two-machine single-device runs, per the [two-machine procedure](superpowers/prompts/2026-11-15-net-3e-two-machine-playtest.md).
+  - The LAN and internet checklists and the §16 sessions above, on the installed `dist/h2b-candidate.zip`, with the report run on both PCs' `userData/playtest/` folders.
