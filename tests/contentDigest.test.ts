@@ -37,7 +37,9 @@ const sources = {
   'src/network/state/receiver.ts': 'export const receiver = 1;\n',
   'src/network/state/timeline.ts': 'export const presentation = 1;\n',
   'src/shared/hostProcessProtocol.ts': 'export const streamOptions = 1;\n',
-  'src/renderer/src/clientControl/clientRun.ts': 'export const activation = 1;\n'
+  'src/renderer/src/clientControl/clientRun.ts': 'export const activation = 1;\n',
+  'src/renderer/src/clientControl/streamClient.ts': 'export const streamClient = 1;\n',
+  'src/renderer/src/clientControl/duelClient.ts': 'export const duelClient = 1;\n'
 };
 function fixture(entries = Object.entries(sources)): string {
   const root = mkdtempSync(join(tmpdir(), 'ftlite-digest-')); roots.push(root);
