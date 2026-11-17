@@ -9,7 +9,7 @@ import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { SHIP_RADIUS } from '../../sim/tactical/tuning';
 import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
-import { blink, CRT, DAMAGE_BLINK_HZ, DASH, DOT, DOT_GAP, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING } from './crtTheme';
+import { blink, CRT, DAMAGE_BLINK_HZ, DASH, DOT, DOT_GAP, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
 import { asteroidShape, CHEVRON_SIZE, type ArrowTarget, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
@@ -126,19 +126,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     else g.poly(place(hull.outline)).fill(CRT.glass).stroke({ width: 1, color: CRT.main });
     // The rooms, by the damage table (hull silhouettes spec section 2; level 2 is the CRT map's rule, level 1 adds a tone).
     hull.rooms.forEach((room, r) => {
-      const pts = place(room), level = s.rooms[r] ?? 0;
-      let fill: number | null, stroke: number, hatch: number | null;
-      if (s.crew) {
-        if (level === 0) { fill = null; stroke = CRT.glass; hatch = null; }
-        else if (level === 1) { fill = CRT.mid; stroke = CRT.glass; hatch = CRT.glass; }
-        else if (phase === 0) { fill = CRT.glass; stroke = CRT.hot; hatch = null; }
-        else { fill = CRT.hot; stroke = CRT.glass; hatch = null; }
-      } else {
-        if (level === 0) { fill = null; stroke = CRT.mid; hatch = null; }
-        else if (level === 1) { fill = CRT.dim; stroke = CRT.main; hatch = CRT.main; }
-        else if (phase === 0) { fill = CRT.hot; stroke = CRT.glass; hatch = null; }
-        else { fill = CRT.glass; stroke = CRT.main; hatch = CRT.main; }
-      }
+      const pts = place(room), { fill, stroke, hatch } = roomLook(s.crew, roomLevel(s.rooms[r] ?? 0), phase);   // the shared table (enemy ship window spec §6.3)
       if (fill === null) g.poly(pts).stroke({ width: 1, color: stroke });
       else g.poly(pts).fill(fill).stroke({ width: 1, color: stroke });
       if (hatch !== null) segments(g, hatchSegments(pts, HATCH_SPACING, HATCH_ANGLE, seg), 1, hatch);
