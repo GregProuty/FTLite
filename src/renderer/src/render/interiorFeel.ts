@@ -42,6 +42,8 @@ export interface FeelFrame {
   working: readonly Working[];
   /** One art pixel in the shaken container's parent units: 2 x the world scale. */
   artPx: number;
+  /** The procedural starfield's art pixel (interior zoom: the fit's, so the stars hold still while the ship zooms); defaults to `artPx`. */
+  starPx?: number;
 }
 
 export interface InteriorFeel {
@@ -247,7 +249,7 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
       // The starfield (section 8), or the painted backdrop's twinkle on the same clock, scaled by the feel's flash (Art-v).
       starG.clear();
       if (backdrop) backdrop.draw(t, feelScale(opts.feel()).flash);
-      else for (const s of stars(seed, opts.band, t, frame.artPx)) starG.rect(s.x, s.y, frame.artPx, frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
+      else for (const s of stars(seed, opts.band, t, frame.starPx ?? frame.artPx)) starG.rect(s.x, s.y, frame.starPx ?? frame.artPx, frame.starPx ?? frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
 
       stepShake(shake, paused ? realDt : pdt);   // a pause drains the shake on real time and shows none
       const bob: number[] = [];

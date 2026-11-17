@@ -11,6 +11,7 @@ import { LASER_RANGE } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import type { OtherStatus } from '../../render/duel/readoutModel';
 import { createCamera, followBody, updateCamera, type Camera, type Viewport } from '../../render/tactical/camera';
+import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { repairInReach, seatOf } from './controls';
@@ -73,7 +74,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[]; repair: number[] } | null = null;
   let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld = { moveX: 0, moveY: 0 };
   let cameras = { helm: createCamera(), weapons: createCamera() };
-  const cameraInput = createCameraInput(deps.now, deps.viewport);
+  const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
   /** Observe the client: on a new publication, roll the interpolation and derive the gap's events. True when one was new. */
   function observe(): boolean {
@@ -83,7 +84,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     const t = d.tactical, now = deps.now();
     if (d.round !== round) {   // the first publication or a new round: no interpolation across it, fresh cameras
       round = d.round; latest = null; lastTick = -1;
-      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y) }; cameraInput.reset();
+      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y) }; cameraInput.reset(); resetInteriorCamera(interiorCamera);
     }
     if (latest) events.push(...gapEvents(latest.counters, latest.missiles, t));
     prev = latest ? latest.bodies : t.ships.map(body);
@@ -112,6 +113,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     get missilePrev() { return missilePrev; },
     get crewPrev() { return crewPrev; },
     get cameras() { return cameras; },
+    interiorCamera,
     epoch: () => duel().round,
     active: () => seat,
     view: (): DuelView => { const s = seatOf(duel(), seat); return s === 'standing' ? 'interior' : s; },
@@ -134,7 +136,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : null;
-      if (cam && keys && pointer) cameraInput.apply(cam, keys, pointer);
+      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer); else cameraInput.applyInterior(interiorCamera, keys, pointer); }
       for (const c of [cameras.helm, cameras.weapons]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);

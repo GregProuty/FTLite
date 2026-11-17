@@ -64,6 +64,9 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     expect(out.at(-1)).toEqual(['MISSILE INBOUND', '']);
     disposeDuel(d);
   });
+  it('the interior help names the zoom, the drag and C (interior zoom spec rule 6)', () => {
+    expect(readoutHelp('interior')).toContain('WHEEL ZOOM  DRAG PAN  C FOLLOW');
+  });
   it('every row and help line fits the 220-px column', () => {
     const d = createDuel(layout, 5);
     d.tactical.systems[0].rooms = [2, 2, 2]; d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS; placeMissile(d.tactical, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });

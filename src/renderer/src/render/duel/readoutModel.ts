@@ -88,7 +88,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THRUST   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F MISSILE   A/D STEER', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
-  return ['WASD WALK', 'E SIT   HOLD E REPAIR', 'TAB SWITCH   ESC PAUSE'];
+  return ['WASD WALK', 'E SIT   HOLD E REPAIR', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
 
 /** Rows the readout pool holds: the longest list (standing, Helm empty, a missile inbound) is 21. */

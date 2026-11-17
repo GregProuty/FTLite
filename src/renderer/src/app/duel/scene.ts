@@ -19,6 +19,7 @@ import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
 import type { Axes } from '../../sim/tactical/state';
+import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { DuelView } from './runtime';
 
 /** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the readouts. */
@@ -29,6 +30,8 @@ export interface DuelViewSource {
   readonly missilePrev: readonly (PrevBody | null)[];
   readonly crewPrev: readonly { x: number; y: number }[];
   readonly cameras: { readonly helm: Camera; readonly weapons: Camera };
+  /** The interior's zoom and follow (interior zoom spec), following `active()`'s character. */
+  readonly interiorCamera: InteriorCamera;
   /** Changes when the view's caches must start again (a new round). */
   epoch(): number;
   active(): 0 | 1;
@@ -84,7 +87,7 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
       let overlayView: MapOverlayView | null = null;
-      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, source.paused() ? 0 : dt);   // Art-i spec section 7: the light and feel hold while paused
+      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, source.paused() ? 0 : dt, { camera: source.interiorCamera, active: source.active() });   // Art-i spec section 7: the light and feel hold while paused
       else {
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
