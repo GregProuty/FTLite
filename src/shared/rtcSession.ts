@@ -44,7 +44,9 @@ export type RtcRequest = { version: 1; hostGeneration: number; requestId: number
 export type RtcResponse = { version: 1; hostGeneration: number; requestId: number; attemptId: string } & (
   | { kind: 'port-ready' | 'closed' | 'failed' | 'applied' }
   | { kind: 'ready'; latestPayloadLimit: number }
-  | { kind: 'signal'; signal: RtcSignal });
+  | { kind: 'signal'; signal: RtcSignal }
+  /** A ready attempt's link figures (H-2 spec §8): the selected pair's RTT and its route label, never a candidate. */
+  | { kind: 'stats'; rttMs: number; route: 'lan' | 'internet' });
 export function validRtcCap(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 4096 && (value as number) <= 16088;
 }
@@ -71,6 +73,8 @@ export function isRtcResponse(value: unknown): value is RtcResponse {
   const stamp = ['version','hostGeneration','requestId','attemptId','kind'];
   if (value.kind === 'port-ready' || value.kind === 'closed' || value.kind === 'failed' || value.kind === 'applied') return rtcKeys(value, stamp);
   if (value.kind === 'ready') return rtcKeys(value, [...stamp,'latestPayloadLimit']) && validRtcCap(value.latestPayloadLimit);
+  if (value.kind === 'stats') return rtcKeys(value, [...stamp,'rttMs','route']) && typeof value.rttMs === 'number' && Number.isFinite(value.rttMs)
+    && value.rttMs >= 0 && value.rttMs <= 60000 && (value.route === 'lan' || value.route === 'internet');
   return value.kind === 'signal' && rtcKeys(value, [...stamp,'signal']) && isRtcSignal(value.signal) && value.signal.attemptId === value.attemptId;
 }
 

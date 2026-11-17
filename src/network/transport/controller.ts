@@ -15,6 +15,8 @@ export interface HiddenControllerOptions {
   scheduler?: RtcPeerOptions['scheduler'];
   createPeer?: (options: RtcPeerOptions) => RtcPeer;
 }
+/** How often a ready attempt reports its link figures to main. */
+export const STATS_MS = 1000;
 /** Generic bridge: receipts, validated ACKs and opaque mode payloads pass unchanged. */
 export function createTransportController(options: HiddenControllerOptions) {
   const clock = options.clock ?? { nowMs: () => performance.now() };
@@ -87,6 +89,16 @@ export function createTransportController(options: HiddenControllerOptions) {
         if (closed) return;
         if (!validRtcCap(link.caps.maxDatagram)) { close(); return; }
         respond({ ...stamp, kind: 'ready', latestPayloadLimit: link.caps.maxDatagram });
+        // The link figures (H-2 spec §8) once a second: the RTT and the route label only, once the peer has sampled both.
+        let cancelStats = () => {};
+        const report = () => {
+          if (closed) return;
+          const { route, rttMs } = peer!.linkFigures?.() ?? { route: null, rttMs: null };
+          if (route && rttMs !== null && Number.isFinite(rttMs) && rttMs >= 0 && rttMs <= 60000) respond({ ...stamp, kind: 'stats', rttMs: Math.round(rttMs * 10) / 10, route });
+          cancelStats = scheduler.schedule(STATS_MS, report);
+        };
+        cancelStats = scheduler.schedule(STATS_MS, report);
+        subscribe(() => () => cancelStats());
       }, close);
     } catch { close(); }
   }

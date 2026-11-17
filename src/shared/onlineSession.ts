@@ -51,6 +51,14 @@ export interface OnlinePortDescriptor {
   epoch: number; runId: string; hostGeneration: number; seatId: number; compatibility: RoomCompatibility;
 }
 export type OnlineResult = { ok: true } | { ok: false; code: OnlineErrorCode };
+/** A peer link's figures for the playtest record and the F3 overlay (H-2 spec §8, §9): the route label of its selected
+ *  candidate pair ('lan' for a direct local pair, 'internet' through a NAT or relay) and its RTT. Never a candidate,
+ *  address or credential. */
+export interface OnlineLinkStats { route: 'lan' | 'internet'; rttMs: number }
+export function validateOnlineLinkStats(value: unknown): value is OnlineLinkStats {
+  return rtcRecord(value) && rtcKeys(value, ['route', 'rttMs']) && (value.route === 'lan' || value.route === 'internet')
+    && typeof value.rttMs === 'number' && Number.isFinite(value.rttMs) && value.rttMs >= 0 && value.rttMs <= 60000;
+}
 
 const positive = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
 const natural = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
@@ -126,6 +134,8 @@ export const ONLINE_CHANNELS = {
 export const ONLINE_STATUS_CHANNEL = 'online:status';
 export const ONLINE_PORT_CHANNEL = 'online:port';
 export const ONLINE_PORT_SOURCE = 'ftlite:online:main';
+/** The link figures channel (H-2 spec §8): no argument; answers OnlineLinkStats or null. */
+export const ONLINE_LINK_STATS_CHANNEL = 'online:link-stats';
 export interface OnlineStatusEnvelope { version: 1; revision: number; status: OnlineStatus }
 export function validateOnlineStatusEnvelope(value: unknown): value is OnlineStatusEnvelope {
   return rtcRecord(value) && rtcKeys(value, ['version', 'revision', 'status']) && value.version === 1
@@ -150,6 +160,8 @@ export interface OnlinePreloadApi {
   forgetSeat(): Promise<OnlineResult>;
   readStatus(): Promise<OnlineStatusEnvelope | Extract<OnlineResult, { ok: false }>>;
   onStatus(callback: (value: OnlineStatusEnvelope) => void): Unsubscribe;
+  /** This machine's newest peer link figures, or null with no ready link (H-2 spec §8). */
+  linkStats?(): Promise<OnlineLinkStats | null>;
 }
 /** The duel playtest record channel (H-2 spec §8): one record per call, validated in main. */
 export const DUEL_RECORD_CHANNEL = 'duel:record';
