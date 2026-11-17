@@ -75,7 +75,7 @@ keeps today's router, bridge and lifecycle wiring. `session.ts` and `onlineSessi
 
 **The render rule of `<UiRoot>`.** Each region sits in its own error boundary (§2, failure modes):
 
-- `<Menu>`: whenever the `menu` prop of `mountUi` is true (the app). It renders nothing on page `single`.
+- `<Menu>`: whenever the `menu` prop of `mountUi` is true (the app). On page `single` it renders only its empty, hidden root (§5).
 - `<Hud>`: when `hud !== null`.
 - `<DuelUi>`: when `duel !== null`.
 - `<FlightUi>`: when `flight !== null`.
@@ -252,7 +252,8 @@ The UI must look the same as today's Pixi panels: same rectangles, same glyph sh
 - **The root element.** `data-testid="session-menu"` and `aria-label="FTLite session menu"` sit on `<Menu>`'s root
   element. It is the full-screen overlay when not playing and exactly the strip (`position: fixed; top: 0`, full
   width) while playing (`page === 'session' && hadView`). It is never `#ui`, `<UiRoot>` or the stage. On page `single`
-  it renders nothing. A jsdom test asserts that while playing, the element contains only the strip.
+  it renders only that root, empty and `display: none`, as the DOM menu did (the smokes' `layout` command measures it
+  during Single player). A jsdom test asserts that while playing, the element contains only the strip.
 - **The strip's height reaches the canvas.** `SessionStrip` has a layout effect with a `ResizeObserver`. It writes
   the measured height into `layout.stripHeight` on mount and on every resize, and writes `0` in its cleanup (so Leave
   restores the full viewport). `main.ts` subscribes to `layout.stripHeight` (with an equality check) and calls its
