@@ -6,12 +6,13 @@ import { decodeMessage } from '../../src/renderer/src/net/codec';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import skiff from '../../src/renderer/src/sim/ship/skiff.json';
 import cutter from '../../src/renderer/src/sim/ship/cutter.json';
+import hound from '../../src/renderer/src/sim/ship/hound.json';
 import { loadSnapshot } from '../../src/renderer/src/sim/snapshot';
 import { disposeSimState } from '../../src/renderer/src/sim/state';
 import { reconcileUi } from '../../src/renderer/src/clientControl/cardController';
 /** Read-only expected first publication for dormant UI; no authority or producer runs. */
 export function reconciledMemory(checkpoint:any) {
-  const layout=[parseShip(skiff),parseShip(cutter)].find(l=>l.id===checkpoint.init.layoutId)!;
+  const layout=[parseShip(skiff),parseShip(cutter),parseShip(hound)].find(l=>l.id===checkpoint.init.layoutId)!;
   const state=loadSnapshot(layout,checkpoint.snapshot,checkpoint.init.contentDigest);
   try { return checkpoint.botControllers.map((ui:any)=>{
     const next=structuredClone(ui); reconcileUi(state,next,checkpoint.init.runId,checkpoint.commandHighWater);
@@ -19,7 +20,7 @@ export function reconciledMemory(checkpoint:any) {
   }); } finally { disposeSimState(state); }
 }
 export function observeUtility(parent: any, path: string) {
-  const layouts = [parseShip(skiff),parseShip(cutter)], requests = new Map<string,number>(), grants = new Map<number,number>();
+  const layouts = [parseShip(skiff),parseShip(cutter),parseShip(hound)], requests = new Map<string,number>(), grants = new Map<number,number>();
   const evidence: any = { pid:process.pid, requests:0, grants:0, tick:0, phase:'paused', lastAdvanceMs:0, afterDeadlineInputs:0, unavailableResults:0, lateReplyRejected:0, errors:0 };
   (globalThis as any).__recoveryLease = (event:any) => {
     if(event.kind==='request') {

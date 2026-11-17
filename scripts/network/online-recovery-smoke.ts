@@ -15,7 +15,7 @@ let assertionFailure: string | undefined;
 const assert = (value: unknown, message: string) => { if (!value) { assertionFailure=message; throw Error(message); } };
 type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exit: Promise<void>; request(command: string, data?: object): Promise<any>; cleanup?: any; exitCode?: number|null; beforeExit?: any; forcedUtilityExits?: any[]; termination?: 'shutdown'|'restart'|'fault' };
 async function main() {
-  const scenario = process.argv.find(a => a.startsWith('--scenario='))?.slice(11) ?? 'skiff';
+  const scenario = process.argv.find(a => a.startsWith('--scenario='))?.slice(11) ?? 'hound-2';
   let proof: any;
   let failureCategory: string | undefined, stage = 'preparation', utilityFailure: unknown, instrumentation: any[]=[], driverFailure: unknown, firstDriverFailure: unknown;
   const began = performance.now(), directory = mkdtempSync(join(tmpdir(), 'ftlite-online-recovery-'));
@@ -138,7 +138,7 @@ async function main() {
     runtime = startOnlineAppRuntime(directory, source.digest, deadline.signal, hang, stage => { if (hang === stage) injectedDeadline = setTimeout(timeout,250); });
     await runtime.ready;
     let h = await launch('host'), g = await launch('guest');
-    const capacity = ['cutter','race'].includes(scenario) ? 4 : 2;
+    const capacity = ['hound-4','race'].includes(scenario) ? 4 : 2;
     let seat = capacity === 4 ? 2 : 1, contender: Application | undefined;
     const lobby = await host(h,capacity);
     if(capacity === 4) {

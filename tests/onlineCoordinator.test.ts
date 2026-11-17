@@ -120,10 +120,13 @@ describe('online coordinator ownership', () => {
     const h = harness(); h.store.save.mockRejectedValue({ code: 'storage-write-failed' });
     await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); expect(h.owner.status()).toMatchObject({ phase: 'lobby', persistent: false, error: 'storage-write-failed' }); await h.owner.dispose();
   });
-  it('probes second layout only for incompatible', async () => {
+  it('probes each distinct sector layout once: the Hound flies at every size, so incompatible is final (Art-iv-b)', async () => {
+    const ok = harness(4, 3); await ok.owner.dispatch({ type: 'join', code: ' abcdefgh ', mode: 'sector' });
+    expect(ok.service.join.mock.calls.map((call: any) => call[1].layoutHash)).toEqual([sectorCompatibility(4).layoutHash]);
+    expect(ok.owner.status().ownSeat).toBe(3); await ok.owner.dispose();
     const h = harness(4, 3); h.service.join.mockRejectedValueOnce({ code: 'incompatible' });
-    await h.owner.dispatch({ type: 'join', code: ' abcdefgh ', mode: 'sector' }); expect(h.service.join.mock.calls.map((call: any) => call[1].layoutHash)).toEqual([sectorCompatibility(2).layoutHash, sectorCompatibility(4).layoutHash]);
-    expect(h.owner.status().ownSeat).toBe(3); await h.owner.dispose();
+    await expect(h.owner.dispatch({ type: 'join', code: ' abcdefgh ', mode: 'sector' })).resolves.toMatchObject({ ok: false, code: 'incompatible' });
+    expect(h.service.join.mock.calls.map((call: any) => call[1].layoutHash)).toEqual([sectorCompatibility(2).layoutHash]); await h.owner.dispose();
     const denied = harness(); denied.service.join.mockRejectedValue({ code: 'unauthorized' }); await denied.owner.dispatch({ type: 'join', code: 'ABCDEFGH', mode: 'sector' }); expect(denied.service.join).toHaveBeenCalledOnce(); await denied.owner.dispose();
   });
   it('Leave preempts an unresolved transport factory and closes its late return', async () => {
@@ -166,7 +169,7 @@ describe('online coordinator ownership', () => {
     h.emit({ type: 'link-state', attemptId: '1'.repeat(32), state: 'ready' });
     h.snapshot.seats[3].ready = true; h.emit({ type: 'roster', snapshot: h.snapshot }); await h.owner.dispatch({ type: 'ready', ready: true });
     await h.owner.dispatch({ type: 'start' }); expect(h.platform.startLeasedHost).toHaveBeenCalledOnce();
-    const start = h.host.request.mock.calls[0] as any; expect(JSON.parse(new TextDecoder().decode(start[0].initBytes))).toMatchObject({ playerCount: 4, layoutId: 'cutter' });
+    const start = h.host.request.mock.calls[0] as any; expect(JSON.parse(new TextDecoder().decode(start[0].initBytes))).toMatchObject({ playerCount: 4, layoutId: 'hound' });
     expect(h.host.attachPeer.mock.calls.map((call: any) => call[1])).toEqual([[0], [3]]);
     expect(await h.owner.dispatch({ type: 'remove-seat', seatId: 3 })).toMatchObject({ ok: false });
     h.nativeClosed('1'.repeat(32)); expect(h.host.dispose).not.toHaveBeenCalled(); await h.owner.dispose();

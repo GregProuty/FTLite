@@ -1,0 +1,119 @@
+{
+  "platform": "win32/x64",
+  "digest": "f82dad3f176693bb9f7fd4439089127997de7106ca63c3ca10f8c410980c962d",
+  "node": "v24.18.0",
+  "samples": 1800,
+  "runs": [
+    {
+      "ship": "hound",
+      "runId": "det-hound-2-0",
+      "seed": 20261114,
+      "ticks": 9196,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-2-1",
+      "seed": 20261115,
+      "ticks": 10283,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-2-2",
+      "seed": 20261116,
+      "ticks": 5689,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-2-3",
+      "seed": 20261117,
+      "ticks": 14223,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-2-4",
+      "seed": 20261118,
+      "ticks": 9769,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-2-5",
+      "seed": 20261119,
+      "ticks": 4840,
+      "ended": false
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-3-0",
+      "seed": 20261114,
+      "ticks": 7057,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-3-1",
+      "seed": 20261115,
+      "ticks": 10301,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-3-2",
+      "seed": 20261116,
+      "ticks": 6758,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-3-3",
+      "seed": 20261117,
+      "ticks": 9929,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-3-4",
+      "seed": 20261118,
+      "ticks": 12829,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-3-5",
+      "seed": 20261119,
+      "ticks": 6955,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-3-6",
+      "seed": 20261120,
+      "ticks": 171,
+      "ended": false
+    }
+  ],
+  "engines": [
+    {
+      "engine": "Node v24.18.0; V8 13.6.233.17-node.50",
+      "seconds": 62.663446
+    },
+    {
+      "engine": "Electron 37.10.3; Chromium 138.0.7204.251; V8 13.8.258.32-electron.0",
+      "seconds": 17.54529269999999,
+      "status": "PASS"
+    },
+    {
+      "engine": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0",
+      "seconds": 22.757994900000003,
+      "status": "PASS"
+    }
+  ],
+  "gaps": [
+    "Safari/JSC not run",
+    "ARM not run"
+  ]
+}
