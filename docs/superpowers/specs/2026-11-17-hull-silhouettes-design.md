@@ -114,7 +114,7 @@ This keeps the CRT map's rules:
 - every blink alternates between two visible states;
 - the hatch is unchanged (4 px at 45°, clipped to the room).
 
-**Deviation from the CRT map spec, deliberate:** the level-1 tone fill (`mid` on the crew, `dim` on the enemy) is new. The CRT spec has no fill change at level 1, only the hatch. Rooms inside a real hull outline are smaller than the wedge's segments, which filled the whole wedge. At zoom 0.5 the new rooms get about 1.2 to 1.7 hatch lines on average (the wedge got 1.8 to 3.0), and no room layout inside these outlines reaches 2 lines everywhere. The tone keeps the "two visible states, never off" rule and the ramp colours, and level 2 is unchanged. The owner's look gate judges it.
+**Deviation from the CRT map spec, deliberate:** the level-1 tone fill (`mid` on the crew, `dim` on the enemy) is new. The CRT spec has no fill change at level 1, only the hatch. Rooms inside a real hull outline are smaller than the wedge's segments, which filled the whole wedge. At zoom 0.5 the new rooms get about 1.2 to 1.7 hatch lines on average (the wedge got 1.8 to 3.0), and no room layout inside these outlines reaches 2 lines everywhere. The tone keeps the "two visible states, never off" rule and the ramp colours, and level 2 is unchanged. The owner's look gate judges it (section 3). If the owner rejects it, the fallback is the pure CRT rule: the two level-1 fill cells become "none". If the owner approves it, the CRT spec's section 2 gets a one-line note recording the level-1 tone fill.
 
 There are no display objects per frame, and each `Graphics.poly` call gets a fresh array.
 
@@ -129,8 +129,8 @@ Below `SHIP_CHEVRON_PX` (10 px across) the chevron is drawn as today. The lock l
   - `tests/crtColours.test.ts`: the full-frame colour test with both hulls at damage levels 0, 1 and 2 in both phases.
 - **Unchanged:** all existing tests pass, with the wedge's tests moved as in section 1. SIM_VERSION and the goldens are unchanged.
 - **Screenshots** (the CRT map harness approach), saved to `C:\Users\djuar\FTLite-shots\hull-silhouettes\`:
-  - the Weapons map at the default zoom (0.5) with the lock and damage at levels 1 and 2 on both ships. This is a pass/fail check: in this shot, every damaged room on both ships must be told apart from an undamaged one, and level 1 from level 2, in both blink phases (take one shot per phase);
+  - the Weapons map at the default zoom (0.5) with the lock and damage at levels 1 and 2 on both ships. This is a pass/fail check, with one shot per blink phase. Level 1 must differ from level 0 in each phase. Level 2 must differ from level 0 in at least one phase, and from level 1 in each phase. Crew level 2 in phase 1 is expected to match the hull (the blink is the signal, as in the CRT spec);
   - the Helm map;
   - the flight view;
   - the Weapons map at `ZOOM_MAX` (1.2) on both ships.
-- **Owner gate:** does the crew's ship read as the Hound and the enemy as a distinct drone at a glance, and are damage and the lock still clear?
+- **Owner gate:** does the crew's ship read as the Hound and the enemy as a distinct drone at a glance, and are damage and the lock still clear? Does the level-1 tone fill (section 2's deviation) read well, or should level 1 be hatch only?

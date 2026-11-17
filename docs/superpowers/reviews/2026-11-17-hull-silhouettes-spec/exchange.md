@@ -192,3 +192,55 @@ Confirmed (tacticalModel.test.ts:L6). It is now listed.
 
 ---
 
+# Round 3 (delta, reviewing 18e366f, effort medium, 46 s, 85379 in / 66562 cached / 4484 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R3-F1 The new per-phase pass/fail screenshot check cannot pass: crew level 2 phase 1 is identical to an undamaged crew room by design
+The default-zoom check requires that in each blink phase, every damaged room on both ships can be told apart from an undamaged one. The restored level-2 row gives crew level 2 phase 1 a solid `hot` fill with a `glass` stroke and no hatch. Crew level 0 is no fill over the `hot` outline with a `glass` stroke and no hatch. Those two look exactly the same. So the phase-1 crew shot fails the check every time. This is the CRT rule: the blink itself is the signal. The check's wording contradicts the table. · spec L132 ('every damaged room on both ships must be told apart from an undamaged one ... in both blink phases (take one shot per phase)'); spec L103 (crew 0: none / `glass` / none) and L106 (crew 2 phase 1: `hot` solid / `glass` / none), drawn over the L95 `hot`-filled outline. CRT spec L41 (level 2 alternates a `glass` cut-out and `hot`). tacticalLayer.ts:L125 draws the same hot fill + glass stroke for level 0 and for level 2 off-phase. · The check is the explicit acceptance gate for R1-F3. As written, the implementer either fails it or 'fixes' the look by changing crew level 2 phase 1, which would break the CRT rule that was just restored. · Reword L132 as follows. Level 1 must differ from level 0 in each phase. Level 2 must differ from level 0 in at least one phase, and from level 1 in each phase. Crew level 2 phase 1 is expected to match the hull (the blink is the signal).
+
+## Prior findings
+- R1-F3: resolved — The level-1 tone fill makes level 1 visible regardless of how many hatch lines a room gets: crew `mid` 0xc47a12 inside `hot` 0xffd36b, and enemy `dim` 0x7a4a10 on `glass` 0x0c0e0b (crtTheme.ts:L6). The default-zoom shot is now an explicit gate (L132). The responder's reason for not adopting the hatch-count rule is stated at L117. This resolution depends on R2-F1, which is still open, and on fixing the new L132 wording finding.
+- R2-F1: still open — Level 2 now matches the CRT spec exactly: L105-L106 and L109-L110 match CRT L41-L42 and tacticalLayer.ts:L124-L133. The level-1 tone fill is still a departure from the listed fixed decision 'The CRT map's colour roles, blinks and hatch rules stay as they are'. It is now labelled as a deviation (L117), but it still has no owner sign-off and no amendment to CRT spec L41-L42, so the two specs now disagree. 'The owner's look gate judges it' (L117) is not reflected in the gate question at L136, which does not ask about the level-1 fill, and no fallback is named. Smallest fix: (1) add the level-1 tone fill explicitly to the owner gate question at L136; (2) state the fallback if the owner rejects it: drop the two level-1 fill cells (L104, L108 → none), giving the pure CRT rule; (3) if approved, add a note amending CRT spec L41-L42.
+- R2-F2: resolved — L86 now lists tests/tacticalModel.test.ts L6 (the import) and L170.
+
+## Verified
+- Restored level-2 rows match the CRT spec and today's code. Crew: phase 0 glass cut-out with hot stroke, phase 1 hot (spec L105-L106 vs CRT L41, tacticalLayer.ts:L124-L125). Enemy: phase 0 hot with glass stroke, phase 1 glass with main stroke and main hatch (spec L109-L110 vs CRT L42, tacticalLayer.ts:L129-L132)
+- Every colour in the L101-L110 table is a ramp colour (crtTheme.ts:L6)
+- Level 1 vs level 2 are distinguishable in each phase on both ships. Crew: mid + hatch vs glass cut-out or hot. Enemy: dim + hatch vs hot or glass + hatch (spec L104-L110)
+- L99 and L117 now agree that level 2 is unchanged and that only level 1 deviates
+- The L86 consumer list now covers tests/tacticalModel.test.ts L6 and L170
+
+## Not verified
+- Whether the owner actually set 'CRT rules stay as they are' (the responder says the controller wrote it). I treated it as owner-fixed, as the brief states
+- The responder's claim at L117 that no room layout inside the outlines reaches 2 hatch lines everywhere at zoom 0.5. I did not recompute the hatch counts
+- The enemy level-0 room stroke `mid` (L107) vs today's `main` (tacticalLayer.ts:L131). The row was not touched in this round, so I did not re-review it
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against `18e366f`. 2 accepted, 0 rejected, 0 deferred.
+
+## R3-F1 [P1]: Per-phase check cannot pass
+
+Confirmed: crew level 2 phase 1 equals level 0 by the CRT rule. The check is reworded as proposed.
+
+## R2-F1 [P1]: Level-1 fill sign-off (reopened)
+
+Accepted. The owner gate question now asks about the level-1 fill explicitly. The fallback if rejected is that the two fill cells become none, which is the pure CRT rule. If approved, the CRT spec gets a one-line note.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-hull-silhouettes-design.md
+
+<!-- end -->
+
+---
+
