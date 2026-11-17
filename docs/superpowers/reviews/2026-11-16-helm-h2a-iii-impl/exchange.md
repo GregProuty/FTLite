@@ -109,3 +109,43 @@ Confirmed. `frame()` sends neutral held input while the round is decided, matchi
 
 ---
 
+# Round 2 (delta, reviewing f9a3117, effort medium, 66 s, 238102 in / 191008 cached / 5636 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — `allowedMode` (onlineSession.ts:L398) now wraps both the requested mode (L405) and the credential's mode (L432), and L433 throws storage-invalid when it returns undefined. Every reconnect and retry path goes through `establish`: `lifecycle` (L460-464), the auto-retries at L141 and L147, and `resume()` at L571, which dispatches reconnect. L76 does not list reconnect or retry for a saved sector seat while the gate is off. The new test in tests/onlineDuel.test.ts covers both gate states.
+- R1-F2: resolved — The re-send clause is now `!k.fireHeld && held && now - releaseSentAt > 250` (onlineDuel.ts:L156). It no longer depends on `chargePressed`, so a release dropped during a pause is re-sent once running resumes. `play()` handles the charge only at the Weapons seat: helm and standing return at L140-145, so a Helm seat cannot release the partner's charge. Repeated releases are throttled to one per 250 ms, and the authority treats them as no-ops. Covered by the session test.
+- R1-F3: resolved — onClose (L211) freezes, stops input and sets `linkClosed`. `freeze()` returns early once closed (L98). `state()` and `publication()` prefer the frozen copy. The banner tests `(!client || linkClosed) && frozen` (L193). `pump` and `pause` refuse to send while `linkClosed` (L168, L221), and `attach` clears the flag (L206). A later `setStatus` release still works, because `freeze` is a no-op and `release` disposes the client. Covered by the session test.
+- R1-F4: resolved — `takeArrivals()` drains the gaps (onlineSource.ts). `record()` combines `roundGaps.splice(0)` with the source's gaps (onlineDuel.ts:L112). `attach` moves the old source's gaps into `roundGaps` with a 4096 cap (L205). The new source's `live()` is false while it reads the frozen copy (the new client has no publication yet), so `lastTick` becomes -1 (onlineSource.ts:L97-99) and the reconnect time is never timed as a gap. Covered by the session test.
+- R1-F5: resolved — tests/onlineDuelSession.test.ts has 7 tests covering presence first per attach, quantised held input every pump, focus loss without a pause, rematch and the leave prompt, the re-sent release, the banner on close, and per-round record figures. `duelRecordCallAllowed` is extracted (duelRecords.ts), called from index.ts:L83, and tested for a foreign sender, a subframe, arity and a destroyed window.
+- R1-F6: resolved — `appendDuelRecord` stats the file (ENOENT counts as 0) and refuses an append that would pass `DUEL_RECORD_FILE_MAX_BYTES` (16 MiB). Tested, including the rollover to a new day's file. The stat and append are not atomic, so concurrent calls could overshoot by a few records; that is negligible.
+- R1-F7: resolved — runtime.ts:L353 sets `activeHeld = ended() ? NEUTRAL : ...`, and NEUTRAL is the module constant at L193. Covered by the new duelRuntime test.
+
+## Verified
+- The onClose order in onlineDuel.ts:L211 (freeze, then stopInput, then the flag) freezes from the live client before the flag is set. The early return at L98 keeps the copy from the close until the next attach.
+- onlineDuel.ts:L217 still works after a close: `observe()` reads the closed client's null publication and returns, `freeze()` is a no-op, and `release()` disposes the client and the link.
+- onlineSource.ts:L99: after a non-live observation the next live publication has `lastTick = -1`, so no gap is timed and the interpolation gap falls back to 3 ticks. That is reasonable after a reconnect.
+- onlineSession.ts:L579-582: the seat is loaded at startup and sets `persistent`; the gate test waits on that flag.
+- runtime.ts:L351-353: the end card's neutral held value does not affect the queued rematch command.
+
+## Not verified
+- I did not run the test suite or the smokes (read-only review); I relied on the responder's report that 3560 tests pass and the duel smoke passes.
+- I did not check whether a new client's first publication can repeat the frozen copy's `publicationSequence` and be skipped by the source's check at onlineSource.ts:L81. That check predates this round and the round-2 diff does not touch it.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. Verdict ready, no new findings; R1-F1 to R1-F7 confirmed resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
