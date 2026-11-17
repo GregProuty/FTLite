@@ -58,7 +58,7 @@ Each is the recommendation, taken under the standing order. The owner can overtu
 1. **The route label** (spec §8: "a host candidate is `lan`; srflx or relay is `internet`") **(rec.; one addition)**. The hidden window labels the selected pair from its local and remote candidate stats:
    - any relay, or a server-reflexive candidate on either side, is `internet`;
    - two host candidates are `lan`;
-   - **addition:** a peer-reflexive candidate on either side, which the spec does not mention, is judged by its address: `lan` when it is private, link-local, loopback or mDNS (`.local`), `internet` when it is any other readable address. Chromium reports a LAN peer as peer-reflexive when its connectivity check beats the candidate signal, and it leaves a remote peer-reflexive candidate's address out of its stats. A remote one with no readable address is then decided from the local side: a local host candidate at a private address means the far side reached a private address, so `lan`. Otherwise the route is unknown (null), never a guessed `internet`.
+   - **addition:** a peer-reflexive candidate on either side, which the spec does not mention, is judged by its address: `lan` when it is private, link-local, loopback or mDNS (`.local`), `internet` when it is any other readable address. Chromium reports a LAN peer as peer-reflexive when its connectivity check beats the candidate signal, and it leaves a remote peer-reflexive candidate's address out of its stats. A remote one with no readable address is decided from the local side only on a direct attempt (no STUN or TURN servers configured, so no server-reflexive or relay path exists): a local host candidate at a private address then means `lan`. With ICE servers configured, a NATed internet peer looks identical, so the route is unknown (null), never a guessed label.
    - An unknown route sends no figures, so the record's `transport` stays null (the schema admits it) and the report reads the room's network as unknown (the LAN limit in fallback check 1).
 
    The address is read inside the hidden window only; just the label leaves it.
@@ -123,7 +123,7 @@ Each is the recommendation, taken under the standing order. The owner can overtu
 
 **Interfaces:**
 - Produces:
-  - `route.ts`: `RtcRoute`, `localAddress(value)`, `rtcRoute(local, remote)`.
+  - `route.ts`: `RtcRoute`, `localAddress(value)`, `rtcRoute(local, remote, direct = false)` (direct: no ICE servers configured).
   - `peer.ts`: `RtcPeer.linkFigures?()` (`{ route, rttMs }`, each null until sampled).
   - `controller.ts`: `STATS_MS`.
   - `rtcSession.ts`: the `{ kind: 'stats'; rttMs; route }` response.
@@ -177,9 +177,11 @@ describe('the route label (spec §8)', () => {
   it('a peer-reflexive candidate is judged by its address, a hidden remote one by the local host candidate; unknown gives no label', () => {
     expect(rtcRoute(c('host'), c('prflx', '192.168.1.20'))).toBe('lan');
     expect(rtcRoute(c('host'), c('prflx', '203.0.113.9'))).toBe('internet');
-    // Chromium hides a remote prflx address: a private local host candidate decides, otherwise the route is unknown.
-    expect(rtcRoute(c('host', '192.168.1.5'), c('prflx'))).toBe('lan');
-    expect(rtcRoute(c('host', '203.0.113.4'), c('prflx'))).toBeNull();
+    // Chromium hides a remote prflx address: only on a direct attempt (no STUN/TURN) does a private local host decide;
+    // with ICE servers configured a NATed internet peer looks the same, so the route is unknown.
+    expect(rtcRoute(c('host', '192.168.1.5'), c('prflx'), true)).toBe('lan');
+    expect(rtcRoute(c('host', '192.168.1.5'), c('prflx'))).toBeNull();
+    expect(rtcRoute(c('host', '203.0.113.4'), c('prflx'), true)).toBeNull();
     expect(rtcRoute(c('host'), c('prflx'))).toBeNull();
     expect(rtcRoute(c('prflx'), c('prflx'))).toBeNull();
     // A local prflx candidate is checked by its own address too.
@@ -302,9 +304,10 @@ export function localAddress(value: unknown): boolean {
 /** The route of a selected pair from its local and remote candidate stats records; null when it is unknown.
  *  Any relay, or a server-reflexive candidate on either side, is 'internet'; two host candidates are 'lan'. A
  *  peer-reflexive candidate (a LAN check that arrived before the candidate signal) is judged by its address. Chromium
- *  hides a remote one's address: then a local host candidate at a private address decides 'lan', and otherwise the
- *  route is unknown rather than a guessed 'internet'. */
-export function rtcRoute(local: unknown, remote: unknown): RtcRoute | null {
+ *  hides a remote one's address. Only on a direct attempt (no STUN or TURN servers configured, so neither side can have
+ *  a server-reflexive or relay path) does a local host candidate at a private address decide 'lan'; otherwise the
+ *  route is unknown rather than a guessed label. A private local address alone proves nothing behind a NAT. */
+export function rtcRoute(local: unknown, remote: unknown, direct = false): RtcRoute | null {
   if (!rtcRecord(local) || !rtcRecord(remote)) return null;
   const types = [local.candidateType, remote.candidateType];
   if (!types.every(t => t === 'host' || t === 'srflx' || t === 'prflx' || t === 'relay')) return null;
@@ -312,7 +315,7 @@ export function rtcRoute(local: unknown, remote: unknown): RtcRoute | null {
   const at = (c: Record<string, unknown>): unknown => c.address ?? c.ip;
   const judged = (c: Record<string, unknown>): RtcRoute | null => { const a = at(c); return typeof a === 'string' && a !== '' ? (localAddress(a) ? 'lan' : 'internet') : null; };
   const near = local.candidateType === 'prflx' ? judged(local) : 'lan';
-  const far = remote.candidateType === 'prflx' ? judged(remote) ?? (local.candidateType === 'host' && localAddress(at(local)) ? 'lan' : null) : 'lan';
+  const far = remote.candidateType === 'prflx' ? judged(remote) ?? (direct && local.candidateType === 'host' && localAddress(at(local)) ? 'lan' : null) : 'lan';
   return near === 'internet' || far === 'internet' ? 'internet' : near === 'lan' && far === 'lan' ? 'lan' : null;
 }
 ````
@@ -381,7 +384,7 @@ with:
 ````ts
         sampled={rttMs:finite(pair.currentRoundTripTime,60)*1000,lossPct:received+lost>0?100*lost/(received+lost):0,relayed:(rtcRecord(local)&&local.candidateType==='relay') || (rtcRecord(remote)&&remote.candidateType==='relay')};
         const seconds=pair.currentRoundTripTime;
-        route=rtcRoute(local,remote); rtt=typeof seconds==='number' && Number.isFinite(seconds) && seconds>=0 && seconds<=60?seconds*1000:null;
+        route=rtcRoute(local,remote,iceServers.length===0); rtt=typeof seconds==='number' && Number.isFinite(seconds) && seconds>=0 && seconds<=60?seconds*1000:null;
       }
     }catch{} finally{if(alive())scheduleStats();}
   }

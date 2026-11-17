@@ -98,3 +98,54 @@ Confirmed against `src/network/rtc/peer.ts`. `linkFigures()` returns `{ route, r
 
 ---
 
+# Round 2 (delta, reviewing 28c7a75, effort medium, 83 s, 160981 in / 122727 cached / 7409 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 The hidden-remote-prflx fallback labels internet sessions 'lan' whenever this machine has a private host address
+The R1-F1 fix (which follows my round-1 suggestion) labels a remote prflx candidate with no readable address 'lan' whenever the local selected candidate is host at a private address. That inference does not hold. Almost every home or office PC's host candidate is private (192.168.x or 10.x), and a NAT translates it on the way out. So a private local host address says nothing about where the far side is. On the internet path (plan ii adds STUN/TURN through `iceServers`), Chromium reports the remote as peer-reflexive whenever its connectivity check arrives before its srflx candidate is signalled, or when it sits behind a symmetric NAT. It also hides that remote address. The pair is then host(private)/prflx(hidden), and the new rule calls it 'lan'. My round-1 fix traded one wrong label for its mirror image. · plan L61 (Decision 1: 'a local host candidate at a private address means the far side reached a private address, so lan'); plan L315 (`far = ... judged(remote) ?? (local.candidateType === 'host' && localAddress(at(local)) ? 'lan' : null)`); plan L181 (the test pins `rtcRoute(c('host', '192.168.1.5'), c('prflx'))` as 'lan'); src/network/rtc/peer.ts:L31,L195 (the peer takes `iceServers`, empty in plan i's tests at plan L168, filled by plan ii) · An internet session labelled 'lan' fails the internet checklist's transport check. It also judges the Helm's held p95 against the 150 ms LAN limit instead of 250 ms, which can trip H-2c falsely (fallback check 1, plan L94). The one-PC smoke cannot show this, because there the pair is host/host. · Only trust the local-side inference when it is sound. Pass `rtcRoute` whether the attempt was configured with no ICE servers (`servers.length === 0` in peer.ts). With no STUN/TURN, neither side gathers srflx or relay candidates, so a hidden remote prflx means a direct LAN check, and 'lan' is fair. With ICE servers configured, return null (unknown). Reword Decision 1 to match. Update the L181 test, and add a case where a private local host plus a hidden remote prflx with ICE servers configured gives null.
+
+## Prior findings
+- R1-F1: still open — A readable prflx address on either side is now judged correctly (plan L310-L316, tests L178-L188), and a hidden remote with no private local host gives null rather than 'internet'. But the new fallback, a private local host means 'lan', mislabels internet sessions whose remote appears as prflx: see the new finding. The fix was the one I suggested in round 1, and it is unsound on the internet path.
+- R1-F2: resolved — formatReport (plan L1789-L1801) evaluates the targets over the claimed rooms only, labels the line, and lists unclaimed and missing rooms. With no checklist it prints a warning. The tests at plan L1551-L1554 and L1615-L1617 match the fixture: room A has 3 rounds, A plus B have 4.
+- R1-F3: resolved — The test awaits flush() after attach (plan L912). The samples are [90,60,40,50,70] with an expected median of 60 (L916-L921). Each step is 1001 ms, at least LINK_POLL_MS (L1139, L1161), so every sample is polled.
+- R1-F4: resolved — The sort is now by round index, then startedAtIso (plan L1696-L1698), so every round k-1 is placed before round k whichever clock wrote it.
+- R1-F5: resolved — The copy loop is in try/catch with `failure ??= 'record copy failed'`, before runtime.dispose() and the temp-root removal (plan L1993-L2003).
+- R1-F6: resolved — oneNetwork (plan L1775-L1779) judges sessions on one known network. The test (L1586-L1590) covers lan s1, internet s2 (the fixture has room B as internet, L1541), mixed s3 and unknown s4. Decision 9 states the reason.
+- R1-F7: resolved — The peer keeps `rtt` as null for a missing or out-of-range currentRoundTripTime (plan L383-L384), and linkFigures returns it (L388). The controller sends stats only with a route and a non-null RTT (L457-L458). The test pins the no-RTT case (L222). diagnostics() still returns 0 for its existing callers.
+
+## Verified
+- The rtcRoute truth table matches every new test case at plan L178-L190. localAddress(undefined) returns false (plan L295), so `c('host')` with a hidden prflx remote gives null.
+- The controller rig's `set('lan', null)` type-checks: rttMs is declared `number | null` (plan L205), and the default parameter only applies to undefined.
+- evaluateFallbacks still covers all rooms for check 1 while the live targets cover only claimed rooms. The CLI test's 'H-2c starts: yes' (plan L1618) follows from room B's 300 ms guest-Helm p95 against the internet limit.
+- Task 4 Step 2's expected output now includes the no-checklist warning (plan L2019), consistent with formatReport L1800-L1801.
+- The gates text (plan L1879, L1883) matches the revised Decisions 1 and 8.
+
+## Not verified
+- Whether Chromium exposes the real address of local host candidates in getStats when mDNS obfuscation is on. If it hides them too, the local-side inference rarely fires. I did not check this against Chromium sources.
+- Which candidate type Chromium reports for the selected pair's local candidate behind a NAT (host vs srflx). This decides how often the new finding's mislabel occurs in practice, and I could not check it read-only.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json`. 1 new accepted (R2-F1), R1-F1 re-opened and fixed with it; R1-F2 to R1-F7 confirmed resolved.
+
+## R1-F1 [P2] / R2-F1 [P2]: The hidden-remote-prflx fallback labels internet sessions 'lan'
+
+Confirmed: a private local host address says nothing about the far side behind a NAT, and with STUN/TURN configured a NATed internet peer can appear as a hidden-address prflx. `rtcRoute(local, remote, direct = false)` applies the local-side inference only when `direct`, which `src/network/rtc/peer.ts` passes as `iceServers.length === 0` (`iceServers` is in scope in `createRtcPeer`): with no servers neither side can have a server-reflexive or relay path, so a hidden prflx is a direct LAN check. Otherwise the route is null (unknown). Decision 1, the Interfaces line and the route tests are updated (private host + hidden prflx: `lan` when direct, null with servers).
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-16-helm-h2b-i-telemetry-report.md
+
+<!-- end -->
+
+---
+
