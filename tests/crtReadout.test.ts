@@ -18,7 +18,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     const d = createDuel(layout, 5);
     expect(marks(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' }))).toEqual([
       ['HELM', '-'], ['HOUND', 'crew'], ['HULL', '-'], ['SHIELD', 'crew'], ['WEAPONS', 'good'], ['SHIELDS', 'good'], ['ENGINES', 'good'],
-      ['HUNTER', 'enemy'], ['HULL', '-'], ['SHIELD', 'enemy'], ['ROOMS', '-'], ['OTHER', '-'], ['AT WEAPONS', '-']
+      ['HUNTER', 'enemy'], ['HULL', '-'], ['SHIELD', 'enemy'], ['ROOMS', '-'], ['HEALTH', '-'], ['OTHER', '-'], ['AT WEAPONS', '-']
     ]);
     disposeDuel(d);
   });
@@ -28,7 +28,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
     expect(marks(rows)).toEqual([
       ['HELM', '-'], ['HOUND', 'crew'], ['HULL', 'alert'], ['SHIELD', 'crew'], ['WEAPONS', 'warn'], ['SHIELDS', 'warn'], ['ENGINES', 'good'],
-      ['HUNTER', 'enemy'], ['HULL', 'good'], ['SHIELD', 'enemy'], ['ROOMS', 'warn'], ['OTHER', '-'], ['AT WEAPONS', '-']
+      ['HUNTER', 'enemy'], ['HULL', 'good'], ['SHIELD', 'enemy'], ['ROOMS', 'warn'], ['HEALTH', '-'], ['OTHER', '-'], ['AT WEAPONS', '-']
     ]);
     expect(rows[5]!.value).toBe('DMG 2'); expect(rows[5]!.bar?.fill).toBe(0.5);
     disposeDuel(d);
@@ -46,7 +46,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     d.interior.stations.occupant[d.nav] = -1; d.interior.stations.occupant[d.weapons] = -1;
     placeMissile(t, 1, { x: c.x + 100, y: c.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
     const rows = readoutRows({ duel: d, mode: 'interior', active: 0, other: 'WALKING' });
-    expect(marks(rows).slice(13)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['MISSILE INBOUND', 'alert']]);
+    expect(marks(rows).slice(14)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['MISSILE INBOUND', 'alert']]);
     disposeDuel(d);
   });
 });

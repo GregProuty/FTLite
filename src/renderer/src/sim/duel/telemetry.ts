@@ -3,7 +3,7 @@
 // the duel. Counter diffs (contact counters, launches, graceUntil) are taken against the accumulator's copy of the
 // tick before. One accumulator covers one round (H-2 spec §7, §8): its `ticks` count from the round's baseTick, and it
 // freezes once the round is decided, so the end card's ticks add nothing and the terminal causes are never recomputed.
-import { Seated } from '../components';
+import { Life, LifeState, Seated } from '../components';
 import { inArc } from '../tactical/geometry';
 import { missileOf, Outcome, targetOf } from '../tactical/state';
 import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
@@ -16,7 +16,8 @@ export const BAIT_WINDOW_TICKS = 300;
 /** A crew manoeuvre needs the enemy within this distance (u). */
 export const BAIT_RANGE = 900;
 
-export type TerminalCause = 'planet' | 'asteroid' | 'ship' | 'laser' | 'missile';
+/** `downed`: the crew ship only, both characters down at once (duel-health spec §1.5, owner 2026-11-17). */
+export type TerminalCause = 'planet' | 'asteroid' | 'ship' | 'laser' | 'missile' | 'downed';
 export type MissileLoss = 'planet' | 'asteroid' | 'edge' | 'expired' | 'own' | 'missile';
 
 export interface ShipTelemetry {
@@ -152,15 +153,20 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   if (arc) t.enemyInArcTicks++;
   if (gunner >= 0 && missileOf(tac, 0) === null && laserFull(tac, 0) && (!canLaunch(tac, 0) || inRange) && !arc) t.weaponsIdleTicks++;
 
-  // Terminal cause: what hit each ship whose hull reached 0 on the final tick.
+  // Terminal cause: what hit each ship whose hull reached 0 on the final tick, and `downed` for the crew ship when both
+  // characters were down (the round is lost with the hull still up, duel-health spec §1.5).
+  const allDowned = tac.outcome === Outcome.EnemyWins && d.interior.crew.every((eid) => Life.state[eid] === LifeState.Downed);   // a crew that also won on that tick is not lost to `downed`
   if (tac.outcome !== Outcome.Running) for (let i = 0; i < 2; i++) {
-    if (tac.systems[i]!.hull > 0) continue;
+    const downed = i === 0 && allDowned;
+    if (tac.systems[i]!.hull > 0 && !downed) continue;
     const c: TerminalCause[] = [], was = t.prev.counters[i]!, is = now[i]!;
+    if (tac.systems[i]!.hull > 0) { t.terminal[0] = ['downed']; continue; }
     if (is[0]! > was[0]!) c.push('planet');
     if (is[1]! > was[1]!) c.push('asteroid');
     if (is[2]! > was[2]!) c.push('ship');
     if (laserOn[i]) c.push('laser');
     if (missileOn[i]) c.push('missile');
+    if (downed) c.push('downed');
     t.terminal[i as 0 | 1] = c;
   }
 

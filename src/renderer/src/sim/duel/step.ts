@@ -14,6 +14,7 @@ import { Outcome } from '../tactical/state';
 import { canCharge, canLaunch, validLock, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
+import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
@@ -127,7 +128,8 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
  * only at the two role consoles; stand through today's handler; then presence); tactical commands validated against the
  * seats after the seat phase and folded into the crew's ShipInput; repair, with its events; movement for standing
- * present players; the tactical stepDuel; fire (growth, damage, ignition from this tick's hits); the interior tick. Commands apply in the order given (the authority's
+ * present players; the tactical stepDuel; hit damage to the crew; fire (growth, damage, ignition from this tick's hits);
+ * health (fire damage, downed, pick-up, the Medbay, the both-down loss); the interior tick. Commands apply in the order given (the authority's
  * envelope order). Returns one result per command, sorted by player then sequence. A rematch while the round runs is
  * rejected duel-running; the step that decides the round records `decidedTick`. A decided round steps by stepDecided.
  */
@@ -186,7 +188,9 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   });
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
   stepDuel(d.tactical, crew);
+  const hits = applyHitDamage(d, d.tactical.events);   // duel-health spec §1.2: hit damage in tactical event order, before the fire rolls
   firePhase(d, tick);   // duel-fire spec §1: growth and damage, then this tick's hits roll (rng.hazards)
+  healthPhase(d, hits);   // duel-health spec §1: fire damage, downed, pick-up, the Medbay; both down loses the round
   st.tick++;
   if (d.tactical.outcome !== Outcome.Running) d.decidedTick = st.tick;   // the snapshot tick of the first decided publication
   return results.sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence);
