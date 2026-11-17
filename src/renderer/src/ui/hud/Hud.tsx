@@ -13,7 +13,7 @@ const NO_FLASH: readonly number[] = [];
 
 export function Hud() {
   const m = useUi((s) => s.hud); if (!m) return null;
-  const flash = Math.floor(m.tick / 10) % 2 === 0 ? m.calloutFlash : NO_FLASH;   // a Power callout's rows blink at about 3 Hz
+  const flash = Math.floor(m.tick / 10) % 2 === 0 && m.calloutFlash.length ? m.calloutFlash : NO_FLASH;   // a Power callout's rows blink at about 3 Hz
   const deviceKind = m.players.find((p) => p.status === 'active')?.deviceKind ?? null;   // the banner glyphs follow the first joined player's device
   const summary = { phase: m.phase, lobbyShip: m.lobbyShip, lobbyLines: m.lobbyLines, summary: m.summary };
   return (

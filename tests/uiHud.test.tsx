@@ -13,10 +13,22 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { INTERNAL_W } from '../src/shared/resolution';
 import { LINE, PAD, textPx } from '../src/renderer/src/render/theme';
-import { BANNER_Y, BLOCK_HP_X, CARD_ROW, CLOCK, CREDITS, CREDITS_LINES, EVENT_CARD, POWER, SUMMARY_TOP, THREATS, blockRect, cardRect } from '../src/renderer/src/render/hudLayout';
+import { STATION_SHORT, seatedName, skillsLine } from '../src/renderer/src/render/hudModel';
+import { BANNER_Y, BLOCK_HP_X, CARD_ROW, CLOCK, CREDITS, CREDITS_LINES, EVENT_CARD, POWER, POWER_ROW, SUMMARY_TOP, THREATS, blockRect, cardRect } from '../src/renderer/src/render/hudLayout';
 import { WINDOW } from '../src/renderer/src/render/enemyWindowModel';
 import { cutterState, makeState } from './helpers/sim';
 import { makeUi } from './helpers/uiStore';
+
+const spy = vi.hoisted(() => ({ blocks: [] as number[], rows: 0 }));
+vi.mock('../src/renderer/src/ui/hud/PlayerBlock', async (orig) => {
+  const real = await orig<typeof import('../src/renderer/src/ui/hud/PlayerBlock')>(), { memo } = await import('react');
+  type Props = Parameters<typeof real.PlayerBlock>[0];
+  return { ...real, PlayerBlock: memo(function CountedBlock(p: Props) { spy.blocks.push(p.i); return <real.PlayerBlock {...p} />; }) };
+});
+vi.mock('../src/renderer/src/ui/hud/consoleRows', async (orig) => {
+  const real = await orig<typeof import('../src/renderer/src/ui/hud/consoleRows')>();
+  return { ...real, consoleRows: ((...a: Parameters<typeof real.consoleRows>) => { spy.rows++; return real.consoleRows(...a); }) as typeof real.consoleRows };
+});
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => ({ text: c.dataset.text!, x: Number(c.dataset.x), y: Number(c.dataset.y), anchor: c.dataset.anchorx }));
@@ -42,6 +54,23 @@ describe('the side panels', () => {
     expect(find('Fire: Bridge')).toMatchObject({ x: THREATS.x + PAD, y: THREATS.y });   // no icon image in jsdom: the text starts at the row
     expect(find(`P1 ${m.players[0]!.character.name}`)).toMatchObject({ x: blockRect(0).x + PAD, y: blockRect(0).y });
     expect(find(m.message)).toBeUndefined(); expect(texts().some((t) => t.y === BANNER_Y)).toBe(false);
+  });
+  it('running: each station row, an occupant status, a seated name and the skills line', () => {
+    const s = cutterState(); sitDown(s, 0, s.derived.stationOfKind[StationKind.Doors]!);
+    const m = buildHudModel(s, { mode: 'player', player: 0, ui: createCardUi() }, { phase: 'running', message: '', slots: slots2 });
+    const { sink } = mount(); act(() => sink.update(m));
+    expect(m.stations.length).toBeGreaterThan(0);
+    for (const st of m.stations) {
+      const k = st.kind, y = POWER.y + (k + 1) * LINE;
+      expect(texts().find((t) => t.text === STATION_SHORT[k] && t.x === POWER.x + PAD + POWER_ROW.nameX && t.y === y)).toBeDefined();
+      if (st.occupant !== null) expect(texts().find((t) => t.text === `P${st.occupant! + 1}` && t.x === POWER.x + PAD + POWER_ROW.statusX && t.y === y)).toBeDefined();
+    }
+    expect(m.stations.some((st) => st.occupant !== null)).toBe(true);
+    const b0 = blockRect(0), b1 = blockRect(1);
+    expect(m.players[0]!.seated).not.toBeNull();
+    expect(texts().find((t) => t.text === seatedName(m.players[0]!) && t.x === b0.x + PAD && t.y === b0.y + LINE)).toBeDefined();
+    expect(m.players[1]!.seated).toBeNull();
+    expect(texts().find((t) => t.text === skillsLine(m.players[1]!.skills) && t.x === b1.x + PAD && t.y === b1.y + 3 * LINE)).toBeDefined();
   });
   it('lobby and gameover: no side panels; the banner and the summary rows', () => {
     const { sink } = mount(), m = lobby();
@@ -151,6 +180,16 @@ describe('the render rule, sharing and the boundary (spec §8)', () => {
     let writes = 0; const off = store.subscribe(() => { writes++; });
     act(() => sink.update(structuredClone(m))); act(() => sink.update(structuredClone(m)));
     expect(commits()).toBe(after); expect(writes).toBe(0); off();
+  });
+  it('a tick and a health change re-render only that block; the other card keeps its rows', () => {
+    const st = cutterState(); sitDown(st, 1, st.derived.stationOfKind[StationKind.Doors]!);
+    const m = buildHudModel(st, { mode: 'player', player: 1, ui: createCardUi() }, { phase: 'running', message: '', slots: slots2 });
+    expect(m.players[1]!.console).not.toBeNull(); m.tick = 0;
+    const { sink } = mount(); act(() => sink.update(m));
+    spy.blocks.length = 0; spy.rows = 0;
+    const next = structuredClone(m); next.tick = m.tick + 10; next.players[0]!.health = m.players[0]!.health - 7;
+    act(() => sink.update(next));
+    expect(spy.blocks).toContain(0); expect(spy.blocks).not.toContain(1); expect(spy.rows).toBe(0);
   });
   it('a throwing HUD leaves the menu, and the next model after clear renders again', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
