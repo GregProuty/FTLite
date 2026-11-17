@@ -1,3 +1,4 @@
+// Placed 'status' it is the console's status table (Artemis spec §2): top left, no help lines.
 // The duel's readout column (readoutPanel.ts's layout): rows of label and right-anchored value, shield pips after the
 // label, a thin bar under a row, and help lines at the native size, in a panel sized to its content. On a CRT screen (CRT
 // map spec section 2) the rows draw by emphasis in the amber ramp: labels mid, values main, headings main, `good` and
@@ -7,6 +8,7 @@ import { INTERNAL_W } from '../../../../shared/resolution';
 import { READOUT_MARGIN, READOUT_ROWS, READOUT_W, type ReadoutRow } from '../../render/duel/readoutModel';
 import { BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, LINE, PAD, textPx } from '../../render/theme';
 import { ALERT_BLINK_HZ, blink, CRT } from '../../render/tactical/crtTheme';
+import { STATUS } from '../../render/duel/consoleLayout';
 import { useUi } from '../context';
 import { Bar } from '../stage/Bar';
 import { Box } from '../stage/Box';
@@ -16,7 +18,6 @@ import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 
 const HELP_LINES = 5, HELP_LINE = 14, PIP = 12, PIP_GAP = 4;
-const X = INTERNAL_W - READOUT_W - READOUT_MARGIN, Y = READOUT_MARGIN;
 /** An inverse bar behind a row's text: from 5 below the row's top to 27 (the caps at +8, descenders to +26). */
 export const INVERSE_TOP = 5, INVERSE_H = 22, INVERSE_PAD = 4;
 
@@ -37,10 +38,12 @@ export function crtRowLook(r: ReadoutRow, t: number): CrtRowLook {
   return look;
 }
 
-export const ReadoutPanel = memo(function ReadoutPanel(props: { rows: readonly ReadoutRow[]; help: readonly string[] }) {
+export const ReadoutPanel = memo(function ReadoutPanel(props: { rows: readonly ReadoutRow[]; help: readonly string[]; placement?: 'column' | 'status' }) {
+  const status = props.placement === 'status';
+  const X = status ? STATUS.x : INTERNAL_W - READOUT_W - READOUT_MARGIN, Y = status ? STATUS.y : READOUT_MARGIN;
   const l = useUi((s) => s.layout), hairline = Math.max(1, Math.round(l.scale * l.dpr)) / l.dpr;   // Pixi's 1-internal-px pip stroke, scaled like Panel's border
   const { crt, now } = useCrt();
-  const n = Math.min(props.rows.length, READOUT_ROWS), h = Math.min(props.help.length, HELP_LINES);
+  const n = Math.min(props.rows.length, READOUT_ROWS), h = status ? 0 : Math.min(props.help.length, HELP_LINES);
   const helpY = PAD + LINE * n + PAD, height = helpY + h * HELP_LINE + PAD;
   return (
     <>

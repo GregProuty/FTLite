@@ -1,0 +1,114 @@
+// Spec 2026-11-17-artemis-consoles §2, §6.1, §6.3: the console layout and view model.
+import { describe, expect, it } from 'vitest';
+import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { Position } from '../src/renderer/src/sim/components';
+import type { HeldInput } from '../src/renderer/src/net/contracts';
+import type { DuelCommand } from '../src/renderer/src/sim/duel/commands';
+import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
+import { canLaunch } from '../src/renderer/src/sim/tactical/weapons';
+import { CONSOLE_RESERVE, SIDE, STATION, STATUS, TABS_RIGHT, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
+import { consoleModel, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
+import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/controls';
+import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
+import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
+import { LINE, PAD } from '../src/renderer/src/render/theme';
+
+const layout = parseShip(cutter);
+const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+let seq = 0;
+const step = (d: DuelState, player: number, command: DuelCommand | null) =>
+  stepDuelTick(d, { held: [NONE, NONE], commands: command ? [{ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command }] : [] });
+const put = (d: DuelState, pid: number, tile: number): void => { const W = d.interior.derived.width, eid = d.interior.crew[pid]!; Position.x[eid] = (tile % W) + 0.5; Position.y[eid] = Math.floor(tile / W) + 0.5; };
+const model = (d: DuelState, over: Partial<ConsoleModelInput> = {}) => consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, ...over });
+// createDuel seats player 0 at the Helm (nav) and player 1 at Weapons (duelControls.test.ts 'seatOf').
+
+describe('console layout (spec §2)', () => {
+  it('has the spec numbers', () => {
+    expect(TABS_RIGHT).toBe(308); expect(CONSOLE_RESERVE).toEqual({ left: 228, right: 156 });
+    expect(SIDE.x).toBe(1136); expect(STATUS).toMatchObject({ x: 12, y: 42, w: 204 }); expect(STATION).toMatchObject({ x: 12, w: 300 });
+    expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(492);
+  });
+  it('the status table ends above the station block at its longest (every crew room damaged)', () => {
+    const d = createDuel(layout, 5); d.tactical.systems[0].rooms = [2, 1, 1];
+    for (const mode of ['helm', 'weapons'] as const) {
+      const rows = readoutRows({ duel: d, mode, active: 0, other: 'AT WEAPONS', console: true });
+      expect(STATUS.y + PAD + LINE * rows.length + PAD).toBeLessThanOrEqual(stationTop(mode));
+    }
+    disposeDuel(d);
+  });
+});
+
+describe('readout rows on a console (spec §2)', () => {
+  it('drop the view heading and, on Weapons, the LASER block; unchanged without the flag', () => {
+    const d = createDuel(layout, 5);
+    const w = readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM', console: true }).map((r) => r.label);
+    expect(w[0]).toBe('CUTTER');
+    for (const gone of ['LASER', 'LOCK', 'CHARGE', 'MAG']) expect(w).not.toContain(gone);
+    const plain = readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' }).map((r) => r.label);
+    expect(plain[0]).toBe('WEAPONS'); expect(plain).toContain('CHARGE');
+    disposeDuel(d);
+  });
+});
+
+describe('tabs (spec §6.3)', () => {
+  it('seated at the Helm: HELM current, SHIP open (X); WEAPONS open (Tab) in single player only', () => {
+    const d = createDuel(layout, 5);
+    expect(model(d)).toMatchObject({ station: 'helm', tabs: { helm: 'current', weapons: 'open', ship: 'open' }, tabActions: { helm: null, weapons: 'switch', ship: 'stand' } });
+    expect(model(d, { mode: 'online' })).toMatchObject({ tabs: { helm: 'current', weapons: 'locked', ship: 'open' }, tabActions: { weapons: null } });
+    disposeDuel(d);
+  });
+  it('standing in reach of the free Weapons console with no repair in reach: WEAPONS open (E), SHIP current', () => {
+    const d = createDuel(layout, 5);
+    step(d, 1, { kind: 'stand' }); step(d, 0, { kind: 'stand' });
+    put(d, 0, d.interior.derived.stationTile[d.weapons]!);
+    expect(consoleInReach(d, 0)).toBe(d.weapons); expect(repairInReach(d, 0)).toBe(-1);   // the fixture's preconditions
+    expect(model(d, { mode: 'online' })).toMatchObject({ station: 'ship', tabs: { ship: 'current', weapons: 'open', helm: 'locked' }, tabActions: { weapons: 'interact' } });
+    disposeDuel(d);
+  });
+  it('standing in reach of a console and of a repair: the console stays locked (E would repair)', () => {
+    expect(consoleTabs({ seat: 'standing', reach: 'weapons', repairNear: true, otherSeat: 'standing', mode: 'online' }).tabs.weapons).toBe('locked');
+    expect(consoleTabs({ seat: 'standing', reach: 'weapons', repairNear: false, otherSeat: 'standing', mode: 'online' })).toMatchObject({ tabs: { weapons: 'open' }, tabActions: { weapons: 'interact' } });
+    // single player: the other character at the Helm opens HELM by Tab even while E would repair
+    expect(consoleTabs({ seat: 'standing', reach: 'weapons', repairNear: true, otherSeat: 'helm', mode: 'single' })).toMatchObject({ tabs: { helm: 'open', weapons: 'locked' }, tabActions: { helm: 'switch' } });
+  });
+  it('standing out of reach: online both consoles locked; single player opens the one the other character sits at', () => {
+    const d = createDuel(layout, 5);
+    step(d, 0, { kind: 'stand' });   // player 1 still at Weapons
+    put(d, 0, 0);
+    expect(model(d, { mode: 'online' })!.tabs).toEqual({ helm: 'locked', weapons: 'locked', ship: 'current' });
+    expect(model(d)).toMatchObject({ tabs: { helm: 'locked', weapons: 'open', ship: 'current' }, tabActions: { weapons: 'switch' } });
+    disposeDuel(d);
+  });
+});
+
+describe('station panels', () => {
+  it('Weapons: lock, charge, magazine, launch and the missile', () => {
+    const d = createDuel(layout, 5);
+    const w = model(d, { me: 1 })!.weapons!;
+    expect(w.lock).toBe(d.tactical.systems[0].lock); expect(w.canLaunch).toBe(canLaunch(d.tactical, 0)); expect(w.missileFlying).toBe(false);
+    expect(w.magazine).toMatch(/^\d+\/\d+$/);
+    expect([w.charge.label, w.charge.value]).toEqual(['CHARGE', readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' }).find((r) => r.label === 'CHARGE')!.value]);
+    while (!canLaunch(d.tactical, 0)) step(d, 1, null);
+    step(d, 1, { kind: 'missileLaunch' });
+    const after = model(d, { me: 1 })!.weapons!; expect(after.missileFlying).toBe(true); expect(after.canLaunch).toBe(false);
+    expect(model(d, { me: 1 })!.helm).toBeNull();
+    disposeDuel(d);
+  });
+  it('Helm: heading in degrees and speed', () => {
+    const d = createDuel(layout, 5), s = d.tactical.ships[0]!;
+    s.heading = 64; s.vx = 3; s.vy = 4;
+    expect(model(d)!.helm).toMatchObject({ heading: 90, speed: 5 });
+    disposeDuel(d);
+  });
+  it('the side column from the map overlay', () => {
+    const d = createDuel(layout, 5), overlay = { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: true };
+    expect(model(d, { me: 1, overlay })!.side).toEqual({ zoom: '0.90', free: true, snapLabel: 'CAMERA' });
+    expect(model(d, { overlay })!.side!.snapLabel).toBe('SNAP');
+    disposeDuel(d);
+  });
+  it('hidden gives null', () => {
+    const d = createDuel(layout, 5); expect(model(d, { hidden: true })).toBeNull(); disposeDuel(d);
+  });
+});

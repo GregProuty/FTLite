@@ -8,6 +8,8 @@ import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
 import type { EndView } from '../../render/duel/endModel';
+import { CONSOLE_RESERVE } from '../../render/duel/consoleLayout';
+import { consoleModel, type ConsoleStation } from '../../render/duel/consoleModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
 import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
@@ -19,8 +21,9 @@ import type { Camera } from '../../render/tactical/camera';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import type { Axes } from '../../sim/tactical/state';
+import { Outcome, type Axes } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
+import type { HeldFlags } from './input';
 import type { DuelView } from './runtime';
 
 /** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the readouts. */
@@ -43,10 +46,22 @@ export interface DuelViewSource {
   alpha(): number;
   paused(): boolean;
   drainEvents(): ViewEvent[];
+  /** Single player (Tab takes the other character) or the online duel. */
+  readonly mode: 'single' | 'online';
+  /** The duel is live: not paused and not ended locally; publication phase 'running' online. */
+  running(): boolean;
+  /** The merged held keys and console holds of the last frame (Artemis spec §6.1). */
+  uiHeld(): HeldFlags;
 }
 /** The frame's overlays: the pause banner (null: none), whether the tactical layer dims for it, the end card, and a
  *  one-line notice (the online start's YOU: HELM). */
 export interface SceneOverlay { banner: string | null; layerPaused: boolean; end: EndView | null; notice?: string | null }
+
+/** No console on the end card, under any pause banner or dimmed layer, or while the duel is not running (paused for
+ *  any reason locally; any publication phase but `running` online) (Artemis spec §6.1). */
+export function consoleHidden(d: DuelState, overlay: SceneOverlay, running: boolean): boolean {
+  return !running || overlay.banner !== null || overlay.layerPaused || d.tactical.outcome !== Outcome.Running;
+}
 
 /** The banners and the map overlay the scene hands the UI (deviation 1: the tactical banner shows only on a map view). */
 export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string, overlayView: MapOverlayView | null): { banners: Banners; overlay: MapOverlayView | null } {
@@ -73,8 +88,9 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
   const fx = createFx();
   let epoch: number | null = null;
   return {
-    /** One frame from `source`; `dt` in seconds. */
-    draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): void {
+    /** One frame from `source`; `dt` in seconds. Returns the station of the console drawn, or null when none (Artemis
+     *  spec §6.2: the mode clears the console's holds when it changes). */
+    draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): ConsoleStation | null {
       if (epoch === null) { epoch = source.epoch(); if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
@@ -82,6 +98,9 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha();
+      // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a paused or decided console view
+      // falls back to the right-hand readout with its rows and help.
+      const hidden = consoleHidden(d, overlay, source.running()), onConsole = !hidden && view !== 'interior';
       const events = source.drainEvents();
       pushEvents(fx, events);
       stepFx(fx, source.paused() ? 0 : dt);
@@ -92,21 +111,24 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       else {
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
-          ships: [0, 1], paused: overlay.layerPaused, reserveRight: READOUT_COLUMN, spreadArrows: true, missilePrev: source.missilePrev, steer: source.steer(), fx
+          ships: [0, 1], paused: overlay.layerPaused, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: CONSOLE_RESERVE.right } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, steer: source.steer(), fx
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
         layer.draw(model, combatModel(input), performance.now() / 1000);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
+      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView });
       options.ui.frame({
-        readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus() }), help: readoutHelp(view) },
+        readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },
         end: overlay.end,
+        console: consoleView,
         crt: crtActive(view),
         ...sceneUi(view, overlay, options.pauseText, overlayView)
       });
       const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake
       scene.position.set(shake.x, shake.y);
+      return consoleView?.station ?? null;
     },
     dispose(): void {
       options.ui.clear();

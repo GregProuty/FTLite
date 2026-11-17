@@ -12,6 +12,14 @@ export const PRESS_CODES: Readonly<Record<string, KeyAction>> = {
 /** The held keys: WASD movement (walk, thrust and turn, steer), E held to repair, Space held to charge. */
 export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' } as const;
 export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
+
+/** The merged held state a console draws (spec §6.1): Space, A, D, W, S from the keys or the console's buttons. */
+export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean }
+export const NO_HELD_FLAGS: HeldFlags = { fire: false, left: false, right: false, up: false, down: false };
+/** The codes a console button can hold (spec §6.2). */
+export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS';
+/** What a console click can do (spec §6.2): a press edge, a held code, or a direct lock request. */
+export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void }
 /** Keys whose browser default (focus moves, page scrolls, history back) must never happen in the duel views. */
 const PREVENT = new Set(['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
 
@@ -21,6 +29,10 @@ export interface KeySample {
   interactHeld: boolean; fireHeld: boolean;
   /** Press edges per action since the previous sample (auto-repeat does not count). */
   presses: Record<KeyAction, number>;
+  /** The merged held flags (spec §6.1); createDuelKeyboard always sets it. */
+  held?: HeldFlags;
+  /** The last console lock request since the previous sample, or null (spec §6.2). */
+  lockTo?: number | null;
 }
 
 export function emptyPresses(): Record<KeyAction, number> {
@@ -39,36 +51,53 @@ export interface EventSource {
 }
 interface KeyEventLike { code: string; repeat: boolean; preventDefault(): void }
 
-export interface DuelKeyboard { sample(): KeySample; clear(): void; destroy(): void }
+export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): void; destroy(): void; readonly ui: ConsoleInput }
 
-/** Held keys are cleared on blur so nothing sticks after alt-tab; `clear` does the same for Tab and restart (spec §4, §5). */
+/** Held keys are cleared on blur so nothing sticks after alt-tab; `clear` does the same for Tab and restart (spec §4, §5).
+ *  Console clicks (Artemis spec §6.2) are a second held set and extra press edges: a code is held when either set holds
+ *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
 export function createDuelKeyboard(target: EventSource): DuelKeyboard {
-  const held = new Set<string>();
-  let presses = emptyPresses();
+  const keys = new Set<string>(), ui = new Set<string>();
+  let presses = emptyPresses(), lockTo: number | null = null;
+  const has = (code: string): boolean => keys.has(code) || ui.has(code);
   const down = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
-    held.add(e.code);
-    const action = PRESS_CODES[e.code];
-    if (action && !e.repeat) presses[action]++;
+    if (e.code === FIRE_HELD) { if (!e.repeat && !has(FIRE_HELD)) presses.fireDown++; }
+    else { const action = PRESS_CODES[e.code]; if (action && !e.repeat) presses[action]++; }
+    keys.add(e.code);
   };
   const up = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
-    if (e.code === FIRE_HELD && held.has(FIRE_HELD)) presses.fireUp++;
-    held.delete(e.code);
+    const was = has(FIRE_HELD);
+    keys.delete(e.code);
+    if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
-  const clear = (): void => { held.clear(); presses = emptyPresses(); };
+  const clearUi = (): void => { ui.clear(); lockTo = null; };
+  const clear = (): void => { keys.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
+  const consoleInput: ConsoleInput = {
+    press(action) { presses[action]++; },
+    hold(code, on) {
+      const was = has(FIRE_HELD);
+      if (on) ui.add(code); else ui.delete(code);
+      if (code === FIRE_HELD) { const now = has(FIRE_HELD); if (!was && now) presses.fireDown++; else if (was && !now) presses.fireUp++; }
+    },
+    lock(room) { lockTo = room; }
+  };
   return {
+    ui: consoleInput,
     sample(): KeySample {
-      const x = (held.has(MOVE_CODES.right) ? 1 : 0) - (held.has(MOVE_CODES.left) ? 1 : 0), y = (held.has(MOVE_CODES.down) ? 1 : 0) - (held.has(MOVE_CODES.up) ? 1 : 0);
+      const x = (has(MOVE_CODES.right) ? 1 : 0) - (has(MOVE_CODES.left) ? 1 : 0), y = (has(MOVE_CODES.down) ? 1 : 0) - (has(MOVE_CODES.up) ? 1 : 0);
       const len = Math.sqrt(x * x + y * y) || 1;
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: held.has(INTERACT_HELD), fireHeld: held.has(FIRE_HELD), presses };
-      presses = emptyPresses();
+      const held: HeldFlags = { fire: has(FIRE_HELD), left: has(MOVE_CODES.left), right: has(MOVE_CODES.right), up: has(MOVE_CODES.up), down: has(MOVE_CODES.down) };
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo };
+      presses = emptyPresses(); lockTo = null;
       return out;
     },
     clear,
+    clearUi,
     destroy(): void {
       target.removeEventListener('keydown', down as (e: never) => void);
       target.removeEventListener('keyup', up as (e: never) => void);

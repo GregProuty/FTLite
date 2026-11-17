@@ -38,8 +38,8 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     d.tactical.systems[0].rooms[Room.Shields] = 2;
     view.draw(d, crewAt(d), 1, 1 / 60);
     const fit = duelFit(d.interior.derived.width, d.interior.derived.height, 1);
-    expect(fit).toEqual({ scale: 1, x: 66, y: 152 });   // the 29 × 13 Cutter is 928 × 416 px: centred in 1060 × 720, never upscaled
-    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 152, 1]);
+    expect(fit).toEqual({ scale: 1, x: 66, y: 173 });   // the 29 × 13 Cutter is 928 × 416 px: centred in 1060 × 678, never upscaled
+    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 173, 1]);
     expect(fit.x + 29 * TILE_PX).toBeLessThanOrEqual(INTERIOR_BAND.w);
     expect(INTERIOR_BAND.w).toBe(1280 - READOUT_COLUMN);
     expect(count(view.container)).toBeGreaterThan(10);
@@ -86,10 +86,10 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     expect(lights).toBe(11);                                                                   // after effects.above
     expect(kids.length - lights - 1).toBe(6);                                                  // the marks, the three marker labels and the two downed labels (duel-health) above the lights
     view.draw(d, crewAt(d), 1, 1 / 60);
-    expect([view.world.x, view.world.y]).toEqual([66, 152]);
+    expect([view.world.x, view.world.y]).toEqual([66, 173]);
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;
     view.draw(d, crewAt(d), 1, 1 / 60, [hit]);
-    expect(Math.abs(view.world.x - 66) + Math.abs(view.world.y - 152)).toBe(12);              // 6 art pixels (cos 0) at world scale 1
+    expect(Math.abs(view.world.x - 66) + Math.abs(view.world.y - 173)).toBe(12);              // 6 art pixels (cos 0) at world scale 1
     expect(view.container.x).toBe(0);
     view.destroy(); disposeDuel(d);
   });
@@ -99,13 +99,13 @@ describe('the interior view places its world from the zoom camera (interior zoom
   it('level 0 is the fit; +1 follows the active character on whole pixels; the hit shake goes on top', () => {
     const d = createDuel(layout, 5), view = createInteriorView(assets), camera = createInteriorCamera();
     view.draw(d, crewAt(d), 1, 1 / 60, [], 1 / 60, { camera, active: 0 });
-    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 152, 1]);
+    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 173, 1]);
     interiorInput(camera, { notches: 1, anchor: null, dragX: 0, dragY: 0, follow: false });
     view.draw(d, crewAt(d), 1, 1 / 60, [], 1 / 60, { camera, active: 0 });
     const eid = d.interior.crew[0]!, cx = Position.x[eid]! * TILE_PX * 1.5;
     expect(view.world.scale.x).toBe(1.5);
     expect(view.world.x).toBe(Math.min(0, Math.max(1060 - 29 * TILE_PX * 1.5, Math.round(530 - cx))));
-    expect(view.world.y).toBe(48);   // 624 px tall: centred in the 720-px band
+    expect(view.world.y).toBe(69);   // 624 px tall: centred in the 678-px band
     const at = { x: view.world.x, y: view.world.y };
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;
     view.draw(d, crewAt(d), 1, 1 / 60, [hit], 1 / 60, { camera, active: 0 });

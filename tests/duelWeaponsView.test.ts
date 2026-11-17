@@ -67,6 +67,11 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(w.info.text).toBe(`ENEMY BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  NO SHOT`);
     expect(w.missilePath).toEqual([]);
   });
+  it('the info text centres between a left and a right reserve (the Artemis console)', () => {
+    const st = createTacticalState(11);
+    const w = combatModel({ ...input(st, createCamera(0, 0), 'weapons'), reserveLeft: 228, reserveRight: 156 }).weapons!;
+    expect(w.info.x).toBe(676);
+  });
   it('the duel views spread crowded off-screen arrows apart so their labels never overlap', () => {
     const st = createTacticalState(11), cam = createCamera(2600, 0);
     Object.assign(st.ships[0], { x: 2600, y: 0 }); Object.assign(st.ships[1], { x: 0, y: 40 });   // the enemy just south of the planet, both far west

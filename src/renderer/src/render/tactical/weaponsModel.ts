@@ -78,7 +78,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       ownArc: { x: ownS.x, y: ownS.y, r: LASER_RANGE * z, angle: headingAngle(own.h), half: ARC_HALF },
       enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
-      info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}`, x: (vp.w - input.reserveRight) / 2, y: 12 },
+      info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}`, x: ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2, y: 12 },
       inArc,
       missileOrigin: drawn ? toS(drawn.x, drawn.y) : null,
       // The path starts at the drawn (interpolated) glyph and continues through the sim's predicted points.

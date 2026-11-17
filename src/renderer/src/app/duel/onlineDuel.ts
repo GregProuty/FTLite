@@ -25,7 +25,8 @@ import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
-import { createDuelKeyboard, createPointerSource, emptyPresses, type EventSource, type KeySample } from './input';
+import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, type ConsoleInput, type EventSource, type KeySample } from './input';
+import { consoleChange } from './consoleChange';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
 import type { DuelSink, LatencySink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
@@ -39,6 +40,8 @@ export interface OnlineDuelDeps {
   leave(): void;
   playCue?(cue: Cue): void;
   recordDuel?(record: DuelPlaytestRecord): Promise<boolean> | void;
+  /** The console's click slot (Artemis spec §6.2): filled with this session's keyboard, emptied on dispose. */
+  setConsole?(input: ConsoleInput | null): void;
 }
 const NOTICE_MS = 3000;
 /** How often the session asks main for the link's figures, and how many recent samples the F3 overlay reads. */
@@ -67,6 +70,8 @@ export function leavePromptKeys(prompt: LeavePrompt, d: DuelState, phase: string
 export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const canvas = deps.renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource);
+  deps.setConsole?.(keyboard.ui);
+  const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
   const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
     const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
     return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
@@ -173,6 +178,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       send({ kind: 'laserLock', room });
     }
+    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
     // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent,
     // a release swallowed by a pause included (Space let go while paused leaves chargePressed set).
     const held = d.tactical.systems[0].fireHeld, now = deps.now();
@@ -187,6 +193,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (disposed) return;
     observe(); pollLink();
     const k = keyboard.sample();
+    source?.heldFlags(k.held ?? NO_HELD_FLAGS);
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
     const d = client?.state(), p = client?.publication();
     if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
@@ -252,12 +259,14 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       source.frame(dt, focused && !blocked ? cameraKeys : null, focused && !blocked ? pointer.sample() : null);
       cameraKeys = keysOnly(sampleIdle());
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
-      scene.draw(source, dt, { banner: bannerText(), layerPaused: false, end: endModel(d.tactical.outcome, ticks, 'ENTER: REMATCH   ESC: LEAVE'), notice: now < noticeUntil ? notice : null });
+      const station = scene.draw(source, dt, { banner: bannerText(), layerPaused: false, end: endModel(d.tactical.outcome, ticks, 'ENTER: REMATCH   ESC: LEAVE'), notice: now < noticeUntil ? notice : null });
+      trackConsole(station);
       if (debug.on()) deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs }));
       else deps.latency?.clear();
     },
     dispose(): void {
       if (disposed) return; disposed = true; cancel(); release();
+      deps.setConsole?.(null);
       keyboard.destroy(); pointer.destroy(); debug.destroy(); deps.latency?.clear(); scene?.dispose(); scene = null;
       if (frozen) disposeDuel(frozen); frozen = null;
     }

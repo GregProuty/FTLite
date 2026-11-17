@@ -90,6 +90,8 @@ export interface TacticalModelInput {
   paused: boolean;
   /** Screen pixels on the right kept clear of off-screen arrows (the readout panel). */
   reserveRight: number;
+  /** Screen pixels on the left kept clear of off-screen arrows (the Artemis console's status table); default 0. */
+  reserveLeft?: number;
   /** Spread crowded off-screen arrows apart (the duel views set it; the flight view keeps H-1a's exact positions). */
   spreadArrows?: boolean;
 }
@@ -196,8 +198,8 @@ export function ringDraw(x: number, y: number): RingDraw {
 }
 
 /** Where the ray from the screen centre toward (x, y) leaves the inset rectangle, or null when (x, y) is inside it. */
-function edgePoint(vp: Viewport, reserveRight: number, x: number, y: number): { x: number; y: number; angle: number } | null {
-  const m = ARROW_MARGIN, l = m, t = m, r = vp.w - reserveRight - m, b = vp.h - m;
+function edgePoint(vp: Viewport, reserveLeft: number, reserveRight: number, x: number, y: number): { x: number; y: number; angle: number } | null {
+  const m = ARROW_MARGIN, l = reserveLeft + m, t = m, r = vp.w - reserveRight - m, b = vp.h - m;
   if (x >= l && x <= r && y >= t && y <= b) return null;
   const cx = (l + r) / 2, cy = (t + b) / 2, dx = x - cx, dy = y - cy;
   const k = Math.min(dx > 0 ? (r - cx) / dx : dx < 0 ? (l - cx) / dx : Infinity, dy > 0 ? (b - cy) / dy : dy < 0 ? (t - cy) / dy : Infinity);
@@ -211,7 +213,7 @@ const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy
  * end nearer the edge's middle, by the minimum gap from the one before; any overrun past the edge's far end is shifted back.
  * Arrows that already clear each other do not move.
  */
-export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number): void {
+export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number, reserveLeft = 0): void {
   const m = ARROW_MARGIN, top = m, bottom = vp.h - m, right = vp.w - reserveRight - m;
   const groups = new Map<string, { flat: boolean; list: ArrowDraw[] }>();
   for (const a of arrows) {
@@ -221,7 +223,7 @@ export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: nu
   }
   for (const { flat, list } of groups.values()) {
     if (list.length < 2) continue;
-    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, lo = flat ? m : top, hi = flat ? right : bottom, mid = (lo + hi) / 2;
+    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, lo = flat ? reserveLeft + m : top, hi = flat ? right : bottom, mid = (lo + hi) / 2;
     const get = (a: ArrowDraw): number => (flat ? a.x : a.y), set = (a: ArrowDraw, v: number): void => { if (flat) a.x = v; else a.y = v; };
     const dir = list.reduce((t, a) => t + get(a), 0) / list.length > mid ? -1 : 1;   // spread toward the edge's middle
     const order = [...list].sort((p, q) => (get(p) - get(q)) * dir);
@@ -290,7 +292,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   // Off-screen arrows: the own ship (distance from the camera centre), and the others (distance from the own ship).
   const arrows: ArrowDraw[] = [];
   const arrow = (target: ArrowTarget, wx: number, wy: number, fromX: number, fromY: number): void => {
-    const p = toS(wx, wy), e = edgePoint(vp, input.reserveRight, p.x, p.y);
+    const p = toS(wx, wy), e = edgePoint(vp, input.reserveLeft ?? 0, input.reserveRight, p.x, p.y);
     if (!e) return;
     const distance = Math.round(Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2));
     arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${ARROW_NAMES[target]} ${distance}` });
@@ -301,7 +303,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
-  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight);
+  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0);
 
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {

@@ -15,7 +15,7 @@ import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/int
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { repairInReach, seatOf } from './controls';
-import { helmAxes, type KeySample, type PointerSample } from './input';
+import { helmAxes, NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
 import { createCameraInput, type DuelView } from './runtime';
 import type { DuelViewSource } from './scene';
 
@@ -80,6 +80,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[]; repair: number[] } | null = null;
   let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld = { moveX: 0, moveY: 0 };
   let cameras = { helm: createCamera(), weapons: createCamera() };
+  let uiHeld: HeldFlags = NO_HELD_FLAGS;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
   /** Observe the client: on a new publication, roll the interpolation and derive the gap's events. True when one was new. */
@@ -110,7 +111,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   }
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
-    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: { moveX: number; moveY: number }): void;
+    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: { moveX: number; moveY: number }): void; heldFlags(flags: HeldFlags): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
     get duel() { return duel(); },
@@ -134,6 +135,10 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     steer: () => (seatOf(duel(), seat) === 'weapons' ? Math.sign(sentHeld.moveX) || 0 : 0),
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
+    mode: 'online' as const,
+    uiHeld: () => uiHeld,
+    /** Only the publication phase 'running' shows the console (Artemis deviation 5). */
+    running: () => client.publication()?.phase === 'running',
     drainEvents() { const out = events; events = []; return out; },
     observe,
     ready: () => !!client.state() && !!client.publication(),
@@ -152,6 +157,8 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     },
     /** The held axes this seat last sent (its own console's predicted path). */
     sent(held) { sentHeld = { moveX: held.moveX, moveY: held.moveY }; },
+    /** The last pump's merged held keys and console holds (Artemis spec §6.1). */
+    heldFlags(flags) { uiHeld = flags; },
     /** Publication inter-arrival gaps in milliseconds, for the record's jitter. */
     arrivals: () => gaps,
     /** The gaps since the last take, cleared (one round's record). */
