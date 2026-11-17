@@ -35,6 +35,16 @@ export function passiveInput(d: DuelState): DuelInput {
   return { held: [], commands: [0, 1].map((player) => ({ runId: 'duel', id: { player, sequence: 0 }, requestedTick: 0, command: { kind: 'presence' as const, present: false } })) };
 }
 
+/** Throws unless every scripted command of the tick was applied, so no golden pins a run whose script is rejected. */
+function requireApplied(seed: number, d: DuelState, input: DuelInput, results: ReturnType<typeof stepDuelTick>): void {
+  for (const r of results) {
+    if (r.status !== 'applied') {
+      const env = input.commands.find((e) => e.id.player === r.id.player && e.id.sequence === r.id.sequence);
+      throw Error(`seed ${seed} tick ${d.interior.tick}: scripted command ${JSON.stringify(env?.command)} (player ${r.id.player} #${r.id.sequence}) was ${r.status}${r.reason ? `: ${r.reason}` : ''}`);
+    }
+  }
+}
+
 /** Run one duel to its end or the cap. `hashEvery` > 0 records hashDuel after every that many ticks. */
 export function runDuel(seed: number, crew: 'scripted' | 'passive', cap = CAP_TICKS, hashEvery = 0): DuelRun {
   const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed), t = createTelemetry(d), hashes: string[] = [];
@@ -42,12 +52,7 @@ export function runDuel(seed: number, crew: 'scripted' | 'passive', cap = CAP_TI
     while (d.tactical.outcome === Outcome.Running && d.interior.tick < cap) {
       const input = crew === 'scripted' ? scriptedInput(pair, d) : passiveInput(d);
       const results = stepDuelTick(d, input);
-      if (crew === 'scripted') for (const r of results) {
-        if (r.status !== 'applied') {
-          const env = input.commands.find((e) => e.id.player === r.id.player && e.id.sequence === r.id.sequence);
-          throw Error(`seed ${seed} tick ${d.interior.tick}: scripted command ${JSON.stringify(env?.command)} (player ${r.id.player} #${r.id.sequence}) was ${r.status}${r.reason ? `: ${r.reason}` : ''}`);
-        }
-      }
+      if (crew === 'scripted') requireApplied(seed, d, input, results);
       recordTick(t, d, input);
       if (hashEvery > 0 && d.interior.tick % hashEvery === 0) hashes.push(hashDuel(d));
     }
@@ -97,7 +102,8 @@ export function runRematch(seed: number, hashEvery: number, cap = CAP_TICKS): Re
     const pair = createScriptedPair(d.tactical.seed), t = createTelemetry(d);
     while (d.tactical.outcome === Outcome.Running && d.interior.tick - d.baseTick < cap) {
       const input = scriptedInput(pair, d);
-      stepDuelTick(d, input); recordTick(t, d, input); sample();
+      requireApplied(seed, d, input, stepDuelTick(d, input));
+      recordTick(t, d, input); sample();
     }
     rounds.push({ seed: d.tactical.seed, baseTick: d.baseTick, outcome: t.outcome, ticks: t.ticks });
   };

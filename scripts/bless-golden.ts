@@ -1,12 +1,12 @@
 // `npm run bless`: the one command that regenerates every pinned artifact (engine refactor spec §7, R-0):
 //   tests/golden/basic.json (the sector golden), tests/golden/duel-1.json (the duel golden), tests/golden/duel-rematch.json
-//   (the rematch golden, H-2 spec §7: two rounds of one duel; the oracle's runs never rematch, so a bump re-blesses it
-//   on the same proofs as duel-1.json) and the expectations of
+//   (the rematch golden, H-2 spec §7: two rounds of one duel; the duel oracle includes its run, rematch-1, and ties its
+//   baseline to the stored duel-rematch.json, so a bump re-blesses it only when round 2 matches per tick too) and the expectations of
 //   tests/fixtures/determinism-v2.json. If ANY of them is stored at a version other than the current SIM_VERSION, a
 //   version change is in progress, and the bless is refused unless the per-tick canonical comparison
 //   (scripts/golden/versionOnly.ts, re-run here) proves the sector version-only AND the duel migration oracle
 //   (scripts/golden/duelOracle.ts, re-run here) proves every duel run unchanged per tick, through its alias table when
-//   the duel's schema changed (a bump must be one version step, and the duel baseline must match the stored duel-1.json);
+//   the duel's schema changed (a bump must be one version step, and the duel baseline must match the stored duel-1.json and duel-rematch.json);
 //   a missing pinned artifact is refused unless `--fresh` is given; a same-version bless is a deliberate gameplay change. All three are computed and
 //   validated in memory first and written only when every one is staged, so a staging failure writes nothing; a write failure can leave a mixed-version set, which the next run guards again. tests/fixtures/net1a-baseline.json is a retired
 //   historical oracle and is never written: `npm run bless -- --baseline` only checks it and writes nothing.
