@@ -21,6 +21,6 @@ export function makeUi(o: FixtureOptions = {}) {
   const store = createUiStore({ onlineAvailable: o.api !== null,
     settings: o.settings === null ? undefined : { master: o.settings?.master ?? 1, music: o.settings?.music ?? 1, effects: o.settings?.effects ?? 1, fullscreenAvailable: !!o.deps?.fullscreen, controls: o.settings?.controls ?? [] } });
   const deps = { store, api: (o.api === null ? undefined : (o.api ?? {})) as UiActionDeps['api'],
-    single: vi.fn(), online: vi.fn(), pause: vi.fn(), home: vi.fn(), setVolume: vi.fn(), ...o.deps };   // perfNow: the real performance.now(), the clock MirrorLine reads
+    single: vi.fn(), online: vi.fn(), pause: vi.fn(), home: vi.fn(), setVolume: vi.fn(), quit: vi.fn(), ...o.deps };   // perfNow: the real performance.now(), the clock MirrorLine reads
   return { store, deps, actions: createUiActions(deps) };
 }

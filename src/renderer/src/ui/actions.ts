@@ -12,6 +12,8 @@ export interface UiActionDeps {
   /** The online bridge; absent when the app has none (the buttons that need it are disabled). */
   api?: MenuApi;
   single(): void; online(): void; pause(): void; home?(): void;
+  /** Quit the app (owner 2026-11-17: Quit on the main menu): closes the window, as its close button does. */
+  quit?(): void;
   setVolume?(channel: VolumeChannel, volume: number): void;
   fullscreen?: { get(): Promise<boolean>; set(on: boolean): Promise<boolean> };
   /** performance.now(), injectable for tests. */
@@ -55,6 +57,7 @@ export function createUiActions(deps: UiActionDeps) {
     },
     single(): void { setMenu({ localError: '', page: 'single' }); deps.single(); },
     openMultiplayer(): void { setMenu({ localError: '', page: 'multiplayer' }); },
+    quit(): void { deps.quit?.(); },
     openSettings(): void { setMenu({ localError: '', page: 'settings' }); readFullscreen(); },
     openHost(): void { setMenu({ hadView: false, page: 'host' }); },
     openJoin(): void { setMenu({ hadView: false, page: 'join' }); },

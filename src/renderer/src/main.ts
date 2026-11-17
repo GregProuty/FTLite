@@ -108,7 +108,8 @@ async function startApp(): Promise<void> {
     single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
-    fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined
+    fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined,
+    quit() { window.close(); }   // the main window's close: main quits the app on window-all-closed, as the close button does
   });
   // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.
   const setBlocked = (value: boolean): void => { if (blocked !== value) keyboard.reset(); blocked = value; online?.setInputBlocked(value); };
