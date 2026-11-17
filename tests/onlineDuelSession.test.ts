@@ -15,6 +15,7 @@ import { duelCompatibility } from '../src/main/network/onlineDuel';
 import { CUTTER } from './helpers/scriptedDuel';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
+import type { ConsoleInput } from '../src/renderer/src/app/duel/input';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
@@ -97,7 +98,7 @@ let win: ReturnType<typeof target>;
 beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.disposes.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
-function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}) {
+function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}) {
   let now = 1000, pending: (() => void) | null = null;
   const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createDuel(CUTTER, 7);
   // The F3 overlay's sink: the lines it was last given, or null once hidden.
@@ -105,7 +106,7 @@ function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame
   const session = createOnlineDuelSession({
     renderer: { app: { canvas: target() } } as never, ui: ui as never, latency, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
     scheduler: { schedule: (_ms, cb) => { pending = cb; return () => { if (pending === cb) pending = null; }; } },
-    api: { viewState: async () => ({ ok: true }), ...api } as never, leave, recordDuel: (r) => { records.push(r); }
+    api: { viewState: async () => ({ ok: true }), ...api } as never, leave, recordDuel: (r) => { records.push(r); }, ...extra
   });
   let epoch = 0;
   const port = () => ({ close() {} }) as unknown as MessagePort;
@@ -293,5 +294,28 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     c.events.push(roundEvent(0)); r.pump();
     expect([r.records[0]!.transport, r.records[0]!.latency.rttMs]).toEqual([null, null]);
     r.dispose();
+  });
+});
+
+describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => {
+  it('a lock click at Weapons sends laserLock to that room; a click on the current lock sends nothing', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();   // seat 1 sits at Weapons
+    const locks = () => c.commands().filter((x) => x.kind === 'laserLock');
+    input!.lock(2); r.pump();
+    expect(locks()).toEqual([{ kind: 'laserLock', room: 2 }]);
+    input!.lock(r.d.tactical.systems[0].lock); r.pump();
+    expect(locks()).toHaveLength(1);
+    r.dispose();
+  });
+  it("calls setConsole with its keyboard's ui on creation and with null on dispose", () => {
+    const setConsole = vi.fn();
+    const r = rig(0, undefined, undefined, { setConsole });
+    expect(setConsole).toHaveBeenCalledTimes(1);
+    const ui = setConsole.mock.calls[0]![0] as ConsoleInput;
+    expect(typeof ui.press).toBe('function'); expect(typeof ui.hold).toBe('function'); expect(typeof ui.lock).toBe('function');
+    r.dispose();
+    expect(setConsole).toHaveBeenCalledTimes(2);
+    expect(setConsole.mock.calls[1]![0]).toBeNull();
   });
 });
