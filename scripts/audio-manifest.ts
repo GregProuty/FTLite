@@ -24,7 +24,7 @@ const effects = sfxFiles().map((f) => {
 const music = Object.entries(MUSIC_FILES).map(([name, file]) => {
   const t = TRACKS[name]!;
   return { file, title: t.title, author: 'Scott Buckley', source: t.source, archived: t.archived, license: 'CC-BY-4.0', licenseUrl: CCBY, retrieved: RETRIEVED, modifications: 'none',
-    credit: `'${t.title}' by Scott Buckley - released under CC-BY 4.0 (${CCBY}). www.scottbuckley.com.au`, required: false, name };
+    credit: `'${t.title}' by Scott Buckley, CC-BY 4.0 (creativecommons.org/licenses/by/4.0). www.scottbuckley.com.au`, required: false, name };
 });
 writeFileSync(PATH, JSON.stringify([...kept, ...effects, ...music], null, 2).replace(/\n/g, eol) + eol);
 console.log(`wrote ${effects.length} effect and ${music.length} music entries to ${PATH}`);

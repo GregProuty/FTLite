@@ -8,8 +8,8 @@ License: Creative Commons Attribution 4.0 International (CC-BY 4.0)
 https://creativecommons.org/licenses/by/4.0/
 
 Credit:
-  'Cobalt' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au
-  'Time and Space' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au
+  'Cobalt' by Scott Buckley, CC-BY 4.0 (creativecommons.org/licenses/by/4.0). www.scottbuckley.com.au
+  'Time and Space' by Scott Buckley, CC-BY 4.0 (creativecommons.org/licenses/by/4.0). www.scottbuckley.com.au
 
 Retrieved: 2026-11-17
 Modifications: none

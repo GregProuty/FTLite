@@ -2036,7 +2036,7 @@
     "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
     "retrieved": "2026-11-17",
     "modifications": "none",
-    "credit": "'Cobalt' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au",
+    "credit": "'Cobalt' by Scott Buckley, CC-BY 4.0 (creativecommons.org/licenses/by/4.0). www.scottbuckley.com.au",
     "required": false,
     "name": "music.calm"
   },
@@ -2050,7 +2050,7 @@
     "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
     "retrieved": "2026-11-17",
     "modifications": "none",
-    "credit": "'Time and Space' by Scott Buckley - released under CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/). www.scottbuckley.com.au",
+    "credit": "'Time and Space' by Scott Buckley, CC-BY 4.0 (creativecommons.org/licenses/by/4.0). www.scottbuckley.com.au",
     "required": false,
     "name": "music.battle"
   }
