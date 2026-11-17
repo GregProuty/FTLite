@@ -15,13 +15,16 @@ export interface EncounterProducers<T extends EncounterTypes> {
   controllers(): Readonly<T['controllers']>;
   beforeControls(): void;
   beforeTick(tick: number): void;
-  attachHuman(link: Link, players: readonly number[], options: AttachOptions<T['snapshot']>): Unsubscribe;
+  /** `origin` is the stream attachment's (H-2 spec §6): 'local' for the host's own renderer, 'remote' for a guest. */
+  attachHuman(link: Link, players: readonly number[], options: AttachOptions<T['snapshot']>, origin?: 'local' | 'remote'): Unsubscribe;
   dispose(): void;
 }
 export interface ProducerOptions<T extends EncounterTypes> {
   authority: Authority<T>; init: T['init']; contentDigest: string; resolveLayout: ResolveLayout;
   /** Present on restore: the checkpoint's producer memory. */
   restoredControllers?: T['controllers'];
+  /** The host's lifecycle pause, the one ModeHost.pause uses (H-2 spec §6: the duel's peer-lost pause). */
+  pause(reason: string): void;
 }
 /** The mode's stream adapter for one streamed attachment: a link for the authority and its publication sinks. */
 export interface StreamBinding<T extends EncounterTypes> { link: Link; attachOptions: AttachOptions<T['snapshot']>; dispose(): void }
@@ -95,7 +98,8 @@ export function defineEncounterMode<T extends EncounterTypes>(options: Encounter
       });
       const init: T['init'] = restore ? (value as CheckpointOf<T>).init : value as T['init'];
       nextProducers = options.producers({ authority: next, init, contentDigest: deps.contentDigest, resolveLayout,
-        restoredControllers: restore ? (value as CheckpointOf<T>).botControllers : undefined });
+        restoredControllers: restore ? (value as CheckpointOf<T>).botControllers : undefined,
+        pause: (reason) => { if (!reason.length || reason.length > 128) throw Error(`${label} pause reason`); nextPause?.({ paused: true, reason }); } });
       try { if (restore) next.restore(value as CheckpointOf<T>); else next.start(init); }
       catch (error) { nextProducers.dispose(); next.dispose(); throw error; }
       const old = authority; authority = next; pause = nextPause;
@@ -112,7 +116,7 @@ export function defineEncounterMode<T extends EncounterTypes>(options: Encounter
         if (!validStreamAttachmentOptions(attachOptions)) throw Error('invalid stream attachment');
         const stream = attachOptions?.streamed ? options.publication(link, { ...deps, resolveLayout, latestPayloadLimit: attachOptions.latestPayloadLimit! }) : undefined;
         let off: Unsubscribe;
-        try { off = producers!.attachHuman(stream?.link ?? link, players, { admissionPolicy: policy, ...stream?.attachOptions }); }
+        try { off = producers!.attachHuman(stream?.link ?? link, players, { admissionPolicy: policy, ...stream?.attachOptions }, attachOptions?.origin); }
         catch (error) { stream?.dispose(); throw error; }
         if (stream) streamDisposals.add(stream.dispose);
         const detach = () => { if (!attached.delete(detach)) return; try { off(); } finally { if (stream) { streamDisposals.delete(stream.dispose); stream.dispose(); } } };
