@@ -78,6 +78,11 @@ describe('bodies and ships (H-1 spec §7 items 4 to 6)', () => {
     expect(at(0.24).chevron).toBe(true);
     expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.8, shields: 2 });   // the minimum, 16 px per unit
     expect(at(1.2).scale).toBe(1.2);
+    expect(at(0.2).scale).toBeCloseTo(0.2, 9);   // a chevron: the true zoom
+    const helmAt = (z: number) => tacticalModel(input(st, createCamera(s.x, s.y, z))).helm!;
+    const from = (z: number) => Math.hypot(helmAt(z).headingFrom.x - 640, helmAt(z).headingFrom.y - 360);
+    expect(from(0.2)).toBeCloseTo(20 * 1.3 * 0.2 + 4, 6);   // the heading line starts at the chevron, not the minimum scale
+    expect(from(0.5)).toBeCloseTo(20 * 1.3 * 0.8 + 4, 6);
     expect(at(0.25).hull).toBe('hound');
   });
   it('a silhouette is never drawn below 16 px per ship unit; above that it follows the zoom', () => {

@@ -115,6 +115,15 @@ describe('the combat model (H-1 spec §7)', () => {
       expect(c.weapons === null).toBe(console === 'helm');
     }
   });
+  it('the lock follows the minimum drawn scale at zoom 0.5, and the true zoom on a chevron (zoom 0.2)', () => {
+    const st = createTacticalState(11), e = st.ships[1];
+    Object.assign(e, { heading: 64, headingAcc: 0 });   // nose east
+    st.systems[0].lock = 0;
+    const at = (z: number) => combatModel(input(st, createCamera(e.x, e.y, z), 'weapons')).lock!;
+    expect(at(0.5).x).toBeCloseTo(640 + roomCentre('scout', 0).f * 16, 9);   // 16 px per ship unit
+    expect(at(0.2).x).toBeCloseTo(640, 9);                                      // the chevron's centre
+    expect(at(0.2).label.x).toBeCloseTo(640 + 14 + 6, 9);                      // max(14, 20 × 0.2 × 1.6) + 6
+  });
   it('missile mode: the missile, its trail and its predicted path from its drawn position', () => {
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), fx = createFx();
     launchMissile(st, 0);
