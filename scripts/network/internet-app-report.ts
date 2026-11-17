@@ -106,7 +106,7 @@ export function validateInternetAppReport(value:unknown):void {
         const [a,b]=g.reports.map(value=>parseRun(value)) as [ReturnType<typeof parseRun>,ReturnType<typeof parseRun>];
         if(a.mode!=='single-device'||b.mode!=='single-device'||a.machineLabel.toLowerCase()===b.machineLabel.toLowerCase()||a.networkLabel.toLowerCase()===b.networkLabel.toLowerCase()
           || !same(a.identity,base.identity)||!same(b.identity,base.identity)||a.serviceOrigin!==b.serviceOrigin||!a.forceRelay||!b.forceRelay
-          || a.deviceDuel?.seed!==b.deviceDuel?.seed)fail();
+          || !a.deviceDuel||!b.deviceDuel||a.deviceDuel.seed!==b.deviceDuel.seed)fail();
         checkAgreement([a.peers[0]!,b.peers[0]!]);
       } else if(name==='actualOsSuspend') {
         // Human attestation is explicit and cannot be replaced by a synthetic powerMonitor event.

@@ -9,6 +9,7 @@ import { createLauncherDeadline,removeOwnedDirectory,stopOwnedProcess } from './
 import { startOnlineAppRuntime,waitForAppRequest } from './online-app-runtime';
 import { INTERNET_ARTIFACTS,validateInternetRun,validateLocalInternetDriverRun } from './internet-app-report';
 import { assertCandidateServiceOrigin } from './internet-app-manifest';
+import { parseJoinCodeFile } from './join-code-file';
 
 const pause=(ms:number)=>new Promise<void>(done=>setTimeout(done,ms));
 /** The duel smoke's forced-end test seed (duel-app-smoke.ts DUEL_TEST_SEED; importing that file would run it). */
@@ -115,12 +116,12 @@ async function main() {
     await until(both,([a,b])=>a?.round===1&&b?.round===1&&a.outcome===0);
     const before=latest(await host.request!('status')).speed;
     await hold(host,'W',2000);
-    const fast=await until(both,([a,b])=>a.speed>before+1&&b.speed>before+1);
+    const fast=await until(both,([a,b])=>a?.speed>before+1&&b?.speed>before+1);
     const shots=latest(await host.request!('status')).shots;
     await hold(guest,'Space',4500);   // a full charge takes 4 s
-    const fired=await until(both,([a,b])=>a.shots>shots&&b.shots>shots);
-    const agreement=await until(async()=>{const [a,b]=[await host.request!('status'),await guest.request!('status')];const hp=a.observations.at(-1).publications;
-      return b.observations.at(-1).publications.findLast((p:any)=>hp.some((q:any)=>q.sequence===p.sequence&&q.hash===p.hash&&q.tick===p.tick));},v=>!!v);
+    const fired=await until(both,([a,b])=>a?.shots>shots&&b?.shots>shots);
+    const agreement=await until(async()=>{const [a,b]=[await host.request!('status'),await guest.request!('status')];const hp=a.observations.at(-1)?.publications??[];
+      return (b.observations.at(-1)?.publications??[]).findLast((p:any)=>hp.some((q:any)=>q.sequence===p.sequence&&q.hash===p.hash&&q.tick===p.tick));},v=>!!v);
     const records=await until(async()=>[duelLines(dir,'host'),duelLines(dir,'guest')],([h,g])=>h.some(sampled)&&g.some(sampled));
     rmSync(copies,{recursive:true,force:true});
     for(const role of ['host','guest']){mkdirSync(join(copies,role),{recursive:true});for(const f of duelFiles(dir,role))copyFileSync(f,join(copies,role,basename(f)));}
@@ -129,10 +130,10 @@ async function main() {
       agreement:{tick:agreement.tick,sequence:agreement.sequence,hash:agreement.hash},records:[record(records[0].find(sampled)),record(records[1].find(sampled))],
       cleanup:[host,guest].map(p=>({pid:p.pid,exited:p.exited,exitCode:p.exitCode,...p.cleanup}))};
   }
-  /** A two-machine guest's room code: from the operator's file (accepting `ROOM ` and lower case), which is then deleted
-   *  so the next code can go in it. The code stays in memory: it is never printed, logged or written to the report. */
+  /** A two-machine guest's room code: from the operator's file (parseJoinCodeFile: UTF-8 or UTF-16LE, `ROOM `, lower case,
+   *  O for 0, I and L for 1), which is then deleted so the next code can go in it. The code stays in memory: it is never printed, logged or written to the report. */
   async function readCode():Promise<string> {
-    const code=await until(async()=>{try{return readFileSync(codeFile,'utf8').trim().toUpperCase().replace(/^ROOM\s+/,'');}catch{return '';}},c=>/^[0-9A-Z]{8}$/.test(c),CODE_WAIT_MS);
+    const code=await until(async()=>{try{return parseJoinCodeFile(readFileSync(codeFile));}catch{return '';}},c=>c!=='',CODE_WAIT_MS);
     rmSync(codeFile,{force:true});return code;
   }
   /** One machine of the two-machine duel, the same steps as duelRun on this machine only: the host's lobby shows the
@@ -155,7 +156,7 @@ async function main() {
     await until(now,p=>p?.round===1&&p.outcome===0,30000);
     const start=await now(),before=start.speed,shots=start.shots;
     if(kind==='host'){await pause(1500);await hold(app,'W',2000);}else await hold(app,'Space',4500);   // a full charge takes 4 s
-    const seen=await until(()=>app.request!('status'),v=>{const ps=v.observations.at(-1).publications.filter((p:any)=>p.round===1);return ps.some((p:any)=>p.speed>before+1)&&ps.at(-1)?.shots>shots;},20000);
+    const seen=await until(()=>app.request!('status'),v=>{const ps=(v.observations.at(-1)?.publications??[]).filter((p:any)=>p.round===1);return ps.some((p:any)=>p.speed>before+1)&&ps.at(-1)?.shots>shots;},20000);
     const round2=seen.observations.at(-1).publications.filter((p:any)=>p.round===1);
     const records=await until(async()=>duelLines(dir,kind),list=>list.some(sampled));
     rmSync(copies,{recursive:true,force:true});mkdirSync(join(copies,kind),{recursive:true});for(const f of duelFiles(dir,kind))copyFileSync(f,join(copies,kind,basename(f)));
@@ -208,6 +209,8 @@ async function main() {
   }catch(error){failure=stage==='preparation'?(error instanceof Error&&error.message==='preparation-timeout'?'preparation-timeout':'preparation-failed'):'native-gameplay-failed';}
   finally {
     cleaning=true;
+    // A code file left by an interrupted guest run would refuse the next run; the code is short-lived, so remove it.
+    if(codeFile)try{rmSync(codeFile,{force:true});}catch{cleanupFailed=true;}
     await Promise.all([...owned.map(async p=>{try{if(p.kind!=='preparation'&&!p.exited){try{p.cleanup=await p.request!('shutdown');await deadline.wait(p.done,'cleanup-timeout',7000);}catch{cleanupFailed=true;}}
       await stopOwnedProcess(p.child,deadline);await deadline.wait(p.done,'cleanup-timeout',1500);
       if(p===owned[0]&&args.has('--inject-cleanup-stop-failure'))throw Error('cleanup-failed');

@@ -30,4 +30,4 @@ const manifest={version:1,serviceOrigin,packagePath,identity:{serviceOrigin,revi
   package:{asarSha256:hash(asarPath),executableSha256:hash(appDirectory+'/FTLite.exe'),entryCount:entries.length,entries},
   toolVersions:{node:process.version,root:versions(rootLock,['electron','electron-builder','electron-vite','vite','vitest','typescript','tsx','pixi.js','zod','bitecs']),service:versions(serviceLock,['wrangler','workerd','miniflare','@cloudflare/workers-types','@cloudflare/vitest-plugin','vitest','typescript'])},
   worker:{name:'ftlite-signalling-dev',bundleSha256:hash('services/signalling/dist/index.js'),configSha256:hash('services/signalling/wrangler.jsonc'),lockSha256:hash('services/signalling/package-lock.json')}};
-mkdirSync(dirname(output),{recursive:true});writeFileSync(output,JSON.stringify(manifest,null,2)+'\n');console.log('Candidate package audit PASS: exact out bytes, no env, test profiles or evidence.');
+mkdirSync(dirname(output),{recursive:true});writeFileSync(output,JSON.stringify(manifest,null,2)+'\n');console.log('Candidate package audit PASS: exact out/main, out/preload and out/renderer bytes, no env, test profiles or evidence.');
