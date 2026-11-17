@@ -60,8 +60,9 @@ export function createDuelProducers(options: DuelProducerOptions) {
       if (s.done && s.lost) { s.lost = false; options.pause('peer-lost'); }
     }
     const p = s.publication;
-    if (s.done || s.pending || !p) return;
-    if (p.phase === 'paused') { s.lost = false; return; }   // already paused: presence waits for the resume, no peer-lost pause
+    // Already paused (even with the presence in flight): the presence waits for the resume, and no peer-lost pause follows.
+    if (p?.phase === 'paused') s.lost = false;
+    if (s.done || s.pending || !p || p.phase === 'paused') return;
     if (p.phase !== 'running') return;
     // A rejected sequence is consumed by the ledger, so a retry never reuses the last sequence this steward sent.
     s.pending = { player: s.player, sequence: Math.max(p.commandHighWater[s.player]! + 1, s.lastSequence + 1) };

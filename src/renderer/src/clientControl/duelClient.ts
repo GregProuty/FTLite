@@ -8,6 +8,7 @@ import type { ResolveLayout } from '../authority/rules';
 import { DUEL_PLAYERS, DUEL_SNAPSHOT_FORMAT, loadDuelSnapshot, restoreDuelSnapshot, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
 import { disposeDuel, type DuelState } from '../sim/duel/state';
 import { SIM_VERSION } from '../sim/tuning';
+import { hashF64 } from '../../../shared/hash';
 import { createStreamClient } from './streamClient';
 import type { AdmissionPolicy } from '../net/receivePolicy';
 
@@ -15,9 +16,12 @@ export type DuelPublication = PublishedState<DuelSnapshot>;
 export interface DuelClientOptions { runId: string; contentDigest: string; resolveLayout: ResolveLayout; admissionPolicy?: AdmissionPolicy; remoteStreaming?: boolean }
 const codec = duelCodec(DUEL_PLAYERS);
 
-/** Object validation of a duel publication: the shared schema, the tick and the duel snapshot validator. */
+/** Object validation of a duel publication: the shared schema, its tick and hash against the snapshot (as
+ *  checkedPublication does), and the duel snapshot validator. */
 export function validateDuelPublication(value: unknown, options: Pick<DuelClientOptions, 'resolveLayout' | 'contentDigest'>): DuelPublication {
   const publication = duelPublicationSchema.parse(value) as DuelPublication;
+  if (publication.tick !== publication.snapshot.header.tick) throw Error('duel publication tick differs from its snapshot');
+  if (publication.hash !== hashF64(Float64Array.from(publication.snapshot.values))) throw Error('duel publication hash differs from its snapshot');
   publication.snapshot = validateDuelSnapshot(options.resolveLayout(publication.snapshot.header.layoutId), publication.snapshot, options.contentDigest);
   return publication;
 }

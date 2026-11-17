@@ -108,6 +108,33 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
     expect(pauses).toEqual(['peer-lost']);
     expect(commands).toHaveLength(2);
   });
+  it('a presence still in flight when another player pauses owes no peer-lost pause after the resume', () => {
+    const attached: Link[] = [], pauses: string[] = [], codec = duelCodec(2);
+    const authority = { attach(link: Link) { attached.push(link); return () => {}; } } as unknown as Authority<DuelTypes>;
+    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, pause: (reason) => pauses.push(reason) });
+    ownTestCleanup(() => producers.dispose());
+    const human = linkPair('human');
+    const off = producers.attachHuman(human.host.link, [1], { admissionPolicy: 'receive-time' }, 'remote');
+    producers.beforeControls();
+    off();
+    producers.beforeControls();   // a steward for seat 1, owing the peer-lost pause
+    const steward = attached.at(-1)!, commands: CommandEnvelope[] = [];
+    steward.onMessage((_k, bytes) => { const m = codec.decodeMessage(bytes); if (m.kind === 'command') commands.push(m.envelope); });
+    const s = duelRules.create(duelInit(4, 'r'), resolveCutter), snapshot = saveDuelSnapshot(s.duel, DIGEST); duelRules.dispose(s);
+    const state = (phase: 'running' | 'paused', publicationSequence: number) => codec.encodeMessage({ kind: 'state', state: { runId: 'r', tick: 0, publicationSequence, snapshot,
+      hash: hashF64(Float64Array.from(snapshot.values)), phase, pauseOwner: phase === 'paused' ? 0 : null, pauseReason: phase === 'paused' ? 'player' : null, controlRevision: 0, lagTicks: 0,
+      tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } });
+    steward.send('reliable-ordered', state('running', 1));
+    producers.beforeControls();
+    expect(commands).toHaveLength(1);   // the presence is in flight
+    steward.send('reliable-ordered', state('paused', 2));   // player 0 pauses before it is applied
+    producers.beforeControls();
+    expect(producers.stewards().find((x) => x.player === 1)).toMatchObject({ lost: false, pending: true });
+    steward.send('reliable-ordered', state('running', 3));   // the resume
+    steward.send('reliable-ordered', codec.encodeMessage({ kind: 'result', runId: 'r', result: { id: commands[0]!.id, tick: 1, status: 'applied' } }));
+    producers.beforeControls();
+    expect(pauses).toEqual([]);
+  });
   it('a human who takes a lost seat clears its peer-lost debt, and replacing a bound human owes none', () => {
     const attached: Link[] = [], pauses: string[] = [], codec = duelCodec(2);
     const authority = { attach(link: Link) { attached.push(link); return () => {}; } } as unknown as Authority<DuelTypes>;

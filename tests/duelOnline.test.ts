@@ -47,13 +47,15 @@ describe('two clients over the loopback, one per seat (spec §10)', () => {
     const rig = onlineDuel(seed), a = rig.connect(0), b = rig.connect(1), pa = producer(a, seed), pb = producer(b, seed);
     rig.tick(2);
     expect(a.client.commandStatus(0).state).toBe('ready');
-    // The journal resets every 300 ticks, so watchdog frames are counted every 250 ticks across the whole round.
+    // The journal is emptied at every 300-tick boundary, so each window's watchdog frames are counted on its last tick
+    // (authority tick % 300 === 299), just before the reset, and the final window after the loop.
     const watchdogs = () => rig.authority.replay().frames.filter((f) => f.action.kind === 'watchdog').length;
-    let watchdogCount = 0;
+    let watchdogCount = 0, windows = 0;
     for (let k = 0; k < CAP_TICKS && a.client.state()?.tactical.outcome === Outcome.Running; k++) {
       pa.step(); pb.step(); rig.tick();
-      if (k % 250 === 249) watchdogCount += watchdogs();
+      if (rig.session().duel.interior.tick % 300 === 299) { watchdogCount += watchdogs(); windows++; }
     }
+    expect(windows, 'every full journal window was read').toBe(Math.floor((rig.session().duel.interior.tick + 1) / 300));
     rig.tick(6); pa.step(); pb.step();
     const d = a.client.state()!;
     expect(d.tactical.outcome, 'the round reached an outcome').not.toBe(Outcome.Running);
@@ -69,6 +71,10 @@ describe('two clients over the loopback, one per seat (spec §10)', () => {
     expect(watchdogCount + watchdogs()).toBe(0);
     const results = [...pa.results, ...pb.results];
     expect(results.length).toBeGreaterThan(0);
+    // Each seat produced input through its own client: its held frames were admitted (the Helm can fly a round on held
+    // input alone, so a seat need not send a command), and the commands sent were applied.
+    for (const seat of [0, 1]) expect(a.client.publication()!.heldHighWater[seat], `seat ${seat} held frames admitted`).toBeGreaterThan(0);
+    expect(results.some((r) => r.status === 'applied'), 'a command was applied').toBe(true);
     expect(results.filter((r) => r.reason === 'stale-tick')).toEqual([]);
     // Each client's round record is the authority's: the round record builder over the session's summary.
     const authorityRecord = duelRoundRecord(rig.session().summary!, 0, seed, 0);
