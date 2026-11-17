@@ -57,7 +57,7 @@ function room() {
       }), attachPeer: vi.fn(async () => {}), onExit: () => () => {}, dispose: vi.fn(async () => { authority?.dispose(); }), transport: controller };
     const platform = { startLeasedHost: vi.fn(async (_i: any, _s: AbortSignal, identity: any) => { leaseIdentity = identity; return host; }), createTransport: vi.fn(async () => transport), channel: () => ({ port1: { close: vi.fn() }, port2: { close: vi.fn() } }) as any, publishPort: vi.fn(), onVisibleGone: () => () => {} };
     const owner = createOnlineSession({ config: { enabled: true, baseUrl: credential.serviceOrigin, allowInsecureLocalhost: true, iceMode: 'loopback' }, service: () => service, platform, seatStore, mirrorStore,
-      clock: { nowMs: () => Date.now(), epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32) });
+      clock: { nowMs: () => Date.now(), epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32), sectorTestEntry: true });
     cleanups.push(async () => { await owner.dispatch({ type: 'forget-seat' }); await owner.dispose(); subscribers.delete(broadcast); });
     return { owner, service, host, platform, transport, mirrorStore, seatStore, events, setDisk: (next: any) => { disk = next; }, restored: () => authority!.checkpoint([]) };
   }

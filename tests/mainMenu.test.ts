@@ -44,7 +44,7 @@ describe('multiplayer', () => {
     expect(root.find('page-title')!.textContent).toBe('Multiplayer');
     expect(buttons(root)).toEqual(['host', 'join', 'reconnect', 'forget-seat', 'back']);
     expect(root.find('host')!.disabled).toBe(false); expect(root.find('join')!.disabled).toBe(false);
-    root.find('host')!.fire(); expect(root.find('capacity')).toBeDefined();
+    root.find('host')!.fire(); expect(root.find('create-room')).toBeDefined(); expect(root.find('capacity')).toBeUndefined();   // a duel room has no capacity (H-2)
     root.find('back')!.fire(); expect(root.find('page-title')!.textContent).toBe('Multiplayer');
     root.find('join')!.fire(); expect(root.find('join-code')).toBeDefined();
     root.find('back')!.fire(); root.find('back')!.fire(); expect(buttons(root)).toEqual(HOME); menu.dispose();

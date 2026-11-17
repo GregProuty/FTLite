@@ -53,11 +53,11 @@ it('keeps a compact failure strip over the last game even when main clears the a
   menu.setStatus(status); menu.setStatus({ ...status, phase: 'error', role: null, ownSeat: null, attachmentEpoch: 0, error: 'transport-lost', actions: ['retry'] });
   expect(root.style.cssText).not.toContain('inset:0'); expect(root.find('retry')).toBeDefined(); menu.dispose();
 });
-it('offers accessible capacity/code forms and deduplicates Join until settlement', async () => {
+it('offers the duel Host form and an accessible code form, and deduplicates Join until settlement', async () => {
   const root = new Element(), join = vi.fn(() => new Promise<any>(() => {})), host = vi.fn(async () => ({ ok: true }));
   const menu = createSessionMenu({ root: root as unknown as HTMLElement, document: { createElement: () => new Element() } as unknown as Document, api: { host, join } as any, single: vi.fn(), online: vi.fn(), pause: vi.fn(), inputBlocked: vi.fn() });
   menu.setStatus({ phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: true, actions: ['host', 'join', 'reconnect'] });
-  root.find('multiplayer')!.fire(); root.find('host')!.fire(); expect(root.find('capacity')!.value).toBe('2'); root.find('capacity')!.value = '4'; root.find('host-form')!.fire('submit'); expect(host).toHaveBeenCalledWith(4);
+  root.find('multiplayer')!.fire(); root.find('host')!.fire(); expect(root.find('capacity')).toBeUndefined(); root.find('host-form')!.fire('submit'); expect(host).toHaveBeenCalledWith();
   await Promise.resolve(); await Promise.resolve(); menu.home(); root.find('multiplayer')!.fire(); root.find('join')!.fire(); root.find('join-code')!.value = ' abcdef12 '; const form = root.find('join-form')!; form.fire('submit'); form.fire('submit'); expect(join).toHaveBeenCalledExactlyOnceWith('ABCDEF12');
   menu.dispose();
 });
@@ -66,7 +66,7 @@ it('gates lobby capabilities and labels reconnect as a seat, with actionable com
   const status: OnlineStatus = { phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: true, actions: ['reconnect'] };
   menu.setStatus(status); expect(root.find('reconnect')).toBeUndefined(); root.find('multiplayer')!.fire(); expect(root.find('reconnect')!.textContent).toBe('Reconnect saved seat');
   menu.setStatus({ ...status, phase: 'lobby', role: 'guest', actions: ['ready', 'leave'] }); expect(root.find('ready')!.disabled).toBe(false); expect(root.find('start')).toBeUndefined();
-  menu.setStatus({ ...status, phase: 'error', error: 'incompatible', actions: ['join', 'retry'] }); expect(root.find('status')!.textContent).toContain('compatible'); expect(root.find('retry')).toBeDefined();
+  menu.setStatus({ ...status, phase: 'error', error: 'incompatible', actions: ['join', 'retry'] }); expect(root.find('status')!.textContent).toContain('The other computer runs a different FTLite build. Install the same build on both, then try again.'); expect(root.find('retry')).toBeDefined();   // a duel Join tries one compatibility: incompatible means a different build (H-2 spec §2)
 });
 it('requires ready occupied humans and host capability before Start, and permits leaving during a pending Join', async () => {
   const root = new Element(), leave = vi.fn(async () => ({ ok: true }));

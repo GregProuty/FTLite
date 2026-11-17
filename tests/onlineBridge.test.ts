@@ -38,7 +38,7 @@ describe('renderer-owned online bridge', () => {
   it('cannot turn page messages into privileged operations and releases every unclaimed transfer', () => {
     const h = harness(), p = h.port();
     h.message({ source: 'ftlite:online:main', type: 'host', capacity: 4 }, [p]);
-    h.message({ channel: 'online:host', message: { type: 'host', capacity: 4 } });
+    h.message({ channel: 'online:host', message: { type: 'host', mode: 'sector', capacity: 4 } });
     expect(h.api.host).not.toHaveBeenCalled(); expect(p.close).toHaveBeenCalledOnce(); h.bridge.dispose();
   });
   it('retires an unclaimed valid epoch so it cannot be replayed after a listener arrives', () => {
@@ -84,10 +84,10 @@ describe('isolated preload transfer and API', () => {
       expect(native.exposed.online.resume).toBeUndefined();
       const off = native.exposed.onSuspend(() => {}); expect(native.listeners.get('app:suspend')?.size).toBe(1); off(); expect(native.listeners.get('app:suspend')?.size).toBe(0);
       native.invoke.mockResolvedValueOnce({ ok: true, token: 'private' }).mockRejectedValueOnce(Error('private'));
-      expect(await native.exposed.online.host(2)).toEqual({ ok: false, code: 'invalid-status' });
-      expect(await native.exposed.online.host(2)).toEqual({ ok: false, code: 'unavailable' });
+      expect(await native.exposed.online.host({ mode: 'sector', capacity: 2 })).toEqual({ ok: false, code: 'invalid-status' });
+      expect(await native.exposed.online.host()).toEqual({ ok: false, code: 'unavailable' });
       const calls = native.invoke.mock.calls.length;
-      expect(await native.exposed.online.host(9)).toEqual({ ok: false, code: 'invalid-action' }); expect(native.invoke.mock.calls.length).toBe(calls);
+      expect(await native.exposed.online.host({ mode: 'sector', capacity: 9 })).toEqual({ ok: false, code: 'invalid-action' }); expect(native.invoke.mock.calls.length).toBe(calls);
       const statusCb = vi.fn(), offStatus = native.exposed.online.onStatus(statusCb);
       for (const cb of native.listeners.get('online:status') ?? []) { cb({}, { version: 2, revision: 1, status }); cb({}, { version: 1, revision: 1, status }); }
       expect(statusCb).toHaveBeenCalledTimes(1); offStatus(); expect(native.listeners.get('online:status')?.size).toBe(0);

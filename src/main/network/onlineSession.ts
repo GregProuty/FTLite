@@ -12,7 +12,7 @@ import { validateSavedSeat, type SavedSeatV1, type SeatStore } from './seatStore
 import { createOnlinePeers, type OnlinePeer } from './onlinePeers';
 import { createOnlineIce, type OnlineIce } from './onlineIce';
 import { createOnlineRetry, onlineFault, type OnlineClock, type OnlineScheduler } from './onlineRetry';
-import { sectorCompatibility, sectorInit, sectorJoinCompatibilities, validateCommittedSectorStart, validateSectorMirror } from './onlineSector';
+import { duelOnlineMode, onlineModeFor, sectorOnlineMode, type OnlineModeAdapter } from './onlineModes';
 import { createOnlineMirrors, type OnlineMirrors } from './onlineMirrors';
 import { validateMirror, type MirrorStore, type SessionMirror } from './mirrorStore';
 import type { LeaseRenewalRequest } from '../../shared/sessionLease';
@@ -30,6 +30,10 @@ export interface OnlinePlatform {
 export interface OnlineSessionDeps {
   config: OnlineConfig; seatStore: SeatStore; mirrorStore: MirrorStore; service(): RoomServiceClient; platform: OnlinePlatform;
   clock: OnlineClock; scheduler: OnlineScheduler; nonce(): string;
+  /** The test-only sector entry (H-2 spec §10): the sector forms of host and join are honoured only when true. */
+  sectorTestEntry?: boolean;
+  /** A test-only duel seed (unpackaged builds only) that replaces every duel room's runId seed. */
+  duelTestSeed?: number;
 }
 export interface OnlineSessionOwner {
   dispatch(action: OnlineAction): Promise<OnlineResult>; status(): OnlineStatus;
@@ -53,7 +57,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   let rehostWork: Promise<OnlineResult> | undefined, exitWork: Promise<void> | undefined;
   let value: OnlineStatus = { phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: false, actions: [] };
   const listeners = new Set<(status: OnlineStatus) => void>(), retry = createOnlineRetry(clock, scheduler);
-  type Context = { epoch: number; abort: AbortController; service: RoomServiceClient; seat?: SeatSession; transport?: OwnedOnlineTransport; host?: HostProcessHandle;
+  type Context = { epoch: number; abort: AbortController; service: RoomServiceClient; mode: OnlineModeAdapter; seat?: SeatSession; transport?: OwnedOnlineTransport; host?: HostProcessHandle;
     peers?: ReturnType<typeof createOnlinePeers>; ice?: OnlineIce; removers: Unsubscribe[]; gameRemovers: Unsubscribe[]; ports: Set<MessagePortMain>; timers: Set<unknown>;
     gameEpoch: number; gameRetiring?: Promise<void>; claiming?: boolean; claimSnapshot?: RoomSnapshot;
     starting?: Promise<void>; committedHash?: string; active: boolean; authorityReady?: boolean; recovering: boolean; attached: Set<string>;
@@ -144,7 +148,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     } else void stop(code);
   }
   function updateSnapshot(c: Context, snapshot: RoomSnapshot) {
-    check(c); sectorInit(snapshot);
+    check(c); c.mode.init(snapshot);
     if (snapshot.hostGeneration < c.seat!.snapshot.hostGeneration) return;
     c.seat!.snapshot = structuredClone(snapshot);
     if (snapshot.phase === 'lost' || snapshot.phase === 'ended') { emit({ snapshot }); savedState(c, 'host-lost'); return; }
@@ -197,7 +201,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     c.attached.add(peer.attemptId); c.ports.add(peer.port);
     try {
       if (c.host) {
-        await wait(c, c.host.attachPeer(peer.attemptId, [peer.seatId], peer.port, { streamed: true, latestPayloadLimit: peer.latestPayloadLimit }));
+        await wait(c, c.host.attachPeer(peer.attemptId, [peer.seatId], peer.port, { streamed: true, latestPayloadLimit: peer.latestPayloadLimit, origin: 'remote' }));
         checkGame(c, gameEpoch); c.ports.delete(peer.port);
       } else publish(c, peer.port);
       peer.transferred = true;
@@ -209,7 +213,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     const s = c.seat!.snapshot;
     return c.mirrors = createOnlineMirrors({ service: c.service, store: deps.mirrorStore, serviceOrigin: config.baseUrl,
       roomId: s.roomId, runId: s.runId, hostGeneration: s.hostGeneration, compatibility: s.compatibility, clock, signal: c.abort.signal,
-      validatePayload: validateSectorMirror, onChange: mirror => { if (current(c)) emit({ mirror }); } });
+      validatePayload: mirror => c.mode.validateMirror(mirror), onChange: mirror => { if (current(c)) emit({ mirror }); } });
   }
   function resetMirrors(c: Context) { c.mirrors?.dispose(); c.mirrors = undefined; }
   function bridgeLease(c: Context, host: HostProcessHandle): Promise<void> {
@@ -271,7 +275,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     if (c.host !== host || !c.active) throw onlineFault('host-lost');
     if (!restore) await wait(c, host.completeBootstrap());
     const { port1, port2 } = platform.channel(); c.ports.add(port1); c.ports.add(port2);
-    await wait(c, host.attachPeer('online-local', [c.seat!.seatId], port1, { streamed: true, latestPayloadLimit: RTC_MAX_PACKET_BYTES - RTC_MAX_HEADER_BYTES })); c.ports.delete(port1);
+    await wait(c, host.attachPeer('online-local', [c.seat!.seatId], port1, { streamed: true, latestPayloadLimit: RTC_MAX_PACKET_BYTES - RTC_MAX_HEADER_BYTES, origin: 'local' })); c.ports.delete(port1);
     if (c.host !== host || !c.active) throw onlineFault('host-lost');
     publish(c, port2); c.authorityReady = true;
   }
@@ -282,7 +286,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     }
     c.committedHash = committed.initHash;
     c.starting = (async () => {
-      const init = await validateCommittedSectorStart(c.seat!.snapshot, committed); check(c);
+      const init = await c.mode.validateCommittedStart(c.seat!.snapshot, committed); check(c);
       c.active = true; c.seat!.snapshot = { ...c.seat!.snapshot, phase: 'active' }; emit({ snapshot: c.seat!.snapshot, phase: 'connecting' });
       if (c.seat!.seatId === c.seat!.snapshot.hostSeatId) {
         await installHost(c, new TextEncoder().encode(JSON.stringify(init)), false);
@@ -306,7 +310,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
           updateSnapshot(c, { ...c.seat!.snapshot, phase: 'lost' }); break;
         case 'host-changed':
           if (e.snapshot.hostGeneration <= c.seat!.snapshot.hostGeneration) break;
-          sectorInit(e.snapshot);
+          c.mode.init(e.snapshot);
           if (e.snapshot.roomId !== c.seat!.snapshot.roomId || e.snapshot.runId !== c.seat!.snapshot.runId) throw onlineFault('invalid-frame');
           c.claimSnapshot = structuredClone(e.snapshot);
           if (c.claiming) { c.seat!.snapshot = structuredClone(e.snapshot); emit({ snapshot: e.snapshot }); }
@@ -338,7 +342,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     }
   }
   function validateRecovery(c: Context, mirror: SessionMirror): Uint8Array {
-    validateMirror(mirror, value => validateSectorMirror(value, c.seat!.snapshot.capacity));
+    validateMirror(mirror, value => c.mode.validateMirror(value, c.seat!.snapshot.capacity));
     const s = c.seat!.snapshot, m = mirror.metadata;
     if (m.roomId !== s.roomId || m.runId !== s.runId || m.hostGeneration > s.hostGeneration
       || Object.entries(s.compatibility).some(([k, v]) => m.compatibility[k as keyof typeof s.compatibility] !== v)) throw onlineFault('save-invalid');
@@ -394,7 +398,10 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     simVersion: s.compatibility.simVersion, contentDigest: s.compatibility.contentDigest, hostGeneration: s.hostGeneration }; }
   async function establish(action: Extract<OnlineAction, { type: 'host' | 'join' | 'reconnect' | 'retry' }>, signal: AbortSignal, recovering: boolean) {
     if (!config.enabled) throw onlineFault('online-disabled');
-    const c: Context = { epoch: ++epoch, abort: new AbortController(), service: deps.service(), removers: [], gameRemovers: [], gameEpoch: 0, ports: new Set(), timers: new Set(), active: false, recovering, attached: new Set() };
+    // The context's mode (H-2 spec §2): the host's from its action, a joiner's from its requested mode (the duel by
+    // default), a reconnect's from the saved seat's compatibility (checked again once the credential is loaded).
+    const requested = action.type === 'host' || action.type === 'join' ? onlineModeFor(action.mode ?? 'duel', deps.duelTestSeed) : onlineModeFor(saved?.compatibility.modeId ?? 'duel', deps.duelTestSeed);
+    const c: Context = { epoch: ++epoch, abort: new AbortController(), service: deps.service(), mode: requested ?? duelOnlineMode(deps.duelTestSeed), removers: [], gameRemovers: [], gameEpoch: 0, ports: new Set(), timers: new Set(), active: false, recovering, attached: new Set() };
     context = c;
     const cancel = () => { c.abort.abort(signal.reason ?? onlineFault('cancelled')); void cleanup(c); };
     signal.addEventListener('abort', cancel, { once: true }); c.removers.push(() => signal.removeEventListener('abort', cancel));
@@ -403,20 +410,30 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
       ...(!recovering ? { role: null, ownSeat: null, snapshot: null, mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null } } : {}) });
     try {
       let seat: SeatSession;
-      if (action.type === 'host') seat = await wait(c, c.service.create(sectorCompatibility(action.capacity), action.capacity));
-      else if (action.type === 'join') {
-        const layouts = sectorJoinCompatibilities();
-        try { seat = await wait(c, c.service.join(action.code.trim().toUpperCase(), layouts[0]!)); }
-        catch (error) { if (codeOf(error) !== 'incompatible') throw error; seat = await wait(c, c.service.join(action.code.trim().toUpperCase(), layouts[1]!)); }
+      if (action.type === 'host') {
+        const capacity = action.mode === 'sector' ? action.capacity : 2;   // a duel room is always capacity 2
+        seat = await wait(c, c.service.create(c.mode.compatibility(capacity), capacity));
+      } else if (action.type === 'join') {
+        // The duel tries its one compatibility: `incompatible` means a different build. The sector tries each layout.
+        const candidates = c.mode.joinCompatibilities();
+        let joined: SeatSession | undefined, last: unknown;
+        for (const candidate of candidates) {
+          try { joined = await wait(c, c.service.join(action.code.trim().toUpperCase(), candidate)); break; }
+          catch (error) { if (codeOf(error) !== 'incompatible' || candidate === candidates.at(-1)) throw error; last = error; }
+        }
+        if (!joined) throw last ?? onlineFault('incompatible');
+        seat = joined;
       } else {
         const credential = saved ?? await wait(c, deps.seatStore.load());
         check(c);
         if (!credential || !validateSavedSeat(credential) || credential.serviceOrigin !== config.baseUrl) throw onlineFault('storage-invalid');
-        saved = credential;
+        const mode = onlineModeFor(credential.compatibility.modeId, deps.duelTestSeed);
+        if (!mode) throw onlineFault('storage-invalid');
+        saved = credential; c.mode = mode;
         seat = await wait(c, c.service.join(credential.joinCode, credential.compatibility, credential.seatToken));
         if (seat.snapshot.roomId !== credential.roomId || seat.seatId !== credential.seatId || seat.seatToken !== credential.seatToken) throw onlineFault('unauthorized');
       }
-      check(c); sectorInit(seat.snapshot); c.seat = seat;
+      check(c); c.mode.init(seat.snapshot); c.seat = seat;
       saved = { version: 1, serviceOrigin: config.baseUrl, roomId: seat.snapshot.roomId, joinCode: seat.snapshot.joinCode, compatibility: seat.snapshot.compatibility,
         seatId: seat.seatId, seatGeneration: seat.seatGeneration, seatToken: seat.seatToken };
       let persistent = true;
@@ -469,7 +486,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
       updateSnapshot(c, (await wait(c, c.service.request({ type: 'remove-seat', seatId: action.seatId }))).snapshot);
     } else if (action.type === 'start') {
       if (!host || snapshot.phase !== 'lobby' || !snapshot.seats.every(s => !s.occupied || s.ready && s.connected) || !c.peers?.allReady()) throw onlineFault('invalid-state');
-      const bytes = Buffer.from(JSON.stringify(sectorInit(snapshot))), expectedRosterRevision = snapshot.rosterRevision;
+      const bytes = Buffer.from(JSON.stringify(c.mode.init(snapshot, { helmPlayer: action.helmPlayer ?? 0 }))), expectedRosterRevision = snapshot.rosterRevision;
       const proposal = await wait(c, c.service.request({ type: 'start-propose', expectedRosterRevision, initBase64: bytes.toString('base64'), initHash: createHash('sha256').update(bytes).digest('hex') }));
       c.explicitStart = true;
       const committed = await wait(c, c.service.request({ type: 'start-commit', proposalId: proposal.proposalId, expectedRosterRevision }));
@@ -478,6 +495,8 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
   }
   async function dispatch(action: OnlineAction): Promise<OnlineResult> {
     if (!validateOnlineAction(action)) return { ok: false, code: 'invalid-action' };
+    // The sector forms are the test-only entry (H-2 spec §10): refused unless this main process was started for them.
+    if ((action.type === 'host' || action.type === 'join') && action.mode === 'sector' && !deps.sectorTestEntry) return { ok: false, code: 'invalid-action' };
     if (action.type === 'leave' || action.type === 'forget-seat') {
       if (forgetting) return forgetting;
       if (action.type === 'leave') { await prepareExit(); return { ok: true }; }

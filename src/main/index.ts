@@ -9,9 +9,10 @@ import { registerOnlineIpc } from './network/onlineIpc';
 import { registerOnlineExit } from './network/onlineExit';
 import { createSeatStore } from './network/seatStore';
 import { createMirrorStore } from './network/mirrorStore';
-import { validateSectorMirror } from './network/onlineSector';
+import { validateModeMirror } from './network/onlineModes';
+import { appendDuelRecord } from './network/duelRecords';
 import { createRoomServiceClient } from '../network/session/serviceClient';
-import { FULLSCREEN_KEY, WINDOW_FULLSCREEN_CHANNEL } from '../shared/onlineSession';
+import { DUEL_RECORD_CHANNEL, FULLSCREEN_KEY, WINDOW_FULLSCREEN_CHANNEL } from '../shared/onlineSession';
 declare const __FTLITE_PACKAGED_SERVICE_ORIGIN__: string;
 
 function createWindow(): void {
@@ -38,8 +39,14 @@ function createWindow(): void {
   const config = typeof nativeFetch === 'function' && typeof NativeWebSocket === 'function' ? configured : { enabled: false } as const;
   const scheduler = { setTimeout: (callback: () => void, ms: number) => setTimeout(callback, ms),
     clearTimeout: (handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>) };
+  // Test-only entries (H-2 spec §10), honoured only by an unpackaged build, as FTLITE_MODE is: the sector's online forms
+  // (FTLITE_SECTOR_ONLINE_TEST=1) and a fixed first duel seed for the forced round end (FTLITE_DUEL_TEST_SEED).
+  const sectorTestEntry = !packaged && process.env['FTLITE_SECTOR_ONLINE_TEST'] === '1';
+  const testSeed = packaged ? undefined : process.env['FTLITE_DUEL_TEST_SEED'];
+  const duelTestSeed = testSeed !== undefined && /^\d{1,10}$/.test(testSeed) && Number(testSeed) <= 0xffffffff ? Number(testSeed) : undefined;
   const owner = createOnlineSession({
-    config, seatStore: createSeatStore(app.getPath('userData')), mirrorStore: createMirrorStore(app.getPath('userData'), validateSectorMirror), platform: createOnlinePlatform(win),
+    config, seatStore: createSeatStore(app.getPath('userData')), mirrorStore: createMirrorStore(app.getPath('userData'), validateModeMirror), platform: createOnlinePlatform(win),
+    sectorTestEntry, duelTestSeed,
     clock: { nowMs: () => performance.now(), epochMs: () => Date.now() }, scheduler,
     nonce: () => randomBytes(16).toString('hex'),
     service() {
@@ -70,7 +77,13 @@ function createWindow(): void {
     win.setFullScreen(args[0] as boolean);
     return args[0];
   });
-  win.on('closed', () => { ipcMain.removeHandler(WINDOW_FULLSCREEN_CHANNEL); });
+  // The duel playtest record (H-2 spec §8), trusted as the fullscreen channel is: only this window's main frame.
+  ipcMain.removeHandler(DUEL_RECORD_CHANNEL);
+  ipcMain.handle(DUEL_RECORD_CHANNEL, (event, ...args: unknown[]) => {
+    if (win.isDestroyed() || win.webContents.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame || args.length !== 1) return false;
+    return appendDuelRecord(app.getPath('userData'), args[0]);
+  });
+  win.on('closed', () => { ipcMain.removeHandler(WINDOW_FULLSCREEN_CHANNEL); ipcMain.removeHandler(DUEL_RECORD_CHANNEL); });
   // FTLITE_MODE (H-1 spec §3): `flight` opens the dev flight view and `duel` the solo duel; the renderer reads it as `?mode=`.
   const mode = process.env['FTLITE_MODE'];
   if (process.env['ELECTRON_RENDERER_URL']) {

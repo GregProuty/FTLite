@@ -34,7 +34,7 @@ function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0, serviceOrigin =
     attachPeer: vi.fn(async () => {}), onExit: vi.fn((cb: (reason: string) => void) => { hostExit = cb; return () => {}; }), dispose: vi.fn(async () => { clearInterval(renewalTimer); }) };
   const platform = { startLeasedHost: vi.fn(async (_identity: any, _signal: AbortSignal, lease: any) => { leaseIdentity = lease; return host; }), createTransport: vi.fn(async () => transport), channel: () => { const port1 = { close: vi.fn() }, port2 = { close: vi.fn() }; ports.push(port1, port2); return { port1, port2 } as any; }, publishPort: vi.fn(), onVisibleGone: () => () => {} };
   const owner = createOnlineSession({ config: { enabled: true, baseUrl: serviceOrigin, allowInsecureLocalhost: serviceOrigin.startsWith('http:'), iceMode: serviceOrigin.startsWith('http:') ? 'loopback' : 'turn' }, seatStore: store, mirrorStore,
-    service: () => service, platform, clock: { nowMs: () => Date.now() - monotonicOrigin, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32) });
+    service: () => service, platform, clock: { nowMs: () => Date.now() - monotonicOrigin, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32), sectorTestEntry: true });
   const savedSeat = () => ({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: snapshot.roomId, joinCode: snapshot.joinCode, compatibility: snapshot.compatibility, seatId: ownSeat, seatGeneration: 1, seatToken: 't'.repeat(43) });
   const issue = (attemptId = '1'.repeat(32), guestSeatId = ownSeat === 0 ? 1 : ownSeat) => emit({ type: 'link-issued', link: { attemptId, role: ownSeat === 0 ? 'offerer' : 'answerer',
     identity: { ...snapshot.compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration: 1, seatGeneration: snapshot.seats[guestSeatId].seatGeneration,
@@ -45,13 +45,13 @@ function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0, serviceOrigin =
 afterEach(() => vi.useRealTimers());
 describe('online coordinator ownership', () => {
   it('reports live receipt age through status reads and preserves it after leaving', async () => {
-    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
     await vi.advanceTimersByTimeAsync(200); expect(h.owner.status().mirror.receivedAgeMs).toBe(200);
     await h.owner.dispatch({ type: 'leave' }); await vi.advanceTimersByTimeAsync(100); expect(h.owner.status().mirror.receivedAgeMs).toBe(100); await h.owner.dispose();
   });
   it('subscribes before start, acknowledges adoption before commit, and keeps bootstrap closed until the exact initial DO receipt', async () => {
     const h = harness(), put = deferred<void>(); h.service.putCheckpoint.mockReturnValueOnce(put.promise);
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
     await vi.waitFor(() => expect(h.host.ackCheckpoint).toHaveBeenCalledWith(1)); expect(h.host.completeBootstrap).not.toHaveBeenCalled(); expect(h.platform.publishPort).not.toHaveBeenCalled();
     const lease = h.platform.startLeasedHost.mock.calls[0]![2]; expect(lease.utilityEpoch).toMatch(/^[a-f0-9]{32}$/); expect(lease.utilityEpoch).not.toBe('f'.repeat(32));
     expect(h.service.request.mock.calls.find((c: any) => c[0].type === 'lease-renew')[0].nonce).toBe('8'.repeat(32));
@@ -59,11 +59,11 @@ describe('online coordinator ownership', () => {
   });
   it('initial commit failure never opens bootstrap and retains pending disk state', async () => {
     vi.useFakeTimers(); const h = harness(); h.service.putCheckpoint.mockRejectedValue({ code: 'unavailable' });
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
     await vi.advanceTimersByTimeAsync(6000); expect(await start).toMatchObject({ ok: false, code: 'save-unavailable' }); expect(h.host.completeBootstrap).not.toHaveBeenCalled(); expect((await h.mirrorStore.load())?.pending).not.toBeNull(); await h.owner.dispose();
   });
   it('supersedes renewal requests using the utility nonce and aborts old service correlation', async () => {
-    const h = harness(); await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    const h = harness(); await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
     const old = deferred<any>(), original = h.service.request.getMockImplementation(); h.service.request.mockImplementation((op: any, options: any) => op.type === 'lease-renew' && op.nonce === '6'.repeat(32) ? old.promise : original(op, options));
     h.renewal('6'.repeat(32)); const options = h.service.request.mock.calls.at(-1)[1]; h.renewal('7'.repeat(32)); expect(options.signal.aborted).toBe(true);
     old.resolve({ lease: { roomId: h.snapshot.roomId, hostGeneration: 1, hostSeatId: 0, nonce: '6'.repeat(32), expiresAtEpochMs: Date.now() + 15000 } });
@@ -71,12 +71,12 @@ describe('online coordinator ownership', () => {
   });
   it('Forget cancels a pending initial upload and clears both stores without late recreation', async () => {
     const h = harness(), put = deferred<void>(); h.service.putCheckpoint.mockReturnValueOnce(put.promise);
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const start = h.owner.dispatch({ type: 'start' });
     await vi.waitFor(() => expect(h.service.putCheckpoint).toHaveBeenCalledOnce()); expect(await h.owner.dispatch({ type: 'forget-seat' })).toEqual({ ok: true }); put.resolve(); await start;
     expect(await h.store.load()).toBeNull(); expect(await h.mirrorStore.load()).toBeNull(); expect(h.host.completeBootstrap).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it('retains the graceful exit pending mirror when the final server upload fails within the three-second budget', async () => {
-    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
     h.service.putCheckpoint.mockRejectedValue({ code: 'unavailable' }); const leave = h.owner.dispatch({ type: 'leave' }); await vi.advanceTimersByTimeAsync(3000); expect(await leave).toEqual({ ok: true });
     expect(h.host.captureCheckpoint).toHaveBeenCalledWith('exit'); expect((await h.mirrorStore.load())?.pending?.metadata.checkpointSequence).toBe(2); expect(h.host.dispose).toHaveBeenCalledOnce(); await h.owner.dispose();
   });
@@ -85,7 +85,7 @@ describe('online coordinator ownership', () => {
     h.controller.startAttempt.mockReturnValue(native.promise);
     const original = h.service.request.getMockImplementation();
     h.service.request.mockImplementation(async (op: any) => { if (op.type === 'link-request') { h.issue(attempt); return { kind: 'attempt', attemptId: attempt }; } return original(op); });
-    await h.owner.dispatch({ type: 'host', capacity: 2 }); expect(h.owner.status().actions).not.toContain('start');
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 2 }); expect(h.owner.status().actions).not.toContain('start');
     h.snapshot.seats.forEach((seat: any) => { seat.ready = true; }); h.emit({ type: 'roster', snapshot: h.snapshot });
     expect(h.owner.status().actions).not.toContain('start');
     native.resolve({ latestPayloadLimit: 16088 }); await vi.waitFor(() => expect(h.order).toContain('link-ready'));
@@ -102,11 +102,11 @@ describe('online coordinator ownership', () => {
   });
   it('offers Reconnect only after a saved seat is known', async () => {
     const h = harness(); await Promise.resolve(); expect(h.owner.status().actions).not.toContain('reconnect');
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'leave' }); expect(h.owner.status().actions).toContain('reconnect');
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'leave' }); expect(h.owner.status().actions).toContain('reconnect');
     await h.owner.dispatch({ type: 'forget-seat' }); expect(h.owner.status().actions).not.toContain('reconnect'); await h.owner.dispose();
   });
   it('persists before connect/lobby; creates exactly one utility after duplicate commitment and keeps display hints powerless', async () => {
-    const h = harness(); expect(await h.owner.dispatch({ type: 'host', capacity: 1 })).toEqual({ ok: true });
+    const h = harness(); expect(await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 })).toEqual({ ok: true });
     expect(h.order.slice(0, 3)).toEqual(['create', 'save', 'connect']); expect(h.owner.status().phase).toBe('lobby'); expect(h.platform.startLeasedHost).not.toHaveBeenCalled();
     expect(await h.owner.dispatch({ type: 'start' })).toMatchObject({ ok: false });
     await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
@@ -118,23 +118,23 @@ describe('online coordinator ownership', () => {
   });
   it('keeps play available with a fixed persistence warning', async () => {
     const h = harness(); h.store.save.mockRejectedValue({ code: 'storage-write-failed' });
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); expect(h.owner.status()).toMatchObject({ phase: 'lobby', persistent: false, error: 'storage-write-failed' }); await h.owner.dispose();
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); expect(h.owner.status()).toMatchObject({ phase: 'lobby', persistent: false, error: 'storage-write-failed' }); await h.owner.dispose();
   });
   it('probes second layout only for incompatible', async () => {
     const h = harness(4, 3); h.service.join.mockRejectedValueOnce({ code: 'incompatible' });
-    await h.owner.dispatch({ type: 'join', code: ' abcdefgh ' }); expect(h.service.join.mock.calls.map((call: any) => call[1].layoutHash)).toEqual([sectorCompatibility(2).layoutHash, sectorCompatibility(4).layoutHash]);
+    await h.owner.dispatch({ type: 'join', code: ' abcdefgh ', mode: 'sector' }); expect(h.service.join.mock.calls.map((call: any) => call[1].layoutHash)).toEqual([sectorCompatibility(2).layoutHash, sectorCompatibility(4).layoutHash]);
     expect(h.owner.status().ownSeat).toBe(3); await h.owner.dispose();
-    const denied = harness(); denied.service.join.mockRejectedValue({ code: 'unauthorized' }); await denied.owner.dispatch({ type: 'join', code: 'ABCDEFGH' }); expect(denied.service.join).toHaveBeenCalledOnce(); await denied.owner.dispose();
+    const denied = harness(); denied.service.join.mockRejectedValue({ code: 'unauthorized' }); await denied.owner.dispatch({ type: 'join', code: 'ABCDEFGH', mode: 'sector' }); expect(denied.service.join).toHaveBeenCalledOnce(); await denied.owner.dispose();
   });
   it('Leave preempts an unresolved transport factory and closes its late return', async () => {
     const h = harness(), factory = deferred<any>(); h.platform.createTransport.mockReturnValue(factory.promise);
-    const joining = h.owner.dispatch({ type: 'host', capacity: 1 }); await vi.waitFor(() => expect(h.platform.createTransport).toHaveBeenCalledOnce());
+    const joining = h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await vi.waitFor(() => expect(h.platform.createTransport).toHaveBeenCalledOnce());
     await h.owner.dispatch({ type: 'leave' }); expect(h.owner.status().phase).toBe('idle'); factory.resolve(h.transport);
     await expect(joining).resolves.toMatchObject({ ok: false, code: 'cancelled' }); await vi.waitFor(() => expect(h.transport.dispose).toHaveBeenCalledOnce()); expect(h.platform.publishPort).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it('closes a late utility after Leave and never publishes stale ports', async () => {
     const h = harness(), factory = deferred<any>(); h.platform.startLeasedHost.mockReturnValue(factory.promise);
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const starting = h.owner.dispatch({ type: 'start' });
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); const starting = h.owner.dispatch({ type: 'start' });
     await vi.waitFor(() => expect(h.platform.startLeasedHost).toHaveBeenCalledOnce()); await h.owner.dispatch({ type: 'leave' }); factory.resolve(h.host); await starting;
     await vi.waitFor(() => expect(h.host.dispose).toHaveBeenCalledOnce()); expect(h.platform.publishPort).not.toHaveBeenCalled(); await h.owner.dispose();
   });
@@ -148,7 +148,7 @@ describe('online coordinator ownership', () => {
   });
   it('bounds subscribers and coalesces explicit ready changes while rejecting concurrent lifecycle work', async () => {
     const h = harness(); const removers = Array.from({ length: 64 }, () => h.owner.subscribe(() => {})); expect(() => h.owner.subscribe(() => {})).toThrow('capacity'); removers.forEach(off => off());
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); const reply = deferred<any>(), original = h.service.request.getMockImplementation();
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); const reply = deferred<any>(), original = h.service.request.getMockImplementation();
     h.service.request.mockImplementationOnce(() => reply.promise);
     const first = h.owner.dispatch({ type: 'ready', ready: true }), middle = h.owner.dispatch({ type: 'ready', ready: false }), last = h.owner.dispatch({ type: 'ready', ready: true });
     expect(await h.owner.dispatch({ type: 'start' })).toMatchObject({ ok: false, code: 'busy' });
@@ -162,7 +162,7 @@ describe('online coordinator ownership', () => {
       if (op.type === 'link-request') { h.issue('1'.repeat(32), op.guestSeatId); return { kind: 'attempt', attemptId: '1'.repeat(32) }; }
       return original(op);
     });
-    await h.owner.dispatch({ type: 'host', capacity: 4 }); await vi.waitFor(() => expect(h.service.request.mock.calls.some((call: any) => call[0].type === 'link-ready')).toBe(true));
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 4 }); await vi.waitFor(() => expect(h.service.request.mock.calls.some((call: any) => call[0].type === 'link-ready')).toBe(true));
     h.emit({ type: 'link-state', attemptId: '1'.repeat(32), state: 'ready' });
     h.snapshot.seats[3].ready = true; h.emit({ type: 'roster', snapshot: h.snapshot }); await h.owner.dispatch({ type: 'ready', ready: true });
     await h.owner.dispatch({ type: 'start' }); expect(h.platform.startLeasedHost).toHaveBeenCalledOnce();
@@ -172,7 +172,7 @@ describe('online coordinator ownership', () => {
     h.nativeClosed('1'.repeat(32)); expect(h.host.dispose).not.toHaveBeenCalled(); await h.owner.dispose();
   });
   it.each(['service', 'transport', 'utility', 'renewal'] as const)('stops host authority on its own %s loss', async loss => {
-    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
     if (loss === 'service') h.emit({ type: 'error', error: { code: 'unavailable', retryable: true } });
     if (loss === 'transport') h.transportExit(); if (loss === 'utility') h.hostExit();
     if (loss === 'renewal') { h.service.request.mockRejectedValueOnce({ code: 'lease-expired' }); await vi.advanceTimersByTimeAsync(5000); }
@@ -200,19 +200,19 @@ describe('online coordinator ownership', () => {
   });
   it('Forget fences replacement work until old resource disposal and serialized credential clearing finish', async () => {
     const h = harness(), disposed = deferred<void>(), cleared = deferred<void>();
-    await h.owner.dispatch({ type: 'host', capacity: 1 }); h.transport.dispose.mockReturnValue(disposed.promise); h.store.clear.mockReturnValue(cleared.promise);
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); h.transport.dispose.mockReturnValue(disposed.promise); h.store.clear.mockReturnValue(cleared.promise);
     const forget = h.owner.dispatch({ type: 'forget-seat' });
-    expect(h.store.clear).toHaveBeenCalledOnce(); expect(await h.owner.dispatch({ type: 'host', capacity: 1 })).toMatchObject({ ok: false, code: 'busy' });
-    disposed.resolve(); await Promise.resolve(); expect(await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH' })).toMatchObject({ ok: false, code: 'busy' });
+    expect(h.store.clear).toHaveBeenCalledOnce(); expect(await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 })).toMatchObject({ ok: false, code: 'busy' });
+    disposed.resolve(); await Promise.resolve(); expect(await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH', mode: 'sector' })).toMatchObject({ ok: false, code: 'busy' });
     cleared.resolve(); await forget; expect(h.owner.status().persistent).toBe(false); await h.owner.dispose();
   });
   it('bounds unresolved native factories across cancellation generations', async () => {
     const h = harness(), pending: ReturnType<typeof deferred<any>>[] = [];
     h.platform.createTransport.mockImplementation(() => { const factory = deferred<any>(); pending.push(factory); return factory.promise; });
     for (let i = 0; i < 4; i++) {
-      const attempt = h.owner.dispatch({ type: 'host', capacity: 1 }); await vi.waitFor(() => expect(pending).toHaveLength(i + 1)); await h.owner.dispatch({ type: 'leave' }); await attempt;
+      const attempt = h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await vi.waitFor(() => expect(pending).toHaveLength(i + 1)); await h.owner.dispatch({ type: 'leave' }); await attempt;
     }
-    const result = h.owner.dispatch({ type: 'host', capacity: 1 }); await expect(result).resolves.toMatchObject({ ok: false, code: 'capacity' }); expect(pending).toHaveLength(4);
+    const result = h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await expect(result).resolves.toMatchObject({ ok: false, code: 'capacity' }); expect(pending).toHaveLength(4);
     for (const factory of pending) factory.resolve(h.transport); await vi.waitFor(() => expect(h.transport.dispose).toHaveBeenCalledTimes(4)); await h.owner.dispose();
   });
   it('removes lobby seats, retires their old route and reuses the same logical ID at a newer generation', async () => {
@@ -222,7 +222,7 @@ describe('online coordinator ownership', () => {
       if (op.type === 'remove-seat') { h.snapshot.seats[1] = { seatId: 1, seatGeneration: ++generation, occupied: false, connected: false, ready: false }; h.snapshot.rosterRevision++; return { kind: 'snapshot', snapshot: h.snapshot }; }
       return original(op);
     });
-    await h.owner.dispatch({ type: 'host', capacity: 2 }); expect(await h.owner.dispatch({ type: 'remove-seat', seatId: 0 })).toMatchObject({ ok: false });
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 2 }); expect(await h.owner.dispatch({ type: 'remove-seat', seatId: 0 })).toMatchObject({ ok: false });
     await h.owner.dispatch({ type: 'remove-seat', seatId: 1 }); expect(h.controller.closeAttempt).toHaveBeenCalledWith('1'.repeat(32));
     h.snapshot.seats[1] = { seatId: 1, seatGeneration: ++generation, occupied: true, connected: true, ready: false }; h.snapshot.rosterRevision++; h.emit({ type: 'roster', snapshot: h.snapshot });
     await vi.waitFor(() => expect(h.controller.startAttempt).toHaveBeenCalledTimes(2)); expect(h.owner.status().snapshot!.seats[1]).toMatchObject({ seatId: 1, seatGeneration: 3, occupied: true });
@@ -235,7 +235,7 @@ describe('online coordinator ownership', () => {
       if (op.type === 'link-request') { h.issue(String(generation).repeat(32)); return { kind: 'attempt', attemptId: String(generation).repeat(32) }; }
       return original(op);
     });
-    await h.owner.dispatch({ type: 'host', capacity: 2 }); h.emit({ type: 'link-state', attemptId: '1'.repeat(32), state: 'ready' });
+    await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 2 }); h.emit({ type: 'link-state', attemptId: '1'.repeat(32), state: 'ready' });
     h.snapshot.seats[1].ready = true; h.emit({ type: 'roster', snapshot: h.snapshot }); await h.owner.dispatch({ type: 'ready', ready: true });
     const starting = h.owner.dispatch({ type: 'start' }); await vi.waitFor(() => expect(h.host.request).toHaveBeenCalledOnce());
     h.snapshot.phase = 'active'; h.snapshot.seats[1].seatGeneration = ++generation; h.snapshot.rosterRevision++; h.emit({ type: 'roster', snapshot: h.snapshot });
@@ -244,7 +244,7 @@ describe('online coordinator ownership', () => {
     expect(h.host.attachPeer.mock.calls.map((call: any) => call[1])).toEqual([[0], [1]]); await h.owner.dispose();
   });
   it('all dispose callers await the same outstanding resource shutdown', async () => {
-    const h = harness(), shutdown = deferred<void>(); await h.owner.dispatch({ type: 'host', capacity: 1 }); h.transport.dispose.mockReturnValue(shutdown.promise);
+    const h = harness(), shutdown = deferred<void>(); await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); h.transport.dispose.mockReturnValue(shutdown.promise);
     const first = h.owner.dispose(), second = h.owner.dispose(); let finished = false; void second.then(() => { finished = true; });
     await Promise.resolve(); expect(finished).toBe(false); shutdown.resolve(); await Promise.all([first, second]); expect(h.transport.dispose).toHaveBeenCalledOnce();
   });
@@ -254,12 +254,12 @@ describe('online coordinator ownership', () => {
     await vi.advanceTimersByTimeAsync(7000); expect(await result).toEqual({ ok: true }); expect(h.service.join).toHaveBeenCalledTimes(2); await h.owner.dispose();
   });
   it('explicit Leave invalidates an automatic retry queued behind transport cleanup', async () => {
-    const h = harness(2, 1), shutdown = deferred<void>(); await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH' }); h.transport.dispose.mockReturnValue(shutdown.promise);
+    const h = harness(2, 1), shutdown = deferred<void>(); await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH', mode: 'sector' }); h.transport.dispose.mockReturnValue(shutdown.promise);
     h.transportExit(); const leaving = h.owner.dispatch({ type: 'leave' }); shutdown.resolve(); await leaving;
     await new Promise<void>(resolve => setImmediate(resolve)); expect(h.service.join).toHaveBeenCalledOnce(); expect(h.owner.status().phase).toBe('idle'); await h.owner.dispose();
   });
   it('a Leave from a status observer cannot be undone by the old automatic retry continuation', async () => {
-    const h = harness(2, 1); await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH' }); let left = false;
+    const h = harness(2, 1); await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH', mode: 'sector' }); let left = false;
     h.owner.subscribe(status => { if (!left && status.phase === 'idle') { left = true; void h.owner.dispatch({ type: 'leave' }); } });
     h.transportExit(); await new Promise<void>(resolve => setImmediate(resolve)); expect(h.service.join).toHaveBeenCalledOnce(); expect(h.owner.status().phase).toBe('idle'); await h.owner.dispose();
   });
@@ -277,7 +277,7 @@ it('publishes retry deadlines in shared epoch time without changing monotonic en
 
 it('retains HTTPS configuration through main revalidation and acquires TURN before native setup', async () => {
   const h = harness(2, 1, 0, 'https://service.example');
-  expect(await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH' })).toEqual({ ok: true });
+  expect(await h.owner.dispatch({ type: 'join', code: 'ABCDEFGH', mode: 'sector' })).toEqual({ ok: true });
   h.issue(); await vi.waitFor(() => expect(h.controller.startAttempt).toHaveBeenCalledOnce());
   expect(h.service.getTurn).toHaveBeenCalledOnce();
   expect(h.controller.startAttempt.mock.calls[0][0]).toMatchObject({ iceServers: [{ credential: 'test' }], iceTransportPolicy: 'all' });

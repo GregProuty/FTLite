@@ -14,7 +14,7 @@ type Page = 'home' | 'multiplayer' | 'settings' | 'host' | 'join' | 'session' | 
 const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
   'online-disabled': 'Online play needs a configured local service. Single player is available.',
   'not-found': 'Room not found. Check the eight-character code and try again.',
-  'incompatible': 'This room needs compatible game content and ship data. Check both versions, then try again.',
+  'incompatible': 'The other computer runs a different FTLite build. Install the same build on both, then try again.',
   'unauthorized': 'This seat is no longer authorized. Return to the menu or forget the saved seat.',
   'host-lost': 'Host disconnected. Reconnect or re-host the last committed checkpoint when available.',
   'no-checkpoint': 'No committed checkpoint is available for this room.',
@@ -31,6 +31,7 @@ export function createSessionMenu(deps: MenuDeps) {
   let pending = false, disposed = false, localError = '', hadView = false;
   let operation = 0, countdown: HTMLElement | null = null, mirrorLabel: HTMLElement | null = null, receiptAt = 0;
   let recovering = false, leaving = false;   // leaving: Leave was pressed; the idle status that follows returns home
+  let swapped = false;   // the duel host's Swap seats toggle (H-2 spec §2): local until Start carries it
   const { root, document: doc } = deps;
   root.setAttribute('aria-label', 'FTLite session menu'); root.setAttribute('data-testid', 'session-menu');
   function node(tag: string, text = '', id?: string) {
@@ -84,19 +85,23 @@ export function createSessionMenu(deps: MenuDeps) {
       renderSettings(panel);
       button(panel, 'back', 'Back', () => { page = 'home'; render(); });
     } else if (page === 'host' || page === 'join') {
+      // Multiplayer is the two-player duel (H-2 spec §2): Host creates a two-seat duel room; Join takes its code.
       const host = page === 'host', form = node('form', '', host ? 'host-form' : 'join-form');
-      const label = node('label', host ? 'Crew capacity' : 'Room code');
-      const control = doc.createElement(host ? 'select' : 'input') as HTMLInputElement | HTMLSelectElement;
-      control.setAttribute('data-testid', host ? 'capacity' : 'join-code'); control.setAttribute('aria-label', host ? 'Crew capacity' : 'Room code');
-      control.style.cssText = 'display:block;margin:10px 0;padding:10px;background:#172333;color:#d7e4f0;border:1px solid #52718d;font:inherit';
-      if (host) { for (let n = 1; n <= 4; n++) { const option = node('option', `${n} crew — ${n <= 2 ? 'Skiff' : 'Cutter'}`) as HTMLOptionElement; option.value = String(n); control.append(option); } control.value = '2'; }
-      else { (control as HTMLInputElement).maxLength = 32; control.setAttribute('autocomplete', 'off'); control.setAttribute('spellcheck', 'false'); }
-      label.append(control); form.append(label);
+      let control: HTMLInputElement | null = null;
+      if (host) form.append(node('p', 'A duel for two: one of you flies the Helm, the other mans Weapons.', 'host-note'));
+      else {
+        const label = node('label', 'Room code');
+        control = doc.createElement('input') as HTMLInputElement;
+        control.setAttribute('data-testid', 'join-code'); control.setAttribute('aria-label', 'Room code');
+        control.style.cssText = 'display:block;margin:10px 0;padding:10px;background:#172333;color:#d7e4f0;border:1px solid #52718d;font:inherit';
+        control.maxLength = 32; control.setAttribute('autocomplete', 'off'); control.setAttribute('spellcheck', 'false');
+        label.append(control); form.append(label);
+      }
       const submit = button(form, host ? 'create-room' : 'join-room', host ? 'Create room' : 'Join room', () => {}, can(host ? 'host' : 'join')); submit.type = 'submit';
       form.addEventListener('submit', event => { event.preventDefault(); if (pending) return;
-        if (host) void invoke(() => deps.api!.host(Number(control.value)));
-        else { const code = control.value.trim().toUpperCase(); if (!/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(code)) { localError = 'Enter an eight-character room code.'; render(); return; } void invoke(() => deps.api!.join(code)); }
-      }); panel.append(form); button(panel, 'back', 'Back', () => { page = 'multiplayer'; localError = ''; render(); }, !pending); control.focus();
+        if (host) { swapped = false; void invoke(() => deps.api!.host()); }
+        else { const code = control!.value.trim().toUpperCase(); if (!/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(code)) { localError = 'Enter an eight-character room code.'; render(); return; } void invoke(() => deps.api!.join(code)); }
+      }); panel.append(form); button(panel, 'back', 'Back', () => { page = 'multiplayer'; localError = ''; render(); }, !pending); (control ?? submit).focus();
     } else {
       const room = status?.snapshot;
       if (room) {
@@ -113,7 +118,14 @@ export function createSessionMenu(deps: MenuDeps) {
       if (status?.phase === 'lobby') {
         const ready = room?.seats.find(s => s.seatId === status!.ownSeat)?.ready ?? false;
         button(panel, 'ready', ready ? 'Not ready' : 'Ready', () => { void invoke(() => deps.api!.ready(!ready)); }, can('ready'));
-        if (status.role === 'host') button(panel, 'start', 'Start', () => { void invoke(() => deps.api!.start()); }, can('start') && !!room?.seats.every(s => !s.occupied || s.ready && s.connected));
+        // Seats (H-2 spec §2): the host's local Swap seats toggle, carried by Start; the guest learns its console at start.
+        const duel = room?.compatibility?.modeId === 'duel', own = status.ownSeat ?? 0;
+        if (duel && status.role === 'host') {
+          panel.append(node('span', swapped ? 'Guest flies Helm' : 'Host flies Helm', 'seat-plan'));
+          button(panel, 'swap-seats', 'Swap seats', () => { swapped = !swapped; render(); }, !pending);
+        } else if (duel) panel.append(node('span', 'Host picks seats', 'seat-plan'));
+        const helmPlayer = (swapped ? 1 - own : own) as 0 | 1;
+        if (status.role === 'host') button(panel, 'start', 'Start', () => { void invoke(() => duel ? deps.api!.start(helmPlayer) : deps.api!.start()); }, can('start') && !!room?.seats.every(s => !s.occupied || s.ready && s.connected));
       }
       if (status?.phase === 'running' || status?.phase === 'paused') button(panel, 'pause', status.phase === 'paused' ? 'Resume' : 'Pause', deps.pause);
       if (status?.mirror.committed) {

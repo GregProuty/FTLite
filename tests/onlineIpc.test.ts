@@ -33,12 +33,12 @@ describe('registered visible online IPC', () => {
   });
   it('registers its trusted application window before the OS shows it, but admits actions only once visible', async () => {
     const h = harness(false);
-    expect(await h.invoke('host', { type: 'host', capacity: 2 })).toEqual({ ok: false, code: 'unauthorized' });
+    expect(await h.invoke('host', { type: 'host', mode: 'sector', capacity: 2 })).toEqual({ ok: false, code: 'unauthorized' });
     h.win.isVisible = () => true;
-    expect(await h.invoke('host', { type: 'host', capacity: 2 })).toEqual({ ok: true });
-    expect(await h.invoke('host', { type: 'host', capacity: 2 }, { ...h.event, sender: {} } as any)).toEqual({ ok: false, code: 'unauthorized' });
+    expect(await h.invoke('host', { type: 'host', mode: 'sector', capacity: 2 })).toEqual({ ok: true });
+    expect(await h.invoke('host', { type: 'host', mode: 'sector', capacity: 2 }, { ...h.event, sender: {} } as any)).toEqual({ ok: false, code: 'unauthorized' });
   });
-  const actions = [{ type: 'host', capacity: 2 }, { type: 'join', code: 'ABCD1234' }, { type: 'ready', ready: false }, { type: 'remove-seat', seatId: 1 }, { type: 'view-state', epoch: 1, phase: 'synced' }, ...['reconnect', 'start', 'retry', 'leave', 'forget-seat'].map(type => ({ type }))];
+  const actions = [{ type: 'host', mode: 'sector', capacity: 2 }, { type: 'join', code: 'ABCD1234' }, { type: 'ready', ready: false }, { type: 'remove-seat', seatId: 1 }, { type: 'view-state', epoch: 1, phase: 'synced' }, ...['reconnect', 'start', 'retry', 'leave', 'forget-seat'].map(type => ({ type }))];
   it.each(actions)('denies unknown windows, hidden transports, subframes and port injection for $type', async action => {
     const h = harness();
     for (const e of [{ ...h.event, sender: {} }, { ...h.event, senderFrame: {} }]) expect(await h.invoke(action.type, action, e as any)).toEqual({ ok: false, code: 'unauthorized' });
