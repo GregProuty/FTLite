@@ -57,7 +57,7 @@ describe('the bless guard', () => {
   it('npm run bless passes the real duel oracle, re-run on every bump', () => {
     const source = readFileSync('scripts/bless-golden.ts', 'utf8');
     expect(source).toMatch(/import \{ verifyDuelOracle \} from '\.\/golden\/duelOracle';/);
-    expect(source).toMatch(/blessRefusal\(\{ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly, duel: verifyDuelOracle, fresh: process\.argv\.includes\('--fresh'\), names: \[BASIC, DUEL_GOLDEN, DETERMINISM_FIXTURE\] \}\)/);
+    expect(source).toMatch(/blessRefusal\(\{ storedVersions: stored, currentVersion: SIM_VERSION, verify: verifyVersionOnly, duel: verifyDuelOracle, fresh: process\.argv\.includes\('--fresh'\), names: \[BASIC, DUEL_GOLDEN, DETERMINISM_FIXTURE, DUEL_REMATCH_GOLDEN\] \}\)/);   // the rematch golden joined the pinned set (H-2)
   });
 });
 

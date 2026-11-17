@@ -1,8 +1,10 @@
 // Headless duels for the H-0c-ii-a gates (spec §5) and the duel golden (§6): the scripted pair, or a passive crew with
 // nobody at either console, against the hunter, with telemetry, up to a tick cap. Shared by tests/duelGates.test.ts,
-// tests/duelGolden.test.ts, scripts/duel-telemetry.ts and scripts/bless-golden.ts.
+// tests/duelGolden.test.ts, scripts/duel-telemetry.ts and scripts/bless-golden.ts. runRematch is the rematch golden's run
+// (H-2 spec §7): two rounds in one duel, the second started by a rematch on the first's end card.
 import cutter from '../../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
+import { LOCAL_DUEL_RUN } from '../../src/renderer/src/sim/duel/commands';
 import { hashDuel } from '../../src/renderer/src/sim/duel/hash';
 import { createScriptedPair, scriptedInput } from '../../src/renderer/src/sim/duel/scripted';
 import { createDuel, disposeDuel, type DuelState } from '../../src/renderer/src/sim/duel/state';
@@ -21,6 +23,9 @@ export const PLANET_END_MIN_TICKS = 30 * TICK_HZ;
 export const DUEL_GOLDEN = 'tests/golden/duel-1.json';
 export const DUEL_GOLDEN_SEED = 1;
 export const DUEL_GOLDEN_EVERY = 600;
+
+/** The rematch golden (H-2 spec §7): seed 1, the scripted pair, one rematch, round 2 to its outcome, a hash every 600 ticks. */
+export const DUEL_REMATCH_GOLDEN = 'tests/golden/duel-rematch.json';
 
 export interface DuelRun { seed: number; telemetry: DuelTelemetry; finalHash: string; hashes: string[] }
 
@@ -79,4 +84,30 @@ export function gateSummary(runs: readonly DuelRun[]): string {
     `every duel with a crew laser release and missile launch: ${ts.every((t) => t.ships[0].laserReleases > 0 && t.ships[0].missilesLaunched > 0)}`,
     `planet-contact ends under 30 s: ${ts.filter((t) => endedFromPlanet(t) && t.ticks < PLANET_END_MIN_TICKS).length} (gate 0)`
   ].join('\n');
+}
+
+export interface RematchRun { seed: number; rematchTick: number; rounds: { seed: number; baseTick: number; outcome: number; ticks: number }[]; finalHash: string; hashes: string[] }
+/** Round 1 with the scripted pair to its outcome, then on the first end-card tick player 0 sends `rematch`, then round 2
+ *  with a fresh scripted pair for its seed to its outcome (each round capped at `cap` ticks). `hashEvery` > 0 records
+ *  hashDuel whenever the encounter tick is a multiple of it. */
+export function runRematch(seed: number, hashEvery: number, cap = CAP_TICKS): RematchRun {
+  const d = createDuel(CUTTER, seed), hashes: string[] = [], rounds: RematchRun['rounds'] = [];
+  const sample = (): void => { if (hashEvery > 0 && d.interior.tick % hashEvery === 0) hashes.push(hashDuel(d)); };
+  const play = (): void => {
+    const pair = createScriptedPair(d.tactical.seed), t = createTelemetry(d);
+    while (d.tactical.outcome === Outcome.Running && d.interior.tick - d.baseTick < cap) {
+      const input = scriptedInput(pair, d);
+      stepDuelTick(d, input); recordTick(t, d, input); sample();
+    }
+    rounds.push({ seed: d.tactical.seed, baseTick: d.baseTick, outcome: t.outcome, ticks: t.ticks });
+  };
+  try {
+    play();
+    const rematchTick = d.interior.tick;
+    const [result] = stepDuelTick(d, { held: [], commands: [{ runId: LOCAL_DUEL_RUN, id: { player: 0, sequence: 1 }, requestedTick: rematchTick, command: { kind: 'rematch' } }] });
+    if (result?.status !== 'applied' || d.round !== 1) throw Error(`seed ${seed}: the rematch on tick ${rematchTick} was ${result?.status}`);
+    sample();
+    play();
+    return { seed, rematchTick, rounds, finalHash: hashDuel(d), hashes };
+  } finally { disposeDuel(d); }
 }
