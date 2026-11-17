@@ -32,9 +32,9 @@ const q = (sel: string) => document.querySelector(sel) as HTMLElement | null;
 const all = (sel: string) => Array.from(document.querySelectorAll(sel)) as HTMLElement[];
 
 describe('the CRT screen (CRT map spec section 3)', () => {
-  it('crt false: no CRT screen, no glow wrapper, no inverse bars, the themed panel', () => {
+  it('crt false: no CRT screen, a glow wrapper with no filter, no inverse bars, the themed panel', () => {
     const { duel } = mount(); act(() => duel.frame(view({ crt: false })));
-    expect(q('[data-ui-crt]')).toBeNull(); expect(q('[data-ui-crt-glow]')).toBeNull(); expect(all('[data-ui-inverse]')).toHaveLength(0);
+    expect(q('[data-ui-crt]')).toBeNull(); expect(q('[data-ui-crt-glow]')!.style.filter).toBe('none'); expect(all('[data-ui-inverse]')).toHaveLength(0);
     expect(q('[data-ui-panel]')!.dataset.uiPanel).toBe('');
   });
   it('crt true at subtle (the default): scanlines, mask, vignette and the bezel on the letterbox rectangle; a double-bordered panel', () => {
@@ -42,13 +42,14 @@ describe('the CRT screen (CRT map spec section 3)', () => {
     const screen = q('[data-ui-crt]')!;
     expect([screen.style.left, screen.style.top, screen.style.width, screen.style.height]).toEqual(['0px', '0px', '1920px', '1080px']);
     for (const part of ['scanlines', 'mask', 'vignette', 'bezel']) expect(q(`[data-ui-crt-${part}]`), part).not.toBeNull();
-    expect(q('[data-ui-crt-glow]')).not.toBeNull();
+    expect(q('[data-ui-crt-glow]')!.style.filter).toContain('drop-shadow');
     const panel = q('[data-ui-panel]')!; expect(panel.dataset.uiPanel).toBe('crt'); expect(panel.style.borderStyle).toBe('double');
   });
   it('off keeps the bezel and drops every screen effect and the glow', () => {
     const { duel, store } = mount(); act(() => { setCrtSetting(store, 'off'); duel.frame(view()); });
     expect(q('[data-ui-crt-bezel]')).not.toBeNull();
-    for (const part of ['scanlines', 'mask', 'vignette', 'flicker', 'glow']) expect(q(`[data-ui-crt-${part}]`), part).toBeNull();
+    for (const part of ['scanlines', 'mask', 'vignette', 'flicker']) expect(q(`[data-ui-crt-${part}]`), part).toBeNull();
+    expect(q('[data-ui-crt-glow]')!.style.filter).toBe('none');
   });
   it('sits after the banners and before the end card and the latency overlay, which stay un-themed', () => {
     const { duel, latency } = mount();

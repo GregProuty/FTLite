@@ -24,10 +24,9 @@ export function CrtProvider(props: { crt: boolean; children: ReactNode }) {
 }
 
 /** The text glow: one wrapper around the console overlay group with a drop-shadow filter scaled by the glow (spec section
- *  3; not text-shadow, PixelText is a canvas). Without CRT or glow there is no wrapper. */
+ *  3; not text-shadow, PixelText is a canvas). Without CRT or glow the same wrapper stays (so the overlays never remount on a view or setting switch) with `filter: none`. */
 export function CrtGlow(props: { children: ReactNode }) {
   const { crt, scale } = useCrt(), l = useUi((s) => s.layout);
-  if (!crt || scale.glow <= 0) return <>{props.children}</>;
-  const blur = Math.max(1, Math.round(3 * l.scale * scale.glow));
-  return <div data-ui-crt-glow="" style={{ position: 'absolute', inset: 0, filter: `drop-shadow(0 0 ${blur}px ${hex(CRT.main, 0.6 * scale.glow)})` }}>{props.children}</div>;
+  const on = crt && scale.glow > 0, blur = Math.max(1, Math.round(3 * l.scale * scale.glow));
+  return <div data-ui-crt-glow="" style={{ position: 'absolute', inset: 0, filter: on ? `drop-shadow(0 0 ${blur}px ${hex(CRT.main, 0.6 * scale.glow)})` : 'none' }}>{props.children}</div>;
 }

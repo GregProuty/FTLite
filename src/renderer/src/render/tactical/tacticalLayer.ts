@@ -30,7 +30,8 @@ export const ENEMY_RING = 1.35;
  *  restart), in the same Graphics; `starSeed` is the seed it shows. `setCrt` applies a CRT strength (a no-op when the
  *  same object is passed again). */
 export interface TacticalLayer {
-  container: Container; stars: Container;
+  /** The outer container (scene.ts and flightMode.ts add this); `bloom` is the inner one the CRT filters sit on. */
+  container: Container; bloom: Container; stars: Container;
   draw(d: TacticalDraw, c?: CombatDraw | null, t?: number): void;
   reset(): void;
   reseed(seed: number): void;
@@ -51,19 +52,23 @@ export const PAUSE_TEXT = 'PAUSED   ESC: RESUME';
 
 export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const { w, h } = opts.viewport;
-  const container = new Container();
+  const container = new Container(), bloom = new Container();
+  container.addChild(bloom);
+  // The lock label (bar and text) sits in `container` above the filtered `bloom`, so neighbouring strokes never soften it.
+  const lockBar = new Graphics();
   const bg = new Graphics(), stars = new Graphics(), grid = new Graphics(), contours = new Graphics(), bodies = new Graphics(), arcs = new Graphics(), ships = new Graphics(), helm = new Graphics(), combat = new Graphics(), overlay = new Graphics();
-  container.addChild(bg, stars, grid, contours, bodies, arcs, ships, helm, combat, overlay);
-  const drawn = [grid, contours, bodies, arcs, ships, helm, combat, overlay];
-  const mk = (size: number, tint: number, anchorX = 0, anchorY = 0): BitmapText => {
+  bloom.addChild(bg, stars, grid, contours, bodies, arcs, ships, helm, combat, overlay);
+  const drawn = [grid, contours, bodies, arcs, ships, helm, combat, overlay, lockBar];
+  const mk = (size: number, tint: number, anchorX = 0, anchorY = 0, parent?: Container): BitmapText => {
     const t = new BitmapText({ text: '', style: { fontFamily: opts.fontFamily, fontSize: size } });
-    t.tint = tint; t.roundPixels = true; t.anchor.set(anchorX, anchorY); t.visible = false; container.addChild(t); return t;
+    t.tint = tint; t.roundPixels = true; t.anchor.set(anchorX, anchorY); t.visible = false; (parent ?? bloom).addChild(t); return t;
   };
   const cols = Array.from({ length: GRID_LABELS }, () => mk(FONT_NATIVE, CRT.mid, 0.5, 0));
   const rows = Array.from({ length: GRID_LABELS }, () => mk(FONT_NATIVE, CRT.mid, 0, 0.5));
   const ring = Array.from({ length: RING_LABELS }, () => mk(FONT_NATIVE, CRT.mid, 0.5, 0.5));
   const arrowText = Array.from({ length: ARROWS }, () => mk(FONT_NATIVE, CRT.main, 0.5, 0.5));
-  const lockText = mk(FONT_NATIVE, CRT.glass, 0, 0), info = mk(FONT_SIZE, CRT.main, 0.5, 0);
+  container.addChild(lockBar);
+  const lockText = mk(FONT_NATIVE, CRT.glass, 0, 0, container), info = mk(FONT_SIZE, CRT.main, 0.5, 0);
   const texts = [...cols, ...rows, ...ring, ...arrowText, lockText, info];
   // Reused buffers for lists that are consumed at once (dash and hatch segments, polylines fed to dashLine). A list passed
   // to Graphics.poly is kept by reference until the frame renders, so every poly gets a fresh array.
@@ -83,7 +88,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
 
   // The CRT filters (spec section 3): made on the first setting with a glow, clipped to the screen (the star tile is 2w × 2h).
   let crtShown: CrtScale | null = null, filters: CrtFilters | null = null;
-  container.filterArea = new Rectangle(0, 0, w, h);
+  bloom.filterArea = new Rectangle(0, 0, w, h);
 
   const setText = (t: BitmapText, s: string): void => { if (t.text !== s) t.text = s; };
   function fill(pool: BitmapText[], labels: readonly Label[]): void {
@@ -169,7 +174,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   }
 
   return {
-    container, stars,
+    container, bloom, stars,
     draw(d, c = null, t = 0) {
       stars.position.set(d.stars.x - w, d.stars.y - h);
       filters?.tick(t);
@@ -250,7 +255,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
           combat.moveTo(lk.x + sx * r, lk.y + sy * (r - k)).lineTo(lk.x + sx * r, lk.y + sy * r).lineTo(lk.x + sx * (r - k), lk.y + sy * r).stroke({ width: 2, color: CRT.hot });
         // The lock label: an inverse bar, glass text on a solid block. The block is `mid`, under the bloom threshold: a `main`
         // block blooms over the thin native-size glyphs at `full` (plan Decision 1).
-        combat.rect(Math.round(lk.label.x) - 3, Math.round(lk.label.y) + 1, textPx(lk.label.text, 1) + 5, 14).fill(CRT.mid);
+        lockBar.rect(Math.round(lk.label.x) - 3, Math.round(lk.label.y) + 1, textPx(lk.label.text, 1) + 5, 14).fill(CRT.mid);
       }
       lockText.visible = lk !== null;
       if (lk) { setText(lockText, lk.label.text); lockText.position.set(Math.round(lk.label.x), Math.round(lk.label.y)); }
@@ -273,10 +278,10 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     setCrt(scale) {
       if (scale === crtShown) return;
       crtShown = scale;
-      if (scale.glow <= 0) { container.filters = null; return; }
+      if (scale.glow <= 0) { bloom.filters = null; return; }
       filters ??= createCrtFilters();
       filters.apply(scale);
-      container.filters = filters.list;
+      bloom.filters = filters.list;
     }
   };
 }
