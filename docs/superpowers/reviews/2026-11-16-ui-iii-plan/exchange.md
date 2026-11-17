@@ -107,3 +107,46 @@ Confirmed. Deviations 4 (Icon as a Box with background or mask) and 5 (main.ts b
 
 ---
 
+# Round 2 (delta, reviewing 3952764, effort medium, 51 s, 243032 in / 202978 cached / 4265 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Plan L140 now repoints tests/layout.test.ts L11 to render/mapModel in Task 1 and greps for other importers. Task 5's grep (plan L668) now includes `mapPanel`. Grepping src/tests/scripts finds only tests/layout.test.ts:L11 and hud.ts:L6 (which is deleted), so nothing else needs fixing.
+- R1-F2: resolved — CellRow now writes `data-ui-cell: hex(fill)` (plan L424). The test reads `getAttribute('data-ui-cell')` (plan L261), so hex matches hex.
+- R1-F3: resolved — Plan L674 writes fixture 2 every frame for 60 s with tick, simSeconds, health and progress varied, so sinks.ts:L16-L18's equality early-return never fires. It also says the sharing pass sits outside perf.run and times replaceEqualDeep separately.
+- R1-F4: resolved — Plan L667 builds the same cache in startProbe's probe=hud&engine=react branch and passes images to its mountUi. startProbe already has assets and renderer (main.ts:L171-L172).
+- R1-F5: resolved — Plan L526-L527 add both cases. The precedent exists: tests/uiDuel.test.tsx:L90-L107 uses memo spies plus a store-subscribe commit count. The error-boundary recovery works with sinks.ts: prev null bumps the epoch (L18), clear() nulls the slice (L20), and the next valid model bumps epochs.hud again. hasHud also toggles the region (plan L622).
+- R1-F6: resolved — Plan L666 says to delete main.ts:L59 and declare the hud sink after store (L69) and perf, next to duelSink (L70). `perf` is already in scope at L70.
+- R1-F7: resolved — All six rules are now in the text. Science system-row tint and targets in TEXT: plan L507. Doors item!==null: L514. Banner in TEXT: L563. Glyph-row predicate: L566. Non-empty line advance: L603. Number and label tint: L605.
+- R1-F8: resolved — Deviations 4 and 5 are added (plan L43-L44). Task 1's Files list now names only uiHudSink.test.ts (L82). L149 says not to extend hud.test.ts unless needed, which is consistent.
+
+## Verified
+- main.ts:L54-L130: in startApp, store (L69) and perf/duelSink (L70) exist before the router and before mountUi at L119, so the revised Task 5 Step 1 ordering (plan L666) compiles
+- main.ts:L170-L188: startProbe has renderer and assets for the probe-branch cache (plan L667)
+- sinks.ts:L13-L21: the epoch bumps only when prev===null, and clear() sets the slice to null. The error-boundary recovery assertion (plan L527) and the zero-store-writes render-count assertion (plan L526) both match this behaviour
+- tests/uiDuel.test.tsx:L90-L107: the memo-spy precedent the render-count case cites exists
+- Grep of mapPanel across src/tests/scripts: only tests/layout.test.ts:L11 and hud.ts, so Task 1 plus Task 5 cover every importer
+- Plan L424 and L261: CellRow's attribute and the test's read agree
+
+## Not verified
+- I did not re-read hud.ts L140-L274 line by line. The R1-F7 wording is checked against round 1's cited lines, not re-derived
+- Whether `players: [null] as never` throws inside a React render path rather than in a non-render helper depends on the Task 3 implementation. I expect PlayerBlock or Headline to throw during render
+- No tests were run (read-only review)
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at the round-1 commit. 0 accepted, 0 rejected, 0 deferred; the reviewer resolved all eight round-1 findings and raised none.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
