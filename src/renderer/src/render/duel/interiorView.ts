@@ -98,7 +98,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         const m = o.markers[k];
         t.visible = m !== undefined;
         if (!m) return;
-        const colour = MARK[m.level]!, r = TILE_PX * 0.42;
+        const colour = m.fire ? MARK[2]! : MARK[m.level]!, r = TILE_PX * 0.42;   // a fire's marker in the damage red at any level
         marks.poly([m.x, m.y - r, m.x + r, m.y, m.x, m.y + r, m.x - r, m.y]).stroke({ width: 2, color: colour });
         if (m.progress > 0) marks.moveTo(m.x, m.y).arc(m.x, m.y, r * 0.7, -Math.PI / 2, -Math.PI / 2 + m.progress * Math.PI * 2).closePath().fill({ color: TEXT, alpha: 0.8 });
         if (t.text !== m.label) t.text = m.label;

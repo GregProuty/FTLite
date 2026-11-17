@@ -129,10 +129,11 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   }
 
   // Repairs: a start is the first tick of work on a room after not working on it; a finish credits every named player.
+  // Fire work (duel-fire spec) is not repair work: a firefighter's ticks count as walking.
   const work: [number, number] = [-1, -1];
   for (const e of d.events) {
     if (e.kind === 'repairWork') work[e.player as 0 | 1] = e.room;
-    else for (const p of e.players) t.players[p as 0 | 1]!.repairsFinished++;
+    else if (e.kind === 'repairDone') for (const p of e.players) t.players[p as 0 | 1]!.repairsFinished++;   // fire work and fires out are not repairs
   }
   const seat = seats(d);
   for (let pid = 0; pid < 2; pid++) {

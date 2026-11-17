@@ -34,6 +34,12 @@ export const duelCounters = (t: TacticalState, i: number): Counters => {
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
+/** Each tactical Room's work so far: its repair progress plus its point room's extinguish progress (duel-fire spec §1.4),
+ *  so either one rising reads as REPAIRING. While a room burns only the fire part moves; otherwise only the repair. */
+const workOf = (d: DuelState): number[] => [0, 1, 2].map((r) => {
+  const p = d.points.find((q) => q.tacticalRoom === r);
+  return d.repair[r]! + (p ? d.interior.rooms.fireRepair[p.room]! : 0);
+});
 
 /**
  * The events of one publication gap (spec §3): each `shots` increment is a beam to the target (a hit when `laserHits`
@@ -92,14 +98,14 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     // An ending and a relaunch in one gap: the new missile's trail starts where it is now, not at the old one.
     if (latest) t.ships.forEach((_, i) => { const was = latest!.counters[i]; if (was && duelCounters(t, i).ended > was.ended && missileOf(t, i)) missilePrev[i] = missileBody(missileOf(t, i)); });
     crewPrev = latest ? latest.crew : d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
-    prevRepair = latest ? latest.repair : [...d.repair];
+    prevRepair = latest ? latest.repair : workOf(d);
     gap = lastTick >= 0 ? Math.max(1, p.tick - lastTick) : 3;
     // The record's jitter is live inter-arrival only: no gap is timed to or from the frozen copy (the reconnect time).
     const live = client.live?.() ?? true;
     if (lastTick >= 0 && live) { gaps.push(now - receivedAt); if (gaps.length > 4096) gaps.shift(); }
     lastTick = live ? p.tick : -1; receivedAt = now;
     latest = { bodies: t.ships.map(body), missiles: t.ships.map((_, i) => missileBody(missileOf(t, i))), crew: d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! })),
-      counters: t.ships.map((_, i) => duelCounters(t, i)), repair: [...d.repair] };
+      counters: t.ships.map((_, i) => duelCounters(t, i)), repair: workOf(d) };
     return true;
   }
   const duel = (): DuelState => client.state()!;
@@ -121,7 +127,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = duel(), other = seat === 0 ? 1 : 0, s = seatOf(d, other);
       if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
       const room = repairInReach(d, other);
-      return d.present[other] && room >= 0 && d.repair[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';
+      return d.present[other] && room >= 0 && workOf(d)[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';
     },
     axes: (): Axes => (seatOf(duel(), seat) === 'helm' ? helmAxes(sentHeld) : NO_AXES),
     steer: () => (seatOf(duel(), seat) === 'weapons' ? Math.sign(sentHeld.moveX) || 0 : 0),

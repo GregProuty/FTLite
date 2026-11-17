@@ -2,6 +2,7 @@
 // Weapons extras (lock, charge, hold timer, magazine), the other character's status and, standing, the strip about the
 // ship outside. Pure (it draws nothing): rows of label and value that the panel draws; every row fits the 220-px column
 // (tested). The ship colours come from shipColours.ts so both screens agree.
+import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { missileOf, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
@@ -59,6 +60,12 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP }, emphasis: 'crew' }
   ];
   for (let r = 0; r < 3; r++) {
+    const point = d.points.find((p) => p.tacticalRoom === r);
+    if (point && pointBurning(d, point)) {   // duel-fire spec §2: FIRE in the damage red, the bar the extinguish progress
+      const out = em(row(ROOM_NAMES[r]!, 'FIRE', DIM, WARN), 'alert'), done = extinguishProgress(d, point);
+      rows.push(done > 0 ? { ...out, bar: { fill: done, colour: GOOD } } : out);
+      continue;
+    }
     const n = crewSys.rooms[r]!, progress = d.repair[r]! / REPAIR_UNITS, out = em(row(ROOM_NAMES[r]!, level(n), DIM, levelTint(n)), n === 0 ? 'good' : 'warn');
     rows.push(n > 0 && progress > 0 ? { ...out, bar: { fill: progress, colour: GOOD } } : out);
   }
@@ -96,7 +103,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THRUST   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F MISSILE   A/D STEER', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
-  return ['WASD WALK', 'E SIT   HOLD E REPAIR', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
+  return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
 
 /** Rows the readout pool holds: the longest list (standing, Helm empty, a missile inbound) is 21. */

@@ -151,6 +151,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(15772);
+    if (crew === 'scripted') expect(ticks).toBe(16268);   // the duel golden's length (tests/golden/duel-1.json; 15772 before duel fire)
   }, 60_000);
 });

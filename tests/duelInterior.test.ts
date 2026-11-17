@@ -73,7 +73,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     const o = interiorOverlay(d);
     expect(o.tints.map((t) => [t.tacticalRoom, t.level])).toEqual([[Room.Shields, 1]]);
     expect(o.tints[0]!.tiles.length).toBe(d.interior.derived.roomTiles[d.interior.derived.roomIndex.get('R')!]!.length);
-    expect(o.markers).toEqual([{ tacticalRoom: Room.Shields, level: 1, x: 16.5 * TILE_PX, y: 8.5 * TILE_PX, progress: 0.25, label: 'SHIELDS 1' }]);
+    expect(o.markers).toEqual([{ tacticalRoom: Room.Shields, level: 1, x: 16.5 * TILE_PX, y: 8.5 * TILE_PX, progress: 0.25, label: 'SHIELDS 1', fire: false }]);
     expect(o.consoles.map((c) => [c.station, c.free])).toEqual([[d.nav, false], [d.weapons, true]]);
     disposeDuel(d);
   });

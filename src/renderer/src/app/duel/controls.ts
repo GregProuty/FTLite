@@ -4,6 +4,7 @@ import { Life, LifeState, Position, Seated } from '../../sim/components';
 import { roomAt } from '../../sim/grid';
 import { inReachOfTile } from '../../sim/interact';
 import { stationOnline } from '../../sim/stations';
+import { pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 
 export type Seat = 'helm' | 'weapons' | 'standing';
@@ -14,13 +15,14 @@ export function seatOf(d: DuelState, pid: number): Seat {
   return station === d.nav ? 'helm' : station === d.weapons ? 'weapons' : 'standing';
 }
 
-/** The tactical Room player pid would repair by holding E now, or −1: the first damaged room (in Room order, as the sim
- *  picks) whose repair room the character stands in, in reach of its repair tile. Seated characters repair nothing. */
+/** The tactical Room player pid would repair (or put out, duel-fire spec §1.4) by holding E now, or −1: the first damaged
+ *  or burning room (in Room order, as the sim picks) whose repair room the character stands in, in reach of its repair
+ *  tile. Seated characters repair nothing. */
 export function repairInReach(d: DuelState, pid: number): number {
   const eid = d.interior.crew[pid]!;
   if (Seated.station[eid]! >= 0 || Life.state[eid] !== LifeState.Conscious) return -1;
   const here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!), ship = d.tactical.systems[0];
-  const p = d.points.find((q) => ship.rooms[q.tacticalRoom]! > 0 && q.room === here && inReachOfTile(d.interior, eid, q.tile));
+  const p = d.points.find((q) => (ship.rooms[q.tacticalRoom]! > 0 || pointBurning(d, q)) && q.room === here && inReachOfTile(d.interior, eid, q.tile));
   return p ? p.tacticalRoom : -1;
 }
 

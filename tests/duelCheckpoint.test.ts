@@ -18,10 +18,10 @@ import { LAYOUT } from './helpers/sim';
 import { runReplay } from '../src/renderer/src/authority/replay';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** Seed 7's scripted duel is a crew loss at tick 8832 (H-0c-ii-a decision 2), short enough to run to its end twice.
+/** Seed 7's scripted duel is a crew loss at tick 7282 (8832 before duel fire, SIM_VERSION 40), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 7, SPLIT = 5156;
+const SEED = 7, SPLIT = 6956;
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -53,7 +53,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: [['missile'], []], laserReleases: [11, 28], laserHits: [2, 28], missilesLaunched: [2, 5], missileHits: [0, 5], repairsFinished: [7, 9] });
+          terminal: [['laser'], []], laserReleases: [4, 23], laserHits: [2, 23], missilesLaunched: [2, 4], missileHits: [0, 4], repairsFinished: [7, 13] });
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);

@@ -253,15 +253,16 @@ describe('the duel tick', () => {
 });
 
 describe('the interior stays quiet (spec §17 risk 7)', () => {
-  it('starts no fire, breach, boarder or event in 3,600 busy ticks', () => {
-    const d = createDuel(layout, 5), st = d.interior, event0 = st.run.event;
+  it('starts no breach, boarder or event in 3,600 busy ticks, and fire only where an enemy hit set it (duel-fire spec)', () => {
+    const d = createDuel(layout, 5), st = d.interior, event0 = st.run.event, started = new Set<number>();
     for (let t = 0; t < 3600; t++) {
       const cmds = t === 10 ? [cmd(d, 0, { kind: 'stand' })] : t % 120 === 0 ? [cmd(d, 1, { kind: 'laserCharge', held: true })] : t % 120 === 60 ? [cmd(d, 1, { kind: 'laserCharge', held: false })] : [];
       step(d, cmds, [{ moveX: t % 40 < 20 ? 1 : -1, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]);
+      for (const e of d.events) if (e.kind === 'fireStart') started.add(d.points.find((p) => p.tacticalRoom === e.room)!.room);
       if (d.tactical.outcome !== Outcome.Running) break;
     }
     expect(d.tactical.tick).toBeGreaterThan(100);
-    expect([...st.rooms.fire].every((f) => f === 0)).toBe(true);
+    expect([...st.rooms.fire].every((f, room) => f === 0 || started.has(room))).toBe(true);   // no spread, no sector fire
     expect([...st.breaches.active].every((b) => b === 0)).toBe(true);
     expect([...st.boarders.active].every((b) => b === 0)).toBe(true);
     expect(st.run.event).toBe(event0);
