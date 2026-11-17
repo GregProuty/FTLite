@@ -11,6 +11,8 @@ export interface PresentClock {
   advance(dt: number): number;
   /** Stop the clock for `seconds` from now; a longer stop already running is kept. */
   hitstop(seconds: number): void;
+  /** Let a running hitstop pass `seconds` of real time without advancing `t` (a pause). */
+  drain(seconds: number): void;
   reset(): void;
 }
 
@@ -26,6 +28,7 @@ export function createPresentClock(): PresentClock {
       t += run;
       return run;
     },
+    drain(seconds) { stop = Math.max(0, stop - seconds); },
     hitstop(seconds) { stop = Math.max(stop, seconds); },
     reset() { t = 0; stop = 0; }
   };

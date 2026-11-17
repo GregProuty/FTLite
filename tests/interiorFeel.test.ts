@@ -67,6 +67,28 @@ describe('the interior light and feel layers (Art-i spec sections 5-8)', () => {
     for (let k = 0; k < 30; k++) last = f.draw(frame(s), 1 / 60).shake;
     expect(last).toEqual({ x: 0, y: 0 });
   });
+  it('a stopped sim tick cannot leave the flash lit: real time ends it', () => {
+    const { f } = make(), s = cutterState();
+    f.draw(frame(s), 1 / 60);
+    s.tick = 10; f.draw(frame(s, { hit: { rooms: [1] } }), 1 / 60);
+    expect(flashOf(f.above).visible).toBe(true);
+    for (let k = 0; k < 10; k++) f.draw(frame(s), 1 / 60);              // state.tick held at 10
+    expect(flashOf(f.above).visible).toBe(false);
+  });
+  it('a pause leaves no shake offset and lets a running hitstop drain on real time; the clock stays held', () => {
+    const { world, f } = make(), s = cutterState();
+    const anim = new AnimatedSprite({ textures: [Texture.WHITE, Texture.WHITE], autoUpdate: false }); anim.play(); world.addChild(anim);
+    f.draw(frame(s), 1 / 60);
+    s.tick = 10; f.draw(frame(s, { hit: { rooms: [1] } }), 1 / 60);
+    expect(anim.playing).toBe(false);
+    const t0 = f.time();
+    let out = f.draw(frame(s), 0, 1 / 60);
+    expect(out.shake).toEqual({ x: 0, y: 0 });
+    for (let k = 0; k < 3; k++) out = f.draw(frame(s), 0, 1 / 60);       // 60 ms of real time while paused
+    expect(out.shake).toEqual({ x: 0, y: 0 });
+    expect(f.time()).toBe(t0);                                          // presentation clock held
+    expect(anim.playing).toBe(true);                                    // the hitstop is over: animations play on
+  });
   it('the duel hit flashes the whole interior at half strength; feel off gives no flash, shake or hitstop', () => {
     const duel = make(), s = cutterState();
     duel.f.draw(frame(s), 1 / 60);

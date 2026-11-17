@@ -102,7 +102,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       // Light and feel (Art-i spec sections 5-8): this frame's hit rooms, the working crew, the failed stations.
       const hits = sectorHits(state.rooms.impactTick, state.tick, seenImpact); seenImpact = hits.seen;
       watchRepair(memory.repair, state);
-      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working: sectorWorking(state, memory.repair), artPx: 2 * fit.scale }, paused ? 0 : dt);
+      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working: sectorWorking(state, memory.repair), artPx: 2 * fit.scale }, paused ? 0 : dt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);   // the shake moves the world and the projectiles, as before
       crew.draw(state, alpha, presentation, bob);
       boarders.draw(state, dt);

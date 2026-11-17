@@ -5,13 +5,13 @@
 import { AnimatedSprite, Container, Graphics, GraphicsContext } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
-import { FIRE_CAP } from '../sim/tuning';
+import { FIRE_CAP, TICK_HZ } from '../sim/tuning';
 import { consoles } from './consoleModel';
 import type { DoorRect } from './doorModel';
 import { feelScale, type FeelSetting } from './feel';
 import { alertStrength, gradeCover, gradeModel, lampPoints, type GradeInput } from './gradeModel';
 import { fireTiles } from './hazardTiles';
-import { createShake, DUEL_FLASH_SHARE, flashAlpha, HITSTOP_SECONDS, kickShake, shakeOffset, SMOKE_SECONDS, stepShake } from './impactModel';
+import { createShake, DUEL_FLASH_SHARE, FLASH_TICKS, flashAlpha, HITSTOP_SECONDS, kickShake, shakeOffset, SMOKE_SECONDS, stepShake } from './impactModel';
 import { consoleGlow, fireGlow, glowRuns, lampLight, lampLit, screenCursor, screenPhase, stars } from './lightsModel';
 import { RAMP, ROLE } from './palette';
 import { createPresentClock } from './presentClock';
@@ -52,8 +52,10 @@ export interface InteriorFeel {
   /** Presentation seconds (frozen by the hitstop). */
   time(): number;
   /** Returns the shake offset for the world (and, in the sector, the projectiles and callouts), and each player's bob.
-   *  `dt` is the presentation dt: the views pass 0 while the game is paused, so everything here holds. */
-  draw(frame: FeelFrame, dt: number): { shake: { x: number; y: number }; bob: number[] };
+   *  `dt` is the presentation dt: the views pass 0 while the game is paused, so everything here holds, except that
+   *  the shake, a running hitstop and the flash drain on `realDt` (the frame's real seconds, default `dt`): a pause
+   *  leaves no shake offset, no stopped clock and no lit flash. */
+  draw(frame: FeelFrame, dt: number, realDt?: number): { shake: { x: number; y: number }; bob: number[] };
   reset(): void;
   /** Destroys this feel's Graphics and its shared GraphicsContexts; call it before destroying the view's containers. */
   destroy(): void;
@@ -95,7 +97,7 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
   const clock = createPresentClock(), shake = createShake();
   let builtFor = '', seed = 0, emitter: Emitter = createEmitter(0), vents: WallVent[] = [], puffs: number[] = [];
   let lamps: { room: number; x: number; y: number }[] = [], cover: DoorRect[] = [];
-  let smokes: HitSmoke[] = [], breachSeen: Uint8Array | null = null, flashTick = Number.NEGATIVE_INFINITY, flashShare = 1, wasStopped = false;
+  let smokes: HitSmoke[] = [], breachSeen: Uint8Array | null = null, flashTick = Number.NEGATIVE_INFINITY, flashShare = 1, flashLeft = 0, wasStopped = false;
 
   function build(state: SimState): void {
     const d = state.derived;
@@ -108,14 +110,14 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
     fireGlows.clear();
     consoleGlows = consoles(state).map(() => { const g = new Graphics(ctx.console); g.tint = ROLE.screenA; glowLayer.addChild(g); return g; });
     lampGlows = lamps.map(() => { const g = new Graphics(ctx.lamp); glowLayer.addChild(g); return g; });
-    smokes = []; breachSeen = null; flashTick = Number.NEGATIVE_INFINITY; flash.visible = false;
+    smokes = []; breachSeen = null; flashTick = Number.NEGATIVE_INFINITY; flashLeft = 0; flash.visible = false;
   }
 
   function onHit(frame: FeelFrame): void {
     const { state, hit } = frame, d = state.derived, f = feelScale(opts.feel());
     if (!hit || ('rooms' in hit && hit.rooms.length === 0)) return;
     kickShake(shake, f); clock.hitstop(HITSTOP_SECONDS * f.hitstop);
-    flashTick = state.tick; flash.clear();
+    flashTick = state.tick; flashLeft = FLASH_TICKS / TICK_HZ; flash.clear();
     const t = clock.t;
     if ('whole' in hit) {
       flashShare = DUEL_FLASH_SHARE;
@@ -136,11 +138,13 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
   return {
     starfield, grade, fixtures, above, lights,
     time: () => clock.t,
-    draw(frame, dt) {
+    draw(frame, dt, realDt = dt) {
       const { state } = frame, d = state.derived;
       if (builtFor !== d.layoutHash) build(state);
       onHit(frame);
+      const paused = dt === 0 && realDt > 0;
       const pdt = clock.advance(dt), t = clock.t;
+      if (paused) clock.drain(realDt);   // a pause lets a running hitstop drain on real time; the rest of the clock stays held
       if (clock.stopped !== wasStopped) { wasStopped = clock.stopped; freezeAnimations(opts.world, held, wasStopped); }
 
       // Grade (section 5): ambient always, the alert pulse while on, vacuum per room (normal blend).
@@ -181,21 +185,22 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
       }
 
       // The white flash (section 7): 2 sim ticks from the tick the hit was seen.
-      const fa = flashAlpha(state.tick - flashTick, feelScale(opts.feel()), flashShare);
-      flash.visible = fa > 0; flash.alpha = fa;
+      // Bounded by real time too (flashLeft), so a stopped sim tick (pause, ended duel) cannot leave it lit.
+      const ticksSince = state.tick - flashTick, fa = flashLeft > 0 ? flashAlpha(ticksSince, feelScale(opts.feel()), flashShare) : 0;
+      flash.visible = fa > 0; flash.alpha = fa; flashLeft = Math.max(0, flashLeft - realDt);
 
       // The starfield (section 8).
       starG.clear();
       for (const s of stars(seed, opts.band, t, frame.artPx)) starG.rect(s.x, s.y, frame.artPx, frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
 
-      stepShake(shake, pdt);
+      stepShake(shake, paused ? realDt : pdt);   // a pause drains the shake on real time and shows none
       const bob: number[] = [];
       for (const w of frame.working) bob[w.pid] = bobOffset(t);
-      return { shake: shakeOffset(shake, frame.artPx), bob };
+      return { shake: paused ? { x: 0, y: 0 } : shakeOffset(shake, frame.artPx), bob };
     },
     reset() {
       clock.reset(); Object.assign(shake, createShake()); emitter.clear(); smokes = []; breachSeen = null; puffs = [];
-      flashTick = Number.NEGATIVE_INFINITY; flash.visible = false;
+      flashTick = Number.NEGATIVE_INFINITY; flashLeft = 0; flash.visible = false;
       if (wasStopped) { wasStopped = false; freezeAnimations(opts.world, held, false); }
     },
     destroy() {
