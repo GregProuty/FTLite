@@ -24,9 +24,9 @@ const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   stand: 'Stand up from a console',
   switch: 'Switch between the Helm and Weapons characters',
   pause: 'Pause and resume',
-  camera: 'Snap the camera back (at Weapons, change camera)',
-  zoomIn: 'Zoom in',
-  zoomOut: 'Zoom out',
+  camera: 'Snap the camera back (at Weapons, change camera; in the ship, follow your character)',
+  zoomIn: 'Zoom in (the maps and the ship)',
+  zoomOut: 'Zoom out (the maps and the ship)',
   confirm: 'Start a new duel (end screen)',
   menu: 'Return to the main menu (paused or end screen)'
 };
@@ -46,7 +46,7 @@ export function controlSections(): ControlSection[] {
     if (action === 'interact') duel.push({ keys: `Hold ${keyLabel(INTERACT_HELD)}`, action: 'Repair the damaged system you stand at' });
   }
   duel.find((r) => r.keys === keyLabel(FIRE_HELD))!.keys = `Hold ${keyLabel(FIRE_HELD)}`;
-  duel.push({ keys: 'Mouse wheel', action: 'Zoom' }, { keys: 'Right or middle drag', action: 'Pan the camera' });
+  duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship)' }, { keys: 'Right or middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });
   const k = SECTOR_KEYS;
   const sector: ControlRow[] = [
     { keys: [k.up, k.left, k.down, k.right].map(keyLabel).join(' '), action: 'Walk' },

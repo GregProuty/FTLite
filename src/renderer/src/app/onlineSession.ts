@@ -104,6 +104,6 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
       }));
       for (const cue of CUE_ORDER) if (cues.has(cue)) deps.playCue?.(cue); cues.clear();
     },
-    dispose() { if (disposed) return; disposed = true; cancel(); release(); if (frozen) disposeSimState(frozen); frozen = null; points = []; callouts = []; cues.clear(); }
+    dispose() { if (disposed) return; disposed = true; cancel(); release(); if (frozen) disposeSimState(frozen); frozen = null; deps.hud?.clear?.(); points = []; callouts = []; cues.clear(); }
   };
 }

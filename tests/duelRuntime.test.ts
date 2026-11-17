@@ -443,3 +443,51 @@ describe('pointer input never survives a Tab or a rematch (H-1b impl review)', (
     rt.dispose();
   });
 });
+
+describe('the interior zoom camera input (interior zoom spec rules 1-4)', () => {
+  const standing = () => { const r = rig(); r.press('stand'); r.ticks(2); expect(r.rt.view()).toBe('interior'); return r; };
+  it('the wheel, the zoom keys, a drag and C feed the interior camera only while standing', () => {
+    const { rt, press, pointer, tick, ticks } = rig();
+    Object.assign(pointer, { x: 300, y: 200, wheel: -100 }); rt.frame(1 / 60);
+    expect(rt.interiorCamera.notches).toBe(0);   // at the Helm the wheel is the Helm camera's
+    Object.assign(pointer, { wheel: 0 }); press('stand'); ticks(2);
+    expect(rt.view()).toBe('interior');
+    Object.assign(pointer, { wheel: -100 }); rt.frame(1 / 60);
+    expect([rt.interiorCamera.notches, rt.interiorCamera.anchor]).toEqual([1, { x: 300, y: 200 }]);
+    Object.assign(pointer, { wheel: 0, dragX: 12, dragY: -4 }); press('zoomIn'); rt.frame(1 / 60);
+    expect([rt.interiorCamera.notches, rt.interiorCamera.dragX, rt.interiorCamera.dragY]).toEqual([2, 12, -4]);
+    Object.assign(pointer, { dragX: 0, dragY: 0 });
+    rt.interiorCamera.follow = false; press('camera'); tick();
+    expect(rt.interiorCamera.follow).toBe(true);
+    expect(rt.view()).toBe('interior');   // C does nothing else while standing
+    rt.dispose();
+  });
+  it('the wheel and a drag while standing leave both console cameras untouched', () => {
+    const { rt, pointer } = standing();
+    const snap = () => [rt.cameras.helm, rt.cameras.weapons].map((c) => ({ cx: c.centreX, cy: c.centreY, tz: c.targetZoom, follow: c.follow }));
+    const before = snap();
+    Object.assign(pointer, { x: 300, y: 200, wheel: -300, dragX: 80, dragY: 40 }); rt.frame(1 / 60);
+    Object.assign(pointer, { wheel: 0, dragX: 0, dragY: 0 });
+    expect(rt.interiorCamera.notches).toBe(3);
+    expect(snap().map((c) => ({ tz: c.tz, follow: c.follow }))).toEqual(before.map((c) => ({ tz: c.tz, follow: c.follow })));
+    expect(snap().map((c) => c.follow)).toEqual(['ship', 'ship']);
+    rt.dispose();
+  });
+  it('pause keeps the zoom and the camera still moves; Tab keeps the level and follows again; a rematch resets it', () => {
+    const { rt, press, pointer, tick, ticks } = standing();
+    press('pause'); tick();
+    expect(rt.paused()).toBe(true);
+    Object.assign(pointer, { x: 10, y: 10, wheel: -100 }); rt.frame(1 / 60); Object.assign(pointer, { wheel: 0 });
+    expect(rt.interiorCamera.notches).toBe(1);
+    press('pause'); tick();
+    rt.interiorCamera.level = 3; rt.interiorCamera.follow = false; rt.interiorCamera.notches = 0;
+    press('switch'); tick();
+    expect([rt.active(), rt.interiorCamera.level, rt.interiorCamera.follow]).toEqual([1, 3, true]);
+    rt.duel.tactical.systems[1].hull = 0; ticks(2);
+    expect(rt.ended()).toBe(true);
+    press('confirm'); ticks(2);
+    expect(rt.epoch()).toBe(1);
+    expect([rt.interiorCamera.level, rt.interiorCamera.follow, rt.interiorCamera.last]).toEqual([0, true, null]);
+    rt.dispose();
+  });
+});

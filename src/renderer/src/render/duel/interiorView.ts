@@ -3,13 +3,13 @@
 // callouts or HUD, plus the duel's damage overlay. It owns its RenderMemory; a restart destroys it and builds a new one.
 import { BitmapText, Container, Graphics } from 'pixi.js';
 import { TILE_PX } from '../../../../shared/resolution';
-import { Stable } from '../../sim/components';
+import { Position, Stable } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
 import type { GameAssets } from '../assets';
 import { createBoarderLayer } from '../boarderLayer';
 import { createConsoleLayer } from '../consoleLayer';
 import { createBattlemapLayer } from '../battlemapLayer';
-import { fitRect } from '../battlemapModel';
+import { battlemapFor, fitRect } from '../battlemapModel';
 import { createPropLayer } from '../propLayer';
 import { createCrewLayer } from '../crewSprites';
 import { createEffectsLayer } from '../effects';
@@ -18,6 +18,7 @@ import { createIconLayer } from '../roomIcons';
 import { AMBER, DIM, FONT_NATIVE, TEXT, WARN } from '../theme';
 import { createTileLayer } from '../tiles';
 import { duelFit, interiorOverlay, INTERIOR_BAND } from './interiorModel';
+import { placeInterior, type InteriorCamera } from './interiorCamera';
 import { createInteriorFeel } from '../interiorFeel';
 import { backdropOption } from '../twinkleLayer';
 import { DEFAULT_FEEL, type FeelSetting } from '../feel';
@@ -35,8 +36,9 @@ export interface InteriorView {
   /** `crewPrev`: each player's character position at the previous tick, in tiles, for interpolation. `events`: the view
    *  events drained this frame (the feed the tactical effects read); a hit on the crew ship flashes and shakes the interior.
    *  `presentDt`: the light and feel's seconds this frame (Art-i spec section 7), 0 while the duel is paused so the
-   *  particles, the pulse and the ambient life hold; it defaults to `dt`, which the tiles and boarders keep. */
-  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number): void;
+   *  particles, the pulse and the ambient life hold; it defaults to `dt`, which the tiles and boarders keep.
+   *  `zoom`: the interior's zoom camera and the character it follows (interior zoom spec); absent, the plain fit. */
+  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number, zoom?: { camera: InteriorCamera; active: number }): void;
   destroy(): void;
 }
 
@@ -50,9 +52,12 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const missing = new Set(assets.missing);
   const fx = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
     world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt'), backdrop: backdropOption(assets),   // Art-v: the painted backdrop
-    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
+    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined,
+    painted: (id) => battlemapFor(id, missing) !== null   // the art spike: painted fire, blasts and particles on a painted ship
   });
-  container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND; Art-v: or the painted backdrop over the whole stage
+  // Interior zoom: a zoomed ship is clipped to the band so it never runs under the readout column; the backdrop stays unclipped.
+  const clip = new Graphics().rect(INTERIOR_BAND.x, INTERIOR_BAND.y, INTERIOR_BAND.w, INTERIOR_BAND.h).fill(0xffffff);
+  container.addChild(fx.starfield, world, clip);   // the starfield under the world, filling INTERIOR_BAND; Art-v: or the painted backdrop over the whole stage
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer();
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
@@ -67,12 +72,22 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // labels on top so the lights never wash them out.
   const battlemap = createBattlemapLayer(assets);
   world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
-  desks.container.addChild(fx.fixtures); effects.above.addChild(fx.above);
+  desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
   return {
     container, world, memory,
-    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt) {
-      const st = d.interior, fit = duelFit(st.derived.width, st.derived.height, stageScale(), fitRect(st.layout.id, st.derived.width, st.derived.height, missing));
+    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom) {
+      const st = d.interior, stage = stageScale(), rect = fitRect(st.layout.id, st.derived.width, st.derived.height, missing), fit0 = duelFit(st.derived.width, st.derived.height, stage, rect);
+      // The zoom camera places the world on whole screen pixels per art pixel; it follows the active character's drawn (interpolated) position.
+      const eid = zoom ? st.crew[zoom.active] : undefined;
+      const target = eid === undefined ? null : (() => {
+        const x = Position.x[eid]!, y = Position.y[eid]!, was = crewPrev[zoom!.active] ?? { x, y };
+        return { x: (was.x + (x - was.x) * alpha) * TILE_PX, y: (was.y + (y - was.y) * alpha) * TILE_PX };
+      })();
+      const fit = zoom ? placeInterior(zoom.camera, { band: INTERIOR_BAND, rect: { x: rect.x * TILE_PX, y: rect.y * TILE_PX, w: rect.w * TILE_PX, h: rect.h * TILE_PX }, fit: fit0, stage }, target) : fit0;
       world.scale.set(fit.scale);
+      const zoomed = !!zoom && zoom.camera.level !== 0;
+      if (world.mask !== (zoomed ? clip : null)) world.mask = zoomed ? clip : null;   // level 0 draws exactly as before
+      clip.visible = zoomed;
       st.crew.forEach((eid, pid) => { const p = crewPrev[pid]; if (p) memory.prev.set(Stable.id[eid]!, p); });
       battlemap.draw(st); tiles.update(st, dt); props.draw(st); icons.update(st); desks.draw(st); effects.draw(st);
       const o = interiorOverlay(d);
@@ -90,7 +105,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
       });
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
-      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale }, presentDt, dt);
+      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
       crew.draw(st, alpha, undefined, bob);
       boarders.draw(st, dt);

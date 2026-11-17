@@ -8,7 +8,7 @@ import { createSimState } from './helpers/simLifetime';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { ENEMY_TILE, OLD_ENEMY_TILE } from '../src/renderer/src/render/enemyShipLayout';
-import { MAP_W, MAP_H, nodeX, nodeY } from '../src/renderer/src/render/mapPanel';
+import { MAP_W, MAP_H, nodeX, nodeY } from '../src/renderer/src/render/mapModel';
 import { CLOCK, POWER, THREATS, NOTICE, blockRect, cardRect, overlaps, inside, type Rect } from '../src/renderer/src/render/hudLayout';
 import { SECTOR_COLUMNS, MIDDLE_MAX } from '../src/renderer/src/sim/tuning';
 import { LAYOUT, CUTTER, RECRUITS, quiet, makeState } from './helpers/sim';

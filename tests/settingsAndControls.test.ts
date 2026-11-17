@@ -28,6 +28,8 @@ describe('the controls list', () => {
     for (const code of [SECTOR_KEYS.up, SECTOR_KEYS.left, SECTOR_KEYS.down, SECTOR_KEYS.right, SECTOR_KEYS.interact, SECTOR_KEYS.confirm, SECTOR_KEYS.cancel, SECTOR_KEYS.callout]) expect(sector).toContain(keyLabel(code));
     expect(sections[0]!.rows.find(r => r.keys === 'M')!.action).toContain('main menu');
     expect(all).not.toMatch(/pad|stick|arrow/i);
+    const action = (keys: string): string => sections[0]!.rows.find(r => r.keys === keys)!.action;   // interior zoom spec rule 6
+    expect([action('Mouse wheel'), action('Right or middle drag'), action('C')].every(t => /ship/.test(t))).toBe(true);
     expect([keyLabel('KeyE'), keyLabel('Equal'), keyLabel('NumpadAdd'), keyLabel('Escape')]).toEqual(['E', '=', 'Num +', 'Esc']);
   });
 });

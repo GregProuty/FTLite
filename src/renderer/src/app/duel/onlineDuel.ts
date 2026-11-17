@@ -43,7 +43,8 @@ export interface OnlineDuelDeps {
 const NOTICE_MS = 3000;
 /** How often the session asks main for the link's figures, and how many recent samples the F3 overlay reads. */
 export const LINK_POLL_MS = 1000, LIVE_SAMPLES = 300;
-const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut } });
+/** The camera's presses: the zoom keys, and C, which only the interior's camera reads here (the consoles' C is in play()). */
+const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut, camera: k.presses.camera } });
 /** The session phases a Leave passes through, which show "LEAVING…" over the frozen view rather than CONNECTION LOST. */
 const LEAVING_PHASES: readonly string[] = ['saving', 'idle', 'ended'];
 /** The end card's leave prompt: open, and the round it was opened on. */
@@ -186,7 +187,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (disposed) return;
     observe(); pollLink();
     const k = keyboard.sample();
-    cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut } };
+    cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
     const d = client?.state(), p = client?.publication();
     if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
     const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
