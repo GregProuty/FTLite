@@ -9,6 +9,8 @@ import type { DuelUiView } from '../src/renderer/src/ui/views';
 import { contactModel, type ContactView } from '../src/renderer/src/render/duel/contactModel';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { TEXT } from '../src/renderer/src/render/theme';
+import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
+import { hex } from '../src/renderer/src/ui/stage/color';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -57,6 +59,18 @@ describe('the contact window (spec §4.2, §5)', () => {
     fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
     expect(document.querySelector('[data-ui-contact-reticle]')).not.toBeNull();
     expect(box().getAttribute('style')).toContain('cursor: none');
+  });
+  it('draws a glass under-stroke below the hover outline and the reticle, and a backing box behind each room label', () => {
+    const v = contactOf('weapons', true), shld = v.rooms[1]!.centre;
+    mount(v);
+    fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
+    const glass = hex(CRT.glass);
+    const under = (sel: string) => Array.from(document.querySelectorAll(`${sel} > *`)).some((e) => e.getAttribute('stroke') === glass && e.getAttribute('stroke-width') === '3');
+    expect(under('[data-ui-contact-reticle]')).toBe(true);
+    const hov = document.querySelector('[data-ui-contact-hover]') as Element;
+    expect(hov).not.toBeNull();
+    expect(Array.from(hov.children).some((e) => e.getAttribute('stroke') === glass && e.getAttribute('stroke-width') === '3')).toBe(true);
+    expect(document.querySelectorAll('[data-ui-contact-label-bg]').length).toBe(v.rooms.length);
   });
   it('a right-click on the window or on the box calls cancelAim; the context menu is suppressed', () => {
     const c = mount(contactOf('weapons', true));

@@ -78,7 +78,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // Enemy ship window spec §6.1, §6.2: local to this screen, never sent. While the window is shown its intercept takes Esc
   // (and T), so the leave prompt and setPaused below never see that Escape.
   const contact = createContactController();
-  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) });
+  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => focused && !blocked && contact.intercept(code) });
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds

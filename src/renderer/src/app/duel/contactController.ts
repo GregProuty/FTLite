@@ -56,6 +56,7 @@ export function createContactController(): ContactController {
       if (epoch !== null && s.epoch !== epoch) st = null;            // a new round
       if (st && (!s.shown || !s.active(st.ship))) st = null;          // hidden, SHIP, paused, decided, or the ship is gone
       if (st?.aim && station !== null && s.station !== station) st = { ...st, aim: false };   // a station change disarms
+      if (st?.aim && s.target !== st.ship) st = { ...st, aim: false };   // the laser target moved off the shown ship
       allowed = s.shown; station = s.station; target = s.target; epoch = s.epoch;
       return allowed && st !== null;
     },
@@ -68,7 +69,7 @@ export function createContactController(): ContactController {
       if (code === 'Escape') return allowed && st !== null ? c.escape() : false;
       if (code === 'KeyT') {
         if (allowed && st !== null) { c.close(); return true; }
-        if (station === 'helm' || station === 'weapons') { c.toggle(target); return true; }
+        if (allowed && (station === 'helm' || station === 'weapons')) { c.toggle(target); return true; }
       }
       return false;
     }

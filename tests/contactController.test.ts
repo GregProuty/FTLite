@@ -67,6 +67,15 @@ describe('sync, once per frame (spec §3)', () => {
   });
 });
 
+describe('target change', () => {
+  it('disarms (and keeps the window open) when the laser target moves off the shown ship', () => {
+    const c = createContactController();
+    c.sync(live()); c.click(1); c.arm();
+    expect(c.sync(live())).toBe(true); expect(c.state()).toEqual({ ship: 1, aim: true });
+    expect(c.sync(live({ target: 2 }))).toBe(true); expect(c.state()).toEqual({ ship: 1, aim: false });
+  });
+});
+
 describe('pick (spec §5)', () => {
   it('calls lock only while armed, then disarms and keeps the window open', () => {
     const c = createContactController(), lock = vi.fn();
@@ -94,6 +103,11 @@ describe('the key intercept (spec §6.2)', () => {
     c.sync(live({ shown: false, station: null })); expect(c.intercept('KeyT')).toBe(false);
     c.sync(live({ shown: false, station: 'ship' })); expect(c.intercept('KeyT')).toBe(false);
     expect(c.state()).toBeNull();
+  });
+  it('declines KeyT on the interior view at Weapons (station weapons but the console not shown on a map view)', () => {
+    const c = createContactController();
+    c.sync(live({ shown: false, station: 'weapons' }));
+    expect(c.intercept('KeyT')).toBe(false); expect(c.state()).toBeNull();
   });
   it('takes Escape only while shown: first it disarms, then it closes; declines it when closed or hidden', () => {
     const c = createContactController();

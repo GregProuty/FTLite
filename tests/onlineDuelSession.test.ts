@@ -415,6 +415,20 @@ describe('the contact window online (enemy ship window spec §3, §6.2)', () => 
     expect(c.commands().filter((x) => x.kind === 'setPaused')).toEqual([{ kind: 'setPaused', paused: true }]);
     r.dispose();
   });
+  it('with input blocked or the window unfocused, Escape and T are not taken by the window', () => {
+    const r = rig(1); r.attach(); const contact = contactOf();
+    show(contact);
+    r.session.setInputBlocked(true);
+    r.key('keydown', 'Escape'); r.key('keyup', 'Escape'); r.key('keydown', 'KeyT'); r.key('keyup', 'KeyT');
+    expect(contact.state()).toEqual({ ship: 1, aim: false });
+    r.session.setInputBlocked(false); r.session.setFocused(false);
+    r.key('keydown', 'Escape'); r.key('keyup', 'Escape');
+    expect(contact.state()).toEqual({ ship: 1, aim: false });
+    r.session.setFocused(true);
+    r.key('keydown', 'Escape'); r.key('keyup', 'Escape');
+    expect(contact.state()).toBeNull();
+    r.dispose();
+  });
   it('on a decided round with the window shown, Escape opens no leave prompt: Enter then sends a rematch and does not leave', () => {
     const r = rig(1), c = r.attach(), contact = contactOf();
     decide(r.d); c.publish(r.d); r.pump();

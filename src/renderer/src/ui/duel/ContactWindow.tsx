@@ -6,7 +6,7 @@
 import { memo, useState, type PointerEvent as ReactPointerEvent, type SyntheticEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { ContactView } from '../../render/duel/contactModel';
 import { CONTACT } from '../../render/duel/consoleLayout';
-import { FONT_NATIVE } from '../../render/theme';
+import { FONT_NATIVE, textPx } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { pointInPolygon } from '../../render/tactical/hullModel';
 import { useActions, useUi } from '../context';
@@ -80,18 +80,38 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
         <polygon points={polyPoints(contact.outline)} fill={hex(CRT.glass)} stroke={hex(CRT.main)} strokeWidth={1} />
         {contact.rooms.map((r, k) => (
           <g key={k} data-ui-contact-room={r.label}>
-            <polygon points={polyPoints(r.points)} fill={r.fill === null ? 'none' : hex(r.fill)} stroke={hex(k === hover ? CRT.hot : r.stroke)} strokeWidth={1} />
+            <polygon points={polyPoints(r.points)} fill={r.fill === null ? 'none' : hex(r.fill)} stroke={hex(r.stroke)} strokeWidth={1} />
             {r.hatch && <path d={segPath(r.hatch.segments)} stroke={hex(r.hatch.colour)} strokeWidth={1} fill="none" />}
           </g>
         ))}
       </svg>
+      {contact.rooms.map((r, k) => {
+        const w = Math.ceil(textPx(r.label, 1)), h = FONT_NATIVE, pad = 2;
+        return (
+          <Box key={k} x={Math.round(r.centre.x - w / 2) - pad} y={Math.round(r.centre.y - h / 2) - pad} w={w + 2 * pad} h={h + 2 * pad}
+            attrs={{ 'data-ui-contact-label-bg': r.label }} style={{ background: hex(CRT.glass) }} />
+        );
+      })}
       {contact.rooms.map((r, k) => (
-        <PixelText key={k} text={r.label} x={r.centre.x} y={r.centre.y} size={FONT_NATIVE} tint={r.fill === CRT.hot ? CRT.glass : CRT.hot} anchorX={0.5} anchorY={0.5} />
+        <PixelText key={k} text={r.label} x={r.centre.x} y={r.centre.y} size={FONT_NATIVE} tint={CRT.hot} anchorX={0.5} anchorY={0.5} />
       ))}
       <svg data-ui-contact-marks="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" style={{ ...boxStyle, pointerEvents: 'none' }}>
-        {lock && <path data-ui-contact-lock="" d={brackets(lock.x, lock.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />}
+        {hover >= 0 && (
+          <g data-ui-contact-hover="">
+            <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.glass)} strokeWidth={3} />
+            <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.hot)} strokeWidth={1} />
+          </g>
+        )}
+        {lock && (
+          <g data-ui-contact-lock="">
+            <path d={brackets(lock.x, lock.y)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
+            <path d={brackets(lock.x, lock.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
+          </g>
+        )}
         {aiming && pointer && (
           <g data-ui-contact-reticle="">
+            <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
+            <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
             <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
             <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
           </g>

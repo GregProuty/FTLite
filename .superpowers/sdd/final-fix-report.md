@@ -1,0 +1,5 @@
+# Final-review fixes
+Changes: (1) ContactWindow.tsx: glass backing box behind each room label (textPx(label,1)+2px pad), labels always CRT.hot; lock brackets, reticle and hovered room drawn in the marks svg as glass width-3 under hot width-1; ship svg no longer recolours hover. (2) onlineDuel.ts intercept = focused && !blocked && contact.intercept. (3) contactController: KeyT opens only when last sync had shown=true. (4) sync disarms when target != shown ship.
+Red step: new tests failed before the fix (contactWindow glass/backing, onlineDuelSession blocked/unfocused, contactController interior-T, target-change): 4 failed.
+Green: tsc clean; vitest contactWindow, contactController, onlineDuelSession, contactScene, uiDuel, uiConsole all pass (61 + 12).
+Screenshots re-taken (vite harness on :5299, 6 ok) to C:\Users\djuar\FTLite-shots\enemy-window\. weapons-aim and weapons-open-a: room labels sit on dark glass boxes and read clearly over the hatch; lock brackets around SHLD and the reticle ring are visible with a dark halo; hover outline is drawn above the hatch.
