@@ -1,6 +1,7 @@
 // The duel interior's overlay and fit (H-1 spec §8). Pure: no Pixi. Positions are ship-local pixels (TILE_PX per tile),
 // drawn inside the interior's world container, which the fit scales and places.
 import { INTERNAL_H, INTERNAL_W, TILE_PX } from '../../../../shared/resolution';
+import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { fitInBand, fitRectInBand, type Fit } from '../worldFit';
@@ -20,24 +21,26 @@ export function duelFit(widthTiles: number, heightTiles: number, stage: number, 
 export const ROOM_NAMES: readonly string[] = ['WEAPONS', 'SHIELDS', 'ENGINES'];
 
 export interface RoomTint { tacticalRoom: number; level: number; tiles: { x: number; y: number }[] }
-export interface RepairMarker { tacticalRoom: number; level: number; x: number; y: number; progress: number; label: string }
+/** `fire`: the room is burning (duel-fire spec §2): the label says so and `progress` is the extinguish progress. */
+export interface RepairMarker { tacticalRoom: number; level: number; x: number; y: number; progress: number; label: string; fire: boolean }
 export interface ConsoleOutline { station: number; x: number; y: number; free: boolean }
 export interface InteriorOverlay { tints: RoomTint[]; markers: RepairMarker[]; consoles: ConsoleOutline[] }
 
 /**
  * Each damaged tactical room tints its repair room's tiles by level, with a marker on the repair tile and the progress
- * (0..1) toward lowering it one level; the two role consoles are outlined, free (highlighted) or occupied (dimmed).
+ * (0..1) toward lowering it one level. A burning room (duel-fire spec §2), damaged or not, has the marker `FIRE - HOLD E`
+ * with the extinguish progress instead. The two role consoles are outlined, free (highlighted) or occupied (dimmed).
  */
 export function interiorOverlay(d: DuelState): InteriorOverlay {
   const st = d.interior, w = st.derived.width, ship = d.tactical.systems[0];
   const px = (t: number): { x: number; y: number } => { const tx = t % w; return { x: tx * TILE_PX, y: ((t - tx) / w) * TILE_PX }; };
   const tints: RoomTint[] = [], markers: RepairMarker[] = [];
   for (const p of d.points) {
-    const level = ship.rooms[p.tacticalRoom]!;
-    if (level === 0) continue;
-    tints.push({ tacticalRoom: p.tacticalRoom, level, tiles: st.derived.roomTiles[p.room]!.map(px) });
-    const at = px(p.tile);
-    markers.push({ tacticalRoom: p.tacticalRoom, level, x: at.x + TILE_PX / 2, y: at.y + TILE_PX / 2, progress: d.repair[p.tacticalRoom]! / REPAIR_UNITS, label: `${ROOM_NAMES[p.tacticalRoom]} ${level}` });
+    const level = ship.rooms[p.tacticalRoom]!, fire = pointBurning(d, p);
+    if (level === 0 && !fire) continue;
+    if (level > 0) tints.push({ tacticalRoom: p.tacticalRoom, level, tiles: st.derived.roomTiles[p.room]!.map(px) });
+    const at = px(p.tile), progress = fire ? extinguishProgress(d, p) : d.repair[p.tacticalRoom]! / REPAIR_UNITS;
+    markers.push({ tacticalRoom: p.tacticalRoom, level, x: at.x + TILE_PX / 2, y: at.y + TILE_PX / 2, progress, label: fire ? 'FIRE - HOLD E' : `${ROOM_NAMES[p.tacticalRoom]} ${level}`, fire });
   }
   const consoles = [d.nav, d.weapons].map((station) => {
     const at = px(st.derived.stationTile[station]!);

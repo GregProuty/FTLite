@@ -12,12 +12,17 @@ import { DUEL_REPAIR_POINTS } from './tuning';
 
 export interface RepairPoint { tacticalRoom: number; room: number; tile: number }
 
-/** Per-tick repair events (H-0c-ii-a spec §4), for telemetry and views. Derived, not state: cleared every tick and not
- *  hashed. `repairWork`: a player added repair work to a tactical Room this tick. `repairDone`: the Room's level dropped
- *  this tick; `players` names everyone who worked on it this tick, ascending. */
+/** Per-tick repair and fire events (H-0c-ii-a spec §4, duel-fire spec §1.5), for telemetry and views. Derived, not
+ *  state: cleared every tick and not hashed. `room` is always a tactical Room. `repairWork`: a player added repair work
+ *  to a Room this tick. `repairDone`: the Room's level dropped this tick; `players` names everyone who worked on it this
+ *  tick, ascending. `fireWork`: a player worked on putting out the Room's fire. `fireOut`: the fire went out this tick,
+ *  `players` as for repairDone. `fireStart`: an enemy hit set the Room's repair room alight. */
 export type RepairEvent =
   | { kind: 'repairWork'; player: number; room: number }
-  | { kind: 'repairDone'; room: number; players: number[] };
+  | { kind: 'repairDone'; room: number; players: number[] }
+  | { kind: 'fireWork'; player: number; room: number }
+  | { kind: 'fireOut'; room: number; players: number[] }
+  | { kind: 'fireStart'; room: number };
 
 export interface DuelState {
   interior: SimState;
@@ -30,7 +35,8 @@ export interface DuelState {
   points: RepairPoint[];
   /** Station indices of the two consoles that are roles (spec §8). */
   nav: number; weapons: number;
-  /** This tick's repair events, in the order repairPhase makes them (every repairWork, then any repairDone in Room order). */
+  /** This tick's repair and fire events: every repairWork or fireWork in player order, then each Room's repairDone or
+   *  fireOut in Room order (repairPhase), then any fireStart in tactical event order (firePhase, after stepDuel). */
   events: RepairEvent[];
   /** The round module (H-2 spec §7): this round's index from 0, the player seated at the Helm when it began, the
    *  encounter tick it began on, and the tick right after its deciding step (−1 while it runs). */

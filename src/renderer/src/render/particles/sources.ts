@@ -66,13 +66,14 @@ export function sectorWorking(state: SimState, w: RepairWatch): Working[] {
   return out;
 }
 
-/** Duel working = a repairWork event for that player in the latest tick's d.events; the point is that room's repair tile. */
+/** Duel working = a repairWork (sparks) or fireWork (foam, duel-fire spec) event for that player in the latest tick's
+ *  d.events; the point is that room's repair tile. */
 export function duelWorking(d: DuelState): Working[] {
   const out: Working[] = [], width = d.interior.derived.width;
   for (const e of d.events) {
-    if (e.kind !== 'repairWork') continue;
+    if (e.kind !== 'repairWork' && e.kind !== 'fireWork') continue;
     const p = d.points.find((q) => q.tacticalRoom === e.room);
-    if (p) out.push({ pid: e.player, kind: 'repair', ...tileCentre(p.tile, width) });
+    if (p) out.push({ pid: e.player, kind: e.kind === 'fireWork' ? 'fire' : 'repair', ...tileCentre(p.tile, width) });
   }
   return out;
 }

@@ -13,6 +13,7 @@ import { stepDuel } from '../tactical/duel';
 import { Outcome } from '../tactical/state';
 import { canCharge, canLaunch, validLock, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
+import { extinguishWork, firePhase, pointBurning } from './fire';
 import { followingSeed } from './seeds';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
@@ -48,18 +49,26 @@ function attendant(d: DuelState, station: number): number {
 function conscious(d: DuelState, pid: number): boolean { return Life.state[d.interior.crew[pid]!] === LifeState.Conscious; }
 function seated(d: DuelState, pid: number): boolean { return Seated.station[d.interior.crew[pid]!]! >= 0; }
 
-/** Each standing, present, conscious player holding Interact inside a damaged room's repair room and in reach of its
- *  point. Pushes a repairWork event per worker and a repairDone event per room whose level drops (H-0c-ii-a spec §4). */
+/** Each standing, present, conscious player holding Interact inside a damaged or burning room's repair room and in reach
+ *  of its point. A burning room's workers put the fire out instead of repairing (duel-fire spec §1.4), and its repair
+ *  progress holds. Pushes a repairWork or fireWork event per worker in player order, then per Room in Room order a
+ *  repairDone when its level drops or a fireOut when its fire goes out (H-0c-ii-a spec §4). */
 function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
   const crewShip = d.tactical.systems[0], workers: number[][] = [[], [], []];
   for (let pid = 0; pid < 2; pid++) {
     if (!d.present[pid as 0 | 1] || !conscious(d, pid) || seated(d, pid) || !(held[pid] ?? NO_HELD).interactHeld) continue;
     const eid = d.interior.crew[pid]!, here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!);
-    const point = d.points.find((p) => crewShip.rooms[p.tacticalRoom]! > 0 && p.room === here && inReachOfTile(d.interior, eid, p.tile));
-    if (point) { workers[point.tacticalRoom]!.push(pid); d.events.push({ kind: 'repairWork', player: pid, room: point.tacticalRoom }); }
+    const point = d.points.find((p) => (crewShip.rooms[p.tacticalRoom]! > 0 || pointBurning(d, p)) && p.room === here && inReachOfTile(d.interior, eid, p.tile));
+    if (!point) continue;
+    workers[point.tacticalRoom]!.push(pid);
+    d.events.push({ kind: pointBurning(d, point) ? 'fireWork' : 'repairWork', player: pid, room: point.tacticalRoom });
   }
   for (const p of d.points) {
     const r = p.tacticalRoom as 0 | 1 | 2, n = workers[r]!.length;
+    if (pointBurning(d, p)) {   // the fire first; the room's repair progress stays put while it burns
+      if (n > 0 && extinguishWork(d, p, n)) d.events.push({ kind: 'fireOut', room: r, players: workers[r]! });
+      continue;
+    }
     if (crewShip.rooms[r] === 0) { d.repair[r] = 0; continue; }
     if (n === 0) continue;
     d.repair[r] += n === 1 ? REPAIR_RATE_SOLO : n * REPAIR_RATE_TEAM;
@@ -118,7 +127,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
  * only at the two role consoles; stand through today's handler; then presence); tactical commands validated against the
  * seats after the seat phase and folded into the crew's ShipInput; repair, with its events; movement for standing
- * present players; the tactical stepDuel; the interior tick. Commands apply in the order given (the authority's
+ * present players; the tactical stepDuel; fire (growth, damage, ignition from this tick's hits); the interior tick. Commands apply in the order given (the authority's
  * envelope order). Returns one result per command, sorted by player then sequence. A rematch while the round runs is
  * rejected duel-running; the step that decides the round records `decidedTick`. A decided round steps by stepDecided.
  */
@@ -177,6 +186,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   });
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
   stepDuel(d.tactical, crew);
+  firePhase(d, tick);   // duel-fire spec §1: growth and damage, then this tick's hits roll (rng.hazards)
   st.tick++;
   if (d.tactical.outcome !== Outcome.Running) d.decidedTick = st.tick;   // the snapshot tick of the first decided publication
   return results.sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence);
