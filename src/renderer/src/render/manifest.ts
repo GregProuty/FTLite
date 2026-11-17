@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LICENSES, OWNER_AUTHOR, licenseAllowed } from './licenses';
+import { isAudioName } from '../audio/soundBank';
 
 const animation = z.object({ frames: z.array(z.number().int().min(0)).min(1), fps: z.number().positive(), loop: z.boolean() });
 const sheet = z.object({
@@ -50,6 +51,12 @@ const entry = z.object({
     if (!e.retrieved) fail('paid entries need retrieved = the purchase date');
     if (!e.credit) fail('paid entries need a credit line');
   }
+  // Audio-i spec section 2: sound files bind sfx.* or music.* names, and are never required (a missing effect falls back
+  // to its synth tone; missing music is silence).
+  const soundFile = /\.(ogg|mp3)$/i.test(e.file);
+  if (isAudioName(e.name) && !soundFile) fail('audio names (sfx.*, music.*) must be bound by .ogg or .mp3 files');
+  if (soundFile && !isAudioName(e.name)) fail('.ogg and .mp3 files must bind an sfx.* or music.* name');
+  if (soundFile && e.required) fail('audio entries must be required: false (a missing sound falls back to the synth tone or silence)');
 });
 
 const manifest = z.array(entry).superRefine((all, ctx) => {
@@ -65,6 +72,13 @@ const manifest = z.array(entry).superRefine((all, ctx) => {
 
 export type ManifestEntry = z.infer<typeof entry>;
 export type Manifest = ManifestEntry[];
+
+/** Audio-i spec section 2: which loader an entry takes. Fonts install a bitmap font, audio is decoded later by
+ *  app/audio.ts, everything else is a texture. */
+export function assetKind(e: ManifestEntry): 'font' | 'audio' | 'image' {
+  if (e.name?.startsWith('font.')) return 'font';
+  return isAudioName(e.name) ? 'audio' : 'image';
+}
 
 export function parseManifest(json: unknown): Manifest {
   const r = manifest.safeParse(json);

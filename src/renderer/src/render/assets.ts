@@ -1,10 +1,13 @@
 import { Assets, Texture, Rectangle, BitmapFont, loadTextures } from 'pixi.js';
-import { parseManifest, type ManifestEntry } from './manifest';
+import { assetKind, parseManifest, type ManifestEntry } from './manifest';
+import { isAudioName } from '../audio/soundBank';
 import { ASSET_NAMES } from './assetNames';
 import { sliceGrid } from './sheet';
 
 export interface GameAnimation { textures: Texture[]; fps: number; loop: boolean }
 export interface GameNineSlice { texture: Texture; left: number; top: number; right: number; bottom: number }
+/** An audio entry's manifest name and absolute URL (Audio-i spec section 2). */
+export interface SoundSource { name: string; url: string }
 export interface GameAssets {
   has(name: string): boolean;
   texture(name: string): Texture;
@@ -12,6 +15,8 @@ export interface GameAssets {
   nineSlice(name: string): GameNineSlice;
   missing: string[];
   fontFamily: string;
+  /** The audio entries, which app/audio.ts fetches and decodes in the background; loadAssets never loads them. */
+  sounds?: readonly SoundSource[];
 }
 
 /** A required file could not be loaded: startup stops (spec §7). `files` lists every failed required file. */
@@ -47,6 +52,20 @@ async function loadJson(url: string): Promise<unknown> {
   }
 }
 
+/** A file's bytes (Audio-i spec section 2): fetch() first, then XMLHttpRequest as an arraybuffer when the packaged app's
+ *  file:// origin refuses fetch (a file:// XHR reports status 0 on success). */
+export async function loadBytes(url: string): Promise<ArrayBuffer> {
+  try { const res = await fetch(url); if (!res.ok) throw new Error(`HTTP ${res.status}`); return await res.arrayBuffer(); }
+  catch (fetchErr) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest(); xhr.open('GET', url); xhr.responseType = 'arraybuffer';
+      xhr.onload = () => { if ((xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300)) && xhr.response) resolve(xhr.response as ArrayBuffer); else reject(new Error(`Cannot load ${url}: HTTP ${xhr.status}`)); };
+      xhr.onerror = () => reject(new Error(`Cannot load ${url}: ${String(fetchErr)}`));
+      xhr.send();
+    });
+  }
+}
+
 export async function loadAssets(manifestUrl: string): Promise<GameAssets> {
   // The packaged app runs from file://, where Chromium refuses fetch(); Pixi's default ImageBitmap path uses fetch, so take the <img> path everywhere.
   if (loadTextures.config) loadTextures.config.preferCreateImageBitmap = false;
@@ -57,11 +76,14 @@ export async function loadAssets(manifestUrl: string): Promise<GameAssets> {
   const animations = new Map<string, GameAnimation>();
   const nines = new Map<string, GameNineSlice>();
   const failedRequired: string[] = [];
+  const sounds: SoundSource[] = [];
 
   for (const e of manifest) {
     const url = new URL(e.file, base).href;
+    const kind = assetKind(e);
+    if (kind === 'audio') { sounds.push({ name: e.name!, url }); continue; }   // Audio-i spec section 2: decoded later, never blocks boot
     try {
-      if (e.name?.startsWith('font.')) { await loadFont(url); continue; }
+      if (kind === 'font') { await loadFont(url); continue; }
       const tex = await loadImage(url);
       bind(e, tex, textures, animations, nines);
     } catch (err) {
@@ -72,10 +94,11 @@ export async function loadAssets(manifestUrl: string): Promise<GameAssets> {
   if (failedRequired.length) throw new AssetError(`Required assets failed to load:\n${failedRequired.join('\n')}`, failedRequired);
 
   const has = (n: string): boolean => textures.has(n) || animations.has(n) || (n === 'font.m5x7');
-  // Every optional name that did not end up loaded, whether its file failed or it was never bound in the manifest.
-  const missing = Object.keys(ASSET_NAMES).filter((n) => ASSET_NAMES[n] === 'optional' && !has(n));
+  // Every optional name that did not end up loaded, whether its file failed or it was never bound in the manifest. Audio
+  // names are the audio's to report (app/audio.ts logs what it decoded).
+  const missing = Object.keys(ASSET_NAMES).filter((n) => ASSET_NAMES[n] === 'optional' && !isAudioName(n) && !has(n));
   return {
-    has, missing, fontFamily: FONT_FAMILY,
+    has, missing, sounds, fontFamily: FONT_FAMILY,
     texture(n) { const t = textures.get(n); if (!t) throw new Error(`no texture bound to ${n}`); return t; },
     animation(n) { const a = animations.get(n); if (!a) throw new Error(`no animation bound to ${n}`); return a; },
     nineSlice(n) { const s = nines.get(n); if (!s) throw new Error(`no nineSlice for ${n}`); return s; }

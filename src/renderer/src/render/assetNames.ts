@@ -1,5 +1,6 @@
 import { STATION_IDS } from '../sim/stationKinds';
 import { CREW_ART_NAMES } from './crewArt';
+import { AUDIO_ASSET_NAMES } from '../audio/soundBank';
 
 /** Every asset name the renderer uses (spec §3 name contract). required = must be bound in the manifest; optional = may be unbound (in-house piece, Graphics fallback). */
 export const FACINGS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
@@ -34,6 +35,7 @@ add('optional', 'ship.hound.map');   // Art-iv: the 2-Minute Tabletop Hound batt
 add('optional', 'space.backdrop');   // Art-v: the 2-Minute Tabletop Deep Space (Red) backdrop; the procedural starfield without it
 add('optional', ...BLAST_NAMES);         // Art-ii spec section 3: the bought blasts; none without them
 add('optional', ...PROP_ART_NAMES);      // Art-iii spec section 1: the set dressing; bare floor without it
+add('optional', ...AUDIO_ASSET_NAMES);   // Audio-i spec section 2: the Kenney effects and the two tracks; synth tones or silence without them
 // icons (in-house)
 add('optional', 'icon.fire', 'icon.oxygen', 'icon.breach', 'icon.door', 'icon.repair', 'icon.medical', 'icon.power', 'icon.sensors', 'icon.weapons', 'icon.navigation');
 // ui (Kenney Pixel UI, Kenney 1-Bit Input Prompts)
