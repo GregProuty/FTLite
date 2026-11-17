@@ -211,3 +211,58 @@ Confirmed. Every blink alternates between two visible states, defined as a squar
 
 ---
 
+# Round 3 (delta, reviewing 274bd43, effort medium, 61 s, 160196 in / 134169 cached / 4558 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R3-F1 The bezel containment test includes labels anchored to the world (ring, lock), which can sit anywhere on screen
+Spec L64 now says the containment test covers 'every Pixi label the tactical layer places (grid columns and rows, ring, arrows, info, lock)'. The edge-anchored labels are fine to test: grid labels at max(4, …), arrows inside ARROW_MARGIN 28, and the info line at y 12. The ring and lock labels are not edge-anchored. The bearing ring's labels sit at the own ship's screen position plus (r + 22) along each bearing. The lock label follows the locked enemy room. Either one can be at the screen edge or past it in ordinary play, today and with the bezel alike. · spec L64; src/renderer/src/render/tactical/tacticalModel.ts:L177-L181 (ring labels at x + sx*(r+22) about the ship's screen point), L274 (ringDraw(ownS.x, ownS.y)); weaponsModel.ts:L87 (ring about ownS); tacticalModel.ts:L22, L188 (arrows inset by ARROW_MARGIN); tacticalModel.ts:L161 (grid labels at 4) · As written, the test is either false for some camera states, or an implementer passes it by choosing a centred fixture and believes they have proved something. Worse, they might 'fix' it by clamping ring or lock labels to the screen, which changes what the map shows (a non-goal). · Limit the containment test to edge-anchored placements: grid column and row labels, off-screen arrows and their labels, the Weapons info line, and the React overlays (readout, zoom text, scale bar, snap hint). Say that world-anchored labels (ring, lock) are clipped by the bezel exactly as they are clipped by the screen edge today, and are not clamped.
+
+### [P3] R3-F2 The chevron 'no damage' bullet is now orphaned under the Dashes paragraph
+The inserted blink and dash paragraphs split the Room damage list. The bullet 'a ship drawn as a chevron (zoomed out) shows no damage, as today' now follows the dashModel paragraph rather than the damage rules. · spec L40-L43 (Room damage list), L45, L47 (inserted paragraphs), L48 (orphaned bullet) · A plan writer reading by section could miss this rule, or attach it to dashes. · Move L48 back up, to the end of the Room damage list after L43.
+
+## Prior findings
+- R1-F5: resolved — The bezel is 3 internal px on the letterbox rectangle, inside every current inset: grid labels at max(4, …) (tacticalModel.ts:L161), READOUT_MARGIN 8, info y 12, the snap hint at H-12, and BX 16. The containment test's scope over world-anchored labels is raised as a new P2.
+- R1-F6: resolved — Spec L27-L31 now maps EDGE, stars, the black and near-black strokes (tacticalLayer.ts:L88, L95), path and velocity, heading (L165), FLAME and the turn pip, ARROW_COLOUR, the fx colours, the ring and tick DIM (L152-L153, L175-L176), the info GOOD and the lock label. L80 fixes the test method: walk context.instructions and the BitmapText tints over a full frame.
+- R2-F1: resolved — Spec L47 names dashModel.ts with dashLine, dashCircle and hatchSegments. It gives screen-pixel lengths (6/4 dashed, 1/3 dotted, hatch 4 at 45°), convex clipping without a mask, a convexity check on wedgeSegments with a triangle fallback, reused arrays and unit tests. The layer draws in screen coordinates (tacticalLayer.ts:L95, L121), so screen-pixel lengths are consistent with L43's 'units'.
+- R2-F2: resolved — Spec L51: under CRT, alert covers only own low hull, and the interior-only rows keep their tints. Spec L53: good maps to hot, which is never dimmer than a plain value, and covers enemy low hull.
+- R2-F3: resolved — Spec L45 defines every blink as a two-state square wave, floor(t*2*hz)%2, never off. The pairs are defined at L35 (ring main↔dim), L36 (enemy missile main↔hot, in phase with the ring), L41 (own level 2: glass cut-out↔hot), L42 (enemy level 2: solid hot↔main outline plus hatch) and L51 (alert: main↔hot block).
+
+## Verified
+- The 3 px bezel clears every edge inset: grid labels use Math.max(4, …) (tacticalModel.ts:L161), and arrows are inset by ARROW_MARGIN 28 (tacticalModel.ts:L22, L188, L203). The Weapons info line is at y 12 (weaponsModel.ts:L88).
+- The tactical layer draws in screen-pixel coordinates (strokes of width 1 and 2 at projected points, tacticalLayer.ts:L95-L208), so the spec's screen-pixel dash and hatch lengths can be built directly.
+- Every inline colour literal the R1-F6 evidence named is now mapped in spec L27-L31: 0x000000 at tacticalLayer.ts:L88, 0x0b1018 at L95, EDGE at L125, TEXT heading at L165, DIM ring and ticks at L152-L153 and L175-L176, and the per-effect e.colour at L206-L208.
+- The blink definitions at spec L35, L36, L41, L42, L45 and L51 each name two visible states, with nothing that turns off.
+
+## Not verified
+- I did not check whether every wedgeSegments polygon is convex. The spec delegates this to the plan and gives a fallback.
+- I did not check whether the camera can pan the own ship to the screen edge in the Helm view, which would put ring labels outside the bezel. The lock label clearly can reach the edge, because it follows the enemy.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against `274bd43`. 2 accepted, 0 rejected, 0 deferred.
+
+## R3-F1 [P2]: The containment test includes world-anchored labels
+
+Confirmed (tacticalModel.ts:L177-L181). The test now covers only edge-anchored placements. The ring and lock labels are clipped as they are today, not clamped.
+
+## R3-F2 [P3]: The chevron bullet is orphaned
+
+Confirmed. The bullet is moved back to the end of the room damage list.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-crt-map-design.md
+
+<!-- end -->
+
+---
+
