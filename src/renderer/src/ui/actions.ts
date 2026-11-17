@@ -44,7 +44,8 @@ export function createUiActions(deps: UiActionDeps) {
   const consoleActions: ConsoleInput = {
     press: (action) => consoleInput?.press(action),
     hold: (code, on) => consoleInput?.hold(code, on),
-    lock: (room) => consoleInput?.lock(room)
+    lock: (room) => consoleInput?.lock(room),
+    throttle: (level) => consoleInput?.throttle(level)
   };
 
   return {

@@ -189,3 +189,22 @@ describe('the online interior zoom camera (interior zoom spec rule 5)', () => {
     } finally { disposeDuel(d); c.dispose(); }
   });
 });
+
+describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', () => {
+  it('the Helm seat flies the replica throttle; throttle() is the session base, else the replica', () => {
+    const d = createDuel(CUTTER, 3), c = confirmed();
+    const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
+    try {
+      d.throttle = 2; c.publish(d); source.observe();
+      source.sent({ moveX: 1, moveY: -1 });
+      expect([source.axes(), source.throttle()]).toEqual([{ turn: 1, thrust: 0.5 }, 2]);
+      source.throttleBase(4);
+      expect([source.throttle(), source.axes().thrust]).toEqual([4, 0.5]);   // the drawn path follows the replica
+      source.throttleBase(null);
+      expect(source.throttle()).toBe(2);
+      const gunner = createOnlineDuelSource({ client: c.client, seat: 1, now: () => 0, viewport: { w: 1280, h: 720 } });
+      gunner.observe();
+      expect(gunner.axes()).toEqual({ turn: 0, thrust: 0 });
+    } finally { disposeDuel(d); c.dispose(); }
+  });
+});

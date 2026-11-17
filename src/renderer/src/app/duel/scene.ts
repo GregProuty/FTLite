@@ -58,6 +58,8 @@ export interface DuelViewSource {
   running(): boolean;
   /** The merged held keys and console holds of the last frame (Artemis spec §6.1). */
   uiHeld(): HeldFlags;
+  /** The Helm throttle level the console shows (Artemis spec §6.1): the local base of §5.4. */
+  throttle(): number;
 }
 /** The frame's overlays: the pause banner (null: none), whether the tactical layer dims for it, the end card, and a
  *  one-line notice (the online start's YOU: HELM). */

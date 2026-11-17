@@ -5,8 +5,9 @@
 // `cue` events still bring the sounds. Cameras belong to this machine and never become commands.
 import { Life, LifeState, Position } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
+import { throttleThrust } from '../../sim/duel/throttle';
 import { hx, hy } from '../../sim/tactical/direction';
-import { missileOf, NO_AXES, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
+import { missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { LASER_RANGE } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import type { OtherStatus } from '../../render/duel/readoutModel';
@@ -15,7 +16,7 @@ import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/int
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { repairInReach, seatOf } from './controls';
-import { helmAxes, NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
+import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
 import { createCameraInput, type DuelView } from './runtime';
 import type { DuelViewSource } from './scene';
 
@@ -80,7 +81,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[]; repair: number[] } | null = null;
   let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld = { moveX: 0, moveY: 0 };
   let cameras = { helm: createCamera(), weapons: createCamera() };
-  let uiHeld: HeldFlags = NO_HELD_FLAGS;
+  let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
   /** Observe the client: on a new publication, roll the interpolation and derive the gap's events. True when one was new. */
@@ -112,6 +113,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: { moveX: number; moveY: number }): void; heldFlags(flags: HeldFlags): void;
+    throttleBase(level: number | null): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
     get duel() { return duel(); },
@@ -131,7 +133,10 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const room = repairInReach(d, other);
       return d.present[other] && room >= 0 && workOf(d)[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';
     },
-    axes: (): Axes => (seatOf(duel(), seat) === 'helm' ? helmAxes(sentHeld) : NO_AXES),
+    axes: (): Axes => {   // Artemis spec §5.3: the held turn and the replica's throttle, while this seat flies a running round
+      const d = duel();
+      return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: Math.sign(sentHeld.moveX) || 0, thrust: throttleThrust(d.throttle) } : NO_AXES;
+    },
     steer: () => (seatOf(duel(), seat) === 'weapons' ? Math.sign(sentHeld.moveX) || 0 : 0),
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
@@ -140,6 +145,10 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     uiHeld: () => uiHeld,
     /** Only the publication phase 'running' shows the console (Artemis deviation 5). */
     running: () => client.publication()?.phase === 'running',
+    /** The level the console shows (Artemis spec §6.1): the session's level in flight, else the replica's. */
+    throttle: () => shownThrottle ?? duel().throttle,
+    /** The session's level in flight (spec §5.4's throttleSent), or null. */
+    throttleBase(level) { shownThrottle = level; },
     drainEvents() { const out = events; events = []; return out; },
     observe,
     ready: () => !!client.state() && !!client.publication(),

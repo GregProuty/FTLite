@@ -29,7 +29,7 @@ const view = (console: ConsoleView | null): DuelUiView => ({
   banners: { interior: null, tactical: null, notice: null }, overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
-  const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn() };
+  const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), throttle: vi.fn() };
   ui.actions.setConsole(input);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
   return { ...ui, duel, input };
