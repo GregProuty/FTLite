@@ -18,7 +18,7 @@ import { createOnlineModeSession } from './app/onlineModeSession';
 import { createOnlineDuelSession } from './app/duel/onlineDuel';
 import { createSessionRouter } from './app/sessionRouter';
 import { createUiStore, setLayout } from './ui/store';
-import { createDuelSink, createFlightSink } from './ui/sinks';
+import { createDuelSink, createFlightSink, createLatencySink } from './ui/sinks';
 import { computeLetterbox } from './render/letterbox';
 import { createUiActions } from './ui/actions';
 import { inputBlockedOf } from './ui/menuState';
@@ -68,18 +68,18 @@ async function startApp(): Promise<void> {
   let blocked = true;
   const win = window.ftlite?.window;
   const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
-  const duelSink = createDuelSink(store, perf);
+  const duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink,
-        onExit: () => { session.home(); actions.leaveSingle(); } });
+        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
     // Multiplayer (H-2 spec §3): the wrapper builds the duel's or the sector's session when the first port arrives.
     online: () => {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
-        duel: () => createOnlineDuelSession({ renderer, ui: duelSink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
+        duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
           leave: () => actions.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record) }),
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play })

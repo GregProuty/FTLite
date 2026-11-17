@@ -36,8 +36,8 @@ function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0, serviceOrigin =
   const owner = createOnlineSession({ config: { enabled: true, baseUrl: serviceOrigin, allowInsecureLocalhost: serviceOrigin.startsWith('http:'), iceMode: serviceOrigin.startsWith('http:') ? 'loopback' : 'turn' }, seatStore: store, mirrorStore,
     service: () => service, platform, clock: { nowMs: () => Date.now() - monotonicOrigin, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: id => clearTimeout(id as any) }, nonce: () => 'f'.repeat(32), sectorTestEntry: true });
   const savedSeat = () => ({ version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: snapshot.roomId, joinCode: snapshot.joinCode, compatibility: snapshot.compatibility, seatId: ownSeat, seatGeneration: 1, seatToken: 't'.repeat(43) });
-  const issue = (attemptId = '1'.repeat(32), guestSeatId = ownSeat === 0 ? 1 : ownSeat) => emit({ type: 'link-issued', link: { attemptId, role: ownSeat === 0 ? 'offerer' : 'answerer',
-    identity: { ...snapshot.compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration: 1, seatGeneration: snapshot.seats[guestSeatId].seatGeneration,
+  const issue = (attemptId = '1'.repeat(32), guestSeatId = ownSeat === 0 ? 1 : ownSeat, hostGeneration = 1) => emit({ type: 'link-issued', link: { attemptId, role: ownSeat === 0 ? 'offerer' : 'answerer',
+    identity: { ...snapshot.compatibility, roomId: snapshot.roomId, runId: snapshot.runId, hostGeneration, seatGeneration: snapshot.seats[guestSeatId].seatGeneration,
       localConnectionId: 'c'.repeat(32), remoteConnectionId: 'd'.repeat(32) }, localTicket: 'x'.repeat(43), expectedRemoteTicket: 'y'.repeat(43), ticketExpiresAtEpochMs: Date.now() + 30000 } });
   return { owner, service, store, mirrorStore, capture: (value: any) => capture(value), renewal: (nonce: string) => renewal({ ...leaseIdentity, nonce }), platform, host, transport, controller, order, ports, emit, issue, savedSeat, snapshot, session,
     nativeClosed: (id: string) => nativeClosed(id), transportExit: () => transportExit(), hostExit: () => hostExit('exit'), setSaved: (s: any) => { saved = s; } };
@@ -284,5 +284,34 @@ it('retains HTTPS configuration through main revalidation and acquires TURN befo
   h.issue(); await vi.waitFor(() => expect(h.controller.startAttempt).toHaveBeenCalledOnce());
   expect(h.service.getTurn).toHaveBeenCalledOnce();
   expect(h.controller.startAttempt.mock.calls[0][0]).toMatchObject({ iceServers: [{ credential: 'test' }], iceTransportPolicy: 'all' });
+  await h.owner.dispose();
+});
+it("linkStats (H-2b): a ready attempt's fresh figure, none after 5 s or for an attempt that is not ready, none from a replaced transport", async () => {
+  const h = harness(2, 1); h.snapshot.phase = 'active'; h.setSaved(h.savedSeat());
+  // Each transport its own controller, so a replaced transport's stats can be told apart.
+  const made: { stats: (attemptId: string, s: any) => void; exit: () => void }[] = [];
+  h.platform.createTransport.mockImplementation(async () => {
+    const entry = { stats: (_a: string, _s: any) => {}, exit: () => {} };
+    const controller = { ...h.controller, onStats: (cb: any) => { entry.stats = cb; return () => {}; } };
+    made.push(entry);
+    return { controller, onExit: (cb: () => void) => { entry.exit = cb; return () => {}; }, dispose: vi.fn(async () => {}) } as any;
+  });
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const first = '1'.repeat(32), second = '2'.repeat(32);
+  const reconnect = h.owner.dispatch({ type: 'reconnect' }); await vi.waitFor(() => expect(h.service.connect).toHaveBeenCalledOnce()); h.issue(first);
+  await vi.waitFor(() => expect(h.platform.publishPort).toHaveBeenCalledOnce());
+  await h.owner.dispatch({ type: 'view-state', epoch: h.owner.status().attachmentEpoch, phase: 'running' }); await reconnect;
+  expect(h.owner.linkStats!()).toBeNull();
+  made[0]!.stats(first, { route: 'lan', rttMs: 12 });
+  expect(h.owner.linkStats!()).toEqual({ route: 'lan', rttMs: 12 });
+  vi.setSystemTime(Date.now() + 5001); expect(h.owner.linkStats!()).toBeNull();   // gone quiet
+  made[0]!.stats('9'.repeat(32), { route: 'lan', rttMs: 15 }); expect(h.owner.linkStats!()).toBeNull();   // not among peers.ready()
+  made[0]!.stats(first, { route: 'internet', rttMs: 30 }); expect(h.owner.linkStats!()).toEqual({ route: 'internet', rttMs: 30 });
+  // A new host generation: the same session follows it on a new transport (its old subscription is never removed here).
+  h.snapshot.hostGeneration = 2; h.emit({ type: 'host-changed', snapshot: h.snapshot }); await vi.waitFor(() => expect(h.service.connect).toHaveBeenCalledTimes(2));
+  h.issue(second, 1, 2); await vi.waitFor(() => expect(h.platform.publishPort).toHaveBeenCalledTimes(2));
+  expect(made).toHaveLength(2);
+  made[0]!.stats(second, { route: 'lan', rttMs: 5 }); expect(h.owner.linkStats!()).toBeNull();   // the retired transport's figure is ignored
+  made[1]!.stats(second, { route: 'internet', rttMs: 80 }); expect(h.owner.linkStats!()).toEqual({ route: 'internet', rttMs: 80 });
   await h.owner.dispose();
 });

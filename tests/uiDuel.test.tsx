@@ -6,7 +6,7 @@ import { memo } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { UiContext, useUi } from '../src/renderer/src/ui/context';
 import { UiRoot } from '../src/renderer/src/ui/UiRoot';
-import { createDuelSink, createFlightSink } from '../src/renderer/src/ui/sinks';
+import { createDuelSink, createFlightSink, createLatencySink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
 import { READOUT_COLUMN } from '../src/renderer/src/render/duel/interiorModel';
@@ -40,6 +40,16 @@ describe('the render rule', () => {
     const { duel } = mount(true);
     act(() => duel.frame(view({ readout: null as never })));
     expect(document.querySelector('[data-testid="session-menu"]')).not.toBeNull(); expect(find('HULL')).toBeUndefined();
+  });
+});
+
+describe('the F3 latency overlay (H-2b)', () => {
+  it('draws its lines top-left over the duel while set, and nothing without a duel region', () => {
+    const { duel, store } = mount(), latency = createLatencySink(store);
+    act(() => latency.frame(['LATENCY  LAN   F3: HIDE', 'RTT 3 MS'])); expect(find('RTT 3 MS')).toBeUndefined();
+    act(() => duel.frame(view()));
+    expect(find('LATENCY  LAN   F3: HIDE')).toMatchObject({ x: 12, y: 12 }); expect(find('RTT 3 MS')).toMatchObject({ x: 12, y: 28 });
+    act(() => latency.clear()); expect(find('RTT 3 MS')).toBeUndefined(); expect(find('HULL')).toBeDefined();
   });
 });
 

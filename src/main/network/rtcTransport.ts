@@ -4,12 +4,15 @@ import { isRtcAttemptOptions, isRtcResponse, isRtcSignal, RTC_MAX_ATTEMPTS, RTC_
   type RtcAttemptOptions, type RtcRequest, type RtcSignal } from '../../shared/rtcSession';
 
 type Unsubscribe = () => void;
+export interface RtcLinkStats { rttMs: number; route: 'lan' | 'internet' }
 export type { RtcAttemptOptions } from '../../shared/rtcSession';
 export interface TransportController {
   startAttempt(options: RtcAttemptOptions, port: MessagePortMain): Promise<{ latestPayloadLimit: number }>;
   receiveSignal(signal: RtcSignal): Promise<void>;
   onSignal(callback: (signal: RtcSignal) => void): Unsubscribe;
   onAttemptClosed(callback: (attemptId: string) => void): Unsubscribe;
+  /** A ready attempt's link figures (H-2 spec §8), about once a second: its RTT and route label. */
+  onStats?(callback: (attemptId: string, stats: RtcLinkStats) => void): Unsubscribe;
   closeAttempt(attemptId: string): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -24,6 +27,7 @@ export function createRtcTransport(identity: HostIdentity, wire: RtcTransportWir
   let disposed = false, nextId = 0;
   const usedIds = new Set<string>(), observers = new Set<(signal: RtcSignal) => void>();
   const closedObservers = new Set<(attemptId: string) => void>();
+  const statsObservers = new Set<(attemptId: string, stats: RtcLinkStats) => void>();
   type Attempt = { id: string; generation: number; remote: string; port: MessagePortMain; portReady: boolean; ready: boolean;
     resolve(value: { latestPayloadLimit: number }): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
   const attempts = new Map<string, Attempt>();
@@ -55,6 +59,11 @@ export function createRtcTransport(identity: HostIdentity, wire: RtcTransportWir
     if (value.kind === 'ready') {
       if (!entry.portReady || entry.ready) { fail(entry); return; }
       entry.ready = true; clearTimeout(entry.timer); entry.resolve({ latestPayloadLimit: value.latestPayloadLimit }); return;
+    }
+    if (value.kind === 'stats') {
+      if (!entry.ready) return;
+      for (const callback of [...statsObservers]) { try { callback(entry.id, { rttMs: value.rttMs, route: value.route }); } catch {} }
+      return;
     }
     if (value.kind === 'signal') {
       for (const callback of [...observers]) { try { callback(value.signal); } catch { fail(entry); break; } }
@@ -105,6 +114,10 @@ export function createRtcTransport(identity: HostIdentity, wire: RtcTransportWir
       if (!disposed) { if (closedObservers.size >= 64) throw Error('rtc-observer-capacity'); closedObservers.add(callback); }
       return () => { closedObservers.delete(callback); };
     },
+    onStats(callback) {
+      if (!disposed) { if (statsObservers.size >= 64) throw Error('rtc-observer-capacity'); statsObservers.add(callback); }
+      return () => { statsObservers.delete(callback); };
+    },
     closeAttempt(attemptId) {
       const entry = attempts.get(attemptId); if (!entry || disposed) return Promise.resolve();
       retire(entry, 'rtc-cancelled');
@@ -114,7 +127,7 @@ export function createRtcTransport(identity: HostIdentity, wire: RtcTransportWir
       if (disposed) return; disposed = true; off();
       for (const entry of [...attempts.values()]) { retire(entry, 'rtc-disposed'); notifyClose(entry); }
       for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('rtc-disposed')); } pending.clear();
-      observers.clear(); closedObservers.clear(); usedIds.clear(); wire.dispose();
+      observers.clear(); closedObservers.clear(); statsObservers.clear(); usedIds.clear(); wire.dispose();
     }
   };
 }

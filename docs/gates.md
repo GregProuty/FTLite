@@ -754,3 +754,26 @@ Spec `docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md`, plan `d
 - [ ] Automated (Art-iii): `npm test` passes, including the room kinds (Cutter, Skiff, starter and the generic rules), the candidates (none on or next to a station, door, magazine; none next to a breach or airlock; no spawn or lamp tile), the slots (deterministic, never touching, the fit rule, nothing past a wall, the Cutter and Skiff pinned), the prop layer (placement through consolePlacement, directly over the tiles in both views, rebuilt only on its key, empty without propArt), the manifest entries and the unchanged palette counts; `npx tsc -b` clean.
 - [ ] Owner-local palette check (needs the packs in `C:\Users\djuar\FTLite-assets`): `npm run art:palette` then `npm run art:import` leaves `git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json` clean.
 - [ ] Owner look gate (`npm run dev`, and the screenshots in `C:\Users\djuar\FTLite-shots\art-iii\`): do the rooms read as lived-in, and do any props sit where crew walk in a way that looks wrong? Known look points: the Cutter's Crew Quarters bunk at the north wall sits behind the crew at their spawns; the Galley's locker and couch touch end to end on the east side. Date and notes: pending.
+
+## Helm demo (Helm spec §16; H-2 spec §8 to §11)
+
+**The rule (Helm spec §16, verbatim):** "The demo is done when 4 of 5 are yes across 3 sessions, at least one with a pair other than the owner, and the live telemetry targets hold (3 to 5 minutes; wins and losses both happen across sessions; both weapons used in every duel)."
+
+**Status: not done.** The automated gates below prove the pipeline. The sessions are the owner's; no session has been recorded yet.
+
+- **Records.** Every decided round writes one playtest record on each machine to `userData/playtest/duel-YYYY-MM-DD.jsonl`. An online round writes `session: 'online'`; Single player writes `session: 'solo'`. The host's own records read `transport: loopback`. The guest's records read `lan` (a direct local candidate pair) or `internet` (through a NAT or TURN), from the hidden RTC window's selected pair, and null when the route cannot be told (the report reads it as unknown). `latency.rttMs` is the round's median RTT from the same stats. Records never carry a token, code, address or candidate.
+- **F3** shows the live latency overlay on either machine of an online duel: the route, the held and command delay (count, median, p95, max over the last 300 samples) and the RTT.
+- **The report.** `npx tsx scripts/duel-playtest-report.ts <files or directories ...> [--checklist=<file>]` merges both machines' files into rooms and prints the following:
+  - the rule above, with its evaluation from the owner's checklist JSON (three sessions with at least 4 of 5 yes, one of them a non-owner pair);
+  - the live targets (median round length 3 to 5 minutes, both outcomes, the crew's laser and missile used in every round) and the H-0 extra (no round lost to the planet in under 30 s), over the rooms the checklist's sessions list, with the rooms no session claims and any listed room the records lack (without a checklist, over every online round, with a warning);
+  - the rooms, the §9 latency table (one row per record), and the three H-2c fallback checks;
+  - the solo rounds, reported apart;
+  - a blank checklist with one session per room.
+
+  Answer each session's five questions as `true` or `false`, set `pair`, `guestHelmQ1` (question 1 for the guest-Helm round) and `helmLaggy`, merge the rooms of one sitting into one session, and save it as `checklist.json` beside the records.
+- **Automated evidence (H-2b).** Run `npm run test:duel-app-runtime -- --report-path=out/h2b-duel-app/duel-app.json`. It also asserts the host's records read loopback and the guest's read lan with an RTT. It saves F3 screenshots and copies both machines' records to `out/h2b-duel-app/records/`. Then run `npx tsx scripts/duel-playtest-report.ts out/h2b-duel-app/records/host out/h2b-duel-app/records/guest`. The smoke's single round is the 25 s test-seed round, so its report fails the live targets by design. It proves the merge, the labels and the table, not the demo. Under automation the unfocused window's timers are throttled, so the smoke's held-delay figures are not a latency measurement.
+- **Owner-only.** First redeploy the signalling service (the deployed one is SIM 35) and install the same candidate on both PCs. Then run the LAN and internet checklists (H-2 spec §10), each with a guest-Helm round, and then the §16 sessions: three sessions, at least one pair other than the owner. Paste the report here and into a playtest report under `reports/`.
+
+| Session | Date | Network | Pair | Q1-Q5 | Guest-Helm Q1 | Helm laggy | Rooms |
+|---|---|---|---|---|---|---|---|
+| none yet | | | | | | | |

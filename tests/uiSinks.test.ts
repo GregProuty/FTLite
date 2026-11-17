@@ -2,7 +2,7 @@
 // null -> non-null, and clear() back to null.
 import { describe, expect, it } from 'vitest';
 import { createUiStore, setLayout } from '../src/renderer/src/ui/store';
-import { createDuelSink, createFlightSink } from '../src/renderer/src/ui/sinks';
+import { createDuelSink, createFlightSink, createLatencySink } from '../src/renderer/src/ui/sinks';
 import { mapOverlayOf, type DuelUiView, type FlightUiView } from '../src/renderer/src/ui/views';
 
 const banners = { interior: null, tactical: null, notice: null };
@@ -29,6 +29,17 @@ describe('the flight sink', () => {
     const view: FlightUiView = { feel: [['SPEED', '1 u/s']], banners, overlay: mapOverlayOf({ zoomText: 'ZOOM 1.00', scaleBar: { px: 80, units: 500 }, snapHint: false, paused: true }) };
     sink.frame(view); expect(store.getState().flight!.overlay).toEqual({ zoomText: 'ZOOM 1.00', scaleBar: { px: 80, units: 500 }, snapHint: false });
     expect(store.getState().epochs.flight).toBe(1); sink.clear(); expect(store.getState().flight).toBeNull();
+  });
+});
+
+describe('the latency sink (H-2b F3 overlay)', () => {
+  it('writes changed lines, skips equal ones and clears to null without touching the duel slice or epochs', () => {
+    const store = createUiStore({ onlineAvailable: false }), sink = createLatencySink(store); let writes = 0; store.subscribe(() => { writes++; });
+    expect(store.getState().latency).toBeNull();
+    sink.frame(['LATENCY  LAN', 'RTT 3 MS']); sink.frame(['LATENCY  LAN', 'RTT 3 MS']); expect(writes).toBe(1);
+    sink.frame(['LATENCY  LAN', 'RTT 4 MS']); expect(writes).toBe(2); expect(store.getState().latency).toEqual(['LATENCY  LAN', 'RTT 4 MS']);
+    sink.clear(); sink.clear(); expect(writes).toBe(3); expect(store.getState().latency).toBeNull();
+    expect(store.getState().duel).toBeNull(); expect(store.getState().epochs).toEqual({ duel: 0, flight: 0 });
   });
 });
 

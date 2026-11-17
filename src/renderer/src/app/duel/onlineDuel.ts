@@ -2,7 +2,8 @@
 // authority through the port main hands it (the host's renderer and each guest alike), keeps the duel stream client and
 // its view source, draws the same scene as Single player, and turns this seat's keyboard into held frames and commands
 // at 60 Hz, independently of Pixi. Keyboard and mouse only; Tab does nothing online (one character per machine). Each
-// decided round is written as a playtest record through the preload.
+// decided round is written as a playtest record through the preload, with the link's route and RTT read from main
+// about once a second (H-2b); F3 shows the live latency overlay over the scene.
 import type { OnlinePortDescriptor, OnlinePreloadApi, OnlineStatus } from '../../../../shared/onlineSession';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import { createPortLink } from '../../../../network/portLink';
@@ -19,24 +20,29 @@ import { Outcome } from '../../sim/tactical/state';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { computeLetterbox } from '../../render/letterbox';
 import { endModel } from '../../render/duel/endModel';
+import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../render/duel/latencyOverlay';
 import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
 import { createDuelKeyboard, createPointerSource, emptyPresses, type EventSource, type KeySample } from './input';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
-import type { DuelSink } from '../../ui/sinks';
+import type { DuelSink, LatencySink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
 
 export interface OnlineDuelDeps {
   renderer: Renderer; ui: DuelSink; now(): number; scheduler: Scheduler; contentDigest: string; resolveLayout(id: string): ShipLayout;
-  api: Pick<OnlinePreloadApi, 'viewState'>;
+  /** The F3 latency overlay's React sink (H-2b Decision 5): frame(lines) shows it, clear() hides it; absent, no overlay. */
+  latency?: LatencySink;
+  api: Pick<OnlinePreloadApi, 'viewState' | 'linkStats'>;
   /** Leave the online session as the menu's Leave does (Escape on the end card, then Enter). */
   leave(): void;
   playCue?(cue: Cue): void;
   recordDuel?(record: DuelPlaytestRecord): Promise<boolean> | void;
 }
 const NOTICE_MS = 3000;
+/** How often the session asks main for the link's figures, and how many recent samples the F3 overlay reads. */
+export const LINK_POLL_MS = 1000, LIVE_SAMPLES = 300;
 const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut } });
 /** The session phases a Leave passes through, which show "LEAVING…" over the frozen view rather than CONNECTION LOST. */
 const LEAVING_PHASES: readonly string[] = ['saving', 'idle', 'ended'];
@@ -72,6 +78,22 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), chargePressed = false, releaseSentAt = -1, cancel = () => {}, offClose = () => {};
   let lastHeld = { moveX: 0, moveY: 0, interactHeld: false };
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
+  // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
+  const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
+  let route: 'lan' | 'internet' | null = null, rttMs: number | null = null, lastPoll = -Infinity, polling = false;
+  const sample = (round: number[], recent: number[], ms: number): void => { round.push(ms); recent.push(ms); if (recent.length > LIVE_SAMPLES) recent.shift(); };
+  const transport = (): DuelPlaytestRecord['transport'] => (status?.role === 'host' ? 'loopback' : route);
+  function pollLink(): void {
+    const now = deps.now();
+    if (!deps.api.linkStats || polling || now - lastPoll < LINK_POLL_MS) return;
+    polling = true; lastPoll = now;
+    void deps.api.linkStats().then((s) => {
+      if (disposed) return;
+      // No figure now: the label stays (Decision 4), the live RTT does not.
+      if (!s) { rttMs = null; return; }
+      route = s.route; rttMs = s.rttMs; roundRtt.push(s.rttMs); if (roundRtt.length > 4096) roundRtt.shift();
+    }, () => {}).finally(() => { polling = false; });
+  }
   function sampleIdle(): KeySample { return { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }; }
   // Once the link has closed the frozen copy is the view, whatever the closed client still holds.
   const state = (): DuelState | null => (linkClosed ? null : client?.state()) ?? frozen;
@@ -105,10 +127,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   function record(summary: DuelRoundRecord): void {
     const d = state(); if (!d || !descriptor) return;
-    const r: DuelPlaytestRecord = { version: 1, session: 'online', role: status?.role === 'host' ? 'host' : 'guest', transport: status?.role === 'host' ? 'loopback' : null,
+    const r: DuelPlaytestRecord = { version: 1, session: 'online', role: status?.role === 'host' ? 'host' : 'guest', transport: transport(),
       seat: descriptor.seatId as 0 | 1, helmPlayer: d.helmPlayer, seed: summary.seed, round: summary.round, startedAtIso,
-      // rttMs is null in H-2a: the renderer's port link has no network RTT (H-2b reads the RTC window's stats).
-      summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: null },
+      // The RTT is the median of the round's samples from the RTC window's stats (null when main reported none).
+      summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: latencyFigure(roundRtt.splice(0)).median },
       // Per round: the disconnects and pauses since the last record (the first attach is not a disconnect).
       jitter: arrivalJitter([...roundGaps.splice(0), ...(source?.takeArrivals() ?? [])]), disconnects: Math.max(0, attaches - roundAttaches), pauses: pauses - roundPauses };
     heldSamples.length = 0; commandSamples.length = 0; roundAttaches = Math.max(1, attaches); roundPauses = pauses; startedAtIso = new Date().toISOString();
@@ -125,10 +147,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
     if (synced && p.phase !== lastPhase) { if (p.phase === 'paused' && lastPhase === 'running') pauses++; lastPhase = p.phase; if (p.phase !== 'error') hint(p.phase); }
     const now = deps.now();
-    if (fresh) while (heldStamps.length && heldStamps[0]!.sequence <= p.heldHighWater[descriptor.seatId]!) heldSamples.push(now - heldStamps.shift()!.at);
+    if (fresh) while (heldStamps.length && heldStamps[0]!.sequence <= p.heldHighWater[descriptor.seatId]!) sample(heldSamples, liveHeld, now - heldStamps.shift()!.at);
     for (const result of client.takeResults()) {
       const at = result.id.player === descriptor.seatId ? commandStamps.get(result.id.sequence) : undefined;
-      if (at !== undefined) { commandStamps.delete(result.id.sequence); if (result.status === 'applied') commandSamples.push(now - at); }
+      if (at !== undefined) { commandStamps.delete(result.id.sequence); if (result.status === 'applied') sample(commandSamples, liveCommand, now - at); }
     }
     for (const event of client.takeEvents()) {
       if (event.payload.kind === 'cue') deps.playCue?.(event.payload.cue);
@@ -162,7 +184,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   function pump(): void {
     if (disposed) return;
-    observe();
+    observe(); pollLink();
     const k = keyboard.sample();
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut } };
     const d = client?.state(), p = client?.publication();
@@ -221,17 +243,21 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     setInputBlocked(value: boolean): void { if (blocked === value) return; blocked = value; if (value) stopInput(); },
     pause(): void { const p = client?.publication(); if (focused && synced && client && !linkClosed && p && (p.phase === 'running' || p.phase === 'paused')) send({ kind: 'setPaused', paused: p.phase === 'running' }); },
     frame(): void {
-      if (disposed || !scene || !source) return;
+      if (disposed) return;
+      // Nothing to draw: hide the overlay rather than freeze it.
+      if (!scene || !source) { deps.latency?.clear(); return; }
       const now = deps.now(), dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 1 / 60; lastFrame = now;
-      const d = state(); if (!d) return;
+      const d = state(); if (!d) { deps.latency?.clear(); return; }
       source.frame(dt, focused && !blocked ? cameraKeys : null, focused && !blocked ? pointer.sample() : null);
       cameraKeys = keysOnly(sampleIdle());
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
       scene.draw(source, dt, { banner: bannerText(), layerPaused: false, end: endModel(d.tactical.outcome, ticks, 'ENTER: REMATCH   ESC: LEAVE'), notice: now < noticeUntil ? notice : null });
+      if (debug.on()) deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs }));
+      else deps.latency?.clear();
     },
     dispose(): void {
       if (disposed) return; disposed = true; cancel(); release();
-      keyboard.destroy(); pointer.destroy(); scene?.dispose(); scene = null;
+      keyboard.destroy(); pointer.destroy(); debug.destroy(); deps.latency?.clear(); scene?.dispose(); scene = null;
       if (frozen) disposeDuel(frozen); frozen = null;
     }
   };
