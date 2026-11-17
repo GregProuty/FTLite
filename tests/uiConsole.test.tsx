@@ -60,6 +60,19 @@ describe('the console screen (spec §2)', () => {
 });
 
 describe('the Weapons block layout', () => {
+  it('the charge bar ends before the right-anchored HOLD value starts, at the longest value too', () => {
+    const { duel } = mount();
+    const withValue = (value: string) => view({ ...weaponsConsole, weapons: { ...weaponsConsole.weapons!, charge: { ...charge, value } } });
+    act(() => duel.frame(withValue('HOLD 1.5')));
+    const v = find('HOLD 1.5')!, barRight = STATION.x + 8 + 84 + 96;
+    expect(barRight).toBeLessThan(v.x - textPx('HOLD 1.5'));
+    expect(barRight + 4).toBeLessThanOrEqual(v.x - textPx('HOLD 9.9'));
+  });
+  it('the online notice centres on the console map span, not the old play centre', () => {
+    const { duel } = mount();
+    act(() => duel.frame({ ...view(weaponsConsole), banners: { interior: null, tactical: null, notice: 'YOU: WEAPONS' } }));
+    expect(find('YOU: WEAPONS')!.x).toBe(676);
+  });
   it('FLYING ends before the LAUNCH button starts', () => {
     const { duel } = mount();
     act(() => duel.frame(view({ ...weaponsConsole, weapons: { ...weaponsConsole.weapons!, missileFlying: true } })));

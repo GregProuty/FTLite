@@ -298,14 +298,23 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
 });
 
 describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => {
-  it('a lock click at Weapons sends laserLock to that room; a click on the current lock sends nothing', () => {
+  it('a lock click at Weapons sends laserLock to that room', () => {
     let input: ConsoleInput | null = null;
     const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();   // seat 1 sits at Weapons
     const locks = () => c.commands().filter((x) => x.kind === 'laserLock');
     input!.lock(2); r.pump();
     expect(locks()).toEqual([{ kind: 'laserLock', room: 2 }]);
-    input!.lock(r.d.tactical.systems[0].lock); r.pump();
+    input!.lock(7); r.pump();   // out of range: nothing
     expect(locks()).toHaveLength(1);
+    r.dispose();
+  });
+  it('two lock clicks in successive pumps before any new publication both send, in order (no comparison with the confirmed lock)', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const confirmed = r.d.tactical.systems[0].lock, other = confirmed === 2 ? 1 : 2;
+    input!.lock(other); r.pump();
+    input!.lock(confirmed); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'laserLock')).toEqual([{ kind: 'laserLock', room: other }, { kind: 'laserLock', room: confirmed }]);
     r.dispose();
   });
   it("calls setConsole with its keyboard's ui on creation and with null on dispose", () => {

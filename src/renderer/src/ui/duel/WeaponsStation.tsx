@@ -26,7 +26,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons }: { weapon
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
       <PixelText text="LASER" x={x0} y={y0} size={FONT_NATIVE} tint={dim} />
       <PixelText text={c.label} x={x0} y={y0 + 18} size={FONT_SIZE} tint={main} />
-      <Bar x={x0 + 84} y={y0 + 30} w={120} h={6} fill={c.bar?.fill ?? 0} colour={barColour} />
+      <Bar x={x0 + 84} y={y0 + 30} w={96} h={6} fill={c.bar?.fill ?? 0} colour={barColour} />
       <PixelText text={c.value} x={right} y={y0 + 18} size={FONT_SIZE} tint={main} anchorX={1} />
       <Button name="fire" label="FIRE" hint="SPC" x={x0} y={y0 + 48} w={132} h={24} lit={weapons.fireHeld} onHold={(on) => actions.console.hold('Space', on)} />
       <PixelText text="LOCK" x={x0} y={y0 + 80} size={FONT_NATIVE} tint={main} />

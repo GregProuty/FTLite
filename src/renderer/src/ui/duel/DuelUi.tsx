@@ -12,6 +12,8 @@ import { EndCard } from './EndCard';
 import { LatencyOverlay } from './LatencyOverlay';
 import { MapOverlay } from './MapOverlay';
 import { HelmStation } from './HelmStation';
+import { INTERNAL_W } from '../../../../shared/resolution';
+import { CONSOLE_RESERVE } from '../../render/duel/consoleLayout';
 import { ReadoutPanel } from './ReadoutPanel';
 import { SideColumn } from './SideColumn';
 import { TabStrip } from './TabStrip';
@@ -30,7 +32,7 @@ export function DuelUi() {
           {duel.console?.side && <SideColumn side={duel.console.side} />}
           {duel.console?.helm && <HelmStation helm={duel.console.helm} />}
           {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} />}
-          <Banners banners={duel.banners} />
+          <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />
         </CrtGlow>
         <CrtScreen />
       </CrtProvider>

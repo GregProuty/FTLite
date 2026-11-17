@@ -178,7 +178,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       send({ kind: 'laserLock', room });
     }
-    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2 && k.lockTo !== d.tactical.systems[0].lock) send({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
+    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
     // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent,
     // a release swallowed by a pause included (Space let go while paused leaves chargePressed set).
     const held = d.tactical.systems[0].fireHeld, now = deps.now();

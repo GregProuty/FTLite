@@ -15,14 +15,14 @@ export type ButtonLook = 'idle' | 'hover' | 'lit' | 'disabled';
 export function buttonColours(look: ButtonLook, crt: boolean): { outline: number; fill: number | null; text: number } {
   if (crt) {
     if (look === 'lit') return { outline: CRT.main, fill: CRT.main, text: CRT.glass };
-    if (look === 'hover') return { outline: CRT.main, fill: null, text: CRT.hot };
-    if (look === 'disabled') return { outline: CRT.faint, fill: null, text: CRT.faint };
-    return { outline: CRT.mid, fill: null, text: CRT.main };
+    if (look === 'hover') return { outline: CRT.main, fill: CRT.glass, text: CRT.hot };
+    if (look === 'disabled') return { outline: CRT.faint, fill: CRT.glass, text: CRT.faint };
+    return { outline: CRT.mid, fill: CRT.glass, text: CRT.main };
   }
   if (look === 'lit') return { outline: AMBER, fill: AMBER, text: PANEL_FILL };
-  if (look === 'hover') return { outline: AMBER, fill: null, text: AMBER };
-  if (look === 'disabled') return { outline: BAR_OFF, fill: null, text: DIM };
-  return { outline: DIM, fill: null, text: TEXT };
+  if (look === 'hover') return { outline: AMBER, fill: PANEL_FILL, text: AMBER };
+  if (look === 'disabled') return { outline: BAR_OFF, fill: PANEL_FILL, text: DIM };
+  return { outline: DIM, fill: PANEL_FILL, text: TEXT };
 }
 
 export interface ButtonProps { name: string; x: number; y: number; w: number; h: number; label: string; hint?: string; lit?: boolean; disabled?: boolean; onPress?(): void; onHold?(on: boolean): void }

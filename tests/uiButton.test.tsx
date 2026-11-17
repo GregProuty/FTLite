@@ -18,6 +18,9 @@ function mount(el: React.ReactElement) {
 describe('Button (spec §3)', () => {
   it('colours by look and screen', () => {
     expect(buttonColours('lit', true)).toEqual({ outline: CRT.main, fill: CRT.main, text: CRT.glass });
+    for (const look of ['idle', 'hover', 'disabled'] as const) {
+      expect(buttonColours(look, true).fill).toBe(CRT.glass); expect(buttonColours(look, false).fill).toBe(PANEL_FILL);
+    }
     expect(buttonColours('disabled', true)).toMatchObject({ outline: CRT.faint, text: CRT.faint });
     expect(buttonColours('lit', false)).toEqual({ outline: AMBER, fill: AMBER, text: PANEL_FILL });
   });
