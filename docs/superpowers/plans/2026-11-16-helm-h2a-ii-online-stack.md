@@ -46,7 +46,9 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 5. **The steward is a minimal loopback producer** **(rec.)**: it reads only its seat's publications and results from the duel codec, never a replica, and sends `presence {present: false}` with `commandHighWater + 1` at the first completed boundary while the run is running; receive-time admission restamps it. It holds no memory, so the duel's controller memory stays empty.
 6. **A seat with no attachment gets a steward, from the start** (spec §6): the seats are vacant until the renderers attach (the host's own port after the bootstrap, the guest when its link is ready), so their characters go away until each client's first command, `presence {present: true}`, brings them back (H-2a-iii sends it on every attach).
 7. **A lost peer** is a bound attachment with origin `'remote'` that goes; its seat's steward owes the `peer-lost` pause, requested through `ProducerOptions.pause` (the same lifecycle pause `ModeHost.pause` uses) once the presence result is applied. A later human for the seat clears the debt; a `'local'` attachment, or one with no origin, never pauses.
-8. **The ten-seed test drives at the publication rate** **(rec.)**: each seat's scripted pair reads its own client's replica on each new publication and sends its own player's held input (when it changed) and commands through that client, at 20 Hz as the sender publishes. Every seed reaches an outcome within the gate cap; both replicas then hash as the authority's state, the journal since the last baseline replays to its final hash, no result is `stale-tick`, and both clients' round records match the authority's accumulator.
+8. **The ten-seed test drives at the publication rate** **(rec.)**: each seat's scripted pair reads its own client's replica on each new publication and sends its own player's held input on every one (every 50 ms, inside the 250 ms receive-time watchdog, so a held thrust, turn or repair is never neutralised) and its commands, through that client, at 20 Hz as the sender publishes. Every seed reaches an outcome within the gate cap; both replicas then hash as the authority's state, the journal since the last baseline replays to its final hash and holds no watchdog frame, no result is `stale-tick`, and both clients' round records equal the authority's (`duelRoundRecord` over the session's summary); across the ten seeds the crew ship releases its laser at least once, which a passive crew cannot.
+9. **The replica adapter closes over the mode's layout and digest** **(rec.; spec §4 gives `load(layout, snapshot, digest)` and `restore(replica, snapshot, digest)`)**: `ReplicaAdapter` is `load(snapshot)` and `restore(replica, snapshot)`, each mode closing over its own layout resolver and content digest; the `supported(publication)` option carries the snapshot format and version check that `clientRun.ts` had inline.
+10. **The ten-seed rig composes the authority and the producers by hand** **(rec.; spec §10 says a duel mode host from `authorityModes`)**: `tests/helpers/onlineDuel.ts` builds `createEncounterAuthority` and `createDuelProducers` itself, because the tests need `authority.replay()` and the duel session (`forceHunterDown`), which `ModeHost` does not expose. The `ModeHost` path (`duelMode.createHost`: the pause closure, the origin pass-through, the stream attachment options) is covered by the wiring test in `tests/duelProducers.test.ts`.
 
 ## File structure
 
@@ -63,6 +65,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 | `tests/streamClient.test.ts`, `tests/duelRemoteClient.test.ts`, `tests/duelProducers.test.ts`, `tests/duelOnline.test.ts` | **Create:** the tests |
 | `tests/helpers/linkPair.ts`, `tests/helpers/onlineDuel.ts` | **Create:** queued link pairs and the headless online duel rig |
 | `tests/networkBoundary.test.ts` | **Modify:** two mode files join the allowed list |
+| `build/contentDigest.ts`, `tests/contentDigest.test.ts` | **Modify:** `streamClient.ts` and `duelClient.ts` join the content digest and its fixture |
 
 ---
 
@@ -71,6 +74,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 **Files:**
 - Create: `src/renderer/src/clientControl/streamClient.ts`, `src/renderer/src/clientControl/duelClient.ts`, `tests/streamClient.test.ts`
 - Replace: `src/renderer/src/clientControl/clientRun.ts`
+- Modify: `build/contentDigest.ts`, `tests/contentDigest.test.ts`
 
 **Interfaces:**
 - Produces:
@@ -554,10 +558,46 @@ export function createDuelStreamClient(link: Link, owned: readonly PlayerId[], o
 export type DuelStreamClient = ReturnType<typeof createDuelStreamClient>;
 ````
 
-- [ ] **Step 5: Run the new test, the sector's client suites unedited, and the typecheck**
+- [ ] **Step 4b: The two client files join the content digest**
+
+The client's protocol logic moves out of `clientRun.ts`, which the digest names, so the two new files are named beside it.
+
+In `build/contentDigest.ts`, replace:
+
+````ts
+    'src/renderer/src/net/codec.ts', 'src/renderer/src/net/receivePolicy.ts', 'src/renderer/src/clientControl/clientRun.ts', 'src/shared/hostProcessProtocol.ts'
+````
+
+with:
+
+````ts
+    'src/renderer/src/net/codec.ts', 'src/renderer/src/net/receivePolicy.ts', 'src/renderer/src/clientControl/clientRun.ts', 'src/renderer/src/clientControl/streamClient.ts',
+    'src/renderer/src/clientControl/duelClient.ts', 'src/shared/hostProcessProtocol.ts'
+````
+
+In `tests/contentDigest.test.ts` (each listed path must exist in the fixture root, since the digest reads every one), replace:
+
+````ts
+  'src/renderer/src/clientControl/clientRun.ts': 'export const activation = 1;\n'
+};
+````
+
+with:
+
+````ts
+  'src/renderer/src/clientControl/clientRun.ts': 'export const activation = 1;\n',
+  'src/renderer/src/clientControl/streamClient.ts': 'export const streamClient = 1;\n',
+  'src/renderer/src/clientControl/duelClient.ts': 'export const duelClient = 1;\n'
+};
+````
+
+- [ ] **Step 5: Run the new test, the sector's client suites unedited, the digest test, and the typecheck**
 
 Run: `npx vitest run tests/streamClient.test.ts`
 Expected: PASS, 4 tests in 1 file. The compile-time test is the `@ts-expect-error` line: `npm run typecheck` fails if a duel stream client builds with the sector codec.
+
+Run: `npx vitest run tests/contentDigest.test.ts`
+Expected: PASS, 36 tests in 1 file (two more `invalidates when … changes` cases, one per new path).
 
 Run: `npx vitest run tests/onlineNeutralization.test.ts tests/sectorStream.test.ts tests/onlineRenderer.test.ts tests/botClient.test.ts tests/bot.test.ts tests/netParity.test.ts tests/boundary.test.ts`
 Expected: PASS, 201 tests in 7 files, none of them edited.
@@ -568,7 +608,7 @@ Expected: exit 0.
 - [ ] **Step 6: Commit**
 
 ```
-git add src/renderer/src/clientControl/streamClient.ts src/renderer/src/clientControl/clientRun.ts src/renderer/src/clientControl/duelClient.ts tests/streamClient.test.ts
+git add src/renderer/src/clientControl/streamClient.ts src/renderer/src/clientControl/clientRun.ts src/renderer/src/clientControl/duelClient.ts tests/streamClient.test.ts build/contentDigest.ts tests/contentDigest.test.ts
 git commit -m "H-2a-ii task 1: the generic stream client; the sector client run and the duel stream client on it"
 ```
 
@@ -1067,8 +1107,9 @@ Create `tests/helpers/onlineDuel.ts`:
 ````ts
 // A headless online duel (H-2 spec §10): the duel authority with the duel producer manager and one streamed,
 // receive-time attachment per seat, each with a createDuelRemoteClient on a queued link pair, all on a clock the test
-// advances one tick at a time. The same parts the utility runs (encounterMode wires them the same way), with the
-// authority kept in reach for its replay and the duel session in reach for a forced round end (tests only).
+// advances one tick at a time. The authority and the producers are composed by hand, not through duelMode.createHost
+// (Decision 10), so the authority stays in reach for its replay and the duel session for a forced round end (tests
+// only); the ModeHost wiring is the wiring test's in duelProducers.test.ts.
 import { createEncounterAuthority } from '../../src/renderer/src/authority/authority';
 import { duelRules, type DuelSession, type DuelTypes } from '../../src/renderer/src/authority/duelRules';
 import type { EncounterRules } from '../../src/renderer/src/authority/rules';
@@ -1599,6 +1640,7 @@ import type { DuelCheckpoint } from '../src/renderer/src/authority/duelCheckpoin
 import type { AuthorityEvent, CommandResult, HeldInput } from '../src/renderer/src/net/contracts';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createScriptedPair, scriptedInput, type ScriptedPair } from '../src/renderer/src/sim/duel/scripted';
+import { duelRoundRecord } from '../src/renderer/src/sim/duel/summary';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { Seated } from '../src/renderer/src/sim/components';
 import { hashF64 } from '../src/shared/hash';
@@ -1607,11 +1649,11 @@ import { resolveCutter } from './helpers/duelAuthority';
 import { GATE_SEEDS, CAP_TICKS } from './helpers/scriptedDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-const same = (a: HeldInput, b: HeldInput) => a.moveX === b.moveX && a.moveY === b.moveY && a.interactHeld === b.interactHeld;
 /** One seat's producer: on each new confirmed publication, the scripted pair reads that seat's replica and the seat
- *  sends its own player's held input (when it changed) and commands, through its client only. */
+ *  sends its own player's held input (on every publication, so the 250 ms receive-time watchdog never neutralises a
+ *  held thrust or repair) and commands, through its client only. */
 function producer(seat: Seat, seed: number) {
-  let pair: ScriptedPair = createScriptedPair(seed), seen = 0, round = 0, last: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+  let pair: ScriptedPair = createScriptedPair(seed), seen = 0, round = 0;
   const results: CommandResult[] = [], events: AuthorityEvent[] = [];
   return {
     results, events,
@@ -1622,14 +1664,15 @@ function producer(seat: Seat, seed: number) {
       seen = p.publicationSequence;
       if (d.round !== round) { round = d.round; pair = createScriptedPair(d.tactical.seed); }
       if (p.phase !== 'running' || d.tactical.outcome !== Outcome.Running) return;
-      const input = scriptedInput(pair, d), held = input.held[seat.seat] ?? { moveX: 0, moveY: 0, interactHeld: false };
-      if (!same(held, last)) { last = { ...held }; seat.client.held(seat.seat, held); }
+      const input = scriptedInput(pair, d), held: HeldInput = input.held[seat.seat] ?? { moveX: 0, moveY: 0, interactHeld: false };
+      seat.client.held(seat.seat, held);
       for (const e of input.commands) if (e.id.player === seat.seat) seat.client.command(seat.seat, e.command);
     }
   };
 }
 
 describe('two clients over the loopback, one per seat (spec §10)', () => {
+  let seedsFlown = 0, crewLaserReleases = 0;   // summed over the seeds, checked after them
   it.each(GATE_SEEDS.map((seed) => [seed]))('seed %i: the scripted pair through the clients reaches an outcome; replicas, journal and round record agree; nothing is stale-tick', (seed) => {
     const rig = onlineDuel(seed), a = rig.connect(0), b = rig.connect(1), pa = producer(a, seed), pb = producer(b, seed);
     rig.tick(2);
@@ -1646,17 +1689,27 @@ describe('two clients over the loopback, one per seat (spec §10)', () => {
     const ticks = replay.frames.filter((f) => f.action.kind === 'tick');
     expect(ticks.length).toBeGreaterThan(0);
     expect(rerun.hashes.at(-1)).toBe(ticks.at(-1)!.after!.hash);
+    // Held input refreshed every publication: the receive-time watchdog never neutralised a seat.
+    expect(replay.frames.filter((f) => f.action.kind === 'watchdog')).toEqual([]);
     const results = [...pa.results, ...pb.results];
     expect(results.length).toBeGreaterThan(0);
     expect(results.filter((r) => r.reason === 'stale-tick')).toEqual([]);
+    // Each client's round record is the authority's: the round record builder over the session's summary.
+    const authorityRecord = duelRoundRecord(rig.session().summary!, 0, seed, 0);
+    expect(authorityRecord).toMatchObject({ outcome: d.tactical.outcome, ticks: d.decidedTick });
     for (const p of [pa, pb]) {
       const rounds = p.events.filter((e) => e.payload.kind === 'round');
       expect(rounds).toHaveLength(1);
       const record = (rounds[0]!.payload as Extract<AuthorityEvent['payload'], { kind: 'round' }>).record;
-      expect(record).toMatchObject({ round: 0, seed, baseTick: 0, outcome: d.tactical.outcome, ticks: d.decidedTick });
+      expect(record).toEqual(authorityRecord);
       expect(cp.modeMemory.telemetry.ticks).toBe(record.ticks);
     }
+    seedsFlown++; crewLaserReleases += authorityRecord.laserReleases[0];
   }, 300_000);
+  it('across the ten seeds the crew ship released its laser: a passive crew cannot pass the seeds', () => {
+    expect(seedsFlown).toBe(GATE_SEEDS.length);
+    expect(crewLaserReleases).toBeGreaterThan(0);
+  });
   it('a rematch through a client replaces the replica: a new round seed, baseTick the tick after the rematch, monotone ticks and sequences', () => {
     const rig = onlineDuel(3), a = rig.connect(0), b = rig.connect(1);
     rig.tick(3);
@@ -1721,7 +1774,7 @@ describe('reconnects and round context (spec §8, §10)', () => {
 - [ ] **Step 2: Run them**
 
 Run: `npx vitest run tests/duelOnline.test.ts`
-Expected: PASS, 13 tests in 1 file (ten seeds, about six seconds each, then the rematch, the reconnects and the Helm player).
+Expected: PASS, 14 tests in 1 file (ten seeds, about six seconds each, then the crew-laser sum over them, the rematch, the reconnects and the Helm player). Run the file whole: the sum test reads the seeds' totals.
 
 Run: `npm run typecheck`
 Expected: exit 0.
@@ -1745,7 +1798,7 @@ Run: `npm run build`
 Expected: exit 0.
 
 Run: `npm test`
-Expected: PASS, 244 test files, 3431 tests (known load flakes: rerun alone).
+Expected: PASS, 244 test files, 3434 tests (known load flakes: rerun alone).
 
 - [ ] **Step 2: The host runtime and the online application (the sector, unchanged)**
 
