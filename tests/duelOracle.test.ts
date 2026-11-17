@@ -80,7 +80,7 @@ describe('the per-tick record', () => {
     expect(wrong.problems).toEqual([]);
     const diff = runDifferences(was, wrong.run);
     expect(diff).toHaveLength(1);
-    expect(diff[0]).toMatch(/^scripted-3: first difference at tick 1 \(fields\); fields that differ during the run: space\.ships\.0\.x, space\.ships\.1\.x$/);
+    expect(diff[0]).toMatch(/^scripted-3: first difference at tick 26 \(fields\); fields that differ during the run: space\.ships\.0\.x, space\.ships\.1\.x$/);   // the crew walk to their consoles first (start-aboard spec §1)
   }, 30_000);
   it('records hashDuel at the duel golden cadence, and throws when the schema does not name every flattened value', () => {
     const r = recordRun({ id: 'scripted-1', seed: 1, crew: 'scripted', cap: 1300 });
