@@ -40,6 +40,8 @@
 1. **The two model values are exported from `hudModel.ts`, not added as model fields.** Spec §7 adds `HudPlayer.seatedName` and `HudModel.maxCells`. Instead, `hudModel.ts` exports `seatedName(p)` and `HUD_MAX_CELLS`, since every `HudPlayer` construction site would otherwise change. The UI still reads only the render model module, never sim, which is the rule the spec states.
 2. **`tintColor` and its three colours move to `roomIconModel.ts`.** Today they live in `roomIcons.ts`, a Pixi module, and `roomIcons.ts` re-exports them. This keeps Pixi out of the UI's import graph.
 3. **The visual check uses fixture HUD models in the probe** (`?mode=uiprobe&probe=hud&fixture=N&engine=pixi|react`). After H-2a-iii the sector HUD is reachable only through the two-process test-only online entry. The Pixi variant exists only until Task 5 deletes `hud.ts`. Its screenshots are taken first (Task 4).
+4. **`<Icon>` is a `Box` with `background-image` (or a CSS mask for tinted glyphs), not an `<img>`.** That lets it reuse `Box`'s device-pixel placement, and the tinted station glyphs need a mask anyway. `image-rendering: pixelated` still applies.
+5. **`main.ts` awaits the image cache and passes it to `mountUi`**, rather than `mountUi` building it itself. The cache needs the Pixi renderer, which `mountUi` does not otherwise know. The effect is the same: the cache is ready before the first render.
 
 ## File Structure
 
@@ -77,7 +79,7 @@ powershell -NoProfile -Command "New-Item -ItemType Junction -Path '<abs>\.worktr
 - Modify: `src/renderer/src/render/hudModel.ts`, `render/roomIconModel.ts`, `render/roomIcons.ts`, `render/mapPanel.ts`
 - Create: `render/mapModel.ts`
 - Modify: `ui/menuState.ts`, `ui/store.ts`, `ui/sinks.ts`, `src/renderer/src/app/session.ts`, `src/renderer/src/app/onlineSession.ts`
-- Test: `tests/uiHudSink.test.ts`; extend `tests/hud.test.ts` (one case for the two exports)
+- Test: `tests/uiHudSink.test.ts` (covers the sink and the two exports)
 
 **Interfaces:**
 - Produces:
@@ -135,7 +137,7 @@ export const HUD_MAX_CELLS = Math.max(...STATION_MAX) + UPGRADE_MAX + STATION_OV
 ```
 - **`roomIconModel.ts`:** add `export const ICON_TEXT = 0xe8e8e8, ICON_FAINT = 0x5a606c, ICON_WARN = 0xff6b5a;` and `export function tintColor(t: IconTint): number { return t === 'failed' ? ICON_WARN : t === 'unpowered' ? ICON_FAINT : ICON_TEXT; }`.
 - **`roomIcons.ts`:** delete its own `tintColor` and the `TEXT, FAINT, WARN` constants. Import them from the model (`ICON_TEXT as TEXT` and so on) wherever `roomIcons.ts` still uses them, and add `export { tintColor } from './roomIconModel';`.
-- **`render/mapModel.ts`:** move `MAP_W`, `MAP_H`, `nodeX`, `nodeY`, the rocks table and the colour from `mapPanel.ts` (export them as `ROCKS`, `NODE_R = 11`, `MAP_FLEET = 0xd83a3a`). `mapPanel.ts` imports and re-exports `MAP_W`, `MAP_H`, `nodeX` and `nodeY` until Task 5 deletes it.
+- **`render/mapModel.ts`:** move `MAP_W`, `MAP_H`, `nodeX`, `nodeY`, the rocks table and the colour from `mapPanel.ts` (export them as `ROCKS`, `NODE_R = 11`, `MAP_FLEET = 0xd83a3a`). `mapPanel.ts` imports and re-exports `MAP_W`, `MAP_H`, `nodeX` and `nodeY` until Task 5 deletes it. Point `tests/layout.test.ts`'s import (`from '../src/renderer/src/render/mapPanel'`, line 11) at `render/mapModel` now, and run `git grep -n "render/mapPanel" -- src tests scripts` to repoint any other value importer of those names.
 - `ui/menuState.ts`: `UiState` gains `hud: import('../render/hudModel').HudModel | null`, and `epochs` gains `hud: number`. `ui/store.ts`: the initial `hud: null`, `epochs: { duel: 0, flight: 0, hud: 0 }`.
 - **`ui/sinks.ts`:** the internal `createSink` accepts the key `'hud'`. Add:
 ```ts
@@ -256,7 +258,7 @@ describe('Row and Icon', () => {
 });
 
 describe('CellRow', () => {
-  const cells = () => [...document.querySelectorAll('[data-ui-cell]')].map((e) => (e as HTMLElement).style.background);
+  const cells = () => [...document.querySelectorAll('[data-ui-cell]')].map((e) => e.getAttribute('data-ui-cell'));   // the fill colour, as hex(); CSSOM would serialise style colours as rgb()
   it('fills on, off, overdrive and failed cells as cellRow did', () => {
     mount(<CellRow x={0} y={0} c={CARD_ROW} o={{ name: 'Wpn', level: 3, max: 2, status: '', cursor: false, tint: TEXT }} />);
     expect(cells()).toEqual([hex(BAR_ON), hex(BAR_ON), hex(AMBER)]);
@@ -419,7 +421,7 @@ export const CellRow = memo(function CellRow({ x, y, c, o }: { x: number; y: num
       {text(o.name, c.nameX, o.tint)}
       {Array.from({ length: shown }, (_, k) => {
         const off = !o.failed && k >= o.level, fill = o.failed ? BAR_FAIL : off ? BAR_OFF : k >= o.max ? AMBER : BAR_ON;
-        return <Box key={k} x={x + c.cellsX + k * c.step} y={y + 8} w={c.cell} h={14} attrs={{ 'data-ui-cell': '' }}
+        return <Box key={k} x={x + c.cellsX + k * c.step} y={y + 8} w={c.cell} h={14} attrs={{ 'data-ui-cell': hex(fill) }}
           style={{ background: hex(fill), boxShadow: off ? `inset 0 0 0 ${hair}px ${hex(CELL_EDGE)}` : undefined }} />;
       })}
       {heat > 0 && <Bar x={x + c.cellsX} y={y + 23} w={HUD_MAX_CELLS * c.step - 2} h={2} fill={heat} colour={WARN} />}
@@ -502,14 +504,14 @@ The rules below are `src/renderer/src/render/hud.ts`'s. Read it alongside, since
   - `footA` is `[a, GOOD when charge ≥ 1 or torpedo.loaded else TEXT]`. `footB` is `[b, tone hit→GOOD, miss→TEXT, plain→DIM, else AMBER]`.
   - `bar` is `{ fill: charge, colour: charge ≥ 1 ? GOOD : BAR_ON }`.
 - **Science:**
-  - The targets, then the system row, then its results (WARN for "Hidden ship…", DIM for "No …", else GOOD), windowed by `SCIENCE_ROWS` from `first`.
+  - The targets (TEXT), then the system row (`c.system.enabled ? BLUE : DIM`), then its results (WARN for "Hidden ship…", DIM for "No …", else GOOD), windowed by `SCIENCE_ROWS` from `first`.
   - The cursor row is AMBER, or BLUE_LIT on the enabled system row.
   - `footA` = `[scienceFooter(c), TEXT]`.
 - **Navigation:** `rows[k]` = `c.rows[c.first + k]` for k < 7, tinted per hud.ts (EVADING→AMBER; not selectable or not enabled→DIM; blue→BLUE_LIT/BLUE by cursor; cursor→AMBER; else TEXT). `footA` is `[a, jump.ready ? GOOD : TEXT]`; `footB` is `[b, DIM]`.
 - **Doors:**
   - `item === null` gives one DIM row, 'No doors'.
   - Otherwise three rows: the item in AMBER; the status in WARN if 'AIRLOCK OPEN', else DIM; and `Confirm: <action>` in TEXT, or 'Doors offline' in WARN.
-  - `footB` = `Open airlocks: n` in WARN when n > 0.
+  - `footB` = `Open airlocks: n` in WARN when `c.item !== null` and n > 0, else empty.
 Write it as plain `it` cases with literal fixture panels.
 
 `tests/uiHud.test.tsx` (jsdom). Render `<UiRoot menu={false}>` with a `createHudSink(store)` fed by `buildHudModel(makeState(2), ...)` (as `tests/hudSlots.test.ts` builds models) and patched copies. Collect `PixelText` canvases (`data-text`, `data-x`, `data-y`). Assert:
@@ -521,6 +523,8 @@ Write it as plain `it` cases with literal fixture panels.
 - the map panel: its title at `(WINDOW.x+PAD, WINDOW.y)` when `phase === 'running' && map`, and absent otherwise.
 - a seated player's console card at `cardRect(i, tabbed)`, with the tab bar row when `tabs` is set.
 - the clear path: `sink.clear()` removes the HUD.
+- render count (spec §8): wrap `PlayerBlock` and `SidePanels` in a test-only spy, as `tests/uiDuel.test.tsx`'s sharing case does with `memo` spies. Alternatively, count commits with a `<Profiler>` around `<UiRoot>`, since jsdom runs React's development build. Push a model, then `structuredClone` of it twice, and assert zero extra renders and zero store writes.
+- error boundary (spec §8): with `<UiRoot menu>` mounted, push a model that throws in a panel (for example `players: [null] as never`). Silence `console.error` with a spy. Assert the `session-menu` root is still present. Then `sink.clear()` and a valid model render the HUD again, and `epochs.hud` went up.
 
 - [ ] **Step 2: Run to see them fail.** Run `npx vitest run tests/uiConsoleRows.test.ts tests/uiHud.test.tsx`. Both FAIL.
 
@@ -556,10 +560,10 @@ The components (each `memo`, each taking only the model parts it needs):
     - each mark (`$`, `!` or `?`), anchor 0.5/0.5, at `(WINDOW.x + x + 1, WINDOW.y + y - 1)`, tinted `PANEL_FILL` when filled, else TEXT/DIM
     - `EXIT` in AMBER, anchor 0.5/0.5, at `(WINDOW.x + x - 8, WINDOW.y + y + 30)`, on the last column
 - **`Headline({ m })`:**
-  - The banner: `m.message` at TITLE_SIZE, anchor 0.5/0, at `(INTERNAL_W/2, BANNER_Y)`, when `phase !== 'running'`.
+  - The banner: `m.message` in TEXT at TITLE_SIZE, anchor 0.5/0, at `(INTERNAL_W/2, BANNER_Y)`, when `phase !== 'running'`.
   - The progress line: DIM, anchor 0.5, at `(INTERNAL_W/2, PROGRESS_Y)`, when set.
   - The notices: `m.notice[k]` with tints `[AMBER, TEXT]`, anchor 0.5, at `(NOTICE_X, NOTICE.y + k*LINE)`, only while running.
-  - The banner glyphs: in lobby or gameover, when the first `status === 'active'` player has a `deviceKind`, a `Row` of `[{ glyph: glyphName('confirm', dk), text: 'Confirm' }, { glyph: glyphName('cancel', dk), text: 'Cancel' }]`, centred at `x = INTERNAL_W/2 - rowLayout(...).width/2`, `y = BANNER_GLYPHS_Y`.
+  - The banner glyphs: in lobby or gameover, when the first `status === 'active'` player has a `deviceKind`, a `Row` of `[{ glyph: glyphName('confirm', dk), text: 'Confirm' }, { glyph: glyphName('cancel', dk), text: 'Cancel' }]`, centred at `x = INTERNAL_W/2 - rowLayout(parts, (n) => images.has(n)).width/2` (the same `useImages()` predicate `<Row>` uses), `y = BANNER_GLYPHS_Y`.
 - **`SummaryCard({ m })`:** hud.ts lines 276–282.
   - Rows k = 0..11: `line = lobby ? (k === 1 ? m.lobbyShip : m.lobbyLines[k-2]) : m.summary?.[k]`.
   - Each shown row is centred at `(INTERNAL_W/2, SUMMARY_TOP + k*LINE)`, tinted AMBER for lobby k = 1 or gameover k = 0, else TEXT.
@@ -596,9 +600,9 @@ The components (each `memo`, each taking only the model parts it needs):
   - Compute `y` exactly as hud.ts does:
     1. the title in AMBER at `(CX, EVENT_CARD.y+6)`
     2. `y = EVENT_CARD.y + 6 + LINE + 6`
-    3. up to 2 text lines at `(CX, y)`, `y += LINE` each
+    3. up to 2 text lines at `(CX, y)`; `y += LINE` only after a non-empty line
     4. `y += 10`
-    5. up to 3 choices, each: the number at `(CX, y)` and the label at `(CX+28, y)` (tinted `!enabled ? DIM : blue ? BLUE : TEXT`), and `< ${votes.join(' ')}` in AMBER, right-anchored at `(CX+CW, y)`, when there are votes; then `y += LINE + 4`
+    5. up to 3 choices, each: the number at `(CX, y)` and the label at `(CX+28, y)`, both (tinted `!enabled ? DIM : blue ? BLUE : TEXT`), and `< ${votes.join(' ')}` in AMBER, right-anchored at `(CX+CW, y)`, when there are votes; then `y += LINE + 4`
     6. `y += 6`
     7. the status in AMBER at `(CX, y)`, then `y += LINE`
     8. the help in DIM at `(CX, y)`, then `y += LINE + 6`
@@ -659,14 +663,15 @@ The components (each `memo`, each taking only the model parts it needs):
 
 - [ ] **Step 1:**
   - `mountUi` takes `images?: UiImages` and wraps the tree in `<ImagesContext.Provider value={images ?? new Map()}>`.
-  - In `main.ts`'s `startApp`, after `createRenderer`, build the cache with `const images = await buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets));`. Then replace `createHud(renderer.hud, assets)` with `createHudSink(store, perf)`. The store must exist before the router; UI-ii already moved it there. Pass `images` to `mountUi`.
-  - Run `git grep -n "renderer.hud\|createHud\|createMapPanel\|render/panel\|from './panel'" -- src tests scripts`. Fix every hit:
+  - In `main.ts`'s `startApp`, after `createRenderer`, build the cache with `const images = await buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets));`. Then delete the line `const hud = createHud(renderer.hud, assets);` (today above `const store = createUiStore(...)`), and declare `const hud = createHudSink(store, perf);` right after `store` and `perf` exist, next to `const duelSink = ...`. Using `store` above its declaration fails typecheck (TS2448). Pass `images` to `mountUi`.
+  - In the probe branch (`startProbe`), when `probe=hud&engine=react`, build the same cache (`buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets))`) and pass `images` to its `mountUi`, so the "after" shots show icons and glyphs.
+  - Run `git grep -n "renderer.hud\|createHud\|mapPanel\|render/panel\|from './panel'" -- src tests scripts`. Fix every hit, `tests/layout.test.ts` included if Task 1 missed it:
     - in `renderer.ts`, delete the `hud` Container and its `addChild` entry
     - in `enemyWindow.ts`, paste `drawPanel` as a private function
     - delete the three files
 - [ ] **Step 2:** Run `npm run typecheck`, `npm test` (once, with up to a 15-minute timeout), and `npm run test:determinism`. All must pass; the goldens are unchanged. Long sim tests may time out under machine load. If any do, rerun those files alone and report both runs.
 - [ ] **Step 3:** Run the Electron smokes one at a time, each with up to a 10-minute timeout: `test:online-app-runtime`, `test:online-recovery-runtime` (both show the sector HUD through the test-only entry), `test:host-runtime`, `test:rtc-runtime`, `test:room-service-runtime`, and the duel app smoke. All must pass. Restore any tracked `.superpowers/sdd/*` files they overwrite.
-- [ ] **Step 4:** Take the "after" screenshots of every fixture (Task 4 Step 3) and compare each pair with the Read tool. The rectangles, panels, cells, glyph and icon positions and the text positions must match. The text is crisper. List any difference over 1 px, then fix it or explain it. Record `?uiperf=1` numbers for fixture 2 held for 60 s, written repeatedly with the same model. These numbers are the sharing floor; the budget is 1.5 ms median and 4 ms p95.
+- [ ] **Step 4:** Take the "after" screenshots of every fixture (Task 4 Step 3) and compare each pair with the Read tool. The rectangles, panels, cells, glyph and icon positions and the text positions must match. The text is crisper. List any difference over 1 px, then fix it or explain it. Then record `?uiperf=1` numbers. In the probe (`probe=hud&engine=react&fixture=2&uiperf=1`), write fixture 2 every animation frame for 60 s with `tick` and `simSeconds` incremented and player 0's `health` and `progress` varied, so every frame is a real change, as in a running sector. Record the median and p95; the budget is 1.5 ms median and 4 ms p95. The sink's sharing pass runs before `perf.run`, so the numbers cover React's render, commit and layout effects but not the sharing. State that in the report, and time one `replaceEqualDeep(prev, next)` over the fixture with `performance.now()` 1000 times to report the sharing cost separately.
 - [ ] **Step 5: Commit** with the message `feat(ui-iii): the sector HUD draws through React; Pixi HUD, map panel and panel helper removed`.
 
 ---
