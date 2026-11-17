@@ -37,8 +37,9 @@ export const SPAWN_CLEARANCE = 300;            // no asteroid surface within thi
 // Ships (§5)
 export const SHIP_RADIUS = 20;
 export const SHIP_HULL = 40;                  // H-0c-ii-a: 30 → 40 so the scripted duels last 3 to 5 minutes
-/** Engines damage level 0 / 1 / 2 scales thrust and turn rate (§5). */
-export const ENGINE_FACTOR: readonly number[] = [1, 0.6, 0.25];
+/** Engines damage level 0 / 1 / 2 scales thrust and turn rate (§5). Level 2 shuts the Engines off (owner 2026-11-17,
+ *  FTL-style): no thrust, no turning; the ship drifts under gravity, drag and the idle stabilise. */
+export const ENGINE_FACTOR: readonly number[] = [1, 0.6, 0];
 
 // Contacts (§3, §4)
 export const RESTITUTION = 0.5;                // share of the normal speed kept after a bounce
@@ -66,9 +67,10 @@ export const DEFAULT_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: D
 export const LASER_RANGE = 450;
 export const LASER_ARC_COS = 0.5;             // ±60° arc: inside when dot(h, d) ≥ cos 60° · |d|
 /** Laser charge in whole units, so tick counts are exact: full at LASER_CHARGE_UNITS. Weapons damage level 0 / 1 / 2
- *  charges at these units per tick, which is 4 s × 1 / 1.6 / 2.5 (§5): full in 240 / 384 / 600 ticks. */
+ *  charges at these units per tick, which is 4 s × 1 / 1.6 / off (§5): full in 240 / 384 ticks, or never. Level 2 shuts
+ *  the laser off (owner 2026-11-17, FTL-style): weapons.ts also drops any stored charge and refuses to fire. */
 export const LASER_CHARGE_UNITS = 9600;
-export const LASER_CHARGE_RATE: readonly number[] = [40, 25, 16];
+export const LASER_CHARGE_RATE: readonly number[] = [40, 25, 0];
 export const LASER_HOLD_TICKS = 180;          // a full charge can be held 3 s, then it vents
 export const LASER_HULL = 2;
 export const SHIELD_LAYERS = 2;

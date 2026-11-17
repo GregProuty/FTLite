@@ -39,6 +39,11 @@ export function canLaunch(state: TacticalState, i: number): boolean {
 /** A lock target must be a Room index. */
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
 
+/** Weapons at damage level 2 is off (owner 2026-11-17, FTL-style): the laser cannot charge, hold or fire and keeps no
+ *  charge; canLaunch refuses missiles. A laserCharge command is still admitted (canCharge): it is held, to no effect,
+ *  and the laser starts charging again once the room is repaired to 1. */
+export function laserOffline(state: TacticalState, i: number): boolean { return state.systems[i]!.rooms[Room.Weapons] >= 2; }
+
 /** The laser cannot charge, hold or fire while its ship's missile flies or its Weapons console is empty (spec §7 table). */
 export function laserFrozen(state: TacticalState, i: number, input: ShipInput): boolean {
   return missileOf(state, i) !== null || !input.weapons;
@@ -75,6 +80,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   const s = state.systems[i]!;
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (input.laserLock !== null && validLock(input.laserLock)) s.lock = input.laserLock;
+  if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
   if (input.laserCharge !== null && canCharge(state, i)) {
     if (input.laserCharge) s.fireHeld = true;
     else if (s.fireHeld) {
@@ -92,7 +98,8 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */
 export function tickWeapons(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, c = classOf(state, i), laser = c.slots.laser;
-  if (!laserFrozen(state, i, input)) {
+  if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // off: every tick, frozen or not
+  else if (!laserFrozen(state, i, input)) {
     if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
     else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
   }

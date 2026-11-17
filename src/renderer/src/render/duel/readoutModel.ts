@@ -4,7 +4,7 @@
 // (tested). The ship colours come from shipColours.ts so both screens agree.
 import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
-import { missileOf, targetOf } from '../../sim/tactical/state';
+import { missileOf, Room, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { Health, Life, LifeState } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
@@ -43,7 +43,9 @@ const row = (label: string, value = '', labelTint = DIM, valueTint = TEXT): Read
 const heading = (label: string, tint: number): ReadoutRow => row(label, '', tint, tint);
 /** The row with an emphasis, or unchanged when there is none (so rows without one carry no `emphasis` key). */
 const em = (r: ReadoutRow, emphasis: ReadoutEmphasis | null): ReadoutRow => (emphasis ? { ...r, emphasis } : r);
-const level = (n: number): string => (n === 0 ? 'OK' : `DMG ${n}`);
+/** A room's level as text. Weapons and Engines at 2 are off (owner 2026-11-17): OFFLINE. Shields at 2 keeps its layers
+ *  and only stops recharging, so it stays DMG 2. */
+const level = (n: number, room: number): string => (n === 0 ? 'OK' : n >= 2 && room !== Room.Shields ? 'OFFLINE' : `DMG ${n}`);
 const levelTint = (n: number): number => (n === 0 ? GOOD : n === 1 ? AMBER : WARN);
 
 export interface ReadoutInput {
@@ -56,9 +58,10 @@ export interface ReadoutInput {
   console?: boolean;
 }
 
-/** The laser's CHARGE row (FROZEN, HOLD n.n or a percentage, with its bar): the readout's and the Weapons station's. */
+/** The laser's CHARGE row (OFFLINE, FROZEN, HOLD n.n or a percentage, with its bar): the readout's and the Weapons station's. */
 export function chargeRow(d: DuelState): ReadoutRow {
   const t = d.tactical, crewSys = t.systems[0], flying = missileOf(t, 0) !== null, full = crewSys.laserCharge >= LASER_CHARGE_UNITS;
+  if (crewSys.rooms[Room.Weapons] >= 2) return em({ ...row('CHARGE', 'OFFLINE', DIM, WARN), bar: { fill: 0, colour: AMBER } }, 'warn');   // Weapons 2: the laser is off
   const value = flying ? 'FROZEN' : full ? `HOLD ${((LASER_HOLD_TICKS - crewSys.laserHold) / TICK_HZ).toFixed(1)}` : `${Math.floor((crewSys.laserCharge / LASER_CHARGE_UNITS) * 100)}%`;
   return em({ ...row('CHARGE', value, DIM, full && !flying ? GOOD : TEXT), bar: { fill: crewSys.laserCharge / LASER_CHARGE_UNITS, colour: full ? GOOD : AMBER } }, full && !flying ? 'good' : null);
 }
@@ -88,7 +91,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
       rows.push(done > 0 ? { ...out, bar: { fill: done, colour: GOOD } } : out);
       continue;
     }
-    const n = crewSys.rooms[r]!, progress = d.repair[r]! / REPAIR_UNITS, out = em(row(ROOM_NAMES[r]!, level(n), DIM, levelTint(n)), n === 0 ? 'good' : 'warn');
+    const n = crewSys.rooms[r]!, progress = d.repair[r]! / REPAIR_UNITS, out = em(row(ROOM_NAMES[r]!, level(n, r), DIM, levelTint(n)), n === 0 ? 'good' : 'warn');
     rows.push(n > 0 && progress > 0 ? { ...out, bar: { fill: progress, colour: GOOD } } : out);
   }
   rows.push(em(heading('HUNTER', ENEMY_SHIP), 'enemy'));
