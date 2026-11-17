@@ -15,6 +15,10 @@ Helm and Weapons views was asked for, then dropped by the owner; it is out of sc
 - The throttle starts at STOP as today, so the ship coasts until someone takes the Helm. Nothing else in the rules changes.
 - Single player: you start as player 0, standing, on the SHIP view; player 1 stands away at its spawn, and Tab takes it
   as today.
+- Online, the sync notice reads `TAKE A CONSOLE: E TO SIT` when this seat is standing (it still reads `YOU: HELM` or
+  `YOU: WEAPONS` after a reattach to a seated character). An away partner on foot reads `STANDING BY` in the readout,
+  in single player and online, rather than `WALKING`.
+- Telemetry: a player's first sit in a round is not a console swap; only a sit at a different console than their last is.
 - The scripted pair already walks to its own console and sits when unseated, so the goldens move without a script change.
 - Bless procedure: baselines recorded at 43, bump to 44 alone and bless, then the change and a same-version bless.
 

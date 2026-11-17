@@ -384,6 +384,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       const other = active === 0 ? 1 : 0, s = seatOf(d, other);
       if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
       if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
+      if (!d.present[other]) return 'STANDING BY';   // away and on foot: the solo start's partner (start-aboard spec §1)
       return d.present[other] && sentHeld[other]!.interactHeld && repairInReach(d, other) >= 0 ? 'REPAIRING' : 'WALKING';
     },
     axes: () => sentAxes,

@@ -162,7 +162,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (!synced && client.commandStatus(descriptor.seatId).state === 'ready') {
       synced = true; hint('synced');
       if (!presenceSent) { presenceSent = true; send({ kind: 'presence', present: true }); }   // the first command after every attach (spec §6)
-      notice = seatOf(d, descriptor.seatId) === 'helm' ? 'YOU: HELM' : seatOf(d, descriptor.seatId) === 'weapons' ? 'YOU: WEAPONS' : null; noticeUntil = deps.now() + NOTICE_MS;
+      notice = seatOf(d, descriptor.seatId) === 'helm' ? 'YOU: HELM' : seatOf(d, descriptor.seatId) === 'weapons' ? 'YOU: WEAPONS' : 'TAKE A CONSOLE: E TO SIT';   // a round starts aboard, standing (start-aboard spec §1) noticeUntil = deps.now() + NOTICE_MS;
     }
     if (synced && p.phase !== lastPhase) { if (p.phase === 'paused' && lastPhase === 'running') pauses++; lastPhase = p.phase; if (p.phase !== 'error') hint(p.phase); }
     const now = deps.now();

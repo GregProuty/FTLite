@@ -60,6 +60,17 @@ describe('repair events (H-0c-ii-a spec §4)', () => {
 });
 
 describe('telemetry (H-0c-ii-a spec §4)', () => {
+  it('a first sit from the standing start is not a console swap; a sit at the other console is (start-aboard spec §1)', () => {
+    const d = createDuel(layout, 5), t = createTelemetry(d), w = d.interior.derived.width;
+    const goTo = (pid: number, station: number) => { const tile = d.interior.derived.stationTile[station]!, eid = d.interior.crew[pid]!; Position.x[eid] = (tile % w) + 0.5; Position.y[eid] = Math.floor(tile / w) + 0.5; };
+    goTo(0, d.nav); step(d, t, [cmd(d, 0, { kind: 'sit', station: d.nav })]);
+    expect(d.interior.stations.occupant[d.nav]).toBe(0);
+    expect(t.consoleSwaps).toBe(0);
+    step(d, t, [cmd(d, 0, { kind: 'stand' })]);
+    goTo(0, d.weapons); step(d, t, [cmd(d, 0, { kind: 'sit', station: d.weapons })]);
+    expect(d.interior.stations.occupant[d.weapons]).toBe(0);
+    expect(t.consoleSwaps).toBe(1);
+  });
   it('counts a repair start on the first tick of work and again on resumed work; a finish per level dropped', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d), ship = d.tactical.systems[0];
     ship.rooms[Room.Weapons] = 2;

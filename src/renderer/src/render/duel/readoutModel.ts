@@ -16,7 +16,7 @@ import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 
 export type ReadoutMode = 'helm' | 'weapons' | 'interior';
-export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'WALKING' | 'REPAIRING' | 'DOWNED';
+export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'WALKING' | 'REPAIRING' | 'DOWNED' | 'STANDING BY';
 
 /** The HEALTH row turns red under this (duel-health spec §2). */
 export const HEALTH_LOW = 30;

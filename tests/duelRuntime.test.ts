@@ -69,6 +69,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     tick();
     expect(rt.lastResults().map((r) => [r.id.player, r.id.sequence, r.tick, r.status])).toEqual([[1, 0, 0, 'applied']]);
     expect(d.present).toEqual([true, false]);
+    expect(rt.otherStatus()).toBe('STANDING BY');   // the away partner on foot reads STANDING BY, not WALKING
     rt.dispose();
   });
   it('seated solo: player 0 at the Helm; player 1 goes away on tick 0, ahead of any other command', () => {
