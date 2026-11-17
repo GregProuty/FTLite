@@ -414,7 +414,7 @@ rm -f .art/shots/shot.log; node .art/shots/all.mjs "$E" "C:/Users/djuar/FTLite-s
 
 Expected: seven `ok   <name>.png (1920x1080) exit 0` lines (the shot list's names) and no `page:`, `failed` or `uncaught` lines. Nothing is written to the CRT map's shot folder.
 
-Stop the harness: `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5299 -State Listen -ErrorAction SilentlyContinue | % { Stop-Process -Id $_.OwningProcess -Force }; Get-CimInstance Win32_Process -Filter "+chr(92)+""Name='electron.exe'\" | ? { $_.CommandLine -like '*hull-silhouettes*shot.cjs*' } | % { Stop-Process -Id $_.ProcessId -Force }"`, then the port count command above prints `0`. Never stop a process you did not start.
+Stop the harness: `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5299 -State Listen -ErrorAction SilentlyContinue | % { Stop-Process -Id $_.OwningProcess -Force }; Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\" | ? { $_.CommandLine -like '*hull-silhouettes*shot.cjs*' } | % { Stop-Process -Id $_.ProcessId -Force }"`, then the port count command above prints `0`. Never stop a process you did not start.
 
 - [ ] **Step 4: Look at the screenshots** (Read each PNG) and check, writing pass/fail per item in the report:
 - The crew's ship reads as the Hound (twin aft nacelles, the body, the cockpit nose, nose along its heading, not mirrored: compare with `C:\Users\djuar\FTLite-shots\hull-silhouettes\prototype-2.png`); the enemy reads as the drone scout (forked nose, disc, spine, swept fins).
