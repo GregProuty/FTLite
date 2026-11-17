@@ -1,11 +1,11 @@
-// A crew member on a painted ship (art spike): a round VTT-style base in a pale wash of the player's colour with a thick
-// ink rim and a coloured inner ring, a soft drop shadow, and on it a top-down inked figure (backpack, arms, shoulders in
-// the player's colour, head with hair over the back to show the facing). Walking sways the figure and swings the arms;
-// seated, the arms reach forward and a gold ring circles the base; downed, the body lies muted grey with a red ring and
-// a red cross; dead, all grey and faded. Drawn into one Graphics at the token's centre, in world units.
+// A crew member on a painted ship (art spike): a soft drop shadow and a top-down inked figure (backpack, arms, shoulders
+// in the player's colour, head with hair over the back to show the facing), with no base, rim or ring under it (owner
+// 2026-11-17: no circles around the characters). Walking sways the figure and swings the arms; seated, the arms reach
+// forward; downed, the body lies muted grey with a red cross badge; dead, all grey and faded. Drawn into one Graphics
+// at the token's centre, in world units.
 import type { Graphics } from 'pixi.js';
 import type { TokenLook } from '../tokenModel';
-import { BODY_GREY, DOWN_RED, HAIR, INK, mix, SEAT_RING, shade, SKIN } from './ink';
+import { BODY_GREY, HAIR, INK, mix, shade, SKIN } from './ink';
 
 /** `stride`: the walk phase in radians (advances with distance walked); `moving`: walking this frame. */
 export interface TokenMotion { stride: number; moving: boolean }
@@ -20,11 +20,7 @@ export function drawPaintedToken(g: Graphics, look: TokenLook, motion: TokenMoti
   const tone = up ? look.colour : mix(look.colour, BODY_GREY, dead ? 1 : 0.6);
   g.clear();
   g.alpha = look.fillAlpha;
-  g.circle(R * 0.14, R * 0.2, R * 1.04).fill({ color: INK, alpha: 0.3 });   // the drop shadow, lit from the top left
-  if (look.ring !== null) g.circle(0, 0, R + 4).stroke({ width: 6, ...LINE }).circle(0, 0, R + 4).stroke({ width: 3, color: SEAT_RING });
-  if (look.cross) g.circle(0, 0, R + 4).stroke({ width: 6, ...LINE }).circle(0, 0, R + 4).stroke({ width: 3, color: DOWN_RED });
-  g.circle(0, 0, R).fill(mix(tone, 0xf4efe6, 0.72)).stroke({ width: 3, ...LINE });                    // the base: a pale wash, an ink rim
-  g.circle(0, 0, R - 2.5).stroke({ width: 2.2, color: tone });                                         // and a ring of the player's colour
+  g.ellipse(R * 0.12, R * 0.16, R * 0.62, R * 0.7).fill({ color: INK, alpha: 0.22 });   // a soft drop shadow under the figure, lit from the top left
   if (!up) { drawLying(g, look, tone, dead); return; }
   const c = look.colour, skin = SKIN[look.slot]!, hair = HAIR[look.slot]!, F = R * FIG;
   const swing = motion.moving ? Math.sin(motion.stride) : 0, seated = look.ring !== null;
