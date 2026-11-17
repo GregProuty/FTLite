@@ -37,8 +37,6 @@ describe('UI libraries stay out of deterministic and process code', () => {
 });
 
 describe('the UI imports no runtime values from sim, authority, client control or the network', () => {
-  // Vitest fails a suite with no tests, and src/renderer/src/ui does not exist until Task 2.
-  it('scans the ui directory', () => { expect(Array.isArray(walk('src/renderer/src/ui'))).toBe(true); });
   for (const file of walk('src/renderer/src/ui')) it(`${slash(file)} imports only types from those directories`, () => {
     const bad = staticImports(readFileSync(file, 'utf8')).filter((i) => !i.typeOnly && i.specifier.startsWith('.'))
       .map((i) => slash(resolve(dirname(file), i.specifier))).filter((p) => UI_FORBIDDEN_VALUE_DIRS.some((d) => (p + '/').startsWith(d)));
