@@ -130,3 +130,84 @@ Confirmed (tacticalLayer.ts:L195-L202). Dropped the selected target. The enemy m
 
 ---
 
+# Round 2 (delta, reviewing ab55938, effort medium, 109 s, 319574 in / 268669 cached / 9193 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P2] R2-F1 Dashed, dotted and hatched lines have no Pixi primitive, and the spec gives no geometry for them
+The new roles use dashed or dotted strokes in seven places: the EDGE ring, velocity, the enemy ring, the enemy arc edge, both shield rings, the enemy missile trail and the missile predictor. They also use a hatch clipped to each room segment. PixiJS 8 Graphics has no dash style, and the repo has no dash helper. The spec gives no dash or gap lengths, does not say whether dashes are in screen or world units, and does not say how the hatch is clipped (a mask per segment, or computed line-polygon intersection). · spec L27, L28, L34-L37, L42; src/renderer/src/render/tactical/tacticalLayer.ts:L1-L3 (layer contract: nothing allocated per frame), L103, L124-L125, L185, L191, L97; grep 'dash' over src/renderer/src finds nothing · Two implementers will produce visibly different dashes. Some will tell the own (mid) and enemy (dim) shield rings apart by dash pattern and some will not. A mask per segment would break the layer's no-allocation-per-frame contract. Friend vs foe now rests on solid vs dashed, so the pattern has to be readable at the default zoom. · Add a pure helper in crtTheme.ts or a new dashModel.ts: dashLine(points, dash, gap) and dashCircle(x, y, r, dash, gap) that return segment lists. Use screen-pixel lengths, for example dash 6 / gap 4 and dotted 1 / gap 3. Add hatchSegments(poly, spacing 4, angle 45°), computed by clipping each line to the convex segment polygon with no Pixi mask. Check that wedgeSegments polygons are convex, or say how concave ones are clipped. Unit-test all three helpers.
+
+### [P2] R2-F2 Readout emphasis targets rows that never appear in console views, and makes the positive cues dimmer than plain values
+The alert rows (a station EMPTY or COASTING, and MISSILE INBOUND) are built only when mode is 'interior', where crt is false. Under CRT they are dead, and in console views the only alert is own low hull. 'good' maps to mid, which is dimmer than the plain-value colour main. The full-charge HOLD countdown, a fire-now cue, therefore reads weaker than an ordinary value. Enemy low hull (GOOD tint today) is not assigned an emphasis at all. · spec L46, L48, L50; src/renderer/src/render/duel/readoutModel.ts:L71-L83 (the OUTSIDE block, EMPTY, COASTING and MISSILE INBOUND only in interior mode), L58 (enemy low hull GOOD), L66 (full charge GOOD) · An implementer may 'fix' the missing console warning by adding MISSILE INBOUND to console views, which is a non-goal change to what the map shows. Or they may build emphasis paths that never render under CRT. Under CRT, dimming the ready-to-fire and enemy-nearly-dead cues reverses today's emphasis. · Say that alert under CRT applies only to own low hull, and that the interior-only rows keep their tints. Map good to hot, or to main plus a marker, so it is never dimmer than a plain value. Give enemy low hull an explicit emphasis, for example good, shown as hot text.
+
+### [P2] R2-F3 'Blinking' enemy missile and ring are undefined: if blink means on/off, the incoming missile vanishes half the time
+The enemy missile glyph 'blinks with the enemy ring' at 1 Hz, and the spec never says what the off phase is. Read as on/off, an incoming missile glyph is invisible 50% of the time, leaving only a dashed dim trail. The same ambiguity applies to the enemy level-2 'blinking solid hot fill' (blinking against what?). · spec L34, L35, L41; tacticalLayer.ts:L183-L187 (today the glyph is always drawn) · Spotting an incoming missile is the core Weapons-map read. Two implementers will choose different off phases. · Define every blink as alternating between two visible states, never off. Enemy ring: main ↔ dim. Enemy missile: hollow main ↔ hollow hot. Enemy level 2: solid hot ↔ main outline with a main hatch. State that blinks are a square wave on floor(t * 2 * Hz) % 2.
+
+## Prior findings
+- R1-F1: resolved — Spec L17-L20 adds crt to DuelUiView and FlightUiView, set in scene.ts and flightMode, and a CrtContext with theme.ts unchanged. This matches scene.ts:L85-L101, where the view is known at ui.frame.
+- R1-F2: resolved — ReadoutRow gains emphasis, which is ignored when crt is false, with rules per kind (spec L45-L51). The interior-only alert rows and the dim 'good' mapping are raised as a new P2.
+- R1-F3: resolved — Damage is defined against each ship's base, with the hatch geometry and the chevron exception (spec L39-L43), and there is a screenshot case at L78. The hatch clipping method is covered by the new dash/hatch P2.
+- R1-F4: resolved — Crew and enemy missiles, trails and arcs now have distinct solid/hollow and solid/dashed roles (spec L35-L36). The blink ambiguity is raised as a new P2.
+- R1-F5: still open — The bezel is now on the letterbox rectangle at 6 internal px. But the claim that it 'stays inside today's 8-pixel minimum margin' (spec L59) is false. The grid column labels sit top-anchored at y = max(4, …) and the row labels at x = max(4, …) (tacticalModel.ts:L161, L165, L170), so the 6 px bezel covers the top or left 2 px of those labels whenever the grid edge is off screen, which is the normal case. The containment test covers only 'console overlay rectangles' (React), not the Pixi grid labels. Fix: move the label inset to 8+ under CRT, or make the bezel at most 3 px, and extend the containment test to the Pixi labels (grid columns and rows, ring, arrows, info, lock).
+- R1-F6: still open — The test method is now fixed (spec L75), but spec L26 claims 'every current constant and literal mapped' and that is false for the text and compass colours. Unmapped: DIM (compass ring circle and ticks, tacticalLayer.ts:L152-L153, L175-L176; grid, row and ring label tints, L56-L58); TEXT (arrow labels L59, info L60 and L204); the info tint GOOD when in arc (L204); and the lockText tint LOCK (L60). Round 0's 'text main, secondary mid' line was deleted in the rewrite, so these now have no role. Add them, for example labels and ring dim/mid, info main with hot when in arc, and the lock label as an inverse bar or main.
+- R1-F7: resolved — The overlay is a Stage child after Banners and before EndCard and LatencyOverlay, on the letterbox rectangle (spec L56). This matches DuelUi.tsx:L15-L21.
+- R1-F8: resolved — One wrapper div gets drop-shadow and text-shadow is ruled out (spec L57).
+- R1-F9: resolved — Frame time now comes from ticker deltaMS, median and p95 over 10 s at three settings, with a pass bar (spec L71).
+- R1-F10: resolved — crt.ts and crtBoot.ts mirror feel.ts and feelBoot.ts (feelBoot.ts:L8-L16, dev-gated), and the target writes both a store slice and the Pixi filter (spec L64-L65).
+- R1-F11: resolved — draw takes the presentation time and React uses a useNow tick through CrtContext. Blinks run at every setting and while paused (spec L66).
+- R1-F12: resolved — 'Selected target' is dropped; the enemy marker is a dashed ring and the lock keeps its corner brackets (spec L34).
+
+## Verified
+- The tactical layer is created only by scene.ts and flightMode.ts, and scene.ts hides it in the interior (scene.ts:L64, L85; flightMode.ts:L31), so 'Pixi CRT only in console views' (spec L20) holds.
+- Overlay z-order: DuelUi renders MapOverlay, ReadoutPanel, Banners, EndCard, then LatencyOverlay inside Stage (DuelUi.tsx:L15-L21), so the slot named in spec L56 exists.
+- fxModel colours BEAM_HIT, BEAM_MISS, BURST and SPARK (fxModel.ts:L17-L18) are covered by the effects role at spec L30.
+- feelBoot gates F9 on opts.dev (feelBoot.ts:L10), so the F10 mirror at spec L65 is consistent.
+- The scene shake is at most SHAKE_PX = 6 (fxModel.ts:L14), equal to the 6 px bezel, so the shake does not expose an edge gap inside the bezel.
+- The Weapons info line is at y 12 (weaponsModel.ts:L88) and the arrows sit at ARROW_MARGIN 28 (tacticalModel.ts:L22), both inside a 6 px bezel.
+
+## Not verified
+- Whether the wedgeSegments polygons are convex. This decides whether a simple line-clip hatch works; tacticalModel's wedgeSegments body was not read.
+- Whether pixi-filters v6 bloom runs on Pixi 8.19 in Electron. The spec leaves this to the plan.
+- Whether Stage scales its children to the letterbox rectangle or the overlay must compute it itself (Stage.tsx not re-read this round).
+- The reference images were not viewed this round, because no touched requirement depends on them beyond round 1.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against `ab55938`. 5 accepted (R1-F5 and R1-F6 reopened, plus R2-F1 to R2-F3), 0 rejected, 0 deferred.
+
+## R1-F5 [P1]: The bezel still clips grid labels (reopened)
+
+Confirmed (tacticalModel.ts:L161-L170, labels at 4). The bezel is now 3 internal px, and the containment test covers the Pixi labels too.
+
+## R1-F6 [P2]: Text and compass colours unmapped (reopened)
+
+Confirmed (tacticalLayer.ts:L56-L60, L152-L153, L175-L176, L204). Added the text and compass roles.
+
+## R2-F1 [P2]: Dash geometry undefined
+
+Confirmed. Added dashModel.ts with screen-pixel lengths, convex clipping and reused arrays, all tested.
+
+## R2-F2 [P2]: Readout emphasis targets rows that never appear
+
+Confirmed (readoutModel.ts:L71-L83, L58, L66). Under CRT, alert applies only to own low hull; the interior-only rows keep their tints; good maps to hot, including enemy low hull.
+
+## R2-F3 [P2]: Blink off-phase undefined
+
+Confirmed. Every blink alternates between two visible states, defined as a square wave, with the pair given for each element.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-crt-map-design.md
+
+<!-- end -->
+
+---
+

@@ -28,24 +28,29 @@ A new pure module `render/tactical/crtTheme.ts` holds one phosphor ramp: `glass`
 - predicted path solid `mid`; velocity dashed `main`; heading line `main`; engine flame and turn pip `hot`; missile predictor path dotted `main`.
 - off-screen arrows (`ARROW_COLOUR`): the crew ship `hot` filled arrow, the enemy `main` hollow arrow, the planet `dim`, a missile `main` small arrow; each arrow keeps its text label.
 - effects (`EffectDraw.colour`): beam hit `hot` line, beam miss `dim` line, burst and sparks `hot` fading to `mid`.
+- text and compass: grid, row and ring labels `mid`; the compass ring circle and ticks `dim`; arrow labels `main`; the Weapons info line `main`, `hot` when the target is in the arc (today's `GOOD`); the lock label an inverse bar (solid `main`, `glass` text).
 
 **Friend and foe:**
 - the crew's ship: solid `hot` fill with `glass` strokes;
-- the enemy: hollow (a `main` outline, `glass` inside) with a blinking (1 Hz) dashed outer ring; the lock keeps its solid corner brackets around the locked room, so the two shapes never look alike;
-- crew missiles: solid `hot` glyph with a solid `mid` trail; enemy missiles: hollow `main` glyph blinking with the enemy ring, with a dashed `dim` trail;
+- the enemy: hollow (a `main` outline, `glass` inside) with a dashed outer ring blinking `main` ↔ `dim` at 1 Hz; the lock keeps its solid corner brackets around the locked room, so the two shapes never look alike;
+- crew missiles: solid `hot` glyph with a solid `mid` trail; enemy missiles: a hollow glyph alternating `main` ↔ `hot` with the enemy ring, with a dashed `dim` trail;
 - the own laser arc: `mid` fill at today's alpha with a solid `main` edge; the enemy arc: no fill, a dashed `dim` edge;
 - shield rings: dashed `mid` (own), dashed `dim` (enemy).
 
 **Room damage** (per room segment), against each ship's base:
 - own ship (solid `hot`): level 1 a `glass` hatch; level 2 alternates between a `glass` cut-out and `hot` at 2 Hz;
-- enemy (hollow): level 1 a `main` hatch; level 2 a blinking solid `hot` fill;
-- the hatch: 1-unit lines at 45 degrees every 4 units, clipped to the segment polygon;
+- enemy (hollow): level 1 a `main` hatch; level 2 alternates between a solid `hot` fill and a `main` outline with a `main` hatch at 2 Hz;
+- the hatch: 1-unit lines at 45 degrees every 4 units, clipped to the segment polygon.
+
+**Every blink alternates between two visible states, never off:** a square wave on `floor(t * 2 * hz) % 2` of the presentation time.
+
+**Dashes, dots and hatches:** PixiJS 8 Graphics has no dash style, so a pure `render/tactical/dashModel.ts` provides `dashLine(points, dash, gap)`, `dashCircle(x, y, r, dash, gap)` (segment lists) and `hatchSegments(poly, spacing, angle)` (lines clipped to a convex polygon by line-polygon intersection, no Pixi mask). Lengths are screen pixels: dashed 6 on / 4 off, dotted 1 on / 3 off, hatch spacing 4 at 45 degrees. The plan checks `wedgeSegments` polygons are convex (or clips a concave one by splitting it into triangles). The helpers write into reused arrays (no display objects per frame, per the layer's contract). Each helper is unit-tested.
 - a ship drawn as a chevron (zoomed out) shows no damage, as today.
 
 **Readout semantics:** `ReadoutRow` (`render/duel/readoutModel.ts`) gains an optional `emphasis?: 'good' | 'warn' | 'alert' | 'crew' | 'enemy'`, set by `readoutRows` beside the tints it sets today. With `crt` true `ReadoutPanel` draws by emphasis; with `crt` false it ignores it (the interior keeps its tints):
-- `alert` (own low hull, a station EMPTY or COASTING, MISSILE INBOUND): a blinking inverse bar (solid `main` block, `glass` text);
+- `alert` (own low hull; the EMPTY, COASTING and MISSILE INBOUND rows exist only in the interior view and keep their tints there): an inverse bar alternating `main` block / `hot` block with `glass` text;
 - `warn` (room damage level 1 and 2, enemy room levels): text plus `hot`; the level digit stays;
-- `good` (OK, full charge, repair progress): `mid`;
+- `good` (OK, full charge, repair progress, enemy low hull): `hot` text, never dimmer than a plain value;
 - `crew` / `enemy` headings: the crew heading as `main` text, the HUNTER heading as an inverse bar; crew shield pips solid `hot`, enemy pips hollow `main`;
 - labels `mid`, values `main`; the LOCK value as an inverse bar.
 The plan lists every row `readoutRows` builds and its emphasis.
@@ -56,7 +61,7 @@ The plan lists every row `readoutRows` builds and its emphasis.
 - **Screen overlay:** a child of `Stage` in `DuelUi` and `FlightUi`, rendered only when `crt` is true, after `Banners` and before `EndCard` and `LatencyOverlay` (so the end card and the latency overlay are never covered), sized and placed on the letterbox rectangle (`letterbox.ts` offsets and scale), pointer events off. It draws scanlines (a horizontal line every 3 device pixels), a fine aperture-grille mask, a corner vignette and a slow brightness flicker (a few percent, on the presentation clock).
 - **Text glow:** one wrapper `div` around the console overlay group (inside `Stage`) gets `filter: drop-shadow(0 0 Npx main@alpha)` scaled by `crtScale().glow`; not per element, and not `text-shadow` (PixelText is a canvas).
 - **Readout frame:** with `crt` true the readout panel's border is a double line (VT320 style) in `mid`.
-- **Bezel:** a dark warm-brown frame with rounded corners and an inner shadow, drawn on the letterbox rectangle, 6 internal pixels wide, so it stays inside today's 8-pixel minimum margin (`READOUT_MARGIN` 8, the Weapons info line at y 12, the snap hint at H-12, the zoom text and scale bar at x 16). A unit test checks every console overlay rectangle lies inside the bezel's inner edge.
+- **Bezel:** a dark warm-brown frame with rounded corners and an inner shadow, drawn on the letterbox rectangle, 3 internal pixels wide, inside every current edge inset (the map grid labels at 4, `READOUT_MARGIN` 8, the Weapons info line at y 12, the snap hint at H-12, the zoom text and scale bar at x 16). A unit test checks every console overlay rectangle and every Pixi label the tactical layer places (grid columns and rows, ring, arrows, info, lock) lies inside the bezel's inner edge; the vignette carries most of the framed feel.
 - **No barrel curvature:** it would misalign the React overlays with the Pixi map; the vignette and rounded bezel corners give the curved feel.
 
 ## 4. Strength setting and clocks
