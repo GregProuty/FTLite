@@ -1,0 +1,11 @@
+topic=art-iii-impl
+subject_kind=impl
+subject=art/import.json docs/art/bible.md docs/gates.md docs/superpowers/plans/2026-11-17-art-iii-set-dressing.md docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md public/THIRD_PARTY_NOTICES.txt public/assets/manifest.json src/renderer/src/render/assetNames.ts src/renderer/src/render/duel/interiorView.ts src/renderer/src/render/fallback.ts src/renderer/src/render/propLayer.ts src/renderer/src/render/propModel.ts src/renderer/src/render/renderer.ts tests/duelInterior.test.ts tests/propArt.test.ts tests/propLayer.test.ts tests/propModel.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\art-iii
+base=ca06a62d8d0c78dd8ce5123c80ae3bb0d0b51c02
+cap=10
+effort=high
+confirm=0
+verify=npx tsc -b && npx vitest run
+created=2026-11-16
+head_at_setup=e4f994c
