@@ -197,17 +197,16 @@ describe('the session page and the strip', () => {
     act(() => actions.setStatus(host)); expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     click('remove-seat-1'); expect(removeSeat).toHaveBeenCalledWith(1); expect(screen.queryByTestId('remove-seat-0')).toBeNull();
   });
-  it('shows the duel seat plan: Swap seats and Host/Guest flies Helm for the host, Host picks seats for the guest; Start carries the Helm player', () => {
+  it("a duel lobby has no Swap seats and no seat plan for the host or the guest (owner 2026-11-17); Start carries the host's seat", () => {
     const start = vi.fn(async () => ({ ok: true as const })), { actions } = renderUi({ api: { start } });
     const seats = [{ seatId: 0, occupied: true, connected: true, ready: true }, { seatId: 1, occupied: true, connected: true, ready: true }];
     const hostLobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready', 'leave'],
       snapshot: { capacity: 2, joinCode: 'ABCDEFGH', seats, compatibility: { modeId: 'duel' } } as never };
     act(() => actions.setStatus(hostLobby));
-    expect(text('seat-plan')).toBe('Host flies Helm'); expect(text('swap-seats')).toBe('Swap seats');
-    click('swap-seats'); expect(text('seat-plan')).toBe('Guest flies Helm');
-    click('start'); expect(start).toHaveBeenCalledWith(1);
+    expect(screen.queryByTestId('seat-plan')).toBeNull(); expect(screen.queryByTestId('swap-seats')).toBeNull();
+    click('start'); expect(start).toHaveBeenCalledWith(0);
     act(() => actions.setStatus({ ...hostLobby, role: 'guest', ownSeat: 1, actions: ['ready', 'leave'] }));
-    expect(text('seat-plan')).toBe('Host picks seats'); expect(screen.queryByTestId('swap-seats')).toBeNull(); expect(screen.queryByTestId('start')).toBeNull();
+    expect(screen.queryByTestId('seat-plan')).toBeNull(); expect(screen.queryByTestId('swap-seats')).toBeNull(); expect(screen.queryByTestId('start')).toBeNull();
   });
   it('shows no seat plan for a room that is not a duel', () => {
     const { actions } = renderUi();

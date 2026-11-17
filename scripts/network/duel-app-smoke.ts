@@ -1,6 +1,6 @@
 // `npm run test:duel-app-runtime` (H-2 spec §10): the online duel through the real application. Two Electron processes
 // with separate temporary userData, against local workerd through Net-3d's harness and driver entry. Through the menu,
-// Multiplayer → Host, Join by the displayed code, ready, Swap seats once, start. Round 1 is the forced round end: a
+// Multiplayer → Host, Join by the displayed code, ready, start. Round 1 is the forced round end: a
 // test-only first seed (FTLITE_DUEL_TEST_SEED) whose round is decided on tick 1471 when nobody flies or fires, so in it
 // both players only stand up and sit down again (their records' command samples); then Enter starts round 2 on both,
 // and a duel-*.jsonl with latency figures is on both machines. In round 2 the Helm (the guest) holds W for 2 s and the
@@ -99,7 +99,7 @@ async function main() {
     writeFileSync(join(directory, 'observer', 'utility.cjs'), 'module.exports = { reconciledMemory: () => null };\n');
     const h = await launch('host'); let g = await launch('guest');
     step = 'step 1';
-    // 1. Through the real menu: Multiplayer → Host; Join by the displayed code; ready; Swap seats once; start.
+    // 1. Through the real menu: Multiplayer → Host; Join by the displayed code; ready; start.
     await h.request('open-multiplayer'); await h.request('click', { id: 'host' }); await h.request('click', { id: 'create-room' });
     const lobby = await phase(h, 'lobby');
     assert(lobby.status.snapshot.compatibility.modeId === 'duel' && lobby.status.snapshot.capacity === 2, 'Host made a two-seat duel room');
@@ -107,13 +107,11 @@ async function main() {
     await phase(g, 'lobby');
     await h.request('click', { id: 'ready' }); await g.request('click', { id: 'ready' });
     await until(() => status(h), (r: any) => r.status.actions.includes('start'), 'both ready');
-    await h.request('click', { id: 'swap-seats' });
-    assert((await status(h)).text.includes('Guest flies Helm'), 'Swap seats shows the guest at the Helm');
-    assert((await status(g)).text.includes('Host picks seats'), 'the guest lobby says the host picks seats');
+    assert(!(await status(h)).text.includes('Swap seats'), 'the host lobby has no Swap seats (owner 2026-11-17)');
     await h.request('click', { id: 'start' });
     await phase(h, 'running', 20000); await phase(g, 'running', 20000);
-    const started = await until(() => status(g), (r: any) => latest(r)?.helmPlayer === 1 && latest(r)?.seed === DUEL_TEST_SEED, 'guest sees itself at the Helm');
-    proof.swap = { helmPlayer: latest(started).helmPlayer, seed: latest(started).seed };
+    const started = await until(() => status(g), (r: any) => latest(r)?.helmPlayer === 0 && latest(r)?.seed === DUEL_TEST_SEED, 'guest sees the round start (Helm player: the host seat)');
+    proof.start = { helmPlayer: latest(started).helmPlayer, seed: latest(started).seed };
     step = 'step 2';
     // 2. Round 1, the forced end: both start standing aboard (start-aboard spec §1) and walk to their consoles: the host
     //    to Weapons, the guest to the Helm. Nobody flies or fires, so the test seed's round is decided on tick 1471
@@ -176,7 +174,7 @@ async function main() {
     proof.rejoin = { ackBeforeInput: true, resumedByEscape: true };
     for (const app of [g, h]) { await app.request('click', { id: 'leave' }); }
     await phase(h, 'idle'); await phase(g, 'idle');
-    console.log('ACTUAL DUEL APP: menu host/join/swap/start, the forced round end and round 2, records on both, Helm thrust and a beam on both, hash agreement, peer-lost pause and rejoin');
+    console.log('ACTUAL DUEL APP: menu host/join/start, the forced round end and round 2, records on both, Helm thrust and a beam on both, hash agreement, peer-lost pause and rejoin');
   } catch (error) { failure = `${step}: ${String((error as Error)?.message ?? error).slice(0, 160)}`; }
   finally {
     clearTimeout(watchdog);

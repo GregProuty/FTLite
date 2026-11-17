@@ -78,16 +78,10 @@ describe('the duel seats (H-2 spec §2)', () => {
   const seats = [{ seatId: 0, occupied: true, connected: true, ready: true }, { seatId: 1, occupied: true, connected: true, ready: true }];
   const duelLobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready', 'leave'],
     snapshot: { capacity: 2, joinCode: 'ABCDEFGH', seats, compatibility: { modeId: 'duel' } } as never };
-  it('Start carries the Helm player: the host by default, the guest after Swap seats, the host again after a second swap', async () => {
-    const start = vi.fn(async () => ({ ok: true as const })), { store, actions } = makeUi({ api: { start } });
+  it("Start carries the host's own seat as the Helm player (no Swap seats, owner 2026-11-17); a non-duel room starts without one", async () => {
+    const start = vi.fn(async () => ({ ok: true as const })), { actions } = makeUi({ api: { start } });
     actions.setStatus(duelLobby); actions.start(); expect(start).toHaveBeenLastCalledWith(0); await flush();
-    actions.swapSeats(); expect(store.getState().menu.swapped).toBe(true); actions.start(); expect(start).toHaveBeenLastCalledWith(1); await flush();
-    actions.swapSeats(); actions.start(); expect(start).toHaveBeenLastCalledWith(0);
-  });
-  it('a host on seat 1 swaps to seat 0; a new Host clears the swap; a non-duel room starts without a Helm player', async () => {
-    const start = vi.fn(async () => ({ ok: true as const })), host = vi.fn(async () => ({ ok: true as const })), { store, actions } = makeUi({ api: { start, host } });
-    actions.setStatus({ ...duelLobby, ownSeat: 1 }); actions.swapSeats(); actions.start(); expect(start).toHaveBeenLastCalledWith(0); await flush();
-    actions.host(); expect(store.getState().menu.swapped).toBe(false); await flush();
+    actions.setStatus({ ...duelLobby, ownSeat: 1 }); actions.start(); expect(start).toHaveBeenLastCalledWith(1); await flush();
     actions.setStatus({ ...duelLobby, snapshot: { ...duelLobby.snapshot!, compatibility: { modeId: 'sector' } } as never }); actions.start();
     expect(start).toHaveBeenLastCalledWith();
   });
