@@ -84,3 +84,19 @@ Process: I deleted the old file by hand and ran `npx tsx scripts/determinism/cap
 - The lobby helm line: the spec keeps the Skiff-only branch, so the Hound shows the standard line "Torpedoes are carried from the hold". The Hound has no magazine (its tube loads itself) and does have Ops tabs, so the Skiff line is actually the accurate one for the Hound. This is for the owner to decide; I followed the spec.
 - This is pre-existing and out of scope: `scripts/network/duel-app-observer.ts` and `scripts/profile-duel-publication.ts` still parse the Cutter as the duel layout, but the duel flies the Hound since Art-iv. I did not run the duel smoke.
 - I did not take sector screenshots of the Hound (spec look item) in this part.
+
+## Fix: the (.6, .8) segment now moves someone (review finding, Important)
+
+- Finding: the tick-0 `(.6, .8)` held segment landed while the mover was seated at Science (ticks 0-22), and
+  `movementSystem` skips seated crew, so it walked nobody. The Cutter's old mover had really walked under it.
+- Leaving the hound-3 mover unseated at tick 0 was not possible: the scan (tick 2), Ops tabs (11, 13), reactor buy (12)
+  and stand (22) all need it seated, and the coverage test requires them applied on both crew sizes.
+- Fallback taken (scripts/determinism/capture.ts): the tick-144 still segment becomes `(.6, .8)` for ticks 144-149, then
+  still at 150, on both variants. The mover is unseated after the tick-22 stand and in open floor there. The tick-0 copy
+  is kept and commented: it now only covers "seated crew ignore held input".
+- New test (tests/determinismHarness.test.ts, both variants): over the window each tick moves the mover by exactly
+  `CREW_SPEED * TRAIT_SLOW_SPEED * DT * (.6, .8)` (toBeCloseTo 12), and the check count equals the window length.
+  No other assertion changed.
+- Re-authored: fixture deleted by hand, `npx tsx scripts/determinism/capture.ts` -> 1800 samples.
+- `npx vitest run tests/determinismHarness.test.ts`: 16 passed. `npm run test:determinism`: Node 1800 samples and 330
+  boundaries PASS, Electron 37.10.3 PASS, Firefox 160 PASS. `npm run typecheck`: clean.

@@ -60,7 +60,11 @@ for (const { ship, playerCount } of VARIANTS) {
         { tick: 0, player: mover, held: { moveX: .6, moveY: .8, interactHeld: false } },
         { tick: 23, player: mover, held: { moveX: -1, moveY: -1, interactHeld: true } },
         { tick: 80, player: mover, held: { moveX: .125, moveY: -.75, interactHeld: true } },
-        { tick: 144, player: mover, held: { moveX: 0, moveY: 0, interactHeld: false } },
+        // The exact unit-length off-axis vector, on the normalization boundary. The tick-0 copy above lands while the
+        // mover is seated (it must be, for the Ops scan and tabs), so it only shows seated crew ignore held input; this
+        // one lands after the tick-22 stand, in open floor, and really walks the mover (pinned by the harness test).
+        { tick: 144, player: mover, held: { moveX: .6, moveY: .8, interactHeld: false } },
+        { tick: 150, player: mover, held: { moveX: 0, moveY: 0, interactHeld: false } },
         { tick: 450, player: mover, held: { moveX: 1, moveY: .33, interactHeld: false } },
         { tick: 510, player: mover, held: { moveX: 0, moveY: 0, interactHeld: true } },
         ...commuteHeld

@@ -67,6 +67,28 @@ describe('independently recorded semantic schedule coverage', () => {
     } finally { h.core.dispose(); }
     expect(checked).toBe(true);
   });
+  it.each(['hound-2', 'hound-3'])('%s: the recorded unit-length (.6, .8) segment really walks the unseated mover', variant => {
+    const original = fixture.runs.find(r => variantOf(r) === variant)!, mover = original.checkpoint.init.playerCount - 1;
+    const segment = original.held.filter(x => x.player === mover && x.held.moveX === .6 && x.held.moveY === .8 && x.tick > 22);
+    expect(segment).toHaveLength(1);
+    const start = segment[0]!.tick, end = original.held.find(x => x.player === mover && x.tick > start)!.tick;
+    expect(end - start).toBeGreaterThan(0);
+    const schedule = { ...original, ticks: end + 1, ended: false }, h = coreFor(schedule, __GAMEPLAY_CONTENT_DIGEST__);
+    const distance = CREW_SPEED * TRAIT_SLOW_SPEED * DT;
+    let checked = 0;
+    try {
+      for (const action of actions(schedule)) {
+        const eid = h.state.crew[mover]!, x = Position.x[eid]!, y = Position.y[eid]!, tick = h.state.tick;
+        h.core.replayFrame({ tick, eventSequenceBefore: h.core.cursors().eventSequence, action, results: [], events: [] });
+        if (action.kind === 'tick' && tick >= start && tick < end) {
+          checked++;
+          expect(action.input.held[mover]).toMatchObject({ moveX: .6, moveY: .8 });
+          expect(Position.x[eid]).toBeCloseTo(x + .6 * distance, 12); expect(Position.y[eid]).toBeCloseTo(y + .8 * distance, 12);
+        }
+      }
+    } finally { h.core.dispose(); }
+    expect(checked).toBe(end - start);
+  });
   it.each(['hound-2', 'hound-3'])('%s has exactly 54000 completed ticks, 900 samples and explicit terminal chains', variant => {
     const runs = fixture.runs.filter(r => variantOf(r) === variant), samples = fixture.expected.samples.filter(s => s.variant === variant);
     expect(runs.reduce((n, r) => n + r.ticks, 0)).toBe(54000);
