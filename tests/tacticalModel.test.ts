@@ -3,7 +3,7 @@ import { createCamera, pan, type Camera } from '../src/renderer/src/render/tacti
 import { createFeelTracker, feelReadout, feelRows, FEEL_WINDOW_TICKS, recordFeel } from '../src/renderer/src/render/tactical/feelModel';
 import {
   asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, ringCrossesRect,
-  tacticalModel, type PrevBody, type TacticalModelInput
+  shipScale, SHIP_MIN_PX_PER_UNIT, tacticalModel, type PrevBody, type TacticalModelInput
 } from '../src/renderer/src/render/tactical/tacticalModel';
 import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
 import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
@@ -76,8 +76,14 @@ describe('bodies and ships (H-1 spec §7 items 4 to 6)', () => {
     const at = (z: number) => tacticalModel(input(st, createCamera(s.x, s.y, z))).ships[0]!;
     expect(at(0.25).chevron).toBe(false);   // 40 units × 0.25 = 10 px
     expect(at(0.24).chevron).toBe(true);
-    expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.5, shields: 2 });
+    expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.8, shields: 2 });   // the minimum, 16 px per unit
+    expect(at(1.2).scale).toBe(1.2);
     expect(at(0.25).hull).toBe('hound');
+  });
+  it('a silhouette is never drawn below 16 px per ship unit; above that it follows the zoom', () => {
+    expect(SHIP_MIN_PX_PER_UNIT).toBe(16);
+    expect(shipScale(0.25)).toBeCloseTo(0.8, 9); expect(shipScale(0.5)).toBeCloseTo(0.8, 9);
+    expect(shipScale(0.8)).toBeCloseTo(0.8, 9); expect(shipScale(1.2)).toBe(1.2);
   });
   it('every ship carries its hull: the crew the Hound, the enemy the scout (hull silhouettes spec section 2)', () => {
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y, 0.5);

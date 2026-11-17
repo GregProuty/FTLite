@@ -10,7 +10,7 @@ import { worldToScreen, type Point } from './camera';
 import { interpolatedMissile, type FxState } from './fxModel';
 import { predictMissilePath } from './missilePath';
 import {
-  BEARING_RING_ZOOM, headingAngle, interpolatedShip, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
+  BEARING_RING_ZOOM, headingAngle, interpolatedShip, ringDraw, SHIP_CHEVRON_PX, shipScale, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
 } from './tacticalModel';
 import { hullFor, roomCentre } from './hullModel';
@@ -65,7 +65,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   const room = state.systems[0].lock;
   if (onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {
     const chevron = 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, a = headingAngle(enemy.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx;
-    const c = chevron ? { f: 0, s: 0 } : roomCentre(hullFor(false), room), k = SHIP_RADIUS * z;
+    const c = chevron ? { f: 0, s: 0 } : roomCentre(hullFor(false), room), k = SHIP_RADIUS * shipScale(z);
     const x = enemyS.x + (fx * c.f + rx * c.s) * k, y = enemyS.y + (fy * c.f + ry * c.s) * k, r = Math.max(7, k * 0.45);
     lock = { x, y, r, room, label: { text: `LOCK ${ROOM_NAMES[room]}`, x: enemyS.x + Math.max(14, k * 1.6) + 6, y: enemyS.y - 8 } };
   }

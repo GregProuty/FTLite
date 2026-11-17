@@ -118,7 +118,9 @@ This keeps the CRT map's rules:
 
 There are no display objects per frame, and each `Graphics.poly` call gets a fresh array.
 
-Below `SHIP_CHEVRON_PX` (10 px across) the chevron is drawn as today. The lock label offset (`max(14, k·1.6) + 6` px from the ship's centre) clears both hulls, since both lie inside radius 1.3.
+Below `SHIP_CHEVRON_PX` (10 px across) the chevron is drawn as today.
+
+**Minimum drawn size (added after the first screenshots, 2026-11-17).** At the true scale, both hulls are about 24 px long at the default zoom 0.5, too small for the shapes or the damage to read. A silhouette's drawing scale is therefore `shipScale(z) = max(z, SHIP_MIN_PX_PER_UNIT / SHIP_RADIUS)`, with `SHIP_MIN_PX_PER_UNIT = 16`, which makes the Hound at least 38 px long. `ShipDraw.scale`, the lock marker's offset and size, and the helm heading line's start all use it. Collision, the laser arcs, the ranges and the chevron threshold keep the true scale, and the chevron rule is unchanged. The lock label offset (`max(14, k·1.6) + 6` px from the ship's centre) clears both hulls, since both lie inside radius 1.3.
 
 ## 3. Testing and the gate
 
