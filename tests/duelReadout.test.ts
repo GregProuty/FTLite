@@ -21,7 +21,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
       ['HELM', ''], ['CUTTER', ''], ['HULL', '40/40'], ['SHIELD', ''], ['WEAPONS', 'OK'], ['SHIELDS', 'OK'], ['ENGINES', 'DMG 1'],
-      ['HUNTER', ''], ['HULL', '21/40'], ['SHIELD', ''], ['ROOMS', 'W0 S2 E1'], ['OTHER', 'PRESENT'], ['', 'AT WEAPONS']
+      ['HUNTER', ''], ['HULL', '21/40'], ['SHIELD', ''], ['ROOMS', 'W0 S2 E1'], ['HEALTH', '100/100'], ['OTHER', 'PRESENT'], ['', 'AT WEAPONS']
     ]);
     expect(rows[3]!.pips).toMatchObject({ n: 1, max: 2 }); expect(rows[9]!.pips).toMatchObject({ n: 2, max: 2 });
     disposeDuel(d);
@@ -56,7 +56,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     const [crew, enemy] = d.tactical.ships;
     let out = pairs({ duel: d, mode: 'interior', active: 0, other: 'AT WEAPONS' });
     expect(out.slice(11)).toEqual([
-      ['OTHER', 'AWAY'], ['', 'AT WEAPONS'], ['OUTSIDE', ''], ['HELM', 'EMPTY'], ['', 'COASTING'], ['WEAPONS', 'EMPTY'],
+      ['HEALTH', '100/100'], ['OTHER', 'AWAY'], ['', 'AT WEAPONS'], ['OUTSIDE', ''], ['HELM', 'EMPTY'], ['', 'COASTING'], ['WEAPONS', 'EMPTY'],
       ['ENEMY', String(Math.round(Math.hypot(enemy.x - crew.x, enemy.y - crew.y)))], ['BEARING', expect.stringMatching(/^\d{3}$/)]
     ]);
     placeMissile(d.tactical, 1, { x: crew.x + 500, y: crew.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });

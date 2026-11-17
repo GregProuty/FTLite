@@ -6,7 +6,7 @@
 // authority does, and hands each decided round's record to `onRound` (Single player's solo playtest records).
 import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
-import { Position } from '../../sim/components';
+import { Life, LifeState, Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
@@ -358,6 +358,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     view: () => { const s = seatOf(d, active); return s === 'standing' ? 'interior' : s; },
     otherStatus() {
       const other = active === 0 ? 1 : 0, s = seatOf(d, other);
+      if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
       if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
       return d.present[other] && sentHeld[other]!.interactHeld && repairInReach(d, other) >= 0 ? 'REPAIRING' : 'WALKING';
     },

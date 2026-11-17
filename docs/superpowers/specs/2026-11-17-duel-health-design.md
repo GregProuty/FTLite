@@ -25,9 +25,10 @@ field. One-page spec, build, one review, owner playtest. Decisions marked (rec.)
    character's centre adds one tick to `Life.reviveProgress`, with no key held (owner). At `DUEL_REVIVE_TICKS = 300`
    (5 s) the character is `Conscious` at 1 health. If the teammate leaves reach before then, progress resets to 0
    (rec.). Progress is stored as a fraction, ticks / 300, from whole ticks, so 300 ticks is exact.
-5. **Both downed** (rec., so the game never soft-locks): while every character is downed, each one's
-   `reviveProgress` advances on its own at a third of the speed (900 ticks, 15 s). Only the first character to wake
-   reaches 1 health that way; the other then needs a teammate's help.
+5. **Both downed** (owner 2026-11-17, replaces the earlier lone wake): if both characters are downed at the same time,
+   the round is over and lost, exactly as when the crew ship's hull reaches 0. On the tick the second character goes
+   down the tactical outcome becomes `EnemyWins` (unless the round was already decided that tick), so the normal decided
+   path follows: `decidedTick`, the DEFEAT end card, rematch. The crew ship's terminal causes record `downed`.
 6. **Medbay.** A conscious character standing in the room of the layout's Medbay station heals `MEDBAY_HEAL` (4)
    health per second, up to `HEALTH_MAX`, while that station is online (`stationOnline`). A whole heal from 1 takes
    about 25 s. In the duel the Medbay is powered from the start, and nothing in the duel turns it off yet. Downed
@@ -58,7 +59,8 @@ field. One-page spec, build, one review, owner playtest. Decisions marked (rec.)
   take none.
 - Downed at 0: stood up, no movement, no Interact, no sit.
 - Revive: 300 ticks within reach gives 1 health; leaving reach resets progress.
-- Both downed: a lone wake after 900 ticks.
+- Both downed (owner 2026-11-17): the outcome is defeat on that tick, the next tick goes through the end card, and a
+  rematch starts the next round with both full.
 - Medbay heals 4/s while online and none while offline (force it offline in the test).
 - Round reset; snapshot mid-downed and mid-revive restores and continues identically; determinism and goldens after the
   bless.

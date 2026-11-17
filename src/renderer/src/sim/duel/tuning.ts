@@ -36,3 +36,7 @@ export const DUEL_FIRE_DAMAGE_TICKS = 900;
 export const DUEL_EXTINGUISH_UNITS = 720;
 export const DUEL_EXTINGUISH_RATE_SOLO = 4;
 export const DUEL_EXTINGUISH_RATE_TEAM = 5;
+
+/** Duel health (duel-health spec §1.4): a downed character with a conscious, present, standing teammate within REACH
+ *  stands up at 1 health after DUEL_REVIVE_TICKS ticks (5 s); Life.reviveProgress holds ticks / DUEL_REVIVE_TICKS. */
+export const DUEL_REVIVE_TICKS = 300;
