@@ -1,0 +1,41 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "MAX_DUEL_ROUNDS=1024 is exported from snapshot.ts (plan L411), and seeds.ts imports it from there with no new cycle (L318). roundSeed throws above the cap (L341). The validator refuses round > MAX (L360) and 2*round > base (L363). Both checks come before validateDuelCheckpoint calls roundSeed (L2657 validates the snapshot, then roundSeed runs at L2659). The test messages match the thrown strings. The good snapshot has tick 5156, so base 2047 passes the base-tick check and reaches the 2n check (L1844-1846). Task 1 tests the roundSeed throw (L297)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The test now asserts the rematch was applied, d.round === 1, and ticks === 600 (L1452-1461). Step 1 now expects 10 failing tests (L1880)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "The re-host test pauses on round 2's decided end card, checks phase, round and outcome through bytes, and restores it with liveDuel (L1552-1557). The decided-snapshot block comes after created.mockRestore() (L1850-1876). It uses ra = 1 + the tactical field counts + 5, the same layout as at + 5 (L2332). Its three cases are: decided \u22121; decided 0 with base 1, which passes the base and 2n checks; and decided 7 > tick 6. Each is rehashed and expects /decided tick/. The file already imports createDuel, stepDuelTick, Outcome, TACTICAL_MODULES and hashF64, and { held: [], commands: [] } matches the input shape used at L1346."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "restoreDuelSnapshot clears d.events and d.tactical.events after writeBack. Both fields are mutable arrays (state.ts:34, tactical/state.ts:92). The Task 1 restore test asserts both are []."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "The test now takes 255 end-card steps after decided(4), which ends on tick 1; the rematch step then puts the base at 257, a prime, as the comment says."
+    }
+  ],
+  "verified": [
+    "Validator order (plan L2360-2364): the base-tick check runs before the 2n check, so the existing [2, 5157] and [2, -1] cases still give /base tick/. The [0, 1] case on the good snapshot (base 0) gives 'round 1 is invalid at base tick 0'.",
+    "Every replace block the delta added in tests/duelSnapshot.test.ts matches the file exactly once: the import line (tests/duelSnapshot.test.ts:7) and 'expect(created).toHaveBeenCalledTimes(1); created.mockRestore();' (L117-118). No earlier task edits these lines.",
+    "The 2n lower bound fits the T = 257 arithmetic: a round's base is the tick after its rematch step, and the earliest decision is tick 1.",
+    "validateDuelCheckpoint (plan L2657-2659) validates the snapshot, which bounds the round, before roundSeed, so a forged round never reaches the seed chain."
+  ],
+  "not_verified": [
+    "Ran nothing (the tests are read-only for this review). I did not confirm at run time that a duel with systems[1].hull = 0 decides as CrewWins with decidedTick 1, or that the paused end-card re-host hashes equal. Existing tests use the same pattern (hunterDown, plan L1510).",
+    "R1-F2 is deferred and was not awaited, so it is not re-checked here."
+  ]
+}
