@@ -1,0 +1,99 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Console placement contradicts itself: centred on the desk rectangle and also backed against the wall",
+      "claim": "Section 2 says the sprite's centre stands on the desk rectangle's centre and also that its back edge is against the wall. Those two rules give the same position only for a sprite as deep as the desk, which is 10 units. Every console sprite is between 28 and 54 units deep. The spec also does not say what happens when a sprite is larger than the 32-unit tile.",
+      "evidence": "spec L34 ('Its anchor is its centre; it stands on the desk rectangle's centre ... with its back edge against the wall'). consoleModel.ts:L17 (DESK_D = 10) and L47 (a flush desk at y = -WALL_GAP = -10, so for a north wall its centre is at tile-local y -5). spec L29-32: the sprite sizes are 12x15 to 13x16 art px (30-32 units deep at 2x), the server rack 16x27 (54 units), the green machine 16x23 (46 units) and the med pod 24x14 (48 units wide). If the server rack's centre sits at y -5, it runs from y -32 to +22, so its back edge is 22 units inside the wall tile and not at the wall face (y -10).",
+      "why": "One implementer centres the sprite on the desk, which buries the art in the wall. Another puts the back edge on the wall face, which pushes the art over the crew seat and into the next tile. The 'whole-art-pixel position' test cannot be written until one rule is chosen. The 48-unit med pod and the 54-unit rack also run into neighbouring tiles, and the spec neither accepts nor prevents that.",
+      "fix": "Keep one rule. Recommended: the back edge sits on the wall face. For a flush wall that is tile-local -WALL_GAP on the wall side, and for a non-flush wall it is the tile edge. Centre the sprite along the wall on the tile centre, rotate it about its centre, then shift it so the rotated back edge touches the face. State that sprites deeper or wider than a tile overlap the neighbouring tiles and that this is accepted, or else scale them down by whole art pixels. Then restate the rounding rule as 'top-left = floor to an even world unit'."
+    },
+    {
+      "severity": "P2",
+      "title": "The palette algorithm leaves the role of the kept colours in the k-means open",
+      "claim": "Step 2 does not say whether the kept Pimen colours are part of the k-means input. Nor does it say whether they count as existing centres for the farthest-point distance. It also does not say what happens to an empty cluster during the Lloyd iterations, or what happens if the kept count reaches 48 or more (k \u2264 0).",
+      "evidence": "spec L51-53 (kept colours 'go into the palette exactly'; k = 48 minus the kept count; the init picks the colour that maximises the distance to the nearest centre; 'each centre snapping to the member colour nearest the weighted mean'). spec L58 lists a test for 'the k bound' without defining that bound.",
+      "why": "The builder is now canonical and its output is committed (spec L57). Two implementers would get different palettes, and so different imported sheets. The 'k bound' test has no stated rule to check.",
+      "fix": "Add these rules: (a) the k-means runs only over the non-kept colours; (b) the kept colours seed the nearest-centre distance in the farthest-point init but are never moved; (c) an empty cluster keeps its previous centre; (d) if there are 48 or more kept colours the build fails with an error, otherwise k = 48 - kept, and the test checks exactly that."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Each console is now its own one-frame output bound by name (spec L28-32), so there is no padded cell. The new conflict between centring the sprite and backing it onto the wall is raised as a new finding."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "spec L21: LIMEZU_FOOT_ROW 31 and LIMEZU_HEAD_ROW 7 are measured offline, anchor y = 32/32. 'At load' is gone, and the test checks the constants (L71)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "spec L50-58: the algorithm is written out, the overrides are listed, the TS builder is canonical, and the owner-local check is that a re-run leaves git diff empty. The remaining ambiguities are raised as a new P2."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "With consoleArt the strip is not drawn (spec L35), and the overrides set failed to #e06715 (spec L55). palette.json:L75 is khaki today, so the override is needed and is listed."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "spec L41 and L44: interiorFeel owns the blasts and takes an optional blasts pair. They are plain Sprites framed from clock.t, which holds during a hitstop and a pause (interiorFeel.ts:L145-147). They are cleared on reset and on a layout change, which matches build() at L102-114."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "spec L43-45 settles the placement (centroid rounded to 2, the duel smoke tile, one spark per newly opened site at the site tile's centre), the 2x scale and 0.5 anchor, the shared cap of 4 cutting the oldest, and 'under the flash'. The flash is the last child of above (interiorFeel.ts:L90), so the blasts can be inserted before it."
+    },
+    {
+      "id": "R1-F7",
+      "result": "still open",
+      "note": "The child container at index 0 is resolved. The 'no cursor with consoleArt' rule (spec L35, test at L71) has no owner, though. The cursor blink is drawn by interiorFeel into fixtures (interiorFeel.ts:L165-172), not by the console layer. createInteriorFeel's only new option is `blasts` (spec L41), so the feel cannot know consoleArt is on. Fix: add an optional `consoleArt?: boolean` (or `cursor: false`) to createInteriorFeel, passed by renderer.ts:L66 and duel/interiorView.ts:L45, and skip the screenCursor rect when it is set."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "spec L22: the carry offset is (31-7)*2+6 = 54 with crewArt, replacing the 30 at crewSprites.ts:L36. The plan checks the callouts, and the offset is in the tests (L71)."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "spec L20: +90 degrees clockwise, anchor 0.5/0.5 at the crew position, and the foot anchor and rotation 0 are restored in every other state. Tested (L71)."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "spec L20: a pure stationSides(state) built from consoles(), mapping each group member to its group's side, cached by layoutHash. Seated.station (crewSprites.ts:L82) indexes it directly. The s-wall overlap is accepted (L23)."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "spec L63-67: a source URL, retrieved 2026-11-16 and a credit for each pack, the LimeZu terms quoted, and the Maru and Pimen terms recorded as an owner check in docs/gates.md. This meets the manifest.ts paid-entry requirements."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "spec L28: console.<STATION_IDS id> with all seven names listed. spec L36: createConsoleLayer(assets) with both call sites updated (renderer.ts:L63, duel/interiorView.ts:L49 today)."
+    }
+  ],
+  "verified": [
+    "The crewArt names crew.p<k>.* do not collide with the existing 'crew' feature names, which are only crew.idle.<f>, crew.walk.<f> and crew.down (fallback.ts:L7). A fresh clone missing the new optional names still takes the Puny path.",
+    "The four LimeZu outputs each have 52 frames of 16x32 with 24 columns: 4 standing in row 0, 24 in row y=32 and 24 in row y=64 (art/import.json L225-542 and its siblings). This matches spec L17.",
+    "The console source rectangles at spec L29-32 match art/import.json: stations frames 0-3 at L76-97, machines frames 0, 1 and 4 at L39-66.",
+    "The Pimen frame counts and sizes at spec L42 match art/import.json: explosion-hit has 11 frames of 16x16 (L1502-1572) and explosion-room has 14 frames of 32x32 (L1575-1663).",
+    "The breach openings and site tile centres are available inside interiorFeel: breachOpenings at interiorFeel.ts:L157, and debrisBurst uses tileCentre(d.siteTile[site]) at sources.ts:L174-175.",
+    "The duel smoke tile is picked inside onHit (interiorFeel.ts:L126), so the duel blast can reuse the same tile without a second random draw.",
+    "Every override colour at spec L55 is already in the committed palette.json colours (L4-47).",
+    "Seated.station is a station index (crewSprites.ts:L82), so a Side[] indexed by station from stationSides lines up with it."
+  ],
+  "not_verified": [
+    "Whether LimeZu foot row 31 and head row 7 are correct for all four sheets: this needs the paid PNGs, which are outside the repo.",
+    "Whether anchor y = 1 at the crew position puts the LimeZu feet where the Puny feet were. Puny uses anchor 0.75 on a 32-row frame (crewSprites.ts:L18), and the Puny foot row was not measured.",
+    "Whether the Pimen kept-colour count is below 48, so that k > 0: this needs the pack PNGs.",
+    "Whether the 54-unit carry offset fully clears the head once the torpedo's own drawn size (drawTorpedo size 20) is added. I did not read torpedoLayer.ts."
+  ]
+}
