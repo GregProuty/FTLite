@@ -25,6 +25,7 @@ import { createCalloutLayer } from './callouts';
 import type { Bubble } from './calloutModel';
 import type { PresentationPoint } from '../../../network/state/timeline';
 import { createInteriorFeel } from './interiorFeel';
+import { backdropOption } from './twinkleLayer';
 import { DEFAULT_FEEL, type FeelSetting } from './feel';
 import { sectorGradeInput } from './gradeModel';
 import { sectorHits } from './impactModel';
@@ -69,14 +70,14 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   let feelSetting: FeelSetting = DEFAULT_FEEL;
   const missing = new Set(assets.missing);
   const feel = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
-    world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'),
+    world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'), backdrop: backdropOption(assets),   // Art-v: the painted backdrop
     blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
   });
   // Art-i spec section 5: (Art-iv: battlemap,) tiles, (Art-iii: props,) grade, effects.below, icons, consoleDesks, magazine, crew, boarders, effects.above, lights.
   const battlemap = createBattlemapLayer(assets);
   world.addChild(battlemap.container, tiles.container, props.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
   consoleDesks.container.addChild(feel.fixtures); effects.above.addChild(feel.above);
-  app.stage.addChildAt(feel.starfield, 0);   // the starfield under the world, filling WORLD_BAND (spec section 8)
+  app.stage.addChildAt(feel.starfield, 0);   // the starfield under the world, filling WORLD_BAND (spec section 8); Art-v: or the painted backdrop over the whole stage
   let lastDraw: number | null = null, stage = 1, seenImpact: Int32Array | null = null;
 
   return {

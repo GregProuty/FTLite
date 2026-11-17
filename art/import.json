@@ -1,5 +1,5 @@
 {
-  "$comment": "npm run art:import (Art-i spec section 3). Art-ii: Maru-98 Mars sets (floors, props, consoles), LimeZu Modern Interiors premade crew 04/07/13/19, Pimen Explosion VFX 28/6/21. Art-iv: the 2-Minute Tabletop Hound battlemap, raw and mirrored. Rectangles picked with a bounding-box pass over each sheet.",
+  "$comment": "npm run art:import (Art-i spec section 3). Art-ii: Maru-98 Mars sets (floors, props, consoles), LimeZu Modern Interiors premade crew 04/07/13/19, Pimen Explosion VFX 28/6/21. Art-iv: the 2-Minute Tabletop Hound battlemap, raw and mirrored. Art-v: the Deep Space (Red) backdrop, raw. Rectangles picked with a bounding-box pass over each sheet.",
   "outputs": [
     {
       "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
@@ -1845,6 +1845,13 @@
       "columns": 1,
       "remap": false,
       "flipX": true
+    },
+    {
+      "pack": "2mt-diver/deep-space-red.png",
+      "frames": [{ "x": 0, "y": 0, "w": 2304, "h": 1584 }],
+      "output": "public/assets/paid/2mt/deep-space-red.png",
+      "columns": 1,
+      "remap": false
     },
     {
       "pack": "maru-98-mars/habitable-building/habitable building tileset.png",

@@ -23,6 +23,7 @@ import {
 } from './particles/sources';
 import type { Band } from './worldFit';
 import type { GameAnimation } from './assets';
+import { createBackdropLayer, type BackdropOption } from './twinkleLayer';
 import { addBlast, BLAST_CAP, BLAST_SCALE, blastFrame, liveBlasts, roomCentroid, tileCentre, type Blast, type BlastKind, type BlastTimings } from './blastModel';
 
 /** This frame's hit: the sector's hit rooms, or the duel's whole interior (its hits carry no room). */
@@ -41,7 +42,8 @@ export interface FeelFrame {
 }
 
 export interface InteriorFeel {
-  /** Under the world, filling the band (internal pixels). */
+  /** Under the world: the painted backdrop over the whole stage with its twinkling stars (Art-v), or without it the
+   *  procedural starfield filling the band (internal pixels). Sits at the stage origin in both views. */
   starfield: Container;
   /** Right above the tiles (multiply; its vacuum child is normal blend). */
   grade: Container;
@@ -81,10 +83,13 @@ function freezeAnimations(root: Container, held: Set<AnimatedSprite>, frozen: bo
 
 /** `world`: the ship's world container (its animations freeze in a hitstop). `band`: the starfield's band, internal pixels.
  *  `consoleArt`: the consoles are the bought sprites (Art-ii spec section 2), so no screen cursor blinks on them.
- *  `blasts`: the bought explosions (Art-ii spec section 3), played on hits and breach openings; absent, none draw. */
-export interface InteriorFeelOptions { world: Container; band: Band; feel: () => FeelSetting; consoleArt?: boolean; blasts?: Readonly<Record<BlastKind, GameAnimation>> }
+ *  `blasts`: the bought explosions (Art-ii spec section 3), played on hits and breach openings; absent, none draw.
+ *  `backdrop`: the painted Deep Space (Red) and its star list (Art-v spec sections 1 and 2); absent, the procedural starfield draws. */
+export interface InteriorFeelOptions { world: Container; band: Band; feel: () => FeelSetting; consoleArt?: boolean; blasts?: Readonly<Record<BlastKind, GameAnimation>>; backdrop?: BackdropOption }
 export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
-  const starfield = new Container(), starG = new Graphics(); starfield.addChild(starG);
+  const starfield = new Container(), starG = new Graphics();
+  const backdrop = opts.backdrop ? createBackdropLayer(opts.backdrop) : null;   // Art-v: replaces the procedural starfield
+  starfield.addChild(...(backdrop ? [backdrop.container] : []), starG);
   const grade = new Container(); grade.blendMode = 'multiply';
   const coverCtx = new GraphicsContext(), ambient = new Graphics(coverCtx), alert = new Graphics(coverCtx), vacuum = new Graphics();
   ambient.tint = ROLE.ambient; alert.tint = ROLE.alert; vacuum.blendMode = 'normal';
@@ -214,9 +219,10 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
       const ticksSince = state.tick - flashTick, fa = flashLeft > 0 ? flashAlpha(ticksSince, feelScale(opts.feel()), flashShare) : 0;
       flash.visible = fa > 0; flash.alpha = fa; flashLeft = Math.max(0, flashLeft - realDt);
 
-      // The starfield (section 8).
+      // The starfield (section 8), or the painted backdrop's twinkle on the same clock, scaled by the feel's flash (Art-v).
       starG.clear();
-      for (const s of stars(seed, opts.band, t, frame.artPx)) starG.rect(s.x, s.y, frame.artPx, frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
+      if (backdrop) backdrop.draw(t, feelScale(opts.feel()).flash);
+      else for (const s of stars(seed, opts.band, t, frame.artPx)) starG.rect(s.x, s.y, frame.artPx, frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
 
       stepShake(shake, paused ? realDt : pdt);   // a pause drains the shake on real time and shows none
       const bob: number[] = [];
