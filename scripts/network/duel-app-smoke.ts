@@ -66,7 +66,8 @@ async function main() {
   }
   const status = (app: Application) => app.request('status');
   const phase = (app: Application, value: string, ms?: number) => until(() => status(app), (r: any) => r.status.phase === value, `${app.profile} ${value}`, ms);
-  const latest = (r: any) => r.observations.at(-1)?.publications.at(-1);
+  // State packets can arrive out of order and a paused host stops publishing, so the newest is the highest sequence, not the last received.
+  const latest = (r: any) => (r.observations.at(-1)?.publications as any[] | undefined)?.reduce((a: any, p: any) => (a && a.sequence >= p.sequence ? a : p), undefined);
   const press = async (app: Application, key: string, hold = 120) => { await app.request('key', { key, down: true }); await delay(hold); await app.request('key', { key, down: false }); };
   try {
     runtime = startOnlineAppRuntime(directory, digest, deadline.signal);
