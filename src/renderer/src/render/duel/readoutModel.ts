@@ -48,7 +48,7 @@ export interface ReadoutInput {
   /** The player the keyboard drives; the other's status is shown. */
   active: 0 | 1;
   other: OtherStatus;
-  /** On an Artemis console (spec ง2): no view heading (the tab strip says it) and no LASER block (the station block shows it). */
+  /** On an Artemis console (spec ยง2): no view heading (the tab strip says it) and no LASER block (the station block shows it). */
   console?: boolean;
 }
 
