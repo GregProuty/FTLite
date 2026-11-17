@@ -1,15 +1,15 @@
 import { createClientRun } from '../../renderer/src/clientControl/clientRun';
-import type { AuthorityMessage, ChannelKind, Link, MonotonicClock, PublishedState } from '../../renderer/src/net/contracts';
-import { decodeMessage, validatePublication, MAX_MESSAGE_BYTES, createMessageCodec } from '../../renderer/src/net/codec';
+import type { AuthorityMessage, Link, MonotonicClock, PublishedState } from '../../renderer/src/net/contracts';
+import { validatePublication, createMessageCodec } from '../../renderer/src/net/codec';
 import { validateSnapshot } from '../../renderer/src/sim/snapshot';
 import type { ShipLayout } from '../../renderer/src/sim/ship/schema';
 import { Life, Position, Seated, Stable } from '../../renderer/src/sim/components';
 import { CREW_SPEED, TICK_HZ } from '../../renderer/src/sim/tuning';
 import { speedMult } from '../../renderer/src/sim/characters';
 import { hashF64 } from '../../shared/hash';
-import { classifyStreamPacket, createTransportSequence, decodeOpaquePacket, decodeStatePacket, inspectState, encodeOpaquePacket, imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, type StateImage } from '../state/imageCodec';
-import { createStateReceiver } from '../state/receiver';
-import { createModeStreamBinding, encodeModeNotification, modeInputIdentity } from './streamBinding';
+import { imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, type StateImage } from '../state/imageCodec';
+import { createModeStreamBinding, encodeModeNotification } from './streamBinding';
+import { createModeRemoteClient } from './remoteClient';
 import { createPresentationTimeline, type PresentationPoint, type PresentationTimelineOptions } from '../state/timeline';
 
 export interface SectorValidationOptions { resolveLayout(id: string): ShipLayout; contentDigest?: string }
@@ -52,16 +52,6 @@ export function imageToPublication(image: StateImage, options: SectorValidationO
 export function encodeSectorNotification(message: Notification, requiredPublicationSequence: number, transportSequence: number): Uint8Array {
   return encodeModeNotification(codec, NOTIFICATION_STREAM, 'sector', message, requiredPublicationSequence, transportSequence);
 }
-function decodeNotification(packet: Uint8Array): { message: Notification; floor: number } {
-  const { bytes, class: payloadClass, stream } = decodeOpaquePacket(packet);
-  if (payloadClass !== 'state' || stream !== NOTIFICATION_STREAM || bytes.length <= 9 || bytes.length > 9 + MAX_MESSAGE_BYTES || bytes[0] !== 1) throw Error('sector-notification');
-  const floor = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getFloat64(1, true), message = decodeMessage(bytes.subarray(9));
-  if (!Number.isSafeInteger(floor) || floor < 0 || message.kind !== 'result' && message.kind !== 'event') throw Error('sector-notification');
-  return { message, floor };
-}
-function inputIdentity(bytes: Uint8Array, channel: ChannelKind): { stream: string; channel: ChannelKind } {
-  return modeInputIdentity(codec, 'sector', bytes, channel);
-}
 
 /** Trusted authority attachment. It owns stream controls, while the authority owns gameplay ingress. */
 export function createSectorStreamBinding(link: Link, options: SectorValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number }) {
@@ -72,24 +62,16 @@ export function createSectorStreamBinding(link: Link, options: SectorValidationO
 export interface SectorRemoteClientOptions extends SectorValidationOptions {
   runId: string; clock: MonotonicClock; presentation?: PresentationTimelineOptions;
 }
+/** The sector's remote client (H-2 spec §4): the mode remote client with the sector codec, its notification stream, the
+ *  sector client run and its presentation points on the 100 ms timeline. Unchanged in behaviour, bytes and timing. */
 export function createSectorRemoteClient(link: Link, owned: readonly number[], options: SectorRemoteClientOptions) {
-  const nextTransportSequence = createTransportSequence(), presentation = createPresentationTimeline(options.presentation);
-  let closed = false, disposed = false;
-  const removers: (() => void)[] = [];
-  const clientLink: Link = { peer: link.peer, caps: link.caps, stats: () => link.stats(), close: reason => link.close(reason),
-    onClose: cb => link.onClose(cb), onMessage: () => () => {},
-    send(kind, bytes) {
-      if (closed) return;
-      try { const expected = inputIdentity(bytes, kind); if (kind !== expected.channel) throw Error('sector-input-channel');
-        link.send(kind, encodeOpaquePacket('input', expected.stream, nextTransportSequence(), bytes));
-      } catch { link.close('sector-stream-invalid'); }
-    }
-  };
-  const client = createClientRun(clientLink, owned, { ...options, admissionPolicy: 'receive-time', remoteStreaming: true });
+  const presentation = createPresentationTimeline(options.presentation);
+  let disposed = false, connected = true;
   let previous: { tick: number; points: PresentationPoint[] } | undefined;
   const generations = new Map<string, number>();
+  let client!: ReturnType<typeof createClientRun>;
   function present(publication: PublishedState): void {
-    const state = client.state(); if (!state || closed) return;
+    const state = client.state(); if (!state || !connected) return;
     const targets = identity([state.weapons.target, state.science.target]);
     const points = state.crew.map((eid, player): PresentationPoint => {
       const id = `crew:${player}`, x = Position.x[eid]!, y = Position.y[eid]!, prior = previous?.points.find(point => point.id === id);
@@ -100,42 +82,14 @@ export function createSectorRemoteClient(link: Link, owned: readonly number[], o
     presentation.push({ tick: state.tick, epoch: identity([epoch(publication), state.run.sector, state.run.node, state.run.arrivalTick]), paused: publication.phase !== 'running', points }, options.clock.nowMs());
     previous = { tick: state.tick, points };
   }
-  const receiver = createStateReceiver({ clock: options.clock, nextTransportSequence,
-    accept(image) {
-      if (closed) return 'ignored';
-      let publication: PublishedState;
-      try { publication = imageToPublication(image, options); } catch { return 'rejected'; }
-      const result = client.acceptPublication(publication);
-      if (result === 'accepted' && !closed) present(publication);
-      return result;
-    },
-    sendControl(bytes) {
-      if (closed) return false;
-      try { link.send('reliable-ordered', bytes); return !closed; } catch { link.close('sector-stream-invalid'); return false; }
-    },
-    onAcknowledged(image) { if (!closed) client.acknowledgePublication(image.sequence); },
-    close: reason => link.close(reason)
+  const remote = createModeRemoteClient<import('../../renderer/src/sim/snapshot').Snapshot, ReturnType<typeof createClientRun>>(link, {
+    clock: options.clock, codec, notificationStream: NOTIFICATION_STREAM, label: 'sector',
+    imageToPublication: image => imageToPublication(image, options),
+    createClient: clientLink => (client = createClientRun(clientLink, owned, { ...options, admissionPolicy: 'receive-time', remoteStreaming: true })),
+    onAccepted: present,
+    onDisconnect() { connected = false; presentation.disconnect(); previous = undefined; generations.clear(); }
   });
-  function disconnect(): void {
-    if (closed) return; closed = true; receiver.dispose(); client.dispose(); presentation.disconnect(); previous = undefined; generations.clear();
-    for (const off of removers.splice(0)) { try { off(); } catch { /* release all subscriptions */ } }
-  }
-  const offClose = link.onClose(disconnect);
-  if (closed) offClose(); else removers.push(offClose);
-  if (!closed) removers.push(link.onMessage((kind, bytes) => {
-    if (closed) return;
-    try {
-      const metadata = classifyStreamPacket(bytes);
-      if (metadata.class === 'state' && metadata.stream === 'state') {
-        const header = inspectState(decodeStatePacket(bytes));
-        if (kind !== (header.kind === 'full' ? 'reliable-ordered' : 'unreliable-latest')) throw Error('sector-state-channel');
-        receiver.receive(bytes); return;
-      }
-      if (kind !== 'reliable-ordered') throw Error('sector-notification-channel');
-      const { message, floor } = decodeNotification(bytes); client.acceptNotification(message, floor);
-    } catch { link.close('sector-stream-invalid'); }
-  }));
-  return { ...client, presentation, streamStats: receiver.stats,
-    dispose() { if (disposed) return; disposed = true; disconnect(); presentation.dispose(); }
+  return { ...remote.client, presentation, streamStats: remote.streamStats,
+    dispose() { if (disposed) return; disposed = true; remote.disconnect(); presentation.dispose(); }
   };
 }

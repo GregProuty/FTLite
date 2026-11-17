@@ -20,14 +20,16 @@ export function isLeaseFenceReason(value: unknown): value is LeaseFenceReason {
   return ['lease-expired', 'service-fenced', 'suspended', 'resumed', 'clock-discontinuity', 'disposed'].includes(value as string);
 }
 
-/** Trusted host attachment only; never part of gameplay or renderer IPC payloads. */
-export interface StreamAttachmentOptions { streamed?: boolean; latestPayloadLimit?: number }
+/** Trusted host attachment only; never part of gameplay or renderer IPC payloads. `origin` (H-2 spec §6): main marks
+ *  the host's own renderer port 'local' and every guest attachment 'remote', so a mode can tell a lost peer. */
+export interface StreamAttachmentOptions { streamed?: boolean; latestPayloadLimit?: number; origin?: 'local' | 'remote' }
 export function validStreamAttachmentOptions(value: unknown): value is StreamAttachmentOptions | undefined {
   if (value === undefined) return true;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const options = value as StreamAttachmentOptions;
-  return Object.keys(options).every(key => key === 'streamed' || key === 'latestPayloadLimit')
+  return Object.keys(options).every(key => key === 'streamed' || key === 'latestPayloadLimit' || key === 'origin')
     && (options.streamed === undefined || typeof options.streamed === 'boolean')
+    && (options.origin === undefined || options.origin === 'local' || options.origin === 'remote')
     && (options.latestPayloadLimit === undefined ? options.streamed !== true : Number.isSafeInteger(options.latestPayloadLimit)
       // 16 KiB RTC packet less the maximum 296-byte framing header. Keep this
       // shared boundary free of renderer-backed network type dependencies.

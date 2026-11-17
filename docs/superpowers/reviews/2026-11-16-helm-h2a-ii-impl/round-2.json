@@ -1,0 +1,39 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "tests/duelOnline.test.ts:L54-57 now reads watchdogs() when rig.session().duel.interior.tick % 300 === 299. duelRules.ts:L35 confirms that interior.tick is the same tick the authority uses (rules.tick), so each read comes after the pump that reaches tick 299 and before the reset in core.ts:L458-459, which runs after the step that reaches tick 300. L58 asserts windows === floor((T+1)/300), so a pump that skipped tick 299 would fail the test rather than skip a window. The final window is still read at L71. One gap remains: watchdog frames journaled in the boundary pump before its tick runs (expireHeld/drainIngress, core.ts:L471-472) are cleared without being read. That is one pump in every 300, and the finding marked covering it as optional, so it does not keep this open."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "tests/duelOnline.test.ts:L76 asserts heldHighWater[seat] > 0 for each seat. Seat 1's held frames can only come from b's client, so a seat-specific held/outbox/ACK regression now fails. L77 requires an applied command overall. The responder's reason for dropping the per-seat applied check (the Helm can fly a round on held input alone, false on four seeds) is sound."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "duelProducers.ts:L64 clears s.lost whenever the publication is paused, before the early return on s.pending/done at L65. The new test (tests/duelProducers.test.ts:L111-137 in the diff) puts the presence in flight, then delivers paused, then resume plus the applied result, and expects pauses === []. Without L64 the old early return on s.pending left lost true and the applied result triggered pause('peer-lost') at L60, so the test fails without the fix. Steward behaviour in the running and peer-lost paths is otherwise unchanged."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "duelClient.ts:L21-27 now checks publication.tick === snapshot.header.tick and the hash (hashF64 over Float64Array.from(snapshot.values)) after schema parsing and before validateDuelSnapshot. These are the same checks checkedPublication makes (duelStream.ts:L26), and the doc at L19-20 now describes them. The stream client's validatePublication (duelClient.ts:L35) uses it, which also closes minor (a)."
+    }
+  ],
+  "verified": [
+    "core.ts:L458-459: the boundary reset runs after rules.step and publishCompletedState, so frames for tick 299 are still in replay().frames when the test reads at interior.tick % 300 === 299 (tests/duelOnline.test.ts:L56).",
+    "tests/helpers/onlineDuel.ts:L51: rig.tick() advances the clock one 60 Hz period per pump, and L58's window-count assertion catches any pump that executes two ticks and skips a read.",
+    "duelRules.ts:L35: rules.tick(s) is s.duel.interior.tick, the value the test samples.",
+    "Other journal resets (core.ts:L427 controls >= 256 on lifecycle; L478 frames > 4096) are not plausibly reached within one 300-tick window of this scripted round with no pauses.",
+    "duelProducers.ts:L54-72: the results loop still runs before the paused check, the retry sequence (max of commandHighWater+1 and lastSequence+1) is unchanged, and no new path issues a pause.",
+    "duelClient.ts:L21-27: the identity checks run before validateDuelSnapshot, so a mismatched publication is rejected before it reaches the replica."
+  ],
+  "not_verified": [
+    "I did not run the test suite (constraint), so I cannot confirm the new producer test fails without the fix except by reading the code path, or that the ten seeds still pass with the new window and heldHighWater assertions.",
+    "R1-F5 (a replica replacement validates twice) was deferred and not awaited; I did not re-examine it.",
+    "A possible race that predates this fix and was not introduced by it: a presence result applied in the pump just before a player's pause makes the steward issue pause('peer-lost') while the authority is already pausing. I did not trace the lifecycle queue to see whether this produces a visible second pause."
+  ]
+}
