@@ -1,0 +1,11 @@
+topic=helm-h2a-ii-impl
+subject_kind=impl
+subject=build/contentDigest.ts src/network/modes/duel.ts src/network/modes/duelProducers.ts src/network/modes/duelStream.ts src/network/modes/encounterMode.ts src/network/modes/remoteClient.ts src/network/modes/sectorStream.ts src/renderer/src/clientControl/clientRun.ts src/renderer/src/clientControl/duelClient.ts src/renderer/src/clientControl/streamClient.ts src/shared/hostProcessProtocol.ts tests/contentDigest.test.ts tests/duelOnline.test.ts tests/duelProducers.test.ts tests/duelRemoteClient.test.ts tests/helpers/linkPair.ts tests/helpers/onlineDuel.ts tests/networkBoundary.test.ts tests/streamClient.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\h2a-ii
+base=409a1e3
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-16
+head_at_setup=636d59b
