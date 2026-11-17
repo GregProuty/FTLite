@@ -21,9 +21,8 @@ import { createDuelSink, createFlightSink } from './ui/sinks';
 import { computeLetterbox } from './render/letterbox';
 import { createUiActions } from './ui/actions';
 import { inputBlockedOf } from './ui/menuState';
-import { mountProbe, mountUi } from './ui/mount';
+import { mountUi } from './ui/mount';
 import { createUiPerf } from './ui/perf';
-import { startUiProbe } from './app/uiProbe';
 import { installFeel } from './app/feelBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
@@ -174,14 +173,18 @@ async function startProbe(): Promise<void> {
   const store = createUiStore({ onlineAvailable: false });
   const actions = createUiActions({ store, single() {}, online() {}, pause() {} });
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
-  await mountProbe({ el: uiRoot, store, actions });
+  const { mountProbe } = await import('./ui/probe/mountProbe');
+  const { startUiProbe, duelProbeFixture } = await import('./app/uiProbe');
+  const duelProbe = new URLSearchParams(location.search).get('probe') === 'duel';
+  if (duelProbe) await mountUi({ el: uiRoot, store, actions, menu: false }); else await mountProbe({ el: uiRoot, store, actions });
   const resize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
     const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
     setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
-  startUiProbe(renderer);
+  startUiProbe(renderer, !duelProbe);
+  if (duelProbe) createDuelSink(store).frame(duelProbeFixture());
 }
 
 /** One mode per launch (H-1 spec §3): the dev views `?mode=flight` and `?mode=duel`, or the app with its main menu. */

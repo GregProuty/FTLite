@@ -45,7 +45,7 @@ export interface DuelViewSource {
 export interface SceneOverlay { banner: string | null; layerPaused: boolean; end: EndView | null; notice?: string | null }
 
 /** The banners and the map overlay the scene hands the UI (deviation 1: the tactical banner shows only on a map view). */
-export function sceneUi(view: string, overlay: SceneOverlay, pauseText: string, overlayView: MapOverlayView | null): { banners: Banners; overlay: MapOverlayView | null } {
+export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string, overlayView: MapOverlayView | null): { banners: Banners; overlay: MapOverlayView | null } {
   return {
     banners: {
       interior: overlay.banner !== null && (view === 'interior' || !overlay.layerPaused) ? overlay.banner : null,

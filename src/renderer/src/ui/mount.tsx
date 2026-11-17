@@ -7,20 +7,18 @@ import { UiContext } from './context';
 import { buildGlyphAtlas } from './glyphs';
 import { GlyphContext } from './stage/GlyphContext';
 import type { UiStore } from './store';
-import { ProbePage } from './probe/ProbePage';
 import { UiRoot } from './UiRoot';
 
-async function mountWith(opts: { el: HTMLElement; store: UiStore; actions: UiActions }, page: ReactElement): Promise<() => void> {
+export async function mountWith(opts: { el: HTMLElement; store: UiStore; actions: UiActions }, page: ReactElement): Promise<() => void> {
   let family = 'm5x7';
   try { await document.fonts.load('16px m5x7'); } catch { /* checked below */ }
   if (!document.fonts.check('16px m5x7')) { family = 'monospace'; console.warn('[ui] m5x7 is not available; HUD text falls back to monospace'); }
   const make = (w: number, h: number): HTMLCanvasElement => Object.assign(document.createElement('canvas'), { width: w, height: h });
   const atlas = buildGlyphAtlas(make, family);
+  if (!atlas) console.warn('[ui] glyph atlas unavailable; HUD text will not draw');
   const root = createRoot(opts.el), value = { store: opts.store, actions: opts.actions };
   root.render(<UiContext.Provider value={value}><GlyphContext.Provider value={atlas}>{page}</GlyphContext.Provider></UiContext.Provider>);
   return () => root.unmount();
 }
 
 export function mountUi(opts: { el: HTMLElement; store: UiStore; actions: UiActions; menu?: boolean }): Promise<() => void> { return mountWith(opts, <UiRoot menu={opts.menu ?? true} />); }
-/** The text-parity probe's mount (?mode=uiprobe): the same providers, ProbePage instead of the UI root. */
-export function mountProbe(opts: { el: HTMLElement; store: UiStore; actions: UiActions }): Promise<() => void> { return mountWith(opts, <ProbePage />); }
