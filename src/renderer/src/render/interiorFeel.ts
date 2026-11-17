@@ -1,0 +1,215 @@
+// Light and feel for one ship interior (Art-i spec sections 5-8), shared by the sector view (renderer.ts) and the duel
+// interior (duel/interiorView.ts): the grade, the lights, the particles, the impact flash, shake and hitstop, the
+// fixtures (console screen blink, room lamps) and the starfield, all on one presentation clock. The views add the
+// containers in the spec's order and pass each frame's signals; this module never reads input or the sim RNG.
+import { AnimatedSprite, Container, Graphics, GraphicsContext } from 'pixi.js';
+import { TILE_PX } from '../../../shared/resolution';
+import type { SimState } from '../sim/state';
+import { FIRE_CAP, TICK_HZ } from '../sim/tuning';
+import { consoles } from './consoleModel';
+import type { DoorRect } from './doorModel';
+import { feelScale, type FeelSetting } from './feel';
+import { alertStrength, gradeCover, gradeModel, lampPoints, type GradeInput } from './gradeModel';
+import { fireTiles } from './hazardTiles';
+import { createShake, DUEL_FLASH_SHARE, FLASH_TICKS, flashAlpha, HITSTOP_SECONDS, kickShake, shakeOffset, SMOKE_SECONDS, stepShake } from './impactModel';
+import { consoleGlow, fireGlow, glowRuns, lampLight, lampLit, screenCursor, screenPhase, stars } from './lightsModel';
+import { RAMP, ROLE } from './palette';
+import { createPresentClock } from './presentClock';
+import { createEmitter, type Emitter } from './particles/emitter';
+import { createParticleLayer } from './particles/particleLayer';
+import { hashString } from './particles/random';
+import {
+  bobOffset, breachOpenings, debrisBurst, fireSources, hitSmokeSources, sparkSources, stepVents, ventingSources, wallVents, workSources, type HitSmoke, type WallVent, type Working
+} from './particles/sources';
+import type { Band } from './worldFit';
+
+/** This frame's hit: the sector's hit rooms, or the duel's whole interior (its hits carry no room). */
+export type FeelHit = { rooms: readonly number[] } | { whole: true } | null;
+
+export interface FeelFrame {
+  /** The interior's sim state (the sector state, or the duel's d.interior). */
+  state: SimState;
+  grade: GradeInput;
+  hit: FeelHit;
+  /** Spark points: failed stations (sector) or damaged repair rooms (duel). */
+  sparks: readonly { key: string; x: number; y: number }[];
+  working: readonly Working[];
+  /** One art pixel in the shaken container's parent units: 2 x the world scale. */
+  artPx: number;
+}
+
+export interface InteriorFeel {
+  /** Under the world, filling the band (internal pixels). */
+  starfield: Container;
+  /** Right above the tiles (multiply; its vacuum child is normal blend). */
+  grade: Container;
+  /** Into the console desks container: the screen blink and the lamp fixtures. */
+  fixtures: Graphics;
+  /** Into effects.above: the normal particles, then the white flash. */
+  above: Container;
+  /** Above everything that shows the ship, under any text (additive). */
+  lights: Container;
+  /** Presentation seconds (frozen by the hitstop). */
+  time(): number;
+  /** Returns the shake offset for the world (and, in the sector, the projectiles and callouts), and each player's bob.
+   *  `dt` is the presentation dt: the views pass 0 while the game is paused, so everything here holds, except that
+   *  the shake, a running hitstop and the flash drain on `realDt` (the frame's real seconds, default `dt`): a pause
+   *  leaves no shake offset, no stopped clock and no lit flash. */
+  draw(frame: FeelFrame, dt: number, realDt?: number): { shake: { x: number; y: number }; bob: number[] };
+  reset(): void;
+  /** Destroys this feel's Graphics and its shared GraphicsContexts; call it before destroying the view's containers. */
+  destroy(): void;
+}
+
+const GLOW = { console: 5, fire: 8, lamp: 4 } as const;
+const LAMP_SIZE = 4;
+
+function glowContext(radius: number): GraphicsContext {
+  const c = new GraphicsContext();
+  for (const r of glowRuns(radius)) c.rect(r.x, r.y, r.w, r.h).fill({ color: 0xffffff, alpha: r.alpha });   // white: each glow's tint carries its palette colour
+  return c;
+}
+
+/** Stop every playing AnimatedSprite under `root` (the hitstop), or start again the ones it stopped. */
+function freezeAnimations(root: Container, held: Set<AnimatedSprite>, frozen: boolean): void {
+  if (!frozen) { for (const s of held) if (!s.destroyed) s.play(); held.clear(); return; }
+  const walk = (c: Container): void => { for (const k of c.children) { if (k instanceof AnimatedSprite && k.playing) { k.stop(); held.add(k); } walk(k); } };
+  walk(root);
+}
+
+/** `world`: the ship's world container (its animations freeze in a hitstop). `band`: the starfield's band, internal pixels. */
+export function createInteriorFeel(opts: { world: Container; band: Band; feel: () => FeelSetting }): InteriorFeel {
+  const starfield = new Container(), starG = new Graphics(); starfield.addChild(starG);
+  const grade = new Container(); grade.blendMode = 'multiply';
+  const coverCtx = new GraphicsContext(), ambient = new Graphics(coverCtx), alert = new Graphics(coverCtx), vacuum = new Graphics();
+  ambient.tint = ROLE.ambient; alert.tint = ROLE.alert; vacuum.blendMode = 'normal';
+  grade.addChild(ambient, alert, vacuum);
+  const fixtures = new Graphics();
+  const particles = createParticleLayer();
+  const flash = new Graphics(); flash.visible = false;
+  const above = new Container(); above.addChild(particles.normal, flash);
+  const lights = new Container(); lights.blendMode = 'add';
+  const glowLayer = new Container(); lights.addChild(glowLayer, particles.add);
+  const ctx = { console: glowContext(GLOW.console), fire: glowContext(GLOW.fire), lamp: glowContext(GLOW.lamp) };
+  const fireGlows = new Map<number, Graphics>(), held = new Set<AnimatedSprite>();
+  let consoleGlows: Graphics[] = [], lampGlows: Graphics[] = [];
+
+  const clock = createPresentClock(), shake = createShake();
+  let builtFor = '', seed = 0, emitter: Emitter = createEmitter(0), vents: WallVent[] = [], puffs: number[] = [];
+  let lamps: { room: number; x: number; y: number }[] = [], cover: DoorRect[] = [];
+  let smokes: HitSmoke[] = [], breachSeen: Uint8Array | null = null, flashTick = Number.NEGATIVE_INFINITY, flashShare = 1, flashLeft = 0, wasStopped = false;
+
+  function build(state: SimState): void {
+    const d = state.derived;
+    builtFor = d.layoutHash; seed = hashString(d.layoutHash); emitter = createEmitter(seed);
+    cover = gradeCover(state.layout.rows, d.width, d.height);
+    coverCtx.clear(); for (const r of cover) coverCtx.rect(r.x, r.y, r.w, r.h); coverCtx.fill(0xffffff);
+    vents = wallVents(state.layout.rows, d.width, d.height, d.layoutHash); puffs = [];
+    lamps = lampPoints(d.roomTiles, d.width);
+    for (const g of [...consoleGlows, ...lampGlows, ...fireGlows.values()]) g.destroy();
+    fireGlows.clear();
+    consoleGlows = consoles(state).map(() => { const g = new Graphics(ctx.console); g.tint = ROLE.screenA; glowLayer.addChild(g); return g; });
+    lampGlows = lamps.map(() => { const g = new Graphics(ctx.lamp); glowLayer.addChild(g); return g; });
+    smokes = []; breachSeen = null; flashTick = Number.NEGATIVE_INFINITY; flashLeft = 0; flash.visible = false;
+  }
+
+  function onHit(frame: FeelFrame): void {
+    const { state, hit } = frame, d = state.derived, f = feelScale(opts.feel());
+    if (!hit || ('rooms' in hit && hit.rooms.length === 0)) return;
+    kickShake(shake, f); clock.hitstop(HITSTOP_SECONDS * f.hitstop);
+    flashTick = state.tick; flashLeft = FLASH_TICKS / TICK_HZ; flash.clear();
+    const t = clock.t;
+    if ('whole' in hit) {
+      flashShare = DUEL_FLASH_SHARE;
+      for (const r of cover) flash.rect(r.x, r.y, r.w, r.h);
+      const floor = d.roomTiles.flat();
+      if (floor.length) smokes.push({ key: `duel:${flashTick}`, tiles: [floor[emitter.random.int(floor.length)]!], until: t + SMOKE_SECONDS });
+    } else {
+      flashShare = 1;
+      for (const room of hit.rooms) {
+        for (const tile of d.roomTiles[room]!) { const tx = tile % d.width; flash.rect(tx * TILE_PX, ((tile - tx) / d.width) * TILE_PX, TILE_PX, TILE_PX); }
+        smokes = smokes.filter((s) => s.key !== `room:${room}`);
+        smokes.push({ key: `room:${room}`, tiles: d.roomTiles[room]!, until: t + SMOKE_SECONDS });
+      }
+    }
+    flash.fill(ROLE.flash);
+  }
+
+  return {
+    starfield, grade, fixtures, above, lights,
+    time: () => clock.t,
+    draw(frame, dt, realDt = dt) {
+      const { state } = frame, d = state.derived;
+      if (builtFor !== d.layoutHash) build(state);
+      onHit(frame);
+      const paused = dt === 0 && realDt > 0;
+      const pdt = clock.advance(dt), t = clock.t;
+      if (paused) clock.drain(realDt);   // a pause lets a running hitstop drain on real time; the rest of the clock stays held
+      if (clock.stopped !== wasStopped) { wasStopped = clock.stopped; freezeAnimations(opts.world, held, wasStopped); }
+
+      // Grade (section 5): ambient always, the alert pulse while on, vacuum per room (normal blend).
+      const g = gradeModel(frame.grade, t);
+      ambient.alpha = g.ambient; alert.visible = g.alert; alert.alpha = alertStrength(g);
+      vacuum.clear();
+      for (const v of g.vacuum) for (const tile of d.roomTiles[v.room]!) { const tx = tile % d.width; vacuum.rect(tx * TILE_PX, ((tile - tx) / d.width) * TILE_PX, TILE_PX, TILE_PX).fill({ color: ROLE.vacuum, alpha: v.strength }); }
+
+      // Particles (section 6) and steam (section 8), on the presentation clock.
+      const opened = breachOpenings(state.breaches.active, breachSeen); breachSeen = opened.seen;
+      for (const s of opened.opened) debrisBurst(emitter, state, s);   // even at pdt 0: the hit that opens a breach starts the hitstop this frame, and a 0 step holds the debris until the clock runs
+      smokes = smokes.filter((s) => t < s.until);
+      if (pdt > 0) stepVents(emitter, vents, puffs, t);
+      emitter.step(pdt, [...fireSources(state), ...sparkSources(frame.sparks), ...ventingSources(state), ...workSources(frame.working), ...hitSmokeSources(smokes, t, d.width)]);
+      particles.draw(emitter.particles);
+
+      // Lights (section 5) and fixtures (section 8).
+      fixtures.clear();
+      consoles(state).forEach((c, k) => {
+        const glow = consoleGlows[k];
+        if (glow) { glow.position.set(c.x + TILE_PX / 2, c.y + TILE_PX / 2); glow.alpha = consoleGlow(c.look); }
+        if (c.look === 'down') return;
+        const r = screenCursor(c.x, c.y, c.picture.screen);
+        fixtures.rect(r.x, r.y, r.w, r.h).fill(screenPhase(seed, c.members[0]!, t) === 'A' ? ROLE.screenA : ROLE.screenB);
+      });
+      lamps.forEach((l, k) => {
+        const light = lampLight(g.alert, lampLit(seed, l.room, t)), glow = lampGlows[k]!;
+        glow.position.set(l.x + LAMP_SIZE / 2, l.y + LAMP_SIZE / 2); glow.tint = light.on ? ROLE.lampOn : ROLE.lampOff; glow.alpha = light.alpha;
+        fixtures.rect(l.x, l.y, LAMP_SIZE, LAMP_SIZE).fill(light.alpha === 0 ? ROLE.wallShadow : light.on ? ROLE.lampOn : ROLE.lampOff);   // a flickered-off lamp goes dark
+      });
+      const burning: number[] = [];
+      for (let r = 0; r < d.volume.length; r++) if (state.rooms.fire[r]! > 0) burning.push(...fireTiles(d.roomTiles[r]!, state.rooms.fire[r]!, FIRE_CAP));
+      for (const [tile, glow] of fireGlows) if (!burning.includes(tile)) { glow.destroy(); fireGlows.delete(tile); }
+      for (const tile of burning) {
+        let glow = fireGlows.get(tile);
+        if (!glow) { glow = new Graphics(ctx.fire); glow.tint = RAMP.fire[2]!; glowLayer.addChild(glow); fireGlows.set(tile, glow); }
+        const tx = tile % d.width; glow.position.set(tx * TILE_PX + TILE_PX / 2, ((tile - tx) / d.width) * TILE_PX + TILE_PX / 2); glow.alpha = fireGlow(seed, tile, t);
+      }
+
+      // The white flash (section 7): 2 sim ticks from the tick the hit was seen.
+      // Bounded by real time too (flashLeft), so a stopped sim tick (pause, ended duel) cannot leave it lit.
+      const ticksSince = state.tick - flashTick, fa = flashLeft > 0 ? flashAlpha(ticksSince, feelScale(opts.feel()), flashShare) : 0;
+      flash.visible = fa > 0; flash.alpha = fa; flashLeft = Math.max(0, flashLeft - realDt);
+
+      // The starfield (section 8).
+      starG.clear();
+      for (const s of stars(seed, opts.band, t, frame.artPx)) starG.rect(s.x, s.y, frame.artPx, frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
+
+      stepShake(shake, paused ? realDt : pdt);   // a pause drains the shake on real time and shows none
+      const bob: number[] = [];
+      for (const w of frame.working) bob[w.pid] = bobOffset(t);
+      return { shake: paused ? { x: 0, y: 0 } : shakeOffset(shake, frame.artPx), bob };
+    },
+    reset() {
+      clock.reset(); Object.assign(shake, createShake()); emitter.clear(); smokes = []; breachSeen = null; puffs = [];
+      flashTick = Number.NEGATIVE_INFINITY; flashLeft = 0; flash.visible = false;
+      if (wasStopped) { wasStopped = false; freezeAnimations(opts.world, held, false); }
+    },
+    destroy() {
+      // Every Graphics first, with no options so each owned context goes too (a parent's destroy({ children: true })
+      // passes options, which leaves owned contexts), and a Graphics never destroys a context it was given; then the
+      // shared contexts. The duel builds a new interior on every restart, and these would otherwise outlive it.
+      for (const g of [ambient, alert, vacuum, fixtures, flash, starG, ...consoleGlows, ...lampGlows, ...fireGlows.values()]) g.destroy();
+      consoleGlows = []; lampGlows = []; fireGlows.clear(); held.clear();
+      coverCtx.destroy(); ctx.console.destroy(); ctx.fire.destroy(); ctx.lamp.destroy();
+    }
+  };
+}

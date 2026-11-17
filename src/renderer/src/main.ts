@@ -15,6 +15,8 @@ import { createOnlineBridge } from './app/onlineBridge';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createSessionRouter } from './app/sessionRouter';
 import { createSessionMenu } from './render/sessionMenu';
+import { installFeel } from './app/feelBoot';
+import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
 
 declare global { interface Window { ftlite?: import('../../shared/onlineSession').FtlitePreloadApi } }
@@ -29,12 +31,18 @@ ${err instanceof Error ? err.message : String(err)}`;
   document.body.replaceChildren(pre);
 }
 
+/** The feel setting (Art-i spec section 7): read once at boot inside a try/catch (loadFeel), F9 cycles it in dev builds. */
+function bootFeel(renderer: Renderer): void {
+  installFeel(renderer, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });
+}
+
 /** The app (main menu spec, 2026-11-16): the menu with Single player (the solo duel), Multiplayer (today's online
  *  flow) and Settings. One renderer serves both; the router owns at most one of them at a time. */
 async function startApp(): Promise<void> {
   const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff) };   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
+  bootFeel(renderer);
   const hud = createHud(renderer.hud, assets);
   const keyboard = createKeyboardSources(window);
   const audio = createAudio();
@@ -100,6 +108,7 @@ async function startApp(): Promise<void> {
 async function startFlight(seed: number): Promise<void> {
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
+  bootFeel(renderer);
   const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
   window.addEventListener('resize', resize); resize();
   startFlightMode({ renderer, seed, lifecycle: window.ftlite });
@@ -110,6 +119,7 @@ async function startDuel(seed: number): Promise<void> {
   const layout = parseShip(cutter);   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
+  bootFeel(renderer);
   const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
   window.addEventListener('resize', resize); resize();
   startDuelMode({ renderer, seed, layout, lifecycle: window.ftlite });

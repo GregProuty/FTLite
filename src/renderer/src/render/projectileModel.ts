@@ -6,7 +6,6 @@ import { TILE_PX } from '../../../shared/resolution';
 /** Visible asteroids and enemy shots (spec Demo-vii section 2): pure motion math, render only. Nothing here feeds back into the sim. */
 export const ASTEROID_SHOW_SECONDS = 6, SHOT_SHOW_SECONDS = 1.2;
 export const EVADE_FADE_TICKS = 36;                                   // 0.6 s
-export const SHAKE_ASTEROID_PX = 4, SHAKE_SHOT_PX = 3, SHAKE_SECONDS = 0.25;
 export const RESET_JUMP_TICKS = 120;                                  // a forward jump of more than 2 s clears the tracked objects
 
 export interface Pt { x: number; y: number }
