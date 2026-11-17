@@ -183,6 +183,22 @@ describe('session', () => {
     expect(h.session.phase).toBe('error');
     expect(h.crashes).toHaveLength(1);
   });
+  it('tells the renderer when the run is paused, so the light and feel hold (Art-i spec section 7)', () => {
+    let t = 0, samples: SourceSample[] = [];
+    const paused: (boolean | undefined)[] = [];
+    const session = createSession({
+      layout: LAYOUT, sampleDevices: () => samples, hud: null, now: () => (t += 20), saveCrash: () => {},
+      renderer: { reset() {}, recordPrev() {}, draw(...args: unknown[]) { paused.push(args[5] as boolean | undefined); } }
+    });
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: true, confirm: false, cancel: false, any: true }]; session.frame();
+    samples = [{ key: 'a', moveX: 0, moveY: 0, interact: false, confirm: true, cancel: false, any: true }]; session.frame();
+    samples = []; for (let k = 0; k < 5; k++) session.frame();
+    expect(session.phase).toBe('running'); expect(paused.at(-1)).toBe(false);
+    session.pause(); session.frame();
+    expect(session.phase).toBe('paused'); expect(paused.at(-1)).toBe(true);
+    session.resume(); session.frame();
+    expect(paused.at(-1)).toBe(false);
+  });
   it('after a fault, frames keep running without touching the corrupt state', () => {
     let hudModels = 0, faulted = false, t = 0;
     let samples: SourceSample[] = [];

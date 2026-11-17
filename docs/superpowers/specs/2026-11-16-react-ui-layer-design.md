@@ -89,7 +89,7 @@ Single player never shows a stale sector HUD, and M back to the menu leaves no d
 
 - `app`: `screen: 'menu' | 'single' | 'online'` (mirrors the router, written by `main.ts` on each router change) and
   `inputBlocked`.
-- `menu`: `page`, `afterSettings` (§5), `pending`, `localError`, `recovering`, `leaving`, `hadView`, `fullscreen`,
+- `menu`: `page`, `pending`, `localError`, `recovering`, `leaving`, `hadView`, `fullscreen`,
   `operation`. This is `sessionMenu.ts`'s state.
 - `online`: `status: OnlineStatus | null` and `receivedAt` (the receipt-age clock).
 - `settings`: `volume`, `controls` (the read-only list).
@@ -244,11 +244,11 @@ The UI must look the same as today's Pixi panels: same rectangles, same glyph sh
   room-code validation and upper-casing, and the same focus on the form control when a form opens. Form controls are
   React-controlled. Native `click`, `insertText` and keyboard selection on the capacity `<select>` (the smoke driver's
   `type` and `capacity` commands) fire the `input`/`change` events React listens to, so the driver needs no change.
-- **One deliberate change on Settings.** Today a non-idle status push on Settings sets `page = 'session'` but skips
-  the render, which leaves the screen and the state disagreeing (and Back then goes home). Now a push on Settings
-  updates `status` but not `page`. It stores the page it would have switched to in `menu.afterSettings`. Back from
-  Settings goes to `afterSettings` if set, else home. An open select is never disturbed, because nothing re-renders
-  the Settings page from a push. The ported test asserts this.
+- **Settings and status pushes keep today's rule.** `setStatus` sets `page = 'session'` for any non-idle push before
+  its `page !== 'settings'` render check, so a session takes over Settings at once (`mainMenu.test.ts`: "a session
+  still takes over"). An idle push leaves `page` on Settings. React re-renders Settings with the same elements, so an
+  open select keeps its identity and value (the test "keeps the Settings page intact" asserts the same node). The
+  round-1 note that pushes are deferred on Settings misread `sessionMenu.ts` L177 and is withdrawn.
 - **The root element.** `data-testid="session-menu"` and `aria-label="FTLite session menu"` sit on `<Menu>`'s root
   element. It is the full-screen overlay when not playing and exactly the strip (`position: fixed; top: 0`, full
   width) while playing (`page === 'session' && hadView`). It is never `#ui`, `<UiRoot>` or the stage. On page `single`
@@ -317,8 +317,8 @@ The UI must look the same as today's Pixi panels: same rectangles, same glyph sh
 - **Unit (node env).**
   - `replaceEqualDeep`: identity kept for equal subtrees, replaced on change, arrays, nulls, primitives.
   - The store setters and the sinks' `clear()`.
-  - `actions.ts` against a fake preload API, including `setStatus`'s single `setState` and the Settings
-    `afterSettings` rule.
+  - `actions.ts` against a fake preload API, including `setStatus`'s single `setState` and the Settings push rule
+    (§5).
   - The `sessionMenu.test.ts` and `mainMenu.test.ts` cases are ported one for one into `actions.test.ts` (logic) and
     `menu.test.tsx` (rendering).
   - The countdown under fake timers.

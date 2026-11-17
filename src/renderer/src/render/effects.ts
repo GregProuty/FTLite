@@ -5,32 +5,29 @@ import type { SimState } from '../sim/state';
 import { FIRE_CAP } from '../sim/tuning';
 import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
-import { fireTiles, breachOrientation, ventRotation, breachDamagedTiles, airlockDraw, airlockOutward, ventParticles, doorsCursorTile } from './hazardTiles';
+import { fireTiles, breachOrientation, breachDamagedTiles, airlockDraw, airlockOutward, ventParticles, doorsCursorTile } from './hazardTiles';
 import { featureReady } from './fallback';
 import { syncCache } from './cache';
 import { ROLE } from './palette';
 import { airlockOutlineBand, breachRect, failedRect, fireFallbackRect, ventSpeckRect } from './effectsShapes';
 
-export const LOW_O2_THRESHOLD = 0.98;
-export const LOW_O2_COLOR = ROLE.lowO2;   // Art-i spec section 4: the palette role (Art-i-b turns it into the vacuum grade)
-export const LOW_O2_MAX_ALPHA = 0.6;
-const IMPACT_FLASH_TICKS = 18, IMPACT_COLOR = ROLE.impact, IMPACT_MAX_ALPHA = 0.7;
+// Art-i-b (spec sections 5-7): the low-oxygen tint became the grade's vacuum (gradeModel.ts, drawn by interiorFeel.ts),
+// the red impact flash became the white flash, and the breach vent puff became the venting particles.
 const SCALE = TILE_PX / 16;
 
 export interface EffectsLayer { below: Container; above: Container; draw(state: SimState, ui?: CardUiState): void }
 
 export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): EffectsLayer {
   const missing = new Set(assets.missing);
-  const art = { fire: featureReady(missing, 'fire'), breach: featureReady(missing, 'breach'), vent: featureReady(missing, 'vent'), arc: featureReady(missing, 'arc') };
+  const art = { fire: featureReady(missing, 'fire'), breach: featureReady(missing, 'breach'), arc: featureReady(missing, 'arc') };
   const below = new Container(), above = new Container();
-  const o2Layer = new Graphics(), fireLayer = new Container(), breachLayer = new Container(), fallback = new Graphics();
-  below.addChild(o2Layer, fireLayer, breachLayer, fallback);
+  const fireLayer = new Container(), breachLayer = new Container(), fallback = new Graphics();
+  below.addChild(fireLayer, breachLayer, fallback);
   const fires = new Map<number, AnimatedSprite>();
   const outline = new Graphics(); above.addChild(outline);
   const ventLayer = new Graphics(); above.addChild(ventLayer);
-  const impactLayer = new Graphics(); above.addChild(impactLayer);
   const failLayer = new Container(); below.addChild(failLayer); const fails = new Map<number, AnimatedSprite>();
-  const decals: Sprite[] = [], puffs: AnimatedSprite[] = [];
+  const decals: Sprite[] = [];
   const tileXY = (w: number, t: number): [number, number] => { const tx = t % w; return [tx, (t - tx) / w]; };
 
   function markDamaged(t: number): void { memory.damaged.add(t); }
@@ -39,21 +36,6 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
     below, above,
     draw(state, ui) {
       const d = state.derived, w = d.width;
-      // Low oxygen tint: nothing drawn at frac >= 0.98.
-      o2Layer.clear();
-      for (let r = 0; r < d.volume.length; r++) {
-        const frac = state.rooms.o2[r]! / d.volume[r]!;
-        if (frac >= LOW_O2_THRESHOLD) continue;
-        for (const t of d.roomTiles[r]!) { const [tx, ty] = tileXY(w, t); o2Layer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill({ color: LOW_O2_COLOR, alpha: LOW_O2_MAX_ALPHA * (1 - frac) }); }
-      }
-      // Debris impact flash: the hit room's floor, fading over IMPACT_FLASH_TICKS (several rooms can flash at once).
-      impactLayer.clear();
-      for (let r = 0; r < d.volume.length; r++) {
-        const age = state.tick - state.rooms.impactTick[r]!;
-        if (state.rooms.impactTick[r]! < 0 || age < 0 || age >= IMPACT_FLASH_TICKS) continue;
-        const alpha = IMPACT_MAX_ALPHA * (1 - age / IMPACT_FLASH_TICKS);
-        for (const t of d.roomTiles[r]!) { const [tx, ty] = tileXY(w, t); impactLayer.rect(tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX).fill({ color: IMPACT_COLOR, alpha }); }
-      }
       // Fire: a stable, growing subset of each burning room's tiles.
       fallback.clear();
       const wanted: number[] = [];
@@ -71,7 +53,7 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
       } else {
         for (const t of wanted) { const [tx, ty] = tileXY(w, t), r = fireFallbackRect(tx, ty); fallback.rect(r.x, r.y, r.w, r.h).fill({ color: ROLE.fireFallback, alpha: 0.8 }); }
       }
-      // Breaches: decal on the site wall tile, puff oriented away from the room, damaged floor on the room-side neighbours.
+      // Breaches: decal on the site wall tile and damaged floor on the room-side neighbours (the venting is particles now).
       for (let s = 0; s < d.siteTile.length; s++) {
         const active = state.breaches.active[s] === 1, [tx, ty] = tileXY(w, d.siteTile[s]!);
         if (active) for (const t of breachDamagedTiles(d, s)) markDamaged(t);
@@ -79,14 +61,6 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
           if (!decals[s]) { const sp = new Sprite(assets.texture(`breach.${breachOrientation(d, s)}`)); sp.scale.set(SCALE); sp.position.set(tx * TILE_PX, ty * TILE_PX); breachLayer.addChild(sp); decals[s] = sp; }
           decals[s]!.visible = active;
         } else if (active) { const r = breachRect(tx, ty); fallback.rect(r.x, r.y, r.w, r.h).fill(ROLE.breach); }
-        if (art.vent) {
-          if (!puffs[s]) {
-            const a = assets.animation('vent.puff');
-            const p = new AnimatedSprite(a.textures); p.scale.set(SCALE); p.animationSpeed = a.fps / 60; p.loop = true; p.anchor.set(0.5);
-            p.position.set((tx + 0.5) * TILE_PX, (ty + 0.5) * TILE_PX); p.rotation = ventRotation(d, s); p.play(); above.addChild(p); puffs[s] = p;
-          }
-          puffs[s]!.visible = active;
-        }
       }
       // Doors console selection: a pulsing outline on the selected door or airlock tile while someone is seated there (spec Demo-vii amendment 3).
       outline.clear();

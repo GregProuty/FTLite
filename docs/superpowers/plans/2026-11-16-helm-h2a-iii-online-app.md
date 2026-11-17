@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Two machines, one player each, fly the Helm duel from the menu over loopback and LAN. Multiplayer → Host creates a two-seat duel room and shows its code; Multiplayer → Join enters it; the host can Swap seats before Start, and the guest learns its console at start. Each renderer, the host's included, is a stream client of the host's utility and draws exactly the Single player screens from the published state at 20 Hz, its keyboard sent as held frames and commands. Rounds rematch with Enter, Escape pauses (and on the end card asks to leave), a lost partner pauses the duel and a rejoin resumes it on Escape. Each decided round writes a playtest record on each machine. The sector's online path stays registered behind a test-only entry, and its smokes keep running through it; a new two-process smoke proves the duel through the real menu.
+**Goal:** Two machines, one player each, fly the Helm duel from the menu over loopback and LAN. Multiplayer → Host creates a two-seat duel room and shows its code; Multiplayer → Join enters it; the host can Swap seats before Start, and the guest learns its console at start. Each renderer, the host's included, is a stream client of the host's utility and draws exactly the Single player screens from the published state at 20 Hz, its keyboard sent as held frames and commands. Rounds rematch with Enter, Escape pauses (and on the end card asks to leave), a lost partner pauses the duel and a rejoin resumes it on Escape. Each decided online round writes a playtest record on each machine (Single player's solo records are H-2b's, Decision 14). The sector's online path stays registered behind a test-only entry, and its smokes keep running through it; a new two-process smoke proves the duel through the real menu.
 
 **Architecture:**
 - `src/main/network/onlineModes.ts` (new): `OnlineModeAdapter`, the sector's and the duel's adapters, `validateModeMirror`. `src/main/network/onlineDuel.ts` (new): the duel's compatibility, room init and seed, the guest's committed-start check, the mirror check. `src/main/network/onlineSession.ts`: every mode call through the context's adapter; the attachment origin; the sector test-only gate.
@@ -21,7 +21,7 @@
 - **Task 2:** the renderer: the duel scene, Single player's rematch, the online view source and session, the session wrapper.
 - **Task 3:** the smokes: the sector's on the test-only entry, and the duel application smoke.
 - **Task 4:** the gates.
-- **Not in H-2a:** the report script, the latency overlay and table, the internet candidate and its smoke's switch to the test-only entry, and the guest's transport label from ICE stats (H-2b); the duel cadence and prediction (H-2c). The LAN manual checklist is the owner's and waits on the deployed service (spec §11).
+- **Not in H-2a:** the report script, Single player's `session: 'solo'` records (Decision 14), the latency overlay and table, the internet candidate and its smoke's switch to the test-only entry, and the guest's transport label from ICE stats (H-2b); the duel cadence and prediction (H-2c). The LAN manual checklist is the owner's and waits on the deployed service (spec §11).
 
 ## Global Constraints
 
@@ -42,15 +42,16 @@ Each is the recommendation, taken under the standing order; the owner can overtu
 2. **The sector gate lives in the session's deps** **(rec.)**: `createOnlineSession({ ..., sectorTestEntry })` refuses the sector forms with `invalid-action` unless it is true, and `src/main/index.ts` sets it only for `!app.isPackaged && FTLITE_SECTOR_ONLINE_TEST === '1'`, the `FTLITE_MODE` pattern. **Deviation from "the sector suites run unchanged":** the action shapes are the spec's own change, so the sector session suites (`onlineCoordinator`, `onlineRecovery`) now send the explicit sector forms and set the flag in their harness, and the contract, IPC, bridge and menu tests follow the new shapes; nothing else in them changes.
 3. **The duel adapter** (spec §2): its compatibility is the Cutter at duel schema version 2; a room is capacity 2; Join tries the duel compatibility only, so `incompatible` means a different build; round 0's seed is `seedFromRunId(runId)`. The guest's committed-start check accepts either `helmPlayer` and every other field equal to its own expected init. Mirrors are checked by their own mode (`validateModeMirror`) in the mirror store.
 4. **The forced round end is a test-only seed** **(rec.; the spec's "a test-only seed and init")**: an unpackaged build given `FTLITE_DUEL_TEST_SEED` uses it (its next valid seed) as every duel room's first seed, on both machines alike, so both compute the same init; the init is otherwise the ordinary one. The smoke uses seed 2277: with no flight or weapon input its first round is decided on tick 1471 (about 25 s of play) whoever is seated, standing or away, and it is the only seed from 1 to 3,000 decided within 40 s. Flight or a shot in that round moves the end (a W press near the start kept one prototype run alive past 90 s), so the smoke does nothing but stand and sit in round 1.
-5. **The guest's transport is `null` in H-2a** **(deviation from §8)**: the renderer cannot read the hidden RTC window's selected candidate pair yet; wiring that and labelling `lan` or `internet` is H-2b's, with the report that reads it. The host's records read `loopback`. The record schema already admits all four.
-6. **The record and its log** (spec §8): `net/duelRecord.ts` is the strict, 8 KiB-capped schema with the latency helpers; main appends each valid record to `userData/playtest/duel-YYYY-MM-DD.jsonl` (the local date) through `duel:record`, trusted as the fullscreen channel is. Latency: a held frame whose quantised input changed is stamped and sampled at the first observation of a publication whose `heldHighWater` covers it; a command from a key press is sampled at its applied result; RTT from `link.stats()`; jitter is the inter-arrival standard deviation against 50 ms.
-7. **The online duel session** (spec §3): it attaches like the sector's (the port link, then the remote client), keeps the scene across re-attaches, and freezes a saved-and-loaded copy of the last replica under "CONNECTION LOST — RECONNECTING" when its link closes. Its 60 Hz pump sends `presence {present: true}` as the first command after every full-state ACK, then this seat's held input every pump (quantised to −1, 0 and 1, so the authority's held watchdog never lapses) and the H-1 press table's commands, gated by the confirmed replica (`canCharge`, `canLaunch`; a lost release is re-sent). Tab does nothing online. Focus loss neutralises held input and lets go of a held charge, and never pauses.
-8. **Escape and Leave** (spec §7): while a round runs, Escape pauses and resumes (`setPaused`); on the end card it opens an in-scene "LEAVE THE DUEL?   ENTER: LEAVE   ESC: STAY", and Enter there runs the menu's own Leave (the new `menu.leave()`, Net-3d's Leave). Enter on the end card otherwise sends `rematch`. The end card reads "ENTER: REMATCH   ESC: LEAVE" and the round's length (`decidedTick − baseTick`).
+5. **The guest's transport is `null` in H-2a** **(deviation from §8)**: the renderer cannot read the hidden RTC window's selected candidate pair yet; wiring that and labelling `lan` or `internet` is H-2b's, with the report that reads it. The host's records read `loopback`. The record schema already admits all four. **Likewise `latency.rttMs` is `null` in H-2a** (the schema admits it): the renderer's link is the local MessagePort, whose `stats()` has no network RTT; H-2b fills it from the RTC window's stats with the transport.
+6. **The record and its log** (spec §8): `net/duelRecord.ts` is the strict, 8 KiB-capped schema with the latency helpers; main appends each valid record to `userData/playtest/duel-YYYY-MM-DD.jsonl` (the local date) through `duel:record`, trusted as the fullscreen channel is. Latency: a held frame whose quantised input changed is stamped and sampled at the first observation of a publication whose `heldHighWater` covers it; a command from a key press is sampled at its applied result; RTT is `null` (Decision 5); jitter is the inter-arrival standard deviation against 50 ms. Each attach clears the pending stamps, a sample above the schema's one-hour cap is dropped rather than losing the record, and `disconnects` and `pauses` count the round's own (the deltas since the last record).
+7. **The online duel session** (spec §3): it attaches like the sector's (the port link, then the remote client), keeps the scene across re-attaches, and freezes a saved-and-loaded copy of the last replica under "CONNECTION LOST — RECONNECTING" when its link closes (or under "LEAVING…" while a Leave saves and ends: the `saving`, `idle` and `ended` phases). Its 60 Hz pump sends `presence {present: true}` as the first command after every full-state ACK, then this seat's held input every pump (quantised to −1, 0 and 1, so the authority's held watchdog never lapses) and the H-1 press table's commands, gated by the confirmed replica (`canCharge`, `canLaunch`; a lost release is re-sent). Tab does nothing online. Focus loss neutralises held input and lets go of a held charge, and never pauses.
+8. **Escape and Leave** (spec §7): while a round runs, Escape pauses and resumes (`setPaused`); on the end card it opens an in-scene "LEAVE THE DUEL?   ENTER: LEAVE   ESC: STAY" (closed as soon as the round is no longer decided and running, so a partner's rematch or a pause leaves Escape pausing as in play), and Enter there runs the menu's own Leave (the new `menu.leave()`, Net-3d's Leave). Enter on the end card otherwise sends `rematch`. The end card reads "ENTER: REMATCH   ESC: LEAVE" and the round's length (`decidedTick − baseTick`).
 9. **The banners** (spec §3): "PAUSED BY PLAYER n   ESC: RESUME" for a player's pause, "PARTNER LOST   ESC: RESUME" for `peer-lost`, "PAUSED   ESC: RESUME" otherwise; "YOU: HELM" or "YOU: WEAPONS" for 3 s after each sync, on both machines.
 10. **Single player uses `rematch`** (spec §7): its end card keeps ticking, Enter sends `rematch` (the next round in place, presence carried, so the character at the keyboard stays the same), and it reads "ENTER: REMATCH   M: MAIN MENU". Its held axes are quantised as online's.
 11. **The menu** (spec §2): Host has no capacity control; the host's lobby shows Swap seats and "Host flies Helm" or "Guest flies Helm"; the guest's shows "Host picks seats".
 12. **The sector smokes** (spec §10): the shared driver gains `host-sector` and `join-sector`, which call the preload's sector forms; the online-app and online-recovery smokes use them with `FTLITE_SECTOR_ONLINE_TEST=1`. The internet smoke's switch rides H-2b with its manifest.
 13. **The duel smoke** reuses the shared driver with its own passive observer and a no-op `observer/utility.cjs` (the driver proves each utility checkpoint with the sector's card memory, which a duel checkpoint does not have). It runs the spec's seven checks in a robust order **(rec.)**: the menu (1); then round 1, the forced end, in which both players only stand up and sit down (their records' command samples) until it is decided, and Enter starts round 2 (6) with a record on both machines (7); then, in round 2, the Helm's thrust (2), the beam (3), the hash agreement (4) and the guest's kill, rejoin and Escape unpause (5).
+14. **Single player's `session: 'solo'` records move to H-2b** **(deviation from §8 and the H-2a row of §11)**: only the online duel session writes records in H-2a. The local runtime steps `stepDuelTick` directly and has no telemetry accumulator, so a solo record needs one (and the round summary it produces) added to the runtime; that lands in H-2b beside the report script that reads the records and reports solo rounds separately. The record schema already admits `'solo'`, so H-2b adds the writer only.
 
 ## File structure
 
@@ -84,7 +85,7 @@ Each is the recommendation, taken under the standing order; the owner can overtu
   - `onlineDuel.ts`: `DUEL_SCHEMA_VERSION`, `DuelChoice`, `duelCompatibility()`, `duelJoinCompatibilities()`, `duelRoomSeed(runId, testSeed?)`, `duelInit(snapshot, choice?, testSeed?)`, `validateCommittedDuelStart(snapshot, committed, testSeed?)`, `validateDuelMirror(mirror)`.
   - `onlineModes.ts`: `OnlineModeAdapter`, `sectorOnlineMode`, `duelOnlineMode(testSeed?)`, `onlineModeFor(modeId, testSeed?)`, `validateModeMirror(mirror, capacity?)`.
   - `onlineSession.ts`: `OnlineSessionDeps.sectorTestEntry?`, `duelTestSeed?`.
-  - `net/duelRecord.ts`: `DUEL_RECORD_MAX_BYTES`, `LatencyFigure`, `DuelPlaytestRecord`, `duelRecordSchema`, `validateDuelRecord`, `latencyFigure`, `arrivalJitter`. `duelRecords.ts`: `duelRecordPath(userData, now)`, `appendDuelRecord(userData, value, now?)`.
+  - `net/duelRecord.ts`: `DUEL_RECORD_MAX_BYTES`, `DUEL_RECORD_MAX_MS`, `LatencyFigure`, `DuelPlaytestRecord`, `duelRecordSchema`, `validateDuelRecord`, `latencyFigure`, `arrivalJitter`. `duelRecords.ts`: `duelRecordPath(userData, now)`, `appendDuelRecord(userData, value, now?)`.
   - `sessionMenu.ts`: `leave()` on the menu.
 
 - [ ] **Step 0: Check the prerequisite (H-2a-ii merged)**
@@ -110,7 +111,7 @@ import { sectorCompatibility } from '../src/main/network/onlineSector';
 import { appendDuelRecord, duelRecordPath } from '../src/main/network/duelRecords';
 import { createOnlineSession } from '../src/main/network/onlineSession';
 import { nextValidSeed, seedFromRunId } from '../src/renderer/src/sim/duel/seeds';
-import { DUEL_RECORD_MAX_BYTES, latencyFigure, arrivalJitter, validateDuelRecord, type DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
+import { DUEL_RECORD_MAX_BYTES, DUEL_RECORD_MAX_MS, latencyFigure, arrivalJitter, validateDuelRecord, type DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import type { RoomSnapshot } from '../src/shared/roomSession';
 import { hunterDown, liveDuel } from './helpers/liveDuel';
 
@@ -188,7 +189,7 @@ describe('the duel playtest record (spec §8)', () => {
     planetContacts: [0, 1], asteroidContacts: [2, 0], baits: 1, consoleSwaps: 0, helmEmptyTicks: 0, weaponsEmptyTicks: 10, enemyInArcTicks: 900, weaponsIdleTicks: 30,
     repairsStarted: [0, 1], walkingTicks: [0, 200], repairingTicks: [0, 96], round: 2, seed: 77, baseTick: 30000 };
   const record = { version: 1, session: 'online', role: 'guest', transport: null, seat: 1, helmPlayer: 0, seed: 77, round: 2, startedAtIso: '2026-11-16T12:00:00.000Z',
-    summary, latency: { held: latencyFigure([40, 50, 60]), command: latencyFigure([]), rttMs: 3 }, jitter: arrivalJitter([48, 52, 50]), disconnects: 1, pauses: 2 } as unknown as DuelPlaytestRecord;
+    summary, latency: { held: latencyFigure([40, 50, 60]), command: latencyFigure([]), rttMs: null }, jitter: arrivalJitter([48, 52, 50]), disconnects: 1, pauses: 2 } as unknown as DuelPlaytestRecord;
   it('is strict and size-capped, and carries no credential fields', () => {
     expect(validateDuelRecord(record)).toEqual(record);
     expect(() => validateDuelRecord({ ...record, joinCode: 'ABCDEFGH' })).toThrow();
@@ -197,6 +198,10 @@ describe('the duel playtest record (spec §8)', () => {
     expect(new TextEncoder().encode(JSON.stringify(record)).byteLength).toBeLessThan(DUEL_RECORD_MAX_BYTES);
     expect(latencyFigure([10, 20, 30, 40, 1000])).toEqual({ count: 5, median: 30, p95: 1000, max: 1000 });
     expect(arrivalJitter([])).toEqual({ count: 0, stdMs: null });
+    // A sample above the schema's hour cap is dropped, never the record (a stale stamp across a reconnect).
+    expect(latencyFigure([10, DUEL_RECORD_MAX_MS + 1])).toEqual({ count: 1, median: 10, p95: 10, max: 10 });
+    expect(arrivalJitter([50, DUEL_RECORD_MAX_MS + 1])).toEqual({ count: 1, stdMs: 0 });
+    expect(validateDuelRecord({ ...record, latency: { ...record.latency, rttMs: 12.5 } }).latency.rttMs).toBe(12.5);   // H-2b's RTC figure fits
   });
   it('main appends each valid record as one line of userData/playtest/duel-YYYY-MM-DD.jsonl, and refuses an invalid one', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ftlite-duel-record-'));
@@ -756,6 +761,18 @@ it('offers the duel Host form and an accessible code form, and deduplicates Join
   await Promise.resolve(); await Promise.resolve(); menu.home(); root.find('multiplayer')!.fire(); root.find('join')!.fire(); root.find('join-code')!.value = ' abcdef12 '; const form = root.find('join-form')!; form.fire('submit'); form.fire('submit'); expect(join).toHaveBeenCalledExactlyOnceWith('ABCDEF12');
 ````
 
+In `tests/sessionMenu.test.ts`, replace:
+
+````ts
+  menu.setStatus({ ...status, phase: 'error', error: 'incompatible', actions: ['join', 'retry'] }); expect(root.find('status')!.textContent).toContain('compatible'); expect(root.find('retry')).toBeDefined();
+````
+
+with:
+
+````ts
+  menu.setStatus({ ...status, phase: 'error', error: 'incompatible', actions: ['join', 'retry'] }); expect(root.find('status')!.textContent).toContain('The other computer runs a different FTLite build. Install the same build on both, then try again.'); expect(root.find('retry')).toBeDefined();   // a duel Join tries one compatibility: incompatible means a different build (H-2 spec §2)
+````
+
 Run: `npx vitest run tests/onlineDuel.test.ts`
 Expected: FAIL: `src/main/network/onlineDuel.ts` does not exist.
 
@@ -986,6 +1003,8 @@ import { z } from 'zod';
 import { MISSILE_LOSSES, TERMINAL_CAUSES, type DuelRoundRecord } from '../sim/duel/summary';
 
 export const DUEL_RECORD_MAX_BYTES = 8192;
+/** The largest millisecond figure a record holds; the helpers drop larger samples so the record is never lost. */
+export const DUEL_RECORD_MAX_MS = 3_600_000;
 /** count, median, 95th percentile and maximum, in milliseconds (null with no samples). */
 export interface LatencyFigure { count: number; median: number | null; p95: number | null; max: number | null }
 export interface DuelPlaytestRecord {
@@ -998,7 +1017,7 @@ export interface DuelPlaytestRecord {
   disconnects: number; pauses: number;
 }
 
-const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), ms = z.number().finite().min(0).max(3_600_000);
+const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), ms = z.number().finite().min(0).max(DUEL_RECORD_MAX_MS);
 const pair = z.tuple([uint, uint]);
 const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length);
 const losses = z.object(Object.fromEntries(MISSILE_LOSSES.map((k) => [k, uint])) as Record<(typeof MISSILE_LOSSES)[number], typeof uint>).strict();
@@ -1026,15 +1045,17 @@ export function validateDuelRecord(value: unknown): DuelPlaytestRecord {
   return record;
 }
 
-/** count, median, p95 and max of a list of milliseconds (nearest-rank percentiles). */
+/** count, median, p95 and max of a list of milliseconds (nearest-rank percentiles); samples outside 0 to the cap are dropped. */
 export function latencyFigure(samples: readonly number[]): LatencyFigure {
-  if (!samples.length) return { count: 0, median: null, p95: null, max: null };
-  const s = [...samples].sort((a, b) => a - b), rank = (q: number) => s[Math.min(s.length - 1, Math.max(0, Math.ceil(q * s.length) - 1))]!;
+  const s = samples.filter((v) => v >= 0 && v <= DUEL_RECORD_MAX_MS).sort((a, b) => a - b);
+  if (!s.length) return { count: 0, median: null, p95: null, max: null };
+  const rank = (q: number) => s[Math.min(s.length - 1, Math.max(0, Math.ceil(q * s.length) - 1))]!;
   const round = (v: number) => Math.round(v * 10) / 10;
   return { count: s.length, median: round(rank(0.5)), p95: round(rank(0.95)), max: round(s[s.length - 1]!) };
 }
-/** The standard deviation of publication inter-arrival gaps against the expected 50 ms. */
-export function arrivalJitter(gaps: readonly number[]): { count: number; stdMs: number | null } {
+/** The standard deviation of publication inter-arrival gaps against the expected 50 ms; gaps outside 0 to the cap are dropped. */
+export function arrivalJitter(samples: readonly number[]): { count: number; stdMs: number | null } {
+  const gaps = samples.filter((g) => g >= 0 && g <= DUEL_RECORD_MAX_MS);
   if (!gaps.length) return { count: 0, stdMs: null };
   let sum = 0; for (const g of gaps) sum += (g - 50) * (g - 50);
   return { count: gaps.length, stdMs: Math.round(Math.sqrt(sum / gaps.length) * 10) / 10 };
@@ -1544,6 +1565,18 @@ with:
 In `src/renderer/src/render/sessionMenu.ts`, replace:
 
 ````ts
+  'incompatible': 'This room needs compatible game content and ship data. Check both versions, then try again.',
+````
+
+with:
+
+````ts
+  'incompatible': 'The other computer runs a different FTLite build. Install the same build on both, then try again.',
+````
+
+In `src/renderer/src/render/sessionMenu.ts`, replace:
+
+````ts
   let recovering = false, leaving = false;   // leaving: Leave was pressed; the idle status that follows returns home
   const { root, document: doc } = deps;
 ````
@@ -1655,7 +1688,7 @@ git commit -m "H-2a-iii task 1: the main online mode adapter and the duel's onli
   - `runtime.ts`: `createCameraInput` exported; `DuelRuntime.seed` is the round's seed and `epoch()` the round.
   - `endScreen.ts`: `endModel(outcome, ticks, prompt)`.
   - `onlineSource.ts`: `ConfirmedDuel`, `duelCounters(t, i)`, `gapEvents(counters, missiles, t)`, `createOnlineDuelSource({ client, seat, now, viewport })` (a `DuelViewSource` plus `observe`, `frame`, `sent`, `arrivals`, `ready`).
-  - `onlineDuel.ts`: `OnlineDuelDeps`, `createOnlineDuelSession(deps)` with `attach`, `setStatus`, `setFocused`, `setInputBlocked`, `pause`, `frame`, `dispose`.
+  - `onlineDuel.ts`: `OnlineDuelDeps`, `LeavePrompt`, `CLOSED_PROMPT`, `leavePromptKeys(prompt, d, phase, presses)`, `createOnlineDuelSession(deps)` with `attach`, `setStatus`, `setFocused`, `setInputBlocked`, `pause`, `frame`, `dispose`.
   - `onlineModeSession.ts`: `InnerOnlineSession`, `createOnlineModeSession({ duel, sector })`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1665,8 +1698,10 @@ Create `tests/duelOnlineView.test.ts`:
 ````ts
 // The online duel's view source and the renderer's online session wrapper (H-2 spec §3, §10): interpolation over the
 // actual 20 Hz gap, the counter-derived beams, missile endings and sparks against the local runtime's events, the
-// online REPAIRING status, and the wrapper choosing the duel or sector session by the port descriptor's mode.
+// online REPAIRING status, the end card's leave prompt across a partner's rematch, and the wrapper choosing the duel or
+// sector session by the port descriptor's mode.
 import { describe, expect, it, vi } from 'vitest';
+import { CLOSED_PROMPT, leavePromptKeys } from '../src/renderer/src/app/duel/onlineDuel';
 import { createOnlineDuelSource, gapEvents, duelCounters } from '../src/renderer/src/app/duel/onlineSource';
 import { createOnlineModeSession, type InnerOnlineSession } from '../src/renderer/src/app/onlineModeSession';
 import { Position } from '../src/renderer/src/sim/components';
@@ -1760,6 +1795,33 @@ describe('the online duel view source (spec §3)', () => {
       for (let k = 0; k < 3; k++) stepDuelTick(d, { held: [], commands: [] });
       c.publish(d); source.frame(1 / 60, null, null);
       expect(source.otherStatus()).toBe('WALKING');   // no progress since the last publication
+    } finally { disposeDuel(d); c.dispose(); }
+  });
+});
+
+describe('the online end card leave prompt (spec §7)', () => {
+  it('a partner rematch closes an open prompt: Escape in the next round sends setPaused, and no prompt shows', () => {
+    const d = createDuel(CUTTER, 3), c = confirmed(), esc = { pause: 1, confirm: 0 }, enter = { pause: 0, confirm: 1 };
+    try {
+      d.tactical.systems[1].hull = 0; stepDuelTick(d, { held: [], commands: [] });
+      c.publish(d);
+      const decided = c.client.state()!;
+      expect([decided.round, decided.tactical.outcome === Outcome.Running]).toEqual([0, false]);
+      // This player presses Escape on the end card: the prompt opens and nothing is sent.
+      const opened = leavePromptKeys(CLOSED_PROMPT, decided, 'running', esc);
+      expect(opened).toEqual({ prompt: { open: true, round: 0 }, send: null, leave: false });
+      expect(leavePromptKeys(opened.prompt, decided, 'running', enter)).toEqual({ prompt: CLOSED_PROMPT, send: null, leave: true });   // Enter there leaves
+      // The partner presses Enter: the rematch applies and the next round is published.
+      d.present[0] = true;
+      const rematch = stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'rematch' } }] });
+      expect(rematch.map((r) => r.status)).toEqual(['applied']);
+      c.publish(d);
+      const next = c.client.state()!;
+      expect([next.round, next.tactical.outcome]).toEqual([1, Outcome.Running]);
+      // Escape now pauses as in play, and the stale prompt is gone (the banner reads prompt.open).
+      expect(leavePromptKeys(opened.prompt, next, 'running', esc)).toEqual({ prompt: CLOSED_PROMPT, send: { kind: 'setPaused', paused: true }, leave: false });
+      // Without Escape the stale prompt closes too, and Enter does not Leave mid-round.
+      expect(leavePromptKeys(opened.prompt, next, 'running', enter)).toEqual({ prompt: CLOSED_PROMPT, send: null, leave: false });
     } finally { disposeDuel(d); c.dispose(); }
   });
 });
@@ -1940,10 +2002,14 @@ with:
   });
   it('rematch: the drag and wheel sampled with Enter do not touch the new round camera', () => {
     const { rt, press, pointer, ticks } = rig();
-    rt.duel.tactical.systems[1].hull = 0; ticks(1);
-    expect(rt.ended()).toBe(true);
+    rt.duel.tactical.systems[1].hull = 0; ticks(3);   // decided, then two end-card ticks: nothing moves, the follow has settled
+    expect([rt.ended(), rt.view()]).toEqual([true, 'helm']);
+    const active = rt.cameras.helm, before = { cx: active.centreX, cy: active.centreY, tz: active.targetZoom, follow: active.follow };
     Object.assign(pointer, { x: 300, y: 200, wheel: 3, dragX: 80, dragY: 40 });
     press('confirm'); rt.frame(1 / 60);
+    // The press frame, before any tick: the sampled drag and wheel are dropped, so the active camera is untouched
+    // (freshCameras on the next round would hide a regression here).
+    expect({ cx: active.centreX, cy: active.centreY, tz: active.targetZoom, follow: active.follow }).toEqual(before);
     Object.assign(pointer, { wheel: 0, dragX: 0, dragY: 0 }); ticks(2);
     expect(rt.epoch()).toBe(1);
 ````
@@ -2585,6 +2651,24 @@ export interface OnlineDuelDeps {
 }
 const NOTICE_MS = 3000;
 const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut } });
+/** The session phases a Leave passes through, which show "LEAVING…" over the frozen view rather than CONNECTION LOST. */
+const LEAVING_PHASES: readonly string[] = ['saving', 'idle', 'ended'];
+/** The end card's leave prompt: open, and the round it was opened on. */
+export interface LeavePrompt { open: boolean; round: number }
+export const CLOSED_PROMPT: LeavePrompt = { open: false, round: -1 };
+/** One pump's Escape and Enter against the leave prompt (spec §7). The prompt lives only on a decided, running round:
+ *  a rematch from the partner (a new round), a pause or an undecided replica closes it before Escape is read, so that
+ *  Escape then pauses as in play. Returns the next prompt, the command to send (setPaused) and whether to Leave. */
+export function leavePromptKeys(prompt: LeavePrompt, d: DuelState, phase: string, presses: { pause: number; confirm: number }): { prompt: LeavePrompt; send: DuelCommand | null; leave: boolean } {
+  const decided = d.tactical.outcome !== Outcome.Running;
+  let open = prompt.open && decided && phase === 'running' && d.round === prompt.round, round = open ? prompt.round : -1, send: DuelCommand | null = null, leave = false;
+  if (presses.pause > 0) {
+    if (decided && phase === 'running') { open = !open; round = open ? d.round : -1; }   // on the end card Escape asks to leave
+    else if (phase === 'running' || phase === 'paused') { open = false; round = -1; send = { kind: 'setPaused', paused: phase === 'running' }; }
+  }
+  if (open && presses.confirm > 0) { open = false; round = -1; leave = true; }
+  return { prompt: { open, round }, send, leave };
+}
 
 export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const canvas = deps.renderer.app.canvas;
@@ -2596,9 +2680,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let client: ReturnType<typeof createDuelRemoteClient> | null = null, link: Link | null = null, source: OnlineDuelSource | null = null, scene: DuelScene | null = null;
   let descriptor: OnlinePortDescriptor | null = null, status: OnlineStatus | null = null;
   let frozen: DuelState | null = null, frozenPublication: { publicationSequence: number; tick: number; phase: string; pauseReason: string | null; pauseOwner: number | null } | null = null;
-  let focused = true, blocked = false, synced = false, presenceSent = false, producing = false, disposed = false, leaveConfirm = false;
+  let focused = true, blocked = false, synced = false, presenceSent = false, producing = false, disposed = false, leaveConfirm = CLOSED_PROMPT;
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
-  let attaches = 0, pauses = 0, startedAtIso = new Date().toISOString(), chargePressed = false, releaseSentAt = -1, cancel = () => {}, offClose = () => {};
+  let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), chargePressed = false, releaseSentAt = -1, cancel = () => {}, offClose = () => {};
   let lastHeld = { moveX: 0, moveY: 0, interactHeld: false };
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [];
   function sampleIdle(): KeySample { return { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }; }
@@ -2633,9 +2717,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const d = state(); if (!d || !descriptor) return;
     const r: DuelPlaytestRecord = { version: 1, session: 'online', role: status?.role === 'host' ? 'host' : 'guest', transport: status?.role === 'host' ? 'loopback' : null,
       seat: descriptor.seatId as 0 | 1, helmPlayer: d.helmPlayer, seed: summary.seed, round: summary.round, startedAtIso,
-      summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: link ? Math.round(link.stats().rttMs * 10) / 10 : null },
-      jitter: arrivalJitter(source?.arrivals() ?? []), disconnects: Math.max(0, attaches - 1), pauses };
-    heldSamples.length = 0; commandSamples.length = 0; startedAtIso = new Date().toISOString();
+      // rttMs is null in H-2a: the renderer's port link has no network RTT (H-2b reads the RTC window's stats).
+      summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: null },
+      // Per round: the disconnects and pauses since the last record (the first attach is not a disconnect).
+      jitter: arrivalJitter(source?.arrivals() ?? []), disconnects: Math.max(0, attaches - roundAttaches), pauses: pauses - roundPauses };
+    heldSamples.length = 0; commandSamples.length = 0; roundAttaches = Math.max(1, attaches); roundPauses = pauses; startedAtIso = new Date().toISOString();
     void Promise.resolve(deps.recordDuel?.(r)).catch(() => {});
   }
   function observe(): void {
@@ -2691,11 +2777,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const d = client?.state(), p = client?.publication();
     if (!client || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
     const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
-    if (k.presses.pause > 0) {
-      if (decided && p.phase === 'running') leaveConfirm = !leaveConfirm;   // on the end card Escape asks to leave (spec §7)
-      else if (p.phase === 'running' || p.phase === 'paused') { leaveConfirm = false; send({ kind: 'setPaused', paused: p.phase === 'running' }); }
-    }
-    if (leaveConfirm) { if (k.presses.confirm > 0) { leaveConfirm = false; deps.leave(); } producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); return; }
+    // Escape and the leave prompt (spec §7): a prompt from a round that is no longer decided and running closes first.
+    const keys = leavePromptKeys(leaveConfirm, d, p.phase, k.presses);
+    leaveConfirm = keys.prompt;
+    if (keys.send) send(keys.send);
+    if (keys.leave) deps.leave();
+    if (leaveConfirm.open || keys.leave) { producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); return; }
     if (p.phase !== 'running') return;
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
     else play(k, d, me);
@@ -2712,8 +2799,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   schedule();
   function bannerText(): string | null {
     const p = publication();
-    if (!client && frozen) return 'CONNECTION LOST — RECONNECTING';
-    if (leaveConfirm) return 'LEAVE THE DUEL?   ENTER: LEAVE   ESC: STAY';
+    // A deliberate Leave (the end card's or the menu's button) saves, then goes idle or ended: no reconnect is coming.
+    if (!client && frozen) return status && LEAVING_PHASES.includes(status.phase) ? 'LEAVING…' : 'CONNECTION LOST — RECONNECTING';
+    if (leaveConfirm.open) return 'LEAVE THE DUEL?   ENTER: LEAVE   ESC: STAY';
     if (p?.phase !== 'paused') return null;
     const reason = (p as { pauseReason?: string | null }).pauseReason, owner = (p as { pauseOwner?: number | null }).pauseOwner;
     const why = reason === 'player' && owner !== null && owner !== undefined ? `PAUSED BY PLAYER ${owner + 1}` : reason === 'peer-lost' ? 'PARTNER LOST' : 'PAUSED';
@@ -2723,7 +2811,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     attach(next: OnlinePortDescriptor, port: MessagePort): void {
       if (disposed || next.epoch <= (descriptor?.epoch ?? 0)) { port.close(); return; }
       observe(); release();
-      descriptor = next; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = false; attaches++;
+      descriptor = next; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; attaches++;
+      heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED' });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
@@ -2904,7 +2993,7 @@ with:
 - [ ] **Step 8: Run the tests, the typecheck and the build**
 
 Run: `npx vitest run tests/duelOnlineView.test.ts tests/duelReadout.test.ts tests/duelRuntime.test.ts tests/duelInput.test.ts tests/duelControls.test.ts tests/mainMenu.test.ts tests/sessionMenu.test.ts tests/onlineRenderer.test.ts`
-Expected: PASS, 81 tests in 8 files (`tests/duelOnlineView.test.ts` 5, `duelReadout` 8, `duelRuntime` 26).
+Expected: PASS, 82 tests in 8 files (`tests/duelOnlineView.test.ts` 6, `duelReadout` 8, `duelRuntime` 26).
 
 Run: `npm run typecheck`
 Expected: exit 0.
@@ -3391,7 +3480,7 @@ Run: `npm run build`
 Expected: exit 0.
 
 Run: `npm test`
-Expected: PASS, 246 test files, 3459 tests (known load flakes: rerun alone).
+Expected: PASS, 246 test files, 3463 tests (known load flakes: rerun alone).
 
 - [ ] **Step 2: Determinism, the host runtime, the online application and the duel application**
 
@@ -3410,5 +3499,5 @@ Expected: `ACTUAL TWO-PROCESS DUEL APPLICATION PASS (<ms> ms)`, exit 0.
 ## After H-2a-iii
 
 - The H-2a acceptance (spec §11) still asks for the Codex implementation review, applied, and the owner's LAN manual checklist (spec §10), which waits on the deployed HTTPS service (H-2b step (d)).
-- H-2b: the report script and the `docs/gates.md` section, the F3 overlay and the latency table, the guest's transport label from the RTC window's selected candidate pair, and the internet candidate with its sector run on the test-only entry and its new duel run.
+- H-2b: the report script and the `docs/gates.md` section, Single player's `session: 'solo'` records (the local runtime's telemetry accumulator and a `recordDuel` dep; Decision 14), the F3 overlay and the latency table, the guest's transport label from the RTC window's selected candidate pair, and the internet candidate with its sector run on the test-only entry and its new duel run.
 - The playtest records land in each machine's `userData/playtest/duel-YYYY-MM-DD.jsonl`.

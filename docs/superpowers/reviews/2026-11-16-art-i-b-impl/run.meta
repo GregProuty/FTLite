@@ -1,0 +1,11 @@
+topic=art-i-b-impl
+subject_kind=impl
+subject=src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/feelBoot.ts src/renderer/src/app/onlineSession.ts src/renderer/src/app/session.ts src/renderer/src/main.ts src/renderer/src/render/consoleLayer.ts src/renderer/src/render/consoleModel.ts src/renderer/src/render/crewSprites.ts src/renderer/src/render/duel/interiorView.ts src/renderer/src/render/effects.ts src/renderer/src/render/feel.ts src/renderer/src/render/gradeModel.ts src/renderer/src/render/impactModel.ts src/renderer/src/render/interiorFeel.ts src/renderer/src/render/lightsModel.ts src/renderer/src/render/memory.ts src/renderer/src/render/particles/emitter.ts src/renderer/src/render/particles/particleLayer.ts src/renderer/src/render/particles/random.ts src/renderer/src/render/particles/sources.ts src/renderer/src/render/presentClock.ts src/renderer/src/render/projectileModel.ts src/renderer/src/render/projectiles.ts src/renderer/src/render/renderer.ts tests/consoleModel.test.ts tests/duelInterior.test.ts tests/feel.test.ts tests/feelBoot.test.ts tests/gradeModel.test.ts tests/interiorFeel.test.ts tests/lightsModel.test.ts tests/particleSources.test.ts tests/particles.test.ts tests/projectileModel.test.ts tests/session.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\art-i-b
+base=0a8b6d1
+cap=10
+effort=high
+confirm=0
+verify=npx tsc -b && npx vitest run
+created=2026-11-16
+head_at_setup=f3927b7

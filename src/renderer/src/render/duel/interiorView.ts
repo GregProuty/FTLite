@@ -14,25 +14,36 @@ import { createRenderMemory, type RenderMemory } from '../memory';
 import { createIconLayer } from '../roomIcons';
 import { AMBER, DIM, FONT_NATIVE, TEXT, WARN } from '../theme';
 import { createTileLayer } from '../tiles';
-import { duelFit, interiorOverlay } from './interiorModel';
+import { duelFit, interiorOverlay, INTERIOR_BAND } from './interiorModel';
+import { createInteriorFeel } from '../interiorFeel';
+import { DEFAULT_FEEL, type FeelSetting } from '../feel';
+import { duelGradeInput } from '../gradeModel';
+import { duelHit } from '../impactModel';
+import { damagedRepairPoints, duelWorking } from '../particles/sources';
+import type { ViewEvent } from '../tactical/fxModel';
 
 export interface InteriorView {
   container: Container;
   /** The ship's world container (scaled and placed by the fit), exposed for tests. */
   world: Container;
   memory: RenderMemory;
-  /** `crewPrev`: each player's character position at the previous tick, in tiles, for interpolation. */
-  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number): void;
+  /** `crewPrev`: each player's character position at the previous tick, in tiles, for interpolation. `events`: the view
+   *  events drained this frame (the feed the tactical effects read); a hit on the crew ship flashes and shakes the interior.
+   *  `presentDt`: the light and feel's seconds this frame (Art-i spec section 7), 0 while the duel is paused so the
+   *  particles, the pulse and the ambient life hold; it defaults to `dt`, which the tiles and boarders keep. */
+  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number): void;
   destroy(): void;
 }
 
 /** The room tint by damage level (amber, red), and darker shades of both for the marker and its label on the light floor. */
 const TINT: readonly number[] = [0, AMBER, WARN], MARK: readonly number[] = [0, 0x8a5a00, 0xa8281c];
 
-/** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1. */
-export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1): InteriorView {
+/** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1.
+ *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full. */
+export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL): InteriorView {
   const container = new Container(), world = new Container();
-  container.addChild(world);
+  const fx = createInteriorFeel({ world, band: INTERIOR_BAND, feel });   // Art-i spec sections 5-8
+  container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer();
   const desks = createConsoleLayer(), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
@@ -41,14 +52,16 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
   });
-  // Back to front as renderer.ts: tiles, effects below, room icons, desks, then the duel's damage tint under the crew,
-  // crew, boarders (always empty in the duel), effects above, and the markers and labels on top.
-  world.addChild(tiles.container, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, marks, ...labels);
+  // Back to front as renderer.ts (Art-i spec section 5): tiles, grade, effects below, room icons, desks, then the duel's
+  // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
+  // labels on top so the lights never wash them out.
+  world.addChild(tiles.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
+  desks.container.addChild(fx.fixtures); effects.above.addChild(fx.above);
   return {
     container, world, memory,
-    draw(d, crewPrev, alpha, dt) {
+    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt) {
       const st = d.interior, fit = duelFit(st.derived.width, st.derived.height, stageScale());
-      world.scale.set(fit.scale); world.position.set(fit.x, fit.y);
+      world.scale.set(fit.scale);
       st.crew.forEach((eid, pid) => { const p = crewPrev[pid]; if (p) memory.prev.set(Stable.id[eid]!, p); });
       tiles.update(st, dt); icons.update(st); desks.draw(st); effects.draw(st);
       const o = interiorOverlay(d);
@@ -65,9 +78,12 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (t.text !== m.label) t.text = m.label;
         t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
       });
-      crew.draw(st, alpha);
+      // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
+      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale }, presentDt, dt);
+      world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
+      crew.draw(st, alpha, undefined, bob);
       boarders.draw(st, dt);
     },
-    destroy() { memory.reset(); container.destroy({ children: true }); }
+    destroy() { memory.reset(); fx.destroy(); container.destroy({ children: true }); }   // the feel first: it frees its shared GraphicsContexts
   };
 }
