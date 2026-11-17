@@ -33,3 +33,9 @@ it('rejects a manifest-origin/identity mismatch before ancestry, builds or nativ
     const r=JSON.parse(readFileSync(report,'utf8'));expect(r.failure).toBe('preparation-failed');expect(r.processes).toHaveLength(1);expect(r.ownedProcesses).toHaveLength(1);expect(r.peers).toEqual([]);expect(r.temporaryRemoved).toBe(true);expect(r.cleanupFailed).toBe(false);expect(r.processes[0].exited).toBe(true);
   }finally{await stopOwnedProcess(child,deadline);const target=resolve(directory);if(!target.startsWith(resolve(tmpdir())+sep)||!target.includes('ftlite-internet-test-'))throw Error('test-cleanup-invalid');rmSync(target,{recursive:true,force:true});}
 },12000);
+it.each([['a two-machine guest without a join-code file',['--role=guest']],['a join-code file off the guest',['--role=host','--join-code-file=join-code.txt']]])('refuses %s before any work or report',async(_name,extra)=>{
+  const directory=mkdtempSync(join(tmpdir(),'ftlite-internet-test-')),report=join(directory,'report.json');const deadline=createLauncherDeadline(performance.now()+10000);
+  const child=spawn(process.execPath,[resolve('node_modules/tsx/dist/cli.mjs'),'scripts/network/internet-app-smoke.ts','--service-origin=https://service.example','--machine-label=device-a','--network-label=network-a',...extra,`--report-path=${report}`],{windowsHide:true,stdio:'ignore'});
+  try{expect(await deadline.wait(new Promise(done=>child.once('exit',done)),'test-timeout',3000)).toBe(1);expect(existsSync(report)).toBe(false);
+  }finally{await stopOwnedProcess(child,deadline);const target=resolve(directory);if(!target.startsWith(resolve(tmpdir())+sep)||!target.includes('ftlite-internet-test-'))throw Error('test-cleanup-invalid');rmSync(target,{recursive:true,force:true});}
+},12000);
