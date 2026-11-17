@@ -1,11 +1,13 @@
 // The solo duel's boot (H-1 spec §3, §4, §11a): reuses the renderer's Pixi application, stage and letterbox through the
 // duel scene (scene.ts, H-2 spec §3), and steps the duel locally with the duel runtime. The sector session is never
-// created.
+// created. Each decided round is written as a solo playtest record (H-2 spec §8) through `recordDuel`.
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { ShipLayout } from '../../sim/ship/schema';
 import type { Renderer } from '../../render/renderer';
 import { computeLetterbox } from '../../render/letterbox';
 import { endModel } from '../../render/duel/endScreen';
+import { soloDuelRecord, type DuelPlaytestRecord } from '../../net/duelRecord';
+import type { DuelRoundRecord } from '../../sim/duel/summary';
 import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
 import { createDuelRuntime } from './runtime';
 import { createDuelScene } from './scene';
@@ -20,6 +22,8 @@ export interface DuelModeDeps {
   /** Inside the app (main menu spec): M while paused or on the end screen calls this, and the banners show the key. The
    *  caller disposes the duel. Absent for `?mode=duel`, which has no menu to return to. */
   onExit?: () => void;
+  /** Append a solo playtest record (the preload's recordDuel); absent outside the app. */
+  recordDuel?(record: DuelPlaytestRecord): Promise<boolean> | void;
 }
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
@@ -37,8 +41,15 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
-    seed: deps.seed, viewport, layout: deps.layout
+    seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => record(summary)
   });
+  // The solo record (H-2 spec §8, Helm §11a); `seat` is the character the keyboard drives when the round is decided.
+  let startedAtIso = new Date().toISOString(), pauses = 0, wasPaused = false;
+  function record(summary: DuelRoundRecord): void {
+    const r = soloDuelRecord(summary, { seat: runtime.active(), helmPlayer: runtime.duel.helmPlayer, startedAtIso, pauses });
+    pauses = 0; startedAtIso = new Date().toISOString();
+    void Promise.resolve(deps.recordDuel?.(r)).catch(() => {});
+  }
 
   const onBlur = (): void => runtime.pause('blur');
   const onFocus = (): void => runtime.resume('blur');
@@ -53,6 +64,8 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     runtime.frame(dt);
     if (deps.onExit && runtime.menuRequested()) { deps.onExit(); return; }   // the caller disposes this duel
     const d = runtime.duel, userPaused = runtime.reasons().has('user');
+    if (userPaused && !wasPaused) pauses++;
+    wasPaused = userPaused;
     const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
     scene.draw(runtime, dt, { banner: userPaused ? pauseText : null, layerPaused: userPaused, end: endModel(d.tactical.outcome, ticks, `ENTER: REMATCH${exitHint}`) });
   };

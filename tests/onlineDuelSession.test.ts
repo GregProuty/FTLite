@@ -84,13 +84,13 @@ let win: ReturnType<typeof target>;
 beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
-function rig(seat: 0 | 1) {
+function rig(seat: 0 | 1, api: object = {}) {
   let now = 1000, pending: (() => void) | null = null;
   const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createDuel(CUTTER, 7);
   const session = createOnlineDuelSession({
     renderer: { app: { canvas: target() } } as never, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
     scheduler: { schedule: (_ms, cb) => { pending = cb; return () => { if (pending === cb) pending = null; }; } },
-    api: { viewState: async () => ({ ok: true }) } as never, leave, recordDuel: (r) => { records.push(r); }
+    api: { viewState: async () => ({ ok: true }), ...api } as never, leave, recordDuel: (r) => { records.push(r); }
   });
   let epoch = 0;
   const port = () => ({ close() {} }) as unknown as MessagePort;
@@ -223,6 +223,30 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     expect([second.round, second.disconnects, second.pauses]).toEqual([1, 1, 0]);
     expect(second.jitter.count).toBe(3);   // the old client's gap and the new client's two: not the 10 s gap, nothing from round 0
     expect(second.jitter.stdMs).toBe(0);
+    r.dispose();
+  });
+  it("labels each record with the link main reports: the guest's route and the round's median RTT; the host reads loopback (H-2b)", async () => {
+    const flush = () => new Promise((done) => setTimeout(done, 0));
+    for (const [seat, role] of [[1, 'guest'], [0, 'host']] as const) {
+      let stats: { route: 'lan' | 'internet'; rttMs: number } | null = null;
+      const r = rig(seat, { linkStats: async () => stats }), c = r.attach();
+      await flush();   // the attach-time poll (no figures yet) settles, so every sample below is taken
+      r.session.setStatus({ phase: 'running', role } as OnlineStatus);
+      // 1001 ms per step: a 1000 ms step can land a float hair under LINK_POLL_MS and skip a poll. The median (60)
+      // differs from the first (90) and last (70) samples.
+      for (const ms of [90, 60, 40, 50, 70]) { stats = { route: 'internet', rttMs: ms }; r.pump(1001); await flush(); }
+      c.events.push(roundEvent(0)); r.pump(); await flush();
+      stats = null; r.pump(1000); await flush();   // main has no figures now: the label stays, the next round has no RTT
+      c.events.push(roundEvent(1)); r.pump();
+      expect(r.records.map((x) => [x.role, x.transport, x.latency.rttMs])).toEqual(role === 'guest'
+        ? [['guest', 'internet', 60], ['guest', 'internet', null]] : [['host', 'loopback', 60], ['host', 'loopback', null]]);
+      r.dispose();
+    }
+  });
+  it("without a link figure the guest's transport stays null, as in H-2a", () => {
+    const r = rig(1), c = r.attach();
+    c.events.push(roundEvent(0)); r.pump();
+    expect([r.records[0]!.transport, r.records[0]!.latency.rttMs]).toEqual([null, null]);
     r.dispose();
   });
 });
