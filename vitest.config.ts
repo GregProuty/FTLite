@@ -3,7 +3,7 @@ import { computeContentDigest } from './build/contentDigest';
 import { availableParallelism } from 'node:os';
 
 export default defineConfig({
-  define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(computeContentDigest(import.meta.dirname)) },
+  define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(computeContentDigest(import.meta.dirname)), __FTLITE_BUILD__: JSON.stringify({ version: '0.0.0-test', rev: 'test' }) },
   // This suite has long CPU-bound authority scenarios. Fifteen simultaneous
   // workers on the 8-core/16-thread gate host oversubscribe the unchanged 5s cases.
   esbuild: { jsx: 'automatic' },
