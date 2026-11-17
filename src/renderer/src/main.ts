@@ -133,8 +133,10 @@ async function startApp(): Promise<void> {
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
   document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause(); else if (document.hasFocus()) session.resume(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) audio.suspend(); else audio.unlock(); });   // Audio-i spec section 5: a hidden window is silent
   window.addEventListener('focus', () => session.resume());
   renderer.app.ticker.add(() => session.frame());
+  renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
   window.addEventListener('beforeunload', () => {
     offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();

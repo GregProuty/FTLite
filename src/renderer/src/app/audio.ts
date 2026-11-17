@@ -1,8 +1,10 @@
 import type { Cue } from '../events/audioCues';
 import type { SoundSource } from '../render/assets';
-import { CUE_RECIPES } from '../audio/cueRecipes';
-import { sfxKeyOf, type SfxKey, type SoundRequest } from '../audio/soundBank';
+import { CUE_RECIPES, DUCK_CUES } from '../audio/cueRecipes';
+import { MUSIC_BATTLE, MUSIC_CALM, sfxKeyOf, type SfxKey, type SoundRequest } from '../audio/soundBank';
 import { admitVoice, createVoicePool, detuneCents, pickVariant } from '../audio/voices';
+import { BATTLE_LOOP_END_S, BATTLE_LOOP_START_S, BATTLE_START_S, CALM_LOOP_START_S, createMusic, liveStatus, stepMusic, type AudioStatus } from '../audio/musicState';
+import { CRACKLE_SECONDS, FIRE_FILTER_HZ, FIRE_FILTER_Q, FIRE_SMOOTH_S, HUM_SMOOTH_S, crackleSamples, fireGain, humTarget } from '../audio/loops';
 
 export type { SoundSource } from '../render/assets';
 
@@ -14,6 +16,8 @@ export const SYNTH_GAIN = 0.25;
 export const MUSIC_LEVEL = 0.45, EFFECTS_LEVEL = 0.9;
 /** The fade at the end of a cut (`dur`) voice, seconds. */
 export const CUT_FADE_S = 0.03;
+/** Time constants (seconds) of the per-frame moves: the crossfade gains, and the mix (pause, duck). */
+export const MUSIC_SMOOTH_S = 0.05, MIX_SMOOTH_S = 0.08;
 
 /** One tone: oscillator type, start/end frequency (a sweep when they differ), offset and duration in seconds, peak gain. */
 interface Tone { type: OscillatorType; f0: number; f1: number; at: number; dur: number; gain: number }
@@ -41,6 +45,8 @@ export interface AudioOut {
   play(cue: Cue): void;
   /** Sample requests from a view's pure sound model. */
   sounds(list: readonly SoundRequest[]): void;
+  /** This frame's report (spec section 5): engaged, paused, a duck, the hum's drive and the burning rooms. */
+  status(s: AudioStatus): void;
 }
 export interface Audio extends AudioOut {
   unlock(): void;
@@ -48,6 +54,8 @@ export interface Audio extends AudioOut {
   setVolumes(v: Volumes): void;
   /** Fetch and decode the audio entries in the background (spec section 2): the effects first, then the music. */
   load(sources: readonly SoundSource[], fetchBytes: (url: string) => Promise<ArrayBuffer>): Promise<void>;
+  /** Once per rendered frame, `now` in seconds: the music state machine, the hum and the fire loop. */
+  tick(now: number): void;
 }
 export interface AudioOptions { context?: () => AudioContext | null; random?: () => number; log?: (m: string) => void }
 
@@ -62,17 +70,36 @@ export function createAudio(options: AudioOptions = {}): Audio {
   const random = options.random ?? Math.random, log = options.log ?? ((m: string): void => console.info(m));
   let ctx: AudioContext | null = null;
   try { ctx = (options.context ?? defaultContext)(); } catch { ctx = null; }
-  if (!ctx) return { play() {}, sounds() {}, unlock() {}, suspend() {}, setVolumes() {}, async load() {} };
+  if (!ctx) return { play() {}, sounds() {}, status() {}, unlock() {}, suspend() {}, setVolumes() {}, async load() {}, tick() {} };
   const c = ctx;
   const safe = (f: () => void): void => { try { f(); } catch { /* audio unavailable: never disturb the game */ } };
 
-  // The buses (spec section 3): voice -> panner -> effects -> master -> destination; music -> music bus -> master.
+  // The buses (spec section 3): voice -> panner -> effects -> master -> destination; music source -> its crossfade gain ->
+  // mix (pause, duck) -> music bus -> master. Creation order matters to tests/audioEngine.test.ts.
   const master = c.createGain(), musicBus = c.createGain(), effects = c.createGain(), synthBus = c.createGain();
   master.connect(c.destination); musicBus.connect(master); effects.connect(master); synthBus.connect(effects);
   master.gain.value = 1; musicBus.gain.value = MUSIC_LEVEL; effects.gain.value = EFFECTS_LEVEL; synthBus.gain.value = SYNTH_GAIN;
+  const mix = c.createGain(), calmGain = c.createGain(), battleGain = c.createGain();
+  mix.connect(musicBus); calmGain.connect(mix); battleGain.connect(mix);
+  mix.gain.value = 1; calmGain.gain.value = 1; battleGain.gain.value = 0;
+  // The loops (spec section 4): the engine hum (a sample, started once decoded) and the synthesised fire crackle.
+  const humGain = c.createGain(), fireLoop = c.createGain();
+  humGain.connect(effects); fireLoop.connect(effects);
+  humGain.gain.value = 0; fireLoop.gain.value = 0;
 
   const buffers = new Map<SfxKey, AudioBuffer[]>(), tracks = new Map<string, AudioBuffer>();
   const pool = createVoicePool(), live = new Map<number, AudioBufferSourceNode>(), lastVariant = new Map<string, number>();
+  const music = createMusic();
+  let calmSrc: AudioBufferSourceNode | null = null, battleSrc: AudioBufferSourceNode | null = null, humSrc: AudioBufferSourceNode | null = null;
+  let report: { status: AudioStatus; at: number } | null = null, duckPending = false, wall = 0;
+
+  safe(() => {   // the crackle runs from boot at gain 0
+    const buf = c.createBuffer(1, Math.round(CRACKLE_SECONDS * c.sampleRate), c.sampleRate);
+    buf.getChannelData(0).set(crackleSamples(c.sampleRate, random));
+    const src = c.createBufferSource(), band = c.createBiquadFilter();
+    src.buffer = buf; src.loop = true; band.type = 'bandpass'; band.frequency.value = FIRE_FILTER_HZ; band.Q.value = FIRE_FILTER_Q;
+    src.connect(band); band.connect(fireLoop); src.start();
+  });
 
   function synth(cue: Cue, t0: number): void {
     for (const t of CUES[cue]) {
@@ -114,15 +141,43 @@ export function createAudio(options: AudioOptions = {}): Audio {
     live.set(id, src);
   }
 
+  function startCalm(): void {
+    const buf = tracks.get(MUSIC_CALM);
+    if (!buf || calmSrc) return;
+    const src = c.createBufferSource(); src.buffer = buf; src.loop = true; src.loopStart = CALM_LOOP_START_S; src.loopEnd = buf.duration;
+    src.connect(calmGain); src.start(c.currentTime, 0); calmSrc = src;
+  }
+  /** Battle starts at the orchestral turn each time it begins and loops from there (spec section 5). */
+  function startBattle(t: number): void {
+    const buf = tracks.get(MUSIC_BATTLE);
+    if (!buf || battleSrc) return;
+    const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
+    src.loopStart = Math.min(BATTLE_LOOP_START_S, buf.duration); src.loopEnd = BATTLE_LOOP_END_S ?? buf.duration;
+    src.connect(battleGain); src.start(t, Math.min(BATTLE_START_S, Math.max(0, buf.duration - 1))); battleSrc = src;
+  }
+  function stopBattle(): void {
+    if (!battleSrc) return;
+    try { battleSrc.stop(); } catch { /* already stopped */ }
+    battleSrc = null;
+  }
+  function startHum(): void {
+    const buf = buffers.get('engineHum')?.[0];
+    if (!buf || humSrc) return;
+    const src = c.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(humGain); src.start(); humSrc = src;
+  }
+
   return {
     play(cue) {
       safe(() => {
         const recipe = CUE_RECIPES[cue], t0 = c.currentTime;
-        if (recipe && recipe.every((r) => (buffers.get(r.key)?.length ?? 0) > 0)) for (const r of recipe) playRequest(r, t0);
-        else synth(cue, t0);
+        if (recipe && recipe.every((r) => (buffers.get(r.key)?.length ?? 0) > 0)) {
+          for (const r of recipe) playRequest(r, t0);
+          if (DUCK_CUES.has(cue)) duckPending = true;
+        } else synth(cue, t0);
       });
     },
     sounds(list) { safe(() => { const t0 = c.currentTime; for (const r of list) playRequest(r, t0); }); },
+    status(s) { report = { status: s, at: wall }; if (s.duck) duckPending = true; },
     unlock() { safe(() => { void c.resume().catch(() => { /* rejected resume: ignore */ }); }); },
     suspend() { safe(() => { void c.suspend().catch(() => { /* rejected suspend: ignore */ }); }); },
     setVolumes(v) {
@@ -144,8 +199,30 @@ export function createAudio(options: AudioOptions = {}): Audio {
         const list = staged.get(id.key) ?? []; list[id.index] = buf; staged.set(id.key, list);
       });
       for (const [key, list] of staged) buffers.set(key, list.filter((b): b is AudioBuffer => !!b));   // a failed middle variant leaves no hole
-      await Promise.all(trackList.map(async (s) => { const buf = await decode(s); if (buf) { ok++; tracks.set(s.name, buf); } }));
+      safe(startHum);
+      await Promise.all(trackList.map(async (s) => {
+        const buf = await decode(s);
+        if (!buf) return;
+        ok++; tracks.set(s.name, buf);
+        if (s.name === MUSIC_CALM) safe(startCalm);   // calm starts as soon as it is decoded
+      }));
       log(`[audio] decoded ${ok}/${sources.length} files`);
+    },
+    tick(now) {
+      safe(() => {
+        wall = now;
+        const st = liveStatus(report, now), t = c.currentTime;
+        const m = stepMusic(music, { now, engaged: st.engaged, paused: st.paused, duck: duckPending });
+        duckPending = false;
+        if (m.battleOn) startBattle(t); else stopBattle();
+        calmGain.gain.setTargetAtTime(m.calm, t, MUSIC_SMOOTH_S);
+        battleGain.gain.setTargetAtTime(m.battle, t, MUSIC_SMOOTH_S);
+        mix.gain.setTargetAtTime(m.mix, t, MIX_SMOOTH_S);
+        const hum = st.hum && !st.paused ? humTarget(st.hum) : null;
+        humGain.gain.setTargetAtTime(hum ? hum.gain : 0, t, HUM_SMOOTH_S);
+        if (hum && humSrc) humSrc.playbackRate.setTargetAtTime(hum.rate, t, HUM_SMOOTH_S);
+        fireLoop.gain.setTargetAtTime(st.paused ? 0 : fireGain(st.fires), t, FIRE_SMOOTH_S);
+      });
     }
   };
 }
