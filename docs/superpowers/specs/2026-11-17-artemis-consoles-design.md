@@ -164,8 +164,8 @@ nobody can click another seat's controls.
 A new duel module `helmModule` (id `helm`), placed in `DUEL_MODULES` after `round` and before `interior`. It owns one
 canonical field, `throttle`: an integer level in `−1..4` (−1 reverse, 0 stop, 1–4 are 25/50/75/100 %), stored as
 `DuelState.throttle`. It is hashed through the module flatten and set to 0 by `startRound`. The snapshot carries it:
-`validateDuelSnapshot` (net/snapshot.ts) gains `helmAt = roundAt + 4; interiorAt = helmAt + 1`, and rejects a throttle
-that is not an integer in `−1..4`. The
+`validateDuelSnapshot` (sim/duel/snapshot.ts) gains `helmAt = roundAt + 4; interiorAt = helmAt + 1`, and rejects a throttle
+that is not an integer in `−1..4`. The round tuple slices `roundAt..helmAt`, and the throttle is `values[helmAt]`. The
 module's command kinds are `['throttle']` and its reasons `['invalid-seat', 'malformed', 'stale-tick']`.
 
 ### 5.2 Command

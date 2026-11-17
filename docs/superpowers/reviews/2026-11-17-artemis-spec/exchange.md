@@ -214,3 +214,52 @@ Confirmed. §6.1 defines it inline as new in app/duel/input.ts.
 
 ---
 
+# Round 3 (delta, reviewing 89fb4c7, effort medium, 48 s, 215708 in / 184828 cached / 4053 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R3-F1 §5.1 names the wrong path for validateDuelSnapshot
+§5.1 places `validateDuelSnapshot` in net/snapshot.ts. That file does not exist. The function and the `roundAt`/`interiorAt` offsets it changes are in sim/duel/snapshot.ts. That slice also already binds a local `helm` (the round module's Helm player), which sits next to the new `helmAt` name. · spec L167 ('validateDuelSnapshot (net/snapshot.ts)'). src/renderer/src/sim/duel/snapshot.ts:L106 (validateDuelSnapshot), L128 (roundAt, interiorAt = roundAt + 4), L145 (`const [round, helm, base, decided] = values.slice(roundAt, interiorAt)`). codec.ts:L109 also points to sim/duel/snapshot.ts. · A fresh subagent looking for net/snapshot.ts finds nothing. The L145 slice must become `slice(roundAt, helmAt)`, or the round tuple picks up the throttle. A grep finds both quickly, so this is a nit. · Change the path to sim/duel/snapshot.ts. Add that the round tuple at L145 now slices `roundAt..helmAt` and the throttle is `values[helmAt]`.
+
+## Prior findings
+- R1-F5: resolved — §5.5 (L216-218) now predicts with `{ turn: pair.axes.turn, thrust: throttleThrust(d.throttle) }`, which is not circular: scripted.ts:L92 calls hazardAway(d, pair.axes) before deciding. §5.3 (L196-199) already covers axes(), the online replica source and the telemetry rule.
+- R1-F8: resolved — §5.1 L164-169 names the module, its order, field, kinds and reasons, and now the snapshot offsets `helmAt = roundAt + 4; interiorAt = helmAt + 1` with an integer −1..4 check. That matches snapshot.ts:L128 (interiorAt = roundAt + 4 today). §5.2 L173-181 covers DUEL_KINDS, check order and noop. The only remaining issue is the file path (new P3).
+- R2-F1: resolved — §5.2 L183-186 adds throttle to net/contracts.ts and to duelWire.commands as a strict z.object with `level: z.number().finite()`, so the sim answers a bad level `malformed`. This fits codec.ts:L110-121 (a closed strict list). The no-redeploy note and step-1 placement are both stated, and §8 L326 adds a codec round trip.
+- R2-F2: resolved — §6.2 L280-284 limits clear() to Tab, restart and blur, as in input.ts:L59-62. clearUi() handles console changes and leaves physical keys alone. L275-276 says a repeat keydown never counts fireDown, which is consistent with input.ts:L52 (`!e.repeat`). §7 L305 and §8 L313-315 are updated to match.
+- R2-F3: resolved — §6.1 L251-253 defines `HeldFlags` inline as new in app/duel/input.ts, filled from the last merged KeySample, with ConsoleView's held fields as picks of it.
+
+## Verified
+- Codec: duelWire.commands is a closed list of strict objects (src/renderer/src/net/codec.ts:L110-121), so the §5.2 Wire paragraph (spec L183-186) is necessary and sufficient on the codec side.
+- Snapshot offsets: today interiorAt = roundAt + 4 (sim/duel/snapshot.ts:L128) and length is checked against interiorAt + interiorCount (L129). Inserting helmAt = roundAt + 4 and interiorAt = helmAt + 1 (spec L167) is consistent with that, and with the helm module placed after round in DUEL_MODULES (spec L164).
+- Scripted prediction: hazardAway(d, axes) is called with pair.axes before the pair decides (scripted.ts:L74, L92). Using pair.axes.turn with throttleThrust(d.throttle) (spec L217) has a defined value at call time.
+- Keyboard: today's keydown adds repeats to held and counts presses only on !repeat (input.ts:L50-52). keyup counts fireUp only if Space is held (L56). clear runs on blur (L62). The §6.2 split (L280-284) and the repeat rule (L275-276) keep today's keyboard behaviour.
+- §7 (L305) and §8 (L313-315, L326) agree with the revised §6.2 and §5.1/§5.2. I found no contradiction with the unchanged §5.3-§5.6.
+
+## Not verified
+- net/contracts.ts's wire DuelCommand union (cited in the round-2 finding at L74-76): I did not re-open it this round.
+- Whether step.ts's running result helper can take a `noop` status without touching the other modules' result streams: step.ts is outside the touched regions and was not re-read.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `89fb4c7`. 1 accepted. All prior IDs confirmed resolved; verdict ready.
+
+## R3-F1 [P3]: §5.1 names the wrong path for validateDuelSnapshot
+
+Confirmed. sim/duel/snapshot.ts L106 and L128-145. §5.1 now names sim/duel/snapshot.ts and the new round-tuple slice.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-artemis-consoles-design.md
+
+<!-- end -->
+
+---
+

@@ -1,0 +1,51 @@
+{
+  "verdict": "ready",
+  "findings": [
+    {
+      "severity": "P3",
+      "title": "\u00a75.1 names the wrong path for validateDuelSnapshot",
+      "claim": "\u00a75.1 places `validateDuelSnapshot` in net/snapshot.ts. That file does not exist. The function and the `roundAt`/`interiorAt` offsets it changes are in sim/duel/snapshot.ts. That slice also already binds a local `helm` (the round module's Helm player), which sits next to the new `helmAt` name.",
+      "evidence": "spec L167 ('validateDuelSnapshot (net/snapshot.ts)'). src/renderer/src/sim/duel/snapshot.ts:L106 (validateDuelSnapshot), L128 (roundAt, interiorAt = roundAt + 4), L145 (`const [round, helm, base, decided] = values.slice(roundAt, interiorAt)`). codec.ts:L109 also points to sim/duel/snapshot.ts.",
+      "why": "A fresh subagent looking for net/snapshot.ts finds nothing. The L145 slice must become `slice(roundAt, helmAt)`, or the round tuple picks up the throttle. A grep finds both quickly, so this is a nit.",
+      "fix": "Change the path to sim/duel/snapshot.ts. Add that the round tuple at L145 now slices `roundAt..helmAt` and the throttle is `values[helmAt]`."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "\u00a75.5 (L216-218) now predicts with `{ turn: pair.axes.turn, thrust: throttleThrust(d.throttle) }`, which is not circular: scripted.ts:L92 calls hazardAway(d, pair.axes) before deciding. \u00a75.3 (L196-199) already covers axes(), the online replica source and the telemetry rule."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "\u00a75.1 L164-169 names the module, its order, field, kinds and reasons, and now the snapshot offsets `helmAt = roundAt + 4; interiorAt = helmAt + 1` with an integer \u22121..4 check. That matches snapshot.ts:L128 (interiorAt = roundAt + 4 today). \u00a75.2 L173-181 covers DUEL_KINDS, check order and noop. The only remaining issue is the file path (new P3)."
+    },
+    {
+      "id": "R2-F1",
+      "result": "resolved",
+      "note": "\u00a75.2 L183-186 adds throttle to net/contracts.ts and to duelWire.commands as a strict z.object with `level: z.number().finite()`, so the sim answers a bad level `malformed`. This fits codec.ts:L110-121 (a closed strict list). The no-redeploy note and step-1 placement are both stated, and \u00a78 L326 adds a codec round trip."
+    },
+    {
+      "id": "R2-F2",
+      "result": "resolved",
+      "note": "\u00a76.2 L280-284 limits clear() to Tab, restart and blur, as in input.ts:L59-62. clearUi() handles console changes and leaves physical keys alone. L275-276 says a repeat keydown never counts fireDown, which is consistent with input.ts:L52 (`!e.repeat`). \u00a77 L305 and \u00a78 L313-315 are updated to match."
+    },
+    {
+      "id": "R2-F3",
+      "result": "resolved",
+      "note": "\u00a76.1 L251-253 defines `HeldFlags` inline as new in app/duel/input.ts, filled from the last merged KeySample, with ConsoleView's held fields as picks of it."
+    }
+  ],
+  "verified": [
+    "Codec: duelWire.commands is a closed list of strict objects (src/renderer/src/net/codec.ts:L110-121), so the \u00a75.2 Wire paragraph (spec L183-186) is necessary and sufficient on the codec side.",
+    "Snapshot offsets: today interiorAt = roundAt + 4 (sim/duel/snapshot.ts:L128) and length is checked against interiorAt + interiorCount (L129). Inserting helmAt = roundAt + 4 and interiorAt = helmAt + 1 (spec L167) is consistent with that, and with the helm module placed after round in DUEL_MODULES (spec L164).",
+    "Scripted prediction: hazardAway(d, axes) is called with pair.axes before the pair decides (scripted.ts:L74, L92). Using pair.axes.turn with throttleThrust(d.throttle) (spec L217) has a defined value at call time.",
+    "Keyboard: today's keydown adds repeats to held and counts presses only on !repeat (input.ts:L50-52). keyup counts fireUp only if Space is held (L56). clear runs on blur (L62). The \u00a76.2 split (L280-284) and the repeat rule (L275-276) keep today's keyboard behaviour.",
+    "\u00a77 (L305) and \u00a78 (L313-315, L326) agree with the revised \u00a76.2 and \u00a75.1/\u00a75.2. I found no contradiction with the unchanged \u00a75.3-\u00a75.6."
+  ],
+  "not_verified": [
+    "net/contracts.ts's wire DuelCommand union (cited in the round-2 finding at L74-76): I did not re-open it this round.",
+    "Whether step.ts's running result helper can take a `noop` status without touching the other modules' result streams: step.ts is outside the touched regions and was not re-read."
+  ]
+}
