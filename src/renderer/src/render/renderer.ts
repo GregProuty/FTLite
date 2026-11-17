@@ -33,7 +33,7 @@ import { featureReady } from './fallback';
 
 
 export interface Renderer {
-  app: Application; world: Container; hud: Container; assets: GameAssets;
+  app: Application; world: Container; assets: GameAssets;
   resize(winW: number, winH: number): void;
   /** The letterbox stage scale set by the last resize (1 before the first); the duel interior reads it for its fit (Art-i spec section 4). */
   stageScale(): number;
@@ -52,11 +52,10 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   await app.init({ width: INTERNAL_W, height: INTERNAL_H, background: 0x05060a, antialias: false, roundPixels: true });
   document.body.appendChild(app.canvas);
   const world = new Container(); world.isRenderGroup = true;
-  const hud = new Container(); hud.isRenderGroup = true;
   const projectiles = createProjectileLayer();   // spec Demo-vii section 2: over the ship (internal pixels), under the HUD
   const enemyWindow = createEnemyWindowLayer({ fontFamily: assets.fontFamily, fire: assets.has('fire.loop') ? assets.animation('fire.loop') : null, panel: null });   // the themed panel (spec Demo-x-c section 1)
   const callouts = createCalloutLayer(assets);
-  app.stage.addChild(world, enemyWindow.container, projectiles.container, callouts.container, hud);   // spec Demo-viii amendment R2: world, enemy window, projectiles, HUD; the callout bubbles (spec Coop-i section 3) just under the HUD
+  app.stage.addChild(world, enemyWindow.container, projectiles.container, callouts.container);   // spec Demo-viii amendment R2: world, enemy window, projectiles, HUD; the callout bubbles (spec Coop-i section 3) just under the HUD
   let anim = freshWindowAnim();
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory);
@@ -81,7 +80,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   let lastDraw: number | null = null, stage = 1, seenImpact: Int32Array | null = null;
 
   return {
-    app, world, hud, assets,
+    app, world, assets,
     resize(winW, winH) {
       const lb = computeLetterbox(winW, winH, INTERNAL_W, INTERNAL_H);
       app.renderer.resize(winW, winH);

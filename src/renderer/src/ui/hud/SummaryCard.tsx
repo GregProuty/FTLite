@@ -22,7 +22,8 @@ export const SummaryBack = memo(function SummaryBack(p: SummaryProps) {
   const lobby = p.phase === 'lobby', wide = Math.min(SUMMARY_W, Math.max(0, ...shown.map((t) => Math.ceil(textPx(t)))));
   const top = SUMMARY_TOP + (lobby ? LINE : 0), bottom = SUMMARY_TOP + 12 * LINE;
   const h = Math.min(bottom, SUMMARY_TOP + (lobby ? 12 : p.summary!.length) * LINE) - top + 12;
-  return <Box x={INTERNAL_W / 2 - wide / 2 - 16} y={top - 6} w={wide + 32} h={h} attrs={{ 'data-ui-summary-back': '' }}
+  // Pixi centres the 2 px stroke on the rect's edge, so the border box is the rect grown by 1 px on every side.
+  return <Box x={INTERNAL_W / 2 - wide / 2 - 17} y={top - 7} w={wide + 34} h={h + 2} attrs={{ 'data-ui-summary-back': '' }}
     style={{ background: hex(BACKDROP, BACKDROP_ALPHA), border: `${2 * hair}px solid ${hex(RULE)}` }} />;
 });
 

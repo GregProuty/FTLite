@@ -4,7 +4,6 @@ import skiff from './sim/ship/skiff.json';
 import { parseShip } from './sim/ship/schema';
 import { loadAssets } from './render/assets';
 import { createRenderer } from './render/renderer';
-import { createHud } from './render/hud';
 import { createKeyboardSources } from './input/sources';
 import { createAudio } from './app/audio';
 import { loadSettings, saveSettings } from './app/settingsStore';
@@ -18,7 +17,10 @@ import { createOnlineModeSession } from './app/onlineModeSession';
 import { createOnlineDuelSession } from './app/duel/onlineDuel';
 import { createSessionRouter } from './app/sessionRouter';
 import { createUiStore, setLayout } from './ui/store';
-import { createDuelSink, createFlightSink, createLatencySink } from './ui/sinks';
+import { createDuelSink, createFlightSink, createHudSink, createLatencySink } from './ui/sinks';
+import { buildImageCache, hudImageNames } from './ui/images';
+import { createPixiImageSource } from './app/uiImages';
+import { ICON_KINDS } from './render/roomIconModel';
 import { computeLetterbox } from './render/letterbox';
 import { createUiActions } from './ui/actions';
 import { inputBlockedOf } from './ui/menuState';
@@ -57,7 +59,7 @@ async function startApp(): Promise<void> {
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
-  const hud = createHud(renderer.hud, assets);
+  const images = await buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets));
   const keyboard = createKeyboardSources(window);
   const audio = createAudio();
   let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
@@ -68,7 +70,7 @@ async function startApp(): Promise<void> {
   let blocked = true;
   const win = window.ftlite?.window;
   const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
-  const duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
+  const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink,
@@ -117,7 +119,7 @@ async function startApp(): Promise<void> {
   window.addEventListener('resize', resize); resize();
   window.addEventListener('resize', () => actions.windowResized());   // F11 fullscreen changes keep the Settings label true
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
-  const unmountUi = await mountUi({ el: uiRoot, store, actions });
+  const unmountUi = await mountUi({ el: uiRoot, store, actions, images });
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
@@ -178,7 +180,8 @@ async function startProbe(): Promise<void> {
   const { startUiProbe, duelProbeFixture } = await import('./app/uiProbe');
   const q = new URLSearchParams(location.search), duelProbe = q.get('probe') === 'duel', hudProbe = q.get('probe') === 'hud';
   const reactHud = hudProbe && q.get('engine') === 'react';
-  if (duelProbe || reactHud) await mountUi({ el: uiRoot, store, actions, menu: false }); else if (!hudProbe) await mountProbe({ el: uiRoot, store, actions });
+  const images = reactHud ? await buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets)) : undefined;
+  if (duelProbe || reactHud) await mountUi({ el: uiRoot, store, actions, menu: false, images }); else if (!hudProbe) await mountProbe({ el: uiRoot, store, actions });
   const resize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
     const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
@@ -187,11 +190,23 @@ async function startProbe(): Promise<void> {
   window.addEventListener('resize', resize); resize();
   startUiProbe(renderer, !duelProbe && !hudProbe);
   if (duelProbe) createDuelSink(store).frame(duelProbeFixture());
-  if (hudProbe) {   // UI-iii Task 4: a fixture HUD model drawn by the old Pixi HUD or the React HUD (dynamic imports, the probe only)
+  if (hudProbe) {   // UI-iii: a fixture HUD model drawn by the React HUD (dynamic imports, the probe only)
     const { HUD_FIXTURES } = await import('./app/hudFixtures');
     const model = HUD_FIXTURES[Number(q.get('fixture') ?? 0)]!();
-    if (reactHud) { const { createHudSink } = await import('./ui/sinks'); createHudSink(store).update(model); }
-    else { const { createHud } = await import('./render/hud'); renderer.hud.visible = true; renderer.app.stage.addChild(renderer.hud); createHud(renderer.hud, assets).update(model); }
+    if (reactHud) {
+      const sink = createHudSink(store, perf);
+      sink.update(model);
+      if (q.get('uiperf') === '1') {   // every animation frame for 60 s is a real change (tick, simSeconds, player 0's health and progress), as in a running sector
+        const { replaceEqualDeep } = await import('./ui/share');
+        const next = (i: number): typeof model => ({ ...model, tick: model.tick + i, simSeconds: model.simSeconds + i, players: model.players.map((pl, k) => (k === 0 ? { ...pl, health: (i % 100) / 100, progress: (i % 50) / 50 } : pl)) });
+        const t0 = performance.now(); let i = 0;
+        const step = (): void => {
+          if (performance.now() - t0 > 60000) { const cands = Array.from({ length: 1000 }, (_, r) => next(r + 1)), t = performance.now(); for (const cand of cands) replaceEqualDeep(model, cand); const each = (performance.now() - t) / 1000; console.info(`[uiperf-done] frames ${i} sharing mean ${each.toFixed(4)} ms per replaceEqualDeep (1000 runs, timed as one batch because performance.now() is coarse)`); return; }
+          sink.update(next(++i)); requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }
+    }
   }
 }
 
