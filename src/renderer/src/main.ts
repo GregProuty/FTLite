@@ -2,7 +2,7 @@ import cutter from './sim/ship/cutter.json';
 import hound from './sim/ship/hound.json';
 import skiff from './sim/ship/skiff.json';
 import { parseShip } from './sim/ship/schema';
-import { loadAssets } from './render/assets';
+import { loadAssets, loadBytes } from './render/assets';
 import { createRenderer } from './render/renderer';
 import { createKeyboardSources } from './input/sources';
 import { createAudio } from './app/audio';
@@ -69,8 +69,9 @@ async function startApp(): Promise<void> {
   const images = buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets));
   const keyboard = createKeyboardSources(window);
   const audio = createAudio();
+  void audio.load(assets.sounds ?? [], loadBytes);   // Audio-i spec section 2: in the background; the synth tones play until it lands
   let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
-  audio.setVolume(settings.volume);
+  audio.setVolumes({ master: settings.volume, music: 1, effects: 1 });
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
@@ -105,7 +106,7 @@ async function startApp(): Promise<void> {
   const actions = createUiActions({ store, api: bridge ?? undefined,
     single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
-    setVolume(volume) { settings = { ...settings, volume }; audio.setVolume(volume); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    setVolume(volume) { settings = { ...settings, volume }; audio.setVolumes({ master: volume, music: 1, effects: 1 }); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined
   });
   // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.
