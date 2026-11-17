@@ -22,7 +22,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     d.tactical.systems[1].hull = 21; d.tactical.systems[1].rooms = [0, 2, 1]; d.tactical.systems[0].rooms[Room.Engines] = 1; d.tactical.systems[0].shields = 1;
     const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
-      ['HELM', ''], ['CUTTER', ''], ['HULL', '40/40'], ['SHIELD', ''], ['WEAPONS', 'OK'], ['SHIELDS', 'OK'], ['ENGINES', 'DMG 1'],
+      ['HELM', ''], ['HOUND', ''], ['HULL', '40/40'], ['SHIELD', ''], ['WEAPONS', 'OK'], ['SHIELDS', 'OK'], ['ENGINES', 'DMG 1'],
       ['HUNTER', ''], ['HULL', '21/40'], ['SHIELD', ''], ['ROOMS', 'W0 S2 E1'], ['OTHER', 'PRESENT'], ['', 'AT WEAPONS']
     ]);
     expect(rows[3]!.pips).toMatchObject({ n: 1, max: 2 }); expect(rows[9]!.pips).toMatchObject({ n: 2, max: 2 });
