@@ -7,6 +7,7 @@ import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { emptyPresses, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
+import { followingSeed } from '../src/renderer/src/sim/duel/seeds';
 import { ZOOM_DEFAULT, ZOOM_STEP } from '../src/renderer/src/render/tactical/camera';
 import { interpolatedMissile } from '../src/renderer/src/render/tactical/fxModel';
 
@@ -289,27 +290,35 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     end.press('menu'); end.rt.frame(1 / 60); expect(end.rt.menuRequested()).toBe(true);
     end.rt.dispose();
   });
-  it('the duel ends, stepping stops, and Enter restarts with seed + 1, a fresh tick epoch and the solo start again', () => {
+  it('the round ends, the end card keeps ticking, and Enter sends a rematch: the next round in place with the following seed (H-2 spec §7)', () => {
     const { time, rt, press, tick, cleared } = rig(7);
     press('switch'); tick(); press('zoomIn'); tick();
     rt.duel.tactical.systems[1].hull = 0; tick();
     expect(rt.duel.tactical.outcome).toBe(Outcome.CrewWins);
     expect(rt.ended()).toBe(true);
-    const stopped = rt.duel.interior.tick;
+    const decided = rt.duel.interior.tick;
     time.advance(1000); rt.frame(1 / 60);
-    expect(rt.duel.interior.tick).toBe(stopped);
-    const old = rt.duel, before = cleared();
-    press('confirm'); rt.frame(1 / 60);
-    expect(rt.duel).not.toBe(old);
-    expect([rt.seed, rt.epoch(), rt.active(), rt.view(), rt.ended()]).toEqual([8, 1, 0, 'helm', false]);
-    expect(rt.duel.interior.tick).toBe(0);
+    expect(rt.duel.interior.tick).toBe(decided + 60);   // the end card's ticks advance; nothing moves
+    const duel = rt.duel, before = cleared();
+    press('confirm'); tick(); tick();
+    expect(rt.duel).toBe(duel);   // the same duel: the next round began in place
+    expect([rt.seed, rt.epoch(), rt.active(), rt.view(), rt.ended()]).toEqual([followingSeed(7), 1, 1, 'weapons', false]);   // presence carried: player 1 is still the one at the keyboard
+    expect(rt.duel.baseTick).toBeGreaterThan(decided + 60);
     expect(cleared()).toBe(before + 1);
     expect([rt.cameras.helm.targetZoom, rt.cameras.weapons.targetZoom]).toEqual([ZOOM_DEFAULT, ZOOM_DEFAULT]);
     expect(rt.drainEvents()).toEqual([]);
-    time.advance(TICK_MS + 0.01); rt.frame(1 / 60);
-    expect(rt.duel.interior.tick).toBe(1);   // a fresh epoch: no burst for the time spent on the end screen
-    expect(rt.lastResults().map((r) => [r.id.player, r.id.sequence, r.tick])).toEqual([[1, 0, 0]]);
-    expect(rt.duel.present).toEqual([true, false]);
+    expect(rt.duel.present).toEqual([false, true]);
+    rt.dispose();
+  });
+  it('the end card sends neutral held input, as online does (H-2 spec §3, §7)', () => {
+    const { rt, hold, tick } = rig(7);
+    hold({ moveX: 1, moveY: -1, interactHeld: true }); tick();
+    expect(rt.held()[0]).toEqual({ moveX: 1, moveY: -1, interactHeld: true });
+    rt.duel.tactical.systems[1].hull = 0; tick();
+    expect(rt.ended()).toBe(true);
+    tick(); tick();
+    expect(rt.held()[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    expect([rt.axes(), rt.steer()]).toEqual([{ turn: 0, thrust: 0 }, 0]);
     rt.dispose();
   });
 });
@@ -365,7 +374,7 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
   });
 });
 
-describe('pointer input never survives a Tab or a restart (H-1b impl review)', () => {
+describe('pointer input never survives a Tab or a rematch (H-1b impl review)', () => {
   it('Tab: the drag and wheel sampled that frame do not touch the camera now active', () => {
     const { rt, press, pointer, tick } = rig();
     press('switch'); tick(); press('switch'); tick();   // settle; Helm active again
@@ -376,12 +385,17 @@ describe('pointer input never survives a Tab or a restart (H-1b impl review)', (
     expect({ cx: cam.centreX, cy: cam.centreY, tz: cam.targetZoom, follow: cam.follow }).toEqual(before);
     rt.dispose();
   });
-  it('restart: the drag and wheel sampled with Enter do not touch the reset camera', () => {
+  it('rematch: the drag and wheel sampled with Enter do not touch the new round camera', () => {
     const { rt, press, pointer, ticks } = rig();
-    rt.duel.tactical.outcome = Outcome.CrewWins; ticks(1);
-    expect(rt.ended()).toBe(true);
+    rt.duel.tactical.systems[1].hull = 0; ticks(3);   // decided, then two end-card ticks: nothing moves, the follow has settled
+    expect([rt.ended(), rt.view()]).toEqual([true, 'helm']);
+    const active = rt.cameras.helm, before = { cx: active.centreX, cy: active.centreY, tz: active.targetZoom, follow: active.follow };
     Object.assign(pointer, { x: 300, y: 200, wheel: 3, dragX: 80, dragY: 40 });
     press('confirm'); rt.frame(1 / 60);
+    // The press frame, before any tick: the sampled drag and wheel are dropped, so the active camera is untouched
+    // (freshCameras on the next round would hide a regression here).
+    expect({ cx: active.centreX, cy: active.centreY, tz: active.targetZoom, follow: active.follow }).toEqual(before);
+    Object.assign(pointer, { wheel: 0, dragX: 0, dragY: 0 }); ticks(2);
     expect(rt.epoch()).toBe(1);
     const cam = rt.cameras.helm;
     expect(cam.follow).toBe('ship'); expect(cam.targetZoom).toBeCloseTo(ZOOM_DEFAULT, 12);

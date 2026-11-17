@@ -57,7 +57,7 @@ async function main() {
   }
   async function launch(profile: string) {
     if (typeof electron !== 'string') throw Error('Electron executable missing');
-    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, NODE_PATH:resolve('node_modules') };
+    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_SECTOR_ONLINE_TEST: '1', NODE_PATH:resolve('node_modules') };
     delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL;
     const child = spawn(electron, [resolve('scripts/network/online-app-smoke.cjs'), '--recovery-observe-utility', `--online-app-dir=${directory}`, `--online-app-role=${profile}`,
       `--user-data-dir=${join(directory, profile)}`], { env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
@@ -89,8 +89,9 @@ async function main() {
   }
   const status = (app: Application) => app.request('status');
   const phase = (app: Application, value: string) => until(() => status(app), r => r.status.phase === value, `${app.profile} ${value}`);
-  async function host(app: Application, capacity: number) { await app.request('open-multiplayer'); await app.request('click', { id: 'host' }); if (capacity !== 2) await app.request('capacity', { value: capacity }); await app.request('click', { id: 'create-room' }); return phase(app, 'lobby'); }
-  async function joinRoom(app: Application, code: string) { await app.request('open-multiplayer'); await app.request('click', { id: 'join' }); await app.request('type', { id: 'join-code', text: code }); await app.request('click', { id: 'join-room' }); return phase(app, 'lobby'); }
+  // The sector's test-only entry (H-2 spec §10).
+  async function host(app: Application, capacity: number) { await app.request('host-sector', { capacity }); return phase(app, 'lobby'); }
+  async function joinRoom(app: Application, code: string) { await app.request('join-sector', { code }); return phase(app, 'lobby'); }
   async function kill(app: Application) {
     if (!app.exited) {
       app.termination??='restart';

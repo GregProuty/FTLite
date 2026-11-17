@@ -11,12 +11,12 @@ describe('requests', () => {
     actions.rehost(); actions.rehost(); expect(rehost).toHaveBeenCalledOnce();
     await flush(); actions.rehost(); expect(rehost).toHaveBeenCalledTimes(2);
   });
-  it('Host sends the capacity and enters the session; Join trims, upper-cases and deduplicates', async () => {
+  it('Host creates the duel room (no capacity) and enters the session; Join trims, upper-cases and deduplicates', async () => {
     const host = vi.fn(async () => ({ ok: true as const })), join = vi.fn(() => new Promise<never>(() => {}));
     const { store, deps, actions } = makeUi({ api: { host, join } });
     actions.setStatus({ ...idle, actions: ['host', 'join', 'reconnect'] });
-    actions.openMultiplayer(); actions.openHost(); actions.host(4);
-    expect(host).toHaveBeenCalledWith(4); expect(deps.online).toHaveBeenCalledOnce(); expect(store.getState().menu.page).toBe('session');
+    actions.openMultiplayer(); actions.openHost(); actions.host();
+    expect(host).toHaveBeenCalledWith(); expect(deps.online).toHaveBeenCalledOnce(); expect(store.getState().menu.page).toBe('session');
     await flush(); actions.home(); expect(store.getState().menu.page).toBe('home');
     actions.openMultiplayer(); actions.openJoin(); actions.join(' abcdef12 '); actions.join(' abcdef12 ');
     expect(join).toHaveBeenCalledExactlyOnceWith('ABCDEF12');
@@ -28,7 +28,7 @@ describe('requests', () => {
   });
   it('shows a failed request in plain words and clears pending', async () => {
     const host = vi.fn(async () => ({ ok: false as const, code: 'not-found' as const })), { store, actions } = makeUi({ api: { host } });
-    actions.host(2); expect(store.getState().menu.pending).toBe(true); await flush();
+    actions.host(); expect(store.getState().menu.pending).toBe(true); await flush();
     expect(store.getState().menu).toMatchObject({ pending: false, localError: ERRORS['not-found'] });
   });
   it('words a thrown request generically', async () => {
@@ -52,6 +52,15 @@ describe('requests', () => {
     actions.setStatus({ ...idle, actions: ['host', 'join', 'reconnect', 'retry'] });
     expect(deps.home).toHaveBeenCalledOnce(); expect(store.getState().menu).toMatchObject({ page: 'home', hadView: false, leaving: false });
   });
+  it('leave() runs Net-3d Leave only while the status offers it (the online duel passes it as deps.leave)', async () => {
+    const leave = vi.fn(async () => ({ ok: true as const })), { store, deps, actions } = makeUi({ api: { leave } });
+    actions.leave(); expect(leave).not.toHaveBeenCalled(); expect(store.getState().menu.leaving).toBe(false);
+    actions.setStatus({ ...idle, phase: 'ended', role: 'guest', ownSeat: 1, attachmentEpoch: 1, actions: ['leave'] });
+    actions.leave(); expect(leave).toHaveBeenCalledOnce(); expect(store.getState().menu.leaving).toBe(true); await flush();
+    actions.setStatus(idle); expect(deps.home).toHaveBeenCalledOnce(); expect(store.getState().menu.page).toBe('home');
+    const offline = makeUi({ api: null }); offline.actions.setStatus({ ...idle, phase: 'ended', actions: ['leave'] }); offline.actions.leave();
+    expect(offline.store.getState().menu.leaving).toBe(false);
+  });
   it('forgetSeatNow interrupts a pending Join and does not enter the session', async () => {
     const join = vi.fn(() => new Promise<never>(() => {})), forgetSeat = vi.fn(async () => ({ ok: true as const }));
     const { deps, actions } = makeUi({ api: { join, forgetSeat } });
@@ -62,6 +71,25 @@ describe('requests', () => {
     const forgetSeat = vi.fn(async () => ({ ok: true as const })), { store, deps, actions } = makeUi({ api: { forgetSeat } });
     actions.setStatus(idle); actions.openMultiplayer(); actions.forgetSavedSeat();
     expect(forgetSeat).toHaveBeenCalledOnce(); expect(deps.online).not.toHaveBeenCalled(); expect(store.getState().menu.page).toBe('multiplayer');
+  });
+});
+
+describe('the duel seats (H-2 spec §2)', () => {
+  const seats = [{ seatId: 0, occupied: true, connected: true, ready: true }, { seatId: 1, occupied: true, connected: true, ready: true }];
+  const duelLobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready', 'leave'],
+    snapshot: { capacity: 2, joinCode: 'ABCDEFGH', seats, compatibility: { modeId: 'duel' } } as never };
+  it('Start carries the Helm player: the host by default, the guest after Swap seats, the host again after a second swap', async () => {
+    const start = vi.fn(async () => ({ ok: true as const })), { store, actions } = makeUi({ api: { start } });
+    actions.setStatus(duelLobby); actions.start(); expect(start).toHaveBeenLastCalledWith(0); await flush();
+    actions.swapSeats(); expect(store.getState().menu.swapped).toBe(true); actions.start(); expect(start).toHaveBeenLastCalledWith(1); await flush();
+    actions.swapSeats(); actions.start(); expect(start).toHaveBeenLastCalledWith(0);
+  });
+  it('a host on seat 1 swaps to seat 0; a new Host clears the swap; a non-duel room starts without a Helm player', async () => {
+    const start = vi.fn(async () => ({ ok: true as const })), host = vi.fn(async () => ({ ok: true as const })), { store, actions } = makeUi({ api: { start, host } });
+    actions.setStatus({ ...duelLobby, ownSeat: 1 }); actions.swapSeats(); actions.start(); expect(start).toHaveBeenLastCalledWith(0); await flush();
+    actions.host(); expect(store.getState().menu.swapped).toBe(false); await flush();
+    actions.setStatus({ ...duelLobby, snapshot: { ...duelLobby.snapshot!, compatibility: { modeId: 'sector' } } as never }); actions.start();
+    expect(start).toHaveBeenLastCalledWith();
   });
 });
 
@@ -137,6 +165,6 @@ describe('the strip and disposal', () => {
   });
   it('makes no request and no write after dispose', async () => {
     const host = vi.fn(async () => ({ ok: true as const })), { store, actions } = makeUi({ api: { host } });
-    actions.dispose(); actions.host(2); await flush(); expect(host).not.toHaveBeenCalled(); expect(store.getState().menu.pending).toBe(false);
+    actions.dispose(); actions.host(); await flush(); expect(host).not.toHaveBeenCalled(); expect(store.getState().menu.pending).toBe(false);
   });
 });

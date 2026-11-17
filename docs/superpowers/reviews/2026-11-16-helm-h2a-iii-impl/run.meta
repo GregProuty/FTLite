@@ -1,0 +1,11 @@
+topic=helm-h2a-iii-impl
+subject_kind=impl
+subject=package.json scripts/network/duel-app-observer.ts scripts/network/duel-app-smoke.ts scripts/network/online-app-smoke.cjs scripts/network/online-app-smoke.ts scripts/network/online-recovery-smoke.ts src/main/index.ts src/main/network/duelRecords.ts src/main/network/onlineDuel.ts src/main/network/onlineModes.ts src/main/network/onlineSession.ts src/preload/index.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/scene.ts src/renderer/src/app/onlineModeSession.ts src/renderer/src/main.ts src/renderer/src/net/duelRecord.ts src/renderer/src/render/duel/endScreen.ts src/renderer/src/render/sessionMenu.ts src/shared/onlineSession.ts tests/duelOnlineView.test.ts tests/duelReadout.test.ts tests/duelRuntime.test.ts tests/mainMenu.test.ts tests/networkBoundary.test.ts tests/onlineBridge.test.ts tests/onlineCoordinator.test.ts tests/onlineDuel.test.ts tests/onlineIpc.test.ts tests/onlineRecovery.test.ts tests/onlineSessionContract.test.ts tests/sessionMenu.test.ts tsconfig.node.json
+worktree=C:\Users\djuar\FTLite\.worktrees\h2a-iii
+base=6aa656f
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-16
+head_at_setup=b8c9daf

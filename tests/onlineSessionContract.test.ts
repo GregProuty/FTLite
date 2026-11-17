@@ -15,7 +15,7 @@ describe('bounded online renderer boundary', () => {
     for (const value of [{ ...status(), [field]: 'private' }, { ...status(), snapshot: { ...snapshot, [field]: 'private' } }, { ...status(), mirror: { ...status().mirror, [field]: 'private' } }]) {
       expect(validateOnlineStatus(value)).toBe(false);
     }
-    expect(validateOnlineAction({ type: 'host', capacity: 2, [field]: 'private' })).toBe(false);
+    expect(validateOnlineAction({ type: 'host', mode: 'sector', capacity: 2, [field]: 'private' })).toBe(false);
     expect(() => copyOnlineStatus({ ...status(), [field]: 'private' })).toThrow('invalid-status');
   });
   it('accepts named rehost and saved transitions without payloads or privileged Resume', () => {
@@ -35,10 +35,10 @@ describe('bounded online renderer boundary', () => {
       { version: 1, revision: Number.MAX_SAFE_INTEGER + 1, status: status() }, { version: 1, revision: 1, status: status(), seatToken: 'private' },
       { version: 1, revision: 1, status: { ...status(), seatToken: 'private' } }]) expect(validateOnlineStatusEnvelope(value)).toBe(false);
   });
-  it.each([{type:'host',capacity:1}, {type:'host',capacity:4}, {type:'join',code:'  abcd1234  '}, {type:'ready',ready:false}, {type:'remove-seat',seatId:3}, {type:'view-state',epoch:1,phase:'synced'}, ...['reconnect','start','retry','leave','forget-seat'].map(type=>({type}))])('accepts allowed action %j', action => {
+  it.each([{type:'host',mode:'duel'}, {type:'host',mode:'sector',capacity:1}, {type:'host',mode:'sector',capacity:4}, {type:'join',code:'  abcd1234  '}, {type:'join',code:'ABCD1234',mode:'duel'}, {type:'join',code:'ABCD1234',mode:'sector'}, {type:'start',helmPlayer:0}, {type:'start',helmPlayer:1}, {type:'ready',ready:false}, {type:'remove-seat',seatId:3}, {type:'view-state',epoch:1,phase:'synced'}, ...['reconnect','start','retry','leave','forget-seat'].map(type=>({type}))])('accepts allowed action %j', action => {
     expect(validateOnlineAction(action)).toBe(true);
   });
-  it.each([null, {}, {type:'host',capacity:0}, {type:'host',capacity:5}, {type:'host',capacity:1.5}, {type:'join',code:'ABCD123I'}, {type:'join',code:'ABCD1234',seatToken:'secret'}, {type:'join',code:' '.repeat(25)+'ABCD1234'}, {type:'reconnect',roomId:'a'.repeat(32)}, {type:'remove-seat',seatId:4}, {type:'ready',ready:1}, {type:'view-state',epoch:0,phase:'synced'}, {type:'view-state',epoch:Number.MAX_SAFE_INTEGER+1,phase:'running'}, {type:'view-state',epoch:1,phase:'lobby'}, {type:'toString'}])('rejects malformed/privileged action %j', action => {
+  it.each([null, {}, {type:'host',capacity:2}, {type:'host',mode:'duel',capacity:2}, {type:'host',mode:'sector',capacity:0}, {type:'host',mode:'sector',capacity:5}, {type:'host',mode:'sector',capacity:1.5}, {type:'host',mode:'other'}, {type:'join',code:'ABCD1234',mode:'other'}, {type:'start',helmPlayer:2}, {type:'join',code:'ABCD123I'}, {type:'join',code:'ABCD1234',seatToken:'secret'}, {type:'join',code:' '.repeat(25)+'ABCD1234'}, {type:'reconnect',roomId:'a'.repeat(32)}, {type:'remove-seat',seatId:4}, {type:'ready',ready:1}, {type:'view-state',epoch:0,phase:'synced'}, {type:'view-state',epoch:Number.MAX_SAFE_INTEGER+1,phase:'running'}, {type:'view-state',epoch:1,phase:'lobby'}, {type:'toString'}])('rejects malformed/privileged action %j', action => {
     expect(validateOnlineAction(action)).toBe(false);
   });
   it('checks the input bound before trimming and normalizing a code', () => {

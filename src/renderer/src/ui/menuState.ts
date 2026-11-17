@@ -17,6 +17,8 @@ export interface MenuState {
   operation: number;
   /** Bumped by returnHome so the menu's error boundary resets even when the page and phase are unchanged. */
   resetEpoch: number;
+  /** The duel host's Swap seats toggle (H-2 spec §2): local until Start carries it; Host clears it. */
+  swapped: boolean;
 }
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
 export interface SettingsSlice { available: boolean; volume: number; fullscreenAvailable: boolean; controls: readonly ControlSection[] }
@@ -24,12 +26,12 @@ export interface LayoutSlice { stripHeight: number }
 export interface UiState { menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice }
 export type MenuView = Pick<UiState, 'menu' | 'online'>;
 
-export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0 };
+export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0, swapped: false };
 export const ROOM_CODE = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 export const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
   'online-disabled': 'Online play needs a configured local service. Single player is available.',
   'not-found': 'Room not found. Check the eight-character code and try again.',
-  'incompatible': 'This room needs compatible game content and ship data. Check both versions, then try again.',
+  'incompatible': 'The other computer runs a different FTLite build. Install the same build on both, then try again.',
   'unauthorized': 'This seat is no longer authorized. Return to the menu or forget the saved seat.',
   'host-lost': 'Host disconnected. Reconnect or re-host the last committed checkpoint when available.',
   'no-checkpoint': 'No committed checkpoint is available for this room.',
@@ -67,6 +69,17 @@ export function availabilityText(v: MenuView): string {
 export function seatLabel(status: OnlineStatus, pid: number): string {
   const seat = status.snapshot?.seats.find((s) => s.seatId === pid);
   return ` P${pid + 1}: ${!seat?.occupied ? 'Bot' : !seat.connected ? 'Bot (human disconnected)' : seat.ready ? 'Ready' : 'Not ready'} `;
+}
+/** A duel room (H-2 spec §2): the lobby shows the seat plan and Start carries the Helm player. */
+export function isDuel(status: OnlineStatus | null): boolean { return status?.snapshot?.compatibility?.modeId === 'duel'; }
+/** The seat plan line: the host's "Host flies Helm" / "Guest flies Helm" (its Swap seats toggle), the guest's "Host picks seats". */
+export function seatPlanText(status: OnlineStatus, swapped: boolean): string {
+  return status.role === 'host' ? (swapped ? 'Guest flies Helm' : 'Host flies Helm') : 'Host picks seats';
+}
+/** The player who flies the Helm when the host presses Start: the host, or the guest after Swap seats. */
+export function helmPlayerOf(status: OnlineStatus, swapped: boolean): 0 | 1 {
+  const own = status.ownSeat ?? 0;
+  return (swapped ? 1 - own : own) as 0 | 1;
 }
 export function startAllowed(v: MenuView): boolean {
   return can(v, 'start') && !!v.online.status?.snapshot?.seats.every((s) => !s.occupied || s.ready && s.connected);

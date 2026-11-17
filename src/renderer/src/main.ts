@@ -13,6 +13,8 @@ import { startFlightMode } from './app/duel/flightMode';
 import { startDuelMode } from './app/duel/duelMode';
 import { createOnlineBridge } from './app/onlineBridge';
 import { createOnlineRendererSession } from './app/onlineSession';
+import { createOnlineModeSession } from './app/onlineModeSession';
+import { createOnlineDuelSession } from './app/duel/onlineDuel';
 import { createSessionRouter } from './app/sessionRouter';
 import { createUiStore } from './ui/store';
 import { createUiActions } from './ui/actions';
@@ -54,7 +56,7 @@ async function startApp(): Promise<void> {
   audio.setVolume(settings.volume);
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
-  let online: ReturnType<typeof createOnlineRendererSession> | null = null, status: OnlineStatus | null = null;
+  let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
@@ -62,10 +64,15 @@ async function startApp(): Promise<void> {
         onExit: () => { session.home(); actions.leaveSingle(); } });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
+    // Multiplayer (H-2 spec §3): the wrapper builds the duel's or the sector's session when the first port arrives.
     online: () => {
-      online = createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
-        resolveLayout: id => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; },
-        api: bridge!, playCue: audio.play });
+      const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
+      online = createOnlineModeSession({
+        duel: () => createOnlineDuelSession({ renderer, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
+          leave: () => actions.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record) }),
+        sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
+          resolveLayout, api: bridge!, playCue: audio.play })
+      });
       if (status) online.setStatus(status); online.setInputBlocked(blocked); return online;
     }
   });

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { copyOnlinePortDescriptor, ONLINE_CHANNELS, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
+import { copyOnlinePortDescriptor, DUEL_RECORD_CHANNEL, ONLINE_CHANNELS, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
   validateOnlineAction, validateOnlinePortEnvelope, validateOnlineResult, validateOnlineStatusEnvelope,
   type FtlitePreloadApi, type OnlineAction, type OnlineResult, type Unsubscribe } from '../shared/onlineSession';
 
@@ -26,19 +26,20 @@ ipcRenderer.on(ONLINE_PORT_CHANNEL, (event, value: unknown) => {
 const api: FtlitePreloadApi = {
   onSuspend: callback => lifecycle('app:suspend', callback),
   onResume: callback => lifecycle('app:resume', callback),
+  async recordDuel(record) { try { return (await ipcRenderer.invoke(DUEL_RECORD_CHANNEL, structuredClone(record))) === true; } catch { return false; } },
   window: {
     async isFullScreen() { try { return (await ipcRenderer.invoke(WINDOW_FULLSCREEN_CHANNEL)) === true; } catch { return false; } },
     async setFullScreen(on) { try { return (await ipcRenderer.invoke(WINDOW_FULLSCREEN_CHANNEL, on === true)) === true; } catch { return false; } }
   },
   online: {
-    host: capacity => action({ type: 'host', capacity }),
-    join: code => action({ type: 'join', code }),
+    host: sector => action(sector ? { type: 'host', mode: 'sector', capacity: sector.capacity } : { type: 'host', mode: 'duel' }),
+    join: (code, mode) => action(mode ? { type: 'join', code, mode } : { type: 'join', code }),
     ready: ready => action({ type: 'ready', ready }),
     removeSeat: seatId => action({ type: 'remove-seat', seatId }),
     viewState: (epoch, phase) => action({ type: 'view-state', epoch, phase }),
     reconnect: () => action({ type: 'reconnect' }),
     rehost: () => action({ type: 'rehost' }),
-    start: () => action({ type: 'start' }),
+    start: helmPlayer => action(helmPlayer === undefined ? { type: 'start' } : { type: 'start', helmPlayer }),
     retry: () => action({ type: 'retry' }),
     leave: () => action({ type: 'leave' }),
     forgetSeat: () => action({ type: 'forget-seat' }),

@@ -31,7 +31,7 @@ describe('multiplayer', () => {
     expect(text('page-title')).toBe('Multiplayer');
     expect(buttonIds(view.container)).toEqual(['host', 'join', 'reconnect', 'forget-seat', 'back']);
     expect((screen.getByTestId('host') as HTMLButtonElement).disabled).toBe(false);
-    click('host'); expect(screen.getByTestId('capacity')).toBeDefined(); expect(document.activeElement).toBe(screen.getByTestId('capacity'));
+    click('host'); expect(screen.queryByTestId('capacity')).toBeNull(); expect(document.activeElement).toBe(screen.getByTestId('create-room'));   // a duel room has no capacity (H-2)
     click('back'); expect(text('page-title')).toBe('Multiplayer');
     click('join'); expect(document.activeElement).toBe(screen.getByTestId('join-code'));
     click('back'); click('back'); expect(buttonIds(view.container)).toEqual(HOME);
@@ -44,10 +44,10 @@ describe('multiplayer', () => {
     click('back'); click('single-player'); expect(deps.single).toHaveBeenCalledOnce();
     act(() => actions.leaveSingle()); click('single-player'); expect(deps.single).toHaveBeenCalledTimes(2);
   });
-  it('shows the compatibility wording and Retry for an incompatible error', () => {
+  it('shows the different-build wording and Retry for an incompatible error', () => {
     const { actions } = renderUi();
     act(() => actions.setStatus({ ...idle, phase: 'error', error: 'incompatible', actions: ['join', 'retry'] }));
-    expect(text('status')).toContain('compatible game content'); expect(screen.getByTestId('retry')).toBeDefined();
+    expect(text('status')).toBe('The other computer runs a different FTLite build. Install the same build on both, then try again.');   // a duel Join tries one compatibility: incompatible means a different build (H-2 spec §2) expect(screen.getByTestId('retry')).toBeDefined();
   });
   it('labels reconnect as a seat only on Multiplayer', () => {
     const { actions } = renderUi();
@@ -57,15 +57,14 @@ describe('multiplayer', () => {
 });
 
 describe('the forms', () => {
-  it('offers accessible capacity and code forms and submits them', () => {
+  it('offers the duel Host form (no capacity) and submits it', () => {
     const host = vi.fn(async () => ({ ok: true as const })), join = vi.fn(() => new Promise<never>(() => {}));
     const { actions } = renderUi({ api: { host, join } });
     act(() => actions.setStatus({ ...idle, actions: ['host', 'join', 'reconnect'] }));
     click('multiplayer'); click('host');
-    const capacity = screen.getByTestId('capacity') as HTMLSelectElement;
-    expect(capacity.value).toBe('2'); expect(capacity.getAttribute('aria-label')).toBe('Crew capacity');
-    expect(Array.from(capacity.options).map((o) => o.textContent)).toEqual(['1 crew — Skiff', '2 crew — Skiff', '3 crew — Cutter', '4 crew — Cutter']);
-    fireEvent.change(capacity, { target: { value: '4' } }); fireEvent.submit(screen.getByTestId('host-form')); expect(host).toHaveBeenCalledWith(4);
+    expect(screen.queryByTestId('capacity')).toBeNull(); expect(screen.getByTestId('host-form').querySelector('select')).toBeNull();
+    expect(text('host-note')).toBe('A duel for two: one of you flies the Helm, the other mans Weapons.');
+    fireEvent.submit(screen.getByTestId('host-form')); expect(host).toHaveBeenCalledWith();
   });
   it('validates the room code on submit', () => {
     const join = vi.fn(() => new Promise<never>(() => {})), { actions } = renderUi({ api: { join } });
@@ -187,6 +186,23 @@ describe('the session page and the strip', () => {
     const host: OnlineStatus = { ...lobby, role: 'host', ownSeat: 0, actions: ['start', 'ready', 'remove-seat', 'leave'] };
     act(() => actions.setStatus(host)); expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     click('remove-seat-1'); expect(removeSeat).toHaveBeenCalledWith(1); expect(screen.queryByTestId('remove-seat-0')).toBeNull();
+  });
+  it('shows the duel seat plan: Swap seats and Host/Guest flies Helm for the host, Host picks seats for the guest; Start carries the Helm player', () => {
+    const start = vi.fn(async () => ({ ok: true as const })), { actions } = renderUi({ api: { start } });
+    const seats = [{ seatId: 0, occupied: true, connected: true, ready: true }, { seatId: 1, occupied: true, connected: true, ready: true }];
+    const hostLobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready', 'leave'],
+      snapshot: { capacity: 2, joinCode: 'ABCDEFGH', seats, compatibility: { modeId: 'duel' } } as never };
+    act(() => actions.setStatus(hostLobby));
+    expect(text('seat-plan')).toBe('Host flies Helm'); expect(text('swap-seats')).toBe('Swap seats');
+    click('swap-seats'); expect(text('seat-plan')).toBe('Guest flies Helm');
+    click('start'); expect(start).toHaveBeenCalledWith(1);
+    act(() => actions.setStatus({ ...hostLobby, role: 'guest', ownSeat: 1, actions: ['ready', 'leave'] }));
+    expect(text('seat-plan')).toBe('Host picks seats'); expect(screen.queryByTestId('swap-seats')).toBeNull(); expect(screen.queryByTestId('start')).toBeNull();
+  });
+  it('shows no seat plan for a room that is not a duel', () => {
+    const { actions } = renderUi();
+    act(() => actions.setStatus({ ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready'], snapshot: { capacity: 1, joinCode: 'ABCDEFGH', seats: [{ seatId: 0, occupied: true, connected: true, ready: true }] } as never }));
+    expect(screen.queryByTestId('seat-plan')).toBeNull(); expect(screen.queryByTestId('swap-seats')).toBeNull();
   });
   it('enables Start when every occupied seat is ready and connected and nothing is pending', () => {
     const { actions } = renderUi();

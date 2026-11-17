@@ -13,15 +13,20 @@ export type OnlineErrorCode = typeof ONLINE_ERROR_CODES[number];
 export function isOnlineErrorCode(value: unknown): value is OnlineErrorCode {
   return typeof value === 'string' && (ONLINE_ERROR_CODES as readonly string[]).includes(value);
 }
+/** The online modes a room can run (H-2 spec §2). The menu offers only the duel; the sector forms are a test-only entry
+ *  the main process honours only when it was started for it (unpackaged and FTLITE_SECTOR_ONLINE_TEST=1). */
+export type OnlineMode = 'duel' | 'sector';
 export type OnlineAction =
-  | { type: 'host'; capacity: number }
-  | { type: 'join'; code: string }
+  | { type: 'host'; mode: 'duel' }
+  | { type: 'host'; mode: 'sector'; capacity: number }
+  | { type: 'join'; code: string; mode?: OnlineMode }
   | { type: 'ready'; ready: boolean }
   | { type: 'remove-seat'; seatId: number }
   | { type: 'view-state'; epoch: number; phase: 'synced' | 'running' | 'paused' | 'ended' }
   | { type: 'reconnect' }
   | { type: 'rehost' }
-  | { type: 'start' }
+  /** `helmPlayer`: the duel host's seat choice (spec §2), 0 when absent; the sector ignores it. */
+  | { type: 'start'; helmPlayer?: 0 | 1 }
   | { type: 'retry' }
   | { type: 'leave' }
   | { type: 'forget-seat' };
@@ -61,14 +66,17 @@ const phases: readonly OnlinePhase[] = ['idle', 'creating', 'joining', 'lobby', 
 export function validateOnlineAction(value: unknown): value is OnlineAction {
   if (!rtcRecord(value)) return false;
   switch (value.type) {
-    case 'host': return rtcKeys(value, ['type', 'capacity']) && positive(value.capacity) && value.capacity <= 4;
-    case 'join': return rtcKeys(value, ['type', 'code']) && typeof value.code === 'string' && value.code.length <= 32
+    case 'host': return value.mode === 'duel' ? rtcKeys(value, ['type', 'mode'])
+      : value.mode === 'sector' && rtcKeys(value, ['type', 'mode', 'capacity']) && positive(value.capacity) && value.capacity <= 4;
+    case 'join': return (rtcKeys(value, ['type', 'code']) || rtcKeys(value, ['type', 'code', 'mode']) && (value.mode === 'duel' || value.mode === 'sector'))
+      && typeof value.code === 'string' && value.code.length <= 32
       && /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(value.code.trim().toUpperCase());
+    case 'start': return rtcKeys(value, ['type']) || rtcKeys(value, ['type', 'helmPlayer']) && (value.helmPlayer === 0 || value.helmPlayer === 1);
     case 'ready': return rtcKeys(value, ['type', 'ready']) && typeof value.ready === 'boolean';
     case 'remove-seat': return rtcKeys(value, ['type', 'seatId']) && seatId(value.seatId);
     case 'view-state': return rtcKeys(value, ['type', 'epoch', 'phase']) && positive(value.epoch)
       && ['synced', 'running', 'paused', 'ended'].includes(value.phase as string);
-    case 'rehost': case 'reconnect': case 'start': case 'retry': case 'leave': case 'forget-seat': return rtcKeys(value, ['type']);
+    case 'rehost': case 'reconnect': case 'retry': case 'leave': case 'forget-seat': return rtcKeys(value, ['type']);
     default: return false;
   }
 }
@@ -128,20 +136,23 @@ export function validateOnlinePortEnvelope(value: unknown): value is { version: 
 }
 /** Ordinary contextBridge API. MessagePorts use the renderer-owned facade instead. */
 export interface OnlinePreloadApi {
-  host(capacity: number): Promise<OnlineResult>;
-  join(code: string): Promise<OnlineResult>;
+  /** Host a duel room; `{ mode: 'sector', capacity }` is the test-only sector entry (spec §10). */
+  host(sector?: { mode: 'sector'; capacity: number }): Promise<OnlineResult>;
+  join(code: string, mode?: OnlineMode): Promise<OnlineResult>;
   ready(ready: boolean): Promise<OnlineResult>;
   removeSeat(seatId: number): Promise<OnlineResult>;
   viewState(epoch: number, phase: Extract<OnlineAction, { type: 'view-state' }>['phase']): Promise<OnlineResult>;
   reconnect(): Promise<OnlineResult>;
   rehost(): Promise<OnlineResult>;
-  start(): Promise<OnlineResult>;
+  start(helmPlayer?: 0 | 1): Promise<OnlineResult>;
   retry(): Promise<OnlineResult>;
   leave(): Promise<OnlineResult>;
   forgetSeat(): Promise<OnlineResult>;
   readStatus(): Promise<OnlineStatusEnvelope | Extract<OnlineResult, { ok: false }>>;
   onStatus(callback: (value: OnlineStatusEnvelope) => void): Unsubscribe;
 }
+/** The duel playtest record channel (H-2 spec §8): one record per call, validated in main. */
+export const DUEL_RECORD_CHANNEL = 'duel:record';
 /** The window's fullscreen state (Settings, main menu spec): the same native toggle as F11. */
 export const WINDOW_FULLSCREEN_CHANNEL = 'app:fullscreen';
 /** The key the main process toggles fullscreen on (its before-input-event handler); Settings lists it from here. */
@@ -153,6 +164,8 @@ export interface WindowPreloadApi {
 }
 export interface FtlitePreloadApi {
   online: OnlinePreloadApi;
+  /** Append one duel playtest record (shared/duelRecord.ts) to this machine's playtest log (H-2 spec §8). */
+  recordDuel?(record: unknown): Promise<boolean>;
   onSuspend(callback: () => void): Unsubscribe;
   onResume(callback: () => void): Unsubscribe;
   window?: WindowPreloadApi;

@@ -1,7 +1,7 @@
 // What the menu can do (React UI spec §2, §5): the preload calls, the router callbacks and the menu's transitions, moved
 // line for line from render/sessionMenu.ts. Components only call these; each change is one store setState.
 import type { OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
-import { applyStatus, failureText, ROOM_CODE, type MenuState } from './menuState';
+import { applyStatus, failureText, helmPlayerOf, isDuel, ROOM_CODE, type MenuState } from './menuState';
 import type { UiStore } from './store';
 
 export type MenuApi = Pick<OnlinePreloadApi, 'host' | 'join' | 'ready' | 'start' | 'removeSeat' | 'reconnect' | 'rehost' | 'retry' | 'leave' | 'forgetSeat'>;
@@ -53,7 +53,8 @@ export function createUiActions(deps: UiActionDeps) {
       else if (page === 'settings') setMenu({ page: 'home' });
       else if (page === 'host' || page === 'join') setMenu({ page: 'multiplayer', localError: '' });
     },
-    host(capacity: number): void { if (!menu().pending) void invoke(() => api().host(capacity)); },
+    /** Multiplayer is the two-player duel (H-2 spec §2): Host creates a two-seat duel room, with no capacity; a new room starts unswapped. */
+    host(): void { if (!menu().pending) { setMenu({ swapped: false }); void invoke(() => api().host()); } },
     join(raw: string): void {
       if (menu().pending) return;
       const code = raw.trim().toUpperCase();
@@ -61,7 +62,14 @@ export function createUiActions(deps: UiActionDeps) {
       void invoke(() => api().join(code));
     },
     ready(next: boolean): void { void invoke(() => api().ready(next)); },
-    start(): void { void invoke(() => api().start()); },
+    /** The duel host's Swap seats: local until Start carries it (H-2 spec §2). */
+    swapSeats(): void { if (!menu().pending) setMenu({ swapped: !menu().swapped }); },
+    /** Start: a duel room carries the Helm player (the host, or the guest after Swap seats); any other room starts as before. */
+    start(): void {
+      const status = store.getState().online.status;
+      if (status && isDuel(status)) { const helmPlayer = helmPlayerOf(status, menu().swapped); void invoke(() => api().start(helmPlayer)); }
+      else void invoke(() => api().start());
+    },
     removeSeat(pid: number): void { void invoke(() => api().removeSeat(pid)); },
     reconnect(): void { void invoke(() => api().reconnect()); },
     rehost(): void { void invoke(() => api().rehost()); },
@@ -70,7 +78,10 @@ export function createUiActions(deps: UiActionDeps) {
     forgetSavedSeat(): void { void invoke(() => api().forgetSeat(), false); },
     /** The session page's Forget saved seat: interrupts a pending request. */
     forgetSeatNow(): void { void invoke(() => api().forgetSeat(), false, true); },
+    /** Net-3d's Leave: the Leave button, and the online duel's confirmed Escape on its end card (H-2 spec §7, deps.leave).
+     *  Runs only while the status offers Leave and the app has an online bridge, as the button is shown and enabled. */
     leave(): void {
+      if (!deps.api || !store.getState().online.status?.actions.includes('leave')) return;
       setMenu({ leaving: true });
       void invoke(() => api().leave(), false, true).then(() => {
         const s = store.getState();
