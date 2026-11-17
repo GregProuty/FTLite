@@ -1,7 +1,7 @@
 // The duel's side readout (H-1 spec §7 item 9, §8): both hulls, the shield pips, the room levels and repair, the
 // Weapons extras (lock, charge, hold timer, magazine), the other character's status and, standing, the strip about the
 // ship outside. Pure (it draws nothing): rows of label and value that the panel draws; every row fits the 220-px column
-// (tested). The ship colours come from the map-view layer so both screens agree.
+// (tested). The ship colours come from shipColours.ts so both screens agree.
 import type { DuelState } from '../../sim/duel/state';
 import { missileOf, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';

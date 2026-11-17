@@ -99,10 +99,10 @@ describe('sharing keeps unchanged panels from re-rendering (spec §8)', () => {
     const end = { title: 'VICTORY', tint: 1, length: 'DUEL LENGTH 0:01', prompt: 'ENTER: REMATCH' };
     const changed = { rows: [{ label: 'HULL', value: '9/10', labelTint: TEXT, valueTint: TEXT }], help: ['TAB  SWITCH'] };
     act(() => sink.frame(view({ overlay, end })));
-    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, readout: changed })));
+    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, banners: { ...banners }, readout: changed })));
     expect(seen.overlay).toHaveBeenCalledTimes(1); expect(seen.banners).toHaveBeenCalledTimes(1); expect(seen.end).toHaveBeenCalledTimes(1);
     let commits = 0; const off = ui.store.subscribe(() => { commits++; });
-    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, readout: { ...changed } })));
+    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, banners: { ...banners }, readout: { ...changed } })));
     expect(commits).toBe(0); off();
   });
 });

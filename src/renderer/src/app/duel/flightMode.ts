@@ -4,16 +4,18 @@ import { Container } from 'pixi.js';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { computeLetterbox } from '../../render/letterbox';
-import { createFeelPanel, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../../render/tactical/feelPanel';
-import { feelReadout, feelRows } from '../../render/tactical/feelModel';
-import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
+import { feelReadout, feelRows, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../../render/tactical/feelModel';
+import { createTacticalLayer, PAUSE_TEXT } from '../../render/tactical/tacticalLayer';
 import { tacticalModel } from '../../render/tactical/tacticalModel';
+import type { FlightSink } from '../../ui/sinks';
+import { mapOverlayOf } from '../../ui/views';
 import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
 import { createFlightRuntime } from './runtime';
 
 export interface FlightModeDeps {
   renderer: Renderer;
   seed: number;
+  ui: FlightSink;
   /** The preload bridge's suspend and resume hooks, when present. */
   lifecycle?: { onSuspend(cb: () => void): void; onResume(cb: () => void): void };
 }
@@ -26,8 +28,7 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
   for (const child of renderer.app.stage.children) child.visible = false;   // world, enemy window, projectiles, callouts, HUD
   const scene = new Container();
   const layer = createTacticalLayer({ fontFamily: renderer.assets.fontFamily, viewport, seed: deps.seed });
-  const panel = createFeelPanel({ fontFamily: renderer.assets.fontFamily, x: INTERNAL_W - FEEL_PANEL_W - FEEL_PANEL_MARGIN, y: FEEL_PANEL_MARGIN });
-  scene.addChild(layer.container, panel.container);
+  scene.addChild(layer.container);
   renderer.app.stage.addChild(scene);
 
   const canvas = renderer.app.canvas;
@@ -54,16 +55,16 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
   const frame = (ticker: { deltaMS: number }): void => {
     runtime.frame(Math.min(0.1, ticker.deltaMS / 1000));
     const ship = runtime.state.ships[0];
-    layer.draw(tacticalModel({
-      state: runtime.state, prev: runtime.prev, alpha: runtime.alpha(), camera: runtime.camera, viewport, console: 'helm',
-      axes: runtime.axes(), ships: [0], paused: runtime.reasons().has('user'), reserveRight: FLIGHT_RESERVE_RIGHT
-    }));
-    panel.draw(feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)));
+    const paused = runtime.reasons().has('user');
+    const model = tacticalModel({ state: runtime.state, prev: runtime.prev, alpha: runtime.alpha(), camera: runtime.camera, viewport, console: 'helm', axes: runtime.axes(), ships: [0], paused, reserveRight: FLIGHT_RESERVE_RIGHT });
+    layer.draw(model);
+    deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null }, overlay: mapOverlayOf(model.overlay) });
   };
   renderer.app.ticker.add(frame);
 
   const dispose = (): void => {
     renderer.app.ticker.remove(frame);
+    deps.ui.clear();
     window.removeEventListener('blur', onBlur); window.removeEventListener('focus', onFocus);
     document.removeEventListener('visibilitychange', onVisibility);
     keyboard.destroy(); pointer.destroy(); runtime.dispose();

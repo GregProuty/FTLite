@@ -88,7 +88,7 @@ function rig(seat: 0 | 1) {
   let now = 1000, pending: (() => void) | null = null;
   const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createDuel(CUTTER, 7);
   const session = createOnlineDuelSession({
-    renderer: { app: { canvas: target() } } as never, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
+    renderer: { app: { canvas: target() } } as never, ui: { frame() {}, clear() {} }, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
     scheduler: { schedule: (_ms, cb) => { pending = cb; return () => { if (pending === cb) pending = null; }; } },
     api: { viewState: async () => ({ ok: true }) } as never, leave, recordDuel: (r) => { records.push(r); }
   });

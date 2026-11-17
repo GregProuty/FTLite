@@ -368,7 +368,7 @@ The UI must look the same as today's Pixi panels: same rectangles, same glyph sh
      overlay exactly as its own visibility rule does today:
      - `banners.interior = overlay.banner !== null && (view === 'interior' || !overlay.layerPaused) ? overlay.banner : null`
        (so the online duel's host-pause and disconnect banners also show over the map views)
-     - `banners.tactical = overlay.layerPaused ? pauseText : null` (`pauseText` is the scene's own option)
+     - `banners.tactical = overlay.layerPaused && view !== 'interior' ? pauseText : null` (the layer is hidden in the interior) (`pauseText` is the scene's own option)
      - `banners.notice = overlay.notice ?? null`
 
      §6's single-player derivation is this mapping with `overlay.banner` set only while paused in the interior.

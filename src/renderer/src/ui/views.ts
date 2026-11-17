@@ -1,5 +1,5 @@
 // What the duel and flight regions render (React UI spec §2): plain data built by the scene and the flight mode each frame.
-import type { EndView } from '../render/duel/endScreen';
+import type { EndView } from '../render/duel/endModel';
 import type { ReadoutRow } from '../render/duel/readoutModel';
 import type { OverlayDraw } from '../render/tactical/tacticalModel';
 

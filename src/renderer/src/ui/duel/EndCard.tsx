@@ -1,7 +1,7 @@
 // The duel's end card (endScreen.ts's layout): a dimmed backdrop and a 560 x 200 panel with the outcome, the length and the keys.
 import { memo } from 'react';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
-import type { EndView } from '../../render/duel/endScreen';
+import type { EndView } from '../../render/duel/endModel';
 import { AMBER, BACKDROP, BACKDROP_ALPHA, DIM, FONT_SIZE, TITLE_SIZE } from '../../render/theme';
 import { Box } from '../stage/Box';
 import { hex } from '../stage/color';

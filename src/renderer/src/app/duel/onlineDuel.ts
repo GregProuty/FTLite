@@ -18,17 +18,18 @@ import type { DuelRoundRecord } from '../../sim/duel/summary';
 import { Outcome } from '../../sim/tactical/state';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { computeLetterbox } from '../../render/letterbox';
-import { endModel } from '../../render/duel/endScreen';
+import { endModel } from '../../render/duel/endModel';
 import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
 import { createDuelKeyboard, createPointerSource, emptyPresses, type EventSource, type KeySample } from './input';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
+import type { DuelSink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
 
 export interface OnlineDuelDeps {
-  renderer: Renderer; now(): number; scheduler: Scheduler; contentDigest: string; resolveLayout(id: string): ShipLayout;
+  renderer: Renderer; ui: DuelSink; now(): number; scheduler: Scheduler; contentDigest: string; resolveLayout(id: string): ShipLayout;
   api: Pick<OnlinePreloadApi, 'viewState'>;
   /** Leave the online session as the menu's Leave does (Escape on the end card, then Enter). */
   leave(): void;
@@ -205,7 +206,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
       descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
-      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED' });
+      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });
