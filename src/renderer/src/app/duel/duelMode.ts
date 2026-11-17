@@ -38,7 +38,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const root = new Container(), scene = new Container();
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '';
   const layer = createTacticalLayer({ fontFamily: font, viewport, seed: deps.seed, pauseText: `PAUSED   ESC: RESUME${exitHint}` });
-  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale);
+  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel);
   const panel = createReadoutPanel({ fontFamily: font }), end = createEndScreen({ fontFamily: font });
   const paused = new BitmapText({ text: `PAUSED   ESC: RESUME${exitHint}`, style: { fontFamily: font, fontSize: FONT_SIZE * 1.5 } });
   paused.tint = TEXT; paused.anchor.set(0.5, 0.5); paused.position.set((INTERNAL_W - READOUT_COLUMN) / 2, 80); paused.visible = false;
@@ -77,14 +77,15 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     if (runtime.epoch() !== epoch) {   // a restart (spec §4): every view-owned cache starts again
       epoch = runtime.epoch();
       resetFx(fx); layer.reset(); layer.reseed(runtime.seed);   // the next duel's star field
-      interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale); scene.addChildAt(interior.container, 1);
+      interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
     }
     const d = runtime.duel, view = runtime.view(), alpha = runtime.alpha(), userPaused = runtime.reasons().has('user');
-    pushEvents(fx, runtime.drainEvents());
+    const events = runtime.drainEvents();
+    pushEvents(fx, events);
     stepFx(fx, runtime.paused() ? 0 : dt);
     recordTrails(fx, d.tactical, runtime.missilePrev, alpha);
     layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
-    if (view === 'interior') interior.draw(d, runtime.crewPrev, alpha, dt);
+    if (view === 'interior') interior.draw(d, runtime.crewPrev, alpha, dt, events, runtime.paused() ? 0 : dt);   // Art-i spec section 7: the light and feel hold while paused
     else {
       const input = {
         state: d.tactical, prev: runtime.prev, alpha, camera: runtime.cameras[view], viewport, console: view, axes: runtime.axes(),
@@ -94,7 +95,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     }
     paused.visible = userPaused && view === 'interior';
     panel.draw(readoutRows({ duel: d, mode: view, active: runtime.active(), other: runtime.otherStatus() }), readoutHelp(view));
-    const shake = shakeOffset(fx);
+    const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake
     scene.position.set(shake.x, shake.y);
     end.draw(endModel(d.tactical.outcome, d.tactical.tick, runtime.seed, !!deps.onExit));
   };
