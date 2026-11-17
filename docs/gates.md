@@ -777,3 +777,19 @@ Spec `docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md`, plan `d
 | Session | Date | Network | Pair | Q1-Q5 | Guest-Helm Q1 | Helm laggy | Rooms |
 |---|---|---|---|---|---|---|---|
 | none yet | | | | | | | |
+
+### The internet candidate for SIM 39 (H-2b-ii)
+
+- **The candidate.** Build `out/` with the packaged origin `https://ftlite-signalling-dev.gprout009.workers.dev`, package `dist/h2b-candidate/win-unpacked`, zip it to `dist/h2b-candidate.zip`, then write `dist/h2b-candidate/candidate.json` with `scripts/network/candidate-manifest.ts`. Its identity reads `sim: 39`, from `SIM_VERSION`. Only `out/main`, `out/preload` and `out/renderer` are packaged, so smoke evidence under `out/` never enters a candidate. The worker bundle is `npm run build:signalling` (a Wrangler dry run, no deploy).
+- **The internet smoke** (`npm run test:internet-app-runtime`) first runs a duel pair through the real menu:
+  - the test seed's forced round end (each player stands up and sits down, X then E), then Enter;
+  - the Helm's thrust and Weapons' beam seen on both, and hash agreement;
+  - each machine's round-1 record, with latency samples, copied to `<report>-duel-records/`.
+
+  It then runs its sector pair through the test-only sector entry (`host-sector`, `join-sector` and `FTLITE_SECTOR_ONLINE_TEST=1`). A local pair's report must carry the duel evidence. The host's record reads loopback; the guest's carries an RTT and reads `lan` or `internet`, and must read `internet` under `--force-relay`.
+- **Two machines** (`--role=host|guest`) run the same two parts, one machine each: the duel through the real menu, then the sector through the test-only entry, captured `--capture-after-ms` (at most 180 s) after the sector run starts. The host's lobby shows each room code on screen; the guest's operator saves it in the file named by `--join-code-file`, which the guest reads and deletes. No room code is printed, logged or reported. Each single-device report carries its machine's `deviceDuel`, and the pair's duel seeds must match.
+- **Proven before the redeploy:** `--local-verification` against local workerd, with the candidate manifest, and the playtest report on its duel records.
+- **Owner-only, after the redeploy** of exactly the manifest's worker bundle:
+  - the same command without `--local-verification` against the deployed service, then again with `--force-relay` (TURN);
+  - the two-machine single-device runs;
+  - the LAN and internet checklists and the §16 sessions above.
