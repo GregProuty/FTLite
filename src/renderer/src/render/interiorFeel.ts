@@ -2,7 +2,7 @@
 // interior (duel/interiorView.ts): the grade, the lights, the particles, the impact flash, shake and hitstop, the
 // fixtures (console screen blink, room lamps) and the starfield, all on one presentation clock. The views add the
 // containers in the spec's order and pass each frame's signals; this module never reads input or the sim RNG.
-import { AnimatedSprite, Container, Graphics, GraphicsContext } from 'pixi.js';
+import { AnimatedSprite, Container, Graphics, GraphicsContext, Sprite } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { FIRE_CAP, TICK_HZ } from '../sim/tuning';
@@ -22,6 +22,8 @@ import {
   bobOffset, breachOpenings, debrisBurst, fireSources, hitSmokeSources, sparkSources, stepVents, ventingSources, wallVents, workSources, type HitSmoke, type WallVent, type Working
 } from './particles/sources';
 import type { Band } from './worldFit';
+import type { GameAnimation } from './assets';
+import { addBlast, BLAST_CAP, BLAST_SCALE, blastFrame, liveBlasts, roomCentroid, tileCentre, type Blast, type BlastKind, type BlastTimings } from './blastModel';
 
 /** This frame's hit: the sector's hit rooms, or the duel's whole interior (its hits carry no room). */
 export type FeelHit = { rooms: readonly number[] } | { whole: true } | null;
@@ -45,7 +47,7 @@ export interface InteriorFeel {
   grade: Container;
   /** Into the console desks container: the screen blink and the lamp fixtures. */
   fixtures: Graphics;
-  /** Into effects.above: the normal particles, then the white flash. */
+  /** Into effects.above: the normal particles, the blasts (when given, Art-ii spec section 3), then the white flash. */
   above: Container;
   /** Above everything that shows the ship, under any text (additive). */
   lights: Container;
@@ -78,8 +80,9 @@ function freezeAnimations(root: Container, held: Set<AnimatedSprite>, frozen: bo
 }
 
 /** `world`: the ship's world container (its animations freeze in a hitstop). `band`: the starfield's band, internal pixels.
- *  `consoleArt`: the consoles are the bought sprites (Art-ii spec section 2), so no screen cursor blinks on them. */
-export interface InteriorFeelOptions { world: Container; band: Band; feel: () => FeelSetting; consoleArt?: boolean }
+ *  `consoleArt`: the consoles are the bought sprites (Art-ii spec section 2), so no screen cursor blinks on them.
+ *  `blasts`: the bought explosions (Art-ii spec section 3), played on hits and breach openings; absent, none draw. */
+export interface InteriorFeelOptions { world: Container; band: Band; feel: () => FeelSetting; consoleArt?: boolean; blasts?: Readonly<Record<BlastKind, GameAnimation>> }
 export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   const starfield = new Container(), starG = new Graphics(); starfield.addChild(starG);
   const grade = new Container(); grade.blendMode = 'multiply';
@@ -89,7 +92,11 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   const fixtures = new Graphics();
   const particles = createParticleLayer();
   const flash = new Graphics(); flash.visible = false;
-  const above = new Container(); above.addChild(particles.normal, flash);
+  // The blasts: a pool of BLAST_CAP plain Sprites framed from the presentation clock, under the flash (Art-ii spec section 3).
+  const blastLayer = new Container(), blastSprites: Sprite[] = [];
+  const timing: BlastTimings | null = opts.blasts ? { room: { frames: opts.blasts.room.textures.length, fps: opts.blasts.room.fps }, hit: { frames: opts.blasts.hit.textures.length, fps: opts.blasts.hit.fps } } : null;
+  if (opts.blasts) for (let k = 0; k < BLAST_CAP; k++) { const b = new Sprite(opts.blasts.room.textures[0]); b.anchor.set(0.5); b.scale.set(BLAST_SCALE); b.visible = false; blastLayer.addChild(b); blastSprites.push(b); }
+  const above = new Container(); above.addChild(particles.normal, ...(opts.blasts ? [blastLayer] : []), flash);
   const lights = new Container(); lights.blendMode = 'add';
   const glowLayer = new Container(); lights.addChild(glowLayer, particles.add);
   const ctx = { console: glowContext(GLOW.console), fire: glowContext(GLOW.fire), lamp: glowContext(GLOW.lamp) };
@@ -99,6 +106,9 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   const clock = createPresentClock(), shake = createShake();
   let builtFor = '', seed = 0, emitter: Emitter = createEmitter(0), vents: WallVent[] = [], puffs: number[] = [];
   let lamps: { room: number; x: number; y: number }[] = [], cover: DoorRect[] = [];
+  let blasts: Blast[] = [];
+  const blast = (kind: BlastKind, at: { x: number; y: number }, start: number): void => { if (opts.blasts) blasts = addBlast(blasts, { kind, x: at.x, y: at.y, start }); };
+  const clearBlasts = (): void => { blasts = []; for (const b of blastSprites) b.visible = false; };
   let smokes: HitSmoke[] = [], breachSeen: Uint8Array | null = null, flashTick = Number.NEGATIVE_INFINITY, flashShare = 1, flashLeft = 0, wasStopped = false;
 
   function build(state: SimState): void {
@@ -112,7 +122,7 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
     fireGlows.clear();
     consoleGlows = consoles(state).map(() => { const g = new Graphics(ctx.console); g.tint = ROLE.screenA; glowLayer.addChild(g); return g; });
     lampGlows = lamps.map(() => { const g = new Graphics(ctx.lamp); glowLayer.addChild(g); return g; });
-    smokes = []; breachSeen = null; flashTick = Number.NEGATIVE_INFINITY; flashLeft = 0; flash.visible = false;
+    smokes = []; breachSeen = null; flashTick = Number.NEGATIVE_INFINITY; flashLeft = 0; flash.visible = false; clearBlasts();
   }
 
   function onHit(frame: FeelFrame): void {
@@ -125,13 +135,18 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
       flashShare = DUEL_FLASH_SHARE;
       for (const r of cover) flash.rect(r.x, r.y, r.w, r.h);
       const floor = d.roomTiles.flat();
-      if (floor.length) smokes.push({ key: `duel:${flashTick}`, tiles: [floor[emitter.random.int(floor.length)]!], until: t + SMOKE_SECONDS });
+      if (floor.length) {
+        const tile = floor[emitter.random.int(floor.length)]!;
+        smokes.push({ key: `duel:${flashTick}`, tiles: [tile], until: t + SMOKE_SECONDS });
+        blast('room', tileCentre(tile, d.width), t);   // the duel's one room blast, on the smoke's tile
+      }
     } else {
       flashShare = 1;
       for (const room of hit.rooms) {
         for (const tile of d.roomTiles[room]!) { const tx = tile % d.width; flash.rect(tx * TILE_PX, ((tile - tx) / d.width) * TILE_PX, TILE_PX, TILE_PX); }
         smokes = smokes.filter((s) => s.key !== `room:${room}`);
         smokes.push({ key: `room:${room}`, tiles: d.roomTiles[room]!, until: t + SMOKE_SECONDS });
+        blast('room', roomCentroid(d.roomTiles[room]!, d.width), t);
       }
     }
     flash.fill(ROLE.flash);
@@ -157,11 +172,19 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
 
       // Particles (section 6) and steam (section 8), on the presentation clock.
       const opened = breachOpenings(state.breaches.active, breachSeen); breachSeen = opened.seen;
-      for (const s of opened.opened) debrisBurst(emitter, state, s);   // even at pdt 0: the hit that opens a breach starts the hitstop this frame, and a 0 step holds the debris until the clock runs
+      for (const s of opened.opened) {
+        debrisBurst(emitter, state, s);   // even at pdt 0: the hit that opens a breach starts the hitstop this frame, and a 0 step holds the debris until the clock runs
+        blast('hit', tileCentre(d.siteTile[s]!, d.width), t);   // and a hit spark on the opening
+      }
       smokes = smokes.filter((s) => t < s.until);
       if (pdt > 0) stepVents(emitter, vents, puffs, t);
       emitter.step(pdt, [...fireSources(state), ...sparkSources(frame.sparks), ...ventingSources(state), ...workSources(frame.working), ...hitSmokeSources(smokes, t, d.width)]);
       particles.draw(emitter.particles);
+      if (timing && opts.blasts) {
+        const anims = opts.blasts;
+        blasts = liveBlasts(blasts, t, timing);   // each removed after its last frame; held while the clock holds (hitstop, pause)
+        blastSprites.forEach((b, k) => { const live = blasts[k]; b.visible = live !== undefined; if (live) { b.texture = anims[live.kind].textures[blastFrame(live, t, timing)]!; b.position.set(live.x, live.y); } });
+      }
 
       // Lights (section 5) and fixtures (section 8).
       fixtures.clear();
@@ -201,7 +224,7 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
       return { shake: paused ? { x: 0, y: 0 } : shakeOffset(shake, frame.artPx), bob };
     },
     reset() {
-      clock.reset(); Object.assign(shake, createShake()); emitter.clear(); smokes = []; breachSeen = null; puffs = [];
+      clock.reset(); Object.assign(shake, createShake()); emitter.clear(); smokes = []; breachSeen = null; puffs = []; clearBlasts();
       flashTick = Number.NEGATIVE_INFINITY; flashLeft = 0; flash.visible = false;
       if (wasStopped) { wasStopped = false; freezeAnimations(opts.world, held, false); }
     },

@@ -4,6 +4,7 @@ export const CREDITS: readonly string[] = [
   "",
   "\"1-Bit Input Prompts Pixel 16×\" by Kenney (www.kenney.nl), CC0",
   "\"Cozy Space Interiors\" by Bramble & Byte (https://aquumgifts.itch.io), CC-BY 4.0",
+  "Explosion VFX by Pimen (pimen.itch.io)",
   "\"Fire Smoke Animations\" by Reactorcore, CC0",
   "\"m5x7\" by Daniel Linssen, CC0",
   "Mars colony pixel art by Maru-98 (maru-98.itch.io)",

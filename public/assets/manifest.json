@@ -1133,5 +1133,80 @@
     "required": false,
     "file": "paid/maru/console-doors.png",
     "name": "console.doors"
+  },
+  {
+    "title": "Explosion VFX",
+    "author": "Pimen",
+    "source": "https://pimen.itch.io/explosion-effect",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Explosion VFX by Pimen (pimen.itch.io)",
+    "required": false,
+    "file": "paid/pimen/explosion-room.png",
+    "sheet": {
+      "frameW": 32,
+      "frameH": 32,
+      "frames": {},
+      "animations": {
+        "fx.blast.room": {
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "fps": 20,
+          "loop": false
+        }
+      }
+    }
+  },
+  {
+    "title": "Explosion VFX",
+    "author": "Pimen",
+    "source": "https://pimen.itch.io/explosion-effect",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Explosion VFX by Pimen (pimen.itch.io)",
+    "required": false,
+    "file": "paid/pimen/explosion-hit.png",
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {},
+      "animations": {
+        "fx.blast.hit": {
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "fps": 24,
+          "loop": false
+        }
+      }
+    }
   }
 ]

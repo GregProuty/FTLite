@@ -44,7 +44,10 @@ const TINT: readonly number[] = [0, AMBER, WARN], MARK: readonly number[] = [0, 
 export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL): InteriorView {
   const container = new Container(), world = new Container();
   const missing = new Set(assets.missing);
-  const fx = createInteriorFeel({ world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt') });   // Art-i spec sections 5-8; Art-ii: the bought consoles
+  const fx = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
+    world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt'),
+    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
+  });
   container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer();

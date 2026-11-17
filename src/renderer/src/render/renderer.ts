@@ -65,7 +65,10 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
   let feelSetting: FeelSetting = DEFAULT_FEEL;
   const missing = new Set(assets.missing);
-  const feel = createInteriorFeel({ world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt') });   // Art-i spec sections 5-8; Art-ii: the bought consoles
+  const feel = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
+    world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'),
+    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
+  });
   // Art-i spec section 5: tiles, grade, effects.below, icons, consoleDesks, magazine, crew, boarders, effects.above, lights.
   world.addChild(tiles.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
   consoleDesks.container.addChild(feel.fixtures); effects.above.addChild(feel.above);
