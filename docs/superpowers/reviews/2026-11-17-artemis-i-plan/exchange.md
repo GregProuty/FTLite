@@ -97,3 +97,44 @@ Confirmed. Checked crtBoot.ts L12. The step has been removed. The off-CRT palett
 
 ---
 
+# Round 2 (delta, reviewing 659b224, effort medium, 33 s, 138590 in / 107527 cached / 3180 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — consoleChange now lives in its own app/duel/consoleChange.ts, which imports only the ConsoleStation type (plan L1003-1009). duelMode.ts and onlineDuel.ts import it from './consoleChange' (plan L1047, L1055), so the vi.mock factories for scene.ts no longer matter. The new tests/consoleChange.test.ts is in the Step 2 and Step 4 run lists, and `git add ... tests` (plan L1074) picks it up.
+- R1-F2: resolved — In draw, hidden and onConsole = !hidden && view !== 'interior' are computed before the tactical input (plan L1031). The reserves fall back to `{ reserveRight: READOUT_COLUMN }`, and the console flag and the help both follow onConsole. The READOUT_COLUMN import is kept on purpose.
+- R1-F3: resolved — Task 2 now names tests/worldFit.test.ts:56, tests/duelInterior.test.ts:41-42, 89, 92, 102 and tests/interiorCamera.test.ts:9, 29, with the new y of 173. Grep confirms these are exactly the lines that hold 152. worldFit is in the Step 4 run list and in the git add.
+- R1-F4: resolved — The pure consoleTabs() takes the repairNear input directly, and its three cases follow the rule as implemented (plan L491-503). The integration case now asserts its preconditions, consoleInReach === d.weapons and repairInReach === -1. `Seat` is exported from controls.ts:L10.
+- R1-F5: resolved — running() is added to DuelViewSource. Locally it is pacer.reasons.size === 0 && !ended(): `pacer` is at runtime.ts:L288 and `ended` is a local const at L235. Online it is client.publication()?.phase === 'running', the same pattern as onlineSource.ts:L135. consoleHidden uses !running, the change is stated as deviation 5, and the fake-source hint adds running.
+- R1-F6: resolved — Task 5 now points at DuelRuntime at runtime.ts:L167-207 (the interface is at L167). tests/consoleHidden.test.ts is written out in full, and its imports resolve: cutter.json (the same path as duelInterior.test.ts:L3), parseShip at schema.ts:L126, createDuel(layout, seed) at state.ts:L52, Outcome.CrewWins at tactical/state.ts:L73, and SceneOverlay exported from scene.ts:L49. The uiProbe import has been added.
+- R1-F7: resolved — The F10 step is gone. The off-CRT palette is now checked on the interior screenshot (plan step 7), where crt is false.
+
+## Verified
+- scene.ts:L49: SceneOverlay is exported with the fields banner, layerPaused, end and notice?, so the test's ov() helper type-checks.
+- runtime.ts:L235: `ended` is a closure const, and runtime.ts:L288: `pacer` is in scope inside createDuelRuntime, so running() can be implemented there.
+- onlineSource.ts:L24: the publication() type has a `phase: string`, so the comparison with 'running' type-checks.
+- The grep of tests for 152 lines up with the lines Task 2 names (worldFit:56, duelInterior:41, 42, 89, 92, 102, interiorCamera:9, 29). The new value 42 + (678 − 416) / 2 = 173 is correct.
+- The consoleTabs single-player case with repairNear gives helm 'open'/'switch' and weapons 'locked', which matches the implementation at plan L497-501.
+- `git grep drainEvents -- tests` finds duelRuntime.test.ts and duelOnlineView.test.ts, and both are in the Step 4 run list.
+
+## Not verified
+- Whether repairInReach(d, 0) really is -1 on a fresh cutter duel at the Weapons station tile (nothing is damaged, so it is expected). Not executed, because the tests must not be run.
+- Whether duelOnlineView.test.ts actually builds a DuelViewSource fake, or only uses drainEvents some other way.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `659b224`. No new findings; all seven round-1 IDs confirmed resolved; verdict ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
