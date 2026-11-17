@@ -42,7 +42,7 @@ The code below was written and run in a scratch worktree outside the repo (`C:\U
 3. **Palette details the spec leaves to the plan.** The builder is `scripts/art/buildPalette.ts` (pure functions, tested) with a thin CLI `scripts/art-palette.ts` (`npm run art:palette`), the same split as `importCore.ts` and `art-import.ts`. "Current" roles and ramps are read from the committed `palette.json`, so a second run maps every role to itself (the build is a fixed point). Ramp tidying (step 4) drops any repeated colour, keeps the order, and pads to 5 with the palette colours nearest the last entry (palette order breaks ties). Overrides: a role by name; a ramp either whole (an array) or by index (`{ "0": "#fffff0" }`), after which the ramp is tidied again. An override colour that is not in the palette fails the build with a message naming it. The sort key is OKLab lightness, then the RGB number. The file is written as `JSON.stringify(file, null, 2)` plus a newline, with `name` and `source` strings set by the builder. With the owner's packs the result is 48 colours, 7 of them kept from the explosion pack, and differs from the checkpoint as listed in Task 1 Step 7.
 4. **LimeZu frame order, verified.** The imported `crew_04.png` (384 x 96, 24 frames per row) was viewed at 8x: frames 0-3 are the standing frames facing right (east), up (back to the camera), left (west), down (facing the camera), and each idle and walk group of 24 has the same order in runs of 6. So frame indices are: stand `e 0, n 1, w 2, s 3`; idle `4 + 6i .. 9 + 6i`; walk `28 + 6i .. 33 + 6i` for i = 0 (e), 1 (n), 2 (w), 3 (s). The measured rows over frames 0-3: lowest opaque row 31 in all four sheets; highest 8 in crew_04, 07, 13 and 7 in crew_19, so `LIMEZU_HEAD_ROW = 7` (the tallest head).
 5. **Crew layer paths.** `createCrewLayer` keeps three paths: circles when the Puny `crew` feature is missing (unchanged; this also keeps `tests/onlineRenderer.test.ts`, which passes `{ missing: ['crew.idle.s'] }`, on circles), LimeZu when `crew` and `crewArt` are both ready, else Puny exactly as today. Boarders (`boarderLayer.ts`) are untouched and stay on Puny. The LimeZu path: slot `crewSlot(Owner.pid)` = `pid % 4`; pose from `crewPose(slot, state, facing, seatSide)`: down (downed or dead) is `crew.p<k>.stand.s`, anchor 0.5/0.5, rotation +π/2; seated is `crew.p<k>.stand.<side>` with the side from `stationSides(state)[Seated.station]` (cached per `layoutHash`); still is `crew.p<k>.idle.<facing4>`; moving is `crew.p<k>.walk.<facing4>` started at frame `StableId % 6` as today. Every non-down pose sets anchor 0.5/1 and rotation 0, so getting up restores both. Tint: white for the living, the existing grey `DEAD_TINT` for the dead. Alpha: 0.85 when downed, else 1 (the same rule as today; the dead are opaque, as today).
-6. **Things above the head.** `CARRY_LIFT_LIMEZU = (31 - 7) × 2 + 6 = 54` world units (Puny keeps 30). Callouts: `bubbleAnchor` put the bubble's tail tip 0.6 tile (19.2 units) over the crew position, inside a LimeZu head (the head top is (32 - 7) × 2 = 50 units up), so it gains a `lift` parameter (default `CALLOUT_LIFT_PUNY` = 0.6 tile, unchanged) and `callouts.ts` passes `CALLOUT_LIFT_LIMEZU = 54 + 10 = 64` when `crew` and `crewArt` are ready, which also clears a carried torpedo (7 units tall, fins 10.5, centred at 54). Callouts exist only in the sector view.
+6. **Things above the head.** `CARRY_LIFT_LIMEZU = (31 - 7) × 2 + 6 = 54` world units (Puny keeps 30). Callouts: `bubbleAnchor` put the bubble's tail tip 0.6 tile (19.2 units) over the crew position, inside a LimeZu head (the head top is (32 - 7) × 2 = 50 units up), so it gains a `lift` parameter (default `CALLOUT_LIFT_PUNY` = 0.6 tile, unchanged) and `callouts.ts` passes `CALLOUT_LIFT_LIMEZU = 54 + 10 = 64` when `crew` and `crewArt` are ready, which also clears a carried torpedo (7 units tall, fins 10.5, centred at 54); a downed or dead LimeZu body lies across its tile (top about 16 up), so its always-shown 'Help!' bubble uses `CALLOUT_LIFT_DOWN_LIMEZU = 16 + 10 = 26` (chosen per player in the draw loop). Callouts exist only in the sector view.
 7. **Names and features.** `CREW_ART_NAMES` (48) lives in `crewArt.ts`; `CONSOLE_ART_NAMES` (`STATION_IDS.map(id => 'console.' + id)`) and `BLAST_NAMES` (`fx.blast.room`, `fx.blast.hit`) in `assetNames.ts`, all registered `optional` there and grouped in `fallback.ts` as `crewArt`, `consoleArt`, `blastArt`. The required Puny `crew.*` names are untouched. The manifest entries are appended by small scripts in the gitignored `.art/` folder, so the 650-odd lines of JSON come from the same functions the tests check (`limezuSheet(k)` for the crew).
 8. **Console placement** (`consolePlacement(side, flush, w, h)` in tile-local world units). The art is drawn facing south; rotation `SIDE_ROTATION` = n 0, e +π/2, s π, w −π/2 (clockwise positive, so the art's front points into the room). Its size is `2w × 2h` (n, s) or `2h × 2w` (e, w). The back edge is the turned desk's outer edge: n `top = flush ? -WALL_GAP : 0`, s `bottom = flush ? T + WALL_GAP : T`, w `left = flush ? -WALL_GAP : 0`, e `right = flush ? T + WALL_GAP : T`. Along the wall it starts at `even(T/2 − 2w/2)`, where `even(v) = 2·floor(v/2)` (never −0), so it is centred within one unit. The sprite has anchor 0.5/0.5 and sits at the box centre (`left + width/2`, `top + height/2`; integers, since every size is even), so the quarter turn about its centre lands the art exactly in the box. The rack (54 units deep) and the med pod (48 wide) overlap the neighbouring floor, as the spec accepts.
 9. **Console layer.** `createConsoleLayer(assets)` builds `container = [art, g]` (the sprite container at index 0, then the desk Graphics); the views then append the feel's `fixtures`, so the lamps stay on top. With `consoleArt` the Graphics is cleared and stays empty (no desk, no strip), and on each redraw (a look or layout change, as before) the sprites are destroyed and rebuilt: `Sprite(assets.texture(consoleArtName(state, members)))`, anchor 0.5, scale 2, the side's rotation, tint `CONSOLE_TINT` = free `0xffffff`, occupied `0xcccccc` (80 %), down `0x999999` (60 %). Both call sites (`renderer.ts`, `duel/interiorView.ts`) pass `assets`.
@@ -85,7 +85,7 @@ The worktree already exists with `node_modules`, the signalling junction and the
 - [ ] **Step 0.1: Confirm the branch and the paid art**
 
 Run: `git rev-parse --abbrev-ref HEAD; git status --short; ls public/assets/paid/*`
-Expected: `art-ii`; no status lines except, possibly, this plan if it is not yet committed; `public/assets/paid/limezu` with `crew_04.png crew_07.png crew_13.png crew_19.png`, `public/assets/paid/maru` with `floor.png furniture.png lockers.png machines.png stations.png`, `public/assets/paid/pimen` with `explosion-big.png explosion-hit.png explosion-room.png`.
+Expected: `art-ii`; no modified tracked files (untracked files under `docs/superpowers/reviews/` from the plan review are fine); `public/assets/paid/limezu` with `crew_04.png crew_07.png crew_13.png crew_19.png`, `public/assets/paid/maru` with `floor.png furniture.png lockers.png machines.png stations.png`, `public/assets/paid/pimen` with `explosion-big.png explosion-hit.png explosion-room.png`.
 
 - [ ] **Step 0.2: Build once** (one test reads `out/main/authorityHost.js`)
 
@@ -504,7 +504,7 @@ EOF
 **Interfaces:**
 - Consumes: `consoles(state)`, `type Side` from `consoleModel.ts`; `featureReady`, `FEATURE_NAMES`; `type Facing8` from `assetNames.ts`.
 - Produces:
-  - `crewArt.ts`: `type Facing4 = 'n' | 'e' | 's' | 'w'`; `LIMEZU_DIRS = ['e', 'n', 'w', 's']`; `CREW_SHEETS = ['04', '07', '13', '19']`; `CREW_SLOTS = 4`; `LIMEZU_STAND = 0`, `LIMEZU_IDLE = 4`, `LIMEZU_WALK = 28`, `LIMEZU_RUN = 6`, `LIMEZU_IDLE_FPS = 6`, `LIMEZU_WALK_FPS = 10`; `LIMEZU_FRAME_H = 32`, `LIMEZU_FOOT_ROW = 31`, `LIMEZU_HEAD_ROW = 7`; `footAnchorY(row, frameH)`; `LIMEZU_ANCHOR_Y = 1`; `CARRY_LIFT_PUNY = 30`, `CARRY_LIFT_LIMEZU = 54`, `CALLOUT_LIFT_LIMEZU = 64`; `crewSlot(pid)`; `facing4(f: Facing8): Facing4`; `crewStandName/crewIdleName/crewWalkName(slot, d)`; `CREW_ART_NAMES` (48); `limezuSheet(slot)`; `type CrewPoseState = 'down' | 'seated' | 'idle' | 'walk'`; `interface CrewPose { name; animated; anchorY; rotation }`; `crewPose(slot, state, facing, seatSide): CrewPose`.
+  - `crewArt.ts`: `type Facing4 = 'n' | 'e' | 's' | 'w'`; `LIMEZU_DIRS = ['e', 'n', 'w', 's']`; `CREW_SHEETS = ['04', '07', '13', '19']`; `CREW_SLOTS = 4`; `LIMEZU_STAND = 0`, `LIMEZU_IDLE = 4`, `LIMEZU_WALK = 28`, `LIMEZU_RUN = 6`, `LIMEZU_IDLE_FPS = 6`, `LIMEZU_WALK_FPS = 10`; `LIMEZU_FRAME_H = 32`, `LIMEZU_FOOT_ROW = 31`, `LIMEZU_HEAD_ROW = 7`; `footAnchorY(row, frameH)`; `LIMEZU_ANCHOR_Y = 1`; `CARRY_LIFT_PUNY = 30`, `CARRY_LIFT_LIMEZU = 54`, `CALLOUT_LIFT_LIMEZU = 64`, `CALLOUT_LIFT_DOWN_LIMEZU = 26`; `crewSlot(pid)`; `facing4(f: Facing8): Facing4`; `crewStandName/crewIdleName/crewWalkName(slot, d)`; `CREW_ART_NAMES` (48); `limezuSheet(slot)`; `type CrewPoseState = 'down' | 'seated' | 'idle' | 'walk'`; `interface CrewPose { name; animated; anchorY; rotation }`; `crewPose(slot, state, facing, seatSide): CrewPose`.
   - `consoleModel.ts`: `stationSides(state: SimState): Side[]` (indexed by station).
   - `calloutModel.ts`: `CALLOUT_LIFT_PUNY = 0.6 * TILE_PX`; `bubbleAnchor(state, pid, fit, lift = CALLOUT_LIFT_PUNY)`.
   - `fallback.ts`: feature `'crewArt'` = `CREW_ART_NAMES`.
@@ -529,7 +529,7 @@ import { createCrewLayer, CREW_COLORS } from '../src/renderer/src/render/crewSpr
 import { bubbleAnchor, CALLOUT_LIFT_PUNY } from '../src/renderer/src/render/calloutModel';
 import { consoles, stationSides } from '../src/renderer/src/render/consoleModel';
 import {
-  CALLOUT_LIFT_LIMEZU, CARRY_LIFT_LIMEZU, CARRY_LIFT_PUNY, CREW_ART_NAMES, CREW_SHEETS, crewPose, crewSlot, facing4, footAnchorY, limezuSheet,
+  CALLOUT_LIFT_DOWN_LIMEZU, CALLOUT_LIFT_LIMEZU, CARRY_LIFT_LIMEZU, CARRY_LIFT_PUNY, CREW_ART_NAMES, CREW_SHEETS, crewPose, crewSlot, facing4, footAnchorY, limezuSheet,
   LIMEZU_ANCHOR_Y, LIMEZU_FOOT_ROW, LIMEZU_HEAD_ROW
 } from '../src/renderer/src/render/crewArt';
 import { TILE_PX } from '../src/shared/resolution';
@@ -569,7 +569,7 @@ describe('the bought crew model (Art-ii spec section 1)', () => {
     expect([LIMEZU_FOOT_ROW, LIMEZU_HEAD_ROW]).toEqual([31, 7]);
     expect(footAnchorY(LIMEZU_FOOT_ROW, 32)).toBe(1); expect(LIMEZU_ANCHOR_Y).toBe(1);
     expect([CARRY_LIFT_PUNY, CARRY_LIFT_LIMEZU]).toEqual([30, 54]);
-    expect(CALLOUT_LIFT_LIMEZU).toBe(64);
+    expect(CALLOUT_LIFT_LIMEZU).toBe(64); expect(CALLOUT_LIFT_DOWN_LIMEZU).toBe(26);
   });
   it('poses: idle and walk by the 4-way facing, seated the standing frame facing the wall, down the standing s frame turned +90 degrees about its centre', () => {
     expect(crewPose(2, 'idle', 'ne', null)).toEqual({ name: 'crew.p2.idle.e', animated: true, anchorY: 1, rotation: 0 });
@@ -693,6 +693,7 @@ export const LIMEZU_ANCHOR_Y = footAnchorY(LIMEZU_FOOT_ROW, LIMEZU_FRAME_H);   /
 export const CARRY_LIFT_PUNY = 30;
 export const CARRY_LIFT_LIMEZU = (LIMEZU_FOOT_ROW - LIMEZU_HEAD_ROW) * 2 + 6;   // 54: 6 units over the head
 export const CALLOUT_LIFT_LIMEZU = CARRY_LIFT_LIMEZU + 10;                      // 64: clears a carried torpedo (7 high, fins 10.5)
+export const CALLOUT_LIFT_DOWN_LIMEZU = 16 + 10;                                 // 26: a downed body lies across its tile (half height 16) plus the same clearance
 
 /** Slot k of a player: pid % 4 picks sheet k. */
 export const crewSlot = (pid: number): number => ((pid % CREW_SLOTS) + CREW_SLOTS) % CREW_SLOTS;
@@ -949,8 +950,9 @@ with
 ```ts
 import { bubbleAnchor, CALLOUT_LIFT_PUNY, type Bubble } from './calloutModel';
 import { CREW_COLORS } from './crewSprites';
-import { CALLOUT_LIFT_LIMEZU } from './crewArt';
+import { CALLOUT_LIFT_DOWN_LIMEZU, CALLOUT_LIFT_LIMEZU } from './crewArt';
 import { featureReady } from './fallback';
+import { Life, LifeState } from '../sim/components';
 ```
 
 replace
@@ -966,10 +968,16 @@ with
 export function createCalloutLayer(assets: GameAssets) {
   const container = new Container();
   const missing = new Set(assets.missing);
-  const lift = featureReady(missing, 'crew') && featureReady(missing, 'crewArt') ? CALLOUT_LIFT_LIMEZU : CALLOUT_LIFT_PUNY;   // over the taller bought crew (Art-ii spec section 1)
+  const limezu = featureReady(missing, 'crew') && featureReady(missing, 'crewArt');   // over the taller bought crew (Art-ii spec section 1)
+  /** A standing LimeZu head is 50 units up; a downed one lies across its tile (top about 16 up), so its bubble sits lower (plan review R1-F1). */
+  const liftFor = (state: SimState, pid: number): number => {
+    if (!limezu) return CALLOUT_LIFT_PUNY;
+    const eid = state.crew[pid];
+    return eid !== undefined && Life.state[eid] !== LifeState.Conscious ? CALLOUT_LIFT_DOWN_LIMEZU : CALLOUT_LIFT_LIMEZU;
+  };
 ```
 
-and replace `const a = bubbleAnchor(state, item.pid, fit), w = b.w;` with `const a = bubbleAnchor(state, item.pid, fit, lift), w = b.w;`.
+and replace `const a = bubbleAnchor(state, item.pid, fit), w = b.w;` with `const a = bubbleAnchor(state, item.pid, fit, liftFor(state, item.pid)), w = b.w;`.
 
 - [ ] **Step 8: The manifest entries** — create `.art/add-crew.ts` (gitignored scratch; check with `git check-ignore -v .art/add-crew.ts`, which prints `.gitignore:...:.art/`):
 
@@ -2083,8 +2091,8 @@ Expected: `tsc exit=0` and no other output.
 Run: `git diff 6613339 --stat -- src/renderer/src/sim src/renderer/src/authority src/network src/shared; grep -n "SIM_VERSION =" src/renderer/src/sim/tuning.ts; npx vitest run tests/golden.test.ts tests/duelGolden.test.ts tests/boundary.test.ts 2>&1 | tail -3`
 Expected: the diff stat prints nothing; `export const SIM_VERSION = 39;`; the three files pass.
 
-Run: `npm run art:palette > /dev/null && npm run art:import > /dev/null && git status --short`
-Expected: no output (the owner-local acceptance check: a rebuild and re-import change nothing tracked).
+Run: `npm run art:palette > /dev/null && npm run art:import > /dev/null && git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json && echo CLEAN`
+Expected: `CLEAN` (the owner-local acceptance check: a rebuild and re-import change nothing tracked; PNG determinism is checked by Task 1's md5 run, since the paid PNGs are gitignored).
 
 - [ ] **Step 3: Write the screenshot harness** (all under `.art/shots/`, which `.gitignore` covers; `git check-ignore -v .art/shots/main.ts` prints the `.art/` rule)
 
