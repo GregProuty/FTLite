@@ -132,9 +132,11 @@ per frame per running producer, and React batches each into one commit.
 **1.5 ms median and 4 ms p95** over a 60-second running sector or duel. A dev-only `?uiperf=1` query prints the rolling
 median and p95 once a second to the console. Each part's visual check records the numbers.
 
-**Timers in the UI.** The menu's reconnect countdown and checkpoint receipt age use `useNow(1000)`. It re-renders on
-each wall-clock second boundary (a `setTimeout` to `1000 − Date.now() % 1000`, re-armed each time). The displayed
-seconds change on the same second as today's per-frame writes, which only change text at whole seconds.
+**Timers in the UI.** The menu's reconnect countdown and checkpoint receipt age use `useNow(1000, phaseMs)`. It
+re-renders at each wall-clock time `t` with `t ≡ phaseMs (mod 1000)` (a `setTimeout` to the next such time, re-armed each
+time and whenever the phase changes). The countdown's phase is `retryAtMs % 1000`, so it changes when the deadline crosses
+a whole second. The receipt age's phase is the wall-clock offset at which its elapsed age crosses a whole second, which
+stays constant while both clocks advance. The text therefore changes at the same instant as today's per-frame writes.
 
 **Input blocking.** `main.ts` subscribes to the store outside React. It derives `blocked = !(menu.page === 'session'
 && menu.hadView)` exactly as `render()` does today. When the value differs from the last one, it resets the keyboard

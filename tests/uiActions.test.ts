@@ -52,6 +52,12 @@ describe('requests', () => {
     actions.setStatus({ ...idle, actions: ['host', 'join', 'reconnect', 'retry'] });
     expect(deps.home).toHaveBeenCalledOnce(); expect(store.getState().menu).toMatchObject({ page: 'home', hadView: false, leaving: false });
   });
+  it('forgetSeatNow interrupts a pending Join and does not enter the session', async () => {
+    const join = vi.fn(() => new Promise<never>(() => {})), forgetSeat = vi.fn(async () => ({ ok: true as const }));
+    const { deps, actions } = makeUi({ api: { join, forgetSeat } });
+    actions.setStatus({ ...idle, actions: ['join', 'forget-seat'] }); actions.openMultiplayer(); actions.openJoin(); actions.join('ABCDEFGH');
+    actions.forgetSeatNow(); expect(forgetSeat).toHaveBeenCalledOnce(); expect(deps.online).toHaveBeenCalledOnce(); await flush(); expect(deps.online).toHaveBeenCalledOnce();
+  });
   it('forgets a saved seat from Multiplayer without entering the session', async () => {
     const forgetSeat = vi.fn(async () => ({ ok: true as const })), { store, deps, actions } = makeUi({ api: { forgetSeat } });
     actions.setStatus(idle); actions.openMultiplayer(); actions.forgetSavedSeat();
@@ -103,7 +109,7 @@ describe('pages', () => {
   it('Try another code and Return to menu leave the session page', () => {
     const { store, deps, actions } = makeUi();
     actions.setStatus({ ...idle, phase: 'error', error: 'not-found', actions: ['join'] }); actions.tryAnotherCode(); expect(store.getState().menu.page).toBe('join');
-    actions.returnHome(); expect(deps.home).toHaveBeenCalledOnce(); expect(store.getState().menu).toMatchObject({ page: 'home', hadView: false });
+    const epoch = store.getState().menu.resetEpoch; actions.returnHome(); expect(store.getState().menu.resetEpoch).toBe(epoch + 1); expect(deps.home).toHaveBeenCalledOnce(); expect(store.getState().menu).toMatchObject({ page: 'home', hadView: false });
   });
 });
 

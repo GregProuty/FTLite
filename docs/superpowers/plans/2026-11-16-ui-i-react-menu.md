@@ -30,9 +30,10 @@
 3. **The menu's styles are typed React style objects in `ui/menu/styles.ts`, not a CSS module.** They hold the same values as today's inline `cssText`.
 4. **There is no separate `SessionStrip` component.** The strip *is* the Menu root in its strip layout (as today: `sessionMenu`'s root restyles itself). The Menu root measures its own height while playing.
 5. **The Menu error fallback's button calls `actions.returnHome` (unconditional), not `actions.home`.** `home` is a no-op while a session's status is not idle or error, which would make the fallback's button dead in exactly the case it exists for. When `leave` is offered, the button is Leave, as the spec says.
-6. **Two small visible differences that come from React itself:**
+6. **Small visible differences that come from React itself:**
    - An *idle* status push while on Settings now re-renders the status line. Today it skips the render. The page and its elements stay the same.
    - The reconnect countdown shows its seconds at the first render. Today it shows "Reconnecting saved seat…" for one frame before the first per-frame write.
+   - HostForm and JoinForm keep the typed code and the chosen capacity across re-renders, and focus only on mount. The DOM menu rebuilt the controls on every render: an invalid code cleared the field and re-focused it, and a status push reset the capacity to 2.
 
 ## File Structure
 

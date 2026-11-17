@@ -5,6 +5,6 @@ import { Menu, MenuFallback } from './menu/Menu';
 import { RegionBoundary } from './RegionBoundary';
 
 export function UiRoot() {
-  const page = useUi((s) => s.menu.page), phase = useUi((s) => s.online.status?.phase ?? 'none');
-  return <RegionBoundary name="menu" resetKey={`${page}|${phase}`} fallback={<MenuFallback />}><Menu /></RegionBoundary>;
+  const page = useUi((s) => s.menu.page), phase = useUi((s) => s.online.status?.phase ?? 'none'), resetEpoch = useUi((s) => s.menu.resetEpoch);
+  return <RegionBoundary name="menu" resetKey={`${page}|${phase}|${resetEpoch}`} fallback={<MenuFallback />}><Menu /></RegionBoundary>;
 }

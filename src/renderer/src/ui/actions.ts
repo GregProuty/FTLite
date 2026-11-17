@@ -78,7 +78,7 @@ export function createUiActions(deps: UiActionDeps) {
       });
     },
     tryAnotherCode(): void { setMenu({ hadView: false, page: 'join' }); },
-    returnHome(): void { deps.home?.(); setMenu({ hadView: false, page: 'home' }); },
+    returnHome(): void { deps.home?.(); setMenu({ hadView: false, page: 'home', resetEpoch: menu().resetEpoch + 1 }); },
     pause(): void { deps.pause(); },
     setVolume(volume: number): void { store.setState((s) => ({ settings: { ...s.settings, volume } })); deps.setVolume?.(volume); },
     toggleFullscreen(): void {

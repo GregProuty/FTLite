@@ -5,11 +5,14 @@ import { useNow } from '../useNow';
 import { MenuButton } from './MenuButton';
 
 function MirrorLine(props: { status: OnlineStatus; receivedAt: number }) {
-  useNow(1000);   // the receipt age grows each second
-  return <span data-testid="mirror-status">{receiptText(props.status, props.receivedAt, performance.now())}</span>;
+  const perfNow = performance.now(), age = props.status.mirror.receivedAgeMs;
+  // The text changes when the elapsed age crosses a whole second: a fixed wall-clock phase while both clocks advance together.
+  const phase = age === null ? 0 : (((Date.now() - (age + Math.max(0, perfNow - props.receivedAt))) % 1000) + 1000) % 1000;
+  useNow(1000, phase);
+  return <span data-testid="mirror-status">{receiptText(props.status, props.receivedAt, perfNow)}</span>;
 }
 function Countdown(props: { retryAtMs: number }) {
-  const now = useNow(1000);
+  const now = useNow(1000, ((props.retryAtMs % 1000) + 1000) % 1000);   // the text changes when the deadline crosses a whole second
   return <span data-testid="reconnect-countdown">{countdownText(props.retryAtMs, now)}</span>;
 }
 

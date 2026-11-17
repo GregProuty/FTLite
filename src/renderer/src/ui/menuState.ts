@@ -15,6 +15,8 @@ export interface MenuState {
   fullscreen: boolean | null;
   /** The latest request's id: a result for an older one is ignored. */
   operation: number;
+  /** Bumped by returnHome so the menu's error boundary resets even when the page and phase are unchanged. */
+  resetEpoch: number;
 }
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
 export interface SettingsSlice { available: boolean; volume: number; fullscreenAvailable: boolean; controls: readonly ControlSection[] }
@@ -22,7 +24,7 @@ export interface LayoutSlice { stripHeight: number }
 export interface UiState { menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice }
 export type MenuView = Pick<UiState, 'menu' | 'online'>;
 
-export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0 };
+export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0 };
 export const ROOM_CODE = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 export const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
   'online-disabled': 'Online play needs a configured local service. Single player is available.',

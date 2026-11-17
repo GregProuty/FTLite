@@ -42,6 +42,12 @@ describe('multiplayer', () => {
     expect(text('online-availability')).toContain('configured local service'); expect(text('online-availability')).toContain('Single player is available');
     expect((screen.getByTestId('host') as HTMLButtonElement).disabled).toBe(true);
     click('back'); click('single-player'); expect(deps.single).toHaveBeenCalledOnce();
+    act(() => actions.leaveSingle()); click('single-player'); expect(deps.single).toHaveBeenCalledTimes(2);
+  });
+  it('shows the compatibility wording and Retry for an incompatible error', () => {
+    const { actions } = renderUi();
+    act(() => actions.setStatus({ ...idle, phase: 'error', error: 'incompatible', actions: ['join', 'retry'] }));
+    expect(text('status')).toContain('compatible game content'); expect(screen.getByTestId('retry')).toBeDefined();
   });
   it('labels reconnect as a seat only on Multiplayer', () => {
     const { actions } = renderUi();
@@ -151,13 +157,33 @@ describe('the session page and the strip', () => {
     expect(text('reconnect-countdown')).toBe('Retrying saved seat in 3s…');
     act(() => { vi.advanceTimersByTime(2000); }); expect(text('reconnect-countdown')).toBe('Retrying saved seat in 1s…');
   });
+  it('changes the countdown exactly when the deadline crosses a whole second, not on the wall-clock boundary', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }); vi.setSystemTime(1800000000000);
+    const { actions } = renderUi();
+    act(() => actions.setStatus({ ...idle, phase: 'reconnecting', role: 'guest', ownSeat: 1, attachmentEpoch: 1, retryAtMs: 1800000002500, actions: [] }));
+    act(() => { vi.advanceTimersByTime(500); }); expect(text('reconnect-countdown')).toBe('Retrying saved seat in 2s…');
+    act(() => { vi.advanceTimersByTime(999); }); expect(text('reconnect-countdown')).toBe('Retrying saved seat in 2s…');
+    act(() => { vi.advanceTimersByTime(1); }); expect(text('reconnect-countdown')).toBe('Retrying saved seat in 1s…');
+    act(() => { vi.advanceTimersByTime(1000); }); expect(text('reconnect-countdown')).toBe('Retrying saved seat in 0s…');
+  });
+  it('ages the checkpoint receipt exactly when its age crosses a whole second', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] }); vi.setSystemTime(1800000000000);
+    const { actions } = renderUi();
+    act(() => { vi.advanceTimersByTime(300); });
+    const status: OnlineStatus = { ...idle, phase: 'saved', role: 'guest', ownSeat: 1, attachmentEpoch: 2, error: 'host-lost', actions: ['leave'],
+      mirror: { committed: { capturedTick: 1800 } as never, receivedAgeMs: 4250, localPending: false, persistent: true, error: null } };
+    act(() => actions.setStatus(status)); expect(text('mirror-status')).toContain('received 4s ago');
+    act(() => { vi.advanceTimersByTime(749); }); expect(text('mirror-status')).toContain('received 4s ago');
+    act(() => { vi.advanceTimersByTime(1); }); expect(text('mirror-status')).toContain('received 5s ago');
+    act(() => { vi.advanceTimersByTime(1000); }); expect(text('mirror-status')).toContain('received 6s ago');
+  });
   it('gates the lobby: Ready for a guest, Start for a host once every occupied seat is ready, Remove for other seats', () => {
     const removeSeat = vi.fn(async () => ({ ok: true as const })), { actions } = renderUi({ api: { removeSeat } });
     const seats = [{ seatId: 0, occupied: true, connected: true, ready: false }, { seatId: 1, occupied: true, connected: true, ready: true }];
     const lobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'guest', ownSeat: 1, actions: ['ready', 'leave'], snapshot: { capacity: 2, joinCode: 'ABCDEFGH', seats } as never };
     act(() => actions.setStatus(lobby));
     expect(text('room-code')).toBe('ROOM ABCDEFGH'); expect(text('assigned-seat')).toBe('You are Player 2');
-    expect(text('roster')).toContain('P1: Not ready'); expect(text('ready')).toBe('Not ready'); expect(screen.queryByTestId('start')).toBeNull();
+    expect(text('roster')).toContain('P1: Not ready'); expect(text('ready')).toBe('Not ready'); expect((screen.getByTestId('ready') as HTMLButtonElement).disabled).toBe(false); expect(screen.queryByTestId('start')).toBeNull();
     const host: OnlineStatus = { ...lobby, role: 'host', ownSeat: 0, actions: ['start', 'ready', 'remove-seat', 'leave'] };
     act(() => actions.setStatus(host)); expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     click('remove-seat-1'); expect(removeSeat).toHaveBeenCalledWith(1); expect(screen.queryByTestId('remove-seat-0')).toBeNull();
@@ -170,6 +196,13 @@ describe('the session page and the strip', () => {
 });
 
 describe('the Menu error boundary', () => {
+  it('lets Return to menu on Home re-render the Menu (the reset key includes resetEpoch)', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ui = renderUi({ deps: { home: vi.fn(() => ui.store.setState((s) => ({ menu: { ...s.menu, localError: '' } }))) } });
+    act(() => ui.store.setState((s) => ({ menu: { ...s.menu, localError: {} as never } })));   // an object child: the Menu throws on render
+    expect(screen.getByText('Menu error')).toBeDefined(); expect(ui.store.getState().menu.page).toBe('home');
+    fireEvent.click(screen.getByText('Return to menu')); expect(screen.queryByText('Menu error')).toBeNull(); expect(screen.getByTestId('single-player')).toBeDefined();
+  });
   it('shows the fallback on a throw and retries when the reset key changes', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     let fail = true; function Flaky() { if (fail) throw Error('boom'); return <p data-testid="ok">ok</p>; }
