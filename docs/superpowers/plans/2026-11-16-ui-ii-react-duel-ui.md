@@ -30,9 +30,14 @@
 
 1. **Erratum to spec §9's mapping.** The spec gives `banners.tactical = overlay.layerPaused ? pauseText : null`. But the tactical layer is hidden in the interior view, and today its banner can only show there. So the mapping is `overlay.layerPaused && view !== 'interior' ? pauseText : null`. Otherwise Single player paused in the interior would show two banners. Task 4 updates the spec line.
 2. **The image cache, `<Row>`, `<Cells>` and `<Icon>` move to UI-iii**, the first part that uses them. UI-ii needs only `<Stage>`, `<Box>`, `<Panel>`, `<Bar>` and `<PixelText>`.
-3. **Text vertical placement is calibrated, not derived.**
-   - Pixi's `BitmapFont.install` measures the font with its own heuristics. `glyphs.ts` therefore carries two constants, `GLYPH_X_PAD` and `GLYPH_Y_OFFSET` (native pixels, starting at 1 and 0).
-   - Task 5's probe compares Pixi and React text pixel for pixel and tunes them.
+3. **Text placement is calibrated, not derived.**
+   - Pixi's `BitmapFont.install` measures the font with its own heuristics. `glyphs.ts` therefore carries three calibration constants, all in native pixels:
+     - `GLYPH_Y_OFFSET` (vertical glyph position, start 0)
+     - `GLYPH_LINE_H` (the line height that anchors use; `null` means the measured `fontBoundingBox` height)
+     - `GLYPH_X_OFFSET` (horizontal glyph origin, start 0)
+   - `GLYPH_X_PAD` (1) is clipping padding only and is not a calibration knob.
+   - Glyph advances are measured per character with `measureText` when the atlas is built, as Pixi's dynamic font does. That covers the non-ASCII characters the online banners use (`…`, `—`), which `theme.ts`'s ADVANCE table lacks.
+   - Task 5's probe compares Pixi and React text pixel for pixel and tunes the three constants in that order.
    - The visual criterion (spec §8) is checked by that probe at scales 1 and 1.5 with dpr 1. Other dprs are recorded, not gated: today's Pixi canvas renders at CSS resolution, so it cannot be pixel-identical to device-pixel text there.
 4. **`mountUi` becomes async** (`Promise<() => void>`). It awaits the font and builds the atlas before the first render (spec §4).
 
@@ -69,10 +74,12 @@
 
 Run in the main checkout:
 ```bash
-git log --oneline -1 --grep "H-2a-iii" master
-git diff h2a-iii master -- src/renderer/src/app/duel/scene.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/flightMode.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/duel/endScreen.ts
+git log --oneline -1 -i --grep "merge h2a-iii" master          # expect 0903ed5 or a later merge
+git diff 0903ed5^2 master -- src/renderer/src/app/duel/scene.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/flightMode.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/duel/endScreen.ts
+grep -n "export function createDuelScene(renderer: Renderer, options: { seed: number; pauseText: string })\|export interface SceneOverlay" src/renderer/src/app/duel/scene.ts
+grep -n "scene.draw(\|createDuelScene(" src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/onlineDuel.ts
 ```
-Expected: a merge commit for H-2a-iii, and the diff is empty, or touches only lines this plan does not quote. If `createDuelScene`'s signature, `SceneOverlay` or the `scene.draw(...)` calls in `duelMode.ts`/`onlineDuel.ts` differ from what Task 4 quotes, stop and report NEEDS_CONTEXT with the diff.
+Expected: the merge exists, the diff is empty or touches only lines this plan does not quote, and the greps find the signature, the interface and the two `scene.draw(` calls. If `createDuelScene`'s signature, `SceneOverlay` or the `scene.draw(...)` calls in `duelMode.ts`/`onlineDuel.ts` differ from what Task 4 quotes, stop and report NEEDS_CONTEXT with the diff.
 
 - [ ] **Step 2: Create the worktree**
 
@@ -176,7 +183,7 @@ describe('setLayout', () => {
   });
 });
 ```
-In `tests/uiMenuState.test.ts`, the two `createUiStore` cases must expect `layout: { stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 }`. Change those two `toEqual` expectations accordingly.
+In `tests/uiMenuState.test.ts`, the `createUiStore` case that asserts `layout` (its `expect(s.layout).toEqual(...)`, about line 100) must expect `{ stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 }`.
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -306,7 +313,7 @@ git commit -m "feat(ui-ii): structural sharing, the duel/flight views, store sli
   - `edge(internal: number, offset: number, scale: number, dpr: number): number`, which gives CSS px rounded to whole device px
   - `boxCss(x, y, w, h, layout): { left; top; width; height }`
   - `hex(rgb: number, alpha?: number): string`
-  - `GLYPH_CHARS`, `GLYPH_X_PAD`, `GLYPH_Y_OFFSET`, `snapAlpha(data)`, `interface GlyphAtlas { canvas: CanvasImageSource; cellH: number; cells: Record<string, number> }`, `buildGlyphAtlas(makeCanvas, family): GlyphAtlas | null`
+  - `GLYPH_CHARS` (97: ASCII plus `…—`), `GLYPH_X_PAD`, `GLYPH_Y_OFFSET`, `GLYPH_LINE_H`, `GLYPH_X_OFFSET`, `snapAlpha(data)`, `interface GlyphAtlas { canvas: CanvasImageSource; cellH: number; cells: Record<string, number>; advance: Record<string, number> }`, `atlasTextWidth(atlas, text)`, `buildGlyphAtlas(makeCanvas, family): GlyphAtlas | null`
   - `GlyphContext`, `useGlyphs()`
   - Components:
     - `<Stage>`
@@ -319,10 +326,10 @@ git commit -m "feat(ui-ii): structural sharing, the duel/flight views, store sli
 
 `tests/uiGlyphs.test.ts`:
 ```ts
-// The glyph atlas (React UI spec §4): m5x7 rasterised once at 16 px with hard alpha, one cell per printable ASCII
-// character at its theme advance plus padding.
+// The glyph atlas (React UI spec §4): m5x7 rasterised once at 16 px with hard alpha, one cell per character (printable
+// ASCII plus the online banners' … and —) at its measured advance plus padding.
 import { describe, expect, it } from 'vitest';
-import { buildGlyphAtlas, GLYPH_CHARS, GLYPH_X_PAD, snapAlpha } from '../src/renderer/src/ui/glyphs';
+import { atlasTextWidth, buildGlyphAtlas, GLYPH_CHARS, GLYPH_X_PAD, snapAlpha } from '../src/renderer/src/ui/glyphs';
 import { advance } from '../src/renderer/src/render/theme';
 
 describe('snapAlpha', () => {
@@ -334,20 +341,25 @@ describe('snapAlpha', () => {
 });
 
 describe('buildGlyphAtlas', () => {
-  it('lays out a padded cell per character and draws each at its cell', () => {
+  it('lays out a padded cell per character at its measured advance and draws each at its cell', () => {
     const calls: { ch: string; x: number }[] = [];
     let w = 0, h = 0;
     const ctx = {
       font: '', textBaseline: '', fillStyle: '',
-      measureText: () => ({ fontBoundingBoxAscent: 11.2, fontBoundingBoxDescent: 3.4 }),
+      measureText: (t: string) => ({ width: t.length === 1 ? (t.charCodeAt(0) < 127 ? advance(t) : 7.4) : 0, fontBoundingBoxAscent: 11.2, fontBoundingBoxDescent: 3.4 }),
       fillText: (ch: string, x: number) => { calls.push({ ch, x }); },
       getImageData: () => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData: () => {}
     };
     const atlas = buildGlyphAtlas((cw, ch) => { w = cw; h = ch; return { width: cw, height: ch, getContext: () => ctx as never }; }, 'm5x7')!;
-    expect(GLYPH_CHARS.length).toBe(95); expect(atlas.cellH).toBe(16);   // ceil(11.2) + ceil(3.4) = 12 + 4
+    expect(GLYPH_CHARS.length).toBe(97); expect(atlas.cellH).toBe(16);   // GLYPH_LINE_H null: ceil(11.2) + ceil(3.4) = 12 + 4
     let x = 0;
-    for (const ch of GLYPH_CHARS) { expect(atlas.cells[ch]).toBe(x + GLYPH_X_PAD); x += advance(ch) + 2 * GLYPH_X_PAD; }
+    for (const ch of GLYPH_CHARS) { expect(atlas.cells[ch]).toBe(x + GLYPH_X_PAD); const a = ch.charCodeAt(0) < 127 ? advance(ch) : 7; expect(atlas.advance[ch]).toBe(a); x += a + 2 * GLYPH_X_PAD; }
     expect(w).toBe(x); expect(calls.find((c) => c.ch === 'M')!.x).toBe(atlas.cells.M); expect(ctx.font).toBe('16px m5x7');
+    expect(atlasTextWidth(atlas, 'A…')).toBe(advance('A') + 7);
+  });
+  it('covers every character of the duel scene\'s banner and end-card strings', () => {
+    for (const text of ['LEAVING…', 'CONNECTION LOST — RECONNECTING', 'PAUSED   ESC: RESUME   M: MAIN MENU', 'ENTER: REMATCH   ESC: LEAVE', 'YOU: HELM', 'DUEL LENGTH 1:23'])
+      for (const ch of text) expect(GLYPH_CHARS, `${text}: ${ch}`).toContain(ch);
   });
   it('returns null without a 2D context', () => {
     expect(buildGlyphAtlas(() => ({ width: 0, height: 0, getContext: () => null }), 'm5x7')).toBeNull();
@@ -441,19 +453,26 @@ export function hex(rgb: number, alpha?: number): string {
 
 `src/renderer/src/ui/glyphs.ts`:
 ```ts
-// The m5x7 glyph atlas (React UI spec §4): every printable ASCII character drawn once at the font's native 16 px, alpha
-// snapped to 0 or 255, one cell per character at its theme advance with GLYPH_X_PAD on each side. PixelText scales cells
-// with nearest sampling, the rule Pixi's BitmapText follows. GLYPH_X_PAD and GLYPH_Y_OFFSET are calibrated by the
-// ?mode=uiprobe text-parity probe (UI-ii Task 5).
+// The m5x7 glyph atlas (React UI spec §4): every character in GLYPH_CHARS drawn once at the font's native 16 px, alpha
+// snapped to 0 or 255, one cell per character at its measured advance (as Pixi's dynamic BitmapFont measures) with
+// GLYPH_X_PAD on each side. PixelText scales cells with nearest sampling, the rule Pixi's BitmapText follows.
+// GLYPH_Y_OFFSET, GLYPH_LINE_H and GLYPH_X_OFFSET are calibrated by the ?mode=uiprobe text-parity probe (UI-ii Task 5).
 import { advance, FONT_NATIVE } from '../render/theme';
 
-export const GLYPH_CHARS = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('');
-/** Native pixels of padding each side of a cell, so ink past the advance is not cut off. */
+/** Printable ASCII plus the non-ASCII characters the duel's banners use (onlineDuel.ts: LEAVING…, CONNECTION LOST —). */
+export const GLYPH_CHARS = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('') + '…—';
+/** Native pixels of padding each side of a cell, so ink past the advance is not cut off. Clipping only, not a calibration knob. */
 export const GLYPH_X_PAD = 1;
 /** Native pixels added to the glyph's vertical position to match BitmapText's line placement (probe-calibrated). */
 export const GLYPH_Y_OFFSET = 0;
+/** The line height anchors use, in native pixels; null = the measured fontBoundingBox height (probe-calibrated). */
+export const GLYPH_LINE_H: number | null = null;
+/** Native pixels added to each glyph's drawn x origin (probe-calibrated). */
+export const GLYPH_X_OFFSET = 0;
 
-export interface GlyphAtlas { canvas: CanvasImageSource; cellH: number; cells: Record<string, number> }
+export interface GlyphAtlas { canvas: CanvasImageSource; cellH: number; cells: Record<string, number>; advance: Record<string, number> }
+/** A string's width in native pixels: the atlas's measured advances, the theme's for a character it lacks. */
+export function atlasTextWidth(atlas: GlyphAtlas, text: string): number { let n = 0; for (const ch of text) n += atlas.advance[ch] ?? advance(ch); return n; }
 interface AtlasCanvas { width: number; height: number; getContext(type: '2d'): CanvasRenderingContext2D | null }
 
 export function snapAlpha(data: Uint8ClampedArray, threshold = 128): void {
@@ -461,20 +480,20 @@ export function snapAlpha(data: Uint8ClampedArray, threshold = 128): void {
 }
 
 export function buildGlyphAtlas(makeCanvas: (w: number, h: number) => AtlasCanvas, family: string): GlyphAtlas | null {
-  const cells: Record<string, number> = {};
-  let width = 0;
-  for (const ch of GLYPH_CHARS) { cells[ch] = width + GLYPH_X_PAD; width += advance(ch) + 2 * GLYPH_X_PAD; }
   const probe = makeCanvas(1, 1).getContext('2d'); if (!probe) return null;
   probe.font = `${FONT_NATIVE}px ${family}`;
-  const m = probe.measureText(GLYPH_CHARS), ascent = Math.ceil(m.fontBoundingBoxAscent), cellH = ascent + Math.ceil(m.fontBoundingBoxDescent);
+  const cells: Record<string, number> = {}, adv: Record<string, number> = {};
+  let width = 0;
+  for (const ch of GLYPH_CHARS) { adv[ch] = Math.round(probe.measureText(ch).width); cells[ch] = width + GLYPH_X_PAD; width += adv[ch]! + 2 * GLYPH_X_PAD; }
+  const m = probe.measureText(GLYPH_CHARS), ascent = Math.ceil(m.fontBoundingBoxAscent), cellH = GLYPH_LINE_H ?? ascent + Math.ceil(m.fontBoundingBoxDescent);
   const canvas = makeCanvas(width, cellH), ctx = canvas.getContext('2d'); if (!ctx) return null;
   ctx.font = `${FONT_NATIVE}px ${family}`; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#ffffff';
   for (const ch of GLYPH_CHARS) ctx.fillText(ch, cells[ch]!, ascent + GLYPH_Y_OFFSET);
   const img = ctx.getImageData(0, 0, width, cellH); snapAlpha(img.data); ctx.putImageData(img, 0, 0);
-  return { canvas: canvas as unknown as CanvasImageSource, cellH, cells };
+  return { canvas: canvas as unknown as CanvasImageSource, cellH, cells, advance: adv };
 }
 ```
-Note: the test's fake context returns the same object for both canvases, so `ctx.font` ends as `'16px m5x7'`.
+Note: the test's fake context returns the same object for both canvases, so `ctx.font` ends as `'16px m5x7'`. In Task 4, before deleting anything, run `grep -nP '[^\x00-\x7F]' src/renderer/src/app/duel/*.ts src/renderer/src/render/duel/*.ts` and add any other non-ASCII character a duel string uses to `GLYPH_CHARS` and to the coverage test.
 
 `src/renderer/src/ui/stage/GlyphContext.ts`:
 ```ts
@@ -550,9 +569,9 @@ export const Bar = memo(function Bar(props: { x: number; y: number; w: number; h
 // sampling at size/16 x scale x dpr, then tinted. It redraws only when its inputs change; without an atlas (jsdom, or a
 // failed build) it is an empty canvas that still carries its string for tests.
 import { memo, useLayoutEffect, useRef } from 'react';
-import { advance, FONT_NATIVE, textPx } from '../../render/theme';
+import { FONT_NATIVE, textPx } from '../../render/theme';
 import { useUi } from '../context';
-import { GLYPH_X_PAD } from '../glyphs';
+import { atlasTextWidth, GLYPH_X_OFFSET, GLYPH_X_PAD } from '../glyphs';
 import { hex } from './color';
 import { edge } from './geometry';
 import { useGlyphs } from './GlyphContext';
@@ -562,7 +581,7 @@ export interface PixelTextProps { text: string; x: number; y: number; size: numb
 export const PixelText = memo(function PixelText(p: PixelTextProps) {
   const l = useUi((s) => s.layout), atlas = useGlyphs(), ref = useRef<HTMLCanvasElement>(null);
   const k = p.size / FONT_NATIVE, cellH = atlas?.cellH ?? FONT_NATIVE;
-  const w = textPx(p.text, k), h = cellH * k;
+  const w = atlas ? atlasTextWidth(atlas, p.text) * k : textPx(p.text, k), h = cellH * k;
   const left = edge(p.x - (p.anchorX ?? 0) * w, l.offsetX, l.scale, l.dpr), top = edge(p.y - (p.anchorY ?? 0) * h, l.offsetY, l.scale, l.dpr);
   const devW = Math.max(1, Math.round(w * l.scale * l.dpr)), devH = Math.max(1, Math.round(h * l.scale * l.dpr));
   useLayoutEffect(() => {
@@ -573,9 +592,9 @@ export const PixelText = memo(function PixelText(p: PixelTextProps) {
     const g = k * l.scale * l.dpr, pad = GLYPH_X_PAD;
     let pen = 0;
     for (const ch of p.text) {
-      const adv = advance(ch), sx = atlas.cells[ch];
+      const adv = atlas.advance[ch] ?? 6, sx = atlas.cells[ch];
       if (sx !== undefined) {
-        const dx0 = Math.round((pen - pad) * g), dx1 = Math.round((pen + adv + pad) * g);
+        const dx0 = Math.round((pen + GLYPH_X_OFFSET - pad) * g), dx1 = Math.round((pen + GLYPH_X_OFFSET + adv + pad) * g);
         ctx.drawImage(atlas.canvas, sx - pad, 0, adv + 2 * pad, cellH, dx0, 0, dx1 - dx0, Math.round(cellH * g));
       }
       pen += adv;
@@ -645,8 +664,9 @@ export { FEEL_PANEL_H, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from './feelModel';
 // The duel and flight regions (React UI spec §6): today's Pixi panels' strings, positions and tints from the views, and
 // the render rule (a region only while its slice is set; a throwing region leaves the menu).
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { memo } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
-import { UiContext } from '../src/renderer/src/ui/context';
+import { UiContext, useUi } from '../src/renderer/src/ui/context';
 import { UiRoot } from '../src/renderer/src/ui/UiRoot';
 import { createDuelSink, createFlightSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
@@ -728,6 +748,26 @@ describe('the flight region', () => {
     expect(find('W/S  THRUST / REVERSE')).toBeDefined(); expect(find('PAUSED   ESC: RESUME')).toBeDefined();
   });
 });
+
+describe('sharing keeps unchanged panels from re-rendering (spec §8)', () => {
+  it('a view whose only change is a readout value leaves the memoised overlay, banners and end props unchanged', () => {
+    const ui = makeUi(), sink = createDuelSink(ui.store), seen = { overlay: vi.fn(), banners: vi.fn(), end: vi.fn() };
+    const Overlay = memo(function Overlay(_: { o: unknown }) { seen.overlay(); return null; });
+    const Lines = memo(function Lines(_: { b: unknown }) { seen.banners(); return null; });
+    const End = memo(function End(_: { e: unknown }) { seen.end(); return null; });
+    function Harness() { const d = useUi((s) => s.duel); return d ? <><Overlay o={d.overlay} /><Lines b={d.banners} /><End e={d.end} /></> : null; }
+    render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><Harness /></UiContext.Provider>);
+    const overlay = { zoomText: 'ZOOM 1.00', scaleBar: { px: 80, units: 500 }, snapHint: false };
+    const end = { title: 'VICTORY', tint: 1, length: 'DUEL LENGTH 0:01', prompt: 'ENTER: REMATCH' };
+    const changed = { rows: [{ label: 'HULL', value: '9/10', labelTint: TEXT, valueTint: TEXT }], help: ['TAB  SWITCH'] };
+    act(() => sink.frame(view({ overlay, end })));
+    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, readout: changed })));
+    expect(seen.overlay).toHaveBeenCalledTimes(1); expect(seen.banners).toHaveBeenCalledTimes(1); expect(seen.end).toHaveBeenCalledTimes(1);
+    let commits = 0; const off = ui.store.subscribe(() => { commits++; });
+    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, readout: { ...changed } })));
+    expect(commits).toBe(0); off();
+  });
+});
 ```
 
 - [ ] **Step 3: Run them to see them fail**
@@ -745,6 +785,7 @@ import { Fragment, memo } from 'react';
 import { INTERNAL_W } from '../../../../shared/resolution';
 import { READOUT_MARGIN, READOUT_ROWS, READOUT_W, type ReadoutRow } from '../../render/duel/readoutModel';
 import { BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, LINE, PAD } from '../../render/theme';
+import { useUi } from '../context';
 import { Bar } from '../stage/Bar';
 import { Box } from '../stage/Box';
 import { hex } from '../stage/color';
@@ -755,6 +796,7 @@ const HELP_LINES = 5, HELP_LINE = 14, PIP = 12, PIP_GAP = 4;
 const X = INTERNAL_W - READOUT_W - READOUT_MARGIN, Y = READOUT_MARGIN;
 
 export const ReadoutPanel = memo(function ReadoutPanel(props: { rows: readonly ReadoutRow[]; help: readonly string[] }) {
+  const l = useUi((s) => s.layout), hairline = Math.max(1, Math.round(l.scale * l.dpr)) / l.dpr;   // Pixi's 1-internal-px pip stroke, scaled like Panel's border
   const n = Math.min(props.rows.length, READOUT_ROWS), h = Math.min(props.help.length, HELP_LINES);
   const helpY = PAD + LINE * n + PAD, height = helpY + h * HELP_LINE + PAD;
   return (
@@ -769,7 +811,7 @@ export const ReadoutPanel = memo(function ReadoutPanel(props: { rows: readonly R
             {r.pips && Array.from({ length: r.pips.max }, (_, p) => {
               const lit = p < r.pips!.n, x = X + READOUT_W - PAD - (r.pips!.max - p) * (PIP + PIP_GAP) + PIP_GAP;
               return <Box key={p} x={x} y={y + 9} w={PIP} h={PIP} attrs={{ 'data-ui-pip': lit ? 'lit' : 'off' }}
-                style={{ background: hex(lit ? r.pips!.colour : BAR_OFF), border: `1px solid ${hex(r.pips!.colour, lit ? 1 : 0.5)}` }} />;
+                style={{ background: hex(lit ? r.pips!.colour : BAR_OFF), border: `${hairline}px solid ${hex(r.pips!.colour, lit ? 1 : 0.5)}` }} />;
             })}
             {r.bar && <Bar x={X + PAD} y={y + LINE + 1} w={READOUT_W - 2 * PAD} h={3} fill={r.bar.fill} colour={r.bar.colour} />}
           </Fragment>
@@ -992,7 +1034,7 @@ git commit -m "feat(ui-ii): the React duel and flight regions (readout, end card
 
 - [ ] **Step 1: Move `endModel`**
 
-Create `src/renderer/src/render/duel/endModel.ts` holding exactly `EndView` and `endModel` from `endScreen.ts`, with that file's imports for them (`Outcome`, `TICK_HZ`, `AMBER`, `GOOD`, `WARN`) and its doc comments. Point every `import … from '…/render/duel/endScreen'` at `endModel` instead, then delete `endScreen.ts`. The importers are `duelMode.ts`, `onlineDuel.ts`, `scene.ts`, `ui/views.ts`, `ui/duel/EndCard.tsx` and `tests/duelReadout.test.ts`. Check with `git grep -n "duel/endScreen"`, which should print nothing afterwards.
+Create `src/renderer/src/render/duel/endModel.ts` holding exactly `EndView` and `endModel` from `endScreen.ts`, with that file's imports for them (`Outcome`, `TICK_HZ`, `AMBER`, `GOOD`, `WARN`) and its doc comments. Point every `import … from '…/render/duel/endScreen'` at `endModel` instead, then delete `endScreen.ts`. The importers are `duelMode.ts`, `onlineDuel.ts`, `scene.ts`, `ui/views.ts`, `ui/duel/EndCard.tsx` and `tests/duelReadout.test.ts`. Check with `git grep -n "duel/endScreen" -- src tests scripts`, which should print nothing afterwards.
 
 - [ ] **Step 2: The scene draws through the sink**
 
@@ -1105,6 +1147,7 @@ In `docs/superpowers/specs/2026-11-16-react-ui-layer-design.md` §9 item 3, repl
   - Change the `endModel` import to `render/duel/endModel`.
   - Delete the case "the panel: a warm-up of 2 frames, then 60 frames … add no display objects" and the case "shows only while the duel is decided, and allocates nothing after creation", together with the now-unused imports (`createReadoutPanel`, `createEndScreen`, `count` if unused). Their behaviour is covered by `tests/uiDuel.test.tsx`, and the sinks' no-write-on-equal test covers the "no per-frame allocation" intent.
 - `tests/tacticalLayer.test.ts`: remove `createFeelPanel` and the `panel`/`p0` lines from the allocation case. Keep the layer assertions.
+- `tests/duelWeaponsView.test.ts`: rename the case 'reset hides every text, the zoom, scale, hint and banner included' to 'reset hides every text until the next draw' and keep its assertions (the zoom, scale, hint and banner texts no longer exist).
 - Then run `git grep -n "createDuelScene\|startDuelMode\|startFlightMode\|createOnlineDuelSession" -- tests`. For each test that builds those deps, add `ui: { frame() {}, clear() {} }`. Where a test asserts on what the scene drew, assert on the sink's last `frame` argument instead.
 
 - [ ] **Step 9: Verify**
@@ -1151,7 +1194,7 @@ git commit -m "feat(ui-ii): the duel scene and flight view draw their UI through
 - Consumes: the stage primitives and `GLYPH_X_PAD`/`GLYPH_Y_OFFSET`.
 - Produces:
   - `?mode=uiprobe`: a dev page. Pixi `BitmapText` draws each `PROBE_SAMPLES` entry on the left half, and `<PixelText>` draws the same entry 640 internal px to the right.
-  - `createUiPerf(enabled)`: when `?uiperf=1`, prints `[uiperf] median X ms p95 Y ms` once a second, measuring each sink's `frame` (sharing plus `setState`) and the React commit (via `<Profiler>`).
+  - `windowStats(samples)` and `createUiPerf(enabled, deps?)`. When `?uiperf=1`, the sinks run their `setState` inside `flushSync`, so the timed region covers the sharing pass, React's render and commit and the layout effects (`PixelText`'s canvas draws). It prints `[uiperf] median X ms p95 Y ms` once a second.
 
 - [ ] **Step 1: The probe mode (test first)**
 
@@ -1160,9 +1203,17 @@ git commit -m "feat(ui-ii): the duel scene and flight view draw their UI through
 import { expect, it } from 'vitest';
 import { readMode } from '../src/renderer/src/app/duel/mode';
 import { PROBE_SAMPLES } from '../src/renderer/src/ui/probe/samples';
+import { GLYPH_CHARS } from '../src/renderer/src/ui/glyphs';
+import { FONT_NATIVE, textPx } from '../src/renderer/src/render/theme';
 it('reads ?mode=uiprobe and keeps every probe sample inside its half', () => {
   expect(readMode('?mode=uiprobe')).toBe('uiprobe'); expect(readMode('?mode=x')).toBe('sector');
-  for (const s of PROBE_SAMPLES) { expect(s.x).toBeGreaterThanOrEqual(0); expect(s.x).toBeLessThan(640); }
+  for (const s of PROBE_SAMPLES) {
+    const w = textPx(s.text, s.size / FONT_NATIVE), h = 16 * (s.size / FONT_NATIVE);
+    expect(s.x - s.anchorX * w, s.text).toBeGreaterThanOrEqual(0); expect(s.x + (1 - s.anchorX) * w, s.text).toBeLessThanOrEqual(632);
+    expect(s.y - s.anchorY * h, s.text).toBeGreaterThanOrEqual(0); expect(s.y + (1 - s.anchorY) * h, s.text).toBeLessThanOrEqual(712);
+  }
+  const chars = PROBE_SAMPLES.map((s) => s.text).join('');
+  for (const ch of GLYPH_CHARS) expect(chars, `probe covers ${JSON.stringify(ch)}`).toContain(ch);
 });
 ```
 Run it and see it fail. Then:
@@ -1170,26 +1221,55 @@ Run it and see it fail. Then:
 - Create `src/renderer/src/ui/probe/samples.ts`. Export `PROBE_SAMPLES: { text: string; x: number; y: number; size: number; tint: number; anchorX: number; anchorY: number }[]`. Cover:
   - `FONT_NATIVE`, `FONT_SIZE`, `TITLE_SIZE` and `FONT_SIZE * 1.5`
   - anchors 0, 0.5 and 1 (x and y)
-  - the strings `the quick brown fox 0123456789`, `PAUSED   ESC: RESUME`, `DUEL LENGTH 1:23` and all of `GLYPH_CHARS` split in two lines
+  - the strings `the quick brown fox 0123456789`, `PAUSED   ESC: RESUME`, `DUEL LENGTH 1:23`, `LEAVING…`, `CONNECTION LOST — RECONNECTING`, and all of `GLYPH_CHARS` at `FONT_NATIVE` and `FONT_SIZE`, split into as many lines as needed so each fits its half (the test checks extents and character coverage)
   - tints `TEXT`, `DIM` and `AMBER`
   - x within 8..600, y within 8..700
 - Create `ProbePage.tsx`, which renders `<Stage>` with a `<PixelText>` per sample at `x + 640`.
-- Create `app/uiProbe.ts`, with `startUiProbe(renderer, store)`. It adds one Pixi `BitmapText` per sample (font `renderer.assets.fontFamily`, `fontSize: size`, `tint`, `anchor.set(anchorX, anchorY)`, `roundPixels = true`, at `x, y`) to the stage, then mounts `ProbePage` through `mountUi`'s providers.
+- Create `app/uiProbe.ts`, with `startUiProbe(renderer, store)`. It first hides every existing stage child (as `scene.ts` does: `for (const c of renderer.app.stage.children) c.visible = false`) and adds a full `INTERNAL_W × INTERNAL_H` `Graphics` rect filled `0x05060a`, so both halves share one plain background. It then adds one Pixi `BitmapText` per sample (font `renderer.assets.fontFamily`, `fontSize: size`, `tint`, `anchor.set(anchorX, anchorY)`, `roundPixels = true`, at `x, y`) to the stage, then mounts `ProbePage` through `mountUi`'s providers.
 - Have `main.ts`'s `start()` route `uiprobe` to it, with the same resize and `setLayout` as the dev views. A `ProbePage`-only root is acceptable: reuse `GlyphContext` and `UiContext` by exporting a `mountProbe` from `mount.tsx` that renders `<ProbePage>` instead of `<UiRoot>`.
 
 - [ ] **Step 2: The perf counter**
 
-Create `src/renderer/src/ui/perf.ts` with `createUiPerf(enabled: boolean)`, which returns `{ time<T>(fn: () => T): T; commit(ms: number): void }`.
-- It accumulates per animation frame: the sink time plus React's `actualDuration`, folded into a 60-entry window.
-- Once a second it prints `[uiperf] median ${m.toFixed(2)} ms p95 ${p.toFixed(2)} ms` via `console.info`.
-- Disabled, it is a pass-through with no timers.
+Create `src/renderer/src/ui/perf.ts`:
+```ts
+// The dev-only UI budget counter (React UI spec §2): with ?uiperf=1 each sink write runs inside flushSync, so one sample
+// is the sharing pass plus React's render, commit and layout effects (PixelText's canvas draws) for that frame.
+import { flushSync } from 'react-dom';
 
+/** The median and 95th percentile of a window of samples (nearest-rank). */
+export function windowStats(samples: readonly number[]): { median: number; p95: number } {
+  if (samples.length === 0) return { median: 0, p95: 0 };
+  const s = [...samples].sort((a, b) => a - b), at = (q: number): number => s[Math.min(s.length - 1, Math.ceil(q * s.length) - 1)]!;
+  return { median: at(0.5), p95: at(0.95) };
+}
+export interface UiPerf { run(write: () => void): void }
+export function createUiPerf(enabled: boolean, deps: { now?: () => number; log?: (line: string) => void; every?: (cb: () => void, ms: number) => unknown } = {}): UiPerf {
+  if (!enabled) return { run: (write) => write() };
+  const now = deps.now ?? (() => performance.now()), log = deps.log ?? ((line) => console.info(line)), samples: number[] = [];
+  (deps.every ?? ((cb, ms) => setInterval(cb, ms)))(() => { const { median, p95 } = windowStats(samples); log(`[uiperf] median ${median.toFixed(2)} ms p95 ${p95.toFixed(2)} ms`); }, 1000);
+  return { run(write) { const t0 = now(); flushSync(write); samples.push(now() - t0); if (samples.length > 60) samples.shift(); } };
+}
+```
 Wire it in:
-- `createDuelSink`/`createFlightSink` take an optional `perf` and wrap `frame`'s body in `perf.time`.
-- `mountUi` takes an optional `perf` and wraps `<UiRoot>` in `<Profiler id="ui" onRender={(_, __, actual) => perf.commit(actual)}>` only when it is enabled.
-- `main.ts` creates it with `new URLSearchParams(location.search).get('uiperf') === '1'`.
+- `createDuelSink(store, perf?)` and `createFlightSink(store, perf?)` call `(perf ?? passThrough).run(() => store.setState(...))` for their write. `passThrough` is `{ run: (w) => w() }`.
+- `main.ts` (the app and both dev views) creates one with `createUiPerf(new URLSearchParams(location.search).get('uiperf') === '1')` and passes it to the sinks.
 
-Add one unit test for the window maths: feed 60 known values, then check median and p95 with fake timers.
+Write `tests/uiPerf.test.ts`:
+```ts
+import { expect, it, vi } from 'vitest';
+import { createUiPerf, windowStats } from '../src/renderer/src/ui/perf';
+it('windowStats is nearest-rank over the window', () => {
+  expect(windowStats([])).toEqual({ median: 0, p95: 0 });
+  expect(windowStats(Array.from({ length: 60 }, (_, i) => i + 1))).toEqual({ median: 30, p95: 57 });
+});
+it('a disabled counter runs the write and never schedules; an enabled one times it and logs once a second', () => {
+  const every = vi.fn(), write = vi.fn(); createUiPerf(false, { every }).run(write); expect(write).toHaveBeenCalledOnce(); expect(every).not.toHaveBeenCalled();
+  let t = 0, tick = (): void => {}; const log = vi.fn();
+  const perf = createUiPerf(true, { now: () => t, log, every: (cb) => { tick = cb; } });
+  perf.run(() => { t += 2; }); perf.run(() => { t += 4; }); tick();
+  expect(log).toHaveBeenCalledWith('[uiperf] median 2.00 ms p95 4.00 ms');
+});
+```
 
 - [ ] **Step 3: Calibrate the glyph constants with the probe**
 
@@ -1197,7 +1277,11 @@ Add one unit test for the window maths: feed 60 known values, then check median 
 2. In a scratchpad folder, install `playwright-core@1.48.2` and write `probe.cjs`. It launches `node_modules/electron/dist/electron.exe` with `args: ['<worktree>']` and env `FTLITE_MODE=uiprobe` (main reads `FTLITE_MODE` the way `npm run dev:flight` does; check `src/main/index.ts`). It then sets the content size, waits 500 ms, and takes a screenshot. Run it at 1280×720 (scale 1) and 1920×1080 (scale 1.5).
 3. With `pngjs` (a repo devDependency), compare the left half with the right half, shifted by `640 × scale` device px.
 4. Count the pixels whose RGB differs by more than 8 in any channel.
-5. Adjust `GLYPH_Y_OFFSET`, then `GLYPH_X_PAD`, until both scales report **0** mismatches. Keep the screenshots and counts in `C:\Users\djuar\FTLite-shots\ui-ii\probe\`.
+5. Calibrate in this order until both scales report **0** mismatches:
+   - `GLYPH_Y_OFFSET`, judged on the `anchorY` 0 samples only
+   - `GLYPH_LINE_H` (from `null` to a number), judged on the `anchorY` 0.5 and 1 samples
+   - `GLYPH_X_OFFSET`, judged on every sample
+   `GLYPH_X_PAD` is not a knob. Raise it only if a glyph's ink is visibly clipped. Keep the screenshots and counts in `C:\Users\djuar\FTLite-shots\ui-ii\probe\`.
 6. If 0 is not reachable, record the best counts. Crop the worst sample from both halves at 4× zoom, and keep the counts and crops for the controller's report to the owner. Do not loop beyond 10 calibration attempts.
 
 - [ ] **Step 4: The visual check**
@@ -1212,12 +1296,12 @@ Compare each pair with the Read tool. Expected:
 - The panels, text and positions match, except the deliberate no-shake change.
 - Live values may differ, because the sim moves.
 
-Run once with `?uiperf=1` (append it to the URL the app loads in dev, or set the env flag the probe uses). Record the median and p95 over 60 s of the duel. The budget is 1.5 ms median and 4 ms p95. Record the numbers whether they pass or fail, and report a miss as a concern.
+Run once with `?uiperf=1`: after the app loads, `const u = new URL(page.url()); u.searchParams.set('uiperf', '1'); await page.goto(u.href);`, then click `single-player`. Record the median and p95 over 60 s of the duel. The budget is 1.5 ms median and 4 ms p95. Record the numbers whether they pass or fail, and report a miss as a concern.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/ui/probe src/renderer/src/app/uiProbe.ts src/renderer/src/ui/perf.ts src/renderer/src/ui/sinks.ts src/renderer/src/ui/mount.tsx src/renderer/src/ui/glyphs.ts src/renderer/src/app/duel/mode.ts src/renderer/src/main.ts tests/uiProbe.test.ts tests/uiPerf.test.ts
+git add src/renderer/src/ui/probe src/renderer/src/app/uiProbe.ts src/renderer/src/ui/perf.ts src/renderer/src/ui/sinks.ts src/renderer/src/ui/mount.tsx src/renderer/src/ui/stage/PixelText.tsx src/renderer/src/ui/glyphs.ts src/renderer/src/app/duel/mode.ts src/renderer/src/main.ts tests/uiProbe.test.ts tests/uiPerf.test.ts
 git commit -m "feat(ui-ii): the text-parity probe (?mode=uiprobe), calibrated glyph offsets and the ?uiperf=1 counter"
 ```
 
