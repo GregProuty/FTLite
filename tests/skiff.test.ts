@@ -98,11 +98,11 @@ describe('the console card tab bar (spec Demo-x-a section 1)', () => {
 });
 
 describe('which ship flies (spec Demo-x-a section 3)', () => {
-  it('is the Skiff for one or two players and the cutter for three or four; the lobby names it', () => {
-    expect([1, 2, 3, 4].map(shipForCrew)).toEqual(['skiff', 'skiff', 'cutter', 'cutter']);
-    expect(shipLine(0)).toBe('Ship: Skiff (2 crew)'); expect(shipLine(2)).toBe('Ship: Skiff (2 crew)'); expect(shipLine(3)).toBe('Ship: Cutter (4 crew)');
-    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(2), phase: 'lobby', message: '' }).lobbyShip).toBe('Ship: Skiff (2 crew)');
-    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(4), phase: 'lobby', message: '' }).lobbyShip).toBe('Ship: Cutter (4 crew)');
+  it('is the Hound at every crew size since Art-iv-b; the lobby names it', () => {
+    expect([1, 2, 3, 4].map(shipForCrew)).toEqual(['hound', 'hound', 'hound', 'hound']);
+    for (const n of [0, 1, 2, 3, 4]) expect(shipLine(n)).toBe('Ship: Hound (4 crew)');
+    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(2), phase: 'lobby', message: '' }).lobbyShip).toBe('Ship: Hound (4 crew)');
+    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(4), phase: 'lobby', message: '' }).lobbyShip).toBe('Ship: Hound (4 crew)');
     const s = state();
     expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(2), phase: 'running', message: '' }).lobbyShip).toBe('');
   });
