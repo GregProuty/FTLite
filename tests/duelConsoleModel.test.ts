@@ -12,7 +12,7 @@ import { CONSOLE_RESERVE, SIDE, STATION, STATUS, TABS_RIGHT, stationTop } from '
 import { consoleModel, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
 import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/controls';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
+import { readoutHelp, readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { LINE, PAD } from '../src/renderer/src/render/theme';
 
 const layout = parseShip(cutter);
@@ -110,5 +110,17 @@ describe('station panels', () => {
   });
   it('hidden gives null', () => {
     const d = createDuel(layout, 5); expect(model(d, { hidden: true })).toBeNull(); disposeDuel(d);
+  });
+});
+
+describe('the Helm throttle on the console (Artemis spec §4.2, §6.1)', () => {
+  it('shows the level it is given (the local base), else the duel’s; the paused Helm help names the throttle', () => {
+    const d = createDuel(layout, 5);
+    try {
+      expect(model(d)!.helm!.throttle).toBe(0);
+      d.throttle = 3; expect(model(d)!.helm!.throttle).toBe(3);
+      expect(model(d, { throttle: 4 })!.helm!.throttle).toBe(4);
+      expect(readoutHelp('helm')[0]).toBe('W/S THROTTLE   A/D TURN');
+    } finally { disposeDuel(d); }
   });
 });

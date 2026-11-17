@@ -11,7 +11,7 @@ import { chargeRow, type ReadoutRow } from './readoutModel';
 
 export type ConsoleStation = 'helm' | 'weapons' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
-export interface HelmPanel { heading: number; speed: number; held: HeldFlags }
+export interface HelmPanel { heading: number; speed: number; held: HeldFlags; throttle: number }
 export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags }
 export interface ConsoleView {
   station: ConsoleStation;
@@ -22,7 +22,11 @@ export interface ConsoleView {
   weapons: WeaponsPanel | null;
   side: { zoom: string; free: boolean; snapLabel: 'SNAP' | 'CAMERA' } | null;
 }
-export interface ConsoleModelInput { duel: DuelState; me: 0 | 1; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null }
+export interface ConsoleModelInput {
+  duel: DuelState; me: 0 | 1; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null;
+  /** The Helm throttle level to show (Artemis spec §6.1: the local base); the duel's own level when absent. */
+  throttle?: number;
+}
 
 /** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null
  *  for none), `repairNear` whether `repairInReach` finds a repair (E would repair, not sit). */
@@ -46,7 +50,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const t = d.tactical, held = i.held ?? NO_HELD_FLAGS;
   const ship = t.ships[0]!;
   const helm: HelmPanel | null = station === 'helm'
-    ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held }
+    ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle }
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weapons: WeaponsPanel | null = station === 'weapons'

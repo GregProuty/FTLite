@@ -8,7 +8,7 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { STATION, STATUS } from '../src/renderer/src/render/duel/consoleLayout';
+import { STATION, STATUS, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
 import { FONT_NATIVE, PAD, TEXT, textPx } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
@@ -23,7 +23,7 @@ const weaponsConsole: ConsoleView = {
   side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
 };
 const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, ship: 'stand' },
-  weapons: null, helm: { heading: 55, speed: 142, held: { ...NO_HELD_FLAGS, up: true } }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
+  weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
 const view = (console: ConsoleView | null): DuelUiView => ({
   readout: { rows: [{ label: 'HULL', value: '10/40', labelTint: TEXT, valueTint: TEXT }], help: ['TAB  SWITCH'] }, end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console });
@@ -50,12 +50,24 @@ describe('the console screen (spec §2)', () => {
     expect(btn('steer-left').dataset.uiButton).toBe('disabled');
     expect(find('ZOOM 0.90')).toBeUndefined(); expect(find('0.90')).toBeDefined(); expect(find('CAMERA')).toBeDefined();
   });
-  it('on the Helm: THRUST, REV and turn holds; 100 lit while W is held', () => {
+  it('on the Helm: six throttle notches, the set one lit with the pointer and 25 up to it filled; the turn holds; no THRUST or REV hold', () => {
     const { duel } = mount(); act(() => duel.frame(view(helmConsole)));
-    for (const n of ['thrust', 'reverse', 'turn-left', 'turn-right']) expect([n, btn(n)]).not.toEqual([n, null]);
-    expect(document.querySelector('[data-ui-throttle="100"]')?.getAttribute('data-ui-lit')).toBe('1');
-    expect(document.querySelector('[data-ui-throttle="STOP"]')?.getAttribute('data-ui-lit')).toBe('0');
+    for (const n of ['throttle-100', 'throttle-75', 'throttle-50', 'throttle-25', 'throttle-stop', 'throttle-rev', 'turn-left', 'turn-right']) expect([n, btn(n)]).not.toEqual([n, null]);
+    expect([btn('thrust'), btn('reverse')]).toEqual([null, null]);
+    expect(['100', '75', '50', '25', 'stop', 'rev'].map((n) => btn(`throttle-${n}`).dataset.uiButton)).toEqual(['idle', 'idle', 'lit', 'idle', 'idle', 'idle']);
+    expect(['100', '75', '50', '25', 'STOP', 'REV'].map((l) => document.querySelector(`[data-ui-throttle="${l}"]`)?.getAttribute('data-ui-lit'))).toEqual(['0', '0', '1', '1', '0', '0']);
+    expect(texts().filter((t) => t.text === '<' && t.x === STATION.x + 8 + 78).map((t) => t.y)).toEqual([stationTop('helm') + 6 + 18 + 2 * 26 + 2]);
+    expect(find('W/S  THROTTLE')).toBeDefined();
     expect(btn('tab-weapons').dataset.uiButton).toBe('disabled'); expect(btn('snap').dataset.uiButton).toBe('lit');
+  });
+  it('at REV the pointer is on REV and nothing is filled; at 100 every forward notch is', () => {
+    const { duel } = mount();
+    const at = (throttle: number) => view({ ...helmConsole, helm: { ...helmConsole.helm!, throttle } });
+    const filled = () => ['100', '75', '50', '25', 'STOP', 'REV'].map((l) => document.querySelector(`[data-ui-throttle="${l}"]`)?.getAttribute('data-ui-lit'));
+    act(() => duel.frame(at(-1)));
+    expect(filled()).toEqual(['0', '0', '0', '0', '0', '0']); expect(btn('throttle-rev').dataset.uiButton).toBe('lit');
+    act(() => duel.frame(at(4)));
+    expect(filled()).toEqual(['1', '1', '1', '1', '0', '0']); expect(btn('throttle-100').dataset.uiButton).toBe('lit');
   });
 });
 
@@ -83,6 +95,15 @@ describe('the Weapons block layout', () => {
 });
 
 describe('clicks reach the keyboard (spec §6.2)', () => {
+  it('a throttle notch asks for its level on the primary button only; the turn buttons hold A and D', () => {
+    const { duel, input } = mount(); act(() => duel.frame(view(helmConsole)));
+    for (const n of ['100', '75', '50', '25', 'stop', 'rev']) fireEvent.pointerDown(btn(`throttle-${n}`), { button: 0 });
+    expect(input.throttle.mock.calls).toEqual([[4], [3], [2], [1], [0], [-1]]);
+    fireEvent.pointerDown(btn('throttle-50'), { button: 2 });
+    expect(input.throttle).toHaveBeenCalledTimes(6);
+    fireEvent.pointerDown(btn('turn-left'), { button: 0 }); fireEvent.pointerUp(btn('turn-left'));
+    expect(input.hold.mock.calls).toEqual([['KeyA', true], ['KeyA', false]]);
+  });
   it('FIRE holds Space; LAUNCH presses F; a lock room locks; tabs press their action; zoom presses keys', () => {
     const { duel, input } = mount(); act(() => duel.frame(view(weaponsConsole)));
     fireEvent.pointerDown(btn('fire'), { button: 0 }); fireEvent.pointerUp(btn('fire'));

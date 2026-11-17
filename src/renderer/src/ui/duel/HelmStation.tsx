@@ -1,5 +1,6 @@
-// The Helm station block (spec 2026-11-17-artemis-consoles §4.2, Artemis-i): the throttle column (lit from the held
-// W and S keys), heading and speed, and THRUST, REV and turn buttons that hold W, S, A and D.
+// The Helm station block (spec 2026-11-17-artemis-consoles §4.2, Artemis-ii): the set-and-forget throttle (six press
+// notches; the set one lit with a `<` pointer, and the notches from 25 up to it filled), heading and speed, and the turn
+// buttons that hold A and D. W and S step the throttle a notch (§5.4); a notch click asks for its level.
 import { Fragment, memo } from 'react';
 import type { HelmPanel } from '../../render/duel/consoleModel';
 import { STATION, stationTop } from '../../render/duel/consoleLayout';
@@ -13,35 +14,38 @@ import { useCrt } from '../stage/CrtContext';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 
-const NOTCHES = ['100', '75', '50', '25', 'STOP', 'REV'] as const;
+/** The notches top to bottom (spec §4.2): the label, the level the click asks for, the button's name. */
+export const NOTCHES: readonly { label: string; level: number; name: string }[] = [
+  { label: '100', level: 4, name: '100' }, { label: '75', level: 3, name: '75' }, { label: '50', level: 2, name: '50' },
+  { label: '25', level: 1, name: '25' }, { label: 'STOP', level: 0, name: 'stop' }, { label: 'REV', level: -1, name: 'rev' }
+];
+
 export const HelmStation = memo(function HelmStation({ helm }: { helm: HelmPanel }) {
   const actions = useActions(), { crt } = useCrt();
-  const top = stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held;
+  const top = stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held, set = helm.throttle;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT;
-  const lit = h.up && !h.down ? '100' : h.down && !h.up ? 'REV' : 'STOP';
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.helm} />
       <PixelText text="THROTTLE" x={x0} y={y0} size={FONT_NATIVE} tint={dim} />
-      {NOTCHES.map((label, k) => {
-        const y = y0 + 18 + k * 26, on = label === lit;
+      {NOTCHES.map((n, k) => {
+        const y = y0 + 18 + k * 26, filled = n.level >= 1 && n.level <= set;
         return (
-          <Fragment key={label}>
-            <PixelText text={label} x={x0} y={y + 4} size={FONT_NATIVE} tint={main} />
-            <Box x={x0 + 40} y={y} w={14} h={20} attrs={{ 'data-ui-throttle': label, 'data-ui-lit': on ? '1' : '0' }}
-              style={{ background: hex(on ? (crt ? CRT.main : AMBER) : (crt ? CRT.faint : BAR_OFF)), border: `1px solid ${hex(dim)}` }} />
-            {on && <PixelText text="<" x={x0 + 60} y={y + 2} size={FONT_SIZE} tint={main} />}
+          <Fragment key={n.name}>
+            <Button name={`throttle-${n.name}`} label={n.label} x={x0} y={y} w={52} h={22} lit={n.level === set} onPress={() => actions.console.throttle(n.level)} />
+            <Box x={x0 + 58} y={y} w={14} h={22} attrs={{ 'data-ui-throttle': n.label, 'data-ui-lit': filled ? '1' : '0' }}
+              style={{ background: hex(filled ? (crt ? CRT.main : AMBER) : (crt ? CRT.faint : BAR_OFF)), border: `1px solid ${hex(dim)}` }} />
+            {n.level === set && <PixelText text="<" x={x0 + 78} y={y + 2} size={FONT_SIZE} tint={main} />}
           </Fragment>
         );
       })}
       <Box x={STATION.x + 130} y={y0} w={1} h={186} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text={`HDG ${String(helm.heading).padStart(3, '0')}`} x={rx} y={y0} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`SPD ${helm.speed}`} x={rx} y={y0 + 18} size={FONT_SIZE} tint={main} />
-      <Button name="thrust" label="THRUST" hint="W" x={rx} y={y0 + 52} w={148} h={24} lit={h.up} onHold={(on) => actions.console.hold('KeyW', on)} />
-      <Button name="reverse" label="REV" hint="S" x={rx} y={y0 + 82} w={148} h={24} lit={h.down} onHold={(on) => actions.console.hold('KeyS', on)} />
-      <Button name="turn-left" label="<" hint="A" x={rx} y={y0 + 122} w={70} h={24} lit={h.left} onHold={(on) => actions.console.hold('KeyA', on)} />
-      <Button name="turn-right" label=">" hint="D" x={rx + 78} y={y0 + 122} w={70} h={24} lit={h.right} onHold={(on) => actions.console.hold('KeyD', on)} />
-      <PixelText text="HOLD TO TURN" x={rx} y={y0 + 156} size={FONT_NATIVE} tint={dim} />
+      <Button name="turn-left" label="<" hint="A" x={rx} y={y0 + 52} w={70} h={24} lit={h.left} onHold={(on) => actions.console.hold('KeyA', on)} />
+      <Button name="turn-right" label=">" hint="D" x={rx + 78} y={y0 + 52} w={70} h={24} lit={h.right} onHold={(on) => actions.console.hold('KeyD', on)} />
+      <PixelText text="HOLD TO TURN" x={rx} y={y0 + 86} size={FONT_NATIVE} tint={dim} />
+      <PixelText text="W/S  THROTTLE" x={rx} y={y0 + 156} size={FONT_NATIVE} tint={dim} />
     </>
   );
 });

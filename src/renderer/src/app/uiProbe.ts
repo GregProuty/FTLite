@@ -18,7 +18,7 @@ function consoleFixture(which: 'helm' | 'weapons'): DuelUiView {
     side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
   };
   const cv: ConsoleView = which === 'weapons' ? base : { ...base, station: 'helm', tabs: { helm: 'current', weapons: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, ship: 'stand' },
-    weapons: null, helm: { heading: 55, speed: 142, held: { ...NO_HELD_FLAGS, up: true } }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
+    weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
   const row = (label: string, value: string, extra: object = {}) => ({ label, value, labelTint: DIM, valueTint: TEXT, ...extra });
   return {
     readout: { rows: [
