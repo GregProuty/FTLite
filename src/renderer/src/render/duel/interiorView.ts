@@ -116,7 +116,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (c.bar) {
           const w = TILE_PX * 0.8, bx = x - w / 2, by = y - TILE_PX * 0.75;
           marks.rect(bx - 1, by - 1, w + 2, 5).fill({ color: 0x000000, alpha: 0.6 });
-          marks.rect(bx, by, w * c.fill, 3).fill({ color: c.fill < HEALTH_LOW / HEALTH_MAX ? WARN : GOOD });
+          marks.rect(bx, by, w * c.fill, 3).fill({ color: Math.ceil(c.fill * HEALTH_MAX) < HEALTH_LOW ? WARN : GOOD })   // the HEALTH row's rounding;
         }
         if (c.revive > 0) marks.moveTo(x, y).arc(x, y, TILE_PX * 0.45, -Math.PI / 2, -Math.PI / 2 + c.revive * Math.PI * 2).closePath().fill({ color: GOOD, alpha: 0.45 });
         const t = crewLabels[c.pid];

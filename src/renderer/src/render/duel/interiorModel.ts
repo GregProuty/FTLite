@@ -36,7 +36,7 @@ export interface InteriorOverlay { tints: RoomTint[]; markers: RepairMarker[]; c
 export function crewHealthMarks(d: DuelState): CrewHealthMark[] {
   return d.interior.crew.map((eid, pid) => {
     const downed = Life.state[eid] === LifeState.Downed, hp = Health.cur[eid]!, revive = downed ? Life.reviveProgress[eid]! : 0;
-    return { pid, x: Position.x[eid]! * TILE_PX, y: Position.y[eid]! * TILE_PX, fill: hp / HEALTH_MAX, bar: !downed && hp < HEALTH_MAX, downed, revive,
+    return { pid, x: Position.x[eid]! * TILE_PX, y: Position.y[eid]! * TILE_PX, fill: hp / HEALTH_MAX, bar: !downed && Math.ceil(hp) < HEALTH_MAX, downed, revive,
       label: downed ? (revive > 0 ? 'DOWNED - STAY CLOSE' : 'DOWNED') : '' };
   });
 }

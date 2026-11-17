@@ -155,7 +155,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
 
   // Terminal cause: what hit each ship whose hull reached 0 on the final tick, and `downed` for the crew ship when both
   // characters were down (the round is lost with the hull still up, duel-health spec §1.5).
-  const allDowned = d.interior.crew.every((eid) => Life.state[eid] === LifeState.Downed);
+  const allDowned = tac.outcome === Outcome.EnemyWins && d.interior.crew.every((eid) => Life.state[eid] === LifeState.Downed);   // a crew that also won on that tick is not lost to `downed`
   if (tac.outcome !== Outcome.Running) for (let i = 0; i < 2; i++) {
     const downed = i === 0 && allDowned;
     if (tac.systems[i]!.hull > 0 && !downed) continue;
