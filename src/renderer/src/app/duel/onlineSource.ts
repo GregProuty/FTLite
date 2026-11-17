@@ -19,7 +19,12 @@ import { createCameraInput, type DuelView } from './runtime';
 import type { DuelViewSource } from './scene';
 
 /** What the source reads from its client. */
-export interface ConfirmedDuel { state(): DuelState | null; publication(): { publicationSequence: number; tick: number; phase: string } | null }
+export interface ConfirmedDuel {
+  state(): DuelState | null; publication(): { publicationSequence: number; tick: number; phase: string } | null;
+  /** False while the publication is not a live client's (the frozen copy across a reconnect): no arrival gap is timed
+   *  across it. Absent means always live. */
+  live?(): boolean;
+}
 interface Counters { shots: number; laserHits: number; launched: number; ended: number; missileHits: number; contacts: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. */
 export const duelCounters = (t: TacticalState, i: number): Counters => {
@@ -88,8 +93,10 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     crewPrev = latest ? latest.crew : d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
     prevRepair = latest ? latest.repair : [...d.repair];
     gap = lastTick >= 0 ? Math.max(1, p.tick - lastTick) : 3;
-    if (lastTick >= 0) { gaps.push(now - receivedAt); if (gaps.length > 4096) gaps.shift(); }
-    lastTick = p.tick; receivedAt = now;
+    // The record's jitter is live inter-arrival only: no gap is timed to or from the frozen copy (the reconnect time).
+    const live = client.live?.() ?? true;
+    if (lastTick >= 0 && live) { gaps.push(now - receivedAt); if (gaps.length > 4096) gaps.shift(); }
+    lastTick = live ? p.tick : -1; receivedAt = now;
     latest = { bodies: t.ships.map(body), missiles: t.ships.map((_, i) => missileBody(missileOf(t, i))), crew: d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! })),
       counters: t.ships.map((_, i) => duelCounters(t, i)), repair: [...d.repair] };
     return true;
@@ -97,7 +104,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: { moveX: number; moveY: number }): void;
-    arrivals(): readonly number[]; ready(): boolean;
+    arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
     get duel() { return duel(); },
     get seed() { return duel().tactical.seed; },
@@ -137,7 +144,9 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     /** The held axes this seat last sent (its own console's predicted path). */
     sent(held) { sentHeld = { moveX: held.moveX, moveY: held.moveY }; },
     /** Publication inter-arrival gaps in milliseconds, for the record's jitter. */
-    arrivals: () => gaps
+    arrivals: () => gaps,
+    /** The gaps since the last take, cleared (one round's record). */
+    takeArrivals: () => gaps.splice(0)
   };
   return source;
 }

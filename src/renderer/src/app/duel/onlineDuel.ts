@@ -66,14 +66,16 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let client: ReturnType<typeof createDuelRemoteClient> | null = null, link: Link | null = null, source: OnlineDuelSource | null = null, scene: DuelScene | null = null;
   let descriptor: OnlinePortDescriptor | null = null, status: OnlineStatus | null = null;
   let frozen: DuelState | null = null, frozenPublication: { publicationSequence: number; tick: number; phase: string; pauseReason: string | null; pauseOwner: number | null } | null = null;
-  let focused = true, blocked = false, synced = false, presenceSent = false, producing = false, disposed = false, leaveConfirm = CLOSED_PROMPT;
+  let focused = true, blocked = false, synced = false, linkClosed = false, presenceSent = false, producing = false, disposed = false, leaveConfirm = CLOSED_PROMPT;
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), chargePressed = false, releaseSentAt = -1, cancel = () => {}, offClose = () => {};
   let lastHeld = { moveX: 0, moveY: 0, interactHeld: false };
-  const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [];
+  const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   function sampleIdle(): KeySample { return { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }; }
-  const state = (): DuelState | null => client?.state() ?? frozen;
-  const publication = () => client?.publication() ?? frozenPublication;
+  // Once the link has closed the frozen copy is the view, whatever the closed client still holds.
+  const state = (): DuelState | null => (linkClosed ? null : client?.state()) ?? frozen;
+  const publication = () => (linkClosed ? null : client?.publication()) ?? frozenPublication;
+  const live = (): boolean => !!client && !linkClosed && !!client.publication();
   function hint(phase: 'synced' | 'running' | 'paused' | 'ended') { if (descriptor) void deps.api.viewState(descriptor.epoch, phase).catch(() => {}); }
   function send(command: DuelCommand): void {
     if (!client || !descriptor) return;
@@ -93,6 +95,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     client?.dispose(); client = null; link?.close('renderer-detached'); link = null;
   }
   function freeze(): void {
+    if (linkClosed) return;   // frozen at the close: the copy is final until the next attach
     const d = client?.state(), p = client?.publication();
     if (!d || !p || !descriptor) return;
     if (frozen) disposeDuel(frozen);
@@ -106,7 +109,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       // rttMs is null in H-2a: the renderer's port link has no network RTT (H-2b reads the RTC window's stats).
       summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: null },
       // Per round: the disconnects and pauses since the last record (the first attach is not a disconnect).
-      jitter: arrivalJitter(source?.arrivals() ?? []), disconnects: Math.max(0, attaches - roundAttaches), pauses: pauses - roundPauses };
+      jitter: arrivalJitter([...roundGaps.splice(0), ...(source?.takeArrivals() ?? [])]), disconnects: Math.max(0, attaches - roundAttaches), pauses: pauses - roundPauses };
     heldSamples.length = 0; commandSamples.length = 0; roundAttaches = Math.max(1, attaches); roundPauses = pauses; startedAtIso = new Date().toISOString();
     void Promise.resolve(deps.recordDuel?.(r)).catch(() => {});
   }
@@ -146,10 +149,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       send({ kind: 'laserLock', room });
     }
-    // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent.
+    // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent,
+    // a release swallowed by a pause included (Space let go while paused leaves chargePressed set).
     const held = d.tactical.systems[0].fireHeld, now = deps.now();
     if (p.fireDown > 0 && canCharge(d.tactical, 0)) { send({ kind: 'laserCharge', held: true }); chargePressed = true; }
-    if ((p.fireUp > 0 && (chargePressed || held)) || (!k.fireHeld && held && !chargePressed && now - releaseSentAt > 250)) {
+    if ((p.fireUp > 0 && (chargePressed || held)) || (!k.fireHeld && held && now - releaseSentAt > 250)) {
       send({ kind: 'laserCharge', held: false }); chargePressed = false; releaseSentAt = now;
     }
     if (p.launch > 0 && canLaunch(d.tactical, 0)) send({ kind: 'missileLaunch' });
@@ -161,7 +165,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const k = keyboard.sample();
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut } };
     const d = client?.state(), p = client?.publication();
-    if (!client || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
+    if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
     const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
     // Escape and the leave prompt (spec §7): a prompt from a round that is no longer decided and running closes first.
     const keys = leavePromptKeys(leaveConfirm, d, p.phase, k.presses);
@@ -186,7 +190,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   function bannerText(): string | null {
     const p = publication();
     // A deliberate Leave (the end card's or the menu's button) saves, then goes idle or ended: no reconnect is coming.
-    if (!client && frozen) return status && LEAVING_PHASES.includes(status.phase) ? 'LEAVING…' : 'CONNECTION LOST — RECONNECTING';
+    if ((!client || linkClosed) && frozen) return status && LEAVING_PHASES.includes(status.phase) ? 'LEAVING…' : 'CONNECTION LOST — RECONNECTING';
     if (leaveConfirm.open) return 'LEAVE THE DUEL?   ENTER: LEAVE   ESC: STAY';
     if (p?.phase !== 'paused') return null;
     const reason = (p as { pauseReason?: string | null }).pauseReason, owner = (p as { pauseOwner?: number | null }).pauseOwner;
@@ -197,14 +201,16 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     attach(next: OnlinePortDescriptor, port: MessagePort): void {
       if (disposed || next.epoch <= (descriptor?.epoch ?? 0)) { port.close(); return; }
       observe(); release();
-      descriptor = next; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; attaches++;
+      // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
+      if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
+      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED' });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
-      offClose = link.onClose(() => { freeze(); stopInput(); });
+      offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
-      source = createOnlineDuelSource({ client: { state, publication }, seat: next.seatId as 0 | 1, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H } });
+      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId as 0 | 1, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H } });
     },
     setStatus(next: OnlineStatus): void {
       status = next;
@@ -212,7 +218,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     },
     setFocused(value: boolean): void { if (focused === value) return; focused = value; if (!value) stopInput(); },
     setInputBlocked(value: boolean): void { if (blocked === value) return; blocked = value; if (value) stopInput(); },
-    pause(): void { const p = client?.publication(); if (focused && synced && client && p && (p.phase === 'running' || p.phase === 'paused')) send({ kind: 'setPaused', paused: p.phase === 'running' }); },
+    pause(): void { const p = client?.publication(); if (focused && synced && client && !linkClosed && p && (p.phase === 'running' || p.phase === 'paused')) send({ kind: 'setPaused', paused: p.phase === 'running' }); },
     frame(): void {
       if (disposed || !scene || !source) return;
       const now = deps.now(), dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 1 / 60; lastFrame = now;

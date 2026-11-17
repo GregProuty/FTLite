@@ -2,13 +2,13 @@
 // of a committed start, the mirror check, the mode adapter and the sector test-only gate, and the playtest record log.
 import { describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { duelCompatibility, duelInit, duelJoinCompatibilities, validateCommittedDuelStart, validateDuelMirror } from '../src/main/network/onlineDuel';
 import { onlineModeFor, validateModeMirror } from '../src/main/network/onlineModes';
 import { sectorCompatibility } from '../src/main/network/onlineSector';
-import { appendDuelRecord, duelRecordPath } from '../src/main/network/duelRecords';
+import { appendDuelRecord, duelRecordCallAllowed, duelRecordPath } from '../src/main/network/duelRecords';
 import { createOnlineSession } from '../src/main/network/onlineSession';
 import { nextValidSeed, seedFromRunId } from '../src/renderer/src/sim/duel/seeds';
 import { DUEL_RECORD_MAX_BYTES, DUEL_RECORD_MAX_MS, latencyFigure, arrivalJitter, validateDuelRecord, type DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
@@ -57,10 +57,10 @@ describe('the duel online mode in main (spec §2)', () => {
 });
 
 describe('the session modes and the sector test-only entry (spec §2, §10)', () => {
-  function owner(sectorTestEntry?: boolean) {
+  function owner(sectorTestEntry?: boolean, seat: unknown = null) {
     const create = vi.fn(async () => { throw { code: 'unavailable' }; }), join = vi.fn(async () => { throw { code: 'not-found' }; });
-    const store = { load: async () => null, save: async () => {}, clear: async () => {} };
-    const session = createOnlineSession({ config: { enabled: true, baseUrl: 'http://127.0.0.1:8787', allowInsecureLocalhost: true, iceMode: 'loopback' }, seatStore: store as never, mirrorStore: store as never,
+    const store = { load: async () => null, save: async () => {}, clear: async () => {} }, seatStore = { ...store, load: async () => seat };
+    const session = createOnlineSession({ config: { enabled: true, baseUrl: 'http://127.0.0.1:8787', allowInsecureLocalhost: true, iceMode: 'loopback' }, seatStore: seatStore as never, mirrorStore: store as never,
       service: () => ({ create, join, close() {}, onEvent: () => () => {} }) as never, platform: { onVisibleGone: () => () => {} } as never,
       clock: { nowMs: () => 0, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: (id) => clearTimeout(id as never) }, nonce: () => 'f'.repeat(32), sectorTestEntry });
     return { session, create, join };
@@ -80,6 +80,22 @@ describe('the session modes and the sector test-only entry (spec §2, §10)', ()
     const on = owner(true);
     await on.session.dispatch({ type: 'host', mode: 'sector', capacity: 2 });
     expect(on.create.mock.calls).toEqual([[sectorCompatibility(2), 2]]);
+  });
+  it('refuses a saved sector seat on Reconnect and Retry unless started for the sector entry, and does not offer them', async () => {
+    const sectorSeat = { version: 1, serviceOrigin: 'http://127.0.0.1:8787', roomId: 'a'.repeat(32), joinCode: 'ABCDEFGH', compatibility: sectorCompatibility(2),
+      seatId: 1, seatGeneration: 1, seatToken: 'T'.repeat(43) };
+    const loaded = async (o: ReturnType<typeof owner>) => { for (let k = 0; k < 20 && !o.session.status().persistent; k++) await new Promise((r) => setTimeout(r, 0)); };
+    const off = owner(false, sectorSeat); await loaded(off);
+    expect(off.session.status().persistent).toBe(true);
+    expect(off.session.status().actions).not.toContain('reconnect');
+    expect(off.session.status().actions).not.toContain('retry');
+    expect(await off.session.dispatch({ type: 'reconnect' })).toEqual({ ok: false, code: 'storage-invalid' });
+    expect(await off.session.dispatch({ type: 'retry' })).toEqual({ ok: false, code: 'storage-invalid' });
+    expect(off.join).not.toHaveBeenCalled();
+    const on = owner(true, sectorSeat); await loaded(on);
+    expect(on.session.status().actions).toEqual(expect.arrayContaining(['reconnect', 'retry']));
+    await on.session.dispatch({ type: 'reconnect' });
+    expect(on.join.mock.calls[0]).toEqual(['ABCDEFGH', sectorCompatibility(2), 'T'.repeat(43)]);
   });
 });
 
@@ -115,5 +131,25 @@ describe('the duel playtest record (spec §8)', () => {
       const lines = readFileSync(path, 'utf8').trim().split('\n');
       expect(lines.map((l) => JSON.parse(l).round)).toEqual([2, 2]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it("caps the day's file: an append past the cap is refused and writes nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ftlite-duel-record-'));
+    try {
+      const now = new Date(2026, 10, 16, 9, 30), line = Buffer.byteLength(JSON.stringify(validateDuelRecord(record))) + 1;
+      expect(await appendDuelRecord(dir, record, now, 2 * line)).toBe(true);
+      expect(await appendDuelRecord(dir, record, now, 2 * line)).toBe(true);
+      expect(await appendDuelRecord(dir, record, now, 2 * line)).toBe(false);
+      expect(statSync(duelRecordPath(dir, now)).size).toBe(2 * line);
+      expect(await appendDuelRecord(dir, record, new Date(2026, 10, 17, 9, 30), 2 * line)).toBe(true);   // a new day starts a new file
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it("the duel:record channel answers only its own window's main frame, with exactly one argument", () => {
+    const mainFrame = {}, contents = { mainFrame }, own = { sender: contents, senderFrame: mainFrame };
+    expect(duelRecordCallAllowed(contents, own, [record])).toBe(true);
+    expect(duelRecordCallAllowed(contents, { sender: {}, senderFrame: mainFrame }, [record])).toBe(false);   // a foreign sender
+    expect(duelRecordCallAllowed(contents, { sender: contents, senderFrame: {} }, [record])).toBe(false);   // a subframe
+    expect(duelRecordCallAllowed(contents, own, [])).toBe(false);
+    expect(duelRecordCallAllowed(contents, own, [record, record])).toBe(false);
+    expect(duelRecordCallAllowed(null, own, [record])).toBe(false);   // the window is gone
   });
 });

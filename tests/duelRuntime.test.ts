@@ -310,6 +310,17 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.duel.present).toEqual([false, true]);
     rt.dispose();
   });
+  it('the end card sends neutral held input, as online does (H-2 spec §3, §7)', () => {
+    const { rt, hold, tick } = rig(7);
+    hold({ moveX: 1, moveY: -1, interactHeld: true }); tick();
+    expect(rt.held()[0]).toEqual({ moveX: 1, moveY: -1, interactHeld: true });
+    rt.duel.tactical.systems[1].hull = 0; tick();
+    expect(rt.ended()).toBe(true);
+    tick(); tick();
+    expect(rt.held()[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    expect([rt.axes(), rt.steer()]).toEqual([{ turn: 0, thrust: 0 }, 0]);
+    rt.dispose();
+  });
 });
 
 describe('weapons commands match the sim (H-1b impl review)', () => {

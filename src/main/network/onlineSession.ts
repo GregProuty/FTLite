@@ -73,7 +73,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     value.mirror = { ...value.mirror, receivedAgeMs: mirrorReceipt === null ? null : Math.max(0, clock.nowMs() - mirrorReceipt) };
     const idle = value.phase === 'idle' || value.phase === 'error';
     const canStart = value.role === 'host' && value.phase === 'lobby' && !!value.snapshot?.seats.every(s => !s.occupied || s.ready && s.connected) && !!context?.peers?.allReady();
-    value.actions = !config.enabled || disposed ? ['forget-seat'] : idle ? ['host', 'join', ...(saved ? ['reconnect', 'retry'] as const : []), 'forget-seat']
+    value.actions = !config.enabled || disposed ? ['forget-seat'] : idle ? ['host', 'join', ...(saved && (saved.compatibility.modeId !== 'sector' || deps.sectorTestEntry) ? ['reconnect', 'retry'] as const : []), 'forget-seat']
       : value.phase === 'saved' ? ['reconnect', ...(context?.seat && !context.claiming && value.snapshot?.phase === 'lost' && value.mirror.committed && value.snapshot.seats[value.ownSeat!]?.occupied ? ['rehost'] as const : []), 'leave', 'forget-seat']
       : value.phase === 'lobby' ? ['ready', ...(canStart ? ['start'] as const : []), ...(value.role === 'host' ? ['remove-seat'] as const : []), 'leave', 'forget-seat'] : ['leave', 'forget-seat'];
     for (const cb of [...listeners]) { try { cb(copyOnlineStatus(value)); } catch {} }
@@ -394,13 +394,15 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
       throw error;
     } finally { c.claiming = false; }
   }
+  /** A mode this main process may enter: the sector only on the test-only entry (H-2 spec §10), on every path. */
+  function allowedMode(mode: OnlineModeAdapter | undefined): OnlineModeAdapter | undefined { return mode && (mode.modeId !== 'sector' || deps.sectorTestEntry) ? mode : undefined; }
   function identityOf(s: RoomSnapshot): HostIdentity { return { modeId: s.compatibility.modeId, schemaVersion: s.compatibility.schemaVersion,
     simVersion: s.compatibility.simVersion, contentDigest: s.compatibility.contentDigest, hostGeneration: s.hostGeneration }; }
   async function establish(action: Extract<OnlineAction, { type: 'host' | 'join' | 'reconnect' | 'retry' }>, signal: AbortSignal, recovering: boolean) {
     if (!config.enabled) throw onlineFault('online-disabled');
     // The context's mode (H-2 spec §2): the host's from its action, a joiner's from its requested mode (the duel by
     // default), a reconnect's from the saved seat's compatibility (checked again once the credential is loaded).
-    const requested = action.type === 'host' || action.type === 'join' ? onlineModeFor(action.mode ?? 'duel', deps.duelTestSeed) : onlineModeFor(saved?.compatibility.modeId ?? 'duel', deps.duelTestSeed);
+    const requested = action.type === 'host' || action.type === 'join' ? onlineModeFor(action.mode ?? 'duel', deps.duelTestSeed) : allowedMode(onlineModeFor(saved?.compatibility.modeId ?? 'duel', deps.duelTestSeed));
     const c: Context = { epoch: ++epoch, abort: new AbortController(), service: deps.service(), mode: requested ?? duelOnlineMode(deps.duelTestSeed), removers: [], gameRemovers: [], gameEpoch: 0, ports: new Set(), timers: new Set(), active: false, recovering, attached: new Set() };
     context = c;
     const cancel = () => { c.abort.abort(signal.reason ?? onlineFault('cancelled')); void cleanup(c); };
@@ -427,8 +429,8 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
         const credential = saved ?? await wait(c, deps.seatStore.load());
         check(c);
         if (!credential || !validateSavedSeat(credential) || credential.serviceOrigin !== config.baseUrl) throw onlineFault('storage-invalid');
-        const mode = onlineModeFor(credential.compatibility.modeId, deps.duelTestSeed);
-        if (!mode) throw onlineFault('storage-invalid');
+        const mode = allowedMode(onlineModeFor(credential.compatibility.modeId, deps.duelTestSeed));
+        if (!mode) throw onlineFault('storage-invalid');   // includes a saved sector seat while the test-only entry is off
         saved = credential; c.mode = mode;
         seat = await wait(c, c.service.join(credential.joinCode, credential.compatibility, credential.seatToken));
         if (seat.snapshot.roomId !== credential.roomId || seat.seatId !== credential.seatId || seat.seatToken !== credential.seatToken) throw onlineFault('unauthorized');

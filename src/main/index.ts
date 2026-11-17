@@ -10,7 +10,7 @@ import { registerOnlineExit } from './network/onlineExit';
 import { createSeatStore } from './network/seatStore';
 import { createMirrorStore } from './network/mirrorStore';
 import { validateModeMirror } from './network/onlineModes';
-import { appendDuelRecord } from './network/duelRecords';
+import { appendDuelRecord, duelRecordCallAllowed } from './network/duelRecords';
 import { createRoomServiceClient } from '../network/session/serviceClient';
 import { DUEL_RECORD_CHANNEL, FULLSCREEN_KEY, WINDOW_FULLSCREEN_CHANNEL } from '../shared/onlineSession';
 declare const __FTLITE_PACKAGED_SERVICE_ORIGIN__: string;
@@ -80,7 +80,7 @@ function createWindow(): void {
   // The duel playtest record (H-2 spec §8), trusted as the fullscreen channel is: only this window's main frame.
   ipcMain.removeHandler(DUEL_RECORD_CHANNEL);
   ipcMain.handle(DUEL_RECORD_CHANNEL, (event, ...args: unknown[]) => {
-    if (win.isDestroyed() || win.webContents.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame || args.length !== 1) return false;
+    if (!duelRecordCallAllowed(win.isDestroyed() || win.webContents.isDestroyed() ? null : win.webContents, event, args)) return false;
     return appendDuelRecord(app.getPath('userData'), args[0]);
   });
   win.on('closed', () => { ipcMain.removeHandler(WINDOW_FULLSCREEN_CHANNEL); ipcMain.removeHandler(DUEL_RECORD_CHANNEL); });
