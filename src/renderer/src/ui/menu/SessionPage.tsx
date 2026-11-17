@@ -59,7 +59,7 @@ export function SessionPage(props: { playing: boolean }) {
       {status?.mirror.localPending && <span data-testid="pending-save">Local pending save: not committed to the service.</span>}
       {status?.mirror.error && <span data-testid="mirror-error">{ERRORS[status.mirror.error] ?? 'Checkpoint storage is unavailable.'}</span>}
       {(status?.phase === 'saved' || status?.phase === 'rehosting') && <MenuButton id="rehost" text="Re-host" onClick={actions.rehost} enabled={can(v, 'rehost')} />}
-      {status?.retryAtMs !== null && status?.retryAtMs !== undefined && <Countdown retryAtMs={status.retryAtMs} />}
+      {status?.retryAtMs !== null && status?.retryAtMs !== undefined && <Countdown key={status.retryAtMs} retryAtMs={status.retryAtMs} />}
       {status && !status.persistent && status.snapshot && <span data-testid="storage-warning">Seat not saved: restart recovery unavailable.</span>}
       {has('retry') && <MenuButton id="retry" text="Retry" onClick={actions.retry} enabled={can(v, 'retry')} />}
       {has('reconnect') && <MenuButton id="reconnect" text="Reconnect saved seat" onClick={actions.reconnect} enabled={can(v, 'reconnect')} />}

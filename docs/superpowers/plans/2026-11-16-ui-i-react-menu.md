@@ -43,7 +43,7 @@
 | `src/renderer/src/ui/store.ts` | `createUiStore(init)`: the vanilla zustand store. |
 | `src/renderer/src/ui/actions.ts` | `createUiActions(deps)`: every menu action, the operation-id guard, the preload calls. |
 | `src/renderer/src/ui/context.tsx` | `UiContext`, `useUi(selector)`, `useActions()`. |
-| `src/renderer/src/ui/useNow.ts` | `useNow(periodMs)`: re-renders on each wall-clock period boundary. |
+| `src/renderer/src/ui/useNow.ts` | `useNow(periodMs, phaseMs)`: re-renders at each wall-clock time t ≡ phaseMs (mod periodMs), so seconds text changes when its value does. |
 | `src/renderer/src/ui/RegionBoundary.tsx` | The per-region error boundary with a reset key. |
 | `src/renderer/src/ui/UiRoot.tsx` | `<UiRoot>`: the Menu region inside its boundary. |
 | `src/renderer/src/ui/mount.tsx` | `mountUi({ el, store, actions })`. |
