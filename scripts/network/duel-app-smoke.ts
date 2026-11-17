@@ -163,8 +163,11 @@ async function main() {
     clearTimeout(watchdog);
     for (const app of processes) if (!app.exited) { try { const done = app.request('shutdown'); await Promise.race([done, delay(6000)]); } catch { /* forced below */ } await kill(app); }
     // Both machines' playtest logs, beside the report, for scripts/duel-playtest-report.ts (exact paths only).
-    try {
-      const copies = join(resolve(reportPath, '..'), 'records');
+    // The recursive delete is only ever under out/: a report path elsewhere is refused, its records not copied.
+    const evidence = resolve(reportPath, '..'), outRoot = resolve('out') + sep;
+    if (!evidence.startsWith(outRoot)) failure ??= 'report path outside out/: records not copied';
+    else try {
+      const copies = join(evidence, 'records');
       rmSync(copies, { recursive: true, force: true });
       for (const profile of ['host', 'guest']) {
         const from = join(directory, profile, 'playtest');

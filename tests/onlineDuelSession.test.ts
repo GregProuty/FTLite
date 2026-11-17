@@ -43,7 +43,7 @@ function stubClient() {
 }
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
-  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[]
+  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[], overlay: [] as (readonly string[] | null)[]
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -56,6 +56,11 @@ vi.mock('../src/network/portLink', () => ({
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   createDuelScene: () => ({ draw: (_source: unknown, _dt: number, opts: { banner: string | null }) => { h.draws.push({ banner: opts.banner }); }, dispose() {} })
+}));
+// The F3 overlay's Pixi draw: the lines (or null for hidden) it was last given.
+vi.mock('../src/renderer/src/render/duel/latencyOverlay', async (actual) => ({
+  ...(await actual<typeof import('../src/renderer/src/render/duel/latencyOverlay')>()),
+  createLatencyOverlay: () => ({ draw: (lines: readonly string[] | null) => { h.overlay.push(lines); }, destroy() {} })
 }));
 // Imported after the mocks are registered (vi.mock is hoisted above every import).
 import { createOnlineDuelSession } from '../src/renderer/src/app/duel/onlineDuel';
@@ -81,14 +86,14 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
 function rig(seat: 0 | 1, api: object = {}) {
   let now = 1000, pending: (() => void) | null = null;
   const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createDuel(CUTTER, 7);
   const session = createOnlineDuelSession({
-    renderer: { app: { canvas: target() } } as never, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
+    renderer: { app: { canvas: target() }, assets: { fontFamily: 'test' } } as never, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
     scheduler: { schedule: (_ms, cb) => { pending = cb; return () => { if (pending === cb) pending = null; }; } },
     api: { viewState: async () => ({ ok: true }), ...api } as never, leave, recordDuel: (r) => { records.push(r); }
   });
@@ -242,6 +247,21 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
         ? [['guest', 'internet', 60], ['guest', 'internet', null]] : [['host', 'loopback', 60], ['host', 'loopback', null]]);
       r.dispose();
     }
+  });
+  it('the F3 overlay drops the live RTT when main has no figure (the label stays) and hides when there is nothing to draw', async () => {
+    const flush = () => new Promise((done) => setTimeout(done, 0));
+    let stats: { route: 'lan' | 'internet'; rttMs: number } | null = null;
+    const r = rig(1, { linkStats: async () => stats }); r.attach(); await flush();
+    stats = { route: 'internet', rttMs: 40 }; r.pump(1001); await flush();
+    r.key('keydown', 'F3'); r.session.frame();
+    expect(h.overlay.at(-1)).toContain('RTT 40 MS');
+    stats = null; r.pump(1001); await flush(); r.session.frame();
+    expect(h.overlay.at(-1)?.[0]).toContain('INTERNET');
+    expect(h.overlay.at(-1)).toContain('RTT - MS');
+    // A new attach whose client has published nothing yet, with no frozen copy: no state to draw.
+    r.session.attach(descriptor(99, 1), { close() {} } as unknown as MessagePort); r.session.frame();
+    expect(h.overlay.at(-1)).toBeNull();
+    r.dispose();
   });
   it("without a link figure the guest's transport stays null, as in H-2a", () => {
     const r = rig(1), c = r.attach();

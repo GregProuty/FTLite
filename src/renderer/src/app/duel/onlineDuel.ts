@@ -85,7 +85,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (!deps.api.linkStats || polling || now - lastPoll < LINK_POLL_MS) return;
     polling = true; lastPoll = now;
     void deps.api.linkStats().then((s) => {
-      if (disposed || !s) return;
+      if (disposed) return;
+      // No figure now: the label stays (Decision 4), the live RTT does not.
+      if (!s) { rttMs = null; return; }
       route = s.route; rttMs = s.rttMs; roundRtt.push(s.rttMs); if (roundRtt.length > 4096) roundRtt.shift();
     }, () => {}).finally(() => { polling = false; });
   }
@@ -238,9 +240,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     setInputBlocked(value: boolean): void { if (blocked === value) return; blocked = value; if (value) stopInput(); },
     pause(): void { const p = client?.publication(); if (focused && synced && client && !linkClosed && p && (p.phase === 'running' || p.phase === 'paused')) send({ kind: 'setPaused', paused: p.phase === 'running' }); },
     frame(): void {
-      if (disposed || !scene || !source) return;
+      if (disposed) return;
+      // Nothing to draw: hide the overlay rather than freeze it.
+      if (!scene || !source) { overlay?.draw(null); return; }
       const now = deps.now(), dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 1 / 60; lastFrame = now;
-      const d = state(); if (!d) return;
+      const d = state(); if (!d) { overlay?.draw(null); return; }
       source.frame(dt, focused && !blocked ? cameraKeys : null, focused && !blocked ? pointer.sample() : null);
       cameraKeys = keysOnly(sampleIdle());
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;

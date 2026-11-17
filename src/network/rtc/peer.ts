@@ -178,6 +178,8 @@ export function createRtcPeer({attemptId,role,identity: suppliedIdentity,localTi
   async function sampleStats() {
     try {
       const report=await pc!.getStats();if(!alive())return;
+      // Each sample stands alone: no selected pair now means no route or RTT, so main's 5 s cut-off applies to a quiet link.
+      route=null;rtt=null;
       // DOM's minimal RTCStatsReport typing only promises forEach. Retain no raw report in public state.
       const find=(id: unknown): unknown=>{let found: unknown;report.forEach((record: unknown)=>{if(rtcRecord(record) && record.id===id)found=record;});return found;};
       let pair: Record<string,unknown> | undefined;
@@ -191,7 +193,7 @@ export function createRtcPeer({attemptId,role,identity: suppliedIdentity,localTi
         const seconds=pair.currentRoundTripTime;
         route=rtcRoute(local,remote,iceServers.length===0); rtt=typeof seconds==='number' && Number.isFinite(seconds) && seconds>=0 && seconds<=60?seconds*1000:null;
       }
-    }catch{} finally{if(alive())scheduleStats();}
+    }catch{route=null;rtt=null;} finally{if(alive())scheduleStats();}
   }
   const api: RtcPeer={ready,receiveSignal,close:()=>fail('rtc-closed'),diagnostics,linkFigures:()=>({route,rttMs:rtt})};
   try {

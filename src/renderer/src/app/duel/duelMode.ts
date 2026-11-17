@@ -6,11 +6,11 @@ import type { ShipLayout } from '../../sim/ship/schema';
 import type { Renderer } from '../../render/renderer';
 import { computeLetterbox } from '../../render/letterbox';
 import { endModel } from '../../render/duel/endScreen';
-import { soloDuelRecord, type DuelPlaytestRecord } from '../../net/duelRecord';
-import type { DuelRoundRecord } from '../../sim/duel/summary';
+import type { DuelPlaytestRecord } from '../../net/duelRecord';
 import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
 import { createDuelRuntime } from './runtime';
 import { createDuelScene } from './scene';
+import { soloRecorder } from './soloRecorder';
 
 export interface DuelModeDeps {
   renderer: Renderer;
@@ -41,15 +41,10 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
-    seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => record(summary)
+    seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });
   // The solo record (H-2 spec §8, Helm §11a); `seat` is the character the keyboard drives when the round is decided.
-  let startedAtIso = new Date().toISOString(), pauses = 0, wasPaused = false;
-  function record(summary: DuelRoundRecord): void {
-    const r = soloDuelRecord(summary, { seat: runtime.active(), helmPlayer: runtime.duel.helmPlayer, startedAtIso, pauses });
-    pauses = 0; startedAtIso = new Date().toISOString();
-    void Promise.resolve(deps.recordDuel?.(r)).catch(() => {});
-  }
+  const solo = soloRecorder({ now: () => new Date().toISOString(), active: () => runtime.active(), helmPlayer: () => runtime.duel.helmPlayer });
 
   const onBlur = (): void => runtime.pause('blur');
   const onFocus = (): void => runtime.resume('blur');
@@ -64,8 +59,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     runtime.frame(dt);
     if (deps.onExit && runtime.menuRequested()) { deps.onExit(); return; }   // the caller disposes this duel
     const d = runtime.duel, userPaused = runtime.reasons().has('user');
-    if (userPaused && !wasPaused) pauses++;
-    wasPaused = userPaused;
+    solo.framePaused(userPaused);
     const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
     scene.draw(runtime, dt, { banner: userPaused ? pauseText : null, layerPaused: userPaused, end: endModel(d.tactical.outcome, ticks, `ENTER: REMATCH${exitHint}`) });
   };

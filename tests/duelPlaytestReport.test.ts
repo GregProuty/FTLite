@@ -56,6 +56,16 @@ describe('the duel playtest report (spec §8, §9)', () => {
     // Invalid lines are counted, not fatal.
     expect(parseRecords(`${JSON.stringify(records[0])}\nnot json\n{"version":1}\n\n`)).toMatchObject({ invalid: 2, records: [records[0]] });
   });
+  it('counts the records dropped as duplicates (a replayed seed) and warns in the header line', () => {
+    // A second room from room A's seed on another day: its round 0 host and guest records collide with room A's.
+    const replay = [record('host', 0, A[0]!.seed, 0, { at: '2026-11-17T12:00:00.000Z' }), record('guest', 0, A[0]!.seed, 0, { transport: 'lan', at: '2026-11-17T12:00:00.000Z' })];
+    expect(groupRooms([...records, ...replay]).duplicates).toBe(2);
+    expect(groupRooms([...records, records[0]!]).duplicates).toBe(0);   // the same record read twice is not a second room
+    expect(groupRooms(records).duplicates).toBe(0);
+    const header = formatReport({ records: [...records, ...replay], invalid: 0, checklist: null, files: 2 }).split('\n')[2]!;
+    expect(header).toContain('**Warning: 2 duplicate record(s) dropped');
+    expect(formatReport({ records, invalid: 0, checklist: null, files: 2 })).not.toContain('duplicate');
+  });
   it('reads §16 as three sessions with at least 4 of 5 yes, one with a non-owner pair', () => {
     const owner4 = session('s1', [], 'owner', [true, true, true, true, false]), other5 = session('s2', [], 'non-owner', [true, true, true, true, true]);
     const owner3 = session('s3', [], 'owner', [true, true, true, false, false]), owner5 = session('s4', [], 'owner', [true, true, true, true, true]);

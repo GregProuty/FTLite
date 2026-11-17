@@ -49,14 +49,18 @@ function mode<T>(values: readonly (T | null)[]): T | null {
   for (const [v, c] of counts) if (c > n) { best = v; n = c; }
   return best;
 }
-/** Merge online records into rooms; solo records are returned apart. Duplicate records of one round and role keep the first. */
-export function groupRooms(records: readonly DuelPlaytestRecord[]): { rooms: Room[]; solo: DuelPlaytestRecord[] } {
+/** Merge online records into rooms; solo records are returned apart. Duplicate records of one round and role keep the first;
+ *  `duplicates` counts the dropped ones that started at another time (two rooms replayed from one seed merge). */
+export function groupRooms(records: readonly DuelPlaytestRecord[]): { rooms: Room[]; solo: DuelPlaytestRecord[]; duplicates: number } {
   const solo = records.filter((r) => r.session === 'solo'), rounds = new Map<string, RoomRound>();
+  let duplicates = 0;
   for (const r of records) {
     if (r.session !== 'online') continue;
     const key = roundKey(r), entry = rounds.get(key) ?? { round: r.round, seed: r.seed, baseTick: r.summary.baseTick, summary: r.summary, host: null, guest: null };
     if (r.role === 'host' && !entry.host) { entry.host = r; entry.summary = r.summary; }   // the host's record is authoritative for summaries
     if (r.role === 'guest' && !entry.guest) entry.guest = r;
+    const kept = r.role === 'host' ? entry.host : entry.guest;
+    if (kept !== r && kept && kept.startedAtIso !== r.startedAtIso) duplicates++;
     rounds.set(key, entry);
   }
   // Round index first, so every round k - 1 is placed before round k whichever machine's clock wrote it; then by time.
@@ -69,7 +73,7 @@ export function groupRooms(records: readonly DuelPlaytestRecord[]): { rooms: Roo
     else rooms.push({ key: e.round === 0 ? `seed-${e.seed}` : `seed-${e.seed}-r${e.round}`, rounds: [e], transport: null });
   }
   for (const room of rooms) room.transport = mode(room.rounds.map((e) => e.guest?.transport ?? null));
-  return { rooms, solo };
+  return { rooms, solo, duplicates };
 }
 
 export interface ChecklistSession {
@@ -151,14 +155,14 @@ const yes = (b: boolean): string => (b ? 'yes' : 'NO');
 /** The whole report as text: the rule verbatim and its evaluation, the live targets and the planet extra, the rooms,
  *  the latency table, the fallback checks, the solo rounds apart, then the blank checklist JSON. */
 export function formatReport(input: { records: readonly DuelPlaytestRecord[]; invalid: number; checklist: Checklist | null; files: number }): string {
-  const { rooms, solo } = groupRooms(input.records), out: string[] = [];
+  const { rooms, solo, duplicates } = groupRooms(input.records), out: string[] = [];
   // With a checklist, the live targets and the planet extra cover only the rooms its sessions list: the LAN and internet
   // checklist runs share the day's files with the §16 sessions.
   const claimed = new Set(input.checklist?.sessions.flatMap((s) => s.rooms) ?? []);
   const judged = input.checklist ? rooms.filter((room) => claimed.has(room.key)) : rooms;
   const unclaimed = rooms.filter((room) => !claimed.has(room.key)).map((room) => room.key), missing = [...claimed].filter((key) => !rooms.some((room) => room.key === key));
   const rule = evaluateRule(input.checklist), online = evaluateTargets(roomRounds(judged)), fallback = evaluateFallbacks(rooms, input.checklist);
-  out.push('# Helm demo playtest report', '', `${input.files} file(s), ${input.records.length} valid record(s), ${input.invalid} invalid line(s) skipped.`, '');
+  out.push('# Helm demo playtest report', '', `${input.files} file(s), ${input.records.length} valid record(s), ${input.invalid} invalid line(s) skipped.${duplicates ? ` **Warning: ${duplicates} duplicate record(s) dropped (a round and role already read, started at another time: rooms replayed from one seed merge).**` : ''}`, '');
   out.push('## The §16 rule', '', `> ${DEMO_RULE}`, '');
   out.push(`Checklist: ${input.checklist ? `${input.checklist.sessions.length} session(s)` : 'none given (the blank one is printed below)'}; sessions with at least 4 of 5 yes: ${rule.passing.join(', ') || 'none'}; a non-owner pair among them: ${yes(rule.nonOwnerPassing)}; three such sessions with one non-owner pair: ${yes(rule.holds)}.`);
   out.push(`Live targets (${online.rounds} online round(s)${input.checklist ? ' in the rooms the checklist lists' : ''}): median length ${online.medianSeconds === null ? '-' : online.medianSeconds.toFixed(1)} s within 3 to 5 minutes: ${yes(online.lengthHolds)}; both outcomes (crew wins ${online.crewWins}, enemy wins ${online.enemyWins}, draws ${online.draws}): ${yes(online.bothOutcomes)}; both weapons used in every round: ${yes(online.weaponsHold)}${online.weaponsMissing.length ? ` (not in ${online.weaponsMissing.join(', ')})` : ''}.`);
