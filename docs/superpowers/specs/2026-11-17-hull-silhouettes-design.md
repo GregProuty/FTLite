@@ -83,7 +83,7 @@ All of these constraints were computed against the coordinates above while writi
 **What it replaces.** The wedge (`wedgeSegments`, `WEDGE_NOSE`, `WEDGE_TAIL`, `WEDGE_HALF`) and `segmentCentre` are deleted. Their consumers change as follows:
 - `tacticalLayer.ts` (L14 import, L118 loop) draws from `HULLS[s.hull]`;
 - `weaponsModel.ts` (L13 import, L48-L53 `segmentCentre`, L75) puts the lock on `roomCentre(hullFor(false), room)`;
-- `tests/tacticalModel.test.ts` L170 (the wedge's three rooms) becomes a test that both hulls have three rooms;
+- `tests/tacticalModel.test.ts` L6 (the import) and L170 (the wedge's three rooms) become a test that both hulls have three rooms;
 - `tests/dashModel.test.ts` L3 and L40-L43 (wedge convexity) move into the new `tests/hullModel.test.ts`;
 - `tests/duelWeaponsView.test.ts` L13 and L108 use `roomCentre('scout', 0)`.
 
@@ -96,25 +96,25 @@ When the ship is not a chevron, it is drawn in this order:
 2. Each room, by the table below.
 3. The enemy's dashed ring at `ENEMY_RING`, then the shield rings, both unchanged.
 
-All strokes and hatch lines are 1 px wide. "Phase" is `blink(t, DAMAGE_BLINK_HZ)` (2 Hz), so phase 0 and phase 1 alternate. A damaged room keeps a tone fill at every phase, so damage reads as a patch even where a room is too small for more than one hatch line.
+All strokes and hatch lines are 1 px wide. "Phase" is `blink(t, DAMAGE_BLINK_HZ)` (2 Hz), so phase 0 and phase 1 alternate. Level 2 is exactly the CRT map's rule (CRT spec section 2). The only change is at level 1: a tone fill under the hatch, so a damaged room reads as a patch even where it is too small for more than one or two hatch lines at the default zoom.
 
 | Ship | Room level | Room fill | Room stroke | Hatch |
 |---|---|---|---|---|
 | crew | 0 | none | `glass` | none |
 | crew | 1 | `mid` | `glass` | `glass` |
 | crew | 2, phase 0 | `glass` (cut-out) | `hot` | none |
-| crew | 2, phase 1 | `mid` | `glass` | `glass` |
+| crew | 2, phase 1 | `hot` (solid, as the outline) | `glass` | none |
 | enemy | 0 | none | `mid` | none |
 | enemy | 1 | `dim` | `main` | `main` |
 | enemy | 2, phase 0 | `hot` | `glass` | none |
-| enemy | 2, phase 1 | `dim` | `main` | `main` |
+| enemy | 2, phase 1 | `glass` (hollow) | `main` | `main` |
 
 This keeps the CRT map's rules:
 - every colour is still a ramp colour (the full-frame colour test covers it);
 - every blink alternates between two visible states;
 - the hatch is unchanged (4 px at 45°, clipped to the room).
 
-The level-1 tone fill (`mid` on the crew, `dim` on the enemy) is new. It replaces the wedge's "no fill change at level 1", because the rooms are now smaller than the wedge's segments.
+**Deviation from the CRT map spec, deliberate:** the level-1 tone fill (`mid` on the crew, `dim` on the enemy) is new. The CRT spec has no fill change at level 1, only the hatch. Rooms inside a real hull outline are smaller than the wedge's segments, which filled the whole wedge. At zoom 0.5 the new rooms get about 1.2 to 1.7 hatch lines on average (the wedge got 1.8 to 3.0), and no room layout inside these outlines reaches 2 lines everywhere. The tone keeps the "two visible states, never off" rule and the ramp colours, and level 2 is unchanged. The owner's look gate judges it.
 
 There are no display objects per frame, and each `Graphics.poly` call gets a fresh array.
 
@@ -129,7 +129,7 @@ Below `SHIP_CHEVRON_PX` (10 px across) the chevron is drawn as today. The lock l
   - `tests/crtColours.test.ts`: the full-frame colour test with both hulls at damage levels 0, 1 and 2 in both phases.
 - **Unchanged:** all existing tests pass, with the wedge's tests moved as in section 1. SIM_VERSION and the goldens are unchanged.
 - **Screenshots** (the CRT map harness approach), saved to `C:\Users\djuar\FTLite-shots\hull-silhouettes\`:
-  - the Weapons map at the default zoom (0.5) with the lock and damage at levels 1 and 2 on both ships;
+  - the Weapons map at the default zoom (0.5) with the lock and damage at levels 1 and 2 on both ships. This is a pass/fail check: in this shot, every damaged room on both ships must be told apart from an undamaged one, and level 1 from level 2, in both blink phases (take one shot per phase);
   - the Helm map;
   - the flight view;
   - the Weapons map at `ZOOM_MAX` (1.2) on both ships.

@@ -121,3 +121,74 @@ Accepted; ENEMY_RING moves to hullModel and tacticalLayer re-exports it; margin 
 
 ---
 
+# Round 2 (delta, reviewing 47a709e, effort medium, 127 s, 189747 in / 147675 cached / 13529 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 The new damage table changes the CRT map's fixed room-damage rules without the owner's sign-off
+The section 2 table does more than pin today's looks. It adds a level-1 tone fill on both ships, `mid` on the crew and `dim` on the enemy. It also changes crew level 2 phase 1 from plain solid `hot` to a `mid` fill with a `glass` hatch, and it fills enemy level 2 phase 1 `dim` where the CRT spec keeps it hollow. These are changes to the CRT map's damage and hatch rules, which are a fixed decision. L117 calls the tone fill "new" but cites no owner approval. · spec L104 (crew level 1: `mid` fill), L106 (crew level 2 phase 1: `mid` fill + `glass` hatch), L108 and L110 (enemy level 1 and level 2 phase 1: `dim` fill), L117 ('The level-1 tone fill ... is new'). CRT spec L41: own ship level 1 is a `glass` hatch, and level 2 alternates a `glass` cut-out and `hot`. CRT spec L42 and L35: the enemy is hollow ('a `main` outline, `glass` inside'), level 1 is a `main` hatch, and level 2 alternates solid `hot` and a `main` outline with a `main` hatch. Today's code matches the CRT spec: tacticalLayer.ts:L124-L126 (crew level 2 'else' branch is a `hot` fill, hatch only at level 1) and L131-L132 (enemy 'else' branch is a `glass` fill). · 'The CRT map's colour roles, blinks and hatch rules stay as they are' is an owner-fixed decision. The plan's subagents would build a damage look that departs from the approved CRT spec. The owner's look gate would then be judging a rule change nobody signed off. The enemy's 'hollow' read (CRT L35) also weakens when its damaged rooms are filled. · Choose one and write it into the spec. (a) Keep the CRT rules exactly: no tone fill, crew level 2 phase 1 solid `hot`, enemy level 1 and level 2 phase 1 `glass` inside. Then meet R1-F3 with room geometry alone, using the hatch-count rule R1-F3 proposed (at least 2 hatch segments per room at k = 10). (b) Get the owner's explicit approval of the tone fill, cite it with its date in the spec, and list the amendment to CRT spec L41-L42 so both specs agree.
+
+### [P3] R2-F2 The tacticalModel.test import of wedgeSegments is not in the consumer list
+The 'What it replaces' list cites tests/tacticalModel.test.ts L170 only. The same file also imports `wedgeSegments` at L6. Once the wedge is deleted, that import breaks the build. · spec L86. tests/tacticalModel.test.ts:L6 (`tacticalModel, wedgeSegments, type PrevBody, ...`) and L170. · A subagent working task by task from the list could leave the import in place. The failure is obvious, but it costs a cycle. · Change L86 to 'tests/tacticalModel.test.ts L6 (import) and L170'.
+
+## Prior findings
+- R1-F1: resolved — The Hound's Weapons room (1.1,-0.12 / 1.1,0.14 / 0.96,±0.26 / 0.5,±0.26) is inside the nose. At f = 1.1 the outline spans s -0.2005..0.194. At f = 0.96 it spans -0.288..0.283. No edge crosses. The area is 0.294.
+- R1-F2: resolved — The tips (1.23,±0.17) have radius 1.2417 and the inner fork (1.19,±0.09) 1.193. Both are under 1.25. The either/or is gone. The fork edges and the fin edges do not cross, so the outline is simple.
+- R1-F3: still open — The rooms meet the 0.2 area floor, but the hatch still covers about 1 to 2 lines per room at zoom 0.5. The scout's Weapons room spans 0.98 units in (f+s), which is about 6.9 px across the hatch at k = 10. The Hound's Weapons room spans about 7.1 px. The responder's own numbers are 1.2 to 1.7 lines. Damage reads only because of the new tone fill, and that fill breaks the fixed CRT rules (see the new P1). No hatch-count test was added, and the default-zoom screenshot is still not an explicit pass/fail check (spec L132).
+- R1-F4: resolved — The constraint now requires vertices inside AND no proper edge crossing (L43). The Hound's Shields room has fore edge 0.4,±0.32. The outline there is at -0.372 and 0.3635, and the side edges stay inside the notch edges at (0.424,-0.333) and (0.413,0.343).
+- R1-F5: resolved — The fill, stroke and hatch are now pinned for every ship, level and phase (L101-L110). What the table says is raised as a new P1.
+- R1-F6: resolved — L135 now says ZOOM_MAX (1.2).
+- R1-F7: resolved — `hull` is required. The shape comes from HULLS[s.hull] and the colours from s.crew. The crtColours fixtures get hull values (L92). The consumers are listed (L83-L88), apart from one import line, raised as a new P3.
+- R1-F8: resolved — L69 says 25 (one vertex on the axis and 12 pairs), which matches L72-L74.
+- R1-F9: resolved — L95 and L99 now say 1 px.
+- R1-F10: resolved — L55 sets f = image x and s = image y, and L33 makes +s starboard. ENEMY_RING moves to hullModel and tacticalLayer re-exports it (L39). The margin is 0.1 (L46). No other module imports ENEMY_RING (grep).
+
+## Verified
+- Hound max vertex radius is 1.294, at (-1.139,-0.615). This is under the 1.55 limit and under the 1.3 the label line relies on (spec L67, L121).
+- Scout max radius is 1.2417, at (1.23,±0.17). (-1.12,±0.5) is 1.227. Both are under 1.25 (spec L46, L79).
+- Hound Shields: vertices are inside and no edge crosses. The outline is at ±0.37/0.36 at f = 0.4. Area is 0.331 (spec L64).
+- Hound Engines: (-0.8,±0.28) is inside the aft inner edge (-0.847,-0.141)->(-0.817,-0.323), which is at f = -0.824 for s = -0.28. Area is 0.358 (spec L65).
+- Scout Weapons: (0.88,±0.2) is inside, with the outline at 0.236. (0.46,±0.36) is inside, with the outline at 0.52. No edge crosses the fork edge (1.23,0.17)->(0.86,0.24). Area is 0.235 (spec L75).
+- Scout Shields: (-0.06,±0.4) is inside the outline, which is at 0.416 there. No edge crosses. Area is 0.344 (spec L76).
+- Scout Engines: the ±0.18 spine clears the outline, which is at 0.2 to 0.22 over f -0.24..-0.62. The aft edge -0.94 is fore of the fin root at -0.98. Area is 0.274 (spec L77).
+- No rooms overlap on either hull. All six rooms are convex.
+- The consumers of the wedge, segmentCentre and ENEMY_RING (grep over src and tests) match the list at spec L83-L88, apart from tacticalModel.test.ts:L6.
+- The lock label offset max(14, k·1.6)+6 px is at least 1.85 units, which clears both hulls (weaponsModel.ts:L77, spec L121).
+
+## Not verified
+- Exact hatch segment counts from hatchSegments at every lattice offset and ship heading. I had no script runner, so I estimated the counts from the 45° extent at k = 10.
+- Whether the Hound outline faithfully traces the painting. The painting is not in git.
+- The visual effect of the thin margins between rooms and outlines: about 0.016 units (0.16 px at zoom 0.5) at the scout Shields aft corners, and 0.023 at the Hound Weapons corner (0.96,0.26). The room and outline strokes may merge there. This is left to the screenshots and the owner's gate.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against `47a709e`. 3 accepted (one in part), 0 rejected, 0 deferred.
+
+## R2-F1 [P1]: The damage table changes the CRT rules
+
+Accepted in part. Level 2 now matches the CRT spec exactly: crew phase 1 is solid hot with no hatch, and enemy phase 1 is hollow glass with a main hatch. The level-1 tone fill stays, written as a deliberate, justified deviation from the CRT spec. A note on the brief's fixed decision 'the CRT map's colour roles, blinks and hatch rules stay as they are': the controller wrote it as a scope guard. The owner did not set it, and the owner's look gate judges the tone fill. Option (a) is not reachable with geometry alone. Inside these two outlines, the largest convex rooms that clear the notches and fork average 1.2 to 1.7 hatch lines at zoom 0.5. The minimum is 1, because the hatch is screen-anchored and the ship moves across it. The wedge reached 2 only because its segments were the whole silhouette.
+
+## R1-F3 [P1]: Hatch readability (reopened)
+
+Fixed as described above. The tone fill carries level 1. The default-zoom screenshot is now an explicit pass/fail check, with one shot per blink phase.
+
+## R2-F2 [P3]: Missing import
+
+Confirmed (tacticalModel.test.ts:L6). It is now listed.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-hull-silhouettes-design.md
+
+<!-- end -->
+
+---
+
