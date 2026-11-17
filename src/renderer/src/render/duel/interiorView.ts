@@ -19,6 +19,7 @@ import { AMBER, DIM, FONT_NATIVE, TEXT, WARN } from '../theme';
 import { createTileLayer } from '../tiles';
 import { duelFit, interiorOverlay, INTERIOR_BAND } from './interiorModel';
 import { createInteriorFeel } from '../interiorFeel';
+import { backdropOption } from '../twinkleLayer';
 import { DEFAULT_FEEL, type FeelSetting } from '../feel';
 import { duelGradeInput } from '../gradeModel';
 import { duelHit } from '../impactModel';
@@ -48,10 +49,10 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const container = new Container(), world = new Container();
   const missing = new Set(assets.missing);
   const fx = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
-    world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt'),
+    world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt'), backdrop: backdropOption(assets),   // Art-v: the painted backdrop
     blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
   });
-  container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND
+  container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND; Art-v: or the painted backdrop over the whole stage
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer();
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
