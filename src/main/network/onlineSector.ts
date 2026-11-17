@@ -30,7 +30,12 @@ export function sectorCompatibility(capacity: number): RoomCompatibility {
   return { protocolVersion: 2, modeId: 'sector', schemaVersion: 1, simVersion: SIM_VERSION,
     contentDigest: __GAMEPLAY_CONTENT_DIGEST__, layoutHash: deriveLayout(layouts[shipForCrew(capacity)]).layoutHash };
 }
-export function sectorJoinCompatibilities(): readonly RoomCompatibility[] { return [sectorCompatibility(2), sectorCompatibility(4)]; }
+/** One compatibility per distinct sector layout across crew sizes 1-4 (one today: the Hound flies at every size). */
+export function sectorJoinCompatibilities(): readonly RoomCompatibility[] {
+  const byLayout = new Map<string, RoomCompatibility>();
+  for (const capacity of [1, 2, 3, 4]) { const c = sectorCompatibility(capacity); if (!byLayout.has(c.layoutHash)) byLayout.set(c.layoutHash, c); }
+  return [...byLayout.values()];
+}
 export function sectorInit(snapshot: RoomSnapshot): RunInit {
   if (!validateRoomSnapshot(snapshot)) throw onlineFault('invalid-frame');
   const expected = sectorCompatibility(snapshot.capacity), layout = layouts[shipForCrew(snapshot.capacity)];

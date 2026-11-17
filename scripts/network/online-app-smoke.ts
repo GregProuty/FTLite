@@ -206,8 +206,8 @@ async function main() {
     if((await status(h)).status.snapshot.seats[1].occupied) await h.request('click',{id:'remove-seat-1'});
     await joinRoom(g, lobby.status.snapshot.joinCode);
     g = await play(h,g,2);
-    const cutterLobby=await host(h,4), filler=await launch('filler');
-    await joinRoom(filler,cutterLobby.status.snapshot.joinCode); await joinRoom(g,cutterLobby.status.snapshot.joinCode);
+    const fourSeatLobby=await host(h,4), filler=await launch('filler');
+    await joinRoom(filler,fourSeatLobby.status.snapshot.joinCode); await joinRoom(g,fourSeatLobby.status.snapshot.joinCode);
     await h.request('click',{id:'remove-seat-1'}); await shutdown(filler);
     const sparse=(await status(h)).status.snapshot;
     assert(sparse.capacity===4&&sparse.seats[0].occupied&&!sparse.seats[1].occupied&&sparse.seats[2].occupied&&!sparse.seats[3].occupied,'sparse 0/2 roster');
