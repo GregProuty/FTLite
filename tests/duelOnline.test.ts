@@ -40,7 +40,10 @@ function producer(seat: Seat, seed: number) {
 
 describe('two clients over the loopback, one per seat (spec §10)', () => {
   let seedsFlown = 0, crewLaserReleases = 0;   // summed over the seeds, checked after them
-  it.each(GATE_SEEDS.map((seed) => [seed]))('seed %i: the scripted pair through the clients reaches an outcome; replicas, journal and round record agree; nothing is stale-tick', (seed) => {
+  it.each(GATE_SEEDS.map((seed) => [seed]))('seed %i: the scripted pair through the clients reaches an outcome; replicas, journal and round record agree; nothing is stale-tick', async (seed) => {
+    // Each seed is seconds of synchronous CPU; yield a macrotask first so vitest's worker RPC is answered between seeds
+    // (ten seeds back to back otherwise block the worker past its 60 s RPC timeout).
+    await new Promise<void>((resolve) => setImmediate(resolve));
     const rig = onlineDuel(seed), a = rig.connect(0), b = rig.connect(1), pa = producer(a, seed), pb = producer(b, seed);
     rig.tick(2);
     expect(a.client.commandStatus(0).state).toBe('ready');
