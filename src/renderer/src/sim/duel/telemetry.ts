@@ -1,7 +1,8 @@
 // Duel telemetry (H-0c-ii-a spec §4, parent §13's list): accumulated tick by tick from the duel state after each
 // stepDuelTick, that tick's events and the input it was given. Pure apart from its own accumulator; it never changes
 // the duel. Counter diffs (contact counters, launches, graceUntil) are taken against the accumulator's copy of the
-// tick before.
+// tick before. One accumulator covers one round (H-2 spec §7, §8): its `ticks` count from the round's baseTick, and it
+// freezes once the round is decided, so the end card's ticks add nothing and the terminal causes are never recomputed.
 import { Seated } from '../components';
 import { inArc } from '../tactical/geometry';
 import { missileOf, Outcome, targetOf } from '../tactical/state';
@@ -34,6 +35,7 @@ export interface PlayerTelemetry {
 }
 
 export interface DuelTelemetry {
+  /** Ticks of this round so far, from its baseTick; frozen at decidedTick − baseTick once it is decided. */
   ticks: number;
   outcome: number;
   ships: [ShipTelemetry, ShipTelemetry];
@@ -85,11 +87,11 @@ function attendant(d: DuelState, i: number): number {
 }
 
 /** Fold one finished tick into the accumulator: call right after stepDuelTick(d, input) with the same input. A call
- *  after the duel has ended (stepDuelTick did nothing) is ignored. */
+ *  for a tick already counted, or once the round is decided (the end card's ticks), is ignored. */
 export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): void {
   const tac = d.tactical, tick = tac.tick - 1;   // the tick that just ran
-  if (tick < t.ticks) return;
-  t.ticks = tac.tick; t.outcome = tac.outcome;
+  if (t.outcome !== Outcome.Running || tick - d.baseTick < t.ticks) return;
+  t.ticks = tac.tick - d.baseTick; t.outcome = tac.outcome;
   const now = counters(d), [crew, enemy] = tac.ships;
 
   // Weapons and missiles, from the tick's events.

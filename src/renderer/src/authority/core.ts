@@ -443,6 +443,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     const executed = rules.step(state, input); record.results = [...record.results, ...executed];
     const nextCues = rules.cueBaseline(state);
     for (const cue of rules.cues(previousCues, state)) emit({ kind: 'cue', cue });
+    for (const payload of rules.records?.(previousCues, state) ?? []) emit(payload);
     previousCues = nextCues;
     for (const value of executed) { const entry = frozen.find((p) => p.envelope.id.player === value.id.player && p.envelope.id.sequence === value.id.sequence); if (entry) result(entry.binding, value); }
     tickTimeMs = deadline;

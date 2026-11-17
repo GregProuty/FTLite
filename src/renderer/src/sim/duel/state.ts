@@ -32,14 +32,19 @@ export interface DuelState {
   nav: number; weapons: number;
   /** This tick's repair events, in the order repairPhase makes them (every repairWork, then any repairDone in Room order). */
   events: RepairEvent[];
+  /** The round module (H-2 spec §7): this round's index from 0, the player seated at the Helm when it began, the
+   *  encounter tick it began on, and the tick right after its deciding step (−1 while it runs). */
+  round: number; helmPlayer: 0 | 1; baseTick: number; decidedTick: number;
 }
 
 /**
  * A duel on `layout` (the Cutter): two trait-free Recruits (no XP is ever awarded, since xpSystem never runs), every
- * door held open, player 0 seated at Navigation and player 1 at Weapons, and a tactical state from the same seed whose
- * map must validate. Throws if the map or a repair point is invalid, so a bad seed or layout fails loudly.
+ * door held open, `helmPlayer` (default 0) seated at Navigation and the other player at Weapons, and a tactical state
+ * from the same seed whose map must validate. Round 0, beginning on tick 0. Throws if the map, a repair point or
+ * `helmPlayer` is invalid, so a bad seed or layout fails loudly.
  */
-export function createDuel(layout: ShipLayout, seed: number): DuelState {
+export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 = 0): DuelState {
+  if (helmPlayer !== 0 && helmPlayer !== 1) throw new Error(`invalid duel helm player ${String(helmPlayer)}`);
   const tactical = createTacticalState(seed);
   const problems = validateMap(tactical.map);
   if (problems.length > 0) throw new Error(`invalid duel map for seed ${seed}: ${problems[0]}`);
@@ -48,14 +53,14 @@ export function createDuel(layout: ShipLayout, seed: number): DuelState {
     interior.doors.state.fill(DoorState.HeldOpen);
     const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
     if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
-    sitDown(interior, 0, nav);
-    sitDown(interior, 1, weapons);
+    sitDown(interior, helmPlayer, nav);
+    sitDown(interior, 1 - helmPlayer, weapons);
     const points = CUTTER_REPAIR_POINTS.map((p) => {
       const room = interior.derived.roomIndex.get(p.room) ?? -1, [tx, ty] = p.tile;
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
-    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, events: [] };
+    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1 };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;

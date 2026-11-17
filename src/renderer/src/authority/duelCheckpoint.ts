@@ -1,20 +1,24 @@
 // The duel's init, checkpoint and mode-memory schemas (engine refactor spec §6). The checkpoint is the generic
 // authority envelope with the duel's init, the duel snapshot, no bot controllers, and `modeMemory`: the telemetry
 // accumulator as its own versioned blob, outside the hash, restored with the duel so a restored duel's end summary
-// equals an uninterrupted one's. Everything is validated before any allocation.
+// equals an uninterrupted one's. Everything is validated before any allocation. H-2 spec §7: the init names the Helm
+// player, and a checkpoint may be from any round of the run (its seed is that round's), on a decided round's end card
+// in a running or paused phase, with the accumulator counting from the round's base tick.
 import { z } from 'zod';
 import type { Checkpoint } from '../net/contracts';
 import { duelCodec } from '../net/codec';
 import { deriveLayout } from '../sim/ship/derived';
 import type { ShipLayout } from '../sim/ship/schema';
-import { DUEL_PLAYERS, duelSeedFacts, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
+import { DUEL_PLAYERS, duelRoundOf, duelSeedFacts, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
+import { roundSeed } from '../sim/duel/seeds';
 import type { DuelTelemetry, MissileLoss } from '../sim/duel/telemetry';
 import { TERMINAL_CAUSES } from '../sim/duel/summary';
 import { SIM_VERSION } from '../sim/tuning';
 import { createLedger } from './ledger';
 import type { ResolveLayout } from './rules';
 
-export interface DuelInit { runId: string; layoutId: string; layoutHash: string; simVersion: number; contentDigest: string; seed: number; playerCount: number }
+/** `seed` is round 0's; `helmPlayer` is seated at Navigation in every round (H-2 spec §2). */
+export interface DuelInit { runId: string; layoutId: string; layoutHash: string; simVersion: number; contentDigest: string; seed: number; playerCount: number; helmPlayer: 0 | 1 }
 /** The duel has no bot producers in R-1, so its controller memory is always empty. */
 export type DuelControllers = readonly never[];
 /** The telemetry accumulator as JSON: its typed arrays as number arrays. */
@@ -31,7 +35,8 @@ const text = z.string().min(1).max(128);
 const two = <T extends z.ZodTypeAny>(item: T) => z.tuple([item, item]);
 export const duelInitSchema = z.object({
   runId: text, layoutId: text, layoutHash: text, simVersion: z.literal(SIM_VERSION),
-  contentDigest: z.string().regex(/^[0-9a-f]{64}$/), seed: uint.max(0xffffffff), playerCount: z.literal(DUEL_PLAYERS)
+  contentDigest: z.string().regex(/^[0-9a-f]{64}$/), seed: uint.max(0xffffffff), playerCount: z.literal(DUEL_PLAYERS),
+  helmPlayer: z.union([z.literal(0), z.literal(1)])
 }).strict();
 const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
   .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'causes out of order or repeated');
@@ -86,16 +91,17 @@ export function validateDuelCheckpoint(value: unknown, contentDigest: string, re
   const layout = resolveLayout((cp.init as { layoutId?: string } | null)?.layoutId as string);
   cp.init = validateDuelInit(layout, cp.init, contentDigest);
   cp.snapshot = validateDuelSnapshot(layout, cp.snapshot, contentDigest);
-  if (cp.snapshot.header.seed !== cp.init.seed) throw new Error('inconsistent duel checkpoint seed');
-  const ended = cp.snapshot.values[1 + 4] !== 0;   // SIM_VERSION, then the space module's tick, seed, rng.s, asteroid count, outcome (then the slot count)
-  if (ended !== (cp.phase === 'ended')) throw new Error('inconsistent checkpoint terminal phase');
-  if (cp.admissionTick > cp.snapshot.header.tick || cp.paused !== (cp.phase === 'paused')) throw new Error('inconsistent checkpoint');
+  const r = duelRoundOf(cp.snapshot), decided = r.outcome !== 0, tick = cp.snapshot.header.tick;
+  if (cp.snapshot.header.seed !== roundSeed(cp.init.seed, r.round)) throw new Error('inconsistent duel checkpoint seed');   // the round's seed
+  if (r.helmPlayer !== cp.init.helmPlayer) throw new Error('inconsistent duel checkpoint helm player');
+  if (cp.phase === 'ended' && !decided) throw new Error('inconsistent checkpoint terminal phase');   // a decided round may be running or paused
+  if (cp.admissionTick > tick || cp.paused !== (cp.phase === 'paused')) throw new Error('inconsistent checkpoint');
   const ledger = createLedger([0, 1], DUEL_PLAYERS, duelCodec);
   ledger.restore({ commandHighWater: cp.commandHighWater, recentResults: cp.recentResults, admissionTick: cp.admissionTick, admissionCounts: cp.admissionCounts });
-  for (const { envelope, result } of cp.recentResults) if (envelope.runId !== cp.init.runId || result.tick > cp.snapshot.header.tick) throw new Error('inconsistent checkpoint cache');
-  const t = cp.modeMemory.telemetry, bodies = duelSeedFacts(cp.init.seed).graceLength;   // the map's bodies plus the other ship slots
-  if (t.prev.grace.some((g) => g.length !== bodies) || t.ticks !== cp.snapshot.header.tick) throw new Error('inconsistent duel telemetry');
-  // The accumulator's outcome is the snapshot's (values[5], as above), and only an ended duel has terminal causes.
-  if (t.outcome !== cp.snapshot.values[1 + 4] || (t.outcome === 0 && t.terminal.some((c) => c.length > 0))) throw new Error('inconsistent duel telemetry');
+  for (const { envelope, result } of cp.recentResults) if (envelope.runId !== cp.init.runId || result.tick > tick) throw new Error('inconsistent checkpoint cache');
+  const t = cp.modeMemory.telemetry, bodies = duelSeedFacts(cp.snapshot.header.seed).graceLength;   // the round map's bodies plus the other ship slots
+  if (t.prev.grace.some((g) => g.length !== bodies) || t.ticks !== (decided ? r.decidedTick : tick) - r.baseTick) throw new Error('inconsistent duel telemetry');
+  // The accumulator's outcome is the snapshot's, and only a decided round has terminal causes.
+  if (t.outcome !== r.outcome || (t.outcome === 0 && t.terminal.some((c) => c.length > 0))) throw new Error('inconsistent duel telemetry');
   return structuredClone(cp);
 }

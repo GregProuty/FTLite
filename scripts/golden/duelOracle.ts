@@ -87,7 +87,9 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       }
     }],
     added: [/^space\.ships\.length$/, /^space\.ships\.\d+\.active$/, /^space\.missiles\.\d+\.(active|owner)$/, /^ship\.systems\.\d+\.(cls|target)$/]
-  }
+  },
+  /** H-2 (38 → 39): the round module joins after repair; no oracle run sends rematch or a non-default helmPlayer. */
+  38: { change: 'H-2: duel rounds', rename: () => undefined, derived: [], added: [/^round\.(round|helmPlayer|baseTick|decidedTick)$/] }
 };
 
 /** The duel's named canonical fields after SIM_VERSION, in flattenDuel order: `<module id>.<field name>`, with the

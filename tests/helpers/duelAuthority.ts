@@ -13,8 +13,8 @@ import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import { CUTTER } from './scriptedDuel';
 
 export const resolveCutter = (id: string) => { if (id !== CUTTER.id) throw Error('unknown duel layout'); return CUTTER; };
-export function duelInit(seed: number, runId = `duel-${seed}`): DuelInit {
-  return { runId, layoutId: CUTTER.id, layoutHash: deriveLayout(CUTTER).layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed, playerCount: 2 };
+export function duelInit(seed: number, runId = `duel-${seed}`, helmPlayer: 0 | 1 = 0): DuelInit {
+  return { runId, layoutId: CUTTER.id, layoutHash: deriveLayout(CUTTER).layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed, playerCount: 2, helmPlayer };
 }
 const deps = (init: DuelInit) => ({ init, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: resolveCutter,
   clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash(record: { error: string }) { throw Error(record.error); } });

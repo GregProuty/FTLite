@@ -1,6 +1,6 @@
 // The duel snapshot (engine refactor spec §6, an R-1 deliverable). The values are exactly flattenDuel: SIM_VERSION, the
-// tactical state in flattenTactical's order (the space then the ship module), presence, repair, then the interior
-// through the sector snapshot path.
+// tactical state in flattenTactical's order (the space then the ship module), presence, repair, the round (H-2 spec
+// §7), then the interior through the sector snapshot path.
 // Regenerated, not stored: the map (from the seed, checked by mapHash), the broad-phase grid, the repair points and
 // Derived (from the Cutter layout). Not stored: the per-tick events. Every check runs before any allocation, including
 // every tactical field's bounds and slot invariants, presence and repair, except the final one, which restores into a
@@ -15,7 +15,7 @@ import { deriveLayout, type Derived } from '../ship/derived';
 import type { ShipLayout } from '../ship/schema';
 import { validateCanonicalValues } from '../snapshotValidation';
 import { validateMap } from '../tactical/map';
-import { createTacticalState, type TacticalState } from '../tactical/state';
+import { createTacticalState, Outcome, type TacticalState } from '../tactical/state';
 import { DUEL_CLASSES } from '../tactical/defs';
 import { TACTICAL_MODULES, hashTactical, tacticalLength, validateTacticalValues } from '../tactical/hash';
 import { REPAIR_UNITS } from './tuning';
@@ -88,6 +88,13 @@ export function duelCacheProbe(seed?: number): { seeds: number; layouts: number;
   return { seeds: seedCache.size, layouts: layoutCache.size, shapeHash: e ? hashTactical(e.shape) : null };
 }
 
+/** The round module's values and the outcome, read from a validated snapshot (H-2 spec §7). */
+export interface DuelRoundValues { round: number; helmPlayer: 0 | 1; baseTick: number; decidedTick: number; outcome: number }
+export function duelRoundOf(snapshot: DuelSnapshot): DuelRoundValues {
+  const e = seedEntry(snapshot.header.seed), v = snapshot.values, at = 1 + e.spaceLength + 2 + 3;
+  return { round: v[at]!, helmPlayer: v[at + 1]! as 0 | 1, baseTick: v[at + 2]!, decidedTick: v[at + 3]!, outcome: v[e.fieldOffsets.get('outcome')!]! };
+}
+
 export function saveDuelSnapshot(d: DuelState, contentDigest: string): DuelSnapshot {
   const values = Array.from(flattenDuel(d));
   return { header: { snapshotFormat: DUEL_SNAPSHOT_FORMAT, simVersion: SIM_VERSION, contentDigest, tick: d.interior.tick, playerCount: DUEL_PLAYERS,
@@ -118,7 +125,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
   // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
-  const space = seed.spaceLength, interiorAt = 1 + space + 2 + 3;
+  const space = seed.spaceLength, roundAt = 1 + space + 2 + 3, interiorAt = roundAt + 4;
   if (values.length !== interiorAt + lay.interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
@@ -128,10 +135,20 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   if (slotValue('ships.length') !== DUEL_CLASSES.length
     || DUEL_CLASSES.some((cls, i) => slotValue(`ships.${i}.active`) !== 1 || slotValue(`systems.${i}.cls`) !== cls || slotValue(`systems.${i}.target`) !== 1 - i))
     throw new Error('duel snapshot duel slot identity does not match: two active slots, the Cutter and the hunter, each locked on the other');
-  for (let k = 1 + space; k < interiorAt; k++) {
+  for (let k = 1 + space; k < roundAt; k++) {
     const v = values[k]!, presence = k < 1 + space + 2;
     if (presence ? v !== 0 && v !== 1 : !Number.isInteger(v) || v < 0 || v >= REPAIR_UNITS) throw new Error(`duel snapshot ${presence ? 'presence' : 'repair'} value ${v} is out of range`);
   }
+  // The round module: a round index (at most MAX_DUEL_ROUNDS, and round n begins no earlier than tick 2n: each round
+  // before it took a deciding step and a rematch step), the Helm player 0 or 1, a base tick no later than the tick, and
+  // a decided tick that is −1 exactly while the outcome is Running, otherwise between the base tick and the tick.
+  const [round, helm, base, decided] = values.slice(roundAt, interiorAt) as [number, number, number, number];
+  const running = values[seed.fieldOffsets.get('outcome')!] === Outcome.Running;
+  if (!Number.isSafeInteger(round) || round < 0 || round > MAX_DUEL_ROUNDS) throw new Error(`duel snapshot round ${round} is invalid`);
+  if (helm !== 0 && helm !== 1) throw new Error(`duel snapshot helm player ${helm} is invalid`);
+  if (!Number.isSafeInteger(base) || base < 0 || base > h.tick) throw new Error(`duel snapshot base tick ${base} is invalid`);
+  if (2 * round > base) throw new Error(`duel snapshot round ${round} is invalid at base tick ${base}`);
+  if (running ? decided !== -1 : !Number.isSafeInteger(decided) || decided < base || decided > h.tick) throw new Error(`duel snapshot decided tick ${decided} does not match the outcome`);
   const interior = values.slice(interiorAt);
   validateCanonicalValues(layout, derived, DUEL_PLAYERS, interior);
   // The identity values unflatten checks (flatten.ts), required here so nothing is allocated for a snapshot it would refuse.

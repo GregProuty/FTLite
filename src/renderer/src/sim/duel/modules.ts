@@ -1,11 +1,11 @@
 // The duel on the sim module contract (engine refactor spec §6, R-1 and R-2): space (the ship slots' bodies, the
-// missile pool, the hunter), ship (each slot's systems record), presence, repair and the interior wrapper, in canonical
-// order after SIM_VERSION. flattenDuel, the duel snapshot and its restore all come
+// missile pool, the hunter), ship (each slot's systems record), presence, repair, round (H-2 spec §7) and the interior
+// wrapper, in canonical order after SIM_VERSION. flattenDuel, the duel snapshot and its restore all come
 // from this list; tests/duelModules.test.ts holds every DuelState and TacticalState member to a field or an exclusion.
 import { flatten, unflatten } from '../flatten';
 import { validateCanonicalValues } from '../snapshotValidation';
 import { canonicalFields } from '../canonicalFields';
-import { flag, flattenModule, moduleLength, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
+import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { shipModule, spaceModule } from '../tactical/hash';
 import type { DuelState } from './state';
 
@@ -28,6 +28,22 @@ export const repairModule: SimModule<DuelState> = {
   reasons: []
 };
 const REPAIR: ModuleField<DuelState>[] = [vector('repair', 3, (d) => d.repair)];
+
+/** The round (H-2 spec §7): which round this is, who flies the Helm by the init, the encounter tick the round began on,
+ *  and the tick after its deciding step (−1 while it runs). The round's seed is the space module's own `seed`. */
+export const roundModule: SimModule<DuelState> = {
+  id: 'round',
+  fields: () => ROUND,
+  notSnapshotted: {},
+  commands: ['rematch'],
+  reasons: ['duel-running', 'duel-decided', 'stale-tick', 'unavailable']
+};
+const ROUND: ModuleField<DuelState>[] = [
+  scalar('round', (d) => d.round, (d, v) => { d.round = v; }),
+  scalar('helmPlayer', (d) => d.helmPlayer, (d, v) => { d.helmPlayer = v as 0 | 1; }),
+  scalar('baseTick', (d) => d.baseTick, (d, v) => { d.baseTick = v; }),
+  scalar('decidedTick', (d) => d.decidedTick, (d, v) => { d.decidedTick = v; })
+];
 
 /** The Cutter interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
 export const interiorModule: SimModule<DuelState> = {
@@ -63,6 +79,7 @@ export const DUEL_MODULES: readonly { module: SimModule<never>; state(d: DuelSta
   { module: shipModule as SimModule<never>, state: (d) => d.tactical, path: 'tactical' },
   { module: presenceModule as SimModule<never>, state: (d) => d, path: '' },
   { module: repairModule as SimModule<never>, state: (d) => d, path: '' },
+  { module: roundModule as SimModule<never>, state: (d) => d, path: '' },
   { module: interiorModule as SimModule<never>, state: (d) => d, path: '' }
 ];
 

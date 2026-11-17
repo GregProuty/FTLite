@@ -156,7 +156,7 @@ describe('the duel mode over Net-3 (hostRuntime level)', () => {
       const capture = (cause: string) => { owner.receive({ kind: 'capture-checkpoint', requestId: ++request, hostGeneration: 3, cause }, []); };   // request ids are shared with commands
       return { owner, messages, command, capture, advance(n: number) { for (let k = 0; k < n; k++) { now += 1000 / 60; for (const cb of [...callbacks]) { callbacks.delete(cb); cb(); } } } };
     };
-    const u = utility('duel', 1);
+    const u = utility('duel', 2);   // duel schema version 2 (H-2 spec §7)
     expect(u.command({ kind: 'start', initBytes: encode(duelInit(2, 'utility-duel')) }).ok).toBe(true);
     u.advance(90);
     u.capture('periodic');

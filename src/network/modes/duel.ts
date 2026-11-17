@@ -1,6 +1,7 @@
 // The duel mode (engine refactor spec §6): the second registered mode, one defineEncounterMode call over the duel
 // rules. Its producers are the humans alone (the duel has no bots in R-1; a vacant player simply sends nothing), and its
-// stream adapter is duelStream. The online duel UI and the main/renderer wiring are H-2.
+// stream adapter is duelStream. Schema version 2 (H-2 spec §7): the init's helmPlayer, the round module and its checkpoint
+// rules, the round event and its two reasons, and the widened end record.
 import { duelRules, type DuelTypes } from '../../renderer/src/authority/duelRules';
 import { duelCodec } from '../../renderer/src/net/codec';
 import { SIM_VERSION } from '../../renderer/src/sim/tuning';
@@ -15,7 +16,7 @@ function resolveLayout(id: string) { if (id !== CUTTER.id) throw Error('unknown 
 const decode = duelCodec(2);
 
 export const duelMode: ModeDefinition = defineEncounterMode<DuelTypes>({
-  modeId: 'duel', schemaVersion: 1, simVersion: SIM_VERSION, rules: duelRules, resolveLayout,
+  modeId: 'duel', schemaVersion: 2, simVersion: SIM_VERSION, rules: duelRules, resolveLayout,
   codecs: jsonModeCodecs(duelRules, resolveLayout, 'duel'),
   producers({ authority }): EncounterProducers<DuelTypes> {
     const humans = new Set<Unsubscribe>();
