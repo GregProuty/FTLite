@@ -169,3 +169,20 @@ describe('the strip and disposal', () => {
     actions.dispose(); actions.host(); await flush(); expect(host).not.toHaveBeenCalled(); expect(store.getState().menu.pending).toBe(false);
   });
 });
+
+describe('the contact window\'s actions (enemy ship window spec §6.6)', () => {
+  it('forward to the controller set with setContact; pick locks through the console input; no-ops while none is set', () => {
+    const { actions } = makeUi();
+    expect(() => { actions.contact.close(); actions.contact.arm(); actions.contact.cancelAim(); actions.contact.pick(1); }).not.toThrow();
+    const lock = vi.fn();
+    actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock, throttle: vi.fn() });
+    const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn((room: number, l: (r: number) => void) => l(room)) };
+    actions.setContact(c);
+    actions.contact.close(); actions.contact.arm(); actions.contact.cancelAim(); actions.contact.pick(2);
+    expect([c.close.mock.calls.length, c.arm.mock.calls.length, c.cancelAim.mock.calls.length, c.pick.mock.calls.length]).toEqual([1, 1, 1, 1]);
+    expect(c.pick.mock.calls[0]![0]).toBe(2);
+    expect(lock).toHaveBeenCalledWith(2);
+    actions.setContact(null); actions.contact.arm();
+    expect(c.arm).toHaveBeenCalledTimes(1);
+  });
+});

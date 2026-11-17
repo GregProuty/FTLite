@@ -16,6 +16,7 @@ import { CUTTER } from './helpers/scriptedDuel';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import type { ConsoleInput } from '../src/renderer/src/app/duel/input';
+import type { ContactController, ContactSync } from '../src/renderer/src/app/duel/contactController';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
@@ -396,5 +397,42 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     tap(r, 'KeyW');
     expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // a noop hands the base back too
     r.dispose();
+  });
+});
+
+describe('the contact window online (enemy ship window spec §3, §6.2)', () => {
+  const contactOf = (): ContactController => (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact;
+  const frame: ContactSync = { shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0 };
+  /** What the scene does on a frame with a map click on the enemy at Weapons (the scene is stubbed here). */
+  const show = (c: ContactController): void => { c.sync(frame); c.click(1); c.sync(frame); };
+  it('with the window shown, Escape only closes it and sends no setPaused; with it closed, Escape pauses as before', () => {
+    const r = rig(1), c = r.attach(), contact = contactOf();
+    show(contact);
+    r.key('keydown', 'Escape'); r.key('keyup', 'Escape'); r.pump();
+    expect(c.commands().some((x) => x.kind === 'setPaused')).toBe(false);
+    expect(contact.state()).toBeNull();
+    r.key('keydown', 'Escape'); r.key('keyup', 'Escape'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'setPaused')).toEqual([{ kind: 'setPaused', paused: true }]);
+    r.dispose();
+  });
+  it('on a decided round with the window shown, Escape opens no leave prompt: Enter then sends a rematch and does not leave', () => {
+    const r = rig(1), c = r.attach(), contact = contactOf();
+    decide(r.d); c.publish(r.d); r.pump();
+    show(contact);
+    r.key('keydown', 'Escape'); r.key('keyup', 'Escape'); r.pump();
+    r.key('keydown', 'Enter'); r.key('keyup', 'Enter'); r.pump();
+    expect(r.leave).not.toHaveBeenCalled();
+    expect(c.commands().filter((x) => x.kind === 'rematch')).toHaveLength(1);
+    r.dispose();
+  });
+  it('hands the scene its controller and a click source, and calls setContact with it on creation and null on dispose', () => {
+    const setContact = vi.fn();
+    const r = rig(0, undefined, undefined, { setContact }); r.attach();
+    expect(setContact).toHaveBeenCalledTimes(1);
+    const opts = h.sceneOpts.at(-1) as unknown as { contact: unknown; takeClick: unknown };
+    expect(opts.contact).toBe(setContact.mock.calls[0]![0]);
+    expect(typeof opts.takeClick).toBe('function');
+    r.dispose();
+    expect(setContact).toHaveBeenCalledTimes(2); expect(setContact.mock.calls[1]![0]).toBeNull();
   });
 });
