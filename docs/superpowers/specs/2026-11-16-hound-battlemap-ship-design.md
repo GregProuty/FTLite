@@ -40,14 +40,18 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 
 ## 3. Which ship flies
 
-`shipForCrew` returns `'hound'` for every crew size (it has four bunks). `ShipId` becomes `'skiff' | 'cutter' | 'hound'`. The Skiff and Cutter stay for tests, gates and the duel; the duel keeps the Cutter. The layout maps in `main.ts`, `network/modes/sector.ts` and `main/network/onlineSector.ts` gain `hound`. The lobby line becomes "Ship: Hound (4 crew)". Golden and determinism runs that pin a ship keep their ship. Any that go through `shipForCrew` are re-blessed once, with SIM_VERSION bumped if the golden harness requires it.
+- **Art-iv (this part): the duel.** Single player is the solo duel (`main.ts` `single`), so the Hound replaces the Cutter as the duel ship: `main.ts`, `src/network/modes/duel.ts` and `src/main/network/onlineDuel.ts` use one `DUEL_LAYOUT` (the Hound). The duel's repair points become per-layout (`DUEL_REPAIR_POINTS[layout.id]`): Hound Weapons -> Ops (10,8), Shields -> Reactor (4,11), Engines -> Engines (4,2). The Cutter keeps its points, so the existing duel tests on the Cutter stay valid.
+- **Art-iv-b (follow-up): the sector fleet.** `shipForCrew` stays Skiff/Cutter in this part. Putting the Hound in the multiplayer sector needs a newly recorded cross-engine determinism fixture (`tests/fixtures/determinism-v2.json` is authored once, never auto-blessed), which is a separate contract task.
+- `ShipId` gains `'hound'` (with a LINES entry) so the layout maps in `main.ts` and `network/modes/sector.ts` can resolve it, and `onlineSector.ts` is unchanged.
 
 ## 4. Rendering
 
 - New optional asset `ship.hound.map` and a `battlemapLayer` drawn under every interior layer, at the layout's world origin minus the half-tile offset. The scale is `TILE_PX*2 / 140` world units per source pixel, with linear filtering. Painted art is exempt from the bible's whole-number and palette rules: add one bible paragraph and exempt this layer from the `0x`-literal test only if it needs a literal (it should not).
-- When the asset is loaded **and** the ship is the Hound: skip the procedural floor, wall and console sprites (the painting has them). Keep doors, hazards (fire, breach, vacuum, O2), grade, lights, particles, blasts, callouts, room icons and the selection/hover outlines. Draw door panels thinner (painted-style, one panel at a third of the tile) so they sit in the painted gaps.
+- When the asset is loaded **and** the ship is the Hound: skip the procedural floor, wall and console sprites (the painting has them). On the Hound each console instead draws a VTT-style marker: a rounded square outline on its tile, tinted by its look (CONSOLE_TINT), so console state still reads. Keep doors, hazards (fire, breach, vacuum, O2), grade, lights, particles, blasts, callouts, room icons and the selection/hover outlines. Door panels stay as they are: at 12 of 32 units they are already as thick as the painted walls (about 0.4 tile).
 - Missing asset (a fresh clone without the import): fall back to today's procedural drawing of the Hound layout, so the game still runs. This uses the existing `fallback.ts` feature group pattern.
-- Camera: `worldFit` fits the 23x15 layout plus the painted hull margin (the image bounds, not just the tile bounds), so the engine pods and dome are never cropped.
+- Camera: the duel fit (`duelFit`) and the sector fit fit the painted bounds (tiles x -4.87..23.19, y -2.49..17.31, from the image's alpha bounding box), not just the tile bounds, so the engine pods and dome are never cropped. The offset folds into `fit.x/fit.y`, so tile (0,0) stays at the world origin for every consumer.
+- Texture: linear filtering with mipmaps for this one texture (it is shown at about a third of its 70 px per tile).
+- Import: `art/import.json` outputs gain optional `remap` (default true) and `flipX` (default false). The Hound entry is `remap: false, flipX: true`, one full frame; raw outputs are left out of the contact sheet.
 
 ## 5. Crew as VTT tokens
 
@@ -57,7 +61,7 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 
 ## 6. Tests and checks
 
-- `hound.json` parses (the schema test covers it) and gets a unit test that wall and door tiles lie on the traced painted wall lines. The trace lives in `art/hound-walls.json`: the list of painted wall segments in square coordinates, hand-traced in the plan.
+- `hound.json` parses and gets a unit test pinning its traced shape: 23x15, the rows exactly as traced against the painting (the overlay was checked by eye in planning), rooms, systems, doors, stations and airlocks.
 - Render model tests: the layer is chosen only for the Hound with the asset loaded; the procedural floor and walls are skipped in that case; the token model gives the right ring for each state.
 - `npm test`, typecheck, the determinism check, the smokes, and screenshots via the visual-check method (normal, alert, fire/breach, crew walking through doors) into `C:\Users\djuar\FTLite-shots\art-iv\`.
 - Gate: the owner's look check.
