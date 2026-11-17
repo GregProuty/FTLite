@@ -5,15 +5,13 @@
 import { duelRules, type DuelTypes } from '../../renderer/src/authority/duelRules';
 import { duelCodec } from '../../renderer/src/net/codec';
 import { SIM_VERSION } from '../../renderer/src/sim/tuning';
-import { parseShip } from '../../renderer/src/sim/ship/schema';
-import cutter from '../../renderer/src/sim/ship/cutter.json';
+import { DUEL_LAYOUT } from '../../renderer/src/sim/duel/layout';
 import { createDuelStreamBinding } from './duelStream';
 import { createDuelProducers } from './duelProducers';
 import { defineEncounterMode, jsonModeCodecs } from './encounterMode';
 import type { ModeDefinition } from './contracts';
 
-const CUTTER = parseShip(cutter);
-function resolveLayout(id: string) { if (id !== CUTTER.id) throw Error('unknown duel layout'); return CUTTER; }
+function resolveLayout(id: string) { if (id !== DUEL_LAYOUT.id) throw Error('unknown duel layout'); return DUEL_LAYOUT; }
 const decode = duelCodec(2);
 
 export const duelMode: ModeDefinition = defineEncounterMode<DuelTypes>({

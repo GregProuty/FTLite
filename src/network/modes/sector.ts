@@ -7,12 +7,13 @@ import { parseShip } from '../../renderer/src/sim/ship/schema';
 import starter from '../../renderer/src/sim/ship/starter.json';
 import skiff from '../../renderer/src/sim/ship/skiff.json';
 import cutter from '../../renderer/src/sim/ship/cutter.json';
+import hound from '../../renderer/src/sim/ship/hound.json';
 import { createSectorStreamBinding } from './sectorStream';
 import { createSectorProducers } from './sectorProducers';
 import { defineEncounterMode, jsonModeCodecs } from './encounterMode';
 import type { ModeDefinition } from './contracts';
 
-const layouts = new Map([starter, skiff, cutter].map(json => { const layout = parseShip(json); return [layout.id, layout]; }));
+const layouts = new Map([starter, skiff, cutter, hound].map(json => { const layout = parseShip(json); return [layout.id, layout]; }));
 function resolveLayout(id: string) { const layout = layouts.get(id); if (!layout) throw Error('unknown sector layout'); return layout; }
 
 export const sectorMode: ModeDefinition = defineEncounterMode({

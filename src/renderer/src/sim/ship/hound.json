@@ -1,0 +1,235 @@
+{
+  "id": "hound",
+  "version": 1,
+  "width": 23,
+  "height": 15,
+  "rows": [
+    "      ######           ",
+    "  #####MMMM#           ",
+    "  #EEE#MMMM#           ",
+    "  #EEE#MMMM#           ",
+    "#####+#+###############",
+    "#HHHHH+OOOOO#######BBB#",
+    "#HHHHH#OOOOO#QQQQQ#BBB#",
+    "#HHHHH#OOOOO+QQQQQ+BBB#",
+    "#HHHHH#OOOOO#QQQQQ#BBB#",
+    "#HHHHH+OOOOO#######BBB#",
+    "#####+#+###############",
+    "  #RRR#LLLL#           ",
+    "  #RRR#LLLL#           ",
+    "  #####LLLL#           ",
+    "      ######           "
+  ],
+  "rooms": [
+    {
+      "id": "B",
+      "name": "Bridge",
+      "system": "navigation"
+    },
+    {
+      "id": "Q",
+      "name": "Quarters",
+      "system": null
+    },
+    {
+      "id": "O",
+      "name": "Ops",
+      "system": "science"
+    },
+    {
+      "id": "M",
+      "name": "Medbay",
+      "system": "medbay"
+    },
+    {
+      "id": "L",
+      "name": "Life Support",
+      "system": "lifeSupport"
+    },
+    {
+      "id": "E",
+      "name": "Engines",
+      "system": "engineering"
+    },
+    {
+      "id": "R",
+      "name": "Reactor",
+      "system": "reactor"
+    },
+    {
+      "id": "H",
+      "name": "Hold",
+      "system": null
+    }
+  ],
+  "edges": [
+    {
+      "a": "E",
+      "b": "H",
+      "kind": "door",
+      "tile": [5, 4],
+      "width": 1
+    },
+    {
+      "a": "R",
+      "b": "H",
+      "kind": "door",
+      "tile": [5, 10],
+      "width": 1
+    },
+    {
+      "a": "H",
+      "b": "O",
+      "kind": "door",
+      "tile": [6, 5],
+      "width": 1
+    },
+    {
+      "a": "H",
+      "b": "O",
+      "kind": "door",
+      "tile": [6, 9],
+      "width": 1
+    },
+    {
+      "a": "M",
+      "b": "O",
+      "kind": "door",
+      "tile": [7, 4],
+      "width": 1
+    },
+    {
+      "a": "L",
+      "b": "O",
+      "kind": "door",
+      "tile": [7, 10],
+      "width": 1
+    },
+    {
+      "a": "O",
+      "b": "Q",
+      "kind": "door",
+      "tile": [12, 7],
+      "width": 1
+    },
+    {
+      "a": "Q",
+      "b": "B",
+      "kind": "door",
+      "tile": [18, 7],
+      "width": 1
+    }
+  ],
+  "breachSites": [
+    {
+      "room": "B",
+      "tile": [22, 7],
+      "width": 1
+    },
+    {
+      "room": "Q",
+      "tile": [15, 5],
+      "width": 1
+    },
+    {
+      "room": "O",
+      "tile": [10, 4],
+      "width": 1
+    },
+    {
+      "room": "M",
+      "tile": [8, 0],
+      "width": 1
+    },
+    {
+      "room": "L",
+      "tile": [9, 14],
+      "width": 1
+    },
+    {
+      "room": "E",
+      "tile": [4, 1],
+      "width": 1
+    },
+    {
+      "room": "R",
+      "tile": [4, 13],
+      "width": 1
+    },
+    {
+      "room": "H",
+      "tile": [0, 5],
+      "width": 1
+    }
+  ],
+  "stations": [
+    {
+      "id": "navigation",
+      "room": "B",
+      "tile": [20, 7],
+      "allocation": 1
+    },
+    {
+      "id": "weapons",
+      "room": "B",
+      "tile": [20, 7],
+      "allocation": 2
+    },
+    {
+      "id": "science",
+      "room": "O",
+      "tile": [9, 5],
+      "allocation": 1
+    },
+    {
+      "id": "engineering",
+      "room": "O",
+      "tile": [9, 5],
+      "allocation": 1
+    },
+    {
+      "id": "doors",
+      "room": "O",
+      "tile": [9, 5],
+      "allocation": 1
+    },
+    {
+      "id": "lifeSupport",
+      "room": "L",
+      "tile": [9, 12],
+      "allocation": 1
+    },
+    {
+      "id": "medbay",
+      "room": "M",
+      "tile": [8, 1],
+      "allocation": 1
+    }
+  ],
+  "consoleGroups": [
+    {
+      "tile": [20, 7],
+      "kinds": ["navigation", "weapons"]
+    },
+    {
+      "tile": [9, 5],
+      "kinds": ["science", "engineering", "doors"]
+    }
+  ],
+  "spawns": [
+    [13, 7],
+    [14, 7],
+    [15, 7],
+    [16, 7]
+  ],
+  "airlocks": [
+    {
+      "room": "H",
+      "tile": [0, 7]
+    },
+    {
+      "room": "L",
+      "tile": [8, 14]
+    }
+  ]
+}
