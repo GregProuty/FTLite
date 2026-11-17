@@ -1,0 +1,58 @@
+# Codex review exchange: art-iii-impl
+
+Subject: `art/import.json docs/art/bible.md docs/gates.md docs/superpowers/plans/2026-11-17-art-iii-set-dressing.md docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md public/THIRD_PARTY_NOTICES.txt public/assets/manifest.json src/renderer/src/render/assetNames.ts src/renderer/src/render/duel/interiorView.ts src/renderer/src/render/fallback.ts src/renderer/src/render/propLayer.ts src/renderer/src/render/propModel.ts src/renderer/src/render/renderer.ts tests/duelInterior.test.ts tests/propArt.test.ts tests/propLayer.test.ts tests/propModel.test.ts` (impl). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing 9214370, effort high, 186 s, 1207700 in / 1136097 cached / 16633 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R1-F1 The prop layer's 'same key, new layout object' branch is never exercised
+The rebuild test is supposed to show the layer rebuilds only when propKey changes. It never reaches the `key === drawnFor` early return. Its second call, `layer.draw(stateOf(CUTTER))`, hands over the same parsed CUTTER object, and the `state.layout === drawnLayout` identity check returns first. Deleting the key comparison would not fail any test. · diff L529-532 (propLayer.ts: identity check, then `if (key === drawnFor) return`); diff L888-894 (tests/propLayer.test.ts: `layer.draw(a)` then `layer.draw(stateOf(CUTTER))` with the same `CUTTER` const from diff L850); src/renderer/src/sim/state.ts:L114 (createSimState stores `layout` by reference). Also flagged in progress.md L314. · The test claims to cover the rebuild rule from spec L61. Today only the identity half is covered. A regression that rebuilds every time a new layout object arrives with the same content (for example an online client that re-parses the layout) would go unnoticed, though the output would still be correct. · In the rebuild test, also draw with `stateOf({ ...CUTTER })`: a new object with the same key. Expect `children[0]` to still be `first`, and `first.destroyed` to be false. Optionally add a renamed copy (as in diff L1041) and expect a rebuild.
+
+## Verified
+- Boundaries: the diff touches only art/import.json, docs/art/bible.md, docs/gates.md, the spec, THIRD_PARTY_NOTICES.txt, manifest.json, assetNames.ts, interiorView.ts, fallback.ts, the new propLayer.ts and propModel.ts, renderer.ts and four test files (diff L1-L1048). Nothing changes under sim, authority, src/network or src/shared. No ship JSON, palette.json or package.json change.
+- Assets: the seven one-frame outputs (diff L15-104) match the spec table (spec L21-27) exactly. Each rectangle is already listed by an Art-ii output: art/import.json L143-217 hold the same x and y values as L1845-1924. importCore.ts:L88-93 sizes a one-frame output to exactly the frame, so tex.width and tex.height equal PROP_SIZE.
+- Manifest: the seven entries are licence paid, required false, with the Maru-98 source, retrieval date and credit (diff L276-367). The titles follow plan Decision 10. parseManifest rejects a duplicate file or name (manifest.ts:L54-62), and propArt.test parses the real manifest (diff L807). The notices are regenerated with the bunk, couch and seats in the Habitable Building block and a new Mars Tools block for the crate and lockers (diff L245-254).
+- Fresh clone: the names are registered optional (diff L402). assets.ts:L76 puts unbound optional names in `missing`, so featureReady(..,'propArt') is false (fallback.ts, diff L498/L502-504) and propLayer.draw returns before any `assets.texture` call (diff L524-529). The only `texture(slot.name)` call is propLayer.ts L27, behind that check. The feature falls back as a whole. propLayer.test 'draws nothing without propArt' covers this (diff L895-899).
+- roomKind and ROOM_PROPS match spec section 2 (spec L33-38 vs diff L568-583): the name is matched case-insensitively first, then system medbay.
+- Exclusions match spec L45-51 (diff L618-638): the station tiles and edgeTile (every edge, derived.ts:L47-51) with their 4-neighbours; the magazine with its neighbours only when magazineTile >= 0 (derived.ts:L81); the spawns as [x,y]; the floor neighbours of siteTile and airlockTile; the lamp as Math.min(...roomTiles[r]), which equals gradeModel.ts:L104. A candidate needs a '#' 4-neighbour, and its side is the first of n, e, s, w (diff L633).
+- Order, fit and take match spec L53-55 (diff L650-678). The seed is hashString(layoutHash). hashU32 returns an unsigned value (random.ts:L12-16), so `a.h - b.h` is a safe comparator, with ties broken by tile. propDepth is 2h - WALL_GAP. floorDepth counts tiles of the same room away from the wall. `crowded` checks the 8-neighbourhood against `taken`, which spans all rooms. The first unused name that fits is taken, and the loop stops when the list is used up.
+- Cache key: layoutHash plus `name/system` for each room (diff L641-643), so it covers room names and systems as the spec requires. layoutHash covers rows, rooms, edges, sites, airlocks, stations, spawns and the magazine (derived.ts:L25, L75-82). The renamed-room test proves names enter the key (diff L1040-1047). No sim RNG is read; artGuards walks render/ automatically (artGuards.test.ts:L39-48).
+- Placement: consolePlacement(side, true, w, h) puts the back edge on the wall face at ±WALL_GAP and returns cx, cy and SIDE_ROTATION (consoleModel.ts:L106-115). propLayer uses anchor 0.5, scale 2, p.rotation and the tile origin plus cx, cy, with no tint (diff L536-541). The widest prop (seats, 50 units) spills 9 units along the wall, less than BAND 10, so a fitted prop cannot reach a side wall's band.
+- Layer order: renderer.ts adds the layer as tiles.container, props.container, feel.grade, … and calls props.draw after tiles.update (diff L720, L737-738). interiorView.ts does the same with fx.grade (diff L454, L463). No source file indexes or inserts world children (grep for world.addChildAt, getChildAt, children and setChildIndex in src: no matches). The only tests that index world children are duelInterior.test (updated to kids[2] and lights at 10, diff L760-764) and propLayer.test. app/duel/scene.ts:L52/L70 only calls createInteriorView and addChildAt on its own scene, so it is unaffected. interiorView's destroy({children:true}) (L94) does not destroy the shared textures.
+- Tests: the pinned slots for the Cutter and Skiff (diff L995-1010) match plan Decision 5 and the spec's hand count. Determinism is checked with the cache evicted (L1012-1014). The adjacency check, the first-unused-name check and the art pixel within a floor tile expanded by WALL_GAP check are there (L1011-1039). propArt checks the frames against PROP_SIZE and the presence elsewhere, and countColours runs only where the owner's packs exist (L796-822).
+- Triage of the progress.md L312-314 minor notes. The mutable cached array from propSlots is read by one consumer (propLayer), so it is harmless. The O(rooms × candidates) filter is trivial at these sizes. The rect test not pinning x and y is mitigated: the 'elsewhere' check compares x, y, w and h against an Art-ii output, and the import.json diff matches the spec table. There is no duplicate check in the manifest test, but parseManifest enforces it. The `find()!` calls only make failure messages worse. The untested key branch is raised as a finding. Texture survival on rebuild holds because Sprite.destroy() keeps textures by default.
+
+## Not verified
+- `tsc --noEmit` or `tsc -b` and lint were not run: this session has no shell tool (only Read, Grep and Glob), so I could not run the compiler. By reading, the new files' types look consistent: GameAssets in assets.ts:L8-15 matches the fake in propLayer.test, and the readonly PROP_ART_NAMES tuple spread into string[] is fine. progress.md L316 records 'tsc ok' from the build.
+- The test suite was not run (forbidden). The pinned slot values rest on the plan's prototype run and progress.md L316 (3862/3862).
+- Whether each sprite's back really is at the top of its art (plan Decision 3) cannot be checked without viewing the paid sheets and the screenshots in C:\Users\djuar\FTLite-shots\art-iii\. That is left to the owner's look gate.
+- That `npm run art:palette` leaves palette.json byte-identical on the owner's machine: palette.json is absent from the diff, and the countColours test runs only where the packs exist.
+- The renderer.ts layer order is tested only by source-string matching (diff L908-910), because createRenderer needs a live Pixi Application. I checked it by reading renderer.ts in the diff, not at runtime.
+
+---
+
+# Round 1 response (fix in 3d01165)
+
+Reviewed `round-1.json` against the branch at `9214370`. 1 accepted, 0 rejected, 0 deferred.
+
+## R1-F1 [P3]: The same-key, new-layout-object branch is never exercised
+
+Confirmed: state.ts:L114 keeps the layout by reference, so the second draw returned at the identity check. The rebuild test now also draws `stateOf({ ...CUTTER })`, a new layout object with the same key, and expects the same sprite and no destroy. propLayer.test.ts passes (5/5) and tsc is clean.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- tests/propLayer.test.ts
+
+<!-- end -->
+
+---
+

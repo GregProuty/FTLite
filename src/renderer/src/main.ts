@@ -17,13 +17,20 @@ import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
 import { createOnlineDuelSession } from './app/duel/onlineDuel';
 import { createSessionRouter } from './app/sessionRouter';
-import { createUiStore } from './ui/store';
+import { createUiStore, setLayout } from './ui/store';
+import { createDuelSink, createFlightSink } from './ui/sinks';
+import { computeLetterbox } from './render/letterbox';
 import { createUiActions } from './ui/actions';
 import { inputBlockedOf } from './ui/menuState';
 import { mountUi } from './ui/mount';
+import { createUiPerf } from './ui/perf';
 import { installFeel } from './app/feelBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
+import { INTERNAL_H, INTERNAL_W } from '../../shared/resolution';
+
+/** The dev UI budget counter (?uiperf=1): shared by the app and both dev views' sinks. */
+const perf = createUiPerf(new URLSearchParams(location.search).get('uiperf') === '1');
 
 declare global { interface Window { ftlite?: import('../../shared/onlineSession').FtlitePreloadApi } }
 
@@ -59,9 +66,12 @@ async function startApp(): Promise<void> {
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
+  const win = window.ftlite?.window;
+  const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
+  const duelSink = createDuelSink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
-      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite,
+      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink,
         onExit: () => { session.home(); actions.leaveSingle(); } });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
@@ -69,7 +79,7 @@ async function startApp(): Promise<void> {
     online: () => {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
-        duel: () => createOnlineDuelSession({ renderer, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
+        duel: () => createOnlineDuelSession({ renderer, ui: duelSink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
           leave: () => actions.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record) }),
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play })
@@ -82,8 +92,6 @@ async function startApp(): Promise<void> {
     if (session.mode !== 'online') { port.close(); return; }
     session.selectOnline().attach(descriptor, port);
   });
-  const win = window.ftlite?.window;
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
   const actions = createUiActions({ store, api: bridge ?? undefined,
     single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
@@ -101,13 +109,15 @@ async function startApp(): Promise<void> {
     const top = store.getState().layout.stripHeight;
     renderer.app.canvas.style.cssText = `position:fixed;left:0;top:${top}px;display:block`;
     renderer.resize(window.innerWidth, Math.max(1, window.innerHeight - top));
+    const lb = computeLetterbox(window.innerWidth, Math.max(1, window.innerHeight - top), INTERNAL_W, INTERNAL_H);
+    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
   };
   let strip = store.getState().layout.stripHeight;
   const offStrip = store.subscribe((s) => { if (s.layout.stripHeight !== strip) { strip = s.layout.stripHeight; resize(); } });
   window.addEventListener('resize', resize); resize();
   window.addEventListener('resize', () => actions.windowResized());   // F11 fullscreen changes keep the Settings label true
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
-  const unmountUi = mountUi({ el: uiRoot, store, actions });
+  const unmountUi = await mountUi({ el: uiRoot, store, actions });
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
@@ -125,9 +135,17 @@ async function startFlight(seed: number): Promise<void> {
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
-  const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
+  const store = createUiStore({ onlineAvailable: false });
+  const actions = createUiActions({ store, single() {}, online() {}, pause() {} });
+  const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
+  await mountUi({ el: uiRoot, store, actions, menu: false });
+  const resize = (): void => {
+    renderer.resize(window.innerWidth, window.innerHeight);
+    const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
+    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+  };
   window.addEventListener('resize', resize); resize();
-  startFlightMode({ renderer, seed, lifecycle: window.ftlite });
+  startFlightMode({ renderer, seed, ui: createFlightSink(store, perf), lifecycle: window.ftlite });
 }
 
 /** The solo duel (H-1 spec §4, §11a): the renderer and its letterbox, the Hound, but no sector session. */
@@ -136,14 +154,44 @@ async function startDuel(seed: number): Promise<void> {
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
-  const resize = (): void => renderer.resize(window.innerWidth, window.innerHeight);
+  const store = createUiStore({ onlineAvailable: false });
+  const actions = createUiActions({ store, single() {}, online() {}, pause() {} });
+  const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
+  await mountUi({ el: uiRoot, store, actions, menu: false });
+  const resize = (): void => {
+    renderer.resize(window.innerWidth, window.innerHeight);
+    const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
+    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+  };
   window.addEventListener('resize', resize); resize();
-  startDuelMode({ renderer, seed, layout, lifecycle: window.ftlite });
+  startDuelMode({ renderer, seed, layout, ui: createDuelSink(store, perf), lifecycle: window.ftlite });
+}
+
+/** The text-parity probe (UI-ii Task 5): Pixi text on the left half, React text on the right, for the pixel comparison. */
+async function startProbe(): Promise<void> {
+  const assets = await loadAssets('./assets/manifest.json');
+  const renderer = await createRenderer(assets);
+  const store = createUiStore({ onlineAvailable: false });
+  const actions = createUiActions({ store, single() {}, online() {}, pause() {} });
+  const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
+  const { mountProbe } = await import('./ui/probe/mountProbe');
+  const { startUiProbe, duelProbeFixture } = await import('./app/uiProbe');
+  const duelProbe = new URLSearchParams(location.search).get('probe') === 'duel';
+  if (duelProbe) await mountUi({ el: uiRoot, store, actions, menu: false }); else await mountProbe({ el: uiRoot, store, actions });
+  const resize = (): void => {
+    renderer.resize(window.innerWidth, window.innerHeight);
+    const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
+    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+  };
+  window.addEventListener('resize', resize); resize();
+  startUiProbe(renderer, !duelProbe);
+  if (duelProbe) createDuelSink(store).frame(duelProbeFixture());
 }
 
 /** One mode per launch (H-1 spec §3): the dev views `?mode=flight` and `?mode=duel`, or the app with its main menu. */
 function start(): Promise<void> {
   const mode = readMode(location.search);
+  if (mode === 'uiprobe') return startProbe();
   return mode === 'flight' ? startFlight(readSeed(location.search)) : mode === 'duel' ? startDuel(readSeed(location.search)) : startApp();
 }
 start().catch(showFatal);

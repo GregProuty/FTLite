@@ -7,9 +7,11 @@ import { SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { asteroidShape, CHEVRON_SIZE, wedgeSegments, type ArrowTarget, type Label, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import type { ArcDraw, CombatDraw } from './weaponsModel';
 import type { Viewport } from './camera';
+import { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
+
+export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
 export const SPACE = 0x05060a;
-export const CREW_SHIP = 0x4fd6e8, ENEMY_SHIP = 0xe8564f, SHIELD_RING = 0x6fc3ff;
 const GRID = 0x34445c, CONTOUR = 0x4a6a9a, EDGE = 0xa05050, PLANET = 0x2d4a6b, PLANET_LIT = 0x5b86b0, PLANET_RIM = 0x8fb4d8;
 const ROCK = 0x5e554b, ROCK_EDGE = 0x8a7f70, PATH = GOOD, VELOCITY = AMBER, FLAME = 0xff8c1a, MISSILE_PATH = AMBER, LOCK = AMBER;
 const ARROW_COLOUR: Readonly<Record<ArrowTarget, number>> = { ship: CREW_SHIP, enemy: ENEMY_SHIP, planet: PLANET_RIM, missile: AMBER };
@@ -38,8 +40,6 @@ export function starField(seed: number, w: number, h: number): { x: number; y: n
 }
 export interface TacticalLayerOptions {
   fontFamily: string; viewport: Viewport; seed?: number;
-  /** The pause banner's text (the app's single player adds the main-menu key). */
-  pauseText?: string;
 }
 export const PAUSE_TEXT = 'PAUSED   ESC: RESUME';
 
@@ -57,11 +57,8 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const rows = Array.from({ length: GRID_LABELS }, () => mk(FONT_NATIVE, DIM, 0, 0.5));
   const ring = Array.from({ length: RING_LABELS }, () => mk(FONT_NATIVE, DIM, 0.5, 0.5));
   const arrowText = Array.from({ length: ARROWS }, () => mk(FONT_NATIVE, TEXT, 0.5, 0.5));
-  const zoomText = mk(FONT_SIZE, DIM), scaleText = mk(FONT_NATIVE, DIM), hint = mk(FONT_SIZE, AMBER, 0.5, 1), banner = mk(FONT_SIZE * 1.5, TEXT, 0.5, 0.5);
-  zoomText.position.set(16, h - 64); scaleText.position.set(16, h - 22); hint.position.set(w / 2, h - 12); banner.position.set(w / 2, h / 2 - 80);
-  banner.text = opts.pauseText ?? PAUSE_TEXT;
   const lockText = mk(FONT_NATIVE, LOCK, 0, 0), info = mk(FONT_SIZE, TEXT, 0.5, 0);
-  const texts = [...cols, ...rows, ...ring, ...arrowText, zoomText, scaleText, hint, banner, lockText, info];
+  const texts = [...cols, ...rows, ...ring, ...arrowText, lockText, info];
 
   // The star field: render-only randomness, seeded (H-1 spec §7 item 1). One screen of stars is drawn as a 2 × 2 tile, so
   // shifting it by the parallax offset (0..w, 0..h, minus one tile) always covers the screen with no gap.
@@ -214,13 +211,6 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       d.arrows.forEach((a) => arrowGlyph(overlay, a.x, a.y, a.angle, ARROW_COLOUR[a.target]));
       // Each label sits inward of its arrow, far enough along the arrow's axis to clear the glyph (half its width, plus 14 px).
       fill(arrowText, d.arrows.map((a) => ({ text: a.label, x: a.x - Math.sin(a.angle) * (textPx(a.label, 1) / 2 + 14), y: a.y + Math.cos(a.angle) * 18 })));
-      const o = d.overlay, bx = 16, by = h - 28;
-      overlay.moveTo(bx, by).lineTo(bx + o.scaleBar.px, by).stroke({ width: 2, color: DIM });
-      overlay.moveTo(bx, by - 5).lineTo(bx, by + 5).stroke({ width: 2, color: DIM }).moveTo(bx + o.scaleBar.px, by - 5).lineTo(bx + o.scaleBar.px, by + 5).stroke({ width: 2, color: DIM });
-      setText(zoomText, o.zoomText); zoomText.visible = true;
-      setText(scaleText, `${o.scaleBar.units} u`); scaleText.visible = true; scaleText.position.set(bx + o.scaleBar.px + 8, by - 8);
-      setText(hint, 'C: SNAP BACK'); hint.visible = o.snapHint;
-      banner.visible = o.paused;
     },
     reset() { for (const t of texts) t.visible = false; for (const g of drawn) g.clear(); },
     reseed(seed) { if (seed !== shownSeed) drawStars(seed); },

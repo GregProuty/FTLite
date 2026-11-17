@@ -16,6 +16,7 @@ import { createCrewLayer } from './crewSprites';
 import { createBoarderLayer } from './boarderLayer';
 import { createMagazineLayer } from './torpedoLayer';
 import { createConsoleLayer } from './consoleLayer';
+import { createPropLayer } from './propLayer';
 import { createProjectileLayer } from './projectiles';
 import { createEnemyWindowLayer } from './enemyWindow';
 import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf } from './enemyWindowModel';
@@ -65,15 +66,16 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const boarders = createBoarderLayer(assets);
   const consoleDesks = createConsoleLayer(assets);   // spec Demo-xii section 1: a desk at every station, under the crew (Art-ii: the bought consoles)
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
+  const props = createPropLayer(assets);    // Art-iii spec section 4: the set dressing, directly over the tiles
   let feelSetting: FeelSetting = DEFAULT_FEEL;
   const missing = new Set(assets.missing);
   const feel = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
     world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'),
     blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
   });
-  // Art-i spec section 5: tiles, grade, effects.below, icons, consoleDesks, magazine, crew, boarders, effects.above, lights.
+  // Art-i spec section 5: (Art-iv: battlemap,) tiles, (Art-iii: props,) grade, effects.below, icons, consoleDesks, magazine, crew, boarders, effects.above, lights.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
+  world.addChild(battlemap.container, tiles.container, props.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
   consoleDesks.container.addChild(feel.fixtures); effects.above.addChild(feel.above);
   app.stage.addChildAt(feel.starfield, 0);   // the starfield under the world, filling WORLD_BAND (spec section 8)
   let lastDraw: number | null = null, stage = 1, seenImpact: Int32Array | null = null;
@@ -104,6 +106,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       projectiles.draw(state, fit, dt, { shotOrigin: shown ? windowRoomCentre(EnemyRoom.Weapons) : null, target: (slot) => { if (!shown || !view.bolt || view.bolt.slot !== slot || !view.bolt.to) return null; return { x: WINDOW.x + view.slideX + view.bolt.to.x, y: WINDOW.y + view.shipDY + view.bolt.to.y }; } });
       battlemap.draw(state);
       tiles.update(state, dt);
+      props.draw(state);
       icons.update(state);
       consoleDesks.draw(state);
       magazine.draw(state);

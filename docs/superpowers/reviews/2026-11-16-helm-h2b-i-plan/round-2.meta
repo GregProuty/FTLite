@@ -1,0 +1,14 @@
+kind=delta
+head=28c7a75
+thread_id=b2cd6c2f-9af5-4d29-ab73-6aab6b57c6af
+effort=medium
+started_at=2026-11-17T05:38:12.345608+00:00
+reviewer=claude-opus
+exit=0
+duration_s=83
+input_tokens=160981
+cached_input_tokens=122727
+output_tokens=7409
+reasoning_output_tokens=
+parsed=1
+needs_judgment=

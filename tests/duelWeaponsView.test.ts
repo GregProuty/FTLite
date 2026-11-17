@@ -210,7 +210,7 @@ describe('the tactical layer with the combat lists (H-1 spec §10)', () => {
     expect(starField(8, 1280, 720)).not.toEqual(starField(7, 1280, 720));
     expect(starField(7, 1280, 720)).toEqual(starField(7, 1280, 720));
   });
-  it('reset hides every text, the zoom, scale, hint and banner included, until the next draw', () => {
+  it('reset hides every text until the next draw', () => {
     const layer = createTacticalLayer({ fontFamily: 'm5x7', viewport: vp });
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), base = { ...input(st, cam, 'weapons'), paused: true };
     layer.draw(tacticalModel(base), combatModel(base));

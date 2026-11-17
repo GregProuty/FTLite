@@ -10,6 +10,7 @@ import { createBoarderLayer } from '../boarderLayer';
 import { createConsoleLayer } from '../consoleLayer';
 import { createBattlemapLayer } from '../battlemapLayer';
 import { fitRect } from '../battlemapModel';
+import { createPropLayer } from '../propLayer';
 import { createCrewLayer } from '../crewSprites';
 import { createEffectsLayer } from '../effects';
 import { createRenderMemory, type RenderMemory } from '../memory';
@@ -53,17 +54,18 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer();
+  const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
   const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
   const damage = new Graphics(), marks = new Graphics();
   const labels = Array.from({ length: 3 }, () => {
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
   });
-  // Back to front as renderer.ts (Art-i spec section 5): tiles, grade, effects below, room icons, desks, then the duel's
+  // Back to front as renderer.ts (Art-i spec section 5): the battlemap painting (Art-iv), tiles, the props (Art-iii), grade, effects below, room icons, desks, then the duel's
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
   // labels on top so the lights never wash them out.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
+  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
   desks.container.addChild(fx.fixtures); effects.above.addChild(fx.above);
   return {
     container, world, memory,
@@ -71,7 +73,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       const st = d.interior, fit = duelFit(st.derived.width, st.derived.height, stageScale(), fitRect(st.layout.id, st.derived.width, st.derived.height, missing));
       world.scale.set(fit.scale);
       st.crew.forEach((eid, pid) => { const p = crewPrev[pid]; if (p) memory.prev.set(Stable.id[eid]!, p); });
-      battlemap.draw(st); tiles.update(st, dt); icons.update(st); desks.draw(st); effects.draw(st);
+      battlemap.draw(st); tiles.update(st, dt); props.draw(st); icons.update(st); desks.draw(st); effects.draw(st);
       const o = interiorOverlay(d);
       damage.clear(); marks.clear();
       for (const t of o.tints) for (const p of t.tiles) damage.rect(p.x, p.y, TILE_PX, TILE_PX).fill({ color: TINT[t.level]!, alpha: 0.28 });

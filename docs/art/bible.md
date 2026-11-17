@@ -53,6 +53,7 @@ Each effect family uses one ramp, bright to dark, 5 to 8 palette colours, listed
   - `crew.p<k>.stand.<d>`, `crew.p<k>.idle.<d>`, `crew.p<k>.walk.<d>` for k 0-3, d n e s w (`crewArt`, LimeZu, 48 names): the tinted Puny crew without them. Player slot `pid % 4` wears sheet 04, 07, 13 or 19.
   - `console.<STATION_IDS id>` (`consoleArt`, Maru-98, 7 names): the procedural desks, screen strips and cursor blink without them.
   - `fx.blast.room`, `fx.blast.hit` (`blastArt`, Pimen): no blasts without them. `explosion-big.png` is imported but unbound.
+  - `prop.bunk.a`, `prop.bunk.b`, `prop.seats`, `prop.couch`, `prop.locker.a`, `prop.locker.b`, `prop.crate` (`propArt`, Maru-98, 7 names; Art-iii): bare floor without them. Placed by rule from the room's name and system (`render/propModel.ts`), never from ship data; each sprite's back is at the top of its art and it turns by quarter turns onto its wall. Each is a one-frame output of a rectangle another output already lists, so the palette does not move.
 
 ## Adding a pack
 
