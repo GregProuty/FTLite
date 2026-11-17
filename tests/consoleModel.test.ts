@@ -4,18 +4,33 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState } from './helpers/simLifetime';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
-import { consoleLook, consoleSide, deskPicture, consoles, DESK_FILL, DESK_OUTLINE, DESK_W, DESK_D, SCREEN_LIT, SCREEN_DIM, SCREEN_DOWN, WALL_GAP } from '../src/renderer/src/render/consoleModel';
+import { consoleLook, consoleSide, deskPicture, consoles, DESK_FILL, DESK_OUTLINE, DESK_OUTLINE_W, DESK_W, DESK_D, SCREEN_D, SCREEN_LIT, SCREEN_DIM, SCREEN_DOWN, WALL_GAP, type Side } from '../src/renderer/src/render/consoleModel';
 import { TILE_PX } from '../src/shared/resolution';
 import { cutterState, RECRUITS } from './helpers/sim';
+import { onGrid, strokeBand } from './helpers/artGrid';
 
 const SKIFF = parseShip(skiff);
 const skiffState = () => createSimState(SKIFF, 2, 1, RECRUITS);
 
 /** Visible consoles (spec Demo-xii section 1). */
 describe('the console drawing model', () => {
-  it('a desk about 0.6 tile wide and 0.3 deep, dark with a dark outline', () => {
-    expect(DESK_W).toBe(Math.round(0.6 * TILE_PX)); expect(DESK_D).toBe(Math.round(0.3 * TILE_PX));
+  it('a desk about 0.6 tile wide and 0.3 deep in whole art pixels, dark with a dark outline', () => {
+    expect([DESK_W, DESK_D, SCREEN_D, DESK_OUTLINE_W]).toEqual([20, 10, 2, 2]);   // 10 x 5 art pixels, a one-art-pixel screen and outline (Art-i spec section 4)
+    expect(Math.abs(DESK_W / TILE_PX - 0.6)).toBeLessThan(0.05); expect(Math.abs(DESK_D / TILE_PX - 0.3)).toBeLessThan(0.05);
     expect(DESK_FILL).toBe(0x2b3647); expect(DESK_OUTLINE).toBe(0x1b1b1b);
+  });
+  it('every desk and screen is on the art-pixel grid, the outline band too, and the screen sits inside the outline (Art-i spec section 4)', () => {
+    for (const side of ['n', 'e', 's', 'w'] as Side[]) for (const flush of [true, false]) {
+      const p = deskPicture(side, flush, 'free'), at = `${side} ${flush}`;
+      expect(onGrid(p.desk), `${at} desk ${JSON.stringify(p.desk)}`).toBe(true);
+      expect(onGrid(p.screen), `${at} screen ${JSON.stringify(p.screen)}`).toBe(true);
+      const band = strokeBand(p.desk, DESK_OUTLINE_W, 1);
+      expect(onGrid(band.outer) && onGrid(band.inner), at).toBe(true);
+      expect(band.outer).toEqual(p.desk);                                       // alignment 1: painted inside the desk
+      const s = p.screen, i = band.inner;
+      expect(s.x >= i.x && s.y >= i.y && s.x + s.w <= i.x + i.w && s.y + s.h <= i.y + i.h, at).toBe(true);
+      expect(Math.min(s.w, s.h)).toBe(SCREEN_D);
+    }
   });
   it('each state lights the screen: free amber, occupied a dim amber, failed or unpowered red', () => {
     expect(SCREEN_LIT).toBe(0xf5b942); expect(SCREEN_DOWN).toBe(0xff5b4a);

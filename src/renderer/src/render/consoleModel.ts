@@ -12,7 +12,9 @@ export const DESK_FILL = 0x2b3647, DESK_OUTLINE = 0x1b1b1b;
 /** The screen: free and online amber (one rule for every console, spec amendment 1), occupied a dim amber, failed or unpowered red. */
 export const SCREEN_LIT = AMBER, SCREEN_DIM = over(AMBER, 0.45, DESK_FILL), SCREEN_DOWN = WARN;
 const T = TILE_PX;
-export const DESK_W = Math.round(0.6 * T), DESK_D = Math.round(0.3 * T), SCREEN_D = 3;
+/** Whole art pixels (Art-i spec section 4: 2 world units each, even offsets): a desk 10 x 5 art pixels (about 0.6 x 0.3
+ *  tile), a screen one art pixel deep, inset one art pixel, and a one-art-pixel outline drawn inside the desk. */
+export const DESK_W = 20, DESK_D = 10, SCREEN_D = 2, SCREEN_INSET = 2, DESK_OUTLINE_W = 2;
 /** The floor strip between a wall tile's thin band and the room (walls are drawn as a band in the wall tile's middle): a flush desk fills it. */
 export const WALL_GAP = T - BAND - PANEL_THICK;
 
@@ -42,9 +44,9 @@ export function consoleSide(dist: Readonly<Record<Side, number>>, away: { dx: nu
 
 /** The desk in tile-local pixels. `flush`: the wall is the neighbour tile, so the desk backs onto its thin band; otherwise it stands at the tile's edge. */
 export function deskPicture(side: Side, flush: boolean, look: ConsoleLook): DeskPicture {
-  const x = Math.floor((T - DESK_W) / 2), y = flush ? -WALL_GAP : 0;
+  const x = (T - DESK_W) / 2, y = flush ? -WALL_GAP : 0;   // 6 and -10 (or 0): even, so the desk is on the art-pixel grid
   const desk: DoorRect = { x, y, w: DESK_W, h: DESK_D };
-  const screen: DoorRect = { x: x + 2, y: y + 2, w: DESK_W - 4, h: SCREEN_D };   // drawn for the north side, then turned
+  const screen: DoorRect = { x: x + SCREEN_INSET, y: y + SCREEN_INSET, w: DESK_W - 2 * SCREEN_INSET, h: SCREEN_D };   // drawn for the north side, then turned
   const turn = (r: DoorRect): DoorRect => side === 'n' ? r : side === 's' ? { x: r.x, y: T - r.y - r.h, w: r.w, h: r.h } : side === 'w' ? { x: r.y, y: r.x, w: r.h, h: r.w } : { x: T - r.y - r.h, y: r.x, w: r.h, h: r.w };
   return { desk: turn(desk), screen: turn(screen), fill: DESK_FILL, outline: DESK_OUTLINE, screenFill: look === 'free' ? SCREEN_LIT : look === 'occupied' ? SCREEN_DIM : SCREEN_DOWN };
 }
