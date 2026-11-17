@@ -1,0 +1,11 @@
+topic=helm-h2b-i-impl
+subject_kind=impl
+subject=docs/gates.md scripts/duel-playtest-model.ts scripts/duel-playtest-report.ts scripts/network/duel-app-smoke.ts src/main/network/onlineIpc.ts src/main/network/onlineSession.ts src/main/network/rtcTransport.ts src/network/rtc/peer.ts src/network/rtc/route.ts src/network/transport/controller.ts src/preload/index.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/main.ts src/renderer/src/net/duelRecord.ts src/renderer/src/render/duel/latencyOverlay.ts src/shared/onlineSession.ts src/shared/rtcSession.ts tests/duelPlaytestReport.test.ts tests/duelRuntime.test.ts tests/latencyOverlay.test.ts tests/linkStats.test.ts tests/onlineDuelSession.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\h2b-i
+base=cf3eb60
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-16
+head_at_setup=d9be9b0

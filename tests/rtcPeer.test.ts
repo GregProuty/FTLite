@@ -176,6 +176,15 @@ describe('authenticated RTC peer attempts', () => {
     const s=setup();authenticate(s);const result=await s.outcome;if(!('link'in result))throw Error(result.error);
     s.connection.stats=new Map([['pair',{id:'pair',type:'candidate-pair',nominated:true,state:'succeeded',currentRoundTripTime:Infinity,packetsReceived:-1,packetsLost:NaN}]]);s.advance(1000);await tick();expect(result.link.stats()).toEqual({rttMs:0,lossPct:0,relayed:false,bufferedBytes:0});s.peer.close('done');
   });
+  it('clears the route and RTT when a later sample has no selected pair or getStats throws (H-2b)', async () => {
+    const s=setup();authenticate(s);const result=await s.outcome;if(!('link'in result))throw Error(result.error);
+    const pair=()=>new Map<string,unknown>([['transport',{id:'transport',type:'transport',selectedCandidatePairId:'pair'}],['pair',{id:'pair',type:'candidate-pair',currentRoundTripTime:0.025,localCandidateId:'local',remoteCandidateId:'remote'}],['local',{id:'local',type:'local-candidate',candidateType:'relay'}],['remote',{id:'remote',type:'remote-candidate',candidateType:'host'}]]);
+    s.connection.stats=pair();s.advance(1000);await tick();expect(s.peer.linkFigures!()).toEqual({route:'internet',rttMs:25});
+    s.connection.stats=new Map();s.advance(1000);await tick();expect(s.peer.linkFigures!()).toEqual({route:null,rttMs:null});
+    s.connection.stats=pair();s.advance(1000);await tick();expect(s.peer.linkFigures!()).toEqual({route:'internet',rttMs:25});
+    const original=s.connection.getStats;s.connection.getStats=async()=>{throw Error('native');};s.advance(1000);await tick();expect(s.peer.linkFigures!()).toEqual({route:null,rttMs:null});
+    s.connection.getStats=original;s.peer.close('done');
+  });
   it('wraps sanitized selected-route stats while preserving task1 queue bytes and close', async () => {
     const s=setup();authenticate(s);const result=await s.outcome;if(!('link'in result))throw Error(result.error);
     s.connection.stats=new Map([['transport',{id:'transport',type:'transport',selectedCandidatePairId:'pair'}],['pair',{id:'pair',type:'candidate-pair',currentRoundTripTime:0.025,packetsReceived:90,packetsLost:10,localCandidateId:'local',remoteCandidateId:'remote'}],['local',{id:'local',type:'local-candidate',candidateType:'relay',address:'private'}],['remote',{id:'remote',type:'remote-candidate',candidateType:'host'}]]);

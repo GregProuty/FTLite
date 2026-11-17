@@ -15,7 +15,7 @@ export function createUiStore(init: UiStoreInit): UiStore {
     online: { available: init.onlineAvailable, status: null, receivedAt: 0 },
     settings: init.settings ? { available: true, ...init.settings } : { available: false, volume: 1, fullscreenAvailable: false, controls: [] },
     layout: { stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 },
-    duel: null, flight: null, epochs: { duel: 0, flight: 0 }
+    duel: null, flight: null, latency: null, epochs: { duel: 0, flight: 0 }
   }));
 }
 
