@@ -61,4 +61,4 @@ Each effect family uses one ramp, bright to dark, 5 to 8 palette colours, listed
 3. Only when the palette should change: `npm run art:palette`. It reads every frame in `art/import.json`, so a new pack moves the palette; re-import everything after it.
 4. `npm run art:import`, then look at `.art/contact.png`.
 5. Bind the names in `public/assets/manifest.json`: licence `paid`, `required: false`, `source` the store page URL, `retrieved` the purchase date, the credit line, and `modifications` `frames cut and remapped to the FTLite house palette by npm run art:import` with `editedBy` `FTLite art import`. Register new names as optional in `src/renderer/src/render/assetNames.ts` and group them as a feature in `fallback.ts`, with a drawing path for when they are missing (a fresh clone has no paid files).
-6. `npm run credits`, and commit the manifest, the generated notices and credits, `art/import.json` and (if rebuilt) `palette.json`, never the PNGs.r
+6. `npm run credits`, and commit the manifest, the generated notices and credits, `art/import.json` and (if rebuilt) `palette.json`, never the PNGs.
