@@ -97,7 +97,7 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
       if (client?.state()) points = client.presentation.sample(deps.now());
       const phase = lastPhase === 'ended' ? 'gameover' : lastPhase === 'paused' ? 'paused' : 'running';
       const ui = client?.state() ? client.ui : frozenUi;
-      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), ui, points);
+      deps.renderer?.draw(state, 1, bubbles(state, callouts, state.tick), ui, points, phase === 'paused');
       deps.hud?.update(buildHudModel(state, { mode: 'player', player: descriptor.seatId, ui }, {
         slots: state.crew.map((_, pid) => ({ status: status?.snapshot?.seats.find(s => s.seatId === pid)?.connected || pid === descriptor!.seatId && !!client?.state() ? 'active' : pid === descriptor!.seatId ? 'reconnect' : 'bot', key: pid === descriptor!.seatId ? input.key : null })),
         phase, message: `PLAYER ${descriptor.seatId + 1}${client?.state() ? '' : ' — CONNECTION LOST'}`, callouts, calloutFlash: flashingKinds(callouts, state.tick)

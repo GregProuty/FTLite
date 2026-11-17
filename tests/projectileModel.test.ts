@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectilePath, projectilePos, evadePos, outcomeOf, shouldReset, roomCentrePx, asteroidShape, fragmentCount, ASTEROID_SHOW_SECONDS, SHOT_SHOW_SECONDS, EVADE_FADE_TICKS, SHAKE_ASTEROID_PX, SHAKE_SHOT_PX, SHAKE_SECONDS } from '../src/renderer/src/render/projectileModel';
+import { projectilePath, projectilePos, evadePos, outcomeOf, shouldReset, roomCentrePx, asteroidShape, fragmentCount, ASTEROID_SHOW_SECONDS, SHOT_SHOW_SECONDS, EVADE_FADE_TICKS } from '../src/renderer/src/render/projectileModel';
 import { WORLD_BAND, worldFit } from '../src/renderer/src/render/worldFit';
 import { ObjectKind } from '../src/renderer/src/sim/debris';
 import { cutterState, room } from './helpers/sim';
@@ -9,8 +9,8 @@ const centre = { x: 600, y: 260 };
 const inBand = (p: { x: number; y: number }) => p.x >= WORLD_BAND.x && p.x <= WORLD_BAND.x + WORLD_BAND.w && p.y >= WORLD_BAND.y && p.y <= WORLD_BAND.y + WORLD_BAND.h;
 
 describe('projectile model (spec Demo-vii section 2)', () => {
-  it('the visibility windows and effect constants', () => {
-    expect([ASTEROID_SHOW_SECONDS, SHOT_SHOW_SECONDS, EVADE_FADE_TICKS, SHAKE_ASTEROID_PX, SHAKE_SHOT_PX, SHAKE_SECONDS]).toEqual([6, 1.2, 36, 4, 3, 0.25]);
+  it('the visibility windows and effect constants (the shake moved to impactModel, Art-i spec section 7)', () => {
+    expect([ASTEROID_SHOW_SECONDS, SHOT_SHOW_SECONDS, EVADE_FADE_TICKS]).toEqual([6, 1.2, 36]);
   });
   it('arrives exactly at the room centre at impactTick and starts outside the world band', () => {
     for (let id = 1; id <= 60; id++) for (const [kind, show] of [[ObjectKind.Debris, ASTEROID_SHOW_SECONDS], [ObjectKind.Shot, SHOT_SHOW_SECONDS]] as const) {

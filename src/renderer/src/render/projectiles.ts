@@ -7,12 +7,13 @@ import { beaconKey } from '../sim/run';
 import { isEnemySlot } from '../sim/debrisTargets';
 import { BOLT_SECONDS } from './enemyWindowModel';
 import { TICK_HZ } from '../sim/tuning';
-import { projectilePath, projectilePos, evadePos, outcomeOf, shouldReset, roomCentrePx, asteroidShape, fragmentCount, hash01, showSecondsOf, SHAKE_ASTEROID_PX, SHAKE_SHOT_PX, SHAKE_SECONDS, type Path, type Pt } from './projectileModel';
+import { projectilePath, projectilePos, evadePos, outcomeOf, shouldReset, roomCentrePx, asteroidShape, fragmentCount, hash01, showSecondsOf, type Path, type Pt } from './projectileModel';
 
 /** Visible asteroids and enemy shots (spec Demo-vii section 2): a render-only layer over the ship, under the HUD, driven by the debris table. */
 /** What the enemy window lends the layer (spec Demo-viii amendments R2 and R3): the enemy-shot origin and our bolt's target on screen, each null while the window is not shown. */
 export interface WindowLink { shotOrigin: Pt | null; target(slot: number): Pt | null }
-export interface ProjectileLayer { container: Container; reset(): void; draw(state: SimState, fit: { scale: number; x: number; y: number }, dt: number, link?: WindowLink): Pt }
+/** The world shake is no longer here: the interior feel (interiorFeel.ts) shakes the world and this container (Art-i spec section 7). */
+export interface ProjectileLayer { container: Container; reset(): void; draw(state: SimState, fit: { scale: number; x: number; y: number }, dt: number, link?: WindowLink): void }
 interface Bolt { id: number; from: Pt; to: Pt; result: number; kind: number; burst: boolean }
 
 interface Tracked { id: number; slot: number; kind: number; room: number; impactTick: number; path: Path; last: Pt | null; shape: Pt[]; spin: number }
@@ -25,10 +26,10 @@ export function createProjectileLayer(): ProjectileLayer {
   const container = new Container();
   const g = new Graphics(); container.addChild(g);
   let tracked = new Map<number, Tracked>(), evading: Tracked[] = [], bursts: Burst[] = [];
-  let prevTick = -1, prevNode = -1, shakeAmp = 0, shakeLeft = 0, clock = 0, bolt: Bolt | null = null;
+  let prevTick = -1, prevNode = -1, bolt: Bolt | null = null;
   const slotPos = new Map<number, Pt>();   // the last drawn point of each debris slot's object, for a bolt aimed at a rock
 
-  function reset(): void { tracked = new Map(); evading = []; bursts = []; shakeAmp = 0; shakeLeft = 0; prevTick = -1; prevNode = -1; bolt = null; slotPos.clear(); }
+  function reset(): void { tracked = new Map(); evading = []; bursts = []; prevTick = -1; prevNode = -1; bolt = null; slotPos.clear(); }
 
   function burst(at: Pt, id: number, count: number, speed: number, color: number, life: number): void {
     const parts = Array.from({ length: count }, (_, k) => { const a = (k / count) * Math.PI * 2 + hash01(id, 20 + k) * 0.6; const v = speed * (0.5 + hash01(id, 40 + k)); return { vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: 2 + Math.floor(hash01(id, 60 + k) * 3) }; });
@@ -74,7 +75,6 @@ export function createProjectileLayer(): ProjectileLayer {
   return {
     container, reset,
     draw(state, fit, dt, link) {
-      clock += dt;
       const node = beaconKey(state), tick = state.tick, db = state.debris;
       if (prevTick >= 0 && shouldReset(prevTick, tick, prevNode, node)) reset();
       prevTick = tick; prevNode = node;
@@ -91,10 +91,8 @@ export function createProjectileLayer(): ProjectileLayer {
         if (present.has(id)) continue;
         tracked.delete(id);
         const out = outcomeOf(tick, t.impactTick, state.rooms.impactTick[t.room] ?? -1);
-        if (out === 'hit') {
-          burst(t.path.to, id, t.kind === ObjectKind.Shot ? 8 : fragmentCount(id), t.kind === ObjectKind.Shot ? 70 : 55, t.kind === ObjectKind.Shot ? BOLT : ROCK, 0.6);
-          shakeAmp = Math.max(shakeAmp * (shakeLeft / SHAKE_SECONDS), t.kind === ObjectKind.Shot ? SHAKE_SHOT_PX : SHAKE_ASTEROID_PX); shakeLeft = SHAKE_SECONDS;
-        } else if (out === 'destroyed') { if (t.last) burst(t.last, id, 6, 18, PUFF, 0.5); }
+        if (out === 'hit') burst(t.path.to, id, t.kind === ObjectKind.Shot ? 8 : fragmentCount(id), t.kind === ObjectKind.Shot ? 70 : 55, t.kind === ObjectKind.Shot ? BOLT : ROCK, 0.6);
+        else if (out === 'destroyed') { if (t.last) burst(t.last, id, 6, 18, PUFF, 0.5); }
         else evading.push(t);
       }
       g.clear();
@@ -119,11 +117,6 @@ export function createProjectileLayer(): ProjectileLayer {
         for (const p of b.parts) g.rect(b.x + p.vx * b.age - p.size / 2, b.y + p.vy * b.age - p.size / 2, p.size, p.size).fill({ color: b.color, alpha: a });
         return true;
       });
-      // World shake after a hit: amplitude decays linearly to zero over SHAKE_SECONDS.
-      if (shakeLeft <= 0) return { x: 0, y: 0 };
-      shakeLeft = Math.max(0, shakeLeft - dt);
-      const amp = shakeAmp * (shakeLeft / SHAKE_SECONDS);
-      return { x: Math.round(Math.sin(clock * 90) * amp), y: Math.round(Math.cos(clock * 77) * amp) };
     }
   };
 }

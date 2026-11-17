@@ -17,7 +17,8 @@ const DEAD_TINT = 0x777777;
 const SCALE = TILE_PX / 16;
 const ANCHOR_X = 0.5, ANCHOR_Y = 0.75;   // spec §2: feet at the bottom of the 0.6-tile collision box
 
-export interface CrewLayer { container: Container; draw(state: SimState, alpha: number, presentation?: readonly PresentationPoint[]): void }
+/** `bob`: per player, a world-unit lift for a working crew member (Art-i spec section 6); absent or undefined is 0. */
+export interface CrewLayer { container: Container; draw(state: SimState, alpha: number, presentation?: readonly PresentationPoint[], bob?: readonly (number | undefined)[]): void }
 
 interface CrewSprite { sprite: AnimatedSprite; anim: string | null }
 
@@ -53,7 +54,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
 
   return {
     container,
-    draw(state, alpha, presentation) {
+    draw(state, alpha, presentation, bob = []) {
       const pointFor = (eid: number) => presentation?.find(point => point.id === `crew:${state.crew.indexOf(eid)}`);
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
       if (carried.parent !== container) container.addChild(carried); else container.setChildIndex(carried, container.children.length - 1);
@@ -63,7 +64,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         for (const eid of state.crew) {
           const g = circles.get(Stable.id[eid]!)!, { x, y } = interpolated(eid, alpha, pointFor(eid)), life = Life.state[eid];
           g.clear().circle(0, 0, CREW_HALF * TILE_PX).fill({ color: life === LifeState.Dead ? DEAD_TINT : CREW_COLORS[Owner.pid[eid]! % 4]!, alpha: life === LifeState.Downed ? 0.5 : 1 });
-          g.position.set(x * TILE_PX, y * TILE_PX);
+          g.position.set(x * TILE_PX, y * TILE_PX + (bob[Owner.pid[eid]!] ?? 0));
           drawCarried(state, eid, Owner.pid[eid]!, x, y);
         }
         return;
@@ -83,7 +84,7 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory): CrewL
         else { const a = assets.animation(`crew.walk.${facing}`); setAnim(cs, `crew.walk.${facing}`, a.textures, a.fps, a.loop, id); }
         cs.sprite.tint = life === LifeState.Dead ? DEAD_TINT : CREW_COLORS[Owner.pid[eid]! % 4]!;
         cs.sprite.alpha = life === LifeState.Downed ? 0.85 : 1;
-        cs.sprite.position.set(x * TILE_PX, y * TILE_PX);
+        cs.sprite.position.set(x * TILE_PX, y * TILE_PX + (bob[Owner.pid[eid]!] ?? 0));
         drawCarried(state, eid, Owner.pid[eid]!, x, y);
       }
     }
