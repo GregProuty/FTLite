@@ -102,10 +102,39 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
     expect(commands.map((c) => [c.id, c.command])).toEqual([[{ player: 1, sequence: 4 }, { kind: 'presence', present: false }]]);
     reject(); producers.beforeControls();
     expect(commands).toHaveLength(2);   // the one retry
+    expect(commands[1]!.id).toEqual({ player: 1, sequence: 5 });   // the rejected sequence is consumed: the retry is a new one
     expect(pauses).toEqual([]);
     reject(); producers.beforeControls();
     expect(pauses).toEqual(['peer-lost']);
     expect(commands).toHaveLength(2);
+  });
+  it('a human who takes a lost seat clears its peer-lost debt, and replacing a bound human owes none', () => {
+    const attached: Link[] = [], pauses: string[] = [], codec = duelCodec(2);
+    const authority = { attach(link: Link) { attached.push(link); return () => {}; } } as unknown as Authority<DuelTypes>;
+    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, pause: (reason) => pauses.push(reason) });
+    ownTestCleanup(() => producers.dispose());
+    const first = linkPair('first'), second = linkPair('second'), third = linkPair('third');
+    const offFirst = producers.attachHuman(first.host.link, [1], { admissionPolicy: 'receive-time' }, 'remote');
+    producers.beforeControls();   // binds the first remote human
+    offFirst();                   // it goes: seat 1 owes a peer-lost pause...
+    producers.attachHuman(second.host.link, [1], { admissionPolicy: 'receive-time' }, 'remote');   // ...until a human takes it first
+    producers.beforeControls();
+    // Replacing the bound second human with a local third is not a lost peer either.
+    const offThird = producers.attachHuman(third.host.link, [1], { admissionPolicy: 'receive-time' }, 'local');
+    producers.beforeControls();
+    offThird();                   // a local attachment goes: a steward, never a pause
+    producers.beforeControls();
+    expect(producers.stewards().find((s) => s.player === 1)).toMatchObject({ lost: false });
+    const steward = attached.at(-1)!, commands: CommandEnvelope[] = [];
+    steward.onMessage((_k, bytes) => { const m = codec.decodeMessage(bytes); if (m.kind === 'command') commands.push(m.envelope); });
+    const s = duelRules.create(duelInit(4, 'r'), resolveCutter), snapshot = saveDuelSnapshot(s.duel, DIGEST); duelRules.dispose(s);
+    steward.send('reliable-ordered', codec.encodeMessage({ kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1, snapshot, hash: hashF64(Float64Array.from(snapshot.values)),
+      phase: 'running', pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } }));
+    producers.beforeControls();
+    steward.send('reliable-ordered', codec.encodeMessage({ kind: 'result', runId: 'r', result: { id: commands.at(-1)!.id, tick: 1, status: 'applied' } }));
+    producers.beforeControls();
+    expect(commands).toHaveLength(1);
+    expect(pauses).toEqual([]);
   });
 });
 

@@ -22,7 +22,7 @@ interface Human { link: Link; players: readonly number[]; options: AttachOptions
 interface Steward {
   player: number; link: Link; detach: Unsubscribe; close(): void;
   publication: PublishedState<DuelSnapshot> | null; results: AuthorityMessage<DuelSnapshot>[];
-  pending: CommandId | null; done: boolean; rejected: number; lost: boolean;
+  pending: CommandId | null; done: boolean; rejected: number; lost: boolean; lastSequence: number;
 }
 const PLAYERS = 2;
 const codec = duelCodec(PLAYERS);
@@ -36,7 +36,7 @@ export function createDuelProducers(options: DuelProducerOptions) {
   function bindSteward(player: number): Steward {
     const pair = transport.connectLocal();
     const steward: Steward = { player, link: pair.clientLink, detach: () => {}, close: () => { pair.host.close('steward-retired'); pair.client.close('steward-retired'); },
-      publication: null, results: [], pending: null, done: false, rejected: 0, lost: lost.delete(player) };
+      publication: null, results: [], pending: null, done: false, rejected: 0, lost: lost.delete(player), lastSequence: 0 };
     pair.clientLink.onMessage((_kind, bytes) => {
       const message = codec.decodeMessage(bytes) as AuthorityMessage<DuelSnapshot>;
       if (message.kind === 'state') steward.publication = message.state;
@@ -63,7 +63,9 @@ export function createDuelProducers(options: DuelProducerOptions) {
     if (s.done || s.pending || !p) return;
     if (p.phase === 'paused') { s.lost = false; return; }   // already paused: presence waits for the resume, no peer-lost pause
     if (p.phase !== 'running') return;
-    s.pending = { player: s.player, sequence: p.commandHighWater[s.player]! + 1 };
+    // A rejected sequence is consumed by the ledger, so a retry never reuses the last sequence this steward sent.
+    s.pending = { player: s.player, sequence: Math.max(p.commandHighWater[s.player]! + 1, s.lastSequence + 1) };
+    s.lastSequence = s.pending.sequence;
     const envelope = { runId, id: s.pending, requestedTick: p.tick, command: { kind: 'presence' as const, present: false } };
     s.link.send('reliable-ordered', codec.encodeMessage({ kind: 'command', envelope }));
   }
@@ -113,6 +115,7 @@ export function createDuelProducers(options: DuelProducerOptions) {
       const human: Human = { link, players: [...players], options: { ...attachOptions }, origin };
       for (const player of players) if (desired[player]) cancel(desired[player]!);
       for (const player of players) desired[player] = human;
+      for (const player of players) lost.delete(player);   // a human now holds the seat: no peer-lost debt survives it
       humans.add(human);
       human.offClose = link.onClose(() => cancel(human));
       for (const candidate of humans) if (!wanted(candidate) && !candidate.detach) retire(candidate);
