@@ -71,20 +71,21 @@ interface KeyEventLike { code: string; repeat: boolean; preventDefault(): void }
 
 export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): void; destroy(): void; readonly ui: ConsoleInput }
 
-/** Held keys are cleared on blur so nothing sticks after alt-tab; `clear` does the same for Tab and restart (spec §4, §5).
- *  Console clicks (Artemis spec §6.2) are a second held set and extra press edges: a code is held when either set holds
- *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
 /** Options (enemy ship window spec §6.2): `intercept` sees each non-repeat keydown's code before PRESS_CODES; returning
  *  true takes the key, so it adds no press edge and is not held (PREVENT's keys still have their default prevented). */
 export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
 
+/** Held keys are cleared on blur so nothing sticks after alt-tab; `clear` does the same for Tab and restart (spec §4, §5).
+ *  Console clicks (Artemis spec §6.2) are a second held set and extra press edges: a code is held when either set holds
+ *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
 export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOptions = {}): DuelKeyboard {
-  const keys = new Set<string>(), ui = new Set<string>();
+  const keys = new Set<string>(), ui = new Set<string>(), taken = new Set<string>();
   let presses = emptyPresses(), lockTo: number | null = null, throttleTo: number | null = null;
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
   const down = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
-    if (!e.repeat && opts.intercept?.(e.code)) return;   // taken (the contact window's Esc and T): no edge, not held
+    if (e.repeat) { if (taken.has(e.code)) return; }   // an OS repeat of a taken key stays taken
+    else if (opts.intercept?.(e.code)) { taken.add(e.code); return; }   // taken (the contact window's Esc and T): no edge, not held
     if (e.code === FIRE_HELD) { if (!e.repeat && !has(FIRE_HELD)) presses.fireDown++; }
     else { const action = PRESS_CODES[e.code]; if (action && !e.repeat) presses[action]++; }
     keys.add(e.code);
@@ -92,11 +93,12 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
   const up = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
     const was = has(FIRE_HELD);
+    taken.delete(e.code);
     keys.delete(e.code);
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
   const clearUi = (): void => { ui.clear(); lockTo = null; throttleTo = null; };
-  const clear = (): void => { keys.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; throttleTo = null; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; throttleTo = null; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -196,7 +198,7 @@ export function createPointerSource(target: EventSource, toInternal: (clientX: n
       wheel = 0; dragX = 0; dragY = 0;
       return out;
     },
-    takeClick() { const out = click; click = null; return out; },
+    takeClick(): { x: number; y: number } | null { const out = click; click = null; return out; },
     clear,
     destroy(): void { for (const [type, fn] of on) target.removeEventListener(type, fn, type === 'wheel' ? { passive: false } : undefined); }
   };

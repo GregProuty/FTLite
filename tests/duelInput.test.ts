@@ -80,6 +80,16 @@ describe('duel keyboard (H-1 spec §5)', () => {
     s = kb.sample();
     expect(s.presses.pause).toBe(1); expect(s.moveY).toBe(-1);
   });
+  it('auto-repeats of an intercepted key stay unheld; after keyup a declined press works', () => {
+    const t = fakeTarget(); let take = true;
+    const kb = createDuelKeyboard(t, { intercept: (code) => take && code === 'KeyW' });
+    t.fire('keydown', key('KeyW')); t.fire('keydown', key('KeyW', true)); t.fire('keydown', key('KeyW', true));
+    let s = kb.sample();
+    expect(s.moveY).toBe(0); expect(s.presses.camera).toBe(0);
+    t.fire('keyup', key('KeyW')); take = false;
+    t.fire('keydown', key('KeyW'));
+    s = kb.sample(); expect(s.moveY).toBe(-1);
+  });
   it('an intercepted key in PREVENT still has its default prevented', () => {
     const t = fakeTarget(); createDuelKeyboard(t, { intercept: () => true });
     const tab = key('Tab'); t.fire('keydown', tab);
