@@ -182,3 +182,37 @@ Confirmed. Spec 4.6: scanner is computed after the contactScan admission loop, f
 
 ---
 
+# Round 3 (delta, reviewing 0ecb4141, effort medium, 26 s, 74588 in / 52286 cached / 1938 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F6: resolved — Spec L117-L118 now says SIM_VERSION 44 → 45, which matches src/renderer/src/sim/tuning.ts:L7 (44). Step 1 is limited to the new fields at neutral values with no new rng draws and no Patrol. It also adds the commands and MIGRATIONS[44] with `added` regexes. Step 2 blesses Patrol, the draws, the scan effects, salvage and the frequency strip at 45. Section 8 (L153) now names MIGRATIONS[44]. The Migration shape (change, rename, derived, added) matches scripts/golden/duelOracle.ts:L76-L83, and the entries are keyed by the baseline version, as in the 42 precedent at L108.
+- R2-F1: resolved — Step 1 (L117) now gives the derelict orbitR 700, phase 0, loot 0, trapped 0, salvage 0 and salvaged 1. orbitR 700 is the lower edge of the drawn band (L68: u=0 → 700), so it passes the §6.2 rule 'orbitR in the drawn bands' (L113). phase 0 is within 0..255, and loot, trapped and salvaged are in range. A step-1 snapshot round-trip test has been added at L175.
+- R2-F2: resolved — Spec L82 now computes `scanner` after the contactScan admission loop, from the scan as it stands after admission, and states that a same-tick takeover keeps the scan alive. This is consistent with the admission order at L97 and the takeover rule at L92. A test for the case where the Helm player stands and Science takes over in the same tick has been added at L170.
+
+## Verified
+- The MIGRATIONS[44] `added` regexes /^science\./ and /^ship\.systems\.\d+\.freq$/ cover every new field name. duelSchema names fields `<module id>.<field name>` (scripts/golden/duelOracle.ts:L121). The science module's field list (spec L110) and freq on the systems record (spec L111) both match those patterns.
+- The step-1 neutral values meet the §6.2 validation: hostileAt 0 ≥ −1; scan idle (contact −1, rate 0 is allowed); freq 0 within 0..2; derelict values in range (spec L113, L117).
+- The step-1 neutral state uses no new rng draws, so rng.s and the hunter jitter are unchanged. That fits the oracle's claim that runs are unchanged (spec L117 against L66-L71).
+- No contradiction between the touched regions (4.6, 6.3, 8, 10) and the unchanged sections 4.5, 5 and 6.2.
+
+## Not verified
+- Whether the start-aboard merge (43→44) added its own MIGRATIONS entry. None appears in scripts/golden/duelOracle.ts:L87-L109. That is outside this spec's scope, and it does not affect MIGRATIONS[44].
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json`. 0 new findings; R1-F6, R2-F1 and R2-F2 confirmed resolved. Verdict ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
