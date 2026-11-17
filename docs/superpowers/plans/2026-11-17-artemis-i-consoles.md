@@ -29,7 +29,8 @@
 2. **`DuelViewSource.seat()`** (spec §6.1) is not added: the seat is `seatOf(source.duel, source.active())`, which both sources already give. Added instead: `mode: 'single' | 'online'` (the tab rule needs it) and `uiHeld(): HeldFlags`.
 3. **Helm block fields:** `ConsoleView.helm` has no `throttleShown`/`throttleSettable` until Artemis-ii. The Artemis-i column is drawn from `held.up`/`held.down` (spec §4.2 "Artemis-i").
 4. **Clear on console change:** `scene.draw` returns the drawn console's station (or null), and each mode calls `keyboard.clearUi()` when it changes. This is spec §6.2's rule, placed where the information is.
-5. **Electron click check** (spec §8 "Electron smoke"): run by the controller in Task 6 from a scratch playwright script, as the UI-i/ii/iii visual checks were. It is not a committed npm smoke.
+5. **Online console hiding** (spec §6.1): `consoleHidden` takes a new `DuelViewSource.running()` (local: not paused and not ended; online: publication phase `running`), so every online phase but `running` hides the console.
+6. **Electron click check** (spec §8 "Electron smoke"): run by the controller in Task 6 from a scratch playwright script, as the UI-i/ii/iii visual checks were. It is not a committed npm smoke.
 
 ## File structure
 
@@ -259,7 +260,7 @@ git commit -m "feat(artemis-i): the duel keyboard merges console clicks with key
 **Files:**
 - Create: `src/renderer/src/render/duel/consoleLayout.ts`, `src/renderer/src/render/duel/consoleModel.ts`
 - Modify: `src/renderer/src/render/duel/readoutModel.ts:45-92`, `src/renderer/src/render/duel/interiorModel.ts:12-13`, `src/renderer/src/render/tactical/tacticalModel.ts:79-80,186-205,281,292`, `src/renderer/src/render/tactical/weaponsModel.ts:88`
-- Test: `tests/consoleModel.test.ts` (create); update `tests/duelInterior.test.ts:43-44` only if its assertions change
+- Test: `tests/consoleModel.test.ts` (create); update the band-derived numbers in `tests/worldFit.test.ts:56`, `tests/duelInterior.test.ts:41-42, 89, 92, 102` and `tests/interiorCamera.test.ts:9, 29`
 
 **Interfaces:**
 - Consumes: `HeldFlags`, `KeyAction` (Task 1); `seatOf`, `consoleInReach`, `repairInReach` (`app/duel/controls.ts`); `canLaunch` (`sim/tactical/weapons.ts`); `missileOf` (`sim/tactical/state.ts`); `HEADING_COUNT` (`sim/tactical/tuning.ts`); `MapOverlayView` (`ui/views.ts`).
@@ -279,6 +280,7 @@ git commit -m "feat(artemis-i): the duel keyboard merges console clicks with key
   export interface ConsoleView { station: ConsoleStation; tabs: Record<ConsoleStation, TabState>; tabActions: Record<ConsoleStation, KeyAction | null>;
     helm: HelmPanel | null; weapons: WeaponsPanel | null; side: { zoom: string; free: boolean; snapLabel: 'SNAP' | 'CAMERA' } | null }
   export interface ConsoleModelInput { duel: DuelState; me: 0 | 1; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null }
+  export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | null; repairNear: boolean; otherSeat: Seat; mode: 'single' | 'online' }): Pick<ConsoleView, 'tabs' | 'tabActions'>;
   export function consoleModel(i: ConsoleModelInput): ConsoleView | null;
   // readoutModel.ts
   //   ReadoutInput gains `console?: boolean`
@@ -302,7 +304,8 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { canLaunch } from '../src/renderer/src/sim/tactical/weapons';
 import { CONSOLE_RESERVE, SIDE, STATION, STATUS, TABS_RIGHT, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
-import { consoleModel, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
+import { consoleModel, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
+import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/controls';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
 import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { LINE, PAD } from '../src/renderer/src/render/theme';
@@ -355,19 +358,15 @@ describe('tabs (spec §6.3)', () => {
     const d = createDuel(layout, 5);
     step(d, 1, { kind: 'stand' }); step(d, 0, { kind: 'stand' });
     put(d, 0, d.interior.derived.stationTile[d.weapons]!);
+    expect(consoleInReach(d, 0)).toBe(d.weapons); expect(repairInReach(d, 0)).toBe(-1);   // the fixture's preconditions
     expect(model(d, { mode: 'online' })).toMatchObject({ station: 'ship', tabs: { ship: 'current', weapons: 'open', helm: 'locked' }, tabActions: { weapons: 'interact' } });
     disposeDuel(d);
   });
-  it('standing in reach of a console and of a repair: the console stays locked', () => {
-    const d = createDuel(layout, 5);
-    step(d, 1, { kind: 'stand' }); step(d, 0, { kind: 'stand' });
-    // A repair point in the Weapons console's room: damage its tactical room and stand on its tile, which must also be in
-    // reach of the console. Find such a point on the cutter; if none exists on this layout, use the Hound (hound.json) or
-    // say in the report that no layout has one and replace this case with a direct test of the rule's two inputs.
-    const room = d.interior.derived.stationRoom[d.weapons]!, p = d.points.find((q) => q.room === room)!;
-    d.tactical.systems[0].rooms[p.tacticalRoom] = 1; put(d, 0, p.tile);
-    expect(model(d, { mode: 'online' })!.tabs.weapons).toBe('locked');
-    disposeDuel(d);
+  it('standing in reach of a console and of a repair: the console stays locked (E would repair)', () => {
+    expect(consoleTabs({ seat: 'standing', reach: 'weapons', repairNear: true, otherSeat: 'standing', mode: 'online' }).tabs.weapons).toBe('locked');
+    expect(consoleTabs({ seat: 'standing', reach: 'weapons', repairNear: false, otherSeat: 'standing', mode: 'online' })).toMatchObject({ tabs: { weapons: 'open' }, tabActions: { weapons: 'interact' } });
+    // single player: the other character at the Helm opens HELM by Tab even while E would repair
+    expect(consoleTabs({ seat: 'standing', reach: 'weapons', repairNear: true, otherSeat: 'helm', mode: 'single' })).toMatchObject({ tabs: { helm: 'open', weapons: 'locked' }, tabActions: { helm: 'switch' } });
   });
   it('standing out of reach: online both consoles locked; single player opens the one the other character sits at', () => {
     const d = createDuel(layout, 5);
@@ -451,7 +450,7 @@ export function chargeRow(d: DuelState): ReadoutRow {
 }
 ```
 
-`interiorModel.ts`: `export const INTERIOR_BAND = { x: 0, y: 42, w: INTERNAL_W - READOUT_COLUMN, h: INTERNAL_H - 42 } as const;`. Update its comment: `the whole screen left of the readout column, below the console tab strip (Artemis spec §2)`. Run `tests/duelInterior.test.ts`, `tests/interiorCamera.test.ts`, `tests/interiorZoomScene.test.ts` and `tests/lightsModel.test.ts`. An assertion that fixes a pixel position derived from the old band (for example `interiorZoomScene.test.ts:64`) may change; update only such derived numbers, recomputed from `INTERIOR_BAND`, and say which in the commit message.
+`interiorModel.ts`: `export const INTERIOR_BAND = { x: 0, y: 42, w: INTERNAL_W - READOUT_COLUMN, h: INTERNAL_H - 42 } as const;`. Update its comment: `the whole screen left of the readout column, below the console tab strip (Artemis spec §2)`. The Cutter's fit at stage 1 moves from y 152 to y 173 (42 + (678 − 416) / 2). Update the hard-coded band-derived values: `tests/worldFit.test.ts:56` (`{ scale: 1, x: 66, y: 152 }` → `y: 173`), `tests/duelInterior.test.ts:41-42, 89, 92, 102` (the 152s), and `tests/interiorCamera.test.ts:9, 29`. Recompute each from `INTERIOR_BAND` rather than guessing; where a test can use `INTERIOR_BAND.y` instead of a literal, do that. Run `tests/worldFit.test.ts`, `tests/duelInterior.test.ts`, `tests/interiorCamera.test.ts`, `tests/interiorZoomScene.test.ts` and `tests/lightsModel.test.ts`; update only band-derived numbers, and name each one in the commit message.
 
 `tacticalModel.ts`: add to `TacticalModelInput`, after `reserveRight`:
 ```ts
@@ -466,7 +465,7 @@ In `edgePoint`, add a `reserveLeft: number` parameter after `vp`, and use `l = r
 ```ts
 // The Artemis-style console's view model (spec 2026-11-17-artemis-consoles §4, §6.1, §6.3). Pure: built each frame by
 // the scene from the duel, the local character and the merged held keys; null hides the console.
-import { consoleInReach, repairInReach, seatOf } from '../../app/duel/controls';
+import { consoleInReach, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/input';
 import type { DuelState } from '../../sim/duel/state';
 import { missileOf } from '../../sim/tactical/state';
@@ -490,20 +489,25 @@ export interface ConsoleView {
 }
 export interface ConsoleModelInput { duel: DuelState; me: 0 | 1; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null }
 
+/** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null
+ *  for none), `repairNear` whether `repairInReach` finds a repair (E would repair, not sit). */
+export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | null; repairNear: boolean; otherSeat: Seat; mode: 'single' | 'online' }): Pick<ConsoleView, 'tabs' | 'tabActions'> {
+  const tabs: Record<ConsoleStation, TabState> = { helm: 'locked', weapons: 'locked', ship: 'locked' };
+  const tabActions: Record<ConsoleStation, KeyAction | null> = { helm: null, weapons: null, ship: null };
+  if (i.seat === 'standing') {
+    tabs.ship = 'current';
+    if (i.reach && !i.repairNear) { tabs[i.reach] = 'open'; tabActions[i.reach] = 'interact'; }
+  } else { tabs[i.seat] = 'current'; tabs.ship = 'open'; tabActions.ship = 'stand'; }
+  if (i.mode === 'single' && i.otherSeat !== 'standing' && tabs[i.otherSeat] === 'locked') { tabs[i.otherSeat] = 'open'; tabActions[i.otherSeat] = 'switch'; }
+  return { tabs, tabActions };
+}
+
 export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   if (i.hidden) return null;
   const d = i.duel, seat = seatOf(d, i.me), station: ConsoleStation = seat === 'standing' ? 'ship' : seat;
-  const tabs: Record<ConsoleStation, TabState> = { helm: 'locked', weapons: 'locked', ship: 'locked' };
-  const tabActions: Record<ConsoleStation, KeyAction | null> = { helm: null, weapons: null, ship: null };
-  if (seat === 'standing') {
-    tabs.ship = 'current';
-    const c = consoleInReach(d, i.me);
-    if (c >= 0 && repairInReach(d, i.me) < 0) { const k = c === d.nav ? 'helm' : 'weapons'; tabs[k] = 'open'; tabActions[k] = 'interact'; }
-  } else { tabs[seat] = 'current'; tabs.ship = 'open'; tabActions.ship = 'stand'; }
-  if (i.mode === 'single') {
-    const os = seatOf(d, i.me === 0 ? 1 : 0);
-    if (os !== 'standing' && tabs[os] === 'locked') { tabs[os] = 'open'; tabActions[os] = 'switch'; }
-  }
+  const c = seat === 'standing' ? consoleInReach(d, i.me) : -1;
+  const { tabs, tabActions } = consoleTabs({ seat, reach: c < 0 ? null : c === d.nav ? 'helm' : 'weapons', repairNear: seat === 'standing' && repairInReach(d, i.me) >= 0,
+    otherSeat: seatOf(d, i.me === 0 ? 1 : 0), mode: i.mode });
   const t = d.tactical, held = i.held ?? NO_HELD_FLAGS;
   const ship = t.ships[0]!;
   const helm: HelmPanel | null = station === 'helm'
@@ -524,7 +528,7 @@ Check that `render/` already imports from `app/duel/controls` somewhere, or that
 
 - [ ] **Step 4: Run the tests**
 
-Run: `npx vitest run tests/consoleModel.test.ts tests/tacticalModel.test.ts tests/duelWeaponsView.test.ts tests/duelReadout.test.ts tests/crtReadout.test.ts tests/duelInterior.test.ts tests/interiorCamera.test.ts tests/interiorZoomScene.test.ts tests/lightsModel.test.ts tests/crtBezel.test.ts tests/tacticalLayer.test.ts`
+Run: `npx vitest run tests/consoleModel.test.ts tests/tacticalModel.test.ts tests/duelWeaponsView.test.ts tests/duelReadout.test.ts tests/crtReadout.test.ts tests/duelInterior.test.ts tests/interiorCamera.test.ts tests/interiorZoomScene.test.ts tests/lightsModel.test.ts tests/worldFit.test.ts tests/crtBezel.test.ts tests/tacticalLayer.test.ts`
 Expected: all PASS.
 
 - [ ] **Step 5: Typecheck and commit**
@@ -532,7 +536,7 @@ Expected: all PASS.
 Run: `npx tsc -b`. Expected: no errors.
 
 ```bash
-git add src/renderer/src/render tests/consoleModel.test.ts tests/tacticalModel.test.ts tests/duelWeaponsView.test.ts tests/duelInterior.test.ts tests/interiorZoomScene.test.ts tests/interiorCamera.test.ts tests/lightsModel.test.ts
+git add src/renderer/src/render tests/consoleModel.test.ts tests/tacticalModel.test.ts tests/duelWeaponsView.test.ts tests/duelInterior.test.ts tests/interiorZoomScene.test.ts tests/interiorCamera.test.ts tests/lightsModel.test.ts tests/worldFit.test.ts
 git commit -m "feat(artemis-i): console layout and view model, console readout rows, left map reserve, interior band below the tabs (spec §2, §6.1, §6.3)"
 ```
 
@@ -935,32 +939,45 @@ git commit -m "feat(artemis-i): tab strip, status table, Helm and Weapons statio
 
 **Files:**
 - Modify: `src/renderer/src/app/duel/scene.ts:25-117`, `src/renderer/src/app/duel/runtime.ts` (the `DuelRuntime` interface near L40-50, `play()` L303-347, the returned object L349-400), `src/renderer/src/app/duel/onlineSource.ts:75-155`, `src/renderer/src/app/duel/onlineDuel.ts` (deps L33-43, `play()` L162-185, `pump()` L186-209, `frame()` L236-248), `src/renderer/src/app/duel/duelMode.ts:16-82`, `src/renderer/src/main.ts:84-93,179`
-- Test: extend `tests/duelRuntime.test.ts`, `tests/onlineDuelSession.test.ts`, `tests/sceneUi.test.ts`
+- Create: `src/renderer/src/app/duel/consoleChange.ts`
+- Test: create `tests/consoleHidden.test.ts`, `tests/consoleChange.test.ts`; extend `tests/duelRuntime.test.ts`, `tests/onlineDuelSession.test.ts`
 
 **Interfaces:**
 - Consumes: `consoleModel`, `CONSOLE_RESERVE` (Task 2); `KeySample.held`, `KeySample.lockTo`, `DuelKeyboard.ui`, `clearUi()`, `HeldFlags`, `NO_HELD_FLAGS`, `ConsoleInput` (Task 1); `actions.setConsole` (Task 4).
 - Produces:
   ```ts
+  // app/duel/consoleChange.ts
+  export function consoleChange(clearUi: () => void): (station: ConsoleStation | null) => void;
   // scene.ts
   //   DuelViewSource gains:  readonly mode: 'single' | 'online';  uiHeld(): HeldFlags;
   //   scene.draw(...) now returns ConsoleStation | null (the station of the console drawn, null when none)
-  //   exported: export function consoleHidden(d: DuelState, overlay: SceneOverlay, paused: boolean): boolean
+  //   DuelViewSource also gains:  running(): boolean   (local: !paused() && !ended(); online: publication phase === 'running')
+  //   exported: export function consoleHidden(d: DuelState, overlay: SceneOverlay, running: boolean): boolean
   // DuelModeDeps and OnlineDuelDeps gain:  setConsole?(input: ConsoleInput | null): void
   ```
 
 - [ ] **Step 1: Write the failing tests**
 
-In `tests/sceneUi.test.ts`, add:
+Create `tests/consoleHidden.test.ts`:
 ```ts
-describe('consoleHidden (Artemis spec §6.1)', () => {
-  it('hides on a banner, a dimmed layer, a pause or a decided round', () => {
-    // a running duel d (as the file's other tests build one); overlay { banner: null, layerPaused: false, end: null }
-    expect(consoleHidden(d, { banner: null, layerPaused: false, end: null }, false)).toBe(false);
-    expect(consoleHidden(d, { banner: 'PAUSED', layerPaused: false, end: null }, false)).toBe(true);
-    expect(consoleHidden(d, { banner: null, layerPaused: true, end: null }, false)).toBe(true);
-    expect(consoleHidden(d, { banner: null, layerPaused: false, end: null }, true)).toBe(true);
-    // with d.tactical.outcome set to a decided Outcome: true
-  });
+// Artemis spec §6.1: no console on the end card, under a banner or dimmed layer, or when the duel is not running.
+import { expect, it } from 'vitest';
+import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { consoleHidden, type SceneOverlay } from '../src/renderer/src/app/duel/scene';
+
+const ov = (p: Partial<SceneOverlay> = {}): SceneOverlay => ({ banner: null, layerPaused: false, end: null, ...p });
+it('hides on a banner, a dimmed layer, a stopped duel or a decided round', () => {
+  const d = createDuel(parseShip(cutter), 5);
+  expect(consoleHidden(d, ov(), true)).toBe(false);
+  expect(consoleHidden(d, ov({ banner: 'PAUSED' }), true)).toBe(true);
+  expect(consoleHidden(d, ov({ layerPaused: true }), true)).toBe(true);
+  expect(consoleHidden(d, ov(), false)).toBe(true);
+  d.tactical.outcome = Outcome.CrewWins;
+  expect(consoleHidden(d, ov(), true)).toBe(true);
+  disposeDuel(d);
 });
 ```
 
@@ -972,16 +989,21 @@ In `tests/onlineDuelSession.test.ts`, use its existing harness. Add:
 - **A lock click on Weapons:** a pump whose keyboard sample has `lockTo: 2` at Weapons sends `laserLock {room: 2}`. A `lockTo` equal to the current lock sends nothing.
 - **`setConsole`:** the session calls `deps.setConsole` with its keyboard's `ui` on creation and with `null` on dispose.
 
-For the clear-on-change rule, add to `tests/duelRuntime.test.ts` (or a new `tests/duelModeConsole.test.ts` if the mode is easier to drive there) a test of the mode-level helper below, `consoleChange`:
+For the clear-on-change rule, create `tests/consoleChange.test.ts`:
 ```ts
+import { expect, it, vi } from 'vitest';
+import { consoleChange } from '../src/renderer/src/app/duel/consoleChange';
 it('clearUi runs when the drawn console station changes or goes null, not every frame', () => {
   const clearUi = vi.fn(); const track = consoleChange(clearUi);
   track('weapons'); track('weapons'); expect(clearUi).toHaveBeenCalledTimes(1);   // the first value counts as a change from undefined
   track(null); track(null); track('helm'); expect(clearUi).toHaveBeenCalledTimes(3);
 });
 ```
-Export `consoleChange` from `scene.ts`:
+Create `src/renderer/src/app/duel/consoleChange.ts` (its own module: `tests/duelModeDispose.test.ts` and `tests/onlineDuelSession.test.ts` replace `scene.ts` with a `vi.mock` factory that has only `createDuelScene`, so a helper exported from `scene.ts` would throw there):
 ```ts
+// The console-change rule (Artemis spec §6.2): UI holds drop when the drawn console's station changes or it goes.
+import type { ConsoleStation } from '../../render/duel/consoleModel';
+
 /** Calls `clearUi` whenever the drawn console's station changes or the console goes (Artemis spec §6.2). */
 export function consoleChange(clearUi: () => void): (station: ConsoleStation | null) => void {
   let last: ConsoleStation | null | undefined;
@@ -991,38 +1013,38 @@ export function consoleChange(clearUi: () => void): (station: ConsoleStation | n
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `npx vitest run tests/sceneUi.test.ts tests/duelRuntime.test.ts tests/onlineDuelSession.test.ts`
+Run: `npx vitest run tests/consoleHidden.test.ts tests/consoleChange.test.ts tests/duelRuntime.test.ts tests/onlineDuelSession.test.ts`
 Expected: FAIL. `consoleHidden`, `consoleChange`, `lockTo` handling, `uiHeld` and `setConsole` are missing.
 
 - [ ] **Step 3: Implement**
 
 `scene.ts`:
 - Import `consoleModel`, `type ConsoleStation` from `'../../render/duel/consoleModel'`, `CONSOLE_RESERVE` from `'../../render/duel/consoleLayout'`, `type HeldFlags` from `'./input'`, and `Outcome` from `'../../sim/tactical/state'`.
-- Add to `DuelViewSource`: `/** Single player (Tab takes the other character) or the online duel. */ readonly mode: 'single' | 'online';` and `/** The merged held keys and console holds of the last frame (Artemis spec §6.1). */ uiHeld(): HeldFlags;`.
+- Add to `DuelViewSource`: `/** Single player (Tab takes the other character) or the online duel. */ readonly mode: 'single' | 'online';`, `/** The duel is live: not paused and not ended locally; publication phase 'running' online. */ running(): boolean;` and `/** The merged held keys and console holds of the last frame (Artemis spec §6.1). */ uiHeld(): HeldFlags;`.
 - Add:
   ```ts
-  /** No console on the end card, under any pause banner or dimmed layer, or while paused (Artemis spec §6.1). */
-  export function consoleHidden(d: DuelState, overlay: SceneOverlay, paused: boolean): boolean {
-    return paused || overlay.banner !== null || overlay.layerPaused || d.tactical.outcome !== Outcome.Running;
+  /** No console on the end card, under any pause banner or dimmed layer, or while the duel is not running (paused for
+   *  any reason locally; any publication phase but `running` online) (Artemis spec §6.1). */
+  export function consoleHidden(d: DuelState, overlay: SceneOverlay, running: boolean): boolean {
+    return !running || overlay.banner !== null || overlay.layerPaused || d.tactical.outcome !== Outcome.Running;
   }
   ```
-  and `consoleChange` (above).
-- In `draw`, change the tactical input's `reserveRight: READOUT_COLUMN` to `reserveLeft: CONSOLE_RESERVE.left, reserveRight: CONSOLE_RESERVE.right`. Pass `console: true` to `readoutRows` when `view !== 'interior'`, and pass `help: view === 'interior' ? readoutHelp(view) : []`. Build `const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden: consoleHidden(d, overlay, source.paused()), held: source.uiHeld(), overlay: overlayView });`, add `console: consoleView` to the `options.ui.frame({...})` view, and make `draw` return `consoleView?.station ?? null`. Its signature becomes `draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): ConsoleStation | null`. The `READOUT_COLUMN` import stays if anything else uses it; otherwise remove it.
+- In `draw`, before the tactical input, compute `const hidden = consoleHidden(d, overlay, source.running()), onConsole = !hidden && view !== 'interior';`. Everything that depends on the console being drawn follows `onConsole`, not the view, so a paused or decided console screen falls back to today's right-hand readout with its LASER rows and help: the tactical input gets `...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: CONSOLE_RESERVE.right } : { reserveRight: READOUT_COLUMN })`; `readoutRows` gets `console: onConsole`; the help is `onConsole ? [] : readoutHelp(view)`. Build `const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView });`, add `console: consoleView` to the `options.ui.frame({...})` view, and make `draw` return `consoleView?.station ?? null`. Its signature becomes `draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): ConsoleStation | null`. The `READOUT_COLUMN` import stays (the fallback reserve).
 
 `runtime.ts`:
 - Import `NO_HELD_FLAGS`, `type HeldFlags` from `'./input'`.
-- Add to the runtime's interface (the one that lists `axes(): Axes;`): `readonly mode: 'single'; uiHeld(): HeldFlags;`.
+- Add to the `DuelRuntime` interface (runtime.ts:L167-207, not `FlightRuntime` at L42-60, which also lists `axes()`): `readonly mode: 'single'; uiHeld(): HeldFlags; running(): boolean;`. Implement `running: () => pacer.reasons.size === 0 && !ended()`.
 - In `frame(dt)`, right after `let k = deps.sampleKeys();`, store `lastHeld = k.held ?? NO_HELD_FLAGS;` (a new `let lastHeld: HeldFlags = NO_HELD_FLAGS;` beside `activeHeld`). Return `mode: 'single' as const` and `uiHeld: () => lastHeld` from the object.
 - In `play(k)`, Weapons branch: right after the E/Q block (`if (p.interact + p.prevLock > 0) { … }`), add:
   ```ts
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
   ```
 
-`onlineSource.ts`: add `let uiHeld: HeldFlags = NO_HELD_FLAGS;`, `mode: 'online' as const`, `uiHeld: () => uiHeld`, and a method `heldFlags(flags: HeldFlags): void { uiHeld = flags; }`. Add these to its returned type (L113) next to `sent(...)`.
+`onlineSource.ts`: add `let uiHeld: HeldFlags = NO_HELD_FLAGS;`, `mode: 'online' as const`, `uiHeld: () => uiHeld`, `running: () => client.publication()?.phase === 'running'`, and a method `heldFlags(flags: HeldFlags): void { uiHeld = flags; }`. Add these to its returned type (L113) next to `sent(...)`.
 
 `onlineDuel.ts`:
 - Deps: add `/** The console's click slot (Artemis spec §6.2): filled with this session's keyboard, emptied on dispose. */ setConsole?(input: ConsoleInput | null): void;`.
-- After `const keyboard = createDuelKeyboard(...)`, call `deps.setConsole?.(keyboard.ui);`. Also create `const trackConsole = consoleChange(() => keyboard.clearUi());`.
+- After `const keyboard = createDuelKeyboard(...)`, call `deps.setConsole?.(keyboard.ui);`. Also create `const trackConsole = consoleChange(() => keyboard.clearUi());` (import from `'./consoleChange'`).
 - In `play()`, Weapons part, after the E/Q lock block: `if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2 && k.lockTo !== d.tactical.systems[0].lock) send({ kind: 'laserLock', room: k.lockTo });`.
 - In `pump()`, right after `const k = keyboard.sample();`: `source?.heldFlags(k.held ?? NO_HELD_FLAGS);`.
 - In `frame()`, `const station = scene.draw(source, dt, {...}); trackConsole(station);`.
@@ -1030,7 +1052,7 @@ Expected: FAIL. `consoleHidden`, `consoleChange`, `lockTo` handling, `uiHeld` an
 
 `duelMode.ts`:
 - Deps: add the same `setConsole?` member.
-- After the keyboard is created: `deps.setConsole?.(keyboard.ui); const trackConsole = consoleChange(() => keyboard.clearUi());`.
+- After the keyboard is created: `deps.setConsole?.(keyboard.ui); const trackConsole = consoleChange(() => keyboard.clearUi());` (import from `'./consoleChange'`).
 - In `frame`: `trackConsole(scene.draw(runtime, dt, {...}));`.
 - In `dispose`: `deps.setConsole?.(null);` before `keyboard.destroy()`.
 
@@ -1038,8 +1060,8 @@ Expected: FAIL. `consoleHidden`, `consoleChange`, `lockTo` handling, `uiHeld` an
 
 - [ ] **Step 4: Run the duel and UI tests**
 
-Run: `npx vitest run tests/sceneUi.test.ts tests/duelRuntime.test.ts tests/onlineDuelSession.test.ts tests/onlineDuel.test.ts tests/duelMode.test.ts tests/duelModeDispose.test.ts tests/duelOnlineView.test.ts tests/uiConsole.test.tsx tests/uiDuel.test.tsx`
-Expected: all PASS. A test that builds a `DuelViewSource` fake will fail typecheck for the two new members; add `mode: 'single', uiHeld: () => NO_HELD_FLAGS` to that fake.
+Run: `npx vitest run tests/consoleHidden.test.ts tests/consoleChange.test.ts tests/sceneUi.test.ts tests/duelRuntime.test.ts tests/onlineDuelSession.test.ts tests/onlineDuel.test.ts tests/duelMode.test.ts tests/duelModeDispose.test.ts tests/duelOnlineView.test.ts tests/uiConsole.test.tsx tests/uiDuel.test.tsx`
+Expected: all PASS. A test that builds a `DuelViewSource` fake will fail typecheck for the three new members; add `mode: 'single', uiHeld: () => NO_HELD_FLAGS, running: () => true` to that fake (`git grep -n "drainEvents" -- tests` finds them).
 
 - [ ] **Step 5: Full suite, typecheck, determinism**
 
@@ -1065,7 +1087,7 @@ git commit -m "feat(artemis-i): the scene builds the console; runtime and online
 - Consumes: `ConsoleView` (Task 2), `NO_HELD_FLAGS` (Task 1).
 - Produces: `duelProbeFixture(console?: 'helm' | 'weapons'): DuelUiView`. Without an argument it is unchanged. With one, it gives a console view as in `tests/uiConsole.test.tsx`'s two fixtures, with `crt: true`, `end: null`, all banners null and the overlay `{ zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }`.
 
-- [ ] **Step 1: Write the failing test** in `tests/uiProbe.test.ts`:
+- [ ] **Step 1: Write the failing test** in `tests/uiProbe.test.ts` (add `import { duelProbeFixture } from '../src/renderer/src/app/uiProbe';` to its imports):
 ```ts
 it('the console fixtures carry a console and no end card', () => {
   for (const c of ['helm', 'weapons'] as const) { const v = duelProbeFixture(c); expect(v.console?.station).toBe(c); expect(v.end).toBeNull(); expect(v.crt).toBe(true); }
@@ -1087,7 +1109,7 @@ git commit -m "test(artemis-i): probe fixtures for the Helm and Weapons consoles
   3. Hold `console-fire` (mouse down on its centre, wait until the CHARGE value reads `HOLD` or 2 s, mouse up). Assert that the charge value changed.
   4. Click `console-launch`. Assert that `MAG` dropped by one and `FLYING` shows.
   5. Click `console-lock-0`. Assert that it is lit.
-  6. Press F10 twice to reach CRT off (the dev cycle). Screenshot `weapons-off.png`.
-  7. Click `console-tab-ship` (X). Screenshot `interior.png`. The tab strip shows, with SHIP lit.
+  6. (The off-CRT button palette only draws where `crt` is false, which is the interior view: it is checked in step 7.)
+  7. Click `console-tab-ship` (X). Screenshot `interior.png`. The tab strip shows with SHIP lit, in the off-CRT palette (AMBER fill, PANEL_FILL text).
   8. Mouse-wheel over the map (not over a button) zooms, and right-drag pans: the side column's zoom value changes.
   Record the results in the final report. Failures here go back to the matching task as fixes.

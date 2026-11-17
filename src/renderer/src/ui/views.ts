@@ -1,13 +1,16 @@
 // What the duel and flight regions render (React UI spec §2): plain data built by the scene and the flight mode each frame.
 import type { EndView } from '../render/duel/endModel';
 import type { ReadoutRow } from '../render/duel/readoutModel';
+import type { ConsoleView } from '../render/duel/consoleModel';
 import type { OverlayDraw } from '../render/tactical/tacticalModel';
 
 /** The three banner lines; null hides one (spec §6 placements). */
 export interface Banners { interior: string | null; tactical: string | null; notice: string | null }
 export type MapOverlayView = Pick<OverlayDraw, 'zoomText' | 'scaleBar' | 'snapHint'>;
 /** `crt`: the frame is a console view, drawn as an amber CRT screen (CRT map spec section 1: crtActive(view)). */
-export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: readonly string[] }; end: EndView | null; banners: Banners; overlay: MapOverlayView | null; crt: boolean }
+export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: readonly string[] }; end: EndView | null; banners: Banners; overlay: MapOverlayView | null; crt: boolean;
+  /** The Artemis console (spec 2026-11-17-artemis-consoles §6.1); absent or null draws today's screen. */
+  console?: ConsoleView | null }
 export interface FlightUiView { feel: readonly (readonly [string, string])[]; banners: Banners; overlay: MapOverlayView | null; crt: boolean }
 
 export function mapOverlayOf(o: OverlayDraw): MapOverlayView { return { zoomText: o.zoomText, scaleBar: o.scaleBar, snapHint: o.snapHint }; }

@@ -6,6 +6,8 @@ import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { missileOf, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
+import { Health, Life, LifeState } from '../../sim/components';
+import { HEALTH_MAX } from '../../sim/tuning';
 import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { AMBER, DIM, TEXT, WARN, GOOD } from '../theme';
@@ -14,8 +16,10 @@ import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 
 export type ReadoutMode = 'helm' | 'weapons' | 'interior';
-export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'WALKING' | 'REPAIRING';
+export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'WALKING' | 'REPAIRING' | 'DOWNED';
 
+/** The HEALTH row turns red under this (duel-health spec §2). */
+export const HEALTH_LOW = 30;
 /** The incoming-missile warning range (spec §8). */
 export const INCOMING_RANGE = 600;
 export const READOUT_MARGIN = 8, READOUT_W = READOUT_COLUMN - 2 * READOUT_MARGIN;
@@ -48,13 +52,31 @@ export interface ReadoutInput {
   /** The player the keyboard drives; the other's status is shown. */
   active: 0 | 1;
   other: OtherStatus;
+  /** On an Artemis console (spec §2): no view heading (the tab strip says it) and no LASER block (the station block shows it). */
+  console?: boolean;
+}
+
+/** The laser's CHARGE row (FROZEN, HOLD n.n or a percentage, with its bar): the readout's and the Weapons station's. */
+export function chargeRow(d: DuelState): ReadoutRow {
+  const t = d.tactical, crewSys = t.systems[0], flying = missileOf(t, 0) !== null, full = crewSys.laserCharge >= LASER_CHARGE_UNITS;
+  const value = flying ? 'FROZEN' : full ? `HOLD ${((LASER_HOLD_TICKS - crewSys.laserHold) / TICK_HZ).toFixed(1)}` : `${Math.floor((crewSys.laserCharge / LASER_CHARGE_UNITS) * 100)}%`;
+  return em({ ...row('CHARGE', value, DIM, full && !flying ? GOOD : TEXT), bar: { fill: crewSys.laserCharge / LASER_CHARGE_UNITS, colour: full ? GOOD : AMBER } }, full && !flying ? 'good' : null);
+}
+
+/** The shown character's health (duel-health spec §2): `72/100` rounded up (a living character never reads 0), red under
+ *  HEALTH_LOW, `DOWNED` when downed. */
+export function healthRow(d: DuelState, pid: number): ReadoutRow {
+  const eid = d.interior.crew[pid]!;
+  if (Life.state[eid] === LifeState.Downed) return em(row('HEALTH', 'DOWNED', DIM, WARN), 'alert');
+  const hp = Math.ceil(Health.cur[eid]!), low = hp < HEALTH_LOW;
+  return em(row('HEALTH', `${hp}/${HEALTH_MAX}`, DIM, low ? WARN : TEXT), low ? 'alert' : null);
 }
 
 export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   const d = input.duel, t = d.tactical, target = targetOf(t, 0), other = input.active === 0 ? 1 : 0;
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
   const rows: ReadoutRow[] = [
-    heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : 'ON FOOT', AMBER),
+    ...(input.console ? [] : [heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : 'ON FOOT', AMBER)]),
     em(heading(d.interior.layout.id.toUpperCase(), CREW_SHIP), 'crew'),
     em(row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT), crewSys.hull <= SHIP_HULL / 4 ? 'alert' : null),
     { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP }, emphasis: 'crew' }
@@ -73,14 +95,14 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   rows.push(em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
   rows.push({ ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
   rows.push(em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));
-  if (input.mode === 'weapons') {
-    const flying = missileOf(t, 0) !== null, full = crewSys.laserCharge >= LASER_CHARGE_UNITS;
+  if (input.mode === 'weapons' && !input.console) {
+    const flying = missileOf(t, 0) !== null;
     rows.push(heading('LASER', AMBER));
     rows.push(em(row('LOCK', ROOM_NAMES[crewSys.lock]!), 'enemy'));
-    const value = flying ? 'FROZEN' : full ? `HOLD ${((LASER_HOLD_TICKS - crewSys.laserHold) / TICK_HZ).toFixed(1)}` : `${Math.floor((crewSys.laserCharge / LASER_CHARGE_UNITS) * 100)}%`;
-    rows.push(em({ ...row('CHARGE', value, DIM, full && !flying ? GOOD : TEXT), bar: { fill: crewSys.laserCharge / LASER_CHARGE_UNITS, colour: full ? GOOD : AMBER } }, full && !flying ? 'good' : null));
+    rows.push(chargeRow(d));
     rows.push(row('MAG', `${crewSys.magazine}/${MAGAZINE}${flying ? ' FLYING' : ''}`));
   }
+  rows.push(healthRow(d, input.active));
   rows.push(row('OTHER', d.present[other] ? 'PRESENT' : 'AWAY', DIM, d.present[other] ? TEXT : DIM));
   rows.push(row('', input.other));
   if (input.mode === 'interior') {
@@ -103,8 +125,8 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THRUST   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F MISSILE   A/D STEER', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
-  return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
+  return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
 
-/** Rows the readout pool holds: the longest list (standing, Helm empty, a missile inbound) is 21. */
+/** Rows the readout pool holds: the longest list (standing, Helm empty, a missile inbound) is 22. */
 export const READOUT_ROWS = 22;

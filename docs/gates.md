@@ -763,6 +763,13 @@ Spec `docs/superpowers/specs/2026-11-17-crt-map-design.md`, plan `docs/superpowe
 - [x] Frame time (Weapons map, 1920x1080, 10 s): capped, off: 600 frames, median 16.70, p95 16.80; subtle: 600 frames, median 16.70, p95 16.80; full: 600 frames, median 16.70, p95 16.80. Uncapped (vsync off), medians: off 0.60 ms, subtle 0.60 ms, full 0.60 ms (p95 1.80, 1.60, 2.20). The capped p95 of 16.80 ms is vsync-bound (equal at off, subtle and full, so it meets the spec's "no more than 10 % above off" rule); the uncapped deltaMS measures CPU submission, not the GPU cost of the bloom, so watch for dropped frames at `full` on your own GPU during the look gate.
 - [ ] Owner look gate (`npm run dev` then a console; F10 cycles full, subtle, off in dev builds; and the screenshots in `C:\Users\djuar\FTLite-shots\crt-map\` beside the three references): does it feel like looking at a display on the ship, and can everything still be read (friend and foe, damage on both ships, the lock, the missiles, the arcs, the readout)? Known look points: the lock label's block is `mid` rather than `main` (the bloom washed glass text on `main`), and the enemy carries three dashed rings at once when shielded (the blinking marker and two shield layers). Date and notes: pending.
 
+## Hull silhouettes: the Hound and an original drone scout on the console maps (2026-11-17)
+
+Spec `docs/superpowers/specs/2026-11-17-hull-silhouettes-design.md`; plan `docs/superpowers/plans/2026-11-17-hull-silhouettes.md`.
+
+- [x] Automated (hull silhouettes): `npm test` passes, including both hulls' constraints (rooms convex, inside the outline with no edge crossing, at least 0.2 square units; outlines simple; the scout within ENEMY_RING − 0.1 and the Hound within 1.55), `hullFor`, `roomCentre`, every ship carrying its hull, the lock on the scout's room, and the full-frame CRT colour test with both hulls at every damage level in both phases; `npx tsc -b` clean; sim, SIM_VERSION and goldens unchanged. Measured: 4224 tests in 302 files, tsc clean, build ok.
+- [ ] Manual (owner): look at `C:\Users\djuar\FTLite-shots\hull-silhouettes\`. Does the crew's ship read as the Hound and the enemy as a distinct drone at a glance, and are damage and the lock still clear? Does the level-1 tone fill read well, or should level 1 be hatch only (spec section 2's fallback)? Known look points to judge: (1) below zoom 0.8 the silhouettes are drawn at a minimum of 16 px per ship unit, larger than their collision size, so a missile glyph crosses the shield rings and part of the hull before it bursts, and asteroid sparks fire after the drawn hull overlaps the rock; (2) at cruise speed the Helm's velocity line sits under the hull; (3) at zoom 0.25 → 0.24 the ship jumps from a 38 px silhouette with rings to the 14 px chevron; (4) the enemy's level 2 in its second blink phase differs from level 1 only by the fill under the hatch.
+
 ## Helm demo (Helm spec §16; H-2 spec §8 to §11)
 
 **The rule (Helm spec §16, verbatim):** "The demo is done when 4 of 5 are yes across 3 sessions, at least one with a pair other than the owner, and the live telemetry targets hold (3 to 5 minutes; wins and losses both happen across sessions; both weapons used in every duel)."
@@ -851,7 +858,7 @@ Spec `docs/superpowers/specs/2026-11-17-crt-map-design.md`, plan `docs/superpowe
 ## Audio-i: the first sound pass
 - [x] `tests/audioManifest.test.ts`: 50 Kenney effects (CC0) and 2 Scott Buckley tracks (CC-BY 4.0, archived URLs) manifested as `sfx.*` / `music.*`, all `required: false`; credits regenerated.
 - [x] Unit tests: event and state sounds, interior diffs and guard, sector rule, music state machine, hum and crackle, voice cap and variants, cue recipes and synth fallback, settings migration, loader branch, import guard.
-- [x] `npm run typecheck`, `npm test`, `npm run test:determinism` (unchanged, SIM_VERSION 40), `npm run build` pass on the final commit.
+- [x] `npm run typecheck`, `npm test`, `npm run test:determinism`, `npm run build` pass on the final commit. Audio leaves SIM_VERSION unchanged (41, from master).
 - [x] The built app logs `[audio] decoded 52/52 files` (OGG Vorbis and MP3 decode in Electron 37).
 - [ ] Owner ear check (screens cannot verify sound). Listen for:
   - [ ] Calm music (Cobalt) in the main menu.
@@ -861,7 +868,7 @@ Spec `docs/superpowers/specs/2026-11-17-crt-map-design.md`, plan `docs/superpowe
   - [ ] A heavy low thump and a short music dip when our ship is hit.
   - [ ] Rapid fire never turns into a wall of sound (four voices per sound at most).
   - [ ] The engine hum rises while thrusting and at speed, and fades while paused.
-  - [ ] Battle music (Time and Space) crossfades in when the duel starts, at its orchestral turn (`BATTLE_START_S = 125`), and back to calm about 8 s after the round ends.
+  - [ ] Battle music (Time and Space) crossfades in when the duel starts, at its orchestral turn (`BATTLE_START_S = 125`), and back to calm about 8 s after the round ends (at once, still crossfading, on leaving to the main menu).
   - [ ] The music fades out on pause (Esc) and back in on resume; a hidden window is silent.
   - [ ] Sector run (Multiplayer): door whooshes, the console blip on sitting down, fire crackle that grows with more burning rooms, the alarm, the jump (charge, whoosh, arrival), and the hum swelling while the drive charges.
   - [ ] Master, Music and Effects each work and persist across a restart; an old single volume carried over as Master.

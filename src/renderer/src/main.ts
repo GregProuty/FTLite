@@ -84,7 +84,7 @@ async function startApp(): Promise<void> {
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
-        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record) });
+        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
     // Multiplayer (H-2 spec §3): the wrapper builds the duel's or the sector's session when the first port arrives.
@@ -92,7 +92,7 @@ async function startApp(): Promise<void> {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
         duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
-          leave: () => actions.leave(), audio, recordDuel: record => window.ftlite?.recordDuel?.(record) }),   // Audio-i: local duel sounds; the replicated cues would play twice
+          leave: () => actions.leave(), audio, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input) }),   // Audio-i: local duel sounds; the replicated cues would play twice
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play, sound: createSectorAudio(audio) })
       });
@@ -182,7 +182,7 @@ async function startDuel(seed: number): Promise<void> {
     setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
-  startDuelMode({ renderer, seed, layout, ui: createDuelSink(store, perf), lifecycle: window.ftlite });
+  startDuelMode({ renderer, seed, layout, ui: createDuelSink(store, perf), lifecycle: window.ftlite, setConsole: (input) => actions.setConsole(input) });
 }
 
 /** The text-parity probe (UI-ii Task 5): Pixi text on the left half, React text on the right, for the pixel comparison. */
@@ -205,7 +205,7 @@ async function startProbe(): Promise<void> {
   };
   window.addEventListener('resize', resize); resize();
   startUiProbe(renderer, !duelProbe && !hudProbe);
-  if (duelProbe) createDuelSink(store).frame(duelProbeFixture());
+  if (duelProbe) createDuelSink(store).frame(duelProbeFixture(q.get('console') === 'helm' || q.get('console') === 'weapons' ? (q.get('console') as 'helm' | 'weapons') : undefined));
   if (hudProbe) {   // UI-iii: a fixture HUD model drawn by the React HUD (dynamic imports, the probe only)
     const { HUD_FIXTURES } = await import('./app/hudFixtures');
     const raw = q.get('fixture') ?? '0', idx = Number(raw);

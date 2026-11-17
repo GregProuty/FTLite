@@ -6,7 +6,7 @@
 // authority does, and hands each decided round's record to `onRound` (Single player's solo playtest records).
 import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
-import { Position } from '../../sim/components';
+import { Life, LifeState, Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
@@ -24,7 +24,7 @@ import type { OtherStatus } from '../../render/duel/readoutModel';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
-import { accumulateWheel, emptyPresses, helmAxes, WHEEL_IDLE_MS, type KeySample, type PointerSample } from './input';
+import { accumulateWheel, emptyPresses, helmAxes, NO_HELD_FLAGS, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
 
@@ -203,6 +203,12 @@ export interface DuelRuntime {
   ended(): boolean;
   /** True once M was pressed while user-paused or on the end screen: the app returns to its main menu (main menu spec). */
   menuRequested(): boolean;
+  /** Single player: Tab takes the other character (Artemis spec §6.3). */
+  readonly mode: 'single';
+  /** The merged held keys and console holds of the last frame (Artemis spec §6.1). */
+  uiHeld(): HeldFlags;
+  /** Not paused for any reason and not ended (Artemis spec §6.1: the console shows only then). */
+  running(): boolean;
   dispose(): void;
 }
 
@@ -220,6 +226,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   // The sim checks sits and stands against presence before it applies that tick's presence commands, so a seat change
   // queued after a Tab waits here until the Tab's presence tick has run, then goes out on the following tick.
   let switching = false, deferred: { player: number; command: DuelCommand }[] = [];
+  let lastHeld: HeldFlags = NO_HELD_FLAGS;   // the last frame's merged held flags (Artemis spec §6.1)
   let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = [NEUTRAL, NEUTRAL], sentAxes: Axes = NO_AXES, sentSteer = 0;
   let menuAsked = false;
   let chargeSent = false, events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
@@ -331,6 +338,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       queue({ kind: 'laserLock', room });
     }
+    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
     const down = (): void => queue({ kind: 'laserCharge', held: true });
     const up = (): void => queue({ kind: 'laserCharge', held: false });   // onTick drops it when no press was sent
     if (p.fireDown > 0 && p.fireUp > 0) { if (k.fireHeld) { up(); down(); } else { down(); up(); } }
@@ -358,6 +366,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     view: () => { const s = seatOf(d, active); return s === 'standing' ? 'interior' : s; },
     otherStatus() {
       const other = active === 0 ? 1 : 0, s = seatOf(d, other);
+      if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
       if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
       return d.present[other] && sentHeld[other]!.interactHeld && repairInReach(d, other) >= 0 ? 'REPAIRING' : 'WALKING';
     },
@@ -367,6 +376,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     alpha: () => frameAlpha,
     frame(dt) {
       let k = deps.sampleKeys();
+      lastHeld = k.held ?? NO_HELD_FLAGS;
       const sampled = deps.samplePointer();
       let pointer = sampled;
       pacer.toggleUser(k.presses.pause);
@@ -398,6 +408,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     lastResults: () => results,
     ended,
     menuRequested: () => menuAsked,
+    mode: 'single' as const,
+    uiHeld: () => lastHeld,
+    running: () => pacer.reasons.size === 0 && !ended(),
     dispose() { pacer.dispose(); disposeDuel(d); }
   };
 }

@@ -92,7 +92,7 @@ async function main() {
    *  starts round 2 on both; the Helm (the host) thrusts and the speed rises on both; Weapons (the guest) fires and a
    *  beam shows on both; both agree on a hash; both machines write round 1's playtest record, copied beside the report;
    *  then both apps shut down. Returns the duel evidence the report validates. */
-  const latest=(v:any)=>v.observations.at(-1)?.publications.at(-1);
+  const latest=(v:any)=>(v.observations.at(-1)?.publications as any[]|undefined)?.reduce((a:any,p:any)=>(a&&a.sequence>=p.sequence?a:p),undefined);   // newest by sequence: state packets can arrive out of order
   const hold=async(p:Owned,key:string,ms:number)=>{await p.request!('key',{key,down:true});await pause(ms);await p.request!('key',{key,down:false});};
   const standUp=async(p:Owned,seat:number)=>{await hold(p,'X',120);
     await until(()=>p.request!('status'),v=>v.observations.at(-1)?.results.some((x:any)=>x.status==='applied'&&x.id.player===seat&&x.id.sequence>1));await hold(p,'E',120);};

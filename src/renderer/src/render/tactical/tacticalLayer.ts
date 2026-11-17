@@ -11,7 +11,8 @@ import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
 import { blink, CRT, DAMAGE_BLINK_HZ, DASH, DOT, DOT_GAP, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
-import { asteroidShape, CHEVRON_SIZE, wedgeSegments, type ArrowTarget, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import { asteroidShape, CHEVRON_SIZE, type ArrowTarget, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import { ENEMY_RING, HULLS } from './hullModel';
 import type { ArcDraw, CombatDraw } from './weaponsModel';
 import type { Viewport } from './camera';
 
@@ -21,8 +22,8 @@ export const SPACE = CRT.glass;
 const STAR_COUNT = 220;
 /** Pool sizes: the labels name 500-unit squares (12 per axis at most), the ring has 12 labels, at most 4 arrows. */
 const GRID_LABELS = 12, RING_LABELS = 12, ARROWS = 4;
-/** The enemy's blinking marker ring, as a multiple of the ship's radius (the shield rings start at 1.6). */
-export const ENEMY_RING = 1.35;
+/** The enemy's blinking marker ring (moved to hullModel.ts so the pure model and its test need no Pixi). */
+export { ENEMY_RING };
 
 /** `stars` is exposed for the parallax test. `draw` takes the duel's combat lists as a second argument (none in the
  *  flight view) and the presentation time in seconds (performance.now() / 1000) for the blinks. `reset` hides every text
@@ -114,25 +115,34 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       else { g.poly(poly).fill(CRT.glass).stroke({ width: 1, color: CRT.main }); segments(g, dashCircle(s.x, s.y, CHEVRON_SIZE * 0.95, DASH, GAP, seg), 1, ring); }
       return;
     }
-    const k = SHIP_RADIUS * s.scale, phase = blink(t, DAMAGE_BLINK_HZ);
-    for (const sg of wedgeSegments()) {
-      const pts: number[] = [];
-      for (let i = 0; i < sg.poly.length; i += 2) { const f = sg.poly[i]!, side = sg.poly[i + 1]!; pts.push(s.x + (fx * f + rx * side) * k, s.y + (fy * f + ry * side) * k); }
-      const level = s.rooms[sg.room] ?? 0;
+    const k = SHIP_RADIUS * s.scale, phase = blink(t, DAMAGE_BLINK_HZ), hull = HULLS[s.hull];
+    const place = (poly: readonly number[]): number[] => {
+      const out: number[] = [];   // a fresh array per poly: Graphics.poly keeps the reference
+      for (let i = 0; i < poly.length; i += 2) { const f = poly[i]!, side = poly[i + 1]!; out.push(s.x + (fx * f + rx * side) * k, s.y + (fy * f + ry * side) * k); }
+      return out;
+    };
+    // The outline: the crew solid hot, the enemy hollow (glass inside, a main edge).
+    if (s.crew) g.poly(place(hull.outline)).fill(CRT.hot).stroke({ width: 1, color: CRT.glass });
+    else g.poly(place(hull.outline)).fill(CRT.glass).stroke({ width: 1, color: CRT.main });
+    // The rooms, by the damage table (hull silhouettes spec section 2; level 2 is the CRT map's rule, level 1 adds a tone).
+    hull.rooms.forEach((room, r) => {
+      const pts = place(room), level = s.rooms[r] ?? 0;
+      let fill: number | null, stroke: number, hatch: number | null;
       if (s.crew) {
-        // Own ship (solid hot): level 1 a glass hatch; level 2 alternates a glass cut-out (hot edge) and hot at 2 Hz.
-        if (level >= 2 && phase === 0) g.poly(pts).fill(CRT.glass).stroke({ width: 1, color: CRT.hot });
-        else g.poly(pts).fill(CRT.hot).stroke({ width: 1, color: CRT.glass });
-        if (level === 1) segments(g, hatchSegments(pts, HATCH_SPACING, HATCH_ANGLE, seg), 1, CRT.glass);
+        if (level === 0) { fill = null; stroke = CRT.glass; hatch = null; }
+        else if (level === 1) { fill = CRT.mid; stroke = CRT.glass; hatch = CRT.glass; }
+        else if (phase === 0) { fill = CRT.glass; stroke = CRT.hot; hatch = null; }
+        else { fill = CRT.hot; stroke = CRT.glass; hatch = null; }
       } else {
-        // Enemy (hollow): level 1 a main hatch; level 2 alternates solid hot and a main outline with a main hatch at 2 Hz.
-        if (level >= 2 && phase === 0) g.poly(pts).fill(CRT.hot).stroke({ width: 1, color: CRT.glass });
-        else {
-          g.poly(pts).fill(CRT.glass).stroke({ width: 1, color: CRT.main });
-          if (level >= 1) segments(g, hatchSegments(pts, HATCH_SPACING, HATCH_ANGLE, seg), 1, CRT.main);
-        }
+        if (level === 0) { fill = null; stroke = CRT.mid; hatch = null; }
+        else if (level === 1) { fill = CRT.dim; stroke = CRT.main; hatch = CRT.main; }
+        else if (phase === 0) { fill = CRT.hot; stroke = CRT.glass; hatch = null; }
+        else { fill = CRT.glass; stroke = CRT.main; hatch = CRT.main; }
       }
-    }
+      if (fill === null) g.poly(pts).stroke({ width: 1, color: stroke });
+      else g.poly(pts).fill(fill).stroke({ width: 1, color: stroke });
+      if (hatch !== null) segments(g, hatchSegments(pts, HATCH_SPACING, HATCH_ANGLE, seg), 1, hatch);
+    });
     if (!s.crew) segments(g, dashCircle(s.x, s.y, k * ENEMY_RING, DASH, GAP, seg), 1, ring);
     for (let l = 0; l < s.shields; l++) segments(g, dashCircle(s.x, s.y, k * (1.6 + 0.25 * l), DASH, GAP, seg), 1, s.crew ? CRT.mid : CRT.dim, 0.9 - 0.2 * l);
   }

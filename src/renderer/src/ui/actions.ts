@@ -1,5 +1,6 @@
 // What the menu can do (React UI spec §2, §5): the preload calls, the router callbacks and the menu's transitions, moved
 // line for line from render/sessionMenu.ts. Components only call these; each change is one store setState.
+import type { ConsoleInput } from '../app/duel/input';
 import type { OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
 import { applyStatus, failureText, helmPlayerOf, isDuel, ROOM_CODE, type MenuState } from './menuState';
 import type { UiStore } from './store';
@@ -36,7 +37,17 @@ export function createUiActions(deps: UiActionDeps) {
   }
   function readFullscreen(): void { void deps.fullscreen?.get().then((on) => { if (!disposed) setMenu({ fullscreen: on }); }, () => {}); }
 
+  // The console's clicks (Artemis spec §6.2) go to the duel mode's keyboard while one is set; a no-op otherwise.
+  let consoleInput: ConsoleInput | null = null;
+  const consoleActions: ConsoleInput = {
+    press: (action) => consoleInput?.press(action),
+    hold: (code, on) => consoleInput?.hold(code, on),
+    lock: (room) => consoleInput?.lock(room)
+  };
+
   return {
+    console: consoleActions,
+    setConsole(input: ConsoleInput | null): void { consoleInput = input; },
     setStatus(next: OnlineStatus): void {
       const { menu: nextMenu, goHome } = applyStatus(menu(), next);
       if (goHome) deps.home?.();   // as sessionMenu did: the router goes home before the menu shows it

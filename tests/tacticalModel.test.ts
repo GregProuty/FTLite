@@ -3,8 +3,9 @@ import { createCamera, pan, type Camera } from '../src/renderer/src/render/tacti
 import { createFeelTracker, feelReadout, feelRows, FEEL_WINDOW_TICKS, recordFeel } from '../src/renderer/src/render/tactical/feelModel';
 import {
   asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, ringCrossesRect,
-  tacticalModel, wedgeSegments, type PrevBody, type TacticalModelInput
+  shipScale, SHIP_MIN_PX_PER_UNIT, tacticalModel, type PrevBody, type TacticalModelInput
 } from '../src/renderer/src/render/tactical/tacticalModel';
+import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
 import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 
@@ -75,7 +76,25 @@ describe('bodies and ships (H-1 spec §7 items 4 to 6)', () => {
     const at = (z: number) => tacticalModel(input(st, createCamera(s.x, s.y, z))).ships[0]!;
     expect(at(0.25).chevron).toBe(false);   // 40 units × 0.25 = 10 px
     expect(at(0.24).chevron).toBe(true);
-    expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.5, shields: 2 });
+    expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.8, shields: 2 });   // the minimum, 16 px per unit
+    expect(at(1.2).scale).toBe(1.2);
+    expect(at(0.2).scale).toBeCloseTo(0.2, 9);   // a chevron: the true zoom
+    const helmAt = (z: number) => tacticalModel(input(st, createCamera(s.x, s.y, z))).helm!;
+    const from = (z: number) => Math.hypot(helmAt(z).headingFrom.x - 640, helmAt(z).headingFrom.y - 360);
+    expect(from(0.2)).toBeCloseTo(20 * 1.3 * 0.2 + 4, 6);   // the heading line starts at the chevron, not the minimum scale
+    expect(from(0.5)).toBeCloseTo(20 * 1.3 * 0.8 + 4, 6);
+    expect(at(0.25).hull).toBe('hound');
+  });
+  it('a silhouette is never drawn below 16 px per ship unit; above that it follows the zoom', () => {
+    expect(SHIP_MIN_PX_PER_UNIT).toBe(16);
+    expect(shipScale(0.25)).toBeCloseTo(0.8, 9); expect(shipScale(0.5)).toBeCloseTo(0.8, 9);
+    expect(shipScale(0.8)).toBeCloseTo(0.8, 9); expect(shipScale(1.2)).toBe(1.2);
+  });
+  it('every ship carries its hull: the crew the Hound, the enemy the scout (hull silhouettes spec section 2)', () => {
+    const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y, 0.5);
+    st.ships[1].x = st.ships[0].x + 100; st.ships[1].y = st.ships[0].y;
+    const d = tacticalModel(input(st, cam, { ships: [0, 1] }));
+    expect(d.ships.map((s) => [s.index, s.hull])).toEqual([[0, 'hound'], [1, 'scout']]);
   });
   it('the flight view draws only ship 0', () => {
     const st = createTacticalState(4), cam = createCamera(0, 0, 0.12);
@@ -139,6 +158,14 @@ describe('the overlay (H-1 spec §7 item 9)', () => {
     expect(followed.arrows.map((a) => [a.target, a.distance])).toEqual([['planet', 1500]]);
     expect(followed.overlay.snapHint).toBe(false);
   });
+  it('keeps off-screen arrows clear of a left reserve (the console status table)', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    Object.assign(s, { x: -1500, y: 0 });
+    const cam = createCamera(0, 0, 1.0); pan(cam, 0, 1);
+    const view = tacticalModel(input(st, cam, { reserveLeft: 228, reserveRight: 156 }));
+    const ship = view.arrows.find((a) => a.target === 'ship')!;
+    expect(ship.x).toBeGreaterThanOrEqual(228 + 28 - 1e-9);   // ARROW_MARGIN is 28
+  });
   it('shows the zoom and a scale bar no wider than 160 px', () => {
     const st = createTacticalState(4);
     const o = tacticalModel(input(st, createCamera(0, 0, 0.5))).overlay;
@@ -166,8 +193,8 @@ describe('the parallax star field (parent §10b layer 1)', () => {
 });
 
 describe('shapes', () => {
-  it('the wedge has three room segments and asteroids have stable outlines', () => {
-    expect(wedgeSegments().map((w) => w.room)).toEqual([0, 1, 2]);
+  it('both hulls have three rooms and asteroids have stable outlines', () => {
+    expect([HULLS.hound.rooms.length, HULLS.scout.rooms.length]).toEqual([3, 3]);
     expect(asteroidShape(5)).toBe(asteroidShape(5));
     expect(asteroidShape(5)).not.toEqual(asteroidShape(6));
     expect(asteroidShape(9).every((k) => k >= 0.72 && k <= 1.08)).toBe(true);

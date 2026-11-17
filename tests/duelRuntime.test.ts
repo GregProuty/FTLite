@@ -5,7 +5,7 @@ import { Position } from '../src/renderer/src/sim/components';
 import { missileOf, Outcome, removeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
-import { emptyPresses, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
+import { emptyPresses, NO_HELD_FLAGS, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { followingSeed } from '../src/renderer/src/sim/duel/seeds';
 import { ZOOM_DEFAULT, ZOOM_STEP } from '../src/renderer/src/render/tactical/camera';
@@ -488,6 +488,32 @@ describe('the interior zoom camera input (interior zoom spec rules 1-4)', () => 
     press('confirm'); ticks(2);
     expect(rt.epoch()).toBe(1);
     expect([rt.interiorCamera.level, rt.interiorCamera.follow, rt.interiorCamera.last]).toEqual([0, true, null]);
+    rt.dispose();
+  });
+});
+
+describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
+  it('a lock click at Weapons queues laserLock to that room; the same click at the Helm changes nothing', () => {
+    const { rt, hold, press, tick } = rig();
+    const ship = rt.duel.tactical.systems[0], before = ship.lock;
+    hold({ lockTo: 2 }); tick(); hold({ lockTo: null });   // player 0 sits at the Helm
+    expect(ship.lock).toBe(before);
+    press('switch'); tick();
+    expect(rt.view()).toBe('weapons');
+    expect(ship.lock).not.toBe(2);
+    hold({ lockTo: 2 }); tick(); hold({ lockTo: null });
+    expect(ship.lock).toBe(2);
+    rt.dispose();
+  });
+  it("uiHeld() is the last frame's held flags (none when the sample has none); mode is single", () => {
+    const { rt, hold } = rig();
+    expect(rt.mode).toBe('single');
+    expect(rt.uiHeld()).toEqual(NO_HELD_FLAGS);
+    const held = { ...NO_HELD_FLAGS, fire: true, left: true };
+    hold({ held }); rt.frame(1 / 60);
+    expect(rt.uiHeld()).toEqual(held);
+    hold({ held: undefined }); rt.frame(1 / 60);
+    expect(rt.uiHeld()).toEqual(NO_HELD_FLAGS);
     rt.dispose();
   });
 });

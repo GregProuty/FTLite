@@ -7,7 +7,8 @@ import type { Renderer } from '../../render/renderer';
 import { computeLetterbox } from '../../render/letterbox';
 import { endModel } from '../../render/duel/endModel';
 import type { DuelPlaytestRecord } from '../../net/duelRecord';
-import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
+import { createDuelKeyboard, createPointerSource, type ConsoleInput, type EventSource } from './input';
+import { consoleChange } from './consoleChange';
 import { createDuelRuntime } from './runtime';
 import type { DuelSink } from '../../ui/sinks';
 import type { AudioOut } from '../audio';
@@ -29,6 +30,8 @@ export interface DuelModeDeps {
   recordDuel?(record: DuelPlaytestRecord): Promise<boolean> | void;
   /** The app's audio (Audio-i spec section 4b); absent for `?mode=duel`, which stays silent as before. */
   audio?: AudioOut;
+  /** The console's click slot (Artemis spec §6.2): filled with this duel's keyboard, emptied on dispose. */
+  setConsole?(input: ConsoleInput | null): void;
 }
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
@@ -37,6 +40,8 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio });
   const canvas = renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource);
+  deps.setConsole?.(keyboard.ui);
+  const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
   const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
     const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
     return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
@@ -66,7 +71,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     const d = runtime.duel, userPaused = runtime.reasons().has('user');
     solo.framePaused(userPaused);
     const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
-    scene.draw(runtime, dt, { banner: userPaused ? pauseText : null, layerPaused: userPaused, end: endModel(d.tactical.outcome, ticks, `ENTER: REMATCH${exitHint}`) });
+    trackConsole(scene.draw(runtime, dt, { banner: userPaused ? pauseText : null, layerPaused: userPaused, end: endModel(d.tactical.outcome, ticks, `ENTER: REMATCH${exitHint}`) }));
   };
   renderer.app.ticker.add(frame);
 
@@ -78,6 +83,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('beforeunload', dispose);
     offSuspend?.(); offResume?.();
+    deps.setConsole?.(null);
     keyboard.destroy(); pointer.destroy(); runtime.dispose(); scene.dispose();
   };
   window.addEventListener('beforeunload', dispose, { once: true });

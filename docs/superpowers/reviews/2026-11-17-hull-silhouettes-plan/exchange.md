@@ -1,0 +1,84 @@
+# Codex review exchange: hull-silhouettes-plan
+
+Subject: `docs/superpowers/plans/2026-11-17-hull-silhouettes.md` (plan). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing 18246c2, effort high, 310 s, 1644790 in / 1547440 cached / 31805 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R1-F1 The two blink-phase screenshots are not guaranteed to land in different phases
+Task 3 gets its 'one shot per blink phase' by launching Electron twice, with extra delays of 0 and 250 ms. Each capture happens at (navigation to shotReady) + 2500 + extra ms on the page's own performance.now(). The load time differs from launch to launch, and the 2 Hz damage blink holds each phase for only 250 ms, so the 250 ms offset does not fix the phase. About half the time both shots will show the same phase, and the spec's pass/fail check then cannot be done. · plan L388-L389, L392-L393 (the 0/250 ms pairs), L396 ('250 ms apart lands the 2 Hz damage blink in the other phase'), L405 (the per-phase check); crt-map plan L2346-L2348 (wait for shotReady, then 2500 + extra); scene.ts:L99 (layer.draw(..., performance.now() / 1000)); crtTheme.ts:L14-L18 (DAMAGE_BLINK_HZ = 2, blink = floor(t*4) % 2, so each phase lasts 0.25 s) · The spec's screenshot check (spec L132) has to see both phases at zoom 0.5 and at 1.2. With random phases, the subagent either reports a false failure or compares two shots of the same phase and calls it a pass. · Pin the phase in the page. In main.ts, before createRenderer, add: `const ph = q.get('phase'); if (ph) { const real = performance.now.bind(performance); performance.now = () => { const r = real(); return r - (r % 500) + (ph === 'b' ? 260 : 10); }; }`. Use `&phase=a` / `&phase=b` in the shot list in place of the 0/250 extra delays (this holds the damage blink; the 1 Hz enemy ring then changes only every 0.5 s). Alternatively, in Step 4, require the subagent to confirm that the crew's level-2 room is a cut-out in one shot and solid in the other, and to retake the b shot if it is not.
+
+### [P2] R1-F2 Running the CRT Step 4 'exactly' writes the shots into the CRT map's gate folder; the runner has no output folder to replace
+Step 2 item 3 says to replace 'the output folder' in the runner. all.mjs has no such constant: it takes the folder as argv (crt-map plan L2366). The folder is set by `OUT="C:/Users/djuar/FTLite-shots/crt-map"` in the CRT Step 4 bash, which also copies three CRT reference images into crt-map. Step 3 says to run 'exactly as the CRT plan's Task 7 Step 4 says', so the shots go to FTLite-shots/crt-map, the folder of the CRT map's still-open owner look gate. Step 4 then reads from hull-silhouettes and finds nothing. The CRT Step 6 cleanup filter `*crt-map*shot.cjs*` also does not match this worktree. · plan L396, L401; crt-map plan L2366 (outDir from argv), L2396-L2399 (OUT=crt-map, cp refs), L2428 (stop filter '*crt-map*shot.cjs*') · A fresh subagent following the text verbatim writes into the wrong folder and adds files to another feature's gate folder. It is also left without a concrete stop command. · Write the Step 3 commands out in full: the port check; `npx vite --config .art/shots/vite.config.mjs` in the background; `E=node_modules/electron/dist/electron.exe; [ -f "$E" ] || E=/c/Users/djuar/FTLite/node_modules/electron/dist/electron.exe; rm -f .art/shots/shot.log; node .art/shots/all.mjs "$E" "C:/Users/djuar/FTLite-shots/hull-silhouettes"; grep -v wrote .art/shots/shot.log` (no cp); the seven expected `ok` lines; and the CRT Step 6 stop command with the filter `*hull-silhouettes*shot.cjs*`. Drop 'build', since the harness serves source through vite. Remove 'the output folder' from item 3.
+
+### [P3] R1-F3 The harness's interiorCamera is left to be worked out at execution
+Step 2 item 2 tells the subagent to read scene.ts and 'add any missing required field ... report what you added'. On today's branch the field and its constructor are known: DuelViewSource.interiorCamera is required, and the runtime builds it with createInteriorCamera(). Vite/esbuild does not type-check and scene.ts uses the field only for the interior view, which no shot covers, so this is harmless at runtime. It is still an open item a verbatim executor has to resolve. · plan L385; scene.ts:L35 (readonly interiorCamera: InteriorCamera), scene.ts:L91 (used only when view === 'interior'); runtime.ts:L227 (createInteriorCamera()); render/duel/interiorCamera.ts:L28 · The brief treats 'check at execution' as a defect, and naming the field costs one line. · Replace item 2 with: add `import { createInteriorCamera } from '../../src/renderer/src/render/duel/interiorCamera';` and the field `interiorCamera: createInteriorCamera(),` in the `source` object after `cameras`.
+
+### [P3] R1-F4 Small inaccuracies in Task 1's Interfaces and Task 2 Step 1's expected RED output
+Task 1's Interfaces lists `hatchSegments` as consumed by the test, but the test imports only isConvex. Task 2 Step 1 expects tsc to report `hull` 'missing on ShipDraw in crtColours'. Before Step 2, the fixtures add `hull`, so tsc reports an excess property ('hull' does not exist in type 'ShipDraw' / Partial<ShipDraw>). vitest itself does not type-check, so the expected tsc error only appears if `npx tsc -b` is run at that step, and the step does not say to run it. · plan L60 vs L69; plan L297; tests/crtColours.test.ts:L14, L23 · A literal-minded executor may stop because the observed RED output does not match the stated one. · Drop hatchSegments from L60. At L297, say: run `npx tsc -b`; expected: errors that 'hull' does not exist in type ShipDraw in tests/crtColours.test.ts; and vitest fails the two new tacticalModel assertions and the duelWeaponsView lock test (roomCentre('scout', 0).f = 0.67, not the wedge's 0.633).
+
+## Verified
+- Task 2 Step 1 anchors match the branch: tests/tacticalModel.test.ts:L4-L7 import contains `wedgeSegments, ` (L6); L12-L14 is the `input` helper; L73 is the 'a ship is a silhouette at 10 px across and up, a chevron below' test, and `at` returns ships[0]; L169-L170 are exactly the replaced two lines; createCamera and createTacticalState are imported (L2, L9).
+- tests/dashModel.test.ts:L3 is `import { wedgeSegments } ...`; L40-L43 are exactly the replaced describe header and wedge test; the 'tells convex from concave' test (L44-L47) and the closing `});` (L48) keep the block well formed.
+- tests/duelWeaponsView.test.ts:L13 contains `segmentCentre, `; L108 is `const nose = segmentCentre(0);`. With roomCentre('scout', 0) = {f: 0.67, s: 0}, the y closeTo 360 check (L109) still holds, and Engines' negative f keeps `lock.x < 640` (L113).
+- tests/crtColours.test.ts:L14 is the `ship` default with `crew: true, `; L23 holds the four ships as the plan describes. No other test or source builds a ShipDraw by hand (grep for ShipDraw and chevron literals).
+- tacticalLayer.ts: L12-L14 are the imports, with wedgeSegments in L14; L24-L25 are the ENEMY_RING doc comment and constant; drawShip is L108-L138; the replaced text runs from L117 through the loop's `}` at L135. fx/fy/rx/ry (L109), seg (L75), segments (L102), hatchSegments, HATCH_SPACING, HATCH_ANGLE, blink, DAMAGE_BLINK_HZ and CRT are all in scope. SHIP_RADIUS is still used at L117. tsconfig.web.json has no noUnusedLocals, and `export { ENEMY_RING }` of an imported binding is valid TS. No 'wedge' text is left in the file's header.
+- ENEMY_RING has no consumer outside tacticalLayer.ts (grep src and tests), so the re-export keeps compatibility.
+- tacticalModel.ts: ShipDraw is L38-L46 with `chevron: boolean; crew: boolean;` at L44; the ships push is at L260; the wedge block is exactly L302-L313; the ./camera import is L8 (the plan says L9, which is the blank line after it, so 'after the ./camera import' is still unambiguous).
+- weaponsModel.ts: the import at L12-L15 contains wedgeSegments; segmentCentre with its doc comment is L47-L53; the lock comment is L70 and segmentCentre(room) is at L75. SHIP_RADIUS and SHIP_CHEVRON_PX stay in use.
+- The hull coordinates in plan L153-L176 match spec L58-L77 verbatim. The outline counts are 43 (Hound) and 25 (scout, mirrored), counted by hand.
+- Geometry checked by hand: scout max radius 1.2417 ≤ 1.25 and Hound max 1.2944 ≤ 1.55. Every room vertex of both hulls is inside the outline (tightest margins: scout Shields (-0.06,0.4) vs the outline's 0.4164; Hound Weapons (0.96,0.26) vs 0.2832; Hound Engines (-0.8,±0.28) vs the stern at -0.8276/-0.8241). I found no room-edge crossing near the concave notches (0.424,-0.333) and the starboard slot. All rooms are convex (the Hound Weapons hexagon's cross products are all positive), and the areas are ≥ 0.2 (scout Weapons 0.2352).
+- hullModel test expectations: roomCentre('hound', 2).f = -0.48; Hound room centre f values 0.853 > 0.17 > -0.48; scout room 0 f = 0.67, s = 0. The helpers' tests are consistent with the given implementations (collinear touch gives o = 0, so it is not a crossing).
+- isConvex(poly: readonly number[]) and hatchSegments(poly, spacing, angle, out) exist in dashModel.ts:L40 and L59 with the assumed shapes.
+- Test counts: Task 1 has 9 `it` cases (1 + 2×2 + 4). Task 2 adds 1 tacticalModel test and removes 1 dashModel test, so the full-suite delta is +9 tests and +1 file, as stated at plan L365.
+- Task ordering: Task 2 consumes only Task 1's exports, and Task 3 only Task 2's result.
+- The table and the draw code in plan L339-L352 match the spec's damage table (spec L101-L110) cell for cell; the outline colours match spec L95.
+- The files and scripts the plan uses exist: tests/tacticalLayer.test.ts, crtFilter.test.ts, golden.test.ts, duelGolden.test.ts; package.json has build/test/typecheck (tsc -b); SIM_VERSION is at src/renderer/src/sim/tuning.ts:L7; branch master exists; the docs/gates.md anchor '## Helm demo (Helm spec §16; H-2 spec §8 to §11)' is at L766; prototype-2.png exists in FTLite-shots/hull-silhouettes.
+- The CRT harness imports still exist with compatible signatures on this branch (placeMissile, parseShip, createDuel, loadAssets, createRenderer, computeLetterbox, parseCrt, startFlightMode, createUiStore, setCrtSetting, setLayout, createUiActions, createDuelSink, createFlightSink, mountUi, SHIP_HULL, INTERNAL_W/H). ZOOM_MAX = 1.2 (camera.ts:L5), and createCamera(x, y, zoom) clamps the zoom.
+
+## Not verified
+- I did not run tsc or vitest: I only had read and search tools here. I am confident TS accepts the hullModel test's `segmentsCross(...e[i]!, ...e[j]!)` (two fixed 4-tuple spreads), but I did not compile it.
+- I did not check by hand that the Hound's 43-vertex outline is simple (no crossing of non-adjacent edges); I checked only the regions near the rooms and the notches. The spec says this was computed.
+- I did not open the run dir ledger or the earlier round outputs; this is round 1 with no prior IDs.
+- Beyond the manifest I read runtime.ts and interiorCamera.ts (via grep), crtTheme.ts:L14-L19, camera.ts:L5-L29, docs/gates.md headings, package.json scripts, the tsconfigs, and .git/refs/heads, to check the harness fields, the blink timing and the branch name.
+- I did not check whether the camera's follow mode or the duel scene moves the harness cameras away from the staged positions at zoom 1.2 or 0.5 so that a ship leaves the frame; the CRT harness worked at 0.9.
+
+---
+
+# Round 1 response (plan revised)
+
+Reviewed `round-1.json` against `18246c2`. 4 accepted, 0 rejected, 0 deferred.
+
+## R1-F1 [P2]: Blink phase not guaranteed
+
+Confirmed: capture time depends on load time. The phase is now pinned in the page with &phase=a|b, as proposed.
+
+## R1-F2 [P2]: Output folder
+
+Confirmed (all.mjs takes the folder as argv; the CRT Step 4 copied refs into crt-map). Step 3 now has the commands in full, targeting hull-silhouettes, with no copy step.
+
+## R1-F3 [P3]: interiorCamera
+
+Confirmed (scene.ts L35, runtime.ts L227). The import and the field are now given verbatim.
+
+## R1-F4 [P3]: Interfaces and RED
+
+Confirmed and fixed.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-17-hull-silhouettes.md
+
+<!-- end -->
+
+---
+

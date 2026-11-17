@@ -35,3 +35,9 @@ describe('the HUD probe fixtures (UI-iii Task 4)', () => {
     expect(f6!.credits!.length).toBeGreaterThan(0);
   });
 });
+
+import { duelProbeFixture } from '../src/renderer/src/app/uiProbe';
+it('the console fixtures carry a console and no end card', () => {
+  for (const c of ['helm', 'weapons'] as const) { const v = duelProbeFixture(c); expect(v.console?.station).toBe(c); expect(v.end).toBeNull(); expect(v.crt).toBe(true); }
+  expect(duelProbeFixture().console).toBeUndefined();
+});

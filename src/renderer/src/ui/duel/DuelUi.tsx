@@ -1,7 +1,8 @@
 // The duel region (spec §6): the map overlay under the readout, then the banners and the end card on top (scene.ts's order),
 // and the online duel's F3 latency overlay (H-2b) last. CRT map spec sections 1 and 3: the console overlays sit in the CRT
 // context and one glow wrapper, the CRT screen and bezel follow the banners, and the end card and the latency overlay stay
-// outside, never covered and never amber.
+// outside, never covered and never amber. With a console view (Artemis spec 2026-11-17-artemis-consoles §2) the readout moves
+// to the status table at the left, and the tab strip, side column and the Helm or Weapons block draw over the map.
 import { useUi } from '../context';
 import { CrtGlow, CrtProvider } from '../stage/CrtContext';
 import { CrtScreen } from '../stage/CrtScreen';
@@ -10,7 +11,13 @@ import { Banners } from './Banners';
 import { EndCard } from './EndCard';
 import { LatencyOverlay } from './LatencyOverlay';
 import { MapOverlay } from './MapOverlay';
+import { HelmStation } from './HelmStation';
+import { INTERNAL_W } from '../../../../shared/resolution';
+import { CONSOLE_RESERVE } from '../../render/duel/consoleLayout';
 import { ReadoutPanel } from './ReadoutPanel';
+import { SideColumn } from './SideColumn';
+import { TabStrip } from './TabStrip';
+import { WeaponsStation } from './WeaponsStation';
 
 export function DuelUi() {
   const duel = useUi((s) => s.duel), latency = useUi((s) => s.latency);
@@ -19,9 +26,13 @@ export function DuelUi() {
     <Stage>
       <CrtProvider crt={duel.crt}>
         <CrtGlow>
-          {duel.overlay && <MapOverlay overlay={duel.overlay} />}
-          <ReadoutPanel rows={duel.readout.rows} help={duel.readout.help} />
-          <Banners banners={duel.banners} />
+          {duel.overlay && <MapOverlay overlay={duel.overlay} placement={duel.console && duel.console.station !== 'ship' ? 'console' : 'column'} />}
+          <ReadoutPanel rows={duel.readout.rows} help={duel.readout.help} placement={duel.console && duel.console.station !== 'ship' ? 'status' : 'column'} />
+          {duel.console && <TabStrip tabs={duel.console.tabs} tabActions={duel.console.tabActions} />}
+          {duel.console?.side && <SideColumn side={duel.console.side} />}
+          {duel.console?.helm && <HelmStation helm={duel.console.helm} />}
+          {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} />}
+          <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />
         </CrtGlow>
         <CrtScreen />
       </CrtProvider>
