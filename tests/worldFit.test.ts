@@ -53,7 +53,7 @@ describe('worldFit and duelFit take the stage scale', () => {
       }
   });
   it('duelFit is fitInBand on the interior band', () => {
-    expect(duelFit(29, 13, 1)).toEqual({ scale: 1, x: 66, y: 152 });
+    expect(duelFit(29, 13, 1)).toEqual({ scale: 1, x: 66, y: 173 });
     for (const stage of STAGES) expect(duelFit(29, 13, stage)).toEqual(fitInBand(INTERIOR_BAND, 29, 13, stage));
   });
 });

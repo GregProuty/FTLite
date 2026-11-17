@@ -139,6 +139,14 @@ describe('the overlay (H-1 spec §7 item 9)', () => {
     expect(followed.arrows.map((a) => [a.target, a.distance])).toEqual([['planet', 1500]]);
     expect(followed.overlay.snapHint).toBe(false);
   });
+  it('keeps off-screen arrows clear of a left reserve (the console status table)', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    Object.assign(s, { x: -1500, y: 0 });
+    const cam = createCamera(0, 0, 1.0); pan(cam, 0, 1);
+    const view = tacticalModel(input(st, cam, { reserveLeft: 228, reserveRight: 156 }));
+    const ship = view.arrows.find((a) => a.target === 'ship')!;
+    expect(ship.x).toBeGreaterThanOrEqual(228 + 28 - 1e-9);   // ARROW_MARGIN is 28
+  });
   it('shows the zoom and a scale bar no wider than 160 px', () => {
     const st = createTacticalState(4);
     const o = tacticalModel(input(st, createCamera(0, 0, 0.5))).overlay;
