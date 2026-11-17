@@ -82,3 +82,55 @@ Confirmed. Duel pair first, then the sector pair; a two-machine bullet is added.
 
 ---
 
+# Round 2 (delta, reviewing cfeaf8c, effort medium, 150 s, 376709 in / 309523 cached / 11651 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R2-F1 The 'device duel record from the other seat' rejection passes even without the role check
+The mutation sets `role='guest'` on device-0's host record. That record keeps `transport:'loopback'`. Under `forceRelay:true`, `checkRecord` already rejects a guest record that is not `internet`. So the case still throws if `checkDeviceDuel`'s `d.record.role!==r.peers[0].role` comparison is deleted, and the seat-matching check has no test of its own. · plan L154 (mutation on `twoMachineGameplay.reports[0].deviceDuel.record.role='guest'`); plan L124 (the seat-0 record is `transport:'loopback'`); plan L244-L245 (`checkRecord`: a guest needs `transport==='internet'` under forced relay); plan L258-L262 (`checkDeviceDuel` role check); fixture `forceRelay:true` plan L125. · This test is meant to prove that a single-device report carries its own seat's record. As written, it would still pass if that check regressed. · Give the mutation a fully valid guest record, so only the seat mismatch can fail: `r.twoMachineGameplay.reports[0].deviceDuel.record={role:'guest',round:0,transport:'internet',rttMs:38,held:2,command:2}`.
+
+## Prior findings
+- R1-F1: resolved — `--role` now runs `deviceDuelRun` through the real menu. The duel uses the duel observer and `FTLITE_DUEL_TEST_SEED`. The sector half follows via `host-sector`/`join-sector`, with `FTLITE_SECTOR_ONLINE_TEST=1` from `launch` (plan L629-L652, L668-L681, L558). The guest reads the code from `--join-code-file`, which is required for the guest, refused for the host, refused if it already exists, and deleted after reading (plan L506-L507, L621-L624). The code is never logged; only the file path is printed. The report admits `deviceDuel` only on single-device runs (plan L258-L262, L289), and the pair's seeds must match. That anchor occurs once at `internet-app-report.ts:L76` (plan L293-L304). The prompt anchors occur once each in `docs/superpowers/prompts/2026-11-15-net-3e-two-machine-playtest.md` (L21 'device-b' line; L24 sentence) (plan L791-L815). The 600 s manual budget equals the schema max `pos.max(600000)`. `twoMachineGameplay` is now achievable.
+- R1-F2: resolved — `standUp` presses X, waits for the applied result `x.id.player===seat&&x.id.sequence>1`, then presses E. This is the same condition as `duel-app-smoke.ts:L97-L101` (plan L583-L584, L599, L639). The record wait and selection use `sampled` (`held.count+command.count>0`) (plan L587, L611, L616, L647, L651). `checkRecord` rejects `held+command<=0` (plan L244). A 'no latency samples' rejection test was added (plan L153).
+- R1-F3: resolved — The replace anchor is now the file's last two lines, starting with the unique `build:{outDir:join(directory,'observer'),...utility.cjs...}` line (plan L412-L416). The `with:` block repeats it before appending.
+- R1-F4: resolved — The gates text now says the smoke 'first runs a duel pair through the real menu' and 'then runs its sector pair through the test-only sector entry' (plan L777-L782). This matches `duel=await duelRun();` before the sector launch (plan L696-L697) and Decision 3.
+
+## Verified
+- Each new `internet-app-smoke.ts` anchor occurs exactly once in the current file: the `allowed` list at L19, the role/captureAfter lines at L25-L27, the budget lines at L29-L31, and the manual block at L97-L100.
+- The `tests/internetAppSmoke.test.ts` anchor `},12000);` occurs once (L35). The new tests' imports (`spawn`, `mkdtempSync`, `existsSync`, `rmSync`, `tmpdir`, `join`, `resolve`, `sep`, `createLauncherDeadline`, `stopOwnedProcess`) already exist at L1-L9.
+- The argument refusals throw before `mkdirSync(dirname(reportPath))` and before any report write. `main().catch` sets exit code 1 (internet-app-smoke.ts L25-L31, L135), so both new tests expect exit 1 and no report, which is correct.
+- The room code shown is `ROOM ${joinCode}` (`SessionPage.tsx:L30`), and joinCode is 8 Crockford characters (`roomSession.ts:L93`). `readCode` strips the `ROOM ` prefix, upper-cases the code and accepts 8 alphanumerics (plan L622).
+- The single-device report's peer role comes from `capture` (`role:p.kind`, internet-app-smoke.ts L73), which is 'host' or 'guest'. That matches the role the `checkDeviceDuel` comparison expects. The peer cleanup lookup (L125) is unaffected because the duel kinds are distinct.
+- The test counts add up. Report tests: 73+5=78. Smoke tests: 5+2=7. Full suite: 3,871+7=3,878 (plan L376, L739, L869).
+- The fixture's `run(1)` now carries a guest `deviceDuel` with `transport:'internet'` under forced relay. 'admits a single device...' (plan L159) therefore still holds. The existing 'a duel run on a single device' case is still rejected via `checkDeviceDuel`'s `r.duel` check.
+
+## Not verified
+- Cross-machine timing in `deviceDuelRun`. Nothing makes the host wait until the guest has seen the beam before the host shuts down (plan L645-L649). Publications already sent should still arrive, but a late guest observation under shaped high RTT was not proven either way. This was not run because it needs two machines.
+- The driver commands `host-sector`/`join-sector {code}` were taken from round 1's accepted local-pair change. I did not re-read `online-app-smoke.cjs`.
+- The plan says the review-round-1 code was written but not re-run in the prototype (plan L42). I ran neither the tests nor the typecheck, per the constraints.
+- Whether the 90 s `CODE_WAIT_MS` windows leave enough time for operators to pass codes between machines in practice.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json`. Verdict ready; R1-F1 to R1-F4 confirmed resolved; 1 accepted.
+
+## R2-F1 [P3]: The device duel record from the other seat rejection passes even without the role check
+
+Confirmed (under `forceRelay` a loopback guest record is already rejected). The mutation now installs a fully valid guest record (`transport: internet`, RTT and samples), so only the seat check can reject it.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-16-helm-h2b-ii-internet-candidate.md
+
+<!-- end -->
+
+---
+

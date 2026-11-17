@@ -152,7 +152,7 @@ with:
   ['a duel candidate field',(r:any)=>r.deployedService.report.duel.records[1].candidate='host'],
   ['no latency samples',(r:any)=>{const x=r.deployedService.report.duel.records[1];x.held=0;x.command=0;}],
   ['no duel run on a single device',(r:any)=>delete r.twoMachineGameplay.reports[1].deviceDuel],
-  ['a device duel record from the other seat',(r:any)=>r.twoMachineGameplay.reports[0].deviceDuel.record.role='guest'],
+  ['a device duel record from the other seat',(r:any)=>{ r.twoMachineGameplay.reports[0].deviceDuel.record={role:'guest',round:0,transport:'internet',rttMs:38,held:2,command:2}; }],
   ['a direct device duel guest under forced relay',(r:any)=>r.twoMachineGameplay.reports[1].deviceDuel.record.transport='lan'],
   ['two-machine duel seeds differ',(r:any)=>r.twoMachineGameplay.reports[1].deviceDuel.seed=1],
 ])('rejects %s',(_name,mutate)=>{const r=fixture();mutate(r);expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
