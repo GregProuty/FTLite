@@ -30,6 +30,7 @@ add('optional', 'crew.sit');
 // Art-ii (spec section 1): the bought crew, a paid pack absent on a fresh clone; the Puny crew then draw as before
 add('optional', ...CREW_ART_NAMES);
 add('optional', ...CONSOLE_ART_NAMES);   // Art-ii spec section 2: the bought consoles; the procedural desks without them
+add('optional', 'ship.hound.map');   // Art-iv: the 2-Minute Tabletop Hound battlemap, a paid painting
 add('optional', ...BLAST_NAMES);         // Art-ii spec section 3: the bought blasts; none without them
 add('optional', ...PROP_ART_NAMES);      // Art-iii spec section 1: the set dressing; bare floor without it
 // icons (in-house)

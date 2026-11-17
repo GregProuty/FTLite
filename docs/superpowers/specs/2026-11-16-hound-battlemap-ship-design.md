@@ -25,7 +25,7 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 
 | Painted room (squares, mirrored) | Room | System | Stations |
 |---|---|---|---|
-| Dome cockpit, columns 12-13, rows 4-6 | Bridge | navigation | console group navigation + weapons at the pilot seat |
+| Dome cockpit, columns 12-13, rows 4-6 | Bridge | navigation | navigation at the pilot seat [20,7]; weapons at the side console [19,5] (separate seats: the duel needs two) |
 | Bunk passage, columns 9-11, row 5 (bunks are furniture) | Quarters (corridor role) | null | spawns |
 | Galley/common, columns 6-8, rows 4-6 | Ops | science | console group science + engineering + doors at the counter |
 | Red-cross room, columns 6-8, rows 2-3 | Medbay | medbay | medbay |
@@ -36,6 +36,7 @@ The starting ship's interior should look like a painted VTT battlemap (Roll20 / 
 
 - Doors go only where the painting shows a wall gap. If a room has no painted gap to a neighbour it needs, the plan adds the narrowest door in the wall that the painting's traffic flow implies, and records it.
 - Breach sites: one per room, on an outer wall tile. Airlocks: the hold ramp and one hull door the painting shows. Allocations copy the Skiff's (reactor budget unchanged).
+- Known deviation: Ops and Quarters have no outer wall in this trace, so their breach sites ([10,4], [15,5]) are interior walls; to fix before the Hound enters the sector (Art-iv-b).
 - Station tiles sit on the painted furniture (pilot chair, galley counter, medbed, table). Console groups match the Skiff's.
 
 ## 3. Which ship flies

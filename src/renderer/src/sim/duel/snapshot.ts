@@ -2,7 +2,7 @@
 // tactical state in flattenTactical's order (the space then the ship module), presence, repair, the round (H-2 spec
 // §7), then the interior through the sector snapshot path.
 // Regenerated, not stored: the map (from the seed, checked by mapHash), the broad-phase grid, the repair points and
-// Derived (from the Cutter layout). Not stored: the per-tick events. Every check runs before any allocation, including
+// Derived (from the duel layout). Not stored: the per-tick events. Every check runs before any allocation, including
 // every tactical field's bounds and slot invariants, presence and repair, except the final one, which restores into a
 // fresh duel and requires hashDuel to equal the hash the header records.
 // The publication validation cache (H-2 spec §5): what validation regenerates from a seed (the map, its validity and

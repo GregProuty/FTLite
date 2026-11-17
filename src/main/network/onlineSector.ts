@@ -9,10 +9,11 @@ import { shipForCrew } from '../../renderer/src/sim/ship/fleet';
 import { parseShip } from '../../renderer/src/sim/ship/schema';
 import skiff from '../../renderer/src/sim/ship/skiff.json';
 import cutter from '../../renderer/src/sim/ship/cutter.json';
+import hound from '../../renderer/src/sim/ship/hound.json';
 import { validateInitBase64, validateLeaseGrant, validateRoomSnapshot, type CommittedStart, type RoomCompatibility, type RoomSnapshot } from '../../shared/roomSession';
 import { onlineFault } from './onlineRetry';
 
-const layouts = { skiff: parseShip(skiff), cutter: parseShip(cutter) };
+const layouts = { skiff: parseShip(skiff), cutter: parseShip(cutter), hound: parseShip(hound) };
 export function validateSectorMirror(mirror: SessionMirror, capacity?: number): void {
   try {
     const raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(mirror.bytes));

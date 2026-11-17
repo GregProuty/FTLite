@@ -28,8 +28,8 @@ const entry = z.object({
 }).superRefine((e, ctx) => {
   const fail = (message: string): void => { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${e.file}: ${message}` }); };
   if ((e.name === undefined) === (e.sheet === undefined)) fail('exactly one of name or sheet is required');
-  if (!licenseAllowed(e.license, e.modifications)) fail(`CC-BY-SA is allowed only with modifications "none" (license ${e.license})`);
-  if (e.license.startsWith('CC-BY')) { if (!e.credit) fail('CC-BY entries need a credit line'); if (!e.archived) fail('CC-BY entries need an archived URL'); }
+  if (!licenseAllowed(e.license, e.modifications, e.file)) fail(e.license === 'CC-BY-NC-4.0' ? 'CC-BY-NC-4.0 is allowed only for files under paid/' : `CC-BY-SA is allowed only with modifications "none" (license ${e.license})`);
+  if (e.license.startsWith('CC-BY')) { if (!e.credit) fail('CC-BY entries need a credit line'); if (!e.archived && e.license !== 'CC-BY-NC-4.0') fail('CC-BY entries need an archived URL'); }
   if (e.license === 'OFL-1.1' && !e.licenseFile) fail('OFL entries need licenseFile (the OFL text to ship)');
   if (e.license === 'original') {
     if (e.author !== OWNER_AUTHOR) fail(`original pieces must name ${OWNER_AUTHOR} as author`);
@@ -42,8 +42,9 @@ const entry = z.object({
     if (!e.editedBy) fail('derived art/ files must name editedBy');
   }
   // Paid packs (Art-i spec section 2): the files are gitignored, so a fresh clone must run without them.
-  if ((e.license === 'paid') !== e.file.startsWith('paid/')) fail('licence paid and a file under paid/ go together');
-  if (e.license === 'paid') {
+  const boughtLicence = e.license === 'paid' || e.license === 'CC-BY-NC-4.0';   // CC-BY-NC-4.0 is allowed only for bought paid/ art (a Patreon source has no archive URL)
+  if (boughtLicence !== e.file.startsWith('paid/')) fail('licence paid (or CC-BY-NC-4.0) and a file under paid/ go together');
+  if (boughtLicence) {
     if (e.required) fail('paid entries must be required: false (a fresh clone has no paid/ files)');
     if (!/^https?:\/\/\S+$/.test(e.source)) fail('paid entries need source = the store page URL');
     if (!e.retrieved) fail('paid entries need retrieved = the purchase date');

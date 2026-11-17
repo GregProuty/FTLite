@@ -15,7 +15,7 @@ export interface DuelModeDeps {
   renderer: Renderer;
   seed: number;
   ui: DuelSink;
-  /** The Cutter. */
+  /** The duel ship (the Hound). */
   layout: ShipLayout;
   /** The preload bridge's suspend and resume hooks, when present; their unsubscribes run on dispose. */
   lifecycle?: { onSuspend(cb: () => void): (() => void) | void; onResume(cb: () => void): (() => void) | void };
