@@ -8,6 +8,9 @@ export type Facing8 = (typeof FACINGS)[number];
 export const CONSOLE_ART_NAMES: readonly string[] = STATION_IDS.map((id) => `console.${id}`);
 /** Art-ii (spec section 3): the two blast animations. */
 export const BLAST_NAMES: readonly string[] = ['fx.blast.room', 'fx.blast.hit'];
+/** Art-iii (spec section 1): the seven set-dressing sprites. */
+export const PROP_ART_NAMES = ['prop.bunk.a', 'prop.bunk.b', 'prop.seats', 'prop.couch', 'prop.locker.a', 'prop.locker.b', 'prop.crate'] as const;
+export type PropName = (typeof PROP_ART_NAMES)[number];
 
 type Kind = 'required' | 'optional';
 const names: Record<string, Kind> = {};
