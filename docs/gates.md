@@ -755,6 +755,14 @@ Spec `docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md`, plan `d
 - [ ] Owner-local palette check (needs the packs in `C:\Users\djuar\FTLite-assets`): `npm run art:palette` then `npm run art:import` leaves `git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json` clean.
 - [ ] Owner look gate (`npm run dev`, and the screenshots in `C:\Users\djuar\FTLite-shots\art-iii\`): do the rooms read as lived-in, and do any props sit where crew walk in a way that looks wrong? Known look points: the Cutter's Crew Quarters bunk at the north wall sits behind the crew at their spawns; the Galley's locker and couch touch end to end on the east side. Date and notes: pending.
 
+## CRT map: the console screens as an amber ship display (2026-11-17)
+
+Spec `docs/superpowers/specs/2026-11-17-crt-map-design.md`, plan `docs/superpowers/plans/2026-11-17-crt-map.md`. Views and feel only: SIM_VERSION and the goldens are unchanged; the interior, menus, end card and latency overlay keep their look.
+
+- [x] Automated (CRT map): `npm test` passes, including the setting (read, save, F10 cycle, `off` zeroes the effects), `crtActive` per view, the dash, dot and hatch helpers (the wedge segments are convex), the readout emphasis for every row and the CRT row look, a full Helm and Weapons frame drawing only the six ramp colours in both blink phases, no display objects allocated per frame, the filters only with a glow, every edge-anchored placement inside the bezel, and the React CRT screen (only with `crt`, after the banners and before the end card and latency overlay, `off` keeping the bezel); `npx tsc -b` clean. Measured: 4192 tests in 299 files, tsc clean, build ok.
+- [x] Frame time (Weapons map, 1920x1080, 10 s): capped, off: 600 frames, median 16.70, p95 16.80; subtle: 600 frames, median 16.70, p95 16.80; full: 600 frames, median 16.70, p95 16.80. Uncapped (vsync off), medians: off 0.60 ms, subtle 0.60 ms, full 0.60 ms (p95 1.80, 1.60, 2.20).
+- [ ] Owner look gate (`npm run dev` then a console; F10 cycles full, subtle, off in dev builds; and the screenshots in `C:\Users\djuar\FTLite-shots\crt-map\` beside the three references): does it feel like looking at a display on the ship, and can everything still be read (friend and foe, damage on both ships, the lock, the missiles, the arcs, the readout)? Known look points: the lock label's block is `mid` rather than `main` (the bloom washed glass text on `main`), and the enemy carries three dashed rings at once when shielded (the blinking marker and two shield layers). Date and notes: pending.
+
 ## Helm demo (Helm spec §16; H-2 spec §8 to §11)
 
 **The rule (Helm spec §16, verbatim):** "The demo is done when 4 of 5 are yes across 3 sessions, at least one with a pair other than the owner, and the live telemetry targets hold (3 to 5 minutes; wins and losses both happen across sessions; both weapons used in every duel)."
