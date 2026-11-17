@@ -2,10 +2,11 @@ import cutter from './sim/ship/cutter.json';
 import hound from './sim/ship/hound.json';
 import skiff from './sim/ship/skiff.json';
 import { parseShip } from './sim/ship/schema';
-import { loadAssets } from './render/assets';
+import { loadAssets, loadBytes } from './render/assets';
 import { createRenderer } from './render/renderer';
 import { createKeyboardSources } from './input/sources';
 import { createAudio } from './app/audio';
+import { createSectorAudio } from './app/sectorAudio';
 import { loadSettings, saveSettings } from './app/settingsStore';
 import { controlSections } from './app/controlsList';
 import { DEFAULT_SEED, readMode, readSeed } from './app/duel/mode';
@@ -69,19 +70,20 @@ async function startApp(): Promise<void> {
   const images = buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets));
   const keyboard = createKeyboardSources(window);
   const audio = createAudio();
+  void audio.load(assets.sounds ?? [], loadBytes);   // Audio-i spec section 2: in the background; the synth tones play until it lands
   let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
-  audio.setVolume(settings.volume);
+  audio.setVolumes(settings);
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const win = window.ftlite?.window;
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
+  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, fullscreenAvailable: !!win, controls: controlSections() } });
   bootCrt(renderer, store);
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
-      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink,
+      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
         onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
@@ -90,9 +92,9 @@ async function startApp(): Promise<void> {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
         duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
-          leave: () => actions.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input) }),
+          leave: () => actions.leave(), audio, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input) }),   // Audio-i: local duel sounds; the replicated cues would play twice
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
-          resolveLayout, api: bridge!, playCue: audio.play })
+          resolveLayout, api: bridge!, playCue: audio.play, sound: createSectorAudio(audio) })
       });
       if (status) online.setStatus(status); online.setInputBlocked(blocked); return online;
     }
@@ -105,7 +107,7 @@ async function startApp(): Promise<void> {
   const actions = createUiActions({ store, api: bridge ?? undefined,
     single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
-    setVolume(volume) { settings = { ...settings, volume }; audio.setVolume(volume); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined
   });
   // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.
@@ -131,9 +133,13 @@ async function startApp(): Promise<void> {
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
-  document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause(); else if (document.hasFocus()) session.resume(); });
+  document.addEventListener('visibilitychange', () => {   // Audio-i spec section 5: a hidden window is paused and silent
+    if (document.hidden) { session.pause(); audio.suspend(); }
+    else { audio.unlock(); if (document.hasFocus()) session.resume(); }
+  });
   window.addEventListener('focus', () => session.resume());
   renderer.app.ticker.add(() => session.frame());
+  renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
   window.addEventListener('beforeunload', () => {
     offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();

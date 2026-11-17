@@ -4,6 +4,7 @@ import type { ConsoleInput } from '../app/duel/input';
 import type { OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
 import { applyStatus, failureText, helmPlayerOf, isDuel, ROOM_CODE, type MenuState } from './menuState';
 import type { UiStore } from './store';
+import type { VolumeChannel } from '../app/settingsStore';
 
 export type MenuApi = Pick<OnlinePreloadApi, 'host' | 'join' | 'ready' | 'start' | 'removeSeat' | 'reconnect' | 'rehost' | 'retry' | 'leave' | 'forgetSeat'>;
 export interface UiActionDeps {
@@ -11,7 +12,7 @@ export interface UiActionDeps {
   /** The online bridge; absent when the app has none (the buttons that need it are disabled). */
   api?: MenuApi;
   single(): void; online(): void; pause(): void; home?(): void;
-  setVolume?(volume: number): void;
+  setVolume?(channel: VolumeChannel, volume: number): void;
   fullscreen?: { get(): Promise<boolean>; set(on: boolean): Promise<boolean> };
   /** performance.now(), injectable for tests. */
   perfNow?(): number;
@@ -102,7 +103,7 @@ export function createUiActions(deps: UiActionDeps) {
     tryAnotherCode(): void { setMenu({ hadView: false, page: 'join' }); },
     returnHome(): void { deps.home?.(); setMenu({ hadView: false, page: 'home', resetEpoch: menu().resetEpoch + 1 }); },
     pause(): void { deps.pause(); },
-    setVolume(volume: number): void { store.setState((s) => ({ settings: { ...s.settings, volume } })); deps.setVolume?.(volume); },
+    setVolume(channel: VolumeChannel, volume: number): void { store.setState((s) => ({ settings: { ...s.settings, [channel]: volume } })); deps.setVolume?.(channel, volume); },
     toggleFullscreen(): void {
       const on = menu().fullscreen;
       if (!deps.fullscreen || on === null) return;

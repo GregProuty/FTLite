@@ -2,6 +2,7 @@
 // the error strings, which actions are offered, the status line and how a status push moves the menu. No React here.
 import type { OnlineErrorCode, OnlineStatus } from '../../../shared/onlineSession';
 import type { ControlSection } from '../app/controlsList';
+import type { Volumes } from '../app/audio';
 
 export type Page = 'home' | 'multiplayer' | 'settings' | 'host' | 'join' | 'session' | 'single';
 export type MenuAction = OnlineStatus['actions'][number];
@@ -21,7 +22,8 @@ export interface MenuState {
   swapped: boolean;
 }
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
-export interface SettingsSlice { available: boolean; volume: number; fullscreenAvailable: boolean; controls: readonly ControlSection[] }
+/** Audio-i spec section 6: the three volumes, each one of VOLUME_STEPS. */
+export interface SettingsSlice extends Volumes { available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[] }
 /** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
 export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
 export interface UiState {

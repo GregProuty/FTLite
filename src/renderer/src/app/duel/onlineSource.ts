@@ -135,6 +135,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     steer: () => (seatOf(duel(), seat) === 'weapons' ? Math.sign(sentHeld.moveX) || 0 : 0),
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
+    live: () => client.live?.() ?? true,
     mode: 'online' as const,
     uiHeld: () => uiHeld,
     /** Only the publication phase 'running' shows the console (Artemis deviation 5). */

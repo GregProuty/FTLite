@@ -90,19 +90,22 @@ describe('single player', () => {
 });
 
 describe('settings', () => {
-  it('changes the volume, toggles fullscreen live, lists the controls and goes Back', async () => {
+  const select = (ch: string): HTMLSelectElement => screen.getByTestId(`volume-${ch}`) as HTMLSelectElement;
+  it('changes the three volumes, toggles fullscreen live, lists the controls and goes Back', async () => {
     let full = false; const set = vi.fn(async (on: boolean) => { full = on; return on; });
-    const { deps, view } = renderUi({ settings: { volume: 0.5, controls: [{ title: 'Single player', rows: [{ keys: 'Tab', action: 'Switch' }] }] }, deps: { fullscreen: { get: async () => full, set } } });
+    const { deps, view } = renderUi({ settings: { master: 0.5, music: 0.75, effects: 1, controls: [{ title: 'Single player', rows: [{ keys: 'Tab', action: 'Switch' }] }] }, deps: { fullscreen: { get: async () => full, set } } });
     click('settings');
     expect(text('page-title')).toBe('Settings');
-    const volume = screen.getByTestId('volume') as HTMLSelectElement;
-    expect(volume.value).toBe('0.5'); expect(Array.from(volume.options).map((o) => o.textContent)).toEqual(['Off', '25%', '50%', '75%', '100%']);
+    expect([select('master').value, select('music').value, select('effects').value]).toEqual(['0.5', '0.75', '1']);
+    for (const ch of ['master', 'music', 'effects']) expect(Array.from(select(ch).options).map((o) => o.textContent)).toEqual(['Off', '25%', '50%', '75%', '100%']);
+    expect(['master', 'music', 'effects'].map((ch) => select(ch).getAttribute('aria-label'))).toEqual(['Master volume', 'Music', 'Effects']);
     expect((screen.getByTestId('fullscreen') as HTMLButtonElement).disabled).toBe(true);   // until the window's state is read
     await act(flush);
     expect(text('fullscreen')).toBe('Fullscreen: Off'); expect((screen.getByTestId('fullscreen') as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.change(volume, { target: { value: '0' } }); expect(deps.setVolume).toHaveBeenCalledWith(0);
+    fireEvent.change(select('music'), { target: { value: '0' } }); expect(deps.setVolume).toHaveBeenCalledWith('music', 0);
+    fireEvent.change(select('master'), { target: { value: '0.25' } }); expect(deps.setVolume).toHaveBeenCalledWith('master', 0.25);
     click('fullscreen'); expect(set).toHaveBeenCalledWith(true); await act(flush);
-    expect(text('fullscreen')).toBe('Fullscreen: On'); expect((screen.getByTestId('volume') as HTMLSelectElement).value).toBe('0');
+    expect(text('fullscreen')).toBe('Fullscreen: On'); expect(select('music').value).toBe('0'); expect(select('master').value).toBe('0.25');
     expect(text('fullscreen-note')).toBe('F11 also toggles fullscreen.');
     expect(text('controls')).toContain('Tab'); expect(text('controls')).toContain('Switch');
     click('back'); expect(buttonIds(view.container)).toEqual(HOME);
@@ -110,13 +113,13 @@ describe('settings', () => {
   it('keeps the Settings page intact across an idle push and lets a session take over', async () => {
     const { actions } = renderUi({ deps: { fullscreen: { get: async () => false, set: vi.fn() } } });
     click('settings'); await act(flush);
-    const select = screen.getByTestId('volume'); act(() => actions.setStatus(idle)); expect(screen.getByTestId('volume')).toBe(select);
-    act(() => actions.setStatus({ ...idle, phase: 'lobby', actions: ['leave'] })); expect(screen.queryByTestId('volume')).toBeNull();
+    const master = select('master'); act(() => actions.setStatus(idle)); expect(select('master')).toBe(master);
+    act(() => actions.setStatus({ ...idle, phase: 'lobby', actions: ['leave'] })); expect(screen.queryByTestId('volume-master')).toBeNull();
   });
-  it('disables fullscreen without the window bridge and the volume without settings', () => {
+  it('disables fullscreen without the window bridge and the volumes without settings', () => {
     renderUi({ settings: null }); click('settings');
     expect((screen.getByTestId('fullscreen') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId('volume') as HTMLSelectElement).disabled).toBe(true); expect((screen.getByTestId('volume') as HTMLSelectElement).value).toBe('1');
+    for (const ch of ['master', 'music', 'effects']) { expect(select(ch).disabled).toBe(true); expect(select(ch).value).toBe('1'); }
   });
 });
 

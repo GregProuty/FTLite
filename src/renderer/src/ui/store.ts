@@ -8,13 +8,13 @@ import { INITIAL_MENU, type LayoutSlice, type UiState } from './menuState';
 export type UiStore = StoreApi<UiState>;
 export interface UiStoreInit {
   onlineAvailable: boolean;
-  settings?: { volume: number; fullscreenAvailable: boolean; controls: readonly ControlSection[] };
+  settings?: { master: number; music: number; effects: number; fullscreenAvailable: boolean; controls: readonly ControlSection[] };
 }
 export function createUiStore(init: UiStoreInit): UiStore {
   return createStore<UiState>()(() => ({
     menu: INITIAL_MENU,
     online: { available: init.onlineAvailable, status: null, receivedAt: 0 },
-    settings: init.settings ? { available: true, ...init.settings } : { available: false, volume: 1, fullscreenAvailable: false, controls: [] },
+    settings: init.settings ? { available: true, ...init.settings } : { available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [] },
     layout: { stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 },
     duel: null, flight: null, hud: null, latency: null, epochs: { duel: 0, flight: 0, hud: 0 }, crt: DEFAULT_CRT
   }));

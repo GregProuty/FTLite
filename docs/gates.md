@@ -854,3 +854,23 @@ Spec `docs/superpowers/specs/2026-11-17-hull-silhouettes-design.md`; plan `docs/
     Their duel records land in `out/h2b-internet/deployed-duel-records/` and `out/h2b-internet/relay-duel-records/`; check them with `npx tsx scripts/duel-playtest-report.ts out/h2b-internet/relay-duel-records/host out/h2b-internet/relay-duel-records/guest` (the guest row reads `internet`), and keep them out of the real playtest report.
   - The two-machine single-device runs, per the [two-machine procedure](superpowers/prompts/2026-11-15-net-3e-two-machine-playtest.md).
   - The LAN and internet checklists and the §16 sessions above, on the installed `dist/h2b-candidate.zip`, with the report run on both PCs' `userData/playtest/` folders.
+
+## Audio-i: the first sound pass
+- [x] `tests/audioManifest.test.ts`: 50 Kenney effects (CC0) and 2 Scott Buckley tracks (CC-BY 4.0, archived URLs) manifested as `sfx.*` / `music.*`, all `required: false`; credits regenerated.
+- [x] Unit tests: event and state sounds, interior diffs and guard, sector rule, music state machine, hum and crackle, voice cap and variants, cue recipes and synth fallback, settings migration, loader branch, import guard.
+- [x] `npm run typecheck`, `npm test`, `npm run test:determinism`, `npm run build` pass on the final commit. Audio leaves SIM_VERSION unchanged (41, from master).
+- [x] The built app logs `[audio] decoded 52/52 files` (OGG Vorbis and MP3 decode in Electron 37).
+- [ ] Owner ear check (screens cannot verify sound). Listen for:
+  - [ ] Calm music (Cobalt) in the main menu.
+  - [ ] A Single player duel that is no longer silent.
+  - [ ] The crew's and the enemy's lasers sound different, and a hit lands a moment after its shot.
+  - [ ] Explosions and shots pan left and right with their place on screen (map views).
+  - [ ] A heavy low thump and a short music dip when our ship is hit.
+  - [ ] Rapid fire never turns into a wall of sound (four voices per sound at most).
+  - [ ] The engine hum rises while thrusting and at speed, and fades while paused.
+  - [ ] Battle music (Time and Space) crossfades in when the duel starts, at its orchestral turn (`BATTLE_START_S = 125`), and back to calm about 8 s after the round ends (at once, still crossfading, on leaving to the main menu).
+  - [ ] The music fades out on pause (Esc) and back in on resume; a hidden window is silent.
+  - [ ] Sector run (Multiplayer): door whooshes, the console blip on sitting down, fire crackle that grows with more burning rooms, the alarm, the jump (charge, whoosh, arrival), and the hum swelling while the drive charges.
+  - [ ] Master, Music and Effects each work and persist across a restart; an old single volume carried over as Master.
+  - [ ] Loop seams: the battle loop (`BATTLE_LOOP_START_S`/`BATTLE_LOOP_END_S` in `src/renderer/src/audio/musicState.ts`) and the hum loop. Tune those constants, and any sample choice in `SFX` (`src/renderer/src/audio/soundBank.ts`), by ear.
+  - Date and notes: pending owner.

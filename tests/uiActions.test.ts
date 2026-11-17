@@ -151,9 +151,10 @@ describe('settings', () => {
     actions.toggleFullscreen(); await flush(); expect(set).toHaveBeenCalledWith(true); expect(store.getState().menu.fullscreen).toBe(true);
     full = false; actions.windowResized(); await flush(); expect(get).toHaveBeenCalledTimes(2); expect(store.getState().menu.fullscreen).toBe(false);
   });
-  it('setVolume updates the store and the caller', () => {
-    const { store, deps, actions } = makeUi({ settings: { volume: 0.5 } });
-    actions.setVolume(0); expect(store.getState().settings.volume).toBe(0); expect(deps.setVolume).toHaveBeenCalledWith(0);
+  it('setVolume updates one channel in the store and tells the caller', () => {
+    const { store, deps, actions } = makeUi({ settings: { music: 0.5 } });
+    actions.setVolume('music', 0); expect(store.getState().settings.music).toBe(0); expect(store.getState().settings.master).toBe(1);
+    expect(deps.setVolume).toHaveBeenCalledWith('music', 0);
   });
 });
 
