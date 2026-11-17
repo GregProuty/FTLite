@@ -1223,6 +1223,19 @@
     "name": "ship.hound.map"
   },
   {
+    "title": "Deep Space (Red)",
+    "author": "2-Minute Tabletop",
+    "source": "https://www.patreon.com/2minutetabletop",
+    "license": "CC-BY-NC-4.0",
+    "retrieved": "2026-11-16",
+    "modifications": "converted from JPEG to PNG; copied unchanged by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Deep Space (Red) from Diver-Class Scout Ship by 2-Minute Tabletop, CC BY-NC 4.0, non-commercial demo",
+    "required": false,
+    "file": "paid/2mt/deep-space-red.png",
+    "name": "space.backdrop"
+  },
+  {
     "title": "Mars colony sets (Habitable Building)",
     "author": "Maru-98",
     "source": "https://maru-98.itch.io/",
