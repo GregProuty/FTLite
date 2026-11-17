@@ -29,6 +29,7 @@ import { createDuelKeyboard, createPointerSource, emptyPresses, type EventSource
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
 import type { DuelSink, LatencySink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
+import type { AudioOut } from '../audio';
 
 export interface OnlineDuelDeps {
   renderer: Renderer; ui: DuelSink; now(): number; scheduler: Scheduler; contentDigest: string; resolveLayout(id: string): ShipLayout;
@@ -38,6 +39,8 @@ export interface OnlineDuelDeps {
   /** Leave the online session as the menu's Leave does (Escape on the end card, then Enter). */
   leave(): void;
   playCue?(cue: Cue): void;
+  /** The app's audio (Audio-i spec section 4): every duel sound comes from local events and state, as in Single player. */
+  audio?: AudioOut;
   recordDuel?(record: DuelPlaytestRecord): Promise<boolean> | void;
 }
 const NOTICE_MS = 3000;
@@ -229,7 +232,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
       descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
-      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui });
+      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });

@@ -10,6 +10,7 @@ import type { DuelPlaytestRecord } from '../../net/duelRecord';
 import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
 import { createDuelRuntime } from './runtime';
 import type { DuelSink } from '../../ui/sinks';
+import type { AudioOut } from '../audio';
 import { createDuelScene } from './scene';
 import { soloRecorder } from './soloRecorder';
 
@@ -26,12 +27,14 @@ export interface DuelModeDeps {
   onExit?: () => void;
   /** Append a solo playtest record (the preload's recordDuel); absent outside the app. */
   recordDuel?(record: DuelPlaytestRecord): Promise<boolean> | void;
+  /** The app's audio (Audio-i spec section 4b); absent for `?mode=duel`, which stays silent as before. */
+  audio?: AudioOut;
 }
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
   const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H };
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME${exitHint}`;
-  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui });
+  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio });
   const canvas = renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource);
   const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {

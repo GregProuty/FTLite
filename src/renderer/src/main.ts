@@ -82,7 +82,7 @@ async function startApp(): Promise<void> {
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
-      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink,
+      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
         onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
@@ -91,7 +91,7 @@ async function startApp(): Promise<void> {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
         duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
-          leave: () => actions.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record) }),
+          leave: () => actions.leave(), audio, recordDuel: record => window.ftlite?.recordDuel?.(record) }),   // Audio-i: local duel sounds; the replicated cues would play twice
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play })
       });

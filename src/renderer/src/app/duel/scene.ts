@@ -15,11 +15,14 @@ import { createFx, pushEvents, recordTrails, resetFx, shakeOffset, stepFx, type 
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
 import { tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
-import type { Camera } from '../../render/tactical/camera';
+import { worldToScreen, type Camera } from '../../render/tactical/camera';
+import { screenPan, worldPan } from '../../audio/voices';
+import type { AudioOut } from '../audio';
+import { createDuelAudio } from './duelAudio';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import type { Axes } from '../../sim/tactical/state';
+import { CREW_SLOT, type Axes } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { DuelView } from './runtime';
 
@@ -60,7 +63,7 @@ export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string
   };
 }
 
-export function createDuelScene(renderer: Renderer, options: { seed: number; pauseText: string; ui: DuelSink }) {
+export function createDuelScene(renderer: Renderer, options: { seed: number; pauseText: string; ui: DuelSink; audio?: AudioOut }) {
   const viewport = { w: INTERNAL_W, h: INTERNAL_H }, font = renderer.assets.fontFamily;
   const hidden = renderer.app.stage.children.filter((child) => child.visible);
   for (const child of hidden) child.visible = false;   // world, enemy window, projectiles, callouts, HUD; shown again on dispose
@@ -71,6 +74,7 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
   root.addChild(scene);
   renderer.app.stage.addChild(root);
   const fx = createFx();
+  const sound = options.audio ? createDuelAudio(options.audio) : null;   // Audio-i spec section 4b: both modes, so Single player is no longer silent
   let epoch: number | null = null;
   return {
     /** One frame from `source`; `dt` in seconds. */
@@ -78,12 +82,17 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       if (epoch === null) { epoch = source.epoch(); if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
-        resetFx(fx); layer.reset(); layer.reseed(source.seed);   // the next round's star field
+        resetFx(fx); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha();
       const events = source.drainEvents();
       pushEvents(fx, events);
+      if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
+        const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
+        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(),
+          pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
+      }
       stepFx(fx, source.paused() ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
