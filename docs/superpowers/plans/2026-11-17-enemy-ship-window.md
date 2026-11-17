@@ -1443,7 +1443,19 @@ describe('the contact window\'s actions (enemy ship window spec §6.6)', () => {
 });
 ```
 
-(b) Append to `tests/duelModeDispose.test.ts`:
+(b) In `tests/duelModeDispose.test.ts`, make the input mock record the keyboard's options. Replace
+
+```ts
+  createDuelKeyboard: () => ({ sample() {}, clear() {}, destroy() {} }), createPointerSource: () => ({ sample() {}, clear() {}, destroy() {} })
+```
+
+with
+
+```ts
+  createDuelKeyboard: (_t: unknown, o?: { intercept?(code: string): boolean }) => { h.kbOpts = o; return { sample() {}, clear() {}, destroy() {} }; }, createPointerSource: () => ({ sample() {}, clear() {}, destroy() {} })
+```
+
+and change `const h = vi.hoisted(() => ({ disposes: 0 }));` to `const h = vi.hoisted(() => ({ disposes: 0, kbOpts: undefined as undefined | { intercept?(code: string): boolean } }));`. If the mock object in the file already differs (for example it gained `ui` or `takeClick` in this task), keep those members and only add the options capture. Then append:
 
 ```ts
 
@@ -1458,6 +1470,21 @@ it('hands its contact controller to setContact on start and null on dispose (ene
   expect([typeof c.close, typeof c.arm, typeof c.cancelAim, typeof c.pick]).toEqual(['function', 'function', 'function', 'function']);
   dispose();
   expect(setContact).toHaveBeenCalledTimes(2); expect(setContact.mock.calls[1]![0]).toBeNull();
+  delete (globalThis as Record<string, unknown>).window; delete (globalThis as Record<string, unknown>).document;
+});
+
+it('passes the contact controller's intercept to the keyboard: a shown window takes Escape (spec §6.2)', () => {
+  const w = { addEventListener() {}, removeEventListener() {} };
+  (globalThis as Record<string, unknown>).window = w; (globalThis as Record<string, unknown>).document = { addEventListener() {}, removeEventListener() {} };
+  const setContact = vi.fn();
+  const renderer = { app: { canvas: {}, ticker: { add() {}, remove() {} } } };
+  const dispose = startDuelMode({ renderer: renderer as never, seed: 1, ui: createDuelSink(createUiStore({ onlineAvailable: false })), layout: {} as never, setContact });
+  const c = setContact.mock.calls[0]![0] as import('../src/renderer/src/app/duel/contactController').ContactController;
+  c.click(1);
+  c.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0 });
+  expect(h.kbOpts?.intercept?.('Escape')).toBe(true);
+  expect(c.state()).toBeNull();
+  dispose();
   delete (globalThis as Record<string, unknown>).window; delete (globalThis as Record<string, unknown>).document;
 });
 ```
@@ -2166,7 +2193,7 @@ async function main(): Promise<void> {
   }
   (window as unknown as { shotReady: boolean }).shotReady = true;
 }
-main().catch((e) => { document.body.textContent = String(e?.stack ?? e); (window as unknown as { shotReady: boolean }).shotReady = true; });
+main().catch((e) => { console.error(String(e?.stack ?? e)); document.body.textContent = String(e?.stack ?? e); (window as unknown as { shotFailed: boolean; shotReady: boolean }).shotFailed = true; (window as unknown as { shotReady: boolean }).shotReady = true; });
 ```
 
 `.art/shots/vite.config.mjs`:
@@ -2209,6 +2236,7 @@ app.whenReady().then(async () => {
     await dbg.sendCommand('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
     await win.loadURL(url);
     for (let k = 0; k < 300; k++) { if (await win.webContents.executeJavaScript('window.shotReady === true')) break; await new Promise((r) => setTimeout(r, 100)); }
+    if (await win.webContents.executeJavaScript('window.shotFailed === true')) { log('failed page'); app.exit(1); return; }
     await new Promise((r) => setTimeout(r, 2500 + Number(extra || 0)));
     const shot = await dbg.sendCommand('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     writeFileSync(out, Buffer.from(shot.data, 'base64'));
@@ -2320,4 +2348,4 @@ git commit -m "docs(enemy-window): the gate" -m "Co-Authored-By: Claude Opus 5.5
 - §6.1-6.6 architecture: Tasks 1-8 one for one (`roomLook` in crtTheme, `contactModel` with `t` from the scene, `DuelUiView.contact`, `actions.contact` / `setContact`, `ContactWindow` in `CrtGlow` via DuelUi, root `pointer-events: auto` and event suppression).
 - §7 edge cases: inactive ship and pause / banner / end / SHIP / new round close via `sync` (Task 2, Task 6); lock changed elsewhere follows (the view reads `systems[0].lock` each frame, Task 5); offline laser can still be armed (enabled depends only on the target slot); internal-px hit tests (Task 3's `toInternal`, Task 8's layout inverse).
 - §8 tests: each listed file is created or extended in Tasks 1-8; screenshots and the gate in Task 9.
-- Resolved ambiguities: `sync`'s `shown` input means "console shown at Helm or Weapons" and `sync` returns the effective shown; `intercept` is a controller method; a switch to another ship disarms; `ContactRoom.centre` added for the label and the lock mark; `pickShip` takes a `Pick<TacticalModelInput, ...>`; `contactModel`'s `weapons` input is `Pick<WeaponsPanel, 'charge'> | null`; the close button's label is `X`; the lock mark is four corner brackets; `?mode=duel` also gets the window (it runs `startDuelMode`).
+- Resolved ambiguities: `sync`'s `shown` input means "console shown at Helm or Weapons" and `sync` returns the effective shown; `intercept` is a controller method; a switch to another ship disarms; `ContactRoom.centre` added for the label and the lock mark; `pickShip` takes a `Pick<TacticalModelInput, ...>`; `contactModel`'s `weapons` input is `Pick<WeaponsPanel, 'charge'> | null`; the close button's label is `X`; the lock mark is four corner brackets; `?mode=duel` also gets the window (it runs `startDuelMode`). This is a stated deviation from spec §6.5's sentence that `?mode=duel` stays as it is: `?mode=duel` is the same solo duel as Single player and should match it. Only scenes built without the option (the scene tests) keep the old behaviour.
