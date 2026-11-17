@@ -167,3 +167,57 @@ The outcomes are restated: the Upper Hold gets 1 crate and the Skiff Hold 1 crat
 
 ---
 
+# Round 3 (delta, reviewing a44ae47, effort medium, 93 s, 101269 in / 73353 cached / 8028 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R3-F1 The Goal still promises lockers in the holds, but after the fix no hold on any shipped ship gets a locker
+With the crate first and the fit rule, the Cutter's Upper Hold gets 1 crate and the Skiff Hold gets 1 crate. The Lower Hold and Aft Store get nothing, so no hold on a shipped ship ever shows a locker. The only locker drawn on today's ships is `prop.locker.a` in the Galley. The Goal at L9 still says 'lockers and crates in the holds'. · spec L9 (Goal), L36 (hold list crate first), L57 (hand count: Upper Hold 1 crate, Skiff Hold 1 crate, Lower Hold and Aft Store none). cutter.json:L10 (Upper Hold S is one row, x=5..7). skiff.json:L12-13 (Hold H is x=7..9, y=6..7); its two remaining candidates (8,6) and (9,7) are diagonal to each other, so the room takes 1 slot. · The diff directly caused a small contradiction with an unchanged section. Whoever runs the owner's gate would expect lockers in the holds. · Reword L9 to say 'crates in the holds' (and lockers where a hold is deep enough), or state there that on today's ships lockers only show in the Galley.
+
+### [P3] R3-F2 The depth wording in the fit step can be misread for the e and w sides, and the test's 'names in list order' does not match the take rule
+(a) In step 4, '2 x its width for e or w, after the quarter turn' is correct only if 'width' means the turned rectangle's x-extent. That extent is 2 x the art height, matching `consolePlacement`, where e and w use width H=2h. Read as the art's own width, a 66-unit locker on an e or w wall would 'fit' a one-tile room. Also, 'depth from the wall face … minus WALL_GAP' is really the depth past the tile edge. (b) Step 5 gives each candidate the first not-yet-used name that fits it, so a skipped name can go to a later candidate (e.g. crate, crate, locker.a). The test bullet says 'names in list order skipping names that do not fit', and that could be written as a strict order check that fails in this case. · spec L54 (fit wording), L55 (first not-yet-used fitting name), L71 (test wording). consoleModel.ts:L107-L112: e and w boxes use width H = 2*h, so depth is always 2 x the art height. · No shipped ship hits either case: every e or w candidate is in a room 3 tiles deep, and the Skiff Hold takes one slot. A fresh implementer could still code the wrong reading or write a brittle test. · In step 4, say 'depth = 2 x the art height minus WALL_GAP for every side (the turned rectangle's extent perpendicular to the wall)'. In the test bullet, say 'each slot's name is the first not-yet-used name of the room's list that fits it'.
+
+## Prior findings
+- R2-F1: resolved — The hold list now starts with `prop.crate` (L36), and step 4 (L54) adds a fit rule that matches `consolePlacement` geometry. For the Upper Hold, the candidates are (6,3) and (7,3), both with side n, one tile deep. The crate's depth is 2*16-10=22 <= 32, so it fits. The locker's is 2*33-10=56 > 32, so it is skipped. The crate's rectangle is y -10..22 and x 4..28 in tile-local units, which stays inside the room. The outcomes at L57 match a hand count for both the Cutter and the Skiff. The new test at L71 checks that no prop crosses another wall's face. Two P3 wording points remain, listed under findings.
+
+## Verified
+- Upper Hold candidates: the lamp tile (5,3) is also excluded by the O-S door (4,3), the S-a door (5,4) and the breach (5,2). That leaves (6,3) and (7,3), side n first, adjacent to each other, so 1 slot (cutter.json:L10-11, L119-158, L339-345).
+- Crate placement flush north: consolePlacement('n', true, 12, 16) gives left=even(16-12)=4, top=-10, width 24, height 32, inside the tile and the wall gap (consoleModel.ts:L106-L114, L20).
+- Locker on side n: depth 66-10=56 > 32, so it fails the fit rule in a one-tile room, and the rule matches the geometry (bottom edge H-gap compared against 32n).
+- Skiff Hold: excluding (7,6) lamp, (9,6) door neighbour, (7,7) breach neighbour and (8,7) airlock neighbour leaves (8,6) side n (2 deep) and (9,7) side e (3 deep). They are diagonal, so 1 slot, and the crate fits either (skiff.json:L12-13, L32, L44, L62).
+- Lower Hold and Aft Store still have no candidates: the magazine (6,9), the doors (4,9), (5,8) and (2,8), and the breach (1,10) exclude every wall tile (cutter.json:L15, L159-188, L379-385, L581).
+- Crew Quarters and Galley are 3x3, so every listed prop fits (deepest 56 <= 96). The fit rule leaves the R2-confirmed counts of 2 and 3 unchanged.
+- Lateral overhang: the widest prop (seats, 50 units) spans tile-local x -10..40. That lies within the wall faces at -10 and 42 when both side neighbours are walls, so on rectangular rooms nothing crosses a side wall.
+
+## Not verified
+- I did not recheck whether the 'never crosses a wall other than its own' claim at L54 holds for non-rectangular rooms, where a wide prop's overhang into a neighbouring column with shallower floor could cross a wall. Every shipped room is rectangular, and the new test would catch it if a layout ever hit this.
+- I did not re-view the sprite rectangles on the sheets this round, since section 1 is unchanged.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `a44ae47`. 2 accepted, 0 rejected, 0 deferred. The reviewer confirmed R2-F1 as resolved.
+
+## R3-F1 [P3]: The Goal promises lockers in the holds
+
+Confirmed. The Goal now says crates in the holds, and lockers where a room is deep enough; on today's ships a locker shows only in the Galley.
+
+## R3-F2 [P3]: The fit wording is ambiguous for e and w, and the test wording contradicts the take rule
+
+Confirmed against consoleModel.ts:L107-L112. The depth is now 2 × the art height minus WALL_GAP for every side. The test checks each slot's name as the first not-yet-used name that fits.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md
+
+<!-- end -->
+
+---
+
