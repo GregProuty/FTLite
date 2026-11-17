@@ -2,7 +2,7 @@ import type { CardUiState } from '../clientControl/cardController';
 import { Application, Container } from 'pixi.js';
 import { worldFit, WORLD_BAND } from './worldFit';
 import { createBattlemapLayer } from './battlemapLayer';
-import { fitRect } from './battlemapModel';
+import { battlemapFor, fitRect } from './battlemapModel';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { Position, Stable } from '../sim/components';
@@ -71,12 +71,13 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const missing = new Set(assets.missing);
   const feel = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
     world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'),
-    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
+    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined,
+    painted: (id) => battlemapFor(id, missing) !== null   // the art spike: painted fire, blasts and particles on a painted ship
   });
   // Art-i spec section 5: (Art-iv: battlemap,) tiles, (Art-iii: props,) grade, effects.below, icons, consoleDesks, magazine, crew, boarders, effects.above, lights.
   const battlemap = createBattlemapLayer(assets);
   world.addChild(battlemap.container, tiles.container, props.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
-  consoleDesks.container.addChild(feel.fixtures); effects.above.addChild(feel.above);
+  consoleDesks.container.addChild(feel.fixtures); effects.below.addChild(feel.paintedBelow); effects.above.addChild(feel.above, feel.paintedAbove);
   app.stage.addChildAt(feel.starfield, 0);   // the starfield under the world, filling WORLD_BAND (spec section 8)
   let lastDraw: number | null = null, stage = 1, seenImpact: Int32Array | null = null;
 

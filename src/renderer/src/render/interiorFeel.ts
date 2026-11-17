@@ -2,7 +2,7 @@
 // interior (duel/interiorView.ts): the grade, the lights, the particles, the impact flash, shake and hitstop, the
 // fixtures (console screen blink, room lamps) and the starfield, all on one presentation clock. The views add the
 // containers in the spec's order and pass each frame's signals; this module never reads input or the sim RNG.
-import { AnimatedSprite, Container, Graphics, GraphicsContext, Sprite } from 'pixi.js';
+import { AlphaFilter, AnimatedSprite, Container, Graphics, GraphicsContext, Sprite } from 'pixi.js';
 import { TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { FIRE_CAP, TICK_HZ } from '../sim/tuning';
@@ -24,6 +24,9 @@ import {
 import type { Band } from './worldFit';
 import type { GameAnimation } from './assets';
 import { addBlast, BLAST_CAP, BLAST_SCALE, blastFrame, liveBlasts, roomCentroid, tileCentre, type Blast, type BlastKind, type BlastTimings } from './blastModel';
+import { createPaintedFire } from './painted/fireLayer';
+import { drawPaintedBlast } from './painted/blastDraw';
+import { PAINTED_TIMING } from './painted/blastShapes';
 
 /** This frame's hit: the sector's hit rooms, or the duel's whole interior (its hits carry no room). */
 export type FeelHit = { rooms: readonly number[] } | { whole: true } | null;
@@ -51,6 +54,10 @@ export interface InteriorFeel {
   above: Container;
   /** Above everything that shows the ship, under any text (additive). */
   lights: Container;
+  /** Into effects.below (the art spike): the painted fire on a painted ship, empty elsewhere. */
+  paintedBelow: Container;
+  /** Into effects.above after `above` (the art spike): the painted blasts on a painted ship, empty elsewhere. */
+  paintedAbove: Container;
   /** Presentation seconds (frozen by the hitstop). */
   time(): number;
   /** Returns the shake offset for the world (and, in the sector, the projectiles and callouts), and each player's bob.
@@ -82,7 +89,9 @@ function freezeAnimations(root: Container, held: Set<AnimatedSprite>, frozen: bo
 /** `world`: the ship's world container (its animations freeze in a hitstop). `band`: the starfield's band, internal pixels.
  *  `consoleArt`: the consoles are the bought sprites (Art-ii spec section 2), so no screen cursor blinks on them.
  *  `blasts`: the bought explosions (Art-ii spec section 3), played on hits and breach openings; absent, none draw. */
-export interface InteriorFeelOptions { world: Container; band: Band; feel: () => FeelSetting; consoleArt?: boolean; blasts?: Readonly<Record<BlastKind, GameAnimation>> }
+/** `painted`: the layout is drawn on a painted battlemap (the art spike): the fire, the blasts and the particles take the
+ *  painted look there (code-drawn, so blasts show even without the bought explosions). */
+export interface InteriorFeelOptions { world: Container; band: Band; feel: () => FeelSetting; consoleArt?: boolean; blasts?: Readonly<Record<BlastKind, GameAnimation>>; painted?: (layoutId: string) => boolean }
 export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   const starfield = new Container(), starG = new Graphics(); starfield.addChild(starG);
   const grade = new Container(); grade.blendMode = 'multiply';
@@ -96,9 +105,13 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   const blastLayer = new Container(), blastSprites: Sprite[] = [];
   const timing: BlastTimings | null = opts.blasts ? { room: { frames: opts.blasts.room.textures.length, fps: opts.blasts.room.fps }, hit: { frames: opts.blasts.hit.textures.length, fps: opts.blasts.hit.fps } } : null;
   if (opts.blasts) for (let k = 0; k < BLAST_CAP; k++) { const b = new Sprite(opts.blasts.room.textures[0]); b.anchor.set(0.5); b.scale.set(BLAST_SCALE); b.visible = false; blastLayer.addChild(b); blastSprites.push(b); }
+  const paintSmokes = Array.from({ length: BLAST_CAP }, () => new Graphics()), paintBlasts = Array.from({ length: BLAST_CAP }, () => new Graphics()), paintBlastLayer = new Container(); paintBlastLayer.addChild(...paintSmokes, ...paintBlasts);
+  const smokeFade: AlphaFilter[] = [];   // made on a painted ship's first blast (a filter needs a browser); attached only while its cloud shows
   const above = new Container(); above.addChild(particles.normal, ...(opts.blasts ? [blastLayer] : []), flash);
   const lights = new Container(); lights.blendMode = 'add';
-  const glowLayer = new Container(); lights.addChild(glowLayer, particles.add);
+  const paintedFire = createPaintedFire();
+  const glowLayer = new Container(); lights.addChild(glowLayer, particles.add, paintedFire.glow);
+  let painted = false;
   const ctx = { console: glowContext(GLOW.console), fire: glowContext(GLOW.fire), lamp: glowContext(GLOW.lamp) };
   const fireGlows = new Map<number, Graphics>(), held = new Set<AnimatedSprite>();
   let consoleGlows: Graphics[] = [], lampGlows: Graphics[] = [];
@@ -107,8 +120,8 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   let builtFor = '', seed = 0, emitter: Emitter = createEmitter(0), vents: WallVent[] = [], puffs: number[] = [];
   let lamps: { room: number; x: number; y: number }[] = [], cover: DoorRect[] = [];
   let blasts: Blast[] = [];
-  const blast = (kind: BlastKind, at: { x: number; y: number }, start: number): void => { if (opts.blasts) blasts = addBlast(blasts, { kind, x: at.x, y: at.y, start }); };
-  const clearBlasts = (): void => { blasts = []; for (const b of blastSprites) b.visible = false; };
+  const blast = (kind: BlastKind, at: { x: number; y: number }, start: number): void => { if (opts.blasts || painted) blasts = addBlast(blasts, { kind, x: at.x, y: at.y, start }); };
+  const clearBlasts = (): void => { blasts = []; for (const b of blastSprites) b.visible = false; for (const g of [...paintSmokes, ...paintBlasts]) g.clear(); };
   let smokes: HitSmoke[] = [], breachSeen: Uint8Array | null = null, flashTick = Number.NEGATIVE_INFINITY, flashShare = 1, flashLeft = 0, wasStopped = false;
 
   function build(state: SimState): void {
@@ -153,11 +166,12 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   }
 
   return {
-    starfield, grade, fixtures, above, lights,
+    starfield, grade, fixtures, above, lights, paintedBelow: paintedFire.below, paintedAbove: paintBlastLayer,
     time: () => clock.t,
     draw(frame, dt, realDt = dt) {
       const { state } = frame, d = state.derived;
       if (builtFor !== d.layoutHash) build(state);
+      painted = opts.painted?.(state.layout.id) ?? false;
       onHit(frame);
       const paused = dt === 0 && realDt > 0;
       const pdt = clock.advance(dt), t = clock.t;
@@ -179,8 +193,18 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
       smokes = smokes.filter((s) => t < s.until);
       if (pdt > 0) stepVents(emitter, vents, puffs, t);
       emitter.step(pdt, [...fireSources(state), ...sparkSources(frame.sparks), ...ventingSources(state), ...workSources(frame.working), ...hitSmokeSources(smokes, t, d.width)]);
-      particles.draw(emitter.particles);
-      if (timing && opts.blasts) {
+      particles.draw(emitter.particles, painted);
+      if (painted) {   // the art spike: code-drawn blasts on the same live list, cap and clock (held in a hitstop and a pause)
+        blasts = liveBlasts(blasts, t, PAINTED_TIMING);
+        for (const b of blastSprites) b.visible = false;
+        paintBlasts.forEach((g, k) => {
+          const smoke = paintSmokes[k]!, live = blasts[k];
+          g.clear(); smoke.clear();
+          const fade = live ? drawPaintedBlast(smoke, g, live, t) : 0;
+          if (fade > 0) { const f = smokeFade[k] ?? (smokeFade[k] = new AlphaFilter()); f.alpha = fade; }
+          smoke.visible = fade > 0; smoke.filters = fade > 0 && fade < 1 ? [smokeFade[k]!] : [];
+        });
+      } else if (timing && opts.blasts) {
         const anims = opts.blasts;
         blasts = liveBlasts(blasts, t, timing);   // each removed after its last frame; held while the clock holds (hitstop, pause)
         blastSprites.forEach((b, k) => { const live = blasts[k]; b.visible = live !== undefined; if (live) { b.texture = anims[live.kind].textures[blastFrame(live, t, timing)]!; b.position.set(live.x, live.y); } });
@@ -200,8 +224,9 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
         glow.position.set(l.x + LAMP_SIZE / 2, l.y + LAMP_SIZE / 2); glow.tint = light.on ? ROLE.lampOn : ROLE.lampOff; glow.alpha = light.alpha;
         fixtures.rect(l.x, l.y, LAMP_SIZE, LAMP_SIZE).fill(light.alpha === 0 ? ROLE.wallShadow : light.on ? ROLE.lampOn : ROLE.lampOff);   // a flickered-off lamp goes dark
       });
-      const burning: number[] = [];
-      for (let r = 0; r < d.volume.length; r++) if (state.rooms.fire[r]! > 0) burning.push(...fireTiles(d.roomTiles[r]!, state.rooms.fire[r]!, FIRE_CAP));
+      paintedFire.draw(painted ? state : null, t);
+      const burning: number[] = [];   // the pixel glow; a painted ship's fire brings its own
+      if (!painted) for (let r = 0; r < d.volume.length; r++) if (state.rooms.fire[r]! > 0) burning.push(...fireTiles(d.roomTiles[r]!, state.rooms.fire[r]!, FIRE_CAP));
       for (const [tile, glow] of fireGlows) if (!burning.includes(tile)) { glow.destroy(); fireGlows.delete(tile); }
       for (const tile of burning) {
         let glow = fireGlows.get(tile);
@@ -232,7 +257,8 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
       // Every Graphics first, with no options so each owned context goes too (a parent's destroy({ children: true })
       // passes options, which leaves owned contexts), and a Graphics never destroys a context it was given; then the
       // shared contexts. The duel builds a new interior on every restart, and these would otherwise outlive it.
-      for (const g of [ambient, alert, vacuum, fixtures, flash, starG, ...consoleGlows, ...lampGlows, ...fireGlows.values()]) g.destroy();
+      for (const g of [ambient, alert, vacuum, fixtures, flash, starG, ...paintSmokes, ...paintBlasts, ...consoleGlows, ...lampGlows, ...fireGlows.values()]) g.destroy();
+      paintedFire.destroy(); for (const f of smokeFade) f.destroy();
       consoleGlows = []; lampGlows = []; fireGlows.clear(); held.clear();
       coverCtx.destroy(); ctx.console.destroy(); ctx.fire.destroy(); ctx.lamp.destroy();
     }

@@ -9,7 +9,7 @@ import type { GameAssets } from '../assets';
 import { createBoarderLayer } from '../boarderLayer';
 import { createConsoleLayer } from '../consoleLayer';
 import { createBattlemapLayer } from '../battlemapLayer';
-import { fitRect } from '../battlemapModel';
+import { battlemapFor, fitRect } from '../battlemapModel';
 import { createPropLayer } from '../propLayer';
 import { createCrewLayer } from '../crewSprites';
 import { createEffectsLayer } from '../effects';
@@ -49,7 +49,8 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const missing = new Set(assets.missing);
   const fx = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
     world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt'),
-    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
+    blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined,
+    painted: (id) => battlemapFor(id, missing) !== null   // the art spike: painted fire, blasts and particles on a painted ship
   });
   container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND
   const memory = createRenderMemory();
@@ -66,7 +67,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // labels on top so the lights never wash them out.
   const battlemap = createBattlemapLayer(assets);
   world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
-  desks.container.addChild(fx.fixtures); effects.above.addChild(fx.above);
+  desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
   return {
     container, world, memory,
     draw(d, crewPrev, alpha, dt, events = [], presentDt = dt) {

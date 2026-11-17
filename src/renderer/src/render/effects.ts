@@ -7,6 +7,7 @@ import type { GameAssets } from './assets';
 import type { RenderMemory } from './memory';
 import { fireTiles, breachOrientation, breachDamagedTiles, airlockDraw, airlockOutward, ventParticles, doorsCursorTile } from './hazardTiles';
 import { featureReady } from './fallback';
+import { battlemapFor } from './battlemapModel';
 import { syncCache } from './cache';
 import { ROLE } from './palette';
 import { airlockOutlineBand, breachRect, failedRect, fireFallbackRect, ventSpeckRect } from './effectsShapes';
@@ -43,7 +44,9 @@ export function createEffectsLayer(assets: GameAssets, memory: RenderMemory): Ef
         const fire = state.rooms.fire[r]!; if (fire <= 0) continue;
         for (const t of fireTiles(d.roomTiles[r]!, fire, FIRE_CAP)) { wanted.push(t); markDamaged(t); }
       }
-      if (art.fire) {
+      if (battlemapFor(state.layout.id, missing)) {   // the art spike: a painted ship's fire is code-drawn (painted/fireLayer.ts, via the interior feel)
+        syncCache(fires, [], () => { throw new Error('unreachable'); }, (s) => s.destroy());
+      } else if (art.fire) {
         const a = assets.animation('fire.loop');
         syncCache(fires, wanted, (t) => {
           const s = new AnimatedSprite(a.textures); s.scale.set(SCALE); s.animationSpeed = a.fps / 60; s.loop = true;
