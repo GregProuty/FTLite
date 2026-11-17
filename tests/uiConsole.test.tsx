@@ -8,8 +8,8 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { STATUS } from '../src/renderer/src/render/duel/consoleLayout';
-import { PAD, TEXT } from '../src/renderer/src/render/theme';
+import { STATION, STATUS } from '../src/renderer/src/render/duel/consoleLayout';
+import { FONT_NATIVE, PAD, TEXT, textPx } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -56,6 +56,16 @@ describe('the console screen (spec §2)', () => {
     expect(document.querySelector('[data-ui-throttle="100"]')?.getAttribute('data-ui-lit')).toBe('1');
     expect(document.querySelector('[data-ui-throttle="STOP"]')?.getAttribute('data-ui-lit')).toBe('0');
     expect(btn('tab-weapons').dataset.uiButton).toBe('disabled'); expect(btn('snap').dataset.uiButton).toBe('lit');
+  });
+});
+
+describe('the Weapons block layout', () => {
+  it('FLYING ends before the LAUNCH button starts', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view({ ...weaponsConsole, weapons: { ...weaponsConsole.weapons!, missileFlying: true } })));
+    const f = find('FLYING')!;
+    expect(f).toBeDefined();
+    expect(f.x + textPx('FLYING', FONT_NATIVE / 16)).toBeLessThan(STATION.x + STATION.w - 8 - 120);
   });
 });
 

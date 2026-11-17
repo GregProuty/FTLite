@@ -17,24 +17,21 @@ export const BX = 16, BY = INTERNAL_H - 28, ZOOM_Y = INTERNAL_H - 64, SNAP_Y = I
 export const MapOverlay = memo(function MapOverlay({ overlay, placement = 'column' }: { overlay: MapOverlayView; placement?: 'column' | 'console' }) {
   const { crt } = useCrt(), dim = crt ? CRT.mid : DIM, accent = crt ? CRT.main : AMBER;
   const px = overlay.scaleBar.px, line = { background: hex(dim) };
-  if (placement === 'console') {   // Artemis spec §2: the side column shows zoom and snap; only the scale bar stays, at the bottom right
-    const units = `${overlay.scaleBar.units} u`, bx = INTERNAL_W - 16 - textPx(units, 1) - 8 - px;
-    return (
-      <>
-        <Box x={bx} y={BY - 1} w={px} h={2} attrs={{ 'data-ui-scalebar': '' }} style={line} />
-        <Box x={bx - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
-        <Box x={bx + px - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
-        <PixelText text={units} x={bx + px + 8} y={BY - 8} size={FONT_NATIVE} tint={dim} />
-      </>
-    );
-  }
+  const units = `${overlay.scaleBar.units} u`;
+  const bar = (bx: number) => (
+    <>
+      <Box x={bx} y={BY - 1} w={px} h={2} attrs={{ 'data-ui-scalebar': '' }} style={line} />
+      <Box x={bx - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
+      <Box x={bx + px - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
+      <PixelText text={units} x={bx + px + 8} y={BY - 8} size={FONT_NATIVE} tint={dim} />
+    </>
+  );
+  // Artemis spec §2: the side column shows zoom and snap; only the scale bar stays, at the bottom right
+  if (placement === 'console') return bar(INTERNAL_W - 16 - textPx(units, 1) - 8 - px);
   return (
     <>
       <PixelText text={overlay.zoomText} x={BX} y={ZOOM_Y} size={FONT_SIZE} tint={dim} />
-      <Box x={BX} y={BY - 1} w={px} h={2} attrs={{ 'data-ui-scalebar': '' }} style={line} />
-      <Box x={BX - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
-      <Box x={BX + px - 1} y={BY - 5} w={2} h={10} attrs={{ 'data-ui-scalebar': '' }} style={line} />
-      <PixelText text={`${overlay.scaleBar.units} u`} x={BX + px + 8} y={BY - 8} size={FONT_NATIVE} tint={dim} />
+      {bar(BX)}
       {overlay.snapHint && <PixelText text="C: SNAP BACK" x={INTERNAL_W / 2} y={SNAP_Y} size={FONT_SIZE} tint={accent} anchorX={0.5} anchorY={1} />}
     </>
   );

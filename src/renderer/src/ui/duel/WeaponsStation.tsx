@@ -3,7 +3,7 @@
 import { memo } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
 import { STATION, stationTop } from '../../render/duel/consoleLayout';
-import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT } from '../../render/theme';
+import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT, textPx } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { useActions } from '../context';
 import { Bar } from '../stage/Bar';
@@ -36,7 +36,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons }: { weapon
       <Box x={x0} y={y0 + 112} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text="MISSILE" x={x0} y={y0 + 118} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`MAG ${weapons.magazine}`} x={x0} y={y0 + 134} size={FONT_SIZE} tint={main} />
-      {weapons.missileFlying && <PixelText text="FLYING" x={x0 + 110} y={y0 + 134} size={FONT_SIZE} tint={crt ? CRT.hot : AMBER} />}
+      {weapons.missileFlying && <PixelText text="FLYING" x={x0 + textPx(`MAG ${weapons.magazine}`) + 8} y={y0 + 138} size={FONT_NATIVE} tint={crt ? CRT.hot : AMBER} />}
       <Button name="launch" label="LAUNCH" hint="F" x={right - 120} y={y0 + 134} w={120} h={24} disabled={!weapons.canLaunch} onPress={() => actions.console.press('launch')} />
       <PixelText text="STEER" x={x0} y={y0 + 170} size={FONT_NATIVE} tint={main} />
       <Button name="steer-left" label="<" hint="A" x={x0 + 52} y={y0 + 170} w={64} h={24} disabled={!weapons.missileFlying} lit={weapons.held.left}

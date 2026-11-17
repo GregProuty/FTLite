@@ -1,4 +1,5 @@
-// The duel's readout column (placed 'status' it is the console's status table, Artemis spec §2: top left, no help) (readoutPanel.ts's layout): rows of label and right-anchored value, shield pips after the
+// Placed 'status' it is the console's status table (Artemis spec §2): top left, no help lines.
+// The duel's readout column (readoutPanel.ts's layout): rows of label and right-anchored value, shield pips after the
 // label, a thin bar under a row, and help lines at the native size, in a panel sized to its content. On a CRT screen (CRT
 // map spec section 2) the rows draw by emphasis in the amber ramp: labels mid, values main, headings main, `good` and
 // `warn` hot, `alert` an inverse bar blinking main/hot, `enemy` an inverse bar, crew pips solid hot, enemy pips hollow.
