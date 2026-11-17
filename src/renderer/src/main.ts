@@ -179,7 +179,7 @@ async function startProbe(): Promise<void> {
   const { mountProbe } = await import('./ui/probe/mountProbe');
   const { startUiProbe, duelProbeFixture } = await import('./app/uiProbe');
   const q = new URLSearchParams(location.search), duelProbe = q.get('probe') === 'duel', hudProbe = q.get('probe') === 'hud';
-  const reactHud = hudProbe && q.get('engine') === 'react';
+  const reactHud = hudProbe;   // the Pixi engine arm is gone (UI-iii Task 5): probe=hud is the React HUD
   const images = reactHud ? await buildImageCache(hudImageNames(assets.missing), ICON_KINDS, createPixiImageSource(renderer, assets)) : undefined;
   if (duelProbe || reactHud) await mountUi({ el: uiRoot, store, actions, menu: false, images }); else if (!hudProbe) await mountProbe({ el: uiRoot, store, actions });
   const resize = (): void => {
@@ -192,7 +192,10 @@ async function startProbe(): Promise<void> {
   if (duelProbe) createDuelSink(store).frame(duelProbeFixture());
   if (hudProbe) {   // UI-iii: a fixture HUD model drawn by the React HUD (dynamic imports, the probe only)
     const { HUD_FIXTURES } = await import('./app/hudFixtures');
-    const model = HUD_FIXTURES[Number(q.get('fixture') ?? 0)]!();
+    const raw = q.get('fixture') ?? '0', idx = Number(raw);
+    const valid = Number.isInteger(idx) && idx >= 0 && idx < HUD_FIXTURES.length;
+    if (!valid) console.error(`[probe=hud] fixture "${raw}" is not valid; expected an integer from 0 to ${HUD_FIXTURES.length - 1}. Using fixture 0.`);
+    const model = HUD_FIXTURES[valid ? idx : 0]!();
     if (reactHud) {
       const sink = createHudSink(store, perf);
       sink.update(model);
