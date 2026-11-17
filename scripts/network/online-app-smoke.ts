@@ -34,7 +34,8 @@ async function main() {
   }
   async function launch(profile: string) {
     if (typeof electron !== 'string') throw Error('Electron executable missing');
-    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, NODE_PATH:resolve('node_modules') };
+    // The sector runs through the test-only entry (H-2 spec §10): the menu's Multiplayer is the duel.
+    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_SECTOR_ONLINE_TEST: '1', NODE_PATH:resolve('node_modules') };
     delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL;
     const child = spawn(electron, [resolve('scripts/network/online-app-smoke.cjs'), `--online-app-dir=${directory}`, `--online-app-role=${profile}`,
       `--user-data-dir=${join(directory, profile)}`], { env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
@@ -62,8 +63,8 @@ async function main() {
   }
   const status = (app: Application) => app.request('status');
   const phase = (app: Application, value: string) => until(() => status(app), r => r.status.phase === value, `${app.profile} ${value}`);
-  async function host(app: Application, capacity: number) { await app.request('open-multiplayer'); await app.request('click', { id: 'host' }); if (capacity !== 2) await app.request('capacity', { value: capacity }); await app.request('click', { id: 'create-room' }); return phase(app, 'lobby'); }
-  async function joinRoom(app: Application, code: string) { await app.request('open-multiplayer'); await app.request('click', { id: 'join' }); await app.request('type', { id: 'join-code', text: code }); await app.request('click', { id: 'join-room' }); return phase(app, 'lobby'); }
+  async function host(app: Application, capacity: number) { await app.request('host-sector', { capacity }); return phase(app, 'lobby'); }
+  async function joinRoom(app: Application, code: string) { await app.request('join-sector', { code }); return phase(app, 'lobby'); }
   async function kill(app: Application) {
     if (!app.exited) {
       app.termination??='restart';
@@ -188,14 +189,13 @@ async function main() {
       if(text.includes(source.digest)){writeFileSync(path,text.replaceAll(source.digest,'0'.repeat(64)));changed++;}
     }
     assert(changed>=3,'incompatible compiled variant missing');
-    const incompatible=await launch('incompatible'); await incompatible.request('open-multiplayer'); await incompatible.request('click',{id:'join'});
-    await incompatible.request('type',{id:'join-code',text:lobby.status.snapshot.joinCode}); await incompatible.request('click',{id:'join-room'});
+    const incompatible=await launch('incompatible'); await incompatible.request('join-sector',{code:lobby.status.snapshot.joinCode});
     const mismatch=await phase(incompatible,'error'), mismatchResources=await incompatible.request('resources');
     assert(mismatch.status.error==='incompatible'&&mismatch.status.snapshot===null&&mismatchResources.utilities.length===0&&mismatchResources.windows===1,'incompatible build allocated resources');
     assert((await status(h)).status.snapshot.seats.filter((s:any)=>s.occupied).length===1,'incompatible build occupied seat');
     checks.push('incompatible'); await shutdown(incompatible);
-    await g.request('delay-next-transport'); await g.request('open-multiplayer'); await g.request('click',{id:'join'}); await g.request('type',{id:'join-code',text:lobby.status.snapshot.joinCode});
-    await g.request('click',{id:'join-room'}); await phase(g,'joining'); await g.request('click',{id:'leave'}); await phase(g,'idle');
+    await g.request('delay-next-transport'); await g.request('join-sector',{code:lobby.status.snapshot.joinCode});
+    await phase(g,'joining'); await g.request('click',{id:'leave'}); await phase(g,'idle');
     await g.request('click',{id:'single-player'}); await delay(1300);
     const cancelled=await g.request('resources'); assert(cancelled.utilities.length===0&&cancelled.windows===1&&cancelled.listeners===0,'cancel retained transport resources');
     await viewportProof(g, 'single');
