@@ -25,7 +25,7 @@ const action = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cursor'), receiveOrder: uint }).strict(),
   z.object({ kind: z.literal('publish') }).strict(), z.object({ kind: z.literal('seal'), discardLifecycleResumes: z.literal(true).optional() }).strict()
 ]);
-const frameSchema = z.object({ tick: uint, eventSequenceBefore: uint, action, results: z.array(z.unknown()).max(1024), events: z.array(z.object({ eventSequence: uint.min(1), tick: uint, kind: z.enum(['cue', 'pause', 'ended']) }).strict()).max(256),
+const frameSchema = z.object({ tick: uint, eventSequenceBefore: uint, action, results: z.array(z.unknown()).max(1024), events: z.array(z.object({ eventSequence: uint.min(1), tick: uint, kind: z.enum(['cue', 'pause', 'ended', 'round']) }).strict()).max(256),
   after: z.object({ tick: uint, hash: z.string().regex(/^[0-9a-f]{8}$/), phase: z.enum(['running', 'paused', 'ended', 'error']), eventSequence: uint, publicationSequence: uint, controlRevision: uint }).strict().optional()
 }).strict();
 /** Full validation occurs before constructing a simulation. No numeric-button fallback. */

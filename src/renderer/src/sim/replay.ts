@@ -23,7 +23,7 @@ export interface ReplayOutcome {
 }
 export interface ReplayFrame {
   tick: number; eventSequenceBefore: number; action: ReplayAction;
-  results: CommandResult[]; events: { eventSequence: number; tick: number; kind: 'cue' | 'pause' | 'ended' }[]; after?: ReplayOutcome;
+  results: CommandResult[]; events: { eventSequence: number; tick: number; kind: 'cue' | 'pause' | 'ended' | 'round' }[]; after?: ReplayOutcome;
 }
 /** Portable semantic replay. Auxiliary requests/presentation payloads are deliberately absent. `mode` names the
  *  encounter's mode; it is absent for the sector, so every V2/V3/V4 file recorded before R-1 parses unchanged. */

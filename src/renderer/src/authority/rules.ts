@@ -1,6 +1,6 @@
 // The generic authority's rules contract (engine refactor spec §6). The authority core runs any encounter through one
 // of these: it never imports a sim. Every call the core used to make into sector code goes through a hook here.
-import type { Checkpoint, CommandResult, Cue, EndRecord, HeldInput, CommandEnvelope } from '../net/contracts';
+import type { AuthorityEvent, Checkpoint, CommandResult, Cue, EndRecord, HeldInput, CommandEnvelope } from '../net/contracts';
 import type { CommandCodec } from '../net/codec';
 import type { ShipLayout } from '../sim/ship/schema';
 
@@ -47,6 +47,9 @@ export interface EncounterRules<T extends EncounterTypes> {
   /** The cue baseline after a tick (decision 4: the spec's cues(prev, state) needs a baseline to start from). */
   cueBaseline(state: T['state']): T['cueBaseline'];
   cues(prev: T['cueBaseline'], state: T['state']): Cue[];
+  /** Mode events a tick produced beyond its cues, against the same baseline (H-2 spec §7: the duel's `round` record on
+   *  the tick a round is decided). The core emits each, in order, after the tick's cues. */
+  records?(prev: T['cueBaseline'], state: T['state']): AuthorityEvent['payload'][];
   snapshot(state: T['state'], contentDigest: string): T['snapshot'];
   /** Construct a live state from a validated snapshot. `memory` is the checkpoint's modeMemory blob, when the mode has one. */
   restore(snapshot: T['snapshot'], resolveLayout: ResolveLayout, memory?: unknown): T['state'];

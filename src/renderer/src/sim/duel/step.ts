@@ -1,5 +1,7 @@
 // One duel tick (spec §13 phase list). The sector step (sim/step.ts) is never called on the duel's interior; this runs
 // only the interior pieces the duel uses (sit, stand, Interact for repair, movement) and then the tactical stepDuel.
+// H-2 spec §7: a duel is a series of rounds in one run. A decided round's ticks keep advancing with no physics (the end
+// card), every command still gets a result, and a `rematch` there starts the next round on the following tick.
 import { NEUTRAL_INTENT, type Intent } from '../../../../shared/intent';
 import type { CommandEnvelope, HeldInput } from '../../net/contracts';
 import { applyConsoleCommand, applyInteractionCommands } from '../commands';
@@ -11,7 +13,8 @@ import { stepDuel } from '../tactical/duel';
 import { Outcome } from '../tactical/state';
 import { canCharge, canLaunch, validLock, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
-import type { DuelState } from './state';
+import { followingSeed } from './seeds';
+import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
@@ -19,6 +22,8 @@ export interface DuelInput { held: readonly HeldInput[]; commands: readonly Duel
 const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick. */
 const WEAPON_ORDER = ['laserLock', 'laserCharge', 'missileLaunch'] as const;
+/** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'laserCharge', 'missileLaunch', 'rematch'];
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -63,14 +68,62 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
 }
 
 /**
+ * The next round (H-2 spec §7), built in place in `d` so every holder of the duel keeps it: a fresh duel (a fresh
+ * interior world) from the round seed after this one, with the same Helm player and presence, whose every tick stamp
+ * is moved to the encounter tick `tick`: the interior and tactical ticks, each ship's graceUntil and the hunter's last
+ * launch. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
+ */
+function startRound(d: DuelState, tick: number): void {
+  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer);
+  next.present = [d.present[0], d.present[1]];
+  next.round = d.round + 1; next.baseTick = tick; next.decidedTick = -1;
+  next.interior.tick = tick; next.tactical.tick = tick;
+  for (const ship of next.tactical.ships) ship.graceUntil.fill(tick);
+  next.tactical.hunter.lastLaunch += tick;
+  disposeDuel(d);
+  Object.assign(d, next);
+}
+
+/** A decided round's tick (the end card): no physics, both ticks advance, and every command gets a result. The first
+ *  rematch from a present player is applied (a second in the tick is noop) and starts the next round on the next tick;
+ *  presence applies as ever; every other duel command is rejected duel-decided. */
+function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
+  const st = d.interior, tick = st.tick, results: DuelResult[] = [];
+  const result = (env: DuelEnvelope, reason?: DuelReason, status: DuelResult['status'] = 'applied'): void => {
+    results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status });
+  };
+  resetScratch(d);
+  d.events = []; d.tactical.events = [];
+  const presentBefore = [d.present[0], d.present[1]];
+  let rematch = false;
+  for (const e of input.commands) {
+    const c = e.command;
+    if (c.kind === 'rematch') {
+      if (e.requestedTick !== tick) result(e, 'stale-tick');
+      else if (!presentBefore[e.id.player as 0 | 1]) result(e, 'unavailable');
+      else if (rematch) result(e, undefined, 'noop');
+      else { rematch = true; result(e); }
+    } else if (c.kind === 'presence') {
+      if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+      if ((e.id.player !== 0 && e.id.player !== 1) || typeof c.present !== 'boolean') { result(e, 'malformed'); continue; }
+      d.present[e.id.player] = c.present; result(e);
+    } else result(e, DUEL_KINDS.includes(c.kind) ? 'duel-decided' : 'not-in-duel');
+  }
+  if (rematch) startRound(d, tick + 1);
+  else { st.tick++; d.tactical.tick++; }
+  return results.sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence);
+}
+
+/**
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
  * only at the two role consoles; stand through today's handler; then presence); tactical commands validated against the
  * seats after the seat phase and folded into the crew's ShipInput; repair, with its events; movement for standing
  * present players; the tactical stepDuel; the interior tick. Commands apply in the order given (the authority's
- * envelope order). Returns one result per command, sorted by player then sequence. Does nothing once the duel has ended.
+ * envelope order). Returns one result per command, sorted by player then sequence. A rematch while the round runs is
+ * rejected duel-running; the step that decides the round records `decidedTick`. A decided round steps by stepDecided.
  */
 export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
-  if (d.tactical.outcome !== Outcome.Running) return [];
+  if (d.tactical.outcome !== Outcome.Running) return stepDecided(d, input);
   const st = d.interior, tick = st.tick, results: DuelResult[] = [];
   const result = (env: DuelEnvelope, reason?: DuelReason): void => {
     results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status: 'applied' });
@@ -112,7 +165,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     else { if (!canLaunch(d.tactical, 0)) { result(e, 'unavailable'); continue; } crew.missileLaunch = true; }
     result(e);
   }
-  for (const e of input.commands) if (!['sit', 'stand', 'presence', 'laserLock', 'laserCharge', 'missileLaunch'].includes(e.command.kind)) result(e, 'not-in-duel');
+  for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
+  for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   if (helm >= 0) { const h = input.held[helm] ?? NO_HELD; crew.axes = { turn: h.moveX, thrust: -h.moveY }; }   // W (moveY −1, up) is thrust forward
   if (gunner >= 0) crew.steer = (input.held[gunner] ?? NO_HELD).moveX;
 
@@ -124,5 +178,6 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
   stepDuel(d.tactical, crew);
   st.tick++;
+  if (d.tactical.outcome !== Outcome.Running) d.decidedTick = st.tick;   // the snapshot tick of the first decided publication
   return results.sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence);
 }

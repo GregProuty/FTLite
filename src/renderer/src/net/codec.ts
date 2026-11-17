@@ -4,7 +4,7 @@ import { COMMAND_REASONS } from './contracts';
 import type { AuthorityMessage, ClientMessage, PublishedState } from './contracts';
 import type { Snapshot } from '../sim/snapshot';
 import type { DuelSnapshot } from '../sim/duel/snapshot';
-import { TERMINAL_CAUSES } from '../sim/duel/summary';
+import { MISSILE_LOSSES, TERMINAL_CAUSES } from '../sim/duel/summary';
 
 // Bounds are wire resource limits. Layout/catalog membership remains execution validation.
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -41,6 +41,8 @@ export interface ModeWire<S extends { header: unknown }> {
   snapshotHeader(p: Primitives): z.ZodType<S['header'], z.ZodTypeDef, unknown>;
   /** The `ended` event's record, tagged `{ mode, record }`: each codec admits only its own mode's record. */
   endRecord(p: Primitives, shared: SharedSchemas): z.ZodTypeAny;
+  /** The mode's own authority event payloads, appended to the shared payload union (H-2 spec §4: the duel's `round`). */
+  events(p: Primitives, shared: SharedSchemas): CommandOption[];
 }
 export const sectorWire: ModeWire<Snapshot> = {
   commands({ uint, positive, index }) {
@@ -88,10 +90,23 @@ export const sectorWire: ModeWire<Snapshot> = {
       layoutId: text, layoutHash: text, playerCount, manifest: z.array(text).min(1).max(128)
     }).strict();
   },
-  endRecord: (_p, { telemetry }) => z.object({ mode: z.literal('sector'), record: telemetry }).strict()
+  endRecord: (_p, { telemetry }) => z.object({ mode: z.literal('sector'), record: telemetry }).strict(),
+  events: () => []
 };
+/** The duel's summary and round record (sim/duel/summary.ts), the fields of each in order. */
+function duelSummaryShape({ uint }: Primitives) {
+  const pair = z.tuple([uint, uint]);
+  const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
+    .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'terminal causes out of order or repeated');
+  const losses = z.object(Object.fromEntries(MISSILE_LOSSES.map((k) => [k, uint])) as Record<(typeof MISSILE_LOSSES)[number], typeof uint>).strict();
+  return { outcome: z.number().int().min(0).max(3), ticks: uint, terminal: z.tuple([causes, causes]),
+    laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: pair,
+    laserMisses: pair, layersStripped: pair, missileLosses: z.tuple([losses, losses]), planetContacts: pair, asteroidContacts: pair,
+    baits: uint, consoleSwaps: uint, helmEmptyTicks: uint, weaponsEmptyTicks: uint, enemyInArcTicks: uint, weaponsIdleTicks: uint,
+    repairsStarted: pair, walkingTicks: pair, repairingTicks: pair };
+}
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
- *  header (sim/duel/snapshot.ts). */
+ *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event. */
 export const duelWire: ModeWire<DuelSnapshot> = {
   commands({ index }) {
     return [
@@ -101,6 +116,7 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('laserLock'), room: index }).strict(),
       z.object({ kind: z.literal('laserCharge'), held: z.boolean() }).strict(),
       z.object({ kind: z.literal('missileLaunch') }).strict(),
+      z.object({ kind: z.literal('rematch') }).strict(),
       z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
     ];
   },
@@ -110,15 +126,13 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       layoutId: text, layoutHash: text, seed: u32, mapHash: z.string().regex(/^[0-9a-f]{8}$/), hash: z.string().regex(/^[0-9a-f]{8}$/)
     }).strict();
   },
-  /** The frozen end summary (sim/duel/summary.ts). Never null: the duel rules compute it on the step that ends the duel
-   *  and on the restore of an ended duel, before any `ended` event is published. */
-  endRecord({ uint }) {
-    const pair = z.tuple([uint, uint]);
-    const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
-      .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'terminal causes out of order or repeated');
-    const duelSummary = z.object({ outcome: z.number().int().min(0).max(3), ticks: uint, terminal: z.tuple([causes, causes]),
-      laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: pair }).strict();
-    return z.object({ mode: z.literal('duel'), record: duelSummary }).strict();
+  /** The frozen end summary (sim/duel/summary.ts). Never null: an ended duel always carries its summary. */
+  endRecord(p) {
+    return z.object({ mode: z.literal('duel'), record: z.object(duelSummaryShape(p)).strict() }).strict();
+  },
+  /** A decided round's record: the summary plus its round, seed and base tick (H-2 spec §7). */
+  events(p) {
+    return [z.object({ kind: z.literal('round'), record: z.object({ ...duelSummaryShape(p), round: p.uint, seed: p.u32, baseTick: p.uint }).strict() }).strict()];
   }
 };
 function messageSchemaFor<S extends { header: unknown }>(playerLimit: number, wire: ModeWire<S>) {
@@ -158,7 +172,8 @@ const payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cue'), cue: z.enum(['alarm', 'impact', 'shot', 'hit', 'ready', 'jump', 'upgrade', 'victory', 'defeat', 'callout']) }).strict(),
   z.object({ kind: z.literal('callout'), player, text: z.string().min(1).max(256), station: index.nullable() }).strict(),
   z.object({ kind: z.literal('pause'), paused: z.boolean(), owner: player.nullable(), reason: text }).strict(),
-  z.object({ kind: z.literal('ended'), record: wire.endRecord(prims, { telemetry }) }).strict()
+  z.object({ kind: z.literal('ended'), record: wire.endRecord(prims, { telemetry }) }).strict(),
+  ...wire.events(prims, { telemetry })
 ]);
 const state = z.object({
   runId: text, tick: uint, publicationSequence: positive, snapshot, hash: text, phase: z.enum(['running', 'paused', 'ended', 'error']),

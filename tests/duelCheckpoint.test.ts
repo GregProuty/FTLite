@@ -23,7 +23,7 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
  *  progress (found by stepping the scripted duel; the test asserts all three). */
 const SEED = 7, SPLIT = 5156;
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
-  while (!duelRules.terminal(h.state, h.init).ended && duelRules.tick(h.state) < until) {
+  while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
   }
 }
@@ -47,15 +47,16 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(duelRules.hash(resumed.state)).toBe(splitHashes.at(-1));
         runToEnd(resumed, driver, splitHashes);
         expect(splitHashes).toEqual(referenceHashes);
-        const end = duelRules.terminal(reference.state, reference.init);
-        expect(end.ended).toBe(true);
-        expect(duelRules.terminal(resumed.state, resumed.init)).toEqual(end);
+        // A decided round is the end card, never the end of the run (H-2 spec §7): its summary is the session's.
+        expect(duelRules.terminal(reference.state, reference.init)).toEqual({ ended: false, endRecord: null });
+        const end = reference.state.summary;
+        expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
-        expect(end.endRecord).toEqual({ mode: 'duel', record: { outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: [['missile'], []], laserReleases: [11, 28], laserHits: [2, 28], missilesLaunched: [2, 5], missileHits: [0, 5], repairsFinished: [7, 9] } });
-        expect(Object.isFrozen(end.endRecord!.record)).toBe(true);
+        expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
+          terminal: [['missile'], []], laserReleases: [11, 28], laserHits: [2, 28], missilesLaunched: [2, 5], missileHits: [0, 5], repairsFinished: [7, 9] });
+        expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
-        console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end.endRecord!.record)}`);
+        console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);
       } finally { resumed.core.dispose(); }
     } finally { reference.core.dispose(); split.core.dispose(); }
   }, 120_000);
@@ -135,7 +136,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
   it('the duel codec admits exactly the duel modules\' command kinds plus the core\'s setPaused', () => {
     const codec = duelCodec(2), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
     const examples: Record<string, unknown> = { sit: { kind: 'sit', station: 0 }, stand: { kind: 'stand' }, presence: { kind: 'presence', present: true },
-      laserLock: { kind: 'laserLock', room: 1 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' } };
+      laserLock: { kind: 'laserLock', room: 1 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' } };
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]);
     expect(kinds.sort()).toEqual(Object.keys(examples).sort());
     for (const command of [...kinds.map((k) => examples[k]), { kind: 'setPaused', paused: true }]) expect(codec.decodeMessage(codec.encodeMessage(envelope(command)))).toEqual(envelope(command));

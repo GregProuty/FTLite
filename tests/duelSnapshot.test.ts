@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as duelState from '../src/renderer/src/sim/duel/state';
 import { hashF64 } from '../src/shared/hash';
 import { flattenDuel, hashDuel, mapHash } from '../src/renderer/src/sim/duel/hash';
-import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
+import { loadDuelSnapshot, MAX_DUEL_ROUNDS, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
@@ -101,7 +101,7 @@ describe('the duel snapshot (spec §6)', () => {
       const twice = structuredClone(good);   // the free entry claims the flying missile's owner: two missiles for one ship
       twice.values[names.get(`${free}.active`)!] = 1; twice.values[names.get(`${free}.owner`)!] = owner; twice.header.hash = hashF64(Float64Array.from(twice.values));
       expect(() => validateDuelSnapshot(CUTTER, twice, DIGEST)).toThrow(new RegExp(`ship ${owner} has two missiles in flight`));
-      const interiorAt = at + 5, fieldsAt = interiorAt;
+      const interiorAt = at + 5 + 4, fieldsAt = interiorAt;   // after presence, repair and the round module (H-2)
       for (const [k, value, error] of [[0, 1e6, /interior sim version/], [1, 12345, /interior layout/], [2, 12345, /interior layout/], [5, 1, /crew count/], [9, 3, /crew count/]] as const) {
         const snap = structuredClone(good); snap.values[fieldsAt + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `interior[${k}] = ${value}`).toThrow(error);
@@ -111,11 +111,38 @@ describe('the duel snapshot (spec §6)', () => {
         const snap = structuredClone(good); snap.values[k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST)).toThrow(/presence|repair/);
       }
+      // The round module (H-2 spec §7): a round index, the Helm player, a base tick no later than the tick, and a
+      // decided tick that is −1 exactly while the round runs.
+      for (const [k, value, error] of [[0, -1, /round -1/], [0, 0.5, /round 0.5/], [0, MAX_DUEL_ROUNDS + 1, /round 1025 is invalid/], [0, 1, /round 1 is invalid/],
+        [1, 2, /helm player/], [2, 5157, /base tick/], [2, -1, /base tick/], [3, 7, /decided tick/]] as const) {
+        const snap = structuredClone(good); snap.values[at + 5 + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
+        expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `round[${k}] = ${value}`).toThrow(error);
+      }
+      // Round n begins no earlier than tick 2n (a deciding step and a rematch step per round before it).
+      for (const [round, base] of [[1, 1], [MAX_DUEL_ROUNDS, 2 * MAX_DUEL_ROUNDS - 1]] as const) {
+        const snap = structuredClone(good); snap.values[at + 5] = round; snap.values[at + 5 + 2] = base; snap.header.hash = hashF64(Float64Array.from(snap.values));
+        expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `round ${round} at base ${base}`).toThrow(new RegExp(`round ${round} is invalid`));
+      }
       expect(created).not.toHaveBeenCalled();
       // Positive control: the spy does intercept snapshot.ts's createDuel, so the assertion above can fail.
       disposeDuel(loadDuelSnapshot(CUTTER, good, DIGEST));
       expect(created).toHaveBeenCalledTimes(1);
       created.mockRestore();
+      // A decided round (the hunter down on tick 1, then five end-card ticks): its decided tick lies between the base tick and the tick.
+      const dd = createDuel(CUTTER, 7);
+      try {
+        dd.tactical.systems[1].hull = 0;
+        for (let k = 0; k < 6; k++) stepDuelTick(dd, { held: [], commands: [] });
+        expect([dd.tactical.outcome, dd.decidedTick, dd.interior.tick]).toEqual([Outcome.CrewWins, 1, 6]);
+        const card = saveDuelSnapshot(dd, DIGEST);
+        let ra = 1;
+        for (const m of TACTICAL_MODULES) for (const f of m.fields(dd.tactical)) ra += f.count;
+        ra += 5;   // after presence and repair
+        for (const [base, value] of [[0, -1], [1, 0], [0, 7]] as const) {   // −1; base tick − 1; tick + 1
+          const snap = structuredClone(card); snap.values[ra + 2] = base; snap.values[ra + 3] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
+          expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `decided tick ${value} at base ${base}`).toThrow(/decided tick/);
+        }
+      } finally { disposeDuel(dd); }
     } finally { disposeDuel(d); }
   });
   it('accepts every state the scripted duels reach (seeds 1, 4 and 7, every 30 ticks)', () => {

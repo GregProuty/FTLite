@@ -38,7 +38,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['events', 'interior', 'nav', 'points', 'present', 'repair', 'tactical', 'weapons']);
+    expect(Object.keys(createDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'tactical', 'weapons']);
   });
   it('disposeDuel is idempotent', () => {
     const d = createDuel(layout, 5);
@@ -239,15 +239,16 @@ describe('the duel tick', () => {
     };
     expect(run()).toBe(run());
   });
-  it('keeps the interior and tactical ticks together, and stops when the duel ends', () => {
+  it('keeps the interior and tactical ticks together, and a decided round keeps ticking with nothing to report (H-2 spec §7)', () => {
     const d = createDuel(layout, 5);
     for (let t = 0; t < 10; t++) step(d);
     expect([d.interior.tick, d.tactical.tick]).toEqual([10, 10]);
     d.tactical.systems[0].hull = 0;
     step(d);
     expect(d.tactical.outcome).toBe(Outcome.EnemyWins);
+    expect(d.decidedTick).toBe(11);
     expect(step(d)).toEqual([]);
-    expect([d.interior.tick, d.tactical.tick]).toEqual([11, 11]);
+    expect([d.interior.tick, d.tactical.tick, d.decidedTick]).toEqual([12, 12, 11]);
   });
 });
 

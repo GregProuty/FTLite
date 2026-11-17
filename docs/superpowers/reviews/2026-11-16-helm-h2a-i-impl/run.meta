@@ -1,0 +1,11 @@
+topic=helm-h2a-i-impl
+subject_kind=impl
+subject=scripts/bless-golden.ts scripts/golden/duelOracle.ts scripts/profile-duel-publication.ts src/network/modes/duel.ts src/renderer/src/authority/core.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/authority/duelRules.ts src/renderer/src/authority/replay.ts src/renderer/src/authority/rules.ts src/renderer/src/net/codec.ts src/renderer/src/net/contracts.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/seeds.ts src/renderer/src/sim/duel/snapshot.ts src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/summary.ts src/renderer/src/sim/duel/telemetry.ts src/renderer/src/sim/replay.ts src/renderer/src/sim/tuning.ts tests/blessGuard.test.ts tests/codecModeWire.test.ts tests/commandUnion.test.ts tests/duel.test.ts tests/duelCache.test.ts tests/duelCheckpoint.test.ts tests/duelMode.test.ts tests/duelModules.test.ts tests/duelRematchGolden.test.ts tests/duelRounds.test.ts tests/duelSnapshot.test.ts tests/duelSummary.test.ts tests/fixtures/determinism-v2.json tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/helpers/duelAuthority.ts tests/helpers/liveDuel.ts tests/helpers/scriptedDuel.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\h2a-i
+base=b19761a
+cap=10
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-16
+head_at_setup=d15c705
