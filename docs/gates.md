@@ -744,7 +744,16 @@ Spec `docs/superpowers/specs/2026-11-16-art-ii-bought-art-design.md`, plan `docs
 - [ ] Automated (Art-ii): `npm test` passes, including the palette builder (determinism, kept explosion colours, overrides, k = 48 minus kept, 48 kept colours failing), the LimeZu crew (facing fold, slot pick, foot anchor and carry offset, downed rotation and reset, seated facing, callout lift), the Maru consoles (names, one-frame outputs, wall-face placement on even units, quarter turns, look tints, no strip or cursor), the Pimen blasts (one per hit room, one spark per opening, cap 4, frames from the presentation clock, cleared on reset) and each feature's fallback; `npx tsc -b` clean.
 - [ ] Owner-local palette check (needs the packs in `C:\Users\djuar\FTLite-assets`): `npm run art:palette` then `npm run art:import` leaves `git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json` clean.
 - [ ] Owner check before any public release: the Maru-98 (https://maru-98.itch.io/) and Pimen (https://pimen.itch.io/explosion-effect) packs ship no licence text; read their store pages' terms (commercial use, credit, redistribution inside a built game) and record them here. LimeZu's `LICENSE.txt` (read 2026-11-16) allows commercial use and editing, forbids resale and redistribution of the asset itself, and requires credit; the credits screen carries all three credit lines.
+- [ ] **2-Minute Tabletop Hound art (CC BY-NC 4.0)**: the duel ship's painting is non-commercial. Before any sale, get a commercial licence from 2-Minute Tabletop or replace the art. (Art-iv, 2026-11-16)
 - [ ] Owner look gate (`npm run dev`, and the screenshots in `C:\Users\djuar\FTLite-shots\art-ii\`): the crew, the consoles and the hits; does the interior now look like a game? Date and notes: pending.
+
+## Art-iii: set dressing (2026-11-17)
+
+Spec `docs/superpowers/specs/2026-11-17-art-iii-set-dressing-design.md`, plan `docs/superpowers/plans/2026-11-17-art-iii-set-dressing.md`. Views and art only: SIM_VERSION and the goldens are unchanged; no ship layout changes.
+
+- [ ] Automated (Art-iii): `npm test` passes, including the room kinds (Cutter, Skiff, starter and the generic rules), the candidates (none on or next to a station, door, magazine; none next to a breach or airlock; no spawn or lamp tile), the slots (deterministic, never touching, the fit rule, nothing past a wall, the Cutter and Skiff pinned), the prop layer (placement through consolePlacement, directly over the tiles in both views, rebuilt only on its key, empty without propArt), the manifest entries and the unchanged palette counts; `npx tsc -b` clean.
+- [ ] Owner-local palette check (needs the packs in `C:\Users\djuar\FTLite-assets`): `npm run art:palette` then `npm run art:import` leaves `git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json` clean.
+- [ ] Owner look gate (`npm run dev`, and the screenshots in `C:\Users\djuar\FTLite-shots\art-iii\`): do the rooms read as lived-in, and do any props sit where crew walk in a way that looks wrong? Known look points: the Cutter's Crew Quarters bunk at the north wall sits behind the crew at their spawns; the Galley's locker and couch touch end to end on the east side. Date and notes: pending.
 
 ## Helm demo (Helm spec §16; H-2 spec §8 to §11)
 

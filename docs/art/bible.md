@@ -53,6 +53,7 @@ Each effect family uses one ramp, bright to dark, 5 to 8 palette colours, listed
   - `crew.p<k>.stand.<d>`, `crew.p<k>.idle.<d>`, `crew.p<k>.walk.<d>` for k 0-3, d n e s w (`crewArt`, LimeZu, 48 names): the tinted Puny crew without them. Player slot `pid % 4` wears sheet 04, 07, 13 or 19.
   - `console.<STATION_IDS id>` (`consoleArt`, Maru-98, 7 names): the procedural desks, screen strips and cursor blink without them.
   - `fx.blast.room`, `fx.blast.hit` (`blastArt`, Pimen): no blasts without them. `explosion-big.png` is imported but unbound.
+  - `prop.bunk.a`, `prop.bunk.b`, `prop.seats`, `prop.couch`, `prop.locker.a`, `prop.locker.b`, `prop.crate` (`propArt`, Maru-98, 7 names; Art-iii): bare floor without them. Placed by rule from the room's name and system (`render/propModel.ts`), never from ship data; each sprite's back is at the top of its art and it turns by quarter turns onto its wall. Each is a one-frame output of a rectangle another output already lists, so the palette does not move.
 
 ## Adding a pack
 
@@ -62,3 +63,11 @@ Each effect family uses one ramp, bright to dark, 5 to 8 palette colours, listed
 4. `npm run art:import`, then look at `.art/contact.png`.
 5. Bind the names in `public/assets/manifest.json`: licence `paid`, `required: false`, `source` the store page URL, `retrieved` the purchase date, the credit line, and `modifications` `frames cut and remapped to the FTLite house palette by npm run art:import` with `editedBy` `FTLite art import`. Register new names as optional in `src/renderer/src/render/assetNames.ts` and group them as a feature in `fallback.ts`, with a drawing path for when they are missing (a fresh clone has no paid files).
 6. `npm run credits`, and commit the manifest, the generated notices and credits, `art/import.json` and (if rebuilt) `palette.json`, never the PNGs.
+
+## Painted battlemaps (Art-iv)
+
+- A painted ship (the 2-Minute Tabletop Hound) is the one exception to the 16 px, palette and whole-number rules. It is smoothly filtered with mipmaps and keeps its own colours.
+- Two game tiles per map square, with the painted wall lines on tile centres.
+- Doors, hazards, lights and particles draw over it unchanged.
+- Crew are tokens on it.
+- The fit uses the painted bounds.

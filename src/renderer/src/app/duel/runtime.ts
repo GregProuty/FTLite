@@ -146,7 +146,7 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
 export type DuelView = 'helm' | 'weapons' | 'interior';
 
 export interface DuelRuntimeDeps extends FlightRuntimeDeps {
-  /** The Cutter (spec parent §8). */
+  /** The duel ship, the Hound (spec parent §8). */
   layout: ShipLayout;
   /** Drop the keyboard's held keys and press edges (Tab and restart, spec §4, §5). */
   clearKeys?(): void;

@@ -1,0 +1,72 @@
+{
+  "verdict": "ready",
+  "findings": [
+    {
+      "severity": "P3",
+      "title": "The 'deterministic' check only reads propSlots' own cache, so it proves nothing",
+      "claim": "The per-ship test calls `expect(propSlots(stateOf(layout))).toEqual(slots)` straight after `propSlots(s)`. Both states share one propKey, so the second call returns the cached array itself. The determinism the spec lists as a unit test is never recomputed.",
+      "evidence": "plan L204 (test); plan L360-L367 and L391 (the one-entry module cache: `if (cached && cached.key === key) return cached.slots`); spec L71 ('propSlots (deterministic for a layout; ...)'); plan L1127 self-review claims it is covered.",
+      "why": "If propSlots ever picked up non-determinism (an unstable sort, a Set's iteration order), this test would still pass. Risk is low because the function is pure apart from the cache.",
+      "fix": "Clear the cache before recomputing: call `propSlots` on a state with a different key in between (for example the renamed-Skiff trick at L231, or another ship), then `expect(propSlots(stateOf(layout))).toEqual(slots)`. Or compare against `structuredClone(slots)` after evicting."
+    },
+    {
+      "severity": "P3",
+      "title": "Decision 5 says the starter slots are pinned in the test, but the test only counts them",
+      "claim": "Decision 5 says the listed slots, including the starter's (18,1) n, (4,8) n, (5,10) s and (1,10) s, are 'pinned in tests/propModel.test.ts'. The test pins exact slots only for the Cutter and Skiff; for the starter it checks only the counts (Crew Quarters 3, Medbay 1).",
+      "evidence": "plan L44 ('computed by propSlots, pinned in tests/propModel.test.ts') and L47 (the starter tiles); plan L198-L200 (only counts the starter); spec L71 requires only the Cutter and Skiff pinned.",
+      "why": "The spec is met, but a reader of Decision 5 or the gate text would think the starter's positions are under test when they are not.",
+      "fix": "Either pin the starter's four slots with `toEqual` like the Cutter's, or reword Decision 5 to 'Cutter and Skiff pinned; the starter's slots as computed (its counts are tested)'."
+    },
+    {
+      "severity": "P3",
+      "title": "The packs countColours test decodes every real pack twice under the default 5 s timeout",
+      "claim": "The new `it.runIf` test calls `countColours(cfg, read)` and `countColours(without, read)` with one `packReader`. `countColours` caches packs only within a call and `packReader` does not cache at all, so every pack (Maru, four LimeZu character sheets, three Pimen sheets) is decoded twice by pngjs. It is the first test to read the owner's real packs, and it runs under vitest's default 5 s timeout (vitest.config.ts:L10 sets none).",
+      "evidence": "plan L471-L476; scripts/art/buildPalette.ts:L37-L41 (per-call `packs` Map), L158-L163 (`packReader` reads with no cache); the existing buildPalette.test.ts:L26/L49 uses fixtures only; plan L91 and L928 already note load timeouts in the full suite.",
+      "why": "Under a loaded full run this could add another intermittent timeout on the owner's machine. Fresh clones skip the test.",
+      "fix": "Wrap the reader in a memo (`const cache = new Map(); const read = (p) => cache.get(p) ?? (cache.set(p, raw(p)), cache.get(p))`) so each pack is decoded once, and/or pass a timeout (`it.runIf(...)(name, fn, 30_000)`)."
+    },
+    {
+      "severity": "P3",
+      "title": "The sector view rebuilds the propKey string every frame",
+      "claim": "`draw` calls `propKey(state)` every frame before it can return early. That builds a string from the layout hash and every room's `name/system` (17 rooms on the Cutter), about 60 times a second in the sector view and the duel.",
+      "evidence": "plan L719-L723 (propLayer.draw); plan L356-L358 (propKey); plan L786-L789 (called every frame after tiles.update).",
+      "why": "Small garbage-collection churn on a path that almost never changes; not a correctness issue.",
+      "fix": "Optionally check `state.layout` identity first (`if (state.layout === drawnLayout) return;`) and only compute propKey when the layout object changes, keeping propKey as the real cache key."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "consolePlacement(side, flush, w, h), SIDE_ROTATION, WALL_GAP and type Side exist in consoleModel.ts with the assumed shapes (consoleModel.ts:L20, L22, L100, L106-L115). I recomputed the placement test's four expectations by hand from that code: n 12x16 gives left 4, top -10, 24x32; e 14x23 gives left -4, top 2, 46x28; s 14x22 gives left 2, top -2, 28x44; w 25x15 gives left -10, top -10, 30x50. All match plan L660-L663.",
+    "The fit rule: propDepth = 2*h - WALL_GAP equals the turned rectangle's reach past the candidate's wall-side tile edge for every side (for s, top = T+10-H, so the reach is H-10). floorDepth counts the candidate plus the consecutive same-room tiles away from the wall, 32 units each (plan L309-L318), which matches spec L54.",
+    "Derived field names and types: stationTile, edgeTile, siteTile, airlockTile are Int32Arrays; magazineTile is -1 without one; roomTiles, roomOfTile, layoutHash: string, width, height (derived.ts:L7-L25, L51, L56, L59, L64, L81, L97). layoutHash covers rows, room ids, edges, sites, airlocks, stations, spawns and the magazine, but not room names or systems (derived.ts:L72-L83), so the renamed-Skiff key test (plan L231-L236) holds.",
+    "lampPoints uses Math.min(...tiles) as the lamp tile (gradeModel.ts:L104). hashString(s) and hashU32(a, b) exist (particles/random.ts:L5, L12) and are used with the same seeding as the wall vents (particles/sources.ts:L190, L194).",
+    "Hand check, Cutter Upper Hold: the lamp (5,3), door (4,3), door (5,4) and breach (5,2) leave (6,3) and (7,3), both side n with floor depth 32. A crate (22) fits and a locker (56) does not; the second candidate is crowded out. One crate at (7,3) n is consistent (cutter.json rows L9-L11, edges, breach sites).",
+    "Hand check, Cutter Crew Quarters: the doors (12,2), (14,4) and (10,5), the spawns (11,4), (12,4), (13,4) and (11,5), the breach (10,3) and the lamp (11,3) leave exactly (13,3) n and (13,5) e, two apart. floorDepth((13,5), e) is 96, matching plan L183 and pinned slots L193.",
+    "Hand check, Cutter Galley: the only candidates are (13,7) n, (11,8) w and (13,9) e, none adjacent. All three take names, and the locker (56) fits at (13,7) with depth 96. The locker's y range 214-280 meets the couch's 280-326, touching as Decision 6 says. Medbay: only (17,3) n and (15,5) s survive the station (16,4), the doors and the breach (15,2). The (15,5) s bunk spans y 158-202, ending on the south wall face at 202.",
+    "Hand check, Skiff: the Medbay's tiles are all excluded, because (7,2) neighbours the corridor breach (7,3), a wall tile. The Hold keeps (8,6) n and (9,7) e, which are diagonal, so one crate (skiff.json rows L7-L15, L28-L63). Both match plan L46 and L197.",
+    "Lower Hold and Aft Store have no candidates (the magazine (6,9), doors (2,8), (4,9) and (5,8), the breaches and the lamps cover every tile), as spec L57 says.",
+    "Test helpers exist with the assumed shapes: createSimState(layout, players, seed, characters) in tests/helpers/simLifetime.ts:L10 (wrapping sim/state.ts:L106), RECRUITS in tests/helpers/sim.ts:L28, parseShip and ShipLayout in schema.ts:L124-L126. Rooms are `{id, name, system: string|null}` (schema.ts:L14). createDuel, disposeDuel and `interior: SimState` are in duel/state.ts:L23, L46, L71.",
+    "Every exact replacement string in Tasks 1-3 exists verbatim: BLAST_NAMES (assetNames.ts:L10), `add('optional', ...BLAST_NAMES);` (L30), the fallback import, Feature union and blastArt line (fallback.ts:L1, L5, L19), renderer.ts:L16, L65, L72-L73 and L102-L103, interiorView.ts:L10, L54, L60, L63 and L71, and duelInterior.test.ts:L83 and L85.",
+    "Container order: the only tests that index the world's children are duelInterior.test.ts:L81-L86, where kids[1] and the lights index 9 become kids[2] and 10. kids.length - lights - 1 = 4 still holds. No source indexes world children (grep for world.children, getChildIndex and addChildAt in src finds nothing). interiorFeel only freezes AnimatedSprites under the world. Scene.ts addChildAt indexes the scene, not the world.",
+    "Record<Feature, ...> appears only in fallback.ts:L7, so adding 'propArt' to the union and FEATURE_NAMES compiles; no other exhaustive Feature map exists.",
+    "The propLayer test's fakeAssets copies consoleArt.test.ts:L28-L41 exactly. With every feature except propArt missing, every other layer in createInteriorView (tiles, effects, crew, desks, feel) takes its fallback path through featureReady, so no non-prop texture() call is reached.",
+    "Fallback: the existing duelInterior assets list every FEATURE_NAMES name as missing (duelInterior.test.ts:L27), so propArt is not ready there, the layer stays empty, and the warm-up test's display-object count is unchanged.",
+    "artGuards walks render/ dynamically and adds two tests per .ts file (artGuards.test.ts:L38-L53), so two new files make +4. propModel and propLayer import only `type SimState` from the sim and no rng module.",
+    "art/import.json already lists all seven rectangles: furniture.png at (97,49,14,22), (129,48,14,23), (16,88,25,15) and (88,88,23,15), and lockers.png at (19,29,18,33), (59,29,18,33) and (90,96,12,16) (import.json:L127-L223). countColours counts each pack+rectangle once (buildPalette.ts:L42-L45), so the counts cannot move. There are 19 outputs today, so 26 after.",
+    "The manifest has 38 file entries today, so 45 after. The new entries copy the existing Maru paid entries field for field (manifest.json:L543-L557, L1046-L1058) and satisfy parseManifest's paid rules (manifest.ts:L16-L24, L47). Both JSON files are pure JSON.stringify(\u2026, 2) style (no compact arrays or objects), so the scripts' rewrite causes no formatting churn. Both scripts refuse to run twice (plan L536, L555). `.art/` is gitignored (.gitignore:L18). art:import writes only under public/assets/paid and .art/contact.png (importCore.ts:L118-L145).",
+    "Handling of the palette's CRLF line endings: `git diff --exit-code` then `git checkout --`, and palette.json is never staged (plan L23, L545, L938; spec deviation stated at L1119).",
+    "Task order: Task 1 adds only PROP_ART_NAMES and PropName, which propModel needs. Task 2 consumes Task 1's PROP_SIZE. Task 3 consumes the propArt feature from Task 2. No task needs a later one.",
+    "tsconfig.web.json includes tests/ and scripts/ but not .art/ (tsconfig.web.json:L10), so the gitignored scratch scripts never reach `tsc -b`. noUncheckedIndexedAccess is handled in the new code (`!`, `?.`, `?? []`).",
+    "No task touches src/renderer/src/sim, authority, src/network or src/shared. Task 5 Step 2 checks this with a git diff against 9b42772 and the golden tests.",
+    "public/assets/paid/maru holds exactly the 12 PNGs Step 0.1 expects.",
+    "The new test counts add up: propModel 2 + 3 + 1 + 1 + 3 + 1 = 11, propArt 4, propLayer 5, artGuards +4, so +24 in +3 files."
+  ],
+  "not_verified": [
+    "The hash order (hashU32 per tile) that decides which of two candidates wins, and so the exact pinned tiles: (7,3) rather than (6,3), (15,5) rather than (17,3), (9,7) rather than (8,6), and which Galley tile takes seats, couch or locker. I confirmed every pinned slot is one of the legal candidates and the counts are right, but I did not compute the hashes. The tests were not run.",
+    "The starter ship's four slots ((18,1) n, (4,8) n, (5,10) s, (1,10) s): I did not read starter.json's rows; only its room names (starter.json:L21-L29) were checked.",
+    "That every sprite's back is at the top of its art (Decision 3): this needs the paid sheets viewed by eye.",
+    "The exact expected output strings: the art:import 'wrote ...' lines, 'credits.generated.ts (13 lines)', '6141 chars', 'missing optional names: 17' in the screenshot log, 'Tests 233 passed' in Task 3, and the 3838/3862 totals. The suite was not run, as the brief requires.",
+    "That Vite 7 accepts `envDir: false` and that the harness's `define` covers every global the renderer needs (.art/shots/vite.config.mjs at plan L997-L1003): the plan reports these were run in a prototype.",
+    "How long the new it.runIf countColours test takes on the owner's real packs (it decodes each pack twice)."
+  ]
+}

@@ -1,10 +1,8 @@
 // The F3 latency overlay (H-2 spec §9): the live median and 95th percentile of the held and command delays on either
-// machine of an online duel, with the link's route and RTT. One self-contained module: `latencyOverlayLines` is the pure
-// model (plain strings, so a React view can render the same lines), `createLatencyOverlay` is the thin Pixi draw on
-// the stage above the duel scene, and `createKeyToggle` is the F3 switch. The duel scene itself is not touched.
-import { BitmapText, type Container } from 'pixi.js';
+// machine of an online duel, with the link's route and RTT. `latencyOverlayLines` is the pure model (plain strings) and
+// `createKeyToggle` is the F3 switch; the online session hands the lines to the UI store's latency sink, and the thin
+// React view (ui/duel/LatencyOverlay.tsx) draws them over the duel (H-2b Decision 5, after UI-ii). No Pixi here.
 import type { LatencyFigure } from '../../net/duelRecord';
-import { FONT_NATIVE, TEXT } from '../theme';
 
 /** The key that shows and hides the overlay. */
 export const OVERLAY_CODE = 'F3';
@@ -36,19 +34,3 @@ export function createKeyToggle(target: KeyTarget, code = OVERLAY_CODE) {
   target.addEventListener('keydown', down as (e: never) => void);
   return { on: () => on, destroy(): void { target.removeEventListener('keydown', down as (e: never) => void); } };
 }
-
-/** The Pixi draw: one text block in the top-left corner, added to `stage` last so it sits over the duel scene. */
-export function createLatencyOverlay(stage: Container, fontFamily: string) {
-  const text = new BitmapText({ text: '', style: { fontFamily, fontSize: FONT_NATIVE } });
-  text.tint = TEXT; text.position.set(12, 12); text.visible = false;
-  stage.addChild(text);
-  return {
-    /** Show `lines`, or hide the overlay with null. */
-    draw(lines: readonly string[] | null): void {
-      text.visible = lines !== null;
-      if (lines) { const next = lines.join('\n'); if (text.text !== next) text.text = next; }
-    },
-    destroy(): void { stage.removeChild(text); text.destroy(); }
-  };
-}
-export type LatencyOverlay = ReturnType<typeof createLatencyOverlay>;

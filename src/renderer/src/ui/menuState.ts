@@ -22,8 +22,16 @@ export interface MenuState {
 }
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
 export interface SettingsSlice { available: boolean; volume: number; fullscreenAvailable: boolean; controls: readonly ControlSection[] }
-export interface LayoutSlice { stripHeight: number }
-export interface UiState { menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice }
+/** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
+export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
+export interface UiState {
+  menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice;
+  duel: import('./views').DuelUiView | null; flight: import('./views').FlightUiView | null;
+  /** The online duel's F3 latency overlay lines (H-2b); null while hidden. */
+  latency: readonly string[] | null;
+  /** Bumped by a sink each time its slice goes null -> non-null: the regions' error-boundary reset keys (spec §2). */
+  epochs: { duel: number; flight: number };
+}
 export type MenuView = Pick<UiState, 'menu' | 'online'>;
 
 export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0, swapped: false };

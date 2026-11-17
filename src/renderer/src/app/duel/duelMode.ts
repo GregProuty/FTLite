@@ -5,17 +5,19 @@ import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { ShipLayout } from '../../sim/ship/schema';
 import type { Renderer } from '../../render/renderer';
 import { computeLetterbox } from '../../render/letterbox';
-import { endModel } from '../../render/duel/endScreen';
+import { endModel } from '../../render/duel/endModel';
 import type { DuelPlaytestRecord } from '../../net/duelRecord';
 import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
 import { createDuelRuntime } from './runtime';
+import type { DuelSink } from '../../ui/sinks';
 import { createDuelScene } from './scene';
 import { soloRecorder } from './soloRecorder';
 
 export interface DuelModeDeps {
   renderer: Renderer;
   seed: number;
-  /** The Cutter. */
+  ui: DuelSink;
+  /** The duel ship (the Hound). */
   layout: ShipLayout;
   /** The preload bridge's suspend and resume hooks, when present; their unsubscribes run on dispose. */
   lifecycle?: { onSuspend(cb: () => void): (() => void) | void; onResume(cb: () => void): (() => void) | void };
@@ -29,7 +31,7 @@ export interface DuelModeDeps {
 export function startDuelMode(deps: DuelModeDeps): () => void {
   const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H };
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME${exitHint}`;
-  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText });
+  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui });
   const canvas = renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource);
   const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {

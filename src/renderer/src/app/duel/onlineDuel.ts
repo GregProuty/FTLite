@@ -19,18 +19,21 @@ import type { DuelRoundRecord } from '../../sim/duel/summary';
 import { Outcome } from '../../sim/tactical/state';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { computeLetterbox } from '../../render/letterbox';
-import { endModel } from '../../render/duel/endScreen';
-import { createKeyToggle, createLatencyOverlay, latencyOverlayLines, type KeyTarget, type LatencyOverlay } from '../../render/duel/latencyOverlay';
+import { endModel } from '../../render/duel/endModel';
+import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../render/duel/latencyOverlay';
 import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
 import { createDuelKeyboard, createPointerSource, emptyPresses, type EventSource, type KeySample } from './input';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
+import type { DuelSink, LatencySink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
 
 export interface OnlineDuelDeps {
-  renderer: Renderer; now(): number; scheduler: Scheduler; contentDigest: string; resolveLayout(id: string): ShipLayout;
+  renderer: Renderer; ui: DuelSink; now(): number; scheduler: Scheduler; contentDigest: string; resolveLayout(id: string): ShipLayout;
+  /** The F3 latency overlay's React sink (H-2b Decision 5): frame(lines) shows it, clear() hides it; absent, no overlay. */
+  latency?: LatencySink;
   api: Pick<OnlinePreloadApi, 'viewState' | 'linkStats'>;
   /** Leave the online session as the menu's Leave does (Escape on the end card, then Enter). */
   leave(): void;
@@ -77,7 +80,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
   const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
-  let route: 'lan' | 'internet' | null = null, rttMs: number | null = null, lastPoll = -Infinity, polling = false, overlay: LatencyOverlay | null = null;
+  let route: 'lan' | 'internet' | null = null, rttMs: number | null = null, lastPoll = -Infinity, polling = false;
   const sample = (round: number[], recent: number[], ms: number): void => { round.push(ms); recent.push(ms); if (recent.length > LIVE_SAMPLES) recent.shift(); };
   const transport = (): DuelPlaytestRecord['transport'] => (status?.role === 'host' ? 'loopback' : route);
   function pollLink(): void {
@@ -225,7 +228,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
       descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
-      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED' });
+      scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });
@@ -242,21 +245,19 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     frame(): void {
       if (disposed) return;
       // Nothing to draw: hide the overlay rather than freeze it.
-      if (!scene || !source) { overlay?.draw(null); return; }
+      if (!scene || !source) { deps.latency?.clear(); return; }
       const now = deps.now(), dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 1 / 60; lastFrame = now;
-      const d = state(); if (!d) { overlay?.draw(null); return; }
+      const d = state(); if (!d) { deps.latency?.clear(); return; }
       source.frame(dt, focused && !blocked ? cameraKeys : null, focused && !blocked ? pointer.sample() : null);
       cameraKeys = keysOnly(sampleIdle());
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
       scene.draw(source, dt, { banner: bannerText(), layerPaused: false, end: endModel(d.tactical.outcome, ticks, 'ENTER: REMATCH   ESC: LEAVE'), notice: now < noticeUntil ? notice : null });
-      if (debug.on()) {
-        overlay ??= createLatencyOverlay(deps.renderer.app.stage, deps.renderer.assets.fontFamily);
-        overlay.draw(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs }));
-      } else overlay?.draw(null);
+      if (debug.on()) deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs }));
+      else deps.latency?.clear();
     },
     dispose(): void {
       if (disposed) return; disposed = true; cancel(); release();
-      keyboard.destroy(); pointer.destroy(); debug.destroy(); overlay?.destroy(); overlay = null; scene?.dispose(); scene = null;
+      keyboard.destroy(); pointer.destroy(); debug.destroy(); deps.latency?.clear(); scene?.dispose(); scene = null;
       if (frozen) disposeDuel(frozen); frozen = null;
     }
   };

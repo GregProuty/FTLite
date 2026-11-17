@@ -11,7 +11,7 @@ import { createDuelProducers } from '../src/network/modes/duelProducers';
 import { duelMode } from '../src/network/modes/duel';
 import { createDuelRemoteClient } from '../src/network/modes/duelStream';
 import { validStreamAttachmentOptions } from '../src/shared/hostProcessProtocol';
-import { duelInit, resolveCutter } from './helpers/duelAuthority';
+import { duelInit, modeDuelInit, resolveCutter } from './helpers/duelAuthority';
 import { linkPair } from './helpers/linkPair';
 import { onlineDuel } from './helpers/onlineDuel';
 import { ownTestCleanup } from './helpers/simLifetime';
@@ -174,7 +174,7 @@ describe('the duel mode host wiring (spec §6)', () => {
     const host = duelMode.createHost({ contentDigest: DIGEST, clock: { nowMs: () => now }, onCrash(r) { throw Error(JSON.stringify(r.diagnostic)); },
       scheduler: { schedule: (_, cb) => { callbacks.add(cb); return () => { callbacks.delete(cb); }; } } });
     ownTestCleanup(() => host.dispose());
-    host.start(new TextEncoder().encode(JSON.stringify(duelInit(2, 'wired'))));
+    host.start(new TextEncoder().encode(JSON.stringify(modeDuelInit(2, 'wired'))));
     const pairs = [linkPair('p0'), linkPair('p1')];
     const detach = pairs.map((p, seat) => host.attach(p.host.link, [seat], 'receive-time', { streamed: true, latestPayloadLimit: 16088, origin: 'remote' }));
     const clients = pairs.map((p, seat) => createDuelRemoteClient(p.guest.link, [seat], { runId: 'wired', contentDigest: DIGEST, resolveLayout: resolveCutter, clock: { nowMs: () => now } }));

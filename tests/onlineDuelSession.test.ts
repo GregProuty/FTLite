@@ -13,6 +13,8 @@ import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/main/network/onlineDuel';
 import { CUTTER } from './helpers/scriptedDuel';
+import { createDuelSink } from '../src/renderer/src/ui/sinks';
+import { createUiStore } from '../src/renderer/src/ui/store';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
@@ -43,7 +45,8 @@ function stubClient() {
 }
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
-  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[], overlay: [] as (readonly string[] | null)[]
+  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[], overlay: [] as (readonly string[] | null)[],
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -55,12 +58,17 @@ vi.mock('../src/network/portLink', () => ({
 }));
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
-  createDuelScene: () => ({ draw: (_source: unknown, _dt: number, opts: { banner: string | null }) => { h.draws.push({ banner: opts.banner }); }, dispose() {} })
-}));
-// The F3 overlay's Pixi draw: the lines (or null for hidden) it was last given.
-vi.mock('../src/renderer/src/render/duel/latencyOverlay', async (actual) => ({
-  ...(await actual<typeof import('../src/renderer/src/render/duel/latencyOverlay')>()),
-  createLatencyOverlay: () => ({ draw: (lines: readonly string[] | null) => { h.overlay.push(lines); }, destroy() {} })
+  // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
+    h.sceneOpts.push(opts);
+    return {
+      draw: (_source: unknown, _dt: number, o: { banner: string | null }) => {
+        h.draws.push({ banner: o.banner });
+        opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
+      },
+      dispose() { h.disposes.n++; opts.ui.clear(); }
+    };
+  }
 }));
 // Imported after the mocks are registered (vi.mock is hoisted above every import).
 import { createOnlineDuelSession } from '../src/renderer/src/app/duel/onlineDuel';
@@ -86,14 +94,16 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.disposes.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
-function rig(seat: 0 | 1, api: object = {}) {
+function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}) {
   let now = 1000, pending: (() => void) | null = null;
   const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createDuel(CUTTER, 7);
+  // The F3 overlay's sink: the lines it was last given, or null once hidden.
+  const latency = { frame: (lines: readonly string[]) => { h.overlay.push(lines); }, clear: () => { h.overlay.push(null); } };
   const session = createOnlineDuelSession({
-    renderer: { app: { canvas: target() }, assets: { fontFamily: 'test' } } as never, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
+    renderer: { app: { canvas: target() } } as never, ui: ui as never, latency, now: () => now, contentDigest: DIGEST, resolveLayout: () => CUTTER,
     scheduler: { schedule: (_ms, cb) => { pending = cb; return () => { if (pending === cb) pending = null; }; } },
     api: { viewState: async () => ({ ok: true }), ...api } as never, leave, recordDuel: (r) => { records.push(r); }
   });
@@ -121,6 +131,21 @@ function rig(seat: 0 | 1, api: object = {}) {
   };
   return r;
 }
+
+describe('the online duel session clears its UI on leave (React UI spec §2)', () => {
+  it('passes deps.ui to the scene; dispose disposes it once and the duel slice goes null', () => {
+    const store = createUiStore({ onlineAvailable: true }), sink = createDuelSink(store);
+    const r = rig(0, sink);
+    r.attach(); r.session.frame();
+    expect(h.sceneOpts).toHaveLength(1);
+    expect(h.sceneOpts[0]!.ui).toBe(sink);
+    expect(h.draws.length).toBeGreaterThan(0);
+    expect(store.getState().duel).not.toBeNull();
+    r.dispose();
+    expect(h.disposes.n).toBe(1);
+    expect(store.getState().duel).toBeNull();
+  });
+});
 
 describe('the online duel session (H-2 spec §3, §6, §7)', () => {
   it('presence is the first command once the client is ready, on every attach', () => {
@@ -234,7 +259,7 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     const flush = () => new Promise((done) => setTimeout(done, 0));
     for (const [seat, role] of [[1, 'guest'], [0, 'host']] as const) {
       let stats: { route: 'lan' | 'internet'; rttMs: number } | null = null;
-      const r = rig(seat, { linkStats: async () => stats }), c = r.attach();
+      const r = rig(seat, undefined, { linkStats: async () => stats }), c = r.attach();
       await flush();   // the attach-time poll (no figures yet) settles, so every sample below is taken
       r.session.setStatus({ phase: 'running', role } as OnlineStatus);
       // 1001 ms per step: a 1000 ms step can land a float hair under LINK_POLL_MS and skip a poll. The median (60)
@@ -251,7 +276,7 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
   it('the F3 overlay drops the live RTT when main has no figure (the label stays) and hides when there is nothing to draw', async () => {
     const flush = () => new Promise((done) => setTimeout(done, 0));
     let stats: { route: 'lan' | 'internet'; rttMs: number } | null = null;
-    const r = rig(1, { linkStats: async () => stats }); r.attach(); await flush();
+    const r = rig(1, undefined, { linkStats: async () => stats }); r.attach(); await flush();
     stats = { route: 'internet', rttMs: 40 }; r.pump(1001); await flush();
     r.key('keydown', 'F3'); r.session.frame();
     expect(h.overlay.at(-1)).toContain('RTT 40 MS');

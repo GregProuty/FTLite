@@ -1,5 +1,5 @@
 {
-  "$comment": "npm run art:import (Art-i spec section 3). Art-ii: Maru-98 Mars sets (floors, props, consoles), LimeZu Modern Interiors premade crew 04/07/13/19, Pimen Explosion VFX 28/6/21. Rectangles picked with a bounding-box pass over each sheet.",
+  "$comment": "npm run art:import (Art-i spec section 3). Art-ii: Maru-98 Mars sets (floors, props, consoles), LimeZu Modern Interiors premade crew 04/07/13/19, Pimen Explosion VFX 28/6/21. Art-iv: the 2-Minute Tabletop Hound battlemap, raw and mirrored. Rectangles picked with a bounding-box pass over each sheet.",
   "outputs": [
     {
       "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
@@ -1836,6 +1836,105 @@
         }
       ],
       "output": "public/assets/paid/maru/console-medbay.png",
+      "columns": 1
+    },
+    {
+      "pack": "2mt-hound/hound.png",
+      "frames": [{ "x": 0, "y": 0, "w": 2100, "h": 1540 }],
+      "output": "public/assets/paid/2mt/hound.png",
+      "columns": 1,
+      "remap": false,
+      "flipX": true
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 97,
+          "y": 49,
+          "w": 14,
+          "h": 22
+        }
+      ],
+      "output": "public/assets/paid/maru/prop-bunk-a.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 129,
+          "y": 48,
+          "w": 14,
+          "h": 23
+        }
+      ],
+      "output": "public/assets/paid/maru/prop-bunk-b.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 16,
+          "y": 88,
+          "w": 25,
+          "h": 15
+        }
+      ],
+      "output": "public/assets/paid/maru/prop-seats.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 88,
+          "y": 88,
+          "w": 23,
+          "h": 15
+        }
+      ],
+      "output": "public/assets/paid/maru/prop-couch.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/mars-tools/Mars Tools.png",
+      "frames": [
+        {
+          "x": 19,
+          "y": 29,
+          "w": 18,
+          "h": 33
+        }
+      ],
+      "output": "public/assets/paid/maru/prop-locker-a.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/mars-tools/Mars Tools.png",
+      "frames": [
+        {
+          "x": 59,
+          "y": 29,
+          "w": 18,
+          "h": 33
+        }
+      ],
+      "output": "public/assets/paid/maru/prop-locker-b.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/mars-tools/Mars Tools.png",
+      "frames": [
+        {
+          "x": 90,
+          "y": 96,
+          "w": 12,
+          "h": 16
+        }
+      ],
+      "output": "public/assets/paid/maru/prop-crate.png",
       "columns": 1
     }
   ]

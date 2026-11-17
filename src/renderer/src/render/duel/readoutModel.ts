@@ -1,14 +1,14 @@
 // The duel's side readout (H-1 spec §7 item 9, §8): both hulls, the shield pips, the room levels and repair, the
 // Weapons extras (lock, charge, hold timer, magazine), the other character's status and, standing, the strip about the
 // ship outside. Pure (it draws nothing): rows of label and value that the panel draws; every row fits the 220-px column
-// (tested). The ship colours come from the map-view layer so both screens agree.
+// (tested). The ship colours come from shipColours.ts so both screens agree.
 import type { DuelState } from '../../sim/duel/state';
 import { missileOf, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { AMBER, DIM, TEXT, WARN, GOOD } from '../theme';
-import { CREW_SHIP, ENEMY_SHIP } from '../tactical/tacticalLayer';
+import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
 import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 
@@ -46,7 +46,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
   const rows: ReadoutRow[] = [
     heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : 'ON FOOT', AMBER),
-    heading('CUTTER', CREW_SHIP),
+    heading(d.interior.layout.id.toUpperCase(), CREW_SHIP),
     row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT),
     { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP } }
   ];

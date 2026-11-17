@@ -1,19 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { Container } from 'pixi.js';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
 import { Outcome, placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
-import { createEndScreen, endModel } from '../src/renderer/src/render/duel/endScreen';
-import { createReadoutPanel } from '../src/renderer/src/render/duel/readoutPanel';
+import { endModel } from '../src/renderer/src/render/duel/endModel';
 import { readoutHelp, readoutRows, READOUT_ROWS, READOUT_W, type ReadoutInput, type ReadoutMode } from '../src/renderer/src/render/duel/readoutModel';
 import { PAD, textPx } from '../src/renderer/src/render/theme';
 
 const layout = parseShip(cutter);
-const count = (c: Container): number => c.children.reduce((n, k) => n + 1 + count(k as Container), 0);
 const pairs = (input: ReadoutInput) => readoutRows(input).map((r) => [r.label, r.value]);
 
 describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
@@ -27,6 +25,13 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     ]);
     expect(rows[3]!.pips).toMatchObject({ n: 1, max: 2 }); expect(rows[9]!.pips).toMatchObject({ n: 2, max: 2 });
     disposeDuel(d);
+  });
+  it('the crew-ship heading comes from the layout id (Art-iv): HOUND for the Hound duel, CUTTER for the Cutter', () => {
+    for (const [ship, name] of [[hound, 'HOUND'], [cutter, 'CUTTER']] as const) {
+      const d = createDuel(parseShip(ship), 5);
+      expect(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' })[1]!.label).toBe(name);
+      disposeDuel(d);
+    }
   });
   it('repair progress is a bar on the damaged room row', () => {
     const d = createDuel(layout, 5);
@@ -71,20 +76,6 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     }
     disposeDuel(d);
   });
-  it('the panel: a warm-up of 2 frames, then 60 frames across all three screens add no display objects', () => {
-    const d = createDuel(layout, 5), panel = createReadoutPanel({ fontFamily: 'm5x7' });
-    const modes: ReadoutMode[] = ['helm', 'weapons', 'interior'];
-    const frame = (k: number): void => {
-      const mode = modes[Math.floor(k / 7) % 3]!;
-      d.tactical.systems[0].rooms[Room.Engines] = k % 3; d.repair[Room.Engines] = (k * 40) % REPAIR_UNITS;
-      panel.draw(readoutRows({ duel: d, mode, active: 0, other: 'WALKING' }), readoutHelp(mode));
-    };
-    frame(0); frame(1);
-    const n0 = count(panel.container);
-    for (let k = 2; k < 62; k++) frame(k);
-    expect(count(panel.container)).toBe(n0);
-    disposeDuel(d);
-  });
 });
 
 describe('the end screen (H-1 spec §4 End)', () => {
@@ -94,12 +85,5 @@ describe('the end screen (H-1 spec §4 End)', () => {
     expect(endModel(Outcome.EnemyWins, 60, 'ENTER: REMATCH')!.title).toBe('DEFEAT');
     expect(endModel(Outcome.CrewWins, 60, 'ENTER: REMATCH   ESC: LEAVE')!.prompt).toBe('ENTER: REMATCH   ESC: LEAVE');   // online (H-2 spec §7)
     expect(endModel(Outcome.Draw, 60, 'ENTER: REMATCH')!.title).toBe('BOTH SHIPS LOST');
-  });
-  it('shows only while the duel is decided, and allocates nothing after creation', () => {
-    const end = createEndScreen({ fontFamily: 'm5x7' }), n0 = count(end.container);
-    end.draw(null); expect(end.container.visible).toBe(false);
-    end.draw(endModel(Outcome.CrewWins, 600, 'ENTER: REMATCH')); expect(end.container.visible).toBe(true);
-    end.draw(endModel(Outcome.EnemyWins, 1200, 'ENTER: REMATCH'));
-    expect(count(end.container)).toBe(n0);
   });
 });
