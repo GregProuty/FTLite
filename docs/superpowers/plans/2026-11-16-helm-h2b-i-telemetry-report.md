@@ -58,12 +58,14 @@ Each is the recommendation, taken under the standing order. The owner can overtu
 1. **The route label** (spec §8: "a host candidate is `lan`; srflx or relay is `internet`") **(rec.; one addition)**. The hidden window labels the selected pair from its local and remote candidate stats:
    - any relay, or a server-reflexive candidate on either side, is `internet`;
    - two host candidates are `lan`;
-   - **addition:** a peer-reflexive remote, which the spec does not mention, is `lan` only when its address is private, link-local, loopback or mDNS (`.local`), and otherwise `internet`. Chromium reports a LAN peer as peer-reflexive when its connectivity check beats the candidate signal.
+   - **addition:** a peer-reflexive candidate on either side, which the spec does not mention, is judged by its address: `lan` when it is private, link-local, loopback or mDNS (`.local`), `internet` when it is any other readable address. Chromium reports a LAN peer as peer-reflexive when its connectivity check beats the candidate signal, and it leaves a remote peer-reflexive candidate's address out of its stats. A remote one with no readable address is then decided from the local side: a local host candidate at a private address means the far side reached a private address, so `lan`. Otherwise the route is unknown (null), never a guessed `internet`.
+   - An unknown route sends no figures, so the record's `transport` stays null (the schema admits it) and the report reads the room's network as unknown (the LAN limit in fallback check 1).
 
    The address is read inside the hidden window only; just the label leaves it.
-2. **The figures' path** **(rec.)**. The controller sends a `stats` response (`rttMs`, `route`) once a second for a ready attempt whose peer has sampled a route. `rtcTransport.onStats` forwards it for ready attempts only. The session keeps the newest per ready peer link and drops figures older than 5 s (`LINK_STATS_MAX_AGE_MS`). The renderer asks through `online:link-stats`: no argument, the trusted visible window only, and a validated `{ route, rttMs }` or null.
+2. **The figures' path** **(rec.)**. The controller sends a `stats` response (`rttMs`, `route`) once a second for a ready attempt whose peer has sampled a route and a real RTT. `rtcTransport.onStats` forwards it for ready attempts only. The session keeps the newest per ready peer link and drops figures older than 5 s (`LINK_STATS_MAX_AGE_MS`). The renderer asks through `online:link-stats`: no argument, the trusted visible window only, and a validated `{ route, rttMs }` or null.
    - A pull channel rather than a field in `OnlineStatus`: the status is strict, validated everywhere and pushed on change, and a once-a-second push would re-render the menu.
-   - `RtcPeer.route?`, `TransportController.onStats?`, `OnlineSessionOwner.linkStats?` and `OnlinePreloadApi.linkStats?` are optional, so the existing fakes and tests compile unchanged.
+   - The peer keeps the RTT as `number | null` beside the route: a missing or invalid `currentRoundTripTime` is null, not 0, and no `stats` response is sent without a real RTT. `diagnostics()` keeps its 0 for its existing callers.
+   - `RtcPeer.linkFigures?`, `TransportController.onStats?`, `OnlineSessionOwner.linkStats?` and `OnlinePreloadApi.linkStats?` are optional, so the existing fakes and tests compile unchanged.
 3. **`rttMs` is the median of the round's once-a-second samples** (spec §9: "the link's RTT from `link.stats()`"). The renderer's link is the local MessagePort, whose `stats()` has no network RTT (H-2a Decision 5), so the figure is the hidden window's selected pair's `currentRoundTripTime`. **The host's records carry the RTT too**: that of its own RTC link to the guest, measured from the host side. Its `transport` stays `loopback` as the spec says.
 4. **The guest's label persists** **(rec.)**. Once main has reported a route, later records keep it even when a poll returns null (a link being replaced). A guest record before any figure reads `transport: null` and `rttMs: null`, as in H-2a.
 5. **F3 lives in one module beside the scene, not in it** (spec §9: "A debug overlay (F3) shows the live median and p95 on either machine"):
@@ -77,7 +79,7 @@ Each is the recommendation, taken under the standing order. The owner can overtu
    - `seat` is the character the keyboard drives when the round is decided;
    - `pauses` counts the round's Escape pauses.
 7. **Rooms, not "keyed by room seed"** (spec §8) **(deviation)**. A record does not carry its room's runId or first seed, and a round's seed cannot be walked back to round 0's.
-   - The report chains rounds instead: a round follows another when its index is one more, its seed is `followingSeed` of the previous one and its base tick is not before the previous round's end.
+   - The report chains rounds instead: a round follows another when its index is one more, its seed is `followingSeed` of the previous one and its base tick is not before the previous round's end. Rounds are chained in round-index order (then by time), so a skew between the two PCs' clocks cannot split a room.
    - A room is keyed by its first round's seed: `seed-<n>`, or `seed-<n>-r<k>` when round 0's record is missing.
    - Each round takes its summary from the host's record (the guest's when the host's is missing). Each room takes its transport from its guest records (the most common non-null label).
    - The owner's **sessions** are sittings and live in the checklist: each lists its rooms, so the LAN checklist's step 9 re-host belongs to the same sitting.
@@ -85,13 +87,13 @@ Each is the recommendation, taken under the standing order. The owner can overtu
    - "Both weapons used in every duel" is the crew ship's `laserReleases[0] > 0` and `missilesLaunched[0] > 0` in every round; the hunter's weapons do not count.
    - The round length is `summary.ticks / 60`.
    - "Both outcomes" is at least one `CrewWins` and one `EnemyWins`; a draw counts for neither.
-   - The live targets cover every online round in the files given, so pass only the session files.
+   - With a checklist, the live targets and the planet extra cover only the rounds of the rooms its sessions list, and the report says so. The checklist runs share the day's files with the §16 sessions and cannot be split from them by file. The report lists the rooms no session claims (left out) and any room a session lists that no record has. Without a checklist, the targets cover every online round in the files and the report prints a warning.
    - The planet extra: no round with `EnemyWins`, `planet` among the crew ship's terminal causes, and under 1,800 ticks.
    - The demo is done when the checklist rule and the three live targets all hold.
 9. **The fallback checks** (spec §9) **(rec.)**:
    - (1) A record of the Helm's own machine (`seat === helmPlayer`) whose held p95 is over its room's limit: 150 ms for `lan`, 250 ms for `internet`, and the LAN limit when the network is unknown.
    - (2) `helmLaggy` is true in two or more sessions.
-   - (3) A session with a LAN room whose question 1 is yes while its `guestHelmQ1` is no.
+   - (3) A session whose rooms all share one known network (`lan` or `internet`) whose question 1 is yes while its `guestHelmQ1` is no. Both checklists schedule a guest-Helm round so this can be evaluated (spec §9), and the guest-Helm penalty is largest on the internet. A session mixing networks, or with an unknown one, is not judged.
 10. **The checklist JSON:** `{ version: 1, sessions: [{ id, rooms, pair: 'owner' | 'non-owner' | null, answers: [5 × boolean | null], guestHelmQ1, helmLaggy, note }] }`. It is passed with `--checklist=<file>`, or found as `checklist.json` in a directory given. The report always ends with a blank one, one session per room. Its output is Markdown on stdout, ready to paste into `docs/gates.md` and a report under `reports/`. It exits 1 on bad arguments or when no valid record was read. Invalid lines are counted and skipped.
 11. **The duel smoke** (spec §10 step 7) asserts what the records now carry: every host record reads `loopback`, and every guest record reads `lan` with an RTT. The smoke runs on one PC with no ICE servers, so the pair is direct. It also copies both machines' logs to `<report dir>/records/{host,guest}/` and saves `f3-host.png` and `f3-guest.png`. **Its latency figures are not a measurement:** under automation the unfocused window's timers are throttled, which inflates the guest's held delay. Its single 25 s test-seed round fails the live targets by design.
 12. **The "Helm demo" section** is written now, with the rule, the commands and the owner's empty session table. Its status reads "not done" until the owner's sessions.
@@ -122,7 +124,7 @@ Each is the recommendation, taken under the standing order. The owner can overtu
 **Interfaces:**
 - Produces:
   - `route.ts`: `RtcRoute`, `localAddress(value)`, `rtcRoute(local, remote)`.
-  - `peer.ts`: `RtcPeer.route?()`.
+  - `peer.ts`: `RtcPeer.linkFigures?()` (`{ route, rttMs }`, each null until sampled).
   - `controller.ts`: `STATS_MS`.
   - `rtcSession.ts`: the `{ kind: 'stats'; rttMs; route }` response.
   - `rtcTransport.ts`: `RtcLinkStats`, `TransportController.onStats?(cb)`.
@@ -172,10 +174,18 @@ describe('the route label (spec §8)', () => {
     expect(rtcRoute(c('host'), c('host'))).toBe('lan');
     for (const [l, r] of [['relay', 'host'], ['host', 'relay'], ['host', 'srflx'], ['srflx', 'host'], ['relay', 'srflx']]) expect(rtcRoute(c(l!), c(r!))).toBe('internet');
   });
-  it('a peer-reflexive remote is lan only at a local address; unknown records give no label', () => {
+  it('a peer-reflexive candidate is judged by its address, a hidden remote one by the local host candidate; unknown gives no label', () => {
     expect(rtcRoute(c('host'), c('prflx', '192.168.1.20'))).toBe('lan');
     expect(rtcRoute(c('host'), c('prflx', '203.0.113.9'))).toBe('internet');
-    expect(rtcRoute(c('host'), c('prflx'))).toBe('internet');
+    // Chromium hides a remote prflx address: a private local host candidate decides, otherwise the route is unknown.
+    expect(rtcRoute(c('host', '192.168.1.5'), c('prflx'))).toBe('lan');
+    expect(rtcRoute(c('host', '203.0.113.4'), c('prflx'))).toBeNull();
+    expect(rtcRoute(c('host'), c('prflx'))).toBeNull();
+    expect(rtcRoute(c('prflx'), c('prflx'))).toBeNull();
+    // A local prflx candidate is checked by its own address too.
+    expect(rtcRoute(c('prflx', '10.0.0.3'), c('host'))).toBe('lan');
+    expect(rtcRoute(c('prflx', '198.51.100.2'), c('host'))).toBe('internet');
+    expect(rtcRoute(c('prflx'), c('host'))).toBeNull();
     expect(rtcRoute(undefined, c('host'))).toBeNull();
     expect(rtcRoute(c('host'), c('mystery'))).toBeNull();
     for (const a of ['10.0.0.2', '172.16.4.4', '172.31.0.1', '192.168.0.9', '169.254.1.1', '127.0.0.1', 'abcd-1234.local', 'fd12::1', 'fe80::1', '::1']) expect(localAddress(a)).toBe(true);
@@ -192,23 +202,24 @@ describe('the hidden window reports a ready attempt once a second (spec §8)', (
   }
   function rig() {
     const responses: RtcResponse[] = [], timers: { at: number; cb: () => void }[] = [];
-    let now = 0, route: 'lan' | 'internet' | null = null, rttMs = 3.04, resolve!: (link: Link) => void, closeLink = () => {};
+    let now = 0, route: 'lan' | 'internet' | null = null, rttMs: number | null = 3.04, resolve!: (link: Link) => void, closeLink = () => {};
     const scheduler = { schedule(ms: number, cb: () => void) { const t = { at: now + ms, cb }; timers.push(t); return () => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); }; } };
     const controller = createTransportController({ identity, respond: (r) => responses.push(r), wallNow: () => Date.now(), clock: { nowMs: () => 0 }, scheduler,
       createPeer() { const ready = new Promise<Link>((done) => { resolve = done; });
-        return { ready, close() {}, receiveSignal: async () => {}, route: () => route, diagnostics: () => ({ rttMs, lossPct: 0, bufferedBytes: 0, relayed: false }) }; } });
+        return { ready, close() {}, receiveSignal: async () => {}, linkFigures: () => ({ route, rttMs }), diagnostics: () => ({ rttMs: rttMs ?? 0, lossPct: 0, bufferedBytes: 0, relayed: false }) }; } });
     const link: Link = { peer: 'p', caps: { unreliable: true, maxDatagram: 16088, p2p: true, hidesPeerIp: false }, send() {}, stats: () => ({ rttMs: 0, lossPct: 0, relayed: false, bufferedBytes: 0 }),
       onMessage: () => () => {}, onClose(cb) { closeLink = () => cb('closed'); return () => {}; }, close() { closeLink(); } };
     return { controller, responses, timers, link, resolve: () => resolve(link), closeLink: () => closeLink(),
       advance(ms: number) { now += ms; for (const t of timers.filter((x) => x.at <= now)) { timers.splice(timers.indexOf(t), 1); t.cb(); } },
       set(r: typeof route, ms = rttMs) { route = r; rttMs = ms; } };
   }
-  it('sends nothing until the peer has a route, then its RTT and label only, every STATS_MS; it stops on close', async () => {
+  it('sends nothing until the peer has a route and a real RTT, then its RTT and label only, every STATS_MS; it stops on close', async () => {
     const h = rig();
     h.controller.receive({ version: 1, kind: 'start', hostGeneration: 7, requestId: 1, options: config('a') }, [new Port()]);
     h.resolve(); await Promise.resolve(); await Promise.resolve();
     expect(h.responses.map((r) => r.kind)).toEqual(['port-ready', 'ready']);
     h.advance(STATS_MS); expect(h.responses.filter((r) => r.kind === 'stats')).toEqual([]);   // no sample yet
+    h.set('lan', null); h.advance(STATS_MS); expect(h.responses.filter((r) => r.kind === 'stats')).toEqual([]);   // no RTT in the sample: not a 0 ms figure
     h.set('lan', 3.04); h.advance(STATS_MS); h.set('internet', 41.27); h.advance(STATS_MS);
     const stats = h.responses.filter((r) => r.kind === 'stats');
     expect(stats).toEqual([{ version: 1, hostGeneration: 7, requestId: 1, attemptId: 'a', kind: 'stats', rttMs: 3, route: 'lan' }, { version: 1, hostGeneration: 7, requestId: 1, attemptId: 'a', kind: 'stats', rttMs: 41.3, route: 'internet' }]);
@@ -288,16 +299,21 @@ export function localAddress(value: unknown): boolean {
   if (v4) { const [x, y] = [Number(v4[1]), Number(v4[2])]; return x === 10 || x === 127 || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168) || (x === 169 && y === 254); }
   return a === '::1' || /^f[cd][0-9a-f]{2}:/.test(a) || /^fe[89ab][0-9a-f]:/.test(a);
 }
-/** The route of a selected pair from its local and remote candidate stats records; null when either is unknown.
- *  Any relay, or a server-reflexive candidate on either side, is 'internet'; two host candidates are 'lan'; a
- *  peer-reflexive remote is 'lan' when its address is local (a LAN check that arrived before the candidate signal). */
+/** The route of a selected pair from its local and remote candidate stats records; null when it is unknown.
+ *  Any relay, or a server-reflexive candidate on either side, is 'internet'; two host candidates are 'lan'. A
+ *  peer-reflexive candidate (a LAN check that arrived before the candidate signal) is judged by its address. Chromium
+ *  hides a remote one's address: then a local host candidate at a private address decides 'lan', and otherwise the
+ *  route is unknown rather than a guessed 'internet'. */
 export function rtcRoute(local: unknown, remote: unknown): RtcRoute | null {
   if (!rtcRecord(local) || !rtcRecord(remote)) return null;
   const types = [local.candidateType, remote.candidateType];
   if (!types.every(t => t === 'host' || t === 'srflx' || t === 'prflx' || t === 'relay')) return null;
   if (types.includes('relay') || types.includes('srflx')) return 'internet';
-  if (remote.candidateType === 'prflx') return localAddress(remote.address ?? remote.ip) ? 'lan' : 'internet';
-  return 'lan';
+  const at = (c: Record<string, unknown>): unknown => c.address ?? c.ip;
+  const judged = (c: Record<string, unknown>): RtcRoute | null => { const a = at(c); return typeof a === 'string' && a !== '' ? (localAddress(a) ? 'lan' : 'internet') : null; };
+  const near = local.candidateType === 'prflx' ? judged(local) : 'lan';
+  const far = remote.candidateType === 'prflx' ? judged(remote) ?? (local.candidateType === 'host' && localAddress(at(local)) ? 'lan' : null) : 'lan';
+  return near === 'internet' || far === 'internet' ? 'internet' : near === 'lan' && far === 'lan' ? 'lan' : null;
 }
 ````
 
@@ -327,8 +343,9 @@ with:
 
 ````ts
   readonly ready: Promise<Link>; receiveSignal(signal: unknown): Promise<void>; close(reason: string): void; diagnostics(): LinkStats;
-  /** The selected pair's route from the last stats sample (H-2 spec §8), null before one; never a candidate or address. */
-  route?(): RtcRoute | null;
+  /** The selected pair's route and RTT from the last stats sample (H-2 spec §8), each null before one or when unknown
+   *  (a missing currentRoundTripTime is null, not 0); never a candidate or address. */
+  linkFigures?(): { route: RtcRoute | null; rttMs: number | null };
 }
 ````
 
@@ -344,7 +361,7 @@ with:
 
 ````ts
   let cancelSetup: (() => void) | undefined, cancelStats: (() => void) | undefined;
-  let chain = Promise.resolve(), sampled = { rttMs: 0, lossPct: 0, relayed: false }, route: RtcRoute | null = null;
+  let chain = Promise.resolve(), sampled = { rttMs: 0, lossPct: 0, relayed: false }, route: RtcRoute | null = null, rtt: number | null = null;
   let resolveReady!: (link: Link) => void, rejectReady!: (reason: Error) => void;
 ````
 
@@ -363,11 +380,12 @@ with:
 
 ````ts
         sampled={rttMs:finite(pair.currentRoundTripTime,60)*1000,lossPct:received+lost>0?100*lost/(received+lost):0,relayed:(rtcRecord(local)&&local.candidateType==='relay') || (rtcRecord(remote)&&remote.candidateType==='relay')};
-        route=rtcRoute(local,remote);
+        const seconds=pair.currentRoundTripTime;
+        route=rtcRoute(local,remote); rtt=typeof seconds==='number' && Number.isFinite(seconds) && seconds>=0 && seconds<=60?seconds*1000:null;
       }
     }catch{} finally{if(alive())scheduleStats();}
   }
-  const api: RtcPeer={ready,receiveSignal,close:()=>fail('rtc-closed'),diagnostics,route:()=>route};
+  const api: RtcPeer={ready,receiveSignal,close:()=>fail('rtc-closed'),diagnostics,linkFigures:()=>({route,rttMs:rtt})};
   try {
 ````
 
@@ -432,12 +450,12 @@ with:
 
 ````ts
         respond({ ...stamp, kind: 'ready', latestPayloadLimit: link.caps.maxDatagram });
-        // The link figures (H-2 spec §8) once a second: the RTT and the route label only, once the peer has sampled one.
+        // The link figures (H-2 spec §8) once a second: the RTT and the route label only, once the peer has sampled both.
         let cancelStats = () => {};
         const report = () => {
           if (closed) return;
-          const route = peer!.route?.() ?? null, rttMs = peer!.diagnostics().rttMs;
-          if (route && Number.isFinite(rttMs) && rttMs >= 0 && rttMs <= 60000) respond({ ...stamp, kind: 'stats', rttMs: Math.round(rttMs * 10) / 10, route });
+          const { route, rttMs } = peer!.linkFigures?.() ?? { route: null, rttMs: null };
+          if (route && rttMs !== null && Number.isFinite(rttMs) && rttMs >= 0 && rttMs <= 60000) respond({ ...stamp, kind: 'stats', rttMs: Math.round(rttMs * 10) / 10, route });
           cancelStats = scheduler.schedule(STATS_MS, report);
         };
         cancelStats = scheduler.schedule(STATS_MS, report);
@@ -891,13 +909,16 @@ with:
     for (const [seat, role] of [[1, 'guest'], [0, 'host']] as const) {
       let stats: { route: 'lan' | 'internet'; rttMs: number } | null = null;
       const r = rig(seat, { linkStats: async () => stats }), c = r.attach();
+      await flush();   // the attach-time poll (no figures yet) settles, so every sample below is taken
       r.session.setStatus({ phase: 'running', role } as OnlineStatus);
-      for (const ms of [40, 60, 50]) { stats = { route: 'internet', rttMs: ms }; r.pump(1000); await flush(); }
+      // 1001 ms per step: a 1000 ms step can land a float hair under LINK_POLL_MS and skip a poll. The median (60)
+      // differs from the first (90) and last (70) samples.
+      for (const ms of [90, 60, 40, 50, 70]) { stats = { route: 'internet', rttMs: ms }; r.pump(1001); await flush(); }
       c.events.push(roundEvent(0)); r.pump(); await flush();
       stats = null; r.pump(1000); await flush();   // main has no figures now: the label stays, the next round has no RTT
       c.events.push(roundEvent(1)); r.pump();
       expect(r.records.map((x) => [x.role, x.transport, x.latency.rttMs])).toEqual(role === 'guest'
-        ? [['guest', 'internet', 50], ['guest', 'internet', null]] : [['host', 'loopback', 50], ['host', 'loopback', null]]);
+        ? [['guest', 'internet', 60], ['guest', 'internet', null]] : [['host', 'loopback', 60], ['host', 'loopback', null]]);
       r.dispose();
     }
   });
@@ -1527,7 +1548,10 @@ describe('the duel playtest report (spec §8, §9)', () => {
   it('prints the Helm §16 rule verbatim', () => {
     const line = readFileSync('docs/superpowers/specs/2026-11-14-helm-demo-design.md', 'utf8').split('\n').find((l) => l.startsWith('**The demo is done**'))!;
     expect(line.replaceAll('**', '').startsWith(DEMO_RULE)).toBe(true);
-    expect(formatReport({ records, invalid: 0, checklist: null, files: 2 })).toContain(`> ${DEMO_RULE}\n`);
+    const report = formatReport({ records, invalid: 0, checklist: null, files: 2 });
+    expect(report).toContain(`> ${DEMO_RULE}\n`);
+    expect(report).toContain('Live targets (4 online round(s)): ');   // no checklist: every online round, with a warning
+    expect(report).toContain('**Warning: no checklist given, so the live targets cover every online round in the files');
   });
   it('merges host and guest files into rooms: summaries from the host, transport from the guest, a missed round kept', () => {
     const { rooms, solo } = groupRooms([...records].reverse());
@@ -1559,8 +1583,11 @@ describe('the duel playtest report (spec §8, §9)', () => {
     expect(latencyRows(rooms).map((r) => [r.room, r.round, r.role, r.console, r.held.p95])).toEqual([
       [`seed-${a}`, 0, 'host', 'Helm', 60], [`seed-${a}`, 0, 'guest', 'Weapons', 60], [`seed-${a}`, 1, 'host', 'Helm', 60], [`seed-${a}`, 1, 'guest', 'Weapons', 60],
       [`seed-${a}`, 2, 'host', 'Helm', 60], [`seed-${b}`, 0, 'host', 'Weapons', 60], [`seed-${b}`, 0, 'guest', 'Helm', 300]]);
-    const checklist: Checklist = { version: 1, sessions: [session('s1', [`seed-${a}`], 'owner', [true, true, true, true, true], { guestHelmQ1: false, helmLaggy: true }), session('s2', [`seed-${b}`], 'non-owner', [false, true, true, true, true], { helmLaggy: true })] };
-    expect(evaluateFallbacks(rooms, checklist)).toEqual({ helmDelay: [`seed-${b} round 0 (guest Helm p95 300 ms)`], laggy: ['s1', 's2'], guestHelm: ['s1'], trips: true });
+    // Check 3 judges a session on one known network, LAN (s1) or internet (s2); mixed (s3) or unknown (s4) rooms are not judged.
+    const checklist: Checklist = { version: 1, sessions: [session('s1', [`seed-${a}`], 'owner', [true, true, true, true, true], { guestHelmQ1: false, helmLaggy: true }),
+      session('s2', [`seed-${b}`], 'non-owner', [true, true, true, true, true], { guestHelmQ1: false, helmLaggy: true }),
+      session('s3', [`seed-${a}`, `seed-${b}`], 'owner', [true, true, true, true, true], { guestHelmQ1: false }), session('s4', ['seed-1'], 'owner', [true, true, true, true, true], { guestHelmQ1: false })] };
+    expect(evaluateFallbacks(rooms, checklist)).toEqual({ helmDelay: [`seed-${b} round 0 (guest Helm p95 300 ms)`], laggy: ['s1', 's2'], guestHelm: ['s1', 's2'], trips: true });
     const calm = groupRooms(records.filter((r) => r.seed !== b)).rooms;
     expect(evaluateFallbacks(calm, { version: 1, sessions: [session('s1', [`seed-${a}`], 'owner', [true, true, true, true, true], { guestHelmQ1: true })] }).trips).toBe(false);
   });
@@ -1575,7 +1602,7 @@ describe('the duel playtest report (spec §8, §9)', () => {
     try {
       writeFileSync(join(dir, 'duel-2026-11-16.jsonl'), records.filter((r) => r.role === 'host').map((r) => JSON.stringify(r)).join('\n') + '\n');
       writeFileSync(join(dir, 'guest.jsonl'), records.filter((r) => r.role === 'guest').map((r) => JSON.stringify(r)).join('\n') + '\nbroken\n');
-      writeFileSync(join(dir, 'checklist.json'), JSON.stringify({ version: 1, sessions: [session('s1', [`seed-${a}`], 'owner', [true, true, true, true, true])] }));
+      writeFileSync(join(dir, 'checklist.json'), JSON.stringify({ version: 1, sessions: [session('s1', [`seed-${a}`, 'seed-1'], 'owner', [true, true, true, true, true])] }));
       const run = (args: string[]) => new Promise<{ code: number | null; out: string }>((done) => {
         const child = spawn(process.execPath, [resolve('node_modules/tsx/dist/cli.mjs'), 'scripts/duel-playtest-report.ts', ...args], { windowsHide: true });
         let out = ''; child.stdout.on('data', (c: Buffer) => { out += c.toString(); }); child.stderr.resume(); child.once('exit', (code) => done({ code, out }));
@@ -1585,6 +1612,9 @@ describe('the duel playtest report (spec §8, §9)', () => {
       expect(report.out).toContain(`> ${DEMO_RULE}`);
       expect(report.out).toContain('2 file(s), 8 valid record(s), 1 invalid line(s) skipped.');
       expect(report.out).toContain('Checklist: 1 session(s)');
+      // The live targets cover the checklist's rooms only; room B is reported unclaimed, seed-1 as listed but missing.
+      expect(report.out).toContain('Live targets (3 online round(s) in the rooms the checklist lists): ');
+      expect(report.out).toContain(`Rooms no checklist session lists (left out of the live targets): seed-${b}. Rooms a session lists that no record has: seed-1.`);
       expect(report.out).toContain('**H-2c starts: yes.**');
       expect(report.out).toContain('## Solo rounds');
       expect(report.out).toContain('"session-2"');
@@ -1663,8 +1693,9 @@ export function groupRooms(records: readonly DuelPlaytestRecord[]): { rooms: Roo
     if (r.role === 'guest' && !entry.guest) entry.guest = r;
     rounds.set(key, entry);
   }
+  // Round index first, so every round k - 1 is placed before round k whichever machine's clock wrote it; then by time.
   const started = (e: RoomRound): string => (e.host ?? e.guest)!.startedAtIso;
-  const ordered = [...rounds.values()].sort((a, b) => started(a).localeCompare(started(b)) || a.round - b.round);
+  const ordered = [...rounds.values()].sort((a, b) => a.round - b.round || started(a).localeCompare(started(b)));
   const rooms: Room[] = [];
   for (const e of ordered) {
     const open = e.round === 0 ? undefined : rooms.find((room) => follows(room.rounds.at(-1)!, e));
@@ -1732,8 +1763,8 @@ export function latencyRows(rooms: readonly Room[]): LatencyRow[] {
 }
 export interface FallbackEvaluation { helmDelay: string[]; laggy: string[]; guestHelm: string[]; trips: boolean }
 /** Spec §9's H-2c criteria: (1) the Helm machine's held p95 over the session network's limit in a round (an unknown
- *  network uses the LAN limit); (2) "the Helm felt laggy" in two sessions; (3) a LAN session whose question 1 is yes
- *  with the host at the Helm but no with the guest at the Helm. */
+ *  network uses the LAN limit); (2) "the Helm felt laggy" in two sessions; (3) a session on one known network (lan or
+ *  internet) whose question 1 is yes with the host at the Helm but no with the guest at the Helm. */
 export function evaluateFallbacks(rooms: readonly Room[], checklist: Checklist | null): FallbackEvaluation {
   const helmDelay = latencyRows(rooms).filter((row) => {
     const room = rooms.find((r) => r.key === row.room)!, limit = room.transport === 'internet' ? HELM_P95_LIMIT_MS.internet : HELM_P95_LIMIT_MS.lan;
@@ -1741,8 +1772,11 @@ export function evaluateFallbacks(rooms: readonly Room[], checklist: Checklist |
   }).map((row) => `${row.room} round ${row.round} (${row.role} Helm p95 ${row.held.p95} ms)`);
   const sessions = checklist?.sessions ?? [];
   const laggy = sessions.filter((s) => s.helmLaggy === true).map((s) => s.id);
-  const lan = (s: ChecklistSession) => s.rooms.some((key) => rooms.find((r) => r.key === key)?.transport === 'lan');
-  const guestHelm = sessions.filter((s) => lan(s) && s.answers[0] === true && s.guestHelmQ1 === false).map((s) => s.id);
+  const oneNetwork = (s: ChecklistSession): boolean => {
+    const nets = new Set(s.rooms.map((key) => rooms.find((r) => r.key === key)?.transport ?? null)), [only] = [...nets];
+    return nets.size === 1 && (only === 'lan' || only === 'internet');
+  };
+  const guestHelm = sessions.filter((s) => oneNetwork(s) && s.answers[0] === true && s.guestHelmQ1 === false).map((s) => s.id);
   return { helmDelay, laggy, guestHelm, trips: helmDelay.length > 0 || laggy.length >= 2 || guestHelm.length > 0 };
 }
 
@@ -1752,12 +1786,19 @@ const yes = (b: boolean): string => (b ? 'yes' : 'NO');
  *  the latency table, the fallback checks, the solo rounds apart, then the blank checklist JSON. */
 export function formatReport(input: { records: readonly DuelPlaytestRecord[]; invalid: number; checklist: Checklist | null; files: number }): string {
   const { rooms, solo } = groupRooms(input.records), out: string[] = [];
-  const rule = evaluateRule(input.checklist), online = evaluateTargets(roomRounds(rooms)), fallback = evaluateFallbacks(rooms, input.checklist);
+  // With a checklist, the live targets and the planet extra cover only the rooms its sessions list: the LAN and internet
+  // checklist runs share the day's files with the §16 sessions.
+  const claimed = new Set(input.checklist?.sessions.flatMap((s) => s.rooms) ?? []);
+  const judged = input.checklist ? rooms.filter((room) => claimed.has(room.key)) : rooms;
+  const unclaimed = rooms.filter((room) => !claimed.has(room.key)).map((room) => room.key), missing = [...claimed].filter((key) => !rooms.some((room) => room.key === key));
+  const rule = evaluateRule(input.checklist), online = evaluateTargets(roomRounds(judged)), fallback = evaluateFallbacks(rooms, input.checklist);
   out.push('# Helm demo playtest report', '', `${input.files} file(s), ${input.records.length} valid record(s), ${input.invalid} invalid line(s) skipped.`, '');
   out.push('## The §16 rule', '', `> ${DEMO_RULE}`, '');
   out.push(`Checklist: ${input.checklist ? `${input.checklist.sessions.length} session(s)` : 'none given (the blank one is printed below)'}; sessions with at least 4 of 5 yes: ${rule.passing.join(', ') || 'none'}; a non-owner pair among them: ${yes(rule.nonOwnerPassing)}; three such sessions with one non-owner pair: ${yes(rule.holds)}.`);
-  out.push(`Live targets (${online.rounds} online round(s)): median length ${online.medianSeconds === null ? '-' : online.medianSeconds.toFixed(1)} s within 3 to 5 minutes: ${yes(online.lengthHolds)}; both outcomes (crew wins ${online.crewWins}, enemy wins ${online.enemyWins}, draws ${online.draws}): ${yes(online.bothOutcomes)}; both weapons used in every round: ${yes(online.weaponsHold)}${online.weaponsMissing.length ? ` (not in ${online.weaponsMissing.join(', ')})` : ''}.`);
+  out.push(`Live targets (${online.rounds} online round(s)${input.checklist ? ' in the rooms the checklist lists' : ''}): median length ${online.medianSeconds === null ? '-' : online.medianSeconds.toFixed(1)} s within 3 to 5 minutes: ${yes(online.lengthHolds)}; both outcomes (crew wins ${online.crewWins}, enemy wins ${online.enemyWins}, draws ${online.draws}): ${yes(online.bothOutcomes)}; both weapons used in every round: ${yes(online.weaponsHold)}${online.weaponsMissing.length ? ` (not in ${online.weaponsMissing.join(', ')})` : ''}.`);
   out.push(`H-0 extra, no round lost to the planet in under 30 s: ${yes(online.planetHolds)}${online.planetLosses.length ? ` (${online.planetLosses.join(', ')})` : ''}.`);
+  out.push(input.checklist ? `Rooms no checklist session lists (left out of the live targets): ${unclaimed.join(', ') || 'none'}. Rooms a session lists that no record has: ${missing.join(', ') || 'none'}.`
+    : '**Warning: no checklist given, so the live targets cover every online round in the files, including any LAN or internet checklist runs.**');
   out.push(`**The demo is done: ${yes(rule.holds && online.lengthHolds && online.bothOutcomes && online.weaponsHold)}.**`, '');
   out.push('## Rooms', '', '| Room | Transport | Rounds | Host records | Guest records |', '|---|---|---|---|---|');
   for (const room of rooms) out.push(`| ${room.key} | ${room.transport ?? 'unknown'} | ${room.rounds.map((e) => e.round).join(', ')} | ${room.rounds.filter((e) => e.host).length} | ${room.rounds.filter((e) => e.guest).length} |`);
@@ -1767,7 +1808,7 @@ export function formatReport(input: { records: readonly DuelPlaytestRecord[]; in
   out.push('', '## Fallback checks (spec §9; any one starts H-2c)', '');
   out.push(`1. Helm held p95 over ${HELM_P95_LIMIT_MS.lan} ms (LAN) or ${HELM_P95_LIMIT_MS.internet} ms (internet) in a round: ${fallback.helmDelay.length ? fallback.helmDelay.join('; ') : 'none'}.`);
   out.push(`2. "The Helm felt laggy" in two sessions: ${fallback.laggy.length >= 2 ? 'yes' : 'no'} (${fallback.laggy.join(', ') || 'none'}).`);
-  out.push(`3. LAN question 1 yes with the host at the Helm, no with the guest at the Helm: ${fallback.guestHelm.join(', ') || 'none'}.`);
+  out.push(`3. Question 1 yes with the host at the Helm, no with the guest at the Helm (a session on one known network): ${fallback.guestHelm.join(', ') || 'none'}.`);
   out.push(`**H-2c starts: ${fallback.trips ? 'yes' : 'no'}.**`, '');
   const soloTargets = evaluateTargets(solo.map((r) => ({ label: `solo seed ${r.seed} round ${r.round}`, summary: r.summary })));
   out.push('## Solo rounds (Helm §11a, judged separately)', '');
@@ -1835,11 +1876,11 @@ with:
 
 **Status: not done.** The automated gates below prove the pipeline. The sessions are the owner's; no session has been recorded yet.
 
-- **Records.** Every decided round writes one playtest record on each machine to `userData/playtest/duel-YYYY-MM-DD.jsonl`. An online round writes `session: 'online'`; Single player writes `session: 'solo'`. The host's own records read `transport: loopback`. The guest's records read `lan` (a direct local candidate pair) or `internet` (through a NAT or TURN), from the hidden RTC window's selected pair. `latency.rttMs` is the round's median RTT from the same stats. Records never carry a token, code, address or candidate.
+- **Records.** Every decided round writes one playtest record on each machine to `userData/playtest/duel-YYYY-MM-DD.jsonl`. An online round writes `session: 'online'`; Single player writes `session: 'solo'`. The host's own records read `transport: loopback`. The guest's records read `lan` (a direct local candidate pair) or `internet` (through a NAT or TURN), from the hidden RTC window's selected pair, and null when the route cannot be told (the report reads it as unknown). `latency.rttMs` is the round's median RTT from the same stats. Records never carry a token, code, address or candidate.
 - **F3** shows the live latency overlay on either machine of an online duel: the route, the held and command delay (count, median, p95, max over the last 300 samples) and the RTT.
 - **The report.** `npx tsx scripts/duel-playtest-report.ts <files or directories ...> [--checklist=<file>]` merges both machines' files into rooms and prints the following:
   - the rule above, with its evaluation from the owner's checklist JSON (three sessions with at least 4 of 5 yes, one of them a non-owner pair);
-  - the live targets (median round length 3 to 5 minutes, both outcomes, the crew's laser and missile used in every round) and the H-0 extra (no round lost to the planet in under 30 s);
+  - the live targets (median round length 3 to 5 minutes, both outcomes, the crew's laser and missile used in every round) and the H-0 extra (no round lost to the planet in under 30 s), over the rooms the checklist's sessions list, with the rooms no session claims and any listed room the records lack (without a checklist, over every online round, with a warning);
   - the rooms, the §9 latency table (one row per record), and the three H-2c fallback checks;
   - the solo rounds, reported apart;
   - a blank checklist with one session per room.
@@ -1949,14 +1990,16 @@ with:
 ````ts
     for (const app of processes) if (!app.exited) { try { const done = app.request('shutdown'); await Promise.race([done, delay(6000)]); } catch { /* forced below */ } await kill(app); }
     // Both machines' playtest logs, beside the report, for scripts/duel-playtest-report.ts (exact paths only).
-    const copies = join(resolve(reportPath, '..'), 'records');
-    rmSync(copies, { recursive: true, force: true });
-    for (const profile of ['host', 'guest']) {
-      const from = join(directory, profile, 'playtest');
-      if (!existsSync(from)) continue;
-      mkdirSync(join(copies, profile), { recursive: true });
-      for (const f of readdirSync(from).filter((f) => /^duel-\d{4}-\d{2}-\d{2}\.jsonl$/.test(f))) copyFileSync(join(from, f), join(copies, profile, f));
-    }
+    try {
+      const copies = join(resolve(reportPath, '..'), 'records');
+      rmSync(copies, { recursive: true, force: true });
+      for (const profile of ['host', 'guest']) {
+        const from = join(directory, profile, 'playtest');
+        if (!existsSync(from)) continue;
+        mkdirSync(join(copies, profile), { recursive: true });
+        for (const f of readdirSync(from).filter((f) => /^duel-\d{4}-\d{2}-\d{2}\.jsonl$/.test(f))) copyFileSync(join(from, f), join(copies, profile, f));
+      }
+    } catch { failure ??= 'record copy failed'; }
     try { await runtime?.dispose(); } catch { failure ??= 'workerd cleanup failed'; }
 ````
 
@@ -1973,7 +2016,7 @@ Expected: exit 0, and the output shows the following:
 - it starts `# Helm demo playtest report` and reads `2 file(s), 2 valid record(s), 0 invalid line(s) skipped.`;
 - it quotes `> The demo is done when 4 of 5 are yes across 3 sessions`;
 - one room, `| seed-2277 | lan | 0 | 1 | 1 |`, and two latency rows (`host | Weapons | loopback` and `guest | Helm | lan`);
-- `**The demo is done: NO.**`, which is expected: one 25 s round;
+- the no-checklist warning, and `**The demo is done: NO.**`, which is expected: one 25 s round;
 - a blank checklist with `"session-1"`.
 
 - [ ] **Step 3: Commit**
