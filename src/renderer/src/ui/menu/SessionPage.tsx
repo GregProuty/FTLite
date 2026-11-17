@@ -1,6 +1,6 @@
 import type { OnlineStatus } from '../../../../shared/onlineSession';
 import { useActions, useUi } from '../context';
-import { can, countdownText, ERRORS, isDuel, receiptText, seatLabel, seatPlanText, startAllowed, type MenuAction } from '../menuState';
+import { can, countdownText, ERRORS, receiptText, seatLabel, startAllowed, type MenuAction } from '../menuState';
 import { useNow } from '../useNow';
 import { MenuButton } from './MenuButton';
 
@@ -46,9 +46,6 @@ export function SessionPage(props: { playing: boolean }) {
       {status?.phase === 'lobby' && (
         <>
           <MenuButton id="ready" text={ownReady ? 'Not ready' : 'Ready'} onClick={() => actions.ready(!ownReady)} enabled={can(v, 'ready')} />
-          {/* Seats (H-2 spec §2): the host's local Swap seats toggle, carried by Start; the guest learns its console at start. */}
-          {isDuel(status) && <span data-testid="seat-plan">{seatPlanText(status, menu.swapped)}</span>}
-          {isDuel(status) && status.role === 'host' && <MenuButton id="swap-seats" text="Swap seats" onClick={actions.swapSeats} enabled={!menu.pending} />}
           {status.role === 'host' && <MenuButton id="start" text="Start" onClick={actions.start} enabled={startAllowed(v)} />}
         </>
       )}

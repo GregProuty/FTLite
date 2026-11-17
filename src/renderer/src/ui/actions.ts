@@ -82,8 +82,8 @@ export function createUiActions(deps: UiActionDeps) {
       else if (page === 'settings') setMenu({ page: 'home' });
       else if (page === 'host' || page === 'join') setMenu({ page: 'multiplayer', localError: '' });
     },
-    /** Multiplayer is the two-player duel (H-2 spec §2): Host creates a two-seat duel room, with no capacity; a new room starts unswapped. */
-    host(): void { if (!menu().pending) { setMenu({ swapped: false }); void invoke(() => api().host()); } },
+    /** Multiplayer is the two-player duel (H-2 spec §2): Host creates a two-seat duel room, with no capacity. */
+    host(): void { if (!menu().pending) void invoke(() => api().host()); },
     join(raw: string): void {
       if (menu().pending) return;
       const code = raw.trim().toUpperCase();
@@ -91,12 +91,10 @@ export function createUiActions(deps: UiActionDeps) {
       void invoke(() => api().join(code));
     },
     ready(next: boolean): void { void invoke(() => api().ready(next)); },
-    /** The duel host's Swap seats: local until Start carries it (H-2 spec §2). */
-    swapSeats(): void { if (!menu().pending) setMenu({ swapped: !menu().swapped }); },
-    /** Start: a duel room carries the Helm player (the host, or the guest after Swap seats); any other room starts as before. */
+    /** Start: a duel room carries the Helm player (the host's seat, helmPlayerOf); any other room starts as before. */
     start(): void {
       const status = store.getState().online.status;
-      if (status && isDuel(status)) { const helmPlayer = helmPlayerOf(status, menu().swapped); void invoke(() => api().start(helmPlayer)); }
+      if (status && isDuel(status)) { const helmPlayer = helmPlayerOf(status); void invoke(() => api().start(helmPlayer)); }
       else void invoke(() => api().start());
     },
     removeSeat(pid: number): void { void invoke(() => api().removeSeat(pid)); },

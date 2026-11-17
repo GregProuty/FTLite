@@ -18,8 +18,6 @@ export interface MenuState {
   operation: number;
   /** Bumped by returnHome so the menu's error boundary resets even when the page and phase are unchanged. */
   resetEpoch: number;
-  /** The duel host's Swap seats toggle (H-2 spec §2): local until Start carries it; Host clears it. */
-  swapped: boolean;
 }
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
 /** Audio-i spec section 6: the three volumes, each one of VOLUME_STEPS. */
@@ -39,7 +37,7 @@ export interface UiState {
 }
 export type MenuView = Pick<UiState, 'menu' | 'online'>;
 
-export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0, swapped: false };
+export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0 };
 export const ROOM_CODE = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 export const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
   'online-disabled': 'Online play needs a configured local service. Single player is available.',
@@ -85,14 +83,10 @@ export function seatLabel(status: OnlineStatus, pid: number): string {
 }
 /** A duel room (H-2 spec §2): the lobby shows the seat plan and Start carries the Helm player. */
 export function isDuel(status: OnlineStatus | null): boolean { return status?.snapshot?.compatibility?.modeId === 'duel'; }
-/** The seat plan line: the host's "Host flies Helm" / "Guest flies Helm" (its Swap seats toggle), the guest's "Host picks seats". */
-export function seatPlanText(status: OnlineStatus, swapped: boolean): string {
-  return status.role === 'host' ? (swapped ? 'Guest flies Helm' : 'Host flies Helm') : 'Host picks seats';
-}
-/** The player who flies the Helm when the host presses Start: the host, or the guest after Swap seats. */
-export function helmPlayerOf(status: OnlineStatus, swapped: boolean): 0 | 1 {
-  const own = status.ownSeat ?? 0;
-  return (swapped ? 1 - own : own) as 0 | 1;
+/** The Helm player Start carries for a duel (H-2 spec §2): the host's own seat. Since a round starts aboard with nobody
+ *  seated (start-aboard spec §1) it seats no one; the lobby's Swap seats was removed (owner 2026-11-17). */
+export function helmPlayerOf(status: OnlineStatus): 0 | 1 {
+  return (status.ownSeat ?? 0) as 0 | 1;
 }
 export function startAllowed(v: MenuView): boolean {
   return can(v, 'start') && !!v.online.status?.snapshot?.seats.every((s) => !s.occupied || s.ready && s.connected);

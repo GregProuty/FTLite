@@ -11,7 +11,8 @@ Helm and Weapons views was asked for, then dropped by the owner; it is out of sc
   the Helm (20,7) and Weapons (19,5) consoles are. A player walks in and presses E to sit, as after a stand today.
 - Every round starts this way, the rematch's fresh interior included.
 - `helmPlayer` stays in the state, the hash, the snapshot, the rematch and the wire, unchanged in format. It no longer
-  seats anyone, so the lobby's Swap seats has no effect in play; removing it is a follow-up, not this change.
+  seats anyone; Start carries the host's own seat. The lobby's Swap seats and its seat-plan line were removed (owner,
+  2026-11-17), since they no longer had any effect in play.
 - The throttle starts at STOP as today, so the ship coasts until someone takes the Helm. Nothing else in the rules changes.
 - Single player: you start as player 0, standing, on the SHIP view; player 1 stands away at its spawn, and Tab takes it
   as today.
