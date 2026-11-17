@@ -113,3 +113,45 @@ Confirmed. Optional chaining in the predicates.
 
 ---
 
+# Round 2 (delta, reviewing b396948, effort medium, 54 s, 176227 in / 134139 cached / 4438 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — The procedure now uses dist/h2b-candidate.zip, dist/h2b-candidate/candidate.json, its identity.revision (git checkout $m.identity.revision) and a new dist/h2b-source.zip made by gates step 4 (prompt L13-L24, gates L784-L807). The status line points at the H-2b-ii gates subsection (prompt L3). The 'Ordinary internet' row is now the duel-then-sector run with its own report paths (prompt L74). The `npx asar extract` in step 3 resolves to the locked devDependency @electron/asar, whose bin is `asar` (package-lock.json:L346-L358).
+- R1-F2: resolved — gates L784-L841 now give the exact build/package block, the manifest, the source archive, the local verification and its playtest-report command, the recovery smoke, and both deployed commands. Each deployed command has its own --report-path (deployed.json, relay.json). L810 says to use a new report path for every run.
+- R1-F3: resolved — join-code-file.ts:L6-L11 reads UTF-16LE with a BOM and UTF-8 with or without a BOM. It strips a leading ROOM before mapping O to 0 and I/L to 1, then checks the exact roomSession alphabet. The smoke uses it (internet-app-smoke.ts:L136). Set-Content -Encoding ASCII is documented (prompt L62, gates L811). Tests cover each encoding, the look-alikes and the reject cases (tests/internetAppSmoke.test.ts:L43-L54). The parent folder out/h2b-two-machine exists before the operator saves the file, because the smoke creates the report's folder at L40.
+- R1-F4: resolved — gates L822-L829 document the recovery smoke on the candidate build via npx tsx, so out/ is not rebuilt (package.json:L18 shows that the npm script would rebuild it). The script accepts --scenario and --report-path (online-recovery-smoke.ts:L18, L26). The described localRecovery shape matches the validator: {status, evidence, report, optional runtimeProvenance{reportRevision, candidateRevision, executableArtifacts}} (internet-app-report.ts:L117-L128). Plan Decision 5 records it (plan L61).
+- R1-F5: resolved — The beam case now uses before=1, host=2, guest=1, which passes the pos schema and reaches the semantic comparison. New cases cover the guest thrust rise (thrust.guest=before+1), the device thrust peak (0.5) and the device beam (before=after=1). The extra-field case uses the key `extra`, which the key scan regex does not catch (internet-app-report.ts:L91), so the strict schema rejects it (tests/internetAppReport.test.ts:L53-L64).
+- R1-F6: resolved — The seed guard now requires both deviceDuels (internet-app-report.ts:L109). The manifest message names the three folders (candidate-manifest.ts:L33). Plan L844 drops the fixed count of 47 and notes 50 at H-2b-ii.
+- R1-F7: resolved — The finally block removes codeFile (internet-app-smoke.ts:L213). The existing-file refusal (L33) runs before the guarded run, so an operator's pre-existing file is not silently deleted by an argument failure. The procedure states the cleanup (prompt L64).
+- R1-F8: resolved — The until predicates use a?.speed, a?.shots and observations.at(-1)?.publications??[] (internet-app-smoke.ts:L119, L122-L124, L159). The post-wait read at L160 reads from the already-accepted `seen`, so it is non-null.
+
+## Verified
+- The report's folder is created before the duel starts (internet-app-smoke.ts:L40), so the documented Set-Content into out/h2b-two-machine/ has an existing parent.
+- test:internet-app-runtime does not rebuild out/ (package.json:L20), which matches the gates note that only the other runtime scripts rebuild it.
+- localRecovery's runtimeProvenance requirement and the digest/executable-artifact equality match the gates text (internet-app-report.ts:L121-L128 vs gates L829).
+- join-code-file.ts strips ROOM before replacing O, so 'ROOM' is not corrupted to 'R00M' before the prefix strip.
+- No room code is printed: the console lines at internet-app-smoke.ts:L149 and L191 print only the file path.
+
+## Not verified
+- That repeating the origin build (gates L807) reproduces byte-identical out/ files matching the manifest. This depends on electron-vite build reproducibility; I did not run it.
+- That the documented playtest-report output line '| seed-2277 | lan | 0 | 1 | 1 |' matches actual output. I did not run the scripts.
+- That the source-ancestry check in the launcher tolerates the working-tree changes the tar overlay introduces on a fresh checkout. This is unchanged from the Net-3e procedure and outside this delta.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. Verdict ready, no new findings; R1-F1 to R1-F8 confirmed resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
