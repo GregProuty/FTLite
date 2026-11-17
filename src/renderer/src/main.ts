@@ -16,7 +16,10 @@ import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
 import { createOnlineDuelSession } from './app/duel/onlineDuel';
 import { createSessionRouter } from './app/sessionRouter';
-import { createSessionMenu } from './render/sessionMenu';
+import { createUiStore } from './ui/store';
+import { createUiActions } from './ui/actions';
+import { inputBlockedOf } from './ui/menuState';
+import { mountUi } from './ui/mount';
 import { installFeel } from './app/feelBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
@@ -38,8 +41,9 @@ function bootFeel(renderer: Renderer): void {
   installFeel(renderer, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });
 }
 
-/** The app (main menu spec, 2026-11-16): the menu with Single player (the solo duel), Multiplayer (today's online
- *  flow) and Settings. One renderer serves both; the router owns at most one of them at a time. */
+/** The app (main menu spec, 2026-11-16; React UI spec UI-i): the menu with Single player (the solo duel), Multiplayer
+ *  (today's online flow) and Settings, drawn by React over one UI store. One renderer serves both modes; the router
+ *  owns at most one of them at a time. */
 async function startApp(): Promise<void> {
   const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff) };   // throws with a clear message on invalid ship data (spec §9)
   const assets = await loadAssets('./assets/manifest.json');
@@ -54,11 +58,10 @@ async function startApp(): Promise<void> {
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
-  let menu: ReturnType<typeof createSessionMenu> | null = null;
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.cutter, lifecycle: window.ftlite,
-        onExit: () => { session.home(); menu?.leaveSingle(); } });
+        onExit: () => { session.home(); actions.leaveSingle(); } });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
     // Multiplayer (H-2 spec §3): the wrapper builds the duel's or the sector's session when the first port arrives.
@@ -66,7 +69,7 @@ async function startApp(): Promise<void> {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
         duel: () => createOnlineDuelSession({ renderer, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
-          leave: () => menu?.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record) }),
+          leave: () => actions.leave(), playCue: audio.play, recordDuel: record => window.ftlite?.recordDuel?.(record) }),
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play })
       });
@@ -78,37 +81,42 @@ async function startApp(): Promise<void> {
     if (session.mode !== 'online') { port.close(); return; }
     session.selectOnline().attach(descriptor, port);
   });
-  const menuRoot = document.createElement('div'); document.body.append(menuRoot);
   const win = window.ftlite?.window;
-  menu = createSessionMenu({ root: menuRoot, document, api: bridge ?? undefined,
+  const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
+  const actions = createUiActions({ store, api: bridge ?? undefined,
     single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
-    inputBlocked(value) { if (blocked !== value) keyboard.reset(); blocked = value; online?.setInputBlocked(value); },
-    settings: {
-      volume: () => settings.volume,
-      setVolume(volume) { settings = { ...settings, volume }; audio.setVolume(volume); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
-      fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined,
-      controls: controlSections()
-    }
+    setVolume(volume) { settings = { ...settings, volume }; audio.setVolume(volume); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined
   });
-  const offStatus = bridge?.onStatus(next => { status = next; online?.setStatus(next); menu?.setStatus(next); });
+  // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.
+  const setBlocked = (value: boolean): void => { if (blocked !== value) keyboard.reset(); blocked = value; online?.setInputBlocked(value); };
+  setBlocked(inputBlockedOf(store.getState()));
+  const offBlocked = store.subscribe((s) => { const value = inputBlockedOf(s); if (value !== blocked) setBlocked(value); });
+  const offStatus = bridge?.onStatus(next => { status = next; online?.setStatus(next); actions.setStatus(next); });
   if (document.hidden || !document.hasFocus()) session.pause();
+  // The session strip's height (written by the menu while it is the strip, 0 otherwise) moves the canvas down.
   const resize = (): void => {
-    const top = menu?.reservedHeight() ?? 0;
+    const top = store.getState().layout.stripHeight;
     renderer.app.canvas.style.cssText = `position:fixed;left:0;top:${top}px;display:block`;
     renderer.resize(window.innerWidth, Math.max(1, window.innerHeight - top));
   };
-  // Reflow can wrap the strip without a window resize (status/roster changes).
-  const menuResize = new ResizeObserver(resize); menuResize.observe(menuRoot);
+  let strip = store.getState().layout.stripHeight;
+  const offStrip = store.subscribe((s) => { if (s.layout.stripHeight !== strip) { strip = s.layout.stripHeight; resize(); } });
   window.addEventListener('resize', resize); resize();
-  window.addEventListener('resize', () => menu?.windowResized());   // F11 fullscreen changes keep the Settings label true
+  window.addEventListener('resize', () => actions.windowResized());   // F11 fullscreen changes keep the Settings label true
+  const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
+  const unmountUi = mountUi({ el: uiRoot, store, actions });
   const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
   window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
   window.addEventListener('blur', () => session.pause());
   document.addEventListener('visibilitychange', () => { if (document.hidden) session.pause(); else if (document.hasFocus()) session.resume(); });
   window.addEventListener('focus', () => session.resume());
-  renderer.app.ticker.add(() => { session.frame(); menu?.frame(); });
-  window.addEventListener('beforeunload', () => { offPort?.(); offStatus?.(); menuResize.disconnect(); menu?.dispose(); session.dispose(); bridge?.dispose(); keyboard.destroy(); }, { once: true });
+  renderer.app.ticker.add(() => session.frame());
+  window.addEventListener('beforeunload', () => {
+    offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
+    session.dispose(); bridge?.dispose(); keyboard.destroy();
+  }, { once: true });
 }
 
 /** The dev flight view (H-1 spec §9): the renderer and its letterbox, but no sector session. */

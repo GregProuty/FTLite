@@ -75,7 +75,7 @@ keeps today's router, bridge and lifecycle wiring. `session.ts` and `onlineSessi
 
 **The render rule of `<UiRoot>`.** Each region sits in its own error boundary (§2, failure modes):
 
-- `<Menu>`: whenever the `menu` prop of `mountUi` is true (the app). It renders nothing on page `single`.
+- `<Menu>`: whenever the `menu` prop of `mountUi` is true (the app). On page `single` it renders only its empty, hidden root (§5).
 - `<Hud>`: when `hud !== null`.
 - `<DuelUi>`: when `duel !== null`.
 - `<FlightUi>`: when `flight !== null`.
@@ -132,9 +132,11 @@ per frame per running producer, and React batches each into one commit.
 **1.5 ms median and 4 ms p95** over a 60-second running sector or duel. A dev-only `?uiperf=1` query prints the rolling
 median and p95 once a second to the console. Each part's visual check records the numbers.
 
-**Timers in the UI.** The menu's reconnect countdown and checkpoint receipt age use `useNow(1000)`. It re-renders on
-each wall-clock second boundary (a `setTimeout` to `1000 − Date.now() % 1000`, re-armed each time). The displayed
-seconds change on the same second as today's per-frame writes, which only change text at whole seconds.
+**Timers in the UI.** The menu's reconnect countdown and checkpoint receipt age use `useNow(1000, phaseMs)`. It
+re-renders at each wall-clock time `t` with `t ≡ phaseMs (mod 1000)` (a `setTimeout` to the next such time, re-armed each
+time and whenever the phase changes). The countdown's phase is `retryAtMs % 1000`, so it changes when the deadline crosses
+a whole second. The receipt age's phase is the wall-clock offset at which its elapsed age crosses a whole second, which
+stays constant while both clocks advance. The text therefore changes at the same instant as today's per-frame writes.
 
 **Input blocking.** `main.ts` subscribes to the store outside React. It derives `blocked = !(menu.page === 'session'
 && menu.hadView)` exactly as `render()` does today. When the value differs from the last one, it resets the keyboard
@@ -252,7 +254,8 @@ The UI must look the same as today's Pixi panels: same rectangles, same glyph sh
 - **The root element.** `data-testid="session-menu"` and `aria-label="FTLite session menu"` sit on `<Menu>`'s root
   element. It is the full-screen overlay when not playing and exactly the strip (`position: fixed; top: 0`, full
   width) while playing (`page === 'session' && hadView`). It is never `#ui`, `<UiRoot>` or the stage. On page `single`
-  it renders nothing. A jsdom test asserts that while playing, the element contains only the strip.
+  it renders only that root, empty and `display: none`, as the DOM menu did (the smokes' `layout` command measures it
+  during Single player). A jsdom test asserts that while playing, the element contains only the strip.
 - **The strip's height reaches the canvas.** `SessionStrip` has a layout effect with a `ResizeObserver`. It writes
   the measured height into `layout.stripHeight` on mount and on every resize, and writes `0` in its cleanup (so Leave
   restores the full viewport). `main.ts` subscribes to `layout.stripHeight` (with an equality check) and calls its

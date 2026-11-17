@@ -1,0 +1,53 @@
+// The menu region (React UI spec §5): the full-screen overlay, or exactly the strip over a game the session has shown.
+// The root carries data-testid="session-menu" (the smokes measure it) and, while it is the strip, writes its height
+// into layout.stripHeight so main.ts moves the canvas below it; 0 when the strip goes.
+import { useLayoutEffect, useRef } from 'react';
+import { useActions, useUi } from '../context';
+import { isPlaying, menuMessage } from '../menuState';
+import { Home } from './Home';
+import { HostForm } from './HostForm';
+import { JoinForm } from './JoinForm';
+import { Multiplayer } from './Multiplayer';
+import { SessionPage } from './SessionPage';
+import { Settings } from './Settings';
+import { BUTTON, PANEL_OVERLAY, PANEL_STRIP, ROOT_OVERLAY, ROOT_STRIP } from './styles';
+
+export function Menu() {
+  const menu = useUi((s) => s.menu), online = useUi((s) => s.online), actions = useActions();
+  const ref = useRef<HTMLDivElement>(null), playing = isPlaying(menu);
+  useLayoutEffect(() => {
+    const el = ref.current; if (!playing || !el) return;
+    const write = (): void => actions.setStripHeight(el.offsetHeight);
+    write();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(write);   // a wrapped strip (status, roster) grows without a window resize
+    observer?.observe(el);
+    return () => { observer?.disconnect(); actions.setStripHeight(0); };
+  }, [playing, actions]);
+  // The duel owns the screen. The root stays, empty and display:none as the DOM menu's did, because the smokes measure it.
+  if (menu.page === 'single') return <div data-testid="session-menu" aria-hidden="true" data-layout="hidden" style={{ display: 'none' }} />;
+  const page = menu.page;
+  return (
+    <div ref={ref} data-testid="session-menu" aria-label="FTLite session menu" data-layout={playing ? 'strip' : 'overlay'} style={playing ? ROOT_STRIP : ROOT_OVERLAY}>
+      <section style={playing ? PANEL_STRIP : PANEL_OVERLAY}>
+        {!playing && <><h1>FTLite</h1><p>Crew together. Keep the ship flying.</p></>}
+        {(page === 'multiplayer' || page === 'settings') && <h2 data-testid="page-title">{page === 'multiplayer' ? 'Multiplayer' : 'Settings'}</h2>}
+        <p data-testid="status" role="status" aria-live="polite">{menuMessage({ menu, online })}</p>
+        {page === 'home' ? <Home /> : page === 'multiplayer' ? <Multiplayer /> : page === 'settings' ? <Settings />
+          : page === 'host' ? <HostForm /> : page === 'join' ? <JoinForm /> : <SessionPage playing={playing} />}
+      </section>
+    </div>
+  );
+}
+
+/** What the menu region shows after a render error until its reset key changes (spec §2): a way out stays. */
+export function MenuFallback() {
+  const offered = useUi((s) => s.online.status?.actions), actions = useActions(), leave = !!offered?.includes('leave');
+  return (
+    <div data-testid="session-menu" aria-label="FTLite session menu" data-layout="overlay" style={ROOT_OVERLAY}>
+      <section style={PANEL_OVERLAY}>
+        <p>Menu error</p>
+        <button type="button" style={BUTTON} onClick={leave ? actions.leave : actions.returnHome}>{leave ? 'Leave' : 'Return to menu'}</button>
+      </section>
+    </div>
+  );
+}

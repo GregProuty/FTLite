@@ -18,7 +18,7 @@
 - **No sim, authority or network change.** `npm run test:determinism` and the golden hashes stay unchanged. Nothing under `src/renderer/src/{sim,authority,clientControl,headless,net,events}`, `src/network`, `src/shared`, `src/main`, `src/preload` or `src/utility` changes in this plan.
 - **Keyboard and mouse only.** The menu is Single player / Multiplayer (Host, Join) / Settings, as in the main-menu spec.
 - **Every menu `data-testid` is kept, on an element of the same role with the same text:** `session-menu`, `page-title`, `status`, `single-player`, `multiplayer`, `settings`, `host`, `join`, `reconnect`, `forget-seat`, `online-availability`, `back`, `volume`, `fullscreen`, `fullscreen-note`, `controls`, `host-form`, `join-form`, `capacity`, `join-code`, `create-room`, `join-room`, `room-code`, `assigned-seat`, `roster`, `remove-seat-<pid>`, `ready`, `start`, `pause`, `mirror-status`, `rollback-warning`, `pending-save`, `mirror-error`, `rehost`, `reconnect-countdown`, `storage-warning`, `retry`, `leave`, `try-code`, `home`.
-- **`data-testid="session-menu"` and `aria-label="FTLite session menu"` sit on the Menu's root element.** That element is the full-screen overlay when not playing and exactly the strip (`position: fixed; top: 0`, full width) while playing (`page === 'session' && hadView`). It is never `#ui`. On page `single` the Menu renders nothing. (Spec §5, decision 7.)
+- **`data-testid="session-menu"` and `aria-label="FTLite session menu"` sit on the Menu's root element.** That element is the full-screen overlay when not playing and exactly the strip (`position: fixed; top: 0`, full width) while playing (`page === 'session' && hadView`). It is never `#ui`. On page `single` the Menu renders only its empty `display: none` root (amended in execution: the smoke driver's `layout` command measures it during Single player, as it did the DOM menu's hidden root). (Spec §5, decision 7.)
 - **Dependencies are pinned exactly** (`--save-exact`), all runtime and dev versions from the majors named here. `@vitejs/plugin-react` must be a 5.x release (6.x requires Vite 8; this repo is on Vite 7).
 - **Imports:** nothing under `src/renderer/src/ui/` imports a value (as opposed to a type) from `sim/`, `authority/`, `clientControl/`, `net/` or `src/network`. React, react-dom and zustand are imported only under `src/renderer/src/ui/`, `src/renderer/src/main.ts` and `tests/`.
 - **Worktree:** execute in a git worktree (superpowers:using-git-worktrees). In a worktree, create the `services/signalling/node_modules` junction before running the online smokes (memory "Worktree signalling junction").
@@ -30,9 +30,10 @@
 3. **The menu's styles are typed React style objects in `ui/menu/styles.ts`, not a CSS module.** They hold the same values as today's inline `cssText`.
 4. **There is no separate `SessionStrip` component.** The strip *is* the Menu root in its strip layout (as today: `sessionMenu`'s root restyles itself). The Menu root measures its own height while playing.
 5. **The Menu error fallback's button calls `actions.returnHome` (unconditional), not `actions.home`.** `home` is a no-op while a session's status is not idle or error, which would make the fallback's button dead in exactly the case it exists for. When `leave` is offered, the button is Leave, as the spec says.
-6. **Two small visible differences that come from React itself:**
+6. **Small visible differences that come from React itself:**
    - An *idle* status push while on Settings now re-renders the status line. Today it skips the render. The page and its elements stay the same.
    - The reconnect countdown shows its seconds at the first render. Today it shows "Reconnecting saved seat…" for one frame before the first per-frame write.
+   - HostForm and JoinForm keep the typed code and the chosen capacity across re-renders, and focus only on mount. The DOM menu rebuilt the controls on every render: an invalid code cleared the field and re-focused it, and a status push reset the capacity to 2.
 
 ## File Structure
 
@@ -42,7 +43,7 @@
 | `src/renderer/src/ui/store.ts` | `createUiStore(init)`: the vanilla zustand store. |
 | `src/renderer/src/ui/actions.ts` | `createUiActions(deps)`: every menu action, the operation-id guard, the preload calls. |
 | `src/renderer/src/ui/context.tsx` | `UiContext`, `useUi(selector)`, `useActions()`. |
-| `src/renderer/src/ui/useNow.ts` | `useNow(periodMs)`: re-renders on each wall-clock period boundary. |
+| `src/renderer/src/ui/useNow.ts` | `useNow(periodMs, phaseMs)`: re-renders at each wall-clock time t ≡ phaseMs (mod periodMs), so seconds text changes when its value does. |
 | `src/renderer/src/ui/RegionBoundary.tsx` | The per-region error boundary with a reset key. |
 | `src/renderer/src/ui/UiRoot.tsx` | `<UiRoot>`: the Menu region inside its boundary. |
 | `src/renderer/src/ui/mount.tsx` | `mountUi({ el, store, actions })`. |
