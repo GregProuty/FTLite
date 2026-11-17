@@ -1,0 +1,104 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "ContactView drops the hatch colour that roomLook returns",
+      "claim": "In \u00a76.3, roomLook returns `hatch: number | null`, which is a colour. In \u00a76.4 the ContactView room entry has `hatch: number[]` (segment endpoints) and no hatch colour. React then has no way to know what colour to draw the hatch in, even though the spec says it 'only draws the resolved colours'.",
+      "evidence": "spec L151 (roomLook hatch is a colour), L163 (rooms: { label, points, fill, stroke, hatch: number[] }), L168; tacticalLayer.ts:L133, L138, L140, L144 (the hatch colour differs: crew glass, enemy main, used as the segments' colour)",
+      "why": "An implementer has to guess the colour or hard-code CRT.main. That breaks 'room looks equal roomLook', and the contactModel test cannot check the hatch colour.",
+      "fix": "Add `hatchColour: number | null` to each room (or make it `hatch: { colour: number; segments: number[] } | null`). Extend the contactModel test to assert it equals roomLook(false, level, phase).hatch."
+    },
+    {
+      "severity": "P2",
+      "title": "The per-frame order of click, sync, reserveRight and the console view is circular as written",
+      "claim": "\u00a73 defines shown using 'the frame's console view'. In scene.ts that view is built after tacticalModel, because consoleModel takes overlayView from the model. \u00a74.1, though, makes the tacticalModel input's reserveRight depend on shown. \u00a76.2 runs pickShip on that same input, and \u00a76.5 orders the steps as click, sync, contactModel, frame, without placing tacticalModel or consoleModel among them. Taken literally, shown needs the console view, which needs the model, which needs reserveRight, which needs shown.",
+      "evidence": "spec L24, L67, L143, L173-L177; scene.ts:L110 (hidden), L124-L128 (the input with its reserves, then tacticalModel), L133 (consoleModel after the model, using overlayView)",
+      "why": "Two implementers would break the cycle differently. One option uses last frame's shown for the reserve, which puts the arrows under the window for one frame. The other builds the tactical input twice. A subagent would have to invent the order.",
+      "fix": "Give the order explicitly. (1) Compute hidden and the station from consoleHidden plus seatOf; consoleModel's station does not depend on overlay. (2) Take the click and run pickShip on the camera, prev and alpha; pickShip reads no reserves. (3) Run controller.sync. (4) Build the tactical input with reserveRight 324 if shown, else CONSOLE_RESERVE.right. (5) Run tacticalModel, consoleModel and contactModel, then write the frame."
+    },
+    {
+      "severity": "P2",
+      "title": "The key intercept rule contradicts itself for T, and it never says where the intercept gets the station and target",
+      "claim": "\u00a76.2 says the intercept 'returns false unless the window was shown on the last drawn frame'. The next sentence says that when it isn't shown but the console is Helm or Weapons, KeyT calls toggle(target) and returns true. \u00a76.5 says sync records only whether the window was shown. Nothing says where the intercept reads last frame's station or `state.systems[CREW_SLOT].target`.",
+      "evidence": "spec L137, L179, L31; input.ts:L63-L67 (the keydown runs outside the frame); duelMode.ts:L74 (scene.draw returns the station to the mode)",
+      "why": "Read the first sentence literally and T never opens the window. Read the second and T opens it only if the intercept has a station. Without a named source, the plan has to invent one, and online the duel replica is read differently.",
+      "fix": "Reword it: 'Escape is taken only while shown; KeyT is taken while shown (close) or while the last frame's console station was helm or weapons (toggle).' Have sync record `station` and `target` (pass `target: state.systems[CREW_SLOT].target`), and have the intercept read them from the controller. Add a controller test: T on a hidden console returns false."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "\u00a76.2 L135-L139 declares opts.intercept, called before PRESS_CODES, with no press edge and no held add. Tests are at L215-L216."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Shown is defined at L22-L25. Clearing on a null console or SHIP is at L40-L43 and L191, and Esc is taken only while shown (L46-L48). Scene and online tests are at L218-L219."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The scene owns the controller option, builds contactModel and ships DuelUiView.contact (L170-L179). Hover is React component state (L98). The hatch colour gap is raised as a new finding."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "takeClick is separate from sample (L140). The scene option, the online drop and pickShip on the frame's camera are at L141-L145. One frame-order ambiguity is raised separately."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "roomLook is a pure export in crtTheme.ts and drawShip is refactored to use it (L147-L153). The crtColours test is at L213."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "CONTACT 968,150 300x360 is clear of SIDE (y 42-138), stationTop (weapons 492, x\u2264312), STATUS, TABS, y\u2265680 and y<30 (consoleLayout.ts:L6-L14). reserveRight is 324 while shown (L67)."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "\u00a76.6 L185 sets pointer-events auto, prevents the defaults and swallows wheel. \u00a75 L103 and L109 limit the cancel to a right-click on the window; a map right-click keeps the drag. The pointer source is on the canvas (duelMode.ts:L45), so the overlays never feed it."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "L168: t is the same performance.now()/1000 as layer.draw (scene.ts:L130), and React does not blink."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "L77: the title is ENEMY SHIP plus \u2715, and the slot-label wording is gone."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "L50 and L107: a station change disarms and keeps the window open. sync disarms on it (L128), with a controller test at L203."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "\u00a78 L199-L226 splits the tests into controller, model, tacticalModel, crtColours, input, scene, online and component. The component cases are window-only."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "L32 gives the exact formula with the 16 px floor, non-crew active slots only, and nearest wins. Test at L212."
+    }
+  ],
+  "verified": [
+    "The pointer source listens on the canvas (duelMode.ts:L45; onlineDuel.ts:L78), so React overlays with pointer-events auto never feed takeClick, as spec L144 says.",
+    "The keyboard listens on window, and its keydown path (input.ts:L63-L67) can take an intercept before PRESS_CODES without touching the console ui path (L80-L88).",
+    "consoleHidden (scene.ts:L68-L70) covers !running, any banner, a dimmed layer and a decided outcome, which matches the closing list at spec L40.",
+    "consoleModel returns the station 'ship' for a standing character and null when hidden (consoleModel.ts:L41-L42), so 'helm/weapons' implies seated on a map console.",
+    "CONTACT does not overlap any element in the \u00a74.1 list, checked against consoleLayout.ts:L6-L14 and INTERNAL 1280x720.",
+    "The enemy damage table (tacticalLayer.ts:L136-L141) carries a hatch colour, which the new P2 is about."
+  ],
+  "not_verified": [
+    "The cull-radius formula at tacticalModel.ts:L272 was not re-read. I relied on the round-1 finding's reading of it.",
+    "I did not check whether the online 'blocked' state (some menu dialog) also hides the console. If it doesn't, the window intercept could take Esc while a blocking dialog is open. That would only close the window, since the intercept doesn't stop propagation.",
+    "The existence of an onlineDuel test harness and an input test file (spec L214, L219) was not checked."
+  ]
+}

@@ -129,3 +129,75 @@ Confirmed against the cited code. §3 hit radius max(16, 2*SHIP_RADIUS*z, 1.9*SH
 
 ---
 
+# Round 2 (delta, reviewing c41b082f, effort medium, 86 s, 251993 in / 198024 cached / 7495 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 ContactView drops the hatch colour that roomLook returns
+In §6.3, roomLook returns `hatch: number | null`, which is a colour. In §6.4 the ContactView room entry has `hatch: number[]` (segment endpoints) and no hatch colour. React then has no way to know what colour to draw the hatch in, even though the spec says it 'only draws the resolved colours'. · spec L151 (roomLook hatch is a colour), L163 (rooms: { label, points, fill, stroke, hatch: number[] }), L168; tacticalLayer.ts:L133, L138, L140, L144 (the hatch colour differs: crew glass, enemy main, used as the segments' colour) · An implementer has to guess the colour or hard-code CRT.main. That breaks 'room looks equal roomLook', and the contactModel test cannot check the hatch colour. · Add `hatchColour: number | null` to each room (or make it `hatch: { colour: number; segments: number[] } | null`). Extend the contactModel test to assert it equals roomLook(false, level, phase).hatch.
+
+### [P2] R2-F2 The per-frame order of click, sync, reserveRight and the console view is circular as written
+§3 defines shown using 'the frame's console view'. In scene.ts that view is built after tacticalModel, because consoleModel takes overlayView from the model. §4.1, though, makes the tacticalModel input's reserveRight depend on shown. §6.2 runs pickShip on that same input, and §6.5 orders the steps as click, sync, contactModel, frame, without placing tacticalModel or consoleModel among them. Taken literally, shown needs the console view, which needs the model, which needs reserveRight, which needs shown. · spec L24, L67, L143, L173-L177; scene.ts:L110 (hidden), L124-L128 (the input with its reserves, then tacticalModel), L133 (consoleModel after the model, using overlayView) · Two implementers would break the cycle differently. One option uses last frame's shown for the reserve, which puts the arrows under the window for one frame. The other builds the tactical input twice. A subagent would have to invent the order. · Give the order explicitly. (1) Compute hidden and the station from consoleHidden plus seatOf; consoleModel's station does not depend on overlay. (2) Take the click and run pickShip on the camera, prev and alpha; pickShip reads no reserves. (3) Run controller.sync. (4) Build the tactical input with reserveRight 324 if shown, else CONSOLE_RESERVE.right. (5) Run tacticalModel, consoleModel and contactModel, then write the frame.
+
+### [P2] R2-F3 The key intercept rule contradicts itself for T, and it never says where the intercept gets the station and target
+§6.2 says the intercept 'returns false unless the window was shown on the last drawn frame'. The next sentence says that when it isn't shown but the console is Helm or Weapons, KeyT calls toggle(target) and returns true. §6.5 says sync records only whether the window was shown. Nothing says where the intercept reads last frame's station or `state.systems[CREW_SLOT].target`. · spec L137, L179, L31; input.ts:L63-L67 (the keydown runs outside the frame); duelMode.ts:L74 (scene.draw returns the station to the mode) · Read the first sentence literally and T never opens the window. Read the second and T opens it only if the intercept has a station. Without a named source, the plan has to invent one, and online the duel replica is read differently. · Reword it: 'Escape is taken only while shown; KeyT is taken while shown (close) or while the last frame's console station was helm or weapons (toggle).' Have sync record `station` and `target` (pass `target: state.systems[CREW_SLOT].target`), and have the intercept read them from the controller. Add a controller test: T on a hidden console returns false.
+
+## Prior findings
+- R1-F1: resolved — §6.2 L135-L139 declares opts.intercept, called before PRESS_CODES, with no press edge and no held add. Tests are at L215-L216.
+- R1-F2: resolved — Shown is defined at L22-L25. Clearing on a null console or SHIP is at L40-L43 and L191, and Esc is taken only while shown (L46-L48). Scene and online tests are at L218-L219.
+- R1-F3: resolved — The scene owns the controller option, builds contactModel and ships DuelUiView.contact (L170-L179). Hover is React component state (L98). The hatch colour gap is raised as a new finding.
+- R1-F4: resolved — takeClick is separate from sample (L140). The scene option, the online drop and pickShip on the frame's camera are at L141-L145. One frame-order ambiguity is raised separately.
+- R1-F5: resolved — roomLook is a pure export in crtTheme.ts and drawShip is refactored to use it (L147-L153). The crtColours test is at L213.
+- R1-F6: resolved — CONTACT 968,150 300x360 is clear of SIDE (y 42-138), stationTop (weapons 492, x≤312), STATUS, TABS, y≥680 and y<30 (consoleLayout.ts:L6-L14). reserveRight is 324 while shown (L67).
+- R1-F7: resolved — §6.6 L185 sets pointer-events auto, prevents the defaults and swallows wheel. §5 L103 and L109 limit the cancel to a right-click on the window; a map right-click keeps the drag. The pointer source is on the canvas (duelMode.ts:L45), so the overlays never feed it.
+- R1-F8: resolved — L168: t is the same performance.now()/1000 as layer.draw (scene.ts:L130), and React does not blink.
+- R1-F9: resolved — L77: the title is ENEMY SHIP plus ✕, and the slot-label wording is gone.
+- R1-F10: resolved — L50 and L107: a station change disarms and keeps the window open. sync disarms on it (L128), with a controller test at L203.
+- R1-F11: resolved — §8 L199-L226 splits the tests into controller, model, tacticalModel, crtColours, input, scene, online and component. The component cases are window-only.
+- R1-F12: resolved — L32 gives the exact formula with the 16 px floor, non-crew active slots only, and nearest wins. Test at L212.
+
+## Verified
+- The pointer source listens on the canvas (duelMode.ts:L45; onlineDuel.ts:L78), so React overlays with pointer-events auto never feed takeClick, as spec L144 says.
+- The keyboard listens on window, and its keydown path (input.ts:L63-L67) can take an intercept before PRESS_CODES without touching the console ui path (L80-L88).
+- consoleHidden (scene.ts:L68-L70) covers !running, any banner, a dimmed layer and a decided outcome, which matches the closing list at spec L40.
+- consoleModel returns the station 'ship' for a standing character and null when hidden (consoleModel.ts:L41-L42), so 'helm/weapons' implies seated on a map console.
+- CONTACT does not overlap any element in the §4.1 list, checked against consoleLayout.ts:L6-L14 and INTERNAL 1280x720.
+- The enemy damage table (tacticalLayer.ts:L136-L141) carries a hatch colour, which the new P2 is about.
+
+## Not verified
+- The cull-radius formula at tacticalModel.ts:L272 was not re-read. I relied on the round-1 finding's reading of it.
+- I did not check whether the online 'blocked' state (some menu dialog) also hides the console. If it doesn't, the window intercept could take Esc while a blocking dialog is open. That would only close the window, since the intercept doesn't stop propagation.
+- The existence of an onlineDuel test harness and an input test file (spec L214, L219) was not checked.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `c41b082f`. 3 accepted, 0 rejected, 0 deferred; all 12 round-1 IDs confirmed resolved.
+
+## R2-F1 [P2]: ContactView drops the hatch colour that roomLook returns
+
+Confirmed: tacticalLayer.ts uses a different hatch colour for crew and enemy. §6.4 now gives each room `hatch: { colour; segments } | null`, and the §8 model test checks the colour against roomLook.
+
+## R2-F2 [P2]: The per-frame order of click, sync, reserveRight and the console view is circular as written
+
+Confirmed against scene.ts L110-L133. §6.5 now lists six ordered steps: hidden and station, click and pickShip, sync, tactical input with reserveRight, the models, then the frame.
+
+## R2-F3 [P2]: The key intercept rule contradicts itself for T, and it never says where the intercept gets the station and target
+
+Confirmed. §6.2 now gives one rule per key, `sync` records shown, station and target in the §6.1 table, and §8 adds the controller test.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-17-enemy-ship-window-design.md
+
+<!-- end -->
+
+---
+

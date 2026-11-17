@@ -125,7 +125,7 @@ The WEAP/SHLD/ENG buttons, E/Q and the map's lock marker are unchanged and stay 
 | `arm()` | Toggles the aim. |
 | `cancelAim()` | Disarms the aim. |
 | `escape(): boolean` | Disarms if armed, else closes; returns true. Returns false when there is nothing to take. |
-| `sync({ shown: boolean; station: ConsoleStation \| null; active: (slot: number) => boolean; epoch: number })` | Applies the closing rules of §3 once per frame: clears when not shown, the ship is inactive or the epoch changed, and disarms on a station change. |
+| `sync({ shown: boolean; station: ConsoleStation \| null; target: number; active: (slot: number) => boolean; epoch: number })` | Applies the closing rules of §3 once per frame: clears when not shown, the ship is inactive or the epoch changed, and disarms on a station change. It records `shown`, `station` and `target` for the key intercept. |
 | `pick(room: number, lock: (room: number) => void)` | Calls `lock(room)` and disarms. It only acts while the aim is armed. |
 
 There is one controller per duel mode (single player and online). It is created beside the keyboard and handed to the scene and the UI actions, the same way the keyboard's `ui` is handed over through `setConsole` today. It is local, never sent and never in the sim.
@@ -134,7 +134,10 @@ There is one controller per duel mode (single player and online). It is created 
 
 - **Keys.** `createDuelKeyboard(target, opts?)` gains `opts.intercept?: (code: string) => boolean`. On a non-repeat keydown, it calls `intercept(e.code)` before `PRESS_CODES`. When that returns true, the key adds no press edge and isn't added to the held set. The keydown's default is still prevented if `PREVENT` lists it.
 
-  Both modes pass an intercept. It returns false unless the window was shown on the last drawn frame. When shown, `Escape` calls `escape()`, and `KeyT` calls `close()`, returning true. When not shown but the console is Helm or Weapons, `KeyT` calls `toggle(target)`, returning true. Every other code returns false.
+  Both modes pass an intercept that reads what `sync` recorded on the last drawn frame: `shown`, `station`, and `target` (`state.systems[CREW_SLOT].target`).
+  - `Escape` is taken only while shown: it calls `escape()` and returns true.
+  - `KeyT` is taken while shown, calling `close()`, or while the last frame's station was `'helm'` or `'weapons'`, calling `toggle(target)`. Either way it returns true.
+  - Every other code, and `KeyT` on a hidden or SHIP console, returns false.
 
   The online duel uses the same keyboard, so the leave prompt and `setPaused` see no `Esc` while the window is shown, and are unchanged otherwise.
 - **Map clicks.** The pointer source (`createPointerSource`) gains `takeClick(): { x: number; y: number } | null`. It returns the last button-0 pointerdown on the canvas, in internal px, and clears it; `clear()` also clears it. It is separate from `sample()`, so the runtime's camera sampling is unchanged.
@@ -160,7 +163,7 @@ The damage table inside `tacticalLayer.ts`'s `drawShip` moves into a pure export
 - `hull: { value: number; fill: number }`;
 - `box`: the drawing box in internal px;
 - `outline: number[]` (flat window-space points);
-- `rooms: { label: string; points: number[]; fill: number | null; stroke: number; hatch: number[] }[]`, where `hatch` holds flat segment endpoints from `hatchSegments` on the window-space polygon, or is empty;
+- `rooms: { label: string; points: number[]; fill: number | null; stroke: number; hatch: { colour: number; segments: number[] } | null }[]`. `hatch` is null when `roomLook` gives no hatch. Otherwise its colour is `roomLook`'s hatch colour, and its segments are flat endpoints from `hatchSegments` on the window-space polygon;
 - `lockRoom: number | null`;
 - `weapons: null | { laser: { label: string; value: string; fill: number; lit: boolean; enabled: boolean; note: string | null }; missile: { magazine: number } }`;
 - `aim: boolean`.
@@ -170,13 +173,14 @@ The damage table inside `tacticalLayer.ts`'s `drawShip` moves into a pure export
 ### 6.5 Scene and view
 
 - `DuelUiView` gains `contact?: ContactView | null`.
-- Each frame the scene:
-  1. takes the click;
-  2. runs `controller.sync(...)`;
-  3. builds `contactModel(...)` when the window is shown;
-  4. writes the result into the frame it already sends through `options.ui.frame`.
+- Each frame the scene, in this order:
+  1. Computes `hidden` (`consoleHidden`) and the console station. The station comes from the seat (`consoleModel`'s station logic) and doesn't depend on the tactical model or its overlay.
+  2. Takes the click and runs `pickShip` on the frame's state, `prev`, `alpha`, camera and viewport (`pickShip` reads no reserves). Then calls `controller.click(slot)` when the station is Helm or Weapons and the console isn't hidden.
+  3. Runs `controller.sync(...)`, which decides `shown`.
+  4. Builds the tactical input, with `reserveRight` 324 when shown and `CONSOLE_RESERVE.right` otherwise.
+  5. Runs `tacticalModel`, `consoleModel` and, when shown, `contactModel`.
+  6. Writes the frame through `options.ui.frame`, with `contact` set.
 - The scene gets the controller as a new optional option `contact?: ContactController`. Without it, nothing changes, which keeps `?mode=duel` and the tests' scenes as they are.
-- `sync` records whether the window was shown, which the key intercept reads.
 
 ### 6.6 UI
 
@@ -201,10 +205,11 @@ The damage table inside `tacticalLayer.ts`'s `drawShip` moves into a pure export
   - `toggle`;
   - `escape` disarms, then closes, then returns false;
   - `sync` clears on not-shown, an inactive ship and a new epoch, and disarms on a station change;
-  - `pick` calls `lock` only while armed.
+  - `pick` calls `lock` only while armed;
+  - the intercept takes `KeyT` on a Helm or Weapons station and declines it on a hidden or SHIP console.
 - **`tests/contactModel.test.ts`:**
   - rooms and the outline lie inside `box`;
-  - room looks equal `roomLook` for levels 0/1/2 at `t` values in both blink phases;
+  - room looks (fill, stroke and hatch colour) equal `roomLook(false, level, phase)` for levels 0/1/2 at `t` values in both blink phases;
   - the lock room appears only when the shown ship is the target slot;
   - Helm gets `weapons: null`;
   - a non-target ship gets LASER disabled with `NOT TARGETED`;
