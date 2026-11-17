@@ -88,3 +88,43 @@ Confirmed (duelMode.ts:L84 freezes only the tactical fx). The duel now passes `r
 
 ---
 
+# Round 2 (delta, reviewing 1fd401d, effort medium, 118 s, 902419 in / 808237 cached / 8769 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — plan L2016 now calls debrisBurst for every opened site whatever pdt is, and breachSeen is still updated each frame (L2015). debrisBurst calls e.spawn directly (L1262-1267), so it does not depend on the step rate. Debris uses blend 'normal' (L1266), so the new test at L1785-1793, which counts visible sprites in above.children[0], measures the right container. Without the fix, the venting stream and hit smoke over the few frames after the hitstop cannot reach 14 particles, so the test tells the two versions apart.
+- R1-F2: resolved — gradeCover (L621-651) paints every floor/door tile and each wall's floor and band parts onto one art-pixel mask, then emits row runs. A run grows downward only when the row below has exactly the same start and end (key i*W+e, open/next maps), so no two output rects can overlap. All wallPicture offsets are even, so dividing by ART is exact. The duel flash at L1984 uses this same cover. The new test at L516-535 paints the cover onto cells and checks that each cell is painted exactly once and that the union equals the wall-picture parts, on both the Cutter and the Skiff.
+- R1-F3: resolved — stars(seed, band, t, artPx) (L1652-1662) snaps x and y to whole multiples of artPx from the band's corner, sizes each star artPx, and moves the layers at speed*artPx with STAR_LAYERS speeds 4 and 10. The draw at L2051 uses frame.artPx for the size, and both views pass artPx = 2*fit.scale (L2535, duel at L2771). The test runs at artPx 2, 4/3, 1.31 and 1, and checks the movement against speed*artPx. Spec note 5 (L3034) has been updated to match.
+- R1-F4: resolved — Task 5 (L1346-1483) matches the current consoleModel.ts:L15, L45 and L47 and consoleLayer's stroke, so the replace strings are exact. With WALL_GAP = 32-10-12 = 10, the new numbers put every rect on the grid: the desk at x 6, y -10, 20x10; the screen at 8,-8, 16x2; the outline's inner rect at 8,-8, 16x6. After the turn, south gives a desk at y 32 and a screen at y 38, and east gives a desk at x 32 and a screen at x 38, all even and with the screen inside the inner rect. The existing tests at consoleModel.test.ts:L31-37 still hold: (32-20)/2|0 = 6, the south desk ends at 42 = TILE_PX + WALL_GAP, and the west non-flush desk starts at x 0. No other file in src or tests references DESK_W, DESK_D or SCREEN_D (grep). The cursor (L1638-1642) is 4x2 or 2x4 inside a 16x2 screen, and its test now uses exact bounds (L1545-1551).
+- R1-F5: resolved — InteriorFeel.destroy (L2063-2070) destroys each Graphics with no options, then coverCtx and the three glow contexts. interiorView.destroy calls fx.destroy() before container.destroy (L2776). duelMode's restart line (duelMode.ts:L80) is edited to pass renderer.feel (plan L2785), so it builds a fresh feel and destroys the old one. On a layout change, build() (L1969-1972) destroys the old glow Graphics and reuses the shared contexts, and the test at L1809-1819 checks this.
+- R1-F6: resolved — Duel: plan L2800 passes runtime.paused() ? 0 : dt as presentDt, the same rule as stepFx at duelMode.ts:L84, while the tiles and boarders keep dt. Sector: the replace strings match session.ts:L26 and L109 and onlineSession.ts:L100. The `phase` variable exists at onlineSession.ts:L98, and OnlineRendererDeps picks SessionDeps['renderer'] (onlineSession.ts:L20), so editing the one type covers both sessions. The new session test uses APIs that exist: createSession, session.frame(), and pause()/resume() with their default reasons (session.ts:L172-175). clock.stopped is stop > 0 (L338), so a zero dt does not freeze animations, which matches Decision 17.
+
+## Verified
+- Decision 16's count adds up: 12+2+9+8+10+6+9+1+1+1+21 = 80, and the 7 new test files (feel, gradeModel, particles, particleSources, lightsModel, interiorFeel, feelBoot) take the suite from 237 to 244 files (plan L62, L2841).
+- Task 5 Step 2's expected failure ([19,10,3,undefined] vs [20,10,2,2], and the n/true desk off the grid) matches the current consoleModel.ts:L15 and L45 values.
+- strokeBand(r, width, alignment) in tests/helpers/artGrid.ts:L8-14 matches how Task 5 uses it; with alignment 1, outer equals the desk.
+- The debris, paused and destroy tests in interiorFeel.test.ts (L1785-1819) import only exports that the plan defines: DEBRIS_COUNT (L1260), lampPoints, consoles and createSimState.
+- The duelMode Step 4 edits (L2783-2811) match the current lines duelMode.ts:L80, L83, L87 and L97, and there are five as stated.
+- No change touches the sim, network or snapshot code: Decision 17's new parameters are renderer-side only (session.ts and onlineSession.ts draw calls).
+
+## Not verified
+- That Pixi 8.19 GraphicsContext exposes `destroyed` and sets it in destroy(), and that Container.destroy removes the object from its parent. The destroy test at plan L1815-1818 depends on both. node_modules was out of bounds; the prototype report says this test passed.
+- That gradeCover returns fewer rects than the Cutter's open tiles (`cover.length < open`, L514). This depends on how the merged wall runs come out; the prototype report says it passed.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `1fd401d`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F6 as resolved, with no new findings. The first round-2 attempt failed (Claude exit 1 after 61 s, a usage limit); it is archived as `round-2.attempt-1.meta`.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
