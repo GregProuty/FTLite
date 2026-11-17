@@ -73,11 +73,13 @@ describe('the forms', () => {
   });
 });
 
+const hiddenRoot = (): boolean => { const el = screen.getByTestId('session-menu'); return el.style.display === 'none' && el.childElementCount === 0; };
+
 describe('single player', () => {
-  it('renders no menu during single player and returns home', () => {
+  it('hides the menu root (empty, display:none) during single player and returns home', () => {
     const { actions } = renderUi();
-    click('single-player'); expect(screen.queryByTestId('session-menu')).toBeNull();
-    act(() => actions.setStatus({ ...idle, phase: 'reconnecting', actions: ['leave'] })); expect(screen.queryByTestId('session-menu')).toBeNull();
+    click('single-player'); expect(hiddenRoot()).toBe(true);
+    act(() => actions.setStatus({ ...idle, phase: 'reconnecting', actions: ['leave'] })); expect(hiddenRoot()).toBe(true);
     act(() => actions.leaveSingle()); expect(screen.getByTestId('session-menu').getAttribute('data-layout')).toBe('overlay');
   });
 });

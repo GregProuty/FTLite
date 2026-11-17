@@ -23,7 +23,8 @@ export function Menu() {
     observer?.observe(el);
     return () => { observer?.disconnect(); actions.setStripHeight(0); };
   }, [playing, actions]);
-  if (menu.page === 'single') return null;   // the duel owns the screen
+  // The duel owns the screen. The root stays, empty and display:none as the DOM menu's did, because the smokes measure it.
+  if (menu.page === 'single') return <div data-testid="session-menu" aria-hidden="true" data-layout="hidden" style={{ display: 'none' }} />;
   const page = menu.page;
   return (
     <div ref={ref} data-testid="session-menu" aria-label="FTLite session menu" data-layout={playing ? 'strip' : 'overlay'} style={playing ? ROOT_STRIP : ROOT_OVERLAY}>
