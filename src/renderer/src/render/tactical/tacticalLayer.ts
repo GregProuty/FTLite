@@ -1,35 +1,41 @@
 // The console map view layer (H-1 spec §7): draws a TacticalDraw, and in the duel a CombatDraw, with Graphics and pooled
 // BitmapText. Every display object is made at creation; a frame only clears and redraws Graphics and sets text, so
-// nothing is allocated per frame.
-import { BitmapText, Container, Graphics } from 'pixi.js';
-import { AMBER, DIM, FONT_NATIVE, FONT_SIZE, GOOD, TEXT, textPx, WARN } from '../theme';
+// nothing is allocated per frame. CRT map spec section 2: the layer is drawn only in console views, so it always draws
+// in the amber ramp (crtTheme.ts); friend and foe, damage, the lock and the arcs are told apart by brightness, solid vs
+// hollow, solid vs dashed, hatching and two-state blinks on the presentation time `t`. Section 3: `setCrt` attaches the
+// bloom and noise filters (none at glow 0).
+import { BitmapText, Container, Graphics, Rectangle } from 'pixi.js';
+import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { SHIP_RADIUS } from '../../sim/tactical/tuning';
-import { asteroidShape, CHEVRON_SIZE, wedgeSegments, type ArrowTarget, type Label, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import type { CrtScale } from '../crt';
+import { createCrtFilters, type CrtFilters } from './crtFilter';
+import { blink, CRT, DAMAGE_BLINK_HZ, DASH, DOT, DOT_GAP, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING } from './crtTheme';
+import { dashCircle, dashLine, hatchSegments } from './dashModel';
+import { asteroidShape, CHEVRON_SIZE, wedgeSegments, type ArrowTarget, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import type { ArcDraw, CombatDraw } from './weaponsModel';
 import type { Viewport } from './camera';
-import { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
 export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
-export const SPACE = 0x05060a;
-const GRID = 0x34445c, CONTOUR = 0x4a6a9a, EDGE = 0xa05050, PLANET = 0x2d4a6b, PLANET_LIT = 0x5b86b0, PLANET_RIM = 0x8fb4d8;
-const ROCK = 0x5e554b, ROCK_EDGE = 0x8a7f70, PATH = GOOD, VELOCITY = AMBER, FLAME = 0xff8c1a, MISSILE_PATH = AMBER, LOCK = AMBER;
-const ARROW_COLOUR: Readonly<Record<ArrowTarget, number>> = { ship: CREW_SHIP, enemy: ENEMY_SHIP, planet: PLANET_RIM, missile: AMBER };
-/** Room segment tint by damage level 0 / 1 / 2: the ship's own colour, amber, red. */
-const DAMAGE: readonly (number | null)[] = [null, AMBER, WARN];
+export const SPACE = CRT.glass;
 const STAR_COUNT = 220;
 /** Pool sizes: the labels name 500-unit squares (12 per axis at most), the ring has 12 labels, at most 4 arrows. */
 const GRID_LABELS = 12, RING_LABELS = 12, ARROWS = 4;
+/** The enemy's blinking marker ring, as a multiple of the ship's radius (the shield rings start at 1.6). */
+export const ENEMY_RING = 1.35;
 
 /** `stars` is exposed for the parallax test. `draw` takes the duel's combat lists as a second argument (none in the
- *  flight view). `reset` hides every text and clears every drawing until the next draw (a restart). `reseed` redraws the
- *  star field once for a new run seed (a restart), in the same Graphics; `starSeed` is the seed it shows. */
+ *  flight view) and the presentation time in seconds (performance.now() / 1000) for the blinks. `reset` hides every text
+ *  and clears every drawing until the next draw (a restart). `reseed` redraws the star field once for a new run seed (a
+ *  restart), in the same Graphics; `starSeed` is the seed it shows. `setCrt` applies a CRT strength (a no-op when the
+ *  same object is passed again). */
 export interface TacticalLayer {
   container: Container; stars: Container;
-  draw(d: TacticalDraw, c?: CombatDraw | null): void;
+  draw(d: TacticalDraw, c?: CombatDraw | null, t?: number): void;
   reset(): void;
   reseed(seed: number): void;
   starSeed(): number;
+  setCrt(scale: CrtScale): void;
 }
 
 /** The star field for a run seed: STAR_COUNT stars in one w × h screen, from an xorshift (render-only randomness). */
@@ -53,12 +59,15 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     const t = new BitmapText({ text: '', style: { fontFamily: opts.fontFamily, fontSize: size } });
     t.tint = tint; t.roundPixels = true; t.anchor.set(anchorX, anchorY); t.visible = false; container.addChild(t); return t;
   };
-  const cols = Array.from({ length: GRID_LABELS }, () => mk(FONT_NATIVE, DIM, 0.5, 0));
-  const rows = Array.from({ length: GRID_LABELS }, () => mk(FONT_NATIVE, DIM, 0, 0.5));
-  const ring = Array.from({ length: RING_LABELS }, () => mk(FONT_NATIVE, DIM, 0.5, 0.5));
-  const arrowText = Array.from({ length: ARROWS }, () => mk(FONT_NATIVE, TEXT, 0.5, 0.5));
-  const lockText = mk(FONT_NATIVE, LOCK, 0, 0), info = mk(FONT_SIZE, TEXT, 0.5, 0);
+  const cols = Array.from({ length: GRID_LABELS }, () => mk(FONT_NATIVE, CRT.mid, 0.5, 0));
+  const rows = Array.from({ length: GRID_LABELS }, () => mk(FONT_NATIVE, CRT.mid, 0, 0.5));
+  const ring = Array.from({ length: RING_LABELS }, () => mk(FONT_NATIVE, CRT.mid, 0.5, 0.5));
+  const arrowText = Array.from({ length: ARROWS }, () => mk(FONT_NATIVE, CRT.main, 0.5, 0.5));
+  const lockText = mk(FONT_NATIVE, CRT.glass, 0, 0), info = mk(FONT_SIZE, CRT.main, 0.5, 0);
   const texts = [...cols, ...rows, ...ring, ...arrowText, lockText, info];
+  // Reused buffers for lists that are consumed at once (dash and hatch segments, polylines fed to dashLine). A list passed
+  // to Graphics.poly is kept by reference until the frame renders, so every poly gets a fresh array.
+  const pts: number[] = [], seg: number[] = [], line: number[] = [];
 
   // The star field: render-only randomness, seeded (H-1 spec §7 item 1). One screen of stars is drawn as a 2 × 2 tile, so
   // shifting it by the parallax offset (0..w, 0..h, minus one tile) always covers the screen with no gap.
@@ -68,9 +77,13 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     stars.clear(); shownSeed = seed;
     for (const { x, y, b } of starField(seed, w, h))
       for (const [tx, ty] of [[0, 0], [w, 0], [0, h], [w, h]] as const)
-        stars.rect(Math.floor(x) + tx, Math.floor(y) + ty, b > 0.92 ? 2 : 1, b > 0.92 ? 2 : 1).fill({ color: 0xffffff, alpha: 0.25 + 0.55 * b });
+        stars.rect(Math.floor(x) + tx, Math.floor(y) + ty, b > 0.92 ? 2 : 1, b > 0.92 ? 2 : 1).fill({ color: CRT.dim, alpha: 0.25 + 0.55 * b });
   };
   drawStars(shownSeed);
+
+  // The CRT filters (spec section 3): made on the first setting with a glow, clipped to the screen (the star tile is 2w × 2h).
+  let crtShown: CrtScale | null = null, filters: CrtFilters | null = null;
+  container.filterArea = new Rectangle(0, 0, w, h);
 
   const setText = (t: BitmapText, s: string): void => { if (t.text !== s) t.text = s; };
   function fill(pool: BitmapText[], labels: readonly Label[]): void {
@@ -80,140 +93,190 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       if (l) { setText(t, l.text); t.position.set(Math.round(l.x), Math.round(l.y)); }
     });
   }
+  /** Strokes a segment list [x1, y1, x2, y2, ...] as one path. */
+  function segments(g: Graphics, s: readonly number[], width: number, color: number, alpha = 1): void {
+    if (s.length === 0) return;
+    for (let i = 0; i + 3 < s.length; i += 4) g.moveTo(s[i]!, s[i + 1]!).lineTo(s[i + 2]!, s[i + 3]!);
+    g.stroke({ width, color, alpha });
+  }
 
-  function drawShip(g: Graphics, s: ShipDraw): void {
-    const colour = s.crew ? CREW_SHIP : ENEMY_SHIP, fx = Math.sin(s.angle), fy = -Math.cos(s.angle), rx = -fy, ry = fx;
+  function drawShip(g: Graphics, s: ShipDraw, t: number): void {
+    const fx = Math.sin(s.angle), fy = -Math.cos(s.angle), rx = -fy, ry = fx, ring = blink(t, ENEMY_BLINK_HZ) ? CRT.dim : CRT.main;
     if (s.chevron) {
       const k = CHEVRON_SIZE / 2, pt = (f: number, side: number): number[] => [s.x + (fx * f + rx * side) * k, s.y + (fy * f + ry * side) * k];
-      g.poly([...pt(1.1, 0), ...pt(-0.9, 0.85), ...pt(-0.45, 0), ...pt(-0.9, -0.85)]).fill(colour).stroke({ width: 1, color: 0x000000, alpha: 0.6 });
+      const poly = [...pt(1.1, 0), ...pt(-0.9, 0.85), ...pt(-0.45, 0), ...pt(-0.9, -0.85)];
+      if (s.crew) g.poly(poly).fill(CRT.hot).stroke({ width: 1, color: CRT.glass });
+      else { g.poly(poly).fill(CRT.glass).stroke({ width: 1, color: CRT.main }); segments(g, dashCircle(s.x, s.y, CHEVRON_SIZE * 0.95, DASH, GAP, seg), 1, ring); }
       return;
     }
-    const k = SHIP_RADIUS * s.scale;
-    for (const seg of wedgeSegments()) {
+    const k = SHIP_RADIUS * s.scale, phase = blink(t, DAMAGE_BLINK_HZ);
+    for (const sg of wedgeSegments()) {
       const pts: number[] = [];
-      for (let i = 0; i < seg.poly.length; i += 2) { const f = seg.poly[i]!, side = seg.poly[i + 1]!; pts.push(s.x + (fx * f + rx * side) * k, s.y + (fy * f + ry * side) * k); }
-      g.poly(pts).fill(DAMAGE[s.rooms[seg.room] ?? 0] ?? colour).stroke({ width: 1, color: 0x0b1018 });
+      for (let i = 0; i < sg.poly.length; i += 2) { const f = sg.poly[i]!, side = sg.poly[i + 1]!; pts.push(s.x + (fx * f + rx * side) * k, s.y + (fy * f + ry * side) * k); }
+      const level = s.rooms[sg.room] ?? 0;
+      if (s.crew) {
+        // Own ship (solid hot): level 1 a glass hatch; level 2 alternates a glass cut-out (hot edge) and hot at 2 Hz.
+        if (level >= 2 && phase === 0) g.poly(pts).fill(CRT.glass).stroke({ width: 1, color: CRT.hot });
+        else g.poly(pts).fill(CRT.hot).stroke({ width: 1, color: CRT.glass });
+        if (level === 1) segments(g, hatchSegments(pts, HATCH_SPACING, HATCH_ANGLE, seg), 1, CRT.glass);
+      } else {
+        // Enemy (hollow): level 1 a main hatch; level 2 alternates solid hot and a main outline with a main hatch at 2 Hz.
+        if (level >= 2 && phase === 0) g.poly(pts).fill(CRT.hot).stroke({ width: 1, color: CRT.glass });
+        else {
+          g.poly(pts).fill(CRT.glass).stroke({ width: 1, color: CRT.main });
+          if (level >= 1) segments(g, hatchSegments(pts, HATCH_SPACING, HATCH_ANGLE, seg), 1, CRT.main);
+        }
+      }
     }
-    for (let l = 0; l < s.shields; l++) g.circle(s.x, s.y, k * (1.6 + 0.25 * l)).stroke({ width: 1, color: SHIELD_RING, alpha: 0.65 - 0.2 * l });
+    if (!s.crew) segments(g, dashCircle(s.x, s.y, k * ENEMY_RING, DASH, GAP, seg), 1, ring);
+    for (let l = 0; l < s.shields; l++) segments(g, dashCircle(s.x, s.y, k * (1.6 + 0.25 * l), DASH, GAP, seg), 1, s.crew ? CRT.mid : CRT.dim, 0.9 - 0.2 * l);
   }
 
-  /** A laser arc: a filled sector of radius r about (x, y), ±half about `angle` (radians clockwise from north). */
-  function arc(g: Graphics, a: ArcDraw, colour: number, fillAlpha: number, lineAlpha: number): void {
+  /** The arc's outline as a polyline: the centre, the arc from `from` to `to` (radians from +x), back to the centre. */
+  function arcOutline(a: ArcDraw, from: number, to: number): number[] {
+    pts.length = 0; pts.push(a.x, a.y);
+    const r = Math.max(1, a.r), n = Math.max(8, Math.ceil(((to - from) * r) / 12));
+    for (let k = 0; k <= n; k++) { const ang = from + ((to - from) * k) / n; pts.push(a.x + Math.cos(ang) * r, a.y + Math.sin(ang) * r); }
+    pts.push(a.x, a.y);
+    return pts;
+  }
+  /** A laser arc: the own arc a mid fill with a solid main edge; the enemy arc no fill and a dashed dim edge. */
+  function arc(g: Graphics, a: ArcDraw, own: boolean, fillAlpha: number): void {
     const from = a.angle - a.half - Math.PI / 2, to = a.angle + a.half - Math.PI / 2;   // Pixi measures from +x, clockwise on screen
-    g.moveTo(a.x, a.y).arc(a.x, a.y, Math.max(1, a.r), from, to).closePath().fill({ color: colour, alpha: fillAlpha }).stroke({ width: 1, color: colour, alpha: lineAlpha });
+    if (own) g.moveTo(a.x, a.y).arc(a.x, a.y, Math.max(1, a.r), from, to).closePath().fill({ color: CRT.mid, alpha: fillAlpha }).stroke({ width: 1, color: CRT.main, alpha: 0.8 });
+    else segments(g, dashLine(arcOutline(a, from, to), DASH, GAP, seg), 1, CRT.dim);
   }
 
-  function missileGlyph(g: Graphics, x: number, y: number, angle: number, colour: number): void {
+  function missileGlyph(g: Graphics, x: number, y: number, angle: number, crew: boolean, t: number): void {
     const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = 6;
-    g.poly([x + fx * s, y + fy * s, x - fx * s + rx * s * 0.55, y - fy * s + ry * s * 0.55, x - fx * s - rx * s * 0.55, y - fy * s - ry * s * 0.55]).fill(colour);
+    g.poly([x + fx * s, y + fy * s, x - fx * s + rx * s * 0.55, y - fy * s + ry * s * 0.55, x - fx * s - rx * s * 0.55, y - fy * s - ry * s * 0.55]);
+    if (crew) g.fill(CRT.hot);
+    else g.fill(CRT.glass).stroke({ width: 2, color: blink(t, ENEMY_BLINK_HZ) ? CRT.hot : CRT.main });   // in phase with the enemy ring
   }
 
-  function arrowGlyph(g: Graphics, x: number, y: number, angle: number, colour: number): void {
-    const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = 10;
-    g.poly([x + fx * s, y + fy * s, x - fx * s * 0.6 + rx * s * 0.7, y - fy * s * 0.6 + ry * s * 0.7, x - fx * s * 0.6 - rx * s * 0.7, y - fy * s * 0.6 - ry * s * 0.7]).fill(colour);
+  function arrowGlyph(g: Graphics, x: number, y: number, angle: number, target: ArrowTarget): void {
+    const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = target === 'missile' ? 7 : 10;
+    g.poly([x + fx * s, y + fy * s, x - fx * s * 0.6 + rx * s * 0.7, y - fy * s * 0.6 + ry * s * 0.7, x - fx * s * 0.6 - rx * s * 0.7, y - fy * s * 0.6 - ry * s * 0.7]);
+    if (target === 'ship') g.fill(CRT.hot);
+    else if (target === 'enemy') g.fill(CRT.glass).stroke({ width: 2, color: CRT.main });
+    else g.fill(target === 'planet' ? CRT.dim : CRT.main);
+  }
+
+  /** The bearing ring's circle and ticks (its labels are pooled text). */
+  function compass(r: RingDraw): void {
+    helm.circle(r.x, r.y, r.r).stroke({ width: 1, color: CRT.dim, alpha: 0.6 });
+    for (const k of r.ticks) helm.moveTo(k.x1, k.y1).lineTo(k.x2, k.y2).stroke({ width: 1, color: CRT.dim, alpha: k.major ? 1 : 0.6 });
   }
 
   return {
     container, stars,
-    draw(d, c = null) {
+    draw(d, c = null, t = 0) {
       stars.position.set(d.stars.x - w, d.stars.y - h);
+      filters?.tick(t);
       for (const g of drawn) g.clear();
-      for (const l of d.grid.lines) grid.moveTo(l.x1, l.y1).lineTo(l.x2, l.y2).stroke({ width: 1, color: GRID, alpha: l.major ? 0.7 : 0.3 });
+      for (const l of d.grid.lines) grid.moveTo(l.x1, l.y1).lineTo(l.x2, l.y2).stroke({ width: 1, color: l.major ? CRT.dim : CRT.faint, alpha: l.major ? 0.5 : 1 });
       fill(cols, d.grid.columns); fill(rows, d.grid.rows);
 
-      for (const c of d.contours) contours.circle(c.x, c.y, c.r).stroke({ width: 1, color: CONTOUR, alpha: 0.45 });
-      if (d.edge) contours.circle(d.edge.x, d.edge.y, d.edge.r).stroke({ width: 2, color: EDGE, alpha: 0.7 });
+      for (const k of d.contours) contours.circle(k.x, k.y, k.r).stroke({ width: 1, color: CRT.dim, alpha: 0.45 });
+      if (d.edge) segments(contours, dashCircle(d.edge.x, d.edge.y, d.edge.r, DASH, GAP, seg), 2, CRT.main, 0.7);
 
       if (d.planet) {
         const p = d.planet;
-        bodies.circle(p.x, p.y, Math.max(1, p.r)).fill(PLANET);
-        bodies.circle(p.x - p.r * 0.22, p.y - p.r * 0.22, p.r * 0.72).fill({ color: PLANET_LIT, alpha: 0.55 });
-        bodies.circle(p.x - p.r * 0.35, p.y - p.r * 0.35, p.r * 0.35).fill({ color: PLANET_RIM, alpha: 0.35 });
-        bodies.circle(p.x, p.y, Math.max(1, p.r)).stroke({ width: 1, color: PLANET_RIM, alpha: 0.6 });
+        bodies.circle(p.x, p.y, Math.max(1, p.r)).fill(CRT.faint);
+        bodies.circle(p.x - p.r * 0.22, p.y - p.r * 0.22, p.r * 0.72).fill({ color: CRT.dim, alpha: 0.55 });
+        bodies.circle(p.x - p.r * 0.35, p.y - p.r * 0.35, p.r * 0.35).fill({ color: CRT.mid, alpha: 0.35 });
+        bodies.circle(p.x, p.y, Math.max(1, p.r)).stroke({ width: 1, color: CRT.mid, alpha: 0.6 });
       }
       for (const a of d.asteroids) {
-        if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(ROCK_EDGE); continue; }
+        if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         const shape = asteroidShape(a.index), pts: number[] = [];
-        shape.forEach((m, k) => { const t = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(t) * a.r * m, a.y + Math.sin(t) * a.r * m); });
-        bodies.poly(pts).fill(ROCK).stroke({ width: 1, color: ROCK_EDGE });
+        shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
+        bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
       }
 
       const wd = c?.weapons ?? null;
       if (wd) {
-        if (wd.enemyArc) arc(arcs, wd.enemyArc, ENEMY_SHIP, 0.05, 0.25);
-        arc(arcs, wd.ownArc, CREW_SHIP, wd.inArc ? 0.14 : 0.08, 0.5);
+        if (wd.enemyArc) arc(arcs, wd.enemyArc, false, 0);
+        arc(arcs, wd.ownArc, true, wd.inArc ? 0.14 : 0.08);
       }
 
-      for (const s of d.ships) drawShip(ships, s);
+      for (const s of d.ships) drawShip(ships, s, t);
 
       let ringLabels: readonly Label[] = wd?.ring?.labels ?? [];
-      if (wd?.ring) {
-        const r = wd.ring;
-        helm.circle(r.x, r.y, r.r).stroke({ width: 1, color: DIM, alpha: 0.25 });
-        for (const t of r.ticks) helm.moveTo(t.x1, t.y1).lineTo(t.x2, t.y2).stroke({ width: 1, color: DIM, alpha: t.major ? 0.7 : 0.35 });
-      }
+      if (wd?.ring) compass(wd.ring);
       if (d.helm) {
         const hd = d.helm;
         if (hd.path.length > 0) {
           helm.moveTo(hd.origin.x, hd.origin.y);
           for (const p of hd.path) helm.lineTo(p.x, p.y);
-          helm.stroke({ width: 2, color: PATH, alpha: 0.7 });
+          helm.stroke({ width: 2, color: CRT.mid, alpha: 0.9 });
           const end = hd.path[hd.path.length - 1]!;
-          helm.circle(end.x, end.y, 3).fill({ color: PATH, alpha: 0.9 });
+          helm.circle(end.x, end.y, 3).fill({ color: CRT.mid, alpha: 0.9 });
         }
-        helm.moveTo(hd.origin.x, hd.origin.y).lineTo(hd.velocity.x, hd.velocity.y).stroke({ width: 2, color: VELOCITY, alpha: 0.8 });
-        helm.moveTo(hd.headingFrom.x, hd.headingFrom.y).lineTo(hd.headingTo.x, hd.headingTo.y).stroke({ width: 1, color: TEXT, alpha: 0.7 });
+        line.length = 0; line.push(hd.origin.x, hd.origin.y, hd.velocity.x, hd.velocity.y);
+        segments(helm, dashLine(line, DASH, GAP, seg), 2, CRT.main, 0.9);
+        helm.moveTo(hd.headingFrom.x, hd.headingFrom.y).lineTo(hd.headingTo.x, hd.headingTo.y).stroke({ width: 1, color: CRT.main, alpha: 0.9 });
         // Thrust: a flame behind the stern (forward) or ahead of the nose (reverse). Turn: a pip on the side it turns to.
         const fx = (hd.headingTo.x - hd.headingFrom.x) / 40, fy = (hd.headingTo.y - hd.headingFrom.y) / 40, rx = -fy, ry = fx;
         const back = Math.hypot(hd.headingFrom.x - hd.origin.x, hd.headingFrom.y - hd.origin.y);
         if (hd.thrust !== 0) {
           const dir = hd.thrust > 0 ? -1 : 1, bx = hd.origin.x + fx * dir * back, by = hd.origin.y + fy * dir * back, len = hd.thrust > 0 ? 14 : 8;
-          helm.poly([bx + rx * 5, by + ry * 5, bx - rx * 5, by - ry * 5, bx + fx * dir * len, by + fy * dir * len]).fill({ color: FLAME, alpha: 0.9 });
+          helm.poly([bx + rx * 5, by + ry * 5, bx - rx * 5, by - ry * 5, bx + fx * dir * len, by + fy * dir * len]).fill({ color: CRT.hot, alpha: 0.9 });
         }
-        if (hd.turn !== 0) helm.circle(hd.headingTo.x + rx * hd.turn * 8, hd.headingTo.y + ry * hd.turn * 8, 3).fill({ color: AMBER, alpha: 0.9 });
-        if (hd.ring) {
-          helm.circle(hd.ring.x, hd.ring.y, hd.ring.r).stroke({ width: 1, color: DIM, alpha: 0.25 });
-          for (const t of hd.ring.ticks) helm.moveTo(t.x1, t.y1).lineTo(t.x2, t.y2).stroke({ width: 1, color: DIM, alpha: t.major ? 0.7 : 0.35 });
-          ringLabels = hd.ring.labels;
-        }
+        if (hd.turn !== 0) helm.circle(hd.headingTo.x + rx * hd.turn * 8, hd.headingTo.y + ry * hd.turn * 8, 3).fill({ color: CRT.hot, alpha: 0.9 });
+        if (hd.ring) { compass(hd.ring); ringLabels = hd.ring.labels; }
       }
       fill(ring, ringLabels);
 
       // Combat: missile trails and glyphs, the predicted missile path, the lock marker, then the event effects on top.
       for (const m of c?.missiles ?? []) {
-        const colour = m.crew ? CREW_SHIP : ENEMY_SHIP;
-        m.trail.forEach((p, k) => { if (k > 0) { const q = m.trail[k - 1]!; combat.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 2, color: colour, alpha: 0.6 * (k / m.trail.length) }); } });
-        missileGlyph(combat, m.x, m.y, m.angle, colour);
+        if (m.crew) m.trail.forEach((p, k) => { if (k > 0) { const q = m.trail[k - 1]!; combat.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 2, color: CRT.mid, alpha: 0.6 * (k / m.trail.length) }); } });
+        else {
+          line.length = 0; for (const p of m.trail) line.push(p.x, p.y);
+          segments(combat, dashLine(line, DASH, GAP, seg), 2, CRT.dim, 0.9);
+        }
+        missileGlyph(combat, m.x, m.y, m.angle, m.crew, t);
       }
       if (wd && wd.missileOrigin && wd.missilePath.length > 0) {
-        combat.moveTo(wd.missilePath[0]!.x, wd.missilePath[0]!.y);
-        for (const p of wd.missilePath.slice(1)) combat.lineTo(p.x, p.y);
-        combat.stroke({ width: 1, color: MISSILE_PATH, alpha: 0.7 });
+        line.length = 0; for (const p of wd.missilePath) line.push(p.x, p.y);
+        segments(combat, dashLine(line, DOT, DOT_GAP, seg), 1, CRT.main);
         const end = wd.missilePath[wd.missilePath.length - 1]!;
-        combat.circle(end.x, end.y, 3).stroke({ width: 1, color: MISSILE_PATH });
+        combat.circle(end.x, end.y, 3).stroke({ width: 1, color: CRT.main });
       }
       const lk = c?.lock ?? null;
       if (lk) {
         const r = lk.r, k = r * 0.45;
         for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const)
-          combat.moveTo(lk.x + sx * r, lk.y + sy * (r - k)).lineTo(lk.x + sx * r, lk.y + sy * r).lineTo(lk.x + sx * (r - k), lk.y + sy * r).stroke({ width: 2, color: LOCK });
+          combat.moveTo(lk.x + sx * r, lk.y + sy * (r - k)).lineTo(lk.x + sx * r, lk.y + sy * r).lineTo(lk.x + sx * (r - k), lk.y + sy * r).stroke({ width: 2, color: CRT.hot });
+        // The lock label: an inverse bar, glass text on a solid block. The block is `mid`, under the bloom threshold: a `main`
+        // block blooms over the thin native-size glyphs at `full` (plan Decision 1).
+        combat.rect(Math.round(lk.label.x) - 3, Math.round(lk.label.y) + 1, textPx(lk.label.text, 1) + 5, 14).fill(CRT.mid);
       }
       lockText.visible = lk !== null;
       if (lk) { setText(lockText, lk.label.text); lockText.position.set(Math.round(lk.label.x), Math.round(lk.label.y)); }
       info.visible = wd !== null;
-      if (wd) { setText(info, wd.info.text); info.tint = wd.inArc ? GOOD : TEXT; info.position.set(Math.round(wd.info.x), Math.round(wd.info.y)); }
+      if (wd) { setText(info, wd.info.text); info.tint = wd.inArc ? CRT.hot : CRT.main; info.position.set(Math.round(wd.info.x), Math.round(wd.info.y)); }
       for (const e of c?.effects ?? []) {
-        if (e.kind === 'beam') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: 3, color: e.colour, alpha: e.alpha });
-        else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: e.colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: e.colour, alpha: e.alpha * 0.6 });
-        else for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r, e.y1 + Math.sin(a) * e.r).stroke({ width: 2, color: e.colour, alpha: e.alpha }); }
+        const colour = e.kind === 'beam' || e.alpha > 0.5 ? e.colour : CRT.mid;   // bursts and sparks fade from hot to mid
+        if (e.kind === 'beam') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: 3, color: colour, alpha: e.alpha });
+        else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: colour, alpha: e.alpha * 0.6 });
+        else for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r, e.y1 + Math.sin(a) * e.r).stroke({ width: 2, color: colour, alpha: e.alpha }); }
       }
 
-      d.arrows.forEach((a) => arrowGlyph(overlay, a.x, a.y, a.angle, ARROW_COLOUR[a.target]));
+      d.arrows.forEach((a) => arrowGlyph(overlay, a.x, a.y, a.angle, a.target));
       // Each label sits inward of its arrow, far enough along the arrow's axis to clear the glyph (half its width, plus 14 px).
       fill(arrowText, d.arrows.map((a) => ({ text: a.label, x: a.x - Math.sin(a.angle) * (textPx(a.label, 1) / 2 + 14), y: a.y + Math.cos(a.angle) * 18 })));
     },
     reset() { for (const t of texts) t.visible = false; for (const g of drawn) g.clear(); },
     reseed(seed) { if (seed !== shownSeed) drawStars(seed); },
-    starSeed: () => shownSeed
+    starSeed: () => shownSeed,
+    setCrt(scale) {
+      if (scale === crtShown) return;
+      crtShown = scale;
+      if (scale.glow <= 0) { container.filters = null; return; }
+      filters ??= createCrtFilters();
+      filters.apply(scale);
+      container.filters = filters.list;
+    }
   };
 }
