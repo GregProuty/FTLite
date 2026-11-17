@@ -23,8 +23,9 @@ describe('the house palette (Art-i spec section 4)', () => {
       for (const c of ramp) expect(colours.has(c), `${name} ${c.toString(16)}`).toBe(true);
     }
   });
-  it('keeps the placeholder close to the pre-Art-i look', () => {
-    expect(ROLE.floor).toBe(hexToNumber('#c7cfcc')); expect(ROLE.wall).toBe(hexToNumber('#394a50')); expect(ROLE.doorFill).toBe(hexToNumber('#de9e41'));
+  it('is the bought packs\' palette: fire, flash and lamps come from the explosion pack (Art-ii)', () => {
+    expect(ROLE.flash).toBe(hexToNumber('#fffff0')); expect(ROLE.fireFallback).toBe(hexToNumber('#f68420')); expect(ROLE.lampOn).toBe(hexToNumber('#f8ca1c'));
+    expect(data.ramps.fire.slice(0, 5)).toEqual(['#fffff0', '#feef98', '#f8ca1c', '#faae1e', '#f68420']);
   });
   it('rejects a role colour outside colours, a missing role, an unknown role, a short ramp and a bad hex', () => {
     const good = structuredClone(data);

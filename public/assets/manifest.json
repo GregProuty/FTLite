@@ -539,5 +539,40 @@
       },
       "animations": {}
     }
+  },
+  {
+    "title": "Mars colony sets (Habitable Building, Tilesets)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/floor.png",
+    "sheet": {
+      "frameW": 16,
+      "frameH": 16,
+      "frames": {
+        "house.floor.0": 0,
+        "house.floor.1": 1,
+        "house.floor.2": 2
+      },
+      "animations": {}
+    }
+  },
+  {
+    "title": "Mars colony sets (Habitable Building, Tilesets)",
+    "author": "Maru-98",
+    "source": "https://maru-98.itch.io/",
+    "license": "paid",
+    "retrieved": "2026-11-16",
+    "modifications": "frames cut and remapped to the FTLite house palette by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Mars colony pixel art by Maru-98 (maru-98.itch.io)",
+    "required": false,
+    "file": "paid/maru/floor-grate.png",
+    "name": "house.floor.3"
   }
 ]
