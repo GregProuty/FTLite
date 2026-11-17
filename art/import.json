@@ -1746,6 +1746,97 @@
       ],
       "output": "public/assets/paid/pimen/explosion-big.png",
       "columns": 13
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 18,
+          "y": 17,
+          "w": 12,
+          "h": 15
+        }
+      ],
+      "output": "public/assets/paid/maru/console-navigation.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 50,
+          "y": 17,
+          "w": 12,
+          "h": 15
+        }
+      ],
+      "output": "public/assets/paid/maru/console-weapons.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 82,
+          "y": 16,
+          "w": 13,
+          "h": 16
+        }
+      ],
+      "output": "public/assets/paid/maru/console-science.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/habitable-building/habitable building tileset.png",
+      "frames": [
+        {
+          "x": 113,
+          "y": 17,
+          "w": 13,
+          "h": 15
+        }
+      ],
+      "output": "public/assets/paid/maru/console-doors.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/tilesets/tilesets.png",
+      "frames": [
+        {
+          "x": 80,
+          "y": 22,
+          "w": 16,
+          "h": 27
+        }
+      ],
+      "output": "public/assets/paid/maru/console-engineering.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/tilesets/tilesets.png",
+      "frames": [
+        {
+          "x": 16,
+          "y": 28,
+          "w": 16,
+          "h": 23
+        }
+      ],
+      "output": "public/assets/paid/maru/console-lifeSupport.png",
+      "columns": 1
+    },
+    {
+      "pack": "maru-98-mars/tilesets/tilesets.png",
+      "frames": [
+        {
+          "x": 112,
+          "y": 33,
+          "w": 24,
+          "h": 14
+        }
+      ],
+      "output": "public/assets/paid/maru/console-medbay.png",
+      "columns": 1
     }
   ]
 }

@@ -1,8 +1,11 @@
+import { STATION_IDS } from '../sim/stationKinds';
 import { CREW_ART_NAMES } from './crewArt';
 
 /** Every asset name the renderer uses (spec §3 name contract). required = must be bound in the manifest; optional = may be unbound (in-house piece, Graphics fallback). */
 export const FACINGS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 export type Facing8 = (typeof FACINGS)[number];
+/** Art-ii (spec section 2): one console sprite per station kind, by its ship-data id. */
+export const CONSOLE_ART_NAMES: readonly string[] = STATION_IDS.map((id) => `console.${id}`);
 
 type Kind = 'required' | 'optional';
 const names: Record<string, Kind> = {};
@@ -21,6 +24,7 @@ add('required', 'crew.down');
 add('optional', 'crew.sit');
 // Art-ii (spec section 1): the bought crew, a paid pack absent on a fresh clone; the Puny crew then draw as before
 add('optional', ...CREW_ART_NAMES);
+add('optional', ...CONSOLE_ART_NAMES);   // Art-ii spec section 2: the bought consoles; the procedural desks without them
 // icons (in-house)
 add('optional', 'icon.fire', 'icon.oxygen', 'icon.breach', 'icon.door', 'icon.repair', 'icon.medical', 'icon.power', 'icon.sensors', 'icon.weapons', 'icon.navigation');
 // ui (Kenney Pixel UI, Kenney 1-Bit Input Prompts)

@@ -82,7 +82,16 @@ Mars colony pixel art by Maru-98 (maru-98.itch.io)
   Licence: paid (commercial licence, https://maru-98.itch.io/)
   Modifications: frames cut and remapped to the FTLite house palette by npm run art:import (edited by FTLite art import)
   Retrieved: 2026-11-16
-  Files: paid/maru/floor.png
+  Files: paid/maru/console-doors.png, paid/maru/console-navigation.png, paid/maru/console-science.png, paid/maru/console-weapons.png, paid/maru/floor.png
+
+Mars colony pixel art by Maru-98 (maru-98.itch.io)
+  Title: Mars colony sets (Tilesets)
+  Author: Maru-98
+  Source: https://maru-98.itch.io/
+  Licence: paid (commercial licence, https://maru-98.itch.io/)
+  Modifications: frames cut and remapped to the FTLite house palette by npm run art:import (edited by FTLite art import)
+  Retrieved: 2026-11-16
+  Files: paid/maru/console-engineering.png, paid/maru/console-lifeSupport.png, paid/maru/console-medbay.png
 
 Modern Interiors by LimeZu (limezu.itch.io)
   Title: Modern Interiors (premade characters)

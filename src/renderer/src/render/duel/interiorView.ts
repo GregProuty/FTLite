@@ -21,6 +21,7 @@ import { duelGradeInput } from '../gradeModel';
 import { duelHit } from '../impactModel';
 import { damagedRepairPoints, duelWorking } from '../particles/sources';
 import type { ViewEvent } from '../tactical/fxModel';
+import { featureReady } from '../fallback';
 
 export interface InteriorView {
   container: Container;
@@ -42,11 +43,12 @@ const TINT: readonly number[] = [0, AMBER, WARN], MARK: readonly number[] = [0, 
  *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full. */
 export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL): InteriorView {
   const container = new Container(), world = new Container();
-  const fx = createInteriorFeel({ world, band: INTERIOR_BAND, feel });   // Art-i spec sections 5-8
+  const missing = new Set(assets.missing);
+  const fx = createInteriorFeel({ world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt') });   // Art-i spec sections 5-8; Art-ii: the bought consoles
   container.addChild(fx.starfield, world);   // the starfield under the world, filling INTERIOR_BAND
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer();
-  const desks = createConsoleLayer(), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
+  const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
   const damage = new Graphics(), marks = new Graphics();
   const labels = Array.from({ length: 3 }, () => {
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });

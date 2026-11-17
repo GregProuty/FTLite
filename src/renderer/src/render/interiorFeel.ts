@@ -77,8 +77,10 @@ function freezeAnimations(root: Container, held: Set<AnimatedSprite>, frozen: bo
   walk(root);
 }
 
-/** `world`: the ship's world container (its animations freeze in a hitstop). `band`: the starfield's band, internal pixels. */
-export function createInteriorFeel(opts: { world: Container; band: Band; feel: () => FeelSetting }): InteriorFeel {
+/** `world`: the ship's world container (its animations freeze in a hitstop). `band`: the starfield's band, internal pixels.
+ *  `consoleArt`: the consoles are the bought sprites (Art-ii spec section 2), so no screen cursor blinks on them. */
+export interface InteriorFeelOptions { world: Container; band: Band; feel: () => FeelSetting; consoleArt?: boolean }
+export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
   const starfield = new Container(), starG = new Graphics(); starfield.addChild(starG);
   const grade = new Container(); grade.blendMode = 'multiply';
   const coverCtx = new GraphicsContext(), ambient = new Graphics(coverCtx), alert = new Graphics(coverCtx), vacuum = new Graphics();
@@ -166,7 +168,7 @@ export function createInteriorFeel(opts: { world: Container; band: Band; feel: (
       consoles(state).forEach((c, k) => {
         const glow = consoleGlows[k];
         if (glow) { glow.position.set(c.x + TILE_PX / 2, c.y + TILE_PX / 2); glow.alpha = consoleGlow(c.look); }
-        if (c.look === 'down') return;
+        if (c.look === 'down' || opts.consoleArt) return;   // the bought console art has no procedural screen to blink on (Art-ii spec section 2)
         const r = screenCursor(c.x, c.y, c.picture.screen);
         fixtures.rect(r.x, r.y, r.w, r.h).fill(screenPhase(seed, c.members[0]!, t) === 'A' ? ROLE.screenA : ROLE.screenB);
       });

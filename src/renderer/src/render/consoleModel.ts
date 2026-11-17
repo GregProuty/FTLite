@@ -3,6 +3,7 @@ import type { SimState } from '../sim/state';
 import { stationOnline } from '../sim/stations';
 import { BAND, PANEL_THICK, type DoorRect } from './doorModel';
 import { AMBER, WARN, over } from './theme';
+import { CONSOLE_ART_NAMES } from './assetNames';
 
 /**
  * Visible consoles (spec Demo-xii section 1): a small dark desk at every station tile, against the nearest wall, with a screen strip on
@@ -89,3 +90,29 @@ export function stationSides(state: SimState): Side[] {
   for (const c of consoles(state)) for (const m of c.members) out[m] = c.side;
   return out;
 }
+
+/** The console sprite's asset name (Art-ii spec section 2): `console.<STATION_IDS id>` of the group's first member. */
+export function consoleArtName(state: SimState, members: readonly number[]): string {
+  return CONSOLE_ART_NAMES[state.derived.stationKind[members[0]!]!]!;
+}
+
+/** The quarter turn for a wall side: the art faces south (its back to a north wall); clockwise is positive. */
+export const SIDE_ROTATION: Readonly<Record<Side, number>> = { n: 0, e: Math.PI / 2, s: Math.PI, w: -Math.PI / 2 };
+
+/** Where a console sprite of `w` x `h` art pixels goes in tile-local world units: its back edge on the wall face (the outer
+ *  edge of the turned deskPicture desk: flush n y = -WALL_GAP, s y = T + WALL_GAP, w x = -WALL_GAP, e x = T + WALL_GAP;
+ *  not flush 0 or T), centred along the wall on the tile's centre line, its rotated top-left floored to an even unit.
+ *  Returns that top-left and size, and the centre to place a 0.5/0.5-anchored sprite at with `rotation`. */
+export function consolePlacement(side: Side, flush: boolean, w: number, h: number): { left: number; top: number; width: number; height: number; cx: number; cy: number; rotation: number } {
+  const W = 2 * w, H = 2 * h, gap = flush ? WALL_GAP : 0, even = (v: number): number => 2 * Math.floor(v / 2) || 0;   // || 0: never -0
+  const along = even(T / 2 - W / 2);
+  const box = side === 'n' ? { left: along, top: -gap, width: W, height: H }
+    : side === 's' ? { left: along, top: T + gap - H, width: W, height: H }
+    : side === 'w' ? { left: -gap, top: along, width: H, height: W }
+    : { left: T + gap - H, top: along, width: H, height: W };
+  const left = even(box.left), top = even(box.top);
+  return { left, top, width: box.width, height: box.height, cx: left + box.width / 2, cy: top + box.height / 2, rotation: SIDE_ROTATION[side] };
+}
+
+/** The console sprite's tint by look: free plain, occupied at 80 % brightness, down at 60 %. */
+export const CONSOLE_TINT: Readonly<Record<ConsoleLook, number>> = { free: 0xffffff, occupied: 0xcccccc, down: 0x999999 };
