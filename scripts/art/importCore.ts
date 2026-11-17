@@ -98,7 +98,6 @@ export function packSheet(src: Image, o: ImportOutput): Image {
   return sheet;
 }
 
-/** Every output at 2x, stacked top to bottom with a 4 px gap, on the palette's background role. */
 /** Mirror an image left-right in place. */
 export function flipImageX(img: Image): void {
   const row = img.width * 4;
@@ -108,6 +107,7 @@ export function flipImageX(img: Image): void {
   }
 }
 
+/** Every output at 2x, stacked top to bottom with a 4 px gap, on the palette's background role. */
 export function contactSheet(sheets: readonly Image[], background: number): Image {
   const gap = 4, width = Math.max(...sheets.map((s) => s.width * 2)), height = sheets.reduce((n, s) => n + s.height * 2, 0) + gap * (sheets.length - 1);
   const out = blank(width, height);

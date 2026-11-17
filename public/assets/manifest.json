@@ -1213,7 +1213,7 @@
     "title": "Hound-class Transport Ship",
     "author": "2-Minute Tabletop",
     "source": "https://www.patreon.com/2minutetabletop",
-    "license": "paid",
+    "license": "CC-BY-NC-4.0",
     "retrieved": "2026-11-16",
     "modifications": "mirrored horizontally by npm run art:import",
     "editedBy": "FTLite art import",

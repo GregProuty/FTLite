@@ -53,6 +53,8 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 =
     interior.doors.state.fill(DoorState.HeldOpen);
     const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
     if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
+    const gn = interior.derived.stationGroup[nav]!;
+    if (gn >= 0 && gn === interior.derived.stationGroup[weapons]) throw new Error(`duel layout ${layout.id} puts Navigation and Weapons in one console group; the two players need separate seats`);
     sitDown(interior, helmPlayer, nav);
     sitDown(interior, 1 - helmPlayer, weapons);
     const defs = DUEL_REPAIR_POINTS[layout.id];

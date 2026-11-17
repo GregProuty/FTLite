@@ -3,6 +3,10 @@ import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { DUEL_LAYOUT } from '../src/renderer/src/sim/duel/layout';
+import { seatOf } from '../src/renderer/src/app/duel/controls';
+import { Seated, Position } from '../src/renderer/src/sim/components';
+import { HOUND_REPAIR_POINTS } from '../src/renderer/src/sim/duel/tuning';
+import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { shipForCrew } from '../src/renderer/src/sim/ship/fleet';
 
 /** The Hound (Art-iv spec sections 1-3): traced against the mirrored 2-Minute Tabletop painting at two tiles per square. */
@@ -44,8 +48,22 @@ describe('the Hound layout', () => {
     expect(DUEL_LAYOUT.id).toBe('hound');
     expect([1, 2, 3, 4].map(shipForCrew)).toEqual(['skiff', 'skiff', 'cutter', 'cutter']);
   });
-  it('a duel on the Hound seats both players and resolves its repair points', () => {
-    const d = createDuel(DUEL_LAYOUT, 7);
-    try { expect(d.points.map((p) => p.tacticalRoom).length).toBe(3); } finally { disposeDuel(d); }
+  it('a duel on the Hound seats the two players on separate seats, in both helm orders, and resolves its repair points', () => {
+    for (const helm of [0, 1] as const) {
+      const d = createDuel(DUEL_LAYOUT, 7, helm), st = d.interior;
+      try {
+        expect(d.nav).not.toBe(d.weapons);
+        const [a, b] = [st.crew[helm]!, st.crew[1 - helm]!];
+        expect(Seated.station[a]).toBe(d.nav); expect(Seated.station[b]).toBe(d.weapons);
+        expect([Position.x[a], Position.y[a]]).not.toEqual([Position.x[b], Position.y[b]]);
+        expect(st.stations.occupant[d.nav]).toBe(helm); expect(st.stations.occupant[d.weapons]).toBe(1 - helm);
+        expect(seatOf(d, helm)).toBe('helm'); expect(seatOf(d, 1 - helm)).toBe('weapons');
+        expect(HOUND_REPAIR_POINTS.map((p) => p.room)).toEqual(['O', 'R', 'E']);
+        expect(d.points.map((p) => [p.tacticalRoom, p.room])).toEqual(HOUND_REPAIR_POINTS.map((p) => [p.tacticalRoom, st.derived.roomIndex.get(p.room)!]));
+      } finally { disposeDuel(d); }
+    }
+  });
+  it('createDuel refuses a layout that puts Navigation and Weapons in one console group', () => {
+    expect(() => createDuel(parseShip(skiff), 7)).toThrow(/one console group/);
   });
 });

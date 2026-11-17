@@ -172,7 +172,7 @@
     {
       "id": "weapons",
       "room": "B",
-      "tile": [20, 7],
+      "tile": [19, 5],
       "allocation": 2
     },
     {
@@ -207,10 +207,6 @@
     }
   ],
   "consoleGroups": [
-    {
-      "tile": [20, 7],
-      "kinds": ["navigation", "weapons"]
-    },
     {
       "tile": [9, 5],
       "kinds": ["science", "engineering", "doors"]

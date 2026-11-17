@@ -22,8 +22,8 @@ describe('the paid licence', () => {
     expect(e!.required).toBe(false); expect(e!.license).toBe('paid');
   });
   it('licence paid and a file under paid/ go together, both ways', () => {
-    expect(() => parseManifest([{ ...paid, file: 'raw/house/floor.png' }])).toThrow(/licence paid and a file under paid\/ go together/);
-    expect(() => parseManifest([{ ...font, file: 'paid/m5x7.ttf' }])).toThrow(/licence paid and a file under paid\/ go together/);
+    expect(() => parseManifest([{ ...paid, file: 'raw/house/floor.png' }])).toThrow(/a file under paid\/ go together/);
+    expect(() => parseManifest([{ ...font, file: 'paid/m5x7.ttf' }])).toThrow(/a file under paid\/ go together/);
   });
   it('a paid entry must be required: false (the default true is refused too)', () => {
     expect(() => parseManifest([{ ...paid, required: true }])).toThrow(/required: false/);
@@ -80,5 +80,23 @@ describe('house floor names (Art-i spec section 2)', () => {
     expect(FEATURE_NAMES.houseFloor).toEqual(['house.floor.0', 'house.floor.1', 'house.floor.2', 'house.floor.3']);
     expect(featureReady(new Set(['house.floor.2']), 'houseFloor')).toBe(false);
     expect(featureReady(new Set(), 'houseFloor')).toBe(true);
+  });
+});
+
+describe('the CC-BY-NC-4.0 licence for bought paid/ art', () => {
+  const nc = { file: 'paid/2mt/hound.png', title: 'Hound', author: '2-Minute Tabletop', source: 'https://www.patreon.com/2minutetabletop', license: 'CC-BY-NC-4.0', retrieved: '2026-11-16', credit: 'Hound by 2-Minute Tabletop, CC BY-NC 4.0', required: false, name: 'ship.hound.map' };
+  it('is accepted under paid/ without an archived URL, and refused outside paid/', () => {
+    expect(LICENSE_URLS['CC-BY-NC-4.0']).toBe('https://creativecommons.org/licenses/by-nc/4.0/');
+    expect(parseManifest([nc])[0]!.license).toBe('CC-BY-NC-4.0');
+    expect(() => parseManifest([{ ...nc, file: 'raw/2mt/hound.png' }])).toThrow(/paid\/|NC/);
+    expect(() => parseManifest([{ ...nc, required: true }])).toThrow(/required: false/);
+    expect(() => parseManifest([{ ...nc, credit: undefined }])).toThrow(/credit/);
+  });
+  it('the notices name the licence and its URL and never say commercial', () => {
+    const text = buildNotices(parseManifest([nc]), () => '');
+    expect(text).toContain('https://creativecommons.org/licenses/by-nc/4.0/');
+    expect(text).toContain('CC-BY-NC-4.0');
+    expect(text.toLowerCase()).not.toContain('commercial licence');
+    expect(text).not.toContain('undefined');
   });
 });

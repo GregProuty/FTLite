@@ -13,7 +13,7 @@ export function buildNotices(m: Manifest, readLicenseFile: (path: string) => str
   const third = m.filter((e) => e.license !== 'original');
   const licences = [...new Set(third.map((e) => e.license))].sort();
   for (const lic of licences) {
-    out.push(lic === 'paid' ? '== paid (commercial licences) ==' : `== ${lic} (${LICENSE_URLS[lic as keyof typeof LICENSE_URLS]}) ==`, '');
+    out.push(lic === 'paid' ? '== paid (commercial licences) ==' : lic === 'CC-BY-NC-4.0' ? `== CC-BY-NC-4.0 (${LICENSE_URLS['CC-BY-NC-4.0']}), non-commercial ==` : `== ${lic} (${LICENSE_URLS[lic as keyof typeof LICENSE_URLS]}) ==`, '');
     for (const g of groups(third.filter((e) => e.license === lic))) {
       const e = g.entries[0]!;
       out.push(e.credit ?? `${e.title} by ${e.author}`);
