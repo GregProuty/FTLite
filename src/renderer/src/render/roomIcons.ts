@@ -64,20 +64,22 @@ export function floorTintColor(t: IconTint): number { return FLOOR_GLYPH[t]; }
 
 export interface IconLayer { container: Container; build(state: SimState): void; update(state: SimState): void }
 
-/** The room glyphs: drawn once per layout in white, re-tinted every frame (no per-frame redraw). */
-export function createIconLayer(): IconLayer {
+/** The room glyphs: drawn once per layout in white, re-tinted every frame (no per-frame redraw). `skip`: kinds not drawn
+ *  (the duel interior's badges stand in for Navigation and the Medbay, start-aboard spec §2). */
+export function createIconLayer(skip: readonly IconKind[] = []): IconLayer {
   const container = new Container();
   let gfx: Graphics[] = [], builtFor: string | null = null;
+  const shown = (state: SimState) => roomIcons(state).filter((ic) => !skip.includes(ic.kind));
   function build(state: SimState): void {
     for (const c of container.removeChildren()) c.destroy();
-    gfx = roomIcons(state).map((ic) => { const g = new Graphics(); drawIcon(g, ic.kind, ic.x, ic.y, ICON_SIZE, 0xffffff); g.alpha = ICON_ALPHA; container.addChild(g); return g; });
+    gfx = shown(state).map((ic) => { const g = new Graphics(); drawIcon(g, ic.kind, ic.x, ic.y, ICON_SIZE, 0xffffff); g.alpha = ICON_ALPHA; container.addChild(g); return g; });
     builtFor = state.derived.layoutHash;
   }
   return {
     container, build,
     update(state) {
       if (builtFor !== state.derived.layoutHash) build(state);
-      roomIcons(state).forEach((ic, k) => { gfx[k]!.tint = floorTintColor(ic.tint); });
+      shown(state).forEach((ic, k) => { gfx[k]!.tint = floorTintColor(ic.tint); });
     }
   };
 }

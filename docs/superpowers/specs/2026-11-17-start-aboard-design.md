@@ -28,11 +28,13 @@ In the duel interior, each of the three working stations gets a badge on its con
 | Weapons | `weapons` | `WEAPONS` | Weapons at 2 | never |
 | Medbay | `medbay` | `MEDBAY` | never | the Medbay is not online |
 
-- The badge is a dark plate (ink, alpha 0.7, rounded, 26 px) centred on the console tile with the glyph at 18 px in
+- The badge is a dark plate (ink, alpha 0.7, rounded, 32 px) centred on the console tile with the glyph at 22 px in
   `TEXT`, `WARN` when offline, or `DIM` when faint. It sits over the desks and under the crew, so a seated character
   covers its own badge.
-- The label is drawn with the other interior labels (on top, never washed by the lights), centred under the console
-  tile, in the badge's colour on a dark backing.
+- The label is drawn on top of everything in the world (never washed by the lights), centred under the plate, in the
+  badge's colour on a dark backing: twice the native font size over the whole-ship fit, so it reads at a glance, and
+  native once the interior is zoomed in, so it stays inside the cockpit. The backing's width comes from m5x7's fixed
+  advance (6 px a character at native size), not from measuring text, which needs a canvas the node tests lack.
 - The generic room-centre glyphs for `navigation` and `medbay` are not drawn in the duel interior (they would duplicate the
   badges; the Hound's Navigation room centre is the Helm tile). The other room glyphs are unchanged.
 - The existing amber outline on a free Helm or Weapons console stays as the "sit here" cue.

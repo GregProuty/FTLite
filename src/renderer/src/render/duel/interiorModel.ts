@@ -6,6 +6,9 @@ import type { DuelState } from '../../sim/duel/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { Health, Life, LifeState, Position } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
+import { medbayOnline } from '../../sim/duel/health';
+import { Room } from '../../sim/tactical/state';
+import { StationKind } from '../../sim/stationKinds';
 import { fitInBand, fitRectInBand, type Fit } from '../worldFit';
 import type { TileRect } from '../battlemapModel';
 
@@ -62,4 +65,22 @@ export function interiorOverlay(d: DuelState): InteriorOverlay {
     return { station, x: at.x, y: at.y, free: st.stations.occupant[station]! < 0 };
   });
   return { tints, markers, consoles, crew: crewHealthMarks(d) };
+}
+
+/** A working station's badge (start-aboard spec §2): the glyph kind, its label, the console tile's centre in ship pixels, and
+ *  its tint: `offline` (red) when its system is off, `faint` when it does not work now, else `normal`. */
+export interface StationBadge { station: number; kind: 'navigation' | 'weapons' | 'medbay'; label: string; x: number; y: number; tint: 'normal' | 'offline' | 'faint' }
+
+/** The Helm, Weapons and Medbay badges, in that order (start-aboard spec §2): Helm red at Engines 2, Weapons red at Weapons 2,
+ *  the Medbay faint while it is not online. A layout without a Medbay console has two badges. */
+export function stationBadges(d: DuelState): StationBadge[] {
+  const st = d.interior, w = st.derived.width, rooms = d.tactical.systems[0].rooms;
+  const at = (station: number): { x: number; y: number } => { const t = st.derived.stationTile[station]!, tx = t % w; return { x: (tx + 0.5) * TILE_PX, y: ((t - tx) / w + 0.5) * TILE_PX }; };
+  const out: StationBadge[] = [
+    { station: d.nav, kind: 'navigation', label: 'HELM', ...at(d.nav), tint: rooms[Room.Engines] >= 2 ? 'offline' : 'normal' },
+    { station: d.weapons, kind: 'weapons', label: 'WEAPONS', ...at(d.weapons), tint: rooms[Room.Weapons] >= 2 ? 'offline' : 'normal' }
+  ];
+  const mb = st.derived.stationOfKind[StationKind.Medbay]!;
+  if (mb >= 0) out.push({ station: mb, kind: 'medbay', label: 'MEDBAY', ...at(mb), tint: medbayOnline(d) ? 'normal' : 'faint' });
+  return out;
 }
