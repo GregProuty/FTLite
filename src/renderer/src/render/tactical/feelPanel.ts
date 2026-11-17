@@ -3,11 +3,8 @@ import { BitmapText, Container, Graphics } from 'pixi.js';
 import { drawPanel } from '../panel';
 import { AMBER, DIM, FONT_NATIVE, FONT_SIZE, LINE, PAD, TEXT } from '../theme';
 
-export const FEEL_PANEL_W = 250, FEEL_PANEL_MARGIN = 8;
-const ROWS = 6;
-const HELP: readonly string[] = ['W/S  THRUST / REVERSE', 'A/D  TURN', 'WHEEL  - =  ZOOM', 'RIGHT DRAG  PAN', 'C  SNAP BACK', 'ESC  PAUSE'];
-const HELP_LINE = 14;
-export const FEEL_PANEL_H = PAD + LINE * (ROWS + 1) + PAD + HELP.length * HELP_LINE + PAD;
+import { FEEL_HELP as HELP, FEEL_HELP_LINE as HELP_LINE, FEEL_PANEL_H, FEEL_PANEL_W, FEEL_ROWS as ROWS } from './feelModel';
+export { FEEL_PANEL_H, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from './feelModel';
 
 export interface FeelPanel { container: Container; draw(rows: readonly (readonly [string, string])[]): void }
 

@@ -6,6 +6,7 @@ import { gravityAccel } from '../../sim/tactical/physics';
 import type { Ship } from '../../sim/tactical/state';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
+import { LINE, PAD } from '../theme';
 
 /** The minimum planet distance is kept over this many ticks (10 s). */
 export const FEEL_WINDOW_TICKS = 10 * TICK_HZ;
@@ -77,3 +78,8 @@ export function feelRows(r: FeelReadout): [string, string][] {
     ['MIN r 10s', `${Math.round(r.minPlanet)}`]
   ];
 }
+
+/** The feel panel box and help (H-1 spec 9), shared by the flight mode (its reserve) and the React FeelPanel. */
+export const FEEL_PANEL_W = 250, FEEL_PANEL_MARGIN = 8, FEEL_ROWS = 6, FEEL_HELP_LINE = 14;
+export const FEEL_HELP: readonly string[] = ['W/S  THRUST / REVERSE', 'A/D  TURN', 'WHEEL  - =  ZOOM', 'RIGHT DRAG  PAN', 'C  SNAP BACK', 'ESC  PAUSE'];
+export const FEEL_PANEL_H = PAD + LINE * (FEEL_ROWS + 1) + PAD + FEEL_HELP.length * FEEL_HELP_LINE + PAD;

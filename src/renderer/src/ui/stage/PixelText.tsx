@@ -2,7 +2,7 @@
 // sampling at size/16 x scale x dpr, then tinted. It redraws only when its inputs change; without an atlas (jsdom, or a
 // failed build) it is an empty canvas that still carries its string for tests.
 import { memo, useLayoutEffect, useRef } from 'react';
-import { FONT_NATIVE, textPx } from '../../render/theme';
+import { advance, FONT_NATIVE, textPx } from '../../render/theme';
 import { useUi } from '../context';
 import { atlasTextWidth, GLYPH_X_OFFSET, GLYPH_X_PAD } from '../glyphs';
 import { hex } from './color';
@@ -25,7 +25,7 @@ export const PixelText = memo(function PixelText(p: PixelTextProps) {
     const g = k * l.scale * l.dpr, pad = GLYPH_X_PAD;
     let pen = 0;
     for (const ch of p.text) {
-      const adv = atlas.advance[ch] ?? 6, sx = atlas.cells[ch];
+      const adv = atlas.advance[ch] ?? advance(ch), sx = atlas.cells[ch];
       if (sx !== undefined) {
         const dx0 = Math.round((pen + GLYPH_X_OFFSET - pad) * g), dx1 = Math.round((pen + GLYPH_X_OFFSET + adv + pad) * g);
         ctx.drawImage(atlas.canvas, sx - pad, 0, adv + 2 * pad, cellH, dx0, 0, dx1 - dx0, Math.round(cellH * g));
