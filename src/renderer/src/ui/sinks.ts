@@ -3,6 +3,7 @@
 import type { UiPerf } from './perf';
 import { replaceEqualDeep } from './share';
 import type { UiStore } from './store';
+import type { HudModel } from '../render/hudModel';
 import type { DuelUiView, FlightUiView } from './views';
 
 export interface Sink<V> { frame(view: V): void; clear(): void }
@@ -10,7 +11,7 @@ export type DuelSink = Sink<DuelUiView>;
 export type FlightSink = Sink<FlightUiView>;
 
 const passThrough: UiPerf = { run: (write) => write() };
-function createSink<K extends 'duel' | 'flight'>(store: UiStore, key: K, perf: UiPerf = passThrough): Sink<NonNullable<ReturnType<UiStore['getState']>[K]>> {
+function createSink<K extends 'duel' | 'flight' | 'hud'>(store: UiStore, key: K, perf: UiPerf = passThrough): Sink<NonNullable<ReturnType<UiStore['getState']>[K]>> {
   return {
     frame(view) {
       const prev = store.getState()[key], next = replaceEqualDeep(prev, view);
@@ -22,3 +23,5 @@ function createSink<K extends 'duel' | 'flight'>(store: UiStore, key: K, perf: U
 }
 export function createDuelSink(store: UiStore, perf?: UiPerf): DuelSink { return createSink(store, 'duel', perf); }
 export function createFlightSink(store: UiStore, perf?: UiPerf): FlightSink { return createSink(store, 'flight', perf); }
+export interface HudSink { update(m: HudModel): void; clear(): void }
+export function createHudSink(store: UiStore, perf?: UiPerf): HudSink { const s = createSink(store, 'hud', perf); return { update: (m) => s.frame(m), clear: () => s.clear() }; }

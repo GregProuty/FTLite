@@ -1,21 +1,11 @@
 import { Container, Graphics, BitmapText } from 'pixi.js';
 import { mapTitle, type HudModel } from './hudModel';
+import { MAP_W, MAP_H, nodeX, nodeY, NODE_R, MAP_FLEET, ROCKS } from './mapModel';
 import { drawPanel } from './panel';
 import { TEXT, DIM, AMBER, FONT_SIZE, PANEL_FILL, CELL_EDGE, PAD } from './theme';
 
-/** The map panel's size: the right column's window slot, 400 x 340 (spec Demo-x-c section 3). */
-export const MAP_W = 400, MAP_H = 340;
-const FLEET = 0xd83a3a, FAINT = CELL_EDGE, HOLE = PANEL_FILL;
-/** Node centres: six columns across, up to four beacons stacked under the title. */
-export const nodeX = (c: number): number => 36 + 65 * c;
-export const nodeY = (k: number, n: number): number => 184 + (k - (n - 1) / 2) * 64;
-const R = 11;
-/** Three small irregular rocks (original glyph, spec Demo-viii section 1), offsets from the node centre. */
-const ROCKS: readonly (readonly number[])[] = [
-  [-4.5, -1.5, -2.5, -3.5, -0.5, -2, -1, 0.5, -3.5, 1],
-  [1, -4, 3, -4.5, 4.5, -2.5, 3.5, -0.5, 1.5, -1.5],
-  [-0.5, 1.5, 2, 0.5, 4, 2.5, 2.5, 4.5, 0, 4],
-];
+const FAINT = CELL_EDGE, HOLE = PANEL_FILL, R = NODE_R, FLEET = MAP_FLEET;
+export { MAP_W, MAP_H, nodeX, nodeY };
 function drawRocks(g: Graphics, x: number, y: number, color: number): void {
   for (const r of ROCKS) g.poly(r.map((v, i) => 1.4 * v + (i % 2 === 0 ? x : y))).fill(color);
 }

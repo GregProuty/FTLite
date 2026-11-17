@@ -24,7 +24,7 @@ export interface SessionDeps {
   layout: ShipLayout | ((playerCount: number) => ShipLayout);
   sampleDevices(): SourceSample[];
   renderer: { reset(): void; recordPrev(s: SimState): void; draw(s: SimState, alpha: number, bubbles?: readonly Bubble[], ui?: import('../clientControl/cardController').CardUiState, presentation?: readonly import('../../../network/state/timeline').PresentationPoint[], paused?: boolean): void } | null;
-  hud: { update(m: HudModel): void } | null;
+  hud: { update(m: HudModel): void; clear?(): void } | null;
   now(): number;
   scheduler?: Scheduler;
   contentDigest?: string;
@@ -171,7 +171,7 @@ export function createSession(deps: SessionDeps) {
     get phase() { return phase; }, get state() { return state; }, get seed() { return seed; }, get creditsOpen() { return creditsOpen; }, get callouts(): readonly Callout[] { return callouts; },
     pause(reason = 'suspend') { if (phase === 'running') { timeline?.neutralize(deps.now()); runtime?.requestLifecyclePause({ paused: true, reason }); phase = 'paused'; message = 'PAUSED'; } },
     resume(reason = 'resume') { doResume(reason); }, pump,
-    dispose() { disposed = true; cancelLobby?.(); runtime?.dispose(); },
+    dispose() { disposed = true; cancelLobby?.(); runtime?.dispose(); deps.hud?.clear?.(); },
     frame() {
       for (const cue of CUE_ORDER) if (pendingCues.has(cue)) deps.playCue?.(cue); pendingCues.clear();
       if (phase !== 'error') runtime?.frame();
