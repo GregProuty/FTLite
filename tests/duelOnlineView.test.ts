@@ -16,6 +16,7 @@ import { createTacticalState, missileOf, Outcome, placeMissile } from '../src/re
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import type { OnlinePortDescriptor } from '../src/shared/onlineSession';
 import { CUTTER } from './helpers/scriptedDuel';
+import { emptyPresses } from '../src/renderer/src/app/duel/input';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 /** A fake confirmed client: `publish` restores a fresh replica from the live duel, as a received publication would. */
@@ -149,5 +150,33 @@ describe('the online session wrapper (spec §3)', () => {
     expect(made[0]!.calls.at(-1)).toBe('dispose'); expect(factories.sector).toHaveBeenCalledOnce(); expect(w.mode).toBe('sector');
     w.attach(descriptor(4, 'elsewhere'), port); expect(port.close).toHaveBeenCalled(); expect(w.mode).toBeNull();
     w.dispose();
+  });
+});
+
+describe('the online interior zoom camera (interior zoom spec rule 5)', () => {
+  it('this seat standing: the wheel, the zoom keys, a drag and C feed the interior camera; a new round resets it', () => {
+    const d = createDuel(CUTTER, 3), c = confirmed();
+    let now = 0;
+    const source = createOnlineDuelSource({ client: c.client, seat: 1, now: () => now, viewport: { w: 1280, h: 720 } });
+    const keys = (over: Partial<ReturnType<typeof emptyPresses>> = {}) => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: { ...emptyPresses(), ...over } });
+    const pointer = (over: object = {}) => ({ x: 400, y: 300, wheel: 0, dragX: 0, dragY: 0, ...over });
+    try {
+      c.publish(d); source.frame(1 / 60, keys(), pointer({ wheel: -100 }));
+      expect(source.interiorCamera.notches).toBe(0);   // seated at Weapons: the wheel is the Weapons camera's
+      stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 1, sequence: 0 }, requestedTick: d.interior.tick, command: { kind: 'stand' } }] });
+      now += 50; c.publish(d);
+      expect(source.view()).toBe('interior');
+      source.frame(1 / 60, keys({ zoomIn: 1 }), pointer({ wheel: -100, dragX: 7 }));
+      expect([source.interiorCamera.notches, source.interiorCamera.anchor, source.interiorCamera.dragX]).toEqual([2, { x: 400, y: 300 }, 7]);
+      source.interiorCamera.follow = false;
+      source.frame(1 / 60, keys({ camera: 1 }), pointer());
+      expect(source.interiorCamera.follow).toBe(true);
+      source.interiorCamera.level = 3;
+      d.tactical.systems[1].hull = 0; stepDuelTick(d, { held: [], commands: [] }); d.present[0] = true;
+      stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'rematch' } }] });
+      expect(d.round).toBe(1);
+      now += 50; c.publish(d); source.frame(1 / 60, null, null);
+      expect([source.interiorCamera.level, source.interiorCamera.notches]).toEqual([0, 0]);
+    } finally { disposeDuel(d); c.dispose(); }
   });
 });

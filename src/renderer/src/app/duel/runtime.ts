@@ -19,6 +19,7 @@ import { createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missi
 import { TICK_HZ } from '../../sim/tuning';
 import { createCamera, followBody, pan, snapBack, updateCamera, zoomBy, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/tactical/feelModel';
+import { createInteriorCamera, interiorInput, refollowInteriorCamera, resetInteriorCamera, type InteriorCamera } from '../../render/duel/interiorCamera';
 import type { OtherStatus } from '../../render/duel/readoutModel';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
@@ -85,18 +86,27 @@ function createPacer(now: () => number, scheduler: Scheduler, onTick: (tick: num
 
 /** The per-frame camera input shared by the runtimes and the online duel: zoom keys, drag before wheel (a pan clears the
  *  zoom anchor, so a drag and a wheel in one frame still zoom about the cursor), and the wheel's notch accumulator with
- *  its idle reset. */
+ *  its idle reset. `applyInterior` feeds the interior's zoom camera (interior zoom spec) from the same accumulator, with
+ *  C to follow the character again. */
 export function createCameraInput(now: () => number, vp: Viewport) {
   let wheelAcc = 0, lastWheelAt = -Infinity;
+  const notches = (wheel: number): number => {
+    const t = now();
+    if (t - lastWheelAt > WHEEL_IDLE_MS) wheelAcc = 0;   // check the idle gap before recording this frame's wheel
+    if (wheel !== 0) lastWheelAt = t;
+    const w = accumulateWheel(wheelAcc, wheel); wheelAcc = w.acc;
+    return w.notches;
+  };
+  const cursor = (p: PointerSample): { x: number; y: number } | null => (p.x !== null && p.y !== null ? { x: p.x, y: p.y } : null);
   return {
     apply(camera: Camera, k: KeySample, p: PointerSample): void {
       zoomBy(camera, vp, k.presses.zoomIn - k.presses.zoomOut);
       pan(camera, p.dragX, p.dragY);
-      const t = now();
-      if (t - lastWheelAt > WHEEL_IDLE_MS) wheelAcc = 0;   // check the idle gap before recording this frame's wheel
-      if (p.wheel !== 0) lastWheelAt = t;
-      const w = accumulateWheel(wheelAcc, p.wheel); wheelAcc = w.acc;
-      zoomBy(camera, vp, w.notches, p.x !== null && p.y !== null ? { x: p.x, y: p.y } : null);
+      zoomBy(camera, vp, notches(p.wheel), cursor(p));
+    },
+    applyInterior(camera: InteriorCamera, k: KeySample, p: PointerSample): void {
+      const keys = k.presses.zoomIn - k.presses.zoomOut, wheel = notches(p.wheel);
+      interiorInput(camera, { notches: keys + wheel, anchor: wheel !== 0 ? cursor(p) : null, dragX: p.dragX, dragY: p.dragY, follow: k.presses.camera > 0 });
     },
     reset(): void { wheelAcc = 0; lastWheelAt = -Infinity; }
   };
@@ -172,6 +182,8 @@ export interface DuelRuntime {
   readonly crewPrev: readonly { x: number; y: number }[];
   /** Each console's own camera, kept for whoever sits there next (spec §6). */
   readonly cameras: { readonly helm: Camera; readonly weapons: Camera };
+  /** The interior's zoom and follow (interior zoom spec): kept across pause, re-following on Tab, reset each round. */
+  readonly interiorCamera: InteriorCamera;
   /** The Helm's axes and the gunner's steering the last tick sent (zero while that console is empty, spec §7). */
   axes(): Axes;
   steer(): number;
@@ -212,6 +224,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   let menuAsked = false;
   let chargeSent = false, events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera() };
+  const interiorCamera = createInteriorCamera();
   const capture = (): void => {
     prev = d.tactical.ships.map(shipBody);
     missilePrev = d.tactical.ships.map((_, i) => missileBody(missileOf(d.tactical, i)));   // by owner, as interpolatedMissile reads it
@@ -283,7 +296,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = [NEUTRAL, NEUTRAL]; sentAxes = NO_AXES; sentSteer = 0;
     chargeSent = false; events = []; counts = hitCounts(d);
-    capture(); freshCameras(); cameraInput.reset();
+    capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
   }
 
@@ -293,7 +306,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them. A
       // charge already sent needs no release: the sim lets go of Fire when the seat empties, so chargeSent just resets.
       pending = pending.filter((c) => !isWeaponsCommand(c.command));
-      cameraInput.reset();
+      cameraInput.reset(); refollowInteriorCamera(interiorCamera);
       for (let n = 0; n < k.presses.switch; n++) {
         queue({ kind: 'presence', present: false });
         active = active === 0 ? 1 : 0;
@@ -339,6 +352,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     get missilePrev() { return missilePrev; },
     get crewPrev() { return crewPrev; },
     get cameras() { return cameras; },
+    interiorCamera,
     epoch: () => d.round,
     active: () => active,
     view: () => { const s = seatOf(d, active); return s === 'standing' ? 'interior' : s; },
@@ -368,6 +382,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       frameAlpha = alphaAt(deps.now(), lastTickTime);
       const view = seatOf(d, active), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : null;
       if (cam) cameraInput.apply(cam, k, pointer);
+      else cameraInput.applyInterior(interiorCamera, k, pointer);
       for (const c of [cameras.helm, cameras.weapons]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');   // the followed missile ended
         // A followed missile is tracked at its interpolated (drawn) position, as the ship is (H-1 spec §6).
