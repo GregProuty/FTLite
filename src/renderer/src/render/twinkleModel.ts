@@ -12,12 +12,12 @@ export const BRIGHT_SHARE = 0.1;
 
 export interface TwinkleParams { freq: number; phase: number; depth: number }
 
-/** Star k's twinkle: 0.25 to 1 Hz, a phase in [0, 2 pi), a depth (alpha swing) of 0.35 to 0.85. */
+/** Star k's twinkle: 0.25 to 1 Hz, a phase in [0, 2 pi), a depth (alpha swing) of 0.6 to 1. */
 export function twinkleParams(k: number): TwinkleParams {
   return {
     freq: 0.25 + 0.75 * hash2(SEED, k * 4),
     phase: 2 * Math.PI * hash2(SEED, k * 4 + 1),
-    depth: 0.35 + 0.5 * hash2(SEED, k * 4 + 2)
+    depth: 0.6 + 0.4 * hash2(SEED, k * 4 + 2)
   };
 }
 

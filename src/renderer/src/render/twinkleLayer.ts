@@ -11,9 +11,9 @@ import { backdropChoice, brightFlags, coverFit, glintAlpha, glintPeriod, parseSt
 export const BACKDROP_STARS: StarFile | null = parseStarFile(starData);
 
 /** The look, tuned on the screenshots (Art-v report): an additive glow over each speck at GLOW_ALPHA x twinkleAlpha. */
-export const GLOW_ALPHA = 0.8;
+export const GLOW_ALPHA = 1;
 /** Dot radius in source px: DOT_BASE + sqrt(size), then scaled to the stage (spec: about 1 + sqrt(size)). */
-export const DOT_BASE = 1.5;
+export const DOT_BASE = 2;
 /** The glint's arm length as a multiple of the dot radius, and its peak alpha. */
 export const GLINT_REACH = 4, GLINT_ALPHA = 0.7;
 

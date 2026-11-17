@@ -6,12 +6,12 @@ import committed from '../art/deep-space-red.stars.json';
 
 /** Art-v spec section 2: the twinkle model, and the layer choice (section 3). */
 describe('twinkle model (Art-v spec section 2)', () => {
-  it('each star gets 0.25 to 1 Hz, a phase in [0, 2 pi) and a depth of 0.35 to 0.85, deterministically from k', () => {
+  it('each star gets 0.25 to 1 Hz, a phase in [0, 2 pi) and a depth of 0.6 to 1, deterministically from k', () => {
     for (let k = 0; k < 500; k++) {
       const p = twinkleParams(k);
       expect(p.freq).toBeGreaterThanOrEqual(0.25); expect(p.freq).toBeLessThanOrEqual(1);
       expect(p.phase).toBeGreaterThanOrEqual(0); expect(p.phase).toBeLessThan(2 * Math.PI);
-      expect(p.depth).toBeGreaterThanOrEqual(0.35); expect(p.depth).toBeLessThanOrEqual(0.85);
+      expect(p.depth).toBeGreaterThanOrEqual(0.6); expect(p.depth).toBeLessThanOrEqual(1);
       expect(twinkleParams(k)).toEqual(p);
     }
   });

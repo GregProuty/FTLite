@@ -27,11 +27,11 @@ Date: 2026-11-16. Owner: "make this the background and make the stars twinkle", 
 - **The twinkle model**, `render/twinkleModel.ts`, is pure. Each star k gets the following, all deterministic from k through the existing `hash2`:
   - a frequency of 0.25 to 1.0 Hz;
   - a phase;
-  - a depth of 0.35 to 0.85 (the alpha swing).
+  - a depth of 0.6 to 1 (the alpha swing; tuned up from 0.35-0.85 so the twinkle reads).
   
   `twinkleAlpha(k, t, feelScale) = 1 - depth * feelScale * (0.5 + 0.5 * sin(2π f t + φ))^3`. The cube keeps a star mostly lit with brief dips. A few bright stars (peak in the top 10 %) also get a slow cross-glint pulse. The output is clamped to [0, 1]. `feelScale` 0 (feel off) gives a constant 1, which is no twinkle.
 - **The twinkle layer**, `render/twinkleLayer.ts`. One additive soft-dot sprite per star sits over its painted speck, mapped through the same cover transform as the backdrop.
-  - The dot's radius is about `1 + sqrt(size)` source px scaled to the stage. Its tint is the star's orange; take it as the warm role from the palette, or sample the speck's mean colour in the script and store it.
+  - The dot's radius is `2 + sqrt(size)` source px (tuned), glow alpha 1 x twinkleAlpha, threshold 80 (372 stars; 110 found only 130) scaled to the stage. Its tint is the star's orange; take it as the warm role from the palette, or sample the speck's mean colour in the script and store it.
   - The dot brightens and dims the speck: alpha = (1 - twinkleAlpha) for a darkening overlay, or an additive glow with alpha = twinkleAlpha * 0.6. Pick whichever looks right in screenshots and record it.
   - It runs on the presentation clock that interior feel already uses, so a pause freezes it, and it respects the feel setting.
   - Use one shared generated dot texture and plain Sprites in a Container. With hundreds of stars, update only alpha each frame; no Graphics redraws.
