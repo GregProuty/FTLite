@@ -41,7 +41,7 @@ The code below was written and run in a scratch worktree outside the repo (`C:\U
 2. **Where the names live.** `PROP_ART_NAMES` and `type PropName` are in `assetNames.ts`, beside `CONSOLE_ART_NAMES`, and `propModel.ts` imports the type from there. Defining them in `propModel.ts` would make `assetNames.ts` import `propModel.ts`, which imports `consoleModel.ts`, which imports `assetNames.ts`: a module cycle evaluated at load.
 3. **Sprite back orientation, checked by eye.** Each of the seven source rectangles was cut from `C:\Users\djuar\FTLite-assets\maru-98-mars\habitable-building\habitable building tileset.png` and `...\mars-tools\Mars Tools.png`, upscaled 10x and viewed: `prop.bunk.a` (97,49,14,22): a light panel at the top (head end), striped blanket, the brown frame front at the bottom; `prop.bunk.b` (129,48,14,23): the white pillow at the top, the blue blanket, the brown frame front at the bottom; `prop.seats` (16,88,25,15): two seats seen from the front, the tall backrests at the top, the legs at the bottom; `prop.couch` (88,88,23,15): the two backrest cushions at the top, the seat, the grey base at the bottom; `prop.locker.a` and `prop.locker.b` (19,29 and 59,29, 18x33): the top surface at the top, the front panel (vents, a screen on b, the feet) at the bottom; `prop.crate` (90,96,12,16): a top-down box, symmetric. **Every sprite's back is at the top**, as the spec says: no per-sprite base rotation is needed, and `SIDE_ROTATION` (n 0, e +π/2, s π, w −π/2) turns each one so its back is on its wall. The screenshots confirmed it (Decision 6).
 4. **The real names** (`src/renderer/src/sim/ship/derived.ts`, `render/gradeModel.ts`): door and opening tiles are `derived.edgeTile` (every edge; no shipped layout has an opening today); stations `derived.stationTile`; breach sites `derived.siteTile`; airlocks `derived.airlockTile` (both wall tiles, so their floor 4-neighbours are excluded); the magazine `derived.magazineTile` (−1 without one); spawns `layout.spawns` (`[x, y]` pairs); the lamp tile is the room's lowest tile index, `Math.min(...derived.roomTiles[r])`, the tile `lampPoints(roomTiles, width)` places each lamp on. Wall tiles are `'#'` in `layout.rows`. The hashes are `hashString` and `hashU32` from `render/particles/random.ts`, seeded `hashString(derived.layoutHash)` as the wall vents are (`particles/sources.ts`).
-5. **The pinned slots** (computed by `propSlots`, pinned in `tests/propModel.test.ts`), as room, (x, y), side, name in take order:
+5. **The pinned slots** (computed by `propSlots`; the Cutter's and Skiff's are pinned exactly in `tests/propModel.test.ts`, the starter's are as computed and only its counts are tested), as room, (x, y), side, name in take order:
    - **Cutter:** Upper Hold (7,3) n `prop.crate`; Crew Quarters (13,3) n `prop.bunk.a`, (13,5) e `prop.bunk.b`; Galley (11,8) w `prop.seats`, (13,9) e `prop.couch`, (13,7) n `prop.locker.a`; Medbay (15,5) s `prop.bunk.a`. Lower Hold and Aft Store: none (no candidates).
    - **Skiff:** Hold (9,7) e `prop.crate`. Skiff Medbay: none (its one remaining tile (7,2) is a floor neighbour of the corridor's breach site (7,3)).
    - **Starter:** Medbay (18,1) n `prop.bunk.a`; Crew Quarters (4,8) n `prop.bunk.a`, (5,10) s `prop.bunk.b`, (1,10) s `prop.bunk.a`.
@@ -200,7 +200,8 @@ describe('where props stand (Art-iii spec section 3)', () => {
     expect(st.filter((p) => p[0] === 'Medbay').length).toBe(1);
   });
   for (const [ship, layout] of Object.entries(SHIPS)) it(`${ship}: deterministic, no two slots touching, each name the first unused that fits, nothing past a wall`, () => {
-    const s = stateOf(layout), d = s.derived, slots = propSlots(s);
+    const s = stateOf(layout), d = s.derived, slots = structuredClone(propSlots(s));
+    propSlots(stateOf(ship === 'cutter' ? SHIPS.skiff! : SHIPS.cutter!));   // evict the one-entry cache so the next call recomputes
     expect(propSlots(stateOf(layout))).toEqual(slots);
     for (const a of slots) for (const b of slots) if (a !== b) {
       const [ax, ay] = xy(s, a.tile), [bx, by] = xy(s, b.tile);
@@ -469,11 +470,13 @@ describe('the prop art: names, outputs, manifest and palette (Art-iii spec secti
   });
   const packs = sourceFolder(process.env);
   it.runIf(existsSync(packs))('countColours gives the same counts with and without the prop outputs (the owner\'s packs)', () => {
-    const read = packReader(packs), without = { outputs: cfg.outputs.filter((x) => !x.output.includes('/prop-')) };
+    const raw = packReader(packs), memo = new Map<string, ReturnType<typeof raw>>();
+    const read = (p: string): ReturnType<typeof raw> => { if (!memo.has(p)) memo.set(p, raw(p)); return memo.get(p)!; };   // decode each pack once
+    const without = { outputs: cfg.outputs.filter((x) => !x.output.includes('/prop-')) };
     const a = countColours(cfg, read), b = countColours(without, read);
     expect([...a.counts].sort((x, y) => x[0] - y[0])).toEqual([...b.counts].sort((x, y) => x[0] - y[0]));
     expect([...a.kept].sort()).toEqual([...b.kept].sort());
-  });
+  }, 30_000);
 });
 ```
 
@@ -713,11 +716,12 @@ import { propKey, propSlots } from './propModel';
 export function createPropLayer(assets: GameAssets): { container: Container; draw(state: SimState): void } {
   const container = new Container();
   const ready = featureReady(new Set(assets.missing), 'propArt');
-  let drawnFor = '';
+  let drawnFor = '', drawnLayout: unknown = null;
   return {
     container,
     draw(state) {
-      if (!ready) return;
+      if (!ready || state.layout === drawnLayout) return;   // same layout object: nothing to rebuild (avoids building propKey every frame)
+      drawnLayout = state.layout;
       const key = propKey(state);
       if (key === drawnFor) return;
       drawnFor = key;
