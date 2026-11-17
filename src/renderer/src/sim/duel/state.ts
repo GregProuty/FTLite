@@ -5,7 +5,6 @@ import { DoorState, roomAt } from '../grid';
 import type { ShipLayout } from '../ship/schema';
 import { createSimState, disposeSimState, type SimState } from '../state';
 import { StationKind } from '../stationKinds';
-import { sitDown } from '../stations';
 import { validateMap } from '../tactical/map';
 import { createTacticalState, type TacticalState } from '../tactical/state';
 import { DUEL_REPAIR_POINTS } from './tuning';
@@ -57,7 +56,8 @@ export interface DuelState {
 
 /**
  * A duel on `layout` (the Hound in the app; the Cutter in older tests): two trait-free Recruits (no XP is ever awarded, since xpSystem never runs), every
- * door held open, `helmPlayer` (default 0) seated at Navigation and the other player at Weapons, and a tactical state
+ * door held open, both players standing at the layout's spawns with every console free (start-aboard spec §1; `helmPlayer`
+ * is kept for the round module and the wire but seats no one), and a tactical state
  * from the same seed whose map must validate. Round 0, beginning on tick 0, the throttle at STOP. Throws if the map, a repair point or
  * `helmPlayer` is invalid, so a bad seed or layout fails loudly.
  */
@@ -73,8 +73,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 =
     if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
     const gn = interior.derived.stationGroup[nav]!;
     if (gn >= 0 && gn === interior.derived.stationGroup[weapons]) throw new Error(`duel layout ${layout.id} puts Navigation and Weapons in one console group; the two players need separate seats`);
-    sitDown(interior, helmPlayer, nav);
-    sitDown(interior, 1 - helmPlayer, weapons);
+    // Start aboard (start-aboard spec §1): nobody is seated; both stand at the layout's spawns and walk to a console.
     const defs = DUEL_REPAIR_POINTS[layout.id];
     if (!defs) throw new Error(`no duel repair points for layout ${layout.id}`);
     const points = defs.map((p) => {
