@@ -8,10 +8,9 @@ import { duelCodec } from '../../src/renderer/src/net/codec';
 import { duelRoundOf } from '../../src/renderer/src/sim/duel/snapshot';
 import { TACTICAL_MODULES, tacticalLength } from '../../src/renderer/src/sim/tactical/hash';
 import { createTacticalState } from '../../src/renderer/src/sim/tactical/state';
-import { parseShip } from '../../src/renderer/src/sim/ship/schema';
-import cutter from '../../src/renderer/src/sim/ship/cutter.json';
 
-const layout = parseShip(cutter), codec = duelCodec(2);
+import { DUEL_LAYOUT } from '../../src/renderer/src/sim/duel/layout';
+const layout = DUEL_LAYOUT, codec = duelCodec(2);
 const offsets = new Map<number, { at: Map<string, number>; presence: number }>();
 function named(seed: number) {
   let o = offsets.get(seed);

@@ -8,8 +8,6 @@ import { performance } from 'node:perf_hooks';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { computeContentDigest } from '../build/contentDigest';
-import cutter from '../src/renderer/src/sim/ship/cutter.json';
-import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import * as snapshots from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
@@ -21,7 +19,8 @@ import { decodeState, encodeDelta, encodeFull, type StateImage } from '../src/ne
 import { hashF64 } from '../src/shared/hash';
 
 const contentDigest = computeContentDigest(process.cwd());
-const layout = parseShip(cutter), resolveLayout = (id: string) => { if (id !== layout.id) throw Error('unknown layout'); return layout; };
+import { DUEL_LAYOUT } from '../src/renderer/src/sim/duel/layout';
+const layout = DUEL_LAYOUT, resolveLayout = (id: string) => { if (id !== layout.id) throw Error('unknown layout'); return layout; };
 const options = { resolveLayout, contentDigest };
 let seed = 2026;
 while (validateMap(createTacticalState(seed).map).length > 0) seed++;   // seed 2026's next valid seed, without the seed cache

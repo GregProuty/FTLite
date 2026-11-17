@@ -483,10 +483,9 @@ describe('Demo-i HUD: controls card, enemy hull row, threat row, threat order (s
   'Events: everyone votes with Confirm. Jumps need a second Confirm'
   ];
   it('the lobby card is the ten exact ASCII lines (the callout line, spec Coop-i section 3; three co-op lines, Coop-ii) within LOBBY_LINE_MAX; every other phase gives none', () => {
-    expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(3), phase: 'lobby', message: '' }).lobbyLines).toEqual(CARD);
     const skiffCard = CARD.map((l, k) => (k === 8 ? 'Helm: evade as a hit lands. Up from the top row, Left/Right: tabs' : l));   // the Skiff loads its own torpedoes and has console tabs (spec Demo-x-a amendment)
-    // Art-iv-b: the Hound flies at every crew size, so the Skiff-keyed helm line no longer shows in the lobby.
-    for (const n of [1, 2, 4]) expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(n), phase: 'lobby', message: '' }).lobbyLines).toEqual(CARD);
+    // Art-iv-b: the Hound flies at every crew size; like the Skiff its tube loads itself and its consoles have tabs, so the lobby shows that helm line.
+    for (const n of [1, 2, 3, 4]) expect(buildHudModel(null, fixtureCouchViewer(null), { slots: slots(n), phase: 'lobby', message: '' }).lobbyLines).toEqual(skiffCard);
     expect(skiffCard[8]!.length).toBeLessThanOrEqual(LOBBY_LINE_MAX);
     const s = makeState(1); quiet(s);
     for (const phase of ['running', 'gameover', 'paused', 'error'] as const) expect(buildHudModel(s, fixtureCouchViewer(s), { slots: slots(1), phase: phase, message: '' }).lobbyLines).toEqual([]);
