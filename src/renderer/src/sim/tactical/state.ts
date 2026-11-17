@@ -92,7 +92,7 @@ export interface TacticalState {
   events: DuelEvent[];
 }
 
-/** Held axes for one ship: turn (+ clockwise) and thrust (+ forward). Nominally −1, 0 or 1; flyShip quantises them by sign (NaN counts as 0). */
+/** Held axes for one ship: turn (+ clockwise) and thrust (+ forward). flyShip quantises the turn by sign and the thrust to quarters (NaN counts as 0; Artemis spec §5.3). */
 export interface Axes { turn: number; thrust: number }
 export const NO_AXES: Axes = { turn: 0, thrust: 0 };
 

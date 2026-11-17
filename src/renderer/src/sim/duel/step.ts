@@ -16,7 +16,7 @@ import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
-import { validThrottle } from './throttle';
+import { throttleThrust, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
@@ -189,7 +189,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   }
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
-  if (helm >= 0) { const h = input.held[helm] ?? NO_HELD; crew.axes = { turn: h.moveX, thrust: -h.moveY }; }   // W (moveY −1, up) is thrust forward
+  if (helm >= 0) crew.axes = { turn: (input.held[helm] ?? NO_HELD).moveX, thrust: throttleThrust(d.throttle) };   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does
   if (gunner >= 0) crew.steer = (input.held[gunner] ?? NO_HELD).moveX;
 
   repairPhase(d, input.held);

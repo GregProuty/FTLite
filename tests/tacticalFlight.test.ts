@@ -131,7 +131,7 @@ describe('map edge (spec §3)', () => {
   });
 });
 
-describe('held axes are quantised by sign (Helm H-0a final review)', () => {
+describe('held axes are quantised: the turn by sign, the thrust to quarters (Helm H-0a final review; Artemis spec §5.3)', () => {
   const turned = (turn: number): Ship => { const s = ship({}); for (let t = 0; t < 60; t++) flyShip(s, { turn, thrust: 0 }, FLIGHT_NO_FIELD); return s; };
   it('an analog turn turns exactly as a full turn does', () => {
     for (const [a, full] of [[0.5, 1], [-0.7, -1]] as const) {
@@ -140,11 +140,12 @@ describe('held axes are quantised by sign (Helm H-0a final review)', () => {
       expect(x.headingAcc).toBe(y.headingAcc);
     }
   });
-  it('an analog thrust gives the same velocity as full thrust', () => {
-    const a = ship({}), b = ship({});
-    flyShip(a, { turn: 0, thrust: 0.3 }, FLIGHT_NO_FIELD);
-    flyShip(b, { turn: 0, thrust: 1 }, FLIGHT_NO_FIELD);
-    expect(a.vx).toBe(b.vx); expect(a.vy).toBe(b.vy);
+  it('an analog thrust flies as its nearest quarter, and any reverse as full reverse', () => {
+    const fly = (thrust: number): Ship => { const s = ship({}); flyShip(s, { turn: 0, thrust }, FLIGHT_NO_FIELD); return s; };
+    for (const [a, q] of [[0.3, 0.25], [0.6, 0.5], [0.9, 1], [-0.3, -1]] as const) {
+      const x = fly(a), y = fly(q);
+      expect([a, x.vx, x.vy]).toEqual([a, y.vx, y.vy]);
+    }
   });
   it('a NaN axis is idle and poisons nothing', () => {
     const s = ship({ released: false });

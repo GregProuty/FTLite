@@ -27,8 +27,9 @@ export function engineFactor(cls: ShipClassDef, engines: number): number { retur
 /** One tick of one ship's flight, without contacts, at Engines damage level `engines` and with the class's thrust and
  *  turn. Shared by the step and by predictPath, so the prediction is exact. */
 export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, cls: ShipClassDef = CUTTER_CLASS): void {
-  // Quantise the held axes by sign (spec: each is -1, 0 or 1); `|| 0` maps NaN and -0 to 0.
-  const turn = Math.sign(axes.turn) || 0, thrust = Math.sign(axes.thrust) || 0;
+  // Quantise the held axes (Artemis spec §5.3): the turn by sign, the thrust to quarters, so q is one of −1, −¾ … 1.
+  // `|| 0` maps NaN and −0 to 0. Whole axes (the hunter, the flight view, levels 4 and −1) fly exactly as before.
+  const turn = Math.sign(axes.turn) || 0, q = (Math.max(-4, Math.min(4, Math.round(axes.thrust * 4))) || 0) / 4;
   const f = engineFactor(cls, engines);
   s.headingAcc += turn * cls.turnStepsPerTick * f;
   while (s.headingAcc >= 1) { s.heading = wrapHeading(s.heading + 1); s.headingAcc -= 1; }
@@ -37,7 +38,7 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, 
   // Stabilise (spec §6): on the tick both axes go to zero, capture the sideways speed (along px, py, 90° clockwise of the
   // nose) as the skid to remove; then remove up to STABILISE · dt of it per tick until it is gone. Gravity's later
   // sideways pull is never captured, so a released ship still falls and orbits. Runs before this tick's forces.
-  const idle = turn === 0 && thrust === 0, px = -h1, py = h0;
+  const idle = turn === 0 && q === 0, px = -h1, py = h0;
   if (idle && !s.released) { const side = s.vx * px + s.vy * py; s.skidBudget = Math.abs(side); s.skidSign = Math.sign(side); }
   if (!idle) { s.skidBudget = 0; s.skidSign = 0; }
   s.released = idle;
@@ -48,8 +49,8 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, 
   let ax = 0, ay = 0;
   if (tuning.gravity) { const [gx, gy] = gravityAccel(s.x, s.y); ax += gx; ay += gy; }
   if (tuning.edge) { const [ex, ey] = edgeAccel(s.x, s.y); ax += ex; ay += ey; }
-  if (thrust > 0) { ax += h0 * cls.thrust * f; ay += h1 * cls.thrust * f; }
-  else if (thrust < 0) { ax -= h0 * cls.thrust * cls.reverseFraction * f; ay -= h1 * cls.thrust * cls.reverseFraction * f; }
+  if (q > 0) { const push = q * cls.thrust; ax += h0 * push * f; ay += h1 * push * f; }   // q = 1: push is cls.thrust exactly
+  else if (q < 0) { ax -= h0 * cls.thrust * cls.reverseFraction * f; ay -= h1 * cls.thrust * cls.reverseFraction * f; }   // any reverse is full reverse
   s.vx += ax * DT; s.vy += ay * DT;
   const keep = 1 - tuning.drag * DT;
   s.vx *= keep; s.vy *= keep;

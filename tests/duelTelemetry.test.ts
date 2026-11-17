@@ -137,3 +137,20 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect(lost).toBe(1);
   });
 });
+
+describe('a set throttle is a manoeuvre (Artemis spec §5.3)', () => {
+  it('an enemy planet contact while the throttle is set counts as a bait; with the throttle back at STOP for the window it does not', () => {
+    const bait = (levels: number[], wait: number): number => {
+      const d = createDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
+      e.x = s.x + 500; e.y = s.y; e.vx = s.vx; e.vy = s.vy;                  // within 900 of the crew, far from the planet
+      for (const level of levels) step(d, t, [cmd(d, 0, { kind: 'throttle', level })]);
+      for (let k = 0; k < wait; k++) step(d, t);
+      e.x = p.x - p.r - SHIP_RADIUS + 5; e.y = p.y; e.vx = 10; e.vy = 0;     // into the planet's far side
+      step(d, t);
+      expect(t.ships[1].planetContacts).toBe(1);
+      return t.baits;
+    };
+    expect(bait([2], 0)).toBe(1);
+    expect(bait([2, 0], BAIT_WINDOW_TICKS)).toBe(0);
+  });
+});

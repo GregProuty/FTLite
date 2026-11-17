@@ -12,7 +12,12 @@ import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { clampThrottle, THROTTLE_MAX, THROTTLE_MIN, throttleThrust, validThrottle } from '../src/renderer/src/sim/duel/throttle';
-import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, Outcome, type Axes, type Ship } from '../src/renderer/src/sim/tactical/state';
+import { predictPath } from '../src/renderer/src/sim/tactical/predict';
+import { edgeAccel, engineFactor, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
+import { hx, hy, wrapHeading } from '../src/renderer/src/sim/tactical/direction';
+import { CUTTER_CLASS, HUNTER_CLASS, type ShipClassDef } from '../src/renderer/src/sim/tactical/defs';
+import { DEFAULT_FLIGHT, DT, THRUST, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 import { aliasPlan, duelSchema, MIGRATIONS } from '../scripts/golden/duelOracle';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -147,5 +152,91 @@ describe('the 42 → 43 alias table (Artemis spec §5.6)', () => {
       expect(aliasPlan(oldNames, oldCounts, now.names, now.counts, m).problems).toEqual([]);
       expect(aliasPlan(oldNames, oldCounts, now.names, now.counts).problems).toEqual(['new field helm.throttle is neither mapped nor declared added']);
     } finally { disposeDuel(d); }
+  });
+});
+
+/** flyShip as it was at SIM_VERSION 42: both axes quantised by sign. A frozen reference, never to be changed. */
+function flyShipBySign(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, cls: ShipClassDef = CUTTER_CLASS): void {
+  const turn = Math.sign(axes.turn) || 0, thrust = Math.sign(axes.thrust) || 0;
+  const f = engineFactor(cls, engines);
+  s.headingAcc += turn * cls.turnStepsPerTick * f;
+  while (s.headingAcc >= 1) { s.heading = wrapHeading(s.heading + 1); s.headingAcc -= 1; }
+  while (s.headingAcc <= -1) { s.heading = wrapHeading(s.heading - 1); s.headingAcc += 1; }
+  const h0 = hx(s.heading), h1 = hy(s.heading);
+  const idle = turn === 0 && thrust === 0, px = -h1, py = h0;
+  if (idle && !s.released) { const side = s.vx * px + s.vy * py; s.skidBudget = Math.abs(side); s.skidSign = Math.sign(side); }
+  if (!idle) { s.skidBudget = 0; s.skidSign = 0; }
+  s.released = idle;
+  if (idle && s.skidBudget > 0 && tuning.stabilise > 0) {
+    const cut = Math.min(s.skidBudget, tuning.stabilise * DT);
+    s.vx -= s.skidSign * cut * px; s.vy -= s.skidSign * cut * py; s.skidBudget -= cut;
+  }
+  let ax = 0, ay = 0;
+  if (tuning.gravity) { const [gx, gy] = gravityAccel(s.x, s.y); ax += gx; ay += gy; }
+  if (tuning.edge) { const [ex, ey] = edgeAccel(s.x, s.y); ax += ex; ay += ey; }
+  if (thrust > 0) { ax += h0 * cls.thrust * f; ay += h1 * cls.thrust * f; }
+  else if (thrust < 0) { ax -= h0 * cls.thrust * cls.reverseFraction * f; ay -= h1 * cls.thrust * cls.reverseFraction * f; }
+  s.vx += ax * DT; s.vy += ay * DT;
+  const keep = 1 - tuning.drag * DT;
+  s.vx *= keep; s.vy *= keep;
+  s.skidBudget *= keep;
+  s.x += s.vx * DT; s.y += s.vy * DT;
+}
+
+describe('quarter-thrust flight (Artemis spec §5.3)', () => {
+  const start = (): Ship => ({ ...createTacticalState(3).ships[0], x: 900, y: -400, vx: 30, vy: 60, heading: 40, headingAcc: 0.25 });
+  it('whole axes (the hunter, levels 4 and −1, the flight view) fly exactly as the sign-quantised flight did, for every class and Engines level', () => {
+    for (const cls of [CUTTER_CLASS, HUNTER_CLASS]) for (const engines of [0, 1, 2]) for (const turn of [-1, 0, 1]) for (const thrust of [-1, 0, 1]) {
+      const a = start(), b = start();
+      for (let t = 0; t < 120; t++) { flyShip(a, { turn, thrust }, DEFAULT_FLIGHT, engines, cls); flyShipBySign(b, { turn, thrust }, DEFAULT_FLIGHT, engines, cls); }
+      expect(a, `${cls.id} engines ${engines} turn ${turn} thrust ${thrust}`).toEqual(b);
+    }
+  });
+  it('thrust is quantised to quarters: 0.5 is half the forward push, 0.3 flies as 0.25, 0.1 as none; any reverse is full reverse', () => {
+    const NO_FIELD: FlightTuning = { gravity: false, edge: false, drag: 0, stabilise: DEFAULT_FLIGHT.stabilise };
+    const push = (thrust: number): number => {
+      const s: Ship = { ...createTacticalState(1).ships[0], x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0 };
+      flyShip(s, { turn: 0, thrust }, NO_FIELD);
+      return s.vy;
+    };
+    expect(push(1)).toBeCloseTo(-THRUST * DT, 12);
+    expect(push(0.5)).toBeCloseTo(-0.5 * THRUST * DT, 12);
+    expect(push(0.75)).toBeCloseTo(-0.75 * THRUST * DT, 12);
+    expect(push(0.3)).toBe(push(0.25)); expect(push(0.9)).toBe(push(1)); expect(push(0.1)).toBe(push(0));
+    expect(push(-0.25)).toBe(push(-1)); expect(push(-1)).toBeCloseTo(0.4 * THRUST * DT, 12);
+    expect(push(NaN)).toBe(push(0));
+  });
+});
+
+describe('the throttle flies the duel (Artemis spec §5.3)', () => {
+  it('levels 4, 2 and −1 fly the held-thrust path 1, 0.5 and −1 tick for tick while the Helm is crewed', () => {
+    for (const [level, thrust] of [[4, 1], [2, 0.5], [-1, -1]] as const) {
+      const d = createDuel(CUTTER, 5);
+      try {
+        const path = predictPath(d.tactical, 0, { turn: 0, thrust }, 60, 1), s = d.tactical.ships[0];
+        expect(path).toHaveLength(60);
+        step(d, [cmd(d, 0, throttle(level))]);
+        for (let k = 0; k < 60; k++) {
+          if (k > 0) step(d);
+          expect([level, k, s.x, s.y]).toEqual([level, k, path[k]!.x, path[k]!.y]);
+        }
+        expect([s.planetHits, s.asteroidHits, s.shipHits]).toEqual([0, 0, 0]);
+      } finally { disposeDuel(d); }
+    }
+  });
+  it('held W no longer thrusts; an empty Helm coasts and keeps its level, and the next pilot flies at it', () => {
+    const d = createDuel(CUTTER, 5), coast = createDuel(CUTTER, 5);
+    try {
+      step(d, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]); step(coast);
+      expect([d.tactical.ships[0].vx, d.tactical.ships[0].vy]).toEqual([coast.tactical.ships[0].vx, coast.tactical.ships[0].vy]);
+      step(d, [cmd(d, 0, throttle(4))]);
+      const s = d.tactical.ships[0], drift = predictPath(d.tactical, 0, { turn: 0, thrust: 0 }, 30, 1);
+      expect(step(d, [cmd(d, 0, { kind: 'stand' })])[0]!.status).toBe('applied');
+      for (let k = 0; k < 30; k++) { if (k > 0) step(d); expect([k, s.x, s.y]).toEqual([k, drift[k]!.x, drift[k]!.y]); }
+      expect(d.throttle).toBe(4);
+      const resume = predictPath(d.tactical, 0, { turn: 0, thrust: 1 }, 1, 1);
+      expect(step(d, [cmd(d, 0, { kind: 'sit', station: d.nav })])[0]!.status).toBe('applied');
+      expect([s.x, s.y]).toEqual([resume[0]!.x, resume[0]!.y]);
+    } finally { disposeDuel(d); disposeDuel(coast); }
   });
 });
