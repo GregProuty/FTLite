@@ -8,6 +8,8 @@ import type { DuelState } from '../../sim/duel/state';
 import type { GameAssets } from '../assets';
 import { createBoarderLayer } from '../boarderLayer';
 import { createConsoleLayer } from '../consoleLayer';
+import { createBattlemapLayer } from '../battlemapLayer';
+import { fitRect } from '../battlemapModel';
 import { createCrewLayer } from '../crewSprites';
 import { createEffectsLayer } from '../effects';
 import { createRenderMemory, type RenderMemory } from '../memory';
@@ -60,15 +62,16 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // Back to front as renderer.ts (Art-i spec section 5): tiles, grade, effects below, room icons, desks, then the duel's
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
   // labels on top so the lights never wash them out.
-  world.addChild(tiles.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
+  const battlemap = createBattlemapLayer(assets);
+  world.addChild(battlemap.container, tiles.container, fx.grade, effects.below, icons.container, desks.container, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels);
   desks.container.addChild(fx.fixtures); effects.above.addChild(fx.above);
   return {
     container, world, memory,
     draw(d, crewPrev, alpha, dt, events = [], presentDt = dt) {
-      const st = d.interior, fit = duelFit(st.derived.width, st.derived.height, stageScale());
+      const st = d.interior, fit = duelFit(st.derived.width, st.derived.height, stageScale(), fitRect(st.layout.id, st.derived.width, st.derived.height, missing));
       world.scale.set(fit.scale);
       st.crew.forEach((eid, pid) => { const p = crewPrev[pid]; if (p) memory.prev.set(Stable.id[eid]!, p); });
-      tiles.update(st, dt); icons.update(st); desks.draw(st); effects.draw(st);
+      battlemap.draw(st); tiles.update(st, dt); icons.update(st); desks.draw(st); effects.draw(st);
       const o = interiorOverlay(d);
       damage.clear(); marks.clear();
       for (const t of o.tints) for (const p of t.tiles) damage.rect(p.x, p.y, TILE_PX, TILE_PX).fill({ color: TINT[t.level]!, alpha: 0.28 });

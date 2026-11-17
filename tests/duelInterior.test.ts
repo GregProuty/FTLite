@@ -80,9 +80,9 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     const d = createDuel(layout, 5), view = createInteriorView(assets);
     const kids = view.world.children;
     expect(view.container.children[1]).toBe(view.world);                                      // the starfield first, under the world
-    expect((kids[1] as Container).blendMode).toBe('multiply');                                // tiles, then the grade
+    expect((kids[2] as Container).blendMode).toBe('multiply');                                // the battlemap, tiles, then the grade
     const lights = kids.findIndex((k) => k.blendMode === 'add');
-    expect(lights).toBe(9);                                                                    // after effects.above
+    expect(lights).toBe(10);                                                                   // after effects.above
     expect(kids.length - lights - 1).toBe(4);                                                  // the marks and the three labels above the lights
     view.draw(d, crewAt(d), 1, 1 / 60);
     expect([view.world.x, view.world.y]).toEqual([66, 152]);

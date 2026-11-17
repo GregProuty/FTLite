@@ -32,3 +32,12 @@ describe('fitRectInBand', () => {
     expect(f.x).toBeGreaterThan(left);
   });
 });
+
+import { MARKER_TINT, markerRect } from '../src/renderer/src/render/consoleModel';
+describe('console markers on a painted ship', () => {
+  it('one rounded square inside the tile, distinct tints per look', () => {
+    const r = markerRect();
+    expect(r.x).toBeGreaterThan(0); expect(r.x + r.w).toBeLessThan(TILE_PX); expect(r.w).toBe(r.h);
+    expect(new Set(Object.values(MARKER_TINT)).size).toBe(3);
+  });
+});

@@ -1,6 +1,8 @@
 import type { CardUiState } from '../clientControl/cardController';
 import { Application, Container } from 'pixi.js';
 import { worldFit, WORLD_BAND } from './worldFit';
+import { createBattlemapLayer } from './battlemapLayer';
+import { fitRect } from './battlemapModel';
 import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { Position, Stable } from '../sim/components';
@@ -70,7 +72,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
     blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined
   });
   // Art-i spec section 5: tiles, grade, effects.below, icons, consoleDesks, magazine, crew, boarders, effects.above, lights.
-  world.addChild(tiles.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
+  const battlemap = createBattlemapLayer(assets);
+  world.addChild(battlemap.container, tiles.container, feel.grade, effects.below, icons.container, consoleDesks.container, magazine.container, crew.container, boarders.container, effects.above, feel.lights);
   consoleDesks.container.addChild(feel.fixtures); effects.above.addChild(feel.above);
   app.stage.addChildAt(feel.starfield, 0);   // the starfield under the world, filling WORLD_BAND (spec section 8)
   let lastDraw: number | null = null, stage = 1, seenImpact: Int32Array | null = null;
@@ -94,11 +97,12 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
-      const fit = worldFit(d.width, d.height, stage); world.scale.set(fit.scale);
+      const fit = worldFit(d.width, d.height, stage, fitRect(state.layout.id, d.width, d.height, missing)); world.scale.set(fit.scale);
       anim = stepWindowAnim(anim, state);
       const view = enemyWindowModel(state, state.tick + alpha, anim), shown = windowShown(state, view);
       enemyWindow.draw(view, shown, dt, hitFlashOf(state, view));
       projectiles.draw(state, fit, dt, { shotOrigin: shown ? windowRoomCentre(EnemyRoom.Weapons) : null, target: (slot) => { if (!shown || !view.bolt || view.bolt.slot !== slot || !view.bolt.to) return null; return { x: WINDOW.x + view.slideX + view.bolt.to.x, y: WINDOW.y + view.shipDY + view.bolt.to.y }; } });
+      battlemap.draw(state);
       tiles.update(state, dt);
       icons.update(state);
       consoleDesks.draw(state);
