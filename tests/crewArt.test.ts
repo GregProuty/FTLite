@@ -23,7 +23,7 @@ import { TILE_PX } from '../src/shared/resolution';
 import { cutterState, RECRUITS } from './helpers/sim';
 import { createSimState } from './helpers/simLifetime';
 
-// Node has no font atlas or canvas: the real Pixi scene graph stays, only bitmap glyph measurement is replaced (as in hudSlots.test.ts).
+// Node has no font atlas or canvas: the real Pixi scene graph stays, only bitmap glyph measurement is replaced (as in uiHud.test.tsx).
 vi.mock('pixi.js', async (original) => {
   const pixi = await original<typeof import('pixi.js')>();
   return { ...pixi, BitmapText: class extends pixi.Container { text = ''; roundPixels = false; constructor(_options: unknown) { super(); } } };

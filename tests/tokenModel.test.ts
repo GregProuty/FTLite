@@ -8,6 +8,7 @@ describe('VTT tokens (Art-iv spec section 5)', () => {
     const t = tokenLook(1, 'conscious', false, 'e');
     expect(t.fill).toBe(CREW_COLORS[1]); expect(t.ring).toBeNull(); expect(t.cross).toBe(false);
     expect(t.tick!.x).toBeCloseTo(TOKEN_RADIUS, 6); expect(t.tick!.y).toBeCloseTo(0, 6);
+    expect(t.angle).toBe(0); expect(tokenLook(1, 'conscious', false, 's').angle).toBeCloseTo(Math.PI / 2, 6); expect(t.slot).toBe(1);
   });
   it('about half a square (one tile) across', () => {
     expect(2 * TOKEN_RADIUS).toBeGreaterThan(0.8 * TILE_PX); expect(2 * TOKEN_RADIUS).toBeLessThanOrEqual(TILE_PX);
@@ -18,6 +19,7 @@ describe('VTT tokens (Art-iv spec section 5)', () => {
     expect(d.cross).toBe(true); expect(d.tick).toBeNull(); expect(d.fill).not.toBe(CREW_COLORS[0]);
     expect(d.crossColor).toBeTypeOf('number');
     expect(tokenLook(0, 'dead', false, 's').fill).toBe(d.fill);
+    expect(d.colour).toBe(CREW_COLORS[0]);   // the painted figure keeps the player's colour (muted) when down
   });
   it('diagonal facings put the tick on the rim', () => {
     const t = tokenLook(2, 'conscious', false, 'nw').tick!;

@@ -5,7 +5,6 @@ import { roomIcons, ICON_KINDS, type IconKind, type IconTint } from './roomIconM
 export { ICON_KINDS, roomIcons };
 export type { IconKind };
 
-const TEXT = 0xe8e8e8, FAINT = 0x5a606c, WARN = 0xff6b5a;
 export const ICON_SIZE = 20, ICON_ALPHA = 0.85;
 const SW = 2;
 
@@ -58,7 +57,7 @@ export function drawIcon(g: Graphics, kind: IconKind, cx: number, cy: number, si
   }
 }
 
-export function tintColor(t: IconTint): number { return t === 'failed' ? WARN : t === 'unpowered' ? FAINT : TEXT; }
+export { tintColor } from './roomIconModel';
 /** The same tints for glyphs drawn on the light flat floors (spec visual cleanup section 4): dark normally, washed out when unpowered, strong red when failed. */
 export const FLOOR_GLYPH = { normal: 0x5f6575, unpowered: 0xb4b9c3, failed: 0xd9483b } as const;
 export function floorTintColor(t: IconTint): number { return FLOOR_GLYPH[t]; }

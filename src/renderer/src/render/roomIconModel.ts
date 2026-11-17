@@ -6,6 +6,8 @@ import { TILE_PX } from '../../../shared/resolution';
 export const ICON_KINDS = ['navigation', 'weapons', 'science', 'engineering', 'lifeSupport', 'medbay', 'doors', 'reactor'] as const;
 export type IconKind = (typeof ICON_KINDS)[number];
 export type IconTint = 'normal' | 'failed' | 'unpowered';
+export const ICON_TEXT = 0xe8e8e8, ICON_FAINT = 0x5a606c, ICON_WARN = 0xff6b5a;
+export function tintColor(t: IconTint): number { return t === 'failed' ? ICON_WARN : t === 'unpowered' ? ICON_FAINT : ICON_TEXT; }
 export interface RoomIcon { room: number; kind: IconKind; x: number; y: number; tint: IconTint }
 
 /** The tint of station i: failed wins over unpowered; Engineering is never unpowered (as the HUD's OFF rule). */
