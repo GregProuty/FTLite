@@ -14,12 +14,15 @@ import { NEUTRAL_FRAME } from './intents';
 import { createCardUi, pauseActions, translateTick } from '../clientControl/cardController';
 import { buildHudModel } from '../render/hudModel';
 import { CUE_ORDER, type Cue } from '../events/audioCues';
+import type { SectorAudio } from './sectorAudio';
 import { calloutIcon } from '../events/callout';
 import { bubbles, flashingKinds, type Callout } from '../render/calloutModel';
 
 export interface OnlineRendererDeps extends Pick<SessionDeps, 'sampleDevices' | 'renderer' | 'hud' | 'now' | 'playCue' | 'contentDigest'> {
   scheduler: Scheduler; resolveLayout(id: string): ShipLayout; resetInput(): void;
   api: Pick<OnlinePreloadApi, 'viewState'>;
+  /** Audio-i spec section 4c: the interior sounds and the music report, once per drawn frame. */
+  sound?: SectorAudio;
 }
 export function createOnlineRendererSession(deps: OnlineRendererDeps) {
   const input = createOnlineInput(), cues = new Set<Cue>();
@@ -77,7 +80,7 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
   return {
     attach(next: OnlinePortDescriptor, port: MessagePort) {
       if (disposed || next.epoch <= (descriptor?.epoch ?? 0)) { port.close(); return; }
-      observe(); release(); cues.clear(); lastSequence = 0; synced = false;
+      observe(); release(); cues.clear(); deps.sound?.reset(); lastSequence = 0; synced = false;
       descriptor = next; resetInput(); deps.renderer?.reset();
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close.
@@ -102,6 +105,7 @@ export function createOnlineRendererSession(deps: OnlineRendererDeps) {
         slots: state.crew.map((_, pid) => ({ status: status?.snapshot?.seats.find(s => s.seatId === pid)?.connected || pid === descriptor!.seatId && !!client?.state() ? 'active' : pid === descriptor!.seatId ? 'reconnect' : 'bot', key: pid === descriptor!.seatId ? input.key : null })),
         phase, message: `PLAYER ${descriptor.seatId + 1}${client?.state() ? '' : ' — CONNECTION LOST'}`, callouts, calloutFlash: flashingKinds(callouts, state.tick)
       }));
+      deps.sound?.frame(state, phase === 'paused', cues);   // before the cues clear: they count toward engaged
       for (const cue of CUE_ORDER) if (cues.has(cue)) deps.playCue?.(cue); cues.clear();
     },
     dispose() { if (disposed) return; disposed = true; cancel(); release(); if (frozen) disposeSimState(frozen); frozen = null; deps.hud?.clear?.(); points = []; callouts = []; cues.clear(); }

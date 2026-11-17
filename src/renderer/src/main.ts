@@ -6,6 +6,7 @@ import { loadAssets, loadBytes } from './render/assets';
 import { createRenderer } from './render/renderer';
 import { createKeyboardSources } from './input/sources';
 import { createAudio } from './app/audio';
+import { createSectorAudio } from './app/sectorAudio';
 import { loadSettings, saveSettings } from './app/settingsStore';
 import { controlSections } from './app/controlsList';
 import { DEFAULT_SEED, readMode, readSeed } from './app/duel/mode';
@@ -93,7 +94,7 @@ async function startApp(): Promise<void> {
         duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
           leave: () => actions.leave(), audio, recordDuel: record => window.ftlite?.recordDuel?.(record) }),   // Audio-i: local duel sounds; the replicated cues would play twice
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
-          resolveLayout, api: bridge!, playCue: audio.play })
+          resolveLayout, api: bridge!, playCue: audio.play, sound: createSectorAudio(audio) })
       });
       if (status) online.setStatus(status); online.setInputBlocked(blocked); return online;
     }
