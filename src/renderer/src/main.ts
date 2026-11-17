@@ -21,11 +21,16 @@ import { createDuelSink, createFlightSink } from './ui/sinks';
 import { computeLetterbox } from './render/letterbox';
 import { createUiActions } from './ui/actions';
 import { inputBlockedOf } from './ui/menuState';
-import { mountUi } from './ui/mount';
+import { mountProbe, mountUi } from './ui/mount';
+import { createUiPerf } from './ui/perf';
+import { startUiProbe } from './app/uiProbe';
 import { installFeel } from './app/feelBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
 import { INTERNAL_H, INTERNAL_W } from '../../shared/resolution';
+
+/** The dev UI budget counter (?uiperf=1): shared by the app and both dev views' sinks. */
+const perf = createUiPerf(new URLSearchParams(location.search).get('uiperf') === '1');
 
 declare global { interface Window { ftlite?: import('../../shared/onlineSession').FtlitePreloadApi } }
 
@@ -63,7 +68,7 @@ async function startApp(): Promise<void> {
   let blocked = true;
   const win = window.ftlite?.window;
   const store = createUiStore({ onlineAvailable: !!bridge, settings: { volume: settings.volume, fullscreenAvailable: !!win, controls: controlSections() } });
-  const duelSink = createDuelSink(store);
+  const duelSink = createDuelSink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.cutter, lifecycle: window.ftlite, ui: duelSink,
@@ -140,7 +145,7 @@ async function startFlight(seed: number): Promise<void> {
     setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
-  startFlightMode({ renderer, seed, ui: createFlightSink(store), lifecycle: window.ftlite });
+  startFlightMode({ renderer, seed, ui: createFlightSink(store, perf), lifecycle: window.ftlite });
 }
 
 /** The solo duel (H-1 spec §4, §11a): the renderer and its letterbox, the Cutter, but no sector session. */
@@ -159,12 +164,30 @@ async function startDuel(seed: number): Promise<void> {
     setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
-  startDuelMode({ renderer, seed, layout, ui: createDuelSink(store), lifecycle: window.ftlite });
+  startDuelMode({ renderer, seed, layout, ui: createDuelSink(store, perf), lifecycle: window.ftlite });
+}
+
+/** The text-parity probe (UI-ii Task 5): Pixi text on the left half, React text on the right, for the pixel comparison. */
+async function startProbe(): Promise<void> {
+  const assets = await loadAssets('./assets/manifest.json');
+  const renderer = await createRenderer(assets);
+  const store = createUiStore({ onlineAvailable: false });
+  const actions = createUiActions({ store, single() {}, online() {}, pause() {} });
+  const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
+  await mountProbe({ el: uiRoot, store, actions });
+  const resize = (): void => {
+    renderer.resize(window.innerWidth, window.innerHeight);
+    const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
+    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+  };
+  window.addEventListener('resize', resize); resize();
+  startUiProbe(renderer);
 }
 
 /** One mode per launch (H-1 spec §3): the dev views `?mode=flight` and `?mode=duel`, or the app with its main menu. */
 function start(): Promise<void> {
   const mode = readMode(location.search);
+  if (mode === 'uiprobe') return startProbe();
   return mode === 'flight' ? startFlight(readSeed(location.search)) : mode === 'duel' ? startDuel(readSeed(location.search)) : startApp();
 }
 start().catch(showFatal);

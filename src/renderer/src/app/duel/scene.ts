@@ -1,7 +1,8 @@
 // The duel's scene (H-1 spec §3, §4; H-2 spec §3): the console map view (Helm or Weapons) or the interior for the active
-// character, the readout column, the effects and shake, the pause banner and the end card, on the renderer's Pixi
-// stage with its sector children hidden. It draws from a DuelViewSource: the local runtime (Single player) or the online
-// duel source (Multiplayer), so both modes show exactly the same screens.
+// character, and the effects and shake, on the renderer's Pixi stage with its sector children hidden. The readout, the
+// banners, the end card and the map overlay are drawn by React through the UI sink (React UI spec §6). It draws from a
+// DuelViewSource: the local runtime (Single player) or the online duel source (Multiplayer), so both modes show exactly
+// the same screens.
 import { Container } from 'pixi.js';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
@@ -15,7 +16,7 @@ import { tacticalModel, type PrevBody } from '../../render/tactical/tacticalMode
 import { combatModel } from '../../render/tactical/weaponsModel';
 import type { Camera } from '../../render/tactical/camera';
 import type { DuelSink } from '../../ui/sinks';
-import { mapOverlayOf, type MapOverlayView } from '../../ui/views';
+import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
 import type { Axes } from '../../sim/tactical/state';
 import type { DuelView } from './runtime';
@@ -42,6 +43,18 @@ export interface DuelViewSource {
 /** The frame's overlays: the pause banner (null: none), whether the tactical layer dims for it, the end card, and a
  *  one-line notice (the online start's YOU: HELM). */
 export interface SceneOverlay { banner: string | null; layerPaused: boolean; end: EndView | null; notice?: string | null }
+
+/** The banners and the map overlay the scene hands the UI (deviation 1: the tactical banner shows only on a map view). */
+export function sceneUi(view: string, overlay: SceneOverlay, pauseText: string, overlayView: MapOverlayView | null): { banners: Banners; overlay: MapOverlayView | null } {
+  return {
+    banners: {
+      interior: overlay.banner !== null && (view === 'interior' || !overlay.layerPaused) ? overlay.banner : null,
+      tactical: overlay.layerPaused && view !== 'interior' ? pauseText : null,
+      notice: overlay.notice || null
+    },
+    overlay: view === 'interior' ? null : overlayView
+  };
+}
 
 export function createDuelScene(renderer: Renderer, options: { seed: number; pauseText: string; ui: DuelSink }) {
   const viewport = { w: INTERNAL_W, h: INTERNAL_H }, font = renderer.assets.fontFamily;
@@ -84,12 +97,7 @@ export function createDuelScene(renderer: Renderer, options: { seed: number; pau
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus() }), help: readoutHelp(view) },
         end: overlay.end,
-        banners: {
-          interior: overlay.banner !== null && (view === 'interior' || !overlay.layerPaused) ? overlay.banner : null,
-          tactical: overlay.layerPaused && view !== 'interior' ? options.pauseText : null,
-          notice: overlay.notice ?? null
-        },
-        overlay: view === 'interior' ? null : overlayView
+        ...sceneUi(view, overlay, options.pauseText, overlayView)
       });
       const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake
       scene.position.set(shake.x, shake.y);

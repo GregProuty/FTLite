@@ -1,5 +1,6 @@
 // The dev flight view's boot (H-1 spec §3, §9): reuses the renderer's Pixi application, stage and letterbox, hides the
-// sector children, and adds the Helm map view with the feel panel. The sector session is never created in this mode.
+// sector children, and adds the Helm map view; the feel panel, banners and map overlay are drawn by React through the
+// flight sink (React UI spec §6). The sector session is never created in this mode.
 import { Container } from 'pixi.js';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';

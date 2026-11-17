@@ -9,7 +9,7 @@ export const GLYPH_CHARS = Array.from({ length: 95 }, (_, i) => String.fromCharC
 /** Native pixels of padding each side of a cell, so ink past the advance is not cut off. Clipping only, not a calibration knob. */
 export const GLYPH_X_PAD = 1;
 /** Native pixels added to the glyph's vertical position to match BitmapText's line placement (probe-calibrated). */
-export const GLYPH_Y_OFFSET = 0;
+export const GLYPH_Y_OFFSET = -1;
 /** The line height anchors use, in native pixels; null = the measured fontBoundingBox height (probe-calibrated). */
 export const GLYPH_LINE_H: number | null = null;
 /** Native pixels added to each glyph's drawn x origin (probe-calibrated). */
