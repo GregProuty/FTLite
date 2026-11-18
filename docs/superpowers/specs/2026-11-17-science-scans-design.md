@@ -4,7 +4,7 @@ Date: 2026-11-17. Status: design, owner-approved in brainstorming. Builds on the
 
 ## 1. Goal
 
-Give the duel a Science job worth a seat, inspired by the Artemis Science station: the enemy starts as an unidentified contact that turns hostile after about 20 s, a second contact (a derelict with loot) sits on the map, and the crew chooses what to scan, in what order. Scans are two-level like Artemis (Level 1 surface, Level 2 detailed). Weapons gains a laser frequency (A/B/C) that Science's Level 2 scan tells it how to tune.
+Give the duel a Science job worth a seat, inspired by the Artemis Science station: the enemy starts as an unidentified contact that turns hostile after 30 s (owner decision 2026-11-17 below), a second contact (a derelict with loot) sits on the map, and the crew chooses what to scan, in what order. Scans are two-level like Artemis (Level 1 surface, Level 2 detailed). Weapons gains a laser frequency (A/B/C) that Science's Level 2 scan tells it how to tune.
 
 This is **Sci-1**: the world, the scans and a Science console a character can walk to and sit at. It still plays with one or two players. **Sci-2** (separate spec) adds the third online player (three-seat room, lobby, seat notice) and the three-player playtest checklist.
 
@@ -20,11 +20,13 @@ This is **Sci-1**: the world, the scans and a Science console a character can wa
 8. Artemis inspiration: big map, click a contact to select (reticle + analysis panel), SCAN button, unidentified contacts shown as plain markers, the Science selection shown to Helm and Weapons, hover for bearing and range.
 9. Presentation stays CRT amber.
 
+**Owner decision 2026-11-17 (merge with Hunter grace).** The merged game has one hostility rule: the Hunter grace's (`2026-11-17-hunter-grace-design.md`), carried by Sci-1's state and presentation. It replaces decisions 1 and 2 and the old Patrol: each round the enemy holds still for **30 s** (`HOSTILE_AFTER_TICKS` 1800 from `startTick`): no thrust and no turn (it keeps its spawn drift), no laser charge, no missile launch; it still records its trail and runs its repair timers. The hold ends early **as soon as the crew fires** this round: a laser release (hit or miss) or a missile launch. **Shields stay full** (no layer-down start, no shield hold). The battle music follows `hostileAt`. Everything else in this spec stands. SIM_VERSION: the merged sim is 47 (master's Hunter grace was 45, homing torpedoes 46).
+
 ## 3. The round, start to finish
 
-1. The round begins (fresh duel or rematch). The enemy is in **Patrol**; both contacts are at level 0 (unknown). The derelict is on its orbit. The **hostility clock** runs on the round-relative tick `rt = state.tick − state.startTick` (§4.1).
-2. In Patrol the enemy does not fire, charge or launch; it flies only to avoid threats (§4.2); its shields start one layer below its class's layers and do not recharge.
-3. It turns **Hostile** (mode Hunt, today's behaviour, shields recharge normally from then on) at the first of: the clock (§4.1); a crew laser release that `hit` it (stripped or not); a crew missile landing on it. Permanent for the round.
+1. The round begins (fresh duel or rematch). The enemy is **holding** (`hostileAt` −1); both contacts are at level 0 (unknown). The derelict is on its orbit. The **hostility clock** runs on the round-relative tick `rt = state.tick − state.startTick` (§4.1).
+2. While holding the enemy holds still: no thrust, no turn, no charge, no launch (§4.2). Its shields are full and recharge as usual.
+3. It turns **Hostile** (today's behaviour) at the first of: the clock, 30 s (§4.1); the crew's first shot this round, a laser release (hit or miss) or a missile launch. Permanent for the round.
 4. Meanwhile the crew may scan either contact, salvage the derelict, and tune the laser.
 5. The round ends exactly as today (hull to 0; the crew wins when every other active **ship** is gone). The derelict is not a ship slot and never counts.
 
@@ -35,14 +37,13 @@ Contact ids are **not** ship slots: `Contact.Enemy = 0`, `Contact.Derelict = 1`.
 ### 4.1 Round-relative time and hostility
 
 - `TacticalState.startTick`: the tactical tick the round began on. `createTacticalState` sets 0; `startRound` (sim/duel/step.ts) sets it to `tick` beside `hunter.lastLaunch += tick`. Every round-relative rule below uses `rt = state.tick − state.startTick`, evaluated before `state.tick++`.
-- `TacticalState.hostileAt`: the round-relative tick the enemy turned hostile, −1 while in Patrol. `startRound` needs no shift for it (it is round-relative and the new round starts at −1).
-- `HunterMode.Patrol = 2`; `createTacticalState` sets `hunter.mode = Patrol` and `systems[1].shields = classOf(state, 1).shields.layers − 1`.
-- **Hostility step** (§4.6 position): if `hostileAt < 0` and (`rt >= HOSTILE_AFTER_TICKS − 1`, or this tick's `state.events` hold a crew `laser` event (`ship === CREW_SLOT`) with `hit` true, or a `missileEnd` from the crew with `target` the hunter slot), then `hostileAt = rt`, `hunter.mode = Hunt`, and a `hostile` event is pushed with cause `laser`, `missile` or `clock` (in that precedence when several apply). `HOSTILE_AFTER_TICKS` = 1200: with no ambush the step on `rt` = 1199 turns it, so it has been in Patrol for exactly 1200 steps (20 s) and the first hostile think is on `rt` = 1200.
+- `TacticalState.hostileAt`: the round-relative tick the enemy turned hostile, −1 while it holds. `createTacticalState` sets −1 (full shields; there is no Patrol mode, `hunter.mode` keeps Hunt and Repair). `startRound` needs no shift for it (it is round-relative and the new round starts at −1). `enemyHostile(t)` (`hostileAt >= 0`, science.ts) is the one predicate the hold, the views and the battle music read.
+- **Hostility step** (§4.6 position): if `hostileAt < 0` and (`rt >= HOSTILE_AFTER_TICKS − 1`, or the round's crew counters show a shot: `systems[CREW_SLOT].shots > 0` or `missilesLaunched > 0`, which includes this tick's release or launch), then `hostileAt = rt` and a `hostile` event is pushed with cause `laser` (shots), `missile` (a launch) or `clock`, in that precedence. `HOSTILE_AFTER_TICKS` = 1800: with no shot the step on `rt` = 1799 turns it, so it has held for exactly 1800 steps (30 s) and the first hostile think is on `rt` = 1800 (the Hunter grace's `tick − baseTick >= 1800`, read before the think).
 
-### 4.2 Patrol behaviour (hunter.ts, weapons.ts)
+### 4.2 The hold (hunter.ts)
 
-- `hunterThink` in Patrol: updates the trail ring buffer as today, skips `updateRepair`, and returns `{ helm: true, weapons: false, axes: threat ? <today's avoidance axes> : { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false }`, with `threat = threatAhead(state, i)`. So it coasts on its orbit, the laser charge does not build and Fire is not held.
-- `tickWeapons`: for the hunter slot while `state.hostileAt < 0`, the shield clock is held at 0 and no layer is regained. Everything else in tickWeapons is unchanged.
+- `hunterThink` while `hostileAt < 0`: updates the trail ring buffer and runs `updateRepair` as today, then returns its input with `axes { turn: 0, thrust: 0 }`, no lock, no charge and no launch, and clears `fireAt` (the Hunter grace's hold). So it keeps only its spawn drift, the laser charge does not build and Fire is not held.
+- `tickWeapons` is unchanged: no shield hold.
 
 ### 4.3 Scans
 
@@ -122,7 +123,8 @@ Three new `DuelCommand` kinds. `contactScan` is named so it does not collide wit
 ### 7.1 Every console (Helm, Weapons, Science)
 
 - **Unknown contacts** (level 0) draw on the map as a plain `?` marker in `CRT.dim`: no silhouette, no shield ring. The enemy's window title reads `UNKNOWN CONTACT`.
-- **Hostility line** in the readout while in Patrol: before enemy Level 1, `INCOMING SCAN` blinking (no number); after Level 1, `HOSTILE IN n s` with `n = ceil((1200 − rt) / 60)`. Once hostile: `HOSTILE` for 3 s, then gone.
+- **Hostility line** in the readout while the enemy holds: before enemy Level 1, `INCOMING SCAN` blinking (no number); after Level 1, `HOSTILE IN n s` with `n = ceil((1800 − rt) / 60)` (30 at the round start). Once hostile: `HOSTILE` for 3 s, then gone.
+- **Battle music** follows `hostileAt`: calm while the enemy holds, engaged once it is hostile.
 - **Scan ring**: a progress arc around the contact being scanned, on every map.
 - **Designation**: a pulsing `CRT.hot` bracket on the designated contact, on every map. On Science the Weapons lock target also gets a slow rotating ring (Artemis).
 - **Derelict** at level 1: a small wreck mark, label `DERELICT` with its loot (`HULL`, `MISSILES`, `SHIELD`), `TRAPPED` in the alert colour if trapped, `SALVAGED` once done. At level 0: the `?` marker.
