@@ -189,11 +189,24 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     press('fireDown'); tick();
     expect(ship.shots).toBe(1);
     expect(rt.drainEvents().some((e) => e.kind === 'laser' && e.ship === 0)).toBe(true);
-    expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, false]);
+    expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, true]);   // Feel-i: the SHIELDS opener
     press('interact'); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Engines, true]);
     press('interact'); tick(); expect(ship.lock).toBe(Room.Weapons);
     press('prevLock', 'prevLock'); tick(); expect(ship.lock).toBe(Room.Shields);
     rt.dispose();
+  });
+  it('Feel-i: Space held at the Helm sends face (auto-face) and the axes show its turn; at Weapons it never sends face', () => {
+    const { rt, hold, tick } = rig();
+    hold({ fireHeld: true }); tick();
+    expect(rt.held()[0]).toMatchObject({ moveX: 0, face: true });
+    expect(rt.axes().turn).not.toBe(0);   // seed 5's start: the enemy is off the nose
+    hold({ fireHeld: true, moveX: -1 }); tick();
+    expect(rt.axes().turn).toBe(-1);      // A/D overrides it
+    rt.dispose();
+    const w = rig(); w.press('switch'); w.tick();
+    w.hold({ fireHeld: true }); w.tick();
+    expect(w.rt.held()[1]!.face).toBeUndefined();
+    w.rt.dispose();
   });
   it('a press below full is sent and fires nothing; Space up sends nothing (no release)', () => {
     const { rt, press, tick } = rig();
@@ -210,7 +223,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const { rt, hold, ask, tick } = rig();
     rt.frame(1 / 60); tick();
     const ship = rt.duel.tactical.systems[0];
-    hold({ lockTo: 0 }); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, false]);   // at the Helm: no weapons commands
+    hold({ lockTo: 0 }); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, true]);   // at the Helm: no weapons commands (the SHIELDS opener stands)
     rt.dispose();
     const g = rig(); g.press('switch'); g.tick();
     const s = g.rt.duel.tactical.systems[0];

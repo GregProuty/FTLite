@@ -146,12 +146,14 @@ function emptyShip(bodies: number): Ship {
   return { active: false, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, graceUntil: new Int32Array(bodies),
     planetHits: 0, asteroidHits: 0, shipHits: 0, released: false, skidBudget: 0, skidSign: 0 };
 }
-/** A slot's systems at the round's start; the crew's laser starts full (FTL targeting spec §2: the first shot is ready). */
+/** A slot's systems at the round's start; the crew's laser starts full (FTL targeting spec §2: the first shot is ready)
+ *  and targeted at the enemy's Shields (Feel-i, console feel spec §3: the FTL opener, so the first firing solution fires
+ *  with no setup). Every round, the rematch's included, is built here. */
 function systemsFor(cls: number, target: number, crew = false): ShipSystems {
   const c = SHIP_CLASSES[cls]!;
   return {
     cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew ? c.slots.laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
-    laserTargeted: false, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
+    laserTargeted: crew, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0
   };
 }

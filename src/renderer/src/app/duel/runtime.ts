@@ -15,6 +15,7 @@ import { throttleThrust } from '../../sim/duel/throttle';
 import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim/duel/summary';
 import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
 import type { ShipLayout } from '../../sim/ship/schema';
+import { autoFaceTurn } from '../../sim/tactical/hunter';
 import { stepSoloFlight } from '../../sim/tactical/physics';
 import { CONTACT_MAX_LEVEL, createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { TICK_HZ } from '../../sim/tuning';
@@ -226,6 +227,11 @@ const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 const shipBody = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
+/** The turn the Helm's held input flies (the sim's rule, sim/duel/step.ts): A/D, else auto-face's turn, else none. */
+export function heldTurn(d: DuelState, h: HeldInput): number {
+  const turn = Math.sign(h.moveX) || 0;
+  return turn !== 0 ? turn : h.face === true && d.tactical.outcome === Outcome.Running ? autoFaceTurn(d.tactical, 0) : 0;
+}
 const hitCounts = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.planetHits, s.asteroidHits, s.shipHits]);
 
 export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
@@ -285,7 +291,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     sentHeld = held;
     const helm = attendant(d.nav);
-    sentAxes = helm >= 0 && !ended() ? { turn: Math.sign(held[helm]!.moveX) || 0, thrust: throttleThrust(d.throttle) } : NO_AXES;   // Artemis spec §5.3
+    sentAxes = helm >= 0 && !ended() ? { turn: heldTurn(d, held[helm]!), thrust: throttleThrust(d.throttle) } : NO_AXES;   // Artemis spec §5.3; Feel-i's auto-face
     for (const e of d.tactical.events) events.push(e);
     // Contact sparks (spec §7 item 8): the sim emits no contact events, so an increase in a hit counter is one.
     const now = hitCounts(d);
@@ -416,7 +422,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (ended()) { if (k.presses.confirm > 0 && !pending.some((c) => c.command.kind === 'rematch')) { pending.push({ player: active, command: { kind: 'rematch' } }); k = IDLE_KEYS(); moved(); } }
       else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests); }   // while paused, gameplay presses are dropped; the camera still moves
       // Quantised as online (H-2 spec §3), and neutral on the end card as online sends it.
-      activeHeld = ended() ? NEUTRAL : { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld };
+      // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
+      activeHeld = ended() ? NEUTRAL : { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld, ...(k.fireHeld && seatOf(d, active) === 'helm' ? { face: true } : {}) };
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);

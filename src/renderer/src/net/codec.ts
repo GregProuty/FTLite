@@ -146,7 +146,7 @@ const prims = primitives(playerLimit);
 const { uint, positive, index, player, text, u32 } = prims;
 const axis = z.number().finite().min(-1).max(1).transform((n) => n === 0 ? 0 : n);
 const id = z.object({ player, sequence: positive }).strict();
-const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean() }).strict();
+const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional() }).strict();   // face: Feel-i's auto-face
 const frame = z.object({ runId: text, player, tick: uint, sequence: positive, held }).strict();
 const commandSchema = z.discriminatedUnion('kind', wire.commands(prims));
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();

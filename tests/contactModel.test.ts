@@ -61,6 +61,8 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
   });
   it('FTL targeting spec §1: the target marks are the laser target (only while it has one) and the torpedo target, at Level 1 too', () => {
     const st = known(1);
+    expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([1, null]);   // Feel-i: a round starts at the SHIELDS opener
+    st.systems[0].laserTargeted = false;
     expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([null, null]);
     st.systems[0].lock = 0; st.systems[0].laserTargeted = true; st.systems[0].torpLock = 2;
     expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([0, 2]);
@@ -89,6 +91,7 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
   });
   it('Level 1: the outline with ? labels and no damage looks, no lock mark; pips, hull, the hostility line; SCAN 2', () => {
     const st = known(1); st.systems[1].rooms = [2, 2, 2]; st.tick = 600;
+    st.systems[0].laserTargeted = false;   // no target, no lock mark (a round starts at the Feel-i SHIELDS opener)
     const v = model(st, { station: 'science', weapons: null })!;
     expect(v.rooms.map((r) => r.label)).toEqual(['?', '?', '?']);
     for (const r of v.rooms) expect({ fill: r.fill, stroke: r.stroke, hatch: r.hatch }).toEqual({ fill: roomLook(false, 0, 0).fill, stroke: roomLook(false, 0, 0).stroke, hatch: null });
