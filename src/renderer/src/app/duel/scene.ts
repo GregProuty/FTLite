@@ -16,7 +16,7 @@ import { createInteriorView, type InteriorView } from '../../render/duel/interio
 import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
 import { createFx, pushEvents, recordTrails, resetFx, shakeOffset, stepFx, type ViewEvent } from '../../render/tactical/fxModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
-import { pickShip, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
+import { pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { worldToScreen, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
@@ -25,7 +25,7 @@ import { createDuelAudio } from './duelAudio';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import { CREW_SLOT, Outcome, type Axes } from '../../sim/tactical/state';
+import { Contact, CREW_SLOT, Outcome, type Axes } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { HeldFlags } from './input';
 import type { ContactController } from './contactController';
@@ -126,9 +126,9 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const aimable = view !== 'interior' && (station === 'helm' || station === 'weapons');
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
       if (contact && click && aimable)
-        contact.click(pickShip({ state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, click));
+        contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, click));
       const shown = contact
-        ? contact.sync({ shown: aimable, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch() })
+        ? contact.sync({ shown: aimable, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy] })
         : false;
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
@@ -158,7 +158,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && open && (station === 'helm' || station === 'weapons')
-        ? contactModel({ state: d.tactical, ship: open.ship, aim: open.aim, station, t, weapons: consoleView?.weapons ?? null })
+        ? contactModel({ state: d.tactical, contact: open.contact, aim: open.aim, station, t, weapons: consoleView?.weapons ?? null })
         : null;
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },

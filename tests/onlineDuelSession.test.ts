@@ -422,10 +422,10 @@ describe('the contact window online (enemy ship window spec §3, §6.2)', () => 
     show(contact);
     r.session.setInputBlocked(true);
     r.key('keydown', 'Escape'); r.key('keyup', 'Escape'); r.key('keydown', 'KeyT'); r.key('keyup', 'KeyT');
-    expect(contact.state()).toEqual({ ship: 1, aim: false });
+    expect(contact.state()).toEqual({ contact: 1, aim: false });
     r.session.setInputBlocked(false); r.session.setFocused(false);
     r.key('keydown', 'Escape'); r.key('keyup', 'Escape');
-    expect(contact.state()).toEqual({ ship: 1, aim: false });
+    expect(contact.state()).toEqual({ contact: 1, aim: false });
     r.session.setFocused(true);
     r.key('keydown', 'Escape'); r.key('keyup', 'Escape');
     expect(contact.state()).toBeNull();

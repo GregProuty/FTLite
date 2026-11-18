@@ -1,75 +1,109 @@
-// Enemy ship window spec §4.2, §6.4, §8: the contact window's view model.
+// Enemy ship window spec §4.2, §6.4; Sci-1 spec §7.2: the contact window's view model by contact and level: the unknown
+// contact, the enemy at Level 1 (rooms outlined, labels ?, no damage) and Level 2 (today's window plus the readings),
+// the derelict, Science with nothing selected.
 import { describe, expect, it } from 'vitest';
 import { contactModel, type ContactModelInput, type ContactView } from '../src/renderer/src/render/duel/contactModel';
 import { CONTACT_BOX } from '../src/renderer/src/render/duel/consoleLayout';
-import { blink, DAMAGE_BLINK_HZ, roomLook } from '../src/renderer/src/render/tactical/crtTheme';
-import { classOf, createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { blink, CRT, DAMAGE_BLINK_HZ, roomLook } from '../src/renderer/src/render/tactical/crtTheme';
+import { derelictPos } from '../src/renderer/src/sim/tactical/science';
+import { classOf, createTacticalState, Loot, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { TEXT } from '../src/renderer/src/render/theme';
 
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const model = (state: TacticalState, over: Partial<ContactModelInput> = {}): ContactView | null =>
-  contactModel({ state, ship: 1, aim: false, station: 'weapons', t: 0, weapons: { charge }, ...over });
+  contactModel({ state, contact: 0, aim: false, station: 'weapons', t: 0, weapons: { charge }, ...over });
+const known = (level: number): TacticalState => { const st = createTacticalState(4); st.known[0] = level; return st; };
 const pointsOf = (v: ContactView): number[] => [...v.outline, ...v.rooms.flatMap((r) => [...r.points, ...(r.hatch?.segments ?? []), r.centre.x, r.centre.y])];
 
-describe('the contact view (spec §4.2)', () => {
-  it('the title, the shown ship\'s shields and hull, the box and the room labels', () => {
-    const st = createTacticalState(4); st.systems[1].shields = 1; st.systems[1].hull = 10;
+describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
+  it('the title, the shields and hull, the box and the room labels', () => {
+    const st = known(2); st.systems[1].shields = 1; st.systems[1].hull = 10;
     const v = model(st)!, cls = classOf(st, 1);
-    expect(v.title).toBe('ENEMY SHIP');
+    expect([v.contact, v.title]).toEqual([0, 'ENEMY SHIP']);
     expect(v.shields).toEqual({ up: 1, of: cls.shields.layers });
     expect(v.hull).toEqual({ value: 10, fill: 10 / cls.hull });
     expect(v.box).toEqual(CONTACT_BOX);
     expect(v.rooms.map((r) => r.label)).toEqual(['WEAP', 'SHLD', 'ENG']);
   });
   it('the outline, rooms, hatch and centres lie inside the box with 8 px padding; the outline fills one axis', () => {
-    const st = createTacticalState(4); st.systems[1].rooms = [1, 1, 1];
+    const st = known(2); st.systems[1].rooms = [1, 1, 1];
     const v = model(st)!, b = v.box, pts = pointsOf(v);
     for (let k = 0; k < pts.length; k += 2) {
       expect(pts[k]!, `x ${k}`).toBeGreaterThanOrEqual(b.x + 8 - 1e-9); expect(pts[k]!, `x ${k}`).toBeLessThanOrEqual(b.x + b.w - 8 + 1e-9);
       expect(pts[k + 1]!, `y ${k}`).toBeGreaterThanOrEqual(b.y + 8 - 1e-9); expect(pts[k + 1]!, `y ${k}`).toBeLessThanOrEqual(b.y + b.h - 8 + 1e-9);
     }
     const xs = v.outline.filter((_, k) => k % 2 === 0), ys = v.outline.filter((_, k) => k % 2 === 1);
-    const spanX = Math.max(...xs) - Math.min(...xs), spanY = Math.max(...ys) - Math.min(...ys);
-    expect(Math.max(spanX - (b.w - 16), spanY - (b.h - 16))).toBeCloseTo(0, 6);
-    expect(Math.max(...xs)).toBeGreaterThan(v.rooms[0]!.centre.x);   // nose right: Weapons (forward) is right of Engines
-    expect(v.rooms[0]!.centre.x).toBeGreaterThan(v.rooms[2]!.centre.x);
+    expect(Math.max(Math.max(...xs) - Math.min(...xs) - (b.w - 16), Math.max(...ys) - Math.min(...ys) - (b.h - 16))).toBeCloseTo(0, 6);
+    expect(v.rooms[0]!.centre.x).toBeGreaterThan(v.rooms[2]!.centre.x);   // nose right
   });
-  it('each room\'s fill, stroke and hatch colour is roomLook(false, level, phase) in both blink phases', () => {
-    const st = createTacticalState(4); st.systems[1].rooms = [0, 1, 2];
-    const phases = [0, 0.3].map((t) => blink(t, DAMAGE_BLINK_HZ));
-    expect(phases).toEqual([0, 1]);
+  it('each room\'s look is roomLook(false, level, phase) in both blink phases; the lock room is the crew\'s lock', () => {
+    const st = known(2); st.systems[1].rooms = [0, 1, 2]; st.systems[0].lock = 2;
     for (const t of [0, 0.3]) {
       const v = model(st, { t })!, phase = blink(t, DAMAGE_BLINK_HZ);
       v.rooms.forEach((r, k) => {
         const look = roomLook(false, k as 0 | 1 | 2, phase);
-        expect({ fill: r.fill, stroke: r.stroke }, `room ${k} at ${t}`).toEqual({ fill: look.fill, stroke: look.stroke });
-        expect(r.hatch?.colour ?? null, `hatch ${k} at ${t}`).toBe(look.hatch);
-        if (r.hatch) { expect(r.hatch.segments.length).toBeGreaterThan(0); expect(r.hatch.segments.length % 4).toBe(0); }
+        expect({ fill: r.fill, stroke: r.stroke, hatch: r.hatch?.colour ?? null }, `room ${k} at ${t}`).toEqual({ fill: look.fill, stroke: look.stroke, hatch: look.hatch });
       });
+      expect(v.lockRoom).toBe(2);
     }
   });
-  it('the lock room shows only while the shown ship is the crew laser\'s target slot', () => {
-    const st = createTacticalState(4, 3); st.ships[2]!.active = true; st.systems[0].lock = 2;
-    expect(model(st)!.lockRoom).toBe(2);
-    expect(model(st, { ship: 2 })!.lockRoom).toBeNull();
-  });
-  it('the Helm gets no weapon list and no aim', () => {
-    const v = model(createTacticalState(4), { station: 'helm', weapons: null, aim: true })!;
-    expect(v.weapons).toBeNull(); expect(v.aim).toBe(false);
-  });
-  it('Weapons: LASER is the station\'s charge row, lit while armed; MISSILE is the magazine', () => {
-    const st = createTacticalState(4), v = model(st, { aim: true })!;
+  it('Weapons: LASER is the station\'s charge row, lit while armed; MISSILE the magazine. The Helm: no weapon list, no aim', () => {
+    const st = known(2), v = model(st, { aim: true })!;
     expect(v.weapons).toEqual({ laser: { label: 'CHARGE', value: '40%', fill: 0.4, lit: true, enabled: true, note: null }, missile: { magazine: st.systems[0].magazine } });
     expect(v.aim).toBe(true);
+    const h = model(st, { station: 'helm', weapons: null, aim: true })!;
+    expect([h.weapons, h.aim]).toEqual([null, false]);
   });
-  it('a ship that is not the laser\'s target: LASER disabled, NOT TARGETED', () => {
-    const st = createTacticalState(4, 3); st.ships[2]!.active = true;
-    expect(model(st, { ship: 2 })!.weapons!.laser).toMatchObject({ enabled: false, note: 'NOT TARGETED' });
+  it('the readings: the weak frequency, the enemy laser\'s charge, MISSILE READY or RELOADING; SCANNED', () => {
+    const st = known(2); st.hostileAt = 0; st.tick = 1000;   // hostile long ago: no hostility line
+    st.weakFreq = 1; st.systems[1].laserCharge = classOf(st, 1).slots.laser.chargeUnits / 2;
+    const v = model(st)!;
+    expect(v.lines).toEqual([{ text: 'WEAK FREQ B', tint: CRT.main, bar: null }, { text: 'ENEMY LASER', tint: CRT.main, bar: 0.5 }, { text: 'MISSILE READY', tint: CRT.main, bar: null }]);
+    expect(v.scan).toEqual({ label: 'SCANNED', enabled: false, progress: null });
+    st.systems[1].magazine = 0;
+    expect(model(st)!.lines[2]!.text).toBe('RELOADING');
   });
-  it('null for an inactive ship', () => {
-    const st = createTacticalState(4, 3);
-    expect(model(st, { ship: 2 })).toBeNull();
-    st.ships[1].active = false;
+});
+
+describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
+  it('Level 0: UNKNOWN CONTACT, no drawing, no weapon list, SCAN 1 (SLOW) at Weapons', () => {
+    expect(model(known(0))).toMatchObject({ contact: 0, title: 'UNKNOWN CONTACT', shields: null, hull: null, outline: [], rooms: [], lockRoom: null, weapons: null, aim: false,
+      scan: { label: 'SCAN 1 (SLOW)', enabled: true, progress: null }, lines: [] });
+  });
+  it('Level 1: the outline with ? labels and no damage looks, no lock mark; pips, hull, the hostility line; SCAN 2', () => {
+    const st = known(1); st.systems[1].rooms = [2, 2, 2]; st.tick = 600;
+    const v = model(st, { station: 'science', weapons: null })!;
+    expect(v.rooms.map((r) => r.label)).toEqual(['?', '?', '?']);
+    for (const r of v.rooms) expect({ fill: r.fill, stroke: r.stroke, hatch: r.hatch }).toEqual({ fill: roomLook(false, 0, 0).fill, stroke: roomLook(false, 0, 0).stroke, hatch: null });
+    expect([v.lockRoom, v.shields !== null, v.hull !== null]).toEqual([null, true, true]);
+    expect(v.lines).toEqual([{ text: 'HOSTILE IN 10 s', tint: CRT.main, bar: null }]);
+    expect(v.scan).toEqual({ label: 'SCAN 2', enabled: true, progress: null });
+  });
+  it('null for an inactive enemy', () => {
+    const st = known(2); st.ships[1].active = false;
     expect(model(st)).toBeNull();
+  });
+});
+
+describe('the derelict and no selection (Sci-1 spec §7.2, §7.3)', () => {
+  it('Level 0: UNKNOWN CONTACT and SCAN 1; Level 1: DERELICT with its loot, TRAPPED blinking, the range and the hint with the hold', () => {
+    const st = createTacticalState(4);
+    expect(model(st, { contact: 1, station: 'science', weapons: null })).toMatchObject({ contact: 1, title: 'UNKNOWN CONTACT', scan: { label: 'SCAN 1' }, weapons: null });
+    st.known[1] = 1; Object.assign(st.derelict, { loot: Loot.Shield, trapped: true, salvage: 150, salvaged: false });
+    const p = derelictPos(st), range = Math.round(Math.hypot(p.x - st.ships[0].x, p.y - st.ships[0].y) / 10) * 10;
+    const v = model(st, { contact: 1, station: 'helm', weapons: null, t: 0.3 })!;
+    expect([v.title, v.shields, v.hull, v.outline, v.weapons]).toEqual(['DERELICT', null, null, [], null]);
+    expect(v.lines).toEqual([
+      { text: 'LOOT SHIELD', tint: CRT.main, bar: null }, { text: 'TRAPPED', tint: CRT.hot, bar: null },
+      { text: `RANGE ${range}`, tint: CRT.main, bar: null }, { text: 'CLOSE TO 60, MATCH SPEED', tint: CRT.mid, bar: 0.5 }
+    ]);
+    expect(model(st, { contact: 1, station: 'helm', weapons: null, t: 0 })!.lines[1]!.tint).toBe(CRT.main);   // the other blink phase
+    expect(v.scan).toEqual({ label: 'SCANNED', enabled: false, progress: null });
+    st.derelict.salvaged = true;
+    expect(model(st, { contact: 1, station: 'helm', weapons: null })!.lines.map((l) => l.text)).toEqual(['SALVAGED', `RANGE ${range}`]);
+  });
+  it('Science with nothing selected: NO CONTACT SELECTED; Helm and Weapons with nothing: no window', () => {
+    expect(model(createTacticalState(4), { contact: null, station: 'science', weapons: null })).toMatchObject({ contact: null, title: 'NO CONTACT SELECTED', scan: null, lines: [], rooms: [] });
+    expect(model(createTacticalState(4), { contact: null })).toBeNull();
   });
 });

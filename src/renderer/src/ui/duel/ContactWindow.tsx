@@ -58,6 +58,7 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
     if (room >= 0) actions.contact.pick(room);   // a click on no room does nothing; the aim stays armed
   };
   const boxStyle = { position: 'absolute' as const, ...boxCss(b.x, b.y, b.w, b.h, l), overflow: 'hidden' as const };
+  const shields = contact.shields;   // a const, so the narrowing holds inside the pips' callback
   return (
     <>
       <div data-ui-contact="" onPointerDown={rootDown} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop} onWheel={swallow}
@@ -66,13 +67,15 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       <PixelText text={contact.title} x={x0} y={top + 8} size={FONT_NATIVE} tint={CRT.main} />
       <Button name="contact-close" label="X" x={right - 24} y={top + 6} w={24} h={20} onPress={() => actions.contact.close()} />
       <PixelText text="SHLD" x={x0} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
-      {Array.from({ length: contact.shields.of }, (_, k) => (
-        <Box key={k} x={x0 + 40 + k * 12} y={statusY + 4} w={8} h={8} attrs={{ 'data-ui-contact-pip': k < contact.shields.up ? 'up' : 'down' }}
-          style={k < contact.shields.up ? { background: hex(CRT.main) } : { border: `1px solid ${hex(CRT.mid)}` }} />
+      {shields && Array.from({ length: shields.of }, (_, k) => (
+        <Box key={k} x={x0 + 40 + k * 12} y={statusY + 4} w={8} h={8} attrs={{ 'data-ui-contact-pip': k < shields.up ? 'up' : 'down' }}
+          style={k < shields.up ? { background: hex(CRT.main) } : { border: `1px solid ${hex(CRT.mid)}` }} />
       ))}
-      <PixelText text="HULL" x={x0 + 120} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
-      <Bar x={x0 + 156} y={statusY + 6} w={80} h={6} fill={contact.hull.fill} colour={CRT.main} />
-      <PixelText text={String(contact.hull.value)} x={right} y={statusY} size={FONT_NATIVE} tint={CRT.main} anchorX={1} />
+      {contact.hull && (<>
+        <PixelText text="HULL" x={x0 + 120} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
+        <Bar x={x0 + 156} y={statusY + 6} w={80} h={6} fill={contact.hull.fill} colour={CRT.main} />
+        <PixelText text={String(contact.hull.value)} x={right} y={statusY} size={FONT_NATIVE} tint={CRT.main} anchorX={1} />
+      </>)}
       <svg data-ui-contact-box="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" shapeRendering="crispEdges"
         style={{ ...boxStyle, pointerEvents: 'auto', cursor: aiming ? 'none' : 'default' }}
         onPointerMove={(e) => setPointer(toInternal(e))} onPointerLeave={() => setPointer(null)} onPointerDown={boxDown}
