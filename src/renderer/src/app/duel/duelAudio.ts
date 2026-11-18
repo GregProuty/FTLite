@@ -6,9 +6,10 @@ import type { DuelState } from '../../sim/duel/state';
 import type { Axes } from '../../sim/tactical/state';
 import type { ViewEvent } from '../../render/tactical/fxModel';
 import {
-  CREW, FIRE_ALARM, HEARTBEAT, OUTCOME_RUNNING, crewLifeSounds, duelEventSounds, duelStateSounds, fireAlarm, heartbeat, heartbeatOn,
-  type CrewLife, type CrewWatch, type DuelWatch, type Pan
+  CREW, FIRE_ALARM, HEARTBEAT, OUTCOME_RUNNING, PING_TONE, crewLifeSounds, duelEventSounds, duelStateSounds, fireAlarm, heartbeat, heartbeatOn, lockTone,
+  type CrewLife, type CrewWatch, type DuelWatch, type LockWatch, type Pan, type TorpedoTone
 } from '../../audio/duelSounds';
+export type { TorpedoTone } from '../../audio/duelSounds';
 import { interiorAudioView, interiorSounds, type InteriorWatch } from '../../audio/interiorSounds';
 
 /** `live`: false while the view is a frozen copy (a lost online link); absent means live. `me`: the local player's index
@@ -20,11 +21,14 @@ export interface DuelAudioFrame {
   /** The enemy is hostile (Sci-1 spec §4.1, the Hunter-grace rule): the music stays calm until it is; absent means
    *  hostile. The scene reads it from the sim (`hostileAt >= 0`), since audio imports nothing from sim at runtime. */
   hostile?: boolean;
+  /** Feel-ii §2.5: the torpedo lock tone's data (the scene's torpedoTone); absent: no tone. §2.7: the pings that appeared
+   *  this frame (one soft ping tone for any). */
+  torpedo?: TorpedoTone; pings?: number;
 }
 
 export function createDuelAudio(out: AudioOut) {
   let duelWatch: DuelWatch | null = null, inside: InteriorWatch | null = null, crewWatch: CrewWatch | null = null;
-  let clock = 0, nextBeat: number | null = null, lastAlarm: number | null = null;
+  let clock = 0, nextBeat: number | null = null, lastAlarm: number | null = null, lock: LockWatch | null = null, crewFlying = false;
   return {
     frame(f: DuelAudioFrame): void {
       const t = f.duel.tactical, ev = duelEventSounds(f.events, f.pan);
@@ -39,7 +43,12 @@ export function createDuelAudio(out: AudioOut) {
       lastAlarm = alarm.last; crewWatch = life.watch;
       const beat = heartbeat(nextBeat, f.live !== false && heartbeatOn({ health: f.crew.health[f.me] ?? Infinity, downed: f.crew.downed[f.me] ?? true, running: t.outcome === OUTCOME_RUNNING, paused: f.paused }), clock);
       nextBeat = beat.next;
-      const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : [])];
+      // Feel-ii §2.5: the lock tone (silent on a frozen or paused view); the crew torpedo's launch is a missile going active.
+      const flying = t.missiles.some((m) => m.active && m.owner === CREW), launched = flying && !crewFlying;
+      crewFlying = flying;
+      const tone = f.torpedo && f.live !== false && !f.paused ? lockTone(lock, f.torpedo, launched, clock) : { watch: null, sounds: [] };
+      lock = tone.watch;
+      const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : []), ...tone.sounds, ...((f.pings ?? 0) > 0 ? [PING_TONE] : [])];
       if (list.length) out.sounds(list);
       for (const cue of [...st.cues, ...life.cues]) out.play(cue);
       const ship = t.ships[CREW]!;
@@ -50,7 +59,7 @@ export function createDuelAudio(out: AudioOut) {
         hum: { thrust: Number.isFinite(f.axes.thrust) ? Math.min(1, Math.abs(f.axes.thrust)) : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
     },
     /** A new round or a rebuilt scene: the next frame is a fresh baseline. */
-    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; }
+    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; lock = null; crewFlying = false; }
   };
 }
 export type DuelAudio = ReturnType<typeof createDuelAudio>;

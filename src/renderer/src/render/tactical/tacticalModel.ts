@@ -2,10 +2,11 @@
 // the interpolation alpha, the console's camera and the current Helm axes into screen-space draw lists. The Pixi layer
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
 import { gravityAccel } from '../../sim/tactical/physics';
-import { predictPath } from '../../sim/tactical/predict';
+import { predictFlight } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
-import { Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 import { hullFor, type HullId } from './hullModel';
 
@@ -58,7 +59,15 @@ export interface ShipDraw {
   rooms: readonly number[]; shields: number;
 }
 export interface RingDraw { x: number; y: number; r: number; ticks: (Line & { major: boolean })[]; labels: Label[] }
-export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headingFrom: Point; headingTo: Point; thrust: number; turn: number; ring: RingDraw | null }
+/** Feel-ii (spec §1.1-§1.3): `collision` the predicted path's first solid contact (its last segment from `from`, an X at
+ *  the point, the tag `COLLISION 2.1s`); `hold` the held heading's chevron on the bearing ring (its three points) and the
+ *  dashed line from the nose toward it; `slingshot` the word's place on the path while it whips round the planet. */
+export interface CollisionDraw { x: number; y: number; from: Point; label: Label; seconds: number }
+export interface HoldDraw { chevron: number[]; from: Point; to: Point; preview: boolean }
+export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headingFrom: Point; headingTo: Point; thrust: number; turn: number; ring: RingDraw | null;
+  collision?: CollisionDraw | null; hold?: HoldDraw | null; slingshot?: Label | null }
+/** Feel-ii §1.3: a gravity ring about the planet (where its pull is `g` of the crew ship's full thrust) and its label. */
+export interface GravityDraw extends CircleDraw { g: number; label: Label }
 export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile';
 export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string }
 export interface OverlayDraw { zoomText: string; scaleBar: { px: number; units: number }; snapHint: boolean; paused: boolean }
@@ -86,6 +95,8 @@ export interface TacticalDraw {
   stars: Point;
   /** Sci-1 (only with `contacts`): the contact marks, the salvage ring, Science's lock ring. */
   marks?: ContactMarkDraw[]; salvage?: SalvageDraw | null; lockRing?: LockRingDraw | null;
+  /** Feel-ii §1.3, the Helm only: the G 0.5 and G 1 rings. */
+  gravity?: GravityDraw[];
 }
 
 export interface TacticalModelInput {
@@ -109,6 +120,15 @@ export interface TacticalModelInput {
   reserveLeft?: number;
   /** Spread crowded off-screen arrows apart (the duel views set it; the flight view keeps H-1a's exact positions). */
   spreadArrows?: boolean;
+  /** Feel-ii §1.1: the held heading to mark at the Helm (a heading index, −1 or absent none), and whether it is the local
+   *  right-drag's preview rather than the sim's. */
+  holdHeading?: number; holdPreview?: boolean;
+  /** Feel-ii: screen pixels at the top kept clear of off-screen arrows (a console's status sentence); default 0. */
+  reserveTop?: number;
+  /** Feel-ii §1.3: draw the gravity rings and the SLINGSHOT word (the duel's Helm; the flight view leaves it off). */
+  gravity?: boolean;
+  /** Presentation seconds (the SLINGSHOT blink); default 0. */
+  t?: number;
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -120,6 +140,24 @@ export function contourRadius(accel: number): number {
   return (lo + hi) / 2;
 }
 const CONTOUR_RADII = CONTOUR_ACCELS.map(contourRadius);
+/** Feel-ii §1.3: the fractions of the crew ship's full thrust the two gravity rings mark. */
+export const GRAVITY_RINGS: readonly number[] = [0.5, 1];
+/** SLINGSHOT shows while the path passes inside the G 1 ring faster than this (u/s), with no collision; it blinks at SLINGSHOT_HZ. */
+export const SLINGSHOT_SPEED = 200, SLINGSHOT_HZ = 3;
+const gravityRadii = new Map<number, number>();
+/** The radius where the planet's pull is `g` of `thrust` (u/s²), cached per value. */
+export function gravityRadius(g: number, thrust: number): number {
+  const a = g * thrust, hit = gravityRadii.get(a);
+  if (hit !== undefined) return hit;
+  const r = contourRadius(a); gravityRadii.set(a, r); return r;
+}
+/** The heading index (0..255) of a screen direction (dx, dy), north 0 clockwise. */
+export function headingOf(dx: number, dy: number): number {
+  const a = Math.atan2(dx, -dy), k = Math.round((a / (2 * Math.PI)) * HEADING_COUNT);
+  return ((k % HEADING_COUNT) + HEADING_COUNT) % HEADING_COUNT;
+}
+/** The COLLISION tag's words: the seconds to contact at one decimal. */
+export function collisionTag(seconds: number): string { return `COLLISION ${seconds.toFixed(1)}s`; }
 
 /** The star tile's offset for a camera centre: −centre × STAR_PARALLAX, wrapped into 0..w × 0..h. */
 export function starOffset(centreX: number, centreY: number, vp: Viewport): Point {
@@ -213,8 +251,8 @@ export function ringDraw(x: number, y: number): RingDraw {
 }
 
 /** Where the ray from the screen centre toward (x, y) leaves the inset rectangle, or null when (x, y) is inside it. */
-function edgePoint(vp: Viewport, reserveLeft: number, reserveRight: number, x: number, y: number): { x: number; y: number; angle: number } | null {
-  const m = ARROW_MARGIN, l = reserveLeft + m, t = m, r = vp.w - reserveRight - m, b = vp.h - m;
+function edgePoint(vp: Viewport, reserveLeft: number, reserveRight: number, x: number, y: number, reserveTop = 0): { x: number; y: number; angle: number } | null {
+  const m = ARROW_MARGIN, l = reserveLeft + m, t = reserveTop + m, r = vp.w - reserveRight - m, b = vp.h - m;
   if (x >= l && x <= r && y >= t && y <= b) return null;
   const cx = (l + r) / 2, cy = (t + b) / 2, dx = x - cx, dy = y - cy;
   const k = Math.min(dx > 0 ? (r - cx) / dx : dx < 0 ? (l - cx) / dx : Infinity, dy > 0 ? (b - cy) / dy : dy < 0 ? (t - cy) / dy : Infinity);
@@ -228,8 +266,8 @@ const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy
  * end nearer the edge's middle, by the minimum gap from the one before; any overrun past the edge's far end is shifted back.
  * Arrows that already clear each other do not move.
  */
-export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number, reserveLeft = 0): void {
-  const m = ARROW_MARGIN, top = m, bottom = vp.h - m, right = vp.w - reserveRight - m;
+export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number, reserveLeft = 0, reserveTop = 0): void {
+  const m = ARROW_MARGIN, top = reserveTop + m, bottom = vp.h - m, right = vp.w - reserveRight - m;
   const groups = new Map<string, { flat: boolean; list: ArrowDraw[] }>();
   for (const a of arrows) {
     const flat = Math.abs(a.y - top) < 0.5 || Math.abs(a.y - bottom) < 0.5, key = flat ? `y${Math.round(a.y)}` : `x${Math.round(a.x)}`;
@@ -294,9 +332,35 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   let helm: HelmDraw | null = null;
   if (input.console === 'helm' && input.ships.includes(0)) {
     const s = state.ships[0];
-    const path = predictPath(state, 0, input.axes, Math.round(pathSeconds(z) * 60), PATH_STRIDE).map((q) => toS(q.x, q.y));
+    const flight = predictFlight(state, 0, input.axes, Math.round(pathSeconds(z) * 60), PATH_STRIDE), path = flight.points.map((q) => toS(q.x, q.y));
     const a = headingAngle(own.h), hxs = Math.sin(a), hys = -Math.cos(a), nose = SHIP_RADIUS * 1.3 * drawnScale(z) + 4;
+    // Feel-ii §1.2: the contact the path stops at, its last segment drawn hot from the point before it.
+    let collision: CollisionDraw | null = null;
+    if (flight.contact) {
+      const p = toS(flight.contact.x, flight.contact.y), from = path.length > 1 ? path[path.length - 2]! : ownS, seconds = flight.contact.tick / TICK_HZ;
+      collision = { x: p.x, y: p.y, from, seconds, label: { text: collisionTag(seconds), x: p.x + 10, y: p.y - 22 } };
+    }
+    // Feel-ii §1.1: the held heading's chevron on the bearing ring and the dashed line from the nose.
+    let hold: HoldDraw | null = null;
+    if (input.holdHeading !== undefined && input.holdHeading >= 0) {
+      const b = headingAngle(input.holdHeading), bx = Math.sin(b), by = -Math.cos(b), r = BEARING_RING_PX, px = -by, py = bx;
+      const tip = { x: ownS.x + bx * (r - 2), y: ownS.y + by * (r - 2) };
+      hold = { chevron: [tip.x + bx * 12 + px * 7, tip.y + by * 12 + py * 7, tip.x, tip.y, tip.x + bx * 12 - px * 7, tip.y + by * 12 - py * 7],
+        from: { x: ownS.x + bx * nose, y: ownS.y + by * nose }, to: tip, preview: input.holdPreview === true };
+    }
+    // Feel-ii §1.3: SLINGSHOT where the path is fastest inside the G 1 ring, above SLINGSHOT_SPEED, with no collision.
+    let slingshot: Label | null = null;
+    if (input.gravity && !flight.contact && flight.points.length > 1) {
+      const r1 = gravityRadius(1, classOf(state, 0).thrust), pl = map.planet, dt = PATH_STRIDE / TICK_HZ;
+      let best = -1, at = -1;
+      for (let k = 1; k < flight.points.length; k++) {
+        const q = flight.points[k]!, pq = flight.points[k - 1]!, v = Math.hypot(q.x - pq.x, q.y - pq.y) / dt;
+        if (Math.hypot(q.x - pl.x, q.y - pl.y) < r1 && v > SLINGSHOT_SPEED && v > best) { best = v; at = k; }
+      }
+      if (at >= 0 && Math.floor((input.t ?? 0) * 2 * SLINGSHOT_HZ) % 2 === 0) { const p = path[at]!; slingshot = { text: 'SLINGSHOT', x: p.x + 10, y: p.y + 6 }; }
+    }
     helm = {
+      collision, hold, slingshot,
       path, origin: ownS,
       velocity: { x: ownS.x + s.vx * z, y: ownS.y + s.vy * z },   // where the ship would be in 1 s at this speed
       headingFrom: { x: ownS.x + hxs * nose, y: ownS.y + hys * nose }, headingTo: { x: ownS.x + hxs * (nose + 40), y: ownS.y + hys * (nose + 40) },
@@ -308,7 +372,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   // Off-screen arrows: the own ship (distance from the camera centre), and the others (distance from the own ship).
   const arrows: ArrowDraw[] = [];
   const arrow = (target: ArrowTarget, wx: number, wy: number, fromX: number, fromY: number): void => {
-    const p = toS(wx, wy), e = edgePoint(vp, input.reserveLeft ?? 0, input.reserveRight, p.x, p.y);
+    const p = toS(wx, wy), e = edgePoint(vp, input.reserveLeft ?? 0, input.reserveRight, p.x, p.y, input.reserveTop ?? 0);
     if (!e) return;
     const distance = Math.round(Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2));
     arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}` });
@@ -319,7 +383,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
-  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0);
+  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0, input.reserveTop ?? 0);
 
   // Sci-1 spec §7.1: the contact marks, the salvage ring and Science's ring, in the duel only.
   let marks: ContactMarkDraw[] | undefined, salvage: SalvageDraw | null = null, lockRing: LockRingDraw | null = null;
@@ -343,10 +407,21 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (dr.salvage > 0 && !dr.salvaged && input.ships.includes(CREW_SLOT)) salvage = { x: ownS.x, y: ownS.y, r: Math.max(16, ringR), fill: Math.min(1, dr.salvage / SALVAGE_TICKS) };
   }
 
+  // Feel-ii §1.3: the G 0.5 and G 1 rings about the planet, faint, each labelled at its top.
+  let gravity: GravityDraw[] | undefined;
+  if (input.gravity && input.console === 'helm') {
+    const thrust = classOf(state, 0).thrust;
+    gravity = GRAVITY_RINGS.flatMap((g) => {
+      const r = gravityRadius(g, thrust) * z;
+      return ringCrossesRect(pc.x, pc.y, r, vp.w, vp.h) ? [{ x: pc.x, y: pc.y, r, g, label: { text: `G ${g}`, x: pc.x + 4, y: pc.y - r - 14 } }] : [];
+    });
+  }
+
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
     grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
+    ...(gravity ? { gravity } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
   };

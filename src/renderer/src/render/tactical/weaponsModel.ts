@@ -3,11 +3,13 @@
 // circle (both consoles, weapons update spec §2), the Weapons layer (bearing ring, both laser arcs, the enemy's bearing
 // and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { Contact, targetOf } from '../../sim/tactical/state';
+import { Contact, Outcome, targetOf } from '../../sim/tactical/state';
+import { predictMissile } from '../../sim/tactical/predict';
 import { laserEligible, torpedoInRange } from '../../sim/tactical/weapons';
 import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
-import { laserSituation, linedUp, sentenceTone, statusSentence } from '../duel/situationModel';
+import { alertSentence, evadeDir, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
+import { pingDraws, type Ping, type PingDraw } from '../duel/pingModel';
 import { CRT } from './crtTheme';
 import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { worldToScreen, type Point } from './camera';
@@ -62,7 +64,15 @@ export interface CombatDraw {
   /** Feel-i: the status sentence (on a console), the Helm's own laser arc, the FIRING SOLUTION bracket, the goal glow and
    *  the floating numbers. */
   status?: StatusDraw | null; helmArc?: ArcDraw | null; solution?: SolutionDraw | null; goal?: GoalDraw | null; floats?: FloatDraw[];
+  /** Feel-ii (spec §1.6, §2.7): the enemy torpedo's short predicted path, the Helm's EVADE arrow and the crew pings. */
+  torpedoPath?: Point[]; evade?: EvadeDraw | null; pings?: PingDraw[];
 }
+/** Feel-ii §1.6: the EVADE arrow beside the own ship (its tip, the way it points in radians clockwise from north) and its word. */
+export interface EvadeDraw { x: number; y: number; angle: number; label: Label }
+/** The enemy torpedo's predicted path: 2 s, a point every 4 ticks. */
+export const TORPEDO_PATH_TICKS = 120, TORPEDO_PATH_STRIDE = 4;
+/** How far from the own ship (screen px) the EVADE arrow's tip sits. */
+export const EVADE_PX = 70;
 
 /** How far inward of the enemy's edge arrow its off-screen charge label and callouts sit, in screen px. */
 const OFFSCREEN_INSET = 120;
@@ -84,6 +94,10 @@ export interface CombatModelInput extends TacticalModelInput {
   /** Whether a present player sits at Weapons (situationModel's gunnerPresent); default true. Without one the laser cannot
    *  fire, so there is no solution: NO GUNNER, no bracket, no bright arc. */
   gunner?: boolean;
+  /** Feel-ii §1.2, §1.6: the flight alert that outranks the laser's words (situationModel's flightAlert); absent none. */
+  alert?: FlightAlert;
+  /** Feel-ii §2.7: the crew pings to show. */
+  pings?: readonly Ping[];
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
@@ -144,8 +158,8 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // Feel-i (console feel spec §1, §2): the laser's situation drives the sentence, the bright arc and the bracket.
   const situation = laserSituation(state, input.fx.sinceShot, input.gunner ?? true), lined = linedUp(situation), ready = situation.kind === 'solution';
   const centre = ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2;
-  const sentence = statusSentence(situation);
-  const status: StatusDraw | null = input.infoBand && sentence ? { label: bandLabel(sentence, centre, input.infoBand, STATUS_Y, FONT_SIZE / FONT_NATIVE), colour: TONE[sentenceTone(situation)] } : null;
+  const sentence = alertSentence(input.alert ?? null, situation);   // Feel-ii: COLLISION, then TORPEDO INBOUND, then the laser's words
+  const status: StatusDraw | null = input.infoBand && sentence.text ? { label: bandLabel(sentence.text, centre, input.infoBand, STATUS_Y, FONT_SIZE / FONT_NATIVE), colour: TONE[sentence.tone] } : null;
   const ownArc: ArcDraw = { x: ownS.x, y: ownS.y, r: LASER_RANGE * z, angle: headingAngle(own.h), half: ARC_HALF, bright: ready };
   let weapons: WeaponsDraw | null = null;
   if (input.console === 'weapons') {
@@ -222,5 +236,16 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       callouts = calloutDraws(input.fx.callouts, { x: hs.x, y: hs.y - r - 26 });   // above the ring's label
     }
   }
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats };
+  // Feel-ii §1.6: an enemy torpedo in flight draws its own 2 s path (the sim's flight on a copy), on every console; at the
+  // Helm an EVADE arrow points the way to dodge, beside the own ship.
+  const torpedoPath = state.outcome === Outcome.Running ? predictMissile(state, target, TORPEDO_PATH_TICKS, TORPEDO_PATH_STRIDE).map((q) => toS(q.x, q.y)) : [];
+  let evade: EvadeDraw | null = null;
+  const dodge = input.console === 'helm' && input.ships.includes(0) ? evadeDir(state) : null;
+  if (dodge) {
+    const x = ownS.x + dodge.x * EVADE_PX, y = ownS.y + dodge.y * EVADE_PX;
+    evade = { x, y, angle: Math.atan2(dodge.x, -dodge.y), label: { text: 'EVADE', x: x + dodge.x * 30, y: y + dodge.y * 22 } };
+  }
+  // Feel-ii §2.7: the pings, target pings riding on the enemy's drawn marker while it is shown.
+  const pings = pingDraws(input.pings ?? [], toS, enemyShown ? enemyS : null);
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings };
 }

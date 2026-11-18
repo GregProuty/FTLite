@@ -31,7 +31,7 @@ export function modeInputIdentity<S>(codec: MessageCodec<S>, label: string, byte
     const held = message.frame.held, neutral = held.moveX === 0 && held.moveY === 0 && !held.interactHeld;
     return { stream: `held:${message.frame.player}`, channel: neutral && channel === 'reliable-ordered' ? 'reliable-ordered' : 'unreliable-latest' };
   }
-  if (message.kind === 'command' || message.kind === 'callout') return { stream: message.kind, channel: 'reliable-ordered' };
+  if (message.kind === 'command' || message.kind === 'callout' || message.kind === 'ping') return { stream: message.kind, channel: 'reliable-ordered' };   // Feel-ii: pings ride their own stream
   throw Error(`${label}-input-direction`);
 }
 

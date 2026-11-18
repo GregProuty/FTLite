@@ -9,7 +9,7 @@ import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
 import type { EndView } from '../../render/duel/endModel';
-import { CONSOLE_RESERVE, CONTACT_RESERVE, SIDE, TABS_RIGHT } from '../../render/duel/consoleLayout';
+import { CONSOLE_RESERVE, CONTACT_RESERVE, SIDE, STATUS_RESERVE, TABS_RIGHT } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
 import { hoverReadout } from '../../render/duel/scienceModel';
@@ -25,7 +25,7 @@ import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
 import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
-import { worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
+import { screenToWorld, worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
 import type { AudioOut } from '../audio';
 import { createDuelAudio } from './duelAudio';
@@ -33,10 +33,15 @@ import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import { Contact, CREW_SLOT, Outcome, targetOf, type Axes } from '../../sim/tactical/state';
+import { classOf, Contact, CREW_SLOT, missileOf, Outcome, Room, targetOf, type Axes } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
-import type { HeldFlags } from './input';
+import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
+import type { MapRequests } from './mapRequests';
+import { headingOf, pickRadius } from '../../render/tactical/tacticalModel';
+import { flightAlert, type RefusedControl } from '../../render/duel/situationModel';
+import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
+import type { TorpedoTone } from './duelAudio';
 import type { DuelView } from './runtime';
 
 /** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the readouts. */
@@ -69,7 +74,16 @@ export interface DuelViewSource {
   uiHeld(): HeldFlags;
   /** The Helm throttle level the console shows (Artemis spec §6.1): the local base of §5.4. */
   throttle(): number;
+  /** Feel-ii §1.2: the Helm's axes as this screen best knows them, for the COLLISION words on every seat (Single player:
+   *  axes(); online away from the Helm: the state's, stateAxes). Absent: axes(). */
+  helmAxes?(): Axes;
+  /** Feel-ii §2.8: the console controls refused since the last take, each with its reason (the duel mode's checks). */
+  takeRefusals?(): Refusal[];
 }
+/** Feel-ii §2.8: a refused console control and the reason the sim would give. */
+export interface Refusal { control: RefusedControl; reason: string }
+/** How long a refused control flashes and how long its reason shows (seconds). */
+export const REFUSAL_FLASH_S = 0.3, REFUSAL_SHOW_S = 1.5;
 /** The frame's overlays: the pause banner (null: none), whether the tactical layer dims for it, the end card, and a
  *  one-line notice (the online start's YOU: HELM). */
 export interface SceneOverlay { banner: string | null; layerPaused: boolean; end: EndView | null; notice?: string | null }
@@ -92,6 +106,14 @@ export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string
   };
 }
 
+/** Feel-ii §2.5: the torpedo lock tone's frame data: the torpedo has a target and is ready (canLaunch's checks bar the
+ *  range: none flying, one in the magazine, Weapons on), the enemy's distance and the torpedo's range. */
+export function torpedoTone(d: DuelState): TorpedoTone {
+  const t = d.tactical, sys = t.systems[CREW_SLOT]!, me = t.ships[CREW_SLOT]!, e = t.ships[targetOf(t, CREW_SLOT)];
+  const locked = t.outcome === Outcome.Running && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && sys.rooms[Room.Weapons] < 2 && e?.active === true;
+  return { locked, distance: e ? Math.hypot(e.x - me.x, e.y - me.y) : Infinity, range: classOf(t, CREW_SLOT).slots.missile.range };
+}
+
 export interface DuelSceneOptions {
   seed: number; pauseText: string; ui: DuelSink; audio?: AudioOut;
   /** The contact window's controller (enemy ship window spec §6.1, §6.5): map clicks open it, `sync` applies the closing
@@ -101,6 +123,17 @@ export interface DuelSceneOptions {
   takeClick?: () => { x: number; y: number } | null;
   /** The pointer's last position in internal px, or null (Sci-1 spec §7.3: Science's hover readout). */
   pointer?: () => { x: number; y: number } | null;
+  /** Feel-ii §1.1: the right button since the last frame (the Helm's heading aim); drained every frame. */
+  takeAim?: () => AimSample | null;
+  /** Feel-ii §1.1: where the Helm's heading requests go (the duel mode drains them). */
+  requests?: MapRequests;
+  /** Feel-ii §2.7: a ping asked for since the last frame (a middle click, or G at the pointer), in internal px. */
+  takePingAt?: () => { x: number; y: number } | null;
+  /** Online: send this screen's ping on the cosmetic channel (it comes back through takePings). Absent: Single player,
+   *  where the scene shows it at once. */
+  sendPing?: (p: PingRequest) => void;
+  /** Online: the pings that arrived since the last frame, every seat's own included. */
+  takePings?: () => (PingRequest & { player: number })[];
 }
 
 export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
@@ -120,6 +153,9 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   // acted since (the card goes, the goal glow stops), whether this sit shows the card, and the round's outcome last frame.
   let seat: SitSeat | null = null, sitAt = 0, sitThrottle = 0, acted = false, carded = false, goalUsed = false, lastOutcome: number = Outcome.Running;
   const sits = createSitTracker();   // each character's seat last frame: a Tab is not a sit
+  // Feel-ii: the pings on show (§2.7) and this screen's last own ping (ms, Single player's one-a-second), the latest refusal (§2.8).
+  const pings: Ping[] = [];
+  let lastPing: number | null = null, refused: (Refusal & { at: number }) | null = null;
   return {
     /** One frame from `source`; `dt` in seconds. Returns the station of the console drawn, or null when none (Artemis
      *  spec §6.2: the mode clears the console's holds when it changes). */
@@ -128,7 +164,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
         resetFx(fx); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
-        lastOutcome = Outcome.Running;
+        lastOutcome = Outcome.Running; pings.length = 0; refused = null;
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
@@ -141,6 +177,32 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
       if (contact && click && onMap)
         contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, click));
+      // Feel-ii §1.1: the Helm's right button aims the held heading. A press or a release on the map asks for the bearing from
+      // the own ship's drawn marker to the pointer (on the ship itself: clear); while it is held, a preview marker follows.
+      const aim = options.takeAim?.() ?? null, running = d.tactical.outcome === Outcome.Running;
+      let preview: number | null = null;
+      if (aim && onMap && station === 'helm' && view === 'helm' && running) {
+        const cam = source.cameras.helm, b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), s = worldToScreen(cam, viewport, b.x, b.y);
+        const dx = aim.x - s.x, dy = aim.y - s.y, onShip = Math.hypot(dx, dy) <= pickRadius(cam.zoom), h = onShip ? -1 : headingOf(dx, dy);
+        if (aim.held && !onShip) preview = h;
+        if (aim.press || aim.release) options.requests?.heading(h);
+      }
+      // Feel-ii §2.7: a ping (a middle click, or G at the pointer) on a console map: on the enemy when it is under the
+      // pointer, else the map point. Single player shows it at once (one a second); online it goes out and comes back.
+      const pingAt = options.takePingAt?.() ?? null, nowS = performance.now() / 1000;
+      let pinged = 0;
+      if (pingAt && onMap && running) {
+        const cam = source.cameras[view], picked = pickContact({ state: d.tactical, prev: source.prev, alpha, camera: cam, viewport }, pingAt) === Contact.Enemy;
+        const at = picked ? interpolatedShip(d.tactical, source.prev, alpha, targetOf(d.tactical, CREW_SLOT)) : screenToWorld(cam, viewport, pingAt.x, pingAt.y);
+        const req: PingRequest = { x: at.x, y: at.y, target: picked };
+        if (options.sendPing) options.sendPing(req);
+        else if (pingAllowed(lastPing, nowS * 1000)) { lastPing = nowS * 1000; pushPing(pings, { ...req, player: source.active() }); pinged++; }
+      }
+      for (const p of options.takePings?.() ?? []) { pushPing(pings, p); pinged++; }
+      // Feel-ii §2.8: a refused control flashes for REFUSAL_FLASH_S and names its reason for REFUSAL_SHOW_S.
+      for (const r of source.takeRefusals?.() ?? []) refused = { ...r, at: nowS };
+      const refusedView = refused && nowS - refused.at < REFUSAL_SHOW_S ? { control: refused.control, reason: refused.reason, flash: nowS - refused.at < REFUSAL_FLASH_S } : null;
+      const alert = flightAlert(d.tactical, source.helmAxes?.() ?? source.axes());   // Feel-ii §1.2, §1.6: the same words on every seat
       const shown = contact
         ? contact.sync({ shown: onMap, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy], designated: d.tactical.designated })
         : false;
@@ -170,11 +232,13 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
         sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
+          torpedo: torpedoTone(d), pings: pinged,   // Feel-ii §2.5, §2.7
           pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
       const frozen = source.paused() || source.live?.() === false;
       stepFx(fx, frozen ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
+      stepPings(pings, frozen ? 0 : dt);
       trackSolution(fx, linedUp(laserSituation(d.tactical, fx.sinceShot, gunnerPresent(d))), frozen ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
@@ -184,7 +248,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
-          ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d)
+          ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
+          holdHeading: preview ?? d.holdHeading, holdPreview: preview !== null, gravity: view === 'helm', alert, pings   // Feel-ii
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
@@ -196,7 +261,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ? hoverReadout(source.cameras[view], viewport, interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), options.pointer?.() ?? null)
         : null;
       const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), hover,
-        sinceShot: fx.sinceShot, goal: seat === 'weapons' && !goalUsed, t });
+        sinceShot: fx.sinceShot, goal: seat === 'weapons' && !goalUsed, t, refused: refusedView });
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
@@ -211,7 +276,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         hud: view === 'interior' ? shipHud(d) : null,   // duel polish i spec §E: the SHIP view, paused and on the end card too (review)
         ...(contact ? { contact: contactView } : {}),
         ...(contactView?.aimWeapon ? { pointer: options.pointer?.() ?? null } : {}),   // FTL targeting spec §1: seeds the targeting line
-        sitCard: onConsole && seat !== null && carded ? sitCard(seat, t - sitAt, acted, (d.tactical.ships[enemySlot]?.y ?? 0) > d.tactical.ships[CREW_SLOT].y) : null   // Feel-i §1
+        sitCard: onConsole && seat !== null && carded ? sitCard(seat, t - sitAt, acted, (d.tactical.ships[enemySlot]?.y ?? 0) > d.tactical.ships[CREW_SLOT].y, !!overlay.notice) : null   // Feel-i §1; Feel-ii §3.9: under the online notice
       });
       // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake (Feel-i: scaled by Settings).
       const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx, shakeScale(renderer.shake?.() ?? 'full'));

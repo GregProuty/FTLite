@@ -1,6 +1,6 @@
 // The read-only controls list on the Settings page (main menu spec, 2026-11-16). Built from the input code's own tables
 // (the duel's PRESS_CODES and held keys, the sector's one keyboard cluster), so the list cannot drift from the bindings.
-import { FIRE_HELD, INTERACT_HELD, MOVE_CODES, PRESS_CODES, type KeyAction } from './duel/input';
+import { FIRE_HELD, INTERACT_HELD, MOVE_CODES, PING_CODE, PRESS_CODES, type KeyAction } from './duel/input';
 import { SECTOR_KEYS } from '../input/sources';
 import { FULLSCREEN_KEY } from '../../../shared/onlineSession';
 
@@ -48,7 +48,11 @@ export function controlSections(): ControlSection[] {
     if (action === 'interact') duel.push({ keys: `Hold ${keyLabel(INTERACT_HELD)}`, action: 'Repair the damaged system you stand at' });
   }
   duel.find((r) => r.keys === keyLabel(FIRE_HELD))!.keys = `Hold ${keyLabel(FIRE_HELD)}`;
-  duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship)' }, { keys: 'Right or middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });
+  // Feel-ii: Shift+W, the ping (G or a middle click), the Helm's right-click heading and the wheel over the throttle.
+  duel.push({ keys: `Shift+${keyLabel(MOVE_CODES.up)}`, action: 'At the Helm, full throttle' }, { keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
+  duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship); over the Helm throttle, step it' },
+    { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); elsewhere pan' },
+    { keys: 'Middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });
   const k = SECTOR_KEYS;
   const sector: ControlRow[] = [
     { keys: [k.up, k.left, k.down, k.right].map(keyLabel).join(' '), action: 'Walk' },

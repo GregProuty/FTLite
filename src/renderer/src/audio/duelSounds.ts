@@ -38,7 +38,7 @@ export function duelEventSounds(events: readonly ViewEvent[], pan: Pan): EventSo
 }
 
 /** What the state diff reads each frame: the tactical tick, the round, the outcome and each missile slot. */
-export interface DuelWatchView { tick: number; round: number; outcome: number; missiles: readonly { active: boolean; x: number; y: number }[] }
+export interface DuelWatchView { tick: number; round: number; outcome: number; missiles: readonly { active: boolean; x: number; y: number; owner?: number }[] }
 export interface DuelWatch { tick: number; round: number; outcome: number; missiles: boolean[] }
 
 /** A missile launch (a slot going active) and the round ending (victory or defeat). A missing baseline, a new round, a tick
@@ -47,7 +47,11 @@ export function duelStateSounds(w: DuelWatch | null, v: DuelWatchView, pan: Pan)
   const watch: DuelWatch = { tick: v.tick, round: v.round, outcome: v.outcome, missiles: v.missiles.map((m) => m.active) };
   const sounds: SoundRequest[] = [], cues: Cue[] = [];
   if (!w || w.round !== v.round || v.tick < w.tick || v.tick - w.tick > HIT_FRESH_TICKS || w.missiles.length !== v.missiles.length) return { watch, sounds, cues };
-  v.missiles.forEach((m, k) => { if (m.active && !w.missiles[k]) sounds.push({ key: 'thruster', gain: 0.5, dur: 0.7, pan: pan(m.x, m.y) }); });
+  v.missiles.forEach((m, k) => {
+    if (!m.active || w.missiles[k]) return;
+    sounds.push({ key: 'thruster', gain: 0.5, dur: 0.7, pan: pan(m.x, m.y) });   // the launch whoosh
+    if (m.owner !== undefined && m.owner !== CREW) sounds.push({ ...LAUNCH_CHIRP, pan: pan(m.x, m.y) });   // Feel-ii §2.6: an enemy torpedo
+  });
   if (w.outcome === OUTCOME_RUNNING && v.outcome !== OUTCOME_RUNNING) cues.push(v.outcome === OUTCOME_CREW_WINS ? 'victory' : 'defeat');
   return { watch, sounds, cues };
 }
@@ -96,4 +100,42 @@ export function heartbeatOn(v: { health: number; downed: boolean; running: boole
 export function fireAlarm(last: number | null, ignited: number, now: number): { last: number | null; play: boolean } {
   if (ignited <= 0 || (last !== null && now - last < FIRE_ALARM_GAP_S)) return { last, play: false };
   return { last: now, play: true };
+}
+
+// Feel-ii (spec 2026-11-18-feel-ii-design §2.5, §2.6, §2.7): the torpedo's lock tone, the enemy launch chirp (in
+// duelStateSounds) and the ping. Pure, from the frame data the scene hands the adapter (no sim imports).
+
+/** The lock tone's frame data: the torpedo has a target and is ready (all of canLaunch's checks but the range), the
+ *  enemy's distance and the torpedo's range (the scene reads them from the sim). */
+export interface TorpedoTone { locked: boolean; distance: number; range: number }
+/** Beep gaps (seconds) at LOCK_FAR ranges out and at the range itself; the steady tone's length. */
+export const LOCK_BEEP_FAR_S = 0.9, LOCK_BEEP_NEAR_S = 0.12, LOCK_FAR = 3, LOCK_STEADY_S = 0.3;
+export const LOCK_BEEP: SoundRequest = { key: 'console', gain: 0.25, rate: 2, dur: 0.06, detune: false, variant: 0, pan: 0 };
+export const LOCK_STEADY: SoundRequest = { key: 'jumpCharge', gain: 0.35, rate: 2, dur: LOCK_STEADY_S, detune: false, pan: 0 };
+/** The enemy torpedo's launch chirp and the ping's soft tone. */
+export const LAUNCH_CHIRP: SoundRequest = { key: 'callout', gain: 0.6, rate: 1.4, detune: false, variant: 0, pan: 0 };
+export const PING_TONE: SoundRequest = { key: 'ready', gain: 0.35, rate: 1.5, detune: false, variant: 0, pan: 0 };
+
+/** The gap before the next beep: LOCK_BEEP_FAR_S from LOCK_FAR ranges out, falling linearly to LOCK_BEEP_NEAR_S at the range. */
+export function lockBeepGap(distance: number, range: number): number {
+  const k = Math.max(0, Math.min(1, (distance - range) / Math.max(1, (LOCK_FAR - 1) * range)));
+  return LOCK_BEEP_NEAR_S + (LOCK_BEEP_FAR_S - LOCK_BEEP_NEAR_S) * k;
+}
+export interface LockWatch { next: number | null; steady: boolean; locked: boolean }
+/** One frame of the lock tone at `now` seconds: beeps faster as the enemy nears the range while locked and out of it; the
+ *  steady tone once on reaching it, or on the launch itself when the torpedo went the tick it came in range (`launched`:
+ *  the crew's torpedo went into flight this frame). Off when not locked. */
+export function lockTone(w: LockWatch | null, v: TorpedoTone, launched: boolean, now: number): { watch: LockWatch; sounds: SoundRequest[] } {
+  const was = w ?? { next: null, steady: false, locked: false }, sounds: SoundRequest[] = [];
+  if (!v.locked) {
+    if (was.locked && launched && !was.steady) sounds.push(LOCK_STEADY);
+    return { watch: { next: null, steady: false, locked: false }, sounds };
+  }
+  if (v.distance <= v.range) {
+    if (!was.steady) sounds.push(LOCK_STEADY);
+    return { watch: { next: null, steady: true, locked: true }, sounds };
+  }
+  let next = was.next;
+  if (next === null || now >= next) { sounds.push(LOCK_BEEP); next = now + lockBeepGap(v.distance, v.range); }
+  return { watch: { next, steady: false, locked: true }, sounds };
 }

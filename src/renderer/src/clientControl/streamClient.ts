@@ -184,6 +184,15 @@ export function createStreamClient<S extends { header: { tick: number } }, R>(li
       auxiliarySequences[player] = sequence;
       link.send('reliable-ordered', codec.encodeMessage({ kind: 'callout', runId: options.runId, player, sequence, calloutKind: 'contextual' }));
     },
+    /** Feel-ii §2.7: a cosmetic crew ping for an owned player, on the auxiliary sequence the callout uses. */
+    ping(player: PlayerId, x: number, y: number, target: boolean): void {
+      if (!canProduce() || !owned.includes(player) || (receiveTime && !publication) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      const sequence = (auxiliarySequences[player] ?? 0) + 1;
+      if (!Number.isSafeInteger(sequence)) { link.close('auxiliary-sequence-exhausted'); return; }
+      auxiliarySequences[player] = sequence;
+      const clamp = (v: number): number => Math.max(-1e6, Math.min(1e6, v));
+      link.send('reliable-ordered', codec.encodeMessage({ kind: 'ping', runId: options.runId, player, sequence, x: clamp(x), y: clamp(y), target }));
+    },
     neutralize(player: PlayerId): void {
       // Focus loss stops the ordinary producer. Neutralization only needs a
       // confirmed publication and shares its held sequence with the producer.

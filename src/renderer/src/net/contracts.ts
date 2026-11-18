@@ -112,7 +112,12 @@ export interface CommandResult {
   admission?: { expectedSequence: number; disposition: 'terminal' | 'retryable' };
 }
 export type Admission = { status: 'queued' } | { status: 'duplicate' | 'rejected'; result: CommandResult };
-export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' };
+/** Feel-ii §2.7: the shortest gap between one player's relayed pings (ms). */
+export const PING_GAP_MS = 1000;
+export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' }
+  /** Feel-ii (spec 2026-11-18-feel-ii-design §2.7): a crew ping at a world point, or on the enemy (`target`). Cosmetic: never
+   *  a sim command or journalled; the authority relays it to every seat as a `ping` event, at most one a second a player. */
+  | { kind: 'ping'; runId: RunId; player: PlayerId; sequence: number; x: number; y: number; target: boolean };
 // Data-only event cue names shared with pure derivation.
 export type Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'upgrade' | 'victory' | 'defeat' | 'callout';
 /** The authority's end record, tagged on the wrapper by mode (spec §6). The sector record is unchanged; the duel's
@@ -123,6 +128,8 @@ export interface AuthorityEvent {
   payload:
     | { kind: 'cue'; cue: Cue }
     | { kind: 'callout'; player: PlayerId; text: string; station: number | null }
+    /** Feel-ii §2.7: a crew ping, relayed to every seat (cosmetic, never journalled). */
+    | { kind: 'ping'; player: PlayerId; x: number; y: number; target: boolean }
     | { kind: 'pause'; paused: boolean; owner: PlayerId | null; reason: string }
     | { kind: 'ended'; record: EndRecord }
     /** A duel round was decided (H-2 spec §7); only the duel codec admits it. */
