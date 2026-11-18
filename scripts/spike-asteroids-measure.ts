@@ -66,7 +66,19 @@ const sizes = (() => {
     const image = duelPublicationToImage(publication(d, k + 2), options);
     deltas.push(encodeDelta(previous, image).byteLength); previous = image;
   }
-  const out = { seed, tick: 3000, values: snap.values.length, jsonBytes: json, fullImageBytes: full, deltaMedianBytes: median(deltas), deltaMaxBytes: Math.max(...deltas) };
+  // With fragments in flight (the spike only): break five big rocks, then the same 20 Hz delta measure.
+  let deltaFragmentsMedianBytes: number | null = null;
+  const rk = (d.tactical as unknown as { rocks?: Float64Array }).rocks;
+  if (rk) {
+    const mod = require('../src/renderer/src/sim/tactical/rocks') as typeof import('../src/renderer/src/sim/tactical/rocks');
+    let broken = 0;
+    for (let k = 0; k < d.tactical.map.asteroids.length && broken < 5; k++) if (rk[k * 7] === 1 && rk[k * 7 + 5]! >= 30) { mod.damageRock(d.tactical, k, 99, 1, 0, 'laser'); broken++; }
+    let prev = duelPublicationToImage(publication(d, 1000), options);
+    const fd: number[] = [];
+    for (let k = 0; k < 300; k++) { stepDuelTick(d, scriptedInput(pair, d)); if (k % 3 !== 2) continue; const image = duelPublicationToImage(publication(d, 1001 + k), options); fd.push(encodeDelta(prev, image).byteLength); prev = image; }
+    deltaFragmentsMedianBytes = median(fd);
+  }
+  const out = { seed, tick: 3000, deltaFragmentsMedianBytes, values: snap.values.length, jsonBytes: json, fullImageBytes: full, deltaMedianBytes: median(deltas), deltaMaxBytes: Math.max(...deltas) };
   disposeDuel(d);
   return out;
 })();
@@ -110,7 +122,13 @@ const feel = (() => {
   for (let s = 1; s <= 10; s++) {
     const d = createDuel(CUTTER, s), pair = createScriptedPair(s), r: RockTally = { laserRock: 0, torpRock: 0, hits: 0, splits: 0, shatters: 0, fragmentContacts: 0 };
     let k = 0;
-    for (; k < 15 * 60 * TICK_HZ && d.tactical.outcome === Outcome.Running; k++) { stepDuelTick(d, scriptedInput(pair, d)); tally(d.tactical, r); }
+    let fragTouch = 0;   // ticks on which a ship touches a moving fragment (the spike's fragment hazard)
+    for (; k < 15 * 60 * TICK_HZ && d.tactical.outcome === Outcome.Running; k++) {
+      stepDuelTick(d, scriptedInput(pair, d)); tally(d.tactical, r);
+      const rk = (d.tactical as unknown as { rocks?: Float64Array }).rocks;
+      if (rk) for (let j = 0; j < rk.length; j += 7) if (rk[j] === 2) for (const sh of d.tactical.ships) if (Math.hypot(sh.x - rk[j + 1]!, sh.y - rk[j + 2]!) <= rk[j + 5]! + 20 + 0.5) fragTouch++;
+    }
+    (r as RockTally & { shipFragmentTouchTicks?: number }).shipFragmentTouchTicks = fragTouch;
     const rocks = (d.tactical as unknown as { rocks?: Float64Array }).rocks;
     rows.push({ seed: s, crewAsteroidContacts: d.tactical.ships[0].asteroidHits, hunterAsteroidContacts: d.tactical.ships[1].asteroidHits, seconds: +(k / TICK_HZ).toFixed(1), outcome: d.tactical.outcome, rocks: r, rocksLeft: rocks ? countAlive(rocks) : null });
     disposeDuel(d);

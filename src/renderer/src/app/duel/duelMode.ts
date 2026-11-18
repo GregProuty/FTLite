@@ -15,6 +15,7 @@ import type { DuelSink } from '../../ui/sinks';
 import type { AudioOut } from '../audio';
 import { createDuelScene } from './scene';
 import { soloRecorder } from './soloRecorder';
+import { damageRock, rockAt, rockSlots } from '../../sim/tactical/rocks';
 
 export interface DuelModeDeps {
   renderer: Renderer;
@@ -60,6 +61,8 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });
+  // SPIKE (destructible asteroids): a staging hook for the screenshots, solo only. Never in a shipped build.
+  (globalThis as unknown as { __spikeAsteroids?: unknown }).__spikeAsteroids = { duel: () => runtime.duel, rockAt, damageRock, rockSlots };
   // The solo record (H-2 spec §8, Helm §11a); `seat` is the character the keyboard drives when the round is decided.
   const solo = soloRecorder({ now: () => new Date().toISOString(), active: () => runtime.active(), helmPlayer: () => runtime.duel.helmPlayer });
 
