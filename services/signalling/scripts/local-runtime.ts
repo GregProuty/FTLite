@@ -5,7 +5,7 @@ import type { ChildProcess } from 'node:child_process';
 import { build } from 'vite';
 
 /** Trusted local test boundary. No .env/config discovery, remote binding or TURN provider. */
-export async function startLocalRuntime(directory: string) {
+export async function startLocalRuntime(directory: string, options: { allowedOrigins?: string } = {}) {
   const requireService = createRequire(resolve('services/signalling/package.json'));
   const { Miniflare, convertV4MiniflareOptions } = requireService('miniflare');
   const workerdVersion: string = requireService('workerd/package.json').version;
@@ -33,7 +33,7 @@ return worker.fetch(new Request(request, { headers }), env); } };`);
   try {
     const options = convertV4MiniflareOptions({ name: 'local-service', modules: true, script: readFileSync(join(directory, 'worker/worker.mjs'), 'utf8'),
       compatibilityDate: '2026-10-23', host: '127.0.0.1', port: 0, cf: false,
-      bindings: { IP_HASH_SALT: 'synthetic-local-native-gate-salt' },
+      bindings: { IP_HASH_SALT: 'synthetic-local-native-gate-salt', ...(options.allowedOrigins ? { ALLOWED_ORIGINS: options.allowedOrigins } : {}) },
       durableObjects: { ROOMS: { className: 'Room', useSQLite: true }, DIRECTORY: { className: 'Directory', useSQLite: true } },
       resourcePersistencePath: join(directory, 'sqlite'), resourceTmpPath: join(directory, 'runtime') });
     options.enableDevRegistry = false; options.telemetry = { enabled: false }; options.logRequests = false;

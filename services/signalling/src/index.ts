@@ -57,7 +57,10 @@ async function route(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get('Origin');
-    const allowed = origin === null || origin === 'null' || (env.ALLOWED_ORIGINS ?? '').split(',').map(x => x.trim()).includes(origin);
+    // A missing origin, the string null (Electron's file:// page over fetch) and file:// (a Chromium WebSocket handshake
+    // from a file:// page) are allowed in code; any other origin must be listed in ALLOWED_ORIGINS (web build spec §6).
+    const local = origin === null || origin === 'null' || origin === 'file://';
+    const allowed = local || (env.ALLOWED_ORIGINS ?? '').split(',').map(x => x.trim()).includes(origin!);
     let response: Response;
     try { response = allowed ? await route(request, env) : serviceError('forbidden', 403); }
     catch (error) { response = errorResponse(error); }
@@ -66,7 +69,15 @@ export default {
       // Never await an untrusted stream's cancellation promise.
       if (!request.body?.locked) void request.body?.cancel().catch(() => {});
     }
-    if (allowed && origin !== null) { response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin'); }
+    if (allowed && origin !== null) {
+      // Responses from a Durable Object stub's fetch (checkpoint, turn, socket) carry immutable headers: copy before setting.
+      response = response.status === 101 && response.webSocket
+        ? new Response(null, { status: 101, webSocket: response.webSocket, headers: response.headers })
+        : new Response(response.body, response);
+      response.headers.set('Access-Control-Allow-Origin', origin); response.headers.set('Vary', 'Origin');
+      // A page reads the checkpoint metadata header of a checkpoint GET (rehost and mirror refresh, spec §2.4).
+      response.headers.set('Access-Control-Expose-Headers', 'X-FTL-Checkpoint');
+    }
     return response;
   },
 } satisfies ExportedHandler<Env>;
