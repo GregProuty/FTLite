@@ -88,13 +88,15 @@ function rig() {
   const advance = (ms: number): void => { const end = now + ms; for (;;) { tasks.sort((a, b) => a.at - b.at || a.seq - b.seq); const t = tasks[0]; if (!t || t.at > end) break; tasks.shift(); now = Math.max(now, t.at); t.cb(); } now = end; };
   let keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
   const requests = createMapRequests();
+  const IDLE_POINTER: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 };
+  let pointer = IDLE_POINTER;
   const rt = createDuelRuntime({ now: () => now, scheduler, seed: 5, viewport: { w: 1280, h: 720 }, layout: parseShip(cutter),
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), throttleTo: null }; return k; },
-    samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }), takeHeading: () => requests.takeHeading() });
+    samplePointer: () => { const s = pointer; pointer = IDLE_POINTER; return s; }, takeHeading: () => requests.takeHeading() });
   seatDuelCrew(rt.duel);
   const tick = (): void => { rt.frame(1 / 60); advance(1000 / 60); rt.frame(1 / 60); };
   const press = (...a: KeyAction[]): void => { const p = { ...keys.presses }; for (const x of a) p[x]++; keys = { ...keys, presses: p }; };
-  return { rt, requests, tick, press, hold: (h: Partial<KeySample>) => { keys = { ...keys, ...h }; } };
+  return { rt, requests, tick, press, hold: (h: Partial<KeySample>) => { keys = { ...keys, ...h }; }, point: (p: Partial<PointerSample>) => { pointer = { ...IDLE_POINTER, ...p }; } };
 }
 
 describe('the Single player runtime (Feel-ii §1.1, §2.8)', () => {
@@ -106,6 +108,18 @@ describe('the Single player runtime (Feel-ii §1.1, §2.8)', () => {
     r.press('switch'); for (let k = 0; k < 4; k++) r.tick();   // now the Weapons character
     r.requests.heading(12); r.tick(); r.tick();
     expect(r.rt.duel.holdHeading).toBe(77);
+  });
+  it('a Tab back to the Helm during a right-drag does not pan the Helm camera backwards by it', () => {
+    const run = (drag: boolean): number[] => {
+      const r = rig();
+      for (let k = 0; k < 3; k++) r.tick();
+      r.press('switch'); for (let k = 0; k < 4; k++) r.tick();   // now at Weapons
+      if (drag) r.point({ dragX: 80, dragY: 30, rightX: 80, rightY: 30 });
+      r.press('switch'); r.tick();   // back to the Helm the frame of the drag
+      expect(r.rt.view()).toBe('helm');
+      return [r.rt.cameras.helm.centreX, r.rt.cameras.helm.centreY];
+    };
+    expect(run(true)).toEqual(run(false));
   });
   it('names a refused LAUNCH (out of range) and a Helm control with Engines off', () => {
     const r = rig();
