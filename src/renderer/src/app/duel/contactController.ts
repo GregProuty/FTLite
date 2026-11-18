@@ -11,7 +11,7 @@ export interface ContactState { contact: ContactId; aim: boolean }
 /** One frame's facts for the closing rules: `shown` is the console shown on a map view (Helm, Weapons or Science);
  *  `station` the console's station, null while it is hidden; `target` the enemy's ship slot (the crew laser's target);
  *  `active` whether a slot's ship is active; `epoch` the round; `enemyKnown` the enemy's scan level (absent: 2). */
-export interface ContactSync { shown: boolean; station: ConsoleStation | null; target: number; active: (slot: number) => boolean; epoch: number; enemyKnown?: number }
+export interface ContactSync { shown: boolean; station: ConsoleStation | null; target: number; active: (slot: number) => boolean; epoch: number; enemyKnown?: number; designated?: number }
 /** What the clicks and keys asked the duel mode to send since the last take: a designation (−1, 0 or 1) and a scan. */
 export interface ContactRequests { designate: number | null; scan: ContactId | null }
 export interface ContactController {
@@ -83,6 +83,7 @@ export function createContactController(): ContactController {
       if (st && s.station === 'science' && station !== 'science') designate = st.contact;   // a contact carried to Science is its selection: designate it
       if (st?.aim && station !== null && s.station !== station) st = { ...st, aim: false };   // a station change disarms
       if (st?.aim && enemyKnown < 1) st = { ...st, aim: false };
+      if (!st && s.shown && s.station === 'science' && (!allowed || station !== 'science') && (s.designated ?? -1) >= 0) st = { contact: s.designated as ContactId, aim: false };   // arriving at Science: adopt the shared designation, no request
       allowed = s.shown; station = s.station; epoch = s.epoch;
       return allowed && (st !== null || station === 'science');
     },

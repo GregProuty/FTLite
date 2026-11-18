@@ -25,7 +25,7 @@ import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
-import { createDuelKeyboard, createPointerSource, emptyPresses, frequencyRequest, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
+import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions, type ContactRequests } from './contactController';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
@@ -194,7 +194,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       return;
     }
     if (seat === 'science') {   // Sci-1 spec §7.3
-      if (requests.designate !== null && requests.designate !== d.tactical.designated) send({ kind: 'designate', contact: requests.designate });
+      if (requests.designate !== null) send({ kind: 'designate', contact: requests.designate });
       if (p.camera > 0 && source) snapBack(source.cameras.science);
       return;
     }
@@ -205,8 +205,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       send({ kind: 'laserLock', room });
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
-    const freq = frequencyRequest(d.tactical.systems[0].freq, k.freqTo);   // Sci-1 spec §7.4
-    if (freq !== null) send({ kind: 'laserFrequency', freq });
+    // Sci-1 spec �7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
+    if (k.freqTo !== undefined && k.freqTo !== null && Number.isInteger(k.freqTo) && k.freqTo >= 0 && k.freqTo <= 2) send({ kind: 'laserFrequency', freq: k.freqTo });
     // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent,
     // a release swallowed by a pause included (Space let go while paused leaves chargePressed set).
     const held = d.tactical.systems[0].fireHeld, now = deps.now();

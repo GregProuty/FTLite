@@ -482,4 +482,28 @@ describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () =
     expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }]);
     w.dispose();
   });
+  it('a quick undo inside one round trip is sent, not deduped against the lagging replica', () => {
+    const r = rig(1);
+    standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
+    const c = r.attach(), contact = contactOf();
+    contact.sync({ shown: true, station: 'science', target: 1, active: () => true, epoch: 0 });
+    contact.click(0); r.pump(); contact.close(); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 0 }, { kind: 'designate', contact: -1 }]);
+    r.dispose();
+    const w = rig(1), cw = w.attach();
+    w.key('keydown', 'Digit2'); w.key('keyup', 'Digit2'); w.pump();
+    w.key('keydown', 'Digit1'); w.key('keyup', 'Digit1'); w.pump();
+    expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }, { kind: 'laserFrequency', freq: 0 }]);
+    w.dispose();
+  });
+  it('one request is sent once: a repeated identical request in the same frame is not doubled', () => {
+    const r = rig(1);
+    standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
+    const c = r.attach(), contact = contactOf();
+    contact.sync({ shown: true, station: 'science', target: 1, active: () => true, epoch: 0 });
+    contact.click(1); r.pump(); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 1 }]);
+    r.dispose();
+  });
 });
+

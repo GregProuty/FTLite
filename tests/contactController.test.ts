@@ -160,3 +160,14 @@ describe('the key intercept (enemy ship window spec §6.2, Sci-1 spec §7.2, §7
     expect(c.state()).toEqual({ contact: 0, aim: false });
   });
 });
+
+describe('Science adopts the shared designation (Sci-1 fix B)', () => {
+  it('after a hidden frame the next shown frame selects the designated contact without a request', () => {
+    const c = createContactController();
+    c.sync(live({ station: 'science', designated: 1 })); c.takeRequests();
+    c.sync(live({ station: null, shown: false, designated: 1 }));
+    expect(c.sync(live({ station: 'science', designated: 1 }))).toBe(true);
+    expect(c.state()).toEqual({ contact: 1, aim: false });
+    expect(c.takeRequests()).toEqual(none);
+  });
+});
