@@ -1,18 +1,16 @@
 // The online duel's view source and the renderer's online session wrapper (H-2 spec §3, §10): interpolation over the
-// actual 20 Hz gap, the counter-derived beams, missile endings and sparks against the local runtime's events, the
-// online REPAIRING status, the end card's leave prompt across a partner's rematch, and the wrapper choosing the duel or
-// sector session by the port descriptor's mode.
+// actual 20 Hz gap, the counter-derived beams, missile endings and sparks against the local runtime's events, the end
+// card's leave prompt across a partner's rematch, and the wrapper choosing the duel or sector session by the port
+// descriptor's mode.
 import { describe, expect, it, vi } from 'vitest';
 import { CLOSED_PROMPT, leavePromptKeys } from '../src/renderer/src/app/duel/onlineDuel';
 import { createOnlineDuelSource, gapEvents, duelCounters } from '../src/renderer/src/app/duel/onlineSource';
 import { createOnlineModeSession, type InnerOnlineSession } from '../src/renderer/src/app/onlineModeSession';
-import { Position } from '../src/renderer/src/sim/components';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { CUTTER_REPAIR_POINTS } from '../src/renderer/src/sim/duel/tuning';
 import { createTacticalState, missileOf, Outcome, placeMissile } from '../src/renderer/src/sim/tactical/state';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import type { OnlinePortDescriptor } from '../src/shared/onlineSession';
@@ -105,25 +103,6 @@ describe('the online duel view source (spec §3)', () => {
     const ev = gapEvents([duelCounters(before, 0), duelCounters(before, 1)], [{ x: 5, y: 6, h: 0 }, null], after);
     expect(ev.filter((x) => x.kind === 'laser').map((x) => x.kind === 'laser' && [x.hit, x.stripped, x.room])).toEqual([[true, true, -1], [true, false, 2], [false, false, -1]]);
     expect(ev.find((x) => x.kind === 'missileEnd')).toMatchObject({ cause: 'ship', target: 1, room: 0 });
-  });
-  it('shows the other character REPAIRING only while a repair it stands at has progressed since the last publication', () => {
-    const d = createSeatedDuel(CUTTER, 5), c = confirmed();
-    const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
-    try {
-      // Player 1 stands at the Weapons room's repair point with the room damaged.
-      stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 1, sequence: 1 }, requestedTick: 0, command: { kind: 'stand' } }] });
-      const p = CUTTER_REPAIR_POINTS[0]!, eid = d.interior.crew[1]!;
-      Position.x[eid] = p.tile[0] + 0.5; Position.y[eid] = p.tile[1] + 0.5; d.tactical.systems[0].rooms[0] = 1;
-      c.publish(d); source.frame(1 / 60, null, null);
-      expect(source.otherStatus()).toBe('WALKING');
-      for (let k = 0; k < 3; k++) stepDuelTick(d, { held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: true }], commands: [] });
-      c.publish(d); source.frame(1 / 60, null, null);
-      expect(d.repair[0]).toBeGreaterThan(0);
-      expect(source.otherStatus()).toBe('REPAIRING');
-      for (let k = 0; k < 3; k++) stepDuelTick(d, { held: [], commands: [] });
-      c.publish(d); source.frame(1 / 60, null, null);
-      expect(source.otherStatus()).toBe('WALKING');   // no progress since the last publication
-    } finally { disposeDuel(d); c.dispose(); }
   });
 });
 

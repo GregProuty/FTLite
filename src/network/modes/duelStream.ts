@@ -7,6 +7,7 @@ import { createDuelStreamClient, type DuelStreamClient } from '../../renderer/sr
 import { duelCodec, duelPublicationSchema } from '../../renderer/src/net/codec';
 import type { ResolveLayout } from '../../renderer/src/authority/rules';
 import { validateDuelSnapshot, type DuelSnapshot } from '../../renderer/src/sim/duel/snapshot';
+import { DUEL_CREW_MAX } from '../../renderer/src/sim/duel/state';
 import { hashF64 } from '../../shared/hash';
 import { imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, type StateImage } from '../state/imageCodec';
 import { createModeStreamBinding } from './streamBinding';
@@ -53,14 +54,14 @@ export function imageToDuelPublication(image: StateImage, options: DuelValidatio
 /** The host side of a streamed duel attachment. */
 export function createDuelStreamBinding(link: Link, options: DuelValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number }) {
   return createModeStreamBinding<DuelSnapshot>(link, { clock: options.clock, latestPayloadLimit: options.latestPayloadLimit,
-    toImage: publication => duelPublicationToImage(publication, options), codec: duelCodec(2), notificationStream: NOTIFICATION_STREAM, label: 'duel' });
+    toImage: publication => duelPublicationToImage(publication, options), codec: duelCodec(DUEL_CREW_MAX), notificationStream: NOTIFICATION_STREAM, label: 'duel' });
 }
 
 export interface DuelRemoteClientOptions extends DuelValidationOptions { runId: string; clock: MonotonicClock }
 /** The client side of a streamed duel attachment (H-2 spec §4): receive-time, remote streaming, no presentation delay. */
 export function createDuelRemoteClient(link: Link, owned: readonly number[], options: DuelRemoteClientOptions) {
   let disposed = false;
-  const remote = createModeRemoteClient<DuelSnapshot, DuelStreamClient>(link, { clock: options.clock, codec: duelCodec(2), notificationStream: NOTIFICATION_STREAM, label: 'duel',
+  const remote = createModeRemoteClient<DuelSnapshot, DuelStreamClient>(link, { clock: options.clock, codec: duelCodec(DUEL_CREW_MAX), notificationStream: NOTIFICATION_STREAM, label: 'duel',
     imageToPublication: image => imageToDuelPublication(image, options, false),
     createClient: clientLink => createDuelStreamClient(clientLink, owned, { runId: options.runId, contentDigest: options.contentDigest, resolveLayout: options.resolveLayout,
       admissionPolicy: 'receive-time', remoteStreaming: true }) });

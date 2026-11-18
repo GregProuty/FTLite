@@ -9,10 +9,11 @@ import type { CaptureCause } from '../../src/shared/sessionCheckpoint';
 import { duelCodec } from '../../src/renderer/src/net/codec';
 import type { AuthorityMessage, CommandId, CommandResult, DuelCommand, HeldInput, Link } from '../../src/renderer/src/net/contracts';
 import type { DuelSnapshot } from '../../src/renderer/src/sim/duel/snapshot';
+import { DUEL_CREW_MAX } from '../../src/renderer/src/sim/duel/state';
 import { resolveCutter } from './duelAuthority';
 import { ownTestCleanup } from './simLifetime';
 
-const codec = duelCodec(2);
+const codec = duelCodec(DUEL_CREW_MAX);   // Sci-2: a crew-3 or crew-4 publication decodes
 export interface LiveDuel {
   core: ReturnType<typeof createEncounterCore<DuelTypes>>; state: DuelSession; init: DuelInit;
   sent: AuthorityMessage<DuelSnapshot>[]; captures: { checkpoint: DuelCheckpoint; cause: CaptureCause }[];

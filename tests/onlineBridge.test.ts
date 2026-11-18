@@ -85,7 +85,7 @@ describe('isolated preload transfer and API', () => {
       const off = native.exposed.onSuspend(() => {}); expect(native.listeners.get('app:suspend')?.size).toBe(1); off(); expect(native.listeners.get('app:suspend')?.size).toBe(0);
       native.invoke.mockResolvedValueOnce({ ok: true, token: 'private' }).mockRejectedValueOnce(Error('private'));
       expect(await native.exposed.online.host({ mode: 'sector', capacity: 2 })).toEqual({ ok: false, code: 'invalid-status' });
-      expect(await native.exposed.online.host()).toEqual({ ok: false, code: 'unavailable' });
+      expect(await native.exposed.online.host({ mode: 'duel', capacity: 3 })).toEqual({ ok: false, code: 'unavailable' });
       const calls = native.invoke.mock.calls.length;
       expect(await native.exposed.online.host({ mode: 'sector', capacity: 9 })).toEqual({ ok: false, code: 'invalid-action' }); expect(native.invoke.mock.calls.length).toBe(calls);
       const statusCb = vi.fn(), offStatus = native.exposed.online.onStatus(statusCb);

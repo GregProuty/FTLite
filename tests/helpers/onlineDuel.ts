@@ -15,25 +15,29 @@ import { duelInit, resolveCutter } from './duelAuthority';
 import { linkPair, type LinkPair } from './linkPair';
 import { ownTestCleanup } from './simLifetime';
 import { seatDuelCrew } from './duelSeat';
+import type { DuelCrew, DuelState } from '../../src/renderer/src/sim/duel/state';
+import { CUTTER } from './scriptedDuel';
 
-export interface Seat { seat: 0 | 1; pair: LinkPair; client: ReturnType<typeof createDuelRemoteClient>; detach(): void; origin: AttachmentOrigin }
-export function onlineDuel(seed: number, options: { helmPlayer?: 0 | 1; runId?: string; drop?: (k: number) => boolean; restore?: DuelCheckpoint } = {}) {
-  const runId = options.runId ?? `online-${seed}`, contentDigest = __GAMEPLAY_CONTENT_DIGEST__;
+export interface Seat { seat: number; pair: LinkPair; client: ReturnType<typeof createDuelRemoteClient>; detach(): void; origin: AttachmentOrigin }
+/** `crew` (Sci-2): the run's crew size, 2 by default, a restore's from its init; `place` changes the fresh duel after the
+ *  old seated start and before the core sees it (a third player put at a console). */
+export function onlineDuel(seed: number, options: { helmPlayer?: number; runId?: string; drop?: (k: number) => boolean; restore?: DuelCheckpoint; crew?: DuelCrew; place?: (d: DuelState) => void } = {}) {
+  const runId = options.runId ?? `online-${seed}`, contentDigest = __GAMEPLAY_CONTENT_DIGEST__, crew = options.restore?.init.playerCount ?? options.crew ?? 2;
   let now = 0, ordinal = 0, request: ((control: LifecyclePause) => void) | undefined;
   const clock = { nowMs: () => now }, captures: { checkpoint: DuelCheckpoint; cause: CaptureCause }[] = [];
   let producers!: ReturnType<typeof createDuelProducers>, session: DuelSession | null = null;
   const rules: EncounterRules<DuelTypes> = { ...duelRules,
-    create: (init, resolve) => { session = duelRules.create(init, resolve); seatDuelCrew(session.duel); return session; },   // the old seated start (createDuel leaves both standing)
+    create: (init, resolve) => { session = duelRules.create(init, resolve); seatDuelCrew(session.duel); options.place?.(session.duel); return session; },   // the old seated start (createDuel leaves both standing)
     restore: (snap, resolve, memory) => (session = duelRules.restore(snap, resolve, memory)) };
   const authority = createEncounterAuthority(rules, { clock, scheduler: { schedule: () => () => {} }, contentDigest, resolveLayout: resolveCutter,
     onCrash(record) { throw Error(record.error); }, onCheckpoint: (checkpoint, cause) => { captures.push({ checkpoint: checkpoint as DuelCheckpoint, cause }); },
     beforeControls: () => producers.beforeControls(), beforeTick: () => producers.beforeTick(),
     bindLifecyclePause(next) { request = next; return () => { if (request === next) request = undefined; }; } });
-  producers = createDuelProducers({ authority, runId, contentDigest, pause: (reason) => request?.({ paused: true, reason }) });
-  if (options.restore) authority.restore(options.restore); else authority.start(duelInit(seed, runId, options.helmPlayer ?? 0));
+  producers = createDuelProducers({ authority, runId, contentDigest, playerCount: crew, pause: (reason) => request?.({ paused: true, reason }) });
+  if (options.restore) authority.restore(options.restore); else authority.start(duelInit(seed, runId, options.helmPlayer ?? 0, CUTTER, crew));
   ownTestCleanup(() => { producers.dispose(); authority.dispose(); });
-  const seats: (Seat | undefined)[] = [undefined, undefined];
-  function connect(seat: 0 | 1, origin: AttachmentOrigin = 'remote'): Seat {
+  const seats: (Seat | undefined)[] = Array.from({ length: crew });
+  function connect(seat: number, origin: AttachmentOrigin = 'remote'): Seat {
     const pair = linkPair(`seat-${seat}`, options.drop);
     const binding = createDuelStreamBinding(pair.host.link, { resolveLayout: resolveCutter, contentDigest, clock, latestPayloadLimit: 16088 });
     const off = producers.attachHuman(binding.link, [seat], { ...binding.attachOptions, admissionPolicy: 'receive-time' }, origin);

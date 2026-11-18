@@ -38,7 +38,7 @@ export interface ConsoleView {
   side: { zoom: string; free: boolean; snapLabel: 'SNAP' | 'CAMERA' } | null;
 }
 export interface ConsoleModelInput {
-  duel: DuelState; me: 0 | 1; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null;
+  duel: DuelState; me: number; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null;
   /** The Helm throttle level to show (Artemis spec §6.1: the local base); the duel's own level when absent. */
   throttle?: number;
   /** Science's hover readout this frame (Sci-1 spec §7.3), from the scene; null or absent with no cursor. */
@@ -65,7 +65,7 @@ export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | 'scienc
 
 /** The station a character's console shows (spec §6.3): its seat, or SHIP while standing. The scene reads it before the
  *  map is built (enemy ship window spec §6.5 step 1). */
-export function consoleStation(d: DuelState, me: 0 | 1): ConsoleStation {
+export function consoleStation(d: DuelState, me: number): ConsoleStation {
   const seat = seatOf(d, me);
   return seat === 'standing' ? 'ship' : seat;
 }
@@ -77,7 +77,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const d = i.duel, seat = seatOf(d, i.me), station = consoleStation(d, i.me);
   const c = seat === 'standing' ? consoleInReach(d, i.me) : -1;
   const { tabs, tabActions } = consoleTabs({ seat, reach: c < 0 ? null : c === d.nav ? 'helm' : c === d.weapons ? 'weapons' : 'science', repairNear: seat === 'standing' && repairInReach(d, i.me) >= 0,
-    otherSeat: seatOf(d, i.me === 0 ? 1 : 0), mode: i.mode });
+    otherSeat: i.mode === 'single' ? seatOf(d, i.me === 0 ? 1 : 0) : 'standing', mode: i.mode });   // the Tab target: Single player's other character only
   const t = d.tactical, held = i.held ?? NO_HELD_FLAGS;
   const ship = t.ships[0]!;
   const helm: HelmPanel | null = station === 'helm'

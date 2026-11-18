@@ -1,6 +1,6 @@
 // The menu's state and its pure rules (React UI spec §2, §5), moved line for line from render/sessionMenu.ts: the pages,
 // the error strings, which actions are offered, the status line and how a status push moves the menu. No React here.
-import type { OnlineErrorCode, OnlineStatus } from '../../../shared/onlineSession';
+import type { DuelCrewSize, OnlineErrorCode, OnlineStatus } from '../../../shared/onlineSession';
 import type { ControlSection } from '../app/controlsList';
 import type { Volumes } from '../app/audio';
 
@@ -18,6 +18,8 @@ export interface MenuState {
   operation: number;
   /** Bumped by returnHome so the menu's error boundary resets even when the page and phase are unchanged. */
   resetEpoch: number;
+  /** The duel crew the host form creates a room for (Sci-2 spec §5.3): 2, 3 or 4, default 3. */
+  crew: DuelCrewSize;
 }
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
 /** Audio-i spec section 6: the three volumes, each one of VOLUME_STEPS. */
@@ -38,7 +40,7 @@ export interface UiState {
 }
 export type MenuView = Pick<UiState, 'menu' | 'online'>;
 
-export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0 };
+export const INITIAL_MENU: MenuState = { page: 'home', pending: false, localError: '', recovering: false, leaving: false, hadView: false, fullscreen: null, operation: 0, resetEpoch: 0, crew: 3 };
 export const ROOM_CODE = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 export const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
   'online-disabled': 'Online play needs a configured local service. Single player is available.',
@@ -78,16 +80,19 @@ export function availabilityText(v: MenuView): string {
     ? ERRORS['online-disabled']! : 'Reconnect your saved seat to check the host and the last committed checkpoint.';
 }
 
+/** A lobby seat's line. A duel seat (Sci-2 spec §5.3): EMPTY (no one has claimed it), JOINED (connected, not ready), READY,
+ *  DISCONNECTED (claimed, not connected). The sector keeps its Bot labels. */
 export function seatLabel(status: OnlineStatus, pid: number): string {
   const seat = status.snapshot?.seats.find((s) => s.seatId === pid);
+  if (isDuel(status)) return ` P${pid + 1}: ${!seat?.occupied ? 'EMPTY' : !seat.connected ? 'DISCONNECTED' : seat.ready ? 'READY' : 'JOINED'} `;
   return ` P${pid + 1}: ${!seat?.occupied ? 'Bot' : !seat.connected ? 'Bot (human disconnected)' : seat.ready ? 'Ready' : 'Not ready'} `;
 }
 /** A duel room (H-2 spec §2): the lobby shows the seat plan and Start carries the Helm player. */
 export function isDuel(status: OnlineStatus | null): boolean { return status?.snapshot?.compatibility?.modeId === 'duel'; }
 /** The Helm player Start carries for a duel (H-2 spec §2): the host's own seat. Since a round starts aboard with nobody
  *  seated (start-aboard spec §1) it seats no one; the lobby's Swap seats was removed (owner 2026-11-17). */
-export function helmPlayerOf(status: OnlineStatus): 0 | 1 {
-  return (status.ownSeat ?? 0) as 0 | 1;
+export function helmPlayerOf(status: OnlineStatus): number {
+  return status.ownSeat ?? 0;
 }
 export function startAllowed(v: MenuView): boolean {
   return can(v, 'start') && !!v.online.status?.snapshot?.seats.every((s) => !s.occupied || s.ready && s.connected);

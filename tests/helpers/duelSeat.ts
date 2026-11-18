@@ -1,4 +1,5 @@
 import { sitDown } from '../../src/renderer/src/sim/stations'
+import { Position } from '../../src/renderer/src/sim/components'
 import { createDuel, type DuelState } from '../../src/renderer/src/sim/duel/state'
 
 /**
@@ -16,4 +17,10 @@ export function createSeatedDuel(...args: Parameters<typeof createDuel>): DuelSt
   const d = createDuel(...args);
   seatDuelCrew(d);
   return d;
+}
+
+/** Put pid's character, standing, on station `station`'s console tile: in reach of a sit there (Sci-1's test idiom). */
+export function standAtStation(d: DuelState, pid: number, station: number): void {
+  const tile = d.interior.derived.stationTile[station]!, w = d.interior.derived.width, eid = d.interior.crew[pid]!
+  Position.x[eid] = (tile % w) + 0.5; Position.y[eid] = Math.floor(tile / w) + 0.5
 }

@@ -106,7 +106,7 @@ async function main() {
     await preparation(process.execPath,['--import','tsx',resolve('scripts/network/internet-observer-worker.ts'),dir,identity.digest,'duel']);
     const host=await launch('duel-host',dir),guest=await launch('duel-guest',dir);
     const both=async()=>[latest(await host.request!('status')),latest(await guest.request!('status'))];
-    await host.request!('open-multiplayer');await click(host,'host');await click(host,'create-room');const lobby=await phase(host,'lobby');
+    await host.request!('open-multiplayer');await click(host,'host');await click(host,'crew-2');await click(host,'create-room');const lobby=await phase(host,'lobby');
     await guest.request!('open-multiplayer');await click(guest,'join');await guest.request!('type',{id:'join-code',text:lobby.status.snapshot.joinCode});await click(guest,'join-room');await phase(guest,'lobby');
     await click(host,'ready');await click(guest,'ready');await until(()=>host.request!('status'),v=>v.status.actions.includes('start'));await click(host,'start');
     await phase(host,'running');await phase(guest,'running');
@@ -145,7 +145,7 @@ async function main() {
     await preparation(process.execPath,['--import','tsx',resolve('scripts/network/internet-observer-worker.ts'),dir,identity.digest,'duel']);
     const app=await launch(kind==='host'?'duel-host':'duel-guest',dir),now=async()=>latest(await app.request!('status'));
     await app.request!('open-multiplayer');
-    if(kind==='host'){await click(app,'host');await click(app,'create-room');await phase(app,'lobby');console.log('Duel lobby open: give the guest operator the ROOM code shown in this app. Keep off the keyboard until the sector run starts.');}
+    if(kind==='host'){await click(app,'host');await click(app,'crew-2');await click(app,'create-room');await phase(app,'lobby');console.log('Duel lobby open: give the guest operator the ROOM code shown in this app. Keep off the keyboard until the sector run starts.');}
     else {console.log(`Save the host's duel ROOM code in ${codeFile}. Keep off the keyboard until the sector run starts.`);await click(app,'join');await app.request!('type',{id:'join-code',text:await readCode()});await click(app,'join-room');await phase(app,'lobby');}
     await click(app,'ready');
     if(kind==='host'){await until(()=>app.request!('status'),v=>v.status.actions.includes('start'),CODE_WAIT_MS);await click(app,'start');}

@@ -2,7 +2,7 @@
 // line for line from render/sessionMenu.ts. Components only call these; each change is one store setState.
 import type { ConsoleInput } from '../app/duel/input';
 import type { ContactActions } from '../app/duel/contactController';
-import type { OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
+import type { DuelCrewSize, OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
 import { applyStatus, failureText, helmPlayerOf, isDuel, ROOM_CODE, type MenuState } from './menuState';
 import type { UiStore } from './store';
 import type { VolumeChannel } from '../app/settingsStore';
@@ -90,8 +90,10 @@ export function createUiActions(deps: UiActionDeps) {
       else if (page === 'settings') setMenu({ page: 'home' });
       else if (page === 'host' || page === 'join') setMenu({ page: 'multiplayer', localError: '' });
     },
-    /** Multiplayer is the two-player duel (H-2 spec §2): Host creates a two-seat duel room, with no capacity. */
-    host(): void { if (!menu().pending) void invoke(() => api().host()); },
+    /** The host form's crew choice (Sci-2 spec §5.3). */
+    setCrew(crew: DuelCrewSize): void { setMenu({ crew }); },
+    /** Multiplayer is the duel (H-2 spec §2): Host creates a duel room for `crew` players, the menu's choice by default (Sci-2 spec §4.5). */
+    host(crew: DuelCrewSize = menu().crew): void { if (!menu().pending) void invoke(() => api().host({ mode: 'duel', capacity: crew })); },
     join(raw: string): void {
       if (menu().pending) return;
       const code = raw.trim().toUpperCase();

@@ -5,8 +5,8 @@
 import type { CommandId, DuelCommand, HeldInput, Link, PlayerId, PublishedState } from '../net/contracts';
 import { duelCodec, duelPublicationSchema } from '../net/codec';
 import type { ResolveLayout } from '../authority/rules';
-import { DUEL_PLAYERS, DUEL_SNAPSHOT_FORMAT, loadDuelSnapshot, restoreDuelSnapshot, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
-import { disposeDuel, type DuelState } from '../sim/duel/state';
+import { DUEL_SNAPSHOT_FORMAT, loadDuelSnapshot, restoreDuelSnapshot, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
+import { disposeDuel, DUEL_CREW_MAX, type DuelState } from '../sim/duel/state';
 import { SIM_VERSION } from '../sim/tuning';
 import { hashF64 } from '../../../shared/hash';
 import { createStreamClient } from './streamClient';
@@ -14,7 +14,7 @@ import type { AdmissionPolicy } from '../net/receivePolicy';
 
 export type DuelPublication = PublishedState<DuelSnapshot>;
 export interface DuelClientOptions { runId: string; contentDigest: string; resolveLayout: ResolveLayout; admissionPolicy?: AdmissionPolicy; remoteStreaming?: boolean }
-const codec = duelCodec(DUEL_PLAYERS);
+const codec = duelCodec(DUEL_CREW_MAX);
 
 /** Object validation of a duel publication: the shared schema, its tick and hash against the snapshot (as
  *  checkedPublication does), and the duel snapshot validator. */
@@ -22,12 +22,16 @@ export function validateDuelPublication(value: unknown, options: Pick<DuelClient
   const publication = duelPublicationSchema.parse(value) as DuelPublication;
   if (publication.tick !== publication.snapshot.header.tick) throw Error('duel publication tick differs from its snapshot');
   if (publication.hash !== hashF64(Float64Array.from(publication.snapshot.values))) throw Error('duel publication hash differs from its snapshot');
+  // Sci-2 spec §4.4: the command watermarks are one per crew member.
+  if (publication.commandHighWater.length !== publication.snapshot.header.playerCount) throw Error('duel publication command watermarks differ from its crew');
   publication.snapshot = validateDuelSnapshot(options.resolveLayout(publication.snapshot.header.layoutId), publication.snapshot, options.contentDigest);
   return publication;
 }
 
 export function createDuelStreamClient(link: Link, owned: readonly PlayerId[], options: DuelClientOptions) {
-  const held = [0, 0], next = [1, 1];
+  // Sci-2 spec §4.4: room for the largest crew; `crew` is the latest accepted publication's crew size.
+  const held = Array<number>(DUEL_CREW_MAX).fill(0), next = Array<number>(DUEL_CREW_MAX).fill(1);
+  let crew = 0;
   // Snapshots this client validated itself; any other (the strict byte path) is validated before an in-place restore.
   const validated = new WeakSet<DuelSnapshot>();
   const core = createStreamClient<DuelSnapshot, DuelState>(link, owned, {
@@ -35,17 +39,20 @@ export function createDuelStreamClient(link: Link, owned: readonly PlayerId[], o
     validatePublication(value) { const p = validateDuelPublication(value, options); validated.add(p.snapshot); return p; },
     supported: (p) => p.snapshot.header.snapshotFormat === DUEL_SNAPSHOT_FORMAT && p.snapshot.header.simVersion === SIM_VERSION,
     replica: {
-      matches: (d, h) => h.layoutId === d.interior.layout.id && h.layoutHash === d.interior.derived.layoutHash && h.seed === d.tactical.seed,
+      matches: (d, h) => h.layoutId === d.interior.layout.id && h.layoutHash === d.interior.derived.layoutHash && h.seed === d.tactical.seed && h.playerCount === d.interior.playerCount,
       load: (snapshot) => loadDuelSnapshot(options.resolveLayout(snapshot.header.layoutId), snapshot, options.contentDigest),
       restore(d, snapshot) {
         const checked = validated.has(snapshot) ? snapshot : validateDuelSnapshot(options.resolveLayout(snapshot.header.layoutId), snapshot, options.contentDigest);
         restoreDuelSnapshot(d, checked, options.contentDigest);
       },
       dispose: disposeDuel,
-      playerCount: () => DUEL_PLAYERS
+      playerCount: (d) => d.interior.playerCount
     },
-    heldSequences: { has: (p) => p === 0 || p === 1, get: (p) => held[p]!, set: (p, v) => { held[p] = v; } },
-    onAccepted(_replica, publication) { for (const p of [0, 1]) next[p] = Math.max(next[p]!, publication.commandHighWater[p]! + 1); }
+    heldSequences: { has: (p) => Number.isInteger(p) && p >= 0 && p < crew, get: (p) => held[p]!, set: (p, v) => { held[p] = v; } },
+    onAccepted(_replica, publication) {
+      crew = publication.snapshot.header.playerCount;
+      for (let p = 0; p < crew; p++) next[p] = Math.max(next[p]!, publication.commandHighWater[p]! + 1);
+    }
   });
   return {
     ...core,

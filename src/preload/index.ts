@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { copyOnlinePortDescriptor, DUEL_RECORD_CHANNEL, ONLINE_CHANNELS, ONLINE_LINK_STATS_CHANNEL, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
   validateOnlineAction, validateOnlineLinkStats, validateOnlinePortEnvelope, validateOnlineResult, validateOnlineStatusEnvelope,
-  type FtlitePreloadApi, type OnlineAction, type OnlineResult, type Unsubscribe } from '../shared/onlineSession';
+  type DuelCrewSize, type FtlitePreloadApi, type OnlineAction, type OnlineResult, type Unsubscribe } from '../shared/onlineSession';
 
 async function action(value: OnlineAction): Promise<OnlineResult> {
   if (!validateOnlineAction(value)) return { ok: false, code: 'invalid-action' };
@@ -32,7 +32,7 @@ const api: FtlitePreloadApi = {
     async setFullScreen(on) { try { return (await ipcRenderer.invoke(WINDOW_FULLSCREEN_CHANNEL, on === true)) === true; } catch { return false; } }
   },
   online: {
-    host: sector => action(sector ? { type: 'host', mode: 'sector', capacity: sector.capacity } : { type: 'host', mode: 'duel' }),
+    host: room => action(room?.mode === 'sector' ? { type: 'host', mode: 'sector', capacity: room.capacity } : { type: 'host', mode: 'duel', capacity: room?.capacity as DuelCrewSize }),
     join: (code, mode) => action(mode ? { type: 'join', code, mode } : { type: 'join', code }),
     ready: ready => action({ type: 'ready', ready }),
     removeSeat: seatId => action({ type: 'remove-seat', seatId }),

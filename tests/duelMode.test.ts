@@ -131,7 +131,8 @@ describe('the duel mode over Net-3 (hostRuntime level)', () => {
     const duel = harness(duelMode), sector = harness(sectorMode);
     expect(duel.command({ kind: 'start', initBytes: encode(sectorInit()) }).ok).toBe(false);
     expect(sector.command({ kind: 'start', initBytes: encode(duelInit(1)) }).ok).toBe(false);
-    expect(duel.command({ kind: 'start', initBytes: encode({ ...duelInit(1), playerCount: 3 }) }).ok).toBe(false);
+    expect(duel.command({ kind: 'start', initBytes: encode({ ...duelInit(1), playerCount: 5 }) }).ok).toBe(false);
+    expect(duel.command({ kind: 'start', initBytes: encode({ ...duelInit(1), playerCount: 3 }) }).ok).toBe(true);   // Sci-2: a crew of three starts
     expect(duel.command({ kind: 'start', initBytes: encode(duelInit(1)) }).ok).toBe(true);
     expect(duel.command({ kind: 'restore', checkpointBytes: encode({ bad: true }) }).ok).toBe(false);
     expect(duel.command({ kind: 'checkpoint' }).ok).toBe(true);

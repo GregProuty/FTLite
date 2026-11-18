@@ -9,6 +9,8 @@ export const PANEL_STRIP: CSSProperties = { display: 'flex', gap: 8, alignItems:
 export const VERSION: CSSProperties = { margin: '18px 0 0', font: '12px monospace', color: '#6f8aa3' };
 export const BUTTON: CSSProperties = { font: 'inherit', color: '#d7e4f0', background: '#172333', border: '1px solid #52718d', padding: '9px 14px', margin: 4, cursor: 'pointer' };
 export const BUTTON_OFF: CSSProperties = { ...BUTTON, cursor: 'default', opacity: 0.45 };
+/** A chosen option among buttons (Sci-2's CREW 2 3 4): the border colour filled. */
+export const BUTTON_ON: CSSProperties = { ...BUTTON, background: '#52718d', color: '#05060a' };
 export const NAV: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 2, maxWidth: 280 };
 export const CONTROL: CSSProperties = { display: 'block', margin: '10px 0', padding: 10, background: '#172333', color: '#d7e4f0', border: '1px solid #52718d', font: 'inherit' };
 export const VOLUME: CSSProperties = { ...CONTROL, margin: '8px 0 14px', padding: 8 };

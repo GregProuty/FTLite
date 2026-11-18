@@ -18,7 +18,7 @@ export const SOLUTION_HOLD_S = 0.6;
  *  charges nor auto-fires (laserFrozen). */
 export function gunnerPresent(d: DuelState): boolean {
   const pid = d.interior.stations.occupant[d.weapons]!;
-  return pid >= 0 && d.present[pid as 0 | 1];
+  return pid >= 0 && d.present[pid] === true;
 }
 
 /** The laser's situation, by the sentence's priority: `none` once the round is decided; out of range, out of arc, no line
@@ -104,7 +104,7 @@ export const COLLISION_TICKS = Math.round(COLLISION_WARN_S * TICK_HZ);
  *  held heading's turn and the throttle's thrust while the Helm is attended, else none (the sim flies no axes then). */
 export function stateAxes(d: DuelState): Axes {
   const pid = d.interior.stations.occupant[d.nav]!;
-  if (pid < 0 || !d.present[pid as 0 | 1] || d.tactical.outcome !== Outcome.Running) return NO_AXES;
+  if (pid < 0 || !d.present[pid] || d.tactical.outcome !== Outcome.Running) return NO_AXES;
   return { turn: helmTurn(d, { moveX: 0, moveY: 0, interactHeld: false }), thrust: throttleThrust(d.throttle) };
 }
 

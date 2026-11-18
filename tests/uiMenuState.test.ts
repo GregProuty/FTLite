@@ -81,6 +81,16 @@ describe('the derived rules', () => {
     const ready = { ...lobby, snapshot: { ...lobby.snapshot!, seats: [{ seatId: 0, occupied: true, connected: true, ready: true }] } } as OnlineStatus;
     expect(startAllowed(view({}, ready))).toBe(true);
   });
+  it('labels duel seats EMPTY, JOINED, READY and DISCONNECTED, and allows Start with an empty seat (Sci-2 spec §5.3)', () => {
+    const seats = [{ seatId: 0, occupied: true, connected: true, ready: true }, { seatId: 1, occupied: true, connected: true, ready: false },
+      { seatId: 2, occupied: true, connected: false, ready: false }, { seatId: 3, occupied: false, connected: false, ready: false }];
+    const lobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready'],
+      snapshot: { capacity: 4, joinCode: 'ABCDEFGH', seats, compatibility: { modeId: 'duel' } } as never };
+    expect([0, 1, 2, 3].map((pid) => seatLabel(lobby, pid))).toEqual([' P1: READY ', ' P2: JOINED ', ' P3: DISCONNECTED ', ' P4: EMPTY ']);
+    expect(startAllowed(view({}, lobby))).toBe(false);   // a claimed seat must be connected and ready
+    const ready = { ...lobby, snapshot: { ...lobby.snapshot!, seats: [seats[0]!, { ...seats[1]!, ready: true }, { seatId: 2, occupied: false, connected: false, ready: false }, seats[3]!] } } as OnlineStatus;
+    expect(startAllowed(view({}, ready))).toBe(true);    // empty seats do not hold up the start
+  });
   it('words the checkpoint receipt and the countdown', () => {
     const s = { ...idle, mirror: { ...idle.mirror, committed: { capturedTick: 1800 } as never, receivedAgeMs: 4000 } };
     expect(receiptText(s, 1000, 1000)).toBe('Last mirrored checkpoint: tick 1800, received 4s ago.');

@@ -1,7 +1,8 @@
 // The duel's side readout (H-1 spec §7 item 9, §8): both hulls, the shield pips, the room levels and repair, the
-// Weapons extras (lock, charge, hold timer, magazine), the other character's status and, standing, the strip about the
+// Weapons extras (lock, charge, hold timer, magazine), the crew list (Sci-2 spec §5.2) and, standing, the strip about the
 // ship outside. Pure (it draws nothing): rows of label and value that the panel draws; every row fits the 220-px column
 // (tested). The ship colours come from shipColours.ts so both screens agree.
+import { repairInReach, seatOf } from '../../app/duel/controls';
 import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { classOf, Contact, missileOf, Room, targetOf } from '../../sim/tactical/state';
@@ -16,7 +17,8 @@ import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 
 export type ReadoutMode = 'helm' | 'weapons' | 'science' | 'interior';
-export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'AT SCIENCE' | 'WALKING' | 'REPAIRING' | 'DOWNED' | 'STANDING BY';
+/** A crew row's status (Sci-2 spec §5.2), by precedence: DOWNED, AWAY, the console sat at, REPAIRING, ON FOOT. */
+export type CrewStatus = 'DOWNED' | 'AWAY' | 'HELM' | 'WEAPONS' | 'SCIENCE' | 'REPAIRING' | 'ON FOOT';
 
 /** The HEALTH row turns red under this (duel-health spec §2). */
 export const HEALTH_LOW = 30;
@@ -51,9 +53,8 @@ const levelTint = (n: number): number => (n === 0 ? GOOD : n === 1 ? AMBER : WAR
 export interface ReadoutInput {
   duel: DuelState;
   mode: ReadoutMode;
-  /** The player the keyboard drives; the other's status is shown. */
-  active: 0 | 1;
-  other: OtherStatus;
+  /** The player the keyboard drives (this seat online); every other player is a row of the crew list. */
+  active: number;
   /** On an Artemis console (spec §2): no view heading (the tab strip says it) and no LASER block (the station block shows it). */
   console?: boolean;
 }
@@ -76,8 +77,34 @@ export function healthRow(d: DuelState, pid: number): ReadoutRow {
   return em(row('HEALTH', `${hp}/${HEALTH_MAX}`, DIM, low ? WARN : TEXT), low ? 'alert' : null);
 }
 
+/** Player pid's status (Sci-2 spec §5.2), from the duel state alone: DOWNED; AWAY (a seated away character too); HELM,
+ *  WEAPONS or SCIENCE, the console it sits at; REPAIRING, standing in reach of a repair point whose work has started
+ *  (repairInReach plus progress, Sci-2 Decision 5); else ON FOOT. */
+export function crewStatus(d: DuelState, pid: number): CrewStatus {
+  if (Life.state[d.interior.crew[pid]!] === LifeState.Downed) return 'DOWNED';
+  if (!d.present[pid]) return 'AWAY';
+  const s = seatOf(d, pid);
+  if (s !== 'standing') return s === 'helm' ? 'HELM' : s === 'weapons' ? 'WEAPONS' : 'SCIENCE';
+  const r = repairInReach(d, pid);
+  if (r < 0) return 'ON FOOT';
+  const p = d.points.find((q) => q.tacticalRoom === r);
+  return d.repair[r]! > 0 || (p !== undefined && d.interior.rooms.fireRepair[p.room]! > 0) ? 'REPAIRING' : 'ON FOOT';
+}
+
+/** The crew list (Sci-2 spec §5.2): one row per other player in player order, `P<k>` (1-based) and its status; DOWNED
+ *  alert, AWAY dim. */
+export function crewRows(d: DuelState, me: number): ReadoutRow[] {
+  const out: ReadoutRow[] = [];
+  for (let pid = 0; pid < d.interior.playerCount; pid++) {
+    if (pid === me) continue;
+    const s = crewStatus(d, pid);
+    out.push(em(row(`P${pid + 1}`, s, DIM, s === 'DOWNED' ? WARN : s === 'AWAY' ? DIM : TEXT), s === 'DOWNED' ? 'alert' : null));
+  }
+  return out;
+}
+
 export function readoutRows(input: ReadoutInput): ReadoutRow[] {
-  const d = input.duel, t = d.tactical, target = targetOf(t, 0), other = input.active === 0 ? 1 : 0;
+  const d = input.duel, t = d.tactical, target = targetOf(t, 0);
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
   const crewHull = classOf(t, 0).hull, enemyHull = classOf(t, target).hull;   // the Hunter's hull is its own (weapons update spec §3)
   const rows: ReadoutRow[] = [
@@ -111,11 +138,10 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     rows.push(row('MAG', `${crewSys.magazine}/${MAGAZINE}${flying ? ' FLYING' : ''}`));
   }
   rows.push(healthRow(d, input.active));
-  rows.push(row('OTHER', d.present[other] ? 'PRESENT' : 'AWAY', DIM, d.present[other] ? TEXT : DIM));
-  rows.push(row('', input.other));
+  rows.push(...crewRows(d, input.active));   // Sci-2 spec §5.2: one row per other player
   if (input.mode === 'interior') {
     const helm = d.interior.stations.occupant[d.nav]!, gun = d.interior.stations.occupant[d.weapons]!;
-    const crewed = (pid: number): boolean => pid >= 0 && d.present[pid as 0 | 1];
+    const crewed = (pid: number): boolean => pid >= 0 && !!d.present[pid];
     rows.push(heading('OUTSIDE', AMBER));
     rows.push(em(row('HELM', crewed(helm) ? 'CREWED' : 'EMPTY', DIM, crewed(helm) ? TEXT : WARN), crewed(helm) ? null : 'alert'));
     if (!crewed(helm)) rows.push(em(row('', 'COASTING', DIM, WARN), 'alert'));
@@ -137,5 +163,6 @@ export function readoutHelp(mode: ReadoutMode): string[] {
   return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
 
-/** Rows the readout pool holds: the longest list (standing, Helm empty, a missile inbound) is 22. */
-export const READOUT_ROWS = 22;
+/** Rows the readout pool holds (Sci-2 spec §5.2): the longest list (standing, Helm and Weapons empty, a torpedo inbound,
+ *  a crew of four: three crew rows) is 22, with one to spare. */
+export const READOUT_ROWS = 23;

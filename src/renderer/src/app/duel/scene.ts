@@ -16,7 +16,7 @@ import { hoverReadout } from '../../render/duel/scienceModel';
 import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
-import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
+import { readoutHelp, readoutRows } from '../../render/duel/readoutModel';
 import { createFx, fxDt, pushEvents, pushKill, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
@@ -56,9 +56,8 @@ export interface DuelViewSource {
   readonly interiorCamera: InteriorCamera;
   /** Changes when the view's caches must start again (a new round). */
   epoch(): number;
-  active(): 0 | 1;
+  active(): number;
   view(): DuelView;
-  otherStatus(): OtherStatus;
   axes(): Axes;
   alpha(): number;
   paused(): boolean;
@@ -218,8 +217,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       lastOutcome = d.tactical.outcome;
       // Feel-i §1: sitting down. A new sit at the Helm or Weapons frames both ships, may show the card, and lights the goal.
       // Only a character's own sit counts (Feel-i review): a Tab to a seated character keeps its zoom and shows no card.
-      const sitOf = (pid: 0 | 1): SitSeat | null => { const s = consoleStation(d, pid); return s === 'helm' || s === 'weapons' ? s : null; };
-      const me = source.active(), sitSeat = sitOf(me), sat = trackSit(sits, me, [sitOf(0), sitOf(1)]);
+      const sitOf = (pid: number): SitSeat | null => { const s = consoleStation(d, pid); return s === 'helm' || s === 'weapons' ? s : null; };
+      const me = source.active(), sitSeat = sitOf(me), sat = trackSit(sits, me, Array.from({ length: d.interior.playerCount }, (_, pid) => sitOf(pid)));   // Sci-2 spec §5.1: every seat of the crew
       if (sat && sitSeat) {
         seat = sitSeat; sitAt = t; sitThrottle = source.throttle(); acted = false; goalUsed = false; carded = countSit(sitSeat);
         const own = d.tactical.ships[CREW_SLOT], e = d.tactical.ships[enemySlot];
@@ -268,7 +267,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
-        readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },
+        readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },
         end: overlay.end,
         console: consoleView,
         crt: crtActive(view),
