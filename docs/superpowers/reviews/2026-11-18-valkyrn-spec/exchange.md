@@ -158,3 +158,82 @@ Confirmed: contracts.ts L34 has neither field. §6.2 and §7.1 add both to `Held
 
 ---
 
+# Round 2 (delta, reviewing 9cd401f6, effort medium, 139 s, 694787 in / 633447 cached / 11760 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P2] R2-F1 New positional signatures collide with existing ones: createTacticalState's second argument is already `slots`, and createDuel(layout, seed, opts) drops Sci-2's helmPlayer/crew arguments without saying where they go
+§6.1 writes `createTacticalState(seed, crewClass)`, but today's second parameter is the slot count, and tests call it with 3. §4.4 writes `createDuel(layout, seed, opts)` with `opts.crew` and `opts.cls`. Sci-2 fixes that signature as `createDuel(layout, seed, helmPlayer = 0, crew = 2)`, and its loadDuelSnapshot calls `createDuel(layout, seed, 0, n)`. The spec does not say whether helmPlayer moves into opts or whether opts is a fifth argument. · spec L105, L182-185; state.ts (tactical):L193 `createTacticalState(seed: number, slots = DUEL_CLASSES.length)`; tests/tacticalSlots.test.ts:L65 `createTacticalState(seed, 3)`, tests/duelModules.test.ts:L59, L122, tests/tacticalModel.test.ts:L244; Sci-2 spec L27, L39; step.ts:L106 (startRound passes helmPlayer positionally) · Both arguments are numbers, so a literal reading type-checks. `createTacticalState(1, 3)` would silently mean class 3, which is valkyrnLaser once the classes are appended, instead of three slots. Two implementers will pick different signatures for createDuel, and its call sites are startRound, loadDuelSnapshot and the runtime. · Pin both signatures. For example, `createTacticalState(seed, slots = 2, crewClass = ShipClass.Cutter)`. Then `createDuel(layout, seed, opts: { helmPlayer?: number; crew?: number; cls?: number } = {})`, replacing Sci-2's positional helmPlayer and crew, with startRound and loadDuelSnapshot updated to pass opts. Or keep Sci-2's positionals and add `cls` as a fifth argument.
+
+## Prior findings
+- R1-F1: resolved — §3.1 adds helmHoldsUnattended, and §4.4 L115-119 gives the rule: throttleThrust(d.throttle), plus headingTurn toward holdHeading when it is ≥ 0. Both functions exist (step.ts:L13, L22; throttle.ts:L20). The Hound keeps zero axes, because step.ts:L254-258 only sets axes when the Helm is attended.
+- R1-F2: resolved — §6.1 L182-185 sets the path: DuelState.crewClass comes from opts.cls, else the layout's shipClass, else Cutter. startRound, the snapshot header and loadDuelSnapshot carry it. §3.1 adds shipClass. §8 L268-270 sets the switch through opts.cls = valkyrnLaser. One thing for the plan: the validator at snapshot.ts:L136-137 compares systems.i.cls with DUEL_CLASSES and must be rewritten to use crewClass. §6.1 says it is validated, which covers this.
+- R1-F3: still open — The sim paths are covered (spec L177-181), but making laser nullable breaks code the spec does not name. (1) The hash validator computes bounds with `most(c => c.slots.laser.chargeUnits)`, `.shots` and `.burstGapTicks` over every SHIP_CLASSES entry (hash.ts:L186, L195-196). Once valkyrn is appended with laser null, these throw for every snapshot and checkpoint, including the Hound's, and §7.3 lists only the new gun bounds. (2) The view and telemetry models read the crew's laser unconditionally. consoleModel.ts:L90 reads `classOf(t, 0).slots.laser.shots` and situationModel.ts:L41 reads `classOf(t, CREW_SLOT).slots.laser`; both are crew slot 0, so the Flight console would crash. hitModel.ts:L29 reads `classOf(state, ship).slots.laser.chargeUnits` and telemetry.ts:L104 reads `classOf(tac, e.ship).slots.laser.shots`. Fix: state that the validator bounds take the maximum over classes whose laser is not null, and that each site above guards `laser === null`: no laser burst or range row, and no laser readout. Add a test that a Hound snapshot still validates with the Valkyrn classes present, and that the Flight console model builds for the gun Valkyrn.
+- R1-F4: resolved — §3.1 adds a crew field, and §4.4 L105-114 makes opts.crew the single source, lists the widened validations (local 1..4, online 2..4, codec 4) and lists the runtime sites at n = 1. §5 L133 checks against the crew, and the tests are at L282-284. The signature question is raised as a new P2.
+- R1-F5: resolved — physics.ts:L34-36 confirms that heading is an integer index with a fractional accumulator, so a tick moves the nose 2 or 3 indices at 2.37 steps per tick. With the band |d| ≤ 1, a 3-step from d = 2 lands on d = −1, inside the band, so the nose cannot cross it. The out-of-seat path uses headingTurn's AUTO_FACE_SIN band (about 1.78 indices on each side, so about 3.6 wide), which is also wider than a 3-step. Assuming turnStepsPerTick < 3 is sound for ShipClassDef; missiles are a separate MissileDef.
+- R1-F6: resolved — §7.2 L237-238 extends the rule to shots + gunShots and adds the cause 'gun' with a precedence order. This matches science.ts:L37-39. The test is at L293-294.
+- R1-F7: resolved — The §5.1 table (L144-159) assigns every input. The right button is the torpedo, there is no click-to-heading, the Flight seat never sends `heading`, and there is no HDG marker. Space is auto-face, and the laser fit's laser auto-fires, so it does not need Space.
+- R1-F8: resolved — I grepped `['\"](hound|cutter|scout|valkyrn)['\"]` across src/renderer/src. The only matches are hudModel.ts:L345, hullModel.ts:L5 and L44, fleet.ts:L3-4 and defs.ts:L70. All are either in the allowed list or named as sites to fix (spec L45-53). The hull field and the §4.5 silhouette address the Hound outline leak.
+- R1-F9: resolved — The §7.3 field table and bounds (L244-249) are consistent with the §7.2 counters: wear 0..7 with 8 per layer, hull 0..2 with 3 per hull point, room wear 0..5 with 6 per level. The reset rules and the overflow tie-break are at L220-236. Free entries hold zeros.
+- R1-F10: still open — The closest approach is taken on 'the round's segment' (L231), meaning one tick's old-to-new sweep, and the round ends on its first contact. That segment is the tick that crosses the circle boundary, at about 11.7 u per tick plus relative velocity. Its closest point to the centre is therefore its end near the entry side, not the aim line's closest approach. So the Room still depends on approach, which contradicts 'aim decides it, not the approach side'. The §10 test 'aiming at the stern from ahead hits Engines' (L292-293) also cannot pass. With the segment, the point lands in the near (Weapons) third. With the infinite line, a shot along the nose axis from ahead has p ≈ 0 (Shields). Fix: use the closest approach of the round's infinite line, through its position along its relative velocity, clamped to the chord inside the circle. Then restate the tests: a side-on target hit with an offset along its axis gives Weapons or Engines, and a nose-on shot gives Shields.
+- R1-F11: resolved — The muzzles sit at forward 21 and lateral ±12, which is about 24.2 u from the centre, outside the own 20 u circle (L208). Firing happens pre-move in applyWeaponsInput. stepRounds runs after flight and contacts and moves a round on its spawn tick (L223-227). The pip test's flight config `{gravity:false, edge:false, drag:0, stabilise:0}` matches FlightTuning (tuning.ts:L66-67).
+- R1-F12: resolved — HeldInput gains gunHeld and aim, both carried by the codec, checkpoint and replay (L190-191, L209). An invalid aim counts as −1. The clear-then-set order at L199-200 matches today's clear at step.ts:L257.
+
+## Verified
+- Heading is an integer index with a headingAcc accumulator (physics.ts:L34-36), so the integer aim band arithmetic in spec L195-198 holds
+- Hostility rule and cause order (science.ts:L33-39) match the spec's extension at L237-238
+- FlightTuning fields gravity/edge/drag/stabilise exist (tuning.ts:L66-67), so the pip test config at spec L295 is buildable
+- The id-literal grep over src/renderer/src matches only files in the allowed list or the listed fix sites (hudModel.ts:L345, hullModel.ts:L5/L44, fleet.ts:L3-4, defs.ts:L70)
+- Solo repair and extinguish rates exist (step.ts:L84 REPAIR_RATE_SOLO; fire.ts:L59 DUEL_EXTINGUISH_RATE_SOLO), as spec L111 assumes
+- holdHeading is cleared after the axes are taken today (step.ts:L256-257), consistent with spec L199-200
+- systems.i.cls is validated against SHIP_CLASSES bounds in hash.ts:L194 and against DUEL_CLASSES in snapshot.ts:L136-137
+
+## Not verified
+- Sci-2 is not merged on master (createDuel still takes only helmPlayer, state.ts:L69), so I checked the crew-of-n sites against the Sci-2 spec text, not against code
+- I did not check whether hullFor's call sites (the enemy window and console maps) can reach the layout's hull field without new plumbing
+- I did not check ENGINE_FACTOR values; I assumed they are ≤ 1, so the engine factor cannot push a tick's step to 3 or more indices
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `f543f9ab`. 3 accepted (2 reopened, 1 new), 0 rejected, 0 deferred. The reviewer resolved R1-F1, F2, F4, F5, F6, F7, F8, F9, F11 and F12.
+
+## R1-F3 [P1]: The required laser slot (reopened)
+
+Confirmed. The new evidence names readers outside the sim, including the bounds in the hash validator. §6.1 now says every reader of `slots.laser` guards null:
+- In the hash validator, the laser maxima are taken over classes with a laser, and the gun maxima over classes with a gun.
+- `consoleModel` drops the laser burst and range rows.
+- `situationModel` drops the laser sentence and gives the gun's reasons instead.
+- `hitModel` and telemetry count no laser hits.
+- The plan greps every read of `slots.laser` and lists it.
+
+§10 adds two null-laser tests: a Hound snapshot validates with the Valkyrn classes present, and the Flight-seat models build on the gun Valkyrn.
+
+## R1-F10 [P2]: Room by aim (reopened)
+
+Confirmed. A round moves about 11.7 u a tick, so on its last tick it has only just crossed the edge, and the closest point of that tick's short segment sits near the entry side.
+
+§7.2 now uses the round's infinite line of relative motion. On a hit, its closest point to the centre is the middle of the chord the round cuts through the circle. The spec states the consequence: a shot along the enemy's axis always strikes Shields, and choosing Weapons or Engines takes a shot from the side. §10's tests are rewritten to match.
+
+## R2-F1 [P2]: Signature collisions
+
+Confirmed: `createTacticalState`'s second parameter is the slot count, and Sci-2 fixes the positional parameters of `createDuel`. §4.4 pins both:
+- `createDuel(layout, seed, helmPlayer = 0, crew = 2, cls?)` keeps Sci-2's positional parameters and adds a fifth.
+- `createTacticalState(seed, slots, crewClass)`.
+- Every `opts.` reference is replaced.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-valkyrn-solo-ship-design.md
+
+<!-- end -->
+
+---
+

@@ -102,8 +102,11 @@ Allowed differences: Navigation and Weapons are one combined seat (§5); rooms w
 
 ### 4.4 Crew of one
 
-- The crew size has one source: `createDuel(layout, seed, opts)` with `opts.crew` (1..4). When the layout has `crew`,
-  `opts.crew` must equal it (else it throws). The Valkyrn always runs with crew 1; the Hound keeps 2..4 (Sci-2).
+- Signatures: Sci-2's `createDuel(layout, seed, helmPlayer = 0, crew = 2)` gains a fifth argument,
+  `createDuel(layout, seed, helmPlayer = 0, crew = 2, cls?: number)`; `startRound` and `loadDuelSnapshot` pass all five.
+  `createTacticalState(seed, slots = DUEL_CLASSES.length, crewClass = ShipClass.Cutter)` gains a third.
+- The crew size has one source: `createDuel`'s `crew` argument (1..4). When the layout has `crew`, the argument must
+  equal it (else it throws). The Valkyrn always runs with crew 1; the Hound keeps 2..4 (Sci-2).
 - Widened validations, all local: `createDuel` accepts 1..4; the snapshot header's `playerCount` 1..4; the single
   player `DuelInit.playerCount` 1..4. Online keeps 2..4 (the host form and the network producers reject 1); the codec
   limit stays 4.
@@ -177,10 +180,14 @@ New `ShipClassDef` entries in `defs.ts`: `valkyrn` (gun) and `valkyrnLaser` (the
 - `slots` becomes `{ laser: LaserDef | null; gun: GunDef | null; missile: MissileDef }`. Cutter and Hunter: `gun: null`.
 - With `laser: null`: `laserCharge` stays 0, `laserTargeted` false, and charge, hold, lock-targeting, auto-fire and burst
   are skipped. The commands `laserLock`, `laserCharge` and `laserFrequency` are answered `unavailable` (a new command
-  result; the refusal flash reads `NO LASER`). The weak shield frequency (Science Level 2) affects the laser only, so on
+  result; the refusal flash reads `NO LASER`). Every reader of `slots.laser` guards `null`, among them: the hash
+  validator's bounds (`hash.ts`: the laser maxima are taken over classes whose laser is not null, and the gun bounds
+  over classes whose gun is not null), `render/duel/consoleModel.ts` (no laser burst or range row), `situationModel.ts`
+  (no laser sentence or refusal; the gun's reasons instead: `GUN OVERHEAT`, `WEAPONS OFFLINE`), `hitModel.ts` and
+  `sim/duel/telemetry.ts` (no laser counts). The plan greps every `slots.laser` read and lists it. The weak shield frequency (Science Level 2) affects the laser only, so on
   the gun Valkyrn it is shown but has no effect: the one parity exception, testable with the laser fit.
-- `createTacticalState(seed, crewClass)` takes the crew slot's class index (default Cutter); the Hunter's slot is
-  unchanged. The duel holds it as `DuelState.crewClass` (set by `createDuel` from `opts.cls`, else the layout's
+- `createTacticalState(seed, slots, crewClass)` takes the crew slot's class index (default Cutter); the Hunter's slot is
+  unchanged. The duel holds it as `DuelState.crewClass` (set by `createDuel` from its `cls` argument, else the layout's
   `shipClass`, else Cutter); `startRound` passes it to the next round's `createDuel`; the snapshot header carries it and
   `loadDuelSnapshot` passes it back. `systems[0].cls` (already hashed) must equal it (validated).
 - The Hunter is unchanged.
@@ -228,12 +235,15 @@ New `ShipClassDef` entries in `defs.ts`: `valkyrn` (gun) and `valkyrnLaser` (the
 - **Shielded enemy** (`shields > 0`): the hit adds 1 to the target's `gunWear`; at `GUN_HITS_PER_LAYER` 8 it strips a
   layer (`shields−−`, `shieldClock = 0`, the same `stripped` event a laser strip makes) and zeroes `gunWear`. Any strip
   (laser, missile or gun) zeroes `gunWear`.
-- **Unshielded enemy**: the Room is found from the **closest-approach point** of the round's segment to the enemy centre
-  (aim decides it, not the approach side): project that point's offset from the centre on the enemy's nose axis, `p`;
+- **Unshielded enemy**: the Room is found from the **closest-approach point** to the enemy centre of the round's line
+  of relative motion (the infinite line through the round's position along its velocity minus the enemy's), which on a
+  hit is the middle of the chord it cuts through the circle: aim decides it, not the tick the round crossed the edge.
+  Project that point's offset from the centre on the enemy's nose axis, `p`;
   `p > r/3` Weapons, `p < −r/3` Engines, else Shields (ties at exactly ±r/3 go to Shields). The hit adds 1 to the
   target's `gunHull` (every `GUN_HITS_PER_HULL` 3: hull −1, `gunHull` back to 0) and 1 to `gunRoomWear[room]` (every
   `GUN_HITS_PER_LEVEL` 6: that Room's level +1, capped at 2, wear back to 0; at level 2 the wear stays 0 and only hull
-  counts). A Room repaired one level zeroes its wear.
+  counts). A Room repaired one level zeroes its wear. So a shot along the enemy's axis (from ahead or astern) always
+  strikes Shields; to choose Weapons or Engines the pilot attacks from the side and aims fore or aft (a mastery skill).
 - **Hostility** (Sci-1): the crew's first gun round turns the enemy hostile, as a laser release does. The rule reads
   `shots + gunShots`, and the `hostile` cause union gains `'gun'` (precedence laser, gun, missile, clock).
 - Events: `gunFire` (ship, muzzle) and `gunHit` (ship, Room or −1 for a shield hit, the closest-approach point) for the
@@ -266,7 +276,7 @@ the `gunHits` counter, for completeness (the Valkyrn is not online).
 - The weapon cards follow the class's slots: **GUN** (heat, `READY` / `OVERHEAT` / `OFFLINE`) and **TORPEDO** (`MAG n/4`,
   range, target room); with the laser fit, LASER and TORPEDO exactly as on the Hound.
 - **Developer switch** (Settings, single player only): "Valkyrn: fit laser instead of gun". On, the Valkyrn duel starts
-  with `opts.cls` = `valkyrnLaser` (the Valkyrn's hull and flight, the Cutter's double laser and torpedo). The class index
+  with `cls` = `valkyrnLaser` (the Valkyrn's hull and flight, the Cutter's double laser and torpedo). The class index
   is in the duel state, its hash and the snapshot header (§6.1), so a rematch and a replay keep it.
 
 ## 9. Picking the ship
@@ -279,22 +289,24 @@ the `gunHits` counter, for completeness (the Valkyrn is not online).
 ## 10. Tests and gates
 
 - **Parity** (§3.3) and the no-id-literal test (§3.2).
-- **Crew of one**: `createDuel` at n = 1 (and a throw when `opts.crew` disagrees with the layout's `crew`); a snapshot
+- **Crew of one**: `createDuel` at n = 1 (and a throw when the `crew` argument disagrees with the layout's `crew`); a snapshot
   round trip at n = 1; the downed pilot loses the round; the out-of-seat rule flies throttle and held heading on the
   Valkyrn and zero axes on the Hound.
-- **Class**: `crewClass` from the layout, from `opts.cls`, kept by a rematch and a snapshot round trip; `systems[0].cls`
+- **Class**: `crewClass` from the layout, from the `cls` argument, kept by a rematch and a snapshot round trip; `systems[0].cls`
   validated; the gun Valkyrn never emits a `laser` event and answers `laserLock` / `laserCharge` / `laserFrequency`
   `unavailable`.
 - **Aim**: the nose settles on a fixed aim with no turn-sign flip over 60 ticks, within one index; A/D and `face` win;
   an invalid aim counts as −1; aim sets `holdHeading`; it rides the codec, checkpoint, replay, hash and snapshot.
 - **Gun**: interval and alternate muzzles; heat, the lockout and its length; Weapons level 1 halves cooling, level 2
   stops fire; rounds hit the ship / an asteroid / the planet and end, and end at their life; the pool overflow rule;
-  shield wear strips a layer at 8 and any strip zeroes it; the Room by closest approach from the front, side and rear
-  (aiming at the stern from ahead hits Engines); hull every 3 hits; room level every 6; repair zeroes the wear; the first
+  shield wear strips a layer at 8 and any strip zeroes it; the Room by closest approach (a side-on shot offset forward of the
+  centre hits Weapons, aft hits Engines; a shot along the axis from ahead or astern hits Shields); hull every 3 hits; room level every 6; repair zeroes the wear; the first
   gun round turns the enemy hostile with cause `gun`.
 - **Lead pip**: with `DEFAULT_FLIGHT` replaced by `{ gravity: false, edge: false, drag: 0, stabilise: 0 }` and the Hunter
   coasting, a round fired along the pip's bearing passes within the Hunter's radius; with the default flight far from the
   planet (≥ 1500 u) it passes within 10 u of the predicted point.
+- **Null laser**: a Hound snapshot and checkpoint still validate with the Valkyrn classes in `SHIP_CLASSES`; the Flight
+  console, situation, hit and telemetry models build for the gun Valkyrn.
 - **View**: the crosshair, pip, heat bar, the Valkyrn silhouette and every new mark on the CRT amber ramp (`crtColours`).
 - **Gate**: a scripted Valkyrn pilot (aims at the pip, fires in bursts under the heat limit, launches torpedoes in
   range, stands to repair a level-2 Room and returns) over the duelGates seeds: median round 3–5 minutes and the Hunter
