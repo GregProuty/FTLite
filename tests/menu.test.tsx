@@ -64,14 +64,20 @@ describe('multiplayer', () => {
 });
 
 describe('the forms', () => {
-  it('offers the duel Host form (no capacity) and submits it', () => {
+  it('offers the duel Host form with the CREW choice (2 3 4, default 3) and submits the crew picked', () => {
     const host = vi.fn(async () => ({ ok: true as const })), join = vi.fn(() => new Promise<never>(() => {}));
     const { actions } = renderUi({ api: { host, join } });
     act(() => actions.setStatus({ ...idle, actions: ['host', 'join', 'reconnect'] }));
     click('multiplayer'); click('host');
     expect(screen.queryByTestId('capacity')).toBeNull(); expect(screen.getByTestId('host-form').querySelector('select')).toBeNull();
-    expect(text('host-note')).toBe('A duel for two: one of you flies the Helm, the other mans Weapons.');
-    fireEvent.submit(screen.getByTestId('host-form')); expect(host).toHaveBeenCalledWith({ mode: 'duel', capacity: 3 });
+    expect(text('host-note')).toBe('A crew of two, three or four: Helm, Weapons and Science; a fourth works on foot. Empty seats stand idle aboard.');
+    expect(text('crew-choice')).toContain('CREW');
+    const pressed = () => ['crew-2', 'crew-3', 'crew-4'].map((id) => screen.getByTestId(id).getAttribute('aria-pressed'));
+    expect(pressed()).toEqual(['false', 'true', 'false']);
+    expect(document.activeElement).toBe(screen.getByTestId('create-room'));
+    click('crew-2'); expect(pressed()).toEqual(['true', 'false', 'false']); expect(host).not.toHaveBeenCalled();   // a crew button never submits
+    click('crew-4'); expect(pressed()).toEqual(['false', 'false', 'true']);
+    fireEvent.submit(screen.getByTestId('host-form')); expect(host).toHaveBeenCalledWith({ mode: 'duel', capacity: 4 });
   });
   it('validates the room code on submit', () => {
     const join = vi.fn(() => new Promise<never>(() => {})), { actions } = renderUi({ api: { join } });
@@ -203,6 +209,7 @@ describe('the session page and the strip', () => {
     const hostLobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready', 'leave'],
       snapshot: { capacity: 2, joinCode: 'ABCDEFGH', seats, compatibility: { modeId: 'duel' } } as never };
     act(() => actions.setStatus(hostLobby));
+    expect(text('roster')).toContain('P1: READY'); expect(text('roster')).toContain('P2: READY');
     expect(screen.queryByTestId('seat-plan')).toBeNull(); expect(screen.queryByTestId('swap-seats')).toBeNull();
     click('start'); expect(start).toHaveBeenCalledWith(0);
     act(() => actions.setStatus({ ...hostLobby, role: 'guest', ownSeat: 1, actions: ['ready', 'leave'] }));

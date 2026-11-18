@@ -80,8 +80,11 @@ export function availabilityText(v: MenuView): string {
     ? ERRORS['online-disabled']! : 'Reconnect your saved seat to check the host and the last committed checkpoint.';
 }
 
+/** A lobby seat's line. A duel seat (Sci-2 spec §5.3): EMPTY (no one has claimed it), JOINED (connected, not ready), READY,
+ *  DISCONNECTED (claimed, not connected). The sector keeps its Bot labels. */
 export function seatLabel(status: OnlineStatus, pid: number): string {
   const seat = status.snapshot?.seats.find((s) => s.seatId === pid);
+  if (isDuel(status)) return ` P${pid + 1}: ${!seat?.occupied ? 'EMPTY' : !seat.connected ? 'DISCONNECTED' : seat.ready ? 'READY' : 'JOINED'} `;
   return ` P${pid + 1}: ${!seat?.occupied ? 'Bot' : !seat.connected ? 'Bot (human disconnected)' : seat.ready ? 'Ready' : 'Not ready'} `;
 }
 /** A duel room (H-2 spec §2): the lobby shows the seat plan and Start carries the Helm player. */
