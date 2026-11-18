@@ -1,0 +1,67 @@
+{
+  "verdict": "ready",
+  "findings": [
+    {
+      "severity": "P3",
+      "title": "Task 4 Step 16 still carries the old conditional git-add note for duelRecord.ts",
+      "claim": "Step 16's `git add` now always lists `src/renderer/src/net/duelRecord.ts` and `tests/duelInput.test.ts`. The note below it still reads \"(Add src/renderer/src/net/duelRecord.ts and any fake-pointer test file if Steps 4 or 13 changed them.)\". That is a leftover of the conditional that R1-F7 removed, and it contradicts the self-review line saying no step depends on how a sibling turned out.",
+      "evidence": "plan Task 4 Step 16, git add line (now includes net/duelRecord.ts and tests/duelInput.test.ts) and the parenthetical directly after the commit block; plan Self-review 'Placeholders' line (L2463)",
+      "why": "It is harmless, but it tells executors to probe for a change that Step 13 now always makes.",
+      "fix": "Delete the parenthetical. If other fake PointerSource objects outside tests/duelInput.test.ts get `leftHeld`, name those files explicitly instead."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "The Step 5 listing keeps HULL_IDS as its last export. hullModel derives HullId from it through an `import type`, which TypeScript allows in a typeof position. hullModel.ts and fleet.ts are both in the literal test's ALLOWED set (plan L545). Decision 6 now states Part i's layout as fact, and the z.string fallback is gone."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Task 8 Step 8 rewrites line 39 to find the 'Multiplayer' section, and the Files line lists :36,39."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "pushGunHits pops on e.stripped. Part i's DuelEvent has `stripped: boolean` (Part i plan L1662), and ViewEvent = DuelEvent | ContactEvent (fxModel.ts:14), so the typed test array compiles without `as never`. The expected sequence spark, spark, pop, spark with one '-1' matches the code. The hull heuristic and its limit are documented."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "Step 4 leaves Part i's laserSituation guard alone. Step 5 keeps only chargeRow. hitModel, contactModel and consoleModel are dropped from Files, git add and the file table."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "leadPipFor(state, i) is added and tested. targetOf exists (state.ts:213) and ships carry `active` (state.ts:22). The current Part iii plan no longer contains leadPip at all, so the remaining cross-plan wiring is outside this subject."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "The optional `release` source gets pointerup and blur listeners and removes them in destroy. It matches EventSource's (e: never) signature (input.ts:84-87), and destroy's single loop (input.ts:260) can take the extra calls. duelMode passes window. The new test uses the existing fakeTarget's fire and count and the existing `half`."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "Decision 6's conditional and the gunLocked note are removed. Step 13 is an unconditional `.min(1)` edit, and duelRecord.ts is in Files and git add. One stale parenthetical in Step 16 is raised above as a P3."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "Decision 11 picks a rule. The runtime's `look` flag zeroes moveX and drops face. The rig exposes `hold` (plan L803, L807), and the test asserts moveX 0 and no face."
+    }
+  ],
+  "verified": [
+    "createPointerSource at .worktrees/sci-2/src/renderer/src/app/duel/input.ts:204-262 has the `on` loop, destroy and clear that Task 4's edits anchor on",
+    "tests/duelInput.test.ts:5-11 fakeTarget provides fire() and count() as the new left-button test uses them",
+    "fxModel.ts:14 ViewEvent includes DuelEvent; Part i plan L1662 gunHit carries stripped",
+    "state.ts:213 targetOf(state, i) exported; state.ts:22 active: boolean on bodies, as leadPipFor reads",
+    "plan L545 ALLOWED includes render/tactical/hullModel.ts and sim/ship/fleet.ts, so the HullId comment's quoted ids and HULL_IDS are allowed",
+    "plan L803/L807 rig returns hold, used by the revised ship-view test"
+  ],
+  "not_verified": [
+    "Whether other test files construct a PointerSource object literal that needs `leftHeld`. I did not search beyond duelInput.test.ts.",
+    "How the current Part iii plan reads the lead pip. It no longer references leadPip, and I did not review it beyond that grep."
+  ]
+}

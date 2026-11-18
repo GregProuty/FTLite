@@ -1013,7 +1013,7 @@ export function seatOf(d: DuelState, pid: number): Seat {
   });
 ```
 
-Any test object typed `PointerSource` gains `leftHeld: () => false`.
+No test builds a `PointerSource` object by hand on sci-2 (the tests that use one call `createPointerSource` on a fake target), so no fake needs `leftHeld`.
 
 `app/duel/mapRequests.ts` becomes:
 ```ts
@@ -1305,7 +1305,6 @@ Expected: both exit 0.
 git add src/renderer/src/app/duel/controls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/app/duel/scene.ts src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/sitModel.ts src/renderer/src/render/duel/readoutModel.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/scienceModel.ts src/renderer/src/ui/duel/TabStrip.tsx src/renderer/src/net/duelRecord.ts tests/valkyrnRuntime.test.ts tests/duelInput.test.ts
 git commit -m "feat(valkyrn): the Flight seat and the runtime at a crew of one (aim from the pointer, gun on the left button, torpedo on the right, Tab ship view)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
-(Add `src/renderer/src/net/duelRecord.ts` and any fake-pointer test file if Steps 4 or 13 changed them.)
 
 ---
 
