@@ -106,7 +106,7 @@ function duelSummaryShape({ uint }: Primitives) {
     repairsStarted: pair, walkingTicks: pair, repairingTicks: pair };
 }
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
- *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`. */
+ *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`. */
 export const duelWire: ModeWire<DuelSnapshot> = {
   commands({ index }) {
     return [
@@ -119,6 +119,7 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('laserCharge'), held: z.boolean() }).strict(),
       z.object({ kind: z.literal('missileLaunch') }).strict(),
       z.object({ kind: z.literal('throttle'), level: z.number().finite() }).strict(),
+      z.object({ kind: z.literal('heading'), heading: z.number().finite() }).strict(),   // Feel-ii's click-to-heading
       z.object({ kind: z.literal('contactScan'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('designate'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('laserFrequency'), freq: z.number().int() }).strict(),

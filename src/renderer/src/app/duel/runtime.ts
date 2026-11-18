@@ -10,12 +10,11 @@ import { Life, LifeState, Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
-import { stepDuelTick } from '../../sim/duel/step';
+import { helmTurn, stepDuelTick } from '../../sim/duel/step';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim/duel/summary';
 import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
 import type { ShipLayout } from '../../sim/ship/schema';
-import { autoFaceTurn } from '../../sim/tactical/hunter';
 import { stepSoloFlight } from '../../sim/tactical/physics';
 import { CONTACT_MAX_LEVEL, createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { TICK_HZ } from '../../sim/tuning';
@@ -221,17 +220,15 @@ export interface DuelRuntime {
 
 const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
-const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
+const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 const shipBody = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
-/** The turn the Helm's held input flies (the sim's rule, sim/duel/step.ts): A/D, else auto-face's turn, else none. */
-export function heldTurn(d: DuelState, h: HeldInput): number {
-  const turn = Math.sign(h.moveX) || 0;
-  return turn !== 0 ? turn : h.face === true && d.tactical.outcome === Outcome.Running ? autoFaceTurn(d.tactical, 0) : 0;
-}
+/** The turn the Helm's held input flies (the sim's rule, helmTurn in sim/duel/step.ts): A/D, else auto-face's turn, else
+ *  the held heading's (Feel-ii), else none. */
+export function heldTurn(d: DuelState, h: HeldInput): number { return helmTurn(d, { ...h, moveX: Math.sign(h.moveX) || 0 }); }
 const hitCounts = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.planetHits, s.asteroidHits, s.shipHits]);
 
 export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {

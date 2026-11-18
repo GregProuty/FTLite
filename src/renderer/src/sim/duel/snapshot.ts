@@ -1,6 +1,6 @@
 // The duel snapshot (engine refactor spec §6, an R-1 deliverable). The values are exactly flattenDuel: SIM_VERSION, the
 // tactical state in flattenTactical's order (the space then the ship module), presence, repair, the round (H-2 spec
-// §7), the helm throttle (Artemis-ii), then the interior through the sector snapshot path.
+// §7), the helm throttle (Artemis-ii) and held heading (Feel-ii), then the interior through the sector snapshot path.
 // Regenerated, not stored: the map (from the seed, checked by mapHash), the broad-phase grid, the repair points and
 // Derived (from the duel layout). Not stored: the per-tick events. Every check runs before any allocation, including
 // every tactical field's bounds and slot invariants, presence and repair, except the final one, which restores into a
@@ -23,7 +23,7 @@ import { SIM_VERSION } from '../tuning';
 import { flattenDuel, hashDuel, mapHash } from './hash';
 import { unflattenDuelModules } from './modules';
 import { createDuel, disposeDuel, type DuelState } from './state';
-import { validThrottle } from './throttle';
+import { validHoldHeading, validThrottle } from './throttle';
 
 export const DUEL_SNAPSHOT_FORMAT = 1;
 export const DUEL_PLAYERS = 2;
@@ -126,7 +126,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
   // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
-  const space = seed.spaceLength, roundAt = 1 + space + 2 + 3, helmAt = roundAt + 4, interiorAt = helmAt + 1;
+  const space = seed.spaceLength, roundAt = 1 + space + 2 + 3, helmAt = roundAt + 4, interiorAt = helmAt + 2;
   if (values.length !== interiorAt + lay.interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
@@ -153,6 +153,9 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // The helm module (Artemis spec §5.1): the throttle, an integer level in −1..4.
   const level = values[helmAt]!;
   if (!validThrottle(level)) throw new Error(`duel snapshot throttle ${level} is invalid`);
+  // Feel-ii (spec §1.1): the held heading, −1 or a heading index 0..255.
+  const holdHeading = values[helmAt + 1]!;
+  if (!validHoldHeading(holdHeading)) throw new Error(`duel snapshot held heading ${holdHeading} is invalid`);
   const interior = values.slice(interiorAt);
   validateCanonicalValues(layout, derived, DUEL_PLAYERS, interior);
   // The identity values unflatten checks (flatten.ts), required here so nothing is allocated for a snapshot it would refuse.
