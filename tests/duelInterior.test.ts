@@ -123,7 +123,8 @@ describe('healing and revive feedback in the interior (duel polish i spec §D)',
       Life.state[e1] = LifeState.Downed;
       view.draw(d, crewAt(d), 1, 1 / 60);
       const n0 = count(view.container);
-      expect(revived()).toHaveLength(DUEL_CREW_MAX);   // one per player of the largest crew (Sci-2 spec §7) expect(revived().every((t) => !t.visible)).toBe(true);
+      expect(revived()).toHaveLength(DUEL_CREW_MAX);   // one per player of the largest crew (Sci-2 spec §7)
+      expect(revived().every((t) => !t.visible)).toBe(true);
       Life.state[e1] = LifeState.Conscious; d.tactical.tick += 1;
       view.draw(d, crewAt(d), 1, 1 / 60);
       const shown = revived().filter((t) => t.visible);
