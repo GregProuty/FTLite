@@ -17,7 +17,7 @@ export function staticImports(source: string): { specifier: string; typeOnly: bo
 }
 const slash = (p: string): string => p.replaceAll('\\', '/');
 const UI_LIB = /^(?:react|react-dom|zustand)(?:\/|$)/;
-const NO_UI_LIB_ROOTS = [...['sim', 'authority', 'clientControl', 'headless', 'net', 'events'].map((d) => `src/renderer/src/${d}`), 'src/network', 'src/shared', 'src/main', 'src/preload', 'src/utility', 'src/worker'];
+const NO_UI_LIB_ROOTS = [...['sim', 'authority', 'clientControl', 'headless', 'net', 'events'].map((d) => `src/renderer/src/${d}`), 'src/network', 'src/shared', 'src/main', 'src/preload', 'src/worker'];
 const UI_FORBIDDEN_VALUE_DIRS = [...['sim', 'authority', 'clientControl', 'net'].map((d) => slash(resolve(`src/renderer/src/${d}`)) + '/'), slash(resolve('src/network')) + '/'];
 
 describe('staticImports', () => {

@@ -13,6 +13,8 @@ import { DEFAULT_SEED, readMode, readSeed } from './app/duel/mode';
 import { startFlightMode } from './app/duel/flightMode';
 import { startDuelMode } from './app/duel/duelMode';
 import { createOnlineBridge } from './app/onlineBridge';
+import { createPageOnline } from './app/online/pageSession';
+import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
 import { createOnlineDuelSession } from './app/duel/onlineDuel';
@@ -75,7 +77,11 @@ async function startApp(): Promise<void> {
   audio.setVolumes(settings);
   renderer.setShake?.(settings.shake);   // Feel-i: the console maps' screen shake
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
-  const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
+  // The online session runs in this page (web build spec §3.3); Electron's preload hands it main's resolved config.
+  const onlineConfig = window.ftlite?.onlineConfig;
+  const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig) ? createPageOnline(onlineConfig, { window }) : null;
+  const bridge = pageOnline ? createOnlineBridge(pageOnline) : null;
+  const offPrepareExit = window.ftlite?.onPrepareExit?.(() => pageOnline ? pageOnline.prepareExit() : Promise.resolve());
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const win = window.ftlite?.window;
@@ -146,7 +152,7 @@ async function startApp(): Promise<void> {
   renderer.app.ticker.add(() => session.frame());
   renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
   window.addEventListener('beforeunload', () => {
-    offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
+    offPrepareExit?.(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();
   }, { once: true });
 }

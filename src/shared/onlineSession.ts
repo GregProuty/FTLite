@@ -1,5 +1,6 @@
 import { SERVICE_ERROR_RETRYABLE, isRoomId, validateCompatibility, validateRoomSnapshot, validateCheckpointMetadata, type SessionCheckpointMetadata, type RoomCompatibility, type RoomSnapshot, type ServiceErrorCode } from './roomSession';
 import { rtcKeys, rtcRecord } from './rtcSession';
+import type { PageOnlineConfig } from './onlineConfig';
 
 /** Fixed public outcomes only. Provider messages and credential material stay in main. */
 export const ONLINE_ERROR_CODES = [
@@ -128,25 +129,12 @@ export function validateOnlineResult(value: unknown): value is OnlineResult {
 }
 
 export type Unsubscribe = () => void;
-export const ONLINE_CHANNELS = {
-  host: 'online:host', join: 'online:join', ready: 'online:ready', 'remove-seat': 'online:remove-seat',
-  'view-state': 'online:view-state', reconnect: 'online:reconnect', rehost: 'online:rehost', start: 'online:start', retry: 'online:retry',
-  leave: 'online:leave', 'forget-seat': 'online:forget-seat',
-} as const satisfies Record<OnlineAction['type'], string>;
-export const ONLINE_STATUS_CHANNEL = 'online:status';
-export const ONLINE_PORT_CHANNEL = 'online:port';
-export const ONLINE_PORT_SOURCE = 'ftlite:online:main';
-/** The link figures channel (H-2 spec §8): no argument; answers OnlineLinkStats or null. */
-export const ONLINE_LINK_STATS_CHANNEL = 'online:link-stats';
 export interface OnlineStatusEnvelope { version: 1; revision: number; status: OnlineStatus }
 export function validateOnlineStatusEnvelope(value: unknown): value is OnlineStatusEnvelope {
   return rtcRecord(value) && rtcKeys(value, ['version', 'revision', 'status']) && value.version === 1
     && positive(value.revision) && validateOnlineStatus(value.status);
 }
-export function validateOnlinePortEnvelope(value: unknown): value is { version: 1; descriptor: OnlinePortDescriptor } {
-  return rtcRecord(value) && rtcKeys(value, ['version', 'descriptor']) && value.version === 1 && validateOnlinePortDescriptor(value.descriptor);
-}
-/** Ordinary contextBridge API. MessagePorts use the renderer-owned facade instead. */
+/** The page online facade's API (web build spec §3.3): the shape of the former preload online API. */
 export interface OnlinePreloadApi {
   /** Host a duel room for a crew of 2, 3 or 4 (Sci-2 spec §4.5); `{ mode: 'sector', capacity }` is the test-only sector entry (spec §10). */
   host(room: { mode: 'duel'; capacity: DuelCrewSize } | { mode: 'sector'; capacity: number }): Promise<OnlineResult>;
@@ -171,13 +159,23 @@ export const DUEL_RECORD_CHANNEL = 'duel:record';
 export const WINDOW_FULLSCREEN_CHANNEL = 'app:fullscreen';
 /** The key the main process toggles fullscreen on (its before-input-event handler); Settings lists it from here. */
 export const FULLSCREEN_KEY = 'F11';
+/** OS sleep and wake, pushed by main from powerMonitor (web build spec §3.3 job 5). */
+export const APP_SUSPEND_CHANNEL = 'app:suspend';
+export const APP_RESUME_CHANNEL = 'app:resume';
+/** The close handshake (spec §3.3 job 6): main pushes a request number; the page answers it by invoke when its exit save is done. */
+export const APP_PREPARE_EXIT_CHANNEL = 'app:prepare-exit';
+/** The page's online configuration, read once by the preload (spec §3.3 job 7). */
+export const ONLINE_CONFIG_CHANNEL = 'app:online-config';
 export interface WindowPreloadApi {
   isFullScreen(): Promise<boolean>;
   /** Resolves with the requested state once asked, or the current one when the request is refused. */
   setFullScreen(on: boolean): Promise<boolean>;
 }
 export interface FtlitePreloadApi {
-  online: OnlinePreloadApi;
+  /** Main's resolved online configuration, frozen; the page builds its own session from it (web build spec §3.3). */
+  onlineConfig: PageOnlineConfig;
+  /** Register the page's exit save for the close handshake; one handler at a time. */
+  onPrepareExit?(handler: () => Promise<void>): Unsubscribe;
   /** Append one duel playtest record (shared/duelRecord.ts) to this machine's playtest log (H-2 spec §8). */
   recordDuel?(record: unknown): Promise<boolean>;
   onSuspend(callback: () => void): Unsubscribe;

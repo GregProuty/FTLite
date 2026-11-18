@@ -39,8 +39,6 @@ export function validStreamAttachmentOptions(value: unknown): value is StreamAtt
 export interface HostIdentity {
   modeId: string; schemaVersion: number; simVersion: number; contentDigest: string; hostGeneration: number;
 }
-export const TRANSPORT_CHANNEL = 'net:transport-connect';
-export const TRANSPORT_READY_CHANNEL = 'net:transport-ready';
 export function isHostIdentity(value: unknown): value is HostIdentity {
   if (!value || typeof value !== 'object') return false;
   const v = value as HostIdentity;

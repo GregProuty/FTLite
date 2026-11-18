@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:determinism": "tsx scripts/determinism/run.ts",
+    "test:worker-boot": "electron-vite build && electron scripts/network/worker-boot.cjs",
     "test:host-runtime": "electron-vite build && tsx scripts/network/host-smoke.ts",
     "test:rtc-runtime": "electron-vite build && tsx scripts/network/rtc-smoke.ts",
     "test:room-service-runtime": "electron-vite build && tsx scripts/network/room-service-smoke.ts",

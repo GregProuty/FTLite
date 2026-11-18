@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTransportController } from '../src/network/transport/controller';
-import { installTransportBridge } from '../src/network/transport/bridge';
-import { rtcLocalDeadline, RTC_REQUEST_CHANNEL, type RtcAttemptOptions, type RtcResponse } from '../src/shared/rtcSession';
+import { connectTransportPort } from '../src/network/transport/bridge';
+import { rtcLocalDeadline, type RtcAttemptOptions, type RtcResponse } from '../src/shared/rtcSession';
 import type { PortEndpoint } from '../src/shared/netSession';
 import type { Link, ChannelKind } from '../src/renderer/src/net/contracts';
 import type { RtcPeerOptions } from '../src/network/rtc/peer';
@@ -134,11 +134,11 @@ describe('hidden RTC bridge', () => {
     const h = harness(), early = h.start('early'); early.port.receive({ version: 1, type: 'data', id: 1, kind: 'reliable-ordered', bytes: new Uint8Array([1]) });
     expect(early.port.closed).toBe(true); expect(h.peers[0]!.close).toHaveBeenCalledOnce(); h.controller.dispose();
   });
-  it('rejects an unexpected window source and releases every bridge port on pagehide', () => {
-    const target = new EventTarget() as EventTarget & { postMessage: ReturnType<typeof vi.fn> }; target.postMessage = vi.fn();
-    const bridge = installTransportBridge(target as unknown as Window, identity);
-    const port = { close: vi.fn() };
-    const event = new Event('message'); Object.assign(event, { source: {}, data: { channel: RTC_REQUEST_CHANNEL }, ports: [port] }); target.dispatchEvent(event);
-    expect(port.close).toHaveBeenCalledOnce(); target.dispatchEvent(new Event('pagehide')); bridge.dispose();
+  it('answers a transport port with transport-ready for its identity only (web build spec §3.2)', async () => {
+    const channel = new MessageChannel();
+    const received = new Promise(resolve => { channel.port2.addEventListener('message', event => resolve((event as MessageEvent).data), { once: true }); channel.port2.start(); });
+    connectTransportPort(channel.port1, identity);
+    expect(await received).toEqual({ kind: 'transport-ready', protocolVersion: 2, ...identity });
+    channel.port1.close(); channel.port2.close();
   });
 });
