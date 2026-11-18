@@ -2,7 +2,7 @@
 // (homing torpedo spec §3), the lock marker on the enemy's locked room (both consoles, parent §7a), the Weapons layer
 // (bearing ring, both laser arcs, the enemy's bearing and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { missileOf, targetOf } from '../../sim/tactical/state';
+import { targetOf } from '../../sim/tactical/state';
 import { laserEligible } from '../../sim/tactical/weapons';
 import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';

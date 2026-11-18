@@ -82,7 +82,8 @@ function touches(m: Missile, radius: number, x: number, y: number, r: number): b
  *  under the impact point, since a lock names a room on the target. Shields are bypassed (spec §7b, Q20). */
 function land(state: TacticalState, m: Missile, k: number): void {
   const target = state.ships[k]!, sys = state.systems[k]!;
-  const room = (k === m.owner ? roomAtImpact(target, m.x, m.y) : state.systems[m.owner]!.lock) as 0 | 1 | 2;
+  const owner = state.systems[m.owner]!;   // the lock names a room on the owner's target; any other ship takes the impact room
+  const room = (k === owner.target && k !== m.owner ? owner.lock : roomAtImpact(target, m.x, m.y)) as 0 | 1 | 2;
   if (sys.rooms[room] < 2) sys.rooms[room]++;
   sys.hull = Math.max(0, sys.hull - classOf(state, m.owner).slots.missile.hull);
   if (k !== m.owner) state.systems[m.owner]!.missileHits++;   // a self-hit is not a hit; the event's target tells them apart
