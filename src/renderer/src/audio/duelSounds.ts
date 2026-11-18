@@ -17,7 +17,7 @@ export interface EventSounds { sounds: SoundRequest[]; duck: boolean; combat: bo
 
 export function duelEventSounds(events: readonly ViewEvent[], pan: Pan): EventSounds {
   const sounds: SoundRequest[] = [];
-  let duck = false, combat = false;
+  let duck = false, combat = false, clicked = false;
   for (const e of events) {
     if (e.kind === 'laser') {
       combat = true;
@@ -31,6 +31,9 @@ export function duelEventSounds(events: readonly ViewEvent[], pan: Pan): EventSo
       sounds.push({ key: 'explosionCrunch', gain: e.cause === 'ship' ? 1 : 0.6, pan: pan(e.x, e.y) });
     } else if (e.kind === 'contact') {
       sounds.push({ key: 'impactMetal', gain: e.ship === CREW ? 0.6 : 0.3, rate: 0.8, pan: pan(e.x, e.y) });
+    } else if (e.kind === 'gunHit') {   // Valkyrn spec §7.4: a click per hit, at most one per frame (the gun fires every 6 ticks)
+      combat = true;
+      if (!clicked) { clicked = true; sounds.push({ key: 'impactMetal', gain: 0.35, rate: 1.6, pan: pan(e.x, e.y) }); }
     }
     if (hitsCrew(e)) { duck = true; sounds.push({ key: 'lowBoom', gain: 0.8, pan: 0 }); }
   }

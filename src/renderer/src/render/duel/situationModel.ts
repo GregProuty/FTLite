@@ -104,8 +104,9 @@ export const COLLISION_TICKS = Math.round(COLLISION_WARN_S * TICK_HZ);
 /** The Helm's axes as the duel state alone tells them (an online seat away from the Helm sees no held A/D or Space): the
  *  held heading's turn and the throttle's thrust while the Helm is attended, else none (the sim flies no axes then). */
 export function stateAxes(d: DuelState): Axes {
-  const pid = d.interior.stations.occupant[d.nav]!;
-  if (pid < 0 || !d.present[pid] || d.tactical.outcome !== Outcome.Running) return NO_AXES;
+  if (d.tactical.outcome !== Outcome.Running) return NO_AXES;
+  const pid = d.interior.stations.occupant[d.nav]!, attended = pid >= 0 && d.present[pid] === true;
+  if (!attended && d.interior.layout.helmHoldsUnattended !== true) return NO_AXES;   // Valkyrn spec §4.4: the Valkyrn flies on unattended
   return { turn: helmTurn(d, { moveX: 0, moveY: 0, interactHeld: false }), thrust: throttleThrust(d.throttle) };
 }
 
@@ -130,6 +131,20 @@ export function alertSentence(alert: FlightAlert, s: LaserSituation): { text: st
   if (alert?.kind === 'collision') return { text: 'COLLISION: TURN OR BRAKE', tone: 'hot' };
   if (alert?.kind === 'torpedo') return { text: 'TORPEDO INBOUND: EVADE', tone: 'hot' };
   return { text: statusSentence(s), tone: sentenceTone(s) };
+}
+
+/** Valkyrn spec §6.1: why the crew's gun cannot fire, or null: WEAPONS OFFLINE (Weapons at 2), then GUN OVERHEAT (locked).
+ *  Null too for a class without a gun or a decided round. */
+export function gunReason(t: TacticalState): string | null {
+  const sys = t.systems[CREW_SLOT];
+  if (!sys || !classOf(t, CREW_SLOT).slots.gun || t.outcome !== Outcome.Running) return null;
+  if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
+  return sys.gunLocked === true ? 'GUN OVERHEAT' : null;
+}
+/** Valkyrn spec §6.1: a gun class's sentence: the flight alerts first (as alertSentence), then the gun's reason, else none. */
+export function gunSentence(alert: FlightAlert, reason: string | null): { text: string; tone: 'hot' | 'main' | 'mid' } {
+  if (alert) return alertSentence(alert, { kind: 'none' });
+  return reason ? { text: reason, tone: 'main' } : { text: '', tone: 'mid' };
 }
 
 /** How far ahead (world units) the EVADE side looks for room, in EVADE_STEP steps. */
@@ -165,6 +180,7 @@ export function refusal(d: DuelState, control: RefusedControl): string | null {
   const t = d.tactical, sys = t.systems[CREW_SLOT];
   if (control === 'fire' || control === 'launch') {
     if (!gunnerPresent(d)) return 'NO GUNNER';
+    if (control === 'fire' && classOf(t, CREW_SLOT).slots.laser === null) return gunReason(t);   // Valkyrn spec §6.1: the gun's reasons
     if (missileOf(t, CREW_SLOT)) return 'TORPEDO FLYING';
     if (control === 'fire') return laserOffline(t, CREW_SLOT) ? 'WEAPONS OFFLINE' : null;
     if (sys.magazine <= 0) return 'NO TORPEDOES';

@@ -3,12 +3,13 @@
 // circle (both consoles, weapons update spec §2), the Weapons layer (bearing ring, both laser arcs, the enemy's bearing
 // and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { Contact, Outcome, targetOf } from '../../sim/tactical/state';
+import { classOf, Contact, Outcome, targetOf } from '../../sim/tactical/state';
 import { predictMissile } from '../../sim/tactical/predict';
 import { laserEligible, torpedoInRange } from '../../sim/tactical/weapons';
 import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
-import { alertSentence, evadeDir, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
+import { alertSentence, evadeDir, gunReason, gunSentence, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
+import { gunSightDraw, roundDraws, type GunSightDraw } from '../duel/leadModel';
 import { pingDraws, type Ping, type PingDraw } from '../duel/pingModel';
 import { CRT } from './crtTheme';
 import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
@@ -66,6 +67,8 @@ export interface CombatDraw {
   status?: StatusDraw | null; helmArc?: ArcDraw | null; solution?: SolutionDraw | null; goal?: GoalDraw | null; floats?: FloatDraw[];
   /** Feel-ii (spec §1.6, §2.7): the enemy torpedo's short predicted path, the Helm's EVADE arrow and the crew pings. */
   torpedoPath?: Point[]; evade?: EvadeDraw | null; pings?: PingDraw[];
+  /** Valkyrn spec §7.4: the gun sight on the Flight map, and the rounds in flight as tracers (a gun class only). */
+  gunSight?: GunSightDraw | null; rounds?: { x1: number; y1: number; x2: number; y2: number }[];
 }
 /** Feel-ii §1.6: the EVADE arrow beside the own ship (its tip, the way it points in radians clockwise from north) and its word. */
 export interface EvadeDraw { x: number; y: number; angle: number; label: Label }
@@ -98,6 +101,8 @@ export interface CombatModelInput extends TacticalModelInput {
   alert?: FlightAlert;
   /** Feel-ii §2.7: the crew pings to show. */
   pings?: readonly Ping[];
+  /** Valkyrn spec §5: the Flight seat's map (the Helm map with the Weapons side tools): the gun sight, the torpedo circle lit. */
+  flight?: boolean;
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
@@ -131,6 +136,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   const { state, prev, alpha, camera: cam, viewport: vp } = input, z = cam.zoom;
   const toS = (x: number, y: number): Point => worldToScreen(cam, vp, x, y);
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
+  const cls = classOf(state, 0);
   const target = targetOf(state, 0), enemy = interpolatedShip(state, prev, alpha, target), enemyS = toS(enemy.x, enemy.y);
   const onScreen = (p: Point, r: number): boolean => p.x + r >= 0 && p.x - r <= vp.w && p.y + r >= 0 && p.y - r <= vp.h;
 
@@ -154,11 +160,11 @@ export function combatModel(input: CombatModelInput): CombatDraw {
 
   const inRange = torpedoInRange(state, 0);
   const torpedoRange: RangeDraw | null = (input.console === 'weapons' || input.console === 'helm') && input.ships.includes(0)
-    ? { x: ownS.x, y: ownS.y, r: MISSILE_RANGE * z, lit: input.console === 'weapons' && inRange } : null;
+    ? { x: ownS.x, y: ownS.y, r: MISSILE_RANGE * z, lit: (input.console === 'weapons' || input.flight === true) && inRange } : null;
   // Feel-i (console feel spec §1, §2): the laser's situation drives the sentence, the bright arc and the bracket.
   const situation = laserSituation(state, input.fx.sinceShot, input.gunner ?? true), lined = linedUp(situation), ready = situation.kind === 'solution';
   const centre = ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2;
-  const sentence = alertSentence(input.alert ?? null, situation);   // Feel-ii: COLLISION, then TORPEDO INBOUND, then the laser's words
+  const sentence = cls.slots.laser ? alertSentence(input.alert ?? null, situation) : gunSentence(input.alert ?? null, gunReason(state));   // Feel-ii: COLLISION, then TORPEDO INBOUND, then the laser's words; Valkyrn spec §6.1: the gun's
   const status: StatusDraw | null = input.infoBand && sentence.text ? { label: bandLabel(sentence.text, centre, input.infoBand, STATUS_Y, FONT_SIZE / FONT_NATIVE), colour: TONE[sentence.tone] } : null;
   const ownArc: ArcDraw = { x: ownS.x, y: ownS.y, r: LASER_RANGE * z, angle: headingAngle(own.h), half: ARC_HALF, bright: ready };
   let weapons: WeaponsDraw | null = null;
@@ -172,7 +178,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       inArc, torpedoInRange: inRange
     };
   }
-  const helmArc: ArcDraw | null = input.console === 'helm' && input.ships.includes(0) ? ownArc : null;   // Feel-i §2: Helm sees the arc it gives
+  const helmArc: ArcDraw | null = input.console === 'helm' && input.ships.includes(0) && cls.slots.laser !== null ? ownArc : null;   // Feel-i §2: Helm sees the arc it gives
   // The bracket closes about the enemy's drawn marker, or its edge arrow off screen, while the shot is lined up.
   let solution: SolutionDraw | null = null;
   const enemyShown = input.ships.includes(target) && state.ships[target]?.active === true;
@@ -247,5 +253,6 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   }
   // Feel-ii §2.7: the pings, target pings riding on the enemy's drawn marker while it is shown.
   const pings = pingDraws(input.pings ?? [], toS, enemyShown ? enemyS : null);
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings };
+  const gun = cls.slots.gun ? { gunSight: input.flight ? gunSightDraw({ state, prev, alpha, camera: cam, viewport: vp, t: input.t ?? 0 }) : null, rounds: roundDraws(state, toS) } : {};   // Valkyrn spec §7.4
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, ...gun };
 }

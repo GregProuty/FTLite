@@ -10,6 +10,7 @@ import { CALLOUT_COLOUR, CHARGE_COLOUR } from '../src/renderer/src/render/tactic
 import { createTacticalLayer } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ringDraw, type ShipDraw, type TacticalDraw } from '../src/renderer/src/render/tactical/tacticalModel';
 import type { CombatDraw } from '../src/renderer/src/render/tactical/weaponsModel';
+import type { GunSightDraw } from '../src/renderer/src/render/duel/leadModel';
 
 const vp = { w: 1280, h: 720 };
 const ship = (patch: Partial<ShipDraw>): ShipDraw => ({ index: 0, x: 500, y: 360, angle: 0.4, scale: 0.9, chevron: false, crew: true, hull: 'hound', rooms: [1, 2, 0], shields: 2, ...patch });
@@ -105,5 +106,15 @@ describe('roomLook (enemy ship window spec §6.3: the map\'s room damage table, 
   });
   it('roomLevel maps a room damage value to the table row: 0, 1, else 2', () => {
     expect([0, 1, 2, 3].map(roomLevel)).toEqual([0, 1, 2, 2]);
+  });
+});
+
+describe('the Valkyrn marks draw only the ramp (Valkyrn spec §10)', () => {
+  const sight = (on: boolean, locked: boolean): GunSightDraw => ({ cross: { x: 640, y: 200 }, pip: { x: 660, y: 210, on, enemy: { x: 700, y: 230 } },
+    heat: { x: 620, y: 214, w: 40, fill: 0.6, locked, label: { text: locked ? 'OVERHEAT' : 'HEAT', x: 640, y: 222 } } });
+  for (const [on, locked] of [[true, false], [false, true]] as const) it(`gun sight on ${on}, locked ${locked}, tracers, the Valkyrn hull`, () => {
+    const layer = createTacticalLayer({ fontFamily: 'm5x7', viewport: vp }), { d, c } = fullFrame('helm');
+    layer.draw(d, { ...c, gunSight: sight(on, locked), rounds: [{ x1: 600, y1: 300, x2: 610, y2: 295 }] }, 0);
+    for (const colour of colours(layer.container)) expect(CRT_RAMP, colour.toString(16)).toContain(colour);
   });
 });
