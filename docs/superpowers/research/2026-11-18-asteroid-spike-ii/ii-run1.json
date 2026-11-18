@@ -1,0 +1,169 @@
+{
+  "simVersion": 53,
+  "stress": {
+    "seeds": 20,
+    "ticks": 4000,
+    "restoreTicks": 1000,
+    "failures": [],
+    "stepDuelMs": {
+      "median": 0.007,
+      "p99": 0.0286,
+      "max": 1.9512
+    },
+    "p99GateMs": 0.5,
+    "p99Pass": true,
+    "movingEvery10s": {
+      "max": [
+        15,
+        19,
+        27,
+        31,
+        34,
+        34
+      ],
+      "median": [
+        8.5,
+        12,
+        16.5,
+        20,
+        24.5,
+        24.5
+      ]
+    }
+  },
+  "feel": {
+    "seed": 2026,
+    "rows": [
+      {
+        "rock": 21,
+        "r": 44.8,
+        "blasted": true,
+        "blastRock": 21,
+        "pieces": 6,
+        "breaks": 3,
+        "collisions": 3,
+        "farthestTravel": 863,
+        "movingAt30s": 5
+      },
+      {
+        "rock": 16,
+        "r": 44.1,
+        "blasted": true,
+        "blastRock": 16,
+        "pieces": 6,
+        "breaks": 6,
+        "collisions": 2,
+        "farthestTravel": 902,
+        "movingAt30s": 4
+      },
+      {
+        "rock": 54,
+        "r": 43.8,
+        "blasted": true,
+        "blastRock": 54,
+        "pieces": 10,
+        "breaks": 8,
+        "collisions": 4,
+        "farthestTravel": 1050,
+        "movingAt30s": 10
+      },
+      {
+        "rock": 18,
+        "r": 43.6,
+        "blasted": true,
+        "blastRock": 18,
+        "pieces": 6,
+        "breaks": 3,
+        "collisions": 1,
+        "farthestTravel": 898,
+        "movingAt30s": 5
+      },
+      {
+        "rock": 59,
+        "r": 43.3,
+        "blasted": true,
+        "blastRock": 59,
+        "pieces": 6,
+        "breaks": 4,
+        "collisions": 2,
+        "farthestTravel": 898,
+        "movingAt30s": 4
+      },
+      {
+        "rock": 23,
+        "r": 43.1,
+        "blasted": true,
+        "blastRock": 23,
+        "pieces": 6,
+        "breaks": 6,
+        "collisions": 1,
+        "farthestTravel": 911,
+        "movingAt30s": 6
+      },
+      {
+        "rock": 33,
+        "r": 43.1,
+        "blasted": true,
+        "blastRock": 33,
+        "pieces": 6,
+        "breaks": 6,
+        "collisions": 2,
+        "farthestTravel": 898,
+        "movingAt30s": 4
+      },
+      {
+        "rock": 67,
+        "r": 42.9,
+        "blasted": true,
+        "blastRock": 67,
+        "pieces": 6,
+        "breaks": 6,
+        "collisions": 2,
+        "farthestTravel": 898,
+        "movingAt30s": 5
+      },
+      {
+        "rock": 43,
+        "r": 41.7,
+        "blasted": true,
+        "blastRock": 43,
+        "pieces": 6,
+        "breaks": 4,
+        "collisions": 2,
+        "farthestTravel": 896,
+        "movingAt30s": 5
+      },
+      {
+        "rock": 10,
+        "r": 41.1,
+        "blasted": true,
+        "blastRock": 10,
+        "pieces": 6,
+        "breaks": 3,
+        "collisions": 2,
+        "farthestTravel": 893,
+        "movingAt30s": 5
+      }
+    ],
+    "passing": 1,
+    "floor": ">= 8 pieces and >= 2 damaging collisions in >= 7 of 10",
+    "floorPass": false
+  },
+  "sizes": {
+    "seed": 2026,
+    "tick": 3000,
+    "values": 2454,
+    "jsonBytes": 10738,
+    "fullImageBytes": 20231,
+    "delta0": {
+      "median": 997,
+      "max": 1153
+    },
+    "delta60": {
+      "moversAtStart": 60,
+      "moversAtEnd": 62,
+      "median": 3830,
+      "max": 4142
+    }
+  }
+}

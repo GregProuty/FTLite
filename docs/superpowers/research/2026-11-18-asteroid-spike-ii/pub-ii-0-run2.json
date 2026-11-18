@@ -1,0 +1,11 @@
+{
+  "seed": 2026,
+  "tick": 3600,
+  "samples": 600,
+  "movers": 1,
+  "restore": "restoreDuelSnapshot",
+  "hostMedianMs": 0.934,
+  "clientMedianMs": 0.633,
+  "hostBudgetMs": 1.5,
+  "clientBudgetMs": 1
+}
