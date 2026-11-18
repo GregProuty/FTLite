@@ -54,15 +54,15 @@ function updateRepair(state: TacticalState, i: number): void {
 }
 
 /** Ship i's input for this tick (the duel's hunter is slot 1), against its locked target. Updates the hunter's own state
- *  (trail, repair timers, scheduled release). */
+ *  (trail, repair timers, scheduled release). The trail is still recorded, but since its missile homes by itself (homing
+ *  torpedo spec) nothing reads it. */
 export function hunterThink(state: TacticalState, i = 1, hold = false): ShipInput {
   const h = state.hunter, me = state.ships[i]!, mine = state.systems[i]!, target = mine.target, crew = state.ships[target]!, crewSys = state.systems[target]!;
-  const oldX = h.trail[2 * h.trailHead]!, oldY = h.trail[2 * h.trailHead + 1]!;   // where the crew was HUNTER_TRAIL_TICKS ago
   h.trail[2 * h.trailHead] = crew.x; h.trail[2 * h.trailHead + 1] = crew.y; h.trailHead = (h.trailHead + 1) % HUNTER_TRAIL_TICKS;
   updateRepair(state, i);
   const repairing = h.mode === HunterMode.Repair;
   const helm = !(repairing && h.room === Room.Engines), weapons = !(repairing && h.room !== Room.Engines);
-  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false };
+  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false };
   if (hold) { h.fireAt = -1; return input; }   // the grace (hunter grace spec): no thrust, no turn, no charge, no launch
 
   if (helm) {
@@ -84,9 +84,7 @@ export function hunterThink(state: TacticalState, i = 1, hold = false): ShipInpu
   if (!weapons) { h.fireAt = -1; return input; }
 
   input.laserLock = crewSys.rooms[Room.Shields] < 2 ? Room.Shields : Room.Weapons;
-  const missile = missileOf(state, i);
-  if (missile) input.steer = pursuitTurn(missile.heading, oldX - missile.x, oldY - missile.y);
-  else {
+  if (!missileOf(state, i)) {   // its missile homes by itself (homing torpedo spec); none in flight, it charges and launches
     if (!mine.fireHeld) { input.laserCharge = true; h.fireAt = -1; }   // press first; a release can only follow a held press
     else if (laserFull(state, i) && laserEligible(state, i, target)) {
       if (h.fireAt < 0) h.fireAt = state.tick + nextInt(state.rng, HUNTER_JITTER_TICKS + 1);

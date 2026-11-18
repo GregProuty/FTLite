@@ -51,7 +51,7 @@ export function hitCallouts(events: readonly ViewEvent[], state: TacticalState):
       if (e.stripped) out.push({ text: 'SHIELD DOWN', colour: CALLOUT_COLOUR.shield, kind: 'shield' });
       else if (!e.hit) out.push({ text: 'MISS', colour: CALLOUT_COLOUR.miss, kind: 'miss' });
       else if (e.room >= 0) out.push(roomCallout(state, e.room, ''));
-    } else if (e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.target === ENEMY_SLOT && e.room >= 0) out.push(roomCallout(state, e.room, 'MISSILE: '));
+    } else if (e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.target === ENEMY_SLOT && e.room >= 0) out.push(roomCallout(state, e.room, 'TORPEDO: '));
   }
   return out;
 }

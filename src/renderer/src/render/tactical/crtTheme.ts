@@ -8,7 +8,7 @@ export type CrtTone = keyof typeof CRT;
 export const CRT_RAMP: readonly number[] = Object.values(CRT);
 
 /** Dash patterns in screen pixels: dashed 6 on / 4 off, dotted 1 on / 3 off; the damage hatch every 4 px at 45 degrees. */
-export const DASH = 6, GAP = 4, DOT = 1, DOT_GAP = 3, HATCH_SPACING = 4, HATCH_ANGLE = Math.PI / 4;
+export const DASH = 6, GAP = 4, HATCH_SPACING = 4, HATCH_ANGLE = Math.PI / 4;
 
 /** Blink rates (Hz): the enemy ring and the enemy missile; room damage level 2; the readout's alert bar. */
 export const ENEMY_BLINK_HZ = 1, DAMAGE_BLINK_HZ = 2, ALERT_BLINK_HZ = 2;

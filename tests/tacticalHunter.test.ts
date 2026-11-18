@@ -3,6 +3,7 @@ import { nextInt } from '../src/shared/rng';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
 import { hunterThink, pursuitTurn } from '../src/renderer/src/sim/tactical/hunter';
+import { flyMissile, homingTurn } from '../src/renderer/src/sim/tactical/missiles';
 import { createTacticalState, HunterMode, missileOf, Outcome, placeMissile, removeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HUNTER_JITTER_TICKS, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_WALK_TICKS, LASER_CHARGE_UNITS, REPAIR_WORK_TICKS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
@@ -29,10 +30,10 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     Object.assign(st.ships[0], { x: 0, y: -300 });                       // dead astern of an enemy facing west, 300 away
     expect(hunterThink(st).axes).toEqual({ turn: 1, thrust: 0 });
     expect(pursuitTurn(0, 0, -10)).toBe(0);                               // dead ahead: no turn
+    // Its missile now homes by itself (homing torpedo spec §1), with the same dead-astern rule.
     placeMissile(st, 1, { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 });   // pointing north
-    st.hunter.trail.fill(0);
-    for (let k = 0; k < st.hunter.trail.length; k += 2) { st.hunter.trail[k] = -300; st.hunter.trail[k + 1] = 0; }   // the crew was due south
-    expect(hunterThink(st).steer).toBe(1);
+    Object.assign(st.ships[0], { x: -300, y: 0 });                       // the crew due south
+    expect(homingTurn(st, 1, missileOf(st, 1)!)).toBe(1);
   });
   it('leads a moving crew by 0.5 s: a target straight ahead but moving south pulls the turn anticlockwise', () => {
     const st = facing();
@@ -42,18 +43,15 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     st.ships[0].vy = -600;                                               // lead point north-west: clockwise
     expect(hunterThink(st).axes.turn).toBe(1);
   });
-  it('steers its missile at exactly where the crew was 18 calls ago, across several trail wraps', () => {
+  it('no longer steers its missile (homing torpedo spec §1): with one in flight it neither charges nor launches, and the missile homes on the crew', () => {
     const st = facing();
-    placeMissile(st, 1, { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 });   // pointing north
-    const steers: number[] = [];
-    for (let k = 0; k < 72; k++) {
-      st.ships[0].x = Math.floor(k / 18) % 2 === 0 ? -200 : -400;     // 18 calls east of the missile, 18 west, and so on
-      steers.push(hunterThink(st).steer);
-      st.tick++;
-    }
-    expect(steers.slice(18, 36)).toEqual(new Array(18).fill(1));       // reads calls 0..17: east
-    expect(steers.slice(36, 54)).toEqual(new Array(18).fill(-1));      // reads calls 18..35: west
-    expect(steers.slice(54, 72)).toEqual(new Array(18).fill(1));
+    placeMissile(st, 1, { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 });   // pointing north, the crew west
+    const input = hunterThink(st);
+    expect([input.laserCharge, input.missileLaunch]).toEqual([null, false]);
+    expect('steer' in input).toBe(false);
+    flyMissile(st, 1);
+    const m = missileOf(st, 1)!;
+    expect(m.heading + m.headingAcc).toBeGreaterThan(200);               // turned anticlockwise from north (wrapped below 256), toward the crew
   });
   it('draws exactly one jitter per scheduled release, none while it waits, and redraws after a cancel', () => {
     const st = facing(), me = st.systems[1];
@@ -157,11 +155,13 @@ describe('hunter: firing (spec §9 Firing)', () => {
     expect(missileOf(st, 1)).toBeNull();
     expect(st.hunter.lastLaunch).toBe(before);
   });
-  it('steers its missile toward where the crew was 18 ticks ago', () => {
+  it('its missile homes on where the crew is now, not where it was 18 ticks ago', () => {
     const st = facing();
     placeMissile(st, 1, { x: -300, y: -300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 100 });   // pointing north
     st.hunter.trail.fill(-600);                                          // the crew was at (−600, −600): north-west
-    expect(hunterThink(st).steer).toBe(-1);
+    st.ships[0].x = -100;                                                // and is now east
+    hunterThink(st);
+    expect(homingTurn(st, 1, missileOf(st, 1)!)).toBe(1);
   });
 });
 

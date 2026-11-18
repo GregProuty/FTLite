@@ -20,7 +20,7 @@ const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   interact: 'Sit at a console; at Weapons, lock the next target',
   prevLock: 'At Weapons, lock the previous target',
   fireDown: 'At Weapons, hold to charge, release to fire',
-  launch: 'At Weapons, launch a missile',
+  launch: 'At Weapons, launch a torpedo',
   stand: 'Stand up from a console',
   switch: 'Switch between the Helm and Weapons characters',
   pause: 'Pause and resume',
@@ -41,7 +41,7 @@ function codesFor(action: KeyAction): string[] {
 export function controlSections(): ControlSection[] {
   const move = [MOVE_CODES.up, MOVE_CODES.left, MOVE_CODES.down, MOVE_CODES.right].map(keyLabel).join(' ');
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
-  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, A/D turn; at Weapons, steer the missile' }];
+  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, A/D turn' }];
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
     const keys = codesFor(action).map(keyLabel).join(' / ');
     duel.push({ keys, action: DUEL_ACTION[action] });

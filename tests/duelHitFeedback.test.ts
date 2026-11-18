@@ -20,7 +20,7 @@ import { contactModel } from '../src/renderer/src/render/duel/contactModel';
 const vp = { w: 1280, h: 720 };
 const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
 const input = (st: TacticalState, cam: Camera, fx = createFx(), t = 0): CombatModelInput =>
-  ({ state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console: 'helm', axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], steer: 0, fx, t });
+  ({ state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console: 'helm', axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx, t });
 const units = (st: TacticalState): number => classOf(st, 1).slots.laser.chargeUnits;
 const laser = (p: Partial<Extract<DuelEvent, { kind: 'laser' }>>): DuelEvent => ({ kind: 'laser', ship: 0, hit: true, stripped: false, room: -1, x1: 0, y1: 0, x2: 1, y2: 0, ...p });
 const missile = (p: Partial<Extract<DuelEvent, { kind: 'missileEnd' }>>): DuelEvent => ({ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: -1, x: 0, y: 0, ...p });
@@ -110,10 +110,10 @@ describe('hitCallouts (spec §B)', () => {
     expect(out.map((c) => c.colour)).toEqual([CALLOUT_COLOUR.shield, CALLOUT_COLOUR.hit, CALLOUT_COLOUR.offline, CALLOUT_COLOUR.offline, CALLOUT_COLOUR.miss]);
     expect(out.map((c) => c.kind)).toEqual(['shield', 'hit', 'offline', 'offline', 'miss']);
   });
-  it('the missile on the enemy\'s room: MISSILE: <ROOM> HIT / OFFLINE; elsewhere nothing', () => {
+  it('the torpedo on the enemy\'s room: TORPEDO: <ROOM> HIT / OFFLINE (homing torpedo spec §3); elsewhere nothing', () => {
     const st = createTacticalState(3); st.systems[1].rooms = [0, 0, 2];
     const out = hitCallouts([missile({ room: Room.Shields }), missile({ room: Room.Engines }), missile({ room: -1 }), missile({ target: -1, cause: 'planet' }), missile({ ship: 1, target: 0, room: 0 })], st);
-    expect(out.map((c) => c.text)).toEqual(['MISSILE: SHIELDS HIT', 'MISSILE: ENGINES OFFLINE']);
+    expect(out.map((c) => c.text)).toEqual(['TORPEDO: SHIELDS HIT', 'TORPEDO: ENGINES OFFLINE']);
   });
   it('the enemy\'s shots and contacts give none', () => {
     const st = createTacticalState(3);

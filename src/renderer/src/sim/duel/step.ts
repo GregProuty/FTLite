@@ -167,7 +167,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
-  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false };
+  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false };
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
     if (c.kind !== 'laserLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
@@ -191,7 +191,6 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   if (helm >= 0) crew.axes = { turn: (input.held[helm] ?? NO_HELD).moveX, thrust: throttleThrust(d.throttle) };   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does
-  if (gunner >= 0) crew.steer = (input.held[gunner] ?? NO_HELD).moveX;
 
   repairPhase(d, input.held);
   const intents: Intent[] = [0, 1].map((pid) => {

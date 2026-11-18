@@ -73,7 +73,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('plays a whole duel with every command admitted: never a weapon command away from Weapons, never a refused sit', () => {
-    const d = createSeatedDuel(layout, 5), pair = createScriptedPair(5), kinds = new Set<string>();   // seed 5: one whose duel uses every kind (seed 4 stopped locking after the Hunter's grace)
+    const d = createSeatedDuel(layout, 1), pair = createScriptedPair(1), kinds = new Set<string>();   // seed 1: one whose duel uses every kind (seed 5 stopped sitting and standing with homing torpedoes, SIM_VERSION 46; seed 4 stopped locking after the Hunter's grace)
     while (d.tactical.outcome === Outcome.Running) {
       const input = scriptedInput(pair, d);
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }

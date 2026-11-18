@@ -206,7 +206,7 @@ function edgePoint(vp: Viewport, reserveLeft: number, reserveRight: number, x: n
   return { x: cx + dx * k, y: cy + dy * k, angle: Math.atan2(dx, -dy) };
 }
 
-const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'MISSILE' };
+const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'TORPEDO' };   // homing torpedo spec §3: on screen it is a torpedo
 
 /**
  * Keep arrows on the same edge at least the label gap apart. Each edge's arrows are sorted along it and pushed on, from the

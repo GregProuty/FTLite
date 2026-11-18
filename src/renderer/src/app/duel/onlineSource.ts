@@ -146,7 +146,6 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = duel();
       return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: Math.sign(sentHeld.moveX) || 0, thrust: throttleThrust(d.throttle) } : NO_AXES;
     },
-    steer: () => (seatOf(duel(), seat) === 'weapons' ? Math.sign(sentHeld.moveX) || 0 : 0),
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
     live: () => client.live?.() ?? true,
