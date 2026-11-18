@@ -46,7 +46,8 @@ export function createDuelAudio(out: AudioOut) {
       // Feel-ii §2.5: the lock tone (silent on a frozen or paused view); the crew torpedo's launch is a missile going active.
       const flying = t.missiles.some((m) => m.active && m.owner === CREW), launched = flying && !crewFlying;
       crewFlying = flying;
-      const tone = f.torpedo && f.live !== false && !f.paused ? lockTone(lock, f.torpedo, launched, clock) : { watch: null, sounds: [] };
+      // A frozen frame keeps the watch (the steady tone already played stays played on resume).
+      const tone = f.torpedo && f.live !== false && !f.paused ? lockTone(lock, f.torpedo, launched, clock) : { watch: lock, sounds: [] };
       lock = tone.watch;
       const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : []), ...tone.sounds, ...((f.pings ?? 0) > 0 ? [PING_TONE] : [])];
       if (list.length) out.sounds(list);

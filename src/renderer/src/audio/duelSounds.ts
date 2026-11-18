@@ -107,9 +107,10 @@ export function fireAlarm(last: number | null, ignited: number, now: number): { 
 
 /** The lock tone's frame data: the torpedo has a target and is ready (all of canLaunch's checks but the range), the
  *  enemy's distance and the torpedo's range (the scene reads them from the sim). */
-export interface TorpedoTone { locked: boolean; distance: number; range: number }
-/** Beep gaps (seconds) at LOCK_FAR ranges out and at the range itself; the steady tone's length. */
-export const LOCK_BEEP_FAR_S = 0.9, LOCK_BEEP_NEAR_S = 0.12, LOCK_FAR = 3, LOCK_STEADY_S = 0.3;
+export interface TorpedoTone { locked: boolean; distance: number; range: number; target?: number }
+/** Beep gaps (seconds) at LOCK_FAR ranges out and at the range itself; the steady tone's length; how far (u) beyond the
+ *  range the enemy must go before the steady tone re-arms (hysteresis: an enemy hovering at the edge plays it once). */
+export const LOCK_BEEP_FAR_S = 0.9, LOCK_BEEP_NEAR_S = 0.12, LOCK_FAR = 3, LOCK_STEADY_S = 0.3, LOCK_REARM_U = 40;
 export const LOCK_BEEP: SoundRequest = { key: 'console', gain: 0.25, rate: 2, dur: 0.06, detune: false, variant: 0, pan: 0 };
 export const LOCK_STEADY: SoundRequest = { key: 'jumpCharge', gain: 0.35, rate: 2, dur: LOCK_STEADY_S, detune: false, pan: 0 };
 /** The enemy torpedo's launch chirp and the ping's soft tone. */
@@ -121,21 +122,24 @@ export function lockBeepGap(distance: number, range: number): number {
   const k = Math.max(0, Math.min(1, (distance - range) / Math.max(1, (LOCK_FAR - 1) * range)));
   return LOCK_BEEP_NEAR_S + (LOCK_BEEP_FAR_S - LOCK_BEEP_NEAR_S) * k;
 }
-export interface LockWatch { next: number | null; steady: boolean; locked: boolean }
+export interface LockWatch { next: number | null; steady: boolean; locked: boolean; target?: number }
 /** One frame of the lock tone at `now` seconds: beeps faster as the enemy nears the range while locked and out of it; the
  *  steady tone once on reaching it, or on the launch itself when the torpedo went the tick it came in range (`launched`:
- *  the crew's torpedo went into flight this frame). Off when not locked. */
+ *  the crew's torpedo went into flight this frame). Off when not locked. The steady tone re-arms only when the lock is
+ *  lost, the target changes, or the enemy goes more than LOCK_REARM_U beyond the range (silent in that band). */
 export function lockTone(w: LockWatch | null, v: TorpedoTone, launched: boolean, now: number): { watch: LockWatch; sounds: SoundRequest[] } {
   const was = w ?? { next: null, steady: false, locked: false }, sounds: SoundRequest[] = [];
   if (!v.locked) {
     if (was.locked && launched && !was.steady) sounds.push(LOCK_STEADY);
     return { watch: { next: null, steady: false, locked: false }, sounds };
   }
+  const steady = was.steady && was.locked && was.target === v.target;
   if (v.distance <= v.range) {
-    if (!was.steady) sounds.push(LOCK_STEADY);
-    return { watch: { next: null, steady: true, locked: true }, sounds };
+    if (!steady) sounds.push(LOCK_STEADY);
+    return { watch: { next: null, steady: true, locked: true, target: v.target }, sounds };
   }
-  let next = was.next;
+  if (steady && v.distance <= v.range + LOCK_REARM_U) return { watch: { next: null, steady: true, locked: true, target: v.target }, sounds };
+  let next = steady ? null : was.next;
   if (next === null || now >= next) { sounds.push(LOCK_BEEP); next = now + lockBeepGap(v.distance, v.range); }
-  return { watch: { next, steady: false, locked: true }, sounds };
+  return { watch: { next, steady: false, locked: true, target: v.target }, sounds };
 }

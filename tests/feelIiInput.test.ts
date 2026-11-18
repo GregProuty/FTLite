@@ -10,7 +10,7 @@ import { createCameraInput, createDuelRuntime } from '../src/renderer/src/app/du
 import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
 import { torpedoTone } from '../src/renderer/src/app/duel/scene';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
-import { duelStateSounds, LAUNCH_CHIRP, LOCK_BEEP, LOCK_BEEP_FAR_S, LOCK_BEEP_NEAR_S, LOCK_STEADY, lockBeepGap, lockTone, type LockWatch } from '../src/renderer/src/audio/duelSounds';
+import { duelStateSounds, LAUNCH_CHIRP, LOCK_BEEP, LOCK_BEEP_FAR_S, LOCK_BEEP_NEAR_S, LOCK_REARM_U, LOCK_STEADY, lockBeepGap, lockTone, type LockWatch } from '../src/renderer/src/audio/duelSounds';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { duelCodec, encodeMessage, decodeMessage } from '../src/renderer/src/net/codec';
 import { modeInputIdentity } from '../src/network/modes/streamBinding';
@@ -155,6 +155,20 @@ describe('the torpedo lock tone and the launch chirp (Feel-ii §2.5, §2.6)', ()
     expect(lockTone(steady.watch, { locked: true, distance: 340, range: 360 }, false, 6.1).sounds).toEqual([]);
     expect(lockTone(null, { locked: false, distance: 340, range: 360 }, false, 0).sounds).toEqual([]);
   });
+  it('the steady tone plays once for an enemy hovering at the range edge; it re-arms 40 u out, or on a new lock or target', () => {
+    const steadies = (w: LockWatch | null, frames: { distance: number; target?: number; locked?: boolean }[]): [number, LockWatch | null] => {
+      let n = 0;
+      frames.forEach((f, k) => { const r = lockTone(w, { locked: f.locked ?? true, distance: f.distance, range: 360, target: f.target ?? 3 }, false, k / 60); w = r.watch; n += r.sounds.filter((s) => s === LOCK_STEADY).length; });
+      return [n, w];
+    };
+    const [hover, w] = steadies(null, [350, 365, 355, 370, 358, 399, 359].map((distance) => ({ distance })));
+    expect(LOCK_REARM_U).toBe(40);
+    expect(hover).toBe(1);   // in and out of range by less than 40 u: one steady tone
+    expect(steadies(w, [{ distance: 401 }, { distance: 359 }])[0]).toBe(1);   // more than 40 u beyond: re-armed
+    expect(steadies(w, [{ distance: 359, target: 5 }])[0]).toBe(1);   // a new target
+    expect(steadies(w, [{ distance: 380, locked: false }, { distance: 359 }])[0]).toBe(1);   // the lock lost and back
+    expect(lockTone(w, { locked: true, distance: 380, range: 360, target: 3 }, false, 9).sounds).toEqual([]);   // silent in the band
+  });
   it('the torpedo that launches the tick it comes in range still gets its steady tone', () => {
     const a = lockTone(null, { locked: true, distance: 380, range: 360 }, false, 0);
     expect(lockTone(a.watch, { locked: false, distance: 350, range: 360 }, true, 0.02).sounds).toEqual([LOCK_STEADY]);
@@ -171,7 +185,7 @@ describe('the torpedo lock tone and the launch chirp (Feel-ii §2.5, §2.6)', ()
     const r = rig(), d = r.rt.duel, sys = d.tactical.systems[0];
     expect(torpedoTone(d).locked).toBe(false);
     sys.torpLock = Room.Shields;
-    expect(torpedoTone(d)).toMatchObject({ locked: true, range: 360 });
+    expect(torpedoTone(d)).toMatchObject({ locked: true, range: 360, target: Room.Shields });
     sys.magazine = 0; expect(torpedoTone(d).locked).toBe(false); sys.magazine = 2;
     sys.rooms[Room.Weapons] = 2; expect(torpedoTone(d).locked).toBe(false);
   });

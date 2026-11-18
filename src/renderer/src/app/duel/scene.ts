@@ -111,7 +111,7 @@ export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string
 export function torpedoTone(d: DuelState): TorpedoTone {
   const t = d.tactical, sys = t.systems[CREW_SLOT]!, me = t.ships[CREW_SLOT]!, e = t.ships[targetOf(t, CREW_SLOT)];
   const locked = t.outcome === Outcome.Running && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && sys.rooms[Room.Weapons] < 2 && e?.active === true;
-  return { locked, distance: e ? Math.hypot(e.x - me.x, e.y - me.y) : Infinity, range: classOf(t, CREW_SLOT).slots.missile.range };
+  return { locked, distance: e ? Math.hypot(e.x - me.x, e.y - me.y) : Infinity, range: classOf(t, CREW_SLOT).slots.missile.range, target: sys.torpLock };
 }
 
 export interface DuelSceneOptions {
