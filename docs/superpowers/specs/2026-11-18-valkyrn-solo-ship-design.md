@@ -27,15 +27,37 @@ So the Valkyrn is the **solo test ship**: the same Hunter duel, every Hound feat
 ## 3. The rule: ships differ only in data
 
 - The Valkyrn runs the same duel code as the Hound (`sim/duel/*`, `sim/tactical/*`, the runtime, the views). What
-  differs is data: the layout JSON, the painted art, the repair points, the ship class (flight and weapon numbers), and
-  the crew count.
-- No code may branch on a layout id or class id (`=== 'hound'`, `=== 'valkyrn'`). Behaviour that differs comes from a
-  field on the layout or the class (for example the class's weapon slots, the layout's combined Flight seat). A test
-  greps `src/renderer/src` for layout and class id literals outside the data files and the asset tables.
-- **Parity test** (`tests/shipParity.test.ts`): for each ship in the single-player picker, every station kind, room
-  system, tactical repair point (one per tactical Room), airlock count ≥ 1 and breach site per room that the Hound has,
-  the Valkyrn has too. A feature that adds a station kind or system to the Hound fails this test until the Valkyrn gets
-  it. The one allowed difference: the Valkyrn's Navigation and Weapons stations are one combined seat (§5).
+  differs is data: the layout JSON (with four new optional fields, §3.1), the painted art, the repair points, the map
+  silhouette, and the ship class (flight and weapon numbers).
+- No code may branch on a layout id or class id. Behaviour that differs comes from a field on the layout or the class.
+
+### 3.1 New layout fields (`sim/ship/schema.ts`, optional, absent on the Hound)
+
+| field | type | meaning | Hound | Valkyrn |
+|---|---|---|---|---|
+| `shipClass` | class id string, resolved through `SHIP_CLASSES` | the crew slot's class | absent = `cutter` | `valkyrn` |
+| `crew` | 1..4 | a fixed crew size; absent = any size the caller asks for (2..4) | absent | 1 |
+| `helmHoldsUnattended` | boolean | the crew ship flies its throttle and held heading while the Helm is empty (§4.4) | absent = false | true |
+| `hull` | `HullId` | the console-map silhouette (§4.5) | absent = `hound` | `valkyrn` |
+
+### 3.2 The no-id-literal test
+
+`tests/noShipIdLiterals.test.ts` greps `src/renderer/src/**/*.{ts,tsx}` for the quoted ids `'hound'`, `'cutter'`,
+`'valkyrn'`, `'valkyrnLaser'`, `'scout'` (and the double-quoted forms). Allowed files: `sim/ship/*.json`,
+`sim/tactical/defs.ts`, `sim/duel/tuning.ts`, `render/battlemapModel.ts`, `render/tactical/hullModel.ts`,
+`render/assetNames.ts`, `sim/ship/fleet.ts`, `render/credits.generated.ts`. The ai profile value `'hunter'` is not a
+class id and is not in the pattern (the Hunter's class id stays `hunter`; `ai === 'hunter'` stays legal). The sites
+that read ids today are fixed in the build:
+- `hullFor(crew)` (hullModel.ts) takes the hull id from the layout's `hull` field (crew ship) or `'scout'` (enemy);
+- `hudModel.ts` `!== 'cutter'` reads a layout field instead (the plan names which);
+- `fleet.ts` `shipForCrew` stays the online and Hound default; the single-player picker (§9) supplies the layout.
+
+### 3.3 Parity test
+
+`tests/shipParity.test.ts`: for each ship in the single-player picker, every station kind, room system, tactical repair
+point (one per tactical Room), at least one airlock, and a breach site per room with a system that the Hound has, the
+Valkyrn has too. A feature that adds a station kind or a system to the Hound fails this test until the Valkyrn gets it.
+Allowed differences: Navigation and Weapons are one combined seat (§5); rooms with `system: null` are not compared.
 
 ## 4. The ship and its interior
 
@@ -46,8 +68,9 @@ So the Valkyrn is the **solo test ship**: the same Hunter duel, every Hound feat
 - Out of git like the other bought art: `art/import.json` gains the entry and `npm run art:import` copies it to
   `public/assets/paid/2mt/valkyrn.png`. The manifest entry is committed with the licence, store, credit ("Valkyrn by
   2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0") and the modification "rotated 90° clockwise". The existing
-  `docs/gates.md` 2-Minute Tabletop line names the Valkyrn too.
+  `docs/gates.md` 2-Minute Tabletop line names the Valkyrn too. New optional asset `ship.valkyrn.map`.
 - Rotated 90° clockwise so the nose faces right like the Hound's (import gains `rotate: 90`, beside `flipX`).
+- When the asset is missing the interior falls back to procedural tiles, as the Hound does.
 
 ### 4.2 Grid
 
@@ -55,7 +78,8 @@ So the Valkyrn is the **solo test ship**: the same Hunter duel, every Hound feat
   on tile centres; painted walls run through rows of `#`; doors sit in painted wall gaps. After rotation the pressurised
   hull (cockpit to ramp) is about 12 squares long and 2.5 wide: a layout of about 25 × 7 tiles. The plan pins the exact
   numbers after tracing.
-- The painted bounds (alpha bounding box, wings and engines) feed the duel camera fit, as the Hound's do.
+- `BATTLEMAPS.valkyrn` (battlemapModel.ts) gives the name, px per tile, origin and painted bounds (alpha bounding box,
+  wings and engines), which feed the duel camera fit, as the Hound's do.
 
 ### 4.3 Rooms (Hound room → Valkyrn room)
 
@@ -67,136 +91,214 @@ So the Valkyrn is the **solo test ship**: the same Hunter duel, every Hound feat
 | Life Support (L) | **Quarters, galley and washroom side** | `lifeSupport` |
 | Engines (E) | **Missile bay, ramp half** | `engineering` |
 | Reactor (R) | **Missile bay, rack half** | `reactor` |
-| Quarters (Q), Hold (H) | none | (`system: null` rooms; parity does not require them) |
+| Quarters (Q), Hold (H) | none | (`system: null` rooms; parity does not compare them) |
 
 - Repair points, one per tactical Room (`DUEL_REPAIR_POINTS.valkyrn`): Weapons in Ops (as the Hound's is in Ops),
   Shields in the Reactor, Engines in Engines, each on an open floor tile.
 - Airlocks: the ramp (Engines) and one hull door; breach sites one per room on an outer wall tile; allocations copied
   from the Hound. Station tiles sit on the painted furniture. Spawn: the Ops floor.
 - Tokens, console markers and the painted layer draw exactly as on the Hound (Hound battlemap spec §§3–5); the
-  `battlemapLayer` takes its texture from the layout's asset name, not a Hound constant.
+  `battlemapLayer` takes its entry from `BATTLEMAPS[layout.id]`, not a Hound constant.
 
 ### 4.4 Crew of one
 
-- The Valkyrn duel has **one** character: `playerCount` 1, using Sci-2's crew-of-n rule (crew 2 to 4 online; this spec
-  extends the sim's loops to n = 1). The round is lost when the one character is downed or the hull is gone, as at any n.
-  Revive needs a teammate, so a downed solo pilot loses the round (stated in the parity notes; no bot crew).
-- No Tab character swap on the Valkyrn (there is no second character). Tab still toggles the console and the ship view
-  while seated.
-- While the pilot is out of the seat the ship holds its throttle and its last aim heading (§6.1), as solo Tab already
-  keeps a seated character's settings.
-- Build order: after Sci-2 merges (it owns `playerCount` > 2 and the SIM 51 → 52 bump); the Valkyrn takes the next
-  version.
+- The crew size has one source: `createDuel(layout, seed, opts)` with `opts.crew` (1..4). When the layout has `crew`,
+  `opts.crew` must equal it (else it throws). The Valkyrn always runs with crew 1; the Hound keeps 2..4 (Sci-2).
+- Widened validations, all local: `createDuel` accepts 1..4; the snapshot header's `playerCount` 1..4; the single
+  player `DuelInit.playerCount` 1..4. Online keeps 2..4 (the host form and the network producers reject 1); the codec
+  limit stays 4.
+- The rules at n = 1: the round is lost when the one character is downed (Sci-2's "every character downed"), or the hull
+  is gone. Revive needs a teammate, so it never happens at n = 1. Repair and extinguish use the solo rate.
+- Runtime at n = 1 (`app/duel/runtime.ts`): no first-tick `presence false` for another player, no `other` character, no
+  Tab character swap (Tab still toggles the console and the ship view while seated), `held` has length n. The readout's
+  crew list has no rows at n = 1.
+- **Out of the seat** (`helmHoldsUnattended`, true on the Valkyrn): while no present character attends the Helm, the crew
+  ship flies `throttleThrust(d.throttle)` and, when `holdHeading ≥ 0`, `headingTurn` toward it (else no turn). The pilot
+  can stand up to repair and the ship keeps flying the last bearing and throttle. With the field false (the Hound) an
+  empty Helm flies zero axes as today, so the Hound's goldens and duelGates are unchanged. Weapons auto-fire still needs
+  the seat attended (unchanged rule).
+- Build order: after Sci-2 merges (it owns crew n > 2 and SIM 51 → 52); the Valkyrn takes the next version.
+
+### 4.5 Map silhouette
+
+- `HullId` gains `valkyrn`: an outline traced from the painting's exterior (fuselage, wings, tail; in ship units, only the
+  coordinates in git, as the Hound's) with three room polygons in `ROOM_NAMES` order placed over the deck plan (Weapons:
+  Ops; Shields: the bay's rack half; Engines: the ramp half). The enemy window and the console maps draw it for the crew
+  ship when the layout's `hull` is `valkyrn`.
 
 ## 5. The Flight console (one seat for Helm and Weapons)
 
-- The layout's stations list a new combined form: the `navigation` and `weapons` stations share one tile and one console
-  group (`consoleGroups: [{ tile, kinds: ["navigation", "weapons"] }]`). `createDuel`'s check that the two are in
-  different groups becomes: different groups, or the layout's crew is 1. Sitting there seats the character at both, so
-  every rule that asks "is the Helm attended" or "is Weapons attended" is true for that pilot: auto-face, held heading,
-  throttle, laser/torpedo auto-fire, torpedo lock, scans from the Helm or Weapons rate.
+- The layout lists the `navigation` and `weapons` stations on one tile in one console group
+  (`consoleGroups: [{ tile, kinds: ["navigation", "weapons"] }]`), as the Hound's Ops group seats one character at
+  Science, Engineering and Doors. `createDuel`'s check becomes: Navigation and Weapons in different groups, **or** the
+  crew is 1. Sitting at the group seats the character at both stations, so every rule that asks "is the Helm attended" or
+  "is Weapons attended" is true for that pilot: auto-face, throttle, laser/torpedo auto-fire, torpedo lock, the scan rate
+  from the Helm or Weapons.
 - The view is the Helm map, centred on the own ship, with the auto-frame (Feel-i) keeping the Hunter on screen
   (zoom clamped 0.25–1). On top of it: the crosshair and lead pip (§7.3), the heat bar, and the Weapons console's side
   tools: the weapon cards (§8), the enemy window with FTL room targeting, the 360 torpedo circle and the lock tone.
 - The status sentence, refusal flashes, pings, collision warning, gravity rings and EVADE arrow all show, as on the Helm.
 
+### 5.1 Flight seat bindings
+
+| input | action |
+|---|---|
+| mouse position over the map | `aim` (§6.2) |
+| left mouse (held) | `gunHeld` (§7.1); with the laser fit (§8), nothing (the laser auto-fires at its target) |
+| right mouse | torpedo launch (`missileLaunch`) |
+| Space (held) | auto-face (`face`), as on the Helm |
+| W/S, mouse wheel over the throttle, Shift+W | throttle, as on the Helm |
+| Q/E | step the torpedo's target room |
+| 2 / clicking the TORPEDO card | pick up the torpedo (FTL targeting); 1 / the LASER card only with the laser fit |
+| 3/4/5 | laser frequency, only with the laser fit |
+| middle click, G | ping |
+| middle drag | pan |
+| Tab | console ↔ ship view |
+
+There is no click-to-heading on the Flight seat: the right button is the torpedo, so the Flight seat never sends
+`heading`, and the view has no HDG marker (the aim bearing is the cursor).
+
 ## 6. Flight (sim)
 
 ### 6.1 The Valkyrn class
 
-A new `ShipClassDef` `valkyrn` (start values, tuned in §10):
+New `ShipClassDef` entries in `defs.ts`: `valkyrn` (gun) and `valkyrnLaser` (the developer laser fit, §8), appended to
+`SHIP_CLASSES` so existing class indices do not move. Start values, tuned in §10:
 
 | | Hound (Cutter class) | Valkyrn |
 |---|---|---|
 | hull | 40 | 30 |
 | thrust (u/s²) | 120 | 160 |
-| turn (°/s) | 150 | 200 |
+| turn (°/s) | 150 | 200 (turnStepsPerTick ≈ 2.37) |
 | shields | 2 layers | 2 layers |
-| weapons | double laser + torpedo | minigun + torpedo |
+| slots | laser (×2) + torpedo | gun + torpedo (`valkyrnLaser`: the Cutter's laser + torpedo) |
 | radius | 20 | 20 |
 
-The Hunter is unchanged.
+- `slots` becomes `{ laser: LaserDef | null; gun: GunDef | null; missile: MissileDef }`. Cutter and Hunter: `gun: null`.
+- With `laser: null`: `laserCharge` stays 0, `laserTargeted` false, and charge, hold, lock-targeting, auto-fire and burst
+  are skipped. The commands `laserLock`, `laserCharge` and `laserFrequency` are answered `unavailable` (a new command
+  result; the refusal flash reads `NO LASER`). The weak shield frequency (Science Level 2) affects the laser only, so on
+  the gun Valkyrn it is shown but has no effect: the one parity exception, testable with the laser fit.
+- `createTacticalState(seed, crewClass)` takes the crew slot's class index (default Cutter); the Hunter's slot is
+  unchanged. The duel holds it as `DuelState.crewClass` (set by `createDuel` from `opts.cls`, else the layout's
+  `shipClass`, else Cutter); `startRound` passes it to the next round's `createDuel`; the snapshot header carries it and
+  `loadDuelSnapshot` passes it back. `systems[0].cls` (already hashed) must equal it (validated).
+- The Hunter is unchanged.
 
 ### 6.2 Mouse aim
 
-- A new held Helm input value `aim`: a heading index 0..255, or −1 for none. The runtime turns the pointer's bearing from
-  the own ship's drawn marker into a heading index every frame and sends it while the pointer is over the Flight map.
-- `helmTurn` (sim/duel/step.ts) gains it: A/D, else auto-face, else **aim** (the same `headingTurn` toward a fixed
-  bearing, with auto-face's dead band, so it never chatters), else the held heading. An `aim` other than −1 sets the
-  held heading to that value, so when the pilot stands up the ship keeps the last bearing.
-- On the wire and in the replay it rides the held input like `face` (codec, checkpoints, replay schemas); an authority
-  pause or held-input expiry clears it. The Valkyrn's Flight seat sends it; the Hound never does.
-- The pointer outside the map (over the side tools) holds the last aim.
+- `HeldInput` gains `aim?: number`: a heading index 0..255, or −1 / absent for none. Any other value (NaN, non-integer,
+  out of range) counts as −1. It rides the held wire like `face` (codec, checkpoints, replay schemas); an authority pause
+  or held-input expiry clears it. The runtime turns the pointer's bearing from the own ship's drawn marker into a heading
+  index every frame while the pointer is over the Flight map; over the side tools it sends the last value.
+- `helmTurn` (sim/duel/step.ts) order: A/D, else auto-face (`face`), else **aim**, else the held heading, else none.
+  The aim turn is `aimTurn`: the signed heading-index difference `d = ((aim − heading + 384) mod 256) − 128`; no turn when
+  `|d| ≤ 1`, else the sign of `d`. A band of three indices is wider than one tick's integer step (2 or 3 at 2.37 steps
+  per tick), so the nose never steps across it; `defs.ts` asserts every class has `turnStepsPerTick < 3`. Settled, the
+  nose is within one index (1.41°) of the cursor: 14.7 u off at the gun's 600 u reach, inside the Hunter's 20 u radius.
+- After the tick's axes are taken: A/D or `face` held at the Helm clear `holdHeading` (as today); otherwise a valid
+  `aim` sets `holdHeading = aim`, so the out-of-seat rule (§4.4) flies the last bearing.
 
 ## 7. The minigun (sim and view)
 
 ### 7.1 Firing
 
-- A new weapon kind `gun` in `defs.ts` (`GunDef`): rounds per second 10 (`GUN_INTERVAL_TICKS` 6), muzzle speed 700 u/s
-  added to the ship's velocity, life 52 ticks (about 600 u of reach), two muzzles 12 u either side of the nose line that
-  fire alternately, damage counters below.
-- Fires while the held input `gunHeld` (left mouse) is true, the gun is not overheated, Weapons is below level 2 and the
-  Flight seat is attended. The Hound's class has no gun slot, so `gunHeld` does nothing on it.
-- **Heat**: each round adds `GUN_HEAT_PER_SHOT` 50 to a heat counter that drops `GUN_COOL` 4 per tick, so steady fire
-  nets about 4.3 a tick; at `GUN_HEAT_MAX` 1000 (about 3.8 s of fire from cold) the gun overheats and locks until heat
-  is back to 0, cooling `GUN_COOL_LOCKED` 8 per tick while locked (about 2.1 s). Weapons at level 1 halves both coolings.
+- A new weapon kind `gun` in `defs.ts` (`GunDef`): interval `GUN_INTERVAL_TICKS` 6 (10 rounds/s), muzzle speed
+  `GUN_SPEED` 700 u/s along the nose plus the ship's velocity, life `GUN_LIFE_TICKS` 52 (about 607 u of reach at rest),
+  two muzzles at forward `radius + 1` (21 u) and lateral ±12 u, firing alternately (`gunMuzzle` 0/1, starboard first).
+- `HeldInput` gains `gunHeld?: boolean` (absent false; codec, checkpoints and replay like `face`). A round fires on a
+  tick when `gunHeld` is held at the Weapons station by its attendant, the class has a gun, `gunLocked` is false,
+  Weapons is below level 2, and `gunCooldown` is 0; then `gunCooldown = GUN_INTERVAL_TICKS`. `gunCooldown` counts down
+  every tick.
+- **Heat**: each round adds `GUN_HEAT_PER_SHOT` 50 to `gunHeat`, which drops `GUN_COOL` 4 per tick (net about 4.3 a tick
+  while firing). Reaching `GUN_HEAT_MAX` 1000 (about 3.8 s of fire from cold) sets `gunLocked`; while locked it cools
+  `GUN_COOL_LOCKED` 8 per tick and unlocks at 0 (about 2.1 s). Weapons at level 1 halves both coolings (integer halves:
+  2 and 4).
 
 ### 7.2 Rounds and hits
 
-- Rounds are sim projectiles in a fixed pool on the tactical state (`GUN_POOL` 64: x, y, vx, vy, age, owner, active), in
-  the hash and every snapshot path. A round flies straight (no gravity, no drag) and is tested each tick as a swept
-  segment against the enemy ship circle, asteroids and the planet; the first contact ends it. Only + − × ÷ and sqrt (the
-  determinism guard).
-- **On a shielded enemy**: each hit adds 1 to its `gunWear`; at `GUN_HITS_PER_LAYER` 8 it strips a layer (SHIELD DOWN
-  and the shield pop as a laser strip) and resets. A recharged layer resets the wear.
-- **On an unshielded enemy**: the hit's Room comes from **where it lands**: the impact point projected on the enemy's
-  nose axis, front third Weapons, middle Shields, aft third Engines. Each hit adds 1 to the ship's `gunHull` counter
-  (every `GUN_HITS_PER_HULL` 3 = 1 hull) and 1 to that Room's `gunRoomWear` (every `GUN_HITS_PER_LEVEL` 6 = that Room's
-  level +1, capped at 2), so aiming at a part of the ship is a skill. Start values; tuned in §10.
-- Each hit is a tactical event (`gunHit`: ship, Room or −1 for a shield hit, point) for the views, the telemetry
-  (`gunShots`, `gunHits`) and the online view's counters, as the laser's are.
+- Rounds live in `tactical.rounds`, a fixed pool of `GUN_POOL` 64 entries `{ x, y, vx, vy, age, owner, active }`; a free
+  entry holds zeros (validated as missiles are). A new round takes the lowest free index; when none is free it replaces
+  the active round with the highest `age`, lowest index on ties.
+- **Step order**: the gun fires in `applyWeaponsInput` from the pre-move pose (as the laser does, "before anything
+  moves"); rounds move in a new `stepRounds` after the ships fly and contacts resolve, so a round also moves on its spawn
+  tick. A round flies straight (no gravity, no drag) and is swept as a segment from its old to its new position against,
+  in order, the enemy ship's post-move circle (radius 20), the asteroids and the planet; the first contact along the
+  segment ends it. A round reaching `GUN_LIFE_TICKS` ends. Rounds never hit their own ship. Only + − × ÷ and sqrt.
+- **Shielded enemy** (`shields > 0`): the hit adds 1 to the target's `gunWear`; at `GUN_HITS_PER_LAYER` 8 it strips a
+  layer (`shields−−`, `shieldClock = 0`, the same `stripped` event a laser strip makes) and zeroes `gunWear`. Any strip
+  (laser, missile or gun) zeroes `gunWear`.
+- **Unshielded enemy**: the Room is found from the **closest-approach point** of the round's segment to the enemy centre
+  (aim decides it, not the approach side): project that point's offset from the centre on the enemy's nose axis, `p`;
+  `p > r/3` Weapons, `p < −r/3` Engines, else Shields (ties at exactly ±r/3 go to Shields). The hit adds 1 to the
+  target's `gunHull` (every `GUN_HITS_PER_HULL` 3: hull −1, `gunHull` back to 0) and 1 to `gunRoomWear[room]` (every
+  `GUN_HITS_PER_LEVEL` 6: that Room's level +1, capped at 2, wear back to 0; at level 2 the wear stays 0 and only hull
+  counts). A Room repaired one level zeroes its wear.
+- **Hostility** (Sci-1): the crew's first gun round turns the enemy hostile, as a laser release does. The rule reads
+  `shots + gunShots`, and the `hostile` cause union gains `'gun'` (precedence laser, gun, missile, clock).
+- Events: `gunFire` (ship, muzzle) and `gunHit` (ship, Room or −1 for a shield hit, the closest-approach point) for the
+  views and telemetry.
 
-### 7.3 Crosshair and lead pip (view)
+### 7.3 State, hash and snapshots
 
-- **Crosshair**: a small fixed mark on the gun line ahead of the nose at the gun's reach, `CRT.mid`.
+New `ShipSystems` fields (all ships; zero for classes without a gun; all zero in `systemsFor`): `gunHeat`, `gunLocked`,
+`gunCooldown`, `gunMuzzle`, `gunWear`, `gunHull`, `gunRoomWear[3]`, `gunShots`, `gunHits`. They and `tactical.rounds`
+join the hash's system keys, the snapshot, and the validator (bounds: heat 0..`GUN_HEAT_MAX`, cooldown 0..interval,
+muzzle 0..1, wear 0..7, hull 0..2, room wear 0..5, counts ≥ 0; a round's age 0..life, owner a ship slot).
+`DuelState.crewClass` joins the duel hash and snapshot header (§6.1). The online view's `gapEvents` gains gun hits from
+the `gunHits` counter, for completeness (the Valkyrn is not online).
+
+### 7.4 Crosshair and lead pip (view)
+
+- **Crosshair**: a small fixed mark on the nose line at the gun's reach, `CRT.mid`.
 - **Lead pip**: where the Hunter will be when a round fired now reaches it, from the relative position and velocity and
-  the round speed (the intercept of a constant-velocity target; no solution draws no pip). A diamond with a thin line to
-  the Hunter, `CRT.mid`; `CRT.hot` and brackets when the gun line passes within the Hunter's radius of the pip ("on
-  target"). Pure function in `render/duel/leadModel.ts`, tested against a sim fly-out.
-- Hit feedback: a tick flash on the Hunter at the impact point, a short click sound per hit (rate-limited), small `-1`
-  floats on hull steps, the existing shield pop on a strip.
-- **Heat bar** under the crosshair readout: `HEAT` and a bar, blinking `OVERHEAT` while locked.
+  the round's speed (the intercept of a constant-velocity target; no positive solution draws no pip). A diamond with a
+  thin line to the Hunter, `CRT.mid`; `CRT.hot` and brackets when the nose line passes within the Hunter's radius of the
+  pip ("on target"). Pure function in `render/duel/leadModel.ts`.
+- Hit feedback: a tick flash at the hit point, a click per hit (at most one per 3 ticks), `-1` floats on hull steps, the
+  existing shield pop on a strip.
+- **Heat bar** in the GUN card and under the crosshair: `HEAT` and a bar, blinking `OVERHEAT` while locked.
 
-## 8. Missiles and targeting
+## 8. Missiles and the laser fit
 
-- Right mouse launches the torpedo (the manual launch, `missileLaunch`) with the existing rules: 360 range, magazine 4,
-  regain, boost then homing, the lock tone. The torpedo card's FTL targeting (pick up, drop on a room) and auto-launch work
-  as on the Hound's Weapons console; Q/E step the torpedo's target room.
-- The weapon cards show **GUN** (heat, `READY` / `OVERHEAT` / `OFFLINE`) and **TORPEDO** (`MAG n/4`, range, target room).
-  Key 1 has no laser to pick up on the Valkyrn; the card row follows the class's slots.
-- **Developer switch** (Settings, single player only): "Valkyrn: fit laser instead of gun", so laser features can be
-  tested solo. With it on the Valkyrn's class uses the Hound's double laser slot (charging, auto-fire, the laser card,
-  key 1). It is a setting chosen before the duel starts and recorded in the duel's start data, so a replay is exact.
+- Right mouse launches the torpedo (the manual launch) with the existing rules: 360 range, magazine 4, regain, boost
+  then homing, the lock tone. The TORPEDO card's FTL targeting and auto-launch work as on the Hound's Weapons console.
+- The weapon cards follow the class's slots: **GUN** (heat, `READY` / `OVERHEAT` / `OFFLINE`) and **TORPEDO** (`MAG n/4`,
+  range, target room); with the laser fit, LASER and TORPEDO exactly as on the Hound.
+- **Developer switch** (Settings, single player only): "Valkyrn: fit laser instead of gun". On, the Valkyrn duel starts
+  with `opts.cls` = `valkyrnLaser` (the Valkyrn's hull and flight, the Cutter's double laser and torpedo). The class index
+  is in the duel state, its hash and the snapshot header (§6.1), so a rematch and a replay keep it.
 
 ## 9. Picking the ship
 
 - Single player opens a ship choice: **Hound** (crew of two, Tab between them, as today) and **Valkyrn** (solo fighter).
   The choice is remembered with the settings. Multiplayer is unchanged (Hound).
 - The sit-down card for the Flight seat: `FLIGHT: MOUSE TO STEER · W/S THROTTLE · L-CLICK GUN · R-CLICK TORPEDO`.
-- The controls list gains the Flight seat's controls.
+- The controls list gains the Flight seat's bindings (§5.1).
 
 ## 10. Tests and gates
 
-- **Parity** (§3) and the no-id-literal grep.
-- **Sim**: aim turns the ship and holds the heading; A/D and auto-face win over it; it rides the held wire, hash and
-  snapshot. Gun: interval, alternate muzzles, heat and the lockout, Weapons level 1 and 2, rounds hit the ship / an
-  asteroid / the planet and end; the shield wear strips a layer at 8; the Room by impact point; hull every 3 hits; room
-  level every 6. Round pool overflow (the oldest round is reused). Crew of one: the downed pilot loses the round.
-- **View**: the lead pip against a fly-out (a round fired along the pip with the Hunter coasting hits within 1 tick of
-  the predicted time); the crosshair, pip, heat bar and every new mark on the CRT amber ramp (`crtColours`).
+- **Parity** (§3.3) and the no-id-literal test (§3.2).
+- **Crew of one**: `createDuel` at n = 1 (and a throw when `opts.crew` disagrees with the layout's `crew`); a snapshot
+  round trip at n = 1; the downed pilot loses the round; the out-of-seat rule flies throttle and held heading on the
+  Valkyrn and zero axes on the Hound.
+- **Class**: `crewClass` from the layout, from `opts.cls`, kept by a rematch and a snapshot round trip; `systems[0].cls`
+  validated; the gun Valkyrn never emits a `laser` event and answers `laserLock` / `laserCharge` / `laserFrequency`
+  `unavailable`.
+- **Aim**: the nose settles on a fixed aim with no turn-sign flip over 60 ticks, within one index; A/D and `face` win;
+  an invalid aim counts as −1; aim sets `holdHeading`; it rides the codec, checkpoint, replay, hash and snapshot.
+- **Gun**: interval and alternate muzzles; heat, the lockout and its length; Weapons level 1 halves cooling, level 2
+  stops fire; rounds hit the ship / an asteroid / the planet and end, and end at their life; the pool overflow rule;
+  shield wear strips a layer at 8 and any strip zeroes it; the Room by closest approach from the front, side and rear
+  (aiming at the stern from ahead hits Engines); hull every 3 hits; room level every 6; repair zeroes the wear; the first
+  gun round turns the enemy hostile with cause `gun`.
+- **Lead pip**: with `DEFAULT_FLIGHT` replaced by `{ gravity: false, edge: false, drag: 0, stabilise: 0 }` and the Hunter
+  coasting, a round fired along the pip's bearing passes within the Hunter's radius; with the default flight far from the
+  planet (≥ 1500 u) it passes within 10 u of the predicted point.
+- **View**: the crosshair, pip, heat bar, the Valkyrn silhouette and every new mark on the CRT amber ramp (`crtColours`).
 - **Gate**: a scripted Valkyrn pilot (aims at the pip, fires in bursts under the heat limit, launches torpedoes in
-  range, walks to repair a level-2 Room) over the duelGates seeds: median round 3–5 minutes and the Hunter wins at least
-  one of ten. Tune the gun counters (§7.2) and the class (§6.1) to pass; report the numbers.
+  range, stands to repair a level-2 Room and returns) over the duelGates seeds: median round 3–5 minutes and the Hunter
+  wins at least one of ten. Tune the gun counters (§7.2) and the class (§6.1) to pass; report the numbers.
 - **Hound unchanged**: the Hound's goldens move only by the version bump (the bless procedure, never `--fresh`); its
   duelGates numbers are unchanged.
 - Gates: `npx tsc -b`, full vitest, `npm run test:duel-app-runtime`.
@@ -205,5 +307,5 @@ The Hunter is unchanged.
 
 ## 11. Out of scope
 
-- The Valkyrn online; bots; a gimbal; Valkyrn-only features of any kind (by §3 there are none). Asteroid destruction
-  stays on its spike branch.
+- The Valkyrn online; bots; a gimbal; Valkyrn-only features beyond its data (§3). Asteroid destruction stays on its spike
+  branch.
