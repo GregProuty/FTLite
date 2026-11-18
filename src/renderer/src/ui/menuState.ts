@@ -21,7 +21,8 @@ export interface MenuState {
 }
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
 /** Audio-i spec section 6: the three volumes, each one of VOLUME_STEPS. */
-export interface SettingsSlice extends Volumes { available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[] }
+/** Feel-i: `shake`, the console maps' screen shake setting. */
+export interface SettingsSlice extends Volumes { available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake: import('../render/shake').ShakeSetting }
 /** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
 export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
 export interface UiState {

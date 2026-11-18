@@ -16,6 +16,8 @@ export interface UiActionDeps {
   /** Quit the app (owner 2026-11-17: Quit on the main menu): closes the window, as its close button does. */
   quit?(): void;
   setVolume?(channel: VolumeChannel, volume: number): void;
+  /** Feel-i: the screen shake setting changed (main saves it and hands it to the renderer). */
+  setShake?(shake: import('../render/shake').ShakeSetting): void;
   fullscreen?: { get(): Promise<boolean>; set(on: boolean): Promise<boolean> };
   /** performance.now(), injectable for tests. */
   perfNow?(): number;
@@ -125,6 +127,7 @@ export function createUiActions(deps: UiActionDeps) {
     returnHome(): void { deps.home?.(); setMenu({ hadView: false, page: 'home', resetEpoch: menu().resetEpoch + 1 }); },
     pause(): void { deps.pause(); },
     setVolume(channel: VolumeChannel, volume: number): void { store.setState((s) => ({ settings: { ...s.settings, [channel]: volume } })); deps.setVolume?.(channel, volume); },
+    setShake(shake: import('../render/shake').ShakeSetting): void { store.setState((s) => ({ settings: { ...s.settings, shake } })); deps.setShake?.(shake); },
     toggleFullscreen(): void {
       const on = menu().fullscreen;
       if (!deps.fullscreen || on === null) return;

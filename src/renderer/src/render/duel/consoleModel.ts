@@ -8,6 +8,8 @@ import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
+import { laserCardReason, laserSituation } from './situationModel';
+import { laserOffline } from '../../sim/tactical/weapons';
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
@@ -16,8 +18,11 @@ export interface HelmPanel { heading: number; speed: number; held: HeldFlags; th
 /** `torpedoInRange`: the target within the torpedo's range (weapons update spec §2), shown IN RANGE / OUT OF RANGE. */
 /** FTL targeting spec §1, the weapon cards: `laserTarget` the laser's target room (−1 none), `torpTarget` the torpedo's
  *  (−1 none), `burst` the laser's shots a charge (the card's `x2` mark). */
+/** Feel-i (console feel spec §3): `laserReason` the LASER card's why-not (`OUT OF ARC: HELM TURN RIGHT`, `OUT OF RANGE
+ *  612/450`, `WEAPONS OFFLINE`) or FIRING, null while it simply charges; `goal` the card's goal glow (§1: untargeted, and
+ *  not yet picked up this sit). */
 export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; torpedoInRange: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags; freq: number; weakFreq: number | null;
-  laserTarget: number; torpTarget: number; burst: number }
+  laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean }
 /** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map. */
 export interface SciencePanel { hover: string | null }
 export interface ConsoleView {
@@ -36,6 +41,9 @@ export interface ConsoleModelInput {
   throttle?: number;
   /** Science's hover readout this frame (Sci-1 spec §7.3), from the scene; null or absent with no cursor. */
   hover?: string | null;
+  /** Feel-i: seconds since the crew laser last fired on this screen (the FIRING hold; absent: never), and whether the
+   *  LASER card's goal glow may show this sit (the scene stops it once the laser is picked up). */
+  sinceShot?: number; goal?: boolean; t?: number;
 }
 
 /** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null
@@ -72,7 +80,8 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weapons: WeaponsPanel | null = station === 'weapons'
     ? { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
-      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser.shots }
+      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser.shots,
+      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted }
     : null;
   const side = i.overlay && station !== 'ship'
     ? { zoom: i.overlay.zoomText.replace(/^ZOOM\s+/, ''), free: i.overlay.snapHint, snapLabel: station === 'weapons' ? 'CAMERA' as const : 'SNAP' as const }

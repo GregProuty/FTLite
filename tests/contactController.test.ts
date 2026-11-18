@@ -33,9 +33,10 @@ describe('Helm and Weapons (enemy ship window spec §3, Sci-1 spec §7.2)', () =
     c.toggle(); expect(c.state()).toBeNull();
     expect(c.takeRequests()).toEqual(none);
   });
-  it('arm toggles the aim only on the enemy at Level 1 or more; a no-op on the derelict and on an unknown enemy', () => {
+  it('arm toggles the aim on the enemy at any scan level (Feel-i: the "?" rooms below Level 1); a no-op on the derelict', () => {
     const c = createContactController(); c.sync(live({ enemyKnown: 0 }));
-    c.click(0); c.arm(); expect(c.state()).toEqual({ contact: 0, aim: false });
+    c.click(0); c.arm(); expect(c.state()).toEqual({ contact: 0, aim: true });
+    c.arm(); expect(c.state()).toEqual({ contact: 0, aim: false });
     c.sync(live({ enemyKnown: 1 })); c.arm(); expect(c.state()).toEqual({ contact: 0, aim: true });
     c.arm(); expect(c.state()).toEqual({ contact: 0, aim: false });
     c.arm(); c.cancelAim(); expect(c.state()).toEqual({ contact: 0, aim: false });
