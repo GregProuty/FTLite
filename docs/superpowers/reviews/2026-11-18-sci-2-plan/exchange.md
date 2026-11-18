@@ -105,3 +105,52 @@ Confirmed (health.ts:50,96,103,110,120,122 and :62; menu.test.tsx:74). Fixed bot
 
 ---
 
+# Round 2 (delta, reviewing 29713c20, effort medium, 54 s, 257068 in / 221512 cached / 4969 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R2-F1 Task 7's otherStatus rewrite defaults to pid 1, but at duelRuntime L107 and L175 the other character is pid 0
+The new hand-edit step says to replace `rt.otherStatus()` with `crewStatus(rt.duel, 1)` and to use a different pid only 'if it is not 1'. At tests/duelRuntime.test.ts L107 and L175 the active character is player 1 after a Tab, so the partner is player 0, seated at Helm. `crewStatus(rt.duel, 1)` would return 'WEAPONS' at L107, which fails against 'HELM'. At L175 player 1 is standing at the Weapons repair point, so it would read REPAIRING or ON FOOT. The escape clause covers this, but only if the executor works it out. · plan L1865 (hand edit: `crewStatus(rt.duel, 1)` … 'use the pid the test's other character has if it is not 1'); tests/duelRuntime.test.ts:103-107 (`press('switch')`, then `[rt.active(), …]` equals `[1, 'weapons', 'AT HELM']`); :168-175 (switch to the gunner, `put(rt, 1, 8, 6)`, then `otherStatus()` is 'AT HELM'); tests/duelRuntime.test.ts:79,120 and tests/scienceSeat.test.ts:83-88 (here the partner is pid 1, so the default is right). · A fresh executor that applies the default literally gets two red assertions. They then have to find out why from the test bodies. This does not block, because the clause allows it. · State the pids explicitly: L79, L120 and scienceSeat L88 use `crewStatus(rt.duel, 1)`; L107 and L175 use `crewStatus(rt.duel, 0)` (expected 'HELM').
+
+## Prior findings
+- R1-F1: resolved — Step 12b (plan L608-610) adds `!` to every `t.players[0].` and `t.players[1].` in tests/helpers/scriptedDuel.ts:78 and to tests/duelTelemetry.test.ts:84. Those are the only two bare member accesses: duelTelemetry L81, L87 and L88 pass the element to toMatchObject, which accepts undefined. Both files are in Files (L147) and in the git add (L631).
+- R1-F2: resolved — Step 7b (plan L968-976) changes tests/duelMode.test.ts:134 to playerCount 5 and adds a crew-3 start asserted true. The `duel` harness and the `duel.command({ kind: 'start', initBytes: encode(...) })` form match L131-135. The file is in the git add (L1001).
+- R1-F3: resolved — The sed (L1861) now covers scienceConsole.test.ts (L84, 86, 87, 90 and 101; every value matches `[A-Z ]+`) and scienceSeat.test.ts:68. The hand edit (L1865) covers duelRuntime L79, 107, 120 and 175 and scienceSeat L88, with a value map, the array-element note and the import. scienceSeat already imports readoutModel at L16; duelRuntime gets a new import. The three files are in Files, the Step 6 run and the git add. The pid default is wrong at two lines; see the new P3.
+- R1-F4: resolved — Decision 5 (L36) and crewStatus (L1797-1805) now require `d.repair[r] > 0` or `fireRepair[p.room] > 0` on top of reach. The fields are real: state.ts:12 (RepairPoint.room/tacticalRoom), :40 (repair), :42 (points), fire.ts:18 (extinguishProgress reads fireRepair[p.room]). repairInReach returns p.tacticalRoom (controls.ts:26). The test adds ON FOOT when damaged, then REPAIRING once repair is 1 (L1727-1730).
+- R1-F5: resolved — Task 2 Step 7 (L482) now reads one loop in applyHitDamage, five in healthPhase, plus revivers. Task 5 cites menu.test.tsx L74 (L1311).
+
+## Verified
+- tests/helpers/scriptedDuel.ts:78 and tests/duelTelemetry.test.ts:84 are the only bare `t.players[n].` member accesses in tests (grep of tests for `t\.players\[`).
+- tests/duelMode.test.ts:131-135: a `duel` harness, the start command form, and L134's playerCount 3 assertion, all as Step 7b assumes.
+- tests/scienceConsole.test.ts:84,86,87,90,101 and tests/scienceSeat.test.ts:68: every `other:` value is a single all-caps word or 'AT HELM', so the sed pattern `, other: '[A-Z ]+'` removes each.
+- tests/duelRuntime.test.ts:79,107,120,175 and tests/scienceSeat.test.ts:88 are every `otherStatus()` call in the three files.
+- src/renderer/src/app/duel/controls.ts:21-27: repairInReach returns tacticalRoom, or -1 when the character is seated or not conscious, so crewStatus's `d.points.find(q => q.tacticalRoom === r)` lookup and the fireRepair index (fire.ts:18) are consistent.
+
+## Not verified
+- I did not run `tsc -b` or vitest (read-only review), so I did not confirm that the duelMode crew-3 start validates against the harness's room and seat setup. It relies on the round-1 reading that modeDuelInit is the Hound with four spawns.
+- I did not check whether `d.repair` keeps its tuple type after Task 2. Under noUncheckedIndexedAccess the `d.repair[r]!` in crewStatus is valid whether it is a tuple or number[].
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the plan at `29713c20`. 1 accepted, 0 rejected, 0 deferred; R1-F1..F5 confirmed resolved.
+
+## R2-F1 [P3]: Task 7's otherStatus rewrite defaults to pid 1, but at duelRuntime L107 and L175 the other character is pid 0
+
+Confirmed: tests/duelRuntime.test.ts:103-107 and :168-175 switch to player 1, so the partner is player 0. Task 7 now names the pid for each line.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-18-sci-2-crew-of-four.md
+
+<!-- end -->
+
+---
+
