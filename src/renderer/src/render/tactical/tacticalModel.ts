@@ -129,6 +129,8 @@ export interface TacticalModelInput {
   gravity?: boolean;
   /** Presentation seconds (the SLINGSHOT blink); default 0. */
   t?: number;
+  /** Valkyrn spec §4.5: the crew ship's silhouette (hullFor(true, layout.hull)); absent: the Hound's. */
+  crewHull?: HullId;
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -325,7 +327,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const b = interpolatedShip(state, prev, alpha, i), s = state.systems[i]!;
     if (!onScreen(b.x, b.y, Math.max(SHIP_RADIUS * 2, (SHIP_RADIUS * 1.9 * drawnScale(z)) / z))) continue;   // the drawn rings reach 1.9 units
     const p = toS(b.x, b.y);
-    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: drawnScale(z), chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: hullFor(i === 0), rooms: s.rooms, shields: s.shields });
+    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: drawnScale(z), chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: i === 0 ? input.crewHull ?? hullFor(true) : hullFor(false), rooms: s.rooms, shields: s.shields });
   }
 
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);

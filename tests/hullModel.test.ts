@@ -2,9 +2,9 @@
 // units (nose +f, starboard +s). Each constraint the spec lists, for both hulls.
 import { describe, expect, it } from 'vitest';
 import { isConvex } from '../src/renderer/src/render/tactical/dashModel';
-import { ENEMY_RING, HULLS, hullFor, pointInPolygon, polygonArea, roomCentre, segmentsCross, type HullId } from '../src/renderer/src/render/tactical/hullModel';
+import { ENEMY_RING, HULLS, hullFor, isHullId, pointInPolygon, polygonArea, roomCentre, segmentsCross, type HullId } from '../src/renderer/src/render/tactical/hullModel';
 
-const ids: HullId[] = ['hound', 'scout'];
+const ids: HullId[] = ['hound', 'scout', 'valkyrn'];
 const edges = (p: readonly number[]): [number, number, number, number][] => {
   const out: [number, number, number, number][] = [], n = p.length / 2;
   for (let i = 0; i < n; i++) { const j = (i + 1) % n; out.push([p[2 * i]!, p[2 * i + 1]!, p[2 * j]!, p[2 * j + 1]!]); }
@@ -16,6 +16,7 @@ describe('the hulls (hull silhouettes spec section 1)', () => {
   it('have the spec vertex counts and three rooms each', () => {
     expect(HULLS.hound.outline.length / 2).toBe(43);
     expect(HULLS.scout.outline.length / 2).toBe(25);
+    expect(HULLS.valkyrn.outline.length / 2).toBe(53);
     for (const id of ids) expect(HULLS[id].rooms.length).toBe(3);
     expect(Object.isFrozen(HULLS)).toBe(true);
   });
@@ -41,10 +42,16 @@ describe('the hulls (hull silhouettes spec section 1)', () => {
     expect(ENEMY_RING).toBe(1.35);
     expect(maxRadius(HULLS.scout.outline)).toBeLessThanOrEqual(ENEMY_RING - 0.1);
     expect(maxRadius(HULLS.hound.outline)).toBeLessThanOrEqual(1.55);
+    expect(maxRadius(HULLS.valkyrn.outline)).toBeLessThanOrEqual(1.55);
   });
-  it('the crew flies the Hound and the enemy the scout', () => {
+  it('the crew flies its layout hull (the Hound by default), the enemy the scout (Valkyrn spec §3.2, §4.5)', () => {
     expect(hullFor(true)).toBe('hound');
-    expect(hullFor(false)).toBe('scout');
+    expect(hullFor(true, 'valkyrn')).toBe('valkyrn');
+    expect(hullFor(true, 'nonsense')).toBe('hound');
+    expect(hullFor(false, 'valkyrn')).toBe('scout');
+    expect([isHullId('valkyrn'), isHullId('cutter'), isHullId(3)]).toEqual([true, false, false]);
+    expect(roomCentre('valkyrn', 0).f).toBeGreaterThan(roomCentre('valkyrn', 1).f);   // Weapons (Ops) fore of Shields (racks) fore of Engines (ramp)
+    expect(roomCentre('valkyrn', 1).f).toBeGreaterThan(roomCentre('valkyrn', 2).f);
   });
   it('roomCentre is the mean of the room vertices', () => {
     expect(roomCentre('scout', 0).f).toBeCloseTo((0.88 + 0.88 + 0.46 + 0.46) / 4, 9);

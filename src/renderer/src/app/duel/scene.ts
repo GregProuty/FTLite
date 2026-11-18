@@ -23,6 +23,7 @@ import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat 
 import { shakeScale } from '../../render/shake';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
+import { hullFor } from '../../render/tactical/hullModel';
 import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { screenToWorld, worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
@@ -248,7 +249,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
           ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
-          holdHeading: preview ?? d.holdHeading, holdPreview: preview !== null, gravity: view === 'helm', alert, pings   // Feel-ii
+          holdHeading: preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: view === 'helm', alert, pings   // Feel-ii; Valkyrn spec §4.5: the crew hull
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
