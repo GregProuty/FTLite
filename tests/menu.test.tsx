@@ -54,7 +54,8 @@ describe('multiplayer', () => {
   it('shows the different-build wording and Retry for an incompatible error', () => {
     const { actions } = renderUi();
     act(() => actions.setStatus({ ...idle, phase: 'error', error: 'incompatible', actions: ['join', 'retry'] }));
-    expect(text('status')).toBe('The other computer runs a different FTLite build. Install the same build on both, then try again.');   // a duel Join tries one compatibility: incompatible means a different build (H-2 spec §2) expect(screen.getByTestId('retry')).toBeDefined();
+    expect(text('status')).toBe('The other computer runs a different FTLite build. Install the same build on both, then try again.');   // a duel Join tries one compatibility: incompatible means a different build (H-2 spec §2)
+    expect(screen.getByTestId('retry')).toBeDefined();
   });
   it('labels reconnect as a seat only on Multiplayer', () => {
     const { actions } = renderUi();
