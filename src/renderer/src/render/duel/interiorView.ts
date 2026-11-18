@@ -30,6 +30,8 @@ import { duelHit } from '../impactModel';
 import { damagedRepairPoints, duelWorking } from '../particles/sources';
 import type { ViewEvent } from '../tactical/fxModel';
 import { featureReady } from '../fallback';
+import { createHealFx, crewLife, healFxDraw, stepHealFx } from './healFxModel';
+import { createRandom, hashString } from '../particles/random';
 
 export interface InteriorView {
   container: Container;
@@ -75,6 +77,13 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const badges = new Container(), badgeLabels: BitmapText[] = [];
   let badgesFor: string | null = null, badgeScale = 0;
   const BADGE = 32, BADGE_GLYPH = 22, LABEL_ADVANCE = 6, BADGE_TINT: Record<StationBadge['tint'], number> = { normal: TEXT, offline: WARN, faint: DIM };
+  // Duel polish i spec §D: the healing motes and revive rings in one Graphics redrawn each frame, and a pooled REVIVED label
+  // per character, over the crew and the other labels. The motes' x jitter is a view-side random (never the sim's).
+  const heal = createHealFx(), healRandom = createRandom(hashString('duel-heal-motes')), healMarks = new Graphics();
+  const revivedLabels = Array.from({ length: 2 }, () => {
+    const t = new BitmapText({ text: 'REVIVED', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
+    t.anchor.set(0.5, 1); t.roundPixels = true; t.visible = false; t.tint = GOOD; return t;
+  });
   const labels = Array.from({ length: 3 }, () => {
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
@@ -83,7 +92,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
   // labels on top so the lights never wash them out.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...crewLabels);
+  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...crewLabels, healMarks, ...revivedLabels);
   const badgeText = new Container();
   world.addChild(badgeText);
   desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
@@ -137,8 +146,10 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
       });
       // Health (duel-health spec §2): a bar above each character below full, and a downed character's pick-up ring and label.
+      const drawn: { x: number; y: number }[] = [];
       for (const c of o.crew) {
         const was = crewPrev[c.pid], x = was ? (was.x + (c.x / TILE_PX - was.x) * alpha) * TILE_PX : c.x, y = was ? (was.y + (c.y / TILE_PX - was.y) * alpha) * TILE_PX : c.y;
+        drawn[c.pid] = { x, y };
         if (c.bar) {
           const w = TILE_PX * 0.8, bx = x - w / 2, by = y - TILE_PX * 0.75;
           marks.rect(bx - 1, by - 1, w + 2, 5).fill({ color: 0x000000, alpha: 0.6 });
@@ -152,6 +163,18 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (t.text !== c.label) t.text = c.label;
         t.tint = WARN; t.position.set(Math.round(x), Math.round(y + TILE_PX * 0.5));
       }
+      // Duel polish i spec §D: healing motes and the revive, on the presentation clock (held while paused).
+      const life = crewLife(d);
+      stepHealFx(heal, { tick: d.tactical.tick, round: d.round, downed: life.downed, healing: life.healing, pos: drawn }, presentDt, healRandom);
+      const hv = healFxDraw(heal);
+      healMarks.clear();
+      for (const m of hv.motes) healMarks.rect(Math.round(m.x) - 3, Math.round(m.y) - 1, 7, 3).rect(Math.round(m.x) - 1, Math.round(m.y) - 3, 3, 7).fill({ color: GOOD, alpha: m.alpha });
+      for (const r of hv.rings) healMarks.circle(r.x, r.y, r.r).stroke({ width: 2, color: GOOD, alpha: r.alpha });
+      revivedLabels.forEach((t, pid) => {
+        const l = hv.labels.find((q) => q.pid === pid);
+        t.visible = l !== undefined;
+        if (l) { t.alpha = l.alpha; t.position.set(Math.round(l.x), Math.round(l.y)); }
+      });
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
       const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still

@@ -96,6 +96,9 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
         <PixelText key={k} text={r.label} x={r.centre.x} y={r.centre.y} size={FONT_NATIVE} tint={CRT.hot} anchorX={0.5} anchorY={0.5} />
       ))}
       <svg data-ui-contact-marks="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" style={{ ...boxStyle, pointerEvents: 'none' }}>
+        {contact.flash.map((f) => (   // duel polish i spec §B: the struck room flashes, the ramp's hot as the spec's white
+          <polygon key={`f${f.room}`} data-ui-contact-flash={contact.rooms[f.room]?.label ?? ''} points={polyPoints(f.points)} fill={hex(CRT.hot)} fillOpacity={f.alpha} stroke="none" />
+        ))}
         {hover >= 0 && (
           <g data-ui-contact-hover="">
             <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.glass)} strokeWidth={3} />

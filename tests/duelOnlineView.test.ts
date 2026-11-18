@@ -91,6 +91,14 @@ describe('the online duel view source (spec §3)', () => {
     expect(events).toEqual([{ kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: 100, y: 200 }]);
     expect(missileOf(after, 0)).not.toBeNull();
   });
+  it('online hits say what they did (duel polish i spec §B): a strip, the lock room, and a missile on the room that rose', () => {
+    const before = createTacticalState(4), after = createTacticalState(4), a = after.systems[0], e = after.systems[1];
+    a.lock = 2; a.shots += 3; a.laserHits += 2; a.layersStripped += 1; e.rooms[2] = 1;   // a strip, an Engines hit, a miss
+    a.missileHits += 1; e.rooms[0] = 1;                                                   // a missile on Weapons
+    const ev = gapEvents([duelCounters(before, 0), duelCounters(before, 1)], [{ x: 5, y: 6, h: 0 }, null], after);
+    expect(ev.filter((x) => x.kind === 'laser').map((x) => x.kind === 'laser' && [x.hit, x.stripped, x.room])).toEqual([[true, true, -1], [true, false, 2], [false, false, -1]]);
+    expect(ev.find((x) => x.kind === 'missileEnd')).toMatchObject({ cause: 'ship', target: 1, room: 0 });
+  });
   it('shows the other character REPAIRING only while a repair it stands at has progressed since the last publication', () => {
     const d = createSeatedDuel(CUTTER, 5), c = confirmed();
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });

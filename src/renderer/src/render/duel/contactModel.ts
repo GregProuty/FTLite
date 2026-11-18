@@ -40,6 +40,8 @@ export interface ContactView {
   weapons: null | { laser: ContactLaser; missile: { magazine: number } };
   /** The aim is armed (Weapons only). */
   aim: boolean;
+  /** Duel polish i spec §B: each struck room's flash, its polygon and fill alpha (a hot fill fading 0.6 to 0). */
+  flash: { room: number; points: number[]; alpha: number }[];
 }
 export interface ContactModelInput {
   state: TacticalState;
@@ -51,6 +53,8 @@ export interface ContactModelInput {
   t: number;
   /** The Weapons station block's panel (its charge row), or null at the Helm. */
   weapons: Pick<WeaponsPanel, 'charge'> | null;
+  /** Duel polish i spec §B: the shown ship's struck rooms and their flash alphas now (hitModel flashesFor); default none. */
+  flashes?: readonly { room: number; alpha: number }[];
 }
 
 /** Ship units (f, s) to the box: one uniform scale fitting the outline's bounds with CONTACT_PAD on every side, the
@@ -98,6 +102,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     box, outline: place(shape.outline), rooms,
     lockRoom: targeted ? crew.lock : null,
     weapons,
-    aim: i.aim && weapons !== null
+    aim: i.aim && weapons !== null,
+    flash: (i.flashes ?? []).flatMap((f) => { const r = rooms[f.room]; return r && f.alpha > 0 ? [{ room: f.room, points: r.points, alpha: f.alpha }] : []; })
   };
 }

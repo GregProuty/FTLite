@@ -1,6 +1,6 @@
 // Audio-i spec section 4c: the ship interior's sounds from render-side state diffs, for the sector state and the duel's
-// interior alike: a door opening or closing, sitting at a console, a room catching fire, and the burning-room count that
-// drives the crackle loop. The same stale-replay guard as render/impactModel.ts.
+// interior alike: a door opening or closing, sitting at a console or standing up (duel polish i spec §C), a room catching
+// fire, and the burning-room count that drives the crackle loop. The same stale-replay guard as render/impactModel.ts.
 import type { SimState } from '../sim/state';
 import { HIT_FRESH_TICKS } from '../render/impactModel';
 import { tilePan } from './voices';
@@ -26,15 +26,18 @@ export function interiorAudioView(state: SimState, tick = state.tick): InteriorA
   };
 }
 
-export function interiorSounds(w: InteriorWatch | null, v: InteriorAudioView): { watch: InteriorWatch; sounds: SoundRequest[]; fires: number } {
+/** `ignited`: the rooms that caught fire this frame (0 on a re-baseline), for the duel's rate-limited fire alarm (duel polish i spec §C). */
+export function interiorSounds(w: InteriorWatch | null, v: InteriorAudioView): { watch: InteriorWatch; sounds: SoundRequest[]; fires: number; ignited: number } {
   const open = Array.from(v.doors, (s) => OPEN_DOOR_STATES.includes(s)), burning = Array.from(v.fire, (f) => f > 0), seated = Array.from(v.occupant, (o) => o >= 0);
   const fires = burning.filter(Boolean).length, watch: InteriorWatch = { tick: v.tick, open, burning, seated };
   const fresh = !!w && v.tick >= w.tick && v.tick - w.tick <= HIT_FRESH_TICKS
     && w.open.length === open.length && w.burning.length === burning.length && w.seated.length === seated.length;
-  if (!w || !fresh) return { watch, sounds: [], fires };
+  if (!w || !fresh) return { watch, sounds: [], fires, ignited: 0 };
   const sounds: SoundRequest[] = [];
   open.forEach((o, e) => { if (o !== w.open[e]) sounds.push({ key: o ? 'doorOpen' : 'doorClose', gain: 0.6, pan: v.doorPan[e] ?? 0 }); });
-  seated.forEach((s, k) => { if (s && !w.seated[k]) sounds.push({ key: 'console', gain: 0.5, pan: v.stationPan[k] ?? 0 }); });
-  burning.forEach((b, r) => { if (b && !w.burning[r]) sounds.push({ key: 'thruster', gain: 0.45, dur: 0.5, filter: { type: 'lowpass', from: 1200 } }); });
-  return { watch, sounds, fires };
+  // Sitting blips at 0.5, standing up (duel polish i spec §C) softer at 0.35, both at the station's column.
+  seated.forEach((s, k) => { if (s !== w.seated[k]) sounds.push({ key: 'console', gain: s ? 0.5 : 0.35, pan: v.stationPan[k] ?? 0 }); });
+  let ignited = 0;
+  burning.forEach((b, r) => { if (b && !w.burning[r]) { ignited++; sounds.push({ key: 'thruster', gain: 0.45, dur: 0.5, filter: { type: 'lowpass', from: 1200 } }); } });
+  return { watch, sounds, fires, ignited };
 }

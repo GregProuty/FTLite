@@ -14,6 +14,7 @@ import {
   type TacticalModelInput
 } from './tacticalModel';
 import { hullFor, roomCentre } from './hullModel';
+import { calloutDraws, CHARGE_COLOUR, CHARGE_RING_MIN_PX, CHARGE_RING_RADII, chargePulse, ENEMY_SLOT, enemyCharge, type CalloutDraw } from './hitModel';
 
 /** The laser arc's half-angle in radians: ±60° (cos 0.5). */
 export const ARC_HALF = Math.acos(LASER_ARC_COS);
@@ -29,9 +30,21 @@ export interface WeaponsDraw {
 export interface LockDraw { x: number; y: number; r: number; room: number; label: Label }
 export interface MissileDraw { x: number; y: number; angle: number; crew: boolean; trail: Point[] }
 export interface EffectDraw { kind: 'beam' | 'burst' | 'spark'; x1: number; y1: number; x2: number; y2: number; r: number; colour: number; alpha: number }
-export interface CombatDraw { weapons: WeaponsDraw | null; lock: LockDraw | null; missiles: MissileDraw[]; effects: EffectDraw[] }
+/** Duel polish i spec §A: the Hunter's held charge as a ring about its drawn marker, the arc from 12 o'clock clockwise
+ *  `fill` of the way round; at a full charge the whole ring at the pulse `alpha` and the label FIRING. */
+export interface ChargeDraw { x: number; y: number; r: number; fill: number; full: boolean; alpha: number; colour: number; label: Label }
+/** `charge` and `callouts` (duel polish i spec §A, §B) are optional so a hand-built frame may leave them out. */
+export interface CombatDraw { weapons: WeaponsDraw | null; lock: LockDraw | null; missiles: MissileDraw[]; effects: EffectDraw[]; charge?: ChargeDraw | null; callouts?: CalloutDraw[] }
+
+/** How far inward of the enemy's edge arrow its off-screen charge label and callouts sit, in screen px. */
+const OFFSCREEN_INSET = 120;
 
 export interface CombatModelInput extends TacticalModelInput {
+  /** Presentation seconds, for the full charge's pulse (duel polish i spec §A); default 0. */
+  t?: number;
+  /** The enemy's off-screen edge arrow, when it has one (tacticalModel's arrows): the telegraph and the callouts follow it
+   *  while the enemy is off screen, as it usually is at the default zoom (duel polish i spec §A, §B). */
+  enemyArrow?: Point | null;
   /** Each ship's missile at the previous tick (null when none flew). */
   missilePrev: readonly (PrevBody | null)[];
   /** The gunner's effective missile steering the runtime last sent (0 when Weapons is empty). */
@@ -91,5 +104,22 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const r = it.kind === 'burst' ? 6 + 30 * k : it.kind === 'spark' ? 4 + 12 * k : 0;
     return { kind: it.kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y, r, colour: it.colour, alpha: 1 - k };
   });
-  return { weapons, lock, missiles, effects };
+  // Duel polish i spec §A, §B: the telegraph ring and the hit callouts, about the Hunter's drawn (interpolated) marker.
+  let charge: ChargeDraw | null = null, callouts: CalloutDraw[] = [];
+  if (input.ships.includes(ENEMY_SLOT) && state.ships[ENEMY_SLOT]?.active) {
+    const hb = interpolatedShip(state, prev, alpha, ENEMY_SLOT), hs = toS(hb.x, hb.y);
+    const r = Math.max(CHARGE_RING_MIN_PX, CHARGE_RING_RADII * SHIP_RADIUS * drawnScale(z)), ec = enemyCharge(state);
+    const alphaNow = ec?.full ? chargePulse(input.t ?? 0) : 1, label = ec?.full ? 'FIRING' : 'CHARGING';
+    if (input.enemyArrow) {   // tacticalModel drew the enemy's edge arrow: the same off-screen test, insets and reserves included (review)
+      // Off screen: a small ring about the edge arrow, the label and the callouts inward of it, toward the screen's centre.
+      const a = input.enemyArrow, dx = vp.w / 2 - a.x, dy = vp.h / 2 - a.y, n = Math.hypot(dx, dy) || 1, ix = dx / n, iy = dy / n;
+      const lx = a.x + ix * OFFSCREEN_INSET, ly = a.y + iy * OFFSCREEN_INSET;
+      if (ec) charge = { x: a.x, y: a.y, r: CHARGE_RING_MIN_PX, fill: ec.fill, full: ec.full, alpha: alphaNow, colour: CHARGE_COLOUR, label: { text: label, x: lx, y: ly } };
+      callouts = calloutDraws(input.fx.callouts, { x: lx, y: ly - 16 });
+    } else if (onScreen(hs, r + 16)) {
+      if (ec) charge = { x: hs.x, y: hs.y, r, fill: ec.fill, full: ec.full, alpha: alphaNow, colour: CHARGE_COLOUR, label: { text: label, x: hs.x, y: hs.y - r - 12 } };
+      callouts = calloutDraws(input.fx.callouts, { x: hs.x, y: hs.y - r - 26 });   // above the ring's label
+    }
+  }
+  return { weapons, lock, missiles, effects, charge, callouts };
 }

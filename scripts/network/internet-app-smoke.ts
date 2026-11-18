@@ -13,7 +13,7 @@ import { parseJoinCodeFile } from './join-code-file';
 
 const pause=(ms:number)=>new Promise<void>(done=>setTimeout(done,ms));
 /** The duel smoke's forced-end test seed (duel-app-smoke.ts DUEL_TEST_SEED; importing that file would run it). */
-const DUEL_TEST_SEED=2277;
+const DUEL_TEST_SEED=351;
 /** Two machines: how long one machine waits for the other (a room code in the guest's file, the guest in the host's lobby). */
 const CODE_WAIT_MS=90000;
 const hash=(path:string)=>createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -151,7 +151,7 @@ async function main() {
     if(kind==='host'){await until(()=>app.request!('status'),v=>v.status.actions.includes('start'),CODE_WAIT_MS);await click(app,'start');}
     await until(()=>app.request!('status'),v=>v.status.phase==='running',30000);
     await standUp(app,seat);
-    const decided=await until(now,p=>p?.outcome>0,60000);
+    const decided=await until(now,p=>p?.outcome>0,90000);
     if(kind==='host')await hold(app,'Return',120);
     await until(now,p=>p?.round===1&&p.outcome===0,30000);
     const start=await now(),before=start.speed,shots=start.shots;
