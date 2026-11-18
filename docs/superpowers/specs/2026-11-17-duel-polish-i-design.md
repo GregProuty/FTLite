@@ -87,9 +87,8 @@ readout column at x 1060, below the tab strip).
 ## F. Music (owner, 2026-11-17, added mid-build)
 
 - The default music volume is 50% (`DEFAULT_SETTINGS.music` 0.5). A saved setting keeps its own value.
-- Each round starts on the calm track and crossfades to battle when the enemy turns hostile. That is the first moment the
-  two ships are within 900 units (twice the laser's reach), or any laser or missile has been fired this round. Battle
-  then holds until the round ends, and the next round starts calm. Pure latch `hostileWatch` in audio/duelSounds.ts.
+- Each round starts on the calm track and switches to battle when the Hunter turns hostile. That rule is in
+  `docs/superpowers/specs/2026-11-17-hunter-grace-design.md`: 30 s of grace, or sooner if the crew fires.
 
 ## Tests and gates
 

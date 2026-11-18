@@ -21,8 +21,8 @@ describe('the duel audio adapter (Audio-i spec section 4)', () => {
   it('reports engaged while the round runs, the hum, the fires and the duck, and plays the round-end cue', () => {
     const d = createDuel(parseShip(hound), 1), r = recorder(), a = createDuelAudio(r.out);
     try {
-      a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 1 }, paused: false, pan: () => 0, ...OK });
-      expect(r.status[0]).toMatchObject({ engaged: false, paused: false, duck: false, fires: 0, hum: { thrust: 1, charge: 0 } });   // calm until the enemy turns hostile
+      a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 1 }, paused: false, pan: () => 0, ...OK, hostile: false });
+      expect(r.status[0]).toMatchObject({ engaged: false, paused: false, duck: false, fires: 0, hum: { thrust: 1, charge: 0 } });   // calm through the Hunter's grace
       d.interior.rooms.fire[0] = 1; d.tactical.tick += 1;
       a.frame({ duel: d, events: [{ kind: 'laser', ship: 1, hit: true, stripped: false, room: 0, x1: 0, y1: 0, x2: 0, y2: 0 }], axes: { turn: 0, thrust: 0 }, paused: true, pan: () => 0, ...OK });
       expect(r.status[1]).toMatchObject({ engaged: true, paused: true, duck: true, fires: 1, hum: { thrust: 0 } });
@@ -42,7 +42,6 @@ describe('the duel audio adapter (Audio-i spec section 4)', () => {
       a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 1 }, paused: false, pan: () => 0, ...OK, live: false });
       expect(r.status[0]).toEqual({ engaged: false, paused: false, duck: false, fires: 0, hum: null });
       d.tactical.tick += 1;
-      const [own, enemy] = d.tactical.ships; enemy!.x = own!.x + 300; enemy!.y = own!.y;   // within HOSTILE_RANGE: battle
       a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 1 }, paused: false, pan: () => 0, ...OK, live: true });
       expect(r.status[1]).toMatchObject({ engaged: true, fires: 1, hum: { thrust: 1 } });
     } finally { disposeDuel(d); }
