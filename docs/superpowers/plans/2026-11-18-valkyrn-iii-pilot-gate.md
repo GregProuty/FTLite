@@ -4,7 +4,7 @@
 
 **Goal:** A deterministic scripted Valkyrn pilot (one character: sits at the Flight seat, aims at the lead pip, fires the minigun in bursts under the heat limit, launches torpedoes, stands up to repair a level-2 Room and comes back) and a duelGates block that holds the Valkyrn to the Hound's standard: over seeds 1 to 10 the median round lasts 3 to 5 minutes and the Hunter wins at least one. The gun counters and the Valkyrn hull are tuned until the gate passes, and the numbers are recorded. The Hound's goldens and gate numbers do not move.
 
-**Architecture:** A sim-side pure lead helper, `sim/tactical/lead.ts`, provides `interceptTime`, `leadOffset` and `nearestHeading`, all trig-free. A test pins it equal to Part ii's view `render/duel/leadModel.ts` `leadPip`. The pilot is a new file, `sim/duel/scriptedPilot.ts`, inside the determinism guard. It reuses the scripted pair's walking, sitting, repair-reach and hazard helpers from `sim/duel/scripted.ts`: they are exported, and the pair's orbit block is extracted into `orbitSteer`, a pure refactor proved by `duel-oracle same`. A test helper, `tests/helpers/valkyrnGate.ts`, runs a crew-of-one duel and prints a Valkyrn telemetry line, because `telemetryLine` reads `players[1]`. The tuning tool `scripts/valkyrn-telemetry.ts` runs the gate and sweeps the counters in process. The gate is a new `describe` block in `tests/duelGates.test.ts`. The tuning edits only Valkyrn data: the gun counters, which only gun rounds read, and `VALKYRN_HULL`. So the Hound's oracle and canonical trace stay `same` at SIM_VERSION 53, and there is no version bump.
+**Architecture:** A sim-side pure lead helper, `sim/tactical/lead.ts`, provides `interceptTime`, `leadOffset` and `nearestHeading`, all trig-free. A test pins it equal to Part ii's view `render/duel/leadModel.ts` `leadPip`. The pilot is a new file, `sim/duel/scriptedPilot.ts`, inside the determinism guard. It reuses the scripted pair's walking, sitting, repair-reach and hazard helpers from `sim/duel/scripted.ts`: they are exported, and the pair's orbit block is extracted into `orbitSteer`, a pure refactor proved by `duel-oracle same`. A test helper, `tests/helpers/valkyrnGate.ts`, runs a crew-of-one duel and prints a Valkyrn telemetry line, because `telemetryLine` reads `players[1]`. The tuning tool `scripts/valkyrn-telemetry.ts` runs the gate and sweeps the counters, one child process per combination against a temporarily rewritten `tuning.ts` (Part i freezes the defs). The gate is a new `describe` block in `tests/duelGates.test.ts`. The tuning edits only Valkyrn data: the gun counters, which only gun rounds read, and `VALKYRN_HULL`. So the Hound's oracle and canonical trace stay `same` at SIM_VERSION 53, and there is no version bump.
 
 **Tech Stack:** TypeScript 5.8 (strict, `noUncheckedIndexedAccess`), Vitest 3.2, tsx for scripts, the deterministic duel sim (`sim/duel/*`, `sim/tactical/*`).
 
@@ -73,7 +73,7 @@ Line numbers are taken at master `ed2650b8`, before Sci-2 and Parts i and ii. Re
    `gunHeld` is held while `!cooling` and the shot is on: a lead exists, the lead offset is within `PILOT_FIRE_RANGE` (560, inside the about 607 u reach), it is ahead of the nose, and its perpendicular distance from the nose line is no more than `SHIP_RADIUS`. The gun never reaches its lockout under this rule. A lockout can still come from Weapons level 1 halving the cooling, and the `gunLocked` term covers that case.
 6. **Torpedoes** use the manual `missileLaunch` command (spec §5.1 right mouse), sent only when `canLaunch(t, 0)` and `PILOT_MISSILE_GAP` ticks (start 1500, as `MISSILE_GAP`) have passed since the last launch. The pilot never sends `torpLock`, and its torpedo homes by itself (homing torpedo spec).
 7. **Repair:** while seated, the pilot leaves only for a Room at level 2, choosing in Room order (Weapons, Shields, Engines), which also ends gun fire at Weapons level 2. Once standing, it works that Room down to 0, as the pair does (`scripted.ts:225`), then sits again.
-   - On the tick it stands it sends `throttle` to `PILOT_AWAY_THROTTLE` (0) if the throttle differs, then `stand`, in that order. Away from the seat, `helmHoldsUnattended` coasts the ship on its last aim, which `holdHeading` keeps (spec §4.4).
+   - Standing takes two ticks when the throttle is not already `PILOT_AWAY_THROTTLE` (0). `stepDuelTick` runs the whole seat phase (sits, then stands) before any tactical command and takes the Helm attendant from the seats after it (`sim/duel/step.ts`, "Seat phase" and `const helm = attendant(d, d.nav)`), so a `throttle` sent in the same tick as the `stand` is always rejected `invalid-seat`, whatever the envelope order. On the first tick, still seated, the pilot sends only `throttle` to 0 (with its last aim held and the gun off). On the next tick the throttle is 0 and it sends only `stand`. The rule is stateless: it reads `d.throttle`. Away from the seat, `helmHoldsUnattended` coasts the ship on its last aim, which `holdHeading` keeps, at throttle 0 (spec §4.4: the ship keeps the last bearing and throttle).
    - The pair's heal rule is copied: below `HURT_HEALTH`, with nothing to repair, it goes to the Medbay and stays until full. At n = 1 a downed pilot loses the round (spec §4.4).
 8. **The gate helper is a new file, `tests/helpers/valkyrnGate.ts`.** `telemetryLine` (`tests/helpers/scriptedDuel.ts:75-84`) reads `t.players[1]!`, which is undefined at n = 1. `requireApplied` (`scriptedDuel.ts:39`) becomes an export, so every pilot command must be applied, as the pair's are. The gun counts come from `systems[0].gunShots` / `gunHits`, read before `disposeDuel`; `ShipTelemetry` has no gun fields and this part adds none.
 9. **The per-seed checks** mirror the Hound's (`tests/duelGates.test.ts:12-20`):
@@ -82,7 +82,7 @@ Line numbers are taken at master `ed2650b8`, before Sci-2 and Parts i and ii. Re
    - no planet-contact end under 30 s.
 
    The aggregate: median 180–300 s, the Hunter wins ≥ 1, no run at the cap. "Crew both wins and loses" becomes "the Hunter wins at least one" (spec §10). A crew win is reported but not gated.
-10. **The sweep mutates the Valkyrn's defs in process.** `GunDef` and `ShipClassDef` are `readonly` in type only; Task 1 Step 3 checks that they are not frozen. The sim reads the counters from the class's `GunDef` (contract: `GunDef` carries `hitsPerLayer`/`hitsPerHull`/`hitsPerLevel`) and the hull from the class at `systemsFor`. So overwriting `GUN` and `SHIP_CLASSES[ShipClass.Valkyrn]` before `createDuel` moves only Valkyrn duels. Nothing is written to disk. The chosen values are then written into `tuning.ts` by hand.
+10. **The sweep runs each combination in a child process against a rewritten `tuning.ts`.** Part i freezes `GUN`, every class, its `slots` and `SHIP_CLASSES` (`Object.freeze` in `sim/tactical/defs.ts`), so the defs cannot be overwritten in process: a write throws in strict-mode modules. For each combination, `sweep` rewrites the four lines `export const GUN_HITS_PER_LAYER = n;`, `…_HULL`, `…_LEVEL` and `export const VALKYRN_HULL = n;` in `src/renderer/src/sim/tactical/tuning.ts` (each must match exactly once), runs `scripts/valkyrn-telemetry.ts --json` as a child (`process.execPath node_modules/tsx/dist/cli.mjs …`, which works the same on Windows), and reads its one JSON line. It restores the original text in a `finally` (and on Ctrl+C), then checks the file equals the original. Task 4 Step 3 then runs `git diff --quiet -- src/renderer/src/sim/tactical/tuning.ts`. The chosen values are written into `tuning.ts` by hand in Task 4 Step 5. Never run the sweep while another command reads `tuning.ts` (a vitest run, a build).
 11. **There is no version bump for the tuning.** The changed constants are read only by gun rounds, and the Valkyrn class and the Hound never fire them; the oracle `same` is the proof. One cost is accepted: a Valkyrn solo recording made at 53 between Part i and this commit would not replay the same. No such recording is released, and spec §2.6 keeps the Valkyrn single player.
 12. **The validator's gun bounds must follow the counters.** Spec §7.3 gives "wear 0..7, hull 0..2, room wear 0..5", which are `hitsPer* − 1` at the start values. Task 1 Step 3 greps `hash.ts`/`snapshot.ts`. If Part i wrote literals, they are replaced by maxima over the non-null gun slots (as the laser maxima are), with no change to any hash. Without that, a tuned `GUN_HITS_PER_LAYER` of 10 would reject a valid Valkyrn snapshot.
 
@@ -97,7 +97,7 @@ Line numbers are taken at master `ed2650b8`, before Sci-2 and Parts i and ii. Re
 | `tests/scriptedPilot.test.ts` | create (T2) | sit, aim, bursts, launch, repair and return, determinism |
 | `tests/helpers/scriptedDuel.ts` | modify (T3) | export `requireApplied` |
 | `tests/helpers/valkyrnGate.ts` | create (T3) | `runValkyrnDuel`, `valkyrnLine`, `valkyrnGate` |
-| `scripts/valkyrn-telemetry.ts` | create (T3) | the tuning tool: gate run and in-process sweep |
+| `scripts/valkyrn-telemetry.ts` | create (T3) | the tuning tool: gate run, `--json`, and the child-process sweep |
 | `tests/duelGates.test.ts` | modify (T4) | a new `describe` block, the Valkyrn gate |
 | `src/renderer/src/sim/tactical/tuning.ts` | modify (T4) | the chosen `GUN_HITS_*` and `VALKYRN_HULL` with their gate comments |
 | `docs/superpowers/specs/2026-11-18-valkyrn-solo-ship-design.md` | modify (T4) | new §12 "As built" |
@@ -138,20 +138,16 @@ git grep -n "helmHoldsUnattended" -- src/renderer/src/sim/ship/valkyrn.json
 ```
 Expected:
 - each name is found;
-- the `GUN_HITS_*` and `VALKYRN_HULL` names are found only in `sim/tactical/tuning.ts` and `sim/tactical/defs.ts`.
-
-If `GUN_HITS_*` is also read in `sim/tactical/gun.ts`, change those reads to the class's def (`classOf(state, i).slots.gun!.hitsPerLayer` and so on), which gives the same values and the same hashes, so that Decision 10's sweep can move them.
+- the `GUN_HITS_*` and `VALKYRN_HULL` names are found only in `sim/tactical/tuning.ts` and `sim/tactical/defs.ts`, and each of the four is declared in `tuning.ts` on one line of the form `export const NAME = <integer>;` (Decision 10's sweep rewrites exactly those lines). If a declaration has another form, stop and report.
 
 If `aimTurn` is found but not exported, add `export`. If any other name is missing, stop and report: Parts i and ii are not on the branch.
 
-- [ ] **Step 3: Pre-flight the defs and the validator bounds.**
+- [ ] **Step 3: Pre-flight the validator bounds.**
 
 ```
-npx tsx --eval "import('./src/renderer/src/sim/tactical/defs.ts').then((m) => console.log('frozen', Object.isFrozen(m.GUN), Object.isFrozen(m.SHIP_CLASSES[m.ShipClass.Valkyrn]), 'same gun', m.SHIP_CLASSES[m.ShipClass.Valkyrn].slots.gun === m.GUN))"
-git grep -n "gunWear\|gunHull\|gunRoomWear" -- src/renderer/src/sim/duel/hash.ts src/renderer/src/sim/duel/snapshot.ts
+git grep -n "gunWear\|gunHull\|gunRoomWear" -- src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/duel/hash.ts src/renderer/src/sim/duel/snapshot.ts
 ```
-Expected: `frozen false false` (`same gun` may be either; the sweep sets both).
-- If either def is frozen, the sweep in Task 3 cannot run in process. Use Task 4's manual loop instead: edit `tuning.ts`, run the gate tool, and revert.
+Expected: the bounds are maxima over the classes' gun slots less one (Part i's plan writes `within(0, most((c) => c.slots.gun?.hitsPerLayer) - 1)` and so on), so a tuned counter moves them with no edit.
 - If the bounds are number literals (7, 2, 5), replace each with the def maximum less one, taken over the classes whose `slots.gun` is not null, written like the laser maxima beside them. Then run `npx vitest run tests/snapshot.test.ts tests/duelSnapshot.test.ts` (whichever exist: `git ls-files tests | grep -i snapshot`). The result: pass.
 
 - [ ] **Step 4: Write the failing lead tests.** Create `tests/valkyrnLead.test.ts`:
@@ -164,7 +160,7 @@ import { leadPip } from '../src/renderer/src/render/duel/leadModel';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { interceptTime, leadOffset, nearestHeading } from '../src/renderer/src/sim/tactical/lead';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { GUN, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { GUN_SPEED, HEADING_COUNT } from '../src/renderer/src/sim/tactical/tuning';
 
 /** A two-ship state, the gun Valkyrn in slot 0, with the given relative pose. */
@@ -175,11 +171,12 @@ function pose(rx: number, ry: number, svx: number, svy: number, tvx: number, tvy
   return st;
 }
 
-/** The view's pip as an offset from ship 0, or null. Part ii's signature: read render/duel/leadModel.ts and keep this
- *  adapter the only place that knows it. If leadPip takes (state, i) and returns a world point, this is right as is. */
+/** The view's pip as an offset from ship 0, or null: Part ii's `leadPip(sx, sy, svx, svy, tx, ty, tvx, tvy, speed)`
+ *  returns the target's place in the shooter's frame after the flight, a world point, so the offset is it less ship 0. */
 function viewOffset(st: TacticalState): { x: number; y: number } | null {
-  const p = leadPip(st, 0) as { x: number; y: number } | null;
-  return p ? { x: p.x - st.ships[0]!.x, y: p.y - st.ships[0]!.y } : null;
+  const s = st.ships[0]!, e = st.ships[st.systems[0]!.target]!;
+  const p = leadPip(s.x, s.y, s.vx, s.vy, e.x, e.y, e.vx, e.vy, GUN.speed);
+  return p ? { x: p.x - s.x, y: p.y - s.y } : null;
 }
 
 const CASES: [number, number, number, number, number, number][] = [];
@@ -271,7 +268,7 @@ export function nearestHeading(dx: number, dy: number): number {
 ```
 Run `npx vitest run tests/valkyrnLead.test.ts tests/determinismGuard.test.ts`.
 - Expected: PASS.
-- If only the agreement test fails, apply Decision 1. If `leadPip`'s signature differs, fix the adapter `viewOffset` alone. The adapter must reach the same quantity, the pip as an offset from ship 0.
+- If only the agreement test fails, apply Decision 1.
 
 - [ ] **Step 6: Export the pair's helpers and extract `orbitSteer`.** In `src/renderer/src/sim/duel/scripted.ts`:
   - Add `export` to `function hazardAway`, `function walkTo`, `function canSit`, `function inRepairReach` and `function roomTiles`. Bodies unchanged.
@@ -321,7 +318,7 @@ Expected:
 git add src/renderer/src/sim/tactical/lead.ts src/renderer/src/sim/duel/scripted.ts tests/valkyrnLead.test.ts
 git commit -m "feat(sim): lead helper for the minigun and shared scripted helpers (Valkyrn iii)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
-(Add `src/renderer/src/sim/tactical/gun.ts`, `hash.ts`/`snapshot.ts`, `step.ts` or `render/duel/leadModel.ts` by name only if Steps 2, 3 or 5 changed them.)
+(Add `src/renderer/src/sim/tactical/hash.ts`, `sim/duel/hash.ts`/`snapshot.ts`, `step.ts` or `render/duel/leadModel.ts` by name only if Steps 2, 3 or 5 changed them.)
 
 ---
 
@@ -344,7 +341,7 @@ import valkyrn from '../src/renderer/src/sim/ship/valkyrn.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Seated } from '../src/renderer/src/sim/components';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
-import { createScriptedPilot, PILOT_HEAT_RELEASE, scriptedPilotInput, type ScriptedPilot } from '../src/renderer/src/sim/duel/scriptedPilot';
+import { createScriptedPilot, PILOT_AWAY_THROTTLE, PILOT_HEAT_RELEASE, scriptedPilotInput, type ScriptedPilot } from '../src/renderer/src/sim/duel/scriptedPilot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createTelemetry } from '../src/renderer/src/sim/duel/telemetry';
@@ -427,10 +424,10 @@ describe('the scripted Valkyrn pilot', () => {
       fly(d, p, () => seated(d), 1200);
       fly(d, p, () => p.aim >= 0, 5);
       d.tactical.systems[0].rooms[Room.Weapons] = 2;
-      const first = scriptedPilotInput(p, d);
-      expect(first.commands.map((e) => e.command.kind).at(-1)).toBe('stand');
-      for (const r of stepDuelTick(d, first)) expect(r.status).toBe('applied');
-      expect(seated(d)).toBe(false);
+      const stood = fly(d, p, () => !seated(d), 3);   // a throttle-down tick if the throttle is not 0, then the stand (Decision 7)
+      expect(stood).toBeGreaterThanOrEqual(1);
+      expect(stood).toBeLessThanOrEqual(2);
+      expect(d.throttle).toBe(PILOT_AWAY_THROTTLE);
       expect(d.holdHeading).toBe(p.aim);
       fly(d, p, () => d.tactical.systems[0].rooms[Room.Weapons] === 0, 3600);
       fly(d, p, () => seated(d), 1200);
@@ -564,8 +561,11 @@ export function scriptedPilotInput(p: ScriptedPilot, d: DuelState): DuelInput {
     const mb = medbayRoom(d), healing = p.task < 0 && p.heal && mb >= 0 && medbayOnline(d);
     if (p.task >= 0 || healing) {
       if (seat >= 0) {   // stand up; the ship flies the last aim and this throttle (spec §4.4)
-        if (d.throttle !== PILOT_AWAY_THROTTLE) cmds.push({ kind: 'throttle', level: PILOT_AWAY_THROTTLE });
-        cmds.push({ kind: 'stand' });
+        // Two ticks (plan Decision 7): a throttle sent with the stand is checked against the emptied Helm and rejected.
+        if (d.throttle !== PILOT_AWAY_THROTTLE) {
+          cmds.push({ kind: 'throttle', level: PILOT_AWAY_THROTTLE });
+          held = p.aim >= 0 ? { moveX: 0, moveY: 0, interactHeld: false, aim: p.aim, gunHeld: false } : NO_HELD;
+        } else cmds.push({ kind: 'stand' });
       } else if (p.task >= 0) {
         if (inRepairReach(d, 0, p.task)) held = { moveX: 0, moveY: 0, interactHeld: true };
         else { const pt = d.points.find((q) => q.tacticalRoom === p.task)!; held = walkTo(d, 0, goalTiles(d, pt.room, pt.tile)); }
@@ -589,7 +589,6 @@ export function scriptedPilotInput(p: ScriptedPilot, d: DuelState): DuelInput {
 ```
 Run `npx vitest run tests/scriptedPilot.test.ts tests/determinismGuard.test.ts tests/noShipIdLiterals.test.ts`.
 - Expected: PASS.
-- If the repair test fails because `stand` is rejected after a `throttle` in the same tick, swap the two commands' order (the throttle goes first so it is still accepted at the seat). Report the change.
 - If the sit test times out, check `canSit` against the Flight group's tile in `valkyrn.json` before changing anything else.
 
 - [ ] **Step 3: Prove the Hound unchanged, then commit.**
@@ -710,53 +709,83 @@ export function valkyrnGate(runs: readonly ValkyrnRun[]): { pass: boolean; reaso
 // Usage:
 //   npx tsx scripts/valkyrn-telemetry.ts [seed ...]
 //       each duel's lines, then the gate summary, at the current tuning
+//   npx tsx scripts/valkyrn-telemetry.ts --json
+//       the gate over seeds 1 to 10 at the current tuning, as one JSON line (what sweep reads)
 //   npx tsx scripts/valkyrn-telemetry.ts sweep [--layer a,b] [--hull a,b] [--level a,b] [--vhull a,b]
-//       one line per combination over seeds 1 to 10. The run overwrites the Valkyrn's gun counters (GUN_HITS_PER_LAYER,
-//       _HULL, _LEVEL) and its hull (VALKYRN_HULL) in process only; nothing is written. A list left out keeps the
-//       current value. Line format:
+//       one line per combination over seeds 1 to 10. Part i freezes the defs, so each combination rewrites the four lines
+//       GUN_HITS_PER_LAYER/_HULL/_LEVEL and VALKYRN_HULL in sim/tactical/tuning.ts, runs `--json` in a child process,
+//       and the original text is restored afterwards (plan Decision 10). A list left out keeps the current value.
+//       Line format:
 //       layer=8 hull=3 level=6 vhull=30  median 231.4 s  crew 7 hunter 3 draw 0 cap 0  gun hit 17.9%  PASS
 //       (or FAIL: <reasons>)
-import { GUN, SHIP_CLASSES, ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { GATE_SEEDS } from '../tests/helpers/scriptedDuel';
 import { runValkyrnDuel, valkyrnGate, valkyrnLine } from '../tests/helpers/valkyrnGate';
 
-interface Knobs { layer: number; hull: number; level: number; vhull: number }
-type Mutable = { hitsPerLayer: number; hitsPerHull: number; hitsPerLevel: number };
-const cls = SHIP_CLASSES[ShipClass.Valkyrn]! as unknown as { hull: number; slots: { gun: Mutable | null } };
-const gun = GUN as unknown as Mutable;
+const TUNING = 'src/renderer/src/sim/tactical/tuning.ts';
+const KNOBS = { layer: 'GUN_HITS_PER_LAYER', hull: 'GUN_HITS_PER_HULL', level: 'GUN_HITS_PER_LEVEL', vhull: 'VALKYRN_HULL' } as const;
+type Knob = keyof typeof KNOBS;
+interface GateJson { medianS: number; crewWins: number; hunterWins: number; draws: number; cap: number; shots: number; hits: number; pass: boolean; reasons: string[] }
 
-function setKnobs(k: Knobs): void {
-  for (const g of new Set([gun, cls.slots.gun!])) { g.hitsPerLayer = k.layer; g.hitsPerHull = k.hull; g.hitsPerLevel = k.level; }
-  cls.hull = k.vhull;
+/** The one `export const NAME = <integer>;` line's pattern; throws unless it matches exactly once in `text`. */
+function lineOf(text: string, name: string): RegExp {
+  const re = new RegExp(`^export const ${name} = (\d+);`, 'gm');
+  if ((text.match(re) ?? []).length !== 1) throw Error(`${TUNING}: expected one line 'export const ${name} = <integer>;'`);
+  return new RegExp(`^export const ${name} = (\d+);`, 'm');
+}
+const valueOf = (text: string, name: string): number => Number(lineOf(text, name).exec(text)![1]);
+const withValue = (text: string, name: string, v: number): string => text.replace(lineOf(text, name), `export const ${name} = ${v};`);
+
+function gateJson(): GateJson {
+  const runs = GATE_SEEDS.map((seed) => runValkyrnDuel(seed)), g = valkyrnGate(runs);
+  return {
+    medianS: g.medianS, crewWins: g.crewWins, hunterWins: g.hunterWins,
+    draws: runs.filter((r) => r.telemetry.outcome === Outcome.Draw).length, cap: runs.filter((r) => r.telemetry.outcome === Outcome.Running).length,
+    shots: runs.reduce((n, r) => n + r.gunShots, 0), hits: runs.reduce((n, r) => n + r.gunHits, 0), pass: g.pass, reasons: g.reasons
+  };
 }
 
 const argv = process.argv.slice(2);
 if (argv[0] === 'sweep') {
-  const list = (flag: string, now: number): number[] => {
+  const original = readFileSync(TUNING, 'utf8');
+  const list = (flag: string, k: Knob): number[] => {
     const i = argv.indexOf(flag);
-    if (i < 0) return [now];
+    if (i < 0) return [valueOf(original, KNOBS[k])];
     const v = argv[i + 1]!.split(',').map(Number);
     if (v.some((n) => !Number.isInteger(n) || n < 1)) throw Error(`${flag}: positive integers, comma separated`);
     return v;
   };
-  const layers = list('--layer', gun.hitsPerLayer), hulls = list('--hull', gun.hitsPerHull), levels = list('--level', gun.hitsPerLevel), vhulls = list('--vhull', cls.hull);
-  for (const vhull of vhulls) for (const hull of hulls) for (const layer of layers) for (const level of levels) {
-    setKnobs({ layer, hull, level, vhull });
-    const runs = GATE_SEEDS.map((seed) => runValkyrnDuel(seed)), g = valkyrnGate(runs);
-    const shots = runs.reduce((n, r) => n + r.gunShots, 0), hits = runs.reduce((n, r) => n + r.gunHits, 0);
-    const draws = runs.filter((r) => r.telemetry.outcome === 3).length, cap = runs.filter((r) => r.telemetry.outcome === 0).length;
-    console.log(`layer=${layer} hull=${hull} level=${level} vhull=${vhull}  median ${g.medianS.toFixed(1)} s  crew ${g.crewWins} hunter ${g.hunterWins} draw ${draws} cap ${cap}  gun hit ${shots > 0 ? ((100 * hits) / shots).toFixed(1) : '0.0'}%  ${g.pass ? 'PASS' : `FAIL: ${g.reasons.join('; ')}`}`);
+  const restore = (): void => writeFileSync(TUNING, original, 'utf8');
+  process.on('SIGINT', () => { restore(); process.exit(130); });
+  const layers = list('--layer', 'layer'), hulls = list('--hull', 'hull'), levels = list('--level', 'level'), vhulls = list('--vhull', 'vhull');
+  try {
+    for (const vhull of vhulls) for (const hull of hulls) for (const layer of layers) for (const level of levels) {
+      const k: Record<Knob, number> = { layer, hull, level, vhull };
+      let text = original;
+      for (const key of Object.keys(KNOBS) as Knob[]) text = withValue(text, KNOBS[key], k[key]);
+      writeFileSync(TUNING, text, 'utf8');
+      const out = execFileSync(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'scripts/valkyrn-telemetry.ts', '--json'], { encoding: 'utf8', maxBuffer: 1 << 26 });
+      const g = JSON.parse(out.trim().split('\n').at(-1)!) as GateJson;
+      console.log(`layer=${layer} hull=${hull} level=${level} vhull=${vhull}  median ${g.medianS.toFixed(1)} s  crew ${g.crewWins} hunter ${g.hunterWins} draw ${g.draws} cap ${g.cap}  gun hit ${g.shots > 0 ? ((100 * g.hits) / g.shots).toFixed(1) : '0.0'}%  ${g.pass ? 'PASS' : `FAIL: ${g.reasons.join('; ')}`}`);
+    }
+  } finally {
+    restore();
+    if (readFileSync(TUNING, 'utf8') !== original) throw Error(`${TUNING} was not restored: restore it with git before anything else`);
   }
+} else if (argv[0] === '--json') {
+  console.log(JSON.stringify(gateJson()));
 } else {
   const seeds = argv.length > 0 ? argv.map(Number) : GATE_SEEDS;
-  if (seeds.some((n) => !Number.isInteger(n))) throw Error('usage: npx tsx scripts/valkyrn-telemetry.ts [seed ...] | sweep [--layer a,b] [--hull a,b] [--level a,b] [--vhull a,b]');
+  if (seeds.some((n) => !Number.isInteger(n))) throw Error('usage: npx tsx scripts/valkyrn-telemetry.ts [seed ...] | --json | sweep [--layer a,b] [--hull a,b] [--level a,b] [--vhull a,b]');
   const runs = seeds.map((seed) => runValkyrnDuel(seed));
   for (const r of runs) console.log(valkyrnLine(r));
   const g = valkyrnGate(runs);
   console.log(`\n${g.summary}\n${g.pass ? 'PASS' : `FAIL: ${g.reasons.join('; ')}`}`);
 }
 ```
-(The outcome literals 3 and 0 are `Outcome.Draw` and `Outcome.Running`, as in `OUTCOME_NAMES` (`scriptedDuel.ts:62`). Import `Outcome` instead if tsc or a reviewer prefers it.)
+(The child is run as `node node_modules/tsx/dist/cli.mjs`, tsx's own bin, rather than `npx`, so `execFileSync` needs no shell on Windows. Each child loads the rewritten `tuning.ts` fresh, so the frozen defs carry the combination's values. The child's only stdout line is the JSON one: the gate helper logs nothing.)
 
 - [ ] **Step 4: Check and run once at the start values.**
 
@@ -779,7 +808,7 @@ git commit -m "test(duel): Valkyrn duel helper and tuning tool (Valkyrn spec §1
 
 **Files:**
 - Modify: `tests/duelGates.test.ts` (new `describe` block; the three Hound tests are untouched), `src/renderer/src/sim/tactical/tuning.ts`, `docs/superpowers/specs/2026-11-18-valkyrn-solo-ship-design.md` (§12)
-- Maybe modify: `src/renderer/src/sim/duel/scriptedPilot.ts` (`PILOT_*` only), and any Part i test that hard-codes 8/3/6/30 (Step 6)
+- Maybe modify: `src/renderer/src/sim/duel/scriptedPilot.ts` (`PILOT_*` only), and the Part i tests that hard-code 8/3/6/30 (Step 6: `tests/valkyrnClasses.test.ts`, `valkyrnGun.test.ts`, `valkyrnRounds.test.ts`)
 
 - [ ] **Step 1: Write the gate block.** Append to `tests/duelGates.test.ts`. Add the imports at the top, beside the existing ones, and change nothing else in the file:
 
@@ -823,7 +852,11 @@ Stage A (the hull ratio and the Valkyrn's hull, 16 combinations):
 ```
 npx tsx scripts/valkyrn-telemetry.ts sweep --hull 2,3,4,5 --vhull 24,30,36,40
 ```
-Stage B (the shield and room counters, around the best Stage A pair `H`, `V`, 12 combinations):
+Stage B (the shield and room counters, around the Stage A pick `H`, `V`, 12 combinations). The Stage A pick:
+1. if Stage A has PASS lines, the PASS line chosen by Step 4's rule;
+2. else, among the lines with `hunter` ≥ 1 and `cap 0`, the median closest to 240 s;
+3. else (no such line), among all lines, the lowest `vhull`, then the median closest to 240 s;
+4. a tie in 2 or 3 goes to the smallest sum of `|value − start| / start` (start 3/30), then the earlier line.
 ```
 npx tsx scripts/valkyrn-telemetry.ts sweep --hull H --vhull V --layer 6,8,10,12 --level 4,6,8
 ```
@@ -832,6 +865,8 @@ How to read the lines:
 - median too long, or runs at the cap: lower them;
 - `hunter 0`: lower `--vhull`;
 - `no torpedo` / `no gun` on a seed: a pilot problem, not tuning; go to Step 4.
+
+After each sweep, run `git diff --quiet -- src/renderer/src/sim/tactical/tuning.ts` (exit 0: the sweep restored the file). If it exits 1, run `git checkout -- src/renderer/src/sim/tactical/tuning.ts` before anything else.
 
 - [ ] **Step 4: Choose the values.**
   1. Among the PASS lines, take the one closest to the start values (8/3/6/30), by the smallest sum of `|value − start| / start`.
@@ -859,7 +894,13 @@ Write the same for `GUN_HITS_PER_LAYER` (start 8), `GUN_HITS_PER_LEVEL` (start 6
 ```
 git grep -ln "GUN_HITS_PER\|hitsPerLayer\|hitsPerHull\|hitsPerLevel\|VALKYRN_HULL" -- tests
 ```
-Run every listed file with `npx vitest run <files>`. A Part i test that writes the literal start value, such as `8` hits to strip, instead of the constant is changed to read the constant (spec §6.1: "Start values, tuned in §10"). Rerun: PASS.
+Then run every Valkyrn test file and every listed file: `npx vitest run tests/valkyrn*.test.ts <listed files>`. The grep does not find tests that pin the start values by literal. Part i's plan writes these, and each must be rewritten in terms of `GUN.hitsPerLayer` / `hitsPerHull` / `hitsPerLevel` and `VALKYRN_HULL` (imported from `sim/tactical/defs` and `sim/tactical/tuning`) whenever its counter moved (spec §6.1: "Start values, tuned in §10"):
+- `tests/valkyrnClasses.test.ts`: `expect([VALKYRN_HULL, VALKYRN_THRUST, VALKYRN_TURN_DEG_PER_S]).toEqual([30, 160, 200])` becomes `expect([VALKYRN_THRUST, VALKYRN_TURN_DEG_PER_S]).toEqual([160, 200])`, and the two `toMatchObject({ …, hull: 30, … })` lines take `hull: VALKYRN_HULL`. The test's title ("hull 30") drops the number.
+- `tests/valkyrnGun.test.ts`: the validator cases `bad('systems.1.gunWear', 0, 8, …)`, `bad('systems.1.gunHull', 0, 3, …)` and `bad('systems.1.gunRoomWear', 2, 6, …)` take `GUN.hitsPerLayer`, `GUN.hitsPerHull` and `GUN.hitsPerLevel` (the first out-of-range value is the counter itself).
+- `tests/valkyrnRounds.test.ts`: the shield test's `for (k < 7)` and `[2, 7, 7]` become `GUN.hitsPerLayer - 1` and `[2, GUN.hitsPerLayer - 1, GUN.hitsPerLayer - 1]`, and the strip is the `GUN.hitsPerLayer`-th hit; the hull and Room test's loop counts and expected arrays (`70, 2, 2` after 2 hits, `69, 0` on the 3rd, the level after 6, `68`, `67`) are rewritten from `GUN.hitsPerHull` and `GUN.hitsPerLevel` (hull `HUNTER_HULL − ⌊hits / GUN.hitsPerHull⌋`, `gunHull = hits mod GUN.hitsPerHull`, a Room level every `GUN.hitsPerLevel` hits on it, which also counts toward the hull). Keep each test's sequence of events; only the counts change.
+- Any other `tests/valkyrn*.test.ts` failure that a counter or the hull caused is fixed the same way. A failure for another reason is a bug: stop and report it.
+
+Rerun `npx vitest run tests/valkyrn*.test.ts`: PASS.
 
 - [ ] **Step 7: Write spec §12.** Append to `docs/superpowers/specs/2026-11-18-valkyrn-solo-ship-design.md`, after §11, filling every `<…>` from the runs:
 
@@ -884,7 +925,7 @@ Run every listed file with `npx vitest run <files>`. A Part i test that writes t
 
 ```
 npx tsc -b
-npx vitest run tests/duelGates.test.ts tests/scriptedPilot.test.ts tests/valkyrnLead.test.ts
+npx vitest run tests/duelGates.test.ts tests/scriptedPilot.test.ts tests/valkyrn*.test.ts
 npx tsx scripts/golden/duel-oracle.ts same
 npx tsx scripts/golden/canonical-trace.ts same
 ```
@@ -906,7 +947,7 @@ Expected:
 git add tests/duelGates.test.ts src/renderer/src/sim/tactical/tuning.ts docs/superpowers/specs/2026-11-18-valkyrn-solo-ship-design.md
 git commit -m "test(duel): Valkyrn gate and gun tuning (median <M> s, Hunter wins <h>/10)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
-(Add `src/renderer/src/sim/duel/scriptedPilot.ts` and any Step 6 test file by name if they changed.)
+(Add `src/renderer/src/sim/duel/scriptedPilot.ts` and every Step 6 test file by name if they changed, for example `tests/valkyrnClasses.test.ts tests/valkyrnGun.test.ts tests/valkyrnRounds.test.ts`.)
 
 ---
 
@@ -968,9 +1009,9 @@ Expected: both pass, and the diff is empty, unless Task 4 Step 9 was taken and e
 - `orbitSteer` and the newly exported pair helpers;
 - `tests/helpers/valkyrnGate.ts` and `scripts/valkyrn-telemetry.ts`.
 
-It relies on Part i's `aimTurn` being exported (Task 1 Step 2 adds the `export` if it is missing, with no behaviour change). It relies on the gun counters being read from `GunDef` rather than the constants, and on derived validator bounds: Task 1 Steps 2–3 check both and fix them without moving a hash.
+It relies on Part i's `aimTurn` being exported (Task 1 Step 2 adds the `export` if it is missing, with no behaviour change). It relies on the four tuned constants being single-line integer declarations in `tuning.ts` (the sweep rewrites them; Task 1 Step 2 checks) and on derived validator bounds (Task 1 Step 3 checks, and fixes literals without moving a hash).
 
-**Placeholder scan:** the `<…>` marks appear only in Task 4 Steps 5, 7 and 10, and they are measured numbers that cannot be known before the run. Every code step is complete. `viewOffset` is the one adapter to Part ii's exact `leadPip` signature, and the plan says how to fit it.
+**Placeholder scan:** the `<…>` marks appear only in Task 4 Steps 5, 7 and 10, and they are measured numbers that cannot be known before the run. Every code step is complete. `viewOffset` is the one adapter to Part ii's `leadPip(sx, sy, svx, svy, tx, ty, tvx, tvy, speed)` (valkyrn-ii plan Task "lead pip", Produces), written against that signature.
 
 **Type consistency:**
 - `ScriptedPilot.aim` is a heading index or −1, as `HeldInput.aim` is.
