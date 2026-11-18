@@ -1,8 +1,8 @@
 // The duel's science rules (Sci-1 spec 2026-11-17-science-scans §4, §5): what an admitted scan command does to the
 // ship's one scanner. Tasks 3 to 5 of the plan add hostility (here), scan progress, the derelict's orbit and salvage. Sim
 // code: the heading tables for trig, never Math.sin, Math.cos or Math.PI (the determinism guard).
-import { CREW_SLOT, HunterMode, type TacticalState } from './state';
-import { HOSTILE_AFTER_TICKS } from './tuning';
+import { CREW_SLOT, HunterMode, idleScan, type TacticalState } from './state';
+import { HOSTILE_AFTER_TICKS, SCAN_UNITS } from './tuning';
 
 /** A contactScan the duel step admitted (spec §5): scan the next level of `contact` at `rate` from station `by`. On the
  *  same contact and level the progress is kept: a faster station takes the scan over (applied), a slower or equal one
@@ -32,4 +32,18 @@ export function hostilityStep(t: TacticalState, hunter: number): void {
   if (!laser && !missile && rt < HOSTILE_AFTER_TICKS - 1) return;
   t.hostileAt = rt; t.hunter.mode = HunterMode.Hunt;
   t.events.push({ kind: 'hostile', cause: laser ? 'laser' : missile ? 'missile' : 'clock' });
+}
+
+/** Spec §4.3's progress step, after hostility: a running scan advances by its rate while the station running it is
+ *  attended (`scanner`, the crew input's), or goes idle when it is not; at its level's units the contact becomes known to
+ *  that level, a scanDone event is pushed and the scanner goes idle. */
+export function scanStep(t: TacticalState, scanner: boolean): void {
+  const s = t.scan;
+  if (s.contact < 0) return;
+  if (!scanner) { Object.assign(s, idleScan()); return; }
+  s.progress += s.rate;
+  if (s.progress < SCAN_UNITS[s.level]!) return;
+  t.known[s.contact as 0 | 1] = s.level;
+  t.events.push({ kind: 'scanDone', contact: s.contact, level: s.level });
+  Object.assign(s, idleScan());
 }
