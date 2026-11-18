@@ -205,7 +205,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       send({ kind: 'laserLock', room });
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
-    // Sci-1 spec �7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
+    // Sci-1 spec §7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
     if (k.freqTo !== undefined && k.freqTo !== null && Number.isInteger(k.freqTo) && k.freqTo >= 0 && k.freqTo <= 2) send({ kind: 'laserFrequency', freq: k.freqTo });
     // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent,
     // a release swallowed by a pause included (Space let go while paused leaves chargePressed set).

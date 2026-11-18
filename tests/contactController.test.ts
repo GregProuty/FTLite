@@ -170,4 +170,15 @@ describe('Science adopts the shared designation (Sci-1 fix B)', () => {
     expect(c.state()).toEqual({ contact: 1, aim: false });
     expect(c.takeRequests()).toEqual(none);
   });
+  it('staying on Science, a deliberate deselect is not undone by a lagging designation on the next shown frame', () => {
+    const c = createContactController();
+    c.sync(live({ station: 'science', designated: 1 })); c.takeRequests();
+    c.click(0); c.takeRequests();
+    c.intercept('Escape');
+    expect(c.state()).toBeNull();
+    expect(c.takeRequests()).toEqual({ designate: -1, scan: null });
+    expect(c.sync(live({ station: 'science', designated: 1 }))).toBe(true);
+    expect(c.state()).toBeNull();
+    expect(c.takeRequests()).toEqual(none);
+  });
 });
