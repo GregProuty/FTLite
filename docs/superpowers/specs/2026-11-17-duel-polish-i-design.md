@@ -22,7 +22,7 @@ existing glyphs); the HUD follows FTL's layout idea (hull bar top left, system b
   never scaled below 18 screen px.
 
 - **Off screen** (the enemy is usually off screen at the default zoom): the ring, at its 18 px floor, goes about the
-  enemy's edge arrow, and its label 70 px inward of the arrow, toward the screen's centre. Section B's callouts follow
+  enemy's edge arrow, and its label 120 px inward of the arrow (clear of the arrow's own label), toward the screen's centre. Section B's callouts follow
   the same anchor.
 - **The maps' colours.** The maps and the contact window draw only in the CRT amber ramp, which a test enforces, so
   each colour named in A and B maps to a brightness: red is `CRT.hot`, blue is `CRT.mid`, amber is `CRT.main`, dim is

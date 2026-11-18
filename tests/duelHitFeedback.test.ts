@@ -78,8 +78,8 @@ describe('the charge ring in the combat draw (spec §A)', () => {
     expect(combatModel(input(st, cam, fx)).callouts).toEqual([]);
     const arrow = { x: 8, y: 360 }, c = combatModel({ ...input(st, cam, fx), enemyArrow: arrow });
     expect(c.charge).toMatchObject({ x: 8, y: 360, r: CHARGE_RING_MIN_PX, fill: 0.25 });
-    expect(c.charge!.label).toMatchObject({ text: 'CHARGING', x: 78, y: 360 });   // 70 px toward the screen's centre
-    expect(c.callouts![0]).toMatchObject({ text: 'WEAPONS HIT', x: 78, y: 344 });
+    expect(c.charge!.label).toMatchObject({ text: 'CHARGING', x: 128, y: 360 });   // 120 px toward the screen's centre, clear of the arrow's own label
+    expect(c.callouts![0]).toMatchObject({ text: 'WEAPONS HIT', x: 128, y: 344 });
   });
   it('never below 18 screen px (the chevron zooms)', () => {
     const st = createTacticalState(3), e = st.ships[1]!;

@@ -37,7 +37,7 @@ export interface ChargeDraw { x: number; y: number; r: number; fill: number; ful
 export interface CombatDraw { weapons: WeaponsDraw | null; lock: LockDraw | null; missiles: MissileDraw[]; effects: EffectDraw[]; charge?: ChargeDraw | null; callouts?: CalloutDraw[] }
 
 /** How far inward of the enemy's edge arrow its off-screen charge label and callouts sit, in screen px. */
-const OFFSCREEN_INSET = 70;
+const OFFSCREEN_INSET = 120;
 
 export interface CombatModelInput extends TacticalModelInput {
   /** Presentation seconds, for the full charge's pulse (duel polish i spec §A); default 0. */
