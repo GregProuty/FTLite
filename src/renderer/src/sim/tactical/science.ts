@@ -30,12 +30,13 @@ export function enemyHostile(t: TacticalState): boolean { return t.hostileAt >= 
 /** Spec §4.1's hostility step, after the weapon clocks (owner decision 2026-11-17, the Hunter-grace rule): while the
  *  enemy holds, the first of the clock (the step of rt HOSTILE_AFTER_TICKS − 1, so it acts from rt 1800) or the crew's
  *  first shot this round (a laser release, hit or miss, or a missile launch: the round's own counters) turns it hostile
- *  for the round: hostileAt = rt. */
+ *  for the round (hostileAt = rt) and pushes a hostile event, cause laser, then missile, then clock. */
 export function hostilityStep(t: TacticalState, hunter: number): void {
   if (t.hostileAt >= 0 || hunter < 0) return;
   const rt = roundTick(t), crew = t.systems[CREW_SLOT];
   if (crew.shots === 0 && crew.missilesLaunched === 0 && rt < HOSTILE_AFTER_TICKS - 1) return;
   t.hostileAt = rt;
+  t.events.push({ kind: 'hostile', cause: crew.shots > 0 ? 'laser' : crew.missilesLaunched > 0 ? 'missile' : 'clock' });
 }
 
 /** Spec §4.3's progress step, after hostility: a running scan advances by its rate while the station running it is

@@ -77,7 +77,7 @@ describe('the 30 s hold (spec §4.1, §4.2; the Hunter grace)', () => {
 
 describe('the crew firing first ends the hold at once (spec §2.2, §4.1)', () => {
   it('a crew laser release that hits turns it that step (cause laser), one layer stripped', () => {
-    const st = facing(); st.tick = 300;
+    const st = facing(); st.tick = 300; st.systems[0].freq = (st.weakFreq + 1) % 3;   // off the weak frequency: one layer
     st.systems[0].fireHeld = true; st.systems[0].laserCharge = LASER_CHARGE_UNITS;
     stepDuel(st, { ...IDLE_INPUT, laserCharge: false });
     expect(st.hostileAt).toBe(300);
