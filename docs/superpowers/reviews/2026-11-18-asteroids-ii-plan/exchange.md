@@ -87,3 +87,42 @@ Confirmed. The duel.ts and missiles.ts citations are corrected.
 
 ---
 
+# Round 2 (delta, reviewing 031d5bca, effort medium, 35 s, 229001 in / 198024 cached / 3330 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Finder imports computeContentDigest from ../build/contentDigest (plan L3362, real export build/contentDigest.ts:L7) and sets globalThis.__GAMEPLAY_CONTENT_DIGEST__ before the loop (L3367). Every use in tests/helpers/duelAuthority.ts (L20, L22, L60) is inside a function body, so it is read at call time and the hoisted imports do not hit it first. The value matches vitest.config.ts:L7 because both use computeContentDigest on the repo root.
+- R1-F2: resolved — Task 4 Files now lists geometry.ts:22-31 (L1420). The edit text (L1604) uses the real loop names `state` and `k` (geometry.ts:L22, L26). The new test (L1489-1499) imports lineOfSight and firstBlocker (L1438, L1444) and uses mover/east as other tests already do. It checks that a born piece is passed and that the same piece blocks once it is not born. Clarification 5a was added (L37).
+- R1-F3: resolved — The DuelEvent shape gains `evicted?: true` (L112). The dustRock signature (L559) and body (L860-862) set it, and allocate passes `-1, true` (L902). ViewEvent = DuelEvent | ContactEvent (fxModel.ts:L14), so the field reaches pushRockShakes (L3163), rockSounds (L3268) and feelShot (L3543), and all three skip it; the puff path is unchanged. The eviction test asserts `evicted: true` (L708). Deviation 2 is updated (L34).
+- R1-F4: resolved — (a) Task 11 Step 3 now re-runs p99 once and then stops BLOCKED, recording stepDuelMs (L3627). Step 7's closing line points back to that rule (L3737). (b) Task 10 Step 8 now says to re-bless at the same version, re-run duelGates and commit the goldens with the fix after any sim fix (L3388).
+- R1-F5: resolved — Task 2 now cites missiles.ts:8 and 109-113 (L548, L1100). Task 5 cites ranges by function name (L1774). duel.ts:9 stays as the import line, which is correct.
+
+## Verified
+- geometry.ts:L22-31 lineOfSight takes param `state` and loops `for (const k of rocksNear(...))`, matching the plan's inserted statement at L1604
+- build/contentDigest.ts:L7 exports computeContentDigest(root: string): string
+- vitest.config.ts:L7 defines the digest with the same function on the repo root, so the finder's digest matches the test runs
+- tests/helpers/duelAuthority.ts:L20/L22/L60 read the global only inside functions (call time)
+- fxModel.ts:L14 ViewEvent = DuelEvent | ContactEvent, so `e.evicted` type-checks in the Task 9 consumers
+- Plan L589-591 mover writes a Moving rock via writeRock; the new lineOfSight test's slot 100 usage matches existing tests (L628, L657)
+
+## Not verified
+- Did not check whether net/codec.ts encodes rock events field by field and so would drop `evicted` online. Online fx are out of scope and the codec was not in the diff
+- Did not run typecheck on the plan's code; it is checked by reading only
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`: verdict ready, no new findings; all 5 round-1 IDs confirmed resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
