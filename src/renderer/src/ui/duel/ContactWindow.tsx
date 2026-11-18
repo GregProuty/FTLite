@@ -4,6 +4,9 @@
 // the cursor and draws a reticle, the hovered room gets a hot stroke, and a room click picks it (the console lock).
 // The Helm only looks. The window takes the pointer, so no click or wheel over it reaches the map.
 // Sci-1 spec §7.2: the window shows a contact id at its scan level (the unknown contact and the derelict have no drawing), a SCAN button with its progress, and info lines under the drawing.
+// FTL targeting spec §1: LASER and TORPEDO each pick their weapon up (the Weapons cards do too); a room click sets that
+// weapon's target. Each target room carries its weapon's mark (the laser's corner brackets, the torpedo's diamond); the
+// reticle at the pointer is TargetingLine's, drawn with the line from the card.
 import { Fragment, memo, useState, type PointerEvent as ReactPointerEvent, type SyntheticEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { ContactView } from '../../render/duel/contactModel';
 import { CONTACT } from '../../render/duel/consoleLayout';
@@ -19,8 +22,8 @@ import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 
-/** The reticle: a hot ring 20 internal px across with four ticks across it; the lock mark: four corner brackets. */
-const RETICLE_R = 10, TICK = 3, LOCK_HALF = 9, LOCK_ARM = 4;
+/** The laser's target mark: four corner brackets; the torpedo's: a diamond. */
+const LOCK_HALF = 9, LOCK_ARM = 4, DIAMOND = 6;
 const polyPoints = (p: readonly number[]): string => { const out: string[] = []; for (let k = 0; k + 1 < p.length; k += 2) out.push(`${p[k]},${p[k + 1]}`); return out.join(' '); };
 const segPath = (s: readonly number[]): string => { let d = ''; for (let k = 0; k + 3 < s.length; k += 4) d += `M${s[k]} ${s[k + 1]}L${s[k + 2]} ${s[k + 3]}`; return d; };
 const brackets = (x: number, y: number): string => {
@@ -28,10 +31,7 @@ const brackets = (x: number, y: number): string => {
   return `M${x - h} ${y - h + a}L${x - h} ${y - h}L${x - h + a} ${y - h}M${x + h - a} ${y - h}L${x + h} ${y - h}L${x + h} ${y - h + a}`
     + `M${x + h} ${y + h - a}L${x + h} ${y + h}L${x + h - a} ${y + h}M${x - h + a} ${y + h}L${x - h} ${y + h}L${x - h} ${y + h - a}`;
 };
-const ticks = (x: number, y: number): string => {
-  const a = RETICLE_R - TICK, b = RETICLE_R + TICK;
-  return `M${x} ${y - b}L${x} ${y - a}M${x} ${y + a}L${x} ${y + b}M${x - b} ${y}L${x - a} ${y}M${x + a} ${y}L${x + b} ${y}`;
-};
+const diamond = (x: number, y: number): string => `M${x} ${y - DIAMOND}L${x + DIAMOND} ${y}L${x} ${y + DIAMOND}L${x - DIAMOND} ${y}Z`;
 const stop = (e: SyntheticEvent): void => e.preventDefault();
 const swallow = (e: ReactWheelEvent): void => e.stopPropagation();
 
@@ -53,6 +53,7 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
   const roomAt = (p: { x: number; y: number }): number => contact.rooms.findIndex((r) => pointInPolygon(p.x, p.y, r.points));
   const hover = aiming && pointer ? roomAt(pointer) : -1;
   const lock = contact.lockRoom === null ? null : contact.rooms[contact.lockRoom]?.centre ?? null;
+  const torp = contact.torpRoom === null ? null : contact.rooms[contact.torpRoom]?.centre ?? null;
   const laser = contact.weapons?.laser ?? null, scan = contact.scan;
   const rootDown = (e: ReactPointerEvent<HTMLDivElement>): void => { e.preventDefault(); if (e.button === 2) actions.contact.cancelAim(); };
   const boxDown = (e: ReactPointerEvent<SVGSVGElement>): void => {
@@ -131,12 +132,10 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
               <path d={brackets(lock.x, lock.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
             </g>
           )}
-          {aiming && pointer && (
-            <g data-ui-contact-reticle="">
-              <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
-              <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
-              <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
-              <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
+          {torp && (
+            <g data-ui-contact-torp="">
+              <path d={diamond(torp.x, torp.y + 14)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
+              <path d={diamond(torp.x, torp.y + 14)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
             </g>
           )}
         </svg>
@@ -147,8 +146,8 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
           <PixelText text={laser.note ?? laser.label} x={barX} y={laserY + 2} size={FONT_NATIVE} tint={CRT.mid} />
           {laser.note === null && <PixelText text={laser.value} x={right} y={laserY + 2} size={FONT_NATIVE} tint={CRT.main} anchorX={1} />}
           <Bar x={barX} y={laserY + 20} w={right - barX} h={4} fill={laser.fill} colour={CRT.main} />
-          <PixelText text="TORPEDO" x={x0} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
-          <PixelText text={`MAG ${contact.weapons.missile.magazine}`} x={barX} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
+          <Button name="contact-torpedo" label="TORPEDO" x={x0} y={missileY - 4} w={96} h={24} lit={contact.weapons.missile.lit} onPress={() => actions.contact.pickUp('torpedo')} />
+          <PixelText text={`MAG ${contact.weapons.missile.magazine}`} x={barX} y={missileY} size={FONT_NATIVE} tint={CRT.mid} />
         </>
       )}
       {contact.lines.map((ln, k) => (

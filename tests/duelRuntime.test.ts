@@ -43,11 +43,12 @@ const idle = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHe
 /** Scripted keys: the test sets held keys and presses, `frame()` samples them once and runs due ticks. */
 function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = true) {
   const time = fakeTime();
-  let keys = idle(), cleared = 0;
+  let keys = idle(), cleared = 0, requests: { designate: number | null; scan: 0 | 1 | null; torpStep?: number } = { designate: null, scan: null };
   const pointer: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 };
   const rt = createDuelRuntime({
     now: time.now, scheduler: time.scheduler, seed, viewport: { w: 1280, h: 720 }, layout,
-    sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
+    sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), lockTo: null, torpTo: null }; return k; },
+    takeContactRequests: () => { const r = requests; requests = { designate: null, scan: null }; return r; },
     samplePointer: () => ({ ...pointer }),
     clearKeys: () => { keys = idle(); cleared++; }, onRound
   });
@@ -57,7 +58,9 @@ function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = tru
   /** One frame, then one tick's worth of wall time with a frame after it (so the press is sent on exactly one tick). */
   const tick = (): void => { rt.frame(1 / 60); time.advance(TICK_MS); rt.frame(1 / 60); };
   const ticks = (n: number): void => { for (let k = 0; k < n; k++) tick(); };
-  return { time, rt, hold, press, tick, ticks, pointer, cleared: () => cleared };
+  /** The contact controller's requests for the next frame (FTL targeting spec §1: torpStep). */
+  const ask = (r: Partial<typeof requests>): void => { requests = { ...requests, ...r }; };
+  return { time, rt, hold, press, tick, ticks, pointer, ask, cleared: () => cleared };
 }
 const put = (rt: ReturnType<typeof rig>['rt'], pid: number, tx: number, ty: number): void => {
   const eid = rt.duel.interior.crew[pid]!; Position.x[eid] = tx + 0.5; Position.y[eid] = ty + 0.5;
@@ -176,43 +179,48 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect([Position.x[other], Position.y[other]]).toEqual(o);
     rt.dispose();
   });
-  it('Space charges and its release fires at full charge; E and Q cycle the lock', () => {
-    const { rt, hold, press, tick, ticks } = rig();
+  it('Space is one press that fires a full laser; E and Q step the laser target (FTL targeting spec §1, §2)', () => {
+    const { rt, press, tick } = rig();
     press('switch'); tick();
     const ship = rt.duel.tactical.systems[0];
-    expect(ship.lock).toBe(Room.Shields);
-    press('interact'); tick(); expect(ship.lock).toBe(Room.Engines);
-    press('interact'); tick(); expect(ship.lock).toBe(Room.Weapons);
-    press('prevLock', 'prevLock'); tick(); expect(ship.lock).toBe(Room.Shields);
-    hold({ fireHeld: true }); press('fireDown'); tick();
-    expect(ship.fireHeld).toBe(true); expect(ship.laserCharge).toBeGreaterThan(0);
-    ticks(240);
-    expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);
+    expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);                  // the round starts full
     rt.drainEvents();
-    hold({ fireHeld: false }); press('fireUp'); tick();
+    press('fireDown'); tick();
     expect(ship.shots).toBe(1);
     expect(rt.drainEvents().some((e) => e.kind === 'laser' && e.ship === 0)).toBe(true);
+    expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, false]);
+    press('interact'); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Engines, true]);
+    press('interact'); tick(); expect(ship.lock).toBe(Room.Weapons);
+    press('prevLock', 'prevLock'); tick(); expect(ship.lock).toBe(Room.Shields);
     rt.dispose();
   });
-  it('a partial charge released early is discarded', () => {
-    const { rt, hold, press, tick, ticks } = rig();
+  it('a press below full is sent and fires nothing; Space up sends nothing (no release)', () => {
+    const { rt, press, tick } = rig();
     press('switch'); tick();
-    hold({ fireHeld: true }); press('fireDown'); ticks(30);
-    hold({ fireHeld: false }); press('fireUp'); tick();
-    expect([rt.duel.tactical.systems[0].shots, rt.duel.tactical.systems[0].laserCharge]).toEqual([0, 0]);
-    rt.dispose();
-  });
-  it('a blur that swallows the Space release still lets go of the charge (H-1a review carry-over)', () => {
-    const { rt, hold, press, tick } = rig();
-    press('switch'); tick();
-    hold({ fireHeld: true }); press('fireDown'); tick();
-    expect(rt.duel.tactical.systems[0].fireHeld).toBe(true);
-    rt.pause('blur'); hold({ fireHeld: false }); tick();   // the keyboard was cleared: no keyup, no fireUp edge
-    expect(rt.duel.tactical.systems[0].fireHeld).toBe(true);   // paused: nothing sent yet
-    rt.resume('blur'); tick();
+    rt.duel.tactical.systems[0].laserCharge = 0;
+    press('fireDown'); tick();
     expect(rt.lastResults().map((r) => r.status)).toEqual(['applied']);
-    expect(rt.duel.tactical.systems[0].fireHeld).toBe(false);
+    expect(rt.duel.tactical.systems[0].shots).toBe(0);
+    press('fireUp'); tick();
+    expect(rt.lastResults()).toEqual([]);
     rt.dispose();
+  });
+  it('the targets (FTL targeting spec §1): a room click sets a target, a card clear sends −1, a torpStep steps the torpedo target from the laser lock', () => {
+    const { rt, hold, ask, tick } = rig();
+    rt.frame(1 / 60); tick();
+    const ship = rt.duel.tactical.systems[0];
+    hold({ lockTo: 0 }); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, false]);   // at the Helm: no weapons commands
+    rt.dispose();
+    const g = rig(); g.press('switch'); g.tick();
+    const s = g.rt.duel.tactical.systems[0];
+    g.hold({ lockTo: 0 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, true]);
+    g.hold({ lockTo: -1 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, false]);
+    g.hold({ torpTo: 2 }); g.tick(); expect(s.torpLock).toBe(2);
+    g.hold({ torpTo: -1 }); g.tick(); expect(s.torpLock).toBe(-1);
+    g.ask({ torpStep: 1 }); g.tick(); expect(s.torpLock).toBe(1);   // from the lock (0): the next room
+    g.ask({ torpStep: -2 }); g.tick(); expect(s.torpLock).toBe(2);  // from its own target (1): two back
+    expect(g.rt.lastResults().filter((r) => r.status === 'rejected')).toEqual([]);
+    g.rt.dispose();
   });
   it('F launches a torpedo, held A/D at Weapons changes nothing (homing torpedo spec §1), C toggles the Weapons camera to the torpedo and back', () => {
     const { rt, hold, press, tick, ticks } = rig();
@@ -235,15 +243,14 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.cameras.weapons.follow).toBe('ship');
     rt.dispose();
   });
-  it('F then a Space release before one tick: the sim fires the full charge, then launches (charge before launch)', () => {
-    const { rt, time, hold, press, tick, ticks } = rig();
+  it('F then a Space press before one tick: the sim fires the full charge, then launches (charge before launch)', () => {
+    const { rt, time, press, tick } = rig();
     press('switch'); tick();
-    hold({ fireHeld: true }); press('fireDown'); tick(); ticks(240);
     inTorpedoRange(rt.duel.tactical);
     const ship = rt.duel.tactical.systems[0];
     expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);
     press('launch'); rt.frame(1 / 60);                          // F first...
-    hold({ fireHeld: false }); press('fireUp'); rt.frame(1 / 60);   // ...then the release, both before the tick
+    press('fireDown'); rt.frame(1 / 60);                        // ...then the press, both before the tick
     time.advance(TICK_MS); rt.frame(1 / 60);
     expect([ship.shots, ship.missilesLaunched]).toEqual([1, 1]);
     rt.dispose();
@@ -410,21 +417,9 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
     expect(rt.lastResults()).toEqual([]); expect(missileOf(rt.duel.tactical, 0)).toBeNull();
     rt.dispose();
   });
-  it('a release goes out only after a press did', () => {
-    const { rt, hold, press, tick } = rig();
-    press('switch'); tick();
-    press('fireUp'); tick();   // no press was ever sent
-    expect(rt.lastResults()).toEqual([]);
-    hold({ fireHeld: true }); press('fireDown'); tick();
-    hold({ fireHeld: false }); press('fireUp'); tick();
-    expect(rt.lastResults().map((r) => r.status)).toEqual(['applied']);
-    rt.dispose();
-  });
   it('F then Tab in two frames before one tick: no not-at-weapons rejection, nothing stuck', () => {
-    const { time, rt, hold, press, tick } = rig();
+    const { time, rt, press, tick } = rig();
     press('switch'); tick();
-    hold({ fireHeld: true }); press('fireDown'); tick();
-    expect(rt.duel.tactical.systems[0].fireHeld).toBe(true);
     press('launch'); rt.frame(1 / 60);
     press('switch'); rt.frame(1 / 60);
     time.advance(TICK_MS); rt.frame(1 / 60);

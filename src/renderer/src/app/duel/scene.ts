@@ -170,7 +170,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
-        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, station, t, weapons: consoleView?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
+        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },

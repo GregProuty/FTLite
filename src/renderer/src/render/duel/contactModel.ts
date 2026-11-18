@@ -44,12 +44,16 @@ export interface ContactView {
   /** The enemy's outline and rooms at Level 1 or more; empty otherwise. */
   outline: number[];
   rooms: ContactRoom[];
-  /** The crew laser's lock room, at Level 2. */
+  /** The crew laser's target room (FTL targeting spec §1: while it has one), at Level 1 or more. */
   lockRoom: number | null;
-  /** Weapons only, the enemy at Level 1 or more: LASER (the station block's charge row) and TORPEDO (not aimable). */
-  weapons: null | { laser: ContactLaser; missile: { magazine: number } };
+  /** The crew torpedo's target room (FTL targeting spec §1), at Level 1 or more. */
+  torpRoom: number | null;
+  /** Weapons only, the enemy at Level 1 or more: LASER (the station block's charge row) and TORPEDO, each lit while picked up. */
+  weapons: null | { laser: ContactLaser; missile: { magazine: number; lit: boolean } };
   /** The aim is armed (Weapons only). */
   aim: boolean;
+  /** The weapon picked up while the aim is armed (FTL targeting spec §1), else null. */
+  aimWeapon: 'laser' | 'torpedo' | null;
   /** The SCAN button; null with nothing selected. */
   scan: ScanButton | null;
   lines: ContactLine[];
@@ -61,6 +65,8 @@ export interface ContactModelInput {
   /** The shown contact (0 the enemy, 1 the derelict), or null (Science with nothing selected). */
   contact: 0 | 1 | null;
   aim: boolean;
+  /** The weapon the armed aim carries (FTL targeting spec §1); default the laser. */
+  weapon?: 'laser' | 'torpedo';
   station: 'helm' | 'weapons' | 'science';
   /** Presentation seconds, for the blinks. */
   t: number;
@@ -89,7 +95,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   const { state } = i, box = { x: CONTACT_BOX.x, y: CONTACT_BOX.y, w: CONTACT_BOX.w, h: CONTACT_BOX.h };
   const alert = blink(i.t, ALERT_BLINK_HZ) ? CRT.hot : CRT.main;
   const bare = (contact: 0 | 1 | null, title: string, lines: ContactLine[] = []): ContactView => ({
-    contact, title, shields: null, hull: null, box, outline: [], rooms: [], lockRoom: null, weapons: null, aim: false, flash: [],
+    contact, title, shields: null, hull: null, box, outline: [], rooms: [], lockRoom: null, torpRoom: null, weapons: null, aim: false, aimWeapon: null, flash: [],
     scan: contact === null ? null : scanButton(state, contact, i.station), lines
   });
   if (i.contact === null) return i.station === 'science' ? bare(null, 'NO CONTACT SELECTED') : null;
@@ -122,8 +128,10 @@ export function contactModel(i: ContactModelInput): ContactView | null {
       hatch: look.hatch === null ? null : { colour: look.hatch, segments: hatchSegments(points, HATCH_SPACING, HATCH_ANGLE) }
     };
   });
+  const weapon = i.weapon ?? 'laser';
   const weapons = i.station === 'weapons' && i.weapons
-    ? { laser: { label: i.weapons.charge.label, value: i.weapons.charge.value, fill: i.weapons.charge.bar?.fill ?? 0, lit: i.aim, enabled: true, note: null }, missile: { magazine: crewSys.magazine } }
+    ? { laser: { label: i.weapons.charge.label, value: i.weapons.charge.value, fill: i.weapons.charge.bar?.fill ?? 0, lit: i.aim && weapon === 'laser', enabled: true, note: null },
+        missile: { magazine: crewSys.magazine, lit: i.aim && weapon === 'torpedo' } }
     : null;
   const lines: ContactLine[] = [], hostile = hostilityLine(state);
   if (hostile) lines.push(line(hostile.text, hostile.alert ? alert : CRT.main));
@@ -137,7 +145,8 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     contact: Contact.Enemy, title: 'ENEMY SHIP',
     shields: { up: sys.shields, of: cls.shields.layers },
     hull: { value: sys.hull, fill: Math.max(0, Math.min(1, sys.hull / cls.hull)) },
-    box, outline: place(shape.outline), rooms, lockRoom: full ? crewSys.lock : null, weapons, aim: i.aim && weapons !== null,
+    box, outline: place(shape.outline), rooms, lockRoom: crewSys.laserTargeted ? crewSys.lock : null, torpRoom: crewSys.torpLock >= 0 ? crewSys.torpLock : null,
+    weapons, aim: i.aim && weapons !== null, aimWeapon: i.aim && weapons !== null ? weapon : null,
     scan: scanButton(state, Contact.Enemy, i.station), lines,
     flash: (i.flashes ?? []).flatMap((f) => { const r = rooms[f.room]; return r && f.alpha > 0 ? [{ room: f.room, points: r.points, alpha: f.alpha }] : []; })
   };

@@ -66,6 +66,8 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.contact.state()).toEqual({ contact: 0, aim: false });
       expect(r.view()?.title).toBe('ENEMY SHIP');
       expect(r.view()?.weapons?.laser.enabled).toBe(true);
+      expect(r.view()?.lockRoom).toBeNull();   // FTL targeting spec §1: no laser target yet
+      r.rt.duel.tactical.systems[0].laserTargeted = true; r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.view()?.lockRoom).toBe(r.rt.duel.tactical.systems[0].lock);
       r.scene.draw(r.rt, 1 / 60, LIVE);   // stays open without a click
       expect(r.view()?.title).toBe('ENEMY SHIP');

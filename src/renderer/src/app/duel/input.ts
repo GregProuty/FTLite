@@ -13,10 +13,13 @@ export const PRESS_CODES: Readonly<Record<string, KeyAction>> = {
   Equal: 'zoomIn', NumpadAdd: 'zoomIn', Minus: 'zoomOut', NumpadSubtract: 'zoomOut', Enter: 'confirm', NumpadEnter: 'confirm', KeyM: 'menu',
   KeyW: 'throttleUp', KeyS: 'throttleDown'
 };
-/** Sci-1 spec §7.4: keys 1, 2 and 3 tune the laser to A, B and C (the duel modes read them at Weapons only). */
-export const FREQ_CODES: Readonly<Record<string, number>> = { Digit1: 0, Digit2: 1, Digit3: 2 };
+/** Sci-1 spec §7.4: keys tune the laser to A, B and C (the duel modes read them at Weapons only). 3, 4 and 5 since the
+ *  FTL targeting update, whose 1 and 2 pick up the laser and the torpedo (WEAPON_CODES). */
+export const FREQ_CODES: Readonly<Record<string, number>> = { Digit3: 0, Digit4: 1, Digit5: 2 };
+/** FTL targeting spec §1: 1 and 2 pick up the laser and the torpedo at Weapons (the contact controller's intercept takes them). */
+export const WEAPON_CODES: Readonly<Record<string, 'laser' | 'torpedo'>> = { Digit1: 'laser', Digit2: 'torpedo' };
 /** The held keys: WASD movement (walk, the Helm's turn, the flight view's thrust and turn, steer), E held to repair,
- *  Space held to charge. W and S are also the throttle's press edges (PRESS_CODES). */
+ *  Space (its press fires a full laser, FTL targeting spec §2). W and S are also the throttle's press edges (PRESS_CODES). */
 export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' } as const;
 export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
 
@@ -25,8 +28,10 @@ export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: b
 export const NO_HELD_FLAGS: HeldFlags = { fire: false, left: false, right: false, up: false, down: false };
 /** The codes a console button can hold (spec §6.2). */
 export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS';
-/** What a console click can do (spec §6.2): a press edge, a held code, a direct lock request, a throttle notch, or a laser frequency (Sci-1 spec §7.4). */
-export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; throttle(level: number): void; frequency(freq: number): void }
+/** What a console click can do (spec §6.2): a press edge, a held code, a direct lock request, a throttle notch, or a laser
+ *  frequency (Sci-1 spec §7.4). FTL targeting spec §1: `lock` sets the laser's target room (−1 clears it) and `torpLock`
+ *  the torpedo's. */
+export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; torpLock(room: number): void; throttle(level: number): void; frequency(freq: number): void }
 /** Keys whose browser default (focus moves, page scrolls, history back) must never happen in the duel views. */
 const PREVENT = new Set(['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
 
@@ -38,11 +43,13 @@ export interface KeySample {
   presses: Record<KeyAction, number>;
   /** The merged held flags (spec §6.1); createDuelKeyboard always sets it. */
   held?: HeldFlags;
-  /** The last console lock request since the previous sample, or null (spec §6.2). */
+  /** The last console lock request since the previous sample, or null (spec §6.2): the laser's target room, −1 to clear. */
   lockTo?: number | null;
+  /** The last torpedo target request since the previous sample (a room, −1 to clear), or null (FTL targeting spec §1). */
+  torpTo?: number | null;
   /** The last console throttle request since the previous sample, or null (Artemis spec §6.2). */
   throttleTo?: number | null;
-  /** The last laser frequency asked for since the previous sample (Digit1..3, or a console button), or null (Sci-1 spec §7.4). */
+  /** The last laser frequency asked for since the previous sample (Digit3..5, or a console button), or null (Sci-1 spec §7.4). */
   freqTo?: number | null;
 }
 
@@ -89,7 +96,7 @@ export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
  *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
 export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOptions = {}): DuelKeyboard {
   const keys = new Set<string>(), ui = new Set<string>(), taken = new Set<string>();
-  let presses = emptyPresses(), lockTo: number | null = null, throttleTo: number | null = null, freqTo: number | null = null;
+  let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, throttleTo: number | null = null, freqTo: number | null = null;
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
   const down = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
@@ -107,8 +114,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     keys.delete(e.code);
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
-  const clearUi = (): void => { ui.clear(); lockTo = null; throttleTo = null; freqTo = null; };
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; throttleTo = null; freqTo = null; };
+  const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; throttleTo = null; freqTo = null; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; throttleTo = null; freqTo = null; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -120,6 +127,7 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
       if (code === FIRE_HELD) { const now = has(FIRE_HELD); if (!was && now) presses.fireDown++; else if (was && !now) presses.fireUp++; }
     },
     lock(room) { lockTo = room; },
+    torpLock(room) { torpTo = room; },
     throttle(level) { throttleTo = level; },
     frequency(freq) { freqTo = freq; }
   };
@@ -129,8 +137,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
       const x = (has(MOVE_CODES.right) ? 1 : 0) - (has(MOVE_CODES.left) ? 1 : 0), y = (has(MOVE_CODES.down) ? 1 : 0) - (has(MOVE_CODES.up) ? 1 : 0);
       const len = Math.sqrt(x * x + y * y) || 1;
       const held: HeldFlags = { fire: has(FIRE_HELD), left: has(MOVE_CODES.left), right: has(MOVE_CODES.right), up: has(MOVE_CODES.up), down: has(MOVE_CODES.down) };
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, throttleTo, freqTo };
-      presses = emptyPresses(); lockTo = null; throttleTo = null; freqTo = null;
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, throttleTo, freqTo };
+      presses = emptyPresses(); lockTo = null; torpTo = null; throttleTo = null; freqTo = null;
       return out;
     },
     clear,

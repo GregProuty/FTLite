@@ -9,6 +9,13 @@ export const TABS_RIGHT = TABS.x + 4 * TABS.w + 3 * TABS.gap;   // HELM, WEAPONS
 export const STATUS = { x: 12, y: 42, w: READOUT_W } as const;
 export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 216, science: 96 } } as const;   // the frequency row takes the old steer row's place (Sci-1 spec §7.4)
 export function stationTop(s: 'helm' | 'weapons' | 'science'): number { return INTERNAL_H - EDGE - STATION.h[s]; }
+/** FTL targeting spec §1: the Weapons block's two weapon cards, LASER then TORPEDO, side by side at its top; `hit` is the
+ *  card's clickable part above its FIRE / LAUNCH button, and the targeting line starts at `anchor` (the card's right edge
+ *  mid-height of `hit`). */
+export function weaponCard(weapon: 'laser' | 'torpedo'): { x: number; y: number; w: number; h: number; hitH: number; anchor: { x: number; y: number } } {
+  const x0 = STATION.x + 8, y = stationTop('weapons') + 6, w = 138, h = 104, hitH = 72, x = weapon === 'laser' ? x0 : x0 + w + 8;
+  return { x, y, w, h, hitH, anchor: { x: x + w, y: y + hitH / 2 } };
+}
 export const SIDE = { x: INTERNAL_W - EDGE - 132, y: 42, w: 132 } as const;
 /** The side column panel's height (SideColumn). */
 export const SIDE_H = 96;

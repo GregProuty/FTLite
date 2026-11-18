@@ -66,14 +66,14 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     expect(pairs({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' }).slice(4, 7)).toEqual([['WEAPONS', 'DMG 1'], ['SHIELDS', 'OK'], ['ENGINES', 'DMG 1']]);
     disposeDuel(d);
   });
-  it('Weapons adds the lock, the charge bar and hold timer, and the magazine', () => {
+  it('Weapons adds the lock, the charge bar (READY when full: the crew laser never vents, FTL targeting spec §2), and the magazine', () => {
     const d = createDuel(layout, 5), s = d.tactical.systems[0];
     s.laserCharge = LASER_CHARGE_UNITS / 2;
     let w = pairs({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' });
     expect(w.slice(11, 15)).toEqual([['LASER', ''], ['LOCK', 'SHIELDS'], ['CHARGE', '50%'], ['MAG', '4/4']]);
-    s.laserCharge = LASER_CHARGE_UNITS; s.laserHold = 60;
+    s.laserCharge = LASER_CHARGE_UNITS;
     w = pairs({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' });
-    expect(w[13]).toEqual(['CHARGE', 'HOLD 2.0']);
+    expect(w[13]).toEqual(['CHARGE', 'READY']);
     disposeDuel(d);
   });
   it('standing, the strip tells about the ship outside: empty consoles, the enemy, an inbound torpedo', () => {

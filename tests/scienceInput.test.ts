@@ -31,15 +31,16 @@ function fakeTarget() {
 const key = (code: string, repeat = false) => ({ code, repeat, preventDefault() {} });
 
 describe('the frequency keys and buttons (spec §7.4)', () => {
-  it('1, 2 and 3 ask for A, B and C once per sample; repeats do not; the console button asks too; clear and clearUi drop it', () => {
+  it('3, 4 and 5 ask for A, B and C once per sample (1 and 2 pick up weapons, FTL targeting spec §1); repeats do not; the console button asks too; clear and clearUi drop it', () => {
     const t = fakeTarget(), kb = createDuelKeyboard(t as unknown as EventSource);
-    t.fire('keydown', key('Digit2'));
+    t.fire('keydown', key('Digit4'));
     expect(kb.sample().freqTo).toBe(1); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit3', true)); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit1')); t.fire('keydown', key('Digit3')); expect(kb.sample().freqTo).toBe(2);
+    t.fire('keydown', key('Digit5', true)); expect(kb.sample().freqTo).toBeNull();
+    t.fire('keydown', key('Digit3')); t.fire('keydown', key('Digit5')); expect(kb.sample().freqTo).toBe(2);
+    t.fire('keydown', key('Digit1')); t.fire('keydown', key('Digit2')); expect(kb.sample().freqTo).toBeNull();
     kb.ui.frequency(0); expect(kb.sample().freqTo).toBe(0);
     kb.ui.frequency(1); kb.clearUi(); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit1')); kb.clear(); expect(kb.sample().freqTo).toBeNull();
+    t.fire('keydown', key('Digit3')); kb.clear(); expect(kb.sample().freqTo).toBeNull();
     kb.destroy();
   });
   it('frequencyRequest: a whole 0..2 that differs from the base, else null', () => {

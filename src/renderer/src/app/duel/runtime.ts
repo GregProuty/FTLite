@@ -218,7 +218,7 @@ export interface DuelRuntime {
   dispose(): void;
 }
 
-const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
+const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
 const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
@@ -238,7 +238,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   let lastHeld: HeldFlags = NO_HELD_FLAGS;   // the last frame's merged held flags (Artemis spec §6.1)
   let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = [NEUTRAL, NEUTRAL], sentAxes: Axes = NO_AXES;
   let menuAsked = false;
-  let chargeSent = false, events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
+  let events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
   const interiorCamera = createInteriorCamera();
   const capture = (): void => {
@@ -258,23 +258,20 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const envelope = (player: number, command: DuelCommand): DuelEnvelope => ({ runId: LOCAL_DUEL_RUN, id: { player, sequence: seq[player]!++ }, requestedTick: d.interior.tick, command });
     if (firstTick) { commands.push(envelope(1, { kind: 'presence', present: false })); firstTick = false; }   // the solo start rule (spec §4)
     // Weapons commands go out only when the sim would accept them (spec §7 table; canCharge / canLaunch), judged against the
-    // state this tick will see. `chargeSent` is the truth about what the sim holds: a release goes out only after a press did.
+    // state this tick will see. FTL targeting spec §2: Space is a single press (a full laser fires), with no release.
     let launched = false;
     for (const c of pending) {
       const k = c.command;
       if (k.kind === 'laserCharge') {
         // The sim applies charge before launch within a tick (lock, charge, launch), so a launch in this tick never voids a
         // charge command; only a missile already flying does.
-        if (!canCharge(d.tactical, 0)) { chargeSent = false; continue; }
-        if (!k.held && !chargeSent) continue;   // a release for a press that was never sent
-        chargeSent = k.held;
+        if (!canCharge(d.tactical, 0)) continue;
       } else if (k.kind === 'missileLaunch') {
         if (launched || !canLaunch(d.tactical, 0)) continue;
         launched = true;
       }
       commands.push(envelope(c.player, k));
     }
-    if (launched) chargeSent = false;   // the launch lets go of Fire, after any charge command this tick
     const sentSwitch = switching;
     pending = [];
     const held: HeldInput[] = [NEUTRAL, NEUTRAL];
@@ -318,7 +315,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   function newRound(): void {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = [NEUTRAL, NEUTRAL]; sentAxes = NO_AXES;
-    chargeSent = false; events = []; counts = hitCounts(d);
+    events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
   }
@@ -326,8 +323,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
   function play(k: KeySample, requests: ContactRequests): KeySample {
     if (k.presses.switch > 0) {   // Tab: presence false for the character left, true for the one taken, same tick; nothing carries over
-      // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them. A
-      // charge already sent needs no release: the sim lets go of Fire when the seat empties, so chargeSent just resets.
+      // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them.
       pending = pending.filter((c) => !isConsoleCommand(c.command));
       cameraInput.reset(); refollowInteriorCamera(interiorCamera);
       for (let n = 0; n < k.presses.switch; n++) {
@@ -336,7 +332,6 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         queue({ kind: 'presence', present: true });
       }
       switching = true;
-      chargeSent = false;   // the console left is empty from this tick: the sim lets go of Fire without firing
       deps.clearKeys?.();
       return IDLE_KEYS();
     }
@@ -345,7 +340,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.interact > 0 && repairInReach(d, active) < 0) { const c = consoleInReach(d, active); if (c >= 0) queue({ kind: 'sit', station: c }); }
       return k;
     }
-    if (p.stand > 0) { pending = pending.filter((c) => !isConsoleCommand(c.command)); queue({ kind: 'stand' }); chargeSent = false; return k; }   // the stand empties the seat first, as a Tab does
+    if (p.stand > 0) { pending = pending.filter((c) => !isConsoleCommand(c.command)); queue({ kind: 'stand' }); return k; }   // the stand empties the seat first, as a Tab does
     // Sci-1 spec §5: a scan from any of the three consoles, unless that contact is fully known.
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) queue({ kind: 'contactScan', contact: requests.scan });
     if (seat === 'helm') {
@@ -359,22 +354,26 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.camera > 0) snapBack(cameras.science);
       return k;
     }
+    // E and Q step the laser's target room (FTL targeting spec §1: a target, so it auto-fires), from the latest queued one.
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0) {
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'laserLock')?.command;
-      let room = last && last.kind === 'laserLock' ? last.room : d.tactical.systems[0].lock;
+      let room = last && last.kind === 'laserLock' && last.room >= 0 ? last.room : d.tactical.systems[0].lock;
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       queue({ kind: 'laserLock', room });
     }
-    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
-    const freq = frequencyRequest(freqBase(), k.freqTo);   // 1/2/3 or a console button (Sci-1 spec §7.4)
+    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
+    // The torpedo's target (FTL targeting spec §1): a room click or a card's clear, then E / Q while it is picked up.
+    if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
+    if (requests.torpStep) {
+      const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command, sys = d.tactical.systems[0];
+      let room = last && last.kind === 'torpLock' && last.room >= 0 ? last.room : sys.torpLock >= 0 ? sys.torpLock : sys.lock;
+      for (let n = 0; n < Math.abs(requests.torpStep); n++) room = cycleLock(room, requests.torpStep > 0 ? 1 : -1);
+      queue({ kind: 'torpLock', room });
+    }
+    const freq = frequencyRequest(freqBase(), k.freqTo);   // 3/4/5 or a console button (Sci-1 spec §7.4)
     if (freq !== null) queue({ kind: 'laserFrequency', freq });
-    const down = (): void => queue({ kind: 'laserCharge', held: true });
-    const up = (): void => queue({ kind: 'laserCharge', held: false });   // onTick drops it when no press was sent
-    if (p.fireDown > 0 && p.fireUp > 0) { if (k.fireHeld) { up(); down(); } else { down(); up(); } }
-    else if (p.fireDown > 0) down();
-    else if (p.fireUp > 0) up();
-    else if (chargeSent && !k.fireHeld) up();   // a release the keyboard never saw (a blur cleared it): let go now
+    if (p.fireDown > 0) queue({ kind: 'laserCharge', held: true });   // FTL targeting spec §2: one press fires a full laser
     if (p.launch > 0) queue({ kind: 'missileLaunch' });
     if (p.camera > 0) {
       const cam = cameras.weapons;

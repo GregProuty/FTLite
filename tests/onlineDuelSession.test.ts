@@ -206,16 +206,14 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     expect(r.leave).toHaveBeenCalledTimes(1);
     r.dispose();
   });
-  it('a Space release swallowed by a pause is re-sent after resume (plan Decision 7)', () => {
+  it('Space is a single press: one laserCharge press and never a release, paused or not (FTL targeting spec §2)', () => {
     const r = rig(1), c = r.attach();
     r.key('keydown', 'Space'); r.pump();
     expect(c.commands().at(-1)).toEqual({ kind: 'laserCharge', held: true });
-    r.d.tactical.systems[0].fireHeld = true; c.publish(r.d); r.pump();
     c.publish(r.d, 'paused', { reason: 'player', owner: 0 }); r.pump();
-    r.key('keyup', 'Space'); r.pump(); r.pump();   // drained while paused: no release goes out
-    expect(c.commands().filter((x) => x.kind === 'laserCharge' && !x.held)).toHaveLength(0);
-    c.publish(r.d, 'running'); r.advance(300); r.pump();   // still held in the replica after resume
-    expect(c.commands().at(-1)).toEqual({ kind: 'laserCharge', held: false });
+    r.key('keyup', 'Space'); r.pump(); r.pump();
+    c.publish(r.d, 'running'); r.advance(300); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'laserCharge')).toEqual([{ kind: 'laserCharge', held: true }]);
     r.dispose();
   });
   it('a link close shows CONNECTION LOST — RECONNECTING over the frozen view at once, and stops input', () => {
@@ -309,6 +307,20 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
     expect(locks()).toEqual([{ kind: 'laserLock', room: 2 }]);
     input!.lock(7); r.pump();   // out of range: nothing
     expect(locks()).toHaveLength(1);
+    r.dispose();
+  });
+  it('FTL targeting spec §1: a torpedo target click sends torpLock, a card clear sends −1 for either weapon, and E with the torpedo picked up steps its target', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const targets = () => c.commands().filter((x) => x.kind === 'laserLock' || x.kind === 'torpLock');
+    input!.torpLock(0); r.pump();
+    input!.torpLock(-1); input!.lock(-1); r.pump();
+    expect(targets()).toEqual([{ kind: 'torpLock', room: 0 }, { kind: 'laserLock', room: -1 }, { kind: 'torpLock', room: -1 }]);
+    const contact = (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact, lock = r.d.tactical.systems[0].lock;
+    contact.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0 });
+    r.key('keydown', 'Digit2'); r.key('keyup', 'Digit2'); r.key('keydown', 'KeyE'); r.key('keyup', 'KeyE'); r.pump();
+    expect(targets().at(-1)).toEqual({ kind: 'torpLock', room: (lock + 1) % 3 });   // from the laser's lock (no torpedo target yet)
+    expect(c.commands().filter((x) => x.kind === 'laserLock')).toHaveLength(1);    // E was taken: no laser lock step
     r.dispose();
   });
   it('two lock clicks in successive pumps before any new publication both send, in order (no comparison with the confirmed lock)', () => {
@@ -467,7 +479,7 @@ describe('the online seat notice (start-aboard spec §1)', () => {
 
 describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () => {
   const contactOf = (): ContactController => (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact;
-  it('at Science a selection sends designate, S sends contactScan; at Weapons Digit2 sends laserFrequency 1', () => {
+  it('at Science a selection sends designate, S sends contactScan; at Weapons Digit4 sends laserFrequency 1', () => {
     const r = rig(1);
     standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
     const c = r.attach(), contact = contactOf();
@@ -478,7 +490,7 @@ describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () =
     expect(c.commands().filter((x) => x.kind === 'contactScan')).toEqual([{ kind: 'contactScan', contact: 1 }]);
     r.dispose();
     const w = rig(1), cw = w.attach();   // the seated start: player 1 at Weapons
-    w.key('keydown', 'Digit2'); w.key('keyup', 'Digit2'); w.pump();
+    w.key('keydown', 'Digit4'); w.key('keyup', 'Digit4'); w.pump();
     expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }]);
     w.dispose();
   });
@@ -491,8 +503,8 @@ describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () =
     expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 0 }, { kind: 'designate', contact: -1 }]);
     r.dispose();
     const w = rig(1), cw = w.attach();
-    w.key('keydown', 'Digit2'); w.key('keyup', 'Digit2'); w.pump();
-    w.key('keydown', 'Digit1'); w.key('keyup', 'Digit1'); w.pump();
+    w.key('keydown', 'Digit4'); w.key('keyup', 'Digit4'); w.pump();
+    w.key('keydown', 'Digit3'); w.key('keyup', 'Digit3'); w.pump();
     expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }, { kind: 'laserFrequency', freq: 0 }]);
     w.dispose();
   });

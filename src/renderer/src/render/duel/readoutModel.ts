@@ -9,8 +9,7 @@ import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { hostilityLine } from './scienceModel';
 import { Health, Life, LifeState } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
-import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS } from '../../sim/tactical/tuning';
-import { TICK_HZ } from '../../sim/tuning';
+import { LASER_CHARGE_UNITS, MAGAZINE, SHIELD_LAYERS } from '../../sim/tactical/tuning';
 import { AMBER, DIM, TEXT, WARN, GOOD } from '../theme';
 import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
 import { bearingDeg } from '../tactical/weaponsModel';
@@ -63,7 +62,8 @@ export interface ReadoutInput {
 export function chargeRow(d: DuelState): ReadoutRow {
   const t = d.tactical, crewSys = t.systems[0], flying = missileOf(t, 0) !== null, full = crewSys.laserCharge >= LASER_CHARGE_UNITS;
   if (crewSys.rooms[Room.Weapons] >= 2) return em({ ...row('CHARGE', 'OFFLINE', DIM, WARN), bar: { fill: 0, colour: AMBER } }, 'warn');   // Weapons 2: the laser is off
-  const value = flying ? 'FROZEN' : full ? `HOLD ${((LASER_HOLD_TICKS - crewSys.laserHold) / TICK_HZ).toFixed(1)}` : `${Math.floor((crewSys.laserCharge / LASER_CHARGE_UNITS) * 100)}%`;
+  // FTL targeting spec §2: a full crew laser stays full until it fires, so it reads READY (no vent countdown).
+  const value = flying ? 'FROZEN' : full ? 'READY' : `${Math.floor((crewSys.laserCharge / LASER_CHARGE_UNITS) * 100)}%`;
   return em({ ...row('CHARGE', value, DIM, full && !flying ? GOOD : TEXT), bar: { fill: crewSys.laserCharge / LASER_CHARGE_UNITS, colour: full ? GOOD : AMBER } }, full && !flying ? 'good' : null);
 }
 
@@ -132,7 +132,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 /** Key help under the rows, per screen (spec §5 table). */
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THROTTLE   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
-  if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F TORPEDO', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
+  if (mode === 'weapons') return ['1/2 PICK WEAPON, CLICK ROOM', 'SPACE FIRE   F TORPEDO', 'E/Q LASER TARGET   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];   // FTL targeting spec §1
   if (mode === 'science') return ['S SCAN   T NEXT CONTACT', 'CLICK A CONTACT: DESIGNATE', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
