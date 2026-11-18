@@ -11,6 +11,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { sitDown } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/main/network/onlineDuel';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -48,7 +49,7 @@ function stubClient() {
 }
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
-  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[], overlay: [] as (readonly string[] | null)[],
+  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
   sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
@@ -65,8 +66,8 @@ vi.mock('../src/renderer/src/app/duel/scene', () => ({
   createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
     h.sceneOpts.push(opts);
     return {
-      draw: (_source: unknown, _dt: number, o: { banner: string | null }) => {
-        h.draws.push({ banner: o.banner });
+      draw: (_source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+        h.draws.push({ banner: o.banner, notice: o.notice });
         opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
       },
       dispose() { h.disposes.n++; opts.ui.clear(); }
@@ -449,5 +450,17 @@ describe('the contact window online (enemy ship window spec §3, §6.2)', () => 
     expect(typeof opts.takeClick).toBe('function');
     r.dispose();
     expect(setContact).toHaveBeenCalledTimes(2); expect(setContact.mock.calls[1]![0]).toBeNull();
+  });
+});
+
+describe('the online seat notice (start-aboard spec §1)', () => {
+  it('shows YOU: SCIENCE for NOTICE_MS after the first sync, then nothing', () => {
+    const r = rig(0); sitDown(r.d.interior, 0, r.d.science); r.attach(); r.session.frame();
+    expect(h.draws.at(-1)!.notice).toBe('YOU: SCIENCE');
+    r.advance(2900); r.session.frame();
+    expect(h.draws.at(-1)!.notice).toBe('YOU: SCIENCE');
+    r.advance(200); r.session.frame();
+    expect(h.draws.at(-1)!.notice).toBeNull();
+    r.dispose();
   });
 });
