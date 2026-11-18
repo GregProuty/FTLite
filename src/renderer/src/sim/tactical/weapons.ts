@@ -32,10 +32,19 @@ export function laserFull(state: TacticalState, i: number): boolean { return sta
 
 /** Admission (spec §7 table; the duel step uses these to give reject reasons): laserCharge is accepted only with no missile in flight. */
 export function canCharge(state: TacticalState, i: number): boolean { return missileOf(state, i) === null; }
-/** missileLaunch is accepted only with no missile in flight, a missile in the magazine and Weapons below level 2. */
+/** Weapons update spec §2: whether ship i's target ship is active and its centre within the class's torpedo range of
+ *  ship i's, from any bearing. */
+export function torpedoInRange(state: TacticalState, i: number): boolean {
+  const a = state.ships[i]!, j = state.systems[i]!.target, b = state.ships[j], range = classOf(state, i).slots.missile.range;
+  if (!b || !b.active || j === i) return false;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  return dx * dx + dy * dy <= range * range;
+}
+/** missileLaunch is accepted only with no missile in flight, a missile in the magazine, Weapons below level 2 and the
+ *  target within torpedo range (weapons update spec §2). */
 export function canLaunch(state: TacticalState, i: number): boolean {
   const s = state.systems[i]!;
-  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2;
+  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && torpedoInRange(state, i);
 }
 /** A lock target must be a Room index. */
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
@@ -59,7 +68,9 @@ export function laserEligible(state: TacticalState, i: number, j: number): boole
   return inArc(a.heading, dx, dy, laser.arcCos) && lineOfSight(state, a.x, a.y, b.x, b.y);
 }
 
-function fireLaser(state: TacticalState, i: number): void {
+/** One laser shot of ship i at its target and lock room as they stand now (spec §7a; weapons update spec §1: every shot of a
+ *  burst re-checks eligibility, strips shields or strikes the room, counts and pushes its own `laser` event). */
+function shoot(state: TacticalState, i: number): void {
   const a = state.ships[i]!, as = state.systems[i]!, j = as.target, b = state.ships[j] ?? a, bs = state.systems[j], hit = laserEligible(state, i, j);
   let stripped = false, room = -1;
   as.shots++;
@@ -76,12 +87,31 @@ function fireLaser(state: TacticalState, i: number): void {
     }
   }
   state.events.push({ kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+}
+
+/** A full charge's release: the first shot now, the rest of the class's burst queued a burst gap apart. */
+function fireLaser(state: TacticalState, i: number): void {
+  const as = state.systems[i]!, laser = classOf(state, i).slots.laser;
+  shoot(state, i);
   as.laserCharge = 0; as.laserHold = 0;
+  as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
+}
+
+/** Weapons update spec §1: a pending burst shot fires a burst gap after the one before, attended or not, whatever flies;
+ *  only Weapons at damage level 2 drops it. */
+function stepBurst(state: TacticalState, i: number): void {
+  const s = state.systems[i]!;
+  if (s.laserBurst === 0) return;
+  if (laserOffline(state, i)) { s.laserBurst = 0; s.laserBurstClock = 0; return; }
+  if (--s.laserBurstClock > 0) return;
+  shoot(state, i);
+  s.laserBurst--; s.laserBurstClock = s.laserBurst > 0 ? classOf(state, i).slots.laser.burstGapTicks : 0;
 }
 
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!;
+  stepBurst(state, i);
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (input.laserLock !== null && validLock(input.laserLock)) s.lock = input.laserLock;
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
@@ -102,8 +132,8 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */
 export function tickWeapons(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, c = classOf(state, i), laser = c.slots.laser;
-  if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // off: every tick, frozen or not
-  else if (!laserFrozen(state, i, input)) {
+  if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; s.laserBurst = 0; s.laserBurstClock = 0; }   // off: every tick, frozen or not
+  else if (s.laserBurst === 0 && !laserFrozen(state, i, input)) {   // no charging while a burst shot is pending
     if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
     else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
   }

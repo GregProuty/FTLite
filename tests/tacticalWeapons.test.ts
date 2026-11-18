@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createTacticalState, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, canCharge, canLaunch, IDLE_INPUT, laserEligible, tickWeapons, validLock, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { inArc, lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
-import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, LASER_BURST_GAP_TICKS } from '../src/renderer/src/sim/tactical/tuning';
+import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { makeHostile } from './helpers/hostile';
 
 /** Crew at (−600, −300) heading east, enemy 300 units east of it: inside the belt, clear of the planet, in arc and range. */
@@ -38,7 +39,7 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
     tick(st, input({ laserCharge: false }));
     expect([a.shots, a.laserHits, a.layersStripped]).toEqual([1, 1, 1]);
     expect(b.shields).toBe(1);
-    expect(b.hull).toBe(SHIP_HULL);
+    expect(b.hull).toBe(HUNTER_CLASS.hull);
     expect(a.laserCharge).toBe(0);
     expect(st.events).toContainEqual({ kind: 'laser', ship: 0, hit: true, stripped: true, room: -1, x1: -600, y1: -300, x2: -300, y2: -300 });
   });
@@ -57,9 +58,11 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
       b.shields = 0; b.shieldClock = 0;
       hold(st, 240);
       tick(st, input({ laserCharge: false }));
+      for (let t = 0; t < LASER_BURST_GAP_TICKS; t++) tick(st, input());   // the burst's second shot (weapons update spec §1)
     }
+    expect(st.systems[0].shots).toBe(6);
     expect(b.rooms[Room.Engines]).toBe(2);
-    expect(b.hull).toBe(SHIP_HULL - 6);
+    expect(b.hull).toBe(HUNTER_CLASS.hull - 12);
     expect(st.events.at(-1)).toMatchObject({ kind: 'laser', hit: true, stripped: false, room: Room.Engines });
   });
   it('misses outside the arc, out of range or without line of sight', () => {
@@ -88,7 +91,7 @@ describe('laser charge and release (spec §7a, §7 table)', () => {
       hold(st, 240);
       tick(st, input({ laserCharge: false }));
       expect([st.systems[0].shots, st.systems[0].laserHits], name).toEqual([1, 0]);
-      expect([st.systems[1].shields, st.systems[1].hull], name).toEqual([2, SHIP_HULL]);
+      expect([st.systems[1].shields, st.systems[1].hull], name).toEqual([2, HUNTER_CLASS.hull]);
       expect(st.events.at(-1), name).toMatchObject({ kind: 'laser', ship: 0, hit: false });
     }
   });

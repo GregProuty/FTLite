@@ -15,6 +15,7 @@ import type { DuelRoundRecord } from '../src/renderer/src/sim/duel/summary';
 import { soloDuelRecord, validateDuelRecord } from '../src/renderer/src/net/duelRecord';
 import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
 import { seatDuelCrew } from './helpers/duelSeat';
+import { inTorpedoRange } from './helpers/torpedoRange';
 
 const layout = parseShip(cutter);
 const TICK_MS = 1000 / 60;
@@ -216,6 +217,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   it('F launches a torpedo, held A/D at Weapons changes nothing (homing torpedo spec §1), C toggles the Weapons camera to the torpedo and back', () => {
     const { rt, hold, press, tick, ticks } = rig();
     const still = rig();
+    inTorpedoRange(rt.duel.tactical); inTorpedoRange(still.rt.duel.tactical);   // weapons update spec §2: a launch needs the target within 360
     for (const r of [{ press, tick }, { press: still.press, tick: still.tick }]) { r.press('switch'); r.tick(); r.press('launch'); r.tick(); }
     expect(missileOf(rt.duel.tactical, 0)).not.toBeNull();
     hold({ moveX: 1 }); ticks(10); still.ticks(10);
@@ -237,6 +239,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const { rt, time, hold, press, tick, ticks } = rig();
     press('switch'); tick();
     hold({ fireHeld: true }); press('fireDown'); tick(); ticks(240);
+    inTorpedoRange(rt.duel.tactical);
     const ship = rt.duel.tactical.systems[0];
     expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);
     press('launch'); rt.frame(1 / 60);                          // F first...
@@ -247,6 +250,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   });
   it('the Weapons camera follows the missile at its interpolated (drawn) position', () => {
     const { rt, time, press, tick, ticks } = rig();
+    inTorpedoRange(rt.duel.tactical);
     press('switch'); tick();
     press('launch'); tick();
     press('camera'); ticks(30);                       // past the 0.2 s snap
@@ -382,6 +386,7 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
   const rejected = (rt: ReturnType<typeof rig>['rt']): string[] => rt.lastResults().filter((r) => r.status === 'rejected').map((r) => String(r.reason));
   it('Space while the missile flies sends nothing the sim would reject', () => {
     const { rt, hold, press, tick, ticks } = rig();
+    inTorpedoRange(rt.duel.tactical);
     press('switch'); tick(); press('launch'); tick(); ticks(2);
     expect(missileOf(rt.duel.tactical, 0)).not.toBeNull();
     hold({ fireHeld: true }); press('fireDown'); tick();
@@ -391,9 +396,12 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
     expect(rt.lastResults()).toEqual([]);
     rt.dispose();
   });
-  it('F with an empty magazine or Weapons damage 2 sends nothing', () => {
+  it('F with the target out of torpedo range, an empty magazine or Weapons damage 2 sends nothing', () => {
     const { rt, press, tick } = rig();
     press('switch'); tick();
+    press('launch'); tick();                                    // the duel's start: the enemy is beyond 360 (weapons update spec §2)
+    expect(rt.lastResults()).toEqual([]); expect(missileOf(rt.duel.tactical, 0)).toBeNull();
+    inTorpedoRange(rt.duel.tactical);
     rt.duel.tactical.systems[0].magazine = 0;
     press('launch'); tick();
     expect(rt.lastResults()).toEqual([]); expect(missileOf(rt.duel.tactical, 0)).toBeNull();

@@ -56,15 +56,16 @@ export function homingTurn(state: TacticalState, i: number, m: Missile): number 
   return sideOf(m.heading, ex, ey) || 1;
 }
 
-/** One tick of ship i's missile's flight: while it has fuel it turns by homingTurn and thrusts along its nose; then it
- *  coasts, unsteered. */
+/** One tick of ship i's missile's flight: while it has fuel it thrusts along its nose, and after its boost (weapons update
+ *  spec §2: the first boostTicks it flies straight out of the nose, unguided) it turns by homingTurn; then it coasts,
+ *  unsteered. */
 export function flyMissile(state: TacticalState, i: number): void {
   const m = missileOf(state, i);
   if (!m) return;
   const def = classOf(state, i).slots.missile;
   m.age++;
   const fuelled = m.age <= def.fuelTicks;
-  if (fuelled) m.headingAcc += homingTurn(state, i, m) * def.turnStepsPerTick;
+  if (fuelled && m.age > def.boostTicks) m.headingAcc += homingTurn(state, i, m) * def.turnStepsPerTick;
   while (m.headingAcc >= 1) { m.heading = wrapHeading(m.heading + 1); m.headingAcc -= 1; }
   while (m.headingAcc <= -1) { m.heading = wrapHeading(m.heading - 1); m.headingAcc += 1; }
   let [ax, ay] = gravityAccel(m.x, m.y);

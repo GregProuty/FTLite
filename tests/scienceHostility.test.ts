@@ -18,6 +18,8 @@ import { HOSTILE_AFTER_TICKS, LASER_CHARGE_UNITS } from '../src/renderer/src/sim
 import { IDLE_INPUT, tickWeapons, UNCREWED_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { holding, makeHostile } from './helpers/hostile';
+import { inTorpedoRange } from './helpers/torpedoRange';
+import { missileOf } from '../src/renderer/src/sim/tactical/state';
 
 /** Holding: the crew at (−600, −300) facing east at the enemy 300 units east of it (in arc and range), both at rest. */
 function facing(): TacticalState {
@@ -135,11 +137,14 @@ describe('in the duel (the Hunter grace suite, merged)', () => {
       seatDuelCrew(d);
       for (let k = 0; k < 60; k++) step(d);
       expect(enemyHostile(d.tactical)).toBe(false);
+      inTorpedoRange(d.tactical);                                       // weapons update spec §2: a launch needs the target within 360
       step(d, [{ player: 1 - d.helmPlayer, command: { kind: 'missileLaunch' } }]);
       expect([d.tactical.systems[0]!.missilesLaunched, enemyHostile(d.tactical)]).toEqual([1, true]);
       expect(d.tactical.events).toContainEqual({ kind: 'hostile', cause: 'missile' });
       step(d);
-      expect(d.tactical.systems[1]!.fireHeld).toBe(true);
+      // It acts at once: with the crew inside its torpedo range (weapons update spec §2) it launches first, which keeps its
+      // laser from charging while that torpedo flies.
+      expect(missileOf(d.tactical, 1)).not.toBeNull();
     } finally { disposeDuel(d); }
   });
   it('the battle music follows hostileAt: calm through the hold, engaged once hostile', () => {

@@ -153,7 +153,9 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   const ex = enemy.x - crew.x, ey = enemy.y - crew.y, inRange = ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE;
   const arc = inRange && inArc(crew.heading, ex, ey, LASER_ARC_COS);
   if (arc) t.enemyInArcTicks++;
-  if (gunner >= 0 && missileOf(tac, 0) === null && laserFull(tac, 0) && (!canLaunch(tac, 0) || inRange) && !arc) t.weaponsIdleTicks++;
+  // Weapons update spec §2: a torpedo can be launched only within its range (inside the laser's), so a possible launch is
+  // always something to do; idle is a full laser with no shot and no launch possible.
+  if (gunner >= 0 && missileOf(tac, 0) === null && laserFull(tac, 0) && !canLaunch(tac, 0) && !arc) t.weaponsIdleTicks++;
 
   // Terminal cause: what hit each ship whose hull reached 0 on the final tick, and `downed` for the crew ship when both
   // characters were down (the round is lost with the hull still up, duel-health spec §1.5).

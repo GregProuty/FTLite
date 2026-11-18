@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
-import { CONTACT_GRACE_TICKS, PLANET_RADIUS, SHIP_HULL, SHIP_RADIUS, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
+import { CONTACT_GRACE_TICKS, HUNTER_HULL, PLANET_RADIUS, SHIP_HULL, SHIP_RADIUS, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 
 const STILL: FlightTuning = { gravity: false, edge: false, drag: 0, stabilise: 0 };
 const IDLE = [{ turn: 0, thrust: 0 }, { turn: 0, thrust: 0 }];
@@ -48,7 +48,7 @@ describe('ship contacts (spec §4 collision matrix)', () => {
     expect(b.x - a.x).toBeCloseTo(2 * SHIP_RADIUS, 9);
     expect(a.vx).toBeCloseTo(-50, 9);
     expect(b.vx).toBeCloseTo(50, 9);
-    expect([st.systems[0].hull, st.systems[1].hull]).toEqual([SHIP_HULL - 1, SHIP_HULL - 1]);
+    expect([st.systems[0].hull, st.systems[1].hull]).toEqual([SHIP_HULL - 1, HUNTER_HULL - 1]);
     expect([a.shipHits, b.shipHits]).toEqual([1, 1]);
   });
   it('hull never goes below zero', () => {

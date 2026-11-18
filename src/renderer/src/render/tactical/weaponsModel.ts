@@ -1,10 +1,11 @@
 // The duel's combat draw lists for both console map views (H-1 spec §7 items 6 to 8): torpedoes as dots with trails
-// (homing torpedo spec §3), the lock marker on the enemy's locked room (both consoles, parent §7a), the Weapons layer
-// (bearing ring, both laser arcs, the enemy's bearing and range) and the event effects. Pure, like tacticalModel, which it
+// (homing torpedo spec §3), the lock marker on the enemy's locked room (both consoles, parent §7a), the torpedo's range
+// circle (both consoles, weapons update spec §2), the Weapons layer (bearing ring, both laser arcs, the enemy's bearing
+// and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
 import { Contact, targetOf } from '../../sim/tactical/state';
-import { laserEligible } from '../../sim/tactical/weapons';
-import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { laserEligible, torpedoInRange } from '../../sim/tactical/weapons';
+import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { worldToScreen, type Point } from './camera';
 import { interpolatedMissile, type FxState } from './fxModel';
@@ -21,9 +22,13 @@ export const ARC_HALF = Math.acos(LASER_ARC_COS);
 export interface ArcDraw { x: number; y: number; r: number; /** Radians clockwise from north. */ angle: number; half: number }
 export interface WeaponsDraw {
   ownArc: ArcDraw; enemyArc: ArcDraw | null; ring: RingDraw | null;
-  /** The enemy's bearing and range from the own ship, and whether the laser would hit now (top centre of the view). */
-  info: Label; inArc: boolean;
+  /** The enemy's bearing and range from the own ship, whether the laser would hit now and whether the torpedo can reach
+   *  (weapons update spec §2), as text at the top centre of the view. */
+  info: Label; inArc: boolean; torpedoInRange: boolean;
 }
+/** Weapons update spec §2: the torpedo's range circle about the own ship, radius MISSILE_RANGE · zoom. `lit` (CRT.mid)
+ *  on the Weapons map while the target is in range; otherwise, and always on the Helm map, CRT.dim. */
+export interface RangeDraw { x: number; y: number; r: number; lit: boolean }
 export interface LockDraw { x: number; y: number; r: number; room: number; label: Label }
 /** A torpedo in flight (homing torpedo spec §3): a filled dot of radius `r` screen px (TORPEDO_DOT_PX or more), the
  *  crew's or the Hunter's, with its short fading trail. */
@@ -34,8 +39,12 @@ export interface EffectDraw { kind: 'beam' | 'burst' | 'spark'; x1: number; y1: 
 /** Duel polish i spec §A: the Hunter's held charge as a ring about its drawn marker, the arc from 12 o'clock clockwise
  *  `fill` of the way round; at a full charge the whole ring at the pulse `alpha` and the label FIRING. */
 export interface ChargeDraw { x: number; y: number; r: number; fill: number; full: boolean; alpha: number; colour: number; label: Label }
-/** `charge` and `callouts` (duel polish i spec §A, §B) are optional so a hand-built frame may leave them out. */
-export interface CombatDraw { weapons: WeaponsDraw | null; lock: LockDraw | null; missiles: MissileDraw[]; effects: EffectDraw[]; charge?: ChargeDraw | null; callouts?: CalloutDraw[] }
+/** `charge`, `callouts` (duel polish i spec §A, §B) and `torpedoRange` (weapons update spec §2) are optional so a
+ *  hand-built frame may leave them out. */
+export interface CombatDraw {
+  weapons: WeaponsDraw | null; lock: LockDraw | null; missiles: MissileDraw[]; effects: EffectDraw[]; charge?: ChargeDraw | null; callouts?: CalloutDraw[];
+  torpedoRange?: RangeDraw | null;
+}
 
 /** How far inward of the enemy's edge arrow its off-screen charge label and callouts sit, in screen px. */
 const OFFSCREEN_INSET = 120;
@@ -82,6 +91,9 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     lock = { x, y, r, room, label: { text: `LOCK ${ROOM_NAMES[room]}`, x: enemyS.x + Math.max(14, k * 1.6) + 6, y: enemyS.y - 8 } };
   }
 
+  const inRange = torpedoInRange(state, 0);
+  const torpedoRange: RangeDraw | null = (input.console === 'weapons' || input.console === 'helm') && input.ships.includes(0)
+    ? { x: ownS.x, y: ownS.y, r: MISSILE_RANGE * z, lit: input.console === 'weapons' && inRange } : null;
   let weapons: WeaponsDraw | null = null;
   if (input.console === 'weapons') {
     const dx = enemy.x - own.x, dy = enemy.y - own.y, range = Math.round(Math.sqrt(dx * dx + dy * dy)), inArc = laserEligible(state, 0, target);
@@ -89,8 +101,8 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       ownArc: { x: ownS.x, y: ownS.y, r: LASER_RANGE * z, angle: headingAngle(own.h), half: ARC_HALF },
       enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
-      info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}`, x: ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2, y: 12 },
-      inArc
+      info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}  TORP ${inRange ? 'IN RANGE' : 'OUT OF RANGE'}`, x: ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2, y: 12 },
+      inArc, torpedoInRange: inRange
     };
   }
 
@@ -116,5 +128,5 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       callouts = calloutDraws(input.fx.callouts, { x: hs.x, y: hs.y - r - 26 });   // above the ring's label
     }
   }
-  return { weapons, lock, missiles, effects, charge, callouts };
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange };
 }

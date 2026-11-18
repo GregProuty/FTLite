@@ -31,7 +31,7 @@ function mount(view: DuelUiView) {
 }
 const weapons: ConsoleView = {
   station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
-  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 1, weakFreq: 2 }, science: null,
+  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 1, weakFreq: 2 }, science: null,
   side: { zoom: '0.50', free: false, snapLabel: 'CAMERA' }
 };
 

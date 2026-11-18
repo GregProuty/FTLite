@@ -8,11 +8,11 @@ import { segmentNear, sideOf } from './geometry';
 import { queryGrid } from './grid';
 import { classOf, HunterMode, missileOf, Room, type TacticalState } from './state';
 import {
-  HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_MISSILE_RANGE,
+  HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS,
   HUNTER_STANDOFF, HUNTER_THRUST_COS, HUNTER_TRAIL_TICKS, HUNTER_WALK_TICKS, REPAIR_WORK_TICKS
 } from './tuning';
 import { enemyHostile } from './science';
-import { laserEligible, laserFull, type ShipInput } from './weapons';
+import { canLaunch, laserEligible, laserFull, type ShipInput } from './weapons';
 
 /** Repair priority (spec §9): highest level first, ties Engines, then Weapons, then Shields. */
 const REPAIR_ORDER = [Room.Engines, Room.Weapons, Room.Shields] as const;
@@ -92,9 +92,7 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
       if (h.fireAt < 0) h.fireAt = state.tick + nextInt(state.rng, HUNTER_JITTER_TICKS + 1);
       if (state.tick >= h.fireAt) { input.laserCharge = false; h.fireAt = -1; }
     } else h.fireAt = -1;
-    const dx = crew.x - me.x, dy = crew.y - me.y;
-    if (mine.magazine > 0 && mine.rooms[Room.Weapons] < 2 && dx * dx + dy * dy <= HUNTER_MISSILE_RANGE * HUNTER_MISSILE_RANGE
-      && state.tick - h.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS) input.missileLaunch = true;   // stepDuel starts the cooldown only if it launches
+    if (canLaunch(state, i) && state.tick - h.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS) input.missileLaunch = true;   // stepDuel starts the cooldown only if it launches
   }
   return input;
 }
