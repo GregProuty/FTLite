@@ -7,7 +7,7 @@ import { DUEL_CLASSES, SHIP_CLASSES, type ShipClassDef } from './defs';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
-import { HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
+import { DERELICT_NEAR_MIN, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
 
 /** Tactical rooms (spec §5); the index into ShipSystems.rooms. */
 export const Room = { Weapons: 0, Shields: 1, Engines: 2 } as const;
@@ -45,6 +45,8 @@ export interface ShipSystems {
   shields: number; shieldClock: number;
   /** Laser (spec §7a): charge 0..chargeUnits (full), ticks a full charge has been held, whether Fire is held, the locked target Room. */
   laserCharge: number; laserHold: number; fireHeld: boolean; lock: number;
+  /** Sci-1 spec §4.4: the laser's tuned frequency 0..2 (A..C); only the crew's ever changes (laserFrequency). */
+  freq: number;
   /** Missiles in the magazine and the regain clock in ticks (spec §7b). */
   magazine: number; magazineClock: number;
   /** Telemetry counters (spec §13). */
@@ -57,7 +59,8 @@ export interface MissileFlight { x: number; y: number; vx: number; vy: number; h
  *  entry holds zeros. */
 export interface Missile extends MissileFlight { active: boolean; owner: number }
 
-export const HunterMode = { Hunt: 0, Repair: 1 } as const;
+/** Patrol (Sci-1 spec §4.2): before it turns hostile the enemy coasts, avoids threats, never fires and regains no shield. */
+export const HunterMode = { Hunt: 0, Repair: 1, Patrol: 2 } as const;
 /** The enemy's brain (spec §9). */
 export interface Hunter {
   mode: number;
@@ -71,6 +74,22 @@ export interface Hunter {
 }
 
 export const Outcome = { Running: 0, CrewWins: 1, EnemyWins: 2, Draw: 3 } as const;
+
+/** Map contacts (Sci-1 spec §4): ids, not ship slots. The enemy is drawn and aimed through the hunter's slot; the
+ *  derelict has no slot. */
+export const Contact = { Enemy: 0, Derelict: 1 } as const;
+/** The derelict's loot (spec §4.5). */
+export const Loot = { Hull: 0, Missiles: 1, Shield: 2 } as const;
+/** The highest level each contact can be known to: the enemy Level 2, the derelict Level 1. */
+export const CONTACT_MAX_LEVEL: readonly [number, number] = [2, 1];
+/** The ship's one scanner (spec §4.3): the contact and level it scans, its progress in scan units, its rate per tick and
+ *  the station index it runs from. Idle: contact −1 and the other four 0. */
+export interface Scan { contact: number; level: number; progress: number; rate: number; by: number }
+/** The derelict (spec §4.5): its orbit radius and starting phase (a heading index), its loot, whether it is trapped,
+ *  the salvage hold in ticks and whether it has been salvaged. */
+export interface Derelict { orbitR: number; phase: number; loot: number; trapped: boolean; salvage: number; salvaged: boolean }
+/** An idle scanner. */
+export function idleScan(): Scan { return { contact: -1, level: 0, progress: 0, rate: 0, by: 0 }; }
 
 /** Per-tick events for the views (shots and missile endings). Reset every tick and not hashed. */
 export type DuelEvent =
@@ -90,6 +109,11 @@ export interface TacticalState {
   hunter: Hunter;
   outcome: number;
   events: DuelEvent[];
+  /** The science module (Sci-1 spec §4, §6.2). `startTick`: the tactical tick the round began on; every round-relative
+   *  rule reads rt = tick − startTick. `hostileAt`: the rt the enemy turned hostile, −1 while it patrols. `known`: the
+   *  level each contact is known to (Contact order). `scan`: the ship's scanner. `designated`: the contact Science
+   *  points out, −1 none (no rule reads it). `weakFreq`: the enemy's weak shield frequency 0..2. `derelict`: the wreck. */
+  startTick: number; hostileAt: number; known: [number, number]; scan: Scan; designated: number; weakFreq: number; derelict: Derelict;
 }
 
 /** Held axes for one ship: turn (+ clockwise) and thrust (+ forward). flyShip quantises the turn by sign and the thrust to quarters (NaN counts as 0; Artemis spec §5.3). */
@@ -113,12 +137,12 @@ function emptyShip(bodies: number): Ship {
 function systemsFor(cls: number, target: number): ShipSystems {
   const c = SHIP_CLASSES[cls]!;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: Room.Shields, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0
   };
 }
 function emptySystems(): ShipSystems {
-  return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0,
+  return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, freq: 0,
     magazine: 0, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0 };
 }
 /** A free missile pool entry. */
@@ -142,7 +166,10 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): 
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
     systems: [systemsFor(DUEL_CLASSES[0]!, 1), systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],
-    hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: []
+    hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
+    // Sci-1 step 1 (spec §6.3): neutral values, no draws: hostile from the start, the scan idle, the derelict salvaged.
+    startTick: 0, hostileAt: 0, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: 0,
+    derelict: { orbitR: DERELICT_NEAR_MIN, phase: 0, loot: Loot.Hull, trapped: false, salvage: 0, salvaged: true }
   };
 }
 

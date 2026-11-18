@@ -12,7 +12,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
-import { MISSILE_KEYS, flattenTactical, shipModule, spaceModule, TACTICAL_MODULES, unflattenTactical } from '../src/renderer/src/sim/tactical/hash';
+import { MISSILE_KEYS, flattenTactical, scienceModule, shipModule, spaceModule, TACTICAL_MODULES, unflattenTactical } from '../src/renderer/src/sim/tactical/hash';
 import { cloneTactical, createTacticalState, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -37,7 +37,7 @@ const names = <S>(m: SimModule<S>, s: S) => new Set(m.fields(s).map((f) => f.nam
 /** A missile pool entry is one field per member (active, owner) plus `flight` for its flight values. */
 const tacticalNames = (s: TacticalState) => new Set([...TACTICAL_MODULES.flatMap((m) => [...names(m, s)]),
   ...s.missiles.flatMap((_, k) => MISSILE_KEYS.map((key) => `missiles.${k}.${key}`))]);
-const tacticalExcluded = { ...spaceModule.notSnapshotted, ...shipModule.notSnapshotted };
+const tacticalExcluded = { ...spaceModule.notSnapshotted, ...shipModule.notSnapshotted, ...scienceModule.notSnapshotted };
 const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, helmModule, interiorModule].flatMap((m) => [...names(m, d)]));
 function played(seed: number, ticks: number): DuelState {
   const d = createSeatedDuel(CUTTER, seed), pair = createScriptedPair(seed);
@@ -50,7 +50,7 @@ function bothFlying(s: TacticalState): void {
   placeMissile(s, 1, { x: -100, y: 200, vx: -3, vy: -4, heading: 9, headingAcc: -0.25, age: 40 });
 }
 /** A changed first value: flags and 0/1 members flip, everything else moves by one. */
-const changedFirst = (name: string, v: number): number => (/\.(active|released|fireHeld)$/.test(name) || name.startsWith('present.') || name === 'hunter.working' ? 1 - v : v + 1);
+const changedFirst = (name: string, v: number): number => (/\.(active|released|fireHeld)$/.test(name) || /^derelict\.(trapped|salvaged)$/.test(name) || name.startsWith('present.') || name === 'hunter.working' ? 1 - v : v + 1);
 const IDENTITY = new Set(['map.asteroids.length', 'ships.length']);
 
 describe('the duel modules (spec §6 module contract)', () => {
@@ -88,17 +88,17 @@ describe('the duel modules (spec §6 module contract)', () => {
   it('every exclusion names a real member and is not also a field', () => {
     const d = createSeatedDuel(CUTTER, 1);
     try {
-      for (const [m, s] of [[spaceModule, d.tactical], [shipModule, d.tactical], [presenceModule, d], [repairModule, d], [helmModule, d], [interiorModule, d]] as const)
+      for (const [m, s] of [[spaceModule, d.tactical], [shipModule, d.tactical], [scienceModule, d.tactical], [presenceModule, d], [repairModule, d], [helmModule, d], [interiorModule, d]] as const)
         for (const path of Object.keys(m.notSnapshotted)) { expect(s, path).toHaveProperty(path.split('.')); expect(names(m as SimModule<object>, s).has(path)).toBe(false); }
       for (const path of Object.keys(DUEL_NOT_SNAPSHOTTED)) { expect(d, path).toHaveProperty(path.split('.')); expect(duelNames(d).has(path)).toBe(false); }
     } finally { disposeDuel(d); }
   });
-  it('every space, ship, presence and repair field changes the duel hash; the interior is covered by its own flatten', () => {
+  it('every space, ship, science, presence and repair field changes the duel hash; the interior is covered by its own flatten', () => {
     const d = played(2, 900);
     try {
       bothFlying(d.tactical);
       const base = hashDuel(d);
-      for (const { module, state } of DUEL_MODULES.slice(0, 4)) {
+      for (const { module, state } of DUEL_MODULES.slice(0, 5)) {
         const m = module as SimModule<unknown>, s = state(d);
         for (const f of m.fields(s)) {
           if (IDENTITY.has(f.name)) continue;   // identity checks, never written (next test)
@@ -125,12 +125,12 @@ describe('the duel modules (spec §6 module contract)', () => {
     const active = spaceModule.fields(s).find((f) => f.name === 'missiles.0.active')!;
     expect(() => active.write(s, [2], 0)).toThrow(/not 0 or 1/);
   });
-  it('flatten is the modules in canonical order after SIM_VERSION: space, ship, presence, repair, round, helm, interior', () => {
+  it('flatten is the modules in canonical order after SIM_VERSION: space, ship, science, presence, repair, round, helm, interior', () => {
     const d = played(1, 600);
     try {
-      const space: number[] = [], ship: number[] = [];
-      flattenModule(spaceModule, d.tactical, space); flattenModule(shipModule, d.tactical, ship);
-      expect(Array.from(flattenTactical(d.tactical))).toEqual([...space, ...ship].map((v) => (v === 0 ? 0 : v)));
+      const space: number[] = [], ship: number[] = [], science: number[] = [];
+      flattenModule(spaceModule, d.tactical, space); flattenModule(shipModule, d.tactical, ship); flattenModule(scienceModule, d.tactical, science);
+      expect(Array.from(flattenTactical(d.tactical))).toEqual([...space, ...ship, ...science].map((v) => (v === 0 ? 0 : v)));
       expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, ...flatten(d.interior)]);
       const copy = cloneTactical(d.tactical), fresh = createTacticalState(1);
       expect(unflattenTactical(fresh, flattenTactical(copy))).toBe(flattenTactical(copy).length);

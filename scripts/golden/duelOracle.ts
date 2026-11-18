@@ -105,7 +105,10 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   /** H-2 (38 → 39): the round module joins after repair; no 38 oracle run sends rematch or a non-default helmPlayer. */
   38: { change: 'H-2: duel rounds', rename: () => undefined, derived: [], added: [/^round\.(round|helmPlayer|baseTick|decidedTick)$/] },
   /** Artemis-ii (42 → 43): the helm module joins after round; no 42 oracle run sends throttle, so it stays 0. */
-  42: { change: 'Artemis-ii: helm throttle', rename: () => undefined, derived: [], added: [/^helm\.throttle$/] }
+  42: { change: 'Artemis-ii: helm throttle', rename: () => undefined, derived: [], added: [/^helm\.throttle$/] },
+  /** Sci-1 (44 → 45): the science module joins after ship and every laser gains freq; no 44 oracle run scans, designates
+   *  or tunes, and step 1's values are neutral, so every run is unchanged per tick. */
+  44: { change: 'Sci-1: science scans', rename: () => undefined, derived: [], added: [/^science\./, /^ship\.systems\.\d+\.freq$/] }
 };
 
 /** The duel's named canonical fields after SIM_VERSION, in flattenDuel order: `<module id>.<field name>`, with the

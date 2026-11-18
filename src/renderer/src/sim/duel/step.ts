@@ -91,6 +91,7 @@ function startRound(d: DuelState, tick: number): void {
   next.interior.tick = tick; next.tactical.tick = tick;
   for (const ship of next.tactical.ships) ship.graceUntil.fill(tick);
   next.tactical.hunter.lastLaunch += tick;
+  next.tactical.startTick = tick;   // Sci-1 spec §4.1: the round's rules read rt = tick − startTick; hostileAt is round-relative
   disposeDuel(d);
   Object.assign(d, next);
 }
@@ -166,7 +167,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
-  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false };
+  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
     if (c.kind !== 'laserLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;

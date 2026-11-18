@@ -62,7 +62,7 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
   updateRepair(state, i);
   const repairing = h.mode === HunterMode.Repair;
   const helm = !(repairing && h.room === Room.Engines), weapons = !(repairing && h.room !== Room.Engines);
-  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false };
+  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
 
   if (helm) {
     const threat = threatAhead(state, i);

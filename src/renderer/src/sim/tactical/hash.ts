@@ -1,13 +1,14 @@
-// Canonical flatten and hash of the tactical state (spec §4: same seed and inputs give the same hash), declared as two
-// sim modules over the one TacticalState (engine refactor spec §5 and §6, R-2): `space` (the slots' bodies, the missile
-// pool, the hunter, the outcome) and `ship` (each slot's systems record). Flatten, unflatten, clone, validation and the
-// completeness test all come from their field lists; flattenTactical is space then ship, the duel's order. The map is a
+// Canonical flatten and hash of the tactical state (spec §4: same seed and inputs give the same hash), declared as three
+// sim modules over the one TacticalState (engine refactor spec §5 and §6, R-2; Sci-1 spec §6.2): `space` (the slots'
+// bodies, the missile pool, the hunter, the outcome), `ship` (each slot's systems record) and `science` (hostility, the
+// scans, the designation, the weak frequency, the derelict). Flatten, unflatten, clone, validation and the
+// completeness test all come from their field lists; flattenTactical is space, ship, science, the duel's order. The map is a
 // pure function of the seed, so only its asteroid count is flattened; the slot count is flattened the same way. Per-tick
 // events are outputs, reset every tick, and not hashed. −0 is written as 0.
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { SHIP_CLASSES } from './defs';
-import { HEADING_COUNT, HUNTER_TRAIL_TICKS } from './tuning';
+import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { emptyMissile, HunterMode, Outcome, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
 /** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age (zeros when free). */
@@ -17,7 +18,7 @@ export const MISSILE_SLOT = 9;
 const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'asteroidHits', 'shipHits', 'released', 'skidBudget', 'skidSign'] as const satisfies readonly (keyof Ship)[];
 /** A systems record's scalar fields in canonical order; `rooms` comes after `hull`. */
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
-const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'magazine', 'magazineClock',
+const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'magazine', 'magazineClock',
   'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost'] as const satisfies readonly (keyof ShipSystems)[];
 const FLAGS = new Set<string>(['released', 'fireHeld']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
@@ -118,17 +119,40 @@ export const shipModule: SimModule<TacticalState> = {
   commands: ['laserLock', 'laserCharge', 'missileLaunch'],
   reasons: ['not-at-weapons', 'missile-in-flight', 'malformed', 'stale-tick', 'unavailable']
 };
+/** The `science` module (Sci-1 spec §6.2): round-relative time and hostility, what each contact is known to, the ship's
+ *  one scanner, Science's designation, the enemy's weak frequency and the derelict, in this order. */
+const SCIENCE: ModuleField<TacticalState>[] = [
+  scalar('startTick', (s) => s.startTick, (s, v) => { s.startTick = v; }),
+  scalar('hostileAt', (s) => s.hostileAt, (s, v) => { s.hostileAt = v; }),
+  vector('known', 2, (s) => s.known),
+  ...(['contact', 'level', 'progress', 'rate', 'by'] as const).map((k) => scalar<TacticalState>(`scan.${k}`, (s) => s.scan[k], (s, v) => { s.scan[k] = v; })),
+  scalar('designated', (s) => s.designated, (s, v) => { s.designated = v; }),
+  scalar('weakFreq', (s) => s.weakFreq, (s, v) => { s.weakFreq = v; }),
+  ...(['orbitR', 'phase', 'loot'] as const).map((k) => scalar<TacticalState>(`derelict.${k}`, (s) => s.derelict[k], (s, v) => { s.derelict[k] = v; })),
+  flag('derelict.trapped', (s) => s.derelict.trapped, (s, v) => { s.derelict.trapped = v; }),
+  scalar('derelict.salvage', (s) => s.derelict.salvage, (s, v) => { s.derelict.salvage = v; }),
+  flag('derelict.salvaged', (s) => s.derelict.salvaged, (s, v) => { s.derelict.salvaged = v; })
+];
+export const scienceModule: SimModule<TacticalState> = {
+  id: 'science',
+  fields: () => SCIENCE,
+  notSnapshotted: {},
+  // Empty until Task 2 adds the three kinds to the codec (tests/duelModules.test.ts and duelCheckpoint.test.ts compare
+  // the modules' kinds with the codec's).
+  commands: [],
+  reasons: []
+};
 /** The tactical state's modules in canonical order. */
-export const TACTICAL_MODULES: readonly SimModule<TacticalState>[] = [spaceModule, shipModule];
+export const TACTICAL_MODULES: readonly SimModule<TacticalState>[] = [spaceModule, shipModule, scienceModule];
 
-/** The space then the ship module's values, −0 written as 0. */
+/** The space, ship and science modules' values, −0 written as 0. */
 export function flattenTactical(s: TacticalState): Float64Array {
   const out: number[] = [];
   for (const m of TACTICAL_MODULES) flattenModule(m, s, out);
   return Float64Array.from(out, (v) => (v === 0 ? 0 : v));
 }
 /** The number of values flattenTactical writes for this state's map and slots. */
-export function tacticalLength(s: TacticalState): number { return moduleLength(spaceModule, s) + moduleLength(shipModule, s); }
+export function tacticalLength(s: TacticalState): number { return TACTICAL_MODULES.reduce((n, m) => n + moduleLength(m, s), 0); }
 /** Write tactical values back into a state made from the same seed and slot count; returns the offset after them. */
 export function unflattenTactical(s: TacticalState, values: ArrayLike<number>, offset = 0): number {
   for (const m of TACTICAL_MODULES) offset = unflattenModule(m, s, values, offset);
@@ -145,7 +169,8 @@ export function cloneTacticalFromModule(s: TacticalState): TacticalState {
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
     systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
-    hunter: { ...s.hunter, trail: new Float64Array(s.hunter.trail.length) }, events: s.events.map((e) => ({ ...e })) };
+    hunter: { ...s.hunter, trail: new Float64Array(s.hunter.trail.length) }, events: s.events.map((e) => ({ ...e })),
+    known: [0, 0], scan: { ...s.scan }, derelict: { ...s.derelict } };   // fresh science containers; the values are written below
   const values: number[] = [];
   for (const m of TACTICAL_MODULES) flattenModule(m, s, values);
   unflattenTactical(copy, values, 0);
@@ -169,15 +194,20 @@ const BODY_RULES: Readonly<Record<string, (v: number) => boolean>> = {
 /** Each systems field's per-value rule, against the largest class (an inactive slot is checked for zeros separately). */
 const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boolean>> => ({
   cls: within(0, SHIP_CLASSES.length - 1), target: within(0, slots - 1), hull: (v) => v >= 0 && v <= most((c) => c.hull), rooms: room,
-  shields: within(0, most((c) => c.shields.layers)), shieldClock: count, laserCharge: within(0, most((c) => c.slots.laser.chargeUnits)), laserHold: count,
+  shields: within(0, most((c) => c.shields.layers) + 1), freq: within(0, 2), shieldClock: count, laserCharge: within(0, most((c) => c.slots.laser.chargeUnits)), laserHold: count,
   fireHeld: flagBit, lock: room, magazine: within(0, most((c) => c.slots.missile.magazine)), magazineClock: count,
   shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count
 });
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
   tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
-  'hunter.mode': within(HunterMode.Hunt, HunterMode.Repair), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
-  'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any
+  'hunter.mode': within(HunterMode.Hunt, HunterMode.Patrol), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
+  'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any,
+  // Sci-1 spec §6.2 (known is checked per value in validateTacticalValues).
+  startTick: count, hostileAt: (v) => Number.isInteger(v) && v >= -1, 'scan.contact': within(-1, 1), 'scan.level': within(0, 2), 'scan.progress': count,
+  'scan.rate': (v) => v === 0 || v === SCAN_RATE_OTHER || v === SCAN_RATE_SCIENCE, 'scan.by': count, designated: within(-1, 1), weakFreq: within(0, 2),
+  'derelict.orbitR': (v) => Number.isInteger(v) && ((v >= DERELICT_NEAR_MIN && v <= DERELICT_NEAR_MAX) || (v >= DERELICT_FAR_MIN && v <= DERELICT_FAR_MAX)),
+  'derelict.phase': within(0, HEADING_COUNT - 1), 'derelict.loot': within(0, 2), 'derelict.trapped': flagBit, 'derelict.salvage': count, 'derelict.salvaged': flagBit
 });
 
 /** Check tactical values (the space then the ship module's) against their field bounds and slot invariants without
@@ -213,7 +243,8 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         owners.add(o);
       }
       if (active === 1 && key === 'flight') { const [, , , , head, headAcc, age] = slice as number[]; if (!heading(head!) || !acc(headAcc!) || !count(age!)) bad('heading, headingAcc or age out of range'); }
-    } else { const rule = top[f.name]; if (rule && !slice.every(rule)) bad('out of range'); }
+    } else if (f.name === 'known') { if (!within(0, 2)(slice[0]!) || !within(0, 1)(slice[1]!)) bad('out of range'); }   // the enemy 0..2, the derelict 0..1
+    else { const rule = top[f.name]; if (rule && !slice.every(rule)) bad('out of range'); }
     at += f.count;
   }
   return at;
