@@ -28,10 +28,11 @@ export interface ConfirmedDuel {
   live?(): boolean;
 }
 interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
-/** Ship i's cumulative counters, which the snapshot carries. */
+/** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
+ *  one in flight, which also counts a self-hit (neither a hit nor a loss); never fewer than hits plus losses. */
 export const duelCounters = (t: TacticalState, i: number): Counters => {
-  const s = t.systems[i]!, b = t.ships[i]!;
-  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended: s.missileHits + s.missilesLost, missileHits: s.missileHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
+  const s = t.systems[i]!, b = t.ships[i]!, ended = Math.max(s.missileHits + s.missilesLost, s.missilesLaunched - (missileOf(t, i) ? 1 : 0));
+  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
@@ -44,8 +45,9 @@ const workOf = (d: DuelState): number[] => [0, 1, 2].map((r) => {
 
 /**
  * The events of one publication gap (spec §3): each `shots` increment is a beam to the target (a hit when `laserHits`
- * rose) or to arc range along the firing ship's heading; each increment of `missileHits + missilesLost` is a missile
- * ending at the missile's previous position (a hit when `missileHits` rose; a loss draws the neutral burst); each
+ * rose) or to arc range along the firing ship's heading; each increment of `ended` (launched minus in flight) is a
+ * missile ending at the missile's previous position (a hit when `missileHits` rose; a loss or a self-hit draws the
+ * neutral burst); each
  * contact counter increment is a spark at the ship. An ending and a relaunch in one gap are told apart because both
  * counters rose: the ending is drawn at the old missile's last position.
  */

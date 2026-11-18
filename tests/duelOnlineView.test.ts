@@ -91,6 +91,13 @@ describe('the online duel view source (spec §3)', () => {
     expect(events).toEqual([{ kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: 100, y: 200 }]);
     expect(missileOf(after, 0)).not.toBeNull();
   });
+  it('a self-hit (counted neither a hit nor a loss) still ends the missile online: launched minus in flight', () => {
+    const before = createTacticalState(4), after = createTacticalState(4);
+    placeMissile(before, 0, { x: 100, y: 200, vx: 1, vy: 0, heading: 0, headingAcc: 0, age: 90 });
+    before.systems[0].missilesLaunched = 1; after.systems[0].missilesLaunched = 1;   // after: the missile is gone, no counter moved
+    const events = gapEvents([duelCounters(before, 0), duelCounters(before, 1)], [{ x: 100, y: 200, h: 0 }, null], after);
+    expect(events).toEqual([{ kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: 100, y: 200 }]);
+  });
   it('online hits say what they did (duel polish i spec §B): a strip, the lock room, and a missile on the room that rose', () => {
     const before = createTacticalState(4), after = createTacticalState(4), a = after.systems[0], e = after.systems[1];
     a.lock = 2; a.shots += 3; a.laserHits += 2; a.layersStripped += 1; e.rooms[2] = 1;   // a strip, an Engines hit, a miss
