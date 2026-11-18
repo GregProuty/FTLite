@@ -18,6 +18,10 @@ describe('the keep-visible warning (web build spec §3.5, fail path)', () => {
     const p = page(); p.push('guest', 'running'); p.hide(true); expect(p.target.title).toBe('FTLite');
     p.push('host', 'idle'); expect(p.target.title).toBe('FTLite');
   });
+  it('shows when a non-host becomes a host while the tab is already hidden', () => {
+    const p = page(); p.hide(true); p.push('guest', 'running'); expect(p.target.title).toBe('FTLite');
+    p.push('host', 'lobby'); expect(p.target.title).toBe(KEEP_VISIBLE_TEXT);
+  });
   it('clears when hosting ends while hidden, and on stop', () => {
     const p = page(); p.push('host', 'lobby'); p.hide(true); p.push(null, 'idle'); expect(p.target.title).toBe('FTLite');
     p.push('host', 'running'); expect(p.target.title).toBe(KEEP_VISIBLE_TEXT); p.stop(); expect(p.target.title).toBe('FTLite');
