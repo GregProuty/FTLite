@@ -8,9 +8,9 @@ export interface SoloRecorderDeps {
   /** The wall clock as an ISO string. */
   now(): string;
   /** The character the keyboard drives now. */
-  active(): 0 | 1;
+  active(): number;
   /** The duel's Helm player. */
-  helmPlayer(): 0 | 1;
+  helmPlayer(): number;
 }
 export function soloRecorder(deps: SoloRecorderDeps) {
   let startedAtIso = deps.now(), pauses = 0, wasPaused = false;

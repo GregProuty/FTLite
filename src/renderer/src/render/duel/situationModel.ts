@@ -18,7 +18,7 @@ export const SOLUTION_HOLD_S = 0.6;
  *  charges nor auto-fires (laserFrozen). */
 export function gunnerPresent(d: DuelState): boolean {
   const pid = d.interior.stations.occupant[d.weapons]!;
-  return pid >= 0 && d.present[pid as 0 | 1];
+  return pid >= 0 && d.present[pid] === true;
 }
 
 /** The laser's situation, by the sentence's priority: `none` once the round is decided; out of range, out of arc, no line

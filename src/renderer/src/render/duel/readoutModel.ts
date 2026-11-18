@@ -115,7 +115,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   rows.push(row('', input.other));
   if (input.mode === 'interior') {
     const helm = d.interior.stations.occupant[d.nav]!, gun = d.interior.stations.occupant[d.weapons]!;
-    const crewed = (pid: number): boolean => pid >= 0 && d.present[pid as 0 | 1];
+    const crewed = (pid: number): boolean => pid >= 0 && d.present[pid] === true;
     rows.push(heading('OUTSIDE', AMBER));
     rows.push(em(row('HELM', crewed(helm) ? 'CREWED' : 'EMPTY', DIM, crewed(helm) ? TEXT : WARN), crewed(helm) ? null : 'alert'));
     if (!crewed(helm)) rows.push(em(row('', 'COASTING', DIM, WARN), 'alert'));

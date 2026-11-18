@@ -75,7 +75,7 @@ export function telemetryLine(r: DuelRun): string {
     `seed ${r.seed}: ${f(t.ticks)} s, ${OUTCOME_NAMES[t.outcome]}, terminal crew [${t.terminal[0].join(' ')}] enemy [${t.terminal[1].join(' ')}]${endedFromPlanet(t) ? ', PLANET END' : ''}`,
     `  crew  laser ${c.laserReleases} released, ${c.laserHits} hit (${c.layersStripped} stripped), ${c.laserMisses} missed; missiles ${c.missilesLaunched} launched, hits W/S/E ${c.missileHitsByRoom.join('/')}, lost ${losses(c)}; contacts planet ${c.planetContacts}, asteroid ${c.asteroidContacts}`,
     `  enemy laser ${e.laserReleases} released, ${e.laserHits} hit (${e.layersStripped} stripped), ${e.laserMisses} missed; missiles ${e.missilesLaunched} launched, hits W/S/E ${e.missileHitsByRoom.join('/')}, lost ${losses(e)}; contacts planet ${e.planetContacts}, asteroid ${e.asteroidContacts}; baits ${t.baits}`,
-    `  repairs started/finished P0 ${t.players[0].repairsStarted}/${t.players[0].repairsFinished}, P1 ${t.players[1].repairsStarted}/${t.players[1].repairsFinished}; away walking/repairing P0 ${f(t.players[0].walkingTicks)}/${f(t.players[0].repairingTicks)} s, P1 ${f(t.players[1].walkingTicks)}/${f(t.players[1].repairingTicks)} s`,
+    `  repairs started/finished P0 ${t.players[0]!.repairsStarted}/${t.players[0]!.repairsFinished}, P1 ${t.players[1]!.repairsStarted}/${t.players[1]!.repairsFinished}; away walking/repairing P0 ${f(t.players[0]!.walkingTicks)}/${f(t.players[0]!.repairingTicks)} s, P1 ${f(t.players[1]!.walkingTicks)}/${f(t.players[1]!.repairingTicks)} s`,
     `  helm empty ${f(t.helmEmptyTicks)} s, weapons empty ${f(t.weaponsEmptyTicks)} s, enemy in arc ${f(t.enemyInArcTicks)} s, weapons idle ${f(t.weaponsIdleTicks)} s, console swaps ${t.consoleSwaps}`
   ].join('\n');
 }

@@ -9,6 +9,10 @@ import { validateMap } from '../tactical/map';
 import { createTacticalState, type TacticalState } from '../tactical/state';
 import { DUEL_REPAIR_POINTS } from './tuning';
 
+/** Sci-2 spec §3: a duel crew is 2, 3 or 4 players, fixed for the run. Every value indexed by player is n long. */
+export const DUEL_CREW_MIN = 2, DUEL_CREW_MAX = 4;
+export type DuelCrew = 2 | 3 | 4;
+
 export interface RepairPoint { tacticalRoom: number; room: number; tile: number }
 
 /** Per-tick repair and fire events (H-0c-ii-a spec §4, duel-fire spec §1.5), for telemetry and views. Derived, not
@@ -34,8 +38,8 @@ export type HealthEvent =
 export interface DuelState {
   interior: SimState;
   tactical: TacticalState;
-  /** Whether each player is at the keyboard (spec §8 "present or away"). */
-  present: [boolean, boolean];
+  /** Whether each player is at the keyboard (spec §8 "present or away"), n long (Sci-2 spec §4.1), all true at creation. */
+  present: boolean[];
   /** Repair progress per tactical Room (index = Room), in REPAIR_UNITS. */
   repair: [number, number, number];
   /** Resolved repair points, in tactical Room order. */
@@ -49,8 +53,9 @@ export interface DuelState {
    *  health events (healthPhase): crewHurt from hits in tactical event order, crewHurt from fire, downed, revived. */
   events: (RepairEvent | HealthEvent)[];
   /** The round module (H-2 spec §7): this round's index from 0, the player seated at the Helm when it began, the
-   *  encounter tick it began on, and the tick right after its deciding step (−1 while it runs). */
-  round: number; helmPlayer: 0 | 1; baseTick: number; decidedTick: number;
+   *  encounter tick it began on, and the tick right after its deciding step (−1 while it runs). helmPlayer is a player id
+   *  0..n−1 (Sci-2 spec §4.1). */
+  round: number; helmPlayer: number; baseTick: number; decidedTick: number;
   /** The helm module (Artemis spec §5.1): the Helm's throttle level, an integer −1..4 (sim/duel/throttle.ts). Kept
    *  across stand and sit; 0 in a fresh duel, so a new round starts at STOP. */
   throttle: number;
@@ -60,18 +65,21 @@ export interface DuelState {
 }
 
 /**
- * A duel on `layout` (the Hound in the app; the Cutter in older tests): two trait-free Recruits (no XP is ever awarded, since xpSystem never runs), every
- * door held open, both players standing at the layout's spawns with every console free (start-aboard spec §1; `helmPlayer`
- * is kept for the round module and the wire but seats no one), and a tactical state
- * from the same seed whose map must validate. Round 0, beginning on tick 0, the throttle at STOP. Throws if the map, a repair point or
- * `helmPlayer` is invalid, so a bad seed or layout fails loudly.
+ * A duel on `layout` (the Hound in the app; the Cutter in older tests): `crew` trait-free Recruits (2..4, Sci-2 spec §4.1;
+ * no XP is ever awarded, since xpSystem never runs), every door held open, every player standing at the layout's spawns in
+ * player order with every console free (start-aboard spec §1; `helmPlayer` is kept for the round module and the wire but
+ * seats no one), and a tactical state from the same seed whose map must validate. Round 0, beginning on tick 0, the
+ * throttle at STOP. Throws if the crew, the Helm player, the map or a repair point is invalid, so a bad seed or layout
+ * fails loudly; the crew checks run before anything is allocated.
  */
-export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 = 0): DuelState {
-  if (helmPlayer !== 0 && helmPlayer !== 1) throw new Error(`invalid duel helm player ${String(helmPlayer)}`);
+export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, crew: number = DUEL_CREW_MIN): DuelState {
+  if (!Number.isInteger(crew) || crew < DUEL_CREW_MIN || crew > DUEL_CREW_MAX) throw new Error(`invalid duel crew ${String(crew)}`);
+  if (crew > layout.spawns.length) throw new Error(`duel layout ${layout.id} has ${layout.spawns.length} spawns, too few for a crew of ${crew}`);
+  if (!Number.isInteger(helmPlayer) || helmPlayer < 0 || helmPlayer >= crew) throw new Error(`invalid duel helm player ${String(helmPlayer)}`);
   const tactical = createTacticalState(seed);
   const problems = validateMap(tactical.map);
   if (problems.length > 0) throw new Error(`invalid duel map for seed ${seed}: ${problems[0]}`);
-  const interior = createSimState(layout, 2, seed, [RECRUIT, RECRUIT]);
+  const interior = createSimState(layout, crew, seed, Array<number>(crew).fill(RECRUIT));
   try {
     interior.doors.state.fill(DoorState.HeldOpen);
     const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
@@ -87,7 +95,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 =
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
-    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1 };
+    return { interior, tactical, present: Array<boolean>(crew).fill(true), repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1 };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;
