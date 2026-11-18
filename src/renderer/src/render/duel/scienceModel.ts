@@ -33,7 +33,7 @@ export function hoverReadout(cam: Camera, vp: Viewport, from: Point, cursor: Poi
 export interface ScanButton { label: string; enabled: boolean; progress: number | null }
 /** Spec §7.2: the SCAN button for `contact` on `station`: `SCAN n` with the next level, ` (SLOW)` off Science, or
  *  SCANNED when the contact is fully known; the scanner's progress 0..1 while it is on this contact. */
-export function scanButton(t: TacticalState, contact: 0 | 1, station: 'helm' | 'weapons' | 'science'): ScanButton {
+export function scanButton(t: TacticalState, contact: 0 | 1, station: 'helm' | 'weapons' | 'science' | 'flight'): ScanButton {
   const known = t.known[contact];
   if (known >= CONTACT_MAX_LEVEL[contact]) return { label: 'SCANNED', enabled: false, progress: null };
   const progress = t.scan.contact === contact ? Math.min(1, t.scan.progress / SCAN_UNITS[t.scan.level]!) : null;

@@ -23,7 +23,7 @@ export interface DuelPlaytestRecord {
 
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), ms = z.number().finite().min(0).max(DUEL_RECORD_MAX_MS);
 const pair = z.tuple([uint, uint]);
-const crew = z.array(uint).min(2).max(4);   // Sci-2 spec §4.3: one per player, n long
+const crew = z.array(uint).min(1).max(4);   // Valkyrn spec §4.4: Single player's crew of one; Sci-2 spec §4.3: one per player, n long
 const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length);
 const losses = z.object(Object.fromEntries(MISSILE_LOSSES.map((k) => [k, uint])) as Record<(typeof MISSILE_LOSSES)[number], typeof uint>).strict();
 const figure = z.object({ count: uint, median: ms.nullable(), p95: ms.nullable(), max: ms.nullable() }).strict();

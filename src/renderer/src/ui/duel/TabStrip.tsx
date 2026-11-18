@@ -6,11 +6,13 @@ import { useActions } from '../context';
 import { Button } from '../stage/Button';
 
 const ORDER: readonly [ConsoleStation, string][] = [['helm', 'HELM'], ['weapons', 'WEAPONS'], ['science', 'SCIENCE'], ['ship', 'SHIP']];
+/** Valkyrn spec §5: a Flight-seat layout's strip: FLIGHT in the Helm's place, then SCIENCE and SHIP. */
+const ORDER_FLIGHT: readonly [ConsoleStation, string][] = [['flight', 'FLIGHT'], ['science', 'SCIENCE'], ['ship', 'SHIP']];
 export const TabStrip = memo(function TabStrip({ tabs, tabActions }: Pick<ConsoleView, 'tabs' | 'tabActions'>) {
-  const actions = useActions();
-  return <>{ORDER.map(([k, label], n) => {
-    const a = tabActions[k];
+  const actions = useActions(), order = tabs.flight !== undefined ? ORDER_FLIGHT : ORDER;
+  return <>{order.map(([k, label], n) => {
+    const a = tabActions[k] ?? null, state = tabs[k] ?? 'locked';
     return <Button key={k} name={`tab-${k}`} x={TABS.x + n * (TABS.w + TABS.gap)} y={TABS.y} w={TABS.w} h={TABS.h} label={label}
-      lit={tabs[k] === 'current'} disabled={tabs[k] === 'locked'} onPress={a && tabs[k] === 'open' ? () => actions.console.press(a) : undefined} />;
+      lit={state === 'current'} disabled={state === 'locked'} onPress={a && state === 'open' ? () => actions.console.press(a) : undefined} />;
   })}</>;
 });

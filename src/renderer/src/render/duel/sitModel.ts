@@ -8,20 +8,21 @@ export const SIT_CARD_S = 4, SIT_CARD_FADE_S = 0.5, SIT_CARD_SITS = 3;
 /** The auto-frame's zoom clamp and the screen px kept clear between the enemy and the map's usable edges. */
 export const FRAME_ZOOM_MIN = 0.25, FRAME_ZOOM_MAX = 1, FRAME_MARGIN = 110;
 
-export type SitSeat = 'helm' | 'weapons';
+export type SitSeat = 'helm' | 'weapons' | 'flight';
 /** `top`: the card sits at the top of the map, clear of an enemy below the ship; else at the bottom. */
 /** `under` (Feel-ii §3.9): the online start's notice (YOU: HELM) shows, so a top card moves below it. */
 export interface SitCardView { seat: SitSeat; title: string; keys: readonly string[]; alpha: number; top: boolean; under?: boolean }
 export const SIT_CARDS: Readonly<Record<SitSeat, { title: string; keys: readonly string[] }>> = {
   helm: { title: 'HELM: POINT AT THE ENEMY', keys: ['A/D  TURN', 'W/S  THROTTLE', 'HOLD SPACE  AUTO-FACE'] },
-  weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM'] }
+  weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM'] },
+  flight: { title: 'FLIGHT: MOUSE TO STEER', keys: ['W/S THROTTLE', 'L-CLICK GUN', 'R-CLICK TORPEDO'] }   // Valkyrn spec §9
 };
 
-const shown: Record<SitSeat, number> = { helm: 0, weapons: 0 };
+const shown: Record<SitSeat, number> = { helm: 0, weapons: 0, flight: 0 };
 /** Count a sit at `seat`; true while it is one of the session's first SIT_CARD_SITS there (the card shows). */
 export function countSit(seat: SitSeat): boolean { shown[seat]++; return shown[seat] <= SIT_CARD_SITS; }
 /** Tests: forget the session's sits. */
-export function resetSits(): void { shown.helm = 0; shown.weapons = 0; }
+export function resetSits(): void { shown.helm = 0; shown.weapons = 0; shown.flight = 0; }
 
 /** Each character's Helm or Weapons seat last frame (null on foot or at Science), one per player of the crew (Sci-2 spec
  *  §5.1), so a sit is told from a Tab. Empty until the first frame. */

@@ -1,6 +1,6 @@
 // The Artemis-style console's view model (spec 2026-11-17-artemis-consoles §4, §6.1, §6.3). Pure: built each frame by
 // the scene from the duel, the local character and the merged held keys; null hides the console.
-import { consoleInReach, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
+import { consoleInReach, flightSeat, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/input';
 import type { DuelState } from '../../sim/duel/state';
 import { classOf, Contact, missileOf } from '../../sim/tactical/state';
@@ -11,11 +11,20 @@ import { chargeRow, type ReadoutRow } from './readoutModel';
 import { gunnerPresent, laserCardReason, laserSituation, type RefusedControl } from './situationModel';
 import { laserOffline } from '../../sim/tactical/weapons';
 
-export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'ship';
+export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
+type TabKey = Exclude<ConsoleStation, 'flight'>;
+/** The tab strip's states. Valkyrn spec §5: `flight` is present only on a layout with the Flight seat, so the Hound's tabs
+ *  keep their four keys. */
+export type ConsoleTabs = Record<TabKey, TabState> & { flight?: TabState };
+export type ConsoleTabActions = Record<TabKey, KeyAction | null> & { flight?: KeyAction | null };
 /** Feel-ii §2.8: a refused control on this block: which, the reason, and whether it is still in its flash. */
 export interface RefusedView { control: RefusedControl; reason: string; flash: boolean }
-export interface HelmPanel { heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number }
+export interface HelmPanel {
+  heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number;
+  /** Valkyrn spec §5: the Helm block on the Flight seat (its hints name the mouse and the torpedo). */
+  flight?: boolean;
+}
 /** `freq`: the crew laser's tuned frequency 0..2; `weakFreq`: the enemy's weak one, shown only after a Level 2 scan (Sci-1 spec §7.4). */
 /** `torpedoInRange`: the target within the torpedo's range (weapons update spec §2), shown IN RANGE / OUT OF RANGE. */
 /** FTL targeting spec §1, the weapon cards: `laserTarget` the laser's target room (−1 none), `torpTarget` the torpedo's
@@ -29,9 +38,9 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
 export interface SciencePanel { hover: string | null }
 export interface ConsoleView {
   station: ConsoleStation;
-  tabs: Record<ConsoleStation, TabState>;
-  /** What a click on an open tab does: E (sit), Tab (take the other character) or X (stand). */
-  tabActions: Record<ConsoleStation, KeyAction | null>;
+  tabs: ConsoleTabs;
+  /** What a click on an open tab does: E (sit), Tab (take the other character, or on a crew of one the ship view) or X (stand). */
+  tabActions: ConsoleTabActions;
   helm: HelmPanel | null;
   weapons: WeaponsPanel | null;
   science: SciencePanel | null;
@@ -48,14 +57,17 @@ export interface ConsoleModelInput {
   sinceShot?: number; goal?: boolean; t?: number;
   /** Feel-ii §2.8: the latest refused control while its reason shows; it goes to the block that owns the control. */
   refused?: RefusedView | null;
+  /** Valkyrn spec §4.4: Tab's ship view while seated (n = 1): the console shows SHIP. */
+  shipView?: boolean;
 }
 
 /** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null
  *  for none), `repairNear` whether `repairInReach` finds a repair (E would repair, not sit). */
-export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | 'science' | null; repairNear: boolean; otherSeat: Seat; mode: 'single' | 'online' }): Pick<ConsoleView, 'tabs' | 'tabActions'> {
-  const tabs: Record<ConsoleStation, TabState> = { helm: 'locked', weapons: 'locked', science: 'locked', ship: 'locked' };
-  const tabActions: Record<ConsoleStation, KeyAction | null> = { helm: null, weapons: null, science: null, ship: null };
-  if (i.seat === 'standing') {
+export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | 'science' | 'flight' | null; repairNear: boolean; otherSeat: Seat; mode: 'single' | 'online'; flight?: boolean; shipView?: boolean }): Pick<ConsoleView, 'tabs' | 'tabActions'> {
+  const tabs: ConsoleTabs = { helm: 'locked', weapons: 'locked', science: 'locked', ship: 'locked', ...(i.flight ? { flight: 'locked' as const } : {}) };
+  const tabActions: ConsoleTabActions = { helm: null, weapons: null, science: null, ship: null, ...(i.flight ? { flight: null } : {}) };
+  if (i.seat !== 'standing' && i.shipView) { tabs.ship = 'current'; tabs[i.seat] = 'open'; tabActions[i.seat] = 'switch'; }   // Valkyrn spec §4.4: Tab back to the console
+  else if (i.seat === 'standing') {
     tabs.ship = 'current';
     if (i.reach && !i.repairNear) { tabs[i.reach] = 'open'; tabActions[i.reach] = 'interact'; }
   } else { tabs[i.seat] = 'current'; tabs.ship = 'open'; tabActions.ship = 'stand'; }
@@ -74,15 +86,16 @@ const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle
 
 export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   if (i.hidden) return null;
-  const d = i.duel, seat = seatOf(d, i.me), station = consoleStation(d, i.me);
+  const d = i.duel, seat = seatOf(d, i.me), shipView = (i.shipView ?? false) && seat !== 'standing', fl = flightSeat(d);
+  const station: ConsoleStation = shipView ? 'ship' : consoleStation(d, i.me);
   const c = seat === 'standing' ? consoleInReach(d, i.me) : -1;
-  const { tabs, tabActions } = consoleTabs({ seat, reach: c < 0 ? null : c === d.nav ? 'helm' : c === d.weapons ? 'weapons' : 'science', repairNear: seat === 'standing' && repairInReach(d, i.me) >= 0,
-    otherSeat: i.mode === 'single' ? seatOf(d, i.me === 0 ? 1 : 0) : 'standing', mode: i.mode });   // the Tab target: Single player's other character only
+  const { tabs, tabActions } = consoleTabs({ seat, reach: c < 0 ? null : fl && (c === d.nav || c === d.weapons) ? 'flight' : c === d.nav ? 'helm' : c === d.weapons ? 'weapons' : 'science', repairNear: seat === 'standing' && repairInReach(d, i.me) >= 0,
+    otherSeat: i.mode === 'single' ? seatOf(d, i.me === 0 ? 1 : 0) : 'standing', mode: i.mode, flight: fl, shipView });   // the Tab target: Single player's other character only
   const t = d.tactical, held = i.held ?? NO_HELD_FLAGS;
   const ship = t.ships[0]!;
-  const helm: HelmPanel | null = station === 'helm'
+  const helm: HelmPanel | null = station === 'helm' || station === 'flight'
     ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle,
-        refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading }
+        refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, ...(station === 'flight' ? { flight: true } : {}) }
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weapons: WeaponsPanel | null = station === 'weapons'

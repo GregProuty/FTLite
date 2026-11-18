@@ -84,7 +84,7 @@ export function crewStatus(d: DuelState, pid: number): CrewStatus {
   if (Life.state[d.interior.crew[pid]!] === LifeState.Downed) return 'DOWNED';
   if (!d.present[pid]) return 'AWAY';
   const s = seatOf(d, pid);
-  if (s !== 'standing') return s === 'helm' ? 'HELM' : s === 'weapons' ? 'WEAPONS' : 'SCIENCE';
+  if (s !== 'standing') return s === 'helm' || s === 'flight' ? 'HELM' : s === 'weapons' ? 'WEAPONS' : 'SCIENCE';   // Valkyrn spec §5: Flight reads HELM
   const r = repairInReach(d, pid);
   if (r < 0) return 'ON FOOT';
   const p = d.points.find((q) => q.tacticalRoom === r);

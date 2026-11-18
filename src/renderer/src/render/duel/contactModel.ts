@@ -84,7 +84,7 @@ export interface ContactModelInput {
   aim: boolean;
   /** The weapon the armed aim carries (FTL targeting spec §1); default the laser. */
   weapon?: 'laser' | 'torpedo';
-  station: 'helm' | 'weapons' | 'science';
+  station: 'helm' | 'weapons' | 'science' | 'flight';
   /** Presentation seconds, for the blinks. */
   t: number;
   /** The Weapons station block's panel (its charge row), or null elsewhere. */
