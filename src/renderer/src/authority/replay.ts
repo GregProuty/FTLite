@@ -14,7 +14,7 @@ import { duelRules } from './duelRules';
 export type { Replay, ReplayV2, ReplayV3, ReplayV4, ReplayFrame } from '../sim/replay';
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const players = z.array(uint.max(MAX_PLAYERS - 1)).max(MAX_PLAYERS).refine(a => new Set(a).size === a.length);
-const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional() }).strict();
+const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional() }).strict();
 const action = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('admission'), entries: z.array(z.object({ binding: uint.min(1), players, order: uint.min(1), message: z.unknown(), admissionPolicy: z.literal('receive-time').optional(), effectiveTick: uint.optional() }).strict()).min(1).max(1024) }).strict(),
   z.object({ kind: z.literal('lifecycle'), order: uint.min(1), ordinal: uint.min(1), control: z.object({ paused: z.boolean(), reason: z.string().min(1).max(128) }).strict() }).strict(),

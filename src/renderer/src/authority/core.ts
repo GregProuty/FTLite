@@ -326,7 +326,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     const now = deps.clock.nowMs(), expired: number[] = [];
     for (let p = 0; p < held.length; p++) if (heldReceipts[p] !== null && now - heldReceipts[p]! >= REMOTE_HELD_TIMEOUT_MS) {
       heldReceipts[p] = null;
-      if (held[p]!.moveX !== 0 || held[p]!.moveY !== 0 || held[p]!.interactHeld || held[p]!.face === true) expired.push(p);
+      if (held[p]!.moveX !== 0 || held[p]!.moveY !== 0 || held[p]!.interactHeld || held[p]!.face === true || held[p]!.gunHeld === true || held[p]!.aim !== undefined) expired.push(p);   // Valkyrn spec §6.2: an expired aim clears
     }
     if (expired.length) neutralizeExpired(expired);
   }
@@ -432,7 +432,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     phase = paused ? 'paused' : 'running'; pauseOwner = owner; pauseReason = reason;
     emit({ kind: 'pause', paused, owner, reason: reason ?? 'resume' });
     driver.setPaused(paused);
-    if (paused) held.forEach((h) => { h.moveX = 0; h.moveY = 0; h.interactHeld = false; delete h.face; });
+    if (paused) held.forEach((h) => { h.moveX = 0; h.moveY = 0; h.interactHeld = false; delete h.face; delete h.aim; delete h.gunHeld; });   // Valkyrn spec §6.2: a pause clears the aim and the trigger
     publishCompletedState(true);
     complete();
     if (!replaying && controls.length >= 256) { rejectPending(); resetBaseline(); }
