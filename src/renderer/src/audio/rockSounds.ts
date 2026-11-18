@@ -19,7 +19,7 @@ export function rockSounds(w: RockSoundWatch | null, events: readonly ViewEvent[
   for (const e of events) {
     if (e.kind !== 'rock') continue;
     if (e.what === 'blast') tiers[0]!.push({ sound: ROCK_BOOM, x: e.x, y: e.y });
-    else if ((e.what === 'split' || (e.what === 'dust' && !e.evicted)) && e.by !== 'planet' && e.by !== 'edge') tiers[1]!.push({ sound: ROCK_CRUNCH, x: e.x, y: e.y });
+    else if ((e.what === 'split' || (e.what === 'dust' && e.rock >= 0 && !e.evicted)) && e.by !== 'planet' && e.by !== 'edge') tiers[1]!.push({ sound: ROCK_CRUNCH, x: e.x, y: e.y });
     else if (e.what === 'hit' && e.by === 'laser') tiers[2]!.push({ sound: ROCK_CRACK, x: e.x, y: e.y });
     else if (e.what === 'bump' && e.by === 'collision') tiers[3]!.push({ sound: ROCK_KNOCK, x: e.x, y: e.y });
   }

@@ -53,6 +53,14 @@ describe('rock fx (spec §7)', () => {
     expect(rockEffectDraw(chip, toS, 1)).toMatchObject({ kind: 'chip', x1: 0, y1: 0 });
     expect(rockEffectDraw({ ...chip, kind: 'beam' }, toS, 1)).toBeNull();
   });
+  it('evicted dust and lost-piece dust (rock -1) start no break shake; evicted dust still gets a puff', () => {
+    const crew = { x: 0, y: 0 }, all = () => true;
+    const evicted = { ...rock('dust'), evicted: true } as ViewEvent, lost = { ...rock('dust'), rock: -1 } as ViewEvent;
+    const fx = createFx(); pushRockShakes(fx, [evicted, lost], crew, all);
+    expect(fx.shake).toBe(0);
+    const puff = createFx(); pushRockFx(puff, [evicted]);
+    expect(of(puff.items, 'speck').length).toBeGreaterThanOrEqual(6);
+  });
   it('shakes: a blast on screen 8 px falling with distance from the crew; off screen none; a break 2 px, never past a stronger one', () => {
     const crew = { x: 0, y: 0 }, all = () => true, none = () => false;
     const fx = createFx();

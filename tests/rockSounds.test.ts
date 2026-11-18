@@ -22,4 +22,10 @@ describe('rock sounds (spec §7 item 8)', () => {
     r = rockSounds(r.watch, [ev('blast', 'torpedo')], pan, 1.01);
     expect(r.sounds).toHaveLength(1);
   });
+  it('a dust event with rock -1 or evicted is not a break: no crunch; an ordinary break dust still crunches', () => {
+    const lost: ViewEvent = { ...ev('dust', 'laser'), rock: -1 } as ViewEvent;
+    const evicted: ViewEvent = { ...ev('dust', 'laser'), evicted: true } as ViewEvent;
+    expect(rockSounds(null, [lost, evicted], pan, 0).sounds).toEqual([]);
+    expect(rockSounds(null, [ev('dust', 'laser')], pan, 0).sounds).toEqual([{ ...ROCK_CRUNCH, pan: 0.1 }]);
+  });
 });
