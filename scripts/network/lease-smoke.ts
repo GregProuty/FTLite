@@ -1,7 +1,9 @@
+import { build } from 'vite';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { randomBytes, createHash } from 'node:crypto';
 import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
@@ -17,14 +19,14 @@ const probe = arg('probe') ?? 'normal';
 if (!['normal', 'fault', 'timeout', 'cleanup-timeout'].includes(probe)) throw Error('invalid-probe');
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 function association() {
-  const source = ['src/utility/authorityHost.ts', 'src/network/utilityHost.ts', 'src/network/hostRuntime.ts', 'src/network/session/leaseGate.ts',
+  const source = ['src/worker/authorityWorker.ts', 'src/worker/authorityWorkerMain.ts', 'src/network/utilityHost.ts', 'src/network/hostRuntime.ts', 'src/network/session/leaseGate.ts',
     'src/network/modes/sector.ts', 'src/network/modes/contracts.ts', 'src/shared/sessionLease.ts', 'src/shared/hostProcessProtocol.ts',
-    'src/main/network/hostProcess.ts', 'src/main/network/transportWindow.ts', 'src/main/network/onlinePlatform.ts',
+    'src/network/host/workerHost.ts', 'src/network/transport/pageTransport.ts', 'scripts/network/lease-smoke-page.ts', 'scripts/network/lease-smoke-observer.ts', 'scripts/network/lease-smoke.html',
     'src/renderer/src/authority/core.ts', 'src/renderer/src/authority/tickDriver.ts', 'src/renderer/src/authority/authority.ts',
     'src/renderer/src/authority/replay.ts', 'src/renderer/src/sim/replay.ts', 'electron.vite.config.ts', 'build/contentDigest.ts',
     'scripts/network/lease-smoke.ts', 'scripts/network/lease-smoke.cjs', 'scripts/network/lease-smoke-lifecycle.ts'];
-  const artifacts = ['out/main', 'out/renderer/assets'].flatMap(directory => readdirSync(directory).filter(name => name.endsWith('.js')).map(name => `${directory}/${name}`));
-  artifacts.push('out/preload/networkTransport.js', 'out/renderer/networkTransport.html');
+  const artifacts = readdirSync('out/renderer/assets').filter(name => name.endsWith('.js')).map(name => `out/renderer/assets/${name}`);
+  artifacts.push('out/renderer/index.html');
   const hashes = (paths: string[]) => Object.fromEntries(paths.sort().map(path => [path, createHash('sha256').update(readFileSync(path)).digest('hex')]));
   return { commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 1000, windowsHide: true }).trim(),
     sourceFiles: hashes(source), artifactFiles: hashes(artifacts) };
@@ -54,7 +56,13 @@ async function main(): Promise<void> {
     const init = { runId: randomBytes(16).toString('hex'), layoutId: layout.id, layoutHash: deriveLayout(layout).layoutHash,
       simVersion: SIM_VERSION, contentDigest, seed: 7, playerCount: 2, characters: [0, 0], unlocked: [] };
     writeFileSync(join(directory, 'fixture.json'), JSON.stringify({ init }));
-    if (typeof electron !== 'string' || !existsSync(resolve('out/main/authorityHost.js'))) throw Error('missing-built-runtime');
+    await build({ configFile: false, envDir: false, logLevel: 'warn', root: resolve('scripts/network'), base: './', worker: { format: 'es' },
+      define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(contentDigest) },
+      build: { outDir: join(directory, 'page'), emptyOutDir: true, rollupOptions: { input: { lease: resolve('scripts/network/lease-smoke.html') } } } });
+    await build({ configFile: false, envDir: false, logLevel: 'warn', build: { outDir: join(directory, 'page'), emptyOutDir: false,
+      lib: { entry: resolve('scripts/network/lease-smoke-observer.ts'), formats: ['es'], fileName: () => 'lease-observer.js' } } });
+    writeFileSync(join(directory, 'page/worker-wrapper.js'), `import './lease-observer.js';\nimport ${JSON.stringify(pathToFileURL(resolve('out/renderer/assets/authorityWorker.js')).href)};\n`);
+    if (typeof electron !== 'string' || !existsSync(resolve('out/renderer/assets/authorityWorker.js'))) throw Error('missing-built-runtime');
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL;
     child = spawn(electron, [resolve('scripts/network/lease-smoke.cjs'), `--lease-smoke-dir=${directory}`,
       `--user-data-dir=${join(directory, 'profile')}`, `--lease-probe=${probe}`], { env, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] });
@@ -65,7 +73,7 @@ async function main(): Promise<void> {
       child!.once('exit', (code, signal) => { clearTimeout(timer); code === 0 && !signal ? done() : reject(Error('native-probe-failed')); });
     });
     details = JSON.parse(readFileSync(join(directory, 'native-report.json'), 'utf8'));
-    if (probe !== 'normal' || details.status !== 'PASS' || details.utilities !== 2 || details.exits !== 2 || details.windows !== 0
+    if (probe !== 'normal' || details.status !== 'PASS' || details.workers !== 2 || details.workerExits !== 2 || details.windows !== 0
       || details.stallMs < 16000 || !details.delayedMatchingRejected || !details.freshPaused || !details.explicitResume) throw Error('missing-native-evidence');
     status = 'PASS'; diagnostic = 'controlled-grant-proof';
   } catch (error) {

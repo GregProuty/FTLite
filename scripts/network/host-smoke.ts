@@ -16,9 +16,9 @@ import { disposeSimState } from '../../src/renderer/src/sim/state';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import { canonicalFields } from '../../src/renderer/src/sim/canonicalFields';
 
-const required = ['early-abort', 'early-transport-failure', 'sandbox-topology', 'renderer-stall',
+const required = ['early-abort', 'early-worker-failure', 'sandbox-topology', 'renderer-stall',
   'watchdog', 'delayed-input', 'restore-producer', 'suspend-hook', 'successive-hosts',
-  'stale-generation', 'utility-kill', 'transport-kill', 'mode-mismatch', 'content-mismatch', 'cleanup'];
+  'stale-generation', 'worker-crash', 'transport-kill', 'mode-mismatch', 'content-mismatch', 'cleanup'];
 
 async function stopTree(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode || !child.pid) return;
@@ -53,10 +53,11 @@ async function main(): Promise<void> {
     validateCheckpoint(layout, checkpoint, digest);
     const offsets = Object.fromEntries(canonicalFields(layout, init.playerCount).map(field => [field.name, field.offset]));
     writeFileSync(join(temporary, 'fixture.json'), JSON.stringify({ init, checkpoint, offsets }));
-    await build({ configFile: false, root: resolve('scripts/network'), base: './', logLevel: 'warn',
+    await build({ configFile: false, root: resolve('scripts/network'), base: './', logLevel: 'warn', worker: { format: 'es' },
       define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(digest) },
       build: { outDir: join(temporary, 'page'), emptyOutDir: true } });
     if (typeof electron !== 'string' || !existsSync(electron)) throw Error('mandatory Electron executable missing');
+    if (!existsSync(resolve('out/renderer/assets/authorityWorker.js'))) throw Error('missing built host Worker');
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME;
     // Always exercise the fixed built production paths, even in a development shell.
     delete env.ELECTRON_RENDERER_URL;
@@ -76,8 +77,8 @@ async function main(): Promise<void> {
     const report = JSON.parse(readFileSync(join(temporary, 'report.json'), 'utf8'));
     if (!report || report.electron !== '37.10.3' || !Array.isArray(report.checks)
       || required.some(check => !report.checks.includes(check)) || report.osSuspend !== 'NOT RUN'
-      || report.utilities !== report.exits || report.windows !== 0) throw Error('missing/invalid actual-process evidence');
-    console.log(`ACTUAL host runtime PASS: Electron ${report.electron}; ${report.checks.length} checks; ${report.exits}/${report.utilities} utility exits; ${(performance.now() - started).toFixed(0)}ms`);
+      || report.workers !== report.workerExits || report.windows !== 0) throw Error('missing/invalid actual-process evidence');
+    console.log(`ACTUAL host runtime PASS: Electron ${report.electron}; ${report.checks.length} checks; ${report.workerExits}/${report.workers} Worker exits; ${(performance.now() - started).toFixed(0)}ms`);
     console.log('Actual OS suspension: NOT RUN (trusted suspend hook exercised). WebRTC/internet: NOT RUN.');
   } finally {
     if (child) await stopTree(child);
