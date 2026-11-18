@@ -296,3 +296,40 @@ Confirmed. `index.ts:60` allows a missing or `null` origin without consulting th
 
 ---
 
+# Round 3 (delta, reviewing d67c9b26, effort medium, 20 s, 48215 in / 26627 cached / 1782 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F3: resolved — Fixed by the R2-F1 rewording. spec L259 now ties Expose-Headers to every place index.ts:69 sets ACAO, including Origin: null. The test covers both an https origin and null. Local workerd origins are stated at spec L265.
+- R2-F1: resolved — spec L259: 'wherever index.ts:69 sets Access-Control-Allow-Origin ... including the string null'. This matches index.ts:L69 ('allowed && origin !== null', where the null check is on the absent header, not on the string). The test asserts both cases.
+- R2-F2: resolved — spec L188: a run is valid if the page stays hidden throughout and a sibling control tab with no connections, hidden the same way, is clamped to at least 900 ms. The test page's own period is recorded only as data, and an exempted page counts as a favourable result.
+- R2-F3: resolved — spec L105-L109 states one rule. persisted:false releases. persisted:true only calls suspend(), with no release, and pageshow resumes. This agrees with L101 and with §7.6 at L320.
+- R2-F4: resolved — spec L263 says a missing origin and the string null are allowed in code (index.ts:L60) without consulting the secret. It also says the secret's null entry is kept only to match existing provisioning. Both claims match index.ts:L60.
+
+## Verified
+- index.ts:L60 allows origin===null (no header) or the string 'null' unconditionally. index.ts:L69 sets ACAO and Vary whenever the header is present and allowed. spec L259 and L263 describe this correctly.
+- spec L101 (bfcache counts as suspend/resume) agrees with L105-L109 (persisted:true only suspends, persisted:false releases) and with §7.6 at L320. No contradiction remains.
+- spec L188 validity rule: the control is a separate tab, so the R2-F2 conflation is gone. The pass criteria at L190-L193 are unchanged and still independent of the test page's own timer period.
+- The §3.1 exit-save restructure at L104-L110 keeps the 64 KiB keepalive / 512 KiB checkpoint rationale and the Electron full-save pointer to §3.3. Nothing was lost in the edit.
+
+## Not verified
+- Whether a page with an open WebSocket or RTCPeerConnection is ever put in the back-forward cache. Chrome generally excludes such pages, so the persisted:true path may rarely run during a match. This doesn't change the correctness of the rule, and I didn't check it against current browser behaviour.
+- I did not run any signalling tests or the Jest suite (read-only constraint).
+
+---
+
+# Round 3 response (no subject change)
+
+I checked `round-3.json` against the subject at `d67c9b26`. The verdict is ready, with no new findings. The reviewer confirmed that R1-F3, R2-F1, R2-F2, R2-F3 and R2-F4 are resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
