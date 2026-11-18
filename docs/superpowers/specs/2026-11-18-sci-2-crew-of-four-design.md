@@ -10,61 +10,108 @@ Let a duel be played online by two, three or four people, so the owner can run a
 
 1. A duel room holds **2, 3 or 4** players; the host picks the crew size.
 2. A fourth player gets an **Engineering console** in a separate feature (**Eng-1**, designed next). Until then the fourth player works on foot: repairs, fires, revives, and may take any free console.
-3. The host may **start with empty seats**; an empty seat's character stands idle aboard. A late joiner takes over an empty seat (Part C, §7).
+3. The host may **start with empty seats**; an empty seat's character stands idle aboard. A late joiner takes over an empty seat (Part C, §8).
 4. **Single player keeps two characters** (Tab switches), unchanged.
 5. The scripted bots and the headless gates stay two-player.
 
-## 3. Crew size in the sim (Part A)
+## 3. The rule for n
 
-- The duel gets a **crew size** `n` ∈ {2, 3, 4}. `createDuel(layout, seed, helmPlayer = 0, crew = 2)` builds the interior with `n` Recruits (`createSimState(layout, n, seed, Array(n).fill(RECRUIT))`); every character starts standing at the layout's spawns in player order (the Hound has four: room Q, tiles 13..16,7).
-- Every per-player duel value is `n` long: `DuelState.present` (all true at creation), and the presence module's fields `present.0` .. `present.(n−1)`. Anything else in `sim/duel` sized for two players (grep `0 | 1`, `[0, 1]`, `pid < 2`, `1 - helmPlayer`) is widened to `n` or, where it is the scripted pair's own bookkeeping, left two-wide and only used when `n === 2`.
-- `helmPlayer` seats nobody since start aboard. It stays in the round module and the wire; its range becomes `0..n−1`, and the app always passes 0.
-- The rematch keeps `n` (`startRound` passes the crew size to `createDuel`).
-- `presence` commands are admitted for players `0..n−1`; `malformed` beyond.
-- Snapshot and wire: `DUEL_PLAYERS` (snapshot.ts) stops being a constant for the sim; the snapshot header's `playerCount` carries `n` (2..4), validated against the interior's own player count; `DuelInit.playerCount` is `2 | 3 | 4` (was `z.literal(2)`); the duel checkpoint's per-player arrays (`commandHighWater`, `admissionCounts`, `heldHighWater`, `held`, `pauseOwner`) are `n` long; the duel codec is built with `duelCodec(n)`; `duelRules.playerCount` returns the state's `n`; the duel client reads `n` from the snapshot.
-- **Two-player runs are byte-identical.** `SIM_VERSION` 47 → 48 as a version-only step (the snapshot header and checkpoint schemas widen, so old and new builds must not pair). No MIGRATIONS entry is needed if the two-player field list is unchanged; the duel oracle and canonical trace prove every recorded run unchanged; bless at 48. No golden behaviour changes.
+The duel has a **crew size** `n` ∈ {2, 3, 4}, fixed for the run. **Every value indexed by player is n long**; values about the two *ships* stay two long. Every site that is two-player today is widened by this rule; the known sites are listed in §4 and §5, and the plan must also grep for any literal `2` used as a player count, `[0, 1]` used as the players, `0 | 1` used as a player id, `d.present[0]`/`[1]` pairs and two-tuples indexed by player, across `src/renderer/src`, `src/network`, `src/main` and `src/shared`.
 
-## 4. Online room (Part A continued)
+**Two-player runs are byte-identical**: at n = 2 every widened value has today's length, names and order.
 
-- **Host form**: a `Crew` choice `2 / 3 / 4`, default **3**, shown as three buttons in the existing CRT menu style. Create room reserves a room with that capacity (the service already accepts 1..4).
-- The main process stops requiring capacity 2 (`src/main/network/onlineDuel.ts` `snapshot.capacity !== 2`): it accepts 2..4 and builds the duel with `crew = capacity`.
-- **Lobby**: one row per seat: `SEAT n: <joined / ready / empty>`; the host's Start is enabled when every **joined** player is Ready (at least the host). Empty seats are allowed.
-- **An empty seat at start** (nobody claimed it): its character is created present = false (away), stands at its spawn, and never moves. A dropped player's character becomes away as today; the same player can rejoin with their seat token as today.
+## 4. Part A: the sim, the wire and the network (SIM_VERSION 47 → 48)
 
-## 5. What each player sees (Part B, presentation)
+### 4.1 Sim (`src/renderer/src/sim/duel/`)
 
-- **Crew list**: the readout's single `OTHER  PRESENT / AWAY` row (readoutModel.ts ~line 114) becomes one row per other player: `P2  HELM` / `WEAPONS` / `SCIENCE` / `ON FOOT` / `AWAY` (player numbers 1-based as shown to people; `ON FOOT` for a present standing character; `DOWNED` when downed). The readout keeps `READOUT_ROWS` large enough for four crew; if it does not fit, the plan raises the row budget and moves the layout numbers it depends on.
-- The partner status line (`OtherStatus`) is replaced by this list everywhere it was shown.
-- The online seat notice already reads `YOU: HELM / WEAPONS / SCIENCE / TAKE A CONSOLE: E TO SIT`; unchanged.
-- **Station badge**: the interior gains a `SCIENCE` badge on the Science console tile (glyph kind `science` if `drawIcon` has one, else the closest existing kind), red when the Science console is failed if the duel models that, never faint.
-- Single player: unchanged (two characters; the list shows the one other).
+- `createDuel(layout, seed, helmPlayer = 0, crew = 2)` builds the interior with `crew` Recruits (`createSimState(layout, crew, seed, Array(crew).fill(RECRUIT))`); characters stand at the layout's spawns in player order (the Hound has four: room Q, tiles 13..16,7). It throws if `crew` is outside 2..4 or exceeds the layout's spawn count.
+- `DuelState.present` is `boolean[]` of length n, **all true at creation**. The presence module's fields are `present.0` .. `present.(n−1)`.
+- `startRound` copies all n presence values (`d.present.slice()`) and passes `crew` to `createDuel`; `stepDecided`'s `presentBefore` covers all n.
+- `presence` commands are admitted for players `0..n−1` (`malformed` beyond); every other per-player admission check uses n.
+- **Health** (`health.ts`, `const PLAYERS = 2` today): every loop runs to `d.interior.playerCount`. The round is **lost when every one of the n characters is downed, away ones included** (byte-identical at n = 2). An empty seat's idle character can be hurt and downed like any other; only present characters can revive, as today.
+- **Telemetry** (`telemetry.ts`): the per-player fields (`players`, `prev.work`, `prev.seat`, `prev.lastConsole`, and every `pid < 2` loop) are n long.
+- `helmPlayer` seats nobody since start aboard; its range becomes `0..n−1`. Start keeps sending the host's own seat (`helmPlayerOf`), widened to `0..3` (`DuelChoice`, `menuState.ts:89-91`, `onlineDuel.ts:33`).
 
-## 6. The three-player playtest checklist (Part B)
+### 4.2 Snapshot (`sim/duel/snapshot.ts`)
 
-- New `docs/playtest-duel.md`, replacing the Skiff checklist's role for the duel. Sections: setup (three computers, build, crew 3), roles (who sat where), the opening (did Science scan before the 30 s ran out; did anyone ambush), scans (Level 1, Level 2, the weak frequency called out and tuned), the derelict (scanned? salvaged? trapped?), the fight (who left their seat and why; hull lost; length), a rematch with seats swapped, the after-game questions (as in `docs/playtest.md` §6, plus "Science: was there always something to do?"), and a short four-player variant (the fourth on foot).
-- `docs/playtest.md` gets a one-line pointer to the new file for the duel.
+- `DUEL_PLAYERS` stops being the sim's player count. `validateDuelSnapshot` first checks `header.playerCount` is an integer in 2..4 and no more than the layout's spawns, then derives from it the presence span and the round module's offset (`roundAt = 1 + space + n + 3`, was `+ 2 + 3`), in both `validateDuelSnapshot` and `duelRoundOf`.
+- The interior layout cache is keyed by layout **and** n (`canonicalFields(layout, n)`); the interior is validated at n, and `interior[5]` and `interior[9]` must equal n.
+- `loadDuelSnapshot` calls `createDuel(layout, seed, 0, n)` with n from the header.
 
-## 7. Late join (Part C, needs the owner: service redeploy)
+### 4.3 Checkpoint, codec and records
+
+- `DuelInit.playerCount` is `2 | 3 | 4` (was `z.literal(2)`); the checkpoint's per-player arrays (`commandHighWater`, `recentResults` bound, `admissionCounts`, `heldHighWater`, `held`, `pauseOwner` max) are length/bounded by `init.playerCount`; the ledger is `createLedger([0..n−1], n, …)`; `duelRules.playerCount` returns the state's `interior.playerCount`.
+- Mode memory (`duelCheckpoint.ts:52,55`): `players` and `work/seat/lastConsole` are n long.
+- The per-player summary tuples in the wire summary and the `round` event (`codec.ts:98-106`: `repairsStarted`, `repairsFinished`, `walkingTicks`, `repairingTicks`) are n long; ship tuples stay two.
+- `DuelPlaytestRecord.seat` and `helmPlayer` (`net/duelRecord.ts:15,37`) become `0..3`.
+- **Codecs are built once with `playerLimit` 4** (`ROOM_MAX_PLAYERS`): `duelCodec`, `duelPublicationSchema` (`codec.ts:239`, today `messageSchemaFor(2, …)`), the stream producer's codec and `latestStreamKey` (`src/network/modes/duelStream.ts:56,63`), `src/network/modes/duel.ts:15`, `src/network/modes/duelProducers.ts:27-28`, `clientControl/duelClient.ts:17`. The real n is enforced by the snapshot header, the init and the checkpoint, not the codec.
+
+### 4.4 Producers and client (`src/network/modes/`, `clientControl/`)
+
+- `duelProducers.ts`: n comes from `init.playerCount`; `desired` and the steward loop are n long; `attachHuman` accepts players `0..n−1` (today it throws for ≥ 2).
+- **Empty seats become away through the existing away steward**: every character is created present; for each seat with no human, the steward sends a ledgered `presence false` at the first running boundary (as it does today for an unattached seat), so the away state is deterministic and in every snapshot. The character is present for those first ticks; that is acceptable (it stands at its spawn).
+- `duelClient.ts`: `held`, `next`, `has` and `heldSequences` are sized from the first publication's `header.playerCount` (today `[0, 0]`, `[1, 1]`, `p === 0 || p === 1`, `[0, 1]`).
+
+### 4.5 Host path (`src/shared`, `src/main`, renderer actions)
+
+- The duel host action becomes `{ type: 'host'; mode: 'duel'; capacity: 2 | 3 | 4 }`, validated by the strict key check (`src/shared/onlineSession.ts:20,78`). `OnlineApi.host` takes the crew size; `actions.host(crew)` passes it from the menu store (default 3).
+- `src/main/network/onlineSession.ts:421` uses `action.capacity` for a duel room (today hard-coded 2); `src/main/network/onlineDuel.ts`: `duelInit` uses `playerCount: snapshot.capacity` (today `2`), the capacity check accepts 2..4 (today `!== 2`), and `validateDuelMirror` checks `init.playerCount === capacity` as `validateSectorMirror` does (`onlineSector.ts:24`).
+- The service already reserves rooms of capacity 1..4, and the Start rule already ignores unoccupied seats on both the client (`menuState.ts:93` `startAllowed`) and the service (`room/lifecycle.ts:36`); neither changes.
+
+### 4.6 Version
+
+`SIM_VERSION` 47 → 48 as a version-only step (the snapshot header, checkpoint and wire schemas widen, so old and new builds must not pair). At n = 2 the field list is unchanged, so no MIGRATIONS entry is needed unless the duel oracle reports a renamed or added field, in which case the plan adds `MIGRATIONS[47]` as the oracle requires. Record baselines at 47, bump, prove with the duel oracle and canonical trace that every recorded run is unchanged, bless at 48.
+
+## 5. Part B: what each player sees
+
+### 5.1 Seat types in the app
+
+`seat: 0 | 1`, `me: 0 | 1`, `seatId as 0 | 1` and `other = seat === 0 ? 1 : 0` become a player id `0..n−1`: `app/duel/onlineSource.ts:91,146`, `app/duel/onlineDuel.ts:157,313`, `render/duel/consoleModel.ts:41,68`. The sit tracker (`render/duel/sitModel.ts:27-33`, `seats: [SitSeat|null, SitSeat|null]`; `scene.ts:221-222` `[sitOf(0), sitOf(1)]`) is sized to n, so a player in seat 2 or 3 gets the sit card and the auto-frame zoom.
+
+### 5.2 The crew list
+
+- The readout's `OTHER` and status rows (readoutModel.ts ~114-115) become one row per other player: `P<k>  <status>` (k is 1-based), status by precedence **DOWNED, AWAY, HELM / WEAPONS / SCIENCE (the console sat at), REPAIRING, ON FOOT**. A seated away character reads AWAY.
+- `READOUT_ROWS` goes 22 → **23** (three crew rows replace two at n = 4); the plan moves the layout constants that depend on it.
+- `OtherStatus`, the sources' `otherStatus()` (runtime and onlineSource) and `ReadoutInput.other` are removed; the readout derives the list from the duel state and `me`.
+- Single player: the list shows the one other character (n = 2).
+
+### 5.3 Lobby
+
+Duel-only seat labels (`isDuel`, `menuState.ts:81-84`; the sector keeps its `Bot` labels): `P<k>: EMPTY` (no one has claimed it), `JOINED` (connected, not ready), `READY`, `DISCONNECTED` (claimed, not connected). One row per seat, as today. The host form gets a `CREW` choice: three buttons `2 3 4` in the existing CRT menu style, default 3.
+
+### 5.4 Science badge
+
+The interior gains a badge for the Science console: kind `'science'` (an existing icon kind; added to `StationBadge.kind`), label `SCIENCE`, tint always normal, ordered after WEAPONS and before MEDBAY, omitted when `d.science < 0`.
+
+### 5.5 Online seat notice
+
+Unchanged: `YOU: HELM / WEAPONS / SCIENCE` or `TAKE A CONSOLE: E TO SIT`.
+
+## 6. The three-player playtest checklist
+
+New `docs/playtest-duel.md`. Sections: setup (three computers, the build, Host with crew 3, join codes); roles (who sat where, time to sit); the opening (did Science scan before the 30 s ran out, did anyone ambush); scans (Level 1, Level 2, the weak frequency called out and tuned); the derelict (scanned, salvaged, trapped); the fight (who left their seat and why, hull lost, fight length); a rematch with seats swapped; after the game, the questions of `docs/playtest.md` §6 plus "Science: was there always something to do?" and "Helm/Weapons: did Science's information change what you did?"; a short four-player variant (crew 4, the fourth on foot). `docs/playtest.md` gets a one-line pointer to it for the duel.
+
+## 7. Errors and edge cases
+
+- Crew size outside 2..4 anywhere (host action, init, snapshot header, checkpoint): rejected by the existing validation.
+- An away character never sits, walks or repairs; it can still be hurt and downed.
+- Two players race to one console: today's rule (first admitted wins).
+- Rematch with an empty seat: still away in the next round (the presence copy); a rejoined player is present.
+- No view or notice indexes past n.
+
+## 8. Part C: late join (needs the owner: a service redeploy)
 
 - Today a **new** join is refused once the room is active (`services/signalling/src/room/auth.ts:17`, `invalid-state` unless `phase === 'lobby'`); a reconnect with a seat token works in any live phase.
-- Part C lets a new join take an **unclaimed** seat while the room is `active`: the service assigns the lowest unclaimed seat; the host's authority marks that character present on the joiner's attach (the existing presence path); the joiner syncs from a snapshot as a reconnecting player does.
-- This changes the deployed signalling service, so it ships only after the owner approves a redeploy. Parts A and B do not depend on it; without Part C, an empty seat stays empty for the round and the room for the run.
-
-## 8. Errors and edge cases
-
-- Crew size outside 2..4 anywhere (host form, snapshot, checkpoint, init): rejected with the existing validation errors.
-- An away character never sits, walks or repairs; consoles it is not at stay free.
-- Two players race to sit at one console: today's rule (first admitted wins, the other gets the existing rejection).
-- Rematch with an empty seat: the seat stays empty (away) in the next round; a player who dropped and rejoined is present.
-- The online notice and crew list must not index past `n`.
+- Part C lets a new join take an **unclaimed** seat while the room is `active`: the service assigns the lowest unclaimed seat and refuses when every seat is claimed; on attach, the seat's away steward is retired and the joiner's client sends `presence true` (the existing path, `onlineDuel.ts:171`; `duelProducers.ts:91,117-119`); the joiner syncs from a snapshot as a reconnecting player does.
+- It changes the deployed signalling service, so it is built only after the owner approves a redeploy. Parts A and B do not depend on it.
 
 ## 9. Tests
 
-- **Sim**: `createDuel` with crew 3 and 4 (characters at spawns 13..16,7, all standing, `present` length n); presence for players 2 and 3; a third player sits at Science and a fourth at a free console; snapshot round trip and validation for n = 3, 4 (and a mismatched header refused); rematch keeps n.
-- **Two-player proof**: duel oracle and canonical trace identical 47 → 48; goldens re-blessed at 48 with no behaviour change; gates untouched.
-- **Wire**: the duel codec for n = 3, 4 admits players 0..n−1 and refuses n; checkpoint schema for n = 3, 4.
-- **Online**: a three-seat session (the existing two-seat session harness widened): each seat's replica agrees with the authority over a run where the third player scans; start with an empty seat (that character is away); a dropped seat rejoins.
-- **UI**: host form crew choice; lobby rows and Start enabled with an empty seat; the readout crew list (2, 3, 4; AWAY, ON FOOT, DOWNED); the SCIENCE badge.
+- **Sim**: `createDuel` with crew 3 and 4 (spawns 13..16,7, all standing, `present` length n; crew 5 and crew above the spawn count throw); presence for players 2 and 3; a third player sits at Science, a fourth at a free console; the crew-down loss at n = 3 (all three downed, one of them away) and not with one standing; health loops reach player 3.
+- **Snapshot/checkpoint/wire**: round trip and validation at n = 3, 4; a header whose playerCount disagrees with the interior refused; `duelRoundOf` at n = 3; checkpoint schema at n = 3; the codec admits players 0..3 and the summary/round tuples are n long.
+- **Two-player proof**: duel oracle and canonical trace identical 47 → 48; goldens re-blessed with no behaviour change; gates untouched.
+- **Online**: a three-seat session (the existing two-seat harness widened): a human attaches at seat 2; each replica agrees with the authority over a run where the third player scans; a crew-3 start with seat 2 empty has an applied `presence false` and `present[2]` false in the next publication; a dropped seat rejoins; `validateDuelMirror` refuses a capacity/init mismatch.
+- **UI**: host form crew choice reaches `host(crew)`; lobby labels EMPTY/JOINED/READY/DISCONNECTED and Start enabled with an empty seat; the readout crew list (n = 2, 3, 4; precedence cases); seat 2 sitting at Weapons shows the sit card; the SCIENCE badge (and none on the Cutter).
 - **Part C** (only if built): service unit test for an active-room new join taking the lowest unclaimed seat and refusing when full; app test for a late joiner becoming present.
 
 ## 10. Out of scope
