@@ -38,7 +38,7 @@ const n = (v: number): string => String(Math.round(v * 1000) / 1000);
 export function menuCss(scale: CrtScale): string {
   const m = `.${MENU_CLASS}`, s = `.${SCREEN_CLASS}`;
   const rules = [
-    `${m} h1, ${m} h2, ${m} h3, ${m} h4 { color: ${HOT}; }`,
+    `${m} h1, ${m} h2, ${m} h3, ${m} h4, ${m} strong { color: ${HOT}; }`,   // headings and the room code
     `${m} [role="status"], ${m} p { color: ${MID}; }`,
     `${m} button:not(:disabled):hover, ${m} button:not(:disabled):focus-visible { background: ${MAIN} !important; color: ${GLASS} !important; border-color: ${MAIN} !important; outline: none; }`,
     `${m} select:focus-visible, ${m} input:focus-visible { outline: 1px solid ${HOT}; }`,
