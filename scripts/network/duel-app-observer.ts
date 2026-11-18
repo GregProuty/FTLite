@@ -10,7 +10,8 @@ import { TACTICAL_MODULES, tacticalLength } from '../../src/renderer/src/sim/tac
 import { createTacticalState } from '../../src/renderer/src/sim/tactical/state';
 
 import { DUEL_LAYOUT } from '../../src/renderer/src/sim/duel/layout';
-const layout = DUEL_LAYOUT, codec = duelCodec(2);
+import { DUEL_CREW_MAX } from '../../src/renderer/src/sim/duel/state';
+const layout = DUEL_LAYOUT, codec = duelCodec(DUEL_CREW_MAX);   // the wire's player limit (Sci-2 spec §4.3)
 const offsets = new Map<number, { at: Map<string, number>; presence: number }>();
 function named(seed: number) {
   let o = offsets.get(seed);

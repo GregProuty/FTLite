@@ -102,7 +102,7 @@ async function main() {
     const h = await launch('host'); let g = await launch('guest');
     step = 'step 1';
     // 1. Through the real menu: Multiplayer → Host; Join by the displayed code; ready; start.
-    await h.request('open-multiplayer'); await h.request('click', { id: 'host' }); await h.request('click', { id: 'create-room' });
+    await h.request('open-multiplayer'); await h.request('click', { id: 'host' }); await h.request('click', { id: 'crew-2' }); await h.request('click', { id: 'create-room' });   // the two-seat proof (Sci-2: the menu defaults to a crew of 3)
     const lobby = await phase(h, 'lobby');
     assert(lobby.status.snapshot.compatibility.modeId === 'duel' && lobby.status.snapshot.capacity === 2, 'Host made a two-seat duel room');
     await g.request('open-multiplayer'); await g.request('click', { id: 'join' }); await g.request('type', { id: 'join-code', text: lobby.status.snapshot.joinCode }); await g.request('click', { id: 'join-room' });
