@@ -129,7 +129,7 @@ export const duelWire: ModeWire<DuelSnapshot> = {
   },
   snapshotHeader({ uint, positive, text, u32, playerCount }) {
     return z.object({
-      snapshotFormat: z.literal(1), simVersion: positive, contentDigest: z.string().regex(/^[0-9a-f]{64}$/), tick: uint, playerCount,
+      snapshotFormat: z.literal(1), simVersion: positive, contentDigest: z.string().regex(/^[0-9a-f]{64}$/), tick: uint, playerCount, crewClass: z.number().int().min(0).max(MAX_INDEX),   // Valkyrn spec §6.1
       layoutId: text, layoutHash: text, seed: u32, mapHash: z.string().regex(/^[0-9a-f]{8}$/), hash: z.string().regex(/^[0-9a-f]{8}$/)
     }).strict();
   },

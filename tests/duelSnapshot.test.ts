@@ -25,7 +25,7 @@ describe('the duel snapshot (spec §6)', () => {
     const { d, pair } = scriptedDuel(1, 1200);
     try {
       const snap = saveDuelSnapshot(d, DIGEST);
-      expect(Object.keys(snap.header)).toEqual(['snapshotFormat', 'simVersion', 'contentDigest', 'tick', 'playerCount', 'layoutId', 'layoutHash', 'seed', 'mapHash', 'hash']);
+      expect(Object.keys(snap.header)).toEqual(['snapshotFormat', 'simVersion', 'contentDigest', 'tick', 'playerCount', 'crewClass', 'layoutId', 'layoutHash', 'seed', 'mapHash', 'hash']);
       expect(snap.header).toMatchObject({ snapshotFormat: 1, tick: 1200, playerCount: 2, seed: 1, mapHash: mapHash(d.tactical.map), hash: hashDuel(d) });
       expect(snap.values).toEqual(Array.from(flattenDuel(d)));
       const r = loadDuelSnapshot(CUTTER, JSON.parse(JSON.stringify(snap)), DIGEST), pairR = structuredClone(pair);

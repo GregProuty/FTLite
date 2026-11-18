@@ -13,7 +13,7 @@ import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { scanCommand } from '../tactical/science';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
-import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
+import { classOf, CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
 import { canCharge, canLaunch, validTarget, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
@@ -105,7 +105,7 @@ export function helmTurn(d: DuelState, h: HeldInput): number {
  * launch. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
  */
 function startRound(d: DuelState, tick: number): void {
-  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount);
+  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass);   // Valkyrn spec §6.1: the class carries over
   next.present = d.present.slice();   // Sci-2 spec §7: an empty seat stays away in the next round
   next.round = d.round + 1; next.baseTick = tick; next.decidedTick = -1;
   next.interior.tick = tick; next.tactical.tick = tick;
@@ -194,6 +194,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
+    if ((c.kind === 'laserLock' || c.kind === 'laserCharge') && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser
     if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
     else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; }
     else if (c.kind === 'laserCharge') { if (!canCharge(d.tactical, 0)) { result(e, 'missile-in-flight'); continue; } crew.laserCharge = c.held; }
@@ -227,6 +228,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     const freq = e.command.freq;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
+    if (classOf(t, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser to tune
     if (!Number.isInteger(freq) || freq < 0 || freq > 2) { result(e, 'malformed'); continue; }
     if (freq === t.systems[0].freq) { result(e, undefined, 'noop'); continue; }
     t.systems[0].freq = freq; result(e);
