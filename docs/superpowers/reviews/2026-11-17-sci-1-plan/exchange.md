@@ -83,3 +83,39 @@ Confirmed: L75 and L155. Fixed, and the L21 rule restates the outcome word.
 
 ---
 
+# Round 2 (delta, reviewing 5da4e67f, effort medium, 25 s, 75968 in / 55040 cached / 1647 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — In Task 1, scienceModule now has commands: [] and reasons: [] (plan L414-417), and scienceState expects [[], []] (plan L160). Task 2 Step 8 fills both in hash.ts and updates scienceState (plan L897-904), next to the duelModules L144 and duelCheckpoint L139 edits. Task 2's Files list and commit both include hash.ts and scienceState.test.ts (plan L568, L934). Empty reasons pass the per-reason check at tests/duelModules.test.ts:145.
+- R1-F2: resolved — Both Task 2 assertions now use toMatchObject without progress (plan L698, L706). The unit tests of scanCommand alone still pin progress 0 (plan L725-736), and those do not step the duel.
+- R1-F3: resolved — Task 8's test updates now include duelConsoleModel :106 with science: 'locked' (plan L2349). This matches the current literal at tests/duelConsoleModel.test.ts:106.
+- R1-F4: resolved — Decision 10 (plan L44) now names the change as a deviation from spec §7.3 and gives its reason.
+- R1-F5: resolved — The plan now cites L75 and L155 (plan L1952-1953), which match tests/duelSnapshot.test.ts:75 and tests/tacticalSlots.test.ts:155. The L21 rule now restates the outcome word (plan L1950), which fits the current comment at tests/duelCheckpoint.test.ts:21.
+
+## Verified
+- Task 1: no test or text outside L160 and L414-417 still expects the three kinds in Task 1. The grep for the kinds literal finds only L840 (Task 2 DUEL_KINDS), L900 and L904 (Task 2 Step 8).
+- tests/duelModules.test.ts:142-145: the kinds come from the modules. Empty reasons iterate vacuously, so Task 1 stays green.
+- Task 2's commit list (plan L934) covers every file that Step 8 edits.
+- The diff touches only the sections in the manifest, and I found no contradiction with the sections it left unchanged.
+
+## Not verified
+- I did not re-run any tests (read-only review). I did not re-check the unchanged sections outside the delta.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json`. 0 new findings; R1-F1 to R1-F5 confirmed resolved. Verdict ready.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
