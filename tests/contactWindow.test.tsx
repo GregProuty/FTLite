@@ -100,6 +100,15 @@ describe('the contact window (spec §4.2, §5)', () => {
     fireEvent.pointerDown(btn('contact-laser')!, { button: 0 });
     expect(c.arm).not.toHaveBeenCalled();
   });
+  it('a struck room flashes: a hot fill over its polygon at the flash alpha (duel polish i spec §B)', () => {
+    const c = contactOf('helm', false);
+    mount({ ...c, flash: [{ room: 1, points: c.rooms[1]!.points, alpha: 0.4 }] });
+    const f = document.querySelectorAll('[data-ui-contact-flash]');
+    expect(f).toHaveLength(1);
+    expect(f[0]!.getAttribute('data-ui-contact-flash')).toBe('SHLD');
+    expect(f[0]!.getAttribute('fill')).toBe(hex(CRT.hot));
+    expect(Number(f[0]!.getAttribute('fill-opacity'))).toBeCloseTo(0.4, 9);
+  });
   it('without a contact view no window is drawn', () => {
     const ui = makeUi(), duel = createDuelSink(ui.store);
     render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
