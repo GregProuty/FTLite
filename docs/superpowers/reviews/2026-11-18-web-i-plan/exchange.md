@@ -155,3 +155,53 @@ Confirmed against `build/contentDigest.ts:14,16`. The note at L16 now names all 
 
 ---
 
+# Round 2 (delta, reviewing 9981e4e6, effort medium, 192 s, 1843759 in / 1705993 cached / 16955 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — tickWorker now posts the result with `relay!.postMessage({ kind: 'result', ... } satisfies WorkerOut)` (plan L205). page.ts resolves it in the relay.port1 listener's `else resolveResult(message)` (L291-293). run.ts wraps all three result() reads in `withTimeout(..., 30000, ...)` (L546-549, L572, L579-580).
+- R1-F2: resolved — A tick counts toward its window only when `now - deadline <= ON_TIME_MS` (2*1000/TICK_HZ; L186, L218). Each tick posts `dueAt: performance.timeOrigin + deadline` (L220), and the page measures delay against dueAt (L282-283). The new report case (L421-426) uses delays of up to 983 ms, so p99 growth is far above 20 ms and the case fails 'relay-delay'. TICK_HZ exists at src/renderer/src/sim/tuning.ts:2.
+- R1-F3: resolved — Added the `killed` flag (L2215). kill() returns when `exited || killed` (L2233), and failed() terminates only if not killed (L2224). The double kill() call now terminates once.
+- R1-F4: resolved — createProbe is rebuilt on `createPortLink(browserPortEndpoint(port), 'probe', ...)` and the MessagePortMain import is deleted (plan L4583-4594). browserPortEndpoint is already imported at scripts/network/rtc-smoke-client.ts:3, and classifyStreamPacket and encodeOpaquePacket at :4.
+- R1-F5: resolved — The MessageChannel subclass records ports only while `probe.flags.countPorts` is set (L5422-5424). The wrapper arms it in click(), host-sector and join-sector (armPorts, L5607-5608, L5652-5655). React's module-level scheduler channel is created at page load, before arming, so it is not counted.
+- R1-F6: resolved — Full files are now given for host-smoke.cjs, host-smoke-preload.cjs, rtc-page.ts, rtc-smoke.cjs, room-service-smoke.cjs and online-app-smoke.cjs. I checked each part of the fix against Task 5's startWorkerHost. (a) The early abort and crash run inside create(). 'abort-after-spawn' aborts the signal during spawn, which hits `if (options.signal?.aborted) abort()` at L2450 → stop('cancelled') → kill. 'crash-on-spawn' dispatches its ErrorEvent in a microtask after the fully synchronous startWorkerHost body, giving failed() → stop('worker-exit'). (b) rtcPage.dispose awaits hostStarting (L4579). (c) The stale-generation interception is armed on the gen-2 host (`second.intercept(id)`, L4115-4117). The spawn adapter ignores the injected gen-1 reply through its generation check (L2392). (d) absorb() accumulates take() per Worker index (L5550-5567). --inject-worker-failure is still handled by the launcher (room-service-smoke.ts:37).
+- R1-F7: resolved — The handler copies the response before setting CORS headers: a 101 with webSocket becomes `new Response(null, {status:101, webSocket, headers})`, and anything else becomes `new Response(response.body, response)` (L3704-3707). `response` is declared with `let` (L3695). The new socket and checkpoint tests cover this path.
+- R1-F8: resolved — The internet-app-report cleanup zod schema and checkCleanup use workers/workerExits/workerIds/nativePeersEndedWithPage, with no window fields (L5753-5764). The test fixtures at lines 13-14 and the cases at 39 and 55 are updated (L5766-5773). These keys match the wrapper's shutdown result (L5679-5682).
+- R1-F9: resolved — D-6 is added (L39), and L28 is reconciled with it. Task 7 Step 7 lists every harness change: the product Worker, worker-boot, the host-smoke, lease-smoke and rtc-page harnesses with iife worker builds, the lease wrapper switched to importScripts with an iife observer, and the prelude concatenation kept (L3596-3601). The lease wrapper it refers to exists at L4432-4433.
+- R1-F10: resolved — The step now quotes the line-143 assertion text and replaces the comment on lines 141-142 (L1965). The Files list says 141-143 (L1859).
+- R1-F11: resolved — D-7 (L40) lists tick-windows-missing, lease-starved, page-errors and baseline-hidden, and the on-time and deadline-based relay measurement, with the justification that they only tighten the rules. These match report.ts L474-483.
+- R1-F12: resolved — L16 now names onlineSession.ts, rtcSession.ts and hostProcessProtocol.ts.
+
+## Verified
+- host-smoke early checks against startWorkerHost (plan L2250-2456): 'abort-before' rejects 'cancelled' before spawn (L2255), so created is false; 'abort-after-spawn' gives cancelled and terminates the Worker; 'crash-on-spawn' gives worker-exit; the later request on the crashed host rejects 'disposed' (L2315).
+- host-smoke's killTransport calls controller.dispose(), which fires the PageTransport onExit (plan L1785, L1809) and so stop('transport-exit') (L2387).
+- host-smoke's owner and producer split: the owner page posts ports to itself; the preload forwards them through ipcRenderer.postMessage; main relays them to the producer's existing host-smoke-port path. observePage filters by the producer's sender.
+- rtc-page's passive relay keeps the old frame filter (`event.data?.type === 'data'`) and the same incoming direction as old rtc-smoke.cjs:73-75 and :148.
+- rtc-smoke-client's installPage runs on import when `window` exists (rtc-smoke-client.ts:209) and accepts the rtc-smoke-port MessageEvent with `source: window` (:170), so the attachClient dispatch reaches the production client.
+- The rtc-smoke worker counts are consistent: 2 early + 1 real = 3, with pair() asserting workers === 3 and owner-cleanup asserting 3/3. Host native PCs total 6 (2 players, wrong-ticket, stale, cancel, transfer).
+- online-app-smoke's ipcMain.handle wrap matches Task 7's registerAppExit, which registers app:prepare-exit through ipc.handle (plan L3200). The snapshot is taken before the handler answers.
+- Task 8's CORS copy is applied only when `allowed && origin !== null`, so responses to Electron main's no-Origin requests stay untouched.
+
+## Not verified
+- Whether any non-online part of the app creates a MessageChannel after the first armed click (e.g. 'multiplayer') and leaves it open, which would make ports !== 0 in the page probe. I did not search the renderer's dependencies for this.
+- Whether Electron's executeJavaScript logs a renderer console error when a page call rejects, e.g. host-smoke's finally-block dispose of a host that never became ready. host-smoke's console-message handler would turn such an error into a failure only during run().
+- Whether Node's global WebSocket in Electron 37 main behaves as room-service-smoke.cjs's main-side service client expects. The old harness already ran the client in main, and I did not run it.
+- The host-smoke launcher (Task 9 Step 3) is outside the diff. I did not re-check whether it builds the owner page with the worker define and format that rtc-smoke.ts uses.
+
+---
+
+# Round 2 response (no subject change)
+
+I checked `round-2.json` against the plan at `9981e4e6`. The verdict is ready, with no new findings. The reviewer marked all 12 round 1 fixes resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
