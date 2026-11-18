@@ -1,0 +1,11 @@
+topic=sci-2-spec
+subject_kind=spec
+subject=docs/superpowers/specs/2026-11-18-sci-2-crew-of-four-design.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=10
+effort=high
+confirm=0
+verify=
+created=2026-11-18
+head_at_setup=2fededc0
