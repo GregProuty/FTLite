@@ -7,6 +7,7 @@ import { Contact, targetOf } from '../../sim/tactical/state';
 import { laserEligible, torpedoInRange } from '../../sim/tactical/weapons';
 import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
+import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { worldToScreen, type Point } from './camera';
 import { interpolatedMissile, type FxState } from './fxModel';
 import {
@@ -58,12 +59,30 @@ export interface CombatModelInput extends TacticalModelInput {
   /** Each ship's missile at the previous tick (null when none flew). */
   missilePrev: readonly (PrevBody | null)[];
   fx: FxState;
+  /** The top row's clear span in screen px (on a console: from the tab strip's end to the side column); the info line,
+   *  centred between the reserves, shifts to stay inside it. Absent: centred only. */
+  infoBand?: { left: number; right: number };
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
 export function bearingDeg(dx: number, dy: number): number {
   const deg = Math.round((Math.atan2(dx, -dy) * 180) / Math.PI);
   return ((deg % 360) + 360) % 360;
+}
+
+/** Internal px the info line keeps clear of its band's ends. */
+export const INFO_BAND_PAD = 8;
+/** The info line at y 12 (FONT_SIZE, anchored at its centre): at `centre`, shifted to stay inside `band` when it has one. */
+function infoLabel(text: string, centre: number, band: { left: number; right: number } | undefined): Label {
+  if (!band) return { text, x: centre, y: 12 };
+  const half = textPx(text, FONT_SIZE / FONT_NATIVE) / 2, lo = band.left + INFO_BAND_PAD + half, hi = band.right - INFO_BAND_PAD - half;
+  return { text, x: lo > hi ? (band.left + band.right) / 2 : Math.min(hi, Math.max(lo, centre)), y: 12 };
+}
+
+/** The Weapons map's top line (FTL targeting fix): bearing, range, the laser's arc state and the torpedo's range state,
+ *  short enough to sit between the tab strip and the side column at any range, e.g. `BRG 263  RNG 3987  NO SHOT  TORP OUT`. */
+export function weaponsInfoText(bearing: number, range: number, inArc: boolean, torpedoInRange: boolean): string {
+  return `BRG ${String(bearing).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}  TORP ${torpedoInRange ? 'IN' : 'OUT'}`;
 }
 
 export function combatModel(input: CombatModelInput): CombatDraw {
@@ -101,7 +120,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       ownArc: { x: ownS.x, y: ownS.y, r: LASER_RANGE * z, angle: headingAngle(own.h), half: ARC_HALF },
       enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
-      info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}  TORP ${inRange ? 'IN RANGE' : 'OUT OF RANGE'}`, x: ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2, y: 12 },
+      info: infoLabel(weaponsInfoText(bearingDeg(dx, dy), range, inArc, inRange), ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2, input.infoBand),
       inArc, torpedoInRange: inRange
     };
   }
