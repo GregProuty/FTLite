@@ -41,7 +41,7 @@
 7. **The draws live in `state.ts`** (a local `scienceDraws`), not in `science.ts`, so `state.ts` never imports `science.ts` (which imports `state.ts`).
 8. **The hostility line is a readout row only on the consoles** (`readoutRows` with `console: true`), right after the `HUNTER` heading, so the interior's list stays the longest (`READOUT_ROWS` 22 unchanged). It is also a line in the enemy's contact window at Level 1 and 2. `HOSTILE` shows while `rt − hostileAt < 180`.
 9. **The map's lock marker is hidden while the enemy is unknown** (there is no drawing to put it on).
-10. **Layout:** a fourth tab `SCIENCE` between WEAPONS and SHIP (`TABS_RIGHT` 308 → 408); the Weapons block 216 → 248 high for the frequency row (`stationTop('weapons')` 492 → 460); the contact window 360 → 420 high for its info lines; a Science block 96 high at the bottom left (`stationTop('science')` 612) with the hover readout and the key help.
+10. **Layout (a deviation from spec §7.3's "no station block"):** the spec gives the hover readout and Science's key help no home, and the side column and the contact window are full, so Science gets a small station block. A fourth tab `SCIENCE` between WEAPONS and SHIP (`TABS_RIGHT` 308 → 408); the Weapons block 216 → 248 high for the frequency row (`stationTop('weapons')` 492 → 460); the contact window 360 → 420 high for its info lines; a Science block 96 high at the bottom left (`stationTop('science')` 612) with the hover readout and the key help.
 11. **Keys:** Digit1, Digit2 and Digit3 set the keyboard's `freqTo` (0, 1, 2), like a console click; they are not new press actions. S and T on Science, and T on Helm and Weapons, go through the contact controller's key intercept (as T and Esc already do). On Science the controller takes S even with nothing selected, so S never becomes a throttle press there.
 12. **The contact controller emits requests and the duel modes send them:** `takeRequests(): { designate: number | null; scan: 0 | 1 | null }` is drained once a frame by the local runtime and by the online session, which send a command only when the seat allows it and it would change something (as `throttleRequest` drops a request equal to its base). Esc on Science deselects and requests `designate −1`, as T's "none" does.
 13. **`ContactSync` keeps its fields** (`target` is the enemy's slot, the crew laser's target; `active` reads a slot) and gains an optional `enemyKnown` (absent counts as 2), so the existing callers still compile.
@@ -157,7 +157,7 @@ describe('the science module (spec §6.2)', () => {
     const st = createTacticalState(3);
     expect(scienceModule.fields(st).map((f) => f.name)).toEqual(FIELDS);
     expect(scienceModule.fields(st).map((f) => f.count)).toEqual([1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
-    expect([scienceModule.commands, scienceModule.reasons]).toEqual([['contactScan', 'designate', 'laserFrequency'], ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']]);
+    expect([scienceModule.commands, scienceModule.reasons]).toEqual([[], []]);   // Task 2 fills both
     const ship = shipModule.fields(st).map((f) => f.name);
     for (const i of [0, 1]) expect(ship.indexOf(`systems.${i}.freq`)).toBe(ship.indexOf(`systems.${i}.lock`) + 1);
     expect(CONTACT_MAX_LEVEL).toEqual([2, 1]);
@@ -411,8 +411,10 @@ export const scienceModule: SimModule<TacticalState> = {
   id: 'science',
   fields: () => SCIENCE,
   notSnapshotted: {},
-  commands: ['contactScan', 'designate', 'laserFrequency'],
-  reasons: ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']
+  // Empty until Task 2 adds the three kinds to the codec (tests/duelModules.test.ts and duelCheckpoint.test.ts compare
+  // the modules' kinds with the codec's).
+  commands: [],
+  reasons: []
 };
 /** The tactical state's modules in canonical order. */
 export const TACTICAL_MODULES: readonly SimModule<TacticalState>[] = [spaceModule, shipModule, scienceModule];
@@ -563,7 +565,7 @@ git commit -m "chore(sci-1): SIM_VERSION 44 -> 45 alone with the science module 
 **Files:**
 - Create: `src/renderer/src/sim/tactical/science.ts`, `tests/scienceCommands.test.ts`
 - Modify: `src/renderer/src/net/contracts.ts` (DuelCommand), `src/renderer/src/net/codec.ts` (duelWire.commands), `src/renderer/src/sim/duel/state.ts` (DuelState, createDuel), `src/renderer/src/sim/duel/modules.ts` (DUEL_NOT_SNAPSHOTTED), `src/renderer/src/sim/duel/step.ts` (imports, DUEL_KINDS, the sit filter, the admissions, `scanner`)
-- Test updates: `tests/duelModules.test.ts:144`, `tests/duelCheckpoint.test.ts:139`, `tests/duel.test.ts:44`
+- Test updates: `tests/duelModules.test.ts:144`, `tests/duelCheckpoint.test.ts:139`, `tests/duel.test.ts:44`, `tests/scienceState.test.ts` (the module's kinds); also `src/renderer/src/sim/tactical/hash.ts` (scienceModule's commands and reasons)
 
 **Interfaces:**
 - Consumes: Task 1's `Scan`, `CONTACT_MAX_LEVEL`, `SCAN_RATE_SCIENCE`, `SCAN_RATE_OTHER`, `TacticalState.known/scan/designated`, `ShipSystems.freq`, `ShipInput.scanner`; `attendant(d, station)` (local in `sim/duel/step.ts`); `sitDown(state, pid, i)` (`src/renderer/src/sim/stations.ts`); `duelCodec(2)` (`net/codec.ts`).
@@ -693,7 +695,7 @@ describe('contactScan (spec §5)', () => {
         cmd(d, 0, { kind: 'contactScan', contact: 1 })
       ]);
       expect(reasons(r)).toEqual([[0, 'malformed'], [0, 'malformed'], [0, 'unavailable'], [0, 'applied'], [1, 'stale-tick'], [1, 'invalid-seat']]);
-      expect(d.tactical.scan).toEqual({ contact: 1, level: 1, progress: 0, rate: SCAN_RATE_SCIENCE, by: d.science });
+      expect(d.tactical.scan).toMatchObject({ contact: 1, level: 1, rate: SCAN_RATE_SCIENCE, by: d.science });   // progress is Task 4's (scanStep runs in the admitting tick)
     } finally { disposeDuel(d); }
   });
   it('starts at the sender\'s station and rate: the Helm and Weapons at 2, Science at 5', () => {
@@ -701,7 +703,7 @@ describe('contactScan (spec §5)', () => {
       const d = seated([seat, -1]);
       try {
         expect(step(d, [cmd(d, 0, { kind: 'contactScan', contact: 0 })])[0]!.status).toBe('applied');
-        expect(d.tactical.scan).toEqual({ contact: 0, level: 1, progress: 0, rate, by: d[seat] });
+        expect(d.tactical.scan).toMatchObject({ contact: 0, level: 1, rate, by: d[seat] });   // progress is Task 4's
       } finally { disposeDuel(d); }
     }
   });
@@ -892,6 +894,15 @@ In the `stepDuelTick` doc comment, change `the Helm's throttle (Artemis spec §5
 
 - [ ] **Step 8: The existing tests that list every kind and member**
 
+`src/renderer/src/sim/tactical/hash.ts`, in `scienceModule`: replace `commands: [],` and `reasons: []` (and the two comment lines above them) with:
+
+```ts
+  commands: ['contactScan', 'designate', 'laserFrequency'],
+  reasons: ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']
+```
+
+`tests/scienceState.test.ts`: replace `expect([scienceModule.commands, scienceModule.reasons]).toEqual([[], []]);   // Task 2 fills both` with `expect([scienceModule.commands, scienceModule.reasons]).toEqual([['contactScan', 'designate', 'laserFrequency'], ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']]);`.
+
 `tests/duelModules.test.ts` L144: `expect(kinds).toEqual(['contactScan', 'designate', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'sit', 'stand', 'throttle']);`
 
 `tests/duelCheckpoint.test.ts` L139: append to the `examples` object, after `throttle: { kind: 'throttle', level: 2 }`, the entries `, contactScan: { kind: 'contactScan', contact: 0 }, designate: { kind: 'designate', contact: 1 }, laserFrequency: { kind: 'laserFrequency', freq: 2 }`.
@@ -920,7 +931,7 @@ Expected: PASS, every file.
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/science.ts src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/step.ts tests/scienceCommands.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts tests/duel.test.ts
+git add src/renderer/src/sim/tactical/science.ts src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/hash.ts tests/scienceCommands.test.ts tests/scienceState.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts tests/duel.test.ts
 git commit -m "feat(sci-1): contactScan, designate and laserFrequency on the wire and in the duel step; the Science seat (dormant: the oracle proves every run unchanged at 45)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1936,10 +1947,10 @@ Run: `npx tsx .tsout/sci-1-measure.ts`
 Expected: `seed 7: split <S>, decided on tick <D>, outcome <o>; seed 1 seated scripted: <N> ticks, outcome <p>`. If `<S>` is `-1`, no tick from 5000 has the three conditions: stop and report (the tests need another seed or start tick, which is the controller's decision).
 
 Apply the numbers (the duel-fire, duel-health, disable-systems and Artemis-ii merges re-pinned these by the same rule):
-- `tests/duelCheckpoint.test.ts` L24: `const SEED = 7, SPLIT = <S>;`. In L21's comment put `<D>` first, then `(<old> before Sci-1, SIM_VERSION 45; ...` before the existing history.
+- `tests/duelCheckpoint.test.ts` L24: `const SEED = 7, SPLIT = <S>;`. In L21's comment put `<D>` first and restate the outcome word (crew loss, crew win or draw) from the measured `<o>`, then `(<old> before Sci-1, SIM_VERSION 45; ...` before the existing history.
 - `tests/duelModules.test.ts` L80 and L82: `played(7, <S>)` and `'seed 7 tick <S> has a missile in flight'`.
-- `tests/duelSnapshot.test.ts` L69 and L74: `scriptedDuel(7, <S>)` and `'one missile in flight at seed 7 tick <S>'`; in the round-module cases replace `[2, 5157, /base tick/]` with `[2, <S + 1>, /base tick/]`.
-- `tests/tacticalSlots.test.ts` L154: `expect(ticks).toBe(<N>)`, and extend its comment with `; 16268 before Sci-1`.
+- `tests/duelSnapshot.test.ts` L69 and L75: `scriptedDuel(7, <S>)` and `'one missile in flight at seed 7 tick <S>'`; in the round-module cases replace `[2, 5157, /base tick/]` with `[2, <S + 1>, /base tick/]`.
+- `tests/tacticalSlots.test.ts` L155: `expect(ticks).toBe(<N>)`, and extend its comment with `; 16268 before Sci-1`.
 - Run `npx vitest run tests/duelCheckpoint.test.ts`. If its `toMatchObject` on the end summary fails, copy the received `outcome`, `terminal` and the six counters from the failure diff into the expectation (the passing run's `console.log` prints the same summary).
 - Run `npx vitest run tests/duelOracle.test.ts`. If only the `first difference at tick 26` expectation fails, replace `26` with the tick in the received message.
 
@@ -2335,7 +2346,7 @@ git commit -m "feat(sci-1): the map's contact marks: an unknown ? contact, the s
 **Files:**
 - Modify: `src/renderer/src/app/duel/controls.ts` (Seat, seatOf, consoleInReach), `src/renderer/src/app/duel/runtime.ts` (DuelView, cameras, view, otherStatus, play, frame), `src/renderer/src/app/duel/onlineSource.ts` (cameras, otherStatus, frame), `src/renderer/src/app/duel/onlineDuel.ts` (play, the notice), `src/renderer/src/app/duel/scene.ts` (DuelViewSource.cameras), `src/renderer/src/render/crt.ts` (CrtView), `src/renderer/src/render/duel/readoutModel.ts` (ReadoutMode, OtherStatus, the heading, readoutHelp), `src/renderer/src/render/duel/consoleModel.ts` (ConsoleStation, consoleTabs, consoleModel's reach), `src/renderer/src/render/duel/consoleLayout.ts` (TABS_RIGHT, STATION.h.science, stationTop), `src/renderer/src/ui/duel/TabStrip.tsx` (ORDER), `src/renderer/src/app/uiProbe.ts` (the fixture's tabs)
 - Create: `tests/scienceSeat.test.ts`
-- Test updates: `tests/uiConsole.test.tsx:21, 25` (the tab literals), `tests/duelConsoleModel.test.ts:31` (TABS_RIGHT)
+- Test updates: `tests/uiConsole.test.tsx:21, 25` (the tab literals), `tests/duelConsoleModel.test.ts:31` (TABS_RIGHT) and `:106` (becomes `toEqual({ helm: 'locked', weapons: 'locked', science: 'locked', ship: 'current' })`)
 
 **Interfaces:**
 - Consumes: Task 2's `DuelState.science`; `sitDown`, `standUp` (`sim/stations.ts`).
