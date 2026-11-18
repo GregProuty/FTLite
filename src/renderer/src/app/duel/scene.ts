@@ -11,6 +11,7 @@ import type { EndView } from '../../render/duel/endModel';
 import { CONSOLE_RESERVE, CONTACT_RESERVE } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
+import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
 import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
@@ -166,6 +167,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         console: consoleView,
         crt: crtActive(view),
         ...sceneUi(view, overlay, options.pauseText, overlayView),
+        hud: consoleView?.station === 'ship' ? shipHud(d) : null,   // duel polish i spec §E: the SHIP view only
         ...(contact ? { contact: contactView } : {})
       });
       const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake
