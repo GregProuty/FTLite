@@ -219,8 +219,9 @@ Taken in `C:\Users\djuar\FTLite-shots\asteroid-spike-ii\` with `scripts/spike-as
 - `b0-laser-chip`:
   - Shows: the laser beam from the crew ship onto the bracketed rock. Card reads `FIRING`, `TGT ROCK`, status
     `FIRING SOLUTION`, `ROCKS 0`.
-  - Not visible: the chip sparks are not distinguishable from the bracket and beam at either zoom. (Fixed after this
-    pass, Task 13: the rock fx now keep a minimum screen size; see "Not so good" below.)
+  - Not visible: the chip sparks are not distinguishable from the bracket and beam at either zoom. Task 13 gave them a
+    minimum screen size, but the retaken 0.25 shot still loses them: they fly back along the shot, under the beam, the
+    rock and the bracket. A wider or sideways spray is the likely next fix.
 - `b1-laser-split`:
   - Shows: the rock just split. A small cluster of pieces sits where it was, with one cracked piece glyph (zoom), and
     the beam is still drawn.
@@ -278,6 +279,7 @@ From the screenshots, the numbers, and the state of the code. Nobody has played 
   - Fixed for the fx in Task 13 (view only): `rockEffectDraw` floors each rock effect at a screen size and follows its
     world size once zoomed in past it: chips at least 2 px with a 6 px tail (drawn as a tail and a head), specks 1.5 px,
     the core flash 10 px, the rock impact flare 8 px, the shockwave's stroke 2 px. The pieces themselves are unchanged.
+    The retaken shots show the blast specks clearly at 0.25; the laser chips still hide under the beam (see `b0`).
 - **Laser shots at a rock showed "MISS" callouts at the Hunter** (`b0`, `b1` in the first pass). Fixed in Task 13.
   - Cause: `hitModel.ts` called out every crew laser release that did not hit the enemy, including deliberate rock
     shots.
