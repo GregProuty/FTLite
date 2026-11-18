@@ -9,7 +9,7 @@ import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { SHIP_CLASSES } from './defs';
 import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
-import { ROCK_RESERVE, ROCK_STRIDE } from './rocks';
+import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { emptyMissile, HunterMode, Outcome, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
 /** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age (zeros when free). */
@@ -20,7 +20,7 @@ const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'aste
 /** A systems record's scalar fields in canonical order; `rooms` comes after `hull`. */
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
 const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserTargeted', 'torpLock', 'torpRoom', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
-  'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost'] as const satisfies readonly (keyof ShipSystems)[];
+  'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost', 'laserRock', 'torpRock', 'torpRockFlying', 'rocksBroken'] as const satisfies readonly (keyof ShipSystems)[];
 const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
 /** Compile-time completeness: a `Missile` member missing from these keys makes this `never` assignment fail typecheck. */
@@ -82,11 +82,9 @@ function spaceFields(asteroids: number, slots: number): ModuleField<TacticalStat
     ? flag('hunter.working', (s) => s.hunter.working, (s, v) => { s.hunter.working = v; })
     : scalar(`hunter.${key}`, (s) => s.hunter[key] as number, (s, v) => { (s.hunter as unknown as Record<string, number>)[key] = v; }));
   fields.push(vector('hunter.trail', 2 * HUNTER_TRAIL_TICKS, (s) => s.hunter.trail));
-  // SPIKE (destructible asteroids): the rock pool and its counters, last in the space module.
+  // Spike ii (§8): the rock pool and its six counters, last in the space module.
   fields.push(vector('rocks', (asteroids + ROCK_RESERVE) * ROCK_STRIDE, (s) => s.rocks),
-    scalar('rockHits', (s) => s.rockHits, (s, v) => { s.rockHits = v; }),
-    scalar('rockSplits', (s) => s.rockSplits, (s, v) => { s.rockSplits = v; }),
-    scalar('rockShatters', (s) => s.rockShatters, (s, v) => { s.rockShatters = v; }));
+    ...(['rockHits', 'rockSplits', 'rockDust', 'rockBlasts', 'rockCollisions', 'rockEvictions'] as const).map((k) => scalar<TacticalState>(k, (s) => s[k], (s, v) => { s[k] = v; })));
   spaceCache.set(key, fields);
   return fields;
 }
@@ -112,7 +110,9 @@ export const spaceModule: SimModule<TacticalState> = {
   notSnapshotted: {
     map: 'regenerated from the seed by generateMap; the duel snapshot checks its mapHash',
     grid: 'the broad-phase grid, rebuilt from the map',
-    events: 'per-tick events for the views, cleared every tick'
+    events: 'per-tick events for the views, cleared every tick',
+    rockBorn: 'spike ii §3.1: slots written with a new piece this tick; cleared at the start of every stepDuel tick',
+    rockDone: 'spike ii §3.3: slots that had their contact turn this tick; cleared at the start of every stepDuel tick'
   },
   commands: [],
   reasons: []
@@ -170,6 +170,7 @@ export function hashTactical(s: TacticalState): string { return hashF64(flattenT
  *  The map and the broad-phase grid are immutable after creation and are shared; the per-tick events are copied. −0 is kept. */
 export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length),
+    rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length),
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
     systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
@@ -196,16 +197,18 @@ const BODY_RULES: Readonly<Record<string, (v: number) => boolean>> = {
   released: flagBit, skidSign: within(-1, 1), graceUntil: int32
 };
 /** Each systems field's per-value rule, against the largest class (an inactive slot is checked for zeros separately). */
-const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boolean>> => ({
+const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v: number) => boolean>> => ({
   cls: within(0, SHIP_CLASSES.length - 1), target: within(0, slots - 1), hull: (v) => v >= 0 && v <= most((c) => c.hull), rooms: room,
   shields: within(0, most((c) => c.shields.layers) + 1), freq: within(0, 2), shieldClock: count, laserCharge: within(0, most((c) => c.slots.laser.chargeUnits)), laserHold: count,
   fireHeld: flagBit, lock: room, laserTargeted: flagBit, torpLock: within(-1, 2), torpRoom: within(-1, 2), laserBurst: within(0, most((c) => c.slots.laser.shots) - 1), laserBurstClock: within(0, most((c) => c.slots.laser.burstGapTicks)),
   magazine: within(0, most((c) => c.slots.missile.magazine)), magazineClock: count,
-  shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count
+  shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count,
+  // Spike ii §6.1, §8: the rock targets name a pool slot (torpRockFlying also −2, its rock broke); the tally is a count.
+  laserRock: within(-1, rocks - 1), torpRock: within(-1, rocks - 1), torpRockFlying: within(-2, rocks - 1), rocksBroken: count
 });
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
-  rockHits: count, rockSplits: count, rockShatters: count,
+  rockHits: count, rockSplits: count, rockDust: count, rockBlasts: count, rockCollisions: count, rockEvictions: count,
   tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
   'hunter.mode': within(HunterMode.Hunt, HunterMode.Repair), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
   'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any,
@@ -225,7 +228,7 @@ const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
  *  the offset after the values. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
   let at = offset;
-  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots), inactive = new Set<number>(), owners = new Set<number>();
+  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>();
   for (const m of TACTICAL_MODULES) for (const f of m.fields(shape)) {
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };

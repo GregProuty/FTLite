@@ -33,7 +33,7 @@ describe('the destructible-asteroids spike', () => {
     const s = smallRock(st);
     damageRock(st, s, TORPEDO_ROCK_DAMAGE * 10, 0, 1, 'torpedo');
     expect(rockAlive(st, s)).toBe(false);
-    expect(st.rockShatters).toBe(1);
+    expect(st.rockDust).toBe(1);
   });
   it('rocksNear matches a brute-force scan of the live pool, before and after splits and drift', () => {
     const st = createTacticalState(4);

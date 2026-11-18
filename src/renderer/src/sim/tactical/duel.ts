@@ -6,7 +6,7 @@ import { flyMissile, resolveMissiles } from './missiles';
 import { flySlot } from './physics';
 import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
-import { stepRocks } from './rocks';
+import { beginRockTick, stepRocks } from './rocks';
 import { classOf, CREW_SLOT, NO_AXES, Outcome, type TacticalState } from './state';
 import { DEFAULT_FLIGHT, type FlightTuning } from './tuning';
 import { applyWeaponsInput, tickWeapons, UNCREWED_INPUT, type ShipInput } from './weapons';
@@ -23,7 +23,7 @@ export function hunterSlot(state: TacticalState): number {
  */
 export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTuning = DEFAULT_FLIGHT): void {
   if (state.outcome !== Outcome.Running) return;
-  state.events = [];
+  state.events = []; beginRockTick(state);   // spike ii §3.1: the transient masks start empty every tick
   const hunter = hunterSlot(state), n = state.ships.length;
   const inputs = state.ships.map((s, i) => (!s.active ? UNCREWED_INPUT : i === CREW_SLOT ? crew : i === hunter ? hunterThink(state, i) : UNCREWED_INPUT));
   const hunterLaunches = hunter >= 0 ? state.systems[hunter]!.missilesLaunched : 0;
