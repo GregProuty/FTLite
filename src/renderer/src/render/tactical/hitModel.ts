@@ -26,8 +26,9 @@ export const CHARGE_COLOUR = CRT.hot;
 export function enemyCharge(state: TacticalState, ship = ENEMY_SLOT): { fill: number; full: boolean } | null {
   const s = state.systems[ship], body = state.ships[ship];
   if (!s || !body?.active || !s.fireHeld || laserOffline(state, ship)) return null;
-  const units = classOf(state, ship).slots.laser.chargeUnits;
-  return { fill: Math.max(0, Math.min(1, s.laserCharge / units)), full: laserFull(state, ship) };
+  const laser = classOf(state, ship).slots.laser;
+  if (!laser) return null;
+  return { fill: Math.max(0, Math.min(1, s.laserCharge / laser.chargeUnits)), full: laserFull(state, ship) };
 }
 /** §A: the full ring's pulse alpha at presentation time t, 0.45 to 1 at 4 Hz. */
 export function chargePulse(t: number): number { return CHARGE_PULSE_MIN + (1 - CHARGE_PULSE_MIN) * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI * CHARGE_PULSE_HZ)); }

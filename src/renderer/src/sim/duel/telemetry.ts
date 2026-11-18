@@ -102,7 +102,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's events are not weapons
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
-      if (tac.systems[e.ship]!.laserBurst > 0 || classOf(tac, e.ship).slots.laser.shots === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release
+      if (tac.systems[e.ship]!.laserBurst > 0 || classOf(tac, e.ship).slots.laser?.shots === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release; only a laser class emits one
       if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[targetOf(tac, e.ship)] = true; } else s.laserMisses++;
     } else if (e.cause === 'ship') {
       missileOn[e.target] = true;

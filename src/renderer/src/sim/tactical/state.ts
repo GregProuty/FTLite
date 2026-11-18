@@ -3,7 +3,7 @@
 // crew's Cutter in slot 0 and the hunter in slot 1; slots always update in slot order. A slot's weapons fire at its
 // locked target (`systems[i].target`). All fields are flat scalars or arrays, so the flatten and the clone stay simple.
 import { createRng, nextInt, type RngState } from '../../../../shared/rng';
-import { DUEL_CLASSES, SHIP_CLASSES, type ShipClassDef } from './defs';
+import { DUEL_CLASSES, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
 import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
@@ -148,12 +148,13 @@ function emptyShip(bodies: number): Ship {
 }
 /** A slot's systems at the round's start; the crew's laser starts full (FTL targeting spec §2: the first shot is ready)
  *  and targeted at the enemy's Shields (Feel-i, console feel spec §3: the FTL opener, so the first firing solution fires
- *  with no setup). Every round, the rematch's included, is built here. */
+ *  with no setup); a class without a laser (Valkyrn spec §6.1) starts empty and untargeted. Every round, the rematch's
+ *  included, is built here. */
 function systemsFor(cls: number, target: number, crew = false): ShipSystems {
-  const c = SHIP_CLASSES[cls]!;
+  const c = SHIP_CLASSES[cls]!, laser = c.slots.laser;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew ? c.slots.laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
-    laserTargeted: crew, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
+    laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0
   };
 }
@@ -187,11 +188,13 @@ function scienceDraws(rng: RngState, map: MapDef): { weakFreq: number; derelict:
   return { weakFreq, derelict: { orbitR, phase, loot, trapped, salvage: 0, salvaged: false } };
 }
 
-/** A fill of `slots` ship slots (at least 2): the duel's two at the map's spawns, the crew's Cutter in slot 0 locked on
- *  the hunter in slot 1 and back; any further slot is inactive (R-5's encounters fill them). The round starts holding
- *  (hostileAt −1, full shields) with the science draws (Sci-1 spec §4.1, §4.5; owner decision 2026-11-17). */
-export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): TacticalState {
+/** A fill of `slots` ship slots (at least 2): the duel's two at the map's spawns, the crew's ship (class `crewClass`,
+ *  Valkyrn spec §6.1; the Cutter by default) in slot 0 locked on the hunter in slot 1 and back; any further slot is
+ *  inactive (R-5's encounters fill them). The round starts holding (hostileAt −1, full shields) with the science draws
+ *  (Sci-1 spec §4.1, §4.5; owner decision 2026-11-17). Throws for a slot count under 2 or a class that is not a crew class. */
+export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, crewClass: number = ShipClass.Cutter): TacticalState {
   if (!Number.isInteger(slots) || slots < 2) throw new Error(`a tactical state needs at least 2 ship slots, not ${slots}`);
+  if (!Number.isInteger(crewClass) || SHIP_CLASSES[crewClass]?.ai !== 'crew') throw new Error(`invalid crew ship class ${String(crewClass)}`);   // never the Hunter's
   const rng = createRng(seed);
   const map = generateMap(rng);
   const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
@@ -199,7 +202,7 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): 
   return {
     tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
-    systems: [systemsFor(DUEL_CLASSES[0]!, 1, true), systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
+    systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],
     hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
     // Sci-1 (spec §4): the round starts with the enemy unidentified and holding, the scanner idle.

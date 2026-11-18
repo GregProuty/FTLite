@@ -177,7 +177,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   if (hostile) lines.push(line(hostile.text, hostile.alert ? alert : CRT.main));
   if (full) {   // Level 2's readings (presentation of the hunter's existing state)
     lines.push(line(`WEAK FREQ ${FREQ_NAMES[state.weakFreq] ?? ''}`));
-    lines.push(line('ENEMY LASER', CRT.main, Math.min(1, sys.laserCharge / cls.slots.laser.chargeUnits)));
+    lines.push(line('ENEMY LASER', CRT.main, cls.slots.laser ? Math.min(1, sys.laserCharge / cls.slots.laser.chargeUnits) : 0));
     const ready = sys.magazine > 0 && missileOf(state, slot) === null && state.tick - state.hunter.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS;
     lines.push(line(ready ? 'TORPEDO READY' : 'RELOADING'));
   }

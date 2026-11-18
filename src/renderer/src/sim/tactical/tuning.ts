@@ -143,3 +143,29 @@ export const LOOT_HULL = 8;                       // Hull loot, capped at the cl
 export const DERELICT_NEAR_MIN = 700, DERELICT_NEAR_MAX = 1000, DERELICT_FAR_MIN = 1400, DERELICT_FAR_MAX = 1599;
 /** Its phase is redrawn while it would start within this of either spawn, at most DERELICT_PHASE_DRAWS draws in all. */
 export const DERELICT_SPAWN_CLEAR = 600, DERELICT_PHASE_DRAWS = 16;
+
+// The Valkyrn (Valkyrn spec 2026-11-18-valkyrn-solo-ship-design §6.1, §7): the solo fighter's class and its minigun.
+// Start values; Part iii's gate tunes them (spec §10).
+export const VALKYRN_HULL = 30;
+export const VALKYRN_THRUST = 160;                 // u/s²
+export const VALKYRN_TURN_DEG_PER_S = 200;
+export const VALKYRN_TURN_STEPS_PER_TICK = (VALKYRN_TURN_DEG_PER_S / 360) * HEADING_COUNT * DT;   // about 2.37
+/** The gun (spec §7.1): a round every GUN_INTERVAL_TICKS (10 a second) at GUN_SPEED along the nose plus the ship's
+ *  velocity, for GUN_LIFE_TICKS (about 607 u of reach at rest), from two muzzles GUN_MUZZLE_LATERAL either side of the
+ *  nose line, at the ship's radius + 1 ahead. */
+export const GUN_INTERVAL_TICKS = 6;
+export const GUN_SPEED = 700;                      // u/s
+export const GUN_LIFE_TICKS = 52;
+export const GUN_MUZZLE_LATERAL = 12;
+/** Heat (spec §7.1): a round adds GUN_HEAT_PER_SHOT and it cools GUN_COOL a tick; reaching GUN_HEAT_MAX locks the gun,
+ *  which then cools GUN_COOL_LOCKED a tick and unlocks at 0. Weapons damaged halves both (integer halves). */
+export const GUN_HEAT_PER_SHOT = 50;
+export const GUN_COOL = 4;
+export const GUN_COOL_LOCKED = 8;
+export const GUN_HEAT_MAX = 1000;
+/** The round pool's fixed size (spec §7.2). */
+export const GUN_POOL = 64;
+/** Hits (spec §7.2): rounds per shield layer stripped, per hull point, and per Room level. */
+export const GUN_HITS_PER_LAYER = 8;
+export const GUN_HITS_PER_HULL = 3;
+export const GUN_HITS_PER_LEVEL = 6;

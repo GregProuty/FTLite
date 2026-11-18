@@ -68,7 +68,7 @@ function updateRepair(state: TacticalState, i: number): void {
     h.mode = HunterMode.Hunt;
     return;
   }
-  const range = classOf(state, i).slots.laser.range, dx = crew.x - self.x, dy = crew.y - self.y, outOfRange = dx * dx + dy * dy > range * range;
+  const laser = classOf(state, i).slots.laser, range = laser ? laser.range : 0, dx = crew.x - self.x, dy = crew.y - self.y, outOfRange = dx * dx + dy * dy > range * range;
   let best = -1;
   for (const room of REPAIR_ORDER) {
     const level = me.rooms[room];

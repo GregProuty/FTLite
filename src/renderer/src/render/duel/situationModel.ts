@@ -39,6 +39,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
   const me = t.ships[CREW_SLOT], target = targetOf(t, CREW_SLOT), e = t.ships[target], sys = t.systems[CREW_SLOT];
   if (!e || !e.active || target === CREW_SLOT) return { kind: 'none' };
   const laser = classOf(t, CREW_SLOT).slots.laser, dx = e.x - me.x, dy = e.y - me.y, range = Math.round(Math.sqrt(dx * dx + dy * dy));
+  if (!laser) return { kind: 'none' };   // Valkyrn-i: Part ii adds the gun's reasons (spec §6.1)
   if (dx * dx + dy * dy > laser.range * laser.range) return { kind: 'range', range, reach: laser.range };
   if (!inArc(me.heading, dx, dy, laser.arcCos)) return { kind: 'arc', turn: (sideOf(me.heading, dx, dy) || 1) > 0 ? 'RIGHT' : 'LEFT' };
   if (!lineOfSight(t, me.x, me.y, e.x, e.y)) return { kind: 'blocked' };

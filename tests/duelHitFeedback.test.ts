@@ -21,7 +21,7 @@ const vp = { w: 1280, h: 720 };
 const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
 const input = (st: TacticalState, cam: Camera, fx = createFx(), t = 0): CombatModelInput =>
   ({ state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console: 'helm', axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx, t });
-const units = (st: TacticalState): number => classOf(st, 1).slots.laser.chargeUnits;
+const units = (st: TacticalState): number => classOf(st, 1).slots.laser!.chargeUnits;
 const laser = (p: Partial<Extract<DuelEvent, { kind: 'laser' }>>): DuelEvent => ({ kind: 'laser', ship: 0, hit: true, stripped: false, room: -1, x1: 0, y1: 0, x2: 1, y2: 0, ...p });
 const missile = (p: Partial<Extract<DuelEvent, { kind: 'missileEnd' }>>): DuelEvent => ({ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: -1, x: 0, y: 0, ...p });
 

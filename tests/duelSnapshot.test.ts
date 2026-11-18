@@ -78,7 +78,7 @@ describe('the duel snapshot (spec §6)', () => {
         ['ships.0.heading', 0, 256, /ships\.0\.heading: out of range/], ['ships.1.heading', 0, 1.5, /ships\.1\.heading/],
         ['systems.0.rooms', 1, 3, /systems\.0\.rooms/], ['systems.0.shields', 0, 4, /systems\.0\.shields/], ['systems.1.magazine', 0, 5, /systems\.1\.magazine/],
         ['systems.0.shots', 0, 2.5, /systems\.0\.shots/], ['systems.0.laserCharge', 0, -1, /systems\.0\.laserCharge/], ['systems.1.lock', 0, 3, /systems\.1\.lock/],
-        ['systems.0.cls', 0, 2, /systems\.0\.cls/], ['systems.1.target', 0, 2, /systems\.1\.target/], ['systems.0.hull', 0, -1, /systems\.0\.hull/],
+        ['systems.0.cls', 0, 4, /systems\.0\.cls/],   // Valkyrn-i: 2 and 3 are classes now; 4 is past the last ['systems.1.target', 0, 2, /systems\.1\.target/], ['systems.0.hull', 0, -1, /systems\.0\.hull/],
         ['ships.0.released', 0, 2, /ships\.0\.released/], ['hunter.mode', 0, 2, /hunter\.mode/], ['hunter.trailHead', 0, 18, /hunter\.trailHead/],
         ['outcome', 0, 4, /outcome: out of range/], ['ships.length', 0, 3, /does not match the slot count/], ['ships.1.active', 0, 2, /ships\.1\.active: out of range/],
         ['ships.1.active', 0, 0, /ships\.1\.x: an inactive slot holds values/],

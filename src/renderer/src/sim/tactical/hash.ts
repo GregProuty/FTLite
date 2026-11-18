@@ -7,7 +7,7 @@
 // events are outputs, reset every tick, and not hashed. −0 is written as 0.
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
-import { SHIP_CLASSES } from './defs';
+import { SHIP_CLASSES, type ShipClassDef } from './defs';
 import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { emptyMissile, HunterMode, Outcome, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
@@ -183,7 +183,8 @@ const within = (lo: number, hi: number) => (v: number): boolean => Number.isInte
 /** headingAcc: physics.ts and missiles.ts drain it with `while (>= 1)` and `while (<= -1)`, so it always rests in (-1, 1). */
 const acc = (v: number): boolean => Number.isFinite(v) && v > -1 && v < 1;
 const flagBit = within(0, 1), heading = within(0, HEADING_COUNT - 1), room = within(0, 2), any = (): boolean => true;
-const most = (f: (c: (typeof SHIP_CLASSES)[number]) => number): number => Math.max(...SHIP_CLASSES.map(f));
+/** The largest value of `f` over the classes that have it (Valkyrn spec §6.1: a laser or gun slot may be null), 0 when none does. */
+const most = (f: (c: ShipClassDef) => number | null | undefined): number => Math.max(0, ...SHIP_CLASSES.map(f).filter((v): v is number => typeof v === 'number'));
 /** Each body field's per-value rule; every field must hold finite values (checked first). */
 const BODY_RULES: Readonly<Record<string, (v: number) => boolean>> = {
   active: flagBit, heading, headingAcc: acc, skidBudget: (v) => Number.isFinite(v) && v >= 0, planetHits: count, asteroidHits: count, shipHits: count,
@@ -192,8 +193,8 @@ const BODY_RULES: Readonly<Record<string, (v: number) => boolean>> = {
 /** Each systems field's per-value rule, against the largest class (an inactive slot is checked for zeros separately). */
 const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boolean>> => ({
   cls: within(0, SHIP_CLASSES.length - 1), target: within(0, slots - 1), hull: (v) => v >= 0 && v <= most((c) => c.hull), rooms: room,
-  shields: within(0, most((c) => c.shields.layers) + 1), freq: within(0, 2), shieldClock: count, laserCharge: within(0, most((c) => c.slots.laser.chargeUnits)), laserHold: count,
-  fireHeld: flagBit, lock: room, laserTargeted: flagBit, torpLock: within(-1, 2), torpRoom: within(-1, 2), laserBurst: within(0, most((c) => c.slots.laser.shots) - 1), laserBurstClock: within(0, most((c) => c.slots.laser.burstGapTicks)),
+  shields: within(0, most((c) => c.shields.layers) + 1), freq: within(0, 2), shieldClock: count, laserCharge: within(0, most((c) => c.slots.laser?.chargeUnits)), laserHold: count,
+  fireHeld: flagBit, lock: room, laserTargeted: flagBit, torpLock: within(-1, 2), torpRoom: within(-1, 2), laserBurst: within(0, most((c) => c.slots.laser?.shots) - 1), laserBurstClock: within(0, most((c) => c.slots.laser?.burstGapTicks)),
   magazine: within(0, most((c) => c.slots.missile.magazine)), magazineClock: count,
   shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count
 });
