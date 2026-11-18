@@ -3,12 +3,12 @@
 // crew's Cutter in slot 0 and the hunter in slot 1; slots always update in slot order. A slot's weapons fire at its
 // locked target (`systems[i].target`). All fields are flat scalars or arrays, so the flatten and the clone stay simple.
 import { createRng, nextInt, type RngState } from '../../../../shared/rng';
-import { DUEL_CLASSES, SHIP_CLASSES, type ShipClassDef } from './defs';
+import { DUEL_CLASSES, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
 import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
-import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
+import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, GUN_POOL, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
 
 /** Tactical rooms (spec §5); the index into ShipSystems.rooms. */
 export const Room = { Weapons: 0, Shields: 1, Engines: 2 } as const;
@@ -58,6 +58,13 @@ export interface ShipSystems {
   magazine: number; magazineClock: number;
   /** Telemetry counters (spec §13). */
   shots: number; laserHits: number; layersStripped: number; missilesLaunched: number; missileHits: number; missilesLost: number;
+  /** Valkyrn spec §7.1, §7.2 (the gun; all zero on a class without one and on a ship nobody fires at): its heat
+   *  0..heatMax, whether the lockout holds, the ticks until it may fire again, the next muzzle (0 starboard, 1 port); as a
+   *  target, the round hits toward a shield layer, toward a hull point and toward each Room's next level; and the
+   *  telemetry counters (rounds fired, rounds that hit). */
+  gunHeat: number; gunLocked: boolean; gunCooldown: number; gunMuzzle: number;
+  gunWear: number; gunHull: number; gunRoomWear: [number, number, number];
+  gunShots: number; gunHits: number;
 }
 
 /** A cruise missile's flight (spec §7b). */
@@ -65,6 +72,11 @@ export interface MissileFlight { x: number; y: number; vx: number; vy: number; h
 /** A missile pool entry: in flight or free, and the ship slot that launched it. At most one in flight per ship; a free
  *  entry holds zeros. */
 export interface Missile extends MissileFlight { active: boolean; owner: number }
+/** Valkyrn spec §7.2: a gun round in the pool: its position, velocity (u/s) and ticks flown, the ship slot that fired
+ *  it, and whether it flies. A free entry holds zeros. */
+export interface GunRound { x: number; y: number; vx: number; vy: number; age: number; owner: number; active: boolean }
+/** A free round pool entry. */
+export function emptyRound(): GunRound { return { x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false }; }
 
 export const HunterMode = { Hunt: 0, Repair: 1 } as const;
 /** The enemy's brain (spec §9). */
@@ -103,8 +115,13 @@ export type DuelEvent =
   | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
   | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number }
-  /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before missile before clock). */
-  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'missile' }
+  /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before gun before missile before clock; Valkyrn spec §7.2). */
+  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'missile' }
+  /** Valkyrn spec §7.1: ship `ship` fired a gun round from muzzle `muzzle` (0 starboard, 1 port). */
+  | { kind: 'gunFire'; ship: number; muzzle: number }
+  /** Valkyrn spec §7.2: a round hit ship `ship` (the target) at the closest-approach point (x, y): `room` the Room it
+   *  struck, or −1 on a shield hit; `stripped` when that hit took a layer. */
+  | { kind: 'gunHit'; ship: number; room: number; stripped: boolean; hull: boolean; level: boolean; x: number; y: number }   // level: the hit raised the Room's level (Valkyrn spec §7.4)
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */
@@ -118,6 +135,8 @@ export interface TacticalState {
   systems: Slots<ShipSystems>;
   /** The missile pool: one entry per ship slot. */
   missiles: Slots<Missile>;
+  /** Valkyrn spec §7.2: the gun round pool, GUN_POOL entries. */
+  rounds: GunRound[];
   hunter: Hunter;
   outcome: number;
   events: DuelEvent[];
@@ -148,18 +167,21 @@ function emptyShip(bodies: number): Ship {
 }
 /** A slot's systems at the round's start; the crew's laser starts full (FTL targeting spec §2: the first shot is ready)
  *  and targeted at the enemy's Shields (Feel-i, console feel spec §3: the FTL opener, so the first firing solution fires
- *  with no setup). Every round, the rematch's included, is built here. */
+ *  with no setup); a class without a laser (Valkyrn spec §6.1) starts empty and untargeted. Every round, the rematch's
+ *  included, is built here. */
 function systemsFor(cls: number, target: number, crew = false): ShipSystems {
-  const c = SHIP_CLASSES[cls]!;
+  const c = SHIP_CLASSES[cls]!, laser = c.slots.laser;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew ? c.slots.laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
-    laserTargeted: crew, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
-    magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
+    laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
+    magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
-    magazine: 0, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0 };
+    magazine: 0, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0 };
 }
 /** A free missile pool entry. */
 export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }; }
@@ -187,11 +209,13 @@ function scienceDraws(rng: RngState, map: MapDef): { weakFreq: number; derelict:
   return { weakFreq, derelict: { orbitR, phase, loot, trapped, salvage: 0, salvaged: false } };
 }
 
-/** A fill of `slots` ship slots (at least 2): the duel's two at the map's spawns, the crew's Cutter in slot 0 locked on
- *  the hunter in slot 1 and back; any further slot is inactive (R-5's encounters fill them). The round starts holding
- *  (hostileAt −1, full shields) with the science draws (Sci-1 spec §4.1, §4.5; owner decision 2026-11-17). */
-export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): TacticalState {
+/** A fill of `slots` ship slots (at least 2): the duel's two at the map's spawns, the crew's ship (class `crewClass`,
+ *  Valkyrn spec §6.1; the Cutter by default) in slot 0 locked on the hunter in slot 1 and back; any further slot is
+ *  inactive (R-5's encounters fill them). The round starts holding (hostileAt −1, full shields) with the science draws
+ *  (Sci-1 spec §4.1, §4.5; owner decision 2026-11-17). Throws for a slot count under 2 or a class that is not a crew class. */
+export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, crewClass: number = ShipClass.Cutter): TacticalState {
   if (!Number.isInteger(slots) || slots < 2) throw new Error(`a tactical state needs at least 2 ship slots, not ${slots}`);
+  if (!Number.isInteger(crewClass) || SHIP_CLASSES[crewClass]?.ai !== 'crew') throw new Error(`invalid crew ship class ${String(crewClass)}`);   // never the Hunter's
   const rng = createRng(seed);
   const map = generateMap(rng);
   const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
@@ -199,8 +223,9 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): 
   return {
     tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
-    systems: [systemsFor(DUEL_CLASSES[0]!, 1, true), systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
+    systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],
+    rounds: Array.from({ length: GUN_POOL }, emptyRound),
     hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
     // Sci-1 (spec §4): the round starts with the enemy unidentified and holding, the scanner idle.
     startTick: 0, hostileAt: -1, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: science.weakFreq, derelict: science.derelict

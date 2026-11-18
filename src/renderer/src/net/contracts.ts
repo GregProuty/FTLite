@@ -29,9 +29,11 @@ export interface Session {
   onLinkLost(cb: (peer: PeerId) => void): Unsubscribe;
   close(reason: string): void;
 }
-/** `face` (Feel-i, console feel spec §2): the Helm's auto-face, Space held at the Helm; absent means false. Only the duel
- *  reads it, from the Helm's attendant, and A/D (moveX) overrides it. */
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean }
+/** `face` (Feel-i, console feel spec §2): the Helm's auto-face, Space held at the Helm; absent means false. `aim`
+ *  (Valkyrn spec §6.2): the Flight seat's mouse aim, a heading index 0..255, −1 or absent for none (the sim counts any
+ *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. Only the duel reads them:
+ *  `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both), `gunHeld` from Weapons'. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }

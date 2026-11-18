@@ -12,8 +12,8 @@ import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { scanCommand } from '../tactical/science';
-import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
-import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
+import { HEADING_COUNT, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
+import { classOf, CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
 import { canCharge, canLaunch, validTarget, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
@@ -84,17 +84,34 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
     if (crewShip.rooms[r] === 0) { d.repair[r] = 0; continue; }
     if (n === 0) continue;
     d.repair[r] += n === 1 ? REPAIR_RATE_SOLO : n * REPAIR_RATE_TEAM;
-    if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; d.repair[r] = 0; d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
+    if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; crewShip.gunRoomWear[r] = 0; d.repair[r] = 0;   /* Valkyrn spec §7.2 */ d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
   }
 }
 
-/** The turn the Helm attendant's held input flies this tick (Artemis spec §5.3, Feel-i, Feel-ii spec §1.1): A/D, else
- *  auto-face's turn, else the held heading's, else none. Pure; reads the state before the step (the app's predicted
- *  path calls it too). */
+/** Valkyrn spec §6.2: a held aim, a heading index 0..255; absent, −1, NaN, a non-integer or out of range is −1 (none). */
+export function heldAim(h: HeldInput): number {
+  const a = h.aim;
+  return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1;
+}
+
+/** Valkyrn spec §6.2: the turn from `heading` toward the aim index `aim`. The signed index difference is
+ *  d = ((aim − heading + 384) mod 256) − 128: none when |d| ≤ 1, else its sign. The band of three indices is wider than
+ *  one tick's integer step (defs.ts asserts every class turns fewer than 3 steps a tick), so the nose never steps across
+ *  it. Pure; only + − and the integer modulo. */
+export function aimTurn(heading: number, aim: number): number {
+  const d = ((aim - heading + HEADING_COUNT + HEADING_COUNT / 2) % HEADING_COUNT) - HEADING_COUNT / 2;
+  return d >= -1 && d <= 1 ? 0 : Math.sign(d);
+}
+
+/** The turn the Helm attendant's held input flies this tick (Artemis spec §5.3, Feel-i, Feel-ii spec §1.1, Valkyrn spec
+ *  §6.2): A/D, else auto-face's turn, else the aim's, else the held heading's, else none. Pure; reads the state before
+ *  the step (the app's predicted path calls it too). */
 export function helmTurn(d: DuelState, h: HeldInput): number {
   if ((Math.sign(h.moveX) || 0) !== 0) return h.moveX;
   if (d.tactical.outcome !== Outcome.Running) return 0;
   if (h.face === true) return autoFaceTurn(d.tactical, 0);
+  const aim = heldAim(h);
+  if (aim >= 0) return aimTurn(d.tactical.ships[0].heading, aim);
   return d.holdHeading >= 0 ? headingTurn(d.tactical, 0, d.holdHeading) : 0;
 }
 
@@ -105,7 +122,7 @@ export function helmTurn(d: DuelState, h: HeldInput): number {
  * launch. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
  */
 function startRound(d: DuelState, tick: number): void {
-  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount);
+  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass);   // Valkyrn spec §6.1: the class carries over
   next.present = d.present.slice();   // Sci-2 spec §7: an empty seat stays away in the next round
   next.round = d.round + 1; next.baseTick = tick; next.decidedTick = -1;
   next.interior.tick = tick; next.tactical.tick = tick;
@@ -188,12 +205,14 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // the torpedo's target (FTL targeting spec §2), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
-  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false,
+    gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
     if (c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
+    if ((c.kind === 'laserLock' || c.kind === 'laserCharge') && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser
     if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
     else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; }
     else if (c.kind === 'laserCharge') { if (!canCharge(d.tactical, 0)) { result(e, 'missile-in-flight'); continue; } crew.laserCharge = c.held; }
@@ -227,6 +246,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     const freq = e.command.freq;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
+    if (classOf(t, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser to tune
     if (!Number.isInteger(freq) || freq < 0 || freq > 2) { result(e, 'malformed'); continue; }
     if (freq === t.systems[0].freq) { result(e, undefined, 'noop'); continue; }
     t.systems[0].freq = freq; result(e);
@@ -253,10 +273,17 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does. Feel-i (console feel spec §2):
   // the Helm's held `face` turns the nose onto the enemy's lead point instead, unless A/D turns. Feel-ii (spec §1.1): A/D
   // or auto-face held at the Helm clears a held heading; otherwise a held heading turns the nose onto its bearing.
+  // Valkyrn spec §6.2: a held aim turns before the held heading, and when neither A/D nor auto-face is held a valid aim
+  // becomes the held heading. Valkyrn spec §4.4: with the Helm empty, a layout whose Helm holds unattended flies its
+  // throttle and held heading; any other (the Hound's) flies zero axes as before.
   if (helm >= 0) {
     const h = input.held[helm] ?? NO_HELD;
     crew.axes = { turn: helmTurn(d, h), thrust: throttleThrust(d.throttle) };
     if ((Math.sign(h.moveX) || 0) !== 0 || h.face === true) d.holdHeading = -1;
+    else if (heldAim(h) >= 0) d.holdHeading = heldAim(h);
+  } else if (st.layout.helmHoldsUnattended === true) {
+    crew.helm = true;   // stepDuel flies a ship's axes only while its Helm flies (Decision 13); Weapons stays the seat rule
+    crew.axes = { turn: d.tactical.outcome === Outcome.Running && d.holdHeading >= 0 ? headingTurn(d.tactical, 0, d.holdHeading) : 0, thrust: throttleThrust(d.throttle) };
   }
 
   repairPhase(d, input.held);

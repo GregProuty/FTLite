@@ -28,12 +28,12 @@ export interface ConfirmedDuel {
    *  across it. Absent means always live. */
   live?(): boolean;
 }
-interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
+interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
  *  one in flight, which also counts a self-hit (neither a hit nor a loss); never fewer than hits plus losses. */
 export const duelCounters = (t: TacticalState, i: number): Counters => {
   const s = t.systems[i]!, b = t.ships[i]!, ended = Math.max(s.missileHits + s.missilesLost, s.missilesLaunched - (missileOf(t, i) ? 1 : 0));
-  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
+  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, gunHits: s.gunHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
@@ -43,7 +43,8 @@ const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.
  * rose) or to arc range along the firing ship's heading; each increment of `ended` (launched minus in flight) is a
  * missile ending at the missile's previous position (a hit when `missileHits` rose; a loss or a self-hit draws the
  * neutral burst); each
- * contact counter increment is a spark at the ship. An ending and a relaunch in one gap are told apart because both
+ * contact counter increment is a spark at the ship; each gunHits increment is a gun hit at the target (Valkyrn spec §7.3).
+ * An ending and a relaunch in one gap are told apart because both
  * counters rose: the ending is drawn at the old missile's last position.
  */
 export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: readonly (PrevBody | null)[], t: TacticalState): ViewEvent[] {
@@ -74,6 +75,9 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
       if (room >= 0) rose[room]!--;
       out.push({ kind: 'missileEnd', ship: i, cause: hit ? 'ship' : 'expired', target: hit ? target : -1, room, x: at.x, y: at.y } satisfies DuelEvent);
     }
+    // Valkyrn spec §7.3: each gunHits increment is a round that hit the target; the snapshot carries neither the Room nor
+    // a strip, so the event names none (−1, not stripped), at the target's position.
+    if (tgt) for (let k = 0; k < now.gunHits - was.gunHits; k++) out.push({ kind: 'gunHit', ship: target, room: -1, stripped: false, hull: false, level: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
     (['planet', 'asteroid', 'ship'] as const).forEach((kind, k) => {
       for (let n = 0; n < now.contacts[k]! - was.contacts[k]!; n++) out.push({ kind: 'contact', ship: i, body: kind, x: ship.x, y: ship.y });
     });

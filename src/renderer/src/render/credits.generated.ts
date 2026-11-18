@@ -17,6 +17,7 @@ export const CREDITS: readonly string[] = [
   "\"Puny Characters\" by Shade, CC0",
   "\"Sci-fi Sounds\" by Kenney (www.kenney.nl), CC0",
   "'Time and Space' by Scott Buckley, CC-BY 4.0 (creativecommons.org/licenses/by/4.0). www.scottbuckley.com.au",
+  "Valkyrn by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0",
   "",
   "Original art: FTLite project owner"
 ];

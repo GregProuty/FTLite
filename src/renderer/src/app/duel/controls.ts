@@ -7,11 +7,21 @@ import { stationOnline } from '../../sim/stations';
 import { pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 
-export type Seat = 'helm' | 'weapons' | 'science' | 'standing';
+export type Seat = 'helm' | 'weapons' | 'science' | 'flight' | 'standing';
 
-/** Where player pid's character is: seated at Navigation (the Helm), at Weapons, at Science (Sci-1 spec §6.1), or standing. */
+/** Valkyrn spec §5: Navigation and Weapons share one console group (the Flight seat: Helm and Weapons in one). */
+export function flightSeat(d: DuelState): boolean {
+  const g = d.interior.derived.stationGroup[d.nav];
+  return g !== undefined && g >= 0 && g === d.interior.derived.stationGroup[d.weapons];
+}
+
+/** Where player pid's character is: seated at Navigation (the Helm), at Weapons, at both (the Flight seat, Valkyrn spec §5),
+ *  at Science (Sci-1 spec §6.1), or standing. A player the duel does not have (n = 1's player 1) is standing. */
 export function seatOf(d: DuelState, pid: number): Seat {
-  const station = Seated.station[d.interior.crew[pid]!]!;
+  const eid = d.interior.crew[pid];
+  if (eid === undefined) return 'standing';
+  const station = Seated.station[eid]!;
+  if (station >= 0 && (station === d.nav || station === d.weapons) && flightSeat(d)) return 'flight';
   return station === d.nav ? 'helm' : station === d.weapons ? 'weapons' : d.science >= 0 && station === d.science ? 'science' : 'standing';
 }
 

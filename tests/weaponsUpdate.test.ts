@@ -42,8 +42,8 @@ function shotTicks(st: TacticalState, i: number, n: number, input: ShipInput = I
 
 describe('the double laser (weapons update spec §1)', () => {
   it('the classes: the Cutter fires 2 shots, the Hunter 1', () => {
-    expect([CUTTER_CLASS.slots.laser.shots, HUNTER_CLASS.slots.laser.shots]).toEqual([2, 1]);
-    expect(CUTTER_CLASS.slots.laser.burstGapTicks).toBe(12);
+    expect([CUTTER_CLASS.slots.laser!.shots, HUNTER_CLASS.slots.laser!.shots]).toEqual([2, 1]);
+    expect(CUTTER_CLASS.slots.laser!.burstGapTicks).toBe(12);
   });
   it('a crew release fires two laser events, LASER_BURST_GAP_TICKS apart, both hits, both counted', () => {
     const st = facing(), s = st.systems[0];
@@ -97,7 +97,7 @@ describe('the double laser (weapons update spec §1)', () => {
     tick(st, 0, press);
     for (let k = 2; k < LASER_BURST_GAP_TICKS; k++) { tick(st, 0); expect(st.systems[0].laserCharge, `tick ${k}`).toBe(0); }
     expect(tick(st, 0)).toHaveLength(1);                                // the second shot, then that tick's clock charges
-    expect(st.systems[0].laserCharge).toBe(CUTTER_CLASS.slots.laser.chargeRate[0]);
+    expect(st.systems[0].laserCharge).toBe(CUTTER_CLASS.slots.laser!.chargeRate[0]);
   });
   it('the Hunter fires one shot a release', () => {
     const st = facing();

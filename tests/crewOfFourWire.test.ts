@@ -58,7 +58,7 @@ describe('the duel snapshot at n (spec §4.2)', () => {
     const d = crewDuel(3), two = createDuel(DUEL_LAYOUT, 5);
     try {
       const snap = saveDuelSnapshot(d, DIGEST), withCount = (n: number) => { const s = structuredClone(snap); s.header.playerCount = n; return s; };
-      for (const n of [1, 5, 2.5]) expect(() => validateDuelSnapshot(DUEL_LAYOUT, withCount(n), DIGEST), `playerCount ${n}`).toThrow(/player count is invalid/);
+      for (const n of [0, 5, 2.5]) expect(() => validateDuelSnapshot(DUEL_LAYOUT, withCount(n), DIGEST), `playerCount ${n}`).toThrow(/player count is invalid/);   // Valkyrn-i: a local crew of 1 is legal
       for (const n of [2, 4]) expect(() => validateDuelSnapshot(DUEL_LAYOUT, withCount(n), DIGEST), `playerCount ${n} on a crew of 3`).toThrow();
       const space = duelSeedFacts(5).spaceLength, interiorAt = 1 + space + 3 + 3 + 4 + 2;
       for (const k of [5, 9]) { const s = structuredClone(snap); s.values[interiorAt + k] = 2; expect(() => validateDuelSnapshot(DUEL_LAYOUT, rehash(s), DIGEST), `interior[${k}] = 2`).toThrow(); }

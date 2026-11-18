@@ -16,8 +16,9 @@ export const BAIT_WINDOW_TICKS = 300;
 /** A crew manoeuvre needs the enemy within this distance (u). */
 export const BAIT_RANGE = 900;
 
-/** `downed`: the crew ship only, every character down at once (duel-health spec §1.5, owner 2026-11-17; Sci-2: all n). */
-export type TerminalCause = 'planet' | 'asteroid' | 'ship' | 'laser' | 'missile' | 'downed';
+/** `downed`: the crew ship only, every character down at once (duel-health spec §1.5, owner 2026-11-17; Sci-2: all n).
+ *  `gun`: a round's hull hit (Valkyrn spec §7.3). */
+export type TerminalCause = 'planet' | 'asteroid' | 'ship' | 'laser' | 'gun' | 'missile' | 'downed';
 export type MissileLoss = 'planet' | 'asteroid' | 'edge' | 'expired' | 'own' | 'missile';
 
 export interface ShipTelemetry {
@@ -97,12 +98,13 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   const now = counters(d), [crew, enemy] = tac.ships;
 
   // Weapons and missiles, from the tick's events.
-  const laserOn = [false, false], missileOn = [false, false];
+  const laserOn = [false, false], missileOn = [false, false], gunOn = [false, false];
   for (const e of tac.events) {
-    if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's events are not weapons
+    if (e.kind === 'gunHit') { if (e.hull) gunOn[e.ship] = true; continue; }   // Valkyrn spec §7.3: a round's hull hit (the hit that took a hull point, not wear)
+    if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's and the gun's other events are not these weapons
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
-      if (tac.systems[e.ship]!.laserBurst > 0 || classOf(tac, e.ship).slots.laser.shots === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release
+      if (tac.systems[e.ship]!.laserBurst > 0 || classOf(tac, e.ship).slots.laser?.shots === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release; only a laser class emits one
       if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[targetOf(tac, e.ship)] = true; } else s.laserMisses++;
     } else if (e.cause === 'ship') {
       missileOn[e.target] = true;
@@ -170,6 +172,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     if (is[1]! > was[1]!) c.push('asteroid');
     if (is[2]! > was[2]!) c.push('ship');
     if (laserOn[i]) c.push('laser');
+    if (gunOn[i]) c.push('gun');
     if (missileOn[i]) c.push('missile');
     if (downed) c.push('downed');
     t.terminal[i as 0 | 1] = c;

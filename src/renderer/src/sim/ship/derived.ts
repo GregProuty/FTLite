@@ -81,6 +81,12 @@ export function deriveLayout(layout: ShipLayout): Derived {
   const magazineTile = layout.magazine ? layout.magazine[1] * width + layout.magazine[0] : -1, magazineRoom = magazineTile >= 0 ? roomOfTile[magazineTile]! : -1;
   if (magazineTile >= 0) codes.push(magazineTile);   // only when present, so a layout without one keeps its hash (spec Coop-ii amendment D4)
   if (groupStations.length) { codes.push(-1, groupStations.length); for (const g of groupStations) codes.push(g.length, ...g); }   // console groups only when present, so a layout without them keeps its hash (spec Demo-x-a section 1)
+  // Valkyrn spec §3.1: the crew class, the fixed crew and the unattended Helm change the duel, so they join the identity,
+  // only when any is present, so a layout without them keeps its hash; `hull` is view data and stays out.
+  if (layout.shipClass !== undefined || layout.crew !== undefined || layout.helmHoldsUnattended !== undefined) {
+    codes.push(-2, layout.crew ?? 0, layout.helmHoldsUnattended === undefined ? -1 : layout.helmHoldsUnattended ? 1 : 0, layout.shipClass?.length ?? -1);
+    if (layout.shipClass !== undefined) for (let i = 0; i < layout.shipClass.length; i++) codes.push(layout.shipClass.charCodeAt(i));
+  }
   const idCodes: number[] = []; for (let i = 0; i < layout.id.length; i++) idCodes.push(layout.id.charCodeAt(i));
   // Stability bound (spec §5): k·dt·Σ incident conductance / V ≤ 1/2 for every room, at maximum passage.
   const maxCond = new Float64Array(layout.rooms.length);

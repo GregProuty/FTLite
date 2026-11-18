@@ -62,6 +62,13 @@ export interface ReadoutInput {
 /** The laser's CHARGE row (OFFLINE, FROZEN, HOLD n.n or a percentage, with its bar): the readout's and the Weapons station's. */
 export function chargeRow(d: DuelState): ReadoutRow {
   const t = d.tactical, crewSys = t.systems[0], flying = missileOf(t, 0) !== null, full = crewSys.laserCharge >= LASER_CHARGE_UNITS;
+  const gun = classOf(t, 0).slots.gun;
+  if (classOf(t, 0).slots.laser === null && gun) {   // Valkyrn spec §7.4: the gun's heat in the laser's place
+    if (crewSys.rooms[Room.Weapons] >= 2) return em({ ...row('HEAT', 'OFFLINE', DIM, WARN), bar: { fill: 0, colour: AMBER } }, 'warn');
+    const fill = Math.max(0, Math.min(1, crewSys.gunHeat / gun.heatMax));
+    return crewSys.gunLocked === true ? em({ ...row('HEAT', 'OVERHEAT', DIM, WARN), bar: { fill, colour: WARN } }, 'warn')
+      : em({ ...row('HEAT', `${Math.floor(fill * 100)}%`, DIM, TEXT), bar: { fill, colour: AMBER } }, null);
+  }
   if (crewSys.rooms[Room.Weapons] >= 2) return em({ ...row('CHARGE', 'OFFLINE', DIM, WARN), bar: { fill: 0, colour: AMBER } }, 'warn');   // Weapons 2: the laser is off
   // FTL targeting spec §2: a full crew laser stays full until it fires, so it reads READY (no vent countdown).
   const value = flying ? 'FROZEN' : full ? 'READY' : `${Math.floor((crewSys.laserCharge / LASER_CHARGE_UNITS) * 100)}%`;
@@ -84,7 +91,7 @@ export function crewStatus(d: DuelState, pid: number): CrewStatus {
   if (Life.state[d.interior.crew[pid]!] === LifeState.Downed) return 'DOWNED';
   if (!d.present[pid]) return 'AWAY';
   const s = seatOf(d, pid);
-  if (s !== 'standing') return s === 'helm' ? 'HELM' : s === 'weapons' ? 'WEAPONS' : 'SCIENCE';
+  if (s !== 'standing') return s === 'helm' || s === 'flight' ? 'HELM' : s === 'weapons' ? 'WEAPONS' : 'SCIENCE';   // Valkyrn spec §5: Flight reads HELM
   const r = repairInReach(d, pid);
   if (r < 0) return 'ON FOOT';
   const p = d.points.find((q) => q.tacticalRoom === r);

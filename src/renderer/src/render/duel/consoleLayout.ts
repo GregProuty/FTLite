@@ -16,6 +16,14 @@ export function weaponCard(weapon: 'laser' | 'torpedo'): { x: number; y: number;
   const x0 = STATION.x + 8, y = stationTop('weapons') + 6, w = 138, h = 104, hitH = 72, x = weapon === 'laser' ? x0 : x0 + w + 8;
   return { x, y, w, h, hitH, anchor: { x: x + w, y: y + hitH / 2 } };
 }
+/** Valkyrn spec §5: the Flight seat's weapon block, beside the Helm block at the bottom: two cards (GUN or the laser fit's
+ *  LASER, then TORPEDO), the reason line and, with the laser fit, the frequency row. */
+export const FLIGHT = { x: STATION.x + STATION.w + EDGE, y: INTERNAL_H - EDGE - 166, w: 300, h: 166 } as const;
+/** One Flight card, as weaponCard: `hit` is the clickable part, `anchor` where the targeting line starts. */
+export function flightCard(slot: 0 | 1): { x: number; y: number; w: number; h: number; hitH: number; anchor: { x: number; y: number } } {
+  const w = 138, x = FLIGHT.x + 8 + slot * (w + 8), y = FLIGHT.y + 6, h = 104, hitH = 72;
+  return { x, y, w, h, hitH, anchor: { x: x + w, y: y + hitH / 2 } };
+}
 export const SIDE = { x: INTERNAL_W - EDGE - 132, y: 42, w: 132 } as const;
 /** The side column panel's height (SideColumn). */
 export const SIDE_H = 96;

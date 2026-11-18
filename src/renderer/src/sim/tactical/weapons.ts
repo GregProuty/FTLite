@@ -3,6 +3,7 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
+import { tickGun } from './gun';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
@@ -21,18 +22,24 @@ export interface ShipInput {
   laserCharge: boolean | null;
   /** `missileLaunch`. */
   missileLaunch: boolean;
+  /** Valkyrn spec §7.1: the gun's trigger, held at the Weapons station by its attendant (the duel step computes it from
+   *  the held input; every other input sets false). Read only by a class with a gun. */
+  gunHeld: boolean;
   /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
    *  computes it for the crew; every other input sets true. */
   scanner: boolean;
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
 
-/** Whether ship i's laser is fully charged. */
-export function laserFull(state: TacticalState, i: number): boolean { return state.systems[i]!.laserCharge >= classOf(state, i).slots.laser.chargeUnits; }
+/** Whether ship i's laser is fully charged; never for a class without a laser (Valkyrn spec §6.1). */
+export function laserFull(state: TacticalState, i: number): boolean {
+  const laser = classOf(state, i).slots.laser;
+  return laser !== null && state.systems[i]!.laserCharge >= laser.chargeUnits;
+}
 
 /** Admission (spec §7 table; the duel step uses these to give reject reasons): laserCharge is accepted only with no missile in flight. */
 export function canCharge(state: TacticalState, i: number): boolean { return missileOf(state, i) === null; }
@@ -68,7 +75,7 @@ export function laserFrozen(state: TacticalState, i: number, input: ShipInput): 
 /** Whether ship i's laser would hit ship j now: j an active slot inside the ±60° arc and range, with line of sight (spec §7a). */
 export function laserEligible(state: TacticalState, i: number, j: number): boolean {
   const a = state.ships[i]!, b = state.ships[j], laser = classOf(state, i).slots.laser;
-  if (!b || !b.active || j === i) return false;
+  if (!laser || !b || !b.active || j === i) return false;   // Valkyrn spec §6.1: no laser, no shot
   const dx = b.x - a.x, dy = b.y - a.y;
   if (dx * dx + dy * dy > laser.range * laser.range) return false;
   return inArc(a.heading, dx, dy, laser.arcCos) && lineOfSight(state, a.x, a.y, b.x, b.y);
@@ -77,6 +84,8 @@ export function laserEligible(state: TacticalState, i: number, j: number): boole
 /** One laser shot of ship i at its target and lock room as they stand now (spec §7a; weapons update spec §1: every shot of a
  *  burst re-checks eligibility, strips shields or strikes the room, counts and pushes its own `laser` event). */
 function shoot(state: TacticalState, i: number): void {
+  const laser = classOf(state, i).slots.laser;
+  if (!laser) return;
   const a = state.ships[i]!, as = state.systems[i]!, j = as.target, b = state.ships[j] ?? a, bs = state.systems[j], hit = laserEligible(state, i, j);
   let stripped = false, room = -1;
   as.shots++;
@@ -84,12 +93,12 @@ function shoot(state: TacticalState, i: number): void {
     as.laserHits++;
     if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
       const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
-      bs.shields -= n; bs.shieldClock = 0; as.layersStripped += n; stripped = true;
+      bs.shields -= n; bs.shieldClock = 0; bs.gunWear = 0; as.layersStripped += n; stripped = true;   // Valkyrn spec §7.2: any strip zeroes the gun wear
     }
     else {
       room = as.lock;
       if (bs.rooms[as.lock]! < 2) bs.rooms[as.lock as 0 | 1 | 2]++;
-      bs.hull = Math.max(0, bs.hull - classOf(state, i).slots.laser.hull);
+      bs.hull = Math.max(0, bs.hull - laser.hull);
     }
   }
   state.events.push({ kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
@@ -98,6 +107,7 @@ function shoot(state: TacticalState, i: number): void {
 /** A full charge's release: the first shot now, the rest of the class's burst queued a burst gap apart. */
 function fireLaser(state: TacticalState, i: number): void {
   const as = state.systems[i]!, laser = classOf(state, i).slots.laser;
+  if (!laser) return;
   shoot(state, i);
   as.laserCharge = 0; as.laserHold = 0;
   as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
@@ -111,7 +121,7 @@ function stepBurst(state: TacticalState, i: number): void {
   if (laserOffline(state, i)) { s.laserBurst = 0; s.laserBurstClock = 0; return; }
   if (--s.laserBurstClock > 0) return;
   shoot(state, i);
-  s.laserBurst--; s.laserBurstClock = s.laserBurst > 0 ? classOf(state, i).slots.laser.burstGapTicks : 0;
+  s.laserBurst--; s.laserBurstClock = s.laserBurst > 0 ? classOf(state, i).slots.laser?.burstGapTicks ?? 0 : 0;
 }
 
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
@@ -119,16 +129,17 @@ function stepBurst(state: TacticalState, i: number): void {
  *  the torpedo's; a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
  *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
-  const s = state.systems[i]!, crew = i === CREW_SLOT;
-  if (input.weapons && input.laserLock !== null) {   // first: a burst shot reads this tick's lock
+  const s = state.systems[i]!, crew = i === CREW_SLOT, armed = classOf(state, i).slots.laser !== null;   // Valkyrn spec §6.1: a null laser skips lock, charge and auto-fire
+  if (armed && input.weapons && input.laserLock !== null) {   // first: a burst shot reads this tick's lock
     if (validLock(input.laserLock)) { s.lock = input.laserLock; if (crew) s.laserTargeted = true; }
     else if (input.laserLock === -1 && crew) s.laserTargeted = false;
   }
   if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) s.torpLock = input.torpLock;
   stepBurst(state, i);
+  tickGun(state, i, input);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
-  if (input.laserCharge !== null && canCharge(state, i)) {
+  if (armed && input.laserCharge !== null && canCharge(state, i)) {
     if (crew) { if (input.laserCharge && s.laserBurst === 0 && laserFull(state, i)) fireLaser(state, i); }   // a single press
     else if (input.laserCharge) s.fireHeld = true;
     else if (s.fireHeld) {
@@ -137,7 +148,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
       else { s.laserCharge = 0; s.laserHold = 0; }
     }
   }
-  if (crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && laserEligible(state, i, s.target)) fireLaser(state, i);   // auto-fire
+  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && laserEligible(state, i, s.target)) fireLaser(state, i);   // auto-fire
   if (input.missileLaunch && canLaunch(state, i)) {
     launchMissile(state, i);
     s.fireHeld = false;
@@ -149,7 +160,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
 export function tickWeapons(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, c = classOf(state, i), laser = c.slots.laser;
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; s.laserBurst = 0; s.laserBurstClock = 0; }   // off: every tick, frozen or not
-  else if (s.laserBurst === 0 && !laserFrozen(state, i, input)) {   // no charging while a burst shot is pending
+  else if (laser !== null && s.laserBurst === 0 && !laserFrozen(state, i, input)) {   // no charging while a burst shot is pending, nor without a laser
     // FTL targeting spec §2: the crew's laser charges by itself, with no hold, and stays full (no vent) until it fires.
     if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!); }
     else if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);

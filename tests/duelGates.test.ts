@@ -6,6 +6,7 @@ import { endedFromPlanet } from '../src/renderer/src/sim/duel/telemetry';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { TICK_HZ } from '../src/renderer/src/sim/tuning';
 import { CAP_TICKS, gateSummary, GATE_SEEDS, median, PLANET_END_MIN_TICKS, runDuel, telemetryLine, type DuelRun } from './helpers/scriptedDuel';
+import { runValkyrnDuel, valkyrnGate, valkyrnLine, type ValkyrnRun } from './helpers/valkyrnGate';
 
 const runs = new Map<number, DuelRun>();
 
@@ -36,5 +37,30 @@ describe('the H-0 telemetry gates: scripted pair against the hunter, seeds 1 to 
     });
     console.log(lines.join('\n'));
     expect(lines).toHaveLength(GATE_SEEDS.length);
+  }, 120_000);
+});
+
+// The Valkyrn gate (Valkyrn spec §10): the scripted pilot (sim/duel/scriptedPilot.ts), a crew of one, against the same
+// hunter over the same seeds and cap. Tuning tool: `npx tsx scripts/valkyrn-telemetry.ts` (and its `sweep`); the
+// numbers are in the spec's §12.
+const valkyrnRuns = new Map<number, ValkyrnRun>();
+
+describe('the Valkyrn gate: the scripted pilot against the hunter, seeds 1 to 10', () => {
+  for (const seed of GATE_SEEDS) it(`seed ${seed}: ends before the cap, the pilot fires the gun and a torpedo, no planet-contact end under 30 s`, () => {
+    const r = runValkyrnDuel(seed), t = r.telemetry;
+    valkyrnRuns.set(seed, r);
+    expect(t.outcome, valkyrnLine(r)).not.toBe(Outcome.Running);
+    expect(t.ticks).toBeLessThan(CAP_TICKS);
+    expect(r.gunShots, valkyrnLine(r)).toBeGreaterThanOrEqual(1);
+    expect(t.ships[0].missilesLaunched, valkyrnLine(r)).toBeGreaterThanOrEqual(1);
+    expect(endedFromPlanet(t) && t.ticks < PLANET_END_MIN_TICKS, valkyrnLine(r)).toBe(false);
+  }, 60_000);
+  it('the median Valkyrn round lasts 3 to 5 minutes, and the Hunter wins at least one of ten', () => {
+    expect([...valkyrnRuns.keys()].sort((a, b) => a - b), 'all ten per-seed tests must have run before the aggregate gate').toEqual([...GATE_SEEDS]);
+    const all = GATE_SEEDS.map((seed) => valkyrnRuns.get(seed)!), g = valkyrnGate(all);
+    console.log(`${all.map(valkyrnLine).join('\n')}\n${g.summary}`);
+    expect(g.medianS, g.summary).toBeGreaterThanOrEqual(180);
+    expect(g.medianS, g.summary).toBeLessThanOrEqual(300);
+    expect(g.hunterWins, g.summary).toBeGreaterThanOrEqual(1);
   }, 120_000);
 });

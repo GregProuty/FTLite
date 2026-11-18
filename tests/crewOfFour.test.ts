@@ -49,7 +49,7 @@ describe('createDuel with a crew (spec §4.1)', () => {
     } finally { disposeDuel(d); }
   });
   it('throws for a crew outside 2..4, a crew above the spawn count, or a Helm player outside the crew', () => {
-    for (const crew of [1, 5, 2.5]) expect(() => createDuel(HOUND, 5, 0, crew), `crew ${crew}`).toThrow(/invalid duel crew/);
+    for (const crew of [0, 5, 2.5]) expect(() => createDuel(HOUND, 5, 0, crew), `crew ${crew}`).toThrow(/invalid duel crew/);   // Valkyrn-i: a local crew of 1 is legal
     const twoSpawns = { ...CUTTER, spawns: CUTTER.spawns.slice(0, 2) };   // a parsed layout always has 4 (Decision 4)
     expect(() => createDuel(twoSpawns, 5, 0, 3)).toThrow(/spawns/);
     expect(() => createDuel(HOUND, 5, 3, 3)).toThrow(/helm player/);

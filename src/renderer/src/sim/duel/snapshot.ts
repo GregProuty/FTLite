@@ -16,20 +16,21 @@ import type { ShipLayout } from '../ship/schema';
 import { validateCanonicalValues } from '../snapshotValidation';
 import { validateMap } from '../tactical/map';
 import { createTacticalState, Outcome, type TacticalState } from '../tactical/state';
-import { DUEL_CLASSES } from '../tactical/defs';
+import { DUEL_CLASSES, SHIP_CLASSES, ShipClass } from '../tactical/defs';
 import { TACTICAL_MODULES, hashTactical, tacticalLength, validateTacticalValues } from '../tactical/hash';
 import { REPAIR_UNITS } from './tuning';
 import { SIM_VERSION } from '../tuning';
 import { flattenDuel, hashDuel, mapHash } from './hash';
 import { unflattenDuelModules } from './modules';
-import { createDuel, disposeDuel, DUEL_CREW_MAX, DUEL_CREW_MIN, type DuelState } from './state';
+import { createDuel, disposeDuel, DUEL_CREW_MAX, LOCAL_CREW_MIN, type DuelState } from './state';
 import { validHoldHeading, validThrottle } from './throttle';
 
 export const DUEL_SNAPSHOT_FORMAT = 1;
 export interface DuelSnapshotHeader {
   snapshotFormat: typeof DUEL_SNAPSHOT_FORMAT; simVersion: number; contentDigest: string;
-  /** The encounter tick (the interior and the tactical tick, which are always equal) and the player count, the crew size n in 2..4 (Sci-2 spec §4.2). */
-  tick: number; playerCount: number;
+  /** The encounter tick (the interior and the tactical tick, which are always equal), the player count (the crew size n,
+   *  1..4 locally: Sci-2 spec §4.2, Valkyrn spec §4.4) and the crew slot's class (Valkyrn spec §6.1; systems.0.cls equals it). */
+  tick: number; playerCount: number; crewClass: number;
   layoutId: string; layoutHash: string; seed: number;
   /** hashF64 of the map's canonical values (mapHash), recomputed from the seed on restore. */
   mapHash: string;
@@ -38,7 +39,7 @@ export interface DuelSnapshotHeader {
 }
 export interface DuelSnapshot { header: DuelSnapshotHeader; values: number[] }
 
-const HEADER_KEYS = ['snapshotFormat', 'simVersion', 'contentDigest', 'tick', 'playerCount', 'layoutId', 'layoutHash', 'seed', 'mapHash', 'hash'];
+const HEADER_KEYS = ['snapshotFormat', 'simVersion', 'contentDigest', 'tick', 'playerCount', 'crewClass', 'layoutId', 'layoutHash', 'seed', 'mapHash', 'hash'];
 
 /** The seed cache's and the layout cache's bounds (H-2 spec §5). */
 export const SEED_CACHE_MAX = 8;
@@ -110,7 +111,7 @@ export function duelRoundOf(snapshot: DuelSnapshot): DuelRoundValues {
 
 export function saveDuelSnapshot(d: DuelState, contentDigest: string): DuelSnapshot {
   const values = Array.from(flattenDuel(d));
-  return { header: { snapshotFormat: DUEL_SNAPSHOT_FORMAT, simVersion: SIM_VERSION, contentDigest, tick: d.interior.tick, playerCount: d.interior.playerCount,
+  return { header: { snapshotFormat: DUEL_SNAPSHOT_FORMAT, simVersion: SIM_VERSION, contentDigest, tick: d.interior.tick, playerCount: d.interior.playerCount, crewClass: d.crewClass,
     layoutId: d.interior.layout.id, layoutHash: d.interior.derived.layoutHash, seed: d.tactical.seed, mapHash: mapHash(d.tactical.map), hash: hashF64(Float64Array.from(values)) }, values };
 }
 
@@ -127,9 +128,13 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   if (h.contentDigest !== contentDigest) throw new Error('duel snapshot content digest does not match');
   const lay = layoutEntry(layout), derived = lay.derived;
   if (h.layoutId !== layout.id || h.layoutHash !== derived.layoutHash) throw new Error('duel snapshot layout does not match');
-  // Sci-2 spec §4.2: the crew size, an integer in 2..4 and no more than the layout's spawns; everything after derives from it.
+  // Sci-2 spec §4.2: the crew size, an integer in 1..4 (Valkyrn spec §4.4: local; online refuses 1 in its init and
+  // checkpoint) and no more than the layout's spawns; everything after derives from it.
   const n = h.playerCount;
-  if (typeof n !== 'number' || !Number.isInteger(n) || n < DUEL_CREW_MIN || n > DUEL_CREW_MAX || n > layout.spawns.length) throw new Error('duel snapshot player count is invalid');
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < LOCAL_CREW_MIN || n > DUEL_CREW_MAX || n > layout.spawns.length) throw new Error('duel snapshot player count is invalid');
+  // Valkyrn spec §6.1: the crew slot's class, a crew class of SHIP_CLASSES; systems.0.cls must equal it (the slot identity below).
+  const crewClass = h.crewClass;
+  if (typeof crewClass !== 'number' || !Number.isInteger(crewClass) || SHIP_CLASSES[crewClass]?.ai !== 'crew') throw new Error('duel snapshot crew class is invalid');
   const crew = crewEntry(lay, layout, n);
   if (typeof h.tick !== 'number' || !Number.isSafeInteger(h.tick) || h.tick < 0) throw new Error('duel snapshot tick is invalid');
   if (typeof h.seed !== 'number' || !Number.isInteger(h.seed) || h.seed < 0 || h.seed > 0xffffffff) throw new Error('duel snapshot seed is invalid');
@@ -149,8 +154,8 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // The duel's slot identity: exactly its two slots, both active, the Cutter and the hunter, each locked on the other.
   const slotValue = (name: string): number => values[seed.fieldOffsets.get(name)!]!;
   if (slotValue('ships.length') !== DUEL_CLASSES.length
-    || DUEL_CLASSES.some((cls, i) => slotValue(`ships.${i}.active`) !== 1 || slotValue(`systems.${i}.cls`) !== cls || slotValue(`systems.${i}.target`) !== 1 - i))
-    throw new Error('duel snapshot duel slot identity does not match: two active slots, the Cutter and the hunter, each locked on the other');
+    || [crewClass, ShipClass.Hunter].some((cls, i) => slotValue(`ships.${i}.active`) !== 1 || slotValue(`systems.${i}.cls`) !== cls || slotValue(`systems.${i}.target`) !== 1 - i))
+    throw new Error('duel snapshot duel slot identity does not match: two active slots, the header\'s crew class and the hunter, each locked on the other');
   for (let k = 1 + space; k < roundAt; k++) {
     const v = values[k]!, presence = k < repairAt;
     if (presence ? v !== 0 && v !== 1 : !Number.isInteger(v) || v < 0 || v >= REPAIR_UNITS) throw new Error(`duel snapshot ${presence ? 'presence' : 'repair'} value ${v} is out of range`);
@@ -180,7 +185,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   const interiorTick = values[interiorAt + crew.tickOffset];
   if (values[1] !== h.tick || interiorTick !== h.tick) throw new Error('duel snapshot interior and tactical ticks differ from the header');
   if (hashF64(Float64Array.from(values)) !== h.hash) throw new Error('duel snapshot hash does not match its values');
-  return { header: { snapshotFormat: DUEL_SNAPSHOT_FORMAT, simVersion: SIM_VERSION, contentDigest, tick: h.tick, playerCount: n,
+  return { header: { snapshotFormat: DUEL_SNAPSHOT_FORMAT, simVersion: SIM_VERSION, contentDigest, tick: h.tick, playerCount: n, crewClass,
     layoutId: layout.id, layoutHash: derived.layoutHash, seed: h.seed, mapHash: h.mapHash, hash: h.hash }, values };
 }
 
@@ -195,7 +200,7 @@ function writeBack(d: DuelState, snap: DuelSnapshot): void {
  *  ticks and hashDuel checked against the header. Releases the duel on any failure. */
 export function loadDuelSnapshot(layout: ShipLayout, value: unknown, contentDigest: string): DuelState {
   const snap = validateDuelSnapshot(layout, value, contentDigest);
-  const d = createDuel(layout, snap.header.seed, 0, snap.header.playerCount);   // the round module's helmPlayer is written back
+  const d = createDuel(layout, snap.header.seed, 0, snap.header.playerCount, snap.header.crewClass);   // the round module's helmPlayer is written back
   try { writeBack(d, snap); return d; } catch (error) { disposeDuel(d); throw error; }
 }
 
@@ -208,8 +213,8 @@ export function loadDuelSnapshot(layout: ShipLayout, value: unknown, contentDige
 export function restoreDuelSnapshot(d: DuelState, snapshot: DuelSnapshot, contentDigest: string): void {
   const h = snapshot.header;
   if (h.contentDigest !== contentDigest || h.simVersion !== SIM_VERSION) throw new Error('duel snapshot versions do not match');
-  if (h.layoutId !== d.interior.layout.id || h.layoutHash !== d.interior.derived.layoutHash || h.seed !== d.tactical.seed || h.playerCount !== d.interior.playerCount)
-    throw new Error('duel snapshot is for another layout, seed or crew: load it instead');
+  if (h.layoutId !== d.interior.layout.id || h.layoutHash !== d.interior.derived.layoutHash || h.seed !== d.tactical.seed || h.playerCount !== d.interior.playerCount || h.crewClass !== d.crewClass)
+    throw new Error('duel snapshot is for another layout, seed, crew or class: load it instead');
   writeBack(d, snapshot);
   d.events = []; d.tactical.events = [];   // not snapshotted: a restore holds no per-tick events, as a fresh load
 }

@@ -36,7 +36,7 @@ export function passiveInput(d: DuelState): DuelInput {
 }
 
 /** Throws unless every scripted command of the tick was applied, so no golden pins a run whose script is rejected. */
-function requireApplied(seed: number, d: DuelState, input: DuelInput, results: ReturnType<typeof stepDuelTick>): void {
+export function requireApplied(seed: number, d: DuelState, input: DuelInput, results: ReturnType<typeof stepDuelTick>): void {
   for (const r of results) {
     if (r.status !== 'applied') {
       const env = input.commands.find((e) => e.id.player === r.id.player && e.id.sequence === r.id.sequence);
