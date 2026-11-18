@@ -27,9 +27,13 @@ and torpedo, set by the keyboard, the console room buttons or the enemy window's
 
 - **Per-weapon target room.** `systems.lock` stays the laser's target; a new `torpLock` is the torpedo's. A landed
   torpedo strikes `torpLock`. Both are −1 for "no target" (lock keeps its current default for the Hunter).
-- **Laser auto-fire (FTL):** while the laser has a target, it charges by itself (no hold) and fires its burst as soon
-  as it is full and `laserEligible`; while full and not eligible it holds (no vent while targeted) and fires the moment
-  the enemy comes into arc and range. It keeps its target and re-fires every charge until cleared, as FTL's laser on
+- **Always charging (owner, 2026-11-17: "the lasers/ torpedos should automatically charge, and be ready to fire
+  without charging first"):** the laser charges by itself whenever it can (Weapons below level 2, console manned),
+  with or without a target and with no hold; once full it stays full (no vent, `LASER_HOLD_TICKS` retired for the
+  crew) until it fires. Every round starts with the laser full and the magazine full, so the first shot is ready
+  immediately. Space / FIRE becomes a single press that fires a full laser (no hold-to-charge).
+- **Laser auto-fire (FTL):** while the laser has a target, it fires its burst as soon as it is full and
+  `laserEligible`; while full and not eligible it waits and fires the moment the enemy comes into arc and range. It keeps its target and re-fires every charge until cleared, as FTL's laser on
   autofire does.
 - **Torpedo auto-launch:** with a target it launches once the enemy is in range (360) and a torpedo is in the
   magazine and none is in flight, then clears `torpLock` (a torpedo shot is single, as FTL's missiles stop after one
