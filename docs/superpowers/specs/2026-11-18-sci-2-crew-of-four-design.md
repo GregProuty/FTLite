@@ -1,6 +1,6 @@
 # Sci-2: a crew of two, three or four online, and the three-player playtest (design)
 
-Date: 2026-11-18. Status: design, owner-approved in brainstorming. Builds on Sci-1 (`2026-11-17-science-scans-design.md`, merged bf6b7e32, SIM_VERSION 47), start aboard (`2026-11-17-start-aboard-design.md`) and the networked duel (`2026-11-16-helm-h2-networked-duel-design.md`).
+Date: 2026-11-18. Status: design, owner-approved in brainstorming. Builds on Sci-1 (`2026-11-17-science-scans-design.md`, merged bf6b7e32; master is now at SIM_VERSION 51 after Feel-ii), start aboard (`2026-11-17-start-aboard-design.md`) and the networked duel (`2026-11-16-helm-h2-networked-duel-design.md`).
 
 ## 1. Goal
 
@@ -10,7 +10,7 @@ Let a duel be played online by two, three or four people, so the owner can run a
 
 1. A duel room holds **2, 3 or 4** players; the host picks the crew size.
 2. A fourth player gets an **Engineering console** in a separate feature (**Eng-1**, designed next). Until then the fourth player works on foot: repairs, fires, revives, and may take any free console.
-3. The host may **start with empty seats**; an empty seat's character stands idle aboard. A late joiner takes over an empty seat (Part C, §8).
+3. The host may **start with empty seats**; an empty seat's character stands idle aboard. Late join (Part C, §8) is out of scope: the owner chose on 2026-11-18 to build Sci-2 without it, so a seat empty at Start stays empty for that session.
 4. **Single player keeps two characters** (Tab switches), unchanged.
 5. The scripted bots and the headless gates stay two-player.
 
@@ -20,7 +20,7 @@ The duel has a **crew size** `n` ∈ {2, 3, 4}, fixed for the run. **Every value
 
 **Two-player runs are byte-identical**: at n = 2 every widened value has today's length, names and order.
 
-## 4. Part A: the sim, the wire and the network (SIM_VERSION 47 → 48)
+## 4. Part A: the sim, the wire and the network (SIM_VERSION 51 → 52)
 
 ### 4.1 Sim (`src/renderer/src/sim/duel/`)
 
@@ -61,7 +61,7 @@ The duel has a **crew size** `n` ∈ {2, 3, 4}, fixed for the run. **Every value
 
 ### 4.6 Version
 
-`SIM_VERSION` 47 → 48 as a version-only step (the snapshot header, checkpoint and wire schemas widen, so old and new builds must not pair). At n = 2 the field list is unchanged, so no MIGRATIONS entry is needed unless the duel oracle reports a renamed or added field, in which case the plan adds `MIGRATIONS[47]` as the oracle requires. Record baselines at 47, bump, prove with the duel oracle and canonical trace that every recorded run is unchanged, bless at 48.
+`SIM_VERSION` 51 → 52 as a version-only step (the snapshot header, checkpoint and wire schemas widen, so old and new builds must not pair). At n = 2 the field list is unchanged, so no MIGRATIONS entry is needed unless the duel oracle reports a renamed or added field, in which case the plan adds `MIGRATIONS[51]` as the oracle requires. Record baselines at 51, bump, prove with the duel oracle and canonical trace that every recorded run is unchanged, bless at 52.
 
 ## 5. Part B: what each player sees
 
@@ -105,12 +105,13 @@ New `docs/playtest-duel.md`. Sections: setup (three computers, the build, Host w
 - Today a **new** join is refused once the room is active (`services/signalling/src/room/auth.ts:17`, `invalid-state` unless `phase === 'lobby'`); a reconnect with a seat token works in any live phase.
 - Part C lets a new join take an **unclaimed** seat while the room is `active`: the service assigns the lowest unclaimed seat and refuses when every seat is claimed; on attach, the seat's away steward is retired and the joiner's client sends `presence true` (the existing path, `onlineDuel.ts:171`; `duelProducers.ts:91,117-119`); the joiner syncs from a snapshot as a reconnecting player does.
 - It changes the deployed signalling service, so it is built only after the owner approves a redeploy. Parts A and B do not depend on it.
+- **Owner, 2026-11-18: not built in Sci-2.** The plan covers Parts A and B only.
 
 ## 9. Tests
 
 - **Sim**: `createDuel` with crew 3 and 4 (spawns 13..16,7, all standing, `present` length n; crew 5 and crew above the spawn count throw); presence for players 2 and 3; a third player sits at Science, a fourth at a free console; the crew-down loss at n = 3 (all three downed, one of them away) and not with one standing; health loops reach player 3.
 - **Snapshot/checkpoint/wire**: round trip and validation at n = 3, 4; a header whose playerCount disagrees with the interior refused; `duelRoundOf` at n = 3; checkpoint schema at n = 3; the codec admits players 0..3 and the summary/round tuples are n long.
-- **Two-player proof**: duel oracle and canonical trace identical 47 → 48; goldens re-blessed with no behaviour change; gates untouched.
+- **Two-player proof**: duel oracle and canonical trace identical 51 → 52; goldens re-blessed with no behaviour change; gates untouched.
 - **Online**: a three-seat session (the existing two-seat harness widened): a human attaches at seat 2; each replica agrees with the authority over a run where the third player scans; a crew-3 start with seat 2 empty has an applied `presence false` and `present[2]` false in the next publication; a dropped seat rejoins; `validateDuelMirror` refuses a capacity/init mismatch.
 - **UI**: host form crew choice reaches `host(crew)`; lobby labels EMPTY/JOINED/READY/DISCONNECTED and Start enabled with an empty seat; the readout crew list (n = 2, 3, 4; precedence cases); seat 2 sitting at Weapons shows the sit card; the SCIENCE badge (and none on the Cutter).
 - **Part C** (only if built): service unit test for an active-room new join taking the lowest unclaimed seat and refusing when full; app test for a late joiner becoming present.
