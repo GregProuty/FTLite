@@ -73,7 +73,7 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
     expect(model(known(0))).toMatchObject({ contact: 0, title: 'UNKNOWN CONTACT', shields: null, hull: null, outline: [], rooms: [], lockRoom: null, weapons: null, aim: false,
       scan: { label: 'SCAN 1 (SLOW)', enabled: true, progress: null }, lines: [] });
   });
-  it('Level 1 on the Weapons station: the weapon block is present and the aim passes through (spec �7.2)', () => {
+  it('Level 1 on the Weapons station: the weapon block is present and the aim passes through (spec §7.2)', () => {
     const v = model(known(1), { aim: true })!;
     expect(v.weapons).not.toBeNull(); expect(v.aim).toBe(true);
   });
