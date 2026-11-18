@@ -1,8 +1,10 @@
 // The Weapons station block (spec 2026-11-17-artemis-consoles §4.1): laser charge and FIRE, the lock room, the missile
 // magazine and LAUNCH, and the steer buttons that hold A and D while a missile flies.
+// Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan.
 import { memo } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
 import { STATION, stationTop } from '../../render/duel/consoleLayout';
+import { FREQ_NAMES } from '../../render/duel/scienceModel';
 import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT, textPx } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { useActions } from '../context';
@@ -43,6 +45,12 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons }: { weapon
         onHold={(on) => actions.console.hold('KeyA', on)} />
       <Button name="steer-right" label=">" hint="D" x={x0 + 120} y={y0 + 170} w={64} h={24} disabled={!weapons.missileFlying} lit={weapons.held.right}
         onHold={(on) => actions.console.hold('KeyD', on)} />
+      <PixelText text="FREQ" x={x0} y={y0 + 206} size={FONT_NATIVE} tint={main} />
+      {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 202} w={52} h={24}
+        lit={weapons.freq === f} onPress={() => actions.console.frequency(f)} />)}
+      {weapons.weakFreq !== null && <Box x={x0 + 52 + weapons.weakFreq * 56 + 41} y={y0 + 196} w={7} h={7} attrs={{ 'data-ui-weak-freq': FREQ_NAMES[weapons.weakFreq] ?? '' }}
+        style={{ background: hex(crt ? CRT.hot : AMBER), transform: 'rotate(45deg)' }} />}
+      <PixelText text="1/2/3" x={right} y={y0 + 206} size={FONT_NATIVE} tint={dim} anchorX={1} />
     </>
   );
 });
