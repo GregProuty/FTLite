@@ -1,0 +1,51 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "The sweep's line regex is built from a template literal with an unescaped `\\d`, so it matches the letter 'd' and every sweep throws",
+      "claim": "`lineOf` builds `new RegExp(`^export const ${name} = (\\d+);`, 'gm')` inside a template literal. In JS string and template literals, `\\d` is a NonEscapeCharacter escape whose cooked value is plain `d`. The RegExp source is therefore `^export const GUN_HITS_PER_LAYER = (d+);`, which never matches `= 8;`. `lineOf` throws \"expected one line ...\" on the first `valueOf` (any list left out) or `withValue` call, so neither the Stage A nor the Stage B sweep produces a line. tsc does not flag this.",
+      "evidence": "plan Task 3 Step 3, the `lineOf` function: `const re = new RegExp(`^export const ${name} = (\\d+);`, 'gm')` and the second `new RegExp(`^export const ${name} = (\\d+);`, 'm')`. The target lines it has to match are in valkyrn-i plan L323 `export const VALKYRN_HULL = 30;` and L343-345 `export const GUN_HITS_PER_LAYER = 8;` / `_HULL = 3;` / `_LEVEL = 6;`.",
+      "why": "Task 4 Step 3 runs only `sweep`, so the tuning procedure cannot run as written. The executor would have to debug the tool during execution. This is a regression introduced by the R1-F2 fix.",
+      "fix": "Double the backslash in both template literals: `(\\\\d+)`. Alternatively, build the pattern with string concatenation: `'^export const ' + name + ' = (\\\\d+);'`. Optionally have `lineOf` build the RegExp once and reuse it."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Decision 7 now says the stand takes two ticks, decided from `d.throttle` alone. Pilot L563-568 sends only `throttle` while seated (aim held, gun off) and, once the throttle is 0, sends only `stand`. `p.task` stays set across the two ticks (L557-558). The repair test (L427-431) gets back 1 or 2 from `fly` and then checks the throttle and `holdHeading`. The swap-order fallback is gone."
+    },
+    {
+      "id": "R1-F2",
+      "result": "still open",
+      "note": "The mechanism is right: Decision 10 is rewritten, the child process is started through tsx's cli.mjs, the file is restored in `finally` and the restore is verified, and the frozen pre-flight is removed. But the new `lineOf` regex is written in a template literal as `(\\d+)`, which cooks to `(d+)`. So every rewrite throws and the sweep cannot run (see the new finding)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "`viewOffset` calls `leadPip(s.x, s.y, s.vx, s.vy, e.x, e.y, e.vx, e.vy, GUN.speed)` with `e = ships[systems[0].target]`, and `GUN` is imported. `GunDef.speed` exists (valkyrn-i plan L382, L430), and `ShipSystems.target` exists (sci-2 tactical/state.ts:41). The fallback text is removed."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "Task 4 Step 6 now names valkyrnClasses, valkyrnGun and valkyrnRounds and says how each pin is rewritten in terms of GUN.hitsPer* and VALKYRN_HULL. Step 8 runs tests/valkyrn*.test.ts, and Step 10 adds those files by name."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "Task 4 Step 3 defines the Stage A pick for all three cases (a PASS line, no PASS but a line with hunter \u2265 1 and cap 0, and anything else) and gives the tie-breaks."
+    }
+  ],
+  "verified": [
+    "The pilot's two-tick stand: on the throttle tick the Helm is still attended. On the next tick `d.throttle === 0`, so only `stand` is sent, and `fly` returns 1 or 2 (plan L357-364, L427-429, L563-568).",
+    "`Outcome` is exported as a const object with Draw 3 and Running 0 (.worktrees/sci-2/src/renderer/src/sim/tactical/state.ts:82), so the script's `Outcome.Draw`/`Outcome.Running` compile.",
+    "`HUNTER_HULL` exists (.worktrees/sci-2/.../tactical/tuning.ts:42), as Task 4 Step 6 cites.",
+    "Part i declares the four tuned constants as single-line integer exports (valkyrn-i plan L323, L343-345), which fits Task 1 Step 2's check and the sweep's rewrite. With CRLF line endings, `;` still comes right before `\\r`, so the `^...;` match with the m flag still works once the escape is fixed.",
+    "Validator bounds are already derived in tactical/hash.ts (sci-2 hash.ts:194 shows the `most(...)` pattern), so Task 1 Step 3 now greps the correct file."
+  ],
+  "not_verified": [
+    "Whether the child process's stdout has only the JSON line: this depends on nothing in the sim or the helpers logging, and I did not run it.",
+    "Whether the rewrite rule for valkyrnRounds hull and Room expectations (Task 4 Step 6) gives Part i's exact sequence at tuned values: Part i's test bodies were not re-read in full."
+  ]
+}

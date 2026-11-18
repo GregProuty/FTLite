@@ -25,7 +25,9 @@ export function buttonColours(look: ButtonLook, crt: boolean): { outline: number
   return { outline: DIM, fill: PANEL_FILL, text: TEXT };
 }
 
-export interface ButtonProps { name: string; x: number; y: number; w: number; h: number; label: string; hint?: string; lit?: boolean; disabled?: boolean; onPress?(): void; onHold?(on: boolean): void }
+/** `flash` (Feel-ii §2.8): the control was refused; its outline shows hot and thick for the flash. `dim` draws it as the
+ *  disabled look while it still takes presses (a refused press flashes rather than doing nothing). */
+export interface ButtonProps { name: string; x: number; y: number; w: number; h: number; label: string; hint?: string; lit?: boolean; disabled?: boolean; dim?: boolean; flash?: boolean; onPress?(): void; onHold?(on: boolean): void }
 const PAD_X = 6;
 
 export const Button = memo(function Button(p: ButtonProps) {
@@ -35,7 +37,7 @@ export const Button = memo(function Button(p: ButtonProps) {
   const release = (): void => { if (holding.current) { holding.current = false; onHold.current?.(false); } };
   useEffect(() => release, []);
   useEffect(() => { if (p.disabled) release(); }, [p.disabled]);
-  const look: ButtonLook = p.disabled ? 'disabled' : p.lit ? 'lit' : hover ? 'hover' : 'idle', c = buttonColours(look, crt);
+  const look: ButtonLook = p.disabled || (p.dim && !p.lit && !hover) ? 'disabled' : p.lit ? 'lit' : hover ? 'hover' : 'idle', c = buttonColours(look, crt);
   const hair = Math.max(1, Math.round(l.scale * l.dpr)) / l.dpr;
   const stop = (e: SyntheticEvent): void => e.preventDefault();
   const down = (e: ReactPointerEvent<HTMLDivElement>): void => {
@@ -51,12 +53,12 @@ export const Button = memo(function Button(p: ButtonProps) {
   const ty = p.y + Math.round((p.h - FONT_NATIVE) / 2);
   return (
     <>
-      <div data-testid={`console-${p.name}`} role="button" aria-disabled={p.disabled || undefined} data-ui-button={look}
+      <div data-testid={`console-${p.name}`} role="button" aria-disabled={p.disabled || undefined} data-ui-button={look} {...(p.flash ? { 'data-ui-refused': '1' } : {})}
         onPointerDown={down} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}
         onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}
         onMouseDown={stop} onContextMenu={stop} onAuxClick={stop}
         style={{ position: 'absolute', boxSizing: 'border-box', ...boxCss(p.x, p.y, p.w, p.h, l), pointerEvents: 'auto', cursor: p.disabled ? 'default' : 'pointer',
-          border: `${hair}px solid ${hex(c.outline)}`, background: c.fill === null ? 'transparent' : hex(c.fill) }} />
+          border: p.flash ? `2px solid ${hex(crt ? CRT.hot : AMBER)}` : `${hair}px solid ${hex(c.outline)}`, background: c.fill === null ? 'transparent' : hex(c.fill) }} />
       {p.hint
         ? <><PixelText text={p.label} x={p.x + PAD_X} y={ty} size={FONT_NATIVE} tint={c.text} />
             <PixelText text={p.hint} x={p.x + p.w - PAD_X} y={ty} size={FONT_NATIVE} tint={look === 'lit' ? c.text : crt ? CRT.mid : DIM} anchorX={1} /></>

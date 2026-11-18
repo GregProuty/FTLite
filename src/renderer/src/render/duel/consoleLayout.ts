@@ -28,3 +28,6 @@ export const CONTACT_BOX = { x: CONTACT.x + 12, y: CONTACT.y + 60, w: 276, h: 20
 /** The map's right reserve while the window is shown, instead of CONSOLE_RESERVE.right: the off-screen arrows and the top
  *  info line keep clear of it. */
 export const CONTACT_RESERVE = INTERNAL_W - CONTACT.x + EDGE;
+/** Feel-ii: the top px of a console map the off-screen arrows keep clear of: the status sentence (y 12, FONT_SIZE) and the
+ *  Weapons info line under it (y 44, FONT_NATIVE), so an arrow never sits on their words. */
+export const STATUS_RESERVE = 44;

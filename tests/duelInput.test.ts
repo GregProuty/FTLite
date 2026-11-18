@@ -102,9 +102,9 @@ describe('pointer source (H-1 spec §5)', () => {
   const ptr = (clientX: number, clientY: number, button: number, buttons: number) => ({ clientX, clientY, button, buttons, preventDefault: vi.fn() });
   it('tracks the position in internal pixels and sums the wheel', () => {
     const t = fakeTarget(), p = createPointerSource(t, half);
-    expect(p.sample()).toEqual({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 });
+    expect(p.sample()).toEqual({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0, rightX: 0, rightY: 0 });
     t.fire('pointermove', ptr(200, 100, -1, 0));
-    expect(p.sample()).toEqual({ x: 100, y: 50, wheel: 0, dragX: 0, dragY: 0 });   // a move alone: the letterbox inverse
+    expect(p.sample()).toEqual({ x: 100, y: 50, wheel: 0, dragX: 0, dragY: 0, rightX: 0, rightY: 0 });   // a move alone: the letterbox inverse
     expect(p.sample()).toMatchObject({ x: 100, y: 50 });                           // the position persists across samples
     const w = { clientX: 400, clientY: 300, deltaY: 100, deltaMode: 0, preventDefault: vi.fn() };
     t.fire('wheel', w); t.fire('wheel', { ...w, deltaY: 100 });

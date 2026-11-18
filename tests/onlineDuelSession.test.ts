@@ -177,6 +177,19 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
     r.dispose();
   });
+  it('Feel-i: Space held at the Helm rides the held frame as face; seat 1 at Weapons never sends it', () => {
+    const r = rig(0), c = r.attach();   // seat 0 sits at the Helm
+    r.key('keydown', 'Space'); r.pump();
+    expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false, face: true });
+    expect(c.commands().some((x) => x.kind === 'laserCharge')).toBe(false);
+    r.key('keyup', 'Space'); r.pump();
+    expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    r.dispose();
+    const w = rig(1), cw = w.attach();
+    w.key('keydown', 'Space'); w.pump();
+    expect(cw.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    w.dispose();
+  });
   it('focus loss neutralises without pausing and sends no release (Space is a single press, FTL targeting spec §2); nothing is sent until focus returns', () => {
     const r = rig(1), c = r.attach();   // seat 1 sits at Weapons
     r.key('keydown', 'Space'); r.pump();
@@ -418,6 +431,32 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     c2.results.push({ id: lastThrottleId(c2), tick: 3, status: 'noop' } as never); r.pump();
     tap(r, 'KeyW');
     expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // a noop hands the base back too
+    r.dispose();
+  });
+});
+
+describe('the online Helm heading (Feel-ii §1.1)', () => {
+  const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
+  const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
+  it('a clear asked for while a heading is in flight is sent, not deduped against the lagging replica', () => {
+    const r = rig(0), c = r.attach();   // the replica holds no heading (−1)
+    ask(r, 77); ask(r, -1);
+    expect(headings(c)).toEqual([{ kind: 'heading', heading: 77 }, { kind: 'heading', heading: -1 }]);
+    ask(r, -1);   // the clear is in flight now: deduped against it
+    expect(headings(c)).toHaveLength(2);
+    c.results.push({ id: c.ids[c.commands().map((x) => x.kind).lastIndexOf('heading')]!, tick: 3, status: 'applied' }); r.pump();
+    ask(r, -1);   // the result hands the base back to the replica (−1)
+    expect(headings(c)).toHaveLength(2);
+    r.dispose();
+  });
+  it('A held at the Helm clears the base: the same heading asked for again is sent while the replica still shows the old hold', () => {
+    const r = rig(0), c = r.attach();
+    r.d.holdHeading = 77; c.publish(r.d); r.pump();
+    ask(r, 77);
+    expect(headings(c)).toEqual([]);   // the replica holds it already
+    r.key('keydown', 'KeyA'); r.pump(); r.key('keyup', 'KeyA'); r.pump();   // the sim clears the hold; the replica lags
+    ask(r, 77);
+    expect(headings(c)).toEqual([{ kind: 'heading', heading: 77 }]);
     r.dispose();
   });
 });

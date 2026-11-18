@@ -16,6 +16,7 @@ import { ENEMY_RING, HULLS } from './hullModel';
 import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
 import { CALLOUT_MAX } from './hitModel';
+import { FLOATS_MAX } from './fxModel';
 
 export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
@@ -26,6 +27,8 @@ const GRID_LABELS = 12, RING_LABELS = 12, ARROWS = 4;
 /** Sci-1: the contact marks (at most the enemy and the derelict); Science's ring turns at this many radians a second;
  *  the designation bracket pulses at this rate. */
 const MARKS = 2, LOCK_RING_SPEED = 0.8, DESIGNATE_PULSE_HZ = 1;
+/** Feel-ii: the pool of small map words (2 gravity labels, COLLISION, SLINGSHOT, EVADE and up to 6 pings, with room). */
+const NOTES = 12;
 /** The enemy's blinking marker ring (moved to hullModel.ts so the pure model and its test need no Pixi). */
 export { ENEMY_RING };
 
@@ -73,13 +76,18 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const ring = Array.from({ length: RING_LABELS }, () => mk(FONT_NATIVE, CRT.mid, 0.5, 0.5));
   const arrowText = Array.from({ length: ARROWS }, () => mk(FONT_NATIVE, CRT.main, 0.5, 0.5));
   container.addChild(lockBar);
-  const lockText = mk(FONT_NATIVE, CRT.glass, 0, 0, container), info = mk(FONT_SIZE, CRT.main, 0.5, 0);
+  // Feel-i: the status sentence at the top (FONT_SIZE), the Weapons info line under it (FONT_NATIVE), the FIRING SOLUTION
+  // label and the floating damage numbers.
+  const lockText = mk(FONT_NATIVE, CRT.glass, 0, 0, container), info = mk(FONT_NATIVE, CRT.mid, 0.5, 0), status = mk(FONT_SIZE, CRT.main, 0.5, 0);
+  const solutionText = mk(FONT_NATIVE, CRT.hot, 0.5, 0.5), floatText = Array.from({ length: FLOATS_MAX }, () => mk(FONT_SIZE, CRT.hot, 0.5, 0.5));
   const markQ = Array.from({ length: MARKS }, () => mk(FONT_SIZE, CRT.dim, 0.5, 0.5));
   const markLabel = Array.from({ length: MARKS }, () => mk(FONT_NATIVE, CRT.mid, 0, 0.5));
   const markAlert = Array.from({ length: MARKS }, () => mk(FONT_NATIVE, CRT.hot, 0, 0.5));
   // Duel polish i spec §A, §B: the charge ring's CHARGING / FIRING label and the hit callouts, centred over the enemy.
   const chargeText = mk(FONT_NATIVE, CRT.hot, 0.5, 0.5), calloutText = Array.from({ length: CALLOUT_MAX }, () => mk(FONT_NATIVE, CRT.main, 0.5, 0.5));
-  const texts = [...cols, ...rows, ...ring, ...arrowText, ...markQ, ...markLabel, ...markAlert, lockText, info, chargeText, ...calloutText];
+  // Feel-ii: the small map words (the gravity labels, the COLLISION tag, SLINGSHOT, EVADE and the ping labels), each tinted.
+  const notes = Array.from({ length: NOTES }, () => mk(FONT_NATIVE, CRT.hot, 0, 0));
+  const texts = [...cols, ...rows, ...ring, ...arrowText, ...markQ, ...markLabel, ...markAlert, lockText, info, status, solutionText, ...floatText, chargeText, ...calloutText, ...notes];
   // Reused buffers for lists that are consumed at once (dash and hatch segments, polylines fed to dashLine). A list passed
   // to Graphics.poly is kept by reference until the frame renders, so every poly gets a fresh array.
   const pts: number[] = [], seg: number[] = [], line: number[] = [];
@@ -152,10 +160,12 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     pts.push(a.x, a.y);
     return pts;
   }
-  /** A laser arc: the own arc a mid fill with a solid main edge; the enemy arc no fill and a dashed dim edge. */
+  /** A laser arc: the own arc a mid fill with a solid main edge (Feel-i: bright, a main fill and a hot edge); the enemy arc
+   *  no fill and a dashed dim edge. */
   function arc(g: Graphics, a: ArcDraw, own: boolean, fillAlpha: number): void {
     const from = a.angle - a.half - Math.PI / 2, to = a.angle + a.half - Math.PI / 2;   // Pixi measures from +x, clockwise on screen
-    if (own) g.moveTo(a.x, a.y).arc(a.x, a.y, Math.max(1, a.r), from, to).closePath().fill({ color: CRT.mid, alpha: fillAlpha }).stroke({ width: 1, color: CRT.main, alpha: 0.8 });
+    if (own && a.bright) g.moveTo(a.x, a.y).arc(a.x, a.y, Math.max(1, a.r), from, to).closePath().fill({ color: CRT.main, alpha: 0.2 }).stroke({ width: 2, color: CRT.hot, alpha: 0.95 });
+    else if (own) g.moveTo(a.x, a.y).arc(a.x, a.y, Math.max(1, a.r), from, to).closePath().fill({ color: CRT.mid, alpha: fillAlpha }).stroke({ width: 1, color: CRT.main, alpha: 0.8 });
     else segments(g, dashLine(arcOutline(a, from, to), DASH, GAP, seg), 1, CRT.dim);
   }
 
@@ -225,6 +235,12 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       fill(cols, d.grid.columns); fill(rows, d.grid.rows);
 
       for (const k of d.contours) contours.circle(k.x, k.y, k.r).stroke({ width: 1, color: CRT.dim, alpha: 0.45 });
+      // Feel-ii §1.3: the G 0.5 and G 1 rings, faint and dotted so they read apart from the plain contours.
+      const words: { text: string; x: number; y: number; tint: number; alpha?: number }[] = [];
+      for (const g of d.gravity ?? []) {
+        segments(contours, dashCircle(g.x, g.y, Math.max(1, g.r), 2, 4, seg), 1, CRT.dim, g.g === 1 ? 0.8 : 0.55);
+        words.push({ text: g.label.text, x: g.label.x, y: g.label.y, tint: CRT.mid });
+      }
       if (d.edge) segments(contours, dashCircle(d.edge.x, d.edge.y, d.edge.r, DASH, GAP, seg), 2, CRT.main, 0.7);
 
       if (d.planet) {
@@ -257,6 +273,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         if (wd.enemyArc) arc(arcs, wd.enemyArc, false, 0);
         arc(arcs, wd.ownArc, true, wd.inArc ? 0.14 : 0.08);
       }
+      if (c?.helmArc) arc(arcs, c.helmArc, true, 0.06);   // Feel-i: the Helm sees the arc it gives Weapons
 
       for (const s of d.ships) drawShip(ships, s, t);
       drawMarks(d, t);
@@ -284,6 +301,21 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         }
         if (hd.turn !== 0) helm.circle(hd.headingTo.x + rx * hd.turn * 8, hd.headingTo.y + ry * hd.turn * 8, 3).fill({ color: CRT.hot, alpha: 0.9 });
         if (hd.ring) { compass(hd.ring); ringLabels = hd.ring.labels; }
+        // Feel-ii §1.2: the predicted contact, its last segment hot, an X at it and the COLLISION tag.
+        const co = hd.collision ?? null;
+        if (co) {
+          helm.moveTo(co.from.x, co.from.y).lineTo(co.x, co.y).stroke({ width: 3, color: CRT.hot });
+          helm.moveTo(co.x - 7, co.y - 7).lineTo(co.x + 7, co.y + 7).moveTo(co.x + 7, co.y - 7).lineTo(co.x - 7, co.y + 7).stroke({ width: 3, color: CRT.hot });
+          words.push({ text: co.label.text, x: co.label.x, y: co.label.y, tint: CRT.hot });
+        }
+        // Feel-ii §1.1: the held heading, a chevron on the bearing ring and a dashed line from the nose.
+        const ho = hd.hold ?? null;
+        if (ho) {
+          line.length = 0; line.push(ho.from.x, ho.from.y, ho.to.x, ho.to.y);
+          segments(helm, dashLine(line, DASH, GAP, seg), 1, CRT.mid, ho.preview ? 0.6 : 0.9);
+          helm.poly([...ho.chevron], false).stroke({ width: 2, color: CRT.mid, alpha: ho.preview ? 0.6 : 1 });
+        }
+        if (hd.slingshot) words.push({ text: hd.slingshot.text, x: hd.slingshot.x, y: hd.slingshot.y, tint: CRT.hot });
       }
       fill(ring, ringLabels);
 
@@ -292,6 +324,25 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         m.trail.forEach((p, k) => { if (k > 0) { const q = m.trail[k - 1]!; combat.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 2, color: CRT.dim, alpha: 0.6 * (k / m.trail.length) }); } });
         torpedoDot(combat, m);
       }
+      // Feel-ii §1.6: the enemy torpedo's predicted path, dashed hot; the Helm's EVADE arrow. §2.7: the pings.
+      const tp = c?.torpedoPath ?? [];
+      if (tp.length > 1) { line.length = 0; for (const p of tp) line.push(p.x, p.y); segments(combat, dashLine(line, DASH, GAP, seg), 1, CRT.hot, 0.8); }
+      const ev = c?.evade ?? null;
+      if (ev) {
+        const fx = Math.sin(ev.angle), fy = -Math.cos(ev.angle), rx = -fy, ry = fx;
+        combat.moveTo(ev.x - fx * 26, ev.y - fy * 26).lineTo(ev.x - fx * 6, ev.y - fy * 6).stroke({ width: 3, color: CRT.hot });
+        combat.poly([ev.x + fx * 6, ev.y + fy * 6, ev.x - fx * 8 + rx * 9, ev.y - fy * 8 + ry * 9, ev.x - fx * 8 - rx * 9, ev.y - fy * 8 - ry * 9]).fill(CRT.hot);
+        words.push({ text: ev.label.text, x: ev.label.x - textPx(ev.label.text, 1) / 2, y: ev.label.y - 8, tint: CRT.hot });
+      }
+      for (const pg of c?.pings ?? []) {
+        combat.circle(pg.x, pg.y, pg.r).stroke({ width: 2, color: CRT.hot, alpha: pg.alpha }).circle(pg.x, pg.y, pg.inner).stroke({ width: 1, color: CRT.main, alpha: Math.min(1, pg.alpha + 0.3) });
+        words.push({ text: pg.label.text, x: pg.label.x - textPx(pg.label.text, 1) / 2, y: pg.label.y - 8, tint: CRT.hot, alpha: Math.min(1, pg.alpha + 0.3) });
+      }
+      notes.forEach((tx, k) => {
+        const wd2 = words[k];
+        tx.visible = wd2 !== undefined;
+        if (wd2) { setText(tx, wd2.text); tx.tint = wd2.tint; tx.alpha = wd2.alpha ?? 1; tx.position.set(Math.round(wd2.x), Math.round(wd2.y)); }
+      });
       const lk = c?.lock ?? null;
       if (lk) {
         const r = lk.r, k = r * 0.45;
@@ -304,10 +355,45 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       lockText.visible = lk !== null;
       if (lk) { setText(lockText, lk.label.text); lockText.position.set(Math.round(lk.label.x), Math.round(lk.label.y)); }
       info.visible = wd !== null;
-      if (wd) { setText(info, wd.info.text); info.tint = wd.inArc ? CRT.hot : CRT.main; info.position.set(Math.round(wd.info.x), Math.round(wd.info.y)); }
+      if (wd) { setText(info, wd.info.text); info.tint = wd.inArc ? CRT.main : CRT.mid; info.position.set(Math.round(wd.info.x), Math.round(wd.info.y)); }
+      const st = c?.status ?? null;
+      status.visible = st !== null;
+      if (st) { setText(status, st.label.text); status.tint = st.colour; status.position.set(Math.round(st.label.x), Math.round(st.label.y)); }
+      // Feel-i: the FIRING SOLUTION bracket (closing, hot when ready) and the Helm's goal glow on the enemy's edge arrow.
+      const so = c?.solution ?? null;
+      if (so) {
+        const k = so.r * 0.4;
+        for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const)
+          combat.moveTo(so.x + sx * so.r, so.y + sy * (so.r - k)).lineTo(so.x + sx * so.r, so.y + sy * so.r).lineTo(so.x + sx * (so.r - k), so.y + sy * so.r).stroke({ width: so.bright ? 3 : 2, color: so.bright ? CRT.hot : CRT.mid, alpha: so.alpha });
+      }
+      solutionText.visible = so?.label != null;
+      if (so?.label) { setText(solutionText, so.label.text); solutionText.position.set(Math.round(so.label.x), Math.round(so.label.y)); }
+      const goal = c?.goal ?? null;
+      if (goal) overlay.circle(goal.x, goal.y, goal.r).stroke({ width: 2, color: CRT.hot, alpha: goal.alpha });
+      const fl = c?.floats ?? [];
+      floatText.forEach((tx, k) => {
+        const f = fl[k];
+        tx.visible = f !== undefined;
+        if (f) { setText(tx, f.text); tx.alpha = f.alpha; tx.position.set(Math.round(f.x), Math.round(f.y)); }
+      });
       for (const e of c?.effects ?? []) {
-        const colour = e.kind === 'beam' || e.alpha > 0.5 ? e.colour : CRT.mid;   // bursts and sparks fade from hot to mid
-        if (e.kind === 'beam') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: 3, color: colour, alpha: e.alpha });
+        const colour = e.kind === 'beam' || e.kind === 'shard' || e.alpha > 0.5 ? e.colour : CRT.mid;   // bursts and sparks fade from hot to mid
+        if (e.kind === 'beam') {
+          combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: e.width ?? 3, color: e.core ? CRT.main : colour, alpha: e.alpha });
+          if (e.core) combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: 2, color: CRT.hot, alpha: 1 });   // Feel-i: the white-hot core
+        }
+        else if (e.kind === 'shard') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: 2, color: colour, alpha: e.alpha });
+        else if (e.kind === 'flare') {   // Feel-i: the impact flare, a bright star and a ring at the enemy
+          combat.circle(e.x1, e.y1, e.r).stroke({ width: 2, color: colour, alpha: e.alpha });
+          for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r * 1.4, e.y1 + Math.sin(a) * e.r * 1.4).stroke({ width: 2, color: CRT.hot, alpha: e.alpha }); }
+          combat.circle(e.x1, e.y1, 4).fill({ color: CRT.hot, alpha: e.alpha });
+        }
+        else if (e.kind === 'pop') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r).fill({ color: CRT.main, alpha: e.alpha * 0.15 });
+        else if (e.kind === 'boom') {   // Feel-i: the kill's explosion, a flash, then two rings
+          if (e.alpha > 0.75) combat.circle(e.x1, e.y1, e.r * 0.8).fill({ color: CRT.hot, alpha: (e.alpha - 0.75) * 4 });
+          combat.circle(e.x1, e.y1, e.r).stroke({ width: 4, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.6).stroke({ width: 2, color: CRT.main, alpha: e.alpha })
+            .circle(e.x1, e.y1, e.r * 0.3).fill({ color: colour, alpha: e.alpha * 0.5 });
+        }
         else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: colour, alpha: e.alpha * 0.6 });
         else for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r, e.y1 + Math.sin(a) * e.r).stroke({ width: 2, color: colour, alpha: e.alpha }); }
       }

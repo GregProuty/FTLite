@@ -10,6 +10,7 @@ import { inReachOfTile } from '../interact';
 import { stationOnline } from '../stations';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
+import { autoFaceTurn } from '../tactical/hunter';
 import { rockAt, rocksNear } from '../tactical/rocks';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
@@ -96,9 +97,10 @@ function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
   return null;
 }
 
-/** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up (a full laser with a target, FTL targeting spec §3), then orbit. The hazard check predicts with the thrust the ship flies
+/** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up (a full laser with a target, FTL targeting
+ *  spec §3; Feel-i: by holding auto-face, as a player would, so `face` is set and `turn` is the turn it will make), then orbit. The hazard check predicts with the thrust the ship flies
  *  at this tick before any new command: the throttle's (Artemis spec §5.5). */
-function helmAxes(pair: ScriptedPair, d: DuelState): Axes {
+function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean } {
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
   const away = hazardAway(d, { turn: pair.axes.turn, thrust: throttleThrust(d.throttle) });
   if (away) return { turn: turnToward(s.heading, away.x, away.y), thrust: 1 };
@@ -114,7 +116,7 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes {
   }
   const ex = e.x - s.x, ey = e.y - s.y;
   if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
-    return { turn: turnToward(s.heading, ex, ey), thrust: 0 };
+    return { turn: autoFaceTurn(t, 0), thrust: 0, face: true };
   // Orbit: t is the prograde tangent (the way the ship already circles, clockwise at rest); tilt it toward the planet
   // when outside the radius and away when inside, by at most 30°.
   const r = len(s.x, s.y), ux = r > 0 ? s.x / r : 0, uy = r > 0 ? s.y / r : -1;
@@ -309,7 +311,7 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
       // Artemis spec §5.5: the throttle stands for the wanted thrust (1 → 4, 0 → 0, −1 → −1), sent only when it changes.
       const level = axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0;
       if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
-      held[pid] = { moveX: axes.turn, moveY: 0, interactHeld: false };
+      held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true } : { moveX: axes.turn, moveY: 0, interactHeld: false };
     } else if (seat === d.weapons) {
       gunner(pair, d, cmds[pid]!);
     }

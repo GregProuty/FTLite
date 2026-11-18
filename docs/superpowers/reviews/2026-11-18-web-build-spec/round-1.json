@@ -1,0 +1,123 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Mapping visibilitychange to suspend tears down the host on every alt-tab, which contradicts \u00a73.5",
+      "claim": "\u00a73.1 says visibilitychange and pagehide/pageshow replace powerMonitor. The session's suspend() and resume() are not soft pauses. Both call savedState(c,'suspended'), which runs retireGame and disposes the host and peers, and resume() then dispatches 'reconnect'. If a hidden tab is wired to suspend(), the match ends whenever the host switches tabs. That contradicts \u00a73.5, which assumes the host keeps ticking while hidden. The spec also drops real OS sleep detection: in Electron, main no longer pushes app:suspend/app:resume, and the browser has no equivalent signal.",
+      "evidence": "spec L92, spec L119-121, spec L103-107. src/main/network/onlineSession.ts:L569-577 (suspend/resume \u2192 savedState \u2192 retireGame L161-173). src/main/network/onlineIpc.ts:L56-57,L65 (powerMonitor push). src/main/network/hostProcess.ts:L233-240 (onSuspend invalidates the lease). src/renderer/src/main.ts:L87 (duel lifecycle uses window.ftlite onSuspend/onResume).",
+      "why": "The host would lose the match in ordinary play (tabbing away). Two implementers would wire visibilitychange differently.",
+      "fix": "State that visibilitychange is never mapped to suspend(). Detect OS sleep in the browser by a wall-clock vs performance.now jump (the session already has 'clock-discontinuity'), and use pagehide(persisted)/freeze only for bfcache. Electron main keeps its powerMonitor push of app:suspend/app:resume to the page as a fifth job. Name the page-side trigger for each existing suspend/resume caller."
+    },
+    {
+      "severity": "P1",
+      "title": "The bounded exit save cannot run on pagehide, Electron loses its close interception, and beforeunload silently blocks Electron's close",
+      "claim": "Today's exit save is graceful(): a captureCheckpoint round trip to the host, mirrors.adopt (a disk write) and mirrors.flush (a checkpoint PUT), all inside a 3 s budget. onlineExit.ts calls preventDefault() on window close and on before-quit until that finishes. A pagehide handler cannot wait for async work. The Worker dies with the document, a normal fetch is cancelled, and a keepalive fetch is capped at 64 KiB while checkpoints can be about 512 KiB. Deleting onlineExit.ts with no replacement means Electron also stops saving on close. Separately, \u00a77.6's beforeunload prompt makes Electron cancel the close with no dialog, unless main handles 'will-prevent-unload'. The menu's Quit (window.close()) and the title-bar close would both do nothing while in a lobby or match.",
+      "evidence": "spec L93, L109, L245-247. src/main/network/onlineSession.ts:L245-258, L557-564. src/main/network/onlineExit.ts:L5-20. src/renderer/src/main.ts:L116. src/main/index.ts:L60.",
+      "why": "A required behaviour cannot work as stated in the browser, Electron regresses, and the Electron window cannot be closed while hosting.",
+      "fix": "Restate the browser exit as best-effort: send host-release over the open WebSocket, and rely on the latest periodic checkpoint already at the service and in IndexedDB. Say explicitly that no new capture is guaranteed. For Electron, keep a main-side 'close' interception that asks the page to run prepareExit over IPC, with a 3 s cap, before allowing the close. Also handle 'will-prevent-unload' in main, or skip beforeunload when window.ftlite is present."
+    },
+    {
+      "severity": "P1",
+      "title": "Cross-origin checkpoint GET cannot read X-FTL-Checkpoint, so rehost and guest mirror refresh fail from a page",
+      "claim": "The service sets Access-Control-Allow-Origin but never Access-Control-Expose-Headers. getCheckpoint reads the X-FTL-Checkpoint response header. That header is not CORS-safelisted, so in a page (browser, or Electron's file:// page with Origin null) the header reads as null. parseMetadata then throws invalid-frame. Today this works only because Node fetch in main ignores CORS. Rehost and onlineMirrors.refresh both call getCheckpoint. \u00a72.4 says the service already 'returns CORS headers', and \u00a76 only plans to add the origin to the allow list.",
+      "evidence": "spec L69, L195-199, L289. services/signalling/src/index.ts:L69 (ACAO and Vary only). services/signalling/src/room/checkpoints.ts:L44. src/network/session/serviceClient.ts:L507-508, L68-69. src/main/network/onlineMirrors.ts:L92. src/main/network/onlineSession.ts:L362, L390.",
+      "why": "The \u00a79 done criterion 'Rehost works after the host tab closes' fails, and so does the Electron guest's mirror. It also needs a service redeploy, which \u00a76 does not plan for.",
+      "fix": "Add 'Access-Control-Expose-Headers: X-FTL-Checkpoint' to every allowed cross-origin response in index.ts, add a signalling test for it, and list it in \u00a76 and Web-iii step 1. Also state the ALLOWED_ORIGINS the local workerd uses for the gates (the vite preview origin, and 'null' for Electron file://)."
+    },
+    {
+      "severity": "P1",
+      "title": "ALLOWED_ORIGINS is a Wrangler secret, not deploy config, and the origin check is in index.ts, not sockets.ts",
+      "claim": "\u00a76 says the Vercel origin is added to ALLOWED_ORIGINS 'in the lobby service's deploy config, followed by one wrangler deploy'. wrangler.jsonc has no vars, and the Net-3e evidence records ALLOWED_ORIGINS being provisioned as a secret (value 'null') through 'wrangler secret bulk'. A plain wrangler deploy does not change it. \u00a76 also asks the plan to confirm that room/sockets.ts checks Origin. sockets.ts has no origin logic: the Worker's fetch wrapper checks Origin for every route, including the socket upgrade.",
+      "evidence": "spec L195-197. services/signalling/wrangler.jsonc:L1-13. docs/superpowers/reviews/2026-11-15-net-3e-evidence/README.md:L12. services/signalling/src/index.ts:L58-62 (the check covers operation 'socket' at L52). services/signalling/src/room/sockets.ts:L28-38.",
+      "why": "Web-iii step 1 as written would leave the live origin rejected (403), and the sockets.ts task chases code that does not exist.",
+      "fix": "Web-iii step 1: run 'wrangler secret put ALLOWED_ORIGINS' with the full comma list (keeping 'null'), plus a deploy only if the code changed (it must, for the Expose-Headers fix). Replace the sockets.ts sentence with: the index.ts wrapper already gates socket upgrades, so add a test that an upgrade with a disallowed Origin gets 403."
+    },
+    {
+      "severity": "P1",
+      "title": "Deleting hostProcess.ts leaves the HostProcessHandle contract and the transport-ready bridge without a named replacement",
+      "claim": "The session consumes HostProcessHandle and needs all of it: onCheckpoint, ackCheckpoint, captureCheckpoint, onLeaseRequest (with replay of the latest request), applyLease, invalidateLease, completeBootstrap, request with 5 s timeouts, attachPeer, onExit, and a 250 ms dispose. hostProcess.ts implements this together with the three-way readiness gate (utility ready, window ready, bridge 'transport-ready'), protocol validation, and crash-record bounds. utilityHost also requires one 'transport' port whose peer sends 'transport-ready', which today is the hidden window's bridge. The spec deletes hostProcess.ts and says only that 'the session talks to it only through ports'. It never says that a Worker-backed owner must implement the same handle, or who in the page sends transport-ready.",
+      "evidence": "spec L94, L97-99, L109. src/main/network/hostProcess.ts:L16-29, L53-96, L181-237. src/network/utilityHost.ts:L158-165, L182. src/main/network/onlineSession.ts:L22-29, L224-286.",
+      "why": "Two implementers would build it differently: one rewrites the owner over Worker.postMessage, the other wires ports ad hoc. The lease and checkpoint recovery guarantees live in this layer.",
+      "fix": "Specify that hostProcess.ts becomes a platform-neutral 'workerHost' owner implementing HostProcessHandle unchanged over a Worker HostPlatform (spawn = new Worker, kill = terminate, onExit = worker 'error'/terminate). Specify that the page-side transport controller (bridge.ts/controller.ts) answers the 'transport' port with transport-ready, and that its existing unit tests are ported rather than deleted."
+    },
+    {
+      "severity": "P1",
+      "title": "\u00a78 omits the Electron gates and manifests that load the deleted utility, hidden window and powerMonitor directly",
+      "claim": "\u00a78 rewrites four gates. test:host-runtime (host-smoke) and test:rtc-runtime (rtc-smoke) also require out/main/hostProcess.js and transportWindow.js and patch utilityProcess.fork. So do lease-smoke.cjs and room-service-smoke. The internet and online-app reports hash out/main/authorityHost.js, hostProcess.js, transportWindow.js and networkTransport.html as required artifacts. The online-recovery report hashes an instrumented authorityHost.js. online-app-smoke's suspend failure injection is powerMonitor.emit('suspend'). None of these is listed, and \u00a78 L301 reuses the internet-app script for the live check.",
+      "evidence": "spec L279-281, L301. package.json:L14-15. scripts/network/host-smoke.cjs:L6-7, L41-42. scripts/network/rtc-smoke.cjs:L7-8, L38-39. scripts/network/lease-smoke.cjs:L60-73. scripts/network/internet-app-report.ts:L6. scripts/network/online-app-report.ts:L3-6. scripts/network/online-recovery-report.ts:L84. scripts/network/online-app-smoke.cjs:L179.",
+      "why": "Web-i's gate ('everything in \u00a78') would either fail on missing artifacts or quietly drop the host, RTC and lease coverage. The suspend injection has no new trigger.",
+      "fix": "List every script and npm entry with its fate: rewritten (host-smoke \u2192 Worker owner smoke, rtc-smoke \u2192 page RTC smoke), merged, or retired with the coverage it moves to. Update the artifact lists in the report/manifest files. Name the new suspend injection (for example, an Electron app:suspend push or a test hook on the page platform)."
+    },
+    {
+      "severity": "P1",
+      "title": "The \u00a73.5 test can false-pass under Playwright, skips page-side lease renewal, and its silent-audio fallback likely does not work",
+      "claim": "Several gaps. (a) Headless Chromium and Playwright's Firefox keep every page 'visible'. Unless the run is headed with a second foreground tab in the same window, or a minimized window, no throttling happens and the test passes trivially. (b) The test measures only Worker ticks and a data-channel relay. The lease, however, is renewed on a page round trip every 5 s against a 12 s local lease: Worker \u2192 page \u2192 signalling WebSocket \u2192 page \u2192 Worker. Page-side session timers and the serviceClient yieldTimers(setTimeout 0) fall under the 1 s hidden-tab timer clamp. (c) Chrome decides 'audible' from the actual output level, so a silent Web Audio loop is not expected to exempt the tab.",
+      "evidence": "spec L119-131. src/network/session/leaseGate.ts:L9-11. src/main/network/onlineSession.ts:L224-243. src/network/session/serviceClient.ts:L319-333.",
+      "why": "A false pass would let Web-i build on the unproven hidden-host assumption, and the stated fallback may be ineffective.",
+      "fix": "Require headed browsers, a second foreground tab, and assertions that document.visibilityState is 'hidden' and that a page-side setInterval control is visibly clamped. Add a page-side lease round trip over a real local-workerd WebSocket to the measured loop, with pass = no lease gap over 8 s across 10 min. Replace the silent-audio claim with 'test any fallback in Task 1 before adopting it'."
+    },
+    {
+      "severity": "P1",
+      "title": "Electron's main window keeps default background throttling once the RTC moves into it",
+      "claim": "The hidden transport window that hosts RTC today sets backgroundThrottling:false. The main BrowserWindow does not, so it defaults to throttled. After the move, the RTC peers, the session and the lease relay run in the main window. A minimized Electron host is then throttled, which is a regression from today's design. \u00a73.3 lists main's remaining jobs and does not change webPreferences.",
+      "evidence": "spec L101-109. src/main/network/transportWindow.ts:L33-36. src/main/index.ts:L20-33.",
+      "why": "An Electron host that minimizes during a match could hit lease-expired or link loss, which does not happen today.",
+      "fix": "In \u00a73.3, require backgroundThrottling:false on the main window (Electron can opt out even though the browser cannot), and add an Electron minimized-host check to the rewritten gates."
+    },
+    {
+      "severity": "P1",
+      "title": "The page session's construction inputs and its renderer API are unspecified, including the dev and test env overrides the gates depend on",
+      "claim": "Main builds the session from process.env and app state: FTLITE_LOCAL_SERVICE_URL and FTLITE_SERVICE_URL, FTLITE_SECTOR_ONLINE_TEST (honoured only when unpackaged), FTLITE_DUEL_TEST_SEED and app.isPackaged. A page cannot read these. \u00a73.3 says the overrides are 'kept for development' without saying how they reach the page, or how the browser build keeps the sector and seed entries test-only. The renderer finds online play only through window.ftlite.online (createOnlineBridge, onlineAvailable: !!bridge), and ports arrive by a window postMessage tagged ONLINE_PORT_SOURCE. After deletion the spec names no in-page replacement. It also does not acknowledge that the seat token, which was main-only, now lives in page JS.",
+      "evidence": "spec L95, L109-111. src/main/index.ts:L37-58. src/renderer/src/main.ts:L78-82, L106-110. src/renderer/src/app/onlineBridge.ts:L5-18. src/main/network/onlineSession.ts:L52.",
+      "why": "Without this, multiplayer is unreachable in the browser, the rewritten gates cannot set the sector entry or the test seed, and implementers would pick incompatible injection paths (query string, preload, build define).",
+      "fix": "Specify a page factory that builds the session with the deps, an OnlinePreloadApi-compatible facade plus onPort (direct callback, no window.postMessage), and how config and test flags arrive. Electron passes them from main through the preload as a frozen value. The web build bakes them in only for test builds, and the production build rejects them. Add one sentence on the trust-boundary change (no session object on window)."
+    },
+    {
+      "severity": "P2",
+      "title": "The IndexedDB storage requirement contradicts the existing seam",
+      "claim": "\u00a73.1 says IndexedDB 'implements the existing SeatStoreFileSystem and MirrorFileSystem seams' and also that 'each write is a single transaction, which replaces the temp-plus-rename step'. The seams are a file-handle filesystem (mkdir, open with flags, read/writeFile/sync/close, rename, unlink, ENOENT codes), and the stores always write a temp file and then rename it. Implementing the seam keeps the rename, so the write is not a single transaction. Both stores also import node:path join, randomUUID and Buffer.",
+      "evidence": "spec L91. src/main/network/seatStore.ts:L23-28, L48-49, L90-107. src/main/network/mirrorStore.ts:L1-2, L17-22, L66-87.",
+      "why": "Two implementers would build either an fs emulator over IndexedDB or a new key-value seam, with different atomicity.",
+      "fix": "Choose one. Recommendation: a new byte key-value seam (get/put/delete of one record per key in one IndexedDB transaction) under the unchanged caps and validators. Drop 'implements the existing seams', and list the node:path, randomUUID and Buffer replacements."
+    },
+    {
+      "severity": "P2",
+      "title": "The Firefox fullscreenchange-as-Esc rule needs to exclude page-initiated exits and avoid double input",
+      "claim": "A fullscreenchange to not-fullscreen also fires when the page itself calls exitFullscreen (the Settings toggle) and when the browser leaves fullscreen for other reasons. If Firefox also delivers the Escape keydown, the game would see two Esc presses. The rule is also keyed to a browser name rather than to a Keyboard Lock capability, so Chrome without a successful lock (for example, when lock() rejects) is not covered.",
+      "evidence": "spec L224-226. src/renderer/src/main.ts:L115.",
+      "why": "It could unpause or close a window unintentionally, and implementers would detect 'Firefox' differently.",
+      "fix": "Treat the exit as an Esc only if it was not page-initiated (track a flag set around exitFullscreen), a match is running, and no Escape keydown arrived within the same 100 ms. Choose the path by whether navigator.keyboard.lock resolves, not by user agent."
+    },
+    {
+      "severity": "P3",
+      "title": "\u00a74 lists only part of RoomCompatibility, and its error text assumes one direction",
+      "claim": "sameCompatibility also compares schemaVersion and layoutHash. The join error is 'incompatible' in both directions, so 'This lobby runs a newer version' is wrong when the lobby is older than the tab.",
+      "evidence": "spec L137-139. src/network/session/serviceClient.ts:L61-64.",
+      "why": "It gives misleading guidance to players and the plan.",
+      "fix": "List all six fields. Use direction-neutral text ('This lobby runs a different version. Both players should reload.'), or compare against version.json first."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "\u00a72.3 sizes and names: seatStore MAX_BYTES 8192 and online-seat-v1.json (src/main/network/seatStore.ts:L29,L49); mirrorStore 557056 and FTLNMIR1 with temp+rename (src/main/network/mirrorStore.ts:L22,L87).",
+    "\u00a72.3 node:crypto use: onlineSession L1, L261, L496-497; onlineDuel L5, L42-43; onlineSector L1, L51-52; onlineMirrors L1, L20, L128 (createHash and Buffer).",
+    "\u00a72.2: serviceClient injects fetch and createWebSocket and hashes with crypto.subtle (src/network/session/serviceClient.ts:L27-33, L76-78). Asset loading resolves against document.baseURI (src/renderer/src/render/assets.ts:L72).",
+    "\u00a72.3: authorityHost uses process.parentPort, node:perf_hooks, randomBytes and process.exit (src/utility/authorityHost.ts:L1-19); emitterPortEndpoint supports only node and electron (src/network/platformPort.ts:L9-18).",
+    "\u00a72.3 onlineConfig behaviour matches the spec: exactly one source, loopback gives iceMode loopback, https gives turn (src/main/network/onlineConfig.ts:L4-15).",
+    "\u00a72.4: the origin check allows a missing Origin or the string 'null' and sets ACAO/Vary (services/signalling/src/index.ts:L59-69). Preflight answers with Allow-Methods/Allow-Headers covering Authorization, Content-Type and the X-FTL-* request headers (L24-27), so JSON POSTs and the checkpoint PUT preflight should pass.",
+    "\u00a72.1: powerMonitor pushes app:suspend and app:resume (src/main/network/onlineIpc.ts:L56-57). The hidden window uses RTC request/response IPC (src/main/network/transportWindow.ts:L40-53).",
+    "The determinism 'Electron' runtime loads its own page through scripts/determinism/electron.cjs as the Chromium engine (scripts/determinism/run.ts:L45-54). It does not depend on the utility process or the hidden window.",
+    "The renderer's window.ftlite call sites are optional-chained (src/renderer/src/main.ts:L78, L81, L88, L97).",
+    "\u00a73.1's 'Exit save' wording correctly identifies onlineExit's role (src/main/network/onlineExit.ts:L4-20), although its replacement is infeasible (finding 2)."
+  ],
+  "not_verified": [
+    "Vercel vendor claims (Routing Middleware on Hobby, Build Output v3 functions/ with an edge .vc-config plus config.json middleware routes under 'vercel deploy --prebuilt', runtime env vars available to prebuilt Edge middleware, Password Protection being paid). I did not check them against current Vercel docs; no network access was used.",
+    "Whether Worker, module dynamic-import and version.json fetches carry the ftlite_pass cookie. Same-origin requests default to credentials 'same-origin', so they should, but this was not tested.",
+    "Whether Electron allows 'new Worker(...)', especially module workers, from a loadFile (file://) page, and what Origin Chromium sends on a WebSocket upgrade from file://. Both are untested, and they affect the Electron path in \u00a73.3.",
+    "Whether Firefox fires the MessagePort 'close' event. bridge.ts:L10-12 and platformPort onClose rely on close detection, and hostRuntime/portLink use onClose for abrupt peer loss.",
+    "Whether Firefox delivers the Escape keydown to content when Esc exits DOM fullscreen (relevant to finding 11).",
+    "Whether Chrome's intensive timer throttling exemption for pages using WebRTC applies to the host tab. This should be measured in the \u00a73.5 test.",
+    "I read build/contentDigest.ts, services/signalling/src/room/checkpoints.ts, src/network/session/leaseGate.ts, package.json scripts and docs/superpowers/reviews/2026-11-15-net-3e-evidence/README.md (via grep) beyond the manifest, to support findings 3, 4, 6 and 7. I did not read src/preload/*, peer.ts, bridge.ts or controller.ts in full, or docs/gates.md."
+  ]
+}

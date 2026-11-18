@@ -36,11 +36,12 @@ const weapons: ConsoleView = {
 };
 
 describe('the contact window (spec §7.2)', () => {
-  it('an unknown enemy: UNKNOWN CONTACT, no drawing, no LASER; SCAN 1 (SLOW) calls scan', () => {
+  it('an unknown enemy: UNKNOWN CONTACT, the "?" silhouette (Feel-i) with LASER at Weapons; SCAN 1 (SLOW) calls scan', () => {
     const st = createTacticalState(4), { c } = mount(frame(null, contactModel({ state: st, contact: 0, aim: false, station: 'weapons', t: 0, weapons: { charge } })));
     expect(texts()).toContain('UNKNOWN CONTACT');
-    expect(document.querySelector('[data-ui-contact-box]')).toBeNull();
-    expect(btn('contact-laser')).toBeNull();
+    expect(document.querySelector('[data-ui-contact-box]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-ui-contact-room="?"]')).toHaveLength(3);
+    expect(btn('contact-laser')).not.toBeNull();
     expect(texts()).toContain('SCAN 1 (SLOW)');
     fireEvent.pointerDown(btn('contact-scan')!, { button: 0 });
     expect(c.scan).toHaveBeenCalledTimes(1);

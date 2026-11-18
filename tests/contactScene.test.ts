@@ -17,6 +17,7 @@ import { createDuelScene } from '../src/renderer/src/app/duel/scene';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
+import { resetSits } from '../src/renderer/src/render/duel/sitModel';
 
 const layout = parseShip(cutter);
 const assets: GameAssets = {
@@ -66,7 +67,9 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.contact.state()).toEqual({ contact: 0, aim: false });
       expect(r.view()?.title).toBe('ENEMY SHIP');
       expect(r.view()?.weapons?.laser.enabled).toBe(true);
-      expect(r.view()?.lockRoom).toBeNull();   // FTL targeting spec §1: no laser target yet
+      expect(r.view()?.lockRoom).toBe(1);   // Feel-i: the SHIELDS opener; FTL targeting spec §1: no mark without a target
+      r.rt.duel.tactical.systems[0].laserTargeted = false; r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.view()?.lockRoom).toBeNull();
       r.rt.duel.tactical.systems[0].laserTargeted = true; r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.view()?.lockRoom).toBe(r.rt.duel.tactical.systems[0].lock);
       r.scene.draw(r.rt, 1 / 60, LIVE);   // stays open without a click
@@ -92,5 +95,21 @@ describe('the scene and the contact window (spec §6.5)', () => {
       r.clicks.push({ x: e.x + 200, y: e.y + 200 }); r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.contact.state()).toBeNull(); expect(r.view()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+});
+
+describe('Feel-i in the scene (console feel spec §1, §3)', () => {
+  it('sitting down frames both ships and shows the card; the kill hides the enemy marker for its break-apart', () => {
+    resetSits();
+    const r = rig();
+    r.scene.draw(r.rt, 1 / 60, LIVE);
+    expect(r.store.getState().duel?.sitCard?.seat).toBe('weapons');
+    expect(r.rt.cameras.weapons.targetZoom).toBeGreaterThanOrEqual(0.25);
+    expect(r.rt.cameras.weapons.targetZoom).toBeLessThanOrEqual(1);
+    const t = r.rt.duel.tactical;
+    t.systems[1].hull = 0; t.outcome = 1;   // the enemy destroyed this frame (the scene reads it as the online guest would)
+    r.scene.draw(r.rt, 1 / 60, LIVE);
+    expect(r.store.getState().duel?.sitCard ?? null).toBeNull();   // the console is hidden on a decided round
+    r.scene.dispose();
   });
 });

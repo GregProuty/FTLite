@@ -73,12 +73,13 @@ async function startApp(): Promise<void> {
   void audio.load(assets.sounds ?? [], loadBytes);   // Audio-i spec section 2: in the background; the synth tones play until it lands
   let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
   audio.setVolumes(settings);
+  renderer.setShake?.(settings.shake);   // Feel-i: the console maps' screen shake
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
   const bridge = window.ftlite?.online ? createOnlineBridge(window, window.ftlite.online) : null;
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const win = window.ftlite?.window;
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, fullscreenAvailable: !!win, controls: controlSections() } });
+  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win, controls: controlSections() } });
   bootCrt(renderer, store);
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
@@ -110,6 +111,7 @@ async function startApp(): Promise<void> {
     single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined,
     quit() { window.close(); }   // the main window's close: main quits the app on window-all-closed, as the close button does
   });

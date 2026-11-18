@@ -17,6 +17,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const contactOf = (station: 'helm' | 'weapons', aim: boolean, targets: { laser?: number; torp?: number } = {}): ContactView => {
   const st = createTacticalState(4); st.known[0] = 2;   // Sci-1: the full window is Level 2
+  st.systems[0].laserTargeted = false;   // no target unless asked (a round starts at the Feel-i SHIELDS opener)
   if (targets.laser !== undefined) { st.systems[0].lock = targets.laser; st.systems[0].laserTargeted = true; }
   if (targets.torp !== undefined) st.systems[0].torpLock = targets.torp;
   return contactModel({ state: st, contact: 0, aim, station, t: 0, weapons: station === 'weapons' ? { charge } : null })!;

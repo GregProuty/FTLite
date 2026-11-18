@@ -22,7 +22,11 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
     contours: [{ accel: 40, x: 900, y: 500, r: 120 }], edge: { x: 900, y: 500, r: 400 }, planet: { x: 900, y: 500, r: 40 },
     asteroids: [{ index: 3, x: 300, y: 600, r: 14, dot: false }, { index: 4, x: 320, y: 640, r: 1, dot: true }, { index: 5, x: 360, y: 600, r: 18, dot: false, wear: 0.8 }],   // SPIKE: a worn rock's cracks
     ships: [ship({}), ship({ index: 1, x: 760, y: 260, crew: false, hull: 'scout', rooms: [2, 1, 0], shields: 1 }), ship({ index: 2, x: 200, y: 200, chevron: true }), ship({ index: 3, x: 220, y: 240, chevron: true, crew: false, hull: 'scout' }), ship({ index: 4, x: 420, y: 520, rooms: [0, 1, 2] }), ship({ index: 5, x: 640, y: 560, crew: false, hull: 'scout', rooms: [0, 1, 2], shields: 0 })],
-    helm: console === 'helm' ? { path: [{ x: 520, y: 340 }, { x: 560, y: 300 }, { x: 610, y: 280 }], origin: { x: 500, y: 360 }, velocity: { x: 560, y: 330 }, headingFrom: { x: 510, y: 340 }, headingTo: { x: 530, y: 300 }, thrust: 1, turn: -1, ring } : null,
+    helm: console === 'helm' ? { path: [{ x: 520, y: 340 }, { x: 560, y: 300 }, { x: 610, y: 280 }], origin: { x: 500, y: 360 }, velocity: { x: 560, y: 330 }, headingFrom: { x: 510, y: 340 }, headingTo: { x: 530, y: 300 }, thrust: 1, turn: -1, ring,
+      // Feel-ii: the collision X and tag, the held heading's chevron and line, SLINGSHOT
+      collision: { x: 610, y: 280, from: { x: 560, y: 300 }, seconds: 1.2, label: { text: 'COLLISION 1.2s', x: 620, y: 258 } },
+      hold: { chevron: [600, 360, 618, 355, 600, 350], from: { x: 520, y: 360 }, to: { x: 618, y: 355 }, preview: false }, slingshot: { text: 'SLINGSHOT', x: 570, y: 306 } } : null,
+    gravity: console === 'helm' ? [{ x: 900, y: 500, r: 90, g: 1, label: { text: 'G 1', x: 904, y: 396 } }, { x: 900, y: 500, r: 140, g: 0.5, label: { text: 'G 0.5', x: 904, y: 346 } }] : undefined,
     arrows: (['ship', 'enemy', 'planet', 'missile'] as const).map((target, k) => ({ target, x: 28, y: 100 + 120 * k, angle: -Math.PI / 2, distance: 900, label: `${target.toUpperCase()} 900` })),
     overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: true, paused: false },
     stars: { x: 10, y: 20 }
@@ -43,7 +47,11 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
     ],
     // Duel polish i spec §A, §B: the charge ring (part-charged at the Helm, full at Weapons) and a callout of every kind.
     charge: { x: 760, y: 260, r: 30, fill: console === 'helm' ? 0.4 : 1, full: console === 'weapons', alpha: 0.7, colour: CHARGE_COLOUR, label: { text: console === 'helm' ? 'CHARGING' : 'FIRING', x: 760, y: 218 } },
-    callouts: Object.values(CALLOUT_COLOUR).map((colour, k) => ({ text: `CALLOUT ${k}`, x: 760, y: 200 - 14 * k, colour, alpha: 0.8 }))
+    callouts: Object.values(CALLOUT_COLOUR).map((colour, k) => ({ text: `CALLOUT ${k}`, x: 760, y: 200 - 14 * k, colour, alpha: 0.8 })),
+    // Feel-ii: the enemy torpedo's path, the Helm's EVADE arrow, the pings
+    torpedoPath: [{ x: 700, y: 330 }, { x: 650, y: 340 }, { x: 600, y: 350 }],
+    evade: console === 'helm' ? { x: 570, y: 360, angle: Math.PI / 2, label: { text: 'EVADE', x: 600, y: 360 } } : null,
+    pings: [{ x: 300, y: 300, r: 20, inner: 8, alpha: 0.7, label: { text: 'HERE', x: 300, y: 270 } }, { x: 760, y: 260, r: 30, inner: 8, alpha: 0.3, label: { text: 'TARGET', x: 760, y: 230 } }]
   };
   return { d, c };
 }

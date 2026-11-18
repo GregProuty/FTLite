@@ -17,8 +17,10 @@ import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxMod
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { repairInReach, seatOf } from './controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
-import { createCameraInput, type DuelView } from './runtime';
-import type { DuelViewSource } from './scene';
+import { createCameraInput, heldTurn, type DuelView } from './runtime';
+import type { HeldInput } from '../../net/contracts';
+import type { DuelViewSource, Refusal } from './scene';
+import { stateAxes } from '../../render/duel/situationModel';
 
 /** What the source reads from its client. */
 export interface ConfirmedDuel {
@@ -92,9 +94,9 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let seen = 0, lastTick = -1, gap = 3, receivedAt = 0, round = -1, frameAlpha = 1;
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [];
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[]; repair: number[] } | null = null;
-  let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld = { moveX: 0, moveY: 0 };
+  let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
-  let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null;
+  let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
   /** Observe the client: on a new publication, roll the interpolation and derive the gap's events. True when one was new. */
@@ -125,8 +127,9 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   }
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
-    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: { moveX: number; moveY: number }): void; heldFlags(flags: HeldFlags): void;
+    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: { moveX: number; moveY: number; face?: boolean }): void; heldFlags(flags: HeldFlags): void;
     throttleBase(level: number | null): void;
+    refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
     get duel() { return duel(); },
@@ -149,7 +152,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     },
     axes: (): Axes => {   // Artemis spec §5.3: the held turn and the replica's throttle, while this seat flies a running round
       const d = duel();
-      return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: Math.sign(sentHeld.moveX) || 0, thrust: throttleThrust(d.throttle) } : NO_AXES;
+      return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: heldTurn(d, sentHeld), thrust: throttleThrust(d.throttle) } : NO_AXES;
     },
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
@@ -162,6 +165,11 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     throttle: () => shownThrottle ?? duel().throttle,
     /** The session's level in flight (spec §5.4's throttleSent), or null. */
     throttleBase(level) { shownThrottle = level; },
+    /** Feel-ii §1.2: this seat's own axes at the Helm, else what the replica alone tells (no partner's A/D or Space). */
+    helmAxes: (): Axes => (seatOf(duel(), seat) === 'helm' ? source.axes() : stateAxes(duel())),
+    /** Feel-ii §2.8: the session's refused controls, drained by the scene. */
+    refuse(control, reason) { refusals.push({ control, reason }); },
+    takeRefusals() { const out = refusals; refusals = []; return out; },
     drainEvents() { const out = events; events = []; return out; },
     observe,
     ready: () => !!client.state() && !!client.publication(),
@@ -171,7 +179,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
-      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer); else cameraInput.applyInterior(interiorCamera, keys, pointer); }
+      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm'); else cameraInput.applyInterior(interiorCamera, keys, pointer); }
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);
@@ -179,7 +187,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       }
     },
     /** The held axes this seat last sent (its own console's predicted path). */
-    sent(held) { sentHeld = { moveX: held.moveX, moveY: held.moveY }; },
+    sent(held) { sentHeld = { moveX: held.moveX, moveY: held.moveY, interactHeld: false, ...(held.face ? { face: true } : {}) }; },
     /** The last pump's merged held keys and console holds (Artemis spec §6.1). */
     heldFlags(flags) { uiHeld = flags; },
     /** Publication inter-arrival gaps in milliseconds, for the record's jitter. */

@@ -1,0 +1,14 @@
+kind=full
+head=77064aa0
+thread_id=bed7c634-ef15-449c-bac1-f85166e3710b
+effort=high
+started_at=2026-11-18T18:39:20.447781+00:00
+reviewer=claude-opus
+exit=0
+duration_s=986
+input_tokens=25701408
+cached_input_tokens=25348390
+output_tokens=86951
+reasoning_output_tokens=
+parsed=1
+needs_judgment=

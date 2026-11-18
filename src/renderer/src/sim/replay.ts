@@ -6,7 +6,7 @@ import type { TickInput } from './commands';
 export interface ReplayTypes { init: unknown; controllers: unknown; snapshot: unknown }
 export interface SectorReplayTypes { init: RunInit; controllers: Checkpoint['botControllers']; snapshot: Snapshot }
 import type { AdmissionPolicy } from '../net/receivePolicy';
-export type ReplayAdmission = { binding: number; players: number[]; order: number; message: Exclude<ClientMessage, { kind: 'callout' }>; admissionPolicy?: AdmissionPolicy; effectiveTick?: number };
+export type ReplayAdmission = { binding: number; players: number[]; order: number; message: Exclude<ClientMessage, { kind: 'callout' | 'ping' }>; admissionPolicy?: AdmissionPolicy; effectiveTick?: number };
 export type ReplayAction =
   | { kind: 'admission'; entries: ReplayAdmission[] }
   | { kind: 'lifecycle'; order: number; ordinal: number; control: LifecyclePause }

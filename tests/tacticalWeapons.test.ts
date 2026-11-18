@@ -106,6 +106,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
   });
   it('a full crew charge never vents (LASER_HOLD_TICKS is the hunter laser only)', () => {
     const st = duel(), a = st.systems[0];
+    a.laserTargeted = false;   // Feel-i's SHIELDS opener would auto-fire it: untargeted, a full laser just waits
     for (let t = 0; t < 3 * LASER_HOLD_TICKS; t++) tick(st, input());
     expect([a.laserCharge, a.laserHold, a.shots]).toEqual([LASER_CHARGE_UNITS, 0, 0]);
   });
@@ -164,6 +165,7 @@ describe('weapon admission (used by the duel step for reject reasons)', () => {
 describe('shields (spec §5)', () => {
   it('recharge one layer per 5 s, and 7.5 s at Shields level 1', () => {
     const st = duel(), b = st.systems[1];
+    st.systems[0].laserTargeted = false;   // Feel-i's SHIELDS opener would strip the layers this test times
     b.shields = 0;
     for (let t = 0; t < 300; t++) tick(st, input());
     expect(b.shields).toBe(1);
@@ -175,6 +177,7 @@ describe('shields (spec §5)', () => {
   });
   it('Shields level 2 holds a part-charged clock exactly, and repair to level 1 resumes it to the exact tick', () => {
     const st = duel(), b = st.systems[1];
+    st.systems[0].laserTargeted = false;   // Feel-i's SHIELDS opener would strip the layer this test times
     b.shields = 1; b.shieldClock = 0;
     for (let t = 0; t < 150; t++) tick(st, input());
     expect(b.shieldClock).toBe(150 * SHIELD_RATE[0]!);                  // 450 of 900

@@ -44,7 +44,8 @@ describe('the crew laser always charges (spec §2)', () => {
   it('every round starts with the crew laser and magazine full; the Hunter laser starts empty', () => {
     const st = createTacticalState(9);
     expect([st.systems[0].laserCharge, st.systems[0].magazine]).toEqual([LASER_CHARGE_UNITS, CUTTER_CLASS.slots.missile.magazine]);
-    expect([st.systems[0].laserTargeted, st.systems[0].torpLock, st.systems[0].torpRoom]).toEqual([false, -1, -1]);
+    // Feel-i (console feel spec §3): the laser starts targeted at Shields, the FTL opener; the torpedo untargeted.
+    expect([st.systems[0].laserTargeted, st.systems[0].lock, st.systems[0].torpLock, st.systems[0].torpRoom]).toEqual([true, Room.Shields, -1, -1]);
     expect(st.systems[1].laserCharge).toBe(0);
   });
   it('with a target it charges with no hold and fires its burst on full and eligible', () => {

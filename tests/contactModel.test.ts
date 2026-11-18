@@ -61,6 +61,8 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
   });
   it('FTL targeting spec §1: the target marks are the laser target (only while it has one) and the torpedo target, at Level 1 too', () => {
     const st = known(1);
+    expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([1, null]);   // Feel-i: a round starts at the SHIELDS opener
+    st.systems[0].laserTargeted = false;
     expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([null, null]);
     st.systems[0].lock = 0; st.systems[0].laserTargeted = true; st.systems[0].torpLock = 2;
     expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([0, 2]);
@@ -79,9 +81,18 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
 });
 
 describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
-  it('Level 0: UNKNOWN CONTACT, no drawing, no weapon list, SCAN 1 (SLOW) at Weapons', () => {
-    expect(model(known(0))).toMatchObject({ contact: 0, title: 'UNKNOWN CONTACT', shields: null, hull: null, outline: [], rooms: [], lockRoom: null, weapons: null, aim: false,
+  it('Level 0 (Feel-i): UNKNOWN CONTACT and the "?" silhouette of three targetable rooms (WEAP nose, SHLD, ENG stern), the weapon list, SCAN 1 (SLOW)', () => {
+    const v = model(known(0))!;
+    expect(v).toMatchObject({ contact: 0, title: 'UNKNOWN CONTACT', shields: null, hull: null, unknown: true, lockRoom: 1, aim: false,
       scan: { label: 'SCAN 1 (SLOW)', enabled: true, progress: null }, lines: [] });
+    expect(v.rooms.map((r) => r.label)).toEqual(['?', '?', '?']);
+    expect(v.weapons).not.toBeNull();
+    expect(v.rooms[0]!.centre.x).toBeGreaterThan(v.rooms[1]!.centre.x); expect(v.rooms[1]!.centre.x).toBeGreaterThan(v.rooms[2]!.centre.x);   // nose right
+    for (const r of v.rooms) for (let k = 0; k < r.points.length; k += 2) {
+      expect(r.points[k]!).toBeGreaterThanOrEqual(v.box.x); expect(r.points[k]!).toBeLessThanOrEqual(v.box.x + v.box.w);
+    }
+    const picked = model(known(0), { aim: true })!;
+    expect([picked.aim, picked.aimWeapon]).toEqual([true, 'laser']);
   });
   it('Level 1 on the Weapons station: the weapon block is present and the aim passes through (spec §7.2)', () => {
     const v = model(known(1), { aim: true })!;
@@ -89,6 +100,7 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
   });
   it('Level 1: the outline with ? labels and no damage looks, no lock mark; pips, hull, the hostility line; SCAN 2', () => {
     const st = known(1); st.systems[1].rooms = [2, 2, 2]; st.tick = 600;
+    st.systems[0].laserTargeted = false;   // no target, no lock mark (a round starts at the Feel-i SHIELDS opener)
     const v = model(st, { station: 'science', weapons: null })!;
     expect(v.rooms.map((r) => r.label)).toEqual(['?', '?', '?']);
     for (const r of v.rooms) expect({ fill: r.fill, stroke: r.stroke, hatch: r.hatch }).toEqual({ fill: roomLook(false, 0, 0).fill, stroke: roomLook(false, 0, 0).stroke, hatch: null });

@@ -1,0 +1,11 @@
+topic=web-build-spec
+subject_kind=spec
+subject=docs/superpowers/specs/2026-11-18-web-build-design.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=3
+effort=high
+confirm=0
+verify=
+created=2026-11-18
+head_at_setup=0ac43a37

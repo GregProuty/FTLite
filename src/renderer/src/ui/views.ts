@@ -19,7 +19,9 @@ export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: read
    *  weapon is picked up, so the targeting line can draw before the mouse next moves; absent or null when unknown. */
   pointer?: { x: number; y: number } | null;
   /** The ship HUD (duel polish i spec §E): set on the SHIP view only (standing, console.station 'ship'); absent or null draws none. */
-  hud?: ShipHudView | null }
+  hud?: ShipHudView | null;
+  /** Feel-i (console feel spec §1): the sit-down card over the map, its seat's goal and three keys; absent or null draws none. */
+  sitCard?: import('../render/duel/sitModel').SitCardView | null }
 export interface FlightUiView { feel: readonly (readonly [string, string])[]; banners: Banners; overlay: MapOverlayView | null; crt: boolean }
 
 export function mapOverlayOf(o: OverlayDraw): MapOverlayView { return { zoomText: o.zoomText, scaleBar: o.scaleBar, snapHint: o.snapHint }; }

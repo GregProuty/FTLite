@@ -8,7 +8,7 @@ import { segmentNear, sideOf } from './geometry';
 import { rockAt, rocksNear } from './rocks';
 import { classOf, HunterMode, missileOf, Room, type TacticalState } from './state';
 import {
-  HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS,
+  AUTO_FACE_SIN, HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS,
   HUNTER_STANDOFF, HUNTER_THRUST_COS, HUNTER_TRAIL_TICKS, HUNTER_WALK_TICKS, REPAIR_WORK_TICKS
 } from './tuning';
 import { enemyHostile } from './science';
@@ -22,6 +22,29 @@ const REPAIR_ORDER = [Room.Engines, Room.Weapons, Room.Shields] as const;
 export function pursuitTurn(heading: number, dx: number, dy: number): number {
   const side = sideOf(heading, dx, dy);
   return side !== 0 || hx(heading) * dx + hy(heading) * dy >= 0 ? side : 1;
+}
+
+/** Feel-i's auto-face (console feel spec §2): the turn (−1, 0 or 1) that brings ship i's nose onto its locked target's lead
+ *  point, the Hunter's own aim (the target HUNTER_LEAD_S of its velocity ahead), dead astern clockwise as pursuitTurn,
+ *  and none once the point is within AUTO_FACE_SIN of the nose. Reads the state as it stands; pure. */
+export function autoFaceTurn(state: TacticalState, i: number): number {
+  const me = state.ships[i]!, t = state.ships[state.systems[i]!.target]!;
+  return faceTurn(me.heading, t.x - me.x + t.vx * HUNTER_LEAD_S, t.y - me.y + t.vy * HUNTER_LEAD_S);
+}
+
+/** Feel-ii's click-to-heading (Feel-ii spec §1.1): auto-face's turn law aimed at the fixed bearing of heading index `h`
+ *  instead of the lead point. Pure. */
+export function headingTurn(state: TacticalState, i: number, h: number): number {
+  return faceTurn(state.ships[i]!.heading, hx(h), hy(h));
+}
+
+/** The auto-face turn law: toward (dx, dy) as pursuitTurn, none once it is within AUTO_FACE_SIN of the nose. */
+function faceTurn(heading: number, dx: number, dy: number): number {
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d === 0) return 0;
+  const h0 = hx(heading), h1 = hy(heading);
+  if (h0 * dx + h1 * dy > 0 && Math.abs(h0 * dy - h1 * dx) <= AUTO_FACE_SIN * d) return 0;
+  return pursuitTurn(heading, dx, dy);
 }
 
 /** The first solid body ship i's straight-line path over the lookahead comes within its radius + margin of, or null. */

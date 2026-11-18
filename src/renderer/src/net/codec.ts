@@ -106,7 +106,7 @@ function duelSummaryShape({ uint }: Primitives) {
     repairsStarted: pair, walkingTicks: pair, repairingTicks: pair };
 }
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
- *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`. */
+ *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`. */
 export const duelWire: ModeWire<DuelSnapshot> = {
   commands({ index }) {
     return [
@@ -119,6 +119,7 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('laserCharge'), held: z.boolean() }).strict(),
       z.object({ kind: z.literal('missileLaunch') }).strict(),
       z.object({ kind: z.literal('throttle'), level: z.number().finite() }).strict(),
+      z.object({ kind: z.literal('heading'), heading: z.number().finite() }).strict(),   // Feel-ii's click-to-heading
       z.object({ kind: z.literal('contactScan'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('designate'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('laserFrequency'), freq: z.number().int() }).strict(),
@@ -145,8 +146,9 @@ function messageSchemaFor<S extends { header: unknown }>(playerLimit: number, wi
 const prims = primitives(playerLimit);
 const { uint, positive, index, player, text, u32 } = prims;
 const axis = z.number().finite().min(-1).max(1).transform((n) => n === 0 ? 0 : n);
+const pingCoord = z.number().finite().min(-1e6).max(1e6);   // Feel-ii §2.7: a ping's world point
 const id = z.object({ player, sequence: positive }).strict();
-const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean() }).strict();
+const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional() }).strict();   // face: Feel-i's auto-face
 const frame = z.object({ runId: text, player, tick: uint, sequence: positive, held }).strict();
 const commandSchema = z.discriminatedUnion('kind', wire.commands(prims));
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();
@@ -177,6 +179,7 @@ const telemetry = z.object({
 const payload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cue'), cue: z.enum(['alarm', 'impact', 'shot', 'hit', 'ready', 'jump', 'upgrade', 'victory', 'defeat', 'callout']) }).strict(),
   z.object({ kind: z.literal('callout'), player, text: z.string().min(1).max(256), station: index.nullable() }).strict(),
+  z.object({ kind: z.literal('ping'), player, x: pingCoord, y: pingCoord, target: z.boolean() }).strict(),   // Feel-ii §2.7
   z.object({ kind: z.literal('pause'), paused: z.boolean(), owner: player.nullable(), reason: text }).strict(),
   z.object({ kind: z.literal('ended'), record: wire.endRecord(prims, { telemetry }) }).strict(),
   ...wire.events(prims, { telemetry })
@@ -192,6 +195,7 @@ const messageSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('held'), frame }).strict(),
   z.object({ kind: z.literal('command'), envelope }).strict(),
   z.object({ kind: z.literal('callout'), runId: text, player, sequence: positive, calloutKind: z.literal('contextual') }).strict(),
+  z.object({ kind: z.literal('ping'), runId: text, player, sequence: positive, x: pingCoord, y: pingCoord, target: z.boolean() }).strict(),   // Feel-ii §2.7
   z.object({ kind: z.literal('state'), state }).strict(),
   z.object({ kind: z.literal('result'), runId: text, result }).strict(),
   z.object({ kind: z.literal('event'), event: authorityEvent }).strict()

@@ -2,7 +2,7 @@
 // the flight view. Pointer input feeds the camera and, through takeClick, the contact window's map clicks (enemy ship
 // window spec §6.2); it never becomes a command (parent §10).
 import type { Axes } from '../../sim/tactical/state';
-import { clampThrottle } from '../../sim/duel/throttle';
+import { clampThrottle, THROTTLE_MAX } from '../../sim/duel/throttle';
 
 /** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones; Artemis-ii
  *  adds the Helm's throttle notches on W and S (spec 2026-11-17-artemis-consoles §5.4). */
@@ -22,6 +22,8 @@ export const WEAPON_CODES: Readonly<Record<string, 'laser' | 'torpedo'>> = { Dig
  *  Space (its press fires a full laser, FTL targeting spec §2). W and S are also the throttle's press edges (PRESS_CODES). */
 export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' } as const;
 export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
+/** Feel-ii §2.7: G drops a ping at the pointer on a console map (the duel modes take it through the keyboard's intercept). */
+export const PING_CODE = 'KeyG';
 
 /** The merged held state a console draws (spec §6.1): Space, A, D, W, S from the keys or the console's buttons. */
 export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean }
@@ -83,7 +85,7 @@ export interface EventSource {
   addEventListener(type: string, fn: (e: never) => void, opts?: unknown): void;
   removeEventListener(type: string, fn: (e: never) => void, opts?: unknown): void;
 }
-interface KeyEventLike { code: string; repeat: boolean; preventDefault(): void }
+interface KeyEventLike { code: string; repeat: boolean; shiftKey?: boolean; preventDefault(): void }
 
 export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): void; destroy(): void; readonly ui: ConsoleInput }
 
@@ -104,6 +106,7 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     else if (opts.intercept?.(e.code)) { taken.add(e.code); return; }   // taken (the contact window's Esc and T): no edge, not held
     if (!e.repeat && FREQ_CODES[e.code] !== undefined) freqTo = FREQ_CODES[e.code]!;
     if (e.code === FIRE_HELD) { if (!e.repeat && !has(FIRE_HELD)) presses.fireDown++; }
+    else if (e.code === MOVE_CODES.up && e.shiftKey === true) { if (!e.repeat) throttleTo = THROTTLE_MAX; }   // Feel-ii §1.4: Shift+W is full burn
     else { const action = PRESS_CODES[e.code]; if (action && !e.repeat) presses[action]++; }
     keys.add(e.code);
   };
@@ -158,7 +161,15 @@ export interface PointerSample {
   wheel: number;
   /** Right- or middle-button drag in internal pixels since the previous sample. */
   dragX: number; dragY: number;
+  /** Feel-ii (spec §1.1): the part of dragX / dragY the right button made alone. The Helm's right button aims the heading
+   *  instead of panning, so its camera pans by the rest. Absent: none. */
+  rightX?: number; rightY?: number;
 }
+/** Feel-ii (spec §1.1): the right button since the last take, in internal px: where it is (or was let go), whether it
+ *  went down and whether it came up since, and whether it is still held. */
+export interface AimSample { x: number; y: number; press: boolean; release: boolean; held: boolean }
+/** Feel-ii (spec §1.7): a middle click is a ping only when the button moved no further than this between press and release. */
+export const PING_CLICK_PX = 6;
 interface PointerEventLike { clientX: number; clientY: number; button: number; buttons: number; pointerId?: number; preventDefault(): void }
 interface WheelEventLike { clientX: number; clientY: number; deltaY: number; deltaMode: number; preventDefault(): void }
 
@@ -169,6 +180,11 @@ export interface PointerSource {
   takeClick(): { x: number; y: number } | null;
   /** The last pointer position in internal px, or null before any (Sci-1 spec §7.3: Science's hover readout). Not cleared. */
   position(): { x: number; y: number } | null;
+  /** Feel-ii (spec §1.1): the right button since the last call, or null when it neither moved nor changed; reading clears
+   *  its press and release edges. */
+  takeAim(): AimSample | null;
+  /** Feel-ii (spec §1.7): the last middle click (pressed and released within PING_CLICK_PX) since the last call, or null. */
+  takeMiddleClick(): { x: number; y: number } | null;
   clear(): void;
   destroy(): void;
 }
@@ -186,28 +202,41 @@ export function accumulateWheel(acc: number, deltaY: number): { notches: number;
 
 /** `toInternal` maps a client position to internal pixels (the letterbox inverse). Buttons 2 (right) and 1 (middle) drag. */
 export function createPointerSource(target: EventSource, toInternal: (clientX: number, clientY: number) => { x: number; y: number }): PointerSource {
-  let x: number | null = null, y: number | null = null, wheel = 0, dragX = 0, dragY = 0, dragging = false;
-  let click: { x: number; y: number } | null = null;
+  let x: number | null = null, y: number | null = null, wheel = 0, dragX = 0, dragY = 0, rightX = 0, rightY = 0, dragging = false;
+  let click: { x: number; y: number } | null = null, aim: AimSample | null = null, middle: { x: number; y: number; moved: number } | null = null, ping: { x: number; y: number } | null = null;
   const DRAG_BUTTONS = 2 | 4;   // `buttons` bits: 2 right, 4 middle
   const move = (e: PointerEventLike): void => {
     const p = toInternal(e.clientX, e.clientY);
-    if (dragging && (e.buttons & DRAG_BUTTONS) !== 0 && x !== null && y !== null) { dragX += p.x - x; dragY += p.y - y; }
+    if (dragging && (e.buttons & DRAG_BUTTONS) !== 0 && x !== null && y !== null) {
+      const dx = p.x - x, dy = p.y - y;
+      dragX += dx; dragY += dy;
+      if ((e.buttons & DRAG_BUTTONS) === 2) { rightX += dx; rightY += dy; }   // the right button alone (Feel-ii: the Helm's aim)
+      if (middle) middle.moved += Math.hypot(dx, dy);
+    }
     else if ((e.buttons & DRAG_BUTTONS) === 0) dragging = false;
+    if ((e.buttons & 2) !== 0 && aim?.held) aim = { ...aim, x: p.x, y: p.y };
     x = p.x; y = p.y;
   };
   const downFn = (e: PointerEventLike): void => {
     const p = toInternal(e.clientX, e.clientY); x = p.x; y = p.y;
     if (e.button === 1 || e.button === 2) { dragging = true; e.preventDefault(); }
     else if (e.button === 0) click = { x: p.x, y: p.y };   // the contact window's map click (spec §6.2)
+    if (e.button === 2) aim = { x: p.x, y: p.y, press: true, release: false, held: true };
+    if (e.button === 1) middle = { x: p.x, y: p.y, moved: 0 };
   };
-  const upFn = (e: PointerEventLike): void => { if ((e.buttons & DRAG_BUTTONS) === 0) dragging = false; };
+  const upFn = (e: PointerEventLike): void => {
+    if ((e.buttons & DRAG_BUTTONS) === 0) dragging = false;
+    const p = toInternal(e.clientX, e.clientY);
+    if (e.button === 2 && aim) aim = { ...aim, x: p.x, y: p.y, release: true, held: false };
+    if (e.button === 1 && middle) { if (middle.moved + Math.hypot(p.x - middle.x, p.y - middle.y) <= PING_CLICK_PX) ping = { x: p.x, y: p.y }; middle = null; }
+  };
   const wheelFn = (e: WheelEventLike): void => {
     const p = toInternal(e.clientX, e.clientY); x = p.x; y = p.y;
     wheel += e.deltaMode === 1 ? e.deltaY * 100 / 3 : e.deltaY;   // line mode: three lines a notch
     e.preventDefault();
   };
   const menu = (e: { preventDefault(): void }): void => { e.preventDefault(); };
-  const clear = (): void => { wheel = 0; dragX = 0; dragY = 0; dragging = false; click = null; };
+  const clear = (): void => { wheel = 0; dragX = 0; dragY = 0; rightX = 0; rightY = 0; dragging = false; click = null; aim = null; middle = null; ping = null; };
   const on: [string, (e: never) => void][] = [
     ['pointermove', move as (e: never) => void], ['pointerdown', downFn as (e: never) => void], ['pointerup', upFn as (e: never) => void],
     ['wheel', wheelFn as (e: never) => void], ['contextmenu', menu as (e: never) => void]
@@ -215,11 +244,17 @@ export function createPointerSource(target: EventSource, toInternal: (clientX: n
   for (const [type, fn] of on) target.addEventListener(type, fn, type === 'wheel' ? { passive: false } : undefined);
   return {
     sample(): PointerSample {
-      const out = { x, y, wheel, dragX, dragY };
-      wheel = 0; dragX = 0; dragY = 0;
+      const out = { x, y, wheel, dragX, dragY, rightX, rightY };
+      wheel = 0; dragX = 0; dragY = 0; rightX = 0; rightY = 0;
       return out;
     },
     takeClick(): { x: number; y: number } | null { const out = click; click = null; return out; },
+    takeAim(): AimSample | null {
+      const out = aim;
+      aim = aim && aim.held ? { ...aim, press: false, release: false } : null;
+      return out;
+    },
+    takeMiddleClick(): { x: number; y: number } | null { const out = ping; ping = null; return out; },
     position: () => (x !== null && y !== null ? { x, y } : null),
     clear,
     destroy(): void { for (const [type, fn] of on) target.removeEventListener(type, fn, type === 'wheel' ? { passive: false } : undefined); }

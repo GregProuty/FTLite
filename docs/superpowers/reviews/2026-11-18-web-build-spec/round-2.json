@@ -1,0 +1,113 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "\u00a76 limits Expose-Headers to non-null origins, which can be read as excluding Electron's Origin: null page",
+      "claim": "\u00a76 says index.ts adds Access-Control-Expose-Headers 'to every response for an allowed origin that is not null'. The service treats the string 'null' as an allowed origin and echoes Access-Control-Allow-Origin: null for it. After this project, Electron's file:// page sends Origin: null (\u00a76 says so itself). Read naturally, 'not null' excludes that case. An implementer who follows it would leave the Electron page unable to read X-FTL-Checkpoint, so Electron rehost and mirror refresh would fail. That is the R1-F3 failure again, now for every Electron player.",
+      "evidence": "spec L255 (Expose-Headers 'for an allowed origin that is not null'), spec L259 (Electron file:// sends Origin: null). services/signalling/src/index.ts:L60 (origin === 'null' is allowed), L69 (ACAO is set whenever origin !== null, i.e. when the header is present, including the string 'null'). src/network/session/serviceClient.ts:L507-508 (header read).",
+      "why": "Two implementers would build this differently, and the literal reading breaks recovery for every Electron player.",
+      "fix": "Reword the rule as: set Access-Control-Expose-Headers: X-FTL-Checkpoint wherever index.ts:69 sets Access-Control-Allow-Origin, i.e. whenever an Origin header is present and allowed, including the string 'null'. The signalling test should assert the header for both a listed https origin and Origin: null."
+    },
+    {
+      "severity": "P2",
+      "title": "The \u00a73.5 validity rule could discard runs in which the browser simply did not throttle the page",
+      "claim": "A run counts only if a page-side 100 ms setInterval is clamped to an average period of at least 900 ms. The same page holds an open RTCDataChannel and a WebSocket. Browsers may exempt such pages from some timer throttling, which is the favourable outcome. Under the rule as written, that run is marked invalid instead of passing, so Task 1 might never produce a valid Chrome run. The rule mixes two questions: was the page hidden, and were its timers throttled?",
+      "evidence": "spec L176-L178 (setup: data channel plus a WebSocket in the same page), spec L184 (valid only if the control is clamped to >=900 ms).",
+      "why": "Web-i Task 1 is the gate for the whole design. A validity rule that can reject the good outcome could stall the plan or push it into the fallback for no reason.",
+      "fix": "Make validity 'visibilityState is hidden throughout', proven by a sibling control tab with no RTC or WebSocket whose interval is clamped. Record the test page's own control period as data, not as a validity condition."
+    },
+    {
+      "severity": "P2",
+      "title": "A bfcache pagehide is given both the best-effort release and suspend, with no stated order",
+      "claim": "\u00a73.1 says pagehide with persisted:true counts as suspend, and its pageshow as resume. The exit-save bullet says that on pagehide the session sends the release over the WebSocket and closes the peers. A bfcache pagehide matches both rules. The spec does not say whether it releases the seat, suspends, or both, or in what order. Releasing the seat before resume() reconnects changes what the reconnect finds.",
+      "evidence": "spec L101 (pagehide persisted = suspend), spec L105 (on pagehide, release and close peers), spec L316 (\u00a77.6 pagehide release).",
+      "why": "Two implementers would wire the same event differently, and the reconnect after a bfcache restore depends on which one runs.",
+      "fix": "State one rule, for example: pagehide with persisted:false does the release; pagehide with persisted:true only calls suspend(), with no release; pageshow with persisted:true calls resume()."
+    },
+    {
+      "severity": "P3",
+      "title": "\u00a76's reason for keeping 'null' in ALLOWED_ORIGINS is wrong about the code",
+      "claim": "\u00a76 says the null entry stays because Electron sends Origin: null. index.ts already allows a missing Origin and the string 'null' unconditionally, without consulting ALLOWED_ORIGINS. So the entry has no effect, and removing it would not break Electron.",
+      "evidence": "spec L259. services/signalling/src/index.ts:L60.",
+      "why": "Misleading rationale could cause a later change to the hard-coded allowance to be judged safe or unsafe for the wrong reason.",
+      "fix": "Say that the null and missing origins are allowed in code (index.ts:60), and that the secret's 'null' entry is kept only to match the existing provisioning."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "\u00a73.1 L100-103 never maps visibilitychange to suspend. It adds a clock-jump detector with a stated miss path, keeps Electron's powerMonitor push (\u00a73.3 job 5), and names the duelMode.ts:79-80 and flightMode.ts:54-55 callers, both confirmed. The bfcache overlap with the release is raised separately as a new P2."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "The browser exit is best effort with no capture (L105, L316). Electron keeps the close and before-quit interception through app:prepare-exit with a 3 s cap, which matches onlineExit.ts:L5-20 and graceful()'s 3 s budget at onlineSession.ts:L248. will-prevent-unload is handled and beforeunload is skipped in Electron (L140, L314)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "still open",
+      "note": "\u00a72.4 states the gap and \u00a76 adds the header with a test. However, \u00a76 L255 restricts it to an allowed origin 'that is not null', which reads as excluding the Electron file:// page's Origin: null, and index.ts:L69 does echo ACAO for that page. See the new P1. The local ALLOWED_ORIGINS for the gates is now stated (L261)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "\u00a72.4 and \u00a76 treat ALLOWED_ORIGINS as a secret set with wrangler secret put, and add a deploy for the code change. The sockets.ts sentence is replaced by the index.ts gate plus a 403 socket test, and Web-iii step 1 matches (L401). A minor rationale error about 'null' is raised as a P3."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "\u00a73.2 L118-128 names workerHost.ts implementing HostProcessHandle unchanged over a Worker HostPlatform. It reduces readiness to two parts, with the page controller answering transport-ready, and ports the tests. The relative Worker URL from src/network/host resolves to src/worker."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "The \u00a78 table covers every runtime npm entry in package.json:L13-20 and the script families in scripts/network. This includes rtc-config-smoke, lease-smoke, online-recovery-instrument/utility (as online-recovery-*) and the internet-app manifests. The suspend injection is named, and live-smoke.ts is new."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "The run is headed with a second foreground tab, the hidden-state check is asserted, a page lease round trip runs over a local workerd WebSocket with an 8 s gap limit, and the silent-audio claim is replaced by 'adopt only if shown'. The control-clamp validity condition may reject the favourable outcome; raised as a new P2."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "\u00a73.3 job 1 sets backgroundThrottling:false on the main window, and \u00a78 adds a 60 s minimized-host gate."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "\u00a73.3 L149-160 specifies createPageOnline, the OnlinePreloadApi-shaped return value plus onPort, and the PageOnlineConfig fields and how they reach the page. Test fields are limited to unpackaged or --test builds, and the trust boundary is noted. It is consistent with resolveOnlineConfig's packaged and packagedServiceOrigin rules (onlineConfig.ts:L4-15)."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "L96-99 define the OnlineRecordStore key-value seam with one transaction per put, remove the file-handle seams, keep the caps and validators, and list the node:path, randomUUID and Buffer replacements."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "\u00a77.2 L288-295 chooses the path by whether keyboard.lock resolves, and requires three conditions: the exit was not page-initiated, a match is running, and there was no Escape keydown within 100 ms."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "\u00a74 lists all six fields and uses direction-neutral text."
+    }
+  ],
+  "verified": [
+    "The service allows Origin null or 'null' unconditionally and sets ACAO whenever an Origin header is present (services/signalling/src/index.ts:L59-69). The preflight allows X-FTL-Checkpoint (L26).",
+    "Electron's exit save today is prepareExit \u2192 graceful (3 s capture, adopt, flush) \u2192 dispose, behind close and before-quit preventDefault (onlineExit.ts:L5-20, onlineSession.ts:L245-258, L557-562). \u00a73.3 job 6 reproduces this.",
+    "suspend() invalidates the lease and retires the game (onlineSession.ts:L569), which matches the \u00a73.1 rationale.",
+    "The duelMode.ts:L79-80 and flightMode.ts:L54-55 lifecycle callers exist as cited.",
+    "The package.json runtime entries (L13-20) all appear in the \u00a78 table, and every scripts/network file maps to a listed family.",
+    "resolveOnlineConfig's packaged rules (src/main/network/onlineConfig.ts:L4-15) are compatible with 'production web build packaged:true with a baked https origin' and with a loopback test build."
+  ],
+  "not_verified": [
+    "Whether Chromium's WebSocket handshake from an Electron file:// page sends 'Origin: null' or 'Origin: file://'. A 'file://' origin would be refused (index.ts:L60). Worth one check in Web-i.",
+    "Whether module Workers, IndexedDB and navigator.locks (\u00a77.5) all work on Electron's file:// opaque origin. No runtime test was run.",
+    "Exactly which Chrome and Firefox timer-throttling exemptions apply to pages with open RTCDataChannel or WebSocket connections (it drives the new P2).",
+    "onlinePlatform.ts onVisibleGone (window closed or renderer gone \u2192 dispose) has no named page equivalent. This is probably moot in the page, but it was not part of the touched-region review."
+  ]
+}

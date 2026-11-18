@@ -10,7 +10,7 @@ import { createPortLink } from '../../../../network/portLink';
 import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
 import { createDuelRemoteClient } from '../../../../network/modes/duelStream';
-import type { CommandId, DuelCommand, Link, Scheduler, Cue } from '../../net/contracts';
+import type { CommandId, DuelCommand, HeldInput, Link, Scheduler, Cue } from '../../net/contracts';
 import { arrivalJitter, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
@@ -25,7 +25,10 @@ import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
-import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
+import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, PING_CODE, throttleRequest, type ConsoleInput, type EventSource, type HeldFlags, type KeySample } from './input';
+import { createMapRequests } from './mapRequests';
+import { pingAllowed, type PingRequest } from '../../render/duel/pingModel';
+import { refusal } from '../../render/duel/situationModel';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions, type ContactRequests } from './contactController';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
@@ -77,8 +80,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const canvas = deps.renderer.app.canvas;
   // Enemy ship window spec §6.1, §6.2: local to this screen, never sent. While the window is shown its intercept takes Esc
   // (and T), so the leave prompt and setPaused below never see that Escape.
-  const contact = createContactController();
-  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => focused && !blocked && contact.intercept(code) });
+  const contact = createContactController(), requests = createMapRequests();
+  // Feel-ii §2.7: G pings at the pointer (taken from the keyboard as the contact window's keys are), a middle click too.
+  let pingKey = false, lastPing: number | null = null, pingsIn: (PingRequest & { player: number })[] = [];
+  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => focused && !blocked && (contact.intercept(code) || (code === PING_CODE && (pingKey = true))) });
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
@@ -92,9 +97,13 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let focused = true, blocked = false, synced = false, linkClosed = false, presenceSent = false, producing = false, disposed = false, leaveConfirm = CLOSED_PROMPT;
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), cancel = () => {}, offClose = () => {};
-  let lastHeld = { moveX: 0, moveY: 0, interactHeld: false };
+  let lastHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false }, lastFlags: HeldFlags = NO_HELD_FLAGS;
+  const requests0 = (): number | null => requests.takeHeading();   // Feel-ii §1.1: drained every pump
   // Artemis spec §5.4: the throttle this seat last asked for, until its result comes back; the base W, S and the console build on.
   let throttleSent: { level: number; sequence: number; round: number } | null = null;
+  // Feel-ii §1.1: the heading this seat last asked for, until its result comes back (as throttleSent); the dedupe's base.
+  // A null sequence: A/D or auto-face held at the Helm cleared the hold locally (the sim clears it), until the replica shows it.
+  let headingSent: { heading: number; sequence: number | null; round: number } | null = null;
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
   const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
@@ -168,27 +177,45 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (fresh) while (heldStamps.length && heldStamps[0]!.sequence <= p.heldHighWater[descriptor.seatId]!) sample(heldSamples, liveHeld, now - heldStamps.shift()!.at);
     for (const result of client.takeResults()) {
       if (throttleSent && result.id.player === descriptor.seatId && result.id.sequence === throttleSent.sequence) throttleSent = null;   // applied, noop or rejected: the replica is the base again
+      if (headingSent && result.id.player === descriptor.seatId && result.id.sequence === headingSent.sequence) headingSent = null;
       const at = result.id.player === descriptor.seatId ? commandStamps.get(result.id.sequence) : undefined;
       if (at !== undefined) { commandStamps.delete(result.id.sequence); if (result.status === 'applied') sample(commandSamples, liveCommand, now - at); }
     }
     for (const event of client.takeEvents()) {
       if (event.payload.kind === 'cue') deps.playCue?.(event.payload.cue);
+      if (event.payload.kind === 'ping') { const p = event.payload; pingsIn.push({ player: p.player, x: p.x, y: p.y, target: p.target }); if (pingsIn.length > 16) pingsIn.shift(); }
       if (event.payload.kind === 'round') record(event.payload.record);
     }
   }
   /** One frame's press edges for this seat, by where its character is (H-1 spec §5 table, without Tab). */
-  function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests): void {
+  function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests, heading: number | null, prevHeld: HeldFlags): void {
     const seat = seatOf(d, me), p = k.presses;
     if (seat === 'standing') {
-      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; send({ kind: 'sit', station: c }); } }
+      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; headingSent = null; send({ kind: 'sit', station: c }); } }
       return;
     }
-    if (p.stand > 0) { throttleSent = null; send({ kind: 'stand' }); return; }
+    if (p.stand > 0) { throttleSent = null; headingSent = null; send({ kind: 'stand' }); return; }
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (seat === 'helm') {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
       const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo);   // Artemis spec §5.4
       if (level !== null) { const id = send({ kind: 'throttle', level }); if (id) throttleSent = { level, sequence: id.sequence, round: d.round }; }
+      // Feel-ii §1.1: deduped against the heading in flight, else the replica's; A/D or auto-face held clears the hold (the sim
+      // clears it after this tick's commands), so the base is −1 before and after this frame's request.
+      const turning = (Math.sign(k.moveX) || 0) !== 0 || k.fireHeld;
+      if (turning) headingSent = { heading: -1, sequence: null, round: d.round };
+      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== (headingSent ? headingSent.heading : d.holdHeading)) {
+        const id = send({ kind: 'heading', heading }); if (id) headingSent = { heading, sequence: id.sequence, round: d.round };
+      }
+      if (turning) headingSent = { heading: -1, sequence: null, round: d.round };
+      // Feel-ii §2.8: with Engines off the Helm's controls fly nothing (the commands still go).
+      const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS;
+      if (off) {
+        if ((held.left && !prevHeld.left) || (held.right && !prevHeld.right)) source?.refuse('turn', off);
+        if (held.fire && !prevHeld.fire) source?.refuse('auto-face', off);
+        if (level !== null) source?.refuse('throttle', off);
+        if (heading !== null && heading >= 0) source?.refuse('heading', off);
+      }
       return;
     }
     if (seat === 'science') {   // Sci-1 spec §7.3
@@ -211,16 +238,22 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     // FTL targeting spec §2: Space is a single press that fires a full laser; there is no release to send.
     if (p.fireDown > 0 && canCharge(d.tactical, 0)) send({ kind: 'laserCharge', held: true });
     if (p.launch > 0 && canLaunch(d.tactical, 0)) send({ kind: 'missileLaunch' });
+    // Feel-ii §2.8: FIRE and LAUNCH say why when the sim would refuse them (the same checks that hold them back above).
+    const fireWhy = p.fireDown > 0 ? refusal(d, 'fire') : null, launchWhy = p.launch > 0 ? refusal(d, 'launch') : null;
+    if (fireWhy) source?.refuse('fire', fireWhy);
+    if (launchWhy) source?.refuse('launch', launchWhy);
     if (p.camera > 0 && source) { const cam = source.cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
   }
   function pump(): void {
     if (disposed) return;
     observe(); pollLink();
-    const k = keyboard.sample(), requests = contact.takeRequests();
+    const k = keyboard.sample(), requests = contact.takeRequests(), heading = requests0();
+    const prevHeld = lastFlags; lastFlags = k.held ?? NO_HELD_FLAGS;
     source?.heldFlags(k.held ?? NO_HELD_FLAGS);
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
     const d = client?.state(), p = client?.publication();
     if (throttleSent && d && d.round !== throttleSent.round) throttleSent = null;   // a new round starts at STOP
+    if (headingSent && d && (d.round !== headingSent.round || (headingSent.sequence === null && d.holdHeading === -1))) headingSent = null;   // a new round holds none; the replica caught up with the local clear
     source?.throttleBase(throttleSent ? throttleSent.level : null);
     if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
     const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
@@ -232,11 +265,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (leaveConfirm.open || keys.leave) { producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); return; }
     if (p.phase !== 'running') return;
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
-    else play(k, d, me, requests);
+    else play(k, d, me, requests, heading, prevHeld);
     // Held input every pump, quantised to −1, 0 and 1 (spec §3); a change is stamped for the held delay.
-    const held = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld };
+    // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
+    const held: HeldInput = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld, ...(k.fireHeld && seatOf(d, me) === 'helm' ? { face: true } : {}) };
     const sequence = client.held(me, decided ? { moveX: 0, moveY: 0, interactHeld: false } : held);
-    if (sequence !== null && !decided && (held.moveX !== lastHeld.moveX || held.moveY !== lastHeld.moveY || held.interactHeld !== lastHeld.interactHeld)) {
+    if (sequence !== null && !decided && (held.moveX !== lastHeld.moveX || held.moveY !== lastHeld.moveY || held.interactHeld !== lastHeld.interactHeld || held.face !== lastHeld.face)) {
       heldStamps.push({ sequence, at: deps.now() }); if (heldStamps.length > 64) heldStamps.shift();
     }
     if (!decided) { lastHeld = held; source?.sent(held); }
@@ -261,12 +295,17 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       observe(); release();
       // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
-      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; attaches++;
+      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; headingSent = null; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,
         takeClick: () => { const click = pointer.takeClick(); return focused && !blocked ? click : null; },
-        pointer: () => (focused && !blocked ? pointer.position() : null) });
+        pointer: () => (focused && !blocked ? pointer.position() : null),
+        // Feel-ii §1.1, §2.7: the Helm's right-button aim, and the pings (out on the cosmetic channel, back as events).
+        takeAim: () => { const aim = pointer.takeAim(); return focused && !blocked ? aim : null; }, requests,
+        takePingAt: () => { const key = pingKey ? pointer.position() : null, click = pointer.takeMiddleClick(); pingKey = false; return focused && !blocked ? click ?? key : null; },
+        sendPing: (p) => { const now = deps.now(); if (!client || !descriptor || !pingAllowed(lastPing, now)) return; lastPing = now; client.ping(descriptor.seatId, p.x, p.y, p.target); },
+        takePings: () => pingsIn.splice(0) });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });

@@ -110,3 +110,40 @@ never-a-dead-click flashes.
 
 Gates: the usual (tsc, full vitest, duel-app smoke); the bless procedure for the sim parts; CRT ramp on the maps;
 screenshots of both seats at sit-down, mid-fight and the kill for the owner's look check.
+
+## 7. Feel-i as built (2026-11-17, SIM_VERSION 50)
+
+- **Auto-face (sim):** a held `face` flag on the Helm's held input (`HeldInput.face`, optional, absent is false), admitted
+  from the Helm's attendant exactly like the turn; A/D wins over it. `autoFaceTurn` (sim/tactical/hunter.ts) aims at the
+  Hunter's lead point (the target `HUNTER_LEAD_S` of its velocity ahead) at the normal turn rate and stops inside
+  `AUTO_FACE_SIN` (one tick's turn, 2.5°) so it never chatters. It rides the held wire (codec, the checkpoints and the
+  replay schemas); an authority pause and a held-input expiry clear it. The runtime and the online duel send it only from
+  the Helm, and their predicted path uses the same turn. The scripted Helm lines up by holding it: duelGates median
+  221.8 s, 8 wins and 2 losses (218.3 s before).
+- **SHIELDS opener (sim):** every round's crew laser starts `laserTargeted` at Shields (the rematch builds its round the
+  same way).
+- **Status sentence:** one line at the top of every console map (FONT_SIZE, y 12, inside the band x 408–1136), the same
+  words on every seat: `ENEMY OUT OF RANGE: CLOSE TO 450`, `ENEMY OUT OF ARC: TURN LEFT|RIGHT`, then (added) `NO LINE OF
+  SIGHT: CLEAR THE ROCK`, `WEAPONS OFFLINE: REPAIR`, `LASER HOLDS: TORPEDO FLYING`, then `FIRING SOLUTION` (`: PICK A
+  ROOM` without a target) and `LASER CHARGING`. The Weapons `BRG/RNG` line stacks under it at FONT_NATIVE (y 44) and
+  loses its `NO SHOT / IN ARC` words to the sentence. A volley that auto-fires the tick it is ready keeps the solution lit
+  for 0.6 s.
+- **Card why-not:** the LASER card's charge text reads `FIRING` (and its frame blinks) while lined up; the row under the
+  cards reads `LASER: OUT OF ARC: HELM TURN RIGHT`, `LASER: OUT OF RANGE 612/450`, `LASER: WEAPONS OFFLINE` (offline first).
+- **Bracket and arc:** the Helm map now draws the own laser arc too; the arc brightens (main fill, hot edge) while the
+  laser is ready or firing in arc; the bracket closes about the enemy marker (or its edge arrow) over 0.25 s whenever the
+  shot is lined up, hot with `FIRING SOLUTION` under it (above it near the bottom edge) when ready.
+- **Unscanned window:** below Level 1 the enemy window draws a dashed generic hull with three `?` rooms (stern ENG, SHLD,
+  nose WEAP, the sim's Room order), targetable as at Level 1; LASER arms at any level.
+- **Hit juice:** crew beams 5 px wide, 0.22 s, a 60 ms hot core, the burst's two beams 3 px either side; an impact flare;
+  a shield pop on a stripped layer (SHIELD DOWN already called out); `-2` (laser) or `-3` (torpedo) floating up beside the
+  enemy; shakes 2 px / 120 ms (laser room hit), 4 px / 200 ms (torpedo hit), 6 px (a hit on the crew, as before), all from
+  the view events, so the online guest gets the same from `gapEvents`. The kill (the outcome turning with the enemy's hull
+  gone): an explosion, `TARGET DESTROYED`, the hull's outline edges flying apart for 1.8 s, and 0.4 s of effects at 0.3×
+  speed (render time only). Settings has Screen shake: Off, Low (half), Full (saved with the volumes).
+- **Sit-down:** the card (`HELM: POINT AT THE ENEMY · A/D TURN · W/S THROTTLE · HOLD SPACE AUTO-FACE`, `WEAPONS: CLICK A
+  WEAPON, THEN A ROOM · 1 LASER · 2 TORPEDO · E/Q NEXT ROOM`) shows for 4 s or until the first action on the first three
+  sits per seat per app session, below the ship (above it when the enemy is below); the goal glow pulses a ring about
+  the Helm's enemy edge arrow until the Helm turns or holds auto-face, and the LASER card's frame while it has no target
+  until it is picked up; a sit eases the zoom to fit both ships, clamped to 0.25–1. The Helm block gained an AUTO-FACE
+  hold button (Space).

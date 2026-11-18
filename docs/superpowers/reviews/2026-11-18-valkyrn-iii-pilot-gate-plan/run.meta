@@ -1,0 +1,11 @@
+topic=valkyrn-iii-pilot-gate-plan
+subject_kind=plan
+subject=docs/superpowers/plans/2026-11-18-valkyrn-iii-pilot-gate.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=10
+effort=high
+confirm=0
+verify=
+created=2026-11-18
+head_at_setup=c18e5a2e

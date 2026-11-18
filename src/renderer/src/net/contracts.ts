@@ -29,7 +29,9 @@ export interface Session {
   onLinkLost(cb: (peer: PeerId) => void): Unsubscribe;
   close(reason: string): void;
 }
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean }
+/** `face` (Feel-i, console feel spec §2): the Helm's auto-face, Space held at the Helm; absent means false. Only the duel
+ *  reads it, from the Helm's attendant, and A/D (moveX) overrides it. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }
@@ -80,6 +82,9 @@ export type DuelCommand =
   /** The Helm's throttle (Artemis spec §5.2): an integer level −1..4. Any finite number passes the codec, and the sim
    *  answers a bad one malformed. */
   | { kind: 'throttle'; level: number }
+  /** Feel-ii's click-to-heading (Feel-ii spec §1.1): a heading index 0..255 the Helm turns to and holds, or −1 to clear
+   *  it. Any finite number passes the codec, and the sim answers a bad one malformed. */
+  | { kind: 'heading'; heading: number }
   /** Sci-1 spec §5: scan the next level of a contact (0 the enemy, 1 the derelict) from the Helm, Weapons or Science. */
   | { kind: 'contactScan'; contact: number }
   /** Science points out a contact (−1 none, 0 or 1) for every screen. */
@@ -107,7 +112,12 @@ export interface CommandResult {
   admission?: { expectedSequence: number; disposition: 'terminal' | 'retryable' };
 }
 export type Admission = { status: 'queued' } | { status: 'duplicate' | 'rejected'; result: CommandResult };
-export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' };
+/** Feel-ii §2.7: the shortest gap between one player's relayed pings (ms). */
+export const PING_GAP_MS = 1000;
+export type ClientAuxMessage = { kind: 'callout'; runId: RunId; player: PlayerId; sequence: number; calloutKind: 'contextual' }
+  /** Feel-ii (spec 2026-11-18-feel-ii-design §2.7): a crew ping at a world point, or on the enemy (`target`). Cosmetic: never
+   *  a sim command or journalled; the authority relays it to every seat as a `ping` event, at most one a second a player. */
+  | { kind: 'ping'; runId: RunId; player: PlayerId; sequence: number; x: number; y: number; target: boolean };
 // Data-only event cue names shared with pure derivation.
 export type Cue = 'alarm' | 'impact' | 'shot' | 'hit' | 'ready' | 'jump' | 'upgrade' | 'victory' | 'defeat' | 'callout';
 /** The authority's end record, tagged on the wrapper by mode (spec §6). The sector record is unchanged; the duel's
@@ -118,6 +128,8 @@ export interface AuthorityEvent {
   payload:
     | { kind: 'cue'; cue: Cue }
     | { kind: 'callout'; player: PlayerId; text: string; station: number | null }
+    /** Feel-ii §2.7: a crew ping, relayed to every seat (cosmetic, never journalled). */
+    | { kind: 'ping'; player: PlayerId; x: number; y: number; target: boolean }
     | { kind: 'pause'; paused: boolean; owner: PlayerId | null; reason: string }
     | { kind: 'ended'; record: EndRecord }
     /** A duel round was decided (H-2 spec §7); only the duel codec admits it. */
